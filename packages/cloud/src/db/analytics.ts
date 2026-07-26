@@ -444,6 +444,14 @@ export interface CompareTaskRow {
   hashChanged: boolean
   durationDeltaMs: number | null
   statusChanged: boolean
+  /**
+   * The task's MEASURED same-key spread (stddev/mean), when any of its keys
+   * ran more than once. A `durationDeltaMs` inside this band is within the
+   * task's own noise and cannot be read as a change. Absent when nothing was
+   * measured — the consumer then falls back to its own heuristic rather than
+   * inventing a floor.
+   */
+  noiseCv?: number
 }
 
 export interface CompareRuns {
@@ -2271,6 +2279,9 @@ export class Analytics {
       cacheHit: row.cacheHit,
       exitCode: row.exitCode,
     })
+    // ONE batched query for every task's measured noise floor — a per-row
+    // lookup would be an N+1 across the whole diff.
+    const floors = await this.getStabilityFloors(workspaceId)
     const tasks: CompareTaskRow[] = keys.map((key) => {
       const ra = byKeyA.get(key)
       const rb = byKeyB.get(key)
@@ -2285,7 +2296,18 @@ export class Analytics {
       if (!a) tasksOnlyInB++
       if (hashChanged || statusChanged) tasksChanged++
       const [project, task] = key.split('#', 2) as [string, string]
-      return { taskId: key, project, task, a, b, hashChanged, durationDeltaMs, statusChanged }
+      const cv = floors.get(pairKey(project, task))
+      return {
+        taskId: key,
+        project,
+        task,
+        a,
+        b,
+        hashChanged,
+        durationDeltaMs,
+        statusChanged,
+        ...(cv !== undefined ? { noiseCv: cv } : {}),
+      }
     })
     return {
       runId,
@@ -2783,6 +2805,94 @@ export class Analytics {
    * say anything about spread, so single-execution keys are excluded rather
    * than reported as perfectly stable — which would be a lie by omission.
    */
+  /**
+   * Batched noise floor for MANY tasks at once — the number that decides
+   * whether a cross-key duration delta is real. Same cache key ⇒ identical
+   * inputs ⇒ the observed spread is that task's measurement noise, so a delta
+   * smaller than it cannot be called a change. One grouped query for the whole
+   * table (a per-row lookup would be an N+1 on a 500-row compare view); tasks
+   * with no repeated key are simply absent, and the caller falls back to its
+   * own heuristic rather than inventing a floor.
+   */
+  async getStabilityFloors(
+    workspaceId: string,
+    args: { sinceDays?: number } = {},
+  ): Promise<Map<string, number>> {
+    const since = Date.now() - clampInt(args.sinceDays ?? 90, 1, MAX_WINDOW_DAYS) * 86_400_000
+    const rows = await this.sql<{ project: string; task: string; cv: number | null }[]>`
+      WITH per_key AS (
+        SELECT project, task, hash,
+               avg(duration_ms)::float8 AS mean,
+               stddev_samp(duration_ms)::float8 AS sd
+        FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND started_at >= ${since}
+          AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+          AND hash IS NOT NULL AND hash <> ''
+        GROUP BY project, task, hash HAVING count(*) >= 2
+      )
+      SELECT project, task,
+             -- The MEDIAN per-key spread is the task's typical noise; a single
+             -- pathological key must not widen the band for every comparison.
+             percentile_cont(0.5) WITHIN GROUP (
+               ORDER BY CASE WHEN mean > 0 THEN sd / mean ELSE 0 END
+             )::float8 AS cv
+      FROM per_key GROUP BY project, task`
+    const out = new Map<string, number>()
+    for (const r of rows) {
+      if (r.cv !== null) out.set(pairKey(r.project, r.task), Number(r.cv))
+    }
+    return out
+  }
+
+  /**
+   * The least repeatable tasks in the workspace — same-key spread, ranked.
+   * A task at the top wastes CI time unpredictably and, more importantly,
+   * makes every duration comparison involving it unreliable: nothing smaller
+   * than its own noise can be read as a change.
+   */
+  async getLeastStableTasks(
+    workspaceId: string,
+    args: { sinceDays?: number; limit?: number; minRuns?: number } = {},
+  ): Promise<
+    { id: string; project: string; task: string; cv: number; samples: number; p50Ms: number }[]
+  > {
+    const since = Date.now() - clampInt(args.sinceDays ?? 30, 1, MAX_WINDOW_DAYS) * 86_400_000
+    const limit = clampInt(args.limit ?? 8, 1, 100)
+    const minRuns = clampInt(args.minRuns ?? 3, 2, 1000)
+    const rows = await this.sql<
+      { project: string; task: string; cv: number | null; samples: number; p50: number | null }[]
+    >`
+      WITH per_key AS (
+        SELECT project, task, hash,
+               count(*)::int AS n,
+               avg(duration_ms)::float8 AS mean,
+               stddev_samp(duration_ms)::float8 AS sd,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms)::float8 AS p50
+        FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND started_at >= ${since}
+          AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
+          AND hash IS NOT NULL AND hash <> ''
+        GROUP BY project, task, hash HAVING count(*) >= 2
+      )
+      SELECT project, task,
+             SUM(n)::int AS samples,
+             percentile_cont(0.5) WITHIN GROUP (
+               ORDER BY CASE WHEN mean > 0 THEN sd / mean ELSE 0 END
+             )::float8 AS cv,
+             percentile_cont(0.5) WITHIN GROUP (ORDER BY p50)::float8 AS p50
+      FROM per_key GROUP BY project, task
+      HAVING SUM(n) >= ${minRuns}
+      ORDER BY cv DESC NULLS LAST LIMIT ${limit}`
+    return rows.map((r) => ({
+      id: `${r.project}#${r.task}`,
+      project: r.project,
+      task: r.task,
+      cv: r.cv === null ? 0 : Number(r.cv),
+      samples: r.samples,
+      p50Ms: r.p50 === null ? 0 : Math.round(Number(r.p50)),
+    }))
+  }
+
   async getTaskStability(
     workspaceId: string,
     project: string,

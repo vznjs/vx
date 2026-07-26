@@ -15,13 +15,14 @@
     "savings": "cacheSavings",
     "topTasks": "topTasks",
     "failures": "failures",
-    "hermeticity": "hermeticity"
+    "hermeticity": "hermeticity",
+    "leastStable": "leastStable"
   },
   "spec": {
     "type": "Page",
     "props": {
       "title": "Insights",
-      "subtitle": "One analytics area — every row links into its entity (task, project, run)."
+      "subtitle": "One analytics area \u2014 every row links into its entity (task, project, run)."
     },
     "children": [
       {
@@ -74,7 +75,7 @@
               "sub": {
                 "$computed": "text",
                 "args": {
-                  "tpl": "{l} local · {r} remote",
+                  "tpl": "{l} local \u00b7 {r} remote",
                   "l": {
                     "$state": "/stats/hitLocalCountLast24h"
                   },
@@ -249,7 +250,7 @@
         "type": "Card",
         "props": {
           "title": "Started failing across branches",
-          "actionText": "used to pass · now failing on ≥ 2 branches",
+          "actionText": "used to pass \u00b7 now failing on \u2265 2 branches",
           "noPad": true
         },
         "visible": {
@@ -267,7 +268,7 @@
                 "$state": "/regressionsStatus"
               },
               "rowHref": "/tasks/{id}",
-              "emptyTitle": "No cross-branch regressions 🎉",
+              "emptyTitle": "No cross-branch regressions \ud83c\udf89",
               "emptyHint": "No task that used to pass is now failing on multiple branches.",
               "columns": [
                 {
@@ -323,7 +324,7 @@
         "type": "Card",
         "props": {
           "title": "Got slower",
-          "actionText": "latest executed run vs the task's own p50 — cache hits excluded",
+          "actionText": "latest executed run vs the task's own p50 \u2014 cache hits excluded",
           "noPad": true
         },
         "children": [
@@ -338,7 +339,7 @@
               },
               "rowHref": "/tasks/{id}",
               "emptyTitle": "No task is running meaningfully slower than its history",
-              "emptyHint": "Flags a latest executed run ≥ 2× the task's own p50 (and ≥ 100ms over it).",
+              "emptyHint": "Flags a latest executed run \u2265 2\u00d7 the task's own p50 (and \u2265 100ms over it).",
               "columns": [
                 {
                   "key": "task",
@@ -360,7 +361,7 @@
                 },
                 {
                   "key": "_ratioLabel",
-                  "label": "×",
+                  "label": "\u00d7",
                   "kind": "dots",
                   "dots": [
                     {
@@ -384,8 +385,73 @@
       {
         "type": "Card",
         "props": {
+          "title": "Least stable tasks",
+          "actionText": "same cache key, repeated runs \u2014 spread is noise, not regression"
+        },
+        "visible": {
+          "$state": "/leastStableStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/leastStable"
+              },
+              "rowHref": "/tasks/{_taskRef}",
+              "emptyTitle": "No task ran the same key twice yet",
+              "emptyHint": "Stability needs at least two executions of one cache key.",
+              "columns": [
+                {
+                  "key": "id",
+                  "label": "Task",
+                  "kind": "dots",
+                  "dots": [
+                    {
+                      "field": "project",
+                      "map": "ident"
+                    }
+                  ]
+                },
+                {
+                  "key": "samples",
+                  "label": "Runs",
+                  "align": "right",
+                  "sortable": true
+                },
+                {
+                  "key": "p50Ms",
+                  "label": "Typical",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "_pm",
+                  "label": "Margin",
+                  "align": "right",
+                  "kind": "mono"
+                },
+                {
+                  "key": "_cvPct",
+                  "label": "\u00b11\u03c3",
+                  "align": "right",
+                  "sortable": true,
+                  "kind": "bar",
+                  "max": 1,
+                  "format": "percent0",
+                  "color": "warn"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
           "title": "Biggest movers",
-          "actionText": "avg exec time — this period vs the prior",
+          "actionText": "avg exec time \u2014 this period vs the prior",
           "noPad": true
         },
         "visible": {
@@ -404,7 +470,7 @@
               },
               "rowHref": "/tasks/{id}",
               "emptyTitle": "No tasks with enough runs in both windows",
-              "emptyHint": "A mover needs ≥ 3 executions in each 7-day window.",
+              "emptyHint": "A mover needs \u2265 3 executions in each 7-day window.",
               "columns": [
                 {
                   "key": "task",
@@ -426,7 +492,7 @@
                 },
                 {
                   "key": "_deltaLabel",
-                  "label": "Δ",
+                  "label": "\u0394",
                   "kind": "dots",
                   "dots": [
                     {
@@ -437,7 +503,7 @@
                 },
                 {
                   "key": "_pctLabel",
-                  "label": "Δ%",
+                  "label": "\u0394%",
                   "align": "right",
                   "kind": "mono",
                   "baseTone": "faint"
@@ -553,7 +619,7 @@
         "type": "Card",
         "props": {
           "title": "Where to invest",
-          "actionText": "14-day lookback · savings = 25% cut, weekly",
+          "actionText": "14-day lookback \u00b7 savings = 25% cut, weekly",
           "noPad": true
         },
         "children": [
@@ -616,7 +682,7 @@
             "type": "Card",
             "props": {
               "title": "Flaky tasks",
-              "actionText": "within-run retries confirm · rate + tail infer",
+              "actionText": "within-run retries confirm \u00b7 rate + tail infer",
               "noPad": true
             },
             "children": [
@@ -635,7 +701,7 @@
                     "$state": "/flakyStatus"
                   },
                   "rowHref": "/tasks/{id}",
-                  "emptyTitle": "No flaky tasks 🎉",
+                  "emptyTitle": "No flaky tasks \ud83c\udf89",
                   "columns": [
                     {
                       "key": "task",
@@ -736,7 +802,7 @@
         "type": "Card",
         "props": {
           "title": "Hermeticity",
-          "actionText": "cross-machine output fingerprints · vx run --force --verify=fingerprint",
+          "actionText": "cross-machine output fingerprints \u00b7 vx run --force --verify=fingerprint",
           "noPad": true
         },
         "visible": {
@@ -750,7 +816,7 @@
               "text": {
                 "$computed": "text",
                 "args": {
-                  "tpl": "{k} keys fingerprinted · {r} reports — no divergence",
+                  "tpl": "{k} keys fingerprinted \u00b7 {r} reports \u2014 no divergence",
                   "k": {
                     "$state": "/hermeticity/keysTracked"
                   },
@@ -813,7 +879,7 @@
                   "label": "Run",
                   "kind": "link",
                   "href": "/runs/{_runId}",
-                  "linkLabel": "{_runShort}…"
+                  "linkLabel": "{_runShort}\u2026"
                 }
               ]
             },
@@ -833,7 +899,7 @@
           {
             "type": "Text",
             "props": {
-              "text": "A divergent key is either a hermeticity bug (absolute paths, timestamps, hash-order output) or a genuinely platform-dependent task — declare the axis so its key splits: cache.inputs.runtime: ['uname -sm']",
+              "text": "A divergent key is either a hermeticity bug (absolute paths, timestamps, hash-order output) or a genuinely platform-dependent task \u2014 declare the axis so its key splits: cache.inputs.runtime: ['uname -sm']",
               "tone": "faint",
               "mono": true,
               "class": "px-4 py-2 border-t border-border"
@@ -874,7 +940,7 @@
                   "valueFormat": "duration",
                   "indexed": true,
                   "metaKey": "runs",
-                  "metaSuffix": "×",
+                  "metaSuffix": "\u00d7",
                   "rowHref": "/tasks/{id}",
                   "emptyTitle": "Nothing executed yet",
                   "emptyCmd": "vx run <task>"
@@ -910,7 +976,7 @@
                   "metaKey": "exitCode",
                   "metaPrefix": "exit ",
                   "rowHref": "/runs/{runId}?task={_taskRef}",
-                  "emptyTitle": "No failures 🎉"
+                  "emptyTitle": "No failures \ud83c\udf89"
                 }
               }
             ]
@@ -921,7 +987,7 @@
         "type": "Card",
         "props": {
           "title": "Parallelism factor per invocation",
-          "actionText": "cpu sum / wall time — 1.0 = serial"
+          "actionText": "cpu sum / wall time \u2014 1.0 = serial"
         },
         "children": [
           {

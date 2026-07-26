@@ -1635,6 +1635,93 @@ describe('getTaskStability', () => {
   }, 60_000)
 })
 
+describe('stability floors + least-stable ranking', () => {
+  it("compareRuns carries each task's MEASURED noise floor", async () => {
+    const { org, ws } = await newOrgWs(db, 'noise-floor')
+    const now = Date.now()
+    // History: key H run four times with real spread (900..1100) — that is the
+    // task's measured noise, and it must reach the compare row.
+    for (const [i, d] of [900, 1000, 1050, 1100].entries()) {
+      await insertTR(db, ws, org, {
+        runId: `h${i}`,
+        project: 'app',
+        task: 'build',
+        hash: 'H',
+        duration: d,
+        startedAt: now - 500_000 + i * 1000,
+      })
+    }
+    // Two runs to compare, on DIFFERENT keys (a real cross-key comparison).
+    await insertINV(db, ws, org, { runId: 'prev', startedAt: now - 20_000 })
+    await insertTR(db, ws, org, {
+      runId: 'prev',
+      project: 'app',
+      task: 'build',
+      hash: 'P',
+      duration: 1000,
+      startedAt: now - 20_000,
+    })
+    await insertINV(db, ws, org, { runId: 'cur', startedAt: now - 10_000 })
+    await insertTR(db, ws, org, {
+      runId: 'cur',
+      project: 'app',
+      task: 'build',
+      hash: 'C',
+      duration: 1040,
+      startedAt: now - 10_000,
+    })
+
+    const cmp = await analytics.compareRuns(ws, 'cur')
+    const row = cmp.tasks.find((t) => t.taskId === 'app#build')!
+    expect(row.hashChanged).toBe(true)
+    expect(row.noiseCv).toBeDefined()
+    // The measured spread is ~8%, so a 40ms delta on a ~1000ms task is INSIDE
+    // the noise — the consumer must be able to see that.
+    expect(row.noiseCv!).toBeGreaterThan(0.05)
+    expect(Math.abs(row.durationDeltaMs!)).toBeLessThan(row.noiseCv! * 1000)
+  }, 60_000)
+
+  it('ranks the least stable tasks and ignores never-repeated keys', async () => {
+    const { org, ws } = await newOrgWs(db, 'least-stable')
+    const now = Date.now()
+    const seed = async (task: string, hash: string, durations: number[]) => {
+      for (const [i, d] of durations.entries()) {
+        await insertTR(db, ws, org, {
+          runId: `${task}-${i}`,
+          project: 'app',
+          task,
+          hash,
+          duration: d,
+          startedAt: now - 100_000 + i * 100,
+        })
+      }
+    }
+    await seed('steady', 'S', [500, 505, 495, 500])
+    await seed('jittery', 'J', [200, 1400, 300, 1200])
+    // Never repeats a key — unmeasurable, must not appear at all.
+    await insertTR(db, ws, org, {
+      runId: 'o1',
+      project: 'app',
+      task: 'once',
+      hash: 'O1',
+      startedAt: now - 5000,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'o2',
+      project: 'app',
+      task: 'once',
+      hash: 'O2',
+      startedAt: now - 4000,
+    })
+
+    const rows = await analytics.getLeastStableTasks(ws, { limit: 10 })
+    expect(rows[0]!.id).toBe('app#jittery')
+    expect(rows.map((r) => r.task)).toContain('steady')
+    expect(rows.map((r) => r.task)).not.toContain('once')
+    expect(rows[0]!.cv).toBeGreaterThan(rows.find((r) => r.task === 'steady')!.cv)
+  }, 60_000)
+})
+
 describe('getFlakeTrend', () => {
   const DAY = 86_400_000
 

@@ -181,6 +181,11 @@ successors.
   the latest run, and the latest artifact), a flaky badge, and a
   **Recommendations** card that turns flaky / hermeticity / caching
   signals into concrete config fixes (each with a copy-pasteable snippet).
+  Insights also ranks the **least stable tasks** workspace-wide, and the
+  Compare view judges each duration delta against that task's *measured*
+  noise floor rather than a fixed threshold — a delta inside the margin of
+  error renders neutral, because nothing smaller than a task's own variance
+  can be called a change.
   Every task with a repeated cache key gets a **Stability** card: the spread
   of durations measured across executions of *identical inputs* — typical and
   widest ±1σ, the min→max range, and a per-key breakdown. Identical inputs

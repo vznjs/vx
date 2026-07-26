@@ -394,6 +394,16 @@ async function handleAnalyticsRequestInner(
     if (limit !== undefined) args.limit = limit
     return json({ tasks: await a.getProjectBranchFailures(ws, project, args) })
   }
+  if (p === '/v1/stability/least') {
+    const args: { sinceDays?: number; limit?: number; minRuns?: number } = {}
+    const sinceDays = numParam(q.get('sinceDays'))
+    if (sinceDays !== undefined) args.sinceDays = sinceDays
+    const limit = numParam(q.get('limit'))
+    if (limit !== undefined) args.limit = limit
+    const minRuns = numParam(q.get('minRuns'))
+    if (minRuns !== undefined) args.minRuns = minRuns
+    return json({ tasks: await a.getLeastStableTasks(ws, args) })
+  }
   if (p === '/v1/stability') {
     const project = q.get('project')
     const task = q.get('task')

@@ -516,6 +516,7 @@ export interface Column {
   baseKey?: string // kind:'deltaBar' — the magnitude the flat band is relative to
   labelKey?: string // kind:'deltaBar' — shown when the delta is undefined (new/gone)
   neutralKey?: string // kind:'deltaBar' — truthy row value ⇒ magnitude only, no verdict
+  noiseKey?: string // kind:'deltaBar' — measured noise floor (ms) for the flat band
   baseTone?: Tone
   tone?: ToneRule
   color?: string // static bar color token
@@ -631,7 +632,12 @@ function renderField(col: Column, row: Row, max: number) {
       // significance, so anything under the band is neutral with no bar.
       const v = Number(row[col.key])
       const base = Math.abs(Number(row[col.baseKey ?? col.key])) || 0
-      const flat = Math.max(5, base * 0.005)
+      // Prefer the task's MEASURED noise floor (same-key spread) over the
+      // heuristic: "is this delta real?" is a question about that task's own
+      // variance, not about a number we picked. Falls back only when nothing
+      // repeated often enough to measure.
+      const measured = col.noiseKey !== undefined ? Number(row[col.noiseKey]) : Number.NaN
+      const flat = Number.isFinite(measured) && measured > 0 ? measured : Math.max(5, base * 0.005)
       const scale = col.max ?? max
       const frac = scale > 0 ? Math.min(1, Math.abs(v) / scale) : 0
       // A row can declare itself unjudgeable — a same-cache-key delta is the

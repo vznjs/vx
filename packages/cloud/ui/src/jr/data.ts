@@ -30,6 +30,7 @@ import {
   getFlakeTrend,
   getFlakiest,
   getTaskFlaky,
+  getLeastStable,
   getTaskStability,
   getProject,
   getProjectBranchFailures,
@@ -82,6 +83,7 @@ interface CompareRow {
   deltaKind: 'slower' | 'faster' | 'same' | 'new' | 'gone'
   keyChanged: 'changed' | 'same'
   _sameKey: boolean
+  _noiseMs: number | undefined
 }
 
 /** Fetch /v1/compare and flatten each task into a display row. */
@@ -122,6 +124,13 @@ async function compareRows(runId: string): Promise<CompareRow[]> {
       // Same key ⇒ identical inputs ⇒ the delta is this task's measurement
       // noise. The table renders magnitude but passes no verdict on it.
       _sameKey: !t.hashChanged,
+      // The task's OWN measured noise floor: a cross-key delta smaller than
+      // this is inside the margin of error, so the table must not call it a
+      // change. Absent (undefined) ⇒ the cell falls back to its heuristic.
+      _noiseMs:
+        t.noiseCv !== undefined && t.a !== null
+          ? Math.round(t.noiseCv * t.a.durationMs)
+          : undefined,
     }
   })
 }
@@ -593,6 +602,17 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   taskFlaky: (p) => {
     const [project = '', task = ''] = (p.id ?? '').split('#', 2)
     return project !== '' && task !== '' ? getTaskFlaky(project, task) : Promise.resolve(null)
+  },
+  // Workspace-wide instability ranking — an unstable task makes every
+  // duration comparison involving it unreliable. Empty ⇒ the card hides.
+  leastStable: async () => {
+    const rows = await getLeastStable(8).catch(() => [])
+    return rows.map((r) => ({
+      ...r,
+      _taskRef: r.id,
+      _cvPct: r.cv,
+      _pm: `±${(r.cv * 100).toFixed(1)}%`,
+    }))
   },
   // Task stability: how repeatable the computation is across executions of the
   // SAME cache key. Identical inputs cannot regress, so this spread is the

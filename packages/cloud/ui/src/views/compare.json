@@ -161,6 +161,7 @@
                   "baseKey": "baseMs",
                   "labelKey": "deltaLabel",
                   "neutralKey": "_sameKey",
+                  "noiseKey": "_noiseMs",
                   "format": "signedDuration"
                 },
                 {
