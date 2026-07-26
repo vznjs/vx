@@ -26,9 +26,12 @@ terminal and a task succeeding or failing. Read it alongside
  │       --graph short-circuit into planRun instead.
  │
  ├─ Prepare (src/orchestrator/prepare.ts:prepareRun — shared with planRun)
- │    1. findWorkspaceRoot(cwd) — walks up; first match wins across
- │       pnpm-workspace.yaml, package.json with a `workspaces` field
- │       (npm/yarn/bun), or a bare package.json (single-project mode).
+ │    1. findWorkspaceRoot(cwd) — walks up over pnpm-workspace.yaml,
+ │       package.json with a `workspaces` field (npm/yarn/bun), or a
+ │       bare package.json (single-project mode). The nearest one whose
+ │       package globs CLAIM cwd wins, so running from inside a member
+ │       resolves the declaring root, not the member; when nothing
+ │       claims cwd the nearest candidate wins.
  │    2. loadWorkspace — parses the appropriate manifest. Bun.YAML
  │       for pnpm; Bun.file().json() for the package.json forms.
  │    3. loadWorkspaceConfig — optional vx.workspace.{ts,mts,js,mjs}

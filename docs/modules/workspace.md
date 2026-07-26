@@ -41,15 +41,25 @@ export function resolveCacheDir(root: string, config: WorkspaceConfig | null): s
 
 ### `findWorkspaceRoot(start)`
 
-Walks up from `start` to the filesystem root. A directory is a
-workspace root if it contains either:
+Walks up from `start` to the filesystem root. A directory is a root
+CANDIDATE if it contains either:
 
 - `pnpm-workspace.yaml`, OR
 - `package.json` (with or without a `workspaces` field).
 
-**First match wins.** A bare `package.json` without `workspaces` means
-single-project mode — the root itself IS the project. Throws a
-`UserError` if neither signal is found.
+**The nearest candidate that CLAIMS `start` wins** — one of the
+directories between it and `start` matches one of its package globs.
+Every member has its own `package.json`, so first-match-wins would make
+a run from inside a package treat that package as the whole workspace:
+`^task` edges vanish, upstream hashes drop out of the cache key (stale
+hits), and a second cache dir appears under the member. Claiming reads
+the same globs `loadWorkspace` applies, so "the root that claims me"
+and "the root that lists me as a project" cannot diverge.
+
+When nothing claims `start` — a standalone package, or a subdirectory
+of a single-project repo — the nearest candidate wins. A bare
+`package.json` without `workspaces` means single-project mode: the root
+itself IS the project. Throws a `UserError` if no candidate is found.
 
 ### `loadWorkspace(root)`
 

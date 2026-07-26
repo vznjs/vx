@@ -624,11 +624,14 @@ Same micro-syntax as `dependsOn`, plus two filter-only extras:
 | `'pkg#name'` | Include the specific package's `name` task.    |
 | `'!<form>'`  | Exclude — any of the above with a leading `!`. |
 
-Task-name **patterns** work here too, in every form's task half:
-`'build.*'`, `'^build.*'`, `'pkg#build.*'`, `'!codegen.*'` — the same
-`*`-glob `dependsOn` patterns use, matched against upstream task names
-(a filter that matched patterns literally while `dependsOn` expanded
-them would silently select zero hashes — a stale-hit trap).
+**Patterns** work here too, in EITHER half of every form:
+`'build.*'`, `'^build.*'`, `'pkg#build.*'`, `'@acme/*#build'`,
+`'!codegen.*'` — the same `*`-glob `dependsOn` patterns use. A filter
+only ever selects from upstreams that already exist, so a package
+pattern is unambiguous here, unlike `dependsOn`, which must
+materialize concrete edges and rejects it. (A filter that matched
+patterns literally would silently select zero hashes and decouple the
+task from its dependencies — a stale-hit trap.)
 
 Patterns are applied in order; **last write wins**. So
 `['*', '^*', '!^noisy']` reads as "all upstream except deps' noisy
