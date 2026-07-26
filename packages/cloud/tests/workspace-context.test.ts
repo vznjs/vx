@@ -1,0 +1,213 @@
+// The workspace is the SCOPE of every page — every analytics row the dashboard
+// renders is `WHERE workspace_id = <the sidebar selection>`. This drives the
+// real dashboard in a real Chromium against a real platform and pins that the
+// context is (a) always stated, at 0, 1 and N workspaces, and (b) actually
+// rescopes the data when switched.
+//
+// Why it exists: the switcher used to be a corner chip hidden below 2
+// workspaces, so a reader had no way to tell which workspace filled the page,
+// and a second repo's first push appeared out of nowhere. Every other suite
+// seeds ONE workspaceId, which is exactly why that went unnoticed.
+//
+// Skips (never fails) without playwright or a built SPA, like the other
+// browser suites.
+
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import path from 'node:path'
+import { bootPlatform, type TestPlatform } from './helpers/platform.js'
+import { loadChromium, sharedBrowser } from './helpers/playwright.js'
+
+const DIST = path.join(import.meta.dir, '..', 'ui', 'dist', 'index.html')
+const NOW = Date.UTC(2026, 6, 20, 12, 0, 0)
+
+const chromium = await loadChromium()
+const hasDist = await Bun.file(DIST).exists()
+const available = chromium !== null && hasDist
+if (!available) {
+  console.warn(
+    `[workspace-context] skipped — ${chromium === null ? 'playwright not resolvable' : 'ui/dist not built (vx run build.ui)'}`,
+  )
+}
+
+interface Pg {
+  goto(url: string): Promise<unknown>
+  reload(): Promise<unknown>
+  waitForLoadState(s: string): Promise<unknown>
+  waitForTimeout(ms: number): Promise<void>
+  evaluate(script: string): Promise<unknown>
+  on(event: string, fn: (arg: never) => void): void
+}
+
+function summary(wsId: string, wsName: string, runId: string, project: string, at: number) {
+  return {
+    v: 2,
+    run: {
+      runId,
+      vxVersion: '1.4.2',
+      command: 'vx run ci',
+      requestedTasks: ['ci'],
+      cachePolicy: 'lR,lW,rR,rW',
+      concurrency: 8,
+      flow: 'broad',
+      workspaceId: wsId,
+      workspaceName: wsName,
+      commitSha: 'a'.repeat(40),
+      branch: 'main',
+      defaultBranch: 'main',
+      dirty: false,
+      ci: true,
+      ciProvider: 'github',
+      host: 'runner-01',
+      os: 'linux',
+      arch: 'x64',
+      tags: {},
+    },
+    startedAt: at,
+    endedAt: at + 500,
+    totalDurationMs: 500,
+    taskCount: 1,
+    failedCount: 0,
+    hitCount: 0,
+    hitLocalCount: 0,
+    hitRemoteCount: 0,
+    exitOk: true,
+    tasks: [
+      {
+        project,
+        task: 'build',
+        status: 'success',
+        durationMs: 500,
+        exitCode: 0,
+        cacheSource: 'miss',
+        hash: 'h1',
+        attempts: 1,
+      },
+    ],
+  }
+}
+
+describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () => {
+  let platform: TestPlatform
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let browser: { newContext(o: unknown): Promise<any>; close(): Promise<void> }
+  let page: Pg
+  const errors: string[] = []
+
+  const ingest = async (
+    wsId: string,
+    wsName: string,
+    runId: string,
+    project: string,
+    at: number,
+  ) => {
+    const r = await fetch(`${platform.origin}/v1/ingest`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${platform.ciToken}`,
+      },
+      body: JSON.stringify(summary(wsId, wsName, runId, project, at)),
+    })
+    if (!r.ok) throw new Error(`ingest ${r.status}: ${await r.text()}`)
+  }
+
+  /**
+   * A hash-only `goto` is a same-document navigation, so module state (and the
+   * memoized workspace list) survives — reload to model a genuinely fresh tab.
+   */
+  const freshLoad = async () => {
+    await page.goto(`${platform.origin}/#/runs`)
+    await page.reload()
+    await page.waitForLoadState('networkidle').catch(() => {})
+    await page.waitForTimeout(1500)
+  }
+
+  const contextText = async (): Promise<string> =>
+    (await page.evaluate(
+      `(() => { const a = document.querySelector('aside'); return a ? a.innerText : '' })()`,
+    )) as string
+
+  const bodyText = async (): Promise<string> =>
+    (await page.evaluate(`document.body.innerText`)) as string
+
+  beforeAll(async () => {
+    platform = await bootPlatform({ bucket: 'ws-context', uiHtmlPath: DIST })
+    browser = (await sharedBrowser(chromium!)) as never
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+    await ctx.addCookies([
+      {
+        name: 'vx_session',
+        value: platform.cookie,
+        domain: new URL(platform.origin).hostname,
+        path: '/',
+        httpOnly: true,
+      },
+    ])
+    page = (await ctx.newPage()) as Pg
+    page.on('console', (m: never) => {
+      const msg = m as unknown as { type(): string; text(): string }
+      if (msg.type() === 'error') errors.push(msg.text())
+    })
+    page.on('pageerror', (e: never) => errors.push(String(e)))
+    // Booting pg + fake S3 + Chromium routinely exceeds the CLI default when
+    // the whole cloud suite is contending for the box.
+  }, 180_000)
+
+  // The browser is shared process-wide (helpers/playwright.ts) — closing it
+  // here would break every later browser suite. Only the platform is ours.
+  afterAll(async () => {
+    await platform?.stop()
+  }, 120_000)
+
+  // Ordered: each step builds the world the next one needs.
+  it('an org with NO workspace says so instead of rendering a silent void', async () => {
+    await freshLoad()
+    // The server clamps a workspace-less org to the nil uuid, so every page is
+    // empty by construction; only the context row can explain why.
+    expect(await contextText()).toContain('No workspace yet')
+  })
+
+  it('a SINGLE workspace is still named — the scope is never implicit', async () => {
+    await ingest('client-alpha', 'acme/alpha', 'run-alpha-1', 'checkout', NOW - 7200_000)
+    await freshLoad()
+    const ctx = await contextText()
+    expect(ctx).toContain('acme/alpha')
+    expect(ctx).not.toContain('No workspace yet')
+  })
+
+  it('a second workspace appears with a count, and reads scope to one of them', async () => {
+    await ingest('client-beta', 'acme/beta', 'run-beta-1', 'billing', NOW - 3600_000)
+    await freshLoad()
+    const ctx = await contextText()
+    // Most-recently-active wins when nothing is pinned — mirroring the server.
+    expect(ctx).toContain('acme/beta')
+    expect(ctx).toContain('2 workspaces')
+    const body = await bodyText()
+    expect(body).toContain('run-beta')
+    expect(body).not.toContain('run-alph')
+  })
+
+  it('switching the workspace rescopes the data, not just the label', async () => {
+    await page.evaluate(`(() => {
+      const btn = [...document.querySelectorAll('aside button')]
+        .find((b) => b.title && b.title.startsWith('Workspace:'))
+      btn.click()
+    })()`)
+    await page.waitForTimeout(300)
+    await page.evaluate(`(() => {
+      const item = [...document.querySelectorAll('aside button')]
+        .find((b) => b.innerText.includes('acme/alpha'))
+      item.click()
+    })()`)
+    await page.waitForTimeout(2500)
+
+    expect(await contextText()).toContain('acme/alpha')
+    const body = await bodyText()
+    expect(body).toContain('run-alph')
+    expect(body).not.toContain('run-bet')
+  })
+
+  it('renders all of that with no console errors', () => {
+    expect(errors).toEqual([])
+  })
+})

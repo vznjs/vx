@@ -72,9 +72,18 @@ signup closes and everyone else joins by invite (see
 
 - **Login** establishes a session (an HttpOnly cookie; `Secure` when
   `VX_CLOUD_BASE_URL` is `https://`).
-- An **org switcher** in the header selects which organization you're
-  viewing when your account belongs to more than one — every analytics
-  read is clamped to that org.
+- A **context picker** at the top of the sidebar stacks the two scopes
+  every page reads through: the **organization** (every analytics read is
+  clamped to it) over the **workspace**. It is always shown — one
+  workspace is named just as plainly as ten, and an org with none says
+  so rather than rendering empty pages with no explanation.
+- **Workspaces** are provisioned automatically the first time a repo
+  pushes a run (keyed by the repo's git remote), or created by an admin
+  under **Admin → Workspaces**. Picking one rescopes every surface —
+  runs, projects, tasks, cache, insights — to that workspace; the
+  selection is remembered per browser. Opening the picker re-reads the
+  list, so a repo that reported for the first time since you opened the
+  tab shows up without a reload.
 - The **Admin** area (for `owner`/`admin` roles) manages
   **organizations**, **workspaces**, **members** (roles `owner`, `admin`,
   `member`, `viewer`), **invites**, and **API tokens** (`vxc_`, a

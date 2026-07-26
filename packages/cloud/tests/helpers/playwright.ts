@@ -65,3 +65,34 @@ export function chromiumExecutablePath(): string | undefined {
     process.env['VX_CHROMIUM'] ?? process.env['PLAYWRIGHT_CHROMIUM'] ?? '/opt/pw-browsers/chromium'
   )
 }
+
+/** A launched browser — only what the suites actually call on it. */
+export interface PwBrowserHandle {
+  newContext(opts: Record<string, unknown>): Promise<unknown>
+  close(): Promise<void>
+}
+
+let shared: Promise<PwBrowserHandle> | undefined
+
+/**
+ * ONE Chromium for every browser-backed suite in the process.
+ *
+ * `bun test` runs the whole package in a single process, so a browser per suite
+ * meant three live Chromiums (plus three platforms and their Postgres
+ * databases) on a small box — the third launch reliably killed one of the
+ * others, surfacing as "Target page, context or browser has been closed" in a
+ * suite that passes on its own. Isolation lives at the CONTEXT level (own
+ * cookies, own storage), which is all these suites need; the browser process
+ * itself is safe to share and is by far the expensive part.
+ *
+ * Deliberately never closed by a suite: teardown is process exit. A suite that
+ * closed it would break every later one, which is exactly the bug being fixed.
+ */
+export async function sharedBrowser(chromium: PwChromium): Promise<PwBrowserHandle> {
+  shared ??= chromium.launch({
+    headless: true,
+    executablePath: chromiumExecutablePath(),
+    args: ['--disable-dev-shm-usage', '--font-render-hinting=none'],
+  }) as Promise<PwBrowserHandle>
+  return await shared
+}

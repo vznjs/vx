@@ -114,6 +114,7 @@ export const Shell: ParentComponent = (props) => {
           </div>
           <span class="font-mono text-sm text-fg-1 font-semibold tracking-tight">vx cloud</span>
         </div>
+        <ContextPicker />
         <nav class="flex-1 p-2.5 flex flex-col gap-0.5">
           {NAV.map((item) => (
             <A
@@ -155,8 +156,6 @@ export const Shell: ParentComponent = (props) => {
           <Breadcrumb pathname={location.pathname} />
           <div class="flex-1" />
           <LiveIndicator />
-          <OrgSwitcher />
-          <WorkspaceSwitcher />
           <ServerBadge name={meta()?.name} />
           <NotificationBell />
           <AccountMenu />
@@ -220,11 +219,32 @@ function ServerBadge(props: { name: string | undefined }) {
 }
 
 /**
- * Org context dropdown, fed by GET /v1/admin/orgs. Selection persists via
- * api.ts (`vx-ui:org`) and rides every analytics read as `?org=` (the tenant
- * clamp). Also offers joining another org with an invite token.
+ * The context this whole dashboard reads through, stacked at the top of the
+ * sidebar: organization over workspace.
+ *
+ * EVERY analytics row on every page is `WHERE workspace_id = <the selection
+ * below>`, so the workspace is not a preference — it is the scope of what you
+ * are looking at, and it lives where the eye goes first. It used to be the
+ * fourth of five identical chips in the top-right corner AND was hidden
+ * outright on a 0/1-workspace org, so a reader had no way to tell which
+ * workspace's data filled the page (and, with a second repo pushing, no hint
+ * that another one existed).
  */
-function OrgSwitcher() {
+function ContextPicker() {
+  return (
+    <div class="px-2.5 py-2 border-b border-border/70 flex flex-col gap-1">
+      <OrgRow />
+      <WorkspaceRow />
+    </div>
+  )
+}
+
+/**
+ * Org row, fed by GET /v1/admin/orgs. Selection persists via api.ts
+ * (`vx-ui:org`) and rides every analytics read as `?org=` (the tenant clamp).
+ * Also offers joining another org with an invite token.
+ */
+function OrgRow() {
   const list = getOrgsSignal()
   const selected = getOrgSignal()
   const [open, setOpen] = createSignal(false)
@@ -258,16 +278,18 @@ function OrgSwitcher() {
       <div class="relative">
         <button
           onClick={() => setOpen((o) => !o)}
-          class="flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded border border-border hover:border-border-strong hover:bg-surface-hover"
+          class="w-full flex items-center gap-2 px-2 py-1 rounded-md hover:bg-surface-hover/70 transition-colors text-left"
           title={`Organization: ${currentName()} — click to switch`}
         >
-          <span class="i-tabler-building text-fg-3 text-[13px]" aria-hidden="true" />
-          <span class="text-fg-1 font-medium max-w-40 truncate">{currentName()}</span>
-          <span class="i-tabler-chevron-down text-fg-3 text-[12px]" aria-hidden="true" />
+          <span class="i-tabler-building text-fg-3 text-[13px] shrink-0" aria-hidden="true" />
+          <span class="min-w-0 flex-1 text-[11px] font-mono text-fg-2 truncate">
+            {currentName()}
+          </span>
+          <span class="i-tabler-selector text-fg-3 text-[12px] shrink-0" aria-hidden="true" />
         </button>
         <Show when={open()}>
           <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div class="absolute right-0 top-full mt-1.5 z-50 w-64 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
+          <div class="absolute left-0 top-full mt-1 z-50 w-64 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
             <div class="px-3 py-1.5 border-b border-border text-[10px] uppercase tracking-wider text-fg-3 font-semibold">
               Organizations
             </div>
@@ -524,23 +546,32 @@ function NotificationBell() {
 }
 
 /**
- * Workspace context dropdown. Fed by /v1/workspaces (org-scoped); selection
- * persists via api.ts (`vx-ui:workspace`) and rides every /v1 analytics read
- * as `?ws=`. Hidden on a 0/1-workspace org so the solo case looks clean.
+ * Workspace row — the scope every page reads through. Fed by /v1/workspaces
+ * (org-scoped); selection persists via api.ts (`vx-ui:workspace`) and rides
+ * every /v1 analytics read as `?ws=`.
+ *
+ * ALWAYS rendered, including the 0- and 1-workspace cases. Hiding it on a
+ * small org (what this used to do) left the reader with no way to tell which
+ * workspace filled the page, and made a second repo's arrival invisible; an
+ * org with none silently clamps to the nil workspace server-side, so every
+ * page renders empty and only this row can say why.
  */
-function WorkspaceSwitcher() {
+function WorkspaceRow() {
   const list = getWorkspacesSignal()
   const selected = getWorkspaceSignal()
   const [open, setOpen] = createSignal(false)
 
   // Most-recently-active first — long-lived orgs accumulate dead workspaces.
   const sorted = createMemo(() => [...list()].sort((a, b) => b.lastSeenAt - a.lastSeenAt))
+  // Empty selection means "let the server pick", and it picks most-recent —
+  // so mirror that here rather than showing a blank while reading real data.
   const currentId = () => {
     const sel = selected()
     if (sel !== '') return sel
     return sorted()[0]?.id ?? ''
   }
-  const currentName = () => list().find((w) => w.id === currentId())?.name ?? currentId()
+  const current = () => list().find((w) => w.id === currentId())
+  const empty = () => list().length === 0
 
   onMount(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -555,24 +586,54 @@ function WorkspaceSwitcher() {
     setOpen(false)
   }
 
+  // Workspaces are provisioned by CI pushes, so a long-lived tab's list goes
+  // stale silently. Opening the switcher IS the intent to know what exists.
+  function toggle() {
+    const next = !open()
+    if (next) refreshWorkspaces(true)
+    setOpen(next)
+  }
+
   return (
-    <Show when={list().length > 1}>
-      <div class="relative">
-        <button
-          onClick={() => setOpen((o) => !o)}
-          class="flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded border border-border hover:border-border-strong hover:bg-surface-hover"
-          title={`Workspace: ${currentName()} — click to switch`}
-        >
-          <span class="i-tabler-folders text-fg-3 text-[13px]" aria-hidden="true" />
-          <span class="text-fg-1 font-medium max-w-40 truncate">{currentName()}</span>
-          <span class="i-tabler-chevron-down text-fg-3 text-[12px]" aria-hidden="true" />
-        </button>
-        <Show when={open()}>
-          <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div class="absolute right-0 top-full mt-1.5 z-50 w-72 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
-            <div class="px-3 py-1.5 border-b border-border text-[10px] uppercase tracking-wider text-fg-3 font-semibold">
-              Workspaces
-            </div>
+    <div class="relative">
+      <button
+        onClick={toggle}
+        class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-surface-hover/70 transition-colors text-left"
+        title={
+          empty()
+            ? 'No workspace yet — one is created on the first CI push'
+            : `Workspace: ${current()?.name ?? currentId()} — every page reads this scope. Click to switch.`
+        }
+      >
+        <span class="i-tabler-folders text-accent text-[15px] shrink-0" aria-hidden="true" />
+        <span class="min-w-0 flex-1">
+          <span
+            class={`block text-[12px] font-mono font-medium truncate ${empty() ? 'text-fg-3 italic' : 'text-fg-1'}`}
+          >
+            {empty() ? 'No workspace yet' : (current()?.name ?? currentId())}
+          </span>
+          <Show when={list().length > 1}>
+            <span class="block text-[10px] text-fg-3">{list().length} workspaces</span>
+          </Show>
+        </span>
+        <span class="i-tabler-selector text-fg-3 text-[12px] shrink-0" aria-hidden="true" />
+      </button>
+      <Show when={open()}>
+        <div class="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+        <div class="absolute left-0 top-full mt-1 z-50 w-72 bg-surface border border-border-strong rounded-lg shadow-2xl overflow-hidden">
+          <div class="px-3 py-1.5 border-b border-border text-[10px] uppercase tracking-wider text-fg-3 font-semibold">
+            Workspaces
+          </div>
+          <Show
+            when={!empty()}
+            fallback={
+              <div class="px-3 py-3 text-[11px] text-fg-3 leading-relaxed">
+                This organization has no workspace yet. One is provisioned
+                automatically on the first CI push, or an admin can create one
+                under Admin → Workspaces.
+              </div>
+            }
+          >
             <div class="max-h-80 overflow-y-auto py-1">
               <For each={sorted()}>
                 {(w) => (
@@ -597,10 +658,10 @@ function WorkspaceSwitcher() {
                 )}
               </For>
             </div>
-          </div>
-        </Show>
-      </div>
-    </Show>
+          </Show>
+        </div>
+      </Show>
+    </div>
   )
 }
 
