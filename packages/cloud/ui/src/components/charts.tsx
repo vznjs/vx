@@ -287,6 +287,20 @@ export function LineChart(props: LineChartProps) {
         </foreignObject>
       </Show>
     </svg>
+    {/* Persistent legend on multi-series charts — color alone must never be
+        the only key to which line is which (the astryx LegendRow rule). */}
+    <Show when={props.series.length > 1}>
+      <div class="flex items-center gap-4 px-2 pt-1.5 text-[11px] text-fg-2">
+        <For each={props.series}>
+          {(s) => (
+            <span class="inline-flex items-center gap-1.5">
+              <span class={`inline-block w-2.5 h-0.5 rounded-full ${s.strokeClass.replace('stroke-', 'bg-')}`} />
+              {s.name}
+            </span>
+          )}
+        </For>
+      </div>
+    </Show>
     </div>
   )
 }

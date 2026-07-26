@@ -111,3 +111,31 @@ export function paletteFor(key: string): string {
   for (let i = 0; i < key.length; i++) h = ((h * 33) ^ key.charCodeAt(i)) >>> 0
   return `chart-${(h % 8) + 1}`
 }
+
+/** Stable hash → identity token for a PROJECT name (`ident-0..5`, the cool
+ *  set — deliberately outside the status palette so an id can never read as
+ *  an outcome). Same hash shape as `paletteFor` so hues are stable. */
+export function identFor(name: string): string {
+  let h = 5381
+  for (let i = 0; i < name.length; i++) h = ((h * 33) ^ name.charCodeAt(i)) >>> 0
+  return `ident-${h % 6}`
+}
+
+// Literal class maps (this file is NOT UnoCSS-scanned — the classes are
+// safelisted in uno.config.ts; never interpolate `text-${x}`).
+const IDENT_TEXT: Record<string, string> = {
+  'ident-0': 'text-ident-0',
+  'ident-1': 'text-ident-1',
+  'ident-2': 'text-ident-2',
+  'ident-3': 'text-ident-3',
+  'ident-4': 'text-ident-4',
+  'ident-5': 'text-ident-5',
+}
+
+/** The text class rendering a project name in its identity hue. */
+export function identTextClass(name: string): string {
+  return IDENT_TEXT[identFor(name)] ?? 'text-ident-0'
+}
+
+/** The fixed task-half identity class (tasks are always pink). */
+export const IDENT_TASK_TEXT = 'text-ident-task'

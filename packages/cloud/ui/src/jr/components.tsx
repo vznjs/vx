@@ -35,7 +35,7 @@ import { Flamegraph as FlamegraphPrimitive, flameEdgesOf } from '../components/F
 import { criticalPath } from '../components/critical-path.ts'
 import { RunGraph as RunGraphPrimitive, type RunGraphNode } from '../components/RunGraph.tsx'
 import { STATUS, toVizState, type VizState } from '../components/status.tsx'
-import { cpuPct, formatDuration, paletteFor } from '../format.ts'
+import { IDENT_TASK_TEXT, cpuPct, formatDuration, identFor, identTextClass, paletteFor } from '../format.ts'
 import { type FormatHint, type Tone, axisFormatter, formatValue, toneText } from './hints.ts'
 import type { Recommendation } from './functions.ts'
 
@@ -67,9 +67,14 @@ function interpolateRaw(tpl: string, row: Row): string {
   return tpl.replace(/\{(\w+)\}/g, (_m, f) => String(row[f] ?? ''))
 }
 
-type DotMap = 'palette' | 'failureMode' | 'delta' | 'keyChanged' | 'triage'
+type DotMap = 'palette' | 'ident' | 'ci' | 'heat' | 'failureMode' | 'delta' | 'keyChanged' | 'triage'
 function colorOf(map: DotMap, v: unknown): string {
   if (map === 'failureMode') return v === 'stable' ? 'success' : v === 'flaky-recoverable' ? 'warn' : 'danger'
+  // Status colors are ONLY for status: running locally / a cold cache entry
+  // is a fact, not a failure — never danger.
+  if (map === 'ci') return v === 'ci' ? 'info' : 'faint'
+  if (map === 'heat') return v === 'warm' ? 'success' : v === 'stale' ? 'warn' : 'faint'
+  if (map === 'ident') return identFor(String(v))
   // Semantic delta colors — faster is GOOD (green), slower BAD (red); a
   // hash-palette here made slower/faster arbitrary, unstable colors.
   if (map === 'delta') return v === 'faster' ? 'success' : v === 'slower' ? 'danger' : v === 'new' ? 'accent' : v === 'gone' ? 'warn' : 'faint'
@@ -89,6 +94,9 @@ const DOT_BG: Record<string, string> = {
   success: 'bg-success', warn: 'bg-warn', danger: 'bg-danger', accent: 'bg-accent',
   'accent-2': 'bg-accent-2', 'cache-local': 'bg-cache-local', 'cache-remote': 'bg-cache-remote',
   info: 'bg-info', faint: 'bg-fg-3',
+  'ident-0': 'bg-ident-0', 'ident-1': 'bg-ident-1', 'ident-2': 'bg-ident-2',
+  'ident-3': 'bg-ident-3', 'ident-4': 'bg-ident-4', 'ident-5': 'bg-ident-5',
+  'ident-task': 'bg-ident-task',
 }
 const FILL_CLASS: Record<string, string> = {
   'chart-1': 'fill-chart-1', 'chart-2': 'fill-chart-2', 'chart-3': 'fill-chart-3', 'chart-4': 'fill-chart-4',
@@ -470,6 +478,7 @@ export interface Column {
   sortable?: boolean
   kind?: CellKind
   format?: FormatHint // value format for kind:'bar'
+  max?: number // fixed bar-track max (rates pin 1); default = column data max
   baseTone?: Tone
   tone?: ToneRule
   color?: string // static bar color token
@@ -550,17 +559,34 @@ function renderField(col: Column, row: Row, max: number) {
           <Show when={col.nKey !== undefined && row[col.nKey!] !== undefined}>
             <span class="text-fg-3 text-[10px] mr-2">{String(row[col.nKey!])}.</span>
           </Show>
-          <span class="text-fg-3">{String(row[col.projectKey ?? 'project'])}#</span>
-          {String(row[col.taskKey ?? 'task'])}
+          <span class={identTextClass(String(row[col.projectKey ?? 'project']))}>
+            {String(row[col.projectKey ?? 'project'])}
+          </span>
+          <span class="text-fg-3">#</span>
+          <span class={IDENT_TASK_TEXT}>{String(row[col.taskKey ?? 'task'])}</span>
         </span>
       )
-    case 'dots':
+    case 'dots': {
+      // A `project#task` value renders with identity colors (project hued,
+      // task pink) — the same treatment the projtask cell gives split keys.
+      const v = String(row[col.key])
+      const hashAt = v.indexOf('#')
       return (
         <div class="flex items-center gap-2 min-w-0">
           <For each={col.dots ?? []}>{(d) => <Dot color={colorOf(d.map, row[d.field])} />}</For>
-          <span class="truncate">{String(row[col.key])}</span>
+          <Show
+            when={hashAt > 0}
+            fallback={<span class="truncate">{v}</span>}
+          >
+            <span class="truncate">
+              <span class={identTextClass(v.slice(0, hashAt))}>{v.slice(0, hashAt)}</span>
+              <span class="text-fg-3">#</span>
+              <span class={IDENT_TASK_TEXT}>{v.slice(hashAt + 1)}</span>
+            </span>
+          </Show>
         </div>
       )
+    }
     case 'bar': {
       const v = Number(row[col.key])
       const color = col.colorKey
@@ -622,7 +648,9 @@ export function DataTable(
 
   const maxes = createMemo(() => {
     const m: Record<string, number> = {}
-    for (const col of c.props.columns ?? []) if (col.kind === 'bar') m[col.key] = Math.max(1, ...(c.props.rows ?? []).map((r) => Number(r[col.key])))
+    // col.max pins the track (rates use 1) — auto-max would render the
+    // best row as full even at 40%, lying about the absolute level.
+    for (const col of c.props.columns ?? []) if (col.kind === 'bar') m[col.key] = col.max ?? Math.max(1, ...(c.props.rows ?? []).map((r) => Number(r[col.key])))
     return m
   })
   // Type-aware comparator: numbers numerically, strings via localeCompare,

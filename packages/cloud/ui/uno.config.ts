@@ -20,12 +20,14 @@ export default defineConfig({
   safelist: [
     ...['1', '2', '3', '4', '5', '6', '7', '8'].flatMap((n) => [
       `bg-chart-${n}`,
-      `text-chart-${n}`,
       `stroke-chart-${n}`,
       `fill-chart-${n}`,
-      `fill-chart-${n}/10`,
-      `border-chart-${n}`,
     ]),
+    // Identity classes are applied from literal maps in .ts files UnoCSS
+    // doesn't scan (format.ts) — safelist keeps them generated.
+    ...['0', '1', '2', '3', '4', '5'].flatMap((n) => [`text-ident-${n}`, `bg-ident-${n}`]),
+    'text-ident-task',
+    'bg-ident-task',
     // Semantic dot/bar colors referenced by catalog components via tone tokens.
     ...['success', 'warn', 'danger', 'accent', 'accent-2', 'cache-local', 'info'].flatMap((c) => [
       `bg-${c}`,
@@ -75,6 +77,13 @@ export default defineConfig({
       'chart-6': rgb('--chart-6'),
       'chart-7': rgb('--chart-7'),
       'chart-8': rgb('--chart-8'),
+      'ident-0': rgb('--ident-0'),
+      'ident-1': rgb('--ident-1'),
+      'ident-2': rgb('--ident-2'),
+      'ident-3': rgb('--ident-3'),
+      'ident-4': rgb('--ident-4'),
+      'ident-5': rgb('--ident-5'),
+      'ident-task': rgb('--ident-task'),
     },
     fontFamily: {
       mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -125,6 +134,18 @@ export default defineConfig({
           --chart-6: 251 146 60;
           --chart-7: 129 140 248;
           --chart-8: 45 212 191;
+
+          /* Identity hues (the astryx ident set): cool violet->teal for
+             PROJECT names (stable hash), fixed pink for TASK names —
+             deliberately outside the status palette so an id can never
+             read as an outcome. */
+          --ident-0: 167 139 250;
+          --ident-1: 129 140 248;
+          --ident-2: 96 165 250;
+          --ident-3: 56 189 248;
+          --ident-4: 34 211 238;
+          --ident-5: 45 212 191;
+          --ident-task: 244 114 182;
         }
 
         html, body, #root { height: 100%; }

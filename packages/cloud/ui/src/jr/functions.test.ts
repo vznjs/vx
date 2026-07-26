@@ -499,3 +499,17 @@ describe('foldFlakeTrend', () => {
     expect(view.series.at(-1)).toEqual({ t: today, episodes: 0 })
   })
 })
+
+describe('identity + honest dot foundations (design-port wave 1)', () => {
+  it('identFor is stable and spreads across the 6 cool hues', async () => {
+    const { identFor, identTextClass, IDENT_TASK_TEXT } = await import('../format.ts')
+    expect(identFor('checkout')).toBe(identFor('checkout'))
+    const hues = new Set(
+      ['a', 'b', 'web', 'api', 'checkout', 'orders', 'infra', 'cli', 'docs', 'ui'].map(identFor),
+    )
+    expect(hues.size).toBeGreaterThanOrEqual(4)
+    for (const h of hues) expect(h).toMatch(/^ident-[0-5]$/)
+    expect(identTextClass('web')).toMatch(/^text-ident-[0-5]$/)
+    expect(IDENT_TASK_TEXT).toBe('text-ident-task')
+  })
+})

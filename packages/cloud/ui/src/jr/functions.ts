@@ -31,9 +31,9 @@ function entryHeat(row: Row, now: number): 'cold' | 'stale' | 'warm' {
   return 'warm'
 }
 
-// Map heat → a `failureMode` token so the existing dots/tone map colors it:
-// stable=green (warm), flaky-recoverable=amber (stale), else=red (cold).
-const HEAT_TOKEN = { warm: 'stable', stale: 'flaky-recoverable', cold: 'cold' } as const
+// Heat is its own dot map now ('heat': warm=green, stale=amber, cold=faint —
+// a cold entry is a fact, not a failure; status colors are only for status).
+const HEAT_TOKEN = { warm: 'warm', stale: 'stale', cold: 'cold' } as const
 
 function aggregate(a: Args): number {
   const rows = arr(a.arr)

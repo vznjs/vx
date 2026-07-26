@@ -59,7 +59,7 @@
                     },
                     {
                       "field": "project",
-                      "map": "palette"
+                      "map": "ident"
                     }
                   ]
                 },
@@ -79,19 +79,20 @@
                   "label": "Success",
                   "align": "right",
                   "sortable": true,
-                  "kind": "percent0",
-                  "tone": {
-                    "lt": 0.9,
-                    "tone": "danger"
-                  }
+                  "kind": "bar",
+                  "max": 1,
+                  "format": "percent0",
+                  "color": "success"
                 },
                 {
                   "key": "hitRate",
                   "label": "Hit",
                   "align": "right",
                   "sortable": true,
-                  "kind": "percent0",
-                  "baseTone": "cache"
+                  "kind": "bar",
+                  "max": 1,
+                  "format": "percent0",
+                  "color": "cache-local"
                 },
                 {
                   "key": "avgDurationMs",

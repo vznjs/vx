@@ -290,8 +290,7 @@
           {
             "type": "Card",
             "props": {
-              "title": "Failures & runs over time",
-              "actionText": "runs · hits · failures per bucket"
+              "title": "Failures & runs over time"
             },
             "children": [
               {
@@ -554,18 +553,19 @@
                   "key": "successRate",
                   "label": "Success",
                   "align": "right",
-                  "kind": "percent0",
-                  "tone": {
-                    "lt": 0.9,
-                    "tone": "danger"
-                  }
+                  "kind": "bar",
+                  "max": 1,
+                  "format": "percent0",
+                  "color": "success"
                 },
                 {
                   "key": "hitRate",
                   "label": "Hit",
                   "align": "right",
-                  "kind": "percent0",
-                  "baseTone": "cache"
+                  "kind": "bar",
+                  "max": 1,
+                  "format": "percent0",
+                  "color": "cache-local"
                 },
                 {
                   "key": "avgDurationMs",

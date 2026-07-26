@@ -208,6 +208,37 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-25**: **Design-port wave 1 — identity colors, honest dots, chart
+  legends, rate meters** (executing the standing astryx design directives on
+  the SHIPPING Solid UI; driven by a 12-item ranked design-consistency audit
+  vs the parked `ui-astryx` reference). (1) **Identity colors exist now**:
+  `--ident-0..5` (the astryx cool violet→teal set) + `--ident-task` (fixed
+  pink) in uno.config.ts — deliberately OUTSIDE the status palette so an id
+  can never read as an outcome (the audit found the old `paletteFor` chart
+  hues COLLIDE with warn/success — an identity dot could render in exactly
+  the warn yellow). `identFor`/`identTextClass`/`IDENT_TASK_TEXT` in
+  format.ts (literal class maps + safelist — format.ts is not
+  UnoCSS-scanned); applied to the `projtask` cell, the `dots` cell's
+  `project#task` values, RunGraph card labels, and the pinned-projects
+  strip (dot + hued name); tasks.json's identity dot repointed
+  `palette`→`ident`. (2) **Status colors are ONLY for status**: new `ci` +
+  `heat` DotMaps — a LOCAL run's CI dot was rendered through the
+  `failureMode` map as DANGER RED (browser-confirmed pre-fix), now
+  info/faint; cache heat cold=faint (a fact, not a failure), stale=warn.
+  (3) **Persistent legends** on multi-series LineCharts (component-level,
+  swatch+name; the color-key `actionText` stand-ins removed). (4) **Rate
+  cells are meters**: Success/Hit% columns switched to the bar kind with a
+  new `col.max` pin (rates pin 1 — auto-max would render a 40% best row as
+  a full track). Safelist swept: dead text-chart-_/border-chart-_/
+  fill-chart-N-10 dropped, ident classes added. Browser-verified 6/6 on a
+  seeded platform (no danger dot on a local run, hued project + pink task,
+  9 bar tracks, legend visible; zero console errors); identFor pinned
+  (stable, ≥4-way spread). **Wave 2 (queued, from the audit):** PageHeader
+  unification, Callout component, Card-language unify on Runs, status-badge
+  Facts kind, ranking-card hit-rate axis + bars, deltaBar kind, Metric
+  delta chips, Flamegraph label hues + Treemap/colorFrom ident repoint. NO
+  schema/wire/CACHE bump (UI + theme only).
+
 - **2026-07-25**: **Adversarial review of the six scenario waves (#156-#162) —
   five confirmed defects fixed, everything else REFUTED by executed repro**
   (the house-standard repro-mandated hostile reviewer over triageRun,

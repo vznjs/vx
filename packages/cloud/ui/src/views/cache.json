@@ -367,7 +367,7 @@
                   "dots": [
                     {
                       "field": "_heatToken",
-                      "map": "failureMode"
+                      "map": "heat"
                     }
                   ]
                 },

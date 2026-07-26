@@ -52,7 +52,7 @@ import {
   rateTone,
   runTicks,
 } from '../jr/functions.ts'
-import { formatDuration, formatPercent, formatRelativeTime, paletteFor } from '../format.ts'
+import { formatDuration, formatPercent, formatRelativeTime, identFor, identTextClass } from '../format.ts'
 import { identityStable, useVisibilityRefresh } from '../live.ts'
 import { DataTable, type Column } from '../jr/components.tsx'
 import { Card, EmptyState, MetricCard, PinStarButton } from './ui.tsx'
@@ -114,7 +114,7 @@ const HISTORY_COLUMNS: Column[] = [
   { key: 'startedAt', label: 'Started', align: 'right', kind: 'relativeTime', baseTone: 'faint', sortable: true },
   { key: 'branch', label: 'Branch', baseTone: 'muted' },
   { key: 'commitSha', label: 'Commit', kind: 'shorthash', len: 8 },
-  { key: '_ci', label: 'CI', kind: 'dots', dots: [{ field: '_ciToken', map: 'failureMode' }] },
+  { key: '_ci', label: 'CI', kind: 'dots', dots: [{ field: '_ciToken', map: 'ci' }] },
   { key: '_tags', label: 'Tags', baseTone: 'faint' },
   { key: 'totalDurationMs', label: 'Duration', align: 'right', kind: 'duration', sortable: true },
   { key: 'taskCount', label: 'Tasks', align: 'right', sortable: true },
@@ -204,7 +204,7 @@ export function RunsView() {
   const historyRows = createMemo<Record<string, unknown>[]>(() =>
     (invocationRows() ?? []).map((r) => ({
       ...r,
-      _ciToken: r.ci ? 'stable' : 'cold',
+      _ciToken: r.ci ? 'ci' : 'local',
       _ci: r.ci ? 'CI' : 'local',
       _tags: tagsText(r.tags),
     })),
@@ -713,9 +713,9 @@ function Chip(props: { label: string; onClear: () => void }) {
  * failing on a branch, green otherwise. No pins renders a one-line hint at
  * the star affordance; everything links into the project drill-in.
  */
-const PALETTE_BG: Record<string, string> = {
-  'chart-1': 'bg-chart-1', 'chart-2': 'bg-chart-2', 'chart-3': 'bg-chart-3', 'chart-4': 'bg-chart-4',
-  'chart-5': 'bg-chart-5', 'chart-6': 'bg-chart-6', 'chart-7': 'bg-chart-7', 'chart-8': 'bg-chart-8',
+const IDENT_BG: Record<string, string> = {
+  'ident-0': 'bg-ident-0', 'ident-1': 'bg-ident-1', 'ident-2': 'bg-ident-2',
+  'ident-3': 'bg-ident-3', 'ident-4': 'bg-ident-4', 'ident-5': 'bg-ident-5',
 }
 
 function MyProjectsStrip() {
@@ -756,8 +756,8 @@ function MyProjectsStrip() {
         <For each={rows() ?? pinnedProjects().map((project) => ({ project, failingTasks: 0, branches: 0 }))}>
           {(r) => (
             <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 hover:border-border-strong">
-              <span class={`inline-block w-2 h-2 rounded-full ${PALETTE_BG[paletteFor(r.project)] ?? 'bg-accent'}`} />
-              <A href={`/projects/${encodeURIComponent(r.project)}`} class="no-underline font-mono text-[11px] text-fg hover:text-accent">
+              <span class={`inline-block w-2 h-2 rounded-full ${IDENT_BG[identFor(r.project)] ?? 'bg-ident-0'}`} />
+              <A href={`/projects/${encodeURIComponent(r.project)}`} class={`no-underline font-mono text-[11px] ${identTextClass(r.project)} hover:text-accent`}>
                 {r.project}
               </A>
               <Show
