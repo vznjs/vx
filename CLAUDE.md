@@ -208,6 +208,86 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **`--verify` no longer wipes a successful build's outputs when
+  the ONLY write axis is remote — and `hasRemoteLayer` now actually asks whether
+  there is a remote** (a repro-mandated hostile audit of remote-cache
+  composition, pointed DELIBERATELY at the code the previous wave had just
+  landed; both HIGH findings attach to it, which is the argument for auditing
+  new code rather than settled code). **HIGH-1, and the previous wave made it
+  worse:** that wave fixed only the NO-remote half of the `--verify` output-tree
+  wipe. With a REAL remote and `--cache=local:,remote:rw`, `Cache.save` returns
+  early (`if (!this.write) return`), `LayeredCache.save` packs in memory and
+  PUTs, so the artifact lands remotely and ONLY remotely — then the verify block
+  `cleanOutputs()`es and calls `restoreOutputs`, which delegates
+  UNCONDITIONALLY to `local`. `CorruptArtifactError` AFTER the tree is emptied.
+  Confirmed through the real CLI: task built `dist/app.js`, reported
+  `failed exit=1`, `dist/` EMPTY, artifact sitting in the remote store. Fires for
+  `local:,remote:rw`, `local:,remote:w`, `local:r,remote:rw`; not for
+  `local:w,remote:rw`. **And the error message the previous wave added actively
+  sent users into it** — "configure a remote cache (the remote axes do nothing
+  without one)" was, verbatim, instructions to reproduce the wipe. **The fix is
+  the GATE, not a remote fallback in `restoreOutputs`, and the reasoning is the
+  durable part:** the property `--verify` exists to preserve is "disk ends
+  byte-identical to the cached artifact REGARDLESS of verdict"; a remote
+  fallback does not restore that, it downgrades it to "whenever the remote is
+  reachable in the window after `cleanOutputs()` already emptied the tree" —
+  the same data loss, narrower, and now nondeterministic. `restoreOutputs` being
+  a local extraction is the design, not an oversight to route around. Nothing
+  that worked is lost: `local:w,remote:rw` verified before and still does; only
+  the three tree-wiping forms are refused, before any task runs. **HIGH-2 — I
+  approved a design that was wrong.** I took `hasRemoteLayer = cache !==
+localCache` over `instanceof LayeredCache` because it "stays right for a
+  third-party plugin layer". It is not a test for "has a remote", it is a test
+  for "the plugin returned a different handle" — an ordinary pass-through
+  decorator with NO remote unclamps the policy and reproduces the exact bug the
+  wave fixed (differentially confirmed: pass-through → `hasRemoteLayer=true` and
+  a stray file in the output dir DELETED; fixed → `false`, stray survives).
+  Replaced with an explicit optional `CacheLayer.hasRemote` the layer answers
+  truthfully (+ optional `remoteHasMany`/`markRemoteAbsent`/`drainUploads`),
+  absent reading as "no remote" — the safe answer. **MED-5, closed by the same
+  marker:** `shouldShortCircuit`, the prefetch gate and `drainUploads` all still
+  keyed on `instanceof LayeredCache`, so a third-party layer took the up-front
+  local classify whose `cache.get` is a full remote read-through AWAITED BEFORE
+  ANY TASK IS SCHEDULED — exactly what run.ts's own perf-firewall comment
+  forbids. Measured at 41 tasks / concurrency 8 / 50 ms: `layered` 169 ms to
+  first task, `thirdparty` **475 ms** (≈ ceil(N/conc)×latency, so ~3 s at 1000
+  tasks / 16 workers); after, a layer declaring `hasRemote` is 171 ms and its
+  uploads are drained. **MED-4, solved coherently with HIGH-1 because it is the
+  same policy string:** `LayeredCache.get` ingested the remote artifact
+  (correctly ungated) and then RE-READ it through `local.get`, which IS
+  read-gated — so with `localRead=false` every hit was thrown away: three
+  consecutive runs each did 4 GETs, 4 PUTs and executed everything. Now the
+  just-ingested entry is read through a new `Cache.getIngested`, so the gate
+  keeps its real meaning ("don't serve hits from the PRE-EXISTING local cache")
+  and `local:,remote:rw` becomes a genuinely useful remote-only cache. **NO
+  CACHE_VERSION bump, argued:** key derivation is untouched (no component added,
+  removed, reordered or re-namespaced) and artifact bytes are untouched — the
+  v25/v26 condition is "stored bytes wrong under an unchanged key", and neither
+  is wrong here; MED-4 returns an entry for an ALREADY-CORRECT key that the old
+  code discarded, through the same row + artifact-exists checks. **A finding I
+  briefed that the developer REFUTED, correctly:** I asked for
+  `packages/cloud/src/dist/submit.ts`'s `instanceof` to switch to `hasRemote`.
+  That would BROADEN the set of layers substituted for the agent remote, and a
+  third-party remote does not hold the serve's artifact store — turning a silent
+  bypass into a silent wrong-store read. Discarding a third-party layer there is
+  correct. **Recorded, not fixed:** that same site DOES take a workspace-declared
+  `LayeredCache` pointed at a different remote (the comment claiming prepareRun
+  composed no remote layer is true only for the injection path) — the honest fix
+  is to always build the agent layer or thread the agent remote into
+  `prepareRun`, a dist-flow change; `local:` still re-consults the remote every
+  run (deliberate — it is the literal semantics, and it stops a suspect local
+  artifact being served); the write-through upload queue holds every pending
+  artifact's FULL BYTES in RAM (measured 320 MB pinned behind 4 sockets;
+  `UPLOAD_CONCURRENCY` bounds sockets, not memory) — bound the queue or defer the
+  byte read into the job; `planRun` still reads the UNCLAMPED policy so `--dry`
+  can label a run `miss` when caching is entirely off; and a purely-local hit can
+  be stamped `source: 'remote'` when local gains the artifact mid-`get`
+  (analytics only). Gates: fmt/lint 0, core **1464/0** (21 skip = sandbox).
+  **Clean negative worth keeping:** the policy clamp CANNOT create a stale hit —
+  exhaustive consumer map plus a codegen→consumer fixture driven through all
+  three composition modes (plain local, injected LayeredCache, third-party
+  layer), all three `run1 v1 / run2 v2`, no stale hit.
+
 - **2026-07-26**: **A dev server's output after it signals ready reaches the
   terminal again, and stops being retained forever** (from a repro-mandated
   hostile audit of the exec primitives + env isolation). Three contracts that

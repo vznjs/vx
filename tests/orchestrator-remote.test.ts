@@ -11,9 +11,15 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, spyOn } from 'bun:test'
-import { LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { planRun, run } from '../src/orchestrator/index.js'
+import { planRun, prepareRun, run } from '../src/orchestrator/index.js'
+
+/**
+ * Absolute specifier for the cache module, so a fixture's generated
+ * `vx.workspace.mjs` (loaded from a temp dir) can import `LayeredCache`.
+ */
+const cacheModuleSpecifier = new URL('../src/cache/index.ts', import.meta.url).href
 
 interface Fixture {
   root: string
@@ -587,6 +593,56 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'local:,remote:rw HITS from the remote on the next run — it does not re-execute forever',
+    async () => {
+      // The remote read-through ingests the artifact into local, then read
+      // it back through the LOCAL READ GATE — which `local:` turns off. So
+      // every run downloaded the artifact, threw the hit away, re-executed
+      // and re-uploaded: unbounded work + unbounded egress for the exact
+      // policy string docs/cli.md documents. The gate means "don't serve
+      // hits from the PRE-EXISTING local cache", not "discard what you just
+      // downloaded".
+      const fixture = await makeWorkspace()
+      const remote = startArtifactServer()
+      const policy = { localRead: false, localWrite: false, remoteRead: true, remoteWrite: true }
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+
+        const first = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          cache: policy,
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(first.outcomes[0]!.status).toBe('success')
+        expect(remote.store.size).toBe(1)
+
+        const putsAfterFirst = [...remote.store.keys()]
+        const second = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          cache: policy,
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        // The whole point: a HIT, sourced from the remote.
+        expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
+        expect(second.ok).toBe(true)
+        // …and therefore no second upload of bytes the remote already holds.
+        expect([...remote.store.keys()]).toEqual(putsAfterFirst)
+      } finally {
+        await remote.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('orchestrator: local-only runs never prefetch', () => {
@@ -726,6 +782,205 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
         expect(res.ok).toBe(true)
         expect(mem.puts).toBe(1) // the injected layer got the upload
       } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// ─── "Is there a remote behind this layer?" — the LAYER answers ────────────
+// The orchestrator clamps the remote policy axes, skips the up-front local
+// classify, drives the prefetch pass and drains background uploads off ONE
+// question. It used to guess the answer two different wrong ways: identity
+// against the local cache (`cache !== localCache`) said YES to any
+// pass-through decorator with no remote at all, and `instanceof LayeredCache`
+// said NO to every third-party layer. `CacheLayer.hasRemote` is the layer's
+// own answer, and these pin both directions.
+
+describe('cache layer: hasRemote is the remote-layer signal', () => {
+  /** A pass-through decorator with NO remote — e.g. a metrics wrapper. */
+  const PASSTHROUGH_PLUGIN = `
+    export default {
+      plugins: [
+        {
+          name: 'test/passthrough',
+          cache(ctx) {
+            const inner = ctx.localCache
+            return new Proxy(inner, {
+              get(t, p, r) {
+                const v = Reflect.get(t, p, r)
+                return typeof v === 'function' ? v.bind(t) : v
+              },
+            })
+          },
+        },
+      ],
+    }
+  `
+
+  it('a bare local Cache reports no remote; a LayeredCache reports one', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-hasremote-'))
+    try {
+      const local = new Cache(dir)
+      const remote: RemoteCacheLayer = {
+        async has() {
+          return false
+        },
+        async get() {
+          return null
+        },
+        async put() {},
+      }
+      expect(local.hasRemote).toBe(false)
+      expect(new LayeredCache(local, remote).hasRemote).toBe(true)
+      local.close()
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it(
+    'a pass-through decorator with no remote does NOT claim a remote layer',
+    async () => {
+      const fixture = await makeWorkspace()
+      try {
+        await writeFile(path.join(fixture.root, 'vx.workspace.mjs'), PASSTHROUGH_PLUGIN)
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const prepared = await prepareRun(
+          { cwd: fixture.root, tasks: ['build'] },
+          silentLogger(fixture),
+        )
+        expect(prepared.hasRemoteLayer).toBe(false)
+        prepared.cache.close()
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a remote-only write policy behind a pass-through decorator stays clamped inert',
+    async () => {
+      // The user-visible half: an unclamped `remote:w` made execute-task
+      // believe a save would happen, so it wiped the declared outputs before
+      // every exec for a save that goes NOWHERE — `--no-cache`'s documented
+      // "leave the tree alone" contract, broken by a decorator that has no
+      // remote at all.
+      const fixture = await makeWorkspace()
+      try {
+        await writeFile(path.join(fixture.root, 'vx.workspace.mjs'), PASSTHROUGH_PLUGIN)
+        const dir = await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1', 'stray.txt': 'UNTOUCHED' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'echo built > out.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['*.txt'] } },
+                },
+              },
+            }
+          `,
+        })
+        const res = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          cache: { localRead: true, localWrite: false, remoteRead: true, remoteWrite: true },
+          log: silentLogger(fixture),
+        })
+        expect(res.ok).toBe(true)
+        expect(await Bun.file(path.join(dir, 'stray.txt')).text()).toBe('UNTOUCHED')
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a third-party layer declaring hasRemote gets the prefetch pass and the upload drain',
+    async () => {
+      // Both were gated on `instanceof LayeredCache`, so a third-party
+      // remote layer got NEITHER: no prefetch — its remote GETs land on the
+      // up-front classify instead, which is awaited BEFORE any task is
+      // scheduled — and no drain, leaving background uploads in flight when
+      // close() fires.
+      const fixture = await makeWorkspace()
+      const g = globalThis as Record<string, unknown>
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        await writeFile(
+          path.join(fixture.root, 'vx.workspace.mjs'),
+          `
+            import { LayeredCache } from ${JSON.stringify(cacheModuleSpecifier)}
+            const alwaysMiss = {
+              async has() { return false },
+              async get() { return null },
+              async put() {},
+            }
+            export default {
+              plugins: [
+                {
+                  name: 'test/thirdparty',
+                  cache(ctx) {
+                    const inner = new LayeredCache(ctx.localCache, alwaysMiss, {
+                      policy: ctx.policy,
+                    })
+                    // A hand-written delegating layer: implements CacheLayer,
+                    // is NOT an instanceof LayeredCache, and answers the
+                    // remote question truthfully.
+                    return {
+                      hasRemote: true,
+                      prefetch: (h, c) => {
+                        globalThis.__vxPrefetched = true
+                        return inner.prefetch(h, c)
+                      },
+                      drainUploads: () => {
+                        globalThis.__vxDrained = true
+                        return inner.drainUploads()
+                      },
+                      remoteHasMany: (h) => inner.remoteHasMany(h),
+                      markRemoteAbsent: (h) => inner.markRemoteAbsent(h),
+                      key: (a) => inner.key(a),
+                      get: (a, b) => inner.get(a, b),
+                      has: (a) => inner.has(a),
+                      loadOutputFilesBatch: (a) => inner.loadOutputFilesBatch(a),
+                      isOutputsCurrent: (a, b) => inner.isOutputsCurrent(a, b),
+                      restoreOutputs: (a, b, c) => inner.restoreOutputs(a, b, c),
+                      save: (a) => inner.save(a),
+                      ingest: (a, b, c) => inner.ingest(a, b, c),
+                      recordRun: (a) => inner.recordRun(a),
+                      recordRuns: (a) => inner.recordRuns(a),
+                      recordRunBundle: (a) => inner.recordRunBundle(a),
+                      stats: (a) => inner.stats(a),
+                      hashFile: (a) => inner.hashFile(a),
+                      outputsPath: (a) => inner.outputsPath(a),
+                      prune: (a) => inner.prune(a),
+                      close: () => inner.close(),
+                    }
+                  },
+                },
+              ],
+            }
+          `,
+        )
+        g['__vxPrefetched'] = false
+        g['__vxDrained'] = false
+        const res = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+        expect(res.ok).toBe(true)
+        expect(g['__vxPrefetched']).toBe(true)
+        expect(g['__vxDrained']).toBe(true)
+      } finally {
+        delete g['__vxPrefetched']
+        delete g['__vxDrained']
         await rm(fixture.root, { recursive: true, force: true })
       }
     },

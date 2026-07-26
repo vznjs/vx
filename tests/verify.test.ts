@@ -9,6 +9,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import type { RemoteCacheLayer } from '../src/cache/index.js'
 import { probeSandbox } from '../src/exec/index.js'
 import type { Logger, RunSummaryRecord, TelemetrySink } from '../src/orchestrator/index.js'
 import { optionsToRequest, requestToOptions, run } from '../src/orchestrator/index.js'
@@ -74,6 +75,27 @@ const DETERMINISM = {
   inputs: false,
   fingerprint: true,
   allow: new Set<string>(),
+}
+
+/** A real (in-memory) remote layer — so the remote axes are NOT inert. */
+function inMemoryRemote(): { layer: RemoteCacheLayer; store: Map<string, Uint8Array> } {
+  const store = new Map<string, Uint8Array>()
+  return {
+    store,
+    layer: {
+      async has(hash) {
+        return store.has(hash)
+      },
+      async get(hash) {
+        const body = store.get(hash)
+        if (!body) return null
+        return { body: body.slice().buffer as ArrayBuffer, durationMs: 1 }
+      },
+      async put(hash, body) {
+        store.set(hash, body instanceof Uint8Array ? new Uint8Array(body) : new Uint8Array(body))
+      },
+    },
+  }
 }
 
 /** A cacheable task whose output is written by `cmd` (a node -e expression body). */
@@ -345,7 +367,7 @@ describe('vx run --verify (determinism)', () => {
           verify: DETERMINISM,
           log: capturingLogger(fixture),
         }),
-      ).rejects.toThrow(/--verify needs cache writes/)
+      ).rejects.toThrow(/--verify needs the LOCAL cache write axis/)
     },
     TIMEOUT,
   )
@@ -374,9 +396,71 @@ describe('vx run --verify (determinism)', () => {
           verify: DETERMINISM,
           log: capturingLogger(fixture),
         }),
-      ).rejects.toThrow(/--verify needs cache writes/)
+      ).rejects.toThrow(/--verify needs the LOCAL cache write axis/)
       // The refusal happens before any task runs, so the tree is untouched.
       expect(readFileSync(path.join(dir, 'out.txt'), 'utf8')).toBe('PRE-EXISTING')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'rejects --verify with a remote-only write policy even WITH a remote layer',
+    async () => {
+      // The half the inert-axis fix missed, and the one its error message
+      // sent people INTO: with a real remote, `remote:rw` is not inert —
+      // `save` uploads the artifact — but `local:` means `Cache.save`
+      // wrote no local artifact, and `restoreOutputs` is a LOCAL extraction
+      // on every layer. So verify cleaned a SUCCESSFUL build's declared
+      // outputs and then died on the missing artifact: exit 1, empty tree,
+      // artifact sitting on the remote. Refuse up front instead.
+      const dir = await addProject(
+        fixture.root,
+        'a',
+        project('require("fs").writeFileSync("out.txt","stable")'),
+      )
+      await writeFile(path.join(dir, 'out.txt'), 'PRE-EXISTING')
+      const remote = inMemoryRemote()
+      await expect(
+        run({
+          cwd: fixture.root,
+          tasks: ['run'],
+          projects: ['a'],
+          remoteCache: remote.layer,
+          cache: { localRead: false, localWrite: false, remoteRead: true, remoteWrite: true },
+          verify: DETERMINISM,
+          log: capturingLogger(fixture),
+        }),
+      ).rejects.toThrow(/--verify needs the LOCAL cache write axis/)
+      expect(readFileSync(path.join(dir, 'out.txt'), 'utf8')).toBe('PRE-EXISTING')
+      expect(remote.store.size).toBe(0)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'accepts --verify with local writes on and local reads off (the fixed recipe)',
+    async () => {
+      // The control for the gate above: `--cache=local:w,remote:rw` is what
+      // the error message now points at, so it had better work — verify
+      // runs, proves determinism, and leaves the built tree on disk.
+      const dir = await addProject(
+        fixture.root,
+        'a',
+        project('require("fs").writeFileSync("out.txt","stable")'),
+      )
+      const remote = inMemoryRemote()
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        remoteCache: remote.layer,
+        cache: { localRead: false, localWrite: true, remoteRead: true, remoteWrite: true },
+        verify: DETERMINISM,
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes[0]!.verify).toEqual({ kind: 'proven-deterministic' })
+      expect(readFileSync(path.join(dir, 'out.txt'), 'utf8')).toBe('stable')
     },
     TIMEOUT,
   )

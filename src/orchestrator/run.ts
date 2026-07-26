@@ -8,7 +8,6 @@ import {
   type CachePolicy,
   FULL_CACHE_POLICY,
   type InvocationRecord,
-  LayeredCache,
   type RunRecord,
 } from '../cache/index.js'
 import { VERSION } from '../version.js'
@@ -92,12 +91,14 @@ function compactCachePolicy(p: CachePolicy): string {
 /**
  * The perf firewall for the local short-circuit. Always-on; the only
  * gates are correctness/no-op gates:
- *   - LOCAL-ONLY cache. Under a LayeredCache, `cache.get` is a remote
+ *   - LOCAL-ONLY cache. Behind a remote layer, `cache.get` is a remote
  *     READ-THROUGH — the up-front classify is awaited before scheduling,
  *     so N remote GETs would land on the critical path before any task
  *     starts. Remote runs are owned by `startRemotePrefetch`, which
  *     overlaps the GETs with execution instead (fire-and-forget) and
- *     ingests hits into local for execute-task's lazy probe.
+ *     ingests hits into local for execute-task's lazy probe. The gate asks
+ *     the layer (`hasRemote`), not `instanceof LayeredCache` — a
+ *     third-party remote layer stalls on the classify just as hard.
  *   - the policy reads locally (a `--no-cache`/`--force`/`--cache=local:`
  *     run reads nothing locally → nothing to restore → skip);
  *   - the graph has at least one dependency edge (a flat graph has no
@@ -111,7 +112,7 @@ export function shouldShortCircuit(
   policy: CachePolicy,
   cache: CacheLayer,
 ): boolean {
-  if (cache instanceof LayeredCache) return false
+  if (cache.hasRemote === true) return false
   if (!policy.localRead) return false
   for (const node of nodes.values()) if (node.deps.length > 0) return true
   return false
@@ -268,7 +269,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const runId = ulid()
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
-    const remoteCacheEnabled = cache instanceof LayeredCache
+    const remoteCacheEnabled = prepared.hasRemoteLayer
     // The remote axes are inert without a remote layer to serve them: a
     // `remote:w` policy over a bare local cache writes NOWHERE, yet the
     // write axis read as on — so tasks cleaned their outputs before every
@@ -283,20 +284,27 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       ? requestedPolicy
       : { ...requestedPolicy, remoteRead: false, remoteWrite: false }
 
-    // `--verify` observes the miss-then-save path, so a policy with NO
-    // EFFECTIVE write axis (`--no-cache`, `--cache=local:,remote:`, or a
-    // remote-only write policy with no remote layer to serve it) verifies
-    // nothing — every task would come back green with zero verdicts. The user
-    // asked for a proof; silently skipping it is the one failure mode
+    // `--verify` observes the miss-then-save path and then RESTORES attempt
+    // 1 from the artifact that save wrote, so the tree ends byte-identical
+    // to what was cached regardless of the verdict. That restore reads the
+    // LOCAL artifact file — `restoreOutputs` is a local extraction on every
+    // layer, by design — so without the local WRITE axis there is nothing to
+    // restore from: verify cleaned a successful build's declared outputs and
+    // then failed the run on the missing artifact. A remote fallback would
+    // not fix that, only narrow it to "whenever the remote is reachable at
+    // that instant", turning a guarantee into a coin flip with data loss on
+    // the losing side. So the honest gate is the local write axis, and
+    // `--no-cache` / `--cache=local:,…` / `--cache=local:r,…` are refused
+    // loudly — silently verifying nothing is the one failure mode
     // verification must never have (same platform-honesty rule as the
     // sandbox-unavailable error). `--force --verify` re-verifies a warm graph.
-    if (options.verify !== undefined && !policy.localWrite && !policy.remoteWrite) {
+    if (options.verify !== undefined && !policy.localWrite) {
       prepared.cache.close()
       throw new UserError(
-        '--verify needs cache writes to prove anything (it verifies the save path); ' +
-          'drop --no-cache, use --force --verify to re-execute and verify a warm graph, ' +
-          'or — for a remote-only write policy — configure a remote cache ' +
-          '(the remote axes do nothing without one)',
+        '--verify needs the LOCAL cache write axis: it re-runs the task, then restores ' +
+          'attempt 1 from the local artifact so the outputs on disk are the ones that were ' +
+          'cached. Enable local writes (e.g. --cache=local:w,remote:rw), drop --no-cache, ' +
+          'or use --force --verify to re-execute and verify a warm graph',
       )
     }
 
@@ -432,13 +440,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
     // Remote-only: kick off background prefetches so remote-GET latency
     // overlaps execution. Fire-and-forget — execution starts on the next
-    // line; LayeredCache ingests hits into local and de-dups so
+    // line; the layer ingests hits into local and de-dups so
     // execute-task's cache.get awaits the in-flight promise (one remote
     // GET per key). Gated entirely on a remote layer being configured;
     // local-only runs never reach here, so their behavior + perf is
     // unchanged (no upfront key pass, no local probing).
     let prefetchDone: Promise<void> = Promise.resolve()
-    if (cache instanceof LayeredCache) {
+    if (prepared.hasRemoteLayer) {
       prefetchDone = startRemotePrefetch({
         nodes,
         cache,
@@ -864,7 +872,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // background write-through uploads queued by LayeredCache.save
     // settle here for the same reason.
     await prefetchDone
-    if (cache instanceof LayeredCache) await cache.drainUploads()
+    await cache.drainUploads?.()
     cache.close()
 
     // Tear down SRT's network bridge + (on macOS) log monitor. No-op if

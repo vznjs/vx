@@ -279,6 +279,10 @@ layer keeps its current value. Both `--cache=<spec>` and the space form
 | `--cache=remote:`           | remote fully off; local untouched                       |
 | `--cache=local:,remote:rw`  | don't touch the local cache, but still upload to remote |
 
+`local:` means "don't serve hits out of the pre-existing local cache" —
+a remote hit is still delivered (the artifact has to land on disk to be
+extracted), it just never short-circuits the remote read.
+
 Combine with `--force` for "re-execute and refresh only the remote":
 `--cache=local: --force` (local off, reads off, remote write-only).
 
@@ -330,6 +334,13 @@ twice), so it's a CI / pre-merge gate, not an every-run default. Notes:
   non-deterministic and can't fix yet — they're reported
   `allowed-nondeterministic` and don't fail the run, so the gate stays
   green on the rest while you track the exceptions.
+- **Needs the local cache WRITE axis.** The restore below reads the
+  local artifact, so `--no-cache` and any policy with local writes off
+  (`--cache=local:`, `--cache=local:r,…`) are refused up front, naming
+  the fix — verifying nothing and reporting green would be worse. A
+  remote-only write policy is refused too: `remote:rw` uploads the
+  artifact but leaves nothing on this machine to restore from. Use
+  `--cache=local:w,remote:rw` to verify and still upload.
 
 The run still ends bit-identical to a normal run: after the verify
 re-run, vx restores the first attempt's saved bytes into the project,

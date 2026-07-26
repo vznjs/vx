@@ -14,17 +14,20 @@
 // HARD SCOPE: this runs ONLY when a remote layer is configured. It
 // NEVER touches the local cache (no local get / no isOutputsCurrent /
 // no stat pass) — it derives keys and probes REMOTE only. Local-only
-// runs are byte-identical to before; the caller gates on `cache
-// instanceof LayeredCache`.
+// runs are byte-identical to before; the caller gates on the layer's
+// own `hasRemote`, so a third-party remote layer gets the overlap too.
+// The two batch-probe hooks are OPTIONAL on the contract: a remote layer
+// that implements neither still prefetches, per-hash.
 
 import type { TaskNode } from '../graph/index.js'
-import type { GitFilesCache, LayeredCache } from '../cache/index.js'
+import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import type { HashCache } from './task-hash.js'
 import { deriveStableKeys } from './stable-keys.js'
 
 export interface PrefetchArgs {
   nodes: Map<string, TaskNode>
-  cache: LayeredCache
+  /** A layer whose `hasRemote` is true — the caller's gate. */
+  cache: CacheLayer
   workspaceRoot: string
   workspaceFingerprint: string
   forwardArgs?: readonly string[] | undefined
@@ -67,13 +70,14 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
   // tells us which of the N stable hashes exist remotely, so we GET only the
   // hits and pre-mark the misses — their lazy `get` then short-circuits with
   // no network. This collapses N probe waves into 1 and skips every GET that
-  // would 404. When the remote can't batch (`null` — an older serve, or reads
-  // disabled), fall back to prefetching every stable key, exactly as before.
+  // would 404. When the remote can't batch (`null` — an older serve, reads
+  // disabled, or a layer that doesn't implement the hook at all), fall back to
+  // prefetching every stable key, exactly as before.
   let toPrefetch = stableKeys
   const uniqueHashes = [...new Set(stableKeys.map((k) => k.hash))]
-  const present = await args.cache.remoteHasMany(uniqueHashes)
+  const present = (await args.cache.remoteHasMany?.(uniqueHashes)) ?? null
   if (present !== null) {
-    args.cache.markRemoteAbsent(uniqueHashes.filter((h) => !present.has(h)))
+    args.cache.markRemoteAbsent?.(uniqueHashes.filter((h) => !present.has(h)))
     toPrefetch = stableKeys.filter((k) => present.has(k.hash))
     if (toPrefetch.length === 0) return
   }
