@@ -208,6 +208,99 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **THREE stale-cache-hit defects fixed — vx was replaying
+  artifacts built from inputs that had since changed** (from a repro-mandated
+  hostile audit of cache input resolution + hashing, the surface that decides
+  what a cache key is made of; every finding was reproduced end-to-end, with vx
+  printing `1 up-to-date` while the OLD content sat on disk). **(1) HIGH — the
+  file-hash memo keyed on `(mtime, size)` served a STALE digest.** The
+  `file_hashes` row persists across runs, so ANY producer that preserves mtime
+  defeated it — `tar -x`, `unzip`, `cp -p`, `rsync --times`, every
+  `SOURCE_DATE_EPOCH` generator. The method's own doc comment claimed the memo
+  was "byte-for-byte identical to what a fresh content-hash would produce —
+  pure optimization, no cache-key change"; that was FALSE, and the comment is
+  corrected. Fixed by adding `ctime_ms` + `ino` to the memo key — verified
+  empirically first: `utimes` cannot suppress ctime unprivileged, and an atomic
+  write-then-rename changes the inode, so the two together close it (git's own
+  index keys on ctime+ino+dev for exactly this reason). Both come FREE from the
+  stat already taken. **A pre-existing test ENCODED this defect** — it asserted
+  the stale digest and called it "the documented fast-path tradeoff"; it now
+  asserts the correct digest, plus a rename variant, plus a genuine
+  memo-hit case so the optimization is still pinned. **(2) MEDIUM-HIGH — the
+  cache-MISS path discarded `cleanOutputs`'s return**, the only one of FOUR
+  sibling call sites that did (the workspace twin two lines below marks, as do
+  the verify and restore paths). So the wiped paths were never marked, the git
+  snapshot kept listing them, and — the load-bearing half — `recordChanged`
+  never deleted their OIDs, so `resolveFiles` SKIPPED its existence probe for
+  them and folded a file that was GONE FROM DISK into the key. Reachable when a
+  consumer decouples via `cache.inputs.tasks` (a first-class documented
+  pattern) and the vanished output is tracked+clean at run start — i.e.
+  committed generated code (protobuf/GraphQL/OpenAPI clients). Marking at the
+  clean site also fixes the broader variant the audit found, where a producer
+  emitting ZERO files skipped invalidation entirely. **(3) MEDIUM — a file
+  ABSENT from disk counted as an input.** `skip-worktree` / `assume-unchanged`
+  entries sit at stage 0 and `git status` reports nothing for them, so they
+  kept a trusted OID and short-circuited the existence probe whose whole
+  purpose is dropping entries whose worktree file is gone — so materializing a
+  sparse-checkout path changed NO key and the old artifact was replayed. Fixed
+  with a fourth CONCURRENT `git ls-files -v -z`; **measured before adding it**
+  (the rule for this hot path): on a 15k-file tree the existing enumeration is
+  ~19 ms and `-v` adds ~5 ms because it is index-only, and an A/B of real warm
+  runs on this repo showed no wall-clock change (130 ms vs a 139 ms baseline,
+  inside the noise). The `-v` marker set is `S` (skip-worktree, UPPERCASE) plus
+  ANY lowercase letter (assume-unchanged) — the first cut checked only
+  lowercase and its pin stayed red, which is what a discriminating pin is for.
+  **NO CACHE_VERSION bump, argued not assumed:** in all three cases the key
+  that changes was WRONG before, so the corrected key is a NEW key that misses
+  once and re-caches — self-healing, never a wrong hit — and every already-
+  correct invocation is byte-identical. **SCHEMA_VERSION v23 → v24** for the
+  two new `file_hashes` columns; the gate drops and recreates every table, so
+  this costs one cold rebuild, stated plainly rather than hidden. Pinned by a
+  new `tests/stale-hit.test.ts` that drives the REAL CLI end-to-end (build a
+  fixture, change an input, run again, assert the OLD artifact was not served)
+  — differentially proven 0 pass / 3 fail before the fixes, 3 pass / 0 fail
+  after. Two spawn-count guards updated 3→4 and 1→2 / 3→4 (the invariant is
+  CONCURRENCY and O(1)-not-O(N), never the literal count). Gates: fmt/lint 0,
+  core **1350/0** (21 skip = the sandbox suite, `bwrap` unavailable in this
+  container), cloud 599/0, ui 91/0.
+  **STILL OPEN, deliberately sequenced — the audit's fourth defect:** trusted
+  index OIDs describe the FILTERED blob, not the worktree bytes a task reads,
+  so under an active `text`/`eol`/`ident` filter the CRLF and LF forms of a
+  file fold the SAME key and a real content change is invisible (reproduced
+  with a stock `.gitattributes`, and separately with plain `core.autocrlf=true`
+  and no `.gitattributes` at all). The precise fix — `git ls-files --eol`,
+  dropping the OID where `i/` ≠ `w/` — was MEASURED at **240 ms on a 15k-file
+  tree**, 13× the entire current enumeration, because `--eol` must READ every
+  worktree file; that is too much to pay unconditionally on a ~130 ms warm run,
+  and in the common Linux case it would find nothing. The cheaper design, for
+  its own wave: gate on whether a filter can apply at all (no attributes file
+  and `core.autocrlf` off ⇒ zero cost, the common case), then use
+  `git check-attr` (measured **21 ms**, resolves attributes WITHOUT reading
+  content) to drop the OID for any path with `text`/`eol`/`ident` set. Dropping
+  an OID is not over-invalidation — it just routes that path to `hashFile`,
+  which hashes the worktree bytes, i.e. the correct source. **Recorded SOUND by
+  the same audit, so nobody re-audits them:** `ALWAYS_IGNORE` (all five
+  patterns match nested forms); `cleanOutputs` symlink-boundary escape
+  (`Bun.Glob.scan` does NOT follow symlinked directories — a `dist ->
+../victim` symlink resolved to `[]` and deleted nothing, which with the
+  loader's `..`-segment rejection means project outputs cannot cross a
+  boundary); merge-conflict duplicate stage entries (all 3 survive into the
+  input list, so the fold's count changes on conflict/resolution —
+  over-invalidation, the safe direction); `parseStatusOutput` rename framing
+  (both sides added to the dirty set regardless of git's `-z` field order);
+  `markOutputsChanged` → workspace-partition forwarding and
+  `markWorkspaceOutputsChanged` (correct once invoked — defect 2 above was the
+  missing CALL, not the bookkeeping); `snapshotFor` glob symmetry (reuse is
+  tested with the same positive globs `resolveFiles` filters with; ignoring
+  exclude globs is the conservative direction); and the `key()` fold structure
+  (seed-chained `xxh3(part, prevDigest)`, not concatenation, so cross-section
+  ambiguity would need a genuine hash collision). **One suspected-but-
+  UNREACHABLE item, recorded so it is not re-found:** the runtime-value fold's
+  `${c}\0${o}` join DOES collide at the `Cache.key` level
+  (`[['x','a\0b']]` and `[['x\0a','b']]` fold identical bytes — the same class
+  as the fixed `=`→`\0` env bug), but it cannot be reached from a real config
+  because `Bun.spawn` refuses a NUL in argv, so such a command can never run.
+
 - **2026-07-26**: **Arg parsing stopped REINTERPRETING what the user typed** —
   the CLI audit's remaining EIGHT defects fixed, one REFUTED, each pinned
   (completing the wave the six silent-wrong-behaviour fixes opened). **The two

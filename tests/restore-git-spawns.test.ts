@@ -140,9 +140,12 @@ describe('restore-path git spawns', () => {
       // Tasks were all cache-hits: the stamp files did not grow.
       expect(await stampLines(fixture, 'a')).toBe(1)
       expect(await stampLines(fixture, 'b')).toBe(1)
-      // Exactly the one bulk workspace snapshot — restores must not
-      // trigger per-project ls-files when `src/**` can't see `dist/`.
-      expect(await lsFilesCount(fixture)).toBe(1)
+      // Exactly the one bulk workspace snapshot (which is two `ls-files`
+      // calls — the `-s --others` enumeration plus the index-only `-v` probe
+      // for skip-worktree flags, issued concurrently). Restores must not
+      // trigger a PER-PROJECT ls-files when `src/**` can't see `dist/`; that
+      // O(N) regression is what this guards.
+      expect(await lsFilesCount(fixture)).toBe(2)
     },
     TIMEOUT,
   )
@@ -162,9 +165,10 @@ describe('restore-path git spawns', () => {
       expect(await vx(fixture, true)).toBe(0)
       expect(await stampLines(fixture, 'a')).toBe(1)
       expect(await stampLines(fixture, 'b')).toBe(1)
-      // Bulk snapshot + one re-spawn per project whose test globs
-      // overlap the restored outputs.
-      expect(await lsFilesCount(fixture)).toBe(3)
+      // Bulk snapshot (2 calls, see above) + one re-spawn per project whose
+      // test globs overlap the restored outputs. The per-project fallback is
+      // a single spawnSync, so it adds one each.
+      expect(await lsFilesCount(fixture)).toBe(4)
     },
     TIMEOUT,
   )

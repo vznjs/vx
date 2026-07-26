@@ -3,7 +3,7 @@
 // rather than asserting wall-clock time (which is too flaky for CI).
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
-import { mkdtemp, mkdir, rm, writeFile, utimes, stat } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile, utimes, stat, rename } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Cache, type RunRecord } from '../src/cache/cache.js'
@@ -71,23 +71,50 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     expect(second).toBe(blobOid('v2-longer-content'))
   })
 
-  it('reuses stored digest when stat is unchanged (does not re-read disk)', async () => {
-    // We can't directly observe "did we read the disk?" without
-    // mocking fs, so prove the property indirectly: after the first
-    // call records (mtime, size, content_hash), if we corrupt the file
-    // in-place AT THE SAME SIZE AND SAME MTIME, the fast path
-    // returns the stale (cached) hash. This is the documented
-    // fast-path tradeoff.
+  it('reuses stored digest when nothing about the file changed', async () => {
+    // The memo's reason for existing: an untouched file is answered from
+    // SQLite with no disk read. We cannot observe "did we read?" without
+    // mocking fs, so assert the observable half — a second call on an
+    // untouched file returns the same digest, and it is the RIGHT one.
+    const f = path.join(dir, 'pinned.txt')
+    await writeFile(f, 'AAAAAA')
+    const firstHash = await cache.hashFile(f)
+    expect(await cache.hashFile(f)).toBe(firstHash)
+    expect(firstHash).toBe(blobOid('AAAAAA'))
+  })
+
+  it('does NOT reuse the digest when content changes with mtime preserved', async () => {
+    // This case used to be recorded as an accepted "fast-path tradeoff" and
+    // asserted the STALE digest. It is not a tradeoff, it is a stale cache
+    // hit: `tar -x`, `unzip`, `cp -p`, `rsync --times` and SOURCE_DATE_EPOCH
+    // generators all preserve mtime, so vx would replay an artifact built
+    // from bytes that no longer exist. ctime is what closes it — `utimes`
+    // cannot suppress ctime without root.
     const f = path.join(dir, 'pinned.txt')
     await writeFile(f, 'AAAAAA')
     const firstHash = await cache.hashFile(f)
     const s = await stat(f)
-    // Rewrite to same size while restoring the mtime so the fast
-    // path's stat check passes.
+    // Same byte length, mtime forced back to what the first call recorded.
     await writeFile(f, 'BBBBBB')
     await utimes(f, s.atime, s.mtime)
     const secondHash = await cache.hashFile(f)
-    expect(secondHash).toBe(firstHash)
+    expect(secondHash).not.toBe(firstHash)
+    expect(secondHash).toBe(blobOid('BBBBBB'))
+  })
+
+  it('does NOT reuse the digest across an atomic write-then-rename', async () => {
+    // The other way a producer keeps mtime AND size: build a temp file and
+    // rename it into place. ctime moves, and so does the inode.
+    const f = path.join(dir, 'renamed.txt')
+    const tmp = path.join(dir, 'renamed.tmp')
+    await writeFile(f, 'AAAAAA')
+    const firstHash = await cache.hashFile(f)
+    const s = await stat(f)
+    await writeFile(tmp, 'BBBBBB')
+    await rename(tmp, f)
+    await utimes(f, s.atime, s.mtime)
+    expect(await cache.hashFile(f)).toBe(blobOid('BBBBBB'))
+    expect(await cache.hashFile(f)).not.toBe(firstHash)
   })
 })
 

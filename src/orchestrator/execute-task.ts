@@ -359,7 +359,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     result: Awaited<ReturnType<typeof runCommand>>
     exitCode: number
   }> {
-    if (willWrite && outputs.length > 0) await cleanOutputs(cleanArgs)
+    if (willWrite && outputs.length > 0) {
+      // Mark the wiped paths, exactly as the workspace twin below does. The
+      // git snapshot still lists them with their committed index OIDs, and
+      // resolveFiles SKIPS its existence probe for any path carrying a
+      // trusted OID — so a declared output the producer deletes and does not
+      // re-create would stay in a same-project consumer's input set, keeping
+      // that consumer's key unchanged while the file is gone from disk.
+      const cleanedRels = await cleanOutputs(cleanArgs)
+      args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
+    }
     if (willWrite && wsOutputs.length > 0) {
       // Root-anchored deletions can land in other projects' dirs; mark
       // them so stale per-project git snapshots can't survive the wipe.
