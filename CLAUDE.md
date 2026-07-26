@@ -208,6 +208,53 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **Nine analytics/MCP defects fixed — the read surfaces answer
+  HONESTLY instead of plausibly** (a repro-mandated hostile audit of the core
+  MCP + metrics + report surfaces, the last core code never adversarially
+  reviewed; every finding below was confirmed by an EXECUTED repro before any
+  fix, and every fix carries a pin proven to FAIL without it). **The two that
+  mattered:** (1) `vx mcp` cache-stats ADVERTISED a `scope: {project}` and
+  ignored it — then echoed it back in the response, so an AI agent could not
+  tell it was unhonored (`{"scope":{"project":"DOES-NOT-EXIST"}}` returned the
+  full-workspace numbers labelled as that project). Now HONORED — `Cache.stats`
+  filters both the entries aggregate and the runs 24h aggregate — and an
+  unhonorable scope is a `UserError` at the boundary, never a silent lie.
+  (2) **`LocalHistoryProvider` and `metrics.getHistory` reached OPPOSITE
+  verdicts on identical rows.** metrics implements the project's rule
+  (flakiness needs a NONDETERMINISM signal — a within-run retry, or one cache
+  key that both failed AND succeeded); history.ts still used the pre-rule
+  `failures < total/5` heuristic and had no retry signal at all, so five
+  failures on five DISTINCT keys read `stable` on one surface and `flaky-fatal`
+  on the other — and history.ts is what `vx mcp` hands an AI agent, which is
+  precisely how an agent gets told to bolt `exec.retries` onto a deterministic
+  break. Fixed STRUCTURALLY: new `orchestrator/failure-mode.ts` owns the rule
+  and both call it, so they cannot fork again. **A pre-existing test ENCODED
+  the defect** (asserting `flaky-recoverable` on 6 distinct keys) and now
+  asserts `stable` — the honest verdict. **The rest:** `getRunTrends` /
+  `getStorageGrowth` densify loops were unclamped (`{from:0,to:1e15}` → 45s
+  timeout, an earlier probe OOM-killed) — the cloud's 2026-07-14
+  `MAX_TREND_BUCKETS` fix, never backported to core even though both are
+  public façade exports embedders build on; `getRunHeatmap(days)` clamped in
+  the same pass (flagged, not in the original eight); `getCacheSavings.
+hitsLast24h` counted only hits with a local baseline, so it disagreed with
+  BOTH sibling counters (7/7/**3**) — exactly the fresh-CI-runner shape where
+  savings matter most — now counts all hits with the priceable subset exposed
+  separately; `getHistory`'s `SELECT DISTINCT` + JS `.slice(limit)` returned
+  the ALPHABETICAL prefix and dropped the most-recently-run task (fixed in
+  core AND the identical cloud copy, whose comment claimed the order was
+  deliberate); markdown report cells were unescaped so a task name containing
+  `|` or a newline broke the GHA step-summary table; a non-integer MCP `limit`
+  threw an opaque `-32603 datatype mismatch` (missing the `Math.floor` its
+  sibling `clampInt` has — `clampInt` moved to the `util` leaf rather than
+  exported from metrics, which would have weakened the metrics drift guard's
+  "every export executes against a fresh cache.db" contract). Gates: fmt/lint
+  0, core **1297/0** (+11), cloud 581/0, ui 91/0. NO CACHE_VERSION/SCHEMA bump
+  (key derivation + artifact bytes untouched; `CacheStats` and `CacheLayer.
+stats` gained additive fields only). **Process note:** the agent's own gate
+  run showed cloud/ui red — its WORKTREE has no `packages/cloud/ui/
+node_modules`, so `solid-js` was unresolvable there. Re-run in the main tree,
+  both are green. A gate result is only as good as the tree it ran in.
+
 - **2026-07-26**: **The workspace context rides the URL — a shared link carries
   its scope** (closing the caveat the sidebar-context wave named). Stored only
   in localStorage, `/runs/:id` opened against the RECIPIENT's workspace and

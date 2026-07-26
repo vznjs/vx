@@ -1736,12 +1736,16 @@ export class Analytics {
     // workspace the filter box can only reach a tail task if the narrowing
     // happens here, not over the fetched rows.
     const fSearch = searchFilter(sql, args.search, 'pair')
-    // The pairs to render (unchanged set + order — the DISTINCT scan).
-    const pairs = (
-      await sql<{ project: string; task: string }[]>`
-        SELECT DISTINCT project, task FROM task_runs
-        WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fSearch}`
-    ).slice(0, limit)
+    // The pairs to render, ranked + LIMITed in SQL. The result is a PAGE, so
+    // slicing an unordered DISTINCT scan in JS returned the ALPHABETICAL
+    // prefix — dropping exactly the task that just ran on any workspace with
+    // more pairs than the limit.
+    const pairs = await sql<{ project: string; task: string }[]>`
+      SELECT project, task FROM task_runs
+      WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fSearch}
+      GROUP BY project, task
+      ORDER BY MAX(started_at) DESC
+      LIMIT ${limit}`
     if (pairs.length === 0) return []
     // TWO set-based queries replace the former 1 + 2N per-pair fan-out: one
     // GROUP BY for every pair's aggregate, one windowed query for the last-50

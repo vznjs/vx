@@ -373,6 +373,11 @@ export interface CacheStats {
   hitCountLast24h: number
 }
 
+export interface CacheStatsOptions {
+  /** Narrow every aggregate to one project. Absent = the whole workspace. */
+  project?: string
+}
+
 export interface PruneOptions {
   /** Drop entries last accessed before this ms-epoch threshold. */
   olderThanMs?: number
@@ -636,7 +641,7 @@ export interface CacheLayer {
    * all-cache-hit run writes nothing.
    */
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
-  stats(): CacheStats
+  stats(opts?: CacheStatsOptions): CacheStats
   /**
    * Content-hash a file with an mtime+size fast path. If the
    * `(mtime_ms, size_bytes)` of `filePath` match a previously seen
@@ -1658,17 +1663,26 @@ export class Cache implements CacheLayer {
     })()
   }
 
-  stats(): CacheStats {
+  stats(opts: CacheStatsOptions = {}): CacheStats {
     this.flushAccessed()
+    const project = opts.project
+    const scoped = project !== undefined
+    const scopeParams: string[] = project === undefined ? [] : [project]
     const aggregate = this.db
-      .prepare('SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM entries')
-      .get() as { n: number; bytes: number }
+      .prepare(
+        `SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM entries${
+          scoped ? ' WHERE project = ?' : ''
+        }`,
+      )
+      .get(...scopeParams) as { n: number; bytes: number }
     const since = Date.now() - 24 * 60 * 60 * 1000
     const runs = this.db
       .prepare(
-        "SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status IN ('cache-hit', 'cache-hit-remote') THEN 1 ELSE 0 END), 0) AS hits FROM runs WHERE started_at >= ?",
+        `SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status IN ('cache-hit', 'cache-hit-remote') THEN 1 ELSE 0 END), 0) AS hits FROM runs WHERE started_at >= ?${
+          scoped ? ' AND project = ?' : ''
+        }`,
       )
-      .get(since) as { total: number; hits: number }
+      .get(since, ...scopeParams) as { total: number; hits: number }
     return {
       entryCount: aggregate.n,
       totalBytes: aggregate.bytes,
