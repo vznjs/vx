@@ -13,6 +13,9 @@ import { startFakeS3, type FakeS3 } from './fake-s3.js'
 export interface TestPlatform {
   server: PlatformServer
   origin: string
+  /** The platform's own database — for assertions the HTTP surface can't make
+   *  (e.g. that a delete really removed rows, not just hid them). */
+  dbUrl: string
   orgId: string
   cookie: string
   ciToken: string
@@ -28,8 +31,9 @@ export async function bootPlatform(
   const pg = await ephemeralPg()
   const s3 = startFakeS3({ bucket })
   const dataDir = await mkdtemp(path.join(tmpdir(), 'vx-platform-test-'))
+  const dbUrl = await pg.createDatabase({ empty: true })
   const res = resolveServerConfig({
-    DATABASE_URL: await pg.createDatabase({ empty: true }),
+    DATABASE_URL: dbUrl,
     VX_CLOUD_SECRET: 'x'.repeat(32),
     VX_CLOUD_BASE_URL: 'http://vx.example.dev',
     VX_CLOUD_S3_ENDPOINT: s3.origin,
@@ -76,6 +80,7 @@ export async function bootPlatform(
   return {
     server,
     origin,
+    dbUrl,
     orgId,
     cookie,
     ciToken,

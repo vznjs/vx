@@ -96,6 +96,8 @@ column is the minimum org role.
 | `DELETE /v1/admin/orgs/:id/tokens/:tokenId` | admin | Revoke — takes effect immediately (the in-process auth memo is cleared). |
 | `GET /v1/admin/orgs/:id/workspaces` | viewer | Workspaces. |
 | `POST /v1/admin/orgs/:id/workspaces` | admin | `{ slug, name? }` — 409 on a taken slug. |
+| `PATCH /v1/admin/orgs/:id/workspaces/:wsId` | admin | `{ name?, slug? }` (slug `[a-z0-9-]{1,64}`) — 409 on a taken slug, 400 when neither field is given. Most workspaces are auto-provisioned on the first CI push and named by the client; the rename **sticks**, because later pushes never rewrite the name. |
+| `DELETE /v1/admin/orgs/:id/workspaces/:wsId` | admin | Delete the workspace **and its entire history** — invocations, task runs, task logs, output fingerprints, projects, repos and any workspace-scoped API token. Requires `{ confirm }` echoing the workspace's slug (or name); a mismatch is a 400 naming the slug. Not reversible. Cached artifacts already in object storage are **not** removed (they are content-addressed under the workspace's scope prefix and simply become unreachable). |
 
 Cross-org access answers 404. There is no invite-list endpoint —
 invites are create-only surfaces.

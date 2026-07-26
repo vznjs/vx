@@ -35,6 +35,7 @@ interface Pg {
   waitForLoadState(s: string): Promise<unknown>
   waitForTimeout(ms: number): Promise<void>
   evaluate(script: string): Promise<unknown>
+  fill(selector: string, value: string): Promise<void>
   on(event: string, fn: (arg: never) => void): void
 }
 
@@ -281,6 +282,52 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
     // ...and it fell back rather than rendering an empty page.
     expect(await contextText()).toContain('acme/')
     expect(await url()).not.toContain('dead')
+  })
+
+  // Deleting the workspace you are LOOKING AT must not strand the dashboard
+  // pointing at a scope that no longer exists.
+  it('deleting the selected workspace lands on a valid scope, not a dead one', async () => {
+    const ids = await wsIds()
+    const doomed = ids['acme/beta']!
+    // The previous cases left beta selected; confirm that before deleting it,
+    // or this test would prove nothing about the SELECTED workspace.
+    await freshLoad('/#/admin?section=workspaces')
+    expect(await contextText()).toContain('acme/beta')
+
+    const slug = (await page.evaluate(`(() => {
+      const row = [...document.querySelectorAll('[data-testid="workspaces-table"] tbody tr')]
+        .find((tr) => tr.innerText.includes(${JSON.stringify(doomed)}))
+      const cells = row.querySelectorAll('td')
+      const s = cells[0].innerText.trim()
+      ;[...row.querySelectorAll('button')].find((b) => b.innerText.trim() === 'Delete').click()
+      return s
+    })()`)) as string
+    await page.waitForTimeout(200)
+    await page.fill('[data-testid="workspace-delete-input"]', slug)
+    await page.evaluate(`document.querySelector('[data-testid="workspace-delete-submit"]').click()`)
+    await page.waitForTimeout(2000)
+
+    // The context picker fell back to the surviving workspace…
+    const sidebar = await contextText()
+    expect(sidebar).toContain('acme/alpha')
+    expect(sidebar).not.toContain('acme/beta')
+    // …the URL no longer names the deleted scope…
+    const after = await url()
+    expect(after).not.toContain(doomed)
+    expect(after).toContain(`ws=${ids['acme/alpha']!}`)
+    // …and it does NOT accuse the user of following a link they can't see:
+    // they deleted it themselves, one click ago.
+    expect(await bodyText()).not.toContain("can't see")
+
+    // The surviving scope is live, not just labelled.
+    await page.evaluate(`(() => {
+      const a = [...document.querySelectorAll('aside a')].find((x) => x.textContent.includes('Runs'))
+      a.click()
+    })()`)
+    await page.waitForTimeout(1500)
+    const body = await bodyText()
+    expect(body).toContain('run-alph')
+    expect(body).not.toContain('run-beta')
   })
 
   it('renders all of that with no console errors', () => {

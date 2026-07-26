@@ -18,6 +18,7 @@ import {
 import {
   createApiToken,
   listTokens,
+  resetTokenCache,
   revokeToken,
   type TokenKind,
   type TrustTier,
@@ -709,6 +710,70 @@ async function adminRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promi
         throw err
       }
       return json({ ok: true, workspaceId: id }, 201)
+    }
+    // Rename. Most workspaces are auto-provisioned on the first CI push and
+    // take their name from the pushing client, so one can be born wrong — and
+    // the rename sticks, because `routeWorkspace` sets `name` only on that
+    // first INSERT (later pushes touch `repos.last_seen_at` alone).
+    if (req.method === 'PATCH' && itemId !== undefined) {
+      const gate = orgGate(principal, org, 'admin')
+      if (gate !== null) return gate
+      if (!UUID_RE.test(itemId)) return json({ error: 'not found' }, 404)
+      const body = await readBody(req)
+      if (body === null) return json({ error: 'invalid JSON body' }, 400)
+      const name = str(body, 'name')
+      const slug = str(body, 'slug')
+      if (slug !== undefined && !SLUG_RE.test(slug)) {
+        return json({ error: 'slug must match [a-z0-9-]{1,64}' }, 400)
+      }
+      if (name === undefined && slug === undefined) return json({ error: 'nothing to update' }, 400)
+      let updated: { id: string }[]
+      try {
+        updated = await sql<{ id: string }[]>`
+          UPDATE workspaces
+             SET name = COALESCE(${name ?? null}, name), slug = COALESCE(${slug ?? null}, slug)
+           WHERE id = ${itemId} AND org_id = ${org!.id}
+          RETURNING id`
+      } catch (err) {
+        if (isUniqueViolation(err)) return json({ error: 'slug already taken' }, 409)
+        throw err
+      }
+      if (updated.length === 0) return json({ error: 'not found' }, 404)
+      return json({ ok: true })
+    }
+    // Delete — the workspace is the root of every analytics row it ever
+    // recorded, so this is real data loss. The caller must echo the slug (or
+    // name) back as `confirm`; a mismatch is a 400 naming what it wanted.
+    if (req.method === 'DELETE' && itemId !== undefined) {
+      const gate = orgGate(principal, org, 'admin')
+      if (gate !== null) return gate
+      if (!UUID_RE.test(itemId)) return json({ error: 'not found' }, 404)
+      const rows = await sql<{ slug: string; name: string }[]>`
+        SELECT slug, name FROM workspaces WHERE id = ${itemId} AND org_id = ${org!.id}`
+      const ws = rows[0]
+      if (ws === undefined) return json({ error: 'not found' }, 404)
+      const body = await readBody(req)
+      const confirm = body !== null ? str(body, 'confirm') : undefined
+      if (confirm !== ws.slug && confirm !== ws.name) {
+        return json({ error: `confirm must be the workspace slug (${ws.slug})` }, 400)
+      }
+      await sql.begin(async (tx) => {
+        // The analytics tables carry `workspace_id` but NO foreign key — they
+        // are RANGE-partitioned, and an FK from them would have to be
+        // validated across every partition. So the cascade does not reach
+        // them: delete them here, or the history is orphaned, not gone.
+        await tx`DELETE FROM task_logs WHERE workspace_id = ${itemId}`
+        await tx`DELETE FROM task_runs WHERE workspace_id = ${itemId}`
+        await tx`DELETE FROM invocations WHERE workspace_id = ${itemId}`
+        await tx`DELETE FROM output_fingerprints WHERE workspace_id = ${itemId}`
+        // repos, projects (→ project_tasks) and workspace-scoped api_tokens
+        // DO cascade from this row.
+        await tx`DELETE FROM workspaces WHERE id = ${itemId} AND org_id = ${org!.id}`
+      })
+      // A workspace-scoped token just died with the workspace — its bearer
+      // must stop authenticating now, not when the memo's TTL lapses.
+      resetTokenCache()
+      return json({ ok: true })
     }
     return json({ error: 'not found' }, 404)
   }

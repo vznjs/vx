@@ -2050,3 +2050,43 @@ export function adminCreateWorkspace(
 ): Promise<MutateResult<{ workspaceId: string }>> {
   return mutate('POST', `/v1/admin/orgs/${orgId}/workspaces`, body)
 }
+
+export function adminRenameWorkspace(
+  orgId: string,
+  workspaceId: string,
+  patch: { name?: string; slug?: string },
+): Promise<MutateResult<{ ok: boolean }>> {
+  return mutate('PATCH', `/v1/admin/orgs/${orgId}/workspaces/${workspaceId}`, patch)
+}
+
+/** `confirm` must echo the workspace's slug (or name) — the server refuses
+ *  otherwise, because this deletes every run, task and log it ever recorded. */
+export function adminDeleteWorkspace(
+  orgId: string,
+  workspaceId: string,
+  confirm: string,
+): Promise<MutateResult<{ ok: boolean }>> {
+  return mutate('DELETE', `/v1/admin/orgs/${orgId}/workspaces/${workspaceId}`, { confirm })
+}
+
+/**
+ * Drop a workspace from the switcher's list without waiting for a refetch, and
+ * clear the selection when it WAS the selection. Called right after a delete:
+ * the URL-mirror effect in the Shell validates `?ws=` against this list, so
+ * leaving the deleted id in it would leave the dashboard scoped to a workspace
+ * that no longer exists.
+ */
+export function forgetWorkspace(id: string): void {
+  removedWorkspaces.add(id)
+  setWorkspaces((list) => list.filter((w) => w.id !== id))
+  if (workspace() === id) setWorkspaceAndPersist('')
+}
+
+/** Workspaces deleted from THIS tab. The URL still carries the id for the tick
+ *  it takes the mirror effect to rewrite it, and a workspace you just deleted
+ *  is not "a link you can't see" — the warning banner would be a lie. */
+const removedWorkspaces = new Set<string>()
+
+export function wasWorkspaceRemovedHere(id: string): boolean {
+  return removedWorkspaces.has(id)
+}

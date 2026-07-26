@@ -26,13 +26,16 @@ import {
   adminCreateOrg,
   adminCreateToken,
   adminCreateWorkspace,
+  adminDeleteWorkspace,
   adminListMembers,
   adminListTokens,
   adminListWorkspaces,
   adminRemoveMember,
+  adminRenameWorkspace,
   adminUpdateMemberRole,
   adminUpdateOrg,
   adminRevokeToken,
+  forgetWorkspace,
   getCurrentUserSignal,
   getOrgSignal,
   getOrgsSignal,
@@ -541,6 +544,13 @@ function WorkspacesSection(props: { orgId: string; canAdmin: boolean }) {
   const [name, setName] = createSignal('')
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
+  // Per-row modes: at most one row is being renamed or deleted at a time.
+  const [editId, setEditId] = createSignal<string | null>(null)
+  const [editSlug, setEditSlug] = createSignal('')
+  const [editName, setEditName] = createSignal('')
+  const [deleteId, setDeleteId] = createSignal<string | null>(null)
+  const [confirmText, setConfirmText] = createSignal('')
+  const [rowError, setRowError] = createSignal<string | null>(null)
 
   async function create(e: Event): Promise<void> {
     e.preventDefault()
@@ -559,8 +569,64 @@ function WorkspacesSection(props: { orgId: string; canAdmin: boolean }) {
     setSlug('')
     setName('')
     setBump((v) => v + 1)
-    // Refresh the shell's workspace switcher too.
-    refreshWorkspaces()
+    // Refresh the shell's workspace switcher too — `force`, because the memo
+    // is keyed on the connection, which has not changed.
+    refreshWorkspaces(true)
+  }
+
+  function startRename(w: AdminWorkspace): void {
+    setRowError(null)
+    setDeleteId(null)
+    setEditId(w.id)
+    setEditSlug(w.slug)
+    setEditName(w.name)
+  }
+
+  function startDelete(w: AdminWorkspace): void {
+    setRowError(null)
+    setEditId(null)
+    setConfirmText('')
+    setDeleteId(w.id)
+  }
+
+  async function saveRename(w: AdminWorkspace): Promise<void> {
+    if (busy()) return
+    const nextSlug = editSlug().trim()
+    const nextName = editName().trim()
+    if (nextSlug === '' || nextName === '') {
+      setRowError('Slug and name are both required.')
+      return
+    }
+    setRowError(null)
+    setBusy(true)
+    const r = await adminRenameWorkspace(props.orgId, w.id, { slug: nextSlug, name: nextName })
+    setBusy(false)
+    if (!r.ok) {
+      setRowError(r.error ?? 'Could not rename workspace.')
+      return
+    }
+    setEditId(null)
+    setBump((v) => v + 1)
+    refreshWorkspaces(true)
+  }
+
+  async function confirmDelete(w: AdminWorkspace): Promise<void> {
+    if (busy()) return
+    setRowError(null)
+    setBusy(true)
+    const r = await adminDeleteWorkspace(props.orgId, w.id, confirmText().trim())
+    setBusy(false)
+    if (!r.ok) {
+      setRowError(r.error ?? 'Could not delete workspace.')
+      return
+    }
+    setDeleteId(null)
+    setConfirmText('')
+    // Drop it from the switcher BEFORE the refetch: if it was the selected
+    // scope, every page is now reading a workspace that no longer exists.
+    forgetWorkspace(w.id)
+    setBump((v) => v + 1)
+    refreshWorkspaces(true)
   }
 
   return (
@@ -601,6 +667,11 @@ function WorkspacesSection(props: { orgId: string; canAdmin: boolean }) {
           when={(list() ?? []).length > 0}
           fallback={<EmptyState title="No workspaces yet" hint="They're auto-provisioned on the first CI push, or create one above." />}
         >
+          <Show when={rowError()}>
+            <div class="p-3">
+              <Notice kind="error">{rowError()}</Notice>
+            </div>
+          </Show>
           <table class="w-full text-[13px]" data-testid="workspaces-table">
             <thead>
               <tr class="text-left text-[10px] uppercase tracking-wider text-fg-3 border-b border-border/70">
@@ -608,17 +679,128 @@ function WorkspacesSection(props: { orgId: string; canAdmin: boolean }) {
                 <th class="px-4 py-2 font-semibold">Name</th>
                 <th class="px-4 py-2 font-semibold">ID</th>
                 <th class="px-4 py-2 font-semibold">Created</th>
+                <th class="px-4 py-2 font-semibold text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               <For each={list() ?? []}>
                 {(w: AdminWorkspace) => (
-                  <tr class="border-b border-border/40 last:border-0">
-                    <td class="px-4 py-2 font-mono text-fg-1">{w.slug}</td>
-                    <td class="px-4 py-2 text-fg-2">{w.name}</td>
-                    <td class="px-4 py-2 font-mono text-[11px] text-fg-3">{w.id}</td>
-                    <td class="px-4 py-2 text-fg-3 text-[12px]">{formatRelativeTime(w.createdAt)}</td>
-                  </tr>
+                  <>
+                    <tr class="border-b border-border/40 last:border-0">
+                      <td class="px-4 py-2 font-mono text-fg-1">
+                        <Show when={editId() === w.id} fallback={w.slug}>
+                          <input
+                            value={editSlug()}
+                            onInput={(e) => setEditSlug(e.currentTarget.value)}
+                            class="text-[12px] w-36 font-mono"
+                            data-testid="workspace-edit-slug"
+                          />
+                        </Show>
+                      </td>
+                      <td class="px-4 py-2 text-fg-2">
+                        <Show when={editId() === w.id} fallback={w.name}>
+                          <input
+                            value={editName()}
+                            onInput={(e) => setEditName(e.currentTarget.value)}
+                            class="text-[12px] w-44"
+                            data-testid="workspace-edit-name"
+                          />
+                        </Show>
+                      </td>
+                      <td class="px-4 py-2 font-mono text-[11px] text-fg-3">{w.id}</td>
+                      <td class="px-4 py-2 text-fg-3 text-[12px]">{formatRelativeTime(w.createdAt)}</td>
+                      <td class="px-4 py-2 text-right whitespace-nowrap">
+                        <Show when={props.canAdmin}>
+                          <Show
+                            when={editId() === w.id}
+                            fallback={
+                              <>
+                                <button
+                                  type="button"
+                                  class="text-[11px] px-2 py-1 rounded border border-border text-fg-2 hover:text-fg hover:border-border-strong transition mr-1"
+                                  onClick={() => startRename(w)}
+                                >
+                                  Rename
+                                </button>
+                                <button
+                                  type="button"
+                                  class="text-[11px] px-2 py-1 rounded border border-border text-danger hover:bg-danger/10 transition"
+                                  onClick={() => startDelete(w)}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            }
+                          >
+                            <button
+                              type="button"
+                              disabled={busy()}
+                              class="text-[11px] px-2 py-1 rounded bg-accent text-bg font-medium hover:brightness-110 transition disabled:opacity-50 mr-1"
+                              onClick={() => void saveRename(w)}
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              class="text-[11px] px-2 py-1 rounded border border-border text-fg-2 hover:text-fg transition"
+                              onClick={() => setEditId(null)}
+                            >
+                              Cancel
+                            </button>
+                          </Show>
+                        </Show>
+                      </td>
+                    </tr>
+                    <Show when={deleteId() === w.id}>
+                      <tr class="border-b border-border/40 last:border-0 bg-danger/5">
+                        <td colSpan={5} class="px-4 py-3">
+                          <div class="flex flex-col gap-2" data-testid="workspace-delete-confirm">
+                            <div class="text-[12px] text-fg-1 flex items-start gap-1.5">
+                              <span
+                                class="i-tabler-alert-triangle text-danger text-[14px] shrink-0 mt-0.5"
+                                aria-hidden="true"
+                              />
+                              <span>
+                                Deleting <span class="font-mono text-fg">{w.name}</span> removes
+                                every run, task result and log it ever recorded, plus its projects
+                                and any workspace-scoped API token. This cannot be undone. Cached
+                                artifacts already in object storage are not deleted.
+                              </span>
+                            </div>
+                            <div class="flex items-end gap-2 flex-wrap">
+                              <label class="flex flex-col gap-1">
+                                <span class="text-[11px] font-medium text-fg-2">
+                                  Type <span class="font-mono text-fg-1">{w.slug}</span> to confirm
+                                </span>
+                                <input
+                                  value={confirmText()}
+                                  onInput={(e) => setConfirmText(e.currentTarget.value)}
+                                  class="text-[13px] w-48 font-mono"
+                                  data-testid="workspace-delete-input"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                disabled={busy() || confirmText().trim() !== w.slug}
+                                class="px-3 py-2 rounded-lg bg-danger text-bg font-medium text-[12px] hover:brightness-110 transition disabled:opacity-50"
+                                data-testid="workspace-delete-submit"
+                                onClick={() => void confirmDelete(w)}
+                              >
+                                Delete workspace
+                              </button>
+                              <button
+                                type="button"
+                                class="px-3 py-2 rounded-lg border border-border text-fg-2 text-[12px] hover:text-fg transition"
+                                onClick={() => setDeleteId(null)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </Show>
+                  </>
                 )}
               </For>
             </tbody>

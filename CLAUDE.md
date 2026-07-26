@@ -208,6 +208,43 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **Workspaces can be RENAMED and DELETED — and the delete had
+  to reach past the cascade, which does not go where the schema suggests**
+  (closing the lifecycle gap the context work exposed: the admin surface was
+  create+list only, everything else 404'd, so an auto-provisioned workspace —
+  most of them, named from the pushing client — could be born with a wrong name
+  and never fixed, and one made by mistake never removed). `PATCH` (rename,
+  admin, `SLUG_RE` + 409 on the unique violation) and `DELETE` (admin,
+  `{confirm}` echoing the slug) on
+  `/v1/admin/orgs/:orgId/workspaces/:id`, both `org_id`-clamped so a cross-org
+  id 404s rather than acting. **THE LOAD-BEARING CORRECTION, and it inverted my
+  brief:** `invocations` / `task_runs` / `task_logs` / `output_fingerprints`
+  carry `workspace_id` with **NO foreign key** — they are RANGE-partitioned, and
+  an FK from them would have to be validated across every partition of a
+  50-100M-row table. So the cascade reaches only `repos`, `projects` →
+  `project_tasks` and `api_tokens`; the delete route removes the four analytics
+  tables EXPLICITLY, in one transaction, or the history would be orphaned under
+  a dead workspace id rather than gone (invisible, still consuming storage,
+  forever). Verified: disabling those four DELETEs makes the cascade pin fail
+  on `invocations`. No migration — adding the FKs would be the expensive,
+  wrong fix. **A second thing the schema didn't tell you:** a workspace-scoped
+  `api_token` DOES cascade away with the row, but the 5s auth memo would keep
+  its bearer authenticating — so the route calls `resetTokenCache()`. UI: per-row
+  Rename/Delete in Admin → Workspaces, the confirm naming every category of
+  loss and arming only on an exact slug match, `refreshWorkspaces(true)` after
+  so the sidebar picker updates. **Deleting the workspace you are VIEWING** drops
+  you onto a surviving one — and the URL-mirror banner learned not to accuse you
+  of following a link "you can't see" when the stale id is one you just deleted
+  (`wasWorkspaceRemovedHere`); removing that guard makes the browser pin fail
+  with the nonsense text rendered, so it is load-bearing, not decoration.
+  **Stated, not hidden:** cached artifacts in object storage are NOT deleted —
+  the `BlobBackend` seam has no `delete` — so they become unreachable under a
+  dead scope prefix; said plainly in both the UI confirm and the docs, and a
+  reaper is its own wave. Gates: fmt/lint 0, cloud **590/0**, core 1297/0, ui
+  91/0, visual 10/10 (the `admin` shot is unchanged because `/#/admin` with no
+  `?section=` renders Members — checked the capture rather than assuming).
+  NO migration / schema / wire / CACHE bump.
+
 - **2026-07-26**: **Nine analytics/MCP defects fixed — the read surfaces answer
   HONESTLY instead of plausibly** (a repro-mandated hostile audit of the core
   MCP + metrics + report surfaces, the last core code never adversarially

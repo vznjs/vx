@@ -84,6 +84,15 @@ signup closes and everyone else joins by invite (see
   selection is remembered per browser. Opening the picker re-reads the
   list, so a repo that reported for the first time since you opened the
   tab shows up without a reload.
+- An auto-provisioned workspace takes its name from the pushing client,
+  so it can be born with a name you didn't choose. **Admin → Workspaces**
+  lets an admin **rename** one (later pushes never overwrite it) and
+  **delete** one created by mistake. Delete is not reversible: it removes
+  every run, task result and log the workspace ever recorded, plus its
+  projects and any workspace-scoped API token — so it asks you to type
+  the workspace's slug to confirm. Cached artifacts already in object
+  storage are left in place; they simply become unreachable. Deleting the
+  workspace you're currently viewing drops you onto a surviving one.
 - The **Admin** area (for `owner`/`admin` roles) manages
   **organizations**, **workspaces**, **members** (roles `owner`, `admin`,
   `member`, `viewer`), **invites**, and **API tokens** (`vxc_`, a
