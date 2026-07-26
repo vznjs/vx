@@ -12,6 +12,8 @@
 //                            when such an RPC actually exists.
 
 import type { Database } from 'bun:sqlite'
+import { classifyFailureMode } from './failure-mode.js'
+import type { FailureMode } from './failure-mode.js'
 
 const DEFAULT_RECENT = 50
 
@@ -27,8 +29,9 @@ export interface TaskHistory {
   successRate: number
   /** Cache hit rate over the recent window ([0, 1]). */
   hitRate: number
-  /** Failure mode classification. */
-  failureMode: 'stable' | 'flaky-recoverable' | 'flaky-fatal'
+  /** Failure mode classification. Shares `classifyFailureMode` with
+   *  `metrics.getHistory` so the two surfaces cannot disagree. */
+  failureMode: FailureMode
 }
 
 /** Map keyed by `project#task`. */
@@ -79,6 +82,7 @@ export class LocalHistoryProvider implements HistoryProvider {
           status,
           duration_ms,
           cache_hit,
+          attempts,
           ROW_NUMBER() OVER (PARTITION BY project, task ORDER BY started_at DESC) AS rn
         FROM runs
         WHERE (project, task) IN (VALUES ${tuplePlaceholders})
@@ -90,7 +94,8 @@ export class LocalHistoryProvider implements HistoryProvider {
         SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
         SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) AS hits,
         SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN 1 ELSE 0 END) AS executed,
-        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
+        SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) AS retried
       FROM recent
       WHERE rn <= ${this.recent}
       GROUP BY project, task
@@ -104,6 +109,7 @@ export class LocalHistoryProvider implements HistoryProvider {
       hits: number
       executed: number
       failures: number
+      retried: number
     }
     const rows = this.db.query(sql).all(...tupleParams) as Row[]
 
@@ -117,9 +123,11 @@ export class LocalHistoryProvider implements HistoryProvider {
     for (const row of rows) {
       const key = `${row.project}#${row.task}`
       const total = row.total || 0
-      const failures = row.failures || 0
-      const failureMode: TaskHistory['failureMode'] =
-        failures === 0 ? 'stable' : failures < total / 5 ? 'flaky-recoverable' : 'flaky-fatal'
+      const failureMode = classifyFailureMode(this.db, row.project, row.task, {
+        total,
+        failures: row.failures || 0,
+        retried: row.retried || 0,
+      })
       const durations = durationsByTask.get(key)
       out.set(key, {
         runs: total,

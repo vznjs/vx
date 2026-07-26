@@ -575,6 +575,30 @@ describe('getHistory', () => {
       expect(rows[0]!.failureMode).toBe('stable')
     })
   })
+
+  it('keeps the most-recently-run tasks when the page truncates', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      // 60 alphabetically-early pairs, all older…
+      const runs = Array.from({ length: 60 }, (_, i) =>
+        mkRun({
+          hash: `h${i}`,
+          project: `aaa${String(i).padStart(3, '0')}`,
+          task: 'build',
+          startedAt: now - 1_000_000 + i,
+        }),
+      )
+      // …and the one that just ran, sorting LAST alphabetically.
+      runs.push(mkRun({ hash: 'hz', project: 'zzz-just-ran', task: 'build', startedAt: now - 10 }))
+      cache.recordRuns(runs)
+      const rows = getHistory(cache.dbHandle(), { limit: 50 })
+      expect(rows.length).toBe(50)
+      // An unordered DISTINCT scan sliced in JS returns the alphabetical
+      // prefix — which drops exactly the task the user just ran.
+      expect(rows.map((r) => r.id)).toContain('zzz-just-ran#build')
+      expect(rows[0]!.id).toBe('zzz-just-ran#build')
+    })
+  })
 })
 
 describe('explainCacheKeyQuery', () => {
@@ -846,8 +870,47 @@ describe('getCacheSavings', () => {
       ])
       const savings = getCacheSavings(cache.dbHandle())
       expect(savings.hitsLast24h).toBe(2)
+      expect(savings.attributedHitsLast24h).toBe(2)
       expect(savings.estimatedTimeSavedMs).toBe(200)
       expect(savings.estimatedTimeSavedTotalMs).toBe(200)
+    })
+  })
+
+  it('counts a baseline-less hit — the normal fresh-runner-on-a-warm-remote shape', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      // Every run is a hit: nothing ever executed locally, so there is no
+      // duration to price the saving against. The hits are still real, and
+      // the two sibling counters say so.
+      cache.recordRuns([
+        mkRun({
+          hash: 'h1',
+          project: 'a',
+          task: 'build',
+          durationMs: 5,
+          cacheHit: true,
+          status: 'cache-hit-remote',
+          startedAt: now - 3000,
+        }),
+        mkRun({
+          hash: 'h2',
+          project: 'a',
+          task: 'build',
+          durationMs: 5,
+          cacheHit: true,
+          status: 'cache-hit-remote',
+          startedAt: now - 2000,
+        }),
+      ])
+      const db = cache.dbHandle()
+      const savings = getCacheSavings(db)
+      // The three "hits in the last 24h" counters must agree.
+      expect(getCacheStatsSql(db).hitCountLast24h).toBe(2)
+      expect(getHitRateSplit(db).hits).toBe(2)
+      expect(savings.hitsLast24h).toBe(2)
+      // …while the SAVINGS stays honestly unattributable.
+      expect(savings.attributedHitsLast24h).toBe(0)
+      expect(savings.estimatedTimeSavedMs).toBe(0)
     })
   })
 })
@@ -898,6 +961,32 @@ describe('getRunTrends', () => {
       expect(pts.reduce((acc, p) => acc + p.hitsLocal, 0)).toBe(1)
       expect(pts.reduce((acc, p) => acc + p.hitsRemote, 0)).toBe(1)
       expect(pts.reduce((acc, p) => acc + p.hits, 0)).toBe(2)
+    })
+  })
+
+  it('clamps a hostile span to the most-recent buckets instead of allocating unbounded', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRun(mkRun({ hash: 'h1', project: 'a', task: 'b', startedAt: now - 60_000 }))
+      // `from: 0` is ~495k hourly buckets unclamped — one object each, in a
+      // synchronous loop, on a public façade export.
+      const pts = getRunTrends(cache.dbHandle(), { bucket: 'hour', from: 0 })
+      expect(pts.length).toBeLessThanOrEqual(10_000)
+      // The retained window is the RECENT end, so the run still lands.
+      const bucketMs = 60 * 60 * 1000
+      expect(pts[pts.length - 1]!.t).toBe(Math.floor(now / bucketMs) * bucketMs)
+      expect(pts[0]!.t).toBeGreaterThan(0)
+      expect(pts.reduce((acc, p) => acc + p.runs, 0)).toBe(1)
+    })
+  })
+
+  it('never projects buckets past now', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRun(mkRun({ hash: 'h1', project: 'a', task: 'b', startedAt: now - 60_000 }))
+      const pts = getRunTrends(cache.dbHandle(), { bucket: 'day', to: now + 5e12 })
+      const bucketMs = 24 * 60 * 60 * 1000
+      expect(pts[pts.length - 1]!.t).toBeLessThanOrEqual(Math.floor(now / bucketMs) * bucketMs)
     })
   })
 })
@@ -1061,6 +1150,15 @@ describe('getStorageGrowth', () => {
       const pts = getStorageGrowth(cache.dbHandle(), 7)
       // 7 days of daily buckets ≈ 7–8 cells.
       expect(pts.length).toBeGreaterThanOrEqual(7)
+    })
+  })
+
+  it('clamps a hostile day span instead of allocating one object per day', () => {
+    withCache((cache) => {
+      cache.recordRun(mkRun({ hash: 'h1', project: 'a', task: 'b' }))
+      // 1e6 days unclamped = ~1e6 densified points from a single argument.
+      const pts = getStorageGrowth(cache.dbHandle(), 1e6)
+      expect(pts.length).toBeLessThanOrEqual(367)
     })
   })
 })

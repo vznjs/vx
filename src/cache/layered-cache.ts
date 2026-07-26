@@ -23,6 +23,7 @@ import type {
   CacheLayer,
   CachePolicy,
   CacheStats,
+  CacheStatsOptions,
   IngestMeta,
   InvocationRecord,
   OutputFileRow,
@@ -378,8 +379,8 @@ export class LayeredCache implements CacheLayer {
     this.local.recordRunBundle(bundle)
   }
 
-  stats(): CacheStats {
-    return this.local.stats()
+  stats(opts?: CacheStatsOptions): CacheStats {
+    return this.local.stats(opts)
   }
 
   async prune(options: PruneOptions): Promise<PruneResult> {

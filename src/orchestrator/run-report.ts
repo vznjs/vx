@@ -99,6 +99,16 @@ function fmtDuration(ms: number): string {
 }
 
 /**
+ * Make a value safe inside a GFM table cell. Task names are arbitrary TS
+ * object keys and the loader accepts `|` and newlines, either of which
+ * silently breaks the table on the consumer (`>> $GITHUB_STEP_SUMMARY`):
+ * a bare pipe adds a column, a newline splits the row.
+ */
+function cell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
+}
+
+/**
  * Render the finished run as a markdown report. A header line of totals
  * followed by a per-task table. Self-contained — everything is derived
  * from the result's outcomes.
@@ -125,7 +135,9 @@ export function formatRunReportMarkdown(result: RunResult): string {
   for (const o of result.outcomes) {
     if (o.status === 'aborted') continue
     lines.push(
-      `| ${o.taskId} | ${statusWord(o)} | ${cacheWord(o)} | ${fmtDuration(o.durationMs)} |`,
+      `| ${cell(o.taskId)} | ${cell(statusWord(o))} | ${cell(cacheWord(o))} | ${cell(
+        fmtDuration(o.durationMs),
+      )} |`,
     )
   }
   return lines.join('\n') + '\n'

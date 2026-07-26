@@ -11,7 +11,7 @@
 import { Cache } from '../cache/index.js'
 import { LocalHistoryProvider } from '../orchestrator/index.js'
 import { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from '../workspace/index.js'
-import { UserError } from '../util/index.js'
+import { clampInt, UserError } from '../util/index.js'
 
 export interface McpToolDef {
   name: string
@@ -122,13 +122,28 @@ async function openCache(): Promise<{ cache: Cache; workspaceRoot: string }> {
   return { cache: new Cache(cacheDir), workspaceRoot }
 }
 
+/**
+ * `'all'` | `{ project }` off the wire. Boundary validation: an AI agent must
+ * not be able to send a scope the response then echoes back as honored while
+ * the numbers are workspace-wide.
+ */
+function parseCacheScope(raw: unknown): 'all' | { project: string } {
+  if (raw === undefined || raw === 'all') return 'all'
+  if (typeof raw === 'object' && raw !== null) {
+    const project = (raw as { project?: unknown }).project
+    if (typeof project === 'string' && project.length > 0) return { project }
+  }
+  throw new UserError('getCacheStats: scope must be "all" or { "project": "<name>" }')
+}
+
 async function getCacheStats(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const scope = parseCacheScope(args.scope)
   const { cache } = await openCache()
   try {
-    const stats = cache.stats()
+    const stats = scope === 'all' ? cache.stats() : cache.stats({ project: scope.project })
     const hitRate24h = stats.runCountLast24h > 0 ? stats.hitCountLast24h / stats.runCountLast24h : 0
     return {
-      scope: args.scope ?? 'all',
+      scope,
       entryCount: stats.entryCount,
       totalBytes: stats.totalBytes,
       runCountLast24h: stats.runCountLast24h,
@@ -141,7 +156,9 @@ async function getCacheStats(args: Record<string, unknown>): Promise<Record<stri
 }
 
 async function getRunHistory(args: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const limit = typeof args.limit === 'number' ? Math.min(500, Math.max(1, args.limit)) : 50
+  // clampInt floors: the SDK does not enforce the declared `type: integer`,
+  // and a fractional LIMIT is a SQLite `datatype mismatch`, not a clamp.
+  const limit = typeof args.limit === 'number' ? clampInt(args.limit, 1, 500) : 50
   const projectFilter = typeof args.project === 'string' ? args.project : undefined
   const taskFilter = typeof args.task === 'string' ? args.task : undefined
 

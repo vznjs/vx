@@ -2048,4 +2048,31 @@ describe('scale: a workspace larger than one page', () => {
     expect(fromDecoy.map((r) => r.id)).toEqual(['pkg-0000#build'])
     expect(fromDecoy[0]!.runs).toBe(1)
   }, 60_000)
+
+  it('getHistory keeps the most-recently-run tasks when the page truncates', async () => {
+    const { org, ws } = await newOrgWs(db, 'history-order')
+    const now = Date.now()
+    // 60 alphabetically-early pairs, all older…
+    for (let i = 0; i < 60; i++) {
+      await insertTR(db, ws, org, {
+        runId: `o${i}`,
+        project: `aaa-${String(i).padStart(3, '0')}`,
+        task: 'build',
+        startedAt: now - 3600_000 + i,
+      })
+    }
+    // …and the one that just ran, sorting LAST alphabetically.
+    await insertTR(db, ws, org, {
+      runId: 'oz',
+      project: 'zzz-just-ran',
+      task: 'build',
+      startedAt: now - 10,
+    })
+    const page = await analytics.getHistory(ws, { limit: 50 })
+    expect(page).toHaveLength(50)
+    // An unordered DISTINCT scan sliced in JS returns the ALPHABETICAL
+    // prefix — dropping exactly the task the dev just ran.
+    expect(page.map((r) => r.id)).toContain('zzz-just-ran#build')
+    expect(page[0]!.id).toBe('zzz-just-ran#build')
+  }, 60_000)
 })

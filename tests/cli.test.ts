@@ -1370,6 +1370,25 @@ describe('formatRunReportMarkdown', () => {
     expect(md).toContain('**1 task**')
     expect(md).not.toContain('web#dev')
   })
+
+  it('escapes pipes and newlines so a hostile task name cannot break the table', () => {
+    const md = formatRunReportMarkdown({
+      ok: true,
+      outcomes: [
+        { taskId: 'p1#evil|col', status: 'success', exitCode: 0, durationMs: 3 },
+        { taskId: 'p1#evil\nrow', status: 'success', exitCode: 0, durationMs: 4 },
+      ],
+    })
+    const rows = md.split('\n').filter((l) => l.startsWith('| p1#'))
+    // Two tasks → exactly two rows: an unescaped newline splits one into two.
+    expect(rows.length).toBe(2)
+    // Every row keeps the header's 4 columns: an unescaped `|` adds a 5th.
+    for (const row of rows) {
+      expect(row.split(/(?<!\\)\|/).length - 2).toBe(4)
+    }
+    expect(md).toContain('| p1#evil\\|col | success | miss | 3ms |')
+    expect(md).toContain('| p1#evil row | success | miss | 4ms |')
+  })
 })
 
 describe('--continue parsing', () => {

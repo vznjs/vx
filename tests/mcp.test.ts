@@ -112,6 +112,97 @@ describe('handleMcpRequest — against a real workspace + cache.db', () => {
     }
   })
 
+  /** Two projects with distinct entry/run counts, so a scoped read is
+   *  provably narrower than the workspace-wide one. */
+  function seedTwoProjects(root: string): void {
+    const cache = new Cache(path.join(root, '.vx', 'cache'))
+    const now = Date.now()
+    let n = 0
+    for (const [project, runs] of [
+      ['@t/alpha', 3],
+      ['@t/beta', 1],
+    ] as const) {
+      for (let i = 0; i < runs; i++) {
+        n++
+        cache.recordRun({
+          hash: `h${n}`,
+          project,
+          task: 'build',
+          status: i === 0 ? 'cache-hit' : 'success',
+          exitCode: 0,
+          durationMs: 100,
+          forwardArgs: [],
+          startedAt: now - 1000 * n,
+          endedAt: now - 1000 * n + 100,
+          runId: `r-${n}`,
+          cpuMs: 50,
+          peakRssBytes: 0,
+          wallclockStartNs: 0n,
+          wallclockEndNs: 0n,
+          cacheHit: i === 0,
+        })
+      }
+    }
+    cache.close()
+  }
+
+  it('getCacheStats HONORS a project scope instead of echoing it', async () => {
+    const { root, cleanup } = setupWorkspace()
+    seedTwoProjects(root)
+    setMcpContext({ workspaceRoot: root })
+    try {
+      type Stats = { runCountLast24h: number; hitCountLast24h: number }
+      const all = (await handleMcpRequest('getCacheStats', {})) as Stats
+      const alpha = (await handleMcpRequest('getCacheStats', {
+        scope: { project: '@t/alpha' },
+      })) as Stats
+      const beta = (await handleMcpRequest('getCacheStats', {
+        scope: { project: '@t/beta' },
+      })) as Stats
+      const missing = (await handleMcpRequest('getCacheStats', {
+        scope: { project: 'DOES-NOT-EXIST-AT-ALL' },
+      })) as Stats
+
+      expect(all.runCountLast24h).toBe(4)
+      // A scoped read must be NARROWER than the workspace-wide one — echoing
+      // an unhonored scope returned the same 4 for every one of these.
+      expect(alpha.runCountLast24h).toBe(3)
+      expect(beta.runCountLast24h).toBe(1)
+      expect(missing.runCountLast24h).toBe(0)
+      expect(missing.hitCountLast24h).toBe(0)
+      expect(alpha.runCountLast24h + beta.runCountLast24h).toBe(all.runCountLast24h)
+    } finally {
+      setMcpContext({})
+      cleanup()
+    }
+  })
+
+  it('getCacheStats rejects a scope it cannot honor', async () => {
+    await expect(handleMcpRequest('getCacheStats', { scope: 'everything' })).rejects.toThrow(
+      /scope/,
+    )
+    await expect(handleMcpRequest('getCacheStats', { scope: { project: 7 } })).rejects.toThrow(
+      /scope/,
+    )
+  })
+
+  it('getRunHistory clamps a non-integer limit instead of failing the query', async () => {
+    const { root, cleanup } = setupWorkspace()
+    seedCacheWithRun(root)
+    setMcpContext({ workspaceRoot: root })
+    try {
+      // The MCP SDK does not enforce the declared `type: integer`, and SQLite
+      // answers a fractional LIMIT with an opaque `datatype mismatch`.
+      const result = (await handleMcpRequest('getRunHistory', { limit: 2.7 })) as {
+        runs: unknown[]
+      }
+      expect(result.runs.length).toBe(2)
+    } finally {
+      setMcpContext({})
+      cleanup()
+    }
+  })
+
   it('getRunHistory returns recent runs + per-task aggregates', async () => {
     const { root, cleanup } = setupWorkspace()
     seedCacheWithRun(root)

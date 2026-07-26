@@ -13,6 +13,9 @@
 // for JSON compatibility (matches the WireEvent timeUnixNano rule).
 
 import type { Database } from 'bun:sqlite'
+import { clampInt } from '../util/index.js'
+import { classifyFailureMode, mixedOutcomeKeyCount } from './failure-mode.js'
+import type { FailureMode } from './failure-mode.js'
 
 // ---------------------------------------------------------------------------
 // Run listing + detail
@@ -374,7 +377,7 @@ export interface TaskHistoryRow {
   hits: number
   successRate: number
   hitRate: number
-  failureMode: 'stable' | 'flaky-recoverable' | 'flaky-fatal'
+  failureMode: FailureMode
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
   minDurationMs: number | undefined
@@ -390,28 +393,6 @@ export interface GetHistoryArgs {
   limit?: number
 }
 
-/**
- * Distinct cache keys that produced BOTH a failure and a success — the
- * definitional flake: identical inputs, different outcomes. A failure whose
- * key never succeeded is a legitimate break (a changed input that fails),
- * which belongs to the regressions surface, not flakiness.
- */
-function mixedOutcomeKeyCount(db: Database, project: string, task: string): number {
-  const row = db
-    .query(
-      `SELECT COUNT(*) AS n FROM (
-         SELECT hash FROM runs
-         WHERE project = ? AND task = ? AND hash IS NOT NULL AND hash != ''
-         GROUP BY hash
-         HAVING SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 0
-            AND SUM(CASE WHEN status = 'success' OR status LIKE 'cache-hit%' OR cache_hit = 1
-                    THEN 1 ELSE 0 END) > 0
-       )`,
-    )
-    .get(project, task) as { n: number }
-  return row.n
-}
-
 export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistoryRow[] {
   const limit = clampInt(args.limit ?? 50, 1, 500)
   const where: string[] = []
@@ -425,12 +406,22 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
     params.push(args.task)
   }
   const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
-  const pairs = db.query(`SELECT DISTINCT project, task FROM runs ${clause}`).all(...params) as {
+  // Rank + LIMIT in SQL: the result is a PAGE, so slicing an unordered
+  // DISTINCT scan in JS returns the ALPHABETICAL prefix — the task that just
+  // ran is exactly the one a truncated page must not drop.
+  const pairs = db
+    .query(
+      `SELECT project, task FROM runs ${clause}
+       GROUP BY project, task
+       ORDER BY MAX(started_at) DESC
+       LIMIT ?`,
+    )
+    .all(...params, limit) as {
     project: string
     task: string
   }[]
 
-  return pairs.slice(0, limit).map((p) => {
+  return pairs.map((p) => {
     const aggregate = db
       .query(
         `SELECT
@@ -454,17 +445,11 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
     }
     const total = aggregate.total || 0
     const failures = aggregate.failures || 0
-    // Flaky requires a nondeterminism SIGNAL: a within-run retry, or a cache
-    // key that both failed and succeeded. Failures alone (each on its own
-    // key) are legitimate breaks, not flakiness.
-    const flakySignal =
-      (aggregate.retried || 0) > 0 ||
-      (failures > 0 && mixedOutcomeKeyCount(db, p.project, p.task) > 0)
-    const failureMode: TaskHistoryRow['failureMode'] = !flakySignal
-      ? 'stable'
-      : failures < total / 5
-        ? 'flaky-recoverable'
-        : 'flaky-fatal'
+    const failureMode = classifyFailureMode(db, p.project, p.task, {
+      total,
+      failures,
+      retried: aggregate.retried || 0,
+    })
     const durations = db
       .query(
         `SELECT duration_ms FROM runs
@@ -672,7 +657,16 @@ export function getTaskDetail(db: Database, taskId: string): TaskDetail | null {
 // ---------------------------------------------------------------------------
 
 export interface CacheSavings {
+  /** EVERY cache hit in the last 24h — the same population `getCacheStatsSql`
+   *  and `getHitRateSplit` count. */
   hitsLast24h: number
+  /**
+   * The subset of `hitsLast24h` that has a local executed-success baseline to
+   * price against, and so contributes to `estimatedTimeSavedMs`. On a fresh
+   * runner served by a warm remote cache this is legitimately 0 while
+   * `hitsLast24h` is large — the hits are real, the saving is unmeasurable.
+   */
+  attributedHitsLast24h: number
   estimatedTimeSavedMs: number
   estimatedTimeSavedTotalMs: number
 }
@@ -684,9 +678,14 @@ export interface CacheSavings {
  */
 export function getCacheSavings(db: Database): CacheSavings {
   const since = Date.now() - 24 * 60 * 60 * 1000
+  // COUNT(*) counts every hit; COUNT(avgDur) counts the priceable subset, and
+  // SUM ignores NULLs — so the hit count no longer inherits the baseline
+  // filter that the SAVINGS figure needs.
   const r24 = db
     .query(
-      `SELECT COALESCE(SUM(avgDur), 0) AS saved, COUNT(*) AS hits FROM (
+      `SELECT COALESCE(SUM(avgDur), 0) AS saved,
+              COUNT(*) AS hits,
+              COUNT(avgDur) AS attributed FROM (
          SELECT r.project, r.task,
                 (SELECT CAST(AVG(duration_ms) AS INTEGER) FROM runs s
                  WHERE s.project = r.project AND s.task = r.task
@@ -695,9 +694,9 @@ export function getCacheSavings(db: Database): CacheSavings {
          FROM runs r
          WHERE r.started_at >= ?
            AND (r.cache_hit = 1 OR r.status LIKE 'cache-hit%')
-       ) WHERE avgDur IS NOT NULL`,
+       )`,
     )
-    .get(since) as { saved: number; hits: number }
+    .get(since) as { saved: number; hits: number; attributed: number }
   const rAll = db
     .query(
       `SELECT COALESCE(SUM(avgDur), 0) AS saved FROM (
@@ -713,6 +712,7 @@ export function getCacheSavings(db: Database): CacheSavings {
     .get() as { saved: number }
   return {
     hitsLast24h: r24.hits,
+    attributedHitsLast24h: r24.attributed,
     estimatedTimeSavedMs: r24.saved,
     estimatedTimeSavedTotalMs: rAll.saved,
   }
@@ -1125,10 +1125,23 @@ export function compareRuns(db: Database, runId: string): CompareRuns {
 // helpers
 // ---------------------------------------------------------------------------
 
-function clampInt(n: number, min: number, max: number): number {
-  if (!Number.isFinite(n)) return min
-  return Math.min(max, Math.max(min, Math.floor(n)))
-}
+/**
+ * Hard cap on the number of time buckets a trend fill-loop may emit. These
+ * are public façade exports, so an embedder / plugin can hand in an enormous
+ * `from`/`to`/`days` span (`{ from: 0, to: 1e15 }`) and drive a synchronous
+ * fill loop into hundreds of millions of allocations — a hang or an OOM.
+ * 10k covers >400 days of hourly buckets, far beyond any real range. Mirrors
+ * `MAX_TREND_BUCKETS` in packages/cloud/src/db/analytics.ts.
+ */
+const MAX_TREND_BUCKETS = 10_000
+
+/**
+ * Cap on a caller-supplied day span. A huge span makes `WHERE created_at >=
+ * <since>` degenerate to a full table scan; clamping to ~1 year keeps the
+ * fetch bounded to the intended range. Mirrors `MAX_WINDOW_DAYS` in
+ * packages/cloud/src/db/analytics.ts.
+ */
+const MAX_WINDOW_DAYS = 366
 
 function pickPercentile(sorted: number[], q: number): number | undefined {
   if (sorted.length === 0) return undefined
@@ -1243,10 +1256,17 @@ export function getRunTrends(
   args: { bucket?: TrendBucket; from?: number; to?: number } = {},
 ): TrendPoint[] {
   const bucket: TrendBucket = args.bucket ?? 'hour'
-  const to = args.to ?? Date.now()
-  const defaultRangeMs = bucket === 'hour' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000
-  const from = args.from ?? to - defaultRangeMs
   const bucketMs = bucket === 'hour' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+  // Clamp the span before it reaches the densify loop below: `to` no later
+  // than now, `from` no earlier than MAX_TREND_BUCKETS buckets back — keeping
+  // the MOST RECENT buckets, which is what a chart wants. Bounds the loop, the
+  // array, AND the SQL range. Real ranges (24h hourly / 30d daily) are far
+  // under the cap, so their results are unchanged.
+  const now = Date.now()
+  const to = Math.min(args.to ?? now, now)
+  const defaultRangeMs = bucket === 'hour' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000
+  const minFrom = to - (MAX_TREND_BUCKETS - 1) * bucketMs
+  const from = Math.max(args.from ?? to - defaultRangeMs, minFrom)
   // Floor each timestamp to its bucket boundary in SQL so partial buckets line
   // up cleanly. `started_at` is already epoch-ms.
   const rows = db
@@ -1299,7 +1319,10 @@ export interface HeatmapCell {
 
 /** When do builds happen? Surfaces a 7×24 grid for the last `days` days. */
 export function getRunHeatmap(db: Database, days = 30): HeatmapCell[] {
-  const since = Date.now() - days * 24 * 60 * 60 * 1000
+  // Same clamp as the trend readers: a hostile `days` makes `since` hugely
+  // negative and the scan degenerate. The 7x24 grid is fixed-size, so this
+  // bounds the FETCH, not the output.
+  const since = Date.now() - clampInt(days, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
   // Pull raw rows; bucket in JS (timezone math is ugly in pure SQLite, and
   // `days * 24 * runs/day` rows is a few thousand at most).
   const rows = db
@@ -1909,8 +1932,10 @@ export interface StoragePoint {
  * workspaces it's the right "what's the cache doing" view.
  */
 export function getStorageGrowth(db: Database, days = 30): StoragePoint[] {
-  const since = Date.now() - days * 24 * 60 * 60 * 1000
   const bucketMs = 24 * 60 * 60 * 1000
+  // Clamp the window so a hostile/typo `days` can neither drive the densify
+  // loop below unbounded nor turn the fetch into a full table scan.
+  const since = Date.now() - clampInt(days, 1, MAX_WINDOW_DAYS) * bucketMs
   const rows = db
     .query(
       `SELECT (created_at / ?) * ? AS t,
