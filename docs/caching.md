@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v24'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v25'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -494,6 +494,14 @@ field needed no `CACHE_VERSION` bump). `output_files` rows mirror the
 two namespaces — project rows store the bare rel, workspace rows store
 the full `workspace-outputs/<rel>` name as the discriminator.
 
+The tar is packed `--format=gnu`: like ustar it emits no PAX
+extended-header records (BSD tar emits one per entry, which would leave
+`PaxHeaders/<name>` junk in restored trees), but unlike ustar it can
+express every name a build produces — ustar refuses a single path
+component over 100 bytes outright, and splits anything over 100 bytes
+into `prefix` + `name` (v25). Staged copies carry the source file's
+permission bits, so an executable output restores executable.
+
 **Key properties:** one entry is one file — eviction is a single
 unlink; no per-entry manifest, no separate `logs/` tree; and local +
 remote layers transport the exact same tar.zst bytes end-to-end.
@@ -699,6 +707,50 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
 `CLAUDE.md` (decision log), and the cache test file.
 
 ### History
+
+- **v24 → v25**: the ARTIFACT BYTES in every existing entry are wrong
+  while the key addressing them is unchanged — the one situation a
+  version bump exists for, and the opposite of the recent self-healing
+  no-bump cases. Two defects on the pack/restore path, both silent data
+  loss on an ordinary cache hit with no attacker involved:
+  - **The executable bit was stripped from every cached output.**
+    `packArtifact` staged each output with `Bun.write`, which creates
+    the destination under the process umask and does NOT carry the
+    source's mode, so the tar header recorded 0644 and the restore
+    faithfully reproduced 0644. Any build emitting a CLI shim, a
+    compiled binary or a generated script worked cold and broke warm —
+    including this repo's own `build.bun.*` release binaries. Fixed by
+    chmod-ing each staged copy to the source's mode.
+  - **Outputs whose archive entry name exceeded 100 bytes were dropped
+    on every restore.** POSIX ustar splits such a name into
+    `prefix` + `name`; the reader read only `name`, which no longer
+    starts with `outputs/`, so the file was neither restored nor
+    indexed. Not self-healing: with no `output_files` row, the
+    skip-restore check compared a truncated expectation against a
+    truncated tree and agreed forever. Threshold is a
+    project-relative output path of ~93 chars — ordinary for a modern
+    bundler. Fixed by reading `prefix` (gated on the POSIX magic, since
+    GNU headers reuse those bytes for atime) AND by packing
+    `--format=gnu`, which carries long names in an `L` record.
+
+  The format switch also fixes a working build being reported as
+  FAILED: ustar cannot split a single path COMPONENT over 100 bytes and
+  exits non-zero ("file name is too long (cannot be split)"), which
+  `packArtifact` raised _after_ the task had already succeeded. 120-char
+  filenames are legal everywhere and routine in snapshot/fixture trees.
+
+  Shipped with three defence-in-depth fixes that needed no bump of their
+  own: `restoreOutputs` now throws instead of returning quietly when the
+  artifact is gone or cannot produce an output the index recorded (the
+  caller has already wiped the declared outputs by then, so a quiet
+  return reported a green hit over an emptied tree — reachable via a
+  concurrent `vx cache prune`); the tar reader rejects an entry whose
+  declared size runs past the end of the archive (`subarray` clamps, so
+  it used to install short, NUL-padded content as a cache hit instead of
+  degrading to a miss); and directory entries now get the same
+  containment + realpath checks as file entries (`mkdir` follows a
+  pre-existing symlink, so directories could be created outside the
+  destination). No `SCHEMA_VERSION` bump — no table changed.
 
 - **SCHEMA v23 → v24 (no `CACHE_VERSION` bump)**: `file_hashes` gains
   `ctime_ms` + `ino`. The memo keyed on `(mtime, size)` alone, and its

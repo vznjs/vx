@@ -208,6 +208,95 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **CACHE_VERSION → v25 — TWO silent-data-loss defects on the
+  ORDINARY cache-hit path, no attacker involved** (from a repro-mandated
+  hostile audit of artifact pack/extract/restore — what the cache HANDS BACK,
+  a surface never previously reviewed). **(a) The EXECUTABLE BIT was stripped
+  from every cached output.** `packArtifact` staged each file with
+  `Bun.write`, which does not carry the source mode, so tar recorded 0644 and
+  the extractor faithfully restored 0644 (the extractor was always correct —
+  the loss was entirely at pack time). Any build producing an executable — a
+  CLI shim, a compiled binary, a generated script, any `chmod +x` — worked on
+  the cold run and was BROKEN by the cache hit: the worst failure profile,
+  passing locally on first build and failing on every warm/CI run. **This repo
+  shipped the bug against itself** — `build.bun.*` declares mode-755 binaries
+  as outputs, so a cache hit on the release path produced NON-EXECUTABLE
+  releases. **(b) Any output whose archive entry name exceeded 100 bytes was
+  DROPPED on every restore.** `parseTarHeaders` read only the ustar `name`
+  field and never `prefix`, while `packArtifact` ran `tar --format=ustar`,
+  which splits long paths across both — so the parser saw a bare basename that
+  does not start with `outputs/` and the file was neither indexed nor
+  restored. **NOT self-healing:** with no `output_files` row, the set-match and
+  `isOutputsCurrent` guards both compare a TRUNCATED expectation against a
+  TRUNCATED tree, agree, and report `up-to-date` forever; `--force` repairs the
+  tree and the next hit destroys it again. Threshold ≥93-char project-relative
+  path (≥83 under `workspace-outputs/`) — ordinary for any modern bundler. The
+  header comment asserted the OPPOSITE ("Names > 100 chars still work via
+  ustar's prefix+name") and is corrected. **The bump is REQUIRED and is the
+  opposite of the recent no-bump waves**, which is the distinction worth
+  keeping: there the changed KEY was wrong before, so the corrected key was a
+  NEW key that missed once and self-healed; here the **stored BYTES are wrong
+  while the key addressing them is UNCHANGED**, so without a new namespace the
+  fixed code replays them forever and the fix never reaches existing entries.
+  NO SCHEMA bump. **Packing switched to `--format=gnu`**, which also fixes a
+  WORKING build being reported FAILED (ustar exits 2 on a single path
+  component >100 bytes — "cannot be split; not dumped" — _after_ the task
+  succeeded, so `vx run` exited 1 on a build that completed fine). I verified
+  before delegating that GNU round-trips a 108-char path through vx's EXISTING
+  parser: the reader already handles the GNU `L` longname record and
+  `tests/tar-security.test.ts` already covers it. **A subtlety the developer
+  caught that I had not anticipated:** GNU headers carry `ustar␣␣\0` at byte
+  257 and REUSE bytes 345+ for atime/ctime, so an ungated `prefix` read would
+  fabricate a garbage parent directory for every GNU entry — the read is gated
+  on the POSIX magic, with the gate itself pinned. **Three defence-in-depth
+  fixes rode along:** `restoreOutputs` now THROWS instead of returning quietly
+  when the artifact vanished (the caller has already run `cleanOutputs`, so a
+  silent return is a green hit over an EMPTIED tree — reachable via a
+  concurrent `vx cache prune`, a documented normal operation); throwing rather
+  than degrading to a miss because restore-tier tasks run BEFORE their deps
+  finish under the two-tier scheduler, so falling through to execution would
+  run a task against unbuilt inputs — silently wrong beats loudly failed. The
+  reader rejects a declared `size` that overruns the archive (`subarray`
+  clamps, so a lying header installed silently truncated NUL-padded content as
+  a cache HIT rather than degrading to a miss); **checksum verification was
+  deliberately NOT added** — an attacker who can supply artifact bytes can
+  compute a valid checksum, so it adds zero security value while zstd's frame
+  checksum already covers accidental corruption. And directory entries got the
+  containment checks file entries already had, resolving the DEEPEST EXISTING
+  ancestor rather than the immediate parent (checking only the parent passes
+  for `dist/a/b` when `dist` is the symlink and `dist/a` does not exist yet),
+  refusing before any `mkdir` so nothing is created outside at all.
+  **Verified by me end-to-end, differentially, on my own fixture** — a deep
+  100+ byte output path plus a 755 CLI, built, wiped, restored from a real
+  cache hit (`1 local`): pre-fix the deep file is GONE and the CLI is 644 and
+  will not execute; post-fix both survive and it runs. **Process note:** my
+  first differential was VACUOUS — I `git stash`ed after cherry-picking, so
+  there was nothing in the working tree to stash and I tested the fixed code
+  twice; the giveaway was a "pre-fix" run showing no defect. Use
+  `git checkout HEAD~1 -- <files>` to differential against a COMMITTED change.
+  **The audit's own meta-note is the lasting lesson:** nothing in the suite
+  round-tripped a real archive of a realistic output tree asserting the
+  restored tree is byte- AND mode-identical to what the task produced — ONE
+  such test would have caught BOTH HIGH defects, and `tests/artifact-roundtrip.
+test.ts` is now it. Differentially proven 10 fail / 51 pass → 61 pass / 0
+  fail. Gates: fmt/lint 0, core **1368/0** (+12; 21 skip = sandbox, `bwrap`
+  unavailable here). **Recorded SOUND by the same audit, so nobody
+  re-audits:** path traversal / zip-slip for FILE entries (`..`, absolute,
+  `//`, backslash, drive-letter, NUL-truncation, symlinked parent — all
+  refused); `isOutputsCurrent` divergences beyond the known same-ms residual
+  (file replaced by a directory, size, mode — all correctly false);
+  extra/missing files on disk forcing a full clean+restore via `setsMatch` in
+  both directions; `isOutputsCurrent(expected=[])` unreachable from
+  `restoreHit` (the skip block is guarded by `expected.length > 0`); zero-byte
+  outputs round-tripping (correct 512-byte block advance); 8 concurrent
+  same-hash `save()`s and 6 concurrent `restoreOutputs` into one tree staying
+  byte-intact (the pid+hrtime+random tmp name plus atomic rename holds); every
+  zstd-bomb defence; typeflag rejections (hardlink/symlink/chardev/blockdev/
+  fifo/contiguous); PAX and AppleDouble skipping; and `markRemoteAbsent` /
+  `inflight` dedup / `drainUploads`. **Untested, stated honestly:** restore
+  over a read-only existing output — the probe ran as uid 0, where mode bits
+  do not block writes, so its result is meaningless.
+
 - **2026-07-26**: **The LAST stale-hit from the input audit closed — a trusted
   index OID is no longer treated as the worktree bytes when a clean filter can
   rewrite them.** Under `text`/`eol`/`ident` (or `core.autocrlf`), git stores

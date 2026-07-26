@@ -1,4 +1,4 @@
-// In-process tar reader (POSIX ustar) for cache-hit restore.
+// In-process tar reader (POSIX ustar + GNU) for cache-hit restore.
 //
 // We replace `Bun.spawn(['tar', '-xf', ...])` on the cache-hit path
 // to save a per-restore fork+exec (~5-10ms on Linux). At 200 cached
@@ -15,12 +15,24 @@
 //                                   'x' / 'g' / 'X' = PAX extended
 //                                   header — metadata for the next
 //                                   entry, not a file itself)
+//   - magic       : bytes 257..264 ('ustar\0' + '00' = POSIX ustar;
+//                                   'ustar  \0' = the older GNU format)
+//   - prefix      : bytes 345..499 — POSIX-ustar ONLY. A name longer
+//                                   than 100 bytes is split here, and
+//                                   the entry's real name is
+//                                   `prefix + '/' + name`. GNU-format
+//                                   headers put atime/ctime at the same
+//                                   offsets, so this field is read only
+//                                   when the POSIX magic is present.
 //   - data        : `size` bytes, padded up to next 512-byte block
 //   - end         : two 512-byte zero blocks
 //
-// We tolerate the GNU longname extension (typeflag 'L') because some
-// tar binaries emit it for paths > 100 chars even when ustar's
-// prefix+name (256 chars) would suffice. PAX extended-header records
+// We tolerate the GNU longname extension (typeflag 'L') — that is how
+// GNU-format archives (what `packArtifact` writes) carry a name longer
+// than 100 bytes, and it is also the only way to express a single path
+// COMPONENT over 100 bytes, which ustar cannot split at all.
+//
+// PAX extended-header records
 // ('x' / 'g' / 'X') are SKIPPED — BSD tar (macOS default) emits one
 // per entry for xattrs / mtime-nanos / SCHILY metadata. We don't
 // need any of that; treating the headers as regular files would put
@@ -73,7 +85,27 @@ export function parseTarHeaders(tarBytes: Uint8Array): TarHeader[] {
 
     let nameEnd = 0
     while (nameEnd < 100 && header[nameEnd] !== 0) nameEnd++
-    const rawName = dec.decode(header.subarray(0, nameEnd)).replace(/^\.\//, '')
+    const bareName = dec.decode(header.subarray(0, nameEnd))
+
+    // POSIX ustar splits a name over 100 bytes into `prefix` + `name`.
+    // Reading only `name` would silently drop the leading directories —
+    // and with them the `outputs/` namespace, so the entry would be
+    // invisible to both the restore and the output_files index. Gated on
+    // the POSIX magic because GNU headers reuse bytes 345+ for atime.
+    const posixUstar =
+      header[257] === 0x75 /* u */ &&
+      header[258] === 0x73 /* s */ &&
+      header[259] === 0x74 /* t */ &&
+      header[260] === 0x61 /* a */ &&
+      header[261] === 0x72 /* r */ &&
+      header[262] === 0
+    let prefix = ''
+    if (posixUstar) {
+      let prefixEnd = 0
+      while (prefixEnd < 155 && header[345 + prefixEnd] !== 0) prefixEnd++
+      prefix = dec.decode(header.subarray(345, 345 + prefixEnd))
+    }
+    const rawName = (prefix.length > 0 ? `${prefix}/${bareName}` : bareName).replace(/^\.\//, '')
 
     const modeStr = dec.decode(header.subarray(100, 108)).trim().replace(/ +$/, '')
     const mode = parseInt(modeStr, 8) || 0o644
@@ -89,6 +121,17 @@ export function parseTarHeaders(tarBytes: Uint8Array): TarHeader[] {
 
     const dataStart = off + 512
     const padded = Math.ceil(size / 512) * 512
+
+    // A declared size that runs past the end of the archive means the
+    // bytes are not there. `subarray` CLAMPS, so reading anyway yields a
+    // short, NUL-padded body — silently WRONG file content presented as a
+    // cache hit. Refuse instead; the caller degrades to a miss and re-runs.
+    // (Only the data must be present — trailing block padding may be cut.)
+    if (dataStart + size > tarBytes.length) {
+      throw new TarSecurityError(
+        `tar entry declares ${size} bytes but the archive ends early (truncated): ${rawName}`,
+      )
+    }
 
     if (typeFlag === 0x4c /* 'L' — GNU longname */) {
       // The data block carries the next entry's full name (null-
@@ -249,24 +292,6 @@ export async function extractOutputs(
     return null
   }
 
-  // Two passes: directories first (depth-first via sort), then files.
-  // Keeps file writes from racing with their parent dir creation.
-  const dirEntries = headers
-    .filter((h) => h.isDir)
-    .map((h) => destFor(h.name))
-    .filter((d): d is { base: string; rel: string } => d !== null && d.rel.length > 0)
-    .sort((a, b) => (a.rel < b.rel ? -1 : 1))
-  for (const d of dirEntries) {
-    await mkdir(path.join(d.base, d.rel), { recursive: true })
-  }
-
-  const fileEntries = headers
-    .map((h) => ({ h, dest: destFor(h.name) }))
-    .filter(
-      (e): e is { h: TarHeader; dest: { base: string; rel: string } } =>
-        e.dest !== null && !e.h.isDir && e.dest.rel.length > 0,
-    )
-
   // The REAL path of each base dir (symlinks resolved), memoized. Used to
   // catch a symlinked ANCESTOR under the output tree: the lexical check
   // below stops a `..` name, but if `<dest>/dist` is already an on-disk
@@ -286,32 +311,78 @@ export async function extractOutputs(
     return r
   }
 
+  // Containment gate applied to EVERY entry — directories included, since
+  // `mkdir(recursive)` follows a pre-existing symlink just as happily as a
+  // file write does. Two checks: lexical (the joined path stays under the
+  // base) and real (the deepest EXISTING ancestor still resolves inside the
+  // real base). Walking up to the deepest existing ancestor is what makes it
+  // sound BEFORE anything is created — checking only the immediate parent
+  // would pass for `dist/a/b` when `dist` is the symlink and `dist/a` does
+  // not exist yet.
+  const assertContained = async (base: string, target: string, name: string): Promise<void> => {
+    const baseResolved = path.resolve(base)
+    const targetResolved = path.resolve(target)
+    if (targetResolved !== baseResolved && !targetResolved.startsWith(baseResolved + path.sep)) {
+      throw new TarSecurityError(`tar entry escapes destDir (unsafe): ${name}`)
+    }
+    const realBase = await realBaseOf(base)
+    // Only ancestors strictly BELOW the base are candidates — those are the
+    // ones a poisoned entry could follow out of the tree. The walk must never
+    // climb past the base: when the base itself does not exist yet (the
+    // workspace-outputs anchor is created lazily), its parent legitimately
+    // resolves outside and comparing against it would reject every entry.
+    let probe = path.dirname(targetResolved)
+    while (probe.startsWith(baseResolved + path.sep)) {
+      const real = await realpath(probe).then(
+        (r) => r,
+        () => null,
+      )
+      if (real !== null) {
+        if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+          throw new TarSecurityError(`tar entry escapes destDir via a symlinked parent: ${name}`)
+        }
+        return
+      }
+      probe = path.dirname(probe)
+    }
+    // Nothing between the base and the target exists yet, so there is no
+    // pre-existing symlink to follow — the chain will be created fresh.
+  }
+
+  // Two passes: directories first (depth-first via sort), then files.
+  // Keeps file writes from racing with their parent dir creation.
+  const dirEntries = headers
+    .filter((h) => h.isDir)
+    .map((h) => ({ name: h.name, dest: destFor(h.name) }))
+    .filter(
+      (d): d is { name: string; dest: { base: string; rel: string } } =>
+        d.dest !== null && d.dest.rel.length > 0,
+    )
+    .sort((a, b) => (a.dest.rel < b.dest.rel ? -1 : 1))
+  for (const d of dirEntries) {
+    const target = path.join(d.dest.base, d.dest.rel)
+    await assertContained(d.dest.base, target, d.name)
+    await mkdir(target, { recursive: true })
+  }
+
+  const fileEntries = headers
+    .map((h) => ({ h, dest: destFor(h.name) }))
+    .filter(
+      (e): e is { h: TarHeader; dest: { base: string; rel: string } } =>
+        e.dest !== null && !e.h.isDir && e.dest.rel.length > 0,
+    )
+
   await Promise.all(
     fileEntries.map(async ({ h, dest }) => {
-      const destResolved = path.resolve(dest.base)
       const target = path.join(dest.base, dest.rel)
-      // Defense in depth — parseTarHeaders already rejects `..` /
-      // absolute paths, but if a future glitch lets one through we
-      // catch it here. path.resolve normalizes `..` components in
-      // the joined path so the comparison is sound.
-      const targetResolved = path.resolve(target)
-      if (targetResolved !== destResolved && !targetResolved.startsWith(destResolved + path.sep)) {
-        throw new TarSecurityError(`tar entry escapes destDir (unsafe): ${h.name}`)
-      }
+      // Refuse BEFORE the parent chain is created, so a poisoned artifact
+      // whose entry lands under a pre-existing symlinked directory never
+      // gets so far as materializing a directory outside the tree.
+      await assertContained(dest.base, target, h.name)
 
       // Ensure the parent dir exists. Cheap because mkdir(recursive)
       // is a no-op when the dir is already there.
       await mkdir(path.dirname(target), { recursive: true })
-
-      // Symlinked-parent escape check: the parent dir now exists — resolve
-      // its real path and require it to still sit inside the real base dir.
-      // A poisoned artifact whose entry lands under a pre-existing symlinked
-      // directory is refused before any bytes are written outside the tree.
-      const realBase = await realBaseOf(dest.base)
-      const realParent = await realpath(path.dirname(target)).catch(() => path.dirname(target))
-      if (realParent !== realBase && !realParent.startsWith(realBase + path.sep)) {
-        throw new TarSecurityError(`tar entry escapes destDir via a symlinked parent: ${h.name}`)
-      }
 
       // Symlink TOCTOU defense: if the target IS a symlink, unlink
       // it first so the upcoming write doesn't follow the link and

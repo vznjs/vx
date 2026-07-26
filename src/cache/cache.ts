@@ -31,7 +31,7 @@
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { mkdirSync, statSync } from 'node:fs'
-import { mkdir, mkdtemp, rename, rm, stat, utimes } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rename, rm, stat, utimes } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
@@ -75,7 +75,18 @@ import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
 // inside the key fold (the new `captureInto` sink is a pure
 // side-channel). A task's hash is byte-identical before and after, so
 // existing artifacts stay valid and there is no cache-version bump.
-const CACHE_VERSION = 'vx-cache-v24'
+// v25: the ARTIFACT BYTES are wrong in every existing entry, while the
+// key that addresses them is unchanged — the one situation a version
+// bump exists for. Two defects: (a) `packArtifact` staged outputs with
+// `Bun.write`, which does not carry the source mode, so every artifact
+// records 0644 and a cache hit strips the executable bit off any binary
+// or generated script; (b) it packed `--format=ustar`, which splits a
+// name over 100 bytes into prefix+name, and the reader read only `name`
+// — so those entries lost their `outputs/` prefix and were silently
+// dropped from both the restore and the output_files index. Neither is
+// self-healing: the stored bytes/headers are already wrong, so without a
+// new namespace the fixed code would keep replaying them forever.
+const CACHE_VERSION = 'vx-cache-v25'
 // SCHEMA history (drop+recreate on mismatch; pre-alpha, no migrations):
 //   v20: file_hashes.content_hash (git blob OIDs).
 //   v21: dropped the unused outputs_hash column (pure-input hashing).
@@ -475,6 +486,21 @@ export class CorruptArtifactError extends Error {
     super(`cache: corrupt artifact for ${hash}: ${reason}`)
     this.name = 'CorruptArtifactError'
   }
+}
+
+/**
+ * Copy a source file's permission bits onto its staged copy.
+ *
+ * `Bun.write` creates the destination fresh under the process umask — it does
+ * NOT carry the source's mode — so an executable output (a compiled binary, a
+ * generated shell script, anything `chmod +x`ed) would be staged 0644, the tar
+ * header would record 0644, and every cache hit would restore a
+ * NON-EXECUTABLE file. The build works cold and breaks warm, which is the
+ * worst failure profile there is.
+ */
+async function stageMode(src: string, dest: string): Promise<void> {
+  const st = await stat(src)
+  await chmod(dest, st.mode & 0o777)
 }
 
 /**
@@ -1306,20 +1332,46 @@ export class Cache implements CacheLayer {
     // path — they're surfaced via `get()` for the orchestrator to
     // replay through the logger.
     const src = this.tarPath(hash)
-    if (!(await Bun.file(src).exists())) return
+    // The caller already committed to this hit and WIPED the declared
+    // outputs, so returning quietly here would report a green cache hit over
+    // an emptied output tree. The artifact existed when `get()` probed it, so
+    // its absence now means something removed it underneath us (a concurrent
+    // `vx cache prune` is the documented way) — fail loud; the task re-runs.
+    if (!(await Bun.file(src).exists())) {
+      throw new CorruptArtifactError(hash, 'artifact file vanished before restore')
+    }
     const compressed = await Bun.file(src).bytes()
     // Local artifact (already validated at ingest): trusted, so a missing
     // declared size is allowed; the oversize ceiling still applies.
     const tarBytes = await zstdDecompressBounded(compressed, hash, true)
 
     const headers = parseTarHeaders(tarBytes)
-    if (
-      !headers.some(
-        (h) => h.name.startsWith('outputs/') || h.name.startsWith(WORKSPACE_OUTPUT_PREFIX),
-      )
-    ) {
-      return
+    const provided = new Set<string>()
+    for (const h of headers) {
+      if (h.isDir) continue
+      if (h.name.startsWith('outputs/') || h.name.startsWith(WORKSPACE_OUTPUT_PREFIX)) {
+        provided.add(h.name)
+      }
     }
+
+    // The index says exactly which files this entry materializes. If the
+    // archive cannot produce one of them, restoring "successfully" leaves a
+    // hole that no later run detects: the skip-restore check compares the
+    // same truncated expectation against the same truncated tree and agrees
+    // forever. Refuse instead of silently under-restoring.
+    const rows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
+    const missing = rows
+      .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
+      .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
+      .filter((name) => !provided.has(name))
+    if (missing.length > 0) {
+      throw new CorruptArtifactError(
+        hash,
+        `artifact is missing ${missing.length} recorded output(s): ${missing.slice(0, 3).join(', ')}`,
+      )
+    }
+
+    if (provided.size === 0) return
 
     await extractOutputs(tarBytes, projectDir, workspaceRoot)
 
@@ -1328,8 +1380,7 @@ export class Cache implements CacheLayer {
     // matches the rows at millisecond precision, so isOutputsCurrent
     // compares exactly — and any later edit moves the mtime off the
     // recorded historical value and is detected.
-    const rows = this.loadOutputFilesBatch([hash]).get(hash)
-    if (rows !== undefined) {
+    {
       await Promise.all(
         rows.map(async (r) => {
           try {
@@ -1440,6 +1491,7 @@ export class Cache implements CacheLayer {
             const dest = path.join(stageOutputs, rel)
             // Bun.write creates parent dirs as needed.
             await Bun.write(dest, Bun.file(f))
+            await stageMode(f, dest)
           }),
         )
       }
@@ -1450,7 +1502,9 @@ export class Cache implements CacheLayer {
         await Promise.all(
           wsOutputFiles.map(async (f) => {
             const rel = path.relative(args.workspaceRoot!, f)
-            await Bun.write(path.join(stageWs, rel), Bun.file(f))
+            const dest = path.join(stageWs, rel)
+            await Bun.write(dest, Bun.file(f))
+            await stageMode(f, dest)
           }),
         )
       }
@@ -1464,15 +1518,17 @@ export class Cache implements CacheLayer {
       if (wsOutputFiles.length > 0) topLevel.unshift('workspace-outputs')
       if (args.outputFiles.length > 0) topLevel.unshift('outputs')
 
-      // `--format=ustar` forces strict POSIX ustar — no PAX extended-
-      // header records. BSD tar (macOS default) emits PAX per entry
-      // by default for xattrs / mtime-nanos; those records would
-      // otherwise show up as junk `PaxHeaders/<name>` entries in our
-      // restored trees. GNU tar also accepts the flag (no-op on its
-      // side). Names > 100 chars still work via ustar's prefix+name
-      // (255 chars) or GNU longname fallback if the tar binary
-      // chooses to emit one.
-      const proc = Bun.spawn(['tar', '--format=ustar', '-cf', '-', '-C', stage, ...topLevel], {
+      // `--format=gnu` — like ustar it emits no PAX extended-header
+      // records (BSD tar, the macOS default, emits one PER ENTRY for
+      // xattrs / mtime-nanos, which would show up as junk
+      // `PaxHeaders/<name>` entries in restored trees), but unlike ustar
+      // it can express EVERY name a build can produce. ustar splits a
+      // name over 100 bytes into prefix+name and simply REFUSES
+      // ("file name is too long (cannot be split)", exit 2) when a single
+      // component exceeds 100 bytes — turning a build that succeeded into
+      // a failed run. GNU carries long names in an `L` record instead,
+      // which the reader has always understood.
+      const proc = Bun.spawn(['tar', '--format=gnu', '-cf', '-', '-C', stage, ...topLevel], {
         stdout: 'pipe',
         stderr: 'pipe',
         // COPYFILE_DISABLE blocks Apple's copyfile() from attaching

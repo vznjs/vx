@@ -28,6 +28,12 @@ function makeHeader(opts: {
   mode?: number
   typeFlag: string
   linkname?: string
+  /** POSIX-ustar `prefix` field (bytes 345..499). */
+  prefix?: string
+  /** Magic+version at bytes 257..265. Defaults to POSIX ustar. */
+  magic?: string
+  /** Raw bytes to plant at 345..499 regardless of format (GNU atime/ctime). */
+  tail?: string
 }): Uint8Array {
   const buf = new Uint8Array(512)
   const enc = new TextEncoder()
@@ -40,8 +46,9 @@ function makeHeader(opts: {
   for (let i = 148; i < 156; i++) buf[i] = 0x20
   buf[156] = opts.typeFlag.charCodeAt(0)
   if (opts.linkname) enc.encodeInto(opts.linkname, buf.subarray(157, 257))
-  enc.encodeInto('ustar\0', buf.subarray(257, 263))
-  enc.encodeInto('00', buf.subarray(263, 265))
+  enc.encodeInto(opts.magic ?? 'ustar\0' + '00', buf.subarray(257, 265))
+  if (opts.prefix) enc.encodeInto(opts.prefix, buf.subarray(345, 500))
+  if (opts.tail) enc.encodeInto(opts.tail, buf.subarray(345, 500))
   let cksum = 0
   for (let i = 0; i < 512; i++) cksum += buf[i]!
   enc.encodeInto(octal(cksum, 7), buf.subarray(148, 155))
@@ -237,6 +244,49 @@ describe('tar extractOutputs — symlink defense', () => {
     expect(existsSync(path.join(sensitiveDir, 'evil.txt'))).toBe(false)
     await rm(sensitiveDir, { recursive: true, force: true })
   })
+
+  it('a DIRECTORY entry under a symlinked parent is refused, not created', async () => {
+    // The dir pass called `mkdir(recursive)` with no containment check at
+    // all, and mkdir follows a pre-existing symlink exactly like a file
+    // write does — so directories were created OUTSIDE the destination
+    // (file bytes were still refused, but the tree escape was real).
+    const sensitiveDir = await mkdtemp(path.join(os.tmpdir(), 'vx-tar-sym-ddir-'))
+    await symlink(sensitiveDir, path.join(dest, 'dist'))
+
+    const tar = concatTar([
+      makeHeader({ name: 'outputs/dist/planted/', size: 0, typeFlag: '5', mode: 0o755 }),
+      EOF_BLOCKS,
+    ])
+    await expect(extractOutputs(tar, dest)).rejects.toThrow(/escape|symlink|unsafe/i)
+    expect(existsSync(path.join(sensitiveDir, 'planted'))).toBe(false)
+    await rm(sensitiveDir, { recursive: true, force: true })
+  })
+
+  it('a DEEP directory entry under a symlinked parent is refused (ancestor walk)', async () => {
+    // The escaping segment is the symlink `dist`, but the entry names a
+    // deeper path whose immediate parent does NOT exist yet — so checking
+    // only the immediate parent would pass and mkdir(recursive) would build
+    // the whole chain inside the symlink target.
+    const sensitiveDir = await mkdtemp(path.join(os.tmpdir(), 'vx-tar-sym-deep-'))
+    await symlink(sensitiveDir, path.join(dest, 'dist'))
+
+    const tar = concatTar([
+      makeHeader({ name: 'outputs/dist/a/b/c/', size: 0, typeFlag: '5', mode: 0o755 }),
+      EOF_BLOCKS,
+    ])
+    await expect(extractOutputs(tar, dest)).rejects.toThrow(/escape|symlink|unsafe/i)
+    expect(existsSync(path.join(sensitiveDir, 'a'))).toBe(false)
+    await rm(sensitiveDir, { recursive: true, force: true })
+  })
+
+  it('a benign directory entry still extracts (control)', async () => {
+    const tar = concatTar([
+      makeHeader({ name: 'outputs/dist/nested/', size: 0, typeFlag: '5', mode: 0o755 }),
+      EOF_BLOCKS,
+    ])
+    await extractOutputs(tar, dest)
+    expect(existsSync(path.join(dest, 'dist', 'nested'))).toBe(true)
+  })
 })
 
 describe('parseTarHeaders — security-relevant parse rejections', () => {
@@ -371,6 +421,73 @@ describe('parseTarHeaders — pathological lengths', () => {
     const headers = parseTarHeaders(tar)
     expect(headers.length).toBe(1)
     expect(headers[0]?.name).toBe(longName)
+  })
+
+  it('joins the ustar `prefix` field with `name` for paths > 100 bytes', () => {
+    // POSIX ustar splits a long name across prefix + name. Reading only
+    // `name` yields the bare basename — which no longer starts with
+    // `outputs/`, so the entry is invisible to the restore AND to the
+    // output_files index: a silently INCOMPLETE cache hit that never
+    // self-heals, because the truncated expectation matches the truncated
+    // tree forever.
+    const prefix = 'outputs/packages/design-system-components/dist/esm/react/primitives/button'
+    const base = 'index.esm.production.min.js'
+    expect(Buffer.byteLength(`${prefix}/${base}`)).toBeGreaterThan(100)
+    const tar = concatTar([
+      makeHeader({ name: base, size: 1, typeFlag: '0', prefix }),
+      makeDataBlock(new TextEncoder().encode('x')),
+      EOF_BLOCKS,
+    ])
+    const headers = parseTarHeaders(tar)
+    expect(headers.length).toBe(1)
+    expect(headers[0]?.name).toBe(`${prefix}/${base}`)
+  })
+
+  it('does NOT read bytes 345+ as a prefix on a GNU-format header', () => {
+    // GNU headers reuse 345.. for atime/ctime. Reading them as a prefix
+    // would fabricate a garbage parent directory for every GNU entry — so
+    // the prefix read is gated on the POSIX magic, and this pins the gate.
+    const tar = concatTar([
+      makeHeader({
+        name: 'outputs/app.js',
+        size: 1,
+        typeFlag: '0',
+        magic: 'ustar  \0',
+        tail: '00000000000 00000000000 ',
+      }),
+      makeDataBlock(new TextEncoder().encode('x')),
+      EOF_BLOCKS,
+    ])
+    const headers = parseTarHeaders(tar)
+    expect(headers.length).toBe(1)
+    expect(headers[0]?.name).toBe('outputs/app.js')
+  })
+})
+
+describe('parseTarHeaders — truncated archive', () => {
+  it('rejects an entry whose declared size runs past the end of the archive', () => {
+    // `subarray` CLAMPS, so an oversized `size` yields a short, NUL-padded
+    // body — WRONG file content installed and reported as a cache hit,
+    // instead of degrading to a miss. Exactly the threat model the trust
+    // scopes exist for.
+    const tar = concatTar([
+      makeHeader({ name: 'outputs/truncated.js', size: 4096, typeFlag: '0' }),
+      makeDataBlock(new TextEncoder().encode('REAL-BYTES')),
+      EOF_BLOCKS,
+    ])
+    expect(() => parseTarHeaders(tar)).toThrow(/ends early|truncated/i)
+  })
+
+  it('accepts an entry whose data is fully present (control)', () => {
+    const body = new TextEncoder().encode('REAL-BYTES')
+    const tar = concatTar([
+      makeHeader({ name: 'outputs/whole.js', size: body.length, typeFlag: '0' }),
+      makeDataBlock(body),
+      EOF_BLOCKS,
+    ])
+    const headers = parseTarHeaders(tar)
+    expect(headers.length).toBe(1)
+    expect(headers[0]?.size).toBe(body.length)
   })
 })
 
