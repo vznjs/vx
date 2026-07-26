@@ -1,3 +1,4 @@
+import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -275,6 +276,18 @@ describe('affectedProjects', () => {
     // Defensive test against git invocations that buffer / recurse
     // unbounded. Make ~50 commits in project b, ask affected since
     // the initial commit. We expect b alone, no crash.
+    //
+    // State the fixture's own precondition first. This test has twice failed
+    // in CI in a way that pointed AWAY from the cause — once as an unresolved
+    // `HEAD~50` (fixed by the commit-count assertion below), once as a bare
+    // ENOENT on the write in the loop, which reads like a bug in the code
+    // under test rather than a fixture that was not there. Neither has ever
+    // reproduced locally on a clean tree, so the next occurrence needs to
+    // describe itself.
+    const fixture = existsSync(path.join(root, 'packages/b'))
+      ? 'present'
+      : `MISSING — root ${existsSync(root) ? `holds [${readdirSync(root).join(', ')}]` : 'is gone'}`
+    expect(fixture).toBe('present')
     for (let i = 0; i < 50; i++) {
       await writeFile(path.join(root, 'packages/b/file.txt'), `b-v${i}`)
       await git(root, 'add', '.')

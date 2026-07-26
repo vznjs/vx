@@ -262,7 +262,24 @@ serving none of them is probably org-analytics scope creep.
   binaries (1.3.14 was 1 pass / 2 fail before, 3/0 after), and a REAL `vx watch`
   session editing only the preset produced **0** occurrences of the new command
   before and **110** after — **110 again from a `--compile --minify --bytecode`
-  binary**. I verified the pins under both binaries myself. **Named residual:**
+  binary**. I verified the pins under both binaries myself. **A hang vector the
+  Worker introduced, found by refusing to accept the CI red as "just the known
+  watch flake":** the Worker had NO deadline and NO `messageerror` handler, so a
+  worker thread the OS KILLS (memory pressure on a loaded runner) fires no
+  `error` event and its caller awaits FOREVER — in `vx watch` a permanent hang
+  on a cycle that normally takes milliseconds, with nothing else bounding it
+  since there is no run-level timeout. That is the same class as the 2026-07-19
+  runner hang, reintroduced through a new path. Fixed with a 30 s deadline that
+  rejects, terminates the worker and lets the next round start clean, plus a
+  `messageerror` handler for the other silent path. **The first pin for it was
+  BAD and was thrown away** — it grepped the source for `WORKER_TIMEOUT_MS`,
+  which asserts a constant exists, not that anything works; the deadline is now
+  read per call from `VX_CONFIG_WORKER_TIMEOUT_MS` so the pin drives it to
+  250 ms and asserts the REAL rejection (without the deadline that pin hangs to
+  its 5 s guard). Whether this WAS the watch flake is not claimed — it is a
+  genuine hang vector either way, and raising the test's 45 s budget would have
+  papered over a HANG (a healthy run of that test takes ~2.3 s, so it fails by
+  hanging, not by running long). **Named residual:**
   `loadWorkspaceConfig` gets no Worker path — `vx.workspace.ts` declares
   `plugins`, which hold FUNCTIONS and cannot cross the boundary; nothing there
   feeds a cache key so it cannot cause a stale hit, but a `vx.workspace.ts`
