@@ -31,6 +31,7 @@ import {
   setWorkspaceAndPersist,
   type NotificationItem,
   type OrgSummary,
+  type WorkspaceInfo,
 } from '../api.ts'
 import { getLiveActiveSignal, getVisibleSignal, useVisibilityRefresh } from '../live.ts'
 import { pinnedProjects } from '../pins.ts'
@@ -56,12 +57,34 @@ const NAV: NavItem[] = [
   { href: '/insights', label: 'Insights', icon: 'i-tabler-chart-line' },
 ]
 
+/**
+ * Most-recently-active first — long-lived orgs accumulate dead workspaces, and
+ * this must match what the server picks when no `?ws=` is given, or the URL
+ * would mirror a different workspace than the data came from.
+ */
+function sortedWorkspaces(list: readonly WorkspaceInfo[]): WorkspaceInfo[] {
+  return [...list].sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+}
+
+/**
+ * A workspace id that arrived in a shared link but is not one this account can
+ * see. Module scope so the banner survives the re-render the fallback causes.
+ */
+const [deniedWorkspace, setDeniedWorkspace] = createSignal('')
+
 export const Shell: ParentComponent = (props) => {
   const origin = getOriginSignal()
   const user = getCurrentUserSignal()
   const org = getOrgSignal()
   const navigate = useNavigate()
   const location = useLocation()
+  const workspaceSel = getWorkspaceSignal()
+  const workspaceList = getWorkspacesSignal()
+  const currentWorkspaceName = () => {
+    const sel = workspaceSel()
+    const id = sel !== '' ? sel : (sortedWorkspaces(workspaceList())[0]?.id ?? '')
+    return workspaceList().find((w) => w.id === id)?.name ?? id
+  }
   // Keyed on origin + user + org so switching account/org refetches metadata.
   const connection = () => `${origin()}|${user()?.userId ?? ''}|${org()}`
   const [meta] = createResource(connection, async () => {
@@ -89,6 +112,54 @@ export const Shell: ParentComponent = (props) => {
     refreshCapabilities()
     refreshOrgs()
     refreshWorkspaces()
+  })
+
+  // ---- workspace context in the URL --------------------------------------
+  // The selection is the SCOPE of every page, so a shared link must carry it —
+  // stored only in localStorage, `/runs/:id` opened against the RECIPIENT's
+  // workspace and silently showed them different data than the link meant.
+  //
+  // The signal stays the source of truth for FETCHING (scopedPathFor already
+  // appends `?ws=`, getConnectionKey already includes it). The URL is a mirror
+  // plus an INBOUND override, maintained by this one effect — threading the
+  // param through every <A href>, navigate() and `_href` data string would be
+  // invasive and would guarantee a missed link site.
+  createEffect(() => {
+    const list = getWorkspacesSignal()
+    if (list().length === 0) return // nothing to validate against yet
+    const params = new URLSearchParams(location.search)
+    const fromUrl = params.get('ws') ?? ''
+    const selected = workspaceSel()
+    // What the data layer is ACTUALLY reading right now: an empty selection
+    // means "let the server pick", and it picks most-recent.
+    const effective = selected !== '' ? selected : (sortedWorkspaces(list())[0]?.id ?? '')
+
+    if (fromUrl !== '') {
+      // Equal to the effective scope ⇒ this is our own mirror bouncing back,
+      // not an inbound override. Persisting it would silently pin the default
+      // just because someone visited, turning "let the server pick" into a
+      // choice the user never made.
+      if (fromUrl === effective) return
+      if (list().some((w) => w.id === fromUrl)) {
+        setWorkspaceAndPersist(fromUrl) // a shared link wins over the local pref
+      } else {
+        // The link named a workspace this account cannot see. Falling back
+        // silently would show data the link did not mean — the exact bug this
+        // whole mechanism exists to prevent — so say so, and drop the param.
+        setDeniedWorkspace(fromUrl)
+        params.delete('ws')
+        const qs = params.toString()
+        navigate(`${location.pathname}${qs === '' ? '' : `?${qs}`}`, { replace: true })
+      }
+      return
+    }
+
+    // No param but we do have a scope: mirror it back in, as a REPLACE so it
+    // adds no history entry and Back still works. This is what covers every
+    // internal link without any of them knowing about the workspace.
+    if (effective === '') return
+    params.set('ws', effective)
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true })
   })
 
   // Global Cmd/Ctrl-K for palette.
@@ -160,6 +231,23 @@ export const Shell: ParentComponent = (props) => {
           <NotificationBell />
           <AccountMenu />
         </header>
+
+        <Show when={deniedWorkspace() !== ''}>
+          <div class="px-5 py-2 border-b border-warn/30 bg-warn/10 flex items-center gap-2 text-[12px] text-fg-1">
+            <span class="i-tabler-alert-triangle text-warn text-[14px] shrink-0" aria-hidden="true" />
+            <span class="min-w-0 flex-1">
+              That link points at a workspace this account can't see — showing{' '}
+              <span class="font-mono">{currentWorkspaceName()}</span> instead. Ask whoever shared it
+              for access to the right organization.
+            </span>
+            <button
+              onClick={() => setDeniedWorkspace('')}
+              class="text-fg-3 hover:text-fg text-[11px] shrink-0"
+            >
+              dismiss
+            </button>
+          </div>
+        </Show>
 
         <main class="flex-1 p-6 max-w-[1440px] w-full mx-auto">{props.children}</main>
 
@@ -559,10 +647,11 @@ function NotificationBell() {
 function WorkspaceRow() {
   const list = getWorkspacesSignal()
   const selected = getWorkspaceSignal()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [open, setOpen] = createSignal(false)
 
-  // Most-recently-active first — long-lived orgs accumulate dead workspaces.
-  const sorted = createMemo(() => [...list()].sort((a, b) => b.lastSeenAt - a.lastSeenAt))
+  const sorted = createMemo(() => sortedWorkspaces(list()))
   // Empty selection means "let the server pick", and it picks most-recent —
   // so mirror that here rather than showing a blank while reading real data.
   const currentId = () => {
@@ -583,6 +672,11 @@ function WorkspaceRow() {
 
   function pick(id: string) {
     setWorkspaceAndPersist(id)
+    // Mirror the choice into the URL immediately so the address bar is
+    // shareable the moment it is switched, not one navigation later.
+    const params = new URLSearchParams(location.search)
+    params.set('ws', id)
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true })
     setOpen(false)
   }
 

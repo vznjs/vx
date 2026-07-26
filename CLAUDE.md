@@ -208,6 +208,44 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **The workspace context rides the URL — a shared link carries
+  its scope** (closing the caveat the sidebar-context wave named). Stored only
+  in localStorage, `/runs/:id` opened against the RECIPIENT's workspace and
+  silently showed them different data than the link meant. **Design — the URL
+  is a MIRROR plus an INBOUND override, NOT a threaded param:** the signal
+  stays the source of truth for fetching (`scopedPathFor` already appends
+  `?ws=`, `getConnectionKey` already includes it), and ONE effect in the Shell
+  adopts `?ws=` on load and replace-navigates to re-add it after any navigation
+  that dropped it. Threading the param through every `<A href>`, `navigate()`
+  and `_href` data string would have touched a dozen sites and GUARANTEED a
+  missed one; this way no link site knows the workspace exists. `replace`
+  throughout, so the mirror adds no history entry and Back still works, and
+  every other param survives (`?window=`, `?task=`, the Runs facets — losing
+  those while fixing a different deep link would be a regression, not a
+  tradeoff; pinned). **The honest failure state is the point:** a link naming a
+  workspace the account cannot see falls back AND says so in a banner, because
+  falling back silently shows data the link did not mean — the exact bug the
+  mechanism exists to prevent — just relocated. **A self-pin the first cut
+  introduced and the tests caught:** the mirror wrote the default into the URL,
+  the adopt branch then read it back and PERSISTED it, so merely visiting
+  turned "let the server pick" into a choice the user never made; the adopt
+  branch now compares against the EFFECTIVE scope, not the stored one, so only
+  a genuine inbound override pins. Pinned by 5 browser cases (mirror, link
+  beats local pref, scope survives an internal link that knows nothing about
+  it, existing params preserved, denied workspace falls back + warns).
+  **Test-infra, two real fixes:** (1) the browser suites now close their own
+  CONTEXT in teardown — with a shared browser, an open page keeps an SSE
+  connection alive and `server.stop()` waits on it; (2) `bootPlatform.stop()`
+  bounds the wait, because `server.stop()` force-closes the listener then
+  awaits `db.close()`, which waits on the BACKGROUND `ensureIndexes` (CREATE
+  INDEX CONCURRENTLY per partition) — slow enough on the shared cluster by the
+  late suites to blow the hook timeout, strand the shared browser and fail
+  every browser suite after it. A test needn't wait for an index it never
+  queries. Cloud suite **580/0 in 100s**. Also: the suite's own `freshLoad`
+  raced the mirror (a hash-only `goto` doesn't reload, so the app rewrote the
+  address before `reload()` read it) — it now stamps the exact target with
+  `history.replaceState` first. NO schema/wire/CACHE bump (UI + test infra).
+
 - **2026-07-26**: **The table filter boxes search the WHOLE workspace, not the
   fetched page** (the last open piece of the 1000-project / 10k-task scale
   directive; the Projects table's "showing N of M" Callout was the honest
