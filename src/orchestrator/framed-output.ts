@@ -84,16 +84,7 @@ export function formatTaskBlock(
 
   const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('', s, colors, { dim: true })
-  // Section labels are bold + state-colored (owner design): stdout
-  // green, stderr red, sandbox yellow, command plain white — only
-  // the command CONTENT is greyed (context, not signal). A dim rule
-  // trails each label to the frame width, and sections get vertical
-  // margins so content stands clear of the furniture.
-  const section = (title: string, color?: string) => {
-    const label = paint(color ?? '', title, colors, { bold: true })
-    const rule = corner('\u2500'.repeat(Math.max(1, FRAME_WIDTH - 4 - title.length)))
-    return `${corner('\u251c\u2500')} ${label} ${rule}`
-  }
+  const section = (title: string, color?: string) => sectionLine(title, color ?? '', colors)
   const header = formatBlockHeader(outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
 
@@ -131,6 +122,20 @@ export function formatTaskBlock(
 
   lines.push(`${corner('└─')} ${idPainted} ${corner('──')}${formatBlockFooter(outcome, colors)}`)
   return lines.join('\n') + '\n'
+}
+
+/**
+ * Section labels are bold + state-colored (owner design): stdout green,
+ * stderr red, sandbox yellow, command plain white — only the command
+ * CONTENT is greyed (context, not signal). A dim rule trails each label to
+ * the frame width, and sections get vertical margins so content stands
+ * clear of the furniture.
+ */
+function sectionLine(title: string, color: string, colors: ColorSupport): string {
+  const corner = (s: string) => paint('', s, colors, { dim: true })
+  const label = paint(color, title, colors, { bold: true })
+  const rule = corner('─'.repeat(Math.max(1, FRAME_WIDTH - 4 - title.length)))
+  return `${corner('├─')} ${label} ${rule}`
 }
 
 /**
@@ -383,6 +388,42 @@ export function formatFrameClose(
 
 function isPersistentNode(node: TaskNode): boolean {
   return node.config.exec?.persistent !== undefined
+}
+
+/**
+ * Everything a persistent task wrote AFTER it signalled ready, as one
+ * trailing block. Its outcome landed at ready while the child kept
+ * running, so this uses the live frame's `▸ … running` vocabulary rather
+ * than the success frame `formatTaskBlock` renders — the block is a tail,
+ * not a completed task's log. Section titles say `(since ready)` because
+ * the pre-ready output already went out with the outcome, and a
+ * head-dropped tail names how much it lost so a truncated log can never
+ * read as complete. Empty body → '' (the caller writes nothing).
+ */
+export function formatPersistentTailBlock(
+  node: TaskNode,
+  outcome: TaskOutcome,
+  body: TaskBlockBody,
+  dropped: { stdout?: number; stderr?: number } = {},
+  colors: ColorSupport = NO_COLOR,
+): string {
+  const stdout = body.stdout ?? ''
+  const stderr = body.stderr ?? ''
+  if (stdout.trim().length === 0 && stderr.trim().length === 0) return ''
+  const lines: string[] = [formatFrameOpen(node, colors)]
+  const pushStream = (text: string, title: string, color: string, lost: number): void => {
+    if (text.trim().length === 0) return
+    lines.push(sectionLine(title, color, colors), '')
+    if (lost > 0) {
+      lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
+    }
+    pushBodyLines(lines, text)
+    lines.push('')
+  }
+  pushStream(stdout, 'STDOUT (since ready)', SUCCESS, dropped.stdout ?? 0)
+  pushStream(stderr, 'STDERR (since ready)', ERROR, dropped.stderr ?? 0)
+  lines.push(formatFrameClose(node, outcome, colors))
+  return lines.join('\n') + '\n'
 }
 
 /**

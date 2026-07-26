@@ -814,3 +814,132 @@ describe('flow e2e against a real fixture workspace', () => {
     { timeout: 20_000 },
   )
 })
+
+// A persistent task's outcome lands at READY, but the child keeps running
+// and keeps writing for the rest of the run. Those post-ready chunks used
+// to arrive after `taskComplete` had already drained the task's buffer, so
+// nothing emitted them and nothing freed them — invisible everywhere except
+// the one focused view that streams live, and retained until the process
+// exited. This block is the gap: before it, `output-flow.test.ts` had zero
+// persistent coverage.
+describe('persistent post-ready output', () => {
+  const mkPersistent = (id: string, opts: { requested?: boolean } = {}): TaskNode => {
+    const n = mkNode(id, opts)
+    ;(n as { config: unknown }).config = {
+      exec: { command: 'sh ./server.sh', persistent: { readyWhen: 'READY' } },
+    }
+    return n
+  }
+
+  it('full: chunks written after ready surface as a trailing running block', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkPersistent('app#server')
+    log.taskStdout(n, 'READY\n')
+    log.taskComplete(n, mkOutcome(n, 'success', { durationMs: 7 }))
+    for (let i = 1; i <= 20; i++) log.taskStdout(n, `POST-LINE-${i}\n`)
+    log.runEnd?.()
+
+    const text = out.text()
+    // Every post-ready line reaches the terminal (was: none of them).
+    for (let i = 1; i <= 20; i++) expect(text).toContain(`POST-LINE-${i}`)
+    // …in a block that reads as still-running, not as a completed task.
+    expect(text).toContain('┌─ ▸ app#server > $ sh ./server.sh')
+    expect(text).toContain('STDOUT (since ready)')
+    expect(text).toContain('└─ ▸ app#server ── (7ms) running')
+  })
+
+  it('full: stderr since ready lands in its own section', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkPersistent('app#server')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.taskStderr(n, 'EADDRINUSE\n')
+    log.runEnd?.()
+    expect(out.text()).toContain('STDERR (since ready)')
+    expect(out.text()).toContain('EADDRINUSE')
+  })
+
+  it('broad + focused-dependency also surface the tail', () => {
+    for (const mode of ['broad', 'focused'] as const) {
+      const out = sink()
+      const log = defaultLogger(NO_COLORS, { mode }, out)
+      // Not requested: in focused this is the dependency case — the
+      // motivating one, where an `e2e` task failed against this server.
+      const n = mkPersistent('app#server')
+      log.taskComplete(n, mkOutcome(n, 'success'))
+      log.taskStdout(n, 'POST-READY\n')
+      log.runEnd?.()
+      expect(out.text()).toContain('POST-READY')
+    }
+  })
+
+  it('none + errors-only stay silent (their contracts are absolute)', () => {
+    for (const mode of ['none', 'errors-only'] as const) {
+      const out = sink()
+      const log = defaultLogger(NO_COLORS, { mode }, out)
+      const n = mkPersistent('app#server')
+      log.taskComplete(n, mkOutcome(n, 'success'))
+      log.taskStdout(n, 'POST-READY\n')
+      log.runEnd?.()
+      expect(out.text()).toBe('')
+    }
+  })
+
+  it('the tail is bounded and says how much of the head it dropped', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkPersistent('app#server')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    // 1 MiB of post-ready output — a dev server logs without bound.
+    const chunk = 'x'.repeat(1024)
+    for (let i = 0; i < 1024; i++) log.taskStdout(n, chunk)
+    log.taskStdout(n, '\nNEWEST-LINE\n')
+    log.runEnd?.()
+
+    const text = out.text()
+    // The newest output is what explains a failure, so it survives…
+    expect(text).toContain('NEWEST-LINE')
+    // …and the block stays far under what was written.
+    expect(text.length).toBeLessThan(256 * 1024)
+    expect(text).toMatch(/… \d+ earlier characters dropped/)
+  })
+
+  it('a live-streaming requested task is not captured twice', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    const n = mkPersistent('app#server', { requested: true })
+    log.taskStart?.(n)
+    log.taskStdout(n, 'READY\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.taskStdout(n, 'POST-READY\n')
+    log.runEnd?.()
+
+    const text = out.text()
+    // Streamed live exactly once, with no trailing replay block.
+    expect(text.match(/POST-READY/g)?.length).toBe(1)
+    expect(text).not.toContain('since ready')
+  })
+
+  it('runEnd is idempotent — run() calls it twice on the success path', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkPersistent('app#server')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.taskStdout(n, 'POST-READY\n')
+    log.runEnd?.()
+    log.runEnd?.()
+    expect(out.text().match(/POST-READY/g)?.length).toBe(1)
+  })
+
+  it('a silent server adds no tail block to its completion frame', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkPersistent('app#server')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.runEnd?.()
+    // The ready frame prints as always; nothing trails it.
+    expect(out.text()).toContain('└─ app#server ── (100ms) success')
+    expect(out.text()).not.toContain('since ready')
+  })
+})

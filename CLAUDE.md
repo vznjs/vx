@@ -208,6 +208,87 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **A dev server's output after it signals ready reaches the
+  terminal again, and stops being retained forever** (from a repro-mandated
+  hostile audit of the exec primitives + env isolation). Three contracts that
+  are individually right compose into a leak: `runPersistent` deliberately keeps
+  invoking `onStdout` for the child's whole lifetime, `execute-task` returns the
+  outcome at READY, and the logger's `taskComplete` does `takeChunks()` — which
+  DELETES the buffer. Every later chunk hit `pushChunk`, which RE-CREATED the
+  entry, and nothing ever drained it again (`runEnd` flushed only
+  `deferredFailures`). So a `readyWhen` server's post-ready output was invisible
+  in every view but a live-streaming focused one — **1 of 20 lines in `full`,
+  the CI default; 0 of 20 with the server pulled in as a DEPENDENCY**, which is
+  exactly the shape where you need it (an `e2e` task failing against the server
+  it depends on). And the bytes were retained for the rest of the run: measured
+  **93 MiB retained from 122 MiB pushed** pre-fix, **0.00 post-fix**. Post-ready
+  chunks now route into a per-stream bounded tail (64 KiB, whole-chunk head
+  eviction, a `dropped` counter so a capped tail can never read as complete) and
+  flush at `runEnd` as one trailing block ABOVE the failures they explain.
+  **Registration is unconditional, only the FLUSH is view-gated** — `none` and
+  `errors-only` state their contracts absolutely, but the bound is a memory
+  invariant, not a display choice, so gating capture would have kept the leak.
+  Guarded like `flushedFailures` because `run()` calls `runEnd` TWICE on the
+  success path and a kept-alive child keeps writing between the two. Views that
+  change: `full`, `broad`, and focused-as-a-dependency, and only when a
+  persistent task became ready AND wrote afterwards; `errors-only`, `none`, a
+  live-streaming persistent task, a silent server, and every run with no
+  persistent task are byte-identical (verified by diffing all four views of a
+  non-persistent run). **Bundled: `forwardArgs` on the ready-on-spawn persistent
+  path were quoted with `JSON.stringify`**, and double quotes do not stop `sh`
+  expanding — confirmed end-to-end through the suite's `got.txt` handshake with
+  a one-shot control alongside: `one-shot (shellQuote) ARG=[$(id -u)]` vs
+  `persistent (JSON.stringify) ARG=[0]`, the uid. `shellQuote` is what the
+  one-shot path already used; it is now exported from the exec contract. Pins
+  are PURELY ADDITIVE (`git diff --numstat` on tests is `129/0` and `23/0` — no
+  existing assertion repinned), differential **67 pass / 6 fail → 73 / 0**,
+  which I re-ran myself after the merge moved HEAD. Gates: fmt/lint 0, core
+  **1457/0** (21 skip = sandbox). **Recorded, NOT fixed:** `consumeChunks` trims
+  `fragment` only at `lastIndexOf('\n')`, so `\r`-only progress-bar output never
+  trims — **288,910 chars in 2.5 s** with a never-matching `readyWhen`; bounded
+  in practice by `exec.timeout` (the documented readiness bound), unbounded only
+  when a never-matching `readyWhen` has no timeout, and note `runPersistent`'s
+  own docstring claims the buffers exist so a server "must not accrete its whole
+  log history" — true post-ready, false pre-ready. Also recorded: at concurrency
+  ≥10 the status region is 23 lines (26 with 3 persistent pins) while
+  `eraseSeq()` emits a fixed cursor-up with NO terminal-height check anywhere in
+  the writer or logger; the arithmetic is confirmed but the consequence is NOT —
+  it needs a real TTY of controlled height, which this container has none of, so
+  it is not claimed as observed. **Process hazard worth keeping:** the agent
+  doing this work ran `git stash push -- src/` differentials WHILE I was
+  committing and resetting the branch underneath it. They came back symmetric
+  each time and its tree was verified intact, but a stash-based differential is
+  not safe against a concurrently-moving HEAD — serialize them, or use
+  `git checkout HEAD~1 -- <files>` against a committed change.
+
+- **2026-07-26**: **Two more reference tables pinned to the code they describe,
+  and both were wrong** (#187, #188 — extending the schema-table guard). (1)
+  **`docs/cli.md`'s Flags table** is what a user scans to learn what `vx run`
+  accepts, and nothing tied it to the parser. The guard reads the accepted flags
+  out of `parseRunArgs` (reliable because every flag is matched as a string
+  literal — if that ever becomes a computed lookup the assertion fails loudly,
+  which is the intended outcome and is said at the site) and compares both
+  directions in ONE assertion that names which one drifted. It found
+  `--continue`: parsed, with its own Failure-propagation section, but NO row in
+  the table. (2) **`docs/schema.md`'s other two tables**, which the first guard
+  had explicitly scoped out — closing that gap found both wrong. Workspace
+  discovery documented `packages must be an array of globs` and `workspaces must
+  be an array of globs`; **neither string exists anywhere in `src/`** (the real
+  text is `must be an array of glob strings`), so a user grepping the doc for
+  the error they just saw found nothing — the exact failure the guard exists to
+  prevent. It also omitted the yarn-legacy `workspaces.packages` form, a third
+  distinct message. Workspace config omitted two errors the loader really raises
+  (`plugins[<i>] must be an object`, `plugins[<i>].<capability> must be a
+function`) and its `plugins[i]` rows were unmatchable as printed, since the
+  real message carries an index — they now use the `<i>` placeholder the segment
+  matcher already understood. The row scan is anchored PER TABLE rather than run
+  to EOF, so a row cannot be counted against the wrong surface. **Process note:
+  my first differential for the source-reword direction was VACUOUS** — the
+  `sed` missed the backticks the source puts around identifiers, so it changed
+  nothing and "passed". Same class as the stash-that-stashed-nothing mistake
+  from the artifact wave: a differential is only as good as its failure side,
+  so always confirm the FAILURE actually fires before trusting the pass.
+
 - **2026-07-26**: **A signal-killed task no longer poisons the cache for its
   dependents — CACHE_VERSION v25 → v26** (from a repro-mandated hostile audit of
   the scheduler + task execution lifecycle). **The stale hit:** `willSkip`
