@@ -94,6 +94,12 @@ export function startFakeS3(opts?: { bucket?: string; listPageSize?: number }): 
         return new Response(null, { status: 200 })
       }
 
+      if (req.method === 'DELETE') {
+        // S3 answers 204 whether or not the key existed — delete is idempotent.
+        objects.delete(key)
+        return new Response(null, { status: 204 })
+      }
+
       const obj = objects.get(key)
       if (req.method === 'HEAD') {
         if (obj === undefined) return new Response(null, { status: 404 })

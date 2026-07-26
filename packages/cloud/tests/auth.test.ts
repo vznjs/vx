@@ -785,6 +785,40 @@ describe('tokens + RBAC matrix', () => {
     expect((await call(ctx, 'DELETE', path, { cookie: admin, csrf: true })).status).toBe(404)
   })
 
+  // The reaper sweeps the workspace's cached artifacts out of object storage
+  // AFTER the rows are gone. It is cleanup, not correctness: the rows are what
+  // make the artifacts unreachable, so a bucket that is down (or a reaper that
+  // throws outright) must never turn a completed delete into a failure.
+  it('workspaces: delete hands the reaper the scope, and survives it throwing', async () => {
+    const admin = cookies.get('admin@example.com')!
+    const reaped: [string, string][] = []
+    const reapingCtx: AuthRoutesContext = {
+      ...ctx,
+      reapArtifacts: (org, ws) => {
+        reaped.push([org, ws])
+        throw new Error('bucket down')
+      },
+    }
+    const created = await call(reapingCtx, 'POST', `/v1/admin/orgs/${orgId}/workspaces`, {
+      cookie: admin,
+      csrf: true,
+      body: { slug: 'reapable', name: 'Reapable' },
+    })
+    const { workspaceId } = (await created.json()) as { workspaceId: string }
+
+    const ok = await call(
+      reapingCtx,
+      'DELETE',
+      `/v1/admin/orgs/${orgId}/workspaces/${workspaceId}`,
+      { cookie: admin, csrf: true, body: { confirm: 'reapable' } },
+    )
+    expect(ok.status).toBe(200)
+    expect(reaped).toEqual([[orgId, workspaceId]])
+    expect(
+      (await db.sql<{ id: string }[]>`SELECT id FROM workspaces WHERE id = ${workspaceId}`).length,
+    ).toBe(0)
+  })
+
   it('a workspace-scoped token carries its workspaceId; expired tokens are dead', async () => {
     const wsRows = await db.sql<{ id: string }[]>`
       SELECT id FROM workspaces WHERE org_id = ${orgId} AND slug = 'web'`

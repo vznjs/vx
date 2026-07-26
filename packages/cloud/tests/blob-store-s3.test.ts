@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { run, type Logger } from '@vzn/vx'
-import { ArtifactStore, type Principal } from '../src/artifact-store.js'
+import { ArtifactStore, reapWorkspaceArtifacts, type Principal } from '../src/artifact-store.js'
 import type { BlobBackend } from '../src/blob/backend.js'
 import { S3Backend } from '../src/blob/s3.js'
 import { NativeCacheClient } from '../src/native-cache.js'
@@ -37,6 +37,7 @@ function withHeadCount(inner: BlobBackend): { backend: BlobBackend; heads: strin
       return inner.head(key)
     },
     put: (key, file, size, meta) => inner.put(key, file, size, meta),
+    delete: (key) => inner.delete(key),
     presignGet: (key) => inner.presignGet(key),
     list: (prefix) => inner.list(prefix),
     localPathFor: (key) => inner.localPathFor(key),
@@ -361,6 +362,87 @@ describe('ArtifactStore on the S3 backend', () => {
 
 // (S3 config resolution + partial-config boot refusal are covered by
 // resolveServerConfig / the S3-probe boot test in server.test.ts.)
+
+describe('S3Backend.delete + the workspace reap', () => {
+  let fake: FakeS3
+  let backend: S3Backend
+  let store: ArtifactStore
+
+  const ORG = 'org-9'
+  const wsA: Principal = { orgId: ORG, workspaceId: 'ws-a', tier: 'trusted' }
+  const wsAPr: Principal = { orgId: ORG, workspaceId: 'ws-a', tier: 'untrusted' }
+  const wsB: Principal = { orgId: ORG, workspaceId: 'ws-b', tier: 'trusted' }
+  const orgWide: Principal = { orgId: ORG, tier: 'trusted' }
+
+  const put = (hash: string, tag: string, p: Principal, scope?: string) =>
+    store.handle(
+      new Request(`http://x/v1/cache/${hash}`, {
+        method: 'PUT',
+        body: zbody(tag),
+        ...(scope !== undefined ? { headers: { 'x-vx-cache-scope': scope } } : {}),
+      }),
+      hash,
+      p,
+    )
+
+  beforeEach(() => {
+    fake = startFakeS3()
+    backend = new S3Backend({
+      endpoint: fake.origin,
+      bucket: fake.bucket,
+      region: 'us-east-1',
+      accessKeyId: 'test-key',
+      secretAccessKey: 'test-secret',
+    })
+    store = new ArtifactStore(backend)
+  })
+  afterEach(() => {
+    fake.stop()
+  })
+
+  it('delete removes the object; deleting an absent key is a no-op, not an error', async () => {
+    const hash = 'a0a0a0a0a0a0a0a0'
+    await put(hash, 'bytes', wsA)
+    const key = `org/${ORG}/ws/ws-a/trusted/${hash}.tar.zst`
+    expect(fake.objects.has(key)).toBe(true)
+    await backend.delete(key)
+    expect(fake.objects.has(key)).toBe(false)
+    // S3 answers 204 for a key that was never there — idempotent by spec.
+    await backend.delete(key)
+    expect(fake.requests.filter((r) => r.method === 'DELETE')).toHaveLength(2)
+  })
+
+  it('reaps the whole workspace subtree from the bucket, never the org-shared scope', async () => {
+    await put('b0b0b0b0b0b0b0b1', 'doomed-trusted', wsA)
+    await put('b0b0b0b0b0b0b0b2', 'doomed-pr', wsAPr, 'pr-7')
+    await put('c0c0c0c0c0c0c0c1', 'sibling', wsB)
+    await put('d0d0d0d0d0d0d0d1', 'org-shared', orgWide)
+
+    expect(await reapWorkspaceArtifacts(backend, ORG, 'ws-a')).toEqual({ deleted: 2, failed: 0 })
+
+    const keys = [...fake.objects.keys()].sort()
+    expect(keys.some((k) => k.startsWith(`org/${ORG}/ws/ws-a/`))).toBe(false)
+    expect(keys).toEqual([
+      `org/${ORG}/ws/_org/trusted/d0d0d0d0d0d0d0d1.tar.zst`,
+      `org/${ORG}/ws/ws-b/trusted/c0c0c0c0c0c0c0c1.tar.zst`,
+    ])
+  })
+
+  it('a refused DELETE throws at the backend and counts as failed in a reap', async () => {
+    const dead = new S3Backend({
+      endpoint: 'http://127.0.0.1:1',
+      bucket: 'x',
+      region: 'auto',
+      accessKeyId: 'k',
+      secretAccessKey: 's',
+      timeoutMs: 2000,
+    })
+    await expect(dead.delete('org/x/ws/y/trusted/z.tar.zst')).rejects.toThrow()
+    // A down bucket can't even list — the reap reports the failure instead of
+    // throwing, so a workspace delete never fails on it.
+    expect(await reapWorkspaceArtifacts(dead, ORG, 'ws-a')).toEqual({ deleted: 0, failed: 1 })
+  })
+})
 
 // ---------------------------------------------------------------------------
 // End-to-end: a real run against the platform whose artifact bytes live in S3

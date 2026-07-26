@@ -208,6 +208,81 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **MEASURED NEGATIVE RESULT — the flagged N+1 queries are fine,
+  and the two genuinely quadratic ones have no caller. No rewrite.** A hostile
+  audit flagged core `metrics.ts` `getFlakiestTasks` / `getRegressions` as
+  per-candidate N+1. Measured before touching them (this repo reverted an
+  "obvious" optimisation that regressed warm runs 57%), on synthetic cache.dbs
+  from 1k to 1M rows across 50 / 500 / 5,000 distinct pairs. **Query count is
+  not what costs time here:** at a fixed 100k rows, going 50→5,000 pairs takes
+  the query count 101→7,603 while wall-clock goes 487→196 ms — **75× more
+  queries runs 2.5× FASTER**, because each of the N queries scans `rows/N` and
+  collectively they touch exactly what one GROUP BY would. `getFlakiestTasks`
+  is linear in ROWS and invariant to query count (10.3× for 10× rows);
+  `getRegressions` under an adversarial 60%-regressed set took 26× the queries
+  for 1.5× the time. Measured per-statement overhead is 3.3-4.1 µs against
+  3,099-31,302 µs of real work — **0.01-0.1%**. So the ceiling of a PERFECT
+  set-based rewrite is 0.1% at 100k×50, 0.01% at 1M×50, and 16% only at
+  100k×5,000, a shape that already runs in ~200 ms. **The audit flagged the
+  wrong functions:** the real per-ROW N+1 is `getCacheSavings` and metrics'
+  `listProjects` — a correlated scalar subquery per cache-hit row, O(rows²/
+  pairs), measured 10.5 SECONDS at 100k×500 and killed at >200 s in other
+  shapes, i.e. 39-56× slower than the flagged pair on identical data with the
+  FEWEST queries. **But nothing is worth fixing, because NONE of the four has a
+  production caller in core** — they are façade re-exports pinned by the
+  boundary snapshot, plus tests; every shipping flakiness/regression surface
+  goes through `packages/cloud/src/db/analytics.ts`, whose Postgres copy
+  ALREADY carries the set-based rewrite (#79) with a byte-identity differential
+  test. The rewrite exists where the scale justifies it. (NB the `listProjects`
+  with live callers is `workspace/workspace.ts:115` — filesystem discovery, a
+  different function that merely shares the name.) **Bounded by design anyway:**
+  `Cache.close()` unconditionally prunes `runs` older than 30d on EVERY run, so
+  a huge monorepo tops out ~1.5M rows — and big workspaces have MANY pairs,
+  which is the ~200 ms shape. **Two things worth remembering:** a covering
+  index `runs(project, task, started_at DESC, status, cache_hit, duration_ms)`
+  removes a `USE TEMP B-TREE FOR ORDER BY` and measured 1.3-1.5× on flakiest
+  and 2.6-3.2× on getHistory — a bigger lever than any rewrite, but it costs
+  write amplification on every insert and a SCHEMA_VERSION bump, so it waits
+  for an actual complaint; and `getFlakiestTasks(db, limit)` does NOT bound its
+  work (the `.slice(limit)` runs after the fan-out) — the argument is
+  presentation-only. NO code change.
+
+- **2026-07-26**: **A deleted workspace's artifacts are REAPED — and the guard
+  that stops the reaper eating the org's shared cache is the whole feature**
+  (closing the leak the delete wave had to admit to in its own confirm dialog:
+  `BlobBackend` had no `delete`, so a deleted workspace's bytes rested in
+  object storage forever under a scope prefix nothing could ever address
+  again). `delete(key)` on both backends — `LocalDirBackend` unlinks the key
+  **plus its `.duration`/`.digest` sidecars** (`list` only ever reports
+  `.tar.zst`, so a sidecar left behind is a permanent invisible leak), `S3`
+  is a SigV4 `DELETE` through the existing hand-rolled signer (204 and 404
+  both mean gone). **THE HAZARD, which is why this needed care at all:** an
+  ORG-WIDE token writes under a shared `_org` segment that EVERY workspace in
+  the org reads, so a reaper that swept `org/<orgId>/ws` instead of
+  `org/<orgId>/ws/<workspaceId>` would destroy the entire org's cache on any
+  single workspace delete. `reapableSegment` refuses `_org`, `.`, `..` and any
+  non-segment; the pin is DISCRIMINATING — broadening the prefix makes it
+  delete 4 objects instead of 2 and fail. **Best-effort by construction, and
+  the TYPE enforces it:** `AuthRoutesContext.reapArtifacts` returns `void`, so
+  the route CANNOT await it — it fires post-commit, because the rows are the
+  system of record, a workspace can hold tens of thousands of objects, and a
+  failed reap leaves exactly the state that existed before this feature. Also
+  made `LocalDirBackend.list` recursive so a prefix listing is depth-blind like
+  S3's — verified safe for the read path because every scope a principal lists
+  is a LEAF (`trusted` is flat; an untrusted principal lists only its own
+  `untrusted/<sub>`), so recursion cannot widen enumeration; the reaper needs
+  it because `ws/<id>` is the one non-leaf prefix in the layout. Docs synced,
+  including an `api.md` row that still claimed artifacts are NOT removed.
+  **Not done, deliberately:** no retry/queue for a failed reap (a durable
+  orphaned-prefix sweep needs somewhere to record the intent — its own wave);
+  empty dirs remain on the test-only local backend. Gates: fmt/lint 0, cloud
+  **599/0**, core 1297/0, ui 91/0, visual 10/10 byte-stable. NO
+  migration/schema/wire/CACHE bump. **Process note:** this agent symlinked
+  `packages/cloud/ui/node_modules` AND built `ui/dist` so the browser suites
+  actually RAN rather than skipping — the first agent today whose reported
+  gates were trustworthy on their own. The rule stands regardless: cherry-pick
+  into the main tree and re-run.
+
 - **2026-07-26**: **Workspaces can be RENAMED and DELETED — and the delete had
   to reach past the cascade, which does not go where the schema suggests**
   (closing the lifecycle gap the context work exposed: the admin surface was

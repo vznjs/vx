@@ -42,8 +42,8 @@ Cursor reads `.cursorrules`-adjacent config; Continue.dev reads
 
 | Tool | What it answers |
 | --- | --- |
-| `getCacheStats` | "What's the state of my cache right now?" — entries, total size, runs/hits last 24h, hit rate |
-| `getRunHistory` | "Which tasks have I been running, and how fast?" — distinct (project, task) pairs with p50/p99/successRate/hitRate aggregates |
+| `getCacheStats` | "What's the state of my cache right now?" — entries, total size, runs/hits last 24h, hit rate. Pass `scope: { project }` to narrow to one project; the numbers returned are then that project's, not the workspace's. |
+| `getRunHistory` | "Which tasks have I been running, and how fast?" — distinct (project, task) pairs with p50/p99/successRate/hitRate aggregates, most recently run first. `failureMode` marks a task flaky only on a NONDETERMINISM signal — a within-run retry, or one cache key that both failed and succeeded. Repeated failures on their own keys are a genuine break, not flake, so an agent is not nudged toward `exec.retries` for something retries cannot fix. |
 | `explainCacheKey` | "What's the cache identity for `pkg#build`?" — latest entries-row (hash, command, exit code, duration, size, created_at) |
 | `whyDidThisRerun` | "Why did this task re-execute instead of using the cache?" — compares the run's cache hash against the previous run for the same task |
 

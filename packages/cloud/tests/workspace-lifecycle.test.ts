@@ -188,6 +188,67 @@ describe('workspace lifecycle (rename + delete over the real wire)', () => {
     expect(kept.runs.some((r) => r.runId === 'run-keep')).toBe(true)
   })
 
+  // Cached artifacts live in object storage under `org/<org>/ws/<ws>/…`, so a
+  // deleted workspace would otherwise leave its bytes there forever under a
+  // prefix nothing can address again. The load-bearing half is what the reap
+  // must NOT touch: an ORG-WIDE token writes the shared `_org` scope that every
+  // workspace in the org reads, and sweeping that while deleting one workspace
+  // would destroy the entire org's cache.
+  it('reaps the deleted workspace’s artifacts from the bucket, never the org-shared scope', async () => {
+    const created = await asSession('POST', `/v1/admin/orgs/${p.orgId}/workspaces`, {
+      slug: 'reapable',
+      name: 'Reapable',
+    })
+    expect(created.status).toBe(201)
+    const { workspaceId } = (await created.json()) as { workspaceId: string }
+
+    const mint = async (name: string, tier: string): Promise<string> => {
+      const r = await asSession('POST', `/v1/admin/orgs/${p.orgId}/tokens`, {
+        name,
+        tier,
+        workspaceId,
+      })
+      return ((await r.json()) as { token: string }).token
+    }
+    const wsTrusted = await mint('ws-trusted', 'trusted')
+    const wsUntrusted = await mint('ws-pr', 'untrusted')
+
+    const upload = async (hash: string, token: string, scope?: string): Promise<void> => {
+      const r = await fetch(`${p.origin}/v1/cache/${hash}`, {
+        method: 'PUT',
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...(scope !== undefined ? { 'x-vx-cache-scope': scope } : {}),
+        },
+        body: Bun.zstdCompressSync(Buffer.from(`artifact-${hash}`)),
+      })
+      if (r.status !== 200) throw new Error(`PUT ${hash}: ${r.status} ${await r.text()}`)
+    }
+    // Two under the doomed workspace (one per tier, the untrusted one nested in
+    // a PR sub-scope) and one under the org-shared scope, via the org-wide token.
+    await upload('1111111111111111', wsTrusted)
+    await upload('2222222222222222', wsUntrusted, 'pr-7')
+    await upload('3333333333333333', p.ciToken)
+    const doomedKeys = (): string[] =>
+      [...p.s3.objects.keys()].filter((k) => k.startsWith(`org/${p.orgId}/ws/${workspaceId}/`))
+    const sharedKey = `org/${p.orgId}/ws/_org/trusted/3333333333333333.tar.zst`
+    expect(doomedKeys()).toHaveLength(2)
+    expect(p.s3.objects.has(sharedKey)).toBe(true)
+
+    const del = await asSession('DELETE', `/v1/admin/orgs/${p.orgId}/workspaces/${workspaceId}`, {
+      confirm: 'reapable',
+    })
+    expect(del.status).toBe(200)
+
+    // The reap runs in the BACKGROUND — the response never waits on the bucket
+    // (see AuthRoutesContext.reapArtifacts), so poll for it rather than
+    // assuming it finished inside the request.
+    const deadline = Date.now() + 10_000
+    while (doomedKeys().length > 0 && Date.now() < deadline) await Bun.sleep(25)
+    expect(doomedKeys()).toEqual([])
+    expect(p.s3.objects.has(sharedKey)).toBe(true)
+  })
+
   it('a deleted workspace id is re-provisioned fresh on the next push', async () => {
     // The repo row cascaded away with the workspace, so the same client id
     // resolves to a NEW workspace instead of resurrecting the old one.

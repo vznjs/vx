@@ -97,7 +97,7 @@ column is the minimum org role.
 | `GET /v1/admin/orgs/:id/workspaces` | viewer | Workspaces. |
 | `POST /v1/admin/orgs/:id/workspaces` | admin | `{ slug, name? }` — 409 on a taken slug. |
 | `PATCH /v1/admin/orgs/:id/workspaces/:wsId` | admin | `{ name?, slug? }` (slug `[a-z0-9-]{1,64}`) — 409 on a taken slug, 400 when neither field is given. Most workspaces are auto-provisioned on the first CI push and named by the client; the rename **sticks**, because later pushes never rewrite the name. |
-| `DELETE /v1/admin/orgs/:id/workspaces/:wsId` | admin | Delete the workspace **and its entire history** — invocations, task runs, task logs, output fingerprints, projects, repos and any workspace-scoped API token. Requires `{ confirm }` echoing the workspace's slug (or name); a mismatch is a 400 naming the slug. Not reversible. Cached artifacts already in object storage are **not** removed (they are content-addressed under the workspace's scope prefix and simply become unreachable). |
+| `DELETE /v1/admin/orgs/:id/workspaces/:wsId` | admin | Delete the workspace **and its entire history** — invocations, task runs, task logs, output fingerprints, projects, repos and any workspace-scoped API token. Requires `{ confirm }` echoing the workspace's slug (or name); a mismatch is a 400 naming the slug. Not reversible. Once the rows are gone the workspace's cached artifacts are swept from object storage — its whole `org/<orgId>/ws/<wsId>/` scope prefix, both trust tiers and every per-PR sub-scope; the shared `_org` scope an org-wide token writes is never touched. The sweep is best-effort and runs *after* the response, so it can never stall or fail the delete: an unreachable bucket just leaves the bytes behind (unreachable, as they were before this existed) and the server logs it. |
 
 Cross-org access answers 404. There is no invite-list endpoint —
 invites are create-only surfaces.
@@ -114,7 +114,7 @@ segment is a 400. Limits shown as `default/max` where the code clamps.
 | Route | Params | Returns |
 | --- | --- | --- |
 | `/v1/workspaces` | — | The org's workspaces. |
-| `/v1/runs` | `project`, `task`, `runId`, `limit` | Task-level run rows. |
+| `/v1/runs` | `project`, `task`, `runId`, `hash`, `limit` | Task-level run rows. `hash` filters to one cache key server-side — the cache-entry provenance page needs every run that used a key, not just those inside the most recent page. |
 | `/v1/runs/:id` | — | One full run (all task rows) or 404. |
 | `/v1/runs/:id/logs/:taskId` | — | The task's captured log — `source: 'executed'` for a direct row, `source: 'cache'` (+ `refRunId`) when resolved through the producing run's cache hash; 404 when nothing was captured. |
 | `/v1/invocations` | `branch`, `ci` (`1`/`true`), `tagKey`, `tagValue`, `limit` | Run-header rows (command, branch, commit, CI, tags, counts). |
@@ -142,7 +142,7 @@ segment is a 400. Limits shown as `default/max` where the code clamps.
 | `/v1/trends/storage` | `days` (30) | Storage growth series. |
 | `/v1/trends/parallelism` | `limit` (50) | Per-run parallelism factors. |
 | `/v1/analysis` | `window` (days), `minRuns`, `limit`, `project`, `task` | Period-over-period comparison: this window vs the prior one + the biggest duration movers. |
-| `/v1/flakiness` | `limit` (25) | Flakiest tasks — retry-confirmed flakes ranked above inferred ones. |
+| `/v1/flakiness` | `limit` (25), or **`project` + `task`** for a point lookup | Flakiest tasks — retry-confirmed flakes ranked above inferred ones. Passing the pair narrows to that one task, so the task-detail badge never depends on the task ranking inside a top-N page. |
 | `/v1/flake-trend` | **`project` + `task` required (400)**, `sinceDays` (90) | Per-day flaky-episode series for one task (retried successes + failures whose key also passed), with first/last seen — feeds the task-detail Flakiness-trend card. |
 | `/v1/stability` | **`project` + `task` required (400)**, `sinceDays` (90), `limit` (20) | Same-cache-key duration spread — how repeatable the computation is across executions of IDENTICAL inputs. Distinct from regressions (which compare across different keys): this is the task's margin of error, and the floor under any cross-key claim. |
 | `/v1/stability/least` | `sinceDays` (30), `limit` (8), `minRuns` (3) | The least repeatable tasks in the workspace, worst same-key spread first — an unstable task makes every duration comparison involving it unreliable. |
@@ -152,6 +152,7 @@ segment is a 400. Limits shown as `default/max` where the code clamps.
 | `/v1/top-tasks` | `limit` (10) | Top time-burners. |
 | `/v1/failures` | `limit` (25) | Recent failed tasks. |
 | `/v1/notifications` | `limit` (20) | Recent broken invocations (the dashboard bell's feed). |
+| `/v1/projects/rank` | **`project` required (400)**, `top` (8) | Where one project ranks against EVERY other on failure rate, avg exec and hit rate — ranked with window functions server-side, so both the rank and the total are true at any workspace size rather than computed within a fetched page. |
 | `/v1/projects` | `limit` (100), `search`, `project` (repeatable) | Per-project rollups plus `total`, the workspace's TRUE project count. `search` is a case-insensitive substring match on the project name; `project` is an exact-name point lookup. Both narrow server-side, so the dashboard's filter box reaches a project past the page. |
 | `/v1/history` | `project`, `task`, `search`, `limit` | Per-task lifetime aggregates. `search` is a case-insensitive substring match on `project#task`, so one box matches `orders`, `build` and `orders#build` alike — narrowed server-side, since the result is a page. |
 | `/v1/hermeticity` | `limit` (50/500) | Cross-machine output-fingerprint divergences (`--verify=fingerprint` data). |
