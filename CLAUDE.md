@@ -226,18 +226,47 @@ serving none of them is probably org-analytics scope creep.
   `fresh: true` (a unique bust on the ENTRY) does NOT re-evaluate the closure,
   because Bun keys a cached module on the RESOLVED SPECIFIER and
   `import './preset.js'` resolves identically no matter what query the entry
-  carries — measured: unique-bust load still returned `VERSION-1`. Evicting the
-  recorded closure from Bun's module registry is what re-evaluates it, gated on
-  a REPEAT load of the same path, so a first load evicts nothing and the single
-  `vx run` hot path is untouched. Two consequences worth recording: **`fresh`
-  is weaker than its docstring claims** (it re-evaluates the ENTRY only —
-  enough for `vx lock`'s env-drift purpose in a fresh process, not for a
-  closure), and the registry was verified present in a
-  `--compile --minify --bytecode` standalone binary, the shipped artifact, with
-  the loader degrading to today's behaviour if absent rather than failing.
-  Pinned by unit cases AND a REAL `vx watch` session: editing only the preset
-  produced **0** occurrences of the new command before the fix, **48** after.
-  I verified the mechanism myself both ways. **MED-HIGH: a typo'd cache-key
+  carries — measured: unique-bust load still returned `VERSION-1`. **`fresh` is
+  therefore weaker than its docstring claims** — it re-evaluates the ENTRY
+  only, enough for `vx lock`'s env-drift purpose in a fresh process, not for a
+  closure. **The mechanism took TWO attempts, and the first one is the lesson.**
+  Attempt 1 evicted the closure from `globalThis.Loader.registry` and was green
+  here — but that is an UNDOCUMENTED Bun internal, and CI installs
+  `bun-version: latest`. Probed on both binaries: `Loader` is a Map on **1.3.11**
+  and **GONE on 1.3.14** (`$Loader`/`__bun_loader`/`ModuleLoader` all undefined
+  too), so on the version users actually run the loader took its
+  degrade-to-today's-behaviour path and the fix was a **SILENT NO-OP** — and its
+  own two pins failed on CI while passing locally. The graceful degradation is
+  exactly what made it fail quietly instead of loudly: **a mechanism that works
+  on one runtime version and no-ops on another is worse than one that always
+  works**, so the registry path was DELETED outright rather than kept as a fast
+  path. Attempt 2 evaluates a repeat load in a **Worker built from an inline
+  `data:` URL** — the only public API that re-evaluates a whole closure. I
+  briefed a subprocess; the developer measured (**~8-15 ms vs ~30-50 ms**) and,
+  decisively, proved the shape is forced by the shipped artifact: **`bun build
+--compile` does NOT embed a Worker entry file** (a sibling `worker.ts` binary
+  dies `ModuleNotFound` once the source moves away) and a compiled binary
+  **cannot spawn `bun`** — so an inline data URL is the one form that survives
+  compilation, and my subprocess design would have broken the release binary.
+  Two properties make it safe: the config crosses as JSON, which is ALREADY the
+  config contract (`hashTaskConfig` stringifies it, `vx lock` stores the same
+  round-trip), so a worker-read config derives the SAME key — hence no
+  CACHE_VERSION bump; and concurrent loads share ONE Worker retired when the
+  last settles, since `prepareRun` uses `Promise.all` (unshared cost was
+  measured at **2775 ms for N=200**). Validation stays in the PARENT
+  deliberately, running on whichever object the two paths produced, so a
+  malformed config yields an IDENTICAL `UserError` with no error-text
+  marshalling; only evaluation failures cross the boundary, and
+  name/message/first-stack-line were compared across both paths. A first load
+  keeps the in-process path, so `vx run` gains nothing. Pins pass under BOTH
+  binaries (1.3.14 was 1 pass / 2 fail before, 3/0 after), and a REAL `vx watch`
+  session editing only the preset produced **0** occurrences of the new command
+  before and **110** after — **110 again from a `--compile --minify --bytecode`
+  binary**. I verified the pins under both binaries myself. **Named residual:**
+  `loadWorkspaceConfig` gets no Worker path — `vx.workspace.ts` declares
+  `plugins`, which hold FUNCTIONS and cannot cross the boundary; nothing there
+  feeds a cache key so it cannot cause a stale hit, but a `vx.workspace.ts`
+  closure still goes stale in a long-lived process. **MED-HIGH: a typo'd cache-key
   field was silently ignored, producing a stale hit.** Unknown keys were
   allowlisted ONLY inside `sandbox` and `exec.resources` (whose own comment
   says "future axes must be added deliberately"); every other level — task,
