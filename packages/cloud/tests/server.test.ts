@@ -444,6 +444,20 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(typeof ((await rank.json()) as { total: number }).total).toBe('number')
     expect((await call('GET', '/v1/projects/rank', { cookie })).status).toBe(400)
 
+    // The filter box's `?search` reaches the SERVER on both list surfaces —
+    // the wire the Projects/Tasks tables debounce into.
+    const hit = await call('GET', '/v1/projects?search=A', { cookie })
+    expect(((await hit.json()) as { projects: { project: string }[] }).projects).toHaveLength(1)
+    const miss = await call('GET', '/v1/projects?search=zzz-nope', { cookie })
+    expect(((await miss.json()) as { projects: unknown[] }).projects).toEqual([])
+    const hh = await call('GET', '/v1/history?search=a%23build', { cookie })
+    expect(hh.status).toBe(200)
+    expect(((await hh.json()) as { history: { id: string }[] }).history.map((r) => r.id)).toEqual([
+      'a#build',
+    ])
+    const hm = await call('GET', '/v1/history?search=zzz-nope', { cookie })
+    expect(((await hm.json()) as { history: unknown[] }).history).toEqual([])
+
     // /v1/stability is allowlisted (same fall-through-to-SPA class).
     const stab = await call('GET', '/v1/stability?project=a&task=build', { cookie })
     expect(stab.status).toBe(200)

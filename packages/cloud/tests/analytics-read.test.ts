@@ -1987,4 +1987,65 @@ describe('scale: a workspace larger than one page', () => {
     expect(midMe.rank).toBeLessThanOrEqual(N)
     expect(mid.total).toBe(N)
   }, 60_000)
+
+  it('the filter box reaches rows the PAGE left out, for projects and tasks', async () => {
+    const { org, ws } = await newOrgWs(db, 'scale-search')
+    const decoy = await newOrgWs(db, 'scale-search-decoy')
+    const now = Date.now()
+    const ids: string[] = []
+    for (let i = 0; i < N; i++) {
+      const name = `pkg-${String(i).padStart(4, '0')}`
+      await insertTR(db, ws, org, {
+        runId: `s${i}`,
+        project: name,
+        task: 'build',
+        duration: 100 + i,
+        startedAt: now - 3600_000 + i,
+      })
+      ids.push(`${name}#build`)
+    }
+    // Same names in ANOTHER workspace — the search must never reach across.
+    await insertTR(db, decoy.ws, decoy.org, {
+      runId: 'd0',
+      project: 'pkg-0000',
+      task: 'build',
+      startedAt: now,
+    })
+
+    // Pick rows the page provably OMITS (620 pairs, a 500-row page), then
+    // prove search finds exactly them — a page-then-filter implementation
+    // returns nothing here, which is what makes this discriminating.
+    const projectPage = await analytics.listProjects(ws, 500)
+    expect(projectPage).toHaveLength(500)
+    const shownProjects = new Set(projectPage.map((p) => p.project))
+    const missedProject = ids.map((id) => id.split('#')[0]!).find((p) => !shownProjects.has(p))
+    expect(missedProject).toBeDefined()
+    const missedProjectName = missedProject!
+    expect(
+      (await analytics.listProjects(ws, { search: missedProjectName })).map((p) => p.project),
+    ).toEqual([missedProjectName])
+
+    const taskPage = await analytics.getHistory(ws, { limit: 500 })
+    expect(taskPage).toHaveLength(500)
+    const shownTasks = new Set(taskPage.map((r) => r.id))
+    const missedTask = ids.find((id) => !shownTasks.has(id))
+    expect(missedTask).toBeDefined()
+    const missedTaskId = missedTask!
+    const found = await analytics.getHistory(ws, { limit: 500, search: missedTaskId })
+    expect(found.map((r) => r.id)).toEqual([missedTaskId])
+    expect(found[0]!.runs).toBe(1)
+
+    // One box, three shapes: bare project, bare task, and the joined id.
+    expect(
+      (await analytics.getHistory(ws, { limit: 500, search: 'PKG-0007' })).map((r) => r.id),
+    ).toEqual(['pkg-0007#build'])
+    expect(await analytics.getHistory(ws, { limit: 500, search: 'build' })).toHaveLength(500)
+    expect(await analytics.getHistory(ws, { limit: 500, search: 'nope' })).toEqual([])
+
+    // Workspace-clamped: the decoy's identical pair is invisible from here,
+    // and searching from the decoy sees only its own single row.
+    const fromDecoy = await analytics.getHistory(decoy.ws, { limit: 500, search: 'pkg-0000' })
+    expect(fromDecoy.map((r) => r.id)).toEqual(['pkg-0000#build'])
+    expect(fromDecoy[0]!.runs).toBe(1)
+  }, 60_000)
 })

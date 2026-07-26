@@ -208,6 +208,29 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **The table filter boxes search the WHOLE workspace, not the
+  fetched page** (the last open piece of the 1000-project / 10k-task scale
+  directive; the Projects table's "showing N of M" Callout was the honest
+  placeholder this replaces). Every list read answers a PAGE, so a box that
+  filters the fetched rows can never reach a tail project or task — only the
+  server can. New shared `searchFilter(sql, term, 'project' | 'pair')` emits a
+  parameterized `ILIKE %term%` (or nothing), threaded through `getHistory`'s
+  three scans + `mixedOutcomeKeyCounts` and reused by `listProjects` (whose
+  hand-rolled clause it replaces, so the two can't drift). `pair` matches
+  `project || '#' || task`, so ONE box serves "orders", "build" and
+  "orders#build" alike. **Client:** `DataTable` gains an opt-in `searchParam` —
+  the box debounces 250ms into a URL param (`replace`, so typing never buries
+  the previous page in history), seeds itself FROM the URL (a shared or
+  reloaded link restores the search and the box agrees with the rows the server
+  narrowed), and adopts an externally-changed param (back/forward) — but never
+  while a keystroke is still owed to the URL, or typing fights itself. **Local
+  filtering deliberately stays layered on top**: these tables join CATALOG rows
+  (never-run projects/tasks) the server never saw, so dropping it would leave
+  those unfilterable. Tables without `searchParam` are untouched. Projects
+  dropped `dir` from `filterFrom` so local and server narrow on the same field.
+  Gates: fmt/lint 0, cloud 575/0, core 1286/0, ui 91/0, visual 10/10 (no pixel
+  change). NO schema/wire/CACHE bump (read-side + an additive query param).
+
 - **2026-07-26**: **The WORKSPACE is the context, so it lives where context
   lives — sidebar top, always stated** (owner: "Vx cloud should support
   multiple workspaces. Now it shows just one. I should be able select context

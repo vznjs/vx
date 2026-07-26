@@ -723,6 +723,10 @@ export function DataTable(
     filter?: boolean
     filterFrom?: string[]
     filterPlaceholder?: string
+    /** Query param the filter box writes (debounced) so the SERVER narrows the
+     *  page too — without it a tail row of a 1000-project workspace is
+     *  unreachable, because the box only ever sees the fetched page. */
+    searchParam?: string
     initialSort?: { key: string; desc?: boolean }
     emptyTitle?: string
     emptyHint?: string
@@ -731,9 +735,42 @@ export function DataTable(
   }>,
 ) {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [sortKey, setSortKey] = createSignal(c.props.initialSort?.key ?? '')
   const [sortDesc, setSortDesc] = createSignal(c.props.initialSort?.desc ?? true)
-  const [filterText, setFilterText] = createSignal('')
+  // Seeded from the URL so a shared/reloaded link restores the search AND the
+  // box agrees with the rows the server already narrowed.
+  const paramValue = (): string => {
+    const p = c.props.searchParam
+    if (p === undefined) return ''
+    const v = searchParams[p]
+    return typeof v === 'string' ? v : ''
+  }
+  const [filterText, setFilterText] = createSignal(paramValue())
+  // Local filtering stays on top of the server search: a table joins catalog
+  // rows (never-run projects/tasks) the server never saw, so dropping it would
+  // leave those unfiltered.
+  let debounce: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => clearTimeout(debounce))
+  const onFilterInput = (v: string): void => {
+    setFilterText(v)
+    const p = c.props.searchParam
+    if (p === undefined) return
+    clearTimeout(debounce)
+    debounce = setTimeout(() => {
+      debounce = undefined
+      // `replace` — typing must not bury the previous page in browser history.
+      setSearchParams({ [p]: v === '' ? undefined : v }, { replace: true })
+    }, 250)
+  }
+  // Adopt an externally-changed param (back/forward, a shared link) — but never
+  // while a keystroke is still owed to the URL, or typing would fight itself.
+  // Local-only tables (no searchParam) are untouched: their box owns its text.
+  createEffect(() => {
+    if (c.props.searchParam === undefined) return
+    const url = paramValue()
+    if (debounce === undefined && url !== filterText()) setFilterText(url)
+  })
 
   const maxes = createMemo(() => {
     const m: Record<string, number> = {}
@@ -832,7 +869,7 @@ export function DataTable(
     <div>
       <Show when={c.props.filter}>
         <div class="px-4 py-2 border-b border-border">
-          <input type="text" placeholder={c.props.filterPlaceholder ?? 'filter…'} value={filterText()} onInput={(e) => setFilterText(e.currentTarget.value)} class="text-[12px] font-mono w-72" />
+          <input type="text" placeholder={c.props.filterPlaceholder ?? 'filter…'} value={filterText()} onInput={(e) => onFilterInput(e.currentTarget.value)} class="text-[12px] font-mono w-72" />
         </div>
       </Show>
       <DataGate status={c.props.status} skeleton={<SkeletonRows rows={5} />}>

@@ -35,10 +35,10 @@
               },
               "filter": true,
               "filterFrom": [
-                "id",
-                "_kind"
+                "id"
               ],
-              "filterPlaceholder": "filter by project#task…",
+              "searchParam": "q",
+              "filterPlaceholder": "search all tasks (project#task)…",
               "initialSort": {
                 "key": "totalDurationMs",
                 "desc": true

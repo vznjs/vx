@@ -67,10 +67,10 @@
               },
               "filter": true,
               "filterFrom": [
-                "project",
-                "dir"
+                "project"
               ],
-              "filterPlaceholder": "filter\u2026",
+              "searchParam": "q",
+              "filterPlaceholder": "search all projects\u2026",
               "initialSort": {
                 "key": "totalDurationMs",
                 "desc": true

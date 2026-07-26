@@ -287,6 +287,8 @@ export interface TaskHistoryRow {
 export interface GetHistoryArgs {
   project?: string
   task?: string
+  /** Substring match over `project#task` — the tasks table's filter box. */
+  search?: string
   limit?: number
 }
 
@@ -770,6 +772,21 @@ export interface HashProvenance {
 function clampInt(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min
   return Math.min(max, Math.max(min, Math.floor(n)))
+}
+
+/**
+ * `AND <col> ILIKE %term%`, or nothing when the term is absent — the filter-box
+ * narrowing, done in SQL. Every list read answers a PAGE, so filtering the
+ * fetched rows can never reach a tail row of a 1000-project / 10k-task
+ * workspace; only the server can. `pair` matches `project#task` so one box
+ * serves "orders", "build" and "orders#build" alike.
+ */
+function searchFilter(sql: SQL, term: string | undefined, over: 'project' | 'pair') {
+  if (term === undefined || term === '') return sql``
+  const pattern = `%${term}%`
+  return over === 'pair'
+    ? sql`AND (project || '#' || task) ILIKE ${pattern}`
+    : sql`AND project ILIKE ${pattern}`
 }
 
 /**
@@ -1715,11 +1732,15 @@ export class Analytics {
     const limit = clampInt(args.limit ?? 50, 1, 500)
     const fProject = args.project !== undefined ? sql`AND project = ${args.project}` : sql``
     const fTask = args.task !== undefined ? sql`AND task = ${args.task}` : sql``
+    // Server-side search, because the result is a PAGE: on a 10k-task
+    // workspace the filter box can only reach a tail task if the narrowing
+    // happens here, not over the fetched rows.
+    const fSearch = searchFilter(sql, args.search, 'pair')
     // The pairs to render (unchanged set + order — the DISTINCT scan).
     const pairs = (
       await sql<{ project: string; task: string }[]>`
         SELECT DISTINCT project, task FROM task_runs
-        WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}`
+        WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fSearch}`
     ).slice(0, limit)
     if (pairs.length === 0) return []
     // TWO set-based queries replace the former 1 + 2N per-pair fan-out: one
@@ -1748,14 +1769,14 @@ export class Analytics {
              SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END)::int AS retried,
              SUM(duration_ms)::float8 AS total_duration_ms,
              MAX(ended_at) AS last_seen_at
-      FROM task_runs WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}
+      FROM task_runs WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fSearch}
       GROUP BY project, task`
     const durRows = await sql<{ project: string; task: string; duration_ms: number }[]>`
       SELECT project, task, duration_ms FROM (
         SELECT project, task, duration_ms,
                ROW_NUMBER() OVER (PARTITION BY project, task ORDER BY started_at DESC) AS rn
         FROM task_runs
-        WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}
+        WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fSearch}
           AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
       ) t WHERE rn <= 50`
     const aggByKey = new Map(aggRows.map((r) => [pairKey(r.project, r.task), r]))
@@ -2433,10 +2454,9 @@ export class Analytics {
     // Server-side search + exact-name fetch: a 1000-project workspace cannot
     // be searched by filtering the fetched page, and a project detail page
     // must resolve its own row however far down the ordering it sits.
-    const search = opts.search !== undefined && opts.search !== '' ? opts.search : undefined
     const names =
       opts.projects !== undefined && opts.projects.length > 0 ? opts.projects : undefined
-    const fSearch = search !== undefined ? this.sql`AND project ILIKE ${`%${search}%`}` : this.sql``
+    const fSearch = searchFilter(this.sql, opts.search, 'project')
     // `IN ${sql(array)}` is the driver's list form (the provenanceForHashes
     // precedent); a bare `= ANY($1)` binds the array as a malformed literal.
     const fNames =
@@ -2609,15 +2629,16 @@ export class Analytics {
    */
   private async mixedOutcomeKeyCounts(
     workspaceId: string,
-    args: { project?: string; task?: string } = {},
+    args: { project?: string; task?: string; search?: string } = {},
   ): Promise<Map<string, number>> {
     const sql = this.sql
     const fProject = args.project !== undefined ? sql`AND project = ${args.project}` : sql``
     const fTask = args.task !== undefined ? sql`AND task = ${args.task}` : sql``
+    const fSearch = searchFilter(sql, args.search, 'pair')
     const rows = await sql<{ project: string; task: string; mixed: number }[]>`
       SELECT project, task, count(*)::int AS mixed FROM (
         SELECT project, task, hash FROM task_runs
-        WHERE workspace_id = ${workspaceId} ${fProject} ${fTask}
+        WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fSearch}
           AND hash IS NOT NULL AND hash != ''
         GROUP BY project, task, hash
         HAVING SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 0
