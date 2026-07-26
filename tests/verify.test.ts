@@ -351,6 +351,63 @@ describe('vx run --verify (determinism)', () => {
   )
 
   it(
+    'rejects --verify with a remote-only write policy and no remote layer',
+    async () => {
+      // `remote:rw` with nothing to serve it writes NOWHERE, but the write
+      // axis read as on: the task's outputs were cleaned before exec, then
+      // the verifier cleaned them AGAIN and restored an artifact `save()`
+      // never wrote — destroying a SUCCESSFUL build's tree and reporting it
+      // failed with an internal CorruptArtifactError. Refuse up front, so
+      // nothing runs and nothing is wiped.
+      const dir = await addProject(
+        fixture.root,
+        'a',
+        project('require("fs").writeFileSync("out.txt","stable")'),
+      )
+      await writeFile(path.join(dir, 'out.txt'), 'PRE-EXISTING')
+      await expect(
+        run({
+          cwd: fixture.root,
+          tasks: ['run'],
+          projects: ['a'],
+          cache: { localRead: true, localWrite: false, remoteRead: true, remoteWrite: true },
+          verify: DETERMINISM,
+          log: capturingLogger(fixture),
+        }),
+      ).rejects.toThrow(/--verify needs cache writes/)
+      // The refusal happens before any task runs, so the tree is untouched.
+      expect(readFileSync(path.join(dir, 'out.txt'), 'utf8')).toBe('PRE-EXISTING')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a remote-only write policy with no remote layer does not clean outputs before exec',
+    async () => {
+      // The same inert-axis bug outside `--verify`: `willWrite` believed a
+      // save would happen, so the pre-exec output wipe fired for a run that
+      // caches nothing — `--no-cache`'s documented "leave the tree alone"
+      // contract, broken by a policy that is effectively --no-cache.
+      const dir = await addProject(
+        fixture.root,
+        'a',
+        project('require("fs").writeFileSync("kept.txt","new")', "['*.txt']"),
+      )
+      await writeFile(path.join(dir, 'stray.txt'), 'UNTOUCHED')
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        cache: { localRead: true, localWrite: false, remoteRead: true, remoteWrite: true },
+        log: capturingLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(readFileSync(path.join(dir, 'stray.txt'), 'utf8')).toBe('UNTOUCHED')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a plain run (no --verify) attaches no verdict',
     async () => {
       await addProject(

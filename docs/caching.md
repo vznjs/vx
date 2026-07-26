@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v25'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v26'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -707,6 +707,29 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
 `CLAUDE.md` (decision log), and the cache test file.
 
 ### History
+
+- **v25 → v26**: the same shape as v25 — stored bytes that are wrong
+  under a key nothing about the fix changes — reached by a different
+  producer. A task whose child was killed by a shutdown signal reports
+  `aborted`, but `aborted` did not propagate to dependents the way
+  `failed` and `skipped` do. So a dependent ran against the aborted
+  task's PARTIAL outputs, succeeded, and cached what it had built.
+  Because a dependent's key folds its upstream's INPUT key — and a
+  signal changes no input — that entry sits under exactly the key a
+  healthy run derives, and the next run replays it as a green hit with
+  exit 0. Reproduced end to end: run 1 killed mid-write leaves
+  `PARTIAL`, run 2 is fully healthy and still serves `PARTIAL` from
+  cache.
+
+  Making `aborted` propagate stops new poison but cannot reach entries
+  already written, and a `LayeredCache` uploads them — so the reach is
+  a whole team's shared cache, not one developer's disk. That is what
+  makes the trade worth it: one cold rebuild against a class of
+  silently-wrong output. The interactive Ctrl-C path was never the
+  vector (vx's handler exits before a dependent can cache); the
+  reachable ones are an external `kill`, a supervisor, `docker stop`, a
+  self-terminating script, and every `handleSignals: false` embedder —
+  which includes `vx watch` and the distributed agent loop.
 
 - **v24 → v25**: the ARTIFACT BYTES in every existing entry are wrong
   while the key addressing them is unchanged — the one situation a

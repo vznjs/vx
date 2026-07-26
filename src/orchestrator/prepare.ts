@@ -60,6 +60,15 @@ export interface PreparedRun {
    */
   localCache: Cache
   /**
+   * True when `cache` is something other than the bare local handle — an
+   * injected remote layer, or one a plugin's `cache` capability built. The
+   * remote axes of the policy only mean anything then: without a remote
+   * layer a `remote:w` policy writes NOWHERE, so a task that believed it
+   * would be saved still cleans its outputs before executing and (under
+   * `--verify`) restores an artifact that was never written.
+   */
+  hasRemoteLayer: boolean
+  /**
    * Predicted priorities (history-aware critical-path). Populated only
    * when the workspace opts in via `defineWorkspace({ predictive: true })`.
    * Empty map otherwise — scheduler falls back to its baseline.
@@ -270,6 +279,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         log,
         () => localCache,
       )
+  // `resolveCache`'s fallback returns `localCache` itself, so identity is the
+  // exact test for "no remote layer" — and unlike an `instanceof LayeredCache`
+  // check it stays right for a third-party plugin that ships its own layer.
+  const hasRemoteLayer = cache !== localCache
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   const gitFilesCache = new GitFilesCache()
@@ -301,6 +314,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cacheDir,
       cache,
       localCache,
+      hasRemoteLayer,
       priorities: new Map(),
       nodes: new Map(),
       unresolvedTasks,
@@ -348,6 +362,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     cacheDir,
     cache,
     localCache,
+    hasRemoteLayer,
     priorities,
     nodes,
     unresolvedTasks,

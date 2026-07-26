@@ -208,6 +208,96 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **A signal-killed task no longer poisons the cache for its
+  dependents — CACHE_VERSION v25 → v26** (from a repro-mandated hostile audit of
+  the scheduler + task execution lifecycle). **The stale hit:** `willSkip`
+  propagated `failed` and `skipped` but NOT `aborted`, so when a child died to
+  SIGTERM/SIGINT its dependents RAN ANYWAY against partial outputs, succeeded,
+  and cached what they built. A dependent's key folds the upstream's INPUT key,
+  which a signal does not change — so the poisoned entry sits under EXACTLY the
+  key a healthy run derives. Reproduced end-to-end through the real CLI: run 1
+  killed mid-write leaves `PARTIAL`, run 2 is FULLY HEALTHY (`a` completes,
+  writes `COMPLETE`) and vx still serves `b` from cache — `⇢ 16ms success local`,
+  **exit 0**, green summary, `PARTIAL` on disk; `b` was even restore-tiered
+  AHEAD of `a`. This is the DEFAULT `deps-ok` mode, no flag; reachable from any
+  non-vx-handler signal (external `kill`, supervisor, `docker stop`, a
+  self-terminating script) and widened by every `handleSignals: false` embedder
+  — `vx watch` and the distributed agent loop. **CACHE_VERSION BUMPED, and I
+  overrode the implementer's argument to skip it:** it reasoned narrow-window +
+  "one machine's local cache". The window is narrow, but a `LayeredCache`
+  UPLOADS that entry, so the reach is a whole team's shared cache — and this is
+  precisely the documented bump condition (stored bytes wrong under an unchanged
+  key, NOT the self-healing class: the fix stops new poison but cannot reach
+  what is already written). Pre-alpha, so one cold rebuild is the cheap side.
+  **Two more from the same audit.** (2) An aborted task was invisible in the
+  tally, logger, report and `recordRun`, yet `ok` requires success/hit — so a
+  run exited **1 with a fully green summary naming nothing**, undiagnosable in
+  CI. The "not counted, not shown" rule is sound ONLY on the Ctrl-C path, where
+  the handler `process.exit`s before any summary; every other path prints and
+  says nothing. New `formatAbortedSection` names them after the summary
+  (matching `formatVerifySection`'s existing `✗ <id> — <reason>` shape — I
+  checked that against the circles-only glyph note before flagging it, and the
+  note governs task ROWS, not these sections). A pre-existing test ENCODED the
+  defect (`expect(md).not.toContain('web#dev')`) and now pins the corrected
+  contract. (3) `--verify` with `--cache=local:,remote:rw` and NO remote
+  configured DELETED the output tree and reported a successful task `failed`:
+  `willWrite` read the remote axis as on, so the verifier cleaned outputs and
+  restored an artifact `cache.save` had skipped. Fixed by normalising the policy
+  ONCE in `run.ts` off a new `PreparedRun.hasRemoteLayer` — `cache !==
+localCache`, since `resolveCache`'s fallback IS `localCache`, which beats
+  `instanceof LayeredCache` for a third-party plugin layer. **`--continue=always`
+  is unchanged and still behaves as documented** (`willSkip` returns false for
+  `always` before the dep scan), pinned as a control. Differentials: scheduler
+  reverted 2 fail/39 pass, summary trio 1 fail/2 pass, prepare+run 2 fail/29
+  pass. Gates: fmt/lint 0, core **1432/0** (21 skip = sandbox, `bwrap`
+  unavailable). **Process note worth keeping:** the implementer's own `perl`
+  insertion missed a `PreparedRun` return site, leaving `hasRemoteLayer`
+  undefined there — correct for every repro and pin it wrote, while SILENTLY
+  disabling remote read+write for real remote layers. `tests/orchestrator-remote.
+test.ts` caught it 2/11. That suite is load-bearing for anything touching cache
+  composition.
+
+- **2026-07-26**: **Two tests that misdiagnosed themselves, and a docs table that
+  could lie** (#185; the second and third were each found by the previous
+  commit's CI red). (1) **`docs/schema.md`'s validation-error table is now
+  pinned to the loader** — it publishes the exact symptom a user sees, and
+  nothing checked the loader still emits those strings. The guard is driven BY
+  the table: it parses the Symptom column out of the markdown and asserts in ONE
+  comparison that the documented set equals the pinned set, so a new row cannot
+  land unpinned and a removed row fails until its case goes too. Writing it found
+  two disagreements — the table drops the backticks the real messages put around
+  identifiers (so its strings were not greppable as printed; normalised on both
+  sides, since the wording is what drifts), and `did not export a default object`
+  comes from the LOADER not the validator, so it is provoked through the real
+  `loadProjectConfig`. Differential both ways: reword the doc row → 1 fail;
+  reword the loader message → 1 fail. (2) **The `vx watch` e2e flake is FIXED at
+  its root, and it was never a timing flake** — the decision log called it one
+  three times and twice raised the timeout, which could never work. `runWatchLoop`
+  installs its `fs.watch` handles only AFTER the initial run's output is flushed,
+  and the test waited for that OUTPUT (`v0`) before writing — so a write landing
+  in the gap is dropped by the OS and no re-run EVER fires. The event is LOST,
+  not late. Diagnosed by capturing the run's own output at the moment of failure:
+  `watching 1 project(s)` present, `re-running...` absent. All five sibling watch
+  tests already waited on that readiness line; this one was the lone deviation.
+  Measured interleaved: 4/5 fail before (at the pre-config-worker commit, so NOT
+  a #184 regression — checked), 5/5 pass after, 3/3 under four-way CPU
+  contention. **The same ordering is a real product gap, deliberately NOT fixed:**
+  an edit made during `vx watch`'s initial run is silently dropped, and the
+  obvious fix (watchers first) forces `anyTaskUsesWorkspaceFiles` ahead of the
+  run to choose which watchers to install — which marks every config loaded and
+  turns the initial run's OWN loads into worker round-trips. Reason recorded at
+  the site; closing it properly needs the `workspaceWide` decision made without
+  loading configs. (3) **`affected`'s 50-commit test now states its own
+  precondition** — it has failed in CI twice pointing AWAY from the cause (once
+  `HEAD~50 did not resolve`, once a bare ENOENT on the fixture write), never
+  reproduces on a clean tree (0/30), and I checked the disk-pressure theory
+  rather than assuming it: one full suite run leaks **16K across 2 dirs**, so the
+  9.2 GB of `/tmp/vx-*` seen locally is the residue of dozens of runs, not
+  something one CI run does to itself. It now reports `MISSING — root holds
+[packages, .git]` instead of a raw syscall error. **Environment note:** a
+  loaded box makes both classes bite — if a suite starts failing strangely,
+  check `ls -d /tmp/vx-* | wc -l` before suspecting the diff.
+
 - **2026-07-26**: **`vx watch` stopped running a STALE config forever — and the
   fix I briefed would not have worked** (from a repro-mandated hostile audit of
   config loading, validation, and the lockfile — the layer that decides what vx
