@@ -143,9 +143,19 @@ not spawn new ones from the browser.
 
 An org can hold many workspaces. Each has a stable id (derived from the
 client's git remote) and is provisioned on first push (or from Admin).
-Every analytics read scopes to a workspace via `?ws=<id>`; the dashboard
-picks the current one and can switch between them. A single-workspace org
-just shows that one.
+Every analytics read scopes to a workspace via `?ws=<id>`, and the sidebar
+context picker chooses which one — see
+[Accounts, orgs, and access](#accounts-orgs-and-access).
+
+**The scope travels with the link.** The selected workspace rides the URL
+hash on every page (`#/runs/<id>?ws=<workspace>`), so a link you paste to a
+teammate opens against the workspace *you* were reading, not whichever one
+their browser last used. Your own selection is still remembered per
+browser; a link simply wins over it. If the link names a workspace your
+account can't see, the dashboard falls back to one you can **and says so** —
+rather than quietly showing you different data than the link intended.
+Switching workspaces updates the address bar immediately, so it is
+shareable the moment you switch.
 
 ## What you see
 

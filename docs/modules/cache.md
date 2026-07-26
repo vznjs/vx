@@ -164,13 +164,16 @@ export interface CacheStats {
   totalBytes: number
   runCountLast24h: number
   hitCountLast24h: number
+  /** Hits with a local executed-success baseline — the subset time saved can
+   *  be estimated from. Always <= hitCountLast24h. */
+  attributedHitsLast24h: number
 }
 ```
 
 ## Key derivation (`Cache.key`)
 
-The key is a sha256 hex digest, computed by feeding values to the hash
-in this exact order:
+The key is a 16-hex-char xxHash3 digest (SHA-256 until `CACHE_VERSION`
+v15), computed by feeding values to the hash in this exact order:
 
 ```
 <CACHE_VERSION>\n
@@ -292,10 +295,21 @@ interface CacheStats {
   totalBytes: number
   runCountLast24h: number
   hitCountLast24h: number
+  attributedHitsLast24h: number
 }
 ```
 
-A `vx stats` CLI command can ship later; the data is captured today.
+`stats(opts?)` takes an optional `{ project }` scope, narrowing both the
+entry aggregate and the 24h run aggregate to that project — what the
+`vx mcp` cache-stats tool passes when an agent asks about one project.
+
+`hitCountLast24h` counts every hit; `attributedHitsLast24h` counts only
+those with a local executed-success baseline, which is the subset a
+time-saved estimate can be computed from. They differ on a fresh runner
+served by a warm remote cache, so the savings figure uses the second
+while the hit count agrees with its siblings elsewhere.
+
+Surfaced by `vx info` (and its `vx stats` alias).
 
 ## What this does NOT do
 
