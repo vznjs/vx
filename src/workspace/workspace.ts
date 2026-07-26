@@ -108,18 +108,49 @@ function claimsMember(root: string, below: readonly string[], globs: readonly st
 async function readPackageGlobs(dir: string): Promise<string[] | null> {
   const yamlPath = path.join(dir, 'pnpm-workspace.yaml')
   if (await Bun.file(yamlPath).exists()) {
-    const parsed = (Bun.YAML.parse(await Bun.file(yamlPath).text()) ?? {}) as {
-      packages?: string[]
-    }
-    return parsed.packages ?? []
+    const parsed = (parseManifest(await Bun.file(yamlPath).text(), yamlPath, Bun.YAML.parse) ??
+      {}) as { packages?: unknown }
+    return assertGlobList(parsed.packages ?? [], yamlPath, 'packages')
   }
   const pkgPath = path.join(dir, 'package.json')
   if (!(await Bun.file(pkgPath).exists())) return null
-  const pkg = (await Bun.file(pkgPath).json()) as PackageJson
-  const ws = pkg.workspaces
-  if (Array.isArray(ws)) return ws
-  if (ws && typeof ws === 'object' && Array.isArray(ws.packages)) return ws.packages
-  return ['.']
+  const pkg = parseManifest(await Bun.file(pkgPath).text(), pkgPath, JSON.parse) as PackageJson
+  const ws = pkg.workspaces as unknown
+  if (ws === undefined || ws === null) return ['.']
+  if (ws && typeof ws === 'object' && !Array.isArray(ws) && 'packages' in ws) {
+    return assertGlobList(
+      (ws as { packages?: unknown }).packages ?? [],
+      pkgPath,
+      'workspaces.packages',
+    )
+  }
+  return assertGlobList(ws, pkgPath, 'workspaces')
+}
+
+/**
+ * Parse a workspace manifest, naming the FILE on failure. The raw parser
+ * errors (`Failed to parse JSON`) carry no path, so in a 1000-package
+ * monorepo they say nothing about which manifest is broken.
+ */
+function parseManifest(text: string, file: string, parse: (t: string) => unknown): unknown {
+  try {
+    return parse(text)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new UserError(`failed to parse ${file}: ${msg}`)
+  }
+}
+
+/**
+ * A glob list is user input from a manifest: `packages: "packages/*"`
+ * (a bare string instead of a list) is an easy YAML slip, and without
+ * this it surfaces as `workspace.packageGlobs.map is not a function`.
+ */
+function assertGlobList(value: unknown, file: string, field: string): string[] {
+  if (!Array.isArray(value) || value.some((p) => typeof p !== 'string')) {
+    throw new UserError(`${file}: \`${field}\` must be an array of glob strings`)
+  }
+  return value as string[]
 }
 
 /**
@@ -188,10 +219,11 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
   const loaded = await Promise.all(
     [...matches].map(async (pkgJsonPath) => {
       const dir = path.dirname(pkgJsonPath)
-      const [pkg, entries] = await Promise.all([
-        Bun.file(pkgJsonPath).json() as Promise<PackageJson>,
+      const [text, entries] = await Promise.all([
+        Bun.file(pkgJsonPath).text(),
         readdir(dir).catch(() => [] as string[]),
       ])
+      const pkg = parseManifest(text, pkgJsonPath, JSON.parse) as PackageJson
       const names = new Set(entries)
       const configName = CONFIG_FILENAMES.find((f) => names.has(f))
       const configPath = configName !== undefined ? path.join(dir, configName) : null

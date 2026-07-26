@@ -615,6 +615,83 @@ describe('vx migrate (turbo) — preset globals with quotes/backslashes round-tr
   })
 })
 
+// package.json is a system boundary: a script value is whatever the file
+// holds. Anything that isn't a non-empty string was spliced into
+// `exec.command` verbatim — `null` aborted the whole migration in the
+// emitter, the rest wrote a config that fails to load. Both landed AFTER
+// "migrated clean, 0 TODOs" and exit 0.
+describe('vx migrate (turbo) — unusable package.json scripts', () => {
+  const cases: Array<[label: string, value: unknown]> = [
+    ['null', null],
+    ['a number', 42],
+    ['an object', {}],
+    ['an empty string', ''],
+    ['a boolean', true],
+  ]
+
+  for (const [label, value] of cases) {
+    it(
+      `reports ${label} as a TODO instead of emitting an unloadable command`,
+      async () => {
+        const root = await makeRoot('vx-migrate-badscript-')
+        try {
+          await writeFile(
+            path.join(root, 'turbo.json'),
+            JSON.stringify({ tasks: { build: {}, lint: {} } }),
+          )
+          const dir = path.join(root, 'packages', 'app')
+          await mkdir(dir, { recursive: true })
+          await writeFile(
+            path.join(dir, 'package.json'),
+            JSON.stringify({ name: 'app', scripts: { build: value, lint: 'oxlint' } }),
+          )
+
+          const r = await vx(root, ['migrate'])
+          expect(r.code).toBe(0)
+          expect(r.out).toContain('app#build:')
+          expect(r.out).toMatch(/not a\s+non-empty command string/)
+          expect(r.out).not.toContain('0 TODOs')
+
+          // The good sibling still migrates, and the file must LOAD.
+          const config = await loadProjectConfig(path.join(dir, 'vx.config.ts'))
+          expect(config.tasks!.lint!.exec?.command).toBe('oxlint')
+          expect(config.tasks!.build).toBeUndefined()
+        } finally {
+          await rm(root, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+  }
+
+  it(
+    'drops a dependsOn edge onto an unusable script rather than pointing at a missing task',
+    async () => {
+      const root = await makeRoot('vx-migrate-badscript-dep-')
+      try {
+        await writeFile(
+          path.join(root, 'turbo.json'),
+          JSON.stringify({ tasks: { build: {}, test: { dependsOn: ['build'] } } }),
+        )
+        const dir = path.join(root, 'packages', 'app')
+        await mkdir(dir, { recursive: true })
+        await writeFile(
+          path.join(dir, 'package.json'),
+          JSON.stringify({ name: 'app', scripts: { build: 42, test: 'bun test' } }),
+        )
+
+        const r = await vx(root, ['migrate'])
+        expect(r.code).toBe(0)
+        const config = await loadProjectConfig(path.join(dir, 'vx.config.ts'))
+        expect(config.tasks!.test!.dependsOn ?? []).toEqual([])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('vx migrate source detection', () => {
   it(
     'nx.json without the graph file tells the user how to generate it',

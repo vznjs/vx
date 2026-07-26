@@ -424,6 +424,161 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/resources must be an object/)
     })
   })
+
+  // A typo'd field was silently DROPPED, so the task hashed as if it had
+  // never been written — for a cache-key field that is a stale hit, not a
+  // config mistake. Every level that feeds the key now rejects unknown
+  // keys, the way `exec.resources` and `sandbox` already did.
+  describe('unknown fields', () => {
+    const cfg = (task: string): string => `export default { tasks: { build: ${task} } }`
+
+    it('rejects a typo in a cache-key input field', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        cfg(`{
+          exec: { command: 'true' },
+          cache: {
+            inputs: { files: ['src/**'], workspaceFile: ['../shared.txt'] },
+            outputs: { files: [] },
+          },
+        }`),
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /cache\.inputs has unknown field "workspaceFile"/,
+      )
+    })
+
+    it('rejects unknown keys at the task level', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, cfg(`{ exec: { command: 'true' }, dependOn: ['lint'] }`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(/unknown field "dependOn"/)
+    })
+
+    it('rejects unknown keys at the exec level', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, cfg(`{ exec: { command: 'true', timeoutMs: 500 } }`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(/exec has unknown field "timeoutMs"/)
+    })
+
+    it('rejects a misspelled persistent', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, cfg(`{ exec: { command: 'true', persistant: {} } }`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(/exec has unknown field "persistant"/)
+    })
+
+    it('rejects unknown keys at the cache level', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        cfg(`{
+          exec: { command: 'true' },
+          cache: { inputs: { files: [] }, outputs: { files: [] }, caches: true },
+        }`),
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/cache has unknown field "caches"/)
+    })
+
+    it('rejects unknown keys at the cache.outputs level', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        cfg(`{
+          exec: { command: 'true' },
+          cache: { inputs: { files: [] }, outputs: { files: [], dirs: ['dist'] } },
+        }`),
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /cache\.outputs has unknown field "dirs"/,
+      )
+    })
+
+    it('rejects a tasks ARRAY (Object.entries would name the task "0")', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, `export default { tasks: [{ exec: { command: 'true' } }] }`)
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /`tasks` must be an object keyed by task name/,
+      )
+    })
+
+    it('still accepts every declared field', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        cfg(`{
+          description: 'build it',
+          dependsOn: ['^build'],
+          exec: {
+            command: 'true',
+            timeout: 1000,
+            retries: 1,
+            resources: { cpus: 1, memory: '1GB' },
+            env: { passThrough: ['CI'], define: { A: 'b' } },
+          },
+          sandbox: { network: false },
+          cache: {
+            inputs: {
+              files: ['src/**'],
+              workspaceFiles: ['shared/**'],
+              env: ['NODE_ENV'],
+              tasks: ['^build'],
+              runtime: ['node -v'],
+              workspaceRuntime: ['uname -sm'],
+            },
+            outputs: { files: ['dist/**'], workspaceFiles: ['generated/**'] },
+          },
+        }`),
+      )
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+    })
+  })
+
+  // The one CacheInputs field with no shape check: a non-string entry
+  // crashed deep in filterUpstreamHashes / parseDependencySpec with a raw
+  // TypeError that named neither the task nor the config.
+  describe('cache.inputs.tasks', () => {
+    const withTasks = (literal: string): string =>
+      `export default { tasks: { build: { exec: { command: 'true' }, cache: {
+        inputs: { files: [], tasks: ${literal} }, outputs: { files: [] } } } } }`
+
+    it('rejects a bare string instead of a list', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withTasks(`'^build'`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /cache\.inputs\.tasks must be an array of non-empty strings/,
+      )
+    })
+
+    it('rejects null', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withTasks(`null`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /cache\.inputs\.tasks must be an array of non-empty strings/,
+      )
+    })
+
+    it('rejects non-string / empty entries', async () => {
+      for (const literal of [`[42]`, `['']`, `['build', null]`]) {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(file, withTasks(literal))
+        await expect(loadProjectConfig(file)).rejects.toThrow(
+          /cache\.inputs\.tasks must be an array of non-empty strings/,
+        )
+      }
+    })
+
+    it('accepts the documented filter forms', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withTasks(`['*', '^*', 'lint', '^build', 'pkg#gen', '!^noisy']`))
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+    })
+
+    it('accepts an empty list (fully decoupled)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withTasks(`[]`))
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+    })
+  })
 })
 
 describe('loadWorkspaceConfig', () => {

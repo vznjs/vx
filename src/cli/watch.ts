@@ -117,18 +117,25 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
  * semantics (it surfaces when that project enters scope).
  */
 async function anyTaskUsesWorkspaceFiles(projects: readonly ProjectMeta[]): Promise<boolean> {
-  for (const p of projects) {
-    if (p.configPath === null) continue
-    try {
-      const config = await loadProjectConfig(p.configPath)
-      for (const task of Object.values(config.tasks ?? {})) {
-        if ((task.cache?.inputs?.workspaceFiles?.length ?? 0) > 0) return true
+  // Concurrent, not sequential: the run that just happened already
+  // loaded the in-scope configs, so these are REPEAT loads that
+  // re-evaluate in a worker. Issuing them together lets one worker
+  // serve the whole sweep instead of one per project.
+  const uses = await Promise.all(
+    projects.map(async (p): Promise<boolean> => {
+      if (p.configPath === null) return false
+      try {
+        const config = await loadProjectConfig(p.configPath)
+        return Object.values(config.tasks ?? {}).some(
+          (task) => (task.cache?.inputs?.workspaceFiles?.length ?? 0) > 0,
+        )
+      } catch {
+        // broken config — out of this concern's scope
+        return false
       }
-    } catch {
-      // broken config — out of this concern's scope
-    }
-  }
-  return false
+    }),
+  )
+  return uses.includes(true)
 }
 
 interface WatchLoopArgs {

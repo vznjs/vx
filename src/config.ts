@@ -57,7 +57,13 @@ export interface TaskConfig {
    * Optional one-line description of what this task does. Surfaced in
    * the interactive task picker and the `--dry` text view so users
    * can grep for what each task does without opening every config.
-   * Pure metadata — no effect on caching, scheduling, or execution.
+   *
+   * No effect on scheduling or execution. It DOES participate in the
+   * cache key, because the key hashes the whole resolved task config
+   * (`docs/caching.md`, step 5) — deliberate: editing a description
+   * isn't a correctness change, but a one-off re-run costs little and
+   * carving exceptions out of the resolved object is what invites
+   * stale hits.
    */
   description?: string
   /**

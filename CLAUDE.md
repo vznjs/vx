@@ -208,6 +208,132 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **`vx watch` stopped running a STALE config forever — and the
+  fix I briefed would not have worked** (from a repro-mandated hostile audit of
+  config loading, validation, and the lockfile — the layer that decides what vx
+  actually runs). **HIGH: the module cache-bust key hashes only the config
+  file's OWN bytes, so its IMPORT CLOSURE is invisible.** In any long-lived
+  process the loader replays an already-evaluated module: during a `vx watch`
+  session, editing a shared preset silently has no effect for the life of the
+  process — the watcher fires, vx re-runs, and executes the OLD command. With
+  caching on it is worse, because the key derives from the stale resolved
+  config, so vx reports a green `1 up-to-date` for a task whose command on disk
+  CHANGED. A stale hit reached through the config loader. It bites precisely
+  because presets-via-import are THE documented composition mechanism here —
+  CLAUDE.md rejects a `globalInputs` schema field on exactly that basis, and
+  `vx migrate` GENERATES a root `vx-preset.ts` for it. **I briefed the wrong
+  fix and the developer probed before following it:** threading the existing
+  `fresh: true` (a unique bust on the ENTRY) does NOT re-evaluate the closure,
+  because Bun keys a cached module on the RESOLVED SPECIFIER and
+  `import './preset.js'` resolves identically no matter what query the entry
+  carries — measured: unique-bust load still returned `VERSION-1`. **`fresh` is
+  therefore weaker than its docstring claims** — it re-evaluates the ENTRY
+  only, enough for `vx lock`'s env-drift purpose in a fresh process, not for a
+  closure. **The mechanism took TWO attempts, and the first one is the lesson.**
+  Attempt 1 evicted the closure from `globalThis.Loader.registry` and was green
+  here — but that is an UNDOCUMENTED Bun internal, and CI installs
+  `bun-version: latest`. Probed on both binaries: `Loader` is a Map on **1.3.11**
+  and **GONE on 1.3.14** (`$Loader`/`__bun_loader`/`ModuleLoader` all undefined
+  too), so on the version users actually run the loader took its
+  degrade-to-today's-behaviour path and the fix was a **SILENT NO-OP** — and its
+  own two pins failed on CI while passing locally. The graceful degradation is
+  exactly what made it fail quietly instead of loudly: **a mechanism that works
+  on one runtime version and no-ops on another is worse than one that always
+  works**, so the registry path was DELETED outright rather than kept as a fast
+  path. Attempt 2 evaluates a repeat load in a **Worker built from an inline
+  `data:` URL** — the only public API that re-evaluates a whole closure. I
+  briefed a subprocess; the developer measured (**~8-15 ms vs ~30-50 ms**) and,
+  decisively, proved the shape is forced by the shipped artifact: **`bun build
+--compile` does NOT embed a Worker entry file** (a sibling `worker.ts` binary
+  dies `ModuleNotFound` once the source moves away) and a compiled binary
+  **cannot spawn `bun`** — so an inline data URL is the one form that survives
+  compilation, and my subprocess design would have broken the release binary.
+  Two properties make it safe: the config crosses as JSON, which is ALREADY the
+  config contract (`hashTaskConfig` stringifies it, `vx lock` stores the same
+  round-trip), so a worker-read config derives the SAME key — hence no
+  CACHE_VERSION bump; and concurrent loads share ONE Worker retired when the
+  last settles, since `prepareRun` uses `Promise.all` (unshared cost was
+  measured at **2775 ms for N=200**). Validation stays in the PARENT
+  deliberately, running on whichever object the two paths produced, so a
+  malformed config yields an IDENTICAL `UserError` with no error-text
+  marshalling; only evaluation failures cross the boundary, and
+  name/message/first-stack-line were compared across both paths. A first load
+  keeps the in-process path, so `vx run` gains nothing. Pins pass under BOTH
+  binaries (1.3.14 was 1 pass / 2 fail before, 3/0 after), and a REAL `vx watch`
+  session editing only the preset produced **0** occurrences of the new command
+  before and **110** after — **110 again from a `--compile --minify --bytecode`
+  binary**. I verified the pins under both binaries myself. **Named residual:**
+  `loadWorkspaceConfig` gets no Worker path — `vx.workspace.ts` declares
+  `plugins`, which hold FUNCTIONS and cannot cross the boundary; nothing there
+  feeds a cache key so it cannot cause a stale hit, but a `vx.workspace.ts`
+  closure still goes stale in a long-lived process. **MED-HIGH: a typo'd cache-key
+  field was silently ignored, producing a stale hit.** Unknown keys were
+  allowlisted ONLY inside `sandbox` and `exec.resources` (whose own comment
+  says "future axes must be added deliberately"); every other level — task,
+  `exec`, `cache`, `cache.inputs`, `cache.outputs` — silently accepted and
+  discarded them. So `cache.inputs.workspaceFile` (singular) meant the user
+  believed a root file was a tracked input and got a green cache hit replaying
+  stale outputs, with ZERO warning. Also silently accepted: `exec.timeoutMs`,
+  `exec.persistant`, `task.caches`, `task.dependOn`, `cache.inputs.task`, and
+  `tasks: [{…}]` (an array reinterpreted as a task literally named `"0"`). The
+  asymmetry was accidental; the allowlist now covers every level, walked
+  interface by interface from `src/config.ts` with a control asserting every
+  DECLARED field still loads. **The rest:** `vx migrate` wrote configs that do
+  not load while reporting `1 task migrated clean, 0 TODOs` — a package.json
+  script was admitted on `!== undefined`, so `42`/`{}`/`true`/`""` became
+  `exec.command` verbatim and `null` crashed the emitter mid-migration; an
+  EMPTY script string is entirely legitimate, so this needed no malformed
+  input. Such a task is now excluded from the emitted set, so a `dependsOn`
+  edge onto it is dropped rather than left pointing at a task that was never
+  written. `cache.inputs.tasks` was the one `CacheInputs` field with no
+  validation (a non-`string[]` reached `filterUpstreamHashes` and crashed with
+  a raw TypeError naming nothing). A malformed member `package.json` in a
+  1000-package monorepo produced exactly `vx: Failed to parse JSON` — no
+  filename — and a scalar `packages:` in `pnpm-workspace.yaml` gave
+  `TypeError: workspace.packageGlobs.map is not a function`. **One finding I
+  OVERRODE:** the audit flagged `description` being folded into the cache key
+  as contradicting `src/config.ts`'s "Pure metadata — no effect on caching".
+  `docs/caching.md` documents that fold as DELIBERATE with the reasoning
+  written out ("a description change isn't a correctness change but the cost of
+  a re-run is low"), so the COMMENT is the wrong side — stripping it would have
+  meant a CACHE_VERSION bump for zero correctness gain and reversed a
+  considered decision. Comment corrected in `config.ts` AND `docs/schema.md`,
+  which carried the same wrong claim. **REFUTED with a concrete reason:** I
+  inferred the cloud standing-agent path (`dist/submit.ts` → `prepareRun` in a
+  long-lived loop) shared the staleness; it does share the loader but cannot go
+  stale, because `vx-cloud agent` pins `checkoutRoot` + `commitSha` at startup
+  and REFUSES a dirty tree, so the config bytes and the closure are constant
+  across assignments. **NO CACHE_VERSION bump:** nothing changes key derivation
+  for an already-correct config — the rejections turn a silently-wrong key into
+  a loud error, and the closure fix makes a repeat load observe the same inputs
+  a fresh process always did. Gates: fmt/lint 0, core **1396/0** (+28; 21 skip
+  = sandbox, `bwrap` unavailable), ui 91/0; this repo's own 5 configs,
+  `vx lock --check`, `vx show` and `vx run --dry --all` all still pass.
+  **Recorded SOUND by the same audit, so nobody re-audits:** the migrate TS
+  emitter under hostile `turbo.json` (unicode / reserved-word / leading-digit /
+  spaced task names, embedded quotes + backslashes + newlines in globs and env
+  names, `$TURBO_ROOT$` prefixes, negated outputs — every generated file loads
+  AND validates, and the generated `vx-preset.ts` preserves values
+  byte-for-byte); lockfile drift in all four scenarios (project renamed or
+  added → `--frozen` errors naming the project and path; `--check` reports both
+  plus the deleted-config case; a scoped `--frozen` run correctly ignores an
+  unlocked out-of-scope project; a hand-tampered lock IS executed by
+  `--frozen`, which is the documented deliberate trust model that `--check`
+  catches); the `..`/absolute glob guards including the harmless `!!../x`
+  double-negation (one `!` is stripped and the remainder used as an EXCLUDE
+  glob, so nothing is ever resolved or deleted); array-vs-object container
+  rejections; `hashableConfig` key-order stability (`{...cfg, exec: execRest}`
+  preserves original key positions, so the documented byte-identity claim
+  holds); task names containing `#` (both parsers split on the FIRST `#`); and
+  that `vx lock --check` DOES observe import-closure drift because it runs in a
+  fresh process — which is exactly why the watch defect was confined to
+  long-lived ones. **Known-open, recorded not fixed:** `fresh`'s docstring
+  overstates what it achieves; `vx lock --check` re-evaluates the ENTRY against
+  current env while a shared preset's env reads come from whenever that preset
+  first evaluated. In a fresh CLI process those are the same instant, so it is
+  not a live bug — it would become one if `vx lock` were ever hosted in a
+  long-lived process.
+
 - **2026-07-26**: **CACHE_VERSION → v25 — TWO silent-data-loss defects on the
   ORDINARY cache-hit path, no attacker involved** (from a repro-mandated
   hostile audit of artifact pack/extract/restore — what the cache HANDS BACK,

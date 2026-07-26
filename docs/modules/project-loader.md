@@ -4,8 +4,15 @@
 
 Evaluate a `vx.config.{ts,mts,js,mjs}` file and return the resolved
 `ProjectConfig` object. Bun runs TypeScript natively, so the loader is
-a thin wrapper around `await import()` with a content-hash query-string
-bust to invalidate ESM module cache when the config changes.
+a thin wrapper around `await import()`.
+
+Two paths, chosen by whether this process has loaded that path before:
+
+- **First load** — in-process `await import()` with a content-hash
+  query-string bust. The single `vx run` hot path only ever takes this
+  one, so it costs exactly what it always did.
+- **Repeat load** — re-evaluated in a Worker (`config-eval.ts`),
+  because the bust cannot reach the config's import closure.
 
 ## Public surface
 
@@ -19,35 +26,59 @@ export async function loadWorkspaceConfig(workspaceRoot: string): Promise<Worksp
 - Supported extensions: `.ts`, `.mts`, `.js`, `.mjs`. Each is handed
   to a native `await import()`. Bun resolves TypeScript natively —
   no transpile step, no separate loader, no `jiti`.
-- The import specifier is `<absolutePath>?vx-bust=<sha256-of-bytes>`.
-  Content changes produce a different query string → different ESM
-  module identity → fresh evaluation. Same content → cached module
-  (the no-op fast path).
+- On a first load the import specifier is
+  `<absolutePath>?vx-bust=<xxh3-of-bytes>`. Content changes produce a
+  different query string → different ESM module identity → fresh
+  evaluation. Same content → cached module (the no-op fast path).
+- On a repeat load the path is evaluated in a Worker instead, and the
+  resolved object comes back as JSON.
 - The default export must be a non-null object. Anything else throws
-  `"Project config at <path> did not export a default object"`.
+  `"Project config at <path> did not export a default object"` — from
+  the same check on both paths.
+- Validation runs on whichever object the two paths produced, so a
+  malformed config reports the identical `UserError` either way.
 
-## Why content-hash cache-busting
+## Why a Worker on a repeat load
 
-Bun's ESM loader (like Node's) caches modules by URL. Without a
-cache-busting parameter, the second `import()` of the same path inside
-one process returns the _first_ loaded module, even after the file
-changed on disk. With `?vx-bust=<sha>`, a byte-level change produces a
-different URL, forcing re-evaluation. mtime-based busting was an
-earlier approach; we moved to content hashes because Bun's `stat()`
-sometimes reports `mtimeNs: undefined`, and content hash is what the
-cache key already needs anyway.
+The content-hash bust only changes the **entry's** specifier. Bun caches
+an evaluated module by its **resolved** specifier, so an
+`import './preset.js'` inside a config resolves to the same key no
+matter what query the entry carries — a busted entry re-evaluates
+against a **stale preset**.
 
-This matters when:
+Shared presets are the documented composition mechanism (`vx migrate`
+generates a `vx-preset.ts`), so through a whole `vx watch` session a
+preset edit was invisible; and because the resolved config feeds the
+cache key, vx answered `up-to-date` for a command that had changed on
+disk — a stale cache hit.
 
-- Tests run multiple `vx run` calls in the same process and edit
-  configs between them.
-- The shipped `vx watch` loop re-invokes the orchestrator in one process;
-  a config edit changes the file's content hash, so the bust re-evaluates
-  it on the next cycle.
+A Worker gets its own module registry, so everything it imports is read
+from disk now. It is the only mechanism for this that the runtime
+exposes as public API: `globalThis.Loader.registry` — the obvious place
+to evict from — exists on Bun 1.3.11 and is **gone** on 1.3.14, where an
+eviction-based fix degrades to no fix at all while still reporting
+success.
 
-For the normal one-shot `vx run` CLI invocation it doesn't strictly
-matter (each invocation is a fresh Bun process), but supporting it
-costs nothing.
+Two properties make the swap safe:
+
+- **Key stability.** The config crosses back as JSON, which is already
+  this project's contract for a config object: `hashTaskConfig` derives
+  the cache key from `JSON.stringify(config)` and `vx lock` stores the
+  same round-trip. Since `JSON.stringify(JSON.parse(s)) === s`, a config
+  re-read through a Worker derives the **same** cache key as the
+  in-process first load — which is why this needed no `CACHE_VERSION`
+  bump.
+- **Round sharing.** Loads that are in flight at the same moment share
+  one Worker, retired when the last settles. A `Promise.all` round (what
+  `prepareRun` does) therefore costs one Worker, not one per project,
+  and the next round still starts from an empty registry. Sharing within
+  a round is also the more faithful semantics: two configs importing the
+  same preset evaluate it once, exactly as in a fresh `vx run` process.
+
+The Worker source is an inline `data:` URL rather than a sibling file
+because `bun build --compile` does **not** embed a Worker entry point —
+it resolves the URL from disk at runtime, so a sibling file would make
+the shipped standalone binary fail with `ModuleNotFound`.
 
 ## What this does NOT do
 
@@ -77,10 +108,16 @@ costs nothing.
 - **`Date.now()` in config = always-different configHash.** Resolved
   values get baked into the object, including non-deterministic ones.
   This is a footgun documented in `architecture.md`.
-- **Imports from `node_modules` are cached by Bun, not by us.**
-  Within one Bun process, an `import from 'pkg'` resolves once and
-  doesn't reload even if `node_modules` updates. Fine for CLI use;
-  matters if we add a daemon.
+- **Imports from `node_modules` are cached by Bun on a first load.**
+  Within one Bun process an `import from 'pkg'` resolves once; a repeat
+  load re-resolves it in a fresh Worker registry.
+- **`loadWorkspaceConfig` has no Worker path.** `vx.workspace.ts`
+  declares `plugins`, which are objects holding **functions** — they
+  cannot cross a Worker boundary at all. So a `vx.workspace.ts` import
+  closure can still go stale in a long-lived process. Nothing there
+  feeds a cache key (it carries `concurrency`, `cacheDir`, `timeout`,
+  `predictive`, `plugins`), so this cannot produce a stale hit; a
+  workspace-config edit still needs a restart to take effect.
 
 ## Tests
 
@@ -102,5 +139,7 @@ Drop in any function that takes an absolute config path and returns
 
 - **esbuild / oxc-based loader** — fastest TS evaluation but ships an
   extra dep and gives up Bun's native TS support.
-- **Worker-based isolation** — load configs in a worker thread for
-  better cleanup / cache invalidation in long-running processes.
+- **Subprocess isolation** — a fresh process per repeat load also gets
+  a clean registry, but measured ~30-50 ms against the Worker's
+  ~8-15 ms, and a compiled binary cannot spawn `bun` (it would need an
+  internal subcommand on `process.execPath`).
