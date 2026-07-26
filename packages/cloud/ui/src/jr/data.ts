@@ -561,7 +561,11 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
     return detectSlowdowns(hist, rows).map((s) => ({
       ...s,
       _ratioLabel: `${s.ratio.toFixed(1)}× slower`,
-      _dir: 'slower',
+      // Only a CONFIRMED input change earns the regression dot. Same inputs
+      // means the extra time is environment/variance, and no earlier keyed
+      // run means there is no evidence either way — both read neutral.
+      _dir: s.cause === 'inputs changed' ? 'slower' : 'unattributed',
+      _cause: s.cause,
     }))
   },
   cacheBreakdown: () => getCacheBreakdown(100),

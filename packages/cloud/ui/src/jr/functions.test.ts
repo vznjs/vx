@@ -513,3 +513,68 @@ describe('identity + honest dot foundations (design-port wave 1)', () => {
     expect(IDENT_TASK_TEXT).toBe('text-ident-task')
   })
 })
+
+describe('detectSlowdowns is key-aware', () => {
+  const h = (id: string, p50: number | undefined) => ({ id, p50DurationMs: p50 })
+  const r = (
+    project: string,
+    task: string,
+    durationMs: number,
+    startedAt: number,
+    hash?: string,
+  ) => ({
+    project,
+    task,
+    status: 'success',
+    cacheHit: null,
+    durationMs,
+    startedAt,
+    ...(hash !== undefined ? { hash } : {}),
+  })
+
+  it('a NEW cache key attributes the slowdown to changed work', () => {
+    const out = detectSlowdowns(
+      [h('a#t', 500)],
+      // newest first: the slow run is on a key never seen before
+      [r('a', 't', 1500, 9, 'NEW'), r('a', 't', 500, 8, 'OLD'), r('a', 't', 505, 7, 'OLD')],
+    )
+    expect(out).toHaveLength(1)
+    expect(out[0]!.sameInputs).toBe(false)
+    expect(out[0]!.cause).toBe('inputs changed')
+  })
+
+  it('the SAME key blames the environment, never changed work', () => {
+    const out = detectSlowdowns(
+      [h('a#t', 500)],
+      [r('a', 't', 1500, 9, 'K'), r('a', 't', 500, 8, 'K'), r('a', 't', 505, 7, 'K')],
+    )
+    expect(out).toHaveLength(1)
+    expect(out[0]!.sameInputs).toBe(true)
+    expect(out[0]!.cause).toBe('same inputs — environment')
+    expect(out[0]!.priorWorst).toBe(505)
+  })
+
+  it('a same-key time already seen is known spread, not a slowdown', () => {
+    // 1500ms has happened before on these exact inputs — the task is simply
+    // that variable, so reporting it as "got slower" would report noise.
+    const out = detectSlowdowns(
+      [h('a#t', 500)],
+      [r('a', 't', 1500, 9, 'K'), r('a', 't', 1500, 8, 'K'), r('a', 't', 500, 7, 'K')],
+    )
+    expect(out).toEqual([])
+  })
+
+  it('rows without a hash still flag (degrade to the old behavior)', () => {
+    const out = detectSlowdowns([h('a#t', 500)], [r('a', 't', 1500, 9), r('a', 't', 500, 8)])
+    expect(out).toHaveLength(1)
+    expect(out[0]!.sameInputs).toBe(false)
+    // No keyed earlier run ⇒ no evidence ⇒ must NOT claim the inputs changed.
+    expect(out[0]!.cause).toBe('no earlier run')
+  })
+
+  it('a lone executed run claims nothing about its inputs', () => {
+    const out = detectSlowdowns([h('a#t', 500)], [r('a', 't', 1500, 9, 'ONLY')])
+    expect(out).toHaveLength(1)
+    expect(out[0]!.cause).toBe('no earlier run')
+  })
+})

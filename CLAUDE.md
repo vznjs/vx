@@ -208,6 +208,38 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **"Got slower" is KEY-AWARE — a same-key slowdown is
+  environment, never changed work** (the inconsistency the least-stable card
+  exposed on its first render: `orders#build` read **±58.8% margin AND "3.0×
+  slower" at the same time**, both computed across the SAME cache key — so
+  the card blamed the code for a number the card beside it called noise).
+  `detectSlowdowns` now consumes each run's `hash` and classifies the slow
+  run three ways: **same inputs** (its key was already seen among the task's
+  earlier executions ⇒ identical inputs ⇒ the extra time is the machine,
+  contention or the task's own variance), **inputs changed** (a new key AND
+  ≥1 earlier keyed execution to compare against — the only state that earns
+  the danger dot), and **no earlier run** (no keyed prior execution in the
+  window ⇒ NO evidence either way ⇒ the row must not claim the inputs
+  changed; the honest third state the first cut lacked, which would have
+  labeled a lone execution "inputs changed" on zero evidence). **The
+  sharper half is a suppression:** a same-key run whose duration was
+  ALREADY OBSERVED for those exact inputs (`durationMs <= priorWorst`) is
+  dropped entirely — that is the task's known spread, and reporting it as
+  "got slower" is reporting noise as news. Verified in the visual guard on
+  a seeded platform: `orders#build` DISAPPEARS from Got slower (its 1500ms
+  had happened before on the same key) and now appears only where it
+  belongs — top of Least stable tasks at ±58.8% — while `checkout#build`
+  (2.6×) and `payments#build` (2.0×) stay listed with a new **Cause**
+  column reading "same inputs — environment" and a faint dot instead of
+  danger red. Pinned by 6 unit cases (new key attributes to changed work,
+  same key blames environment + reports `priorWorst`, already-seen duration
+  is suppressed, hash-less rows degrade to the old behavior with cause
+  "no earlier run", a lone executed run claims nothing). Gates: fmt/lint 0,
+  cloud 561/0, core 1286/0, ui 87/0; the insights baseline (= the docs
+  screenshot) refreshed and re-verified byte-stable. NO schema/wire/CACHE
+  bump (client-side derivation over `hash`, which `/v1/runs` already
+  returned).
+
 - **2026-07-26**: **Deltas are judged against MEASURED noise, not a guessed
   threshold** (the follow-on the stability metric existed to enable). The
   `deltaBar` flat band was `max(5ms, 0.5% of the A-side)` — a number picked by
