@@ -8109,10 +8109,13 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
    `GITHUB_TOKEN` to the step + `checks: write`).
 3. ~~Task-level retries~~ — **SHIPPED** 2026-07-04 (`exec.retries` +
    `--retry`; `TaskOutcome.attempts` is the flaky-detection feed).
-4. **Flaky detection → surface + optional auto-retry.**
-   `getFlakiestTasks` (a query) + the new `attempts` primitive exist;
-   wire them: surface flaky tasks in the dashboard, suggest/auto-apply
-   `retries` on flagged tasks.
+4. ~~Flaky detection → surface + suggestions~~ — **SHIPPED** across
+   2026-07-05..25: the Insights flaky card (retry-confirmed ranked above
+   inferred, Retried column), the task-detail flaky badge + the
+   Recommendations `exec.retries` snippet, key-scoped `mixedOutcomeKeys`,
+   and the Flakiness-trend card (first-seen/direction). "Auto-APPLY"
+   deliberately stayed a copy-pasteable suggestion — vx never edits a
+   user's config.
 5. ~~Duration-aware dispatch ordering~~ — **SHIPPED** 2026-07-04
    (LPT; serve-computed `durationHints` from ingest history).
 6. ~~Run-level policy to REMOTE agents~~ — **SHIPPED** 2026-07-18. The
