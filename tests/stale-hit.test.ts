@@ -12,7 +12,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile, utimes, stat } from 'node:fs/p
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { parseFlaggedOutput } from '../src/cache/inputs.js'
+import {
+  GitFilesCache,
+  autocrlfConverts,
+  parseCheckAttrOutput,
+  parseFlaggedOutput,
+  populateGitFilesCache,
+} from '../src/cache/inputs.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -206,6 +212,172 @@ describe('stale cache hits', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a CRLF-to-LF change under a text filter is not served from cache',
+    async () => {
+      // A trusted index OID is the FILTERED blob, not the worktree bytes the
+      // task reads. Under `text=auto` git stores the LF form, so `git status`
+      // (which compares after filtering) calls a CRLF worktree file clean and
+      // it keeps its OID — the CRLF and LF states then fold the SAME key.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
+               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, '.gitattributes'), '* text=auto\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      // Restore CRLF: `git add` normalized the index to LF, and checkout does
+      // not convert back on Linux. This is the state the defect lives in —
+      // worktree CRLF, index LF, status clean.
+      await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+
+      vx(root, 'run', 'build')
+      expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('10')
+
+      await write(path.join(root, 'src/a.txt'), 'one\ntwo\n')
+      vx(root, 'run', 'build')
+      expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('8')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'core.autocrlf alone is enough to distrust index OIDs',
+    async () => {
+      // The same divergence with NO .gitattributes at all: `core.autocrlf`
+      // converts every auto-detected text file, so no attribute names it and
+      // an attributes-only gate would miss this entirely.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
+               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'config', 'core.autocrlf', 'true')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
+
+      vx(root, 'run', 'build')
+      expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('10')
+
+      await write(path.join(root, 'src/a.txt'), 'one\ntwo\n')
+      vx(root, 'run', 'build')
+      expect((await readFile(path.join(root, 'dist/out.txt'), 'utf8')).trim()).toBe('8')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a repo with no attributes and no autocrlf never runs check-attr',
+    async () => {
+      // The whole point of the gate: the common case must pay NOTHING. If this
+      // ever spawns check-attr, every warm run in every plain repo just got a
+      // serial git round-trip it does not need.
+      await write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      const origSpawn = Bun.spawn
+      const seen: string[][] = []
+      const bunMut = Bun as unknown as { spawn: typeof Bun.spawn }
+      bunMut.spawn = ((...a: Parameters<typeof Bun.spawn>) => {
+        const opt = a[0] as { cmd?: readonly string[] } | undefined
+        if (opt && Array.isArray(opt.cmd) && opt.cmd[0] === 'git') seen.push([...opt.cmd])
+        return origSpawn(...a)
+      }) as typeof Bun.spawn
+      try {
+        const cache = new GitFilesCache()
+        await populateGitFilesCache(root, [path.join(root, 'pkg')], cache)
+      } finally {
+        bunMut.spawn = origSpawn
+      }
+      expect(seen.some((cmd) => cmd.includes('check-attr'))).toBe(false)
+      // The gate probe itself must stay in the concurrent batch, not serial.
+      expect(seen.some((cmd) => cmd.includes('--get-regexp'))).toBe(true)
+    },
+    TIMEOUT,
+  )
+})
+
+describe('parseCheckAttrOutput', () => {
+  const triples = (...t: string[][]): string => t.flat().join('\0') + '\0'
+
+  it('drops only paths where a conversion-capable attribute is set', () => {
+    expect(
+      [
+        ...parseCheckAttrOutput(
+          triples(
+            ['a.ts', 'text', 'auto'],
+            ['a.ts', 'eol', 'unspecified'],
+            ['a.ts', 'ident', 'unspecified'],
+            ['b.png', 'text', 'unset'],
+            ['b.png', 'eol', 'unspecified'],
+            ['b.png', 'ident', 'unspecified'],
+            ['c.sh', 'text', 'unspecified'],
+            ['c.sh', 'eol', 'lf'],
+            ['c.sh', 'ident', 'unspecified'],
+            ['d.c', 'text', 'unspecified'],
+            ['d.c', 'eol', 'unspecified'],
+            ['d.c', 'ident', 'set'],
+          ),
+        ),
+      ].sort(),
+    ).toEqual(['a.ts', 'c.sh', 'd.c'])
+  })
+
+  it('keeps everything when nothing is specified, and tolerates empty input', () => {
+    expect([
+      ...parseCheckAttrOutput(
+        triples(
+          ['x', 'text', 'unspecified'],
+          ['x', 'eol', 'unspecified'],
+          ['x', 'ident', 'unspecified'],
+        ),
+      ),
+    ]).toEqual([])
+    expect([...parseCheckAttrOutput('')]).toEqual([])
+  })
+})
+
+describe('autocrlfConverts', () => {
+  it('is true only for the values that actually convert', () => {
+    expect(autocrlfConverts('core.autocrlf true')).toBe(true)
+    expect(autocrlfConverts('core.autocrlf input')).toBe(true)
+    expect(autocrlfConverts('core.autocrlf false')).toBe(false)
+    expect(autocrlfConverts('')).toBe(false)
+    // Other core.* keys in the same output must not be mistaken for it.
+    expect(autocrlfConverts('core.eol lf\ncore.attributesfile /x')).toBe(false)
+    expect(autocrlfConverts('core.eol lf\ncore.autocrlf TRUE')).toBe(true)
+  })
 })
 
 describe('parseFlaggedOutput', () => {

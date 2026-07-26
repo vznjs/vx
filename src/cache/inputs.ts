@@ -19,6 +19,7 @@
 // supported.
 
 import path from 'node:path'
+import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import { UserError } from '../util/index.js'
@@ -648,6 +649,105 @@ function parseLsFilesOutput(out: string): GitLsResult {
   return { files, oids }
 }
 
+/** One completed `git` invocation. */
+interface GitRun {
+  exitCode: number
+  stdout: string
+  stderr: string
+}
+
+/**
+ * Parse `git check-attr -z text eol ident` output — a flat stream of
+ * `<path>\0<attr>\0<value>\0` triples — into the set of paths where a clean
+ * filter can rewrite bytes. `unspecified` means no rule matched and
+ * `unset` (`-text`) explicitly disables conversion; both leave the index blob
+ * byte-identical to the worktree file, so those OIDs stay trusted.
+ */
+export function parseCheckAttrOutput(out: string): Set<string> {
+  const affected = new Set<string>()
+  const fields = out.split('\0')
+  for (let i = 0; i + 2 < fields.length; i += 3) {
+    const value = fields[i + 2]!
+    if (value !== 'unspecified' && value !== 'unset') affected.add(fields[i]!)
+  }
+  return affected
+}
+
+/**
+ * Remove from `trusted` every path whose index blob may differ from its
+ * worktree bytes because a clean filter applies.
+ *
+ * Gated in two steps so the common case pays NOTHING. The precise answer —
+ * `git ls-files --eol`, comparing `i/` to `w/` — was measured at 240 ms on a
+ * 15k-file tree because it must READ every worktree file: 13x the entire
+ * enumeration, on a run whose warm total is ~130 ms, and in the common Linux
+ * case it finds nothing. So instead:
+ *
+ *  1. If `core.autocrlf` is true/input, conversion applies to every
+ *     auto-detected text file with no attribute needed — trust nothing.
+ *  2. Else, if no attributes source exists anywhere (no in-tree
+ *     `.gitattributes`, no `$GIT_DIR/info/attributes`, no
+ *     `core.attributesFile`), no rule can name a filter — return untouched,
+ *     zero extra work. This is the default `git init` repo.
+ *  3. Otherwise ask `git check-attr` (measured 21 ms; it resolves attributes
+ *     from the index WITHOUT reading worktree content) and drop only the
+ *     paths that actually carry `text`/`eol`/`ident`.
+ *
+ * Never throws: a probe that fails leaves the map as-is, which is exactly the
+ * behaviour before this gate existed.
+ */
+async function dropFilteredOids(
+  trusted: Map<string, string>,
+  args: {
+    workspaceRoot: string
+    gitDir: string
+    coreConfig: string
+    spawnGit: (a: string[], stdin?: string) => Promise<GitRun | null>
+  },
+): Promise<void> {
+  if (trusted.size === 0) return
+  if (autocrlfConverts(args.coreConfig)) {
+    trusted.clear()
+    return
+  }
+  // Cheap checks first, and nothing is materialized until one of them fires —
+  // on a 15k-file repo with no attributes this whole function is a size check,
+  // a substring scan of an empty string, one stat, and a key walk that exits
+  // on the first `.gitattributes` it does not find.
+  let attributesPossible =
+    args.coreConfig.toLowerCase().includes('core.attributesfile') ||
+    (args.gitDir !== '' &&
+      existsSync(path.resolve(args.workspaceRoot, args.gitDir, 'info', 'attributes')))
+  if (!attributesPossible) {
+    for (const rel of trusted.keys()) {
+      if (rel === '.gitattributes' || rel.endsWith('/.gitattributes')) {
+        attributesPossible = true
+        break
+      }
+    }
+  }
+  if (!attributesPossible) return
+
+  const res = await args.spawnGit(
+    ['check-attr', '--stdin', '-z', 'text', 'eol', 'ident'],
+    [...trusted.keys()].join('\0'),
+  )
+  if (res === null || res.exitCode !== 0) return
+  for (const rel of parseCheckAttrOutput(res.stdout)) trusted.delete(rel)
+}
+
+/** `true` when git may rewrite bytes for EVERY auto-detected text file. */
+export function autocrlfConverts(coreConfig: string): boolean {
+  for (const line of coreConfig.split('\n')) {
+    const [name, value] = [line.slice(0, line.indexOf(' ')), line.slice(line.indexOf(' ') + 1)]
+    if (name.toLowerCase() === 'core.autocrlf') {
+      const v = value.trim().toLowerCase()
+      return v === 'true' || v === 'input'
+    }
+  }
+  return false
+}
+
 /**
  * Paths `git ls-files -v -z` marks as not-watched: `S` is skip-worktree, and
  * ANY lowercase letter is assume-unchanged layered on that entry's state.
@@ -734,12 +834,12 @@ export async function populateGitFilesCache(
   // bulk-populate costs max(ls-files, status) wall time, not the sum
   // (status alone is ~74 ms on a 1000-project tree; serial spawning
   // was a measurable warm-path regression vs the pre-OID code).
-  const spawnGit = async (args: string[]) => {
+  const spawnGit = async (args: string[], stdin?: string): Promise<GitRun | null> => {
     try {
       const proc = Bun.spawn({
         cmd: ['git', ...args],
         cwd: workspaceRoot,
-        stdin: 'ignore',
+        stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -764,20 +864,27 @@ export async function populateGitFilesCache(
     rels.length <= 64 &&
     rels.every((r) => r !== '' && r !== '.')
   const pathspecs = scoped ? rels : ['.']
-  const [ls, status, prefixRes, flagged] = await Promise.all([
+  const [ls, status, prefixRes, flagged, coreCfg] = await Promise.all([
     spawnGit(['ls-files', '-s', '--others', '--exclude-standard', '-z', '--', ...pathspecs]),
     spawnGit(['status', '--porcelain', '-z', '--', ...pathspecs]),
-    // The repo→workspace path prefix (empty when the workspace root IS the git
-    // root). `ls-files` prints cwd(workspace)-relative paths but `status`
-    // prints repo-root-relative ones, so when the workspace root is a SUBDIR of
-    // the git repo the two disagree; this lets us key both the same way below.
-    spawnGit(['rev-parse', '--show-prefix']),
+    // Two answers from one spawn. `--show-prefix` is the repo→workspace path
+    // (empty when the workspace root IS the git root): `ls-files` prints
+    // cwd(workspace)-relative paths but `status` prints repo-root-relative
+    // ones, so when the workspace root is a SUBDIR of the git repo the two
+    // disagree; this lets us key both the same way below. `--git-dir` locates
+    // `info/attributes` for the filter gate (it is not always `.git/` — a
+    // linked worktree's `.git` is a FILE pointing elsewhere).
+    spawnGit(['rev-parse', '--show-prefix', '--git-dir']),
     // Index-only, so it costs ~5 ms against the enumeration's ~19 ms on a
     // 15k-file tree and runs concurrently with it. `-v` tags each entry with
     // its cache state; a LOWERCASE letter means skip-worktree or
     // assume-unchanged — git has been told to stop looking at the worktree
     // file, so its index OID says nothing about what is (or isn't) on disk.
     spawnGit(['ls-files', '-v', '-z', '--', ...pathspecs]),
+    // Reads three config keys, no tree scan — the gate for whether a clean
+    // filter can rewrite bytes between the index and the worktree. Exits 1
+    // when none are set, which is the common case and means "no gate".
+    spawnGit(['config', '--get-regexp', '^core\\.(autocrlf|eol|attributesfile)$']),
   ])
   if (ls === null) {
     throw new UserError(
@@ -799,7 +906,11 @@ export async function populateGitFilesCache(
   // a STALE cache hit serving old outputs. Empty prefix (workspace == git root,
   // the common case) is a zero-cost no-op. Paths above the workspace can't be
   // inputs, so they drop out of the set.
-  const gitPrefix = prefixRes !== null && prefixRes.exitCode === 0 ? prefixRes.stdout.trim() : ''
+  // One spawn, two lines: `--show-prefix` then `--git-dir`.
+  const revLines =
+    prefixRes !== null && prefixRes.exitCode === 0 ? prefixRes.stdout.split('\n') : []
+  const gitPrefix = (revLines[0] ?? '').trim()
+  const gitDir = (revLines[1] ?? '').trim()
   const dirtyRaw =
     status !== null && status.exitCode === 0 ? parseStatusOutput(status.stdout) : null
   const dirty = dirtyRaw === null ? null : stripPrefixFromSet(dirtyRaw, gitPrefix)
@@ -821,6 +932,23 @@ export async function populateGitFilesCache(
   if (flagged !== null && flagged.exitCode === 0) {
     for (const rel of parseFlaggedOutput(flagged.stdout)) trusted.delete(rel)
   }
+  // An index OID is only the file's content hash when git stores the worktree
+  // bytes VERBATIM. Under a clean filter (`text`/`eol`/`ident`) the blob is a
+  // DIFFERENT sequence of bytes — the LF-normalized form — while the task
+  // reads the CRLF worktree file. `git status` compares AFTER filtering, so
+  // such a file reports clean and keeps its OID: the CRLF and LF states then
+  // fold the SAME key and a real content change is invisible.
+  //
+  // Dropping an OID is not over-invalidation. It routes the path to
+  // `hashFile`, which hashes the worktree bytes — the source that was correct
+  // all along. The only cost is the read, so the gate below is about paying it
+  // ONLY where a filter can actually apply.
+  await dropFilteredOids(trusted, {
+    workspaceRoot,
+    gitDir,
+    coreConfig: coreCfg !== null && coreCfg.exitCode === 0 ? coreCfg.stdout : '',
+    spawnGit,
+  })
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
   // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×

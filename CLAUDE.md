@@ -208,6 +208,53 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **The LAST stale-hit from the input audit closed — a trusted
+  index OID is no longer treated as the worktree bytes when a clean filter can
+  rewrite them.** Under `text`/`eol`/`ident` (or `core.autocrlf`), git stores
+  the LF-normalized blob while the task reads the CRLF worktree file, and
+  `git status` compares AFTER filtering — so such a file reports CLEAN and
+  keeps its OID. The CRLF and LF states then fold the **SAME** key: reproduced
+  end-to-end with `wc -c` reporting 10 bytes, the worktree rewritten to the
+  8-byte LF form, and vx answering `up-to-date` with the stale 10. The
+  collision is subtle and worth recording: the CLEAN-state key is a lie about
+  disk (it describes the index blob), and the later DIRTY-state key — where the
+  OID is correctly dropped and `hashFile` hashes the now-LF worktree — computes
+  the very same digest, because the index blob WAS the LF form. Fixing only the
+  dirty side would have changed nothing. **Gated in three steps so the common
+  case pays NOTHING**, because the precise probe is unaffordable: `git ls-files
+--eol` (compare `i/` to `w/`) is the exact answer but was MEASURED at
+  **240 ms on a 15k-file tree** — 13x the entire enumeration — since it must
+  READ every worktree file, and on stock Linux it would find nothing. So:
+  (1) `core.autocrlf` true/input ⇒ conversion applies to every auto-detected
+  text file with no attribute needed ⇒ trust nothing; (2) else if NO attributes
+  source exists anywhere (no in-tree `.gitattributes`, no
+  `$GIT_DIR/info/attributes`, no `core.attributesFile`) ⇒ return untouched,
+  zero extra work — the default `git init` repo; (3) else ask `git check-attr`
+  (**21 ms**, resolves attributes from the index WITHOUT reading content) and
+  drop only the paths actually carrying `text`/`eol`/`ident`. `unset` (`-text`)
+  and `unspecified` KEEP their OIDs — both leave the blob byte-identical to the
+  worktree file. **Dropping an OID is not over-invalidation**: it routes that
+  path to `hashFile`, which hashes the worktree bytes — the source that was
+  correct all along — so the only cost is the read, which is exactly what the
+  gate exists to avoid paying needlessly. The gate itself is FREE: the config
+  read rides the existing concurrent `Promise.all` (5 ms against the
+  enumeration's 19 ms), `--git-dir` was folded into the `rev-parse` spawn
+  already there (a linked worktree's `.git` is a FILE, so `.git/info/` cannot
+  be assumed), and nothing is materialized before the gate decides — an
+  interleaved min-of-5 A/B over three trials showed baseline 163/172/178 ms vs
+  176/178/175 ms, inside the run's own 15 ms spread. NO CACHE_VERSION bump: the
+  keys that change were WRONG before (self-healing — miss once, re-run,
+  re-cache), and a repo with no filters is byte-identical. Pinned by two REAL-CLI
+  e2e cases (the `.gitattributes` form and the `core.autocrlf` form with no
+  attributes file at all — an attributes-only gate would miss the second
+  entirely) plus a **zero-cost guard** asserting `check-attr` never spawns in a
+  plain repo, plus unit matrices for both parsers. Differentially proven by
+  disabling ONLY the call: 10 pass / 2 fail → 12 pass / 0 fail. The spawn-count
+  guard went 4→5 with `check-attr` explicitly named as NOT among them. Gates:
+  fmt/lint 0, core **1356/0** (21 skip = sandbox, `bwrap` unavailable here).
+  **With this the input-resolution audit is fully closed** — all four confirmed
+  stale-hit defects fixed.
+
 - **2026-07-26**: **THREE stale-cache-hit defects fixed — vx was replaying
   artifacts built from inputs that had since changed** (from a repro-mandated
   hostile audit of cache input resolution + hashing, the surface that decides
