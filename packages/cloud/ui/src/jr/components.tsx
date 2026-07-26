@@ -515,6 +515,7 @@ export interface Column {
   max?: number // fixed bar-track max (rates pin 1); default = column data max
   baseKey?: string // kind:'deltaBar' — the magnitude the flat band is relative to
   labelKey?: string // kind:'deltaBar' — shown when the delta is undefined (new/gone)
+  neutralKey?: string // kind:'deltaBar' — truthy row value ⇒ magnitude only, no verdict
   baseTone?: Tone
   tone?: ToneRule
   color?: string // static bar color token
@@ -633,7 +634,10 @@ function renderField(col: Column, row: Row, max: number) {
       const flat = Math.max(5, base * 0.005)
       const scale = col.max ?? max
       const frac = scale > 0 ? Math.min(1, Math.abs(v) / scale) : 0
-      const neutral = !Number.isFinite(v) || Math.abs(v) < flat
+      // A row can declare itself unjudgeable — a same-cache-key delta is the
+      // task's measurement noise (identical inputs), never a regression.
+      const unjudged = col.neutralKey !== undefined && row[col.neutralKey] === true
+      const neutral = unjudged || !Number.isFinite(v) || Math.abs(v) < flat
       const tone: Tone = neutral ? 'faint' : v > 0 ? 'danger' : 'success'
       return (
         <div class="flex items-center gap-2 justify-end">
@@ -649,11 +653,17 @@ function renderField(col: Column, row: Row, max: number) {
               <Show when={!neutral && v < 0}>
                 <div class="h-1.5 rounded-l-full bg-success" style={{ width: `${frac * 100}%` }} />
               </Show>
+              <Show when={unjudged && Number.isFinite(v) && v < 0}>
+                <div class="h-1.5 rounded-l-full bg-fg-3" style={{ width: `${frac * 100}%` }} />
+              </Show>
             </div>
             <div class="w-px h-2.5 bg-border-strong shrink-0" />
             <div class="w-1/2">
               <Show when={!neutral && v > 0}>
                 <div class="h-1.5 rounded-r-full bg-danger" style={{ width: `${frac * 100}%` }} />
+              </Show>
+              <Show when={unjudged && Number.isFinite(v) && v > 0}>
+                <div class="h-1.5 rounded-r-full bg-fg-3" style={{ width: `${frac * 100}%` }} />
               </Show>
             </div>
           </div>

@@ -1558,6 +1558,83 @@ describe('getNotifications', () => {
   })
 })
 
+describe('getTaskStability', () => {
+  it('measures spread ONLY across repeats of the same key, excluding hits and failures', async () => {
+    const { org, ws } = await newOrgWs(db, 'stability')
+    const now = Date.now()
+    const tr = (t: Partial<TR> & { runId: string; duration: number }) =>
+      insertTR(db, ws, org, {
+        project: 'app',
+        task: 'build',
+        startedAt: now - 100_000 + Math.random() * 1000,
+        ...t,
+      } as TR)
+    // Key A: a tight task — 100/104/108 (mean 104).
+    await tr({ runId: 'a1', hash: 'A', duration: 100, startedAt: now - 90_000 })
+    await tr({ runId: 'a2', hash: 'A', duration: 104, startedAt: now - 89_000 })
+    await tr({ runId: 'a3', hash: 'A', duration: 108, startedAt: now - 88_000 })
+    // Key B: a wildly variable task — 100 vs 900 on IDENTICAL inputs.
+    await tr({ runId: 'b1', hash: 'B', duration: 100, startedAt: now - 80_000 })
+    await tr({ runId: 'b2', hash: 'B', duration: 900, startedAt: now - 79_000 })
+    // Key C: ran once — says nothing about spread, must be excluded.
+    await tr({ runId: 'c1', hash: 'C', duration: 500, startedAt: now - 70_000 })
+    // Noise that must NOT count: a cache hit (measures a restore) and a
+    // failure (measures when it gave up), both on key A.
+    await tr({
+      runId: 'a4',
+      hash: 'A',
+      duration: 5,
+      cacheHit: true,
+      status: 'cache-hit',
+      startedAt: now - 60_000,
+    })
+    await tr({
+      runId: 'a5',
+      hash: 'A',
+      duration: 9999,
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 59_000,
+    })
+
+    const st = await analytics.getTaskStability(ws, 'app', 'build')
+    expect(st.keys).toBe(2) // A and B; C excluded (single execution)
+    expect(st.samples).toBe(5) // 3 + 2 — the hit and the failure are not samples
+    const byHash = new Map(st.byKey.map((k) => [k.hash, k]))
+    expect(byHash.get('A')!.runs).toBe(3)
+    expect(byHash.get('A')!.minMs).toBe(100)
+    expect(byHash.get('A')!.maxMs).toBe(108)
+    expect(byHash.has('C')).toBe(false)
+    // The volatile key is the worst, and is sorted first.
+    expect(st.byKey[0]!.hash).toBe('B')
+    expect(byHash.get('B')!.cv).toBeGreaterThan(byHash.get('A')!.cv)
+    expect(st.cvWorst).toBeCloseTo(byHash.get('B')!.cv, 10)
+  }, 60_000)
+
+  it('a task whose keys each ran once reports nothing measurable', async () => {
+    const { org, ws } = await newOrgWs(db, 'stability-none')
+    const now = Date.now()
+    await insertTR(db, ws, org, {
+      runId: 'x',
+      project: 'app',
+      task: 'once',
+      hash: 'K1',
+      startedAt: now - 5000,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'y',
+      project: 'app',
+      task: 'once',
+      hash: 'K2',
+      startedAt: now - 4000,
+    })
+    const st = await analytics.getTaskStability(ws, 'app', 'once')
+    expect(st.keys).toBe(0)
+    expect(st.samples).toBe(0)
+    expect(st.cvMedian).toBe(0)
+  }, 60_000)
+})
+
 describe('getFlakeTrend', () => {
   const DAY = 86_400_000
 

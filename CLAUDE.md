@@ -208,6 +208,42 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **Task stability — the same-key margin of error, and why it
+  is NOT a regression** (owner: "if the same task with the same key has been
+  executed multiple times I want to know what's the computation range… This is
+  different from regression as regression should be based on different keys.
+  Same keys it's just a margin of error"). The insight vx is uniquely able to
+  act on: it knows the CACHE KEY, so it can partition duration measurements by
+  inputs. Same key ⇒ identical inputs ⇒ every millisecond of spread is
+  environmental noise (machine, contention, I/O, wall-clock), never a
+  performance change. New `Analytics.getTaskStability(ws, project, task,
+{sinceDays, limit})` — one grouped query over EXECUTED successes only (a
+  cache hit measures a restore, a failure measures when it gave up), grouped by
+  hash with `HAVING count(*) >= 2`: per key `min/max/p50/mean/stddev_samp` and
+  `cv = stddev/mean`; per task the MEDIAN and WORST cv plus the median relative
+  `(max-min)/p50`. A key that ran ONCE is excluded rather than reported as
+  perfectly stable — that would be a lie by omission. Route `GET
+/v1/stability?project=&task=&sinceDays=` (both required → 400, allowlisted).
+  **UI:** a "Stability (same cache key)" card on task detail — typical/widest
+  ±1σ, the min→max range, "N executions of K identical input sets", and a
+  per-key table (runs, typical, min–max, std dev, a ±1σ meter). **And the
+  connection the owner drew explicitly:** the Compare view's `deltaBar` gained
+  `neutralKey`, so a row whose cache key is UNCHANGED renders its magnitude in
+  neutral ink and passes NO verdict — identical inputs cannot regress, so
+  coloring that delta red was the tool asserting something it cannot know.
+  **A labeling error the browser review caught:** the first cut printed
+  `cv/2` as "±8.4%" while the same card's table showed 17% — one standard
+  deviation IS ±cv, so halving understated the real margin of error; fixed and
+  the column relabeled ±1σ. Pinned: a tight key (100/104/108) vs a volatile one
+  (100 vs 900 on identical inputs) rank correctly by cv, a single-execution key
+  is excluded, and a cache hit + a failure on a measured key are excluded from
+  `samples`; plus a nothing-measurable task and the route's 400. Gates:
+  fmt/lint 0, cloud 554/0, core 1286/0; baseline refreshed (docs screenshot
+  now shows the card). NO schema/CACHE bump (read-side + additive route).
+  **Follow-on worth building:** feed the deltaBar's flat band from the task's
+  MEASURED stability instead of the fixed `max(5ms, 0.5%)` heuristic, and rank
+  least-stable tasks on Insights.
+
 - **2026-07-26**: **Scale wave 2 — the remaining fetch-a-page-then-find sources
   become point lookups** (finishing the owner's 1000-project / 10k-task
   directive; wave 1 fixed the blank project page + the lying rank). Three

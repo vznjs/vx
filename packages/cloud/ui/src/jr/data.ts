@@ -30,6 +30,7 @@ import {
   getFlakeTrend,
   getFlakiest,
   getTaskFlaky,
+  getTaskStability,
   getProject,
   getProjectBranchFailures,
   getProjectRank,
@@ -80,6 +81,7 @@ interface CompareRow {
   baseMs: number
   deltaKind: 'slower' | 'faster' | 'same' | 'new' | 'gone'
   keyChanged: 'changed' | 'same'
+  _sameKey: boolean
 }
 
 /** Fetch /v1/compare and flatten each task into a display row. */
@@ -117,6 +119,9 @@ async function compareRows(runId: string): Promise<CompareRow[]> {
       baseMs: t.a?.durationMs ?? 0,
       deltaKind,
       keyChanged: t.hashChanged ? 'changed' : 'same',
+      // Same key ⇒ identical inputs ⇒ the delta is this task's measurement
+      // noise. The table renders magnitude but passes no verdict on it.
+      _sameKey: !t.hashChanged,
     }
   })
 }
@@ -588,6 +593,31 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   taskFlaky: (p) => {
     const [project = '', task = ''] = (p.id ?? '').split('#', 2)
     return project !== '' && task !== '' ? getTaskFlaky(project, task) : Promise.resolve(null)
+  },
+  // Task stability: how repeatable the computation is across executions of the
+  // SAME cache key. Identical inputs cannot regress, so this spread is the
+  // task's margin of error — and the floor under any cross-key claim. Null
+  // (card hidden) when no key ran twice, so there is nothing measurable.
+  taskStability: async (p) => {
+    const [project = '', task = ''] = (p.id ?? '').split('#', 2)
+    if (project === '' || task === '') return null
+    const st = await getTaskStability(project, task).catch(() => null)
+    if (st === null || st.keys === 0) return null
+    // cv = stddev/mean, so one standard deviation IS ±cv of the mean. Halving
+    // it would understate the task's real margin of error.
+    const pct = (v: number) => `±${(v * 100).toFixed(1)}%`
+    return {
+      ...st,
+      _typical: pct(st.cvMedian),
+      _worst: pct(st.cvWorst),
+      _range: `${(st.rangeMedian * 100).toFixed(0)}% min→max`,
+      _basis: `${st.samples} executions of ${st.keys} identical input set${st.keys === 1 ? '' : 's'}`,
+      _rows: st.byKey.map((k) => ({
+        ...k,
+        _spread: `${k.minMs}–${k.maxMs}ms`,
+        _cvPct: k.cv,
+      })),
+    }
   },
   // S4 flake trend: per-day nondeterminism episodes for THIS task, with
   // first/last seen + direction. Null (card hidden) on a healthy task, an

@@ -1154,6 +1154,37 @@ export interface FlakeTrendResponse {
   lastSeenAt: number | null
 }
 
+export interface StabilitySample {
+  hash: string
+  runs: number
+  minMs: number
+  maxMs: number
+  p50Ms: number
+  meanMs: number
+  stddevMs: number
+  cv: number
+}
+
+export interface TaskStabilityResponse {
+  samples: number
+  keys: number
+  cvMedian: number
+  cvWorst: number
+  rangeMedian: number
+  byKey: StabilitySample[]
+}
+
+/** Same-key duration spread — the task's own margin of error. */
+export async function getTaskStability(
+  project: string,
+  task: string,
+  sinceDays = 90,
+): Promise<TaskStabilityResponse> {
+  return getJson<TaskStabilityResponse>(
+    `/v1/stability?project=${encodeURIComponent(project)}&task=${encodeURIComponent(task)}&sinceDays=${sinceDays}`,
+  )
+}
+
 export async function getFlakeTrend(
   project: string,
   task: string,
