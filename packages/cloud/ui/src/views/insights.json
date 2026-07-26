@@ -450,8 +450,7 @@
       {
         "type": "Card",
         "props": {
-          "title": "Runs per day (last 30d)",
-          "actionText": "runs · hits · failures"
+          "title": "Runs per day (last 30d)"
         },
         "children": [
           {

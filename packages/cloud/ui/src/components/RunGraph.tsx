@@ -13,7 +13,7 @@
 // from the build).
 
 import { For, Show, createMemo, createSignal } from 'solid-js'
-import { cpuPct as cpuPctOf, formatBytes, formatDuration } from '../format.ts'
+import { IDENT_TASK_TEXT, cpuPct as cpuPctOf, formatBytes, formatDuration, identTextClass } from '../format.ts'
 import { contractGroups, layoutLevels } from './run-graph-layout.ts'
 import { PREDICTED, STATUS, type PredictedStatus, type VizState } from './status.tsx'
 
@@ -189,12 +189,12 @@ export function RunGraph(props: {
                     <div class="pl-3 pr-2.5 py-2 flex flex-col h-full gap-1">
                       <div class="flex items-center gap-1.5 min-w-0">
                         <span class={`${sty().icon} ${sty().dot} text-[13px] shrink-0`} classList={{ 'animate-spin': effState(n) === 'running' }} />
-                        <span class="font-mono text-[12.5px] text-fg-1 font-medium truncate">{n.task}</span>
+                        <span class={`font-mono text-[12.5px] ${IDENT_TASK_TEXT} font-medium truncate`}>{n.task}</span>
                         <Show when={crit()}>
                           <span class="i-tabler-flame text-warn text-[12px] ml-auto shrink-0" title="bottleneck" />
                         </Show>
                       </div>
-                      <div class="text-[10px] text-fg-3 font-mono truncate">{n.project}</div>
+                      <div class={`text-[10px] ${identTextClass(n.project)} font-mono truncate`}>{n.project}</div>
                       <div class="flex items-center gap-1 text-[10px] font-mono tabular-nums">
                         <Show when={(stats().durationMs ?? 0) > 0}>
                           <span class="text-fg-2">{formatDuration(stats().durationMs!)}</span>
