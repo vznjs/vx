@@ -1135,20 +1135,23 @@ what that level accepts.
 
 Workspace-discovery errors (`src/workspace/workspace.ts`):
 
-| Symptom                                        | Cause                                                    |
-| ---------------------------------------------- | -------------------------------------------------------- |
-| `failed to parse <file>`                       | A `package.json` / `pnpm-workspace.yaml` is not valid.   |
-| `<file>: packages must be an array of globs`   | `pnpm-workspace.yaml` `packages:` is a bare string, etc. |
-| `<file>: workspaces must be an array of globs` | `package.json` `workspaces` holds a non-string entry.    |
+| Symptom                                                        | Cause                                                                            |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `failed to parse <file>: <why>`                                | A `package.json` / `pnpm-workspace.yaml` is not valid.                           |
+| `<file>: packages must be an array of glob strings`            | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                         |
+| `<file>: workspaces must be an array of glob strings`          | `package.json` `workspaces` holds a non-string entry.                            |
+| `<file>: workspaces.packages must be an array of glob strings` | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry. |
 
 Workspace-config errors:
 
-| Symptom                                                                              | Cause                                           |
-| ------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| `concurrency must be a positive integer`                                             | `concurrency` is negative, zero, NaN, ...       |
-| `timeout must be a positive integer (milliseconds)`                                  | Workspace `timeout` is ≤ 0, NaN, or not an int. |
-| `cacheDir must be a string`                                                          | Wrong shape.                                    |
-| `plugins must be an array of plugin objects`                                         | Wrong shape.                                    |
-| `plugins[i].name must be a non-empty string`                                         | Missing / empty plugin name.                    |
-| `plugins[i] must contribute at least one of setup/backend/cache/telemetry/eventSink` | A plugin object with no capability.             |
-| `predictive must be a boolean`                                                       | Wrong shape.                                    |
+| Symptom                                                                                | Cause                                                    |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `concurrency must be a positive integer`                                               | `concurrency` is negative, zero, NaN, ...                |
+| `timeout must be a positive integer (milliseconds)`                                    | Workspace `timeout` is ≤ 0, NaN, or not an int.          |
+| `cacheDir must be a string`                                                            | Wrong shape.                                             |
+| `plugins must be an array of plugin objects`                                           | Wrong shape.                                             |
+| `plugins[<i>] must be an object`                                                       | A non-object entry in `plugins`.                         |
+| `plugins[<i>].name must be a non-empty string`                                         | Missing / empty plugin name.                             |
+| `plugins[<i>].<capability> must be a function`                                         | A capability key holding something that is not callable. |
+| `plugins[<i>] must contribute at least one of setup/backend/cache/telemetry/eventSink` | A plugin object with no capability.                      |
+| `predictive must be a boolean`                                                         | Wrong shape.                                             |

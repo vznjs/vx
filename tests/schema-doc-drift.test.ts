@@ -14,7 +14,12 @@
 
 import { describe, expect, it } from 'bun:test'
 import path from 'node:path'
-import { loadProjectConfig, validateProjectConfig } from '../src/workspace/project-loader.js'
+import {
+  loadProjectConfig,
+  loadWorkspaceConfig,
+  validateProjectConfig,
+} from '../src/workspace/project-loader.js'
+import { loadWorkspace } from '../src/workspace/workspace.js'
 
 const CONFIG_PATH = '/ws/pkg/vx.config.ts'
 
@@ -159,16 +164,16 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
 ]
 
 /**
- * The Symptom column of the FIRST table under `## Schema validation errors` —
- * the per-task one. Later sections carry their own tables (workspace discovery,
- * `defineWorkspace`); those are a separate surface and out of scope here, so
- * the scan stops at the end of this table rather than running to EOF.
+ * The Symptom column of the FIRST table at or after `anchor`. Each table gets
+ * its own anchor rather than one scan to EOF, so a row can never be counted
+ * against the wrong surface.
  */
-async function documentedRows(): Promise<string[]> {
+async function documentedRows(anchor: string): Promise<string[]> {
   const doc = await Bun.file(new URL('../docs/schema.md', import.meta.url).pathname).text()
-  const section = doc.slice(doc.indexOf('## Schema validation errors'))
+  const at = doc.indexOf(anchor)
+  expect(at).toBeGreaterThan(-1)
   const rows: string[] = []
-  for (const line of section.split('\n')) {
+  for (const line of doc.slice(at).split('\n')) {
     if (line.startsWith('| `')) {
       rows.push(normalize(line.slice(1, line.indexOf('|', 1)).trim()))
       continue
@@ -179,29 +184,119 @@ async function documentedRows(): Promise<string[]> {
   return rows
 }
 
-describe('docs/schema.md task-validation table matches the loader', () => {
-  it('documents exactly the symptoms pinned here — no more, no fewer', async () => {
-    // Both directions at once: an undocumented case, or a documented row with
-    // nothing provoking it, fails and names itself.
-    const documented = await documentedRows()
-    expect(documented.length).toBeGreaterThan(0)
-    expect([...documented].sort()).toEqual(CASES.map(([row]) => row).sort())
-  })
+/** Write `files` into a fresh temp dir and return its path. */
+async function tempRoot(files: Record<string, string>): Promise<string> {
+  const dir = path.join(process.env['TMPDIR'] ?? '/tmp', `vx-drift-${Bun.randomUUIDv7()}`)
+  for (const [rel, content] of Object.entries(files)) await Bun.write(path.join(dir, rel), content)
+  return dir
+}
 
-  for (const [row, trigger] of CASES) {
-    it(`emits the documented symptom: ${row}`, async () => {
-      const message = await trigger()
-      expect(message).not.toBeNull()
-      // A row may carry <placeholders> for the part that varies by config;
-      // every literal segment around them must still appear.
-      for (const segment of row.split(/<[^>]+>/)) {
-        const literal = segment.trim()
-        if (literal.length > 0) expect(normalize(message ?? '')).toContain(literal)
-      }
-    })
+/** Run `fn` against a temp workspace and return the message, or null. */
+async function failure(
+  files: Record<string, string>,
+  fn: (root: string) => Promise<unknown>,
+): Promise<string | null> {
+  try {
+    await fn(await tempRoot(files))
+    return null
+  } catch (err) {
+    return (err as Error).message
   }
+}
 
-  it('the unknown-field error names the key AND what that level accepts', () => {
+const DISCOVERY_CASES: Array<[string, () => Promise<string | null>]> = [
+  [
+    'failed to parse <file>: <why>',
+    () => failure({ 'pnpm-workspace.yaml': 'packages: [\n' }, loadWorkspace),
+  ],
+  [
+    '<file>: packages must be an array of glob strings',
+    () => failure({ 'pnpm-workspace.yaml': 'packages: "packages/*"\n' }, loadWorkspace),
+  ],
+  [
+    '<file>: workspaces must be an array of glob strings',
+    () => failure({ 'package.json': '{"name":"r","workspaces":[1]}' }, loadWorkspace),
+  ],
+  [
+    '<file>: workspaces.packages must be an array of glob strings',
+    () => failure({ 'package.json': '{"name":"r","workspaces":{"packages":"x"}}' }, loadWorkspace),
+  ],
+]
+
+/** A `vx.workspace.ts` exporting `body`, loaded through the real loader. */
+function workspaceConfig(body: string): () => Promise<string | null> {
+  return () => failure({ 'vx.workspace.ts': `export default ${body}\n` }, loadWorkspaceConfig)
+}
+
+const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
+  ['concurrency must be a positive integer', workspaceConfig('{ concurrency: 0 }')],
+  ['timeout must be a positive integer (milliseconds)', workspaceConfig('{ timeout: -1 }')],
+  ['cacheDir must be a string', workspaceConfig('{ cacheDir: 42 }')],
+  ['plugins must be an array of plugin objects', workspaceConfig('{ plugins: {} }')],
+  ['plugins[<i>] must be an object', workspaceConfig('{ plugins: ["nope"] }')],
+  ['plugins[<i>].name must be a non-empty string', workspaceConfig('{ plugins: [{ name: "" }] }')],
+  [
+    'plugins[<i>].<capability> must be a function',
+    workspaceConfig('{ plugins: [{ name: "p", setup: 1 }] }'),
+  ],
+  [
+    'plugins[<i>] must contribute at least one of setup/backend/cache/telemetry/eventSink',
+    workspaceConfig('{ plugins: [{ name: "p" }] }'),
+  ],
+  ['predictive must be a boolean', workspaceConfig('{ predictive: "yes" }')],
+]
+
+/**
+ * One table's worth of assertions: the documented set matches the pinned set
+ * exactly, and each case really provokes its row.
+ */
+function pinTable(
+  title: string,
+  anchor: string,
+  cases: Array<[string, () => string | null | Promise<string | null>]>,
+): void {
+  describe(title, () => {
+    it('documents exactly the symptoms pinned here — no more, no fewer', async () => {
+      // Both directions at once: an undocumented case, or a documented row with
+      // nothing provoking it, fails and names itself.
+      const documented = await documentedRows(anchor)
+      expect(documented.length).toBeGreaterThan(0)
+      expect([...documented].sort()).toEqual(cases.map(([row]) => row).sort())
+    })
+
+    for (const [row, trigger] of cases) {
+      it(`emits the documented symptom: ${row}`, async () => {
+        const message = await trigger()
+        expect(message).not.toBeNull()
+        // A row may carry <placeholders> for the part that varies by input;
+        // every literal segment around them must still appear.
+        for (const segment of row.split(/<[^>]+>/)) {
+          const literal = segment.trim()
+          if (literal.length > 0) expect(normalize(message ?? '')).toContain(literal)
+        }
+      })
+    }
+  })
+}
+
+pinTable(
+  'docs/schema.md task-validation table matches the loader',
+  '## Schema validation errors',
+  CASES,
+)
+pinTable(
+  'docs/schema.md workspace-discovery table matches the loader',
+  'Workspace-discovery errors',
+  DISCOVERY_CASES,
+)
+pinTable(
+  'docs/schema.md workspace-config table matches the loader',
+  'Workspace-config errors:',
+  WORKSPACE_CASES,
+)
+
+describe('docs/schema.md unknown-field rejection', () => {
+  it('names the key AND what that level accepts', () => {
     // The value of rejecting unknown keys is that the message is actionable —
     // a bare "unknown field" leaves a user guessing which spelling was right.
     const message = validated({
