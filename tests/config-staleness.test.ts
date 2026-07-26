@@ -25,6 +25,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
+import { configEvalWorkerCount } from '../src/workspace/config-eval.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
 
 const TIMEOUT = 30_000
@@ -132,6 +133,128 @@ describe('config import closure freshness', () => {
     },
     TIMEOUT,
   )
+})
+
+// A repeat load re-evaluates in a Worker, which has its own module
+// registry. These pin the properties that makes that swap safe: the
+// object it hands back must hash and fail EXACTLY like the in-process
+// first load, and the hot path must not pay for it.
+describe('worker-evaluated repeat loads', () => {
+  let root: string
+  let n = 0
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-eval-'))
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const write = async (body: string): Promise<string> => {
+    const file = path.join(root, `vx.config.${n++}.mjs`)
+    await writeFile(file, body)
+    return file
+  }
+
+  const RICH = `export default {
+    tasks: {
+      build: {
+        description: 'builds',
+        dependsOn: ['^build', 'gen'],
+        exec: {
+          command: 'echo hi',
+          timeout: 1000,
+          retries: 2,
+          env: { passThrough: ['HOME'], define: { A: 'b' } },
+          resources: { cpus: 2, memory: '512MB' },
+        },
+        cache: {
+          inputs: { files: ['src/**'], env: ['CI'], tasks: ['^build'], runtime: ['node -v'] },
+          outputs: { files: ['dist/**'] },
+        },
+      },
+      gen: { exec: { command: 'echo gen' } },
+    },
+  }\n`
+
+  it('hand back a config byte-identical to the in-process first load', async () => {
+    const file = await write(RICH)
+
+    // The cache key is derived from `JSON.stringify(config)` and
+    // `vx lock` stores the same round-trip, so byte-identity here IS
+    // key identity — the reason this mechanism needs no CACHE_VERSION
+    // bump. The first load is in-process; the second goes through the
+    // worker and its JSON hop.
+    const first = JSON.stringify(await loadProjectConfig(file))
+    const second = JSON.stringify(await loadProjectConfig(file))
+    expect(second).toBe(first)
+    // Not a vacuous comparison of two empty objects.
+    expect(first).toContain('512MB')
+  })
+
+  it('leave the first-load hot path free of workers', async () => {
+    const file = await write(RICH)
+    const before = configEvalWorkerCount()
+    await loadProjectConfig(file)
+    expect(configEvalWorkerCount()).toBe(before)
+
+    // ...and the repeat load is what actually reaches for one.
+    await loadProjectConfig(file)
+    expect(configEvalWorkerCount()).toBe(before + 1)
+  })
+
+  it('share ONE worker across a concurrent round, then retire it', async () => {
+    const files = await Promise.all([write(RICH), write(RICH), write(RICH)])
+    // Mark them loaded, so the rounds below are all repeat loads.
+    for (const f of files) await loadProjectConfig(f)
+
+    const before = configEvalWorkerCount()
+    await Promise.all(files.map((f) => loadProjectConfig(f)))
+    expect(configEvalWorkerCount()).toBe(before + 1)
+
+    // A later round must NOT reuse the first round's registry, or a
+    // preset edited between watch cycles would replay stale.
+    await Promise.all(files.map((f) => loadProjectConfig(f)))
+    expect(configEvalWorkerCount()).toBe(before + 2)
+  })
+
+  it('report a validation error with the same text a first load gives', async () => {
+    const bad = `export default { tasks: { build: {
+      exec: { command: 'echo hi' },
+      cache: { inputs: { files: ['src/**'], workspaceFile: ['x'] }, outputs: { files: ['o'] } },
+    } } }\n`
+
+    const viaFirst = await write(bad)
+    const firstErr = await loadProjectConfig(viaFirst).then(
+      () => 'NO THROW',
+      (e: unknown) => (e as Error).message,
+    )
+
+    // Same content, but reached through the repeat path: load a valid
+    // config, then break it — which is exactly a watch cycle.
+    const viaRepeat = await write(RICH)
+    await loadProjectConfig(viaRepeat)
+    await writeFile(viaRepeat, bad)
+    const repeatErr = await loadProjectConfig(viaRepeat).then(
+      () => 'NO THROW',
+      (e: unknown) => (e as Error).message,
+    )
+
+    expect(firstErr).toMatch(/cache\.inputs has unknown field "workspaceFile"/)
+    expect(repeatErr).toBe(firstErr.replace(viaFirst, viaRepeat))
+  })
+
+  it('surface the error a config throws, and a vanished default export', async () => {
+    const file = await write(RICH)
+    await loadProjectConfig(file)
+
+    await writeFile(file, `throw new Error('boom from config')\n`)
+    await expect(loadProjectConfig(file)).rejects.toThrow(/boom from config/)
+
+    await writeFile(file, `export default 42\n`)
+    await expect(loadProjectConfig(file)).rejects.toThrow(/did not export a default object/)
+  })
 })
 
 describe('a typo in a cache-key field', () => {

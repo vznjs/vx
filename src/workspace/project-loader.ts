@@ -1,6 +1,7 @@
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { parseSize, UserError, xxh3hex } from '../util/index.js'
+import { evaluateConfigFresh } from './config-eval.js'
 
 const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.ts',
@@ -9,52 +10,13 @@ const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.mjs',
 ]
 
-/**
- * Modules pulled into Bun's registry by a project config's `import`s,
- * plus the config entries themselves. Evicted before a config is loaded
- * a SECOND time in the same process — see `beginProjectLoad`.
- */
-const configClosure = new Set<string>()
 /** Project configs already loaded in this process, by absolute path. */
 const loadedConfigs = new Set<string>()
 
-/** Bun's module registry, or `null` on a runtime that doesn't expose it. */
-function moduleRegistry(): Map<string, unknown> | null {
-  const loader = (globalThis as unknown as { Loader?: { registry?: unknown } }).Loader
-  const registry = loader?.registry
-  return registry instanceof Map ? (registry as Map<string, unknown>) : null
-}
-
-/**
- * Prepare to load `configPath`, evicting the recorded config closure when
- * this config has already been loaded in this process.
- *
- * The query bust below only changes the ENTRY's specifier. Bun caches an
- * evaluated module by its resolved specifier, so an `import './preset.js'`
- * INSIDE a config resolves to the same key either way and replays the
- * cached instance — a busted entry re-evaluates against STALE imports.
- * Shared presets are the documented composition mechanism (`vx migrate`
- * generates one), so in a long-lived process — `vx watch`, a distribution
- * agent — a preset edit would otherwise stay invisible for the life of
- * the process. And because the resolved config feeds the cache key, vx
- * would report `up-to-date` for a command that changed on disk.
- *
- * SYNCHRONOUS on purpose: `prepareRun` loads a round of configs with
- * `Promise.all`, and running before the first `await` means the round's
- * first repeat evicts once and its siblings then share the modules it
- * re-evaluates, instead of racing the eviction.
- *
- * A first load evicts nothing, so a single `vx run` is unaffected.
- */
-function beginProjectLoad(configPath: string): void {
-  if (loadedConfigs.has(configPath)) {
-    const registry = moduleRegistry()
-    if (registry !== null) {
-      for (const key of configClosure) registry.delete(key)
-      configClosure.clear()
-    }
+function assertDefaultObject(mod: unknown, kind: string, configPath: string): void {
+  if (!mod || typeof mod !== 'object') {
+    throw new UserError(`${kind} config at ${configPath} did not export a default object`)
   }
-  loadedConfigs.add(configPath)
 }
 
 // Bun has native TS / ESM execution — no transpiler dep needed. We fold
@@ -69,7 +31,6 @@ async function loadDefaultExport(
   configPath: string,
   kind: string,
   fresh = false,
-  trackClosure = false,
 ): Promise<unknown> {
   const bytes = await Bun.file(configPath).bytes()
   // `fresh` opts out of module-cache reuse entirely: `vx lock` and
@@ -77,16 +38,9 @@ async function loadDefaultExport(
   // content-hash bust would replay an evaluation made under earlier
   // env values when the file bytes are unchanged in this process.
   const bust = fresh ? `${xxh3hex(bytes)}-${Bun.randomUUIDv7()}` : xxh3hex(bytes)
-  const registry = trackClosure ? moduleRegistry() : null
-  const before = registry === null ? null : new Set(registry.keys())
   const ns = (await import(`${configPath}?vx-bust=${bust}`)) as { default?: unknown }
-  if (registry !== null && before !== null) {
-    for (const key of registry.keys()) if (!before.has(key)) configClosure.add(key)
-  }
   const mod = ns?.default
-  if (!mod || typeof mod !== 'object') {
-    throw new UserError(`${kind} config at ${configPath} did not export a default object`)
-  }
+  assertDefaultObject(mod, kind, configPath)
   return mod
 }
 
@@ -94,15 +48,21 @@ export async function loadProjectConfig(
   configPath: string,
   opts?: { fresh?: boolean },
 ): Promise<ProjectConfig> {
-  beginProjectLoad(configPath)
-  const mod = (await loadDefaultExport(
-    configPath,
-    'Project',
-    opts?.fresh === true,
-    true,
-  )) as ProjectConfig
-  validateProjectConfig(mod, configPath)
-  return mod
+  // A REPEAT load in this process re-evaluates in a worker, because the
+  // bust above cannot reach the config's import closure — see
+  // config-eval.ts. A FIRST load keeps the in-process import, so the
+  // single `vx run` hot path never pays for a worker.
+  const repeat = loadedConfigs.has(configPath)
+  loadedConfigs.add(configPath)
+  const mod = repeat
+    ? await evaluateConfigFresh(configPath)
+    : await loadDefaultExport(configPath, 'Project', opts?.fresh === true)
+  assertDefaultObject(mod, 'Project', configPath)
+  // Validation runs HERE, on whichever object we ended up with, so a
+  // malformed config reports the identical UserError whether it was
+  // evaluated in-process or in a worker.
+  validateProjectConfig(mod as ProjectConfig, configPath)
+  return mod as ProjectConfig
 }
 
 /**
