@@ -616,8 +616,13 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       // content assertions on `cat`'s output meaningful.
       const cmd = startWatch(['watch', '--all', 'hello', '--output-logs', 'full'])
 
-      // Wait for the initial run to appear in stdout, then write a change.
-      await waitFor(() => stdout.includes('v0'))
+      // Wait for the loop to say it is WATCHING, not merely for the initial
+      // run's output: `runWatchLoop` installs its fs.watch handles only after
+      // that output is flushed, so a write racing that gap is dropped by the
+      // OS and no re-run ever fires. A lost event cannot be waited out, which
+      // is why raising the timeout never fixed this. Every sibling test below
+      // already waits on this line.
+      await waitFor(() => stdout.includes('watching 1 project'))
       await writeFile(path.join(workspaceRoot, 'packages', 'one', 'src', 'index.txt'), 'v1')
 
       // Wait for the re-run to surface the new content.

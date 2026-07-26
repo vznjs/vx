@@ -96,6 +96,16 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   }
 
   // Initial run — same code path as `vx run`.
+  //
+  // Watchers do not exist yet, so an edit made WHILE this run is executing is
+  // dropped by the OS and never triggers a re-run. Known and deliberate: the
+  // obvious fix (install watchers first) forces `anyTaskUsesWorkspaceFiles`
+  // ahead of the run to decide which watchers to install, and that marks every
+  // config loaded — so the initial run's own loads become REPEATs and pay a
+  // worker round-trip each (see config-eval.ts). Trading a hot-path regression
+  // on every `vx watch` for a window a user rarely edits into is a bad deal;
+  // closing it properly needs the workspaceWide decision made without loading
+  // configs.
   process.stdout.write('vx watch: initial run...\n\n')
   await runOrchestrator(opts)
 
