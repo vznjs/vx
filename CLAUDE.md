@@ -208,6 +208,73 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **Scale correctness — a 1000-project workspace no longer
+  renders empty pages or lies about rank** (owner: "you need to design for
+  workspaces with 1000 projects and 10k tasks. The ui should handle that and
+  be presented in useful way"). **Measured first**: a probe seeding 1000
+  projects × 10 tasks (100k task_runs) through the real ingest wire proved the
+  failure is CORRECTNESS, not latency — `/v1/projects?limit=500` returns a
+  PAGE, and three dashboard sources did `fetch a page → .find()` in it, so
+  (a) **every project past the page rendered a blank detail page**
+  (`projectSummary` found nothing), (b) the ranking card claimed **"vs 500
+  projects"** when there were 1000 and ranked within the page, and (c) the
+  Projects table's filter box could never reach a tail project (it filters
+  the fetched rows). Payloads were fine (103 KB / 143 ms for 500 projects) —
+  the data was simply wrong. **Fixed server-side, which is the only place it
+  can be right:** `listProjects(ws, {limit, search, projects})` gains
+  server-side ILIKE search + exact-name fetch (the point lookup);
+  `countProjects` is the true denominator; new `rankProject(ws, project)`
+  computes per-axis ranks with WINDOW FUNCTIONS over EVERY project in one
+  query and returns top-N per axis PLUS the named project with its true rank,
+  so both the rank and the total are correct at any size. `/v1/projects` now
+  answers `{projects, total}`; new `/v1/projects/rank` (allowlisted). The
+  client's `rankProjects` helper — which did the in-page ranking — is
+  replaced by a thin shaper. The Projects table states
+  "showing N of M projects" when truncated instead of implying the page is
+  the workspace. **The guard caught a bug in the fix itself**: `= ANY($1)`
+  binds a JS array as a malformed array literal on this driver (`IN
+${sql(array)}` is the form — the `provenanceForHashes` precedent), which
+  would have 500'd the point-lookup route in production. Pinned by a scale
+  test seeding 620 projects (past the page): the tail project resolves by
+  exact fetch AND by search, ranks #1 by avg exec with `total === 620`, and a
+  mid-pack project reports a true rank > 8. Wire pinned in server e2e.
+  Visual guard 10/10 — the ranking card renders identically off the new
+  source, a free functional-equivalence check. Gates: fmt/lint 0, cloud
+  550/0, core 1286/0. NO schema/CACHE bump (read-side + additive route).
+  **Still open for the presentation half:** server-side search wired into the
+  Projects/Tasks table filter boxes (today the box filters the fetched page
+  and the notice tells the truth about it), and a tasks-list point lookup for
+  the flaky badge (`getFlakiest(100).find()` degrades for a task outside the
+  top 100 — degraded, not broken).
+
+- **2026-07-26**: **Design-port wave 2 — Callout, honest delta bars, the
+  ranking card's missing axis, status-as-badge** (continuing the astryx
+  directives on the shipping UI; the FIRST wave shipped under the new visual
+  guard, which reported exactly the three touched pages and left the other six
+  pixel-identical — the pipeline paying for itself on its first real use).
+  (1) **`Callout`** — one banner primitive (warn/info/muted + icon) replacing
+  five hand-rolled class strings across overview/projects/taskDetail/cache;
+  drift is now impossible. (2) **`deltaBar` column kind** — a signed delta
+  reads as a DIVERGING bar around a shared zero (faster grows left green,
+  slower right red) with a **flat band** (`max(5ms, 0.5% of the A-side)`), so
+  trivial noise renders neutral instead of the full danger red the old
+  dot+text gave every non-zero delta; the diverging scale is shared across
+  rows so +2s and −2s read equal. **A defect the browser review caught before
+  landing:** the first cut mapped a task present in only ONE run to
+  `deltaMs: 0`, so "new" read as "no change" — now NaN + a `labelKey`
+  fallback preserves new/only-in-prev. New `signedDuration` format hint.
+  (3) **Ranking card** — `rankProjects` had computed `byHitRate` since
+  2026-07-15 with NO view rendering it (the decision log claimed three axes
+  shipped; two did). Third axis added, and all three RankLists gained
+  `barFrom` meters — rates ride a 0..1 track so a 3% failure rate renders as
+  3%, never a full bar. (4) **`status` FactField kind** → the shared
+  StatusBadge, so run-detail's selected-task facts stop rendering an outcome
+  as bare text. Gates: fmt/lint 0, cloud 549/0, core 1286/0; baselines
+  refreshed (which refreshed the docs screenshots). **Wave 3 (queued):**
+  PageHeader unification, Card-language unify on the Runs strips, Metric
+  delta chips, Flamegraph label ident hues, deltaBar on movers + the project
+  Δavg column. NO schema/wire/CACHE bump (UI only).
+
 - **2026-07-26**: **Visual-regression snapshots ARE the docs screenshots — one
   pipeline, two jobs** (owner: "Make sure our playwright tests also do
   snapshots for visual regressions and we use those for docs automatically").

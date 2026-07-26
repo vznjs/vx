@@ -302,7 +302,22 @@ async function handleAnalyticsRequestInner(
     return json({ notifications: await a.getNotifications(ws, numParam(q.get('limit')) ?? 20) })
   }
   if (p === '/v1/projects') {
-    return json({ projects: await a.listProjects(ws, numParam(q.get('limit')) ?? 100) })
+    // `total` is the TRUE project count, not the page length — a 1000-project
+    // workspace must never be described by the size of one page.
+    const args: { limit?: number; search?: string; projects?: string[] } = {}
+    const limit = numParam(q.get('limit'))
+    if (limit !== undefined) args.limit = limit
+    const search = q.get('search')
+    if (search !== null && search !== '') args.search = search
+    const project = q.getAll('project').filter((x) => x !== '')
+    if (project.length > 0) args.projects = project
+    const [projects, total] = await Promise.all([a.listProjects(ws, args), a.countProjects(ws)])
+    return json({ projects, total })
+  }
+  if (p === '/v1/projects/rank') {
+    const project = q.get('project')
+    if (project === null) return json({ ok: false, error: 'project required' }, 400)
+    return json(await a.rankProject(ws, project, numParam(q.get('top')) ?? 8))
   }
   if (p === '/v1/trends/runs') {
     const bucketRaw = q.get('bucket')

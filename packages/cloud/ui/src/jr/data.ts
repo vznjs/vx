@@ -5,6 +5,7 @@
 
 import {
   type FlakyTask,
+  type ProjectRankRow as ApiProjectRankRow,
   type PeriodComparison,
   type ProjectRollup,
   type RunSummaryRow,
@@ -28,7 +29,9 @@ import {
   getFailures,
   getFlakeTrend,
   getFlakiest,
+  getProject,
   getProjectBranchFailures,
+  getProjectRank,
   getProjectTaskTrends,
   getRegressions,
   getHeatmap,
@@ -44,6 +47,7 @@ import {
   getTopTasks,
   listCacheEntries,
   listProjects,
+  listProjectsPage,
   listRuns,
 } from '../api.ts'
 import { formatDate, formatRelativeTime, formatSignedDuration } from '../format.ts'
@@ -69,6 +73,10 @@ interface CompareRow {
   bCacheHit: boolean | null
   bDurationMs: number | null
   deltaLabel: string
+  /** Numeric delta + the A-side magnitude it is relative to — the diverging
+   *  bar needs a number, and the flat band needs something to be flat AGAINST. */
+  deltaMs: number
+  baseMs: number
   deltaKind: 'slower' | 'faster' | 'same' | 'new' | 'gone'
   keyChanged: 'changed' | 'same'
 }
@@ -103,6 +111,9 @@ async function compareRows(runId: string): Promise<CompareRow[]> {
       bCacheHit: t.b?.cacheHit ?? null,
       bDurationMs: t.b?.durationMs ?? null,
       deltaLabel,
+      // NaN when a side is missing: 'new'/'only in prev' is not a zero delta.
+      deltaMs: t.a === null || t.b === null ? Number.NaN : (t.durationDeltaMs ?? 0),
+      baseMs: t.a?.durationMs ?? 0,
       deltaKind,
       keyChanged: t.hashChanged ? 'changed' : 'same',
     }
@@ -299,45 +310,35 @@ async function scopedTrend(
 }
 
 /**
- * Rank every project against the one being viewed on three single-dev axes
- * (failure rate, avg exec, hit rate) so the project page answers "how do I
- * compare?". Pure client-side over the one `listProjects` GROUP BY — no new
- * scan. Marks the current project (`_me`) and its 1-based position per axis so
- * the RankList can highlight it; each axis is a separately-sorted array.
+ * Shape the server's true per-axis ranks for the RankList card. The ranking is
+ * computed over EVERY project in SQL (window functions), so `_rankLabel` and
+ * the "vs N projects" total are the truth at any workspace size — the previous
+ * client-side ranker ranked within a 500-row page and mis-stated both.
  */
-function rankProjects(
-  all: ProjectRollup[],
-  name: string,
-): {
+function rankAxes(res: {
+  total: number
+  byFailRate: ApiProjectRankRow[]
+  byAvg: ApiProjectRankRow[]
+  byHitRate: ApiProjectRankRow[]
+}): {
   byFailRate: Record<string, unknown>[]
   byAvg: Record<string, unknown>[]
   byHitRate: Record<string, unknown>[]
   total: number
 } {
-  const failRate = (p: ProjectRollup): number => (p.runs > 0 ? p.failures / p.runs : 0)
-  // Sort, assign the TRUE 1-based rank + mark the current project, then keep the
-  // top 8 but ALWAYS surface the current project (append it with its real rank
-  // when it falls outside the head — so the dev always sees where they sit).
-  const axis = (value: (p: ProjectRollup) => number): Record<string, unknown>[] => {
-    const ranked = [...all]
-      .sort((a, b) => value(b) - value(a))
-      .map((p, i) => ({
-        project: p.project,
-        _me: p.project === name,
-        _rank: i + 1,
-        _rankLabel: `#${i + 1}`,
-        _value: value(p),
-      }))
-    const head = ranked.slice(0, 8)
-    const me = ranked.find((r) => r._me === true)
-    if (me !== undefined && !head.includes(me)) head.push(me)
-    return head
-  }
+  const axis = (rows: ApiProjectRankRow[]): Record<string, unknown>[] =>
+    rows.map((r) => ({
+      project: r.project,
+      _me: r.me,
+      _rank: r.rank,
+      _rankLabel: `#${r.rank}`,
+      _value: r.value,
+    }))
   return {
-    byFailRate: axis(failRate),
-    byAvg: axis((p) => p.avgDurationMs),
-    byHitRate: axis((p) => p.hitRate),
-    total: all.length,
+    byFailRate: axis(res.byFailRate),
+    byAvg: axis(res.byAvg),
+    byHitRate: axis(res.byHitRate),
+    total: res.total,
   }
 }
 
@@ -517,7 +518,18 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   cacheSavings: () => getCacheSavings(),
   topTasks: () => getTopTasks(8),
   failures: () => getFailures(8),
-  projectsAll: () => listProjects(500),
+  // The page PLUS the workspace's true size. A 1000-project workspace must
+  // say so rather than silently presenting 500 rows as the whole truth.
+  projectsAll: async () => {
+    const { projects, total } = await listProjectsPage({ limit: 500 })
+    return {
+      rows: projects,
+      total,
+      shown: projects.length,
+      _truncated: total > projects.length,
+      _note: `showing ${projects.length} of ${total} projects — search to reach the rest`,
+    }
+  },
   trends: (p) => getRunTrends(trendArgsOf(p)).then((r) => r.points),
   history: () => getHistory({ limit: 500 }),
   // "Got slower" (dev-scenarios S5): each task's LATEST executed run vs its
@@ -640,7 +652,9 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
       getAnalysis(windowDaysOf(p, 7), 1, 500, { project: name }),
     ]).then(([h, cmp]) => mergeMoverDelta(h, cmp?.movers))
   },
-  projectSummary: (p) => listProjects(500).then((ps) => ps.find((x) => x.project === p.name) ?? null),
+  // Point lookup by name — `listProjects(500).find(...)` rendered an EMPTY
+  // detail page for every project past the first page on a big workspace.
+  projectSummary: (p) => ((p.name ?? '') !== '' ? getProject(p.name!) : Promise.resolve(null)),
   // Recent executions for one-click debug (#2): row → the run with this task
   // pre-selected (logs open), hash → the cache entry.
   projectRecent: (p) =>
@@ -657,7 +671,7 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   // How this project ranks vs the others (#3) — three single-dev axes.
   projectRankings: (p) =>
     (p.name ?? '') !== ''
-      ? listProjects(500).then((ps) => rankProjects(ps, p.name!))
+      ? getProjectRank(p.name!).then(rankAxes)
       : Promise.resolve(null),
   // Where each task first started failing, across branches (#5). null = older serve.
   projectBranchFailures: (p) =>

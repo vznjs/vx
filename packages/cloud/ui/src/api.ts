@@ -1027,6 +1027,44 @@ export async function listProjects(limit = 100): Promise<ProjectRollup[]> {
   return r.projects
 }
 
+/** The projects page PLUS the workspace's true project count. */
+export async function listProjectsPage(
+  args: { limit?: number; search?: string } = {},
+): Promise<{ projects: ProjectRollup[]; total: number }> {
+  const qs = new URLSearchParams()
+  qs.set('limit', String(args.limit ?? 200))
+  if (args.search !== undefined && args.search !== '') qs.set('search', args.search)
+  return getJson<{ projects: ProjectRollup[]; total: number }>(`/v1/projects?${qs.toString()}`)
+}
+
+/** One project's rollup by EXACT name — a point lookup, so a project outside
+ *  the first page still resolves its own detail page. */
+export async function getProject(project: string): Promise<ProjectRollup | null> {
+  const r = await getJson<{ projects: ProjectRollup[] }>(
+    `/v1/projects?project=${encodeURIComponent(project)}&limit=1`,
+  )
+  return r.projects[0] ?? null
+}
+
+export interface ProjectRankRow {
+  project: string
+  rank: number
+  value: number
+  me: boolean
+}
+
+/** Per-axis ranking against EVERY project (true ranks + true total). */
+export async function getProjectRank(
+  project: string,
+): Promise<{
+  total: number
+  byFailRate: ProjectRankRow[]
+  byAvg: ProjectRankRow[]
+  byHitRate: ProjectRankRow[]
+}> {
+  return getJson(`/v1/projects/rank?project=${encodeURIComponent(project)}`)
+}
+
 export async function getRunTrends(args: {
   bucket?: 'hour' | 'day'
   from?: number

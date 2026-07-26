@@ -7,27 +7,39 @@
     "type": "Page",
     "props": {
       "title": "Projects",
-      "subtitle": "The workspace catalog joined with run analytics — never-run projects included when the serve is colocated."
+      "subtitle": "The workspace catalog joined with run analytics \u2014 never-run projects included when the serve is colocated."
     },
     "children": [
       {
-        "type": "Text",
+        "type": "Callout",
         "props": {
           "text": {
             "$computed": "text",
             "args": {
-              "tpl": "The lock is stale for {n} project(s) — run vx lock to refreeze the catalog.",
+              "tpl": "The lock is stale for {n} project(s) \u2014 run vx lock to refreeze the catalog.",
               "n": {
                 "$state": "/catalog/_staleCount"
               }
             }
           },
-          "tone": "warn",
-          "class": "rounded-lg border border-warn/40 bg-warn/5 px-4 py-2.5"
+          "tone": "warn"
         },
         "visible": {
           "$state": "/catalog/_staleCount",
           "gt": 0
+        }
+      },
+      {
+        "type": "Callout",
+        "props": {
+          "tone": "muted",
+          "text": {
+            "$state": "/projects/_note"
+          }
+        },
+        "visible": {
+          "$state": "/projects/_truncated",
+          "eq": true
         }
       },
       {
@@ -43,7 +55,7 @@
                 "$computed": "joinProjects",
                 "args": {
                   "rollups": {
-                    "$state": "/projects"
+                    "$state": "/projects/rows"
                   },
                   "catalog": {
                     "$state": "/catalog"
@@ -58,7 +70,7 @@
                 "project",
                 "dir"
               ],
-              "filterPlaceholder": "filter…",
+              "filterPlaceholder": "filter\u2026",
               "initialSort": {
                 "key": "totalDurationMs",
                 "desc": true
@@ -67,7 +79,12 @@
               "emptyTitle": "No projects discovered",
               "emptyCmd": "vx run <task>",
               "columns": [
-                { "key": "_pin", "label": "", "kind": "pin", "projectKey": "project" },
+                {
+                  "key": "_pin",
+                  "label": "",
+                  "kind": "pin",
+                  "projectKey": "project"
+                },
                 {
                   "key": "project",
                   "label": "Project",

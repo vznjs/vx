@@ -538,6 +538,14 @@ export interface FlakeTrend {
   lastSeenAt: number | null
 }
 
+export interface ProjectRankRow {
+  project: string
+  /** TRUE 1-based rank across every project, not within the returned page. */
+  rank: number
+  value: number
+  me: boolean
+}
+
 export interface RegressedTask {
   id: string
   project: string
@@ -2260,7 +2268,114 @@ export class Analytics {
     }
   }
 
-  async listProjects(workspaceId: string, limit = 100): Promise<ProjectRollup[]> {
+  /**
+   * True project count for the workspace — the denominator a "vs N projects"
+   * label needs. `listProjects` is a PAGE; at 1000 projects its length is the
+   * page size, not the truth.
+   */
+  async countProjects(workspaceId: string): Promise<number> {
+    const rows = await this.sql<{ n: number }[]>`
+      SELECT count(DISTINCT project)::int AS n FROM task_runs
+      WHERE workspace_id = ${workspaceId}`
+    return rows[0]?.n ?? 0
+  }
+
+  /**
+   * Per-axis ranking of ONE project against every other — the "how does my
+   * project compare" card, correct at any workspace size. Window functions
+   * rank over the FULL set, so the returned `total` and each `rank` are the
+   * truth; only the returned ROWS are capped (top-N per axis, plus the named
+   * project itself however far down it sits). The client used to fetch a
+   * 500-row page and rank within it, which silently mis-stated both the rank
+   * and the total on a 1000-project workspace.
+   */
+  async rankProject(
+    workspaceId: string,
+    project: string,
+    topN = 8,
+  ): Promise<{
+    total: number
+    byFailRate: ProjectRankRow[]
+    byAvg: ProjectRankRow[]
+    byHitRate: ProjectRankRow[]
+  }> {
+    const top = clampInt(topN, 1, 50)
+    const rows = await this.sql<
+      {
+        project: string
+        fail_rate: number
+        avg_dur: number
+        hit_rate: number
+        r_fail: number
+        r_avg: number
+        r_hit: number
+        total: number
+      }[]
+    >`
+      WITH agg AS (
+        SELECT project,
+               count(*)::float8 AS runs,
+               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::float8 AS failures,
+               COALESCE(trunc(avg(duration_ms)), 0)::int AS avg_dur,
+               SUM(CASE WHEN cache_hit = true OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END)::float8 AS hits
+        FROM task_runs WHERE workspace_id = ${workspaceId}
+        GROUP BY project
+      ),
+      rated AS (
+        SELECT project, avg_dur,
+               CASE WHEN runs > 0 THEN failures / runs ELSE 0 END AS fail_rate,
+               CASE WHEN runs > 0 THEN hits / runs ELSE 0 END AS hit_rate
+        FROM agg
+      ),
+      ranked AS (
+        SELECT project, fail_rate, avg_dur, hit_rate,
+               ROW_NUMBER() OVER (ORDER BY fail_rate DESC, project ASC)::int AS r_fail,
+               ROW_NUMBER() OVER (ORDER BY avg_dur DESC, project ASC)::int AS r_avg,
+               ROW_NUMBER() OVER (ORDER BY hit_rate DESC, project ASC)::int AS r_hit,
+               count(*) OVER ()::int AS total
+        FROM rated
+      )
+      SELECT * FROM ranked
+      WHERE r_fail <= ${top} OR r_avg <= ${top} OR r_hit <= ${top} OR project = ${project}`
+    const total = rows[0]?.total ?? 0
+    const axis = (
+      rankKey: 'r_fail' | 'r_avg' | 'r_hit',
+      valueKey: 'fail_rate' | 'avg_dur' | 'hit_rate',
+    ): ProjectRankRow[] =>
+      rows
+        .filter((r) => r[rankKey] <= top || r.project === project)
+        .sort((a, b) => a[rankKey] - b[rankKey])
+        .map((r) => ({
+          project: r.project,
+          rank: r[rankKey],
+          value: Number(r[valueKey]),
+          me: r.project === project,
+        }))
+    return {
+      total,
+      byFailRate: axis('r_fail', 'fail_rate'),
+      byAvg: axis('r_avg', 'avg_dur'),
+      byHitRate: axis('r_hit', 'hit_rate'),
+    }
+  }
+
+  async listProjects(
+    workspaceId: string,
+    args: number | { limit?: number; search?: string; projects?: readonly string[] } = 100,
+  ): Promise<ProjectRollup[]> {
+    const opts = typeof args === 'number' ? { limit: args } : args
+    const limit = opts.limit ?? 100
+    // Server-side search + exact-name fetch: a 1000-project workspace cannot
+    // be searched by filtering the fetched page, and a project detail page
+    // must resolve its own row however far down the ordering it sits.
+    const search = opts.search !== undefined && opts.search !== '' ? opts.search : undefined
+    const names =
+      opts.projects !== undefined && opts.projects.length > 0 ? opts.projects : undefined
+    const fSearch = search !== undefined ? this.sql`AND project ILIKE ${`%${search}%`}` : this.sql``
+    // `IN ${sql(array)}` is the driver's list form (the provenanceForHashes
+    // precedent); a bare `= ANY($1)` binds the array as a malformed literal.
+    const fNames =
+      names !== undefined ? this.sql`AND project IN ${this.sql(names as string[])}` : this.sql``
     const rows = await this.sql<
       {
         project: string
@@ -2281,8 +2396,8 @@ export class Analytics {
              SUM(duration_ms)::float8 AS total_duration_ms,
              trunc(avg(duration_ms))::int AS avg_duration_ms,
              MAX(ended_at) AS last_run_at
-      FROM task_runs WHERE workspace_id = ${workspaceId}
-      GROUP BY project ORDER BY SUM(duration_ms) DESC LIMIT ${clampInt(limit, 1, 500)}`
+      FROM task_runs WHERE workspace_id = ${workspaceId} ${fSearch} ${fNames}
+      GROUP BY project ORDER BY SUM(duration_ms) DESC LIMIT ${clampInt(limit, 1, 1000)}`
     // Estimated time saved per project, computed for ALL projects in ONE
     // set-based query instead of a correlated subquery per project (the old
     // N+1). Output-identical: for each project it sums, over its cache-hit

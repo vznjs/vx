@@ -153,10 +153,14 @@
                   "baseTone": "faint"
                 },
                 {
-                  "key": "deltaLabel",
+                  "key": "deltaMs",
                   "label": "Δ duration",
-                  "kind": "dots",
-                  "dots": [{ "field": "deltaKind", "map": "delta" }]
+                  "align": "right",
+                  "sortable": true,
+                  "kind": "deltaBar",
+                  "baseKey": "baseMs",
+                  "labelKey": "deltaLabel",
+                  "format": "signedDuration"
                 },
                 {
                   "key": "keyChanged",

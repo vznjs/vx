@@ -288,7 +288,7 @@
             "props": {
               "entry": { "$state": "/selectedTask" },
               "fields": [
-                { "label": "Status", "key": "status", "kind": "text" },
+                { "label": "Status", "key": "status", "kind": "status" },
                 { "label": "Started", "key": "startedAt", "kind": "dateTime" },
                 { "label": "Ended", "key": "endedAt", "kind": "dateTime" },
                 { "label": "Duration", "key": "durationMs", "kind": "duration" },
