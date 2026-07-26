@@ -702,11 +702,11 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  it('spawns git 4x concurrently for N projects, never once per project', async () => {
+  it('spawns git 5x concurrently for N projects, never once per project', async () => {
     // The bulk populate uses async Bun.spawn (ls-files + status + a trivial
-    // rev-parse --show-prefix + an index-only `ls-files -v`, all concurrent —
-    // neither of the latter two scans the tree, so neither gates wall-clock);
-    // the per-project fallback uses
+    // rev-parse + an index-only `ls-files -v` + a three-key `config` read, all
+    // concurrent — only the first two scan anything, so the rest never gate
+    // wall-clock); the per-project fallback uses
     // spawnSync. Count both so a regression to per-project spawning is caught
     // either way. The guard is CONCURRENCY, not the literal count: the point is
     // O(1) bulk spawns, never O(N) per-project.
@@ -734,11 +734,13 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       const projectDirs = ['a', 'b', 'c'].map((n) => path.join(workspaceRoot, 'packages', n))
       await populateGitFilesCache(workspaceRoot, projectDirs, cache)
       // One bulk `ls-files -s --others` (file list + index OIDs), one
-      // `status --porcelain` (dirty set), one `rev-parse --show-prefix`
-      // (repo→workspace path, to normalize status paths), one `ls-files -v`
-      // (skip-worktree / assume-unchanged flags) — all concurrent, never
-      // per-project.
-      expect(spawnCount).toBe(4)
+      // `status --porcelain` (dirty set), one `rev-parse` (repo→workspace
+      // path + git-dir), one `ls-files -v` (skip-worktree / assume-unchanged
+      // flags), one `config --get-regexp` (the clean-filter gate) — all
+      // concurrent, never per-project. `check-attr` is NOT among them: this
+      // fixture declares no attributes, and paying for it here would mean
+      // paying for it in every plain repo.
+      expect(spawnCount).toBe(5)
       // Every project got a non-null entry partitioned from the bulk
       // listing — `src.ts` shows up project-relative.
       for (const dir of projectDirs) {
