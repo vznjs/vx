@@ -48,6 +48,15 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     )
     return 1
   }
+  // Both format ONE run's result and are consumed by `runCmd` alone, so a
+  // watch loop silently ignored them. `--verbosity 0` is not rejected: it
+  // asks for the output watch already gives.
+  if (parsed.report !== undefined || parsed.verbosity > 0) {
+    process.stderr.write(
+      `vx watch: --report / --verbosity are not supported in watch mode (they report a single run)\n`,
+    )
+    return 1
+  }
   if (parsed.tasks.length === 0) {
     process.stderr.write(`vx watch: missing task name\n`)
     return 1
