@@ -66,8 +66,12 @@ always a config mistake.
 description?: string
 ```
 
-A short one-line blurb describing what the task does. Pure metadata —
-no effect on caching, scheduling, or execution. Surfaced in three places:
+A short one-line blurb describing what the task does. No effect on
+scheduling or execution, but it **does** participate in the cache key —
+the key hashes the whole resolved task config (see `caching.md`, step 5),
+and carving exceptions out of that object is what invites stale hits.
+Editing a description therefore costs one re-run. Surfaced in three
+places:
 
 - The interactive task picker (`vx run` with no positional in a TTY) —
   printed to the right of each `pkg#task` id.
@@ -1101,7 +1105,8 @@ and surfaces `UserError` (clean output, no stack):
 | Symptom                                                                             | Cause                                              |
 | ----------------------------------------------------------------------------------- | -------------------------------------------------- |
 | `did not export a default object`                                                   | Forgot `export default`, or exported a non-object. |
-| `tasks must be an object`                                                           | `tasks` field is missing or not an object.         |
+| `tasks must be an object keyed by task name`                                        | `tasks` is not an object — an ARRAY included.      |
+| `<level> has unknown field "<key>"`                                                 | Typo'd / unsupported key (see below).              |
 | `tasks.<name> must be an object`                                                    | The task value is null / a string / etc.           |
 | `exec must be an object with a command string`                                      | `exec` is malformed.                               |
 | `exec.command must be a non-empty string`                                           | Forgot `command`, or empty string.                 |
@@ -1115,9 +1120,26 @@ and surfaces `UserError` (clean output, no stack):
 | `cache.inputs.files must be an array`                                               | Wrong shape.                                       |
 | `cache.inputs.runtime must be an array of non-empty shell command strings`          | Non-string / empty entry.                          |
 | `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings` | Non-string / empty entry.                          |
+| `cache.inputs.tasks must be an array of non-empty strings`                          | Non-string / empty entry, or a bare string.        |
 | `cache.outputs is required when cache is set`                                       | Forgot `outputs`.                                  |
 | `cache.outputs.files must be an array`                                              | Wrong shape.                                       |
 | `description must be a string`                                                      | Non-string description.                            |
+
+**Unknown fields are rejected**, not ignored, at every level that feeds
+the cache key — the task itself, `exec`, `exec.resources`, `cache`,
+`cache.inputs`, `cache.outputs`, and `sandbox`. A silently-dropped
+`workspaceFile` (singular) or `timeoutMs` would make the task hash as
+though the field had never been written, so vx would replay an artifact
+built from different inputs. The error names the offending key and lists
+what that level accepts.
+
+Workspace-discovery errors (`src/workspace/workspace.ts`):
+
+| Symptom                                        | Cause                                                    |
+| ---------------------------------------------- | -------------------------------------------------------- |
+| `failed to parse <file>`                       | A `package.json` / `pnpm-workspace.yaml` is not valid.   |
+| `<file>: packages must be an array of globs`   | `pnpm-workspace.yaml` `packages:` is a bare string, etc. |
+| `<file>: workspaces must be an array of globs` | `package.json` `workspaces` holds a non-string entry.    |
 
 Workspace-config errors:
 

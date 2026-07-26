@@ -9,6 +9,54 @@ const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.mjs',
 ]
 
+/**
+ * Modules pulled into Bun's registry by a project config's `import`s,
+ * plus the config entries themselves. Evicted before a config is loaded
+ * a SECOND time in the same process — see `beginProjectLoad`.
+ */
+const configClosure = new Set<string>()
+/** Project configs already loaded in this process, by absolute path. */
+const loadedConfigs = new Set<string>()
+
+/** Bun's module registry, or `null` on a runtime that doesn't expose it. */
+function moduleRegistry(): Map<string, unknown> | null {
+  const loader = (globalThis as unknown as { Loader?: { registry?: unknown } }).Loader
+  const registry = loader?.registry
+  return registry instanceof Map ? (registry as Map<string, unknown>) : null
+}
+
+/**
+ * Prepare to load `configPath`, evicting the recorded config closure when
+ * this config has already been loaded in this process.
+ *
+ * The query bust below only changes the ENTRY's specifier. Bun caches an
+ * evaluated module by its resolved specifier, so an `import './preset.js'`
+ * INSIDE a config resolves to the same key either way and replays the
+ * cached instance — a busted entry re-evaluates against STALE imports.
+ * Shared presets are the documented composition mechanism (`vx migrate`
+ * generates one), so in a long-lived process — `vx watch`, a distribution
+ * agent — a preset edit would otherwise stay invisible for the life of
+ * the process. And because the resolved config feeds the cache key, vx
+ * would report `up-to-date` for a command that changed on disk.
+ *
+ * SYNCHRONOUS on purpose: `prepareRun` loads a round of configs with
+ * `Promise.all`, and running before the first `await` means the round's
+ * first repeat evicts once and its siblings then share the modules it
+ * re-evaluates, instead of racing the eviction.
+ *
+ * A first load evicts nothing, so a single `vx run` is unaffected.
+ */
+function beginProjectLoad(configPath: string): void {
+  if (loadedConfigs.has(configPath)) {
+    const registry = moduleRegistry()
+    if (registry !== null) {
+      for (const key of configClosure) registry.delete(key)
+      configClosure.clear()
+    }
+  }
+  loadedConfigs.add(configPath)
+}
+
 // Bun has native TS / ESM execution — no transpiler dep needed. We fold
 // a short content hash into the import URL as a cache-bust key so that:
 //   same content   → same URL → Bun's module cache hits (fast)
@@ -21,6 +69,7 @@ async function loadDefaultExport(
   configPath: string,
   kind: string,
   fresh = false,
+  trackClosure = false,
 ): Promise<unknown> {
   const bytes = await Bun.file(configPath).bytes()
   // `fresh` opts out of module-cache reuse entirely: `vx lock` and
@@ -28,7 +77,12 @@ async function loadDefaultExport(
   // content-hash bust would replay an evaluation made under earlier
   // env values when the file bytes are unchanged in this process.
   const bust = fresh ? `${xxh3hex(bytes)}-${Bun.randomUUIDv7()}` : xxh3hex(bytes)
+  const registry = trackClosure ? moduleRegistry() : null
+  const before = registry === null ? null : new Set(registry.keys())
   const ns = (await import(`${configPath}?vx-bust=${bust}`)) as { default?: unknown }
+  if (registry !== null && before !== null) {
+    for (const key of registry.keys()) if (!before.has(key)) configClosure.add(key)
+  }
   const mod = ns?.default
   if (!mod || typeof mod !== 'object') {
     throw new UserError(`${kind} config at ${configPath} did not export a default object`)
@@ -40,10 +94,12 @@ export async function loadProjectConfig(
   configPath: string,
   opts?: { fresh?: boolean },
 ): Promise<ProjectConfig> {
+  beginProjectLoad(configPath)
   const mod = (await loadDefaultExport(
     configPath,
     'Project',
     opts?.fresh === true,
+    true,
   )) as ProjectConfig
   validateProjectConfig(mod, configPath)
   return mod
@@ -156,14 +212,18 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
 export function validateProjectConfig(config: ProjectConfig, configPath: string): void {
   const tasks = config.tasks
   if (tasks === undefined) return
-  if (typeof tasks !== 'object' || tasks === null) {
-    throw new UserError(`${configPath}: \`tasks\` must be an object`)
+  if (typeof tasks !== 'object' || tasks === null || Array.isArray(tasks)) {
+    // An ARRAY of task objects reads as valid to `typeof`, and
+    // `Object.entries` then yields a task literally named "0" — a config
+    // that loads, runs nothing the author asked for, and never says why.
+    throw new UserError(`${configPath}: \`tasks\` must be an object keyed by task name`)
   }
   for (const [name, task] of Object.entries(tasks)) {
     const where = `${configPath}: tasks.${name}`
     if (!task || typeof task !== 'object') {
       throw new UserError(`${where} must be an object`)
     }
+    assertKnownFields(task, TASK_FIELDS, where)
     const exec = (task as { exec?: unknown }).exec
     const dependsOn = (task as { dependsOn?: unknown }).dependsOn
     const cache = (task as { cache?: unknown }).cache
@@ -171,6 +231,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       if (typeof exec !== 'object' || exec === null) {
         throw new UserError(`${where}.exec must be an object with a \`command\` string`)
       }
+      assertKnownFields(exec, EXEC_FIELDS, `${where}.exec`)
       const command = (exec as { command?: unknown }).command
       if (typeof command !== 'string' || command.length === 0) {
         throw new UserError(`${where}.exec.command must be a non-empty string`)
@@ -278,11 +339,13 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       if (typeof cache !== 'object' || cache === null) {
         throw new UserError(`${where}.cache must be an object when present`)
       }
+      assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
       const inputs = (cache as { inputs?: unknown }).inputs
       const outputs = (cache as { outputs?: unknown }).outputs
       if (!inputs || typeof inputs !== 'object') {
         throw new UserError(`${where}.cache.inputs is required when \`cache\` is set`)
       }
+      assertKnownFields(inputs, CACHE_INPUT_FIELDS, `${where}.cache.inputs`)
       if (!Array.isArray((inputs as { files?: unknown }).files)) {
         throw new UserError(`${where}.cache.inputs.files must be an array of glob strings`)
       }
@@ -314,6 +377,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       if (!outputs || typeof outputs !== 'object') {
         throw new UserError(`${where}.cache.outputs is required when \`cache\` is set`)
       }
+      assertKnownFields(outputs, CACHE_OUTPUT_FIELDS, `${where}.cache.outputs`)
       const outFiles = (outputs as { files?: unknown }).files
       if (!Array.isArray(outFiles)) {
         throw new UserError(`${where}.cache.outputs.files must be an array of glob strings`)
@@ -359,6 +423,24 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           )
         }
       }
+      // The only CacheInputs field that reached the run unvalidated: a
+      // non-string entry crashes deep in `filterUpstreamHashes` /
+      // `parseDependencySpec` with a raw TypeError naming neither the task
+      // nor the config. Entry SYNTAX is already checked downstream (a
+      // `DependencySpecError` becomes a UserError naming the task) — this
+      // only pins the shape.
+      const taskFilters = (inputs as { tasks?: unknown }).tasks
+      if (taskFilters !== undefined) {
+        if (
+          !Array.isArray(taskFilters) ||
+          taskFilters.some((s) => typeof s !== 'string' || s.length === 0)
+        ) {
+          throw new UserError(
+            `${where}.cache.inputs.tasks must be an array of non-empty strings ` +
+              `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name', '*', '^*', '!name')`,
+          )
+        }
+      }
       for (const field of ['runtime', 'workspaceRuntime'] as const) {
         const list = (inputs as Record<string, unknown>)[field]
         if (list !== undefined) {
@@ -382,6 +464,35 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
     }
     const sandbox = (task as { sandbox?: unknown }).sandbox
     if (sandbox !== undefined) validateSandbox(sandbox, where, exec !== undefined)
+  }
+}
+
+// Known fields per config level, mirroring the interfaces in src/config.ts.
+// Unknown keys are REJECTED rather than silently dropped: a typo in a
+// cache-key field (`workspaceFile`, `task`, `timeoutMs`) is otherwise
+// discarded, so the task hashes as if the field were never written and vx
+// serves a stale artifact — the same reasoning `exec.resources` and
+// `sandbox` already encode. A new field must be added here deliberately.
+const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'cache', 'sandbox'])
+const EXEC_FIELDS = new Set(['command', 'env', 'timeout', 'retries', 'resources', 'persistent'])
+const CACHE_FIELDS = new Set(['inputs', 'outputs'])
+const CACHE_INPUT_FIELDS = new Set([
+  'files',
+  'workspaceFiles',
+  'env',
+  'tasks',
+  'runtime',
+  'workspaceRuntime',
+])
+const CACHE_OUTPUT_FIELDS = new Set(['files', 'workspaceFiles'])
+
+function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: string): void {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw new UserError(
+        `${where} has unknown field "${key}". Allowed: ${[...allowed].sort().join(', ')}`,
+      )
+    }
   }
 }
 

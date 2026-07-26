@@ -181,3 +181,75 @@ describe('listProjects', () => {
     expect(projects).toEqual([])
   })
 })
+
+// A workspace manifest is user input. Malformed ones used to surface as
+// `Failed to parse JSON` with no filename — useless in a 1000-package
+// monorepo — or as raw internals (`packageGlobs.map is not a function`).
+describe('malformed workspace manifests', () => {
+  let dir: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-ws-bad-'))
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('names the root package.json that failed to parse', async () => {
+    await writeFile(path.join(dir, 'package.json'), '{"name":"r",}')
+    await expect(loadWorkspace(dir)).rejects.toThrow(/failed to parse .*package\.json/)
+  })
+
+  it('names the MEMBER package.json that failed to parse', async () => {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await mkdir(path.join(dir, 'packages/broken'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/broken/package.json'), '{ not json')
+    const ws = await loadWorkspace(dir)
+    await expect(listProjects(ws)).rejects.toThrow(
+      /failed to parse .*packages\/broken\/package\.json/,
+    )
+  })
+
+  it('rejects a pnpm `packages:` string instead of a list', async () => {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages: "packages/*"\n')
+    await expect(loadWorkspace(dir)).rejects.toThrow(/`packages` must be an array of glob strings/)
+  })
+
+  it('rejects a non-string entry in package.json workspaces', async () => {
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: [42, 'packages/*'] }),
+    )
+    await expect(loadWorkspace(dir)).rejects.toThrow(
+      /`workspaces` must be an array of glob strings/,
+    )
+  })
+
+  it('rejects a non-list workspaces.packages', async () => {
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: { packages: 'packages/*' } }),
+    )
+    await expect(loadWorkspace(dir)).rejects.toThrow(
+      /`workspaces\.packages` must be an array of glob strings/,
+    )
+  })
+
+  it('still accepts every well-formed manifest shape', async () => {
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'r' }))
+    expect((await loadWorkspace(dir)).packageGlobs).toEqual(['.'])
+
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: ['packages/*'] }),
+    )
+    expect((await loadWorkspace(dir)).packageGlobs).toEqual(['packages/*'])
+
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', workspaces: { packages: ['apps/*'] } }),
+    )
+    expect((await loadWorkspace(dir)).packageGlobs).toEqual(['apps/*'])
+  })
+})
