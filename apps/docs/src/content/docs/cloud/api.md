@@ -143,6 +143,7 @@ segment is a 400. Limits shown as `default/max` where the code clamps.
 | `/v1/flakiness` | `limit` (25) | Flakiest tasks — retry-confirmed flakes ranked above inferred ones. |
 | `/v1/flake-trend` | **`project` + `task` required (400)**, `sinceDays` (90) | Per-day flaky-episode series for one task (retried successes + failures whose key also passed), with first/last seen — feeds the task-detail Flakiness-trend card. |
 | `/v1/stability` | **`project` + `task` required (400)**, `sinceDays` (90), `limit` (20) | Same-cache-key duration spread — how repeatable the computation is across executions of IDENTICAL inputs. Distinct from regressions (which compare across different keys): this is the task's margin of error, and the floor under any cross-key claim. |
+| `/v1/stability/least` | `sinceDays` (30), `limit` (8), `minRuns` (3) | The least repeatable tasks in the workspace, worst same-key spread first — an unstable task makes every duration comparison involving it unreliable. |
 | `/v1/regressions` | `sinceDays`, `minBranches`, `limit` | Tasks that started failing across ≥N branches and have a prior success. |
 | `/v1/branch-failures` | **`project` required (400)**, `sinceDays`, `limit` | Per task: the branch where the failure was **first** noticed, first commit, and every failing branch. |
 | `/v1/bottlenecks` | `days` (14), `limit` (15) | Aggregate critical-path bottlenecks. |

@@ -208,6 +208,36 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **Deltas are judged against MEASURED noise, not a guessed
+  threshold** (the follow-on the stability metric existed to enable). The
+  `deltaBar` flat band was `max(5ms, 0.5% of the A-side)` — a number picked by
+  hand. Now each row carries the task's own measured same-key spread: new
+  batched `getStabilityFloors(ws, {sinceDays})` (ONE grouped query — a per-row
+  lookup would be an N+1 across a 500-row diff) returns `median(stddev/mean)`
+  per `(project, task)` over keys that ran ≥2 times; `compareRuns` threads it
+  onto each row as `noiseCv`, the client converts to `_noiseMs` against the
+  A-side duration, and the cell's `noiseKey` prefers it over the heuristic —
+  falling back ONLY when nothing repeated often enough to measure, rather than
+  inventing a floor. So "is this delta real?" is answered by that task's own
+  variance. **Also shipped:** `getLeastStableTasks` + `/v1/stability/least`
+  and an Insights **"Least stable tasks"** card (runs · typical · ±margin ·
+  a ±1σ meter), because an unstable task makes every comparison involving it
+  unreliable and that should be discoverable, not per-task spelunking.
+  **An inconsistency the new card immediately exposed (recorded, not yet
+  fixed):** on the seeded fixture `orders#build` reads ±58.8% margin AND
+  appears in "Got slower" at 3.0× — both measured across the SAME cache key.
+  By the owner's own principle that makes the "slowdown" unattributable to any
+  input change: `detectSlowdowns` compares latest-vs-p50 with no key awareness,
+  so it cannot distinguish "the work changed" from "this task is just noisy".
+  The honest fix is to make that detector key-aware (or to state the margin
+  beside its ratio) — queued. Pinned: a compare row across DIFFERENT keys
+  carries a measured `noiseCv` > 5% and a 40ms delta that is provably inside
+  it; the ranking puts a jittery task (200/1400/300/1200 on one key) above a
+  steady one (500/505/495/500) and EXCLUDES a task that never repeated a key.
+  Gates: fmt/lint 0 (from the ROOT — running oxlint inside packages/cloud
+  reports phantom errors because the ignore patterns are root-relative), cloud
+  556/0, core 1286/0; insights baseline refreshed. NO schema/CACHE bump.
+
 - **2026-07-26**: **Task stability — the same-key margin of error, and why it
   is NOT a regression** (owner: "if the same task with the same key has been
   executed multiple times I want to know what's the computation range… This is

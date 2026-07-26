@@ -571,6 +571,8 @@ export interface CompareTaskRow {
   b: CompareTaskSide | null
   hashChanged: boolean
   durationDeltaMs: number | null
+  /** Measured same-key spread (stddev/mean); absent when nothing repeated. */
+  noiseCv?: number
   statusChanged: boolean
 }
 
@@ -1172,6 +1174,21 @@ export interface TaskStabilityResponse {
   cvWorst: number
   rangeMedian: number
   byKey: StabilitySample[]
+}
+
+export interface LeastStableTask {
+  id: string
+  project: string
+  task: string
+  cv: number
+  samples: number
+  p50Ms: number
+}
+
+/** Workspace-wide: the least repeatable tasks, worst spread first. */
+export async function getLeastStable(limit = 8): Promise<LeastStableTask[]> {
+  const r = await getJson<{ tasks: LeastStableTask[] }>(`/v1/stability/least?limit=${limit}`)
+  return r.tasks
 }
 
 /** Same-key duration spread — the task's own margin of error. */
