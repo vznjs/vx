@@ -27,7 +27,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
 import { bootPlatform, type TestPlatform } from './helpers/platform.js'
-import { chromiumExecutablePath, loadChromium } from './helpers/playwright.js'
+import { loadChromium, sharedBrowser } from './helpers/playwright.js'
 import { decodePng, diffPixels } from './helpers/png.js'
 
 const DIST = path.join(import.meta.dir, '..', 'ui', 'dist', 'index.html')
@@ -64,9 +64,10 @@ interface PwConsoleMessage {
 }
 interface PwPage {
   goto(url: string): Promise<unknown>
+  url(): string
   waitForLoadState(state: 'networkidle'): Promise<void>
   waitForTimeout(ms: number): Promise<void>
-  evaluate<T>(fn: () => T): Promise<T>
+  evaluate<T>(fn: (() => T) | string): Promise<T>
   addStyleTag(opts: { content: string }): Promise<unknown>
   screenshot(opts: { fullPage?: boolean }): Promise<Uint8Array>
   keyboard: { press(key: string): Promise<void> }
@@ -344,11 +345,7 @@ describe.skipIf(!available)('visual snapshots (docs screenshots)', () => {
       if (!res.ok) throw new Error(`seed ingest ${res.status}: ${await res.text()}`)
     }
 
-    browser = (await chromium!.launch({
-      headless: true,
-      executablePath: chromiumExecutablePath(),
-      args: ['--disable-dev-shm-usage', '--font-render-hinting=none'],
-    })) as unknown as PwBrowser
+    browser = (await sharedBrowser(chromium!)) as unknown as PwBrowser
     const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE })
     // Freeze the clock BEFORE any page script runs: every relative timestamp
     // ("2h ago") is then a pure function of the seed, not of wall-clock time.
@@ -375,16 +372,40 @@ describe.skipIf(!available)('visual snapshots (docs screenshots)', () => {
       if (m.type() === 'error') errors.push(m.text())
     })
     page.on('pageerror', (e) => errors.push(String(e)))
-  })
+    // Booting pg + fake S3 + seeding + launching Chromium routinely exceeds
+    // the CLI default when the whole cloud suite is contending for the box.
+  }, 180_000)
 
+  /**
+   * Every shot lives under the same document — only the hash differs — and a
+   * hash-only `goto` is a SAME-DOCUMENT navigation, so the `load` event it
+   * waits for never fires again. In isolation the wait happens to resolve;
+   * under a loaded full-suite run it hangs until the test times out (which
+   * then strands the browser). Drive the hash router directly instead.
+   */
+  const navigate = async (route: string): Promise<void> => {
+    const target = `${platform.origin}${route}`
+    const sameDocument = page.url().split('#')[0] === target.split('#')[0]
+    if (sameDocument) {
+      const hash = route.slice(route.indexOf('#') + 1)
+      await page.evaluate(`location.hash = ${JSON.stringify(hash)}`)
+    } else {
+      await page.goto(target)
+    }
+  }
+
+  // Generous: under a full-suite run these teardowns contend with every other
+  // suite, and a hook that times out STRANDS the browser (bun then reports a
+  // dangling process and the next browser suite boots into the wreckage).
+  // The browser is shared process-wide (helpers/playwright.ts) — closing it
+  // here would break every later browser suite. Only the platform is ours.
   afterAll(async () => {
-    await browser?.close()
     await platform?.stop()
-  })
+  }, 120_000)
 
   for (const shot of SHOTS) {
     it(`${shot.name} matches its committed baseline`, async () => {
-      await page.goto(`${platform.origin}${shot.route}`)
+      await navigate(shot.route)
       await page.waitForLoadState('networkidle').catch(() => {})
       await page.waitForTimeout(1200)
       // Motion is the enemy of a stable shutter.

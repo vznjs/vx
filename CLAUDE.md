@@ -208,6 +208,61 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **The WORKSPACE is the context, so it lives where context
+  lives — sidebar top, always stated** (owner: "Vx cloud should support
+  multiple workspaces. Now it shows just one. I should be able select context
+  as workspace"). **Measured first, and the mechanism was already sound:** a
+  probe booting the real platform and ingesting under TWO client workspace ids
+  proved `/v1/workspaces` lists both, `resolveReadWorkspace` validates `?ws=`
+  against the org, and a scoped read returns exactly that workspace's rows —
+  the schema (`workspaces` UNIQUE(org_id, slug)), the routes, and the `?ws=`
+  clamp all supported multi-workspace from the platform pivot. **The failure
+  was entirely presentation, and it was severe:** the switcher was
+  `<Show when={list().length > 1}>` — the FOURTH of five near-identical grey
+  chips in the top-right corner, next to the org chip and the server badge —
+  so at one workspace it did not exist at all (no name, no hint that a second
+  repo would ever add one), and at two it read as decoration rather than as
+  the scope of every row on screen. **Fixed by promoting it to what it is:** a
+  `ContextPicker` block at the TOP OF THE SIDEBAR stacking organization over
+  workspace (the Vercel/Linear/GitHub shape), both corner chips removed. It
+  renders at 0 workspaces ("No workspace yet" + a dropdown explaining that one
+  is provisioned on the first CI push — the server clamps a workspace-less org
+  to the nil uuid, so every page is empty BY CONSTRUCTION and only this row can
+  say why), at 1 (named plainly — the scope is never implicit), and at N (name
+  - "N workspaces"). **A second, real bug the probe exposed:**
+    `refreshWorkspaces` latched `workspacesKey` BEFORE its `authState !== 'authed'`
+    bail and before the fetch resolved, and the key is
+    `origin|org|userId` — which never changes after sign-in. So one unauthed or
+    failed attempt memoized an empty list for the LIFE OF THE TAB: a workspace
+    created after you opened the dashboard could never appear. Now the key is set
+    only on a resolved list (a sequence counter keeps concurrent requests from
+    clobbering each other), and the picker forces a refresh when OPENED — opening
+    it is precisely the intent to know what exists, which beats polling. Pinned by
+    a new `tests/workspace-context.test.ts` driving the real dashboard in real
+    Chromium across 0 → 1 → 2 workspaces and a switch that must rescope the DATA,
+    not just the label; **differentially verified — 4 of its 5 cases fail on the
+    pre-change build**. Every other suite seeds ONE workspaceId, which is exactly
+    why this went unnoticed. **Test-infra fix bundled** (the new suite made a
+    latent flake reproducible): the visual suite navigated between shots with
+    `page.goto` to URLs differing only in the HASH — a same-document navigation,
+    so the `load` event it waits for never fires again; in isolation it resolved,
+    under a loaded full-suite run it hung until the test timed out AND stranded
+    the browser for the next suite. It now drives `location.hash` directly, and
+    all three browser suites got explicit boot/teardown hook timeouts (a hook
+    that times out is what leaks the Chromium). Baselines refreshed (= the docs
+    screenshots). NO schema/wire/CACHE bump (UI + a client-side memo fix).
+    **Known gap, named not fixed:** the selection lives in localStorage only, so
+    a shared `/runs/:id` link opens against the RECIPIENT's workspace — making
+    the context URL-addressable means threading it through every internal link,
+    a wave of its own. **Test-infra win bundled:** the three browser suites now
+    share ONE process-wide Chromium (`helpers/playwright.ts sharedBrowser`) —
+    `bun test` runs the package in a single process, so a browser per suite meant
+    three live Chromiums plus three platforms on a small box and the third launch
+    reliably killed one of the others ("Target page, context or browser has been
+    closed" in a suite that passes alone). Isolation lives at the CONTEXT level,
+    which is all these suites need. The cloud suite went 424s/9-fail → **84s/
+    566-pass**.
+
 - **2026-07-26**: **"Got slower" is KEY-AWARE — a same-key slowdown is
   environment, never changed work** (the inconsistency the least-stable card
   exposed on its first render: `orders#build` read **±58.8% margin AND "3.0×

@@ -14,7 +14,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import { bootPlatform, type TestPlatform } from './helpers/platform.js'
-import { chromiumExecutablePath, loadChromium } from './helpers/playwright.js'
+import { loadChromium, sharedBrowser } from './helpers/playwright.js'
 
 const DIST = path.join(import.meta.dir, '..', 'ui', 'dist', 'index.html')
 
@@ -203,11 +203,7 @@ describe.skipIf(!available)('dashboard perf guard (real browser, measured)', () 
     const big = await post(summaryFor(BIG_RUN_ID, now - 60_000, bigTasks))
     if (!big.ok) throw new Error(`seed big run failed: ${big.status}`)
 
-    browser = (await chromium!.launch({
-      headless: true,
-      executablePath: chromiumExecutablePath(),
-      args: ['--disable-dev-shm-usage'],
-    })) as unknown as PwBrowser
+    browser = (await sharedBrowser(chromium!)) as unknown as PwBrowser
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
     await ctx.addCookies([
       {
@@ -225,10 +221,14 @@ describe.skipIf(!available)('dashboard perf guard (real browser, measured)', () 
     page.on('pageerror', (err) => consoleErrors.push(String(err)))
   }, 120_000)
 
+  // Generous: under a full-suite run these teardowns contend with every other
+  // suite, and a hook that times out STRANDS the browser (bun then reports a
+  // dangling process and the next browser suite boots into the wreckage).
+  // The browser is shared process-wide (helpers/playwright.ts) — closing it
+  // here would break every later browser suite. Only the platform is ours.
   afterAll(async () => {
-    await browser?.close()
     await platform?.stop()
-  })
+  }, 120_000)
 
   it('runs page: idle polling stays ≥40fps with no long tasks', async () => {
     await page.goto(`${platform.origin}/#/runs`)

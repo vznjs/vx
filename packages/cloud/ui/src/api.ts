@@ -212,6 +212,7 @@ export interface WorkspaceInfo {
 
 const [workspaces, setWorkspaces] = createSignal<WorkspaceInfo[]>([])
 let workspacesKey: string | null = null
+let workspacesSeq = 0
 
 /** Workspaces known to the connected serve; `[]` until the list resolves. */
 export function getWorkspacesSignal(): () => WorkspaceInfo[] {
@@ -220,25 +221,37 @@ export function getWorkspacesSignal(): () => WorkspaceInfo[] {
 
 /**
  * (Re-)fetch the workspace list when the connection changed; no-op otherwise.
- * A single-workspace serve (or one predating /v1/workspaces) yields a list the
- * switcher hides. A persisted selection unknown to THIS serve is reset so
- * every query doesn't scope to a workspace that doesn't exist here.
+ * A persisted selection unknown to THIS serve is reset so every query doesn't
+ * scope to a workspace that doesn't exist here.
+ *
+ * `force` bypasses the memo — workspaces are provisioned by CI pushes, so a
+ * long-lived tab's list goes stale the moment a second repo reports for the
+ * first time. The switcher forces a refresh when opened (you open it exactly
+ * when you want to know what exists), which is cheaper and more predictable
+ * than polling.
  */
-export function refreshWorkspaces(): void {
+export function refreshWorkspaces(force = false): void {
   const key = `${origin()}|${org()}|${currentUser()?.userId ?? ''}`
-  if (key === workspacesKey) return
-  workspacesKey = key
-  setWorkspaces([])
-  if (authState() !== 'authed') return
+  if (!force && key === workspacesKey) return
+  // Memoize only once the list is KNOWN. Latching the key up front made an
+  // unauthenticated or failed attempt permanent: the connection never changes
+  // after sign-in, so the list stayed empty for the life of the tab.
+  if (key !== workspacesKey) setWorkspaces([])
+  if (authState() !== 'authed') {
+    workspacesKey = null
+    return
+  }
+  const seq = ++workspacesSeq
   void getWorkspaces().then(
     (list) => {
-      if (workspacesKey !== key) return
+      if (seq !== workspacesSeq) return // a newer request owns the signal
+      workspacesKey = key
       setWorkspaces(list)
       const current = workspace()
       if (current !== '' && !list.some((w) => w.id === current)) setWorkspaceAndPersist('')
     },
     () => {
-      if (workspacesKey === key) setWorkspaces([])
+      if (seq === workspacesSeq) workspacesKey = null
     },
   )
 }
