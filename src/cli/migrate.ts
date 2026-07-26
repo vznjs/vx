@@ -191,6 +191,10 @@ function isRawExpr(v: unknown): v is RawExpr {
 
 function renderValue(v: unknown, indent: string): string {
   if (isRawExpr(v)) return v.raw
+  // `Object.entries(null)` throws, which would abort the whole migration
+  // with a raw stack mid-write. Mappers no longer produce a null, but a
+  // literal is a readable thing to leave behind if one ever does.
+  if (v === null) return 'null'
   if (typeof v === 'string') return quote(v)
   if (typeof v === 'number' || typeof v === 'boolean') return String(v)
   if (Array.isArray(v)) return `[${v.map((x) => renderValue(x, indent)).join(', ')}]`

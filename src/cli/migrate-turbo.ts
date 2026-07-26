@@ -64,8 +64,22 @@ function tasksOf(cfg: TurboJson): Record<string, TurboTask> {
   return cfg.tasks ?? cfg.pipeline ?? {}
 }
 
-function scriptsOf(meta: ProjectMeta): Record<string, string> {
-  return (meta.packageJson as unknown as { scripts?: Record<string, string> }).scripts ?? {}
+function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
+  // package.json is a system boundary — a script value is whatever the
+  // file holds, not necessarily a string.
+  return (meta.packageJson as unknown as { scripts?: Record<string, unknown> }).scripts ?? {}
+}
+
+/** A script value that can become `exec.command` verbatim. */
+function usableScript(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0
+}
+
+function describeScript(value: unknown): string {
+  if (value === null) return 'null'
+  if (typeof value === 'string') return 'an empty string'
+  if (Array.isArray(value)) return 'an array'
+  return `a ${typeof value}`
 }
 
 /** Declared task names for a package: plain root keys, `pkg#name` keys
@@ -127,7 +141,7 @@ export async function migrateTurbo(
     const scripts = scriptsOf(meta)
     const set = new Set<string>()
     for (const name of taskNamesFor(meta.name, rootTasks, pkgTasksByName.get(meta.name))) {
-      if (scripts[name] !== undefined) set.add(name)
+      if (usableScript(scripts[name])) set.add(name)
     }
     emitted.set(meta.name, set)
   }
@@ -140,13 +154,32 @@ export async function migrateTurbo(
     const used = new Set<string>()
     const tasks: GeneratedTask[] = []
     for (const name of taskNamesFor(meta.name, rootTasks, pkgTasks)) {
-      if (!own.has(name)) continue
+      const script = scripts[name]
+      if (!usableScript(script)) {
+        // The turbo task exists and so does the script KEY, but its value
+        // can't become a command. Report it instead of emitting
+        // `command: 42` / `command: null` — the first writes a config that
+        // fails to load, the second used to abort the whole migration in
+        // the emitter, and both landed AFTER "migrated clean, 0 TODOs".
+        // An ABSENT script stays silent: turbo skips the task there too.
+        if (script !== undefined) {
+          tasks.push({
+            name,
+            todos: [
+              `package.json script ${JSON.stringify(name)} is ${describeScript(script)}, not a ` +
+                'non-empty command string — task skipped; write the command by hand',
+            ],
+            task: null,
+          })
+        }
+        continue
+      }
       const def: TurboTask = {
         ...rootTasks[name],
         ...rootTasks[`${meta.name}#${name}`],
         ...pkgTasks?.[name],
       }
-      tasks.push(buildTask(name, def, scripts[name]!, own, emitted, globals, used))
+      tasks.push(buildTask(name, def, script, own, emitted, globals, used))
     }
     projects.push({
       name: meta.name,
