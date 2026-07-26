@@ -507,6 +507,29 @@ describe('exec.persistent (e2e)', () => {
   )
 
   it(
+    'shell-quotes forwarded args so the child gets what the user typed',
+    async () => {
+      await addProject(fixture.root, 'app', { config: argsConfig(false) })
+      // Double quotes do NOT stop `sh` expanding, so quoting these with
+      // JSON.stringify handed the child the EXPANSION (`$(id -u)` → the
+      // uid) instead of the literal string the user asked to forward.
+      // The one-shot path has always used shellQuote; this is the same
+      // contract for the ready-on-spawn persistent path.
+      const hostile = ['$(id -u)', '`id -u`', '$HOME']
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['dev', 'smoke'],
+        projects: ['app'],
+        forwardArgs: hostile,
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(fixture.log.join('\n')).toContain(`GOTARGS: ${hostile.join(' ')}`)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'leaves a persistent command with a readyWhen untouched (no forwardArgs appended)',
     async () => {
       await addProject(fixture.root, 'app', { config: argsConfig(true) })

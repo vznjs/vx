@@ -20,6 +20,7 @@ import {
   runPersistent,
   runSandboxed,
   resolveSandboxConfig,
+  shellQuote,
   signalExitCode,
   type SandboxViolation,
 } from '../exec/index.js'
@@ -177,7 +178,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
       step.persistent.readyWhen !== undefined
         ? step.command
         : effectiveForwardArgs.length > 0
-          ? step.command + ' ' + effectiveForwardArgs.map((s) => JSON.stringify(s)).join(' ')
+          ? step.command + ' ' + effectiveForwardArgs.map(shellQuote).join(' ')
           : step.command,
     cwd: node.projectDir,
     env,

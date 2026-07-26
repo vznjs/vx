@@ -3,6 +3,7 @@ import { detectColors, type ColorSupport } from './colors.js'
 import {
   formatFrameClose,
   formatFrameOpen,
+  formatPersistentTailBlock,
   formatTaskBlock,
   formatTaskExecutedLine,
   formatTaskHitLine,
@@ -81,6 +82,42 @@ export interface OutputView {
 /** CI=0 / CI=false count as "not CI" — several vendors use CI=true. */
 function truthyEnv(v: string | undefined): boolean {
   return v !== undefined && v !== '' && v !== '0' && v !== 'false'
+}
+
+/**
+ * Per-stream cap on the output a persistent task writes AFTER its outcome
+ * lands. A dev server or watcher runs for the rest of the run and can log
+ * without bound, so the tail keeps only the most recent slice — the part
+ * that explains whatever just failed against it.
+ */
+const PERSISTENT_TAIL_CHARS = 64 * 1024
+
+/** Bounded head-evicting tail for one stream of one still-running task. */
+interface Tail {
+  chunks: string[]
+  chars: number
+  dropped: number
+}
+
+function appendTail(t: Tail, chunk: string): void {
+  if (chunk.length === 0) return
+  t.chunks.push(chunk)
+  t.chars += chunk.length
+  // Evict WHOLE chunks from the head — no concatenation until the flush
+  // joins once, so a chatty server costs one array push per chunk.
+  while (t.chars > PERSISTENT_TAIL_CHARS && t.chunks.length > 1) {
+    const gone = t.chunks.shift()!
+    t.chars -= gone.length
+    t.dropped += gone.length
+  }
+  // A single chunk over the cap is the one place we copy.
+  if (t.chars > PERSISTENT_TAIL_CHARS) {
+    const only = t.chunks[0]!
+    const keep = only.slice(only.length - PERSISTENT_TAIL_CHARS)
+    t.dropped += only.length - keep.length
+    t.chunks[0] = keep
+    t.chars = keep.length
+  }
 }
 
 /** The unified outcome vocabulary word for a non-failed outcome. */
@@ -209,6 +246,19 @@ export function defaultLogger(
   const deferredFailures: string[] = []
   const pinnedPersistent: string[] = []
   let flushedFailures = false
+  // A persistent task's outcome lands at READY while its child keeps
+  // writing. Those chunks used to land back in the per-task buffers that
+  // `taskComplete` had already drained, so nothing ever emitted them and
+  // nothing ever freed them: invisible in every view but a live-streaming
+  // focused one, and retained for the rest of the run. Post-ready chunks
+  // route here instead — bounded, and flushed as one trailing block at
+  // runEnd. Registration is unconditional (the bound is a memory
+  // invariant, not a display choice); only the flush is view-gated.
+  const persistentTails = new Map<
+    string,
+    { node: TaskNode; outcome: TaskOutcome; out: Tail; err: Tail }
+  >()
+  let flushedPersistent = false
 
   const refresh = (force: boolean): void => {
     if (statusDead) return
@@ -335,6 +385,36 @@ export function defaultLogger(
     },
     runEnd() {
       killStatus()
+      // Persistent tails first: they are context for whatever ran against
+      // the server, so they read above the failures they explain. `none`
+      // and `errors-only` state their contracts absolutely (no per-task
+      // output / only failed tasks print), so they stay silent — the tail
+      // is still captured and still bounded, just never printed. Guarded
+      // like the failures below: run() calls runEnd twice on the success
+      // path (once before the summary, once in its finally), and a
+      // kept-alive child keeps writing between the two.
+      if (!flushedPersistent) {
+        flushedPersistent = true
+        if (view.mode !== 'none' && view.mode !== 'errors-only') {
+          for (const t of persistentTails.values()) {
+            emitBlock(
+              formatPersistentTailBlock(
+                t.node,
+                t.outcome,
+                { stdout: t.out.chunks.join(''), stderr: t.err.chunks.join('') },
+                { stdout: t.out.dropped, stderr: t.err.dropped },
+                colors,
+              ),
+            )
+          }
+        }
+        for (const t of persistentTails.values()) {
+          t.out.chunks.length = 0
+          t.err.chunks.length = 0
+          t.out.chars = 0
+          t.err.chars = 0
+        }
+      }
       // Failures end the log: every deferred frame replays here, right
       // above the summary — the ✗ one-liners marked them in the
       // stream, the full diagnostics read last where eyes land.
@@ -352,6 +432,11 @@ export function defaultLogger(
         writer.write(chunk)
         return
       }
+      const tail = persistentTails.get(node.id)
+      if (tail !== undefined) {
+        appendTail(tail.out, chunk)
+        return
+      }
       pushChunk(stdoutBuffers, node.id, chunk)
     },
     taskStderr(node, chunk) {
@@ -360,6 +445,11 @@ export function defaultLogger(
         streamedSinceBlock = true
         if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
         writer.write(chunk)
+        return
+      }
+      const tail = persistentTails.get(node.id)
+      if (tail !== undefined) {
+        appendTail(tail.err, chunk)
         return
       }
       pushChunk(stderrBuffers, node.id, chunk)
@@ -390,6 +480,17 @@ export function defaultLogger(
           // keeps running until the orchestrator SIGTERMs it at run
           // end — pin it so its liveness stays visible.
           pinnedPersistent.push(node.id)
+          // …and capture what it writes from here on. A live-streaming
+          // node already owns the terminal, so buffering it would emit
+          // its output twice.
+          if (!streamsLive(node)) {
+            persistentTails.set(node.id, {
+              node,
+              outcome,
+              out: { chunks: [], chars: 0, dropped: 0 },
+              err: { chunks: [], chars: 0, dropped: 0 },
+            })
+          }
         }
         // Free the task's slot; the longest-waiting queued task
         // (if any) takes it over, keeping lowest-index-first reuse.
