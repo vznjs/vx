@@ -173,14 +173,14 @@ stays clean).
 
 | Flag                              | Type           | Default                            | Description                                                                                                                                                                                                                                                                                                                                                                      |
 | --------------------------------- | -------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--filter <pattern>`              | repeatable     | (none)                             | pnpm-style filter DSL (see above).                                                                                                                                                                                                                                                                                                                                               |
+| `--filter <pattern>`              | repeatable     | (none)                             | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                |
 | `--all`                           | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                     |
 | `--affected[=<base>]`             | optional value | off                                | Filter to projects changed since `<base>` (default `origin/HEAD`).                                                                                                                                                                                                                                                                                                               |
 | `--excludeDependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those names. An empty `=` value is a parse error (ambiguous — see below).                                                                                                                                                                                                          |
-| `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency`    | Maximum parallel tasks. `1` serializes.                                                                                                                                                                                                                                                                                                                                          |
+| `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency`    | Maximum parallel tasks. `1` serializes. `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                            |
 | `--no-cache`                      | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                    |
 | `--force`                         | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                |
-| `--cache <spec>`                  | value          | all axes on                        | Per-layer read/write control. See below.                                                                                                                                                                                                                                                                                                                                         |
+| `--cache <spec>`                  | value          | all axes on                        | Per-layer read/write control. See below. An EMPTY spec (`--cache=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                         |
 | `--cache-dir <path>`              | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`.                                                                                    |
 | `--retry <n>`                     | value          | `0`                                | Re-run a failed task up to `n` more times. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                    |
 | `--timeout <ms>`                  | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                          |
@@ -188,8 +188,8 @@ stays clean).
 | `--verify[=<what>]`               | optional value | off                                | Prove cache correctness. `determinism` (default): re-run + content-compare outputs. `inputs`: sandbox with the declared-input baseline + flag undeclared reads. `fingerprint`: ship output-tree fingerprints for the cross-machine diff (~1× exec, no re-run). `all`: everything. An unsafe task fails the run with the exact paths. See § `--verify`. Never affects cache keys. |
 | `--verify-allow <pkg#task,…>`     | value          | (none)                             | Comma-list of task ids exempt from failing `--verify` (known-nondeterministic; reported `allowed-nondeterministic`). `--verify-allow=<csv>` form too.                                                                                                                                                                                                                            |
 | `--frozen`                        | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI). See § `--frozen`.                                                                                                                                                                                                                                                                                                   |
-| `--output-logs <mode>`            | value          | flow-derived                       | `full` \| `errors-only` \| `none` — explicit output override. See § `--output-logs`.                                                                                                                                                                                                                                                                                             |
-| `--verbosity <n>`                 | int (0+)       | `0`                                | `1` prints a per-task summary table after the framed blocks; `2+` reserved.                                                                                                                                                                                                                                                                                                      |
+| `--output-logs <mode>`            | value          | flow-derived                       | `full` \| `errors-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                            |
+| `--verbosity <n>`                 | int (0+)       | `0`                                | `1` prints a per-task summary table after the framed blocks; `2+` reserved. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                          |
 | `--dry[=text\|json]`              | optional value | off                                | Print the task graph + predicted cache hit/miss; skip execution.                                                                                                                                                                                                                                                                                                                 |
 | `--graph[=<path>]`                | optional value | off                                | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                                                                                                                                                                                                                                                           |
 | `--summarize[=<path>]`            | optional value | off                                | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                    |
@@ -220,12 +220,27 @@ guessed — "drop every edge" and "drop none" are both plausible readings.
 Pass bare `--excludeDependencies` for the first, omit the flag for the
 second.
 
-Value flags (`--filter`, `--concurrency`, `--cache-dir`,
-`--verify-allow`, …) accept both `--flag value` and `--flag=value`. In
-the space form, `--cache-dir` and `--verify-allow` reject a value
-starting with `-`: that is always a swallowed flag (an unquoted empty
-shell variable), never a path or task id. Use the `=` form for a
-literal leading dash.
+Value flags (`--filter`, `--concurrency`, `--output-logs`,
+`--verbosity`, `--cache-dir`, `--verify-allow`, …) accept both
+`--flag value` and `--flag=value`. In the space form, `--cache-dir` and
+`--verify-allow` reject a value starting with `-`: that is always a
+swallowed flag (an unquoted empty shell variable), never a path or task
+id. Use the `=` form for a literal leading dash.
+
+**Numeric flags take a plain decimal integer.** `--concurrency`,
+`--timeout`, `--retry` and `--verbosity` reject hex (`0x10`), exponent
+(`1e3`), fractional (`2.7`), signed (`+4`) and space-padded forms, plus
+anything past `2^53` (it would parse to a number you did not type).
+These all used to be silently reinterpreted — `--concurrency 0x10` ran
+16 workers. `--memory` takes a size string (`512MB`), same rule for its
+digits.
+
+An empty `=` value on an OPTIONAL-value flag means "no value", so it
+takes that flag's documented default: `--profile=` writes `profile.json`
+and `--summarize=` writes `<cacheDir>/runs/<run_id>.json`, exactly like
+their bare forms. Value flags that have no bare form (`--retry=`,
+`--timeout=`, `--memory=`, `--cache-dir=`, `--filter=`, `--cache=`)
+reject an empty value instead.
 
 #### Cache control: `--cache`, `--no-cache`, `--force`
 
@@ -814,6 +829,9 @@ run):
 
 - `--dry` / `--graph` — those skip execution; nothing to watch.
 - `--summarize` / `--profile` — would overwrite their target per cycle.
+- `--report` / `--verbosity <n>` (n > 0) — both format ONE run's
+  result; a watch loop has no single run to report. (`--verbosity 0`
+  is accepted: it asks for what watch already prints.)
 
 Persistent tasks (`exec.persistent`) re-spawn each cycle: the previous
 SIGTERM happens between cycles, then the next cycle launches a fresh
@@ -845,10 +863,21 @@ At least one of `--older-than` / `--max-size` is required. Both may
 be combined: age-based eviction runs first, then LRU eviction if the
 total is still over the size cap.
 
-**Duration units**: `s`, `m`, `h`, `d`. Examples: `30d`, `24h`, `60m`, `30s`.
+Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
-**Size units**: `K`, `M`, `G`, `T` (powers of 1024). Optional `B`
-suffix is accepted. Examples: `500M`, `1G`, `100K`, `2T`, `500MB`.
+**Duration units**: `s`, `m`, `h`, `d`, case-insensitive. Examples:
+`30d`, `24h`, `60m`, `30s`, `30D`.
+
+**Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive.
+Optional `B` suffix is accepted. Examples: `500M`, `1G`, `100K`, `2T`,
+`500MB`, `1gb`.
+
+**A zero bound is rejected.** `--max-size 0` and `--older-than 0d` would
+evict every entry in the cache, which is far more often a
+computed-to-zero retention than an intent — and no flag combination
+expresses "wipe the cache" (running with neither flag is an error, not a
+full prune). Delete the cache directory when that is really what you
+want.
 
 ```
 $ vx cache prune --older-than 30d
@@ -1254,14 +1283,14 @@ browsable view, connect a dashboard — see the Cloud section of the docs.
 Tracked in detail in [`comparison.md`](./comparison.md). Recap of the
 gaps visible from the CLI:
 
-- `--continue=<mode>` (current behavior: independent siblings continue;
-  dependents are skipped — Turbo's middle setting, without the flag).
 - `--output-logs hash-only` (the other three modes shipped).
-- `--cache-dir <path>` CLI flag (workspace-config field works; CLI flag
-  doesn't).
-- `--remote-cache-timeout`, `--token`, `--team` on the CLI (env vars
-  work).
 - `vx prune` (workspace subset for Docker builds).
+
+`--continue=<mode>` and `--cache-dir <path>` both shipped and are
+documented in the flag table above. Remote-cache credentials are not
+core CLI flags at all: core carries no HTTP cache client — a remote
+cache arrives through a plugin's `cache` capability, which owns its own
+configuration.
 
 ## Programmatic API
 

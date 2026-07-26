@@ -26,7 +26,7 @@ import {
 } from '../orchestrator/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
-import { parseSize } from '../util/index.js'
+import { parseDecimalInt, parseSize } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 import { localBackend } from './backend.js'
 
@@ -146,16 +146,16 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
 
   for (let i = 0; i < before.length; i++) {
     const a = before[i]
-    if (a === '--filter') {
-      const v = before[++i]
-      if (v === undefined) return { ...out, error: `${a} requires a value` }
+    if (a === '--filter' || a?.startsWith('--filter=')) {
+      const v = a === '--filter' ? before[++i] : a.slice('--filter='.length)
+      if (v === undefined || v === '') return { ...out, error: `--filter requires a value` }
       out.filters.push(v)
-    } else if (a === '--concurrency') {
-      const v = before[++i]
-      if (v === undefined) return { ...out, error: `${a} requires a value` }
-      const n = Number(v)
-      if (!Number.isFinite(n) || n < 1) return { ...out, error: `invalid concurrency: ${v}` }
-      out.concurrency = Math.floor(n)
+    } else if (a === '--concurrency' || a?.startsWith('--concurrency=')) {
+      const v = a === '--concurrency' ? before[++i] : a.slice('--concurrency='.length)
+      if (v === undefined) return { ...out, error: `--concurrency requires a value` }
+      const n = parseDecimalInt(v)
+      if (n === null || n < 1) return { ...out, error: `invalid concurrency: ${v}` }
+      out.concurrency = n
     } else if (a === '--all') {
       out.all = true
     } else if (a === '--excludeDependencies') {
@@ -183,16 +183,16 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     } else if (a === '--retry' || a?.startsWith('--retry=')) {
       const v = a === '--retry' ? before[++i] : a.slice('--retry='.length)
       if (v === undefined) return { ...out, error: `--retry requires a value` }
-      const n = Number(v)
-      if (v === '' || !Number.isInteger(n) || n < 0) {
+      const n = parseDecimalInt(v)
+      if (n === null) {
         return { ...out, error: `--retry must be a non-negative integer, got: ${v}` }
       }
       out.retries = n
     } else if (a === '--timeout' || a?.startsWith('--timeout=')) {
       const v = a === '--timeout' ? before[++i] : a.slice('--timeout='.length)
       if (v === undefined) return { ...out, error: `--timeout requires a value` }
-      const n = Number(v)
-      if (v === '' || !Number.isInteger(n) || n <= 0) {
+      const n = parseDecimalInt(v)
+      if (n === null || n <= 0) {
         return { ...out, error: `--timeout must be a positive integer (ms), got: ${v}` }
       }
       out.timeout = n
@@ -232,8 +232,8 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         .split(',')
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
-    } else if (a === '--output-logs') {
-      const v = before[++i]
+    } else if (a === '--output-logs' || a?.startsWith('--output-logs=')) {
+      const v = a === '--output-logs' ? before[++i] : a.slice('--output-logs='.length)
       if (v !== 'full' && v !== 'errors-only' && v !== 'none') {
         return { ...out, error: `--output-logs must be full, errors-only, or none` }
       }
@@ -250,16 +250,20 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         return { ...out, error: `--cache-dir requires a path, got flag: ${v}` }
       }
       out.cacheDir = v
-    } else if (a === '--cache') {
-      const v = before[++i]
-      if (v === undefined) return { ...out, error: `${a} requires a value` }
-      try {
-        cachePolicy = parseCachePolicy(v, cachePolicy)
-      } catch (err) {
-        cacheSpecError = err instanceof Error ? err.message : String(err)
+    } else if (a === '--cache' || a?.startsWith('--cache=')) {
+      const v = a === '--cache' ? before[++i] : a.slice('--cache='.length)
+      if (v === undefined) return { ...out, error: `--cache requires a value` }
+      // A spec with no segment at all applies NOTHING, so `--cache=`
+      // (an empty shell var, or someone reaching for "no cache") left
+      // all four axes ON — the opposite of the intent. Reject it; an
+      // empty flag list for a NAMED layer (`local:`) stays valid and
+      // means that layer off.
+      if (!v.split(',').some((seg) => seg.trim().length > 0)) {
+        return {
+          ...out,
+          error: `--cache needs a spec like local:r, local:rw, remote:, or local:,remote:rw — pass --no-cache to disable every axis`,
+        }
       }
-    } else if (a?.startsWith('--cache=')) {
-      const v = a.slice('--cache='.length)
       try {
         cachePolicy = parseCachePolicy(v, cachePolicy)
       } catch (err) {
@@ -278,11 +282,11 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         return { ...out, error: `--continue must be never, deps-ok, or always` }
       }
       out.continueMode = v
-    } else if (a === '--verbosity') {
-      const v = before[++i]
-      if (v === undefined) return { ...out, error: `${a} requires a value` }
-      const n = Number(v)
-      if (!Number.isInteger(n) || n < 0) return { ...out, error: `invalid verbosity: ${v}` }
+    } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
+      const v = a === '--verbosity' ? before[++i] : a.slice('--verbosity='.length)
+      if (v === undefined) return { ...out, error: `--verbosity requires a value` }
+      const n = parseDecimalInt(v)
+      if (n === null) return { ...out, error: `invalid verbosity: ${v}` }
       out.verbosity = n
     } else if (a === '--dry') {
       out.dry = 'text'
@@ -303,7 +307,11 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     } else if (a === '--profile') {
       out.profile = 'profile.json'
     } else if (a?.startsWith('--profile=')) {
-      out.profile = a.slice('--profile='.length)
+      // An optional-value flag: an empty `=` means "no value given", so it
+      // takes the same documented default as the bare form. Resolving ''
+      // against cwd would name the cwd DIRECTORY and die with EISDIR after
+      // the whole run — and `--summarize=` already degrades to its default.
+      out.profile = a.slice('--profile='.length) || 'profile.json'
     } else if (a === '--affected') {
       out.affected = ''
     } else if (a?.startsWith('--affected=')) {
