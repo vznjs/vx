@@ -310,3 +310,37 @@ describe('a typo in a cache-key field', () => {
     TIMEOUT,
   )
 })
+
+describe('config worker settlement', () => {
+  it('always settles — a wedged worker rejects instead of hanging the process', async () => {
+    // Nothing else bounds this await: there is no run-level timeout, so a
+    // worker the OS kills under memory pressure, or one that simply never
+    // replies, would leave `vx watch` stalled forever on a cycle that
+    // normally takes milliseconds. A config whose module body never settles
+    // presents exactly the shape a killed worker does — silence.
+    //
+    // The deadline is driven down rather than waited out, so this asserts the
+    // real rejection instead of the existence of a constant.
+    const prev = process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
+    process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = '250'
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-worker-settle-'))
+    try {
+      const { evaluateConfigFresh } = await import('../src/workspace/config-eval.js')
+      const cfg = path.join(dir, 'vx.config.mjs')
+      await writeFile(cfg, 'await new Promise(() => {})\nexport default {}\n')
+      const outcome = await Promise.race([
+        evaluateConfigFresh(cfg).then(
+          () => 'resolved',
+          (e: Error) => `rejected: ${e.message}`,
+        ),
+        Bun.sleep(5000).then(() => 'HUNG'),
+      ])
+      expect(outcome).not.toBe('HUNG')
+      expect(outcome).toMatch(/did not answer within 250ms/)
+    } finally {
+      if (prev === undefined) delete process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
+      else process.env['VX_CONFIG_WORKER_TIMEOUT_MS'] = prev
+      await rm(dir, { recursive: true, force: true })
+    }
+  }, 20_000)
+})

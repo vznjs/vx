@@ -72,6 +72,18 @@ interface Pending {
   reject: (err: Error) => void
 }
 
+/**
+ * How long a single config evaluation may take before we treat the worker as
+ * wedged. Real evaluations are ~10 ms; this exists only so a killed or hung
+ * worker cannot stall a long-lived process indefinitely. Read per call so a
+ * test can drive the deadline instead of waiting it out.
+ */
+function workerTimeoutMs(): number {
+  const raw = process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
+  if (raw !== undefined && /^[0-9]+$/.test(raw)) return Number(raw)
+  return 30_000
+}
+
 const pending = new Map<number, Pending>()
 let worker: Worker | null = null
 let inFlight = 0
@@ -126,6 +138,12 @@ function acquireWorker(): Worker {
   w.onerror = (event: ErrorEvent): void => {
     rejectAll(new Error(`config worker failed: ${String(event.message)}`))
   }
+  // A reply that cannot be deserialized would otherwise leave its caller
+  // awaiting forever — every path off this worker must settle its pending
+  // promises, including the ones that carry no usable payload.
+  w.addEventListener('messageerror', () => {
+    rejectAll(new Error('config worker sent an undeserializable reply'))
+  })
   worker = w
   return w
 }
@@ -142,10 +160,27 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
   inFlight++
   try {
     const w = acquireWorker()
+    // A worker thread the OS kills — memory pressure on a loaded CI box, a
+    // hard crash — fires no `error` event, so without a deadline this await
+    // never settles and `vx watch` hangs forever on a cycle that would
+    // otherwise take milliseconds. Nothing else bounds it: there is no
+    // run-level timeout. The budget is enormous next to the ~10 ms a real
+    // evaluation costs, so it can only fire on a genuine wedge.
+    const budget = workerTimeoutMs()
+    let timer: ReturnType<typeof setTimeout> | undefined
     const json = await new Promise<string | null>((resolve, reject) => {
       pending.set(id, { resolve, reject })
+      timer = setTimeout(() => {
+        rejectAll(new Error(`config worker did not answer within ${budget}ms`))
+        if (worker !== null) {
+          worker.terminate()
+          worker = null
+        }
+      }, budget)
+      timer.unref?.()
       w.postMessage({ id, path: abs })
     })
+    clearTimeout(timer)
     return json === null ? null : (JSON.parse(json) as unknown)
   } finally {
     pending.delete(id)
