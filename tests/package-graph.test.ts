@@ -55,6 +55,40 @@ describe('buildPackageGraph', () => {
     expect(g.transitiveDeps('b')).toContain('a')
   })
 
+  it('a cycle does not poison the closure memo (results are query-order independent)', () => {
+    // a → b → c → a, plus c → z. Computing a's closure first used to cache a
+    // TRUNCATED closure for the nodes visited while a sat on the DFS stack
+    // (the back-edge contributes nothing), so every later query read the
+    // partial set. The closure must not depend on which node is asked first.
+    const build = (): ReturnType<typeof buildPackageGraph> =>
+      buildPackageGraph([
+        meta('a', { b: 'workspace:*' }),
+        meta('b', { c: 'workspace:*' }),
+        meta('c', { a: 'workspace:*', z: 'workspace:*' }),
+        meta('z'),
+      ])
+    const full = ['a', 'b', 'c', 'z']
+
+    const aFirst = build()
+    expect(aFirst.transitiveDeps('a')).toEqual(full)
+    expect(aFirst.transitiveDeps('c')).toEqual(full)
+
+    const cFirst = build()
+    expect(cFirst.transitiveDeps('c')).toEqual(full)
+    expect(cFirst.transitiveDeps('a')).toEqual(full)
+  })
+
+  it('a node outside the cycle still gets its full closure after a cycle query', () => {
+    const g = buildPackageGraph([
+      meta('top', { a: 'workspace:*' }),
+      meta('a', { b: 'workspace:*' }),
+      meta('b', { a: 'workspace:*' }),
+      meta('leaf'),
+    ])
+    expect(g.transitiveDeps('a')).toEqual(['a', 'b'])
+    expect(g.transitiveDeps('top')).toEqual(['a', 'b'])
+  })
+
   it('transitiveDependents walks the reverse direction', () => {
     const g = buildPackageGraph([
       meta('a', { b: 'workspace:*' }),

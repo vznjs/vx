@@ -96,7 +96,7 @@ facing summary.
 
 | Form            | Meaning                                                                       |
 | --------------- | ----------------------------------------------------------------------------- |
-| `<pattern>`     | Match by package name. `*` is a wildcard (no `/`).                            |
+| `<pattern>`     | Match by package name. `*` matches any characters, including `/`.             |
 | `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root). |
 | `{<dir>}`       | Same as `./<dir>`.                                                            |
 | `<pattern>...`  | Match + all transitive workspace dependencies.                                |
@@ -126,9 +126,19 @@ Run the task only in projects whose files changed since `<base>`.
 - `--affected=<ref>` uses the given git ref.
 
 It's a pure sugar for `--filter '[<base>]'`; both are resolved by
-`src/workspace/affected.ts` shelling out to `git diff --name-only`.
+`src/workspace/affected.ts`, which unions `git diff` against `<base>`
+with `git ls-files --others` so a brand-new untracked source file counts
+as a change (input hashing sees it, so `--affected` must too).
 `vx-lock.json` is filtered out of the changed set — a `vx lock`
 re-write never marks every project affected.
+
+**Nothing changed exits 0.** When the selection comes only from
+`--affected` / `[<ref>]` and resolves to zero projects, vx prints
+`nothing affected since <ref>` and exits 0 — a docs-only commit must not
+fail `vx run lint test build --affected=origin/main`. A name or path
+pattern that matches nothing is still an error (a probable typo), and a
+pattern that matches nothing alongside one that matched is warned about
+on stderr.
 
 ### Argument forwarding (`--`)
 

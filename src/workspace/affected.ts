@@ -29,7 +29,7 @@ export interface AffectedArgs {
 export async function affectedProjects(args: AffectedArgs): Promise<Set<string>> {
   await verifyRef(args.workspaceRoot, args.since)
 
-  const proc = Bun.spawn({
+  const [diffed, untracked] = await Promise.all([
     // `--no-renames` is crucial for project-affected detection: with
     // git's auto rename-detection on (the default in modern git), a
     // cross-project `git mv` collapses to a single rename entry that
@@ -44,8 +44,37 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     // project → the project is silently NOT flagged affected. `--relative` also
     // (correctly) drops changes ABOVE the workspace, which belong to no project.
     // No-op when the workspace root IS the git root.
-    cmd: ['git', 'diff', '--no-renames', '--relative', '--name-only', args.since],
-    cwd: args.workspaceRoot,
+    //
+    // `-z` because git otherwise C-quotes and octal-escapes any path with a
+    // non-ASCII / `"` / `\` character — the quoted string then resolves to no
+    // project, while the cache-input enumeration (which uses `-z`) sees the
+    // real name and re-keys the task. The two surfaces must agree.
+    gitPaths(args.workspaceRoot, [
+      'diff',
+      '--no-renames',
+      '--relative',
+      '--name-only',
+      '-z',
+      args.since,
+    ]),
+    // `git diff` never reports untracked-but-not-ignored files, but input
+    // enumeration does (`git ls-files --cached --others --exclude-standard`),
+    // so a brand-new source file changes a task's cache key. Union it in or
+    // `--affected` skips a package that genuinely has new work.
+    gitPaths(args.workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z']),
+  ])
+
+  // vx-lock.json (workspace-root metadata) is excluded like a gitignored
+  // file: re-running `vx lock` must not mark every project affected.
+  const changed = [...diffed, ...untracked].filter((s) => s !== LOCKFILE_NAME)
+  return projectsContaining(args.workspaceRoot, changed, args.projects)
+}
+
+/** Run a NUL-separated path-listing git command from the workspace root. */
+async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]> {
+  const proc = Bun.spawn({
+    cmd: ['git', ...cmd],
+    cwd: workspaceRoot,
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -53,13 +82,9 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   const stderr = await new Response(proc.stderr).text()
   const exit = await proc.exited
   if (exit !== 0) {
-    throw new UserError(`git diff failed (exit ${exit}): ${stderr.trim()}`)
+    throw new UserError(`git ${cmd[0]} failed (exit ${exit}): ${stderr.trim()}`)
   }
-
-  // vx-lock.json (workspace-root metadata) is excluded like a gitignored
-  // file: re-running `vx lock` must not mark every project affected.
-  const changed = stdout.split('\n').filter((s) => s.length > 0 && s !== LOCKFILE_NAME)
-  return projectsContaining(args.workspaceRoot, changed, args.projects)
+  return stdout.split('\0').filter((s) => s.length > 0)
 }
 
 /**

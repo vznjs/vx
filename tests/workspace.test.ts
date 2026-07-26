@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { findWorkspaceRoot, listProjects, loadWorkspace } from '../src/workspace/workspace.js'
 
 describe('findWorkspaceRoot', () => {
@@ -145,6 +145,32 @@ describe('listProjects', () => {
     const ws = await loadWorkspace(dir)
     const projects = await listProjects(ws)
     expect(projects.map((p) => p.name)).toEqual(['b'])
+  })
+
+  it('warns when a skipped package declares vx tasks (otherwise it vanishes silently)', async () => {
+    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await mkdir(path.join(dir, 'packages/noname'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/noname/package.json'), '{"version":"0.0.0"}')
+    await writeFile(path.join(dir, 'packages/noname/vx.config.mjs'), 'export default { tasks: {} }')
+    await mkdir(path.join(dir, 'packages/quiet'), { recursive: true })
+    await writeFile(path.join(dir, 'packages/quiet/package.json'), '{}')
+
+    let stderr = ''
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    try {
+      const projects = await listProjects(await loadWorkspace(dir))
+      expect(projects).toEqual([])
+    } finally {
+      spy.mockRestore()
+    }
+    expect(stderr).toContain('packages/noname')
+    expect(stderr).toContain('name')
+    // A nameless manifest with no vx config contributes nothing to a run —
+    // warning about it would be noise.
+    expect(stderr).not.toContain('packages/quiet')
   })
 
   it('handles an empty pnpm-workspace.yaml gracefully', async () => {

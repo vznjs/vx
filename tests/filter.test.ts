@@ -148,6 +148,49 @@ describe('applyFilters', () => {
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['app', 'ui', 'utils'])
   })
 
+  // Package names carry a `/` in their scope, so the DSL's `*` must mean
+  // "any characters" (pnpm's rule) rather than a path segment.
+  describe('scoped names', () => {
+    const scoped = [
+      mkProject('@acme/core', `${ROOT}/packages/core`),
+      mkProject('@acme/utils', `${ROOT}/packages/utils`),
+      mkProject('app', `${ROOT}/packages/app`),
+    ]
+    const scopedGraph = buildPackageGraph(scoped)
+
+    it("'*' selects every project, scoped or not", () => {
+      const filters = [parseFilter('*', ROOT)]
+      expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })].sort()).toEqual([
+        '@acme/core',
+        '@acme/utils',
+        'app',
+      ])
+    })
+
+    it("'*core*' matches across the scope separator", () => {
+      const filters = [parseFilter('*core*', ROOT)]
+      expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })]).toEqual([
+        '@acme/core',
+      ])
+    })
+
+    it("'@acme/*' still selects exactly the scope", () => {
+      const filters = [parseFilter('@acme/*', ROOT)]
+      expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })].sort()).toEqual([
+        '@acme/core',
+        '@acme/utils',
+      ])
+    })
+
+    it("'!*utils' excludes a scoped project from the full set", () => {
+      const filters = [parseFilter('!*utils', ROOT)]
+      expect([...applyFilters({ filters, projects: scoped, graph: scopedGraph })].sort()).toEqual([
+        '@acme/core',
+        'app',
+      ])
+    })
+  })
+
   it('path filter selects packages under the directory', () => {
     const filters = [parseFilter('./packages/ui', ROOT)]
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['ui'])

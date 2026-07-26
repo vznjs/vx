@@ -207,6 +207,41 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual(['b'])
   })
 
+  it('selects a project whose changed file has a non-ASCII name', async () => {
+    // Without `-z`, git C-quotes and octal-escapes such paths, so the parsed
+    // string resolves to no project — while the cache-input enumeration (which
+    // DOES use -z) sees the real name and re-keys the task. The two surfaces
+    // must agree about what changed.
+    await writeFile(path.join(root, 'packages/a/café.ts'), 'v1')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out]).toEqual(['a'])
+  })
+
+  it('selects a project whose changed file name contains a quote or backslash', async () => {
+    await writeFile(path.join(root, 'packages/b/we"ird\\name.ts'), 'v1')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out]).toEqual(['b'])
+  })
+
+  it('selects a project whose only change is an untracked file', async () => {
+    // `git diff` never reports untracked-but-not-ignored files, yet input
+    // enumeration (`git ls-files --others --exclude-standard`) does — so a new
+    // source file changes the cache key while --affected saw nothing.
+    await writeFile(path.join(root, 'packages/a/new-source.ts'), 'export const x = 1')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out]).toEqual(['a'])
+  })
+
+  it('ignores untracked files that git excludes', async () => {
+    await writeFile(path.join(root, '.gitignore'), 'ignored/\n')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'gitignore')
+    await mkdir(path.join(root, 'packages/a/ignored'), { recursive: true })
+    await writeFile(path.join(root, 'packages/a/ignored/blob.bin'), 'junk')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out]).toEqual([])
+  })
+
   it('handles many commits in the base..HEAD range without recursion limits', async () => {
     // Defensive test against git invocations that buffer / recurse
     // unbounded. Make ~50 commits in project b, ask affected since

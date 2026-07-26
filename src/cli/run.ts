@@ -351,9 +351,11 @@ export function detectFlow(
  * honor the same selection semantics (cwd / `--all` / `--filter` /
  * `--affected` / anchored positionals).
  *
- * Returns either the resolved options or an error message string. The
- * caller is responsible for prefixing the message with its subcommand
- * name (`vx run: <msg>` / `vx watch: <msg>`) and exiting non-zero.
+ * Returns the resolved options, an error message, or `nothingSelected` —
+ * the selection legitimately resolved to zero projects (nothing changed
+ * since the `--affected` base), which is a clean exit, not a failure. The
+ * caller prefixes messages with its subcommand name (`vx run: <msg>` /
+ * `vx watch: <msg>`).
  *
  * Assumes the caller has already populated `parsed.tasks` (e.g. via
  * the interactive picker for `vx run`).
@@ -362,7 +364,7 @@ export async function resolveRunOptions(
   parsed: RunArgs,
   cwd: string,
   tasks: readonly string[],
-): Promise<RunOptions | { error: string }> {
+): Promise<RunOptions | { error: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     const idx = t.indexOf('#')
     if (idx >= 0) {
@@ -392,7 +394,8 @@ export async function resolveRunOptions(
     projects = undefined
   } else if (filterStrings.length > 0) {
     const resolved = await resolveFilters(cwd, filterStrings)
-    if (resolved.error) return { error: resolved.error }
+    if ('error' in resolved) return { error: resolved.error }
+    if ('empty' in resolved) return { nothingSelected: resolved.empty }
     projects = resolved.names
   } else if (parsed.all) {
     projects = undefined
@@ -471,6 +474,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx run: ${resolved.error}\n`)
     return 1
   }
+  if ('nothingSelected' in resolved) {
+    process.stderr.write(`vx run: ${resolved.nothingSelected}\n`)
+    return 0
+  }
   const opts = resolved
   // The raw invocation, recorded on the `invocations` row so dashboards
   // show what was actually run. `args` is everything after `run`.
@@ -546,10 +553,9 @@ async function findCwdProject(cwd: string): Promise<string | null> {
   return best?.name ?? null
 }
 
-async function resolveFilters(
-  cwd: string,
-  raw: string[],
-): Promise<{ names?: string[]; error?: string }> {
+type FilterResolution = { names: string[] } | { error: string } | { empty: string }
+
+async function resolveFilters(cwd: string, raw: string[]): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
   const projects = await loadWorkspaceProjects(cwd)
   const graph = buildPackageGraph(projects)
@@ -570,8 +576,29 @@ async function resolveFilters(
     }
   }
 
-  const selected = applyFilters({ filters: parsed, projects, graph, affectedByFilter })
+  const selected = applyFilters({
+    filters: parsed,
+    projects,
+    graph,
+    affectedByFilter,
+    // A `[<since>]` selector matching nothing is the ordinary "nothing
+    // changed" outcome, reported below; only a name/path pattern that
+    // matched nothing is worth flagging as a probable typo.
+    onNoMatch: (f) => {
+      if (f.gitSince === undefined) {
+        process.stderr.write(`vx: filter "${f.raw}" matched no projects\n`)
+      }
+    },
+  })
   if (selected.size === 0) {
+    // "Nothing changed" is a legitimate outcome, not a typo — a docs-only
+    // commit must not red `vx run … --affected=origin/main`. Only report an
+    // error when the user named something concrete that failed to resolve.
+    const includes = parsed.filter((f) => !f.negate)
+    if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
+      const refs = includes.map((f) => f.gitSince).join(', ')
+      return { empty: `nothing affected since ${refs}` }
+    }
     return { error: `no projects matched filter(s): ${raw.join(', ')}` }
   }
   return { names: [...selected].sort() }
