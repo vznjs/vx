@@ -648,6 +648,23 @@ function parseLsFilesOutput(out: string): GitLsResult {
   return { files, oids }
 }
 
+/**
+ * Paths `git ls-files -v -z` marks as not-watched: `S` is skip-worktree, and
+ * ANY lowercase letter is assume-unchanged layered on that entry's state.
+ * Either way git has been told to stop comparing the worktree file, so its
+ * index OID says nothing about what is — or isn't — on disk. Each
+ * NUL-terminated record is `<letter><space><path>`.
+ */
+export function parseFlaggedOutput(out: string): Set<string> {
+  const flagged = new Set<string>()
+  for (const record of out.split('\0')) {
+    if (record.length < 3 || record[1] !== ' ') continue
+    const letter = record[0]!
+    if (letter === 'S' || (letter >= 'a' && letter <= 'z')) flagged.add(record.slice(2))
+  }
+  return flagged
+}
+
 function parseStatusOutput(out: string): Set<string> {
   const tokens = out.split('\0')
   const dirty = new Set<string>()
@@ -747,7 +764,7 @@ export async function populateGitFilesCache(
     rels.length <= 64 &&
     rels.every((r) => r !== '' && r !== '.')
   const pathspecs = scoped ? rels : ['.']
-  const [ls, status, prefixRes] = await Promise.all([
+  const [ls, status, prefixRes, flagged] = await Promise.all([
     spawnGit(['ls-files', '-s', '--others', '--exclude-standard', '-z', '--', ...pathspecs]),
     spawnGit(['status', '--porcelain', '-z', '--', ...pathspecs]),
     // The repo→workspace path prefix (empty when the workspace root IS the git
@@ -755,6 +772,12 @@ export async function populateGitFilesCache(
     // prints repo-root-relative ones, so when the workspace root is a SUBDIR of
     // the git repo the two disagree; this lets us key both the same way below.
     spawnGit(['rev-parse', '--show-prefix']),
+    // Index-only, so it costs ~5 ms against the enumeration's ~19 ms on a
+    // 15k-file tree and runs concurrently with it. `-v` tags each entry with
+    // its cache state; a LOWERCASE letter means skip-worktree or
+    // assume-unchanged — git has been told to stop looking at the worktree
+    // file, so its index OID says nothing about what is (or isn't) on disk.
+    spawnGit(['ls-files', '-v', '-z', '--', ...pathspecs]),
   ])
   if (ls === null) {
     throw new UserError(
@@ -787,6 +810,16 @@ export async function populateGitFilesCache(
   const trusted = dirty === null ? new Map<string, string>() : oids
   if (dirty !== null) {
     for (const rel of dirty) trusted.delete(rel)
+  }
+  // A skip-worktree / assume-unchanged path sits at stage 0 and `git status`
+  // reports nothing for it, so it would otherwise keep a trusted OID — and
+  // resolveFiles SKIPS its existence probe for OID-carrying paths. A sparse
+  // checkout would then count a file that is not on disk as an input, so
+  // materializing it later changes no key and the old artifact is replayed.
+  // Dropping the OID sends these back through the probe, where they correctly
+  // fall out of the input set while unmaterialized.
+  if (flagged !== null && flagged.exitCode === 0) {
+    for (const rel of parseFlaggedOutput(flagged.stdout)) trusted.delete(rel)
   }
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of

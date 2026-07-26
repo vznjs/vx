@@ -94,7 +94,19 @@ const CACHE_VERSION = 'vx-cache-v24'
 //        passed under identical inputs is nondeterministic by definition;
 //        no cross-run inference needed). Nullable; NULL for a once-run
 //        task. Analytics-only — the cache KEY is unchanged.
-const SCHEMA_VERSION = 'v23'
+//   v24: file_hashes.ctime_ms + .ino — the stat memo's guard against a
+//        content change that PRESERVES mtime (`tar -x`, `cp -p`,
+//        `rsync --times`, SOURCE_DATE_EPOCH). (mtime, size) alone
+//        returned the previous run's digest for different bytes, i.e. a
+//        stale cache hit. `utimes` cannot suppress ctime unprivileged
+//        and an atomic write-then-rename changes the inode, so the two
+//        together close it; git's index keys on ctime+ino+dev for the
+//        same reason. Both come free from the stat already taken. The
+//        cache KEY derivation is unchanged (CACHE_VERSION not bumped) —
+//        the memo simply stops answering wrongly, so an affected task's
+//        key moves from a WRONG value to the right one: it misses once,
+//        re-runs, re-caches. Self-healing, never a wrong hit.
+const SCHEMA_VERSION = 'v24'
 
 /**
  * Artifact + `output_files` namespace prefix for workspace-root-
@@ -813,6 +825,8 @@ export class Cache implements CacheLayer {
         path         TEXT PRIMARY KEY,
         mtime_ms     INTEGER NOT NULL,
         size_bytes   INTEGER NOT NULL,
+        ctime_ms     INTEGER NOT NULL,
+        ino          INTEGER NOT NULL,
         content_hash TEXT NOT NULL,
         seen_at      INTEGER NOT NULL
       );
@@ -933,14 +947,16 @@ export class Cache implements CacheLayer {
       VALUES (?, ?, ?, ?)
     `)
     this.selectFileHash = this.db.prepare(
-      'SELECT mtime_ms, size_bytes, content_hash FROM file_hashes WHERE path = ?',
+      'SELECT mtime_ms, size_bytes, ctime_ms, ino, content_hash FROM file_hashes WHERE path = ?',
     )
     this.upsertFileHash = this.db.prepare(`
-      INSERT INTO file_hashes(path, mtime_ms, size_bytes, content_hash, seen_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO file_hashes(path, mtime_ms, size_bytes, ctime_ms, ino, content_hash, seen_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(path) DO UPDATE SET
         mtime_ms     = excluded.mtime_ms,
         size_bytes   = excluded.size_bytes,
+        ctime_ms     = excluded.ctime_ms,
+        ino          = excluded.ino,
         content_hash = excluded.content_hash,
         seen_at      = excluded.seen_at
     `)
@@ -958,15 +974,18 @@ export class Cache implements CacheLayer {
   /**
    * Content-hash a file (as a git blob OID, v20) with an mtime+size
    * fast path. If the `file_hashes` table has a row for `path` whose
-   * `(mtime_ms, size_bytes)` match the current stat, we reuse the
-   * stored content_hash (a memory + SQLite lookup, no disk read).
-   * Otherwise we read + hash + upsert.
+   * `(mtime_ms, size_bytes, ctime_ms, ino)` all match the current
+   * stat, we reuse the stored content_hash (a memory + SQLite lookup,
+   * no disk read). Otherwise we read + hash + upsert. All four fields
+   * are load-bearing — see the comment at the comparison.
    *
    * The OID is byte-identical to what `git hash-object` (and the git
    * index) computes for the same content, so this fallback and the
-   * `CacheKeyInput.fileHashes` index-OID fast path never diverge —
-   * a file's key contribution can't flip across dirty↔clean
-   * transitions.
+   * `CacheKeyInput.fileHashes` index-OID fast path agree on any file
+   * git stores verbatim. They do NOT agree when a clean filter
+   * (`text`/`eol`/`ident`) is active: the index blob is the filtered
+   * form while this hashes the worktree bytes, so `inputs.ts` drops
+   * the index OID for those paths and routes them here.
    */
   async hashFile(filePath: string): Promise<string> {
     // statSync intentional: a single stat is ~1.6µs (Bun 1.3); the
@@ -985,14 +1004,36 @@ export class Cache implements CacheLayer {
     }
     const mtimeMs = Math.floor(st.mtimeMs)
     const size = st.size
+    // ctime + ino are what make this memo SAFE, not merely fast. mtime is
+    // caller-settable, so (mtime, size) alone hands back the previous run's
+    // digest for genuinely different bytes whenever a producer preserves
+    // mtime — `tar -x`, `unzip`, `cp -p`, `rsync --times`, any
+    // SOURCE_DATE_EPOCH generator — which is a stale cache hit. `utimes`
+    // cannot suppress ctime without root, and an atomic write-then-rename
+    // changes the inode; git's own index keys on ctime+ino+dev for exactly
+    // this reason. Both fields come from the stat we already took.
+    const ctimeMs = Math.floor(st.ctimeMs)
+    const ino = Number(st.ino)
     const row = this.selectFileHash.get(filePath) as
-      | { mtime_ms: number; size_bytes: number; content_hash: string }
+      | {
+          mtime_ms: number
+          size_bytes: number
+          ctime_ms: number
+          ino: number
+          content_hash: string
+        }
       | undefined
-    if (row && row.mtime_ms === mtimeMs && row.size_bytes === size) {
+    if (
+      row &&
+      row.mtime_ms === mtimeMs &&
+      row.size_bytes === size &&
+      row.ctime_ms === ctimeMs &&
+      row.ino === ino
+    ) {
       return row.content_hash
     }
     const ch = await this.hashFileFromDisk(filePath)
-    this.upsertFileHash.run(filePath, mtimeMs, size, ch, Date.now())
+    this.upsertFileHash.run(filePath, mtimeMs, size, ctimeMs, ino, ch, Date.now())
     return ch
   }
 
@@ -1107,10 +1148,14 @@ export class Cache implements CacheLayer {
     h = xxh3(`inputs:${sortedInputs.length}`, h)
     // Per-file hash source, in preference order: the caller-supplied
     // index-OID map (clean tracked files — zero I/O), then hashFile's
-    // mtime+size memo (no read), then a full in-process blob-OID
-    // computation. All three produce identical bytes for identical
-    // content. The fold order is locked to `sortedInputs` so results
-    // are stable across runs.
+    // stat memo (no read), then a full in-process blob-OID computation.
+    // All three describe the WORKTREE bytes, which is what the task
+    // reads — the index-OID map is only populated for paths whose
+    // worktree form matches their index form, because a clean filter
+    // (`text`/`eol`/`ident`) makes the index blob a DIFFERENT sequence
+    // of bytes and folding it would let two distinct worktree contents
+    // share a key. The fold order is locked to `sortedInputs` so
+    // results are stable across runs.
     const fileHashes = await Promise.all(
       sortedInputs.map((f) => input.fileHashes?.get(f) ?? this.hashFile(f)),
     )
