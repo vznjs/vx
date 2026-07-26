@@ -208,6 +208,61 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **TWO STALE-HIT BUGS FIXED — running from inside a package
+  silently made that package the whole workspace; and a glob in the PROJECT
+  half of `cache.inputs.tasks` selected nothing** (a repro-mandated hostile
+  audit of selection + graph construction — the surface deciding WHICH
+  projects and tasks run, never previously attacked; it confirmed 11 defects,
+  these two being the stale-hit pair, which is this project's worst failure
+  class). **(1) `findWorkspaceRoot` (`workspace/workspace.ts:52`) returned the
+  first ancestor containing ANY `package.json` — and every workspace member has
+  one.** So from `packages/a`, the workspace WAS `packages/a`: `^task` edges
+  vanished, the key lost its upstream fold, and (the second half nobody had
+  spotted) `Cache.key` folds workspace-ROOT-relative rels, so a different root
+  also meant a different key namespace. Verified by hand end-to-end: from the
+  root `a#build`=668c9500 with `b#build` scheduled; from `packages/a`
+  `a#build`=d9f13268 with `b` absent — then build, change `b`'s source,
+  re-plan from `packages/a` → **`cache hit (local)`. Stale.** This is the
+  DOCUMENTED default scope (`docs/cli.md`: "the project that contains cwd";
+  `cli/run.ts` tells you to "run from within a project directory"), and
+  `tests/workspace.test.ts` missed it because every case walked up from dirs
+  containing NO `package.json`. **Fixed by MEMBERSHIP, not declaration** (the
+  developer's call over my suggestion, and the better one): a candidate wins
+  only when its package globs CLAIM cwd, read through a shared
+  `readPackageGlobs` that `loadWorkspace` also uses — so "the root that claims
+  me" and "the root that lists me" cannot diverge. Declaration alone would
+  hijack an `examples/demo` package that no glob matches. Nothing claiming cwd
+  ⇒ nearest candidate still wins, so standalone/single-project layouts are
+  untouched. **On THIS repo:** `packages/cloud` resolved to itself (1 project,
+  0 tasks) and now resolves to the repo root (5 projects, 26 tasks) — verified
+  before and after. **(2) `upstream.ts` globbed only the TASK half**; the
+  project half was `===`, so `'@acme/*#build'` matched NOTHING, the filter came
+  back empty, and the task folded ZERO upstream hashes — the documented
+  decoupling vector, e2e-confirmed as a stale hit. Same trap the 2026-07-10
+  wildcard wave closed for the task half. **I leaned toward REJECTING the form
+  (matching `dependsOn`); the developer argued for globbing it and was right:**
+  `tests/upstream.test.ts:102` already pins `'other#codegen.*'` working here
+  WHILE `dependsOn` rejects it, so "no patterns in cross forms" was never the
+  rule — this surface is deliberately the permissive superset. A filter only
+  SELECTS from upstreams that already exist, so over-matching over-invalidates
+  (safe direction) and package names cannot contain `*`, so nothing previously
+  selected becomes unselected. `taskMatcher`+`matches` collapsed into one
+  `specMatcher` so the halves can't drift again. **NO CACHE_VERSION bump for
+  either**, argued not assumed: both classes of key were WRONG before, so the
+  corrected key is a new key that misses once and re-caches — self-healing,
+  never a wrong hit; every already-correct invocation is byte-identical. Pins:
+  11 unit cases + 2 real-CLI e2e, differentially proven (7 fail / 7 pass and
+  4 fail / 17 pass with the fixes reverted, the passes being deliberate
+  controls that must behave identically both ways). Docs corrected on both
+  (`modules/workspace.md` + `execution.md` said "first match wins";
+  `schema.md` said patterns work "in every form's task half"). Gates: fmt/lint
+  0, core **1311/0** (+14), cloud 599/0, ui 91/0. **Nine more confirmed
+  defects from the same audit are queued** — a `pkg#task` dep failing in every
+  scoped run, the `^task` frontier wrapping back to its own project on a
+  package cycle, `--affected` blind to non-ASCII filenames, `--filter '*'`
+  matching only unscoped packages, and a cycle-poisoned closure memo making
+  filter results order-dependent.
+
 - **2026-07-26**: **MEASURED NEGATIVE RESULT — the flagged N+1 queries are fine,
   and the two genuinely quadratic ones have no caller. No rewrite.** A hostile
   audit flagged core `metrics.ts` `getFlakiestTasks` / `getRegressions` as

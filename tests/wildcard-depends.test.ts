@@ -167,6 +167,57 @@ describe('dependsOn patterns e2e', () => {
     expect(await Bun.file(path.join(dir, 'final.txt')).text()).toBe('v2-CHANGED')
   })
 
+  it("cache.inputs.tasks: ['acme-*#build'] COUPLES the dependent across projects", async () => {
+    // Same trap as the sibling test above, in the PROJECT half of `pkg#task`:
+    // matched literally it selected ZERO upstream hashes, so app cache-hit
+    // stale bytes after its dependency changed.
+    await addProject(
+      root,
+      'acme-core',
+      `export default {
+        tasks: {
+          build: {
+            exec: { command: 'cp src.txt out.txt' },
+            cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] } },
+          },
+        },
+      }
+      `,
+    )
+    await addProject(
+      root,
+      'app',
+      `export default {
+        tasks: {
+          build: {
+            dependsOn: ['^build'],
+            exec: { command: 'echo ran >> ran.log && cp src.txt out.txt' },
+            cache: {
+              inputs: { files: ['src.txt'], tasks: ['acme-*#build'] },
+              outputs: { files: ['out.txt'] },
+            },
+          },
+        },
+      }
+      `,
+      { 'acme-core': 'workspace:*' },
+    )
+    const core = path.join(root, 'packages', 'acme-core')
+    const app = path.join(root, 'packages', 'app')
+    await writeFile(path.join(core, 'src.txt'), 'v1')
+    await writeFile(path.join(app, 'src.txt'), 'const')
+    git(root, 'add', '-A')
+
+    expect((await vx(root, ['run', 'app#build'])).code).toBe(0)
+    expect((await Bun.file(path.join(app, 'ran.log')).text()).trim().split('\n')).toHaveLength(1)
+
+    // Change ONLY the dependency's input; the pattern filter must carry its
+    // new hash into app's key → app re-runs instead of hitting stale bytes.
+    await writeFile(path.join(core, 'src.txt'), 'v2-CHANGED')
+    expect((await vx(root, ['run', 'app#build'])).code).toBe(0)
+    expect((await Bun.file(path.join(app, 'ran.log')).text()).trim().split('\n')).toHaveLength(2)
+  })
+
   it('a bare wildcard in dependsOn still fails loud', async () => {
     await addProject(
       root,

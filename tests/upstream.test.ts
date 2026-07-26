@@ -111,4 +111,46 @@ describe('filterUpstreamHashes', () => {
       ])
     })
   })
+
+  // The PROJECT half globs too. Comparing it literally selected ZERO upstream
+  // hashes, silently decoupling the task from its dependencies — the same
+  // stale-hit trap the task half had (repro-confirmed), plus a negation that
+  // subtracted nothing.
+  describe('project-name patterns', () => {
+    const up = [
+      outcome('@acme/core#build', 'h-core'),
+      outcome('@acme/ui#build', 'h-ui'),
+      outcome('vendor/lib#build', 'h-vendor'),
+      outcome('@acme/core#lint', 'h-lint'),
+    ]
+
+    it("'@acme/*#build' selects every matching project's build, nothing else", () => {
+      const out = filterUpstreamHashes(up, ['@acme/*#build'], 'self', 'self#top')
+      expect(out.map(([id]) => id).sort()).toEqual(['@acme/core#build', '@acme/ui#build'])
+    })
+
+    it("'*#build' selects every project's build", () => {
+      const out = filterUpstreamHashes(up, ['*#build'], 'self', 'self#top')
+      expect(out.map(([id]) => id).sort()).toEqual([
+        '@acme/core#build',
+        '@acme/ui#build',
+        'vendor/lib#build',
+      ])
+    })
+
+    it("negation subtracts: ['^build', '!@acme/*#build'] drops the matched projects", () => {
+      const out = filterUpstreamHashes(up, ['^build', '!@acme/*#build'], 'self', 'self#top')
+      expect(out).toEqual([['vendor/lib#build', 'h-vendor']])
+    })
+
+    it('a pattern matching no project selects nothing', () => {
+      expect(filterUpstreamHashes(up, ['nope-*#build'], 'self', 'self#top')).toEqual([])
+    })
+
+    it('an exact project name still matches only that project', () => {
+      expect(filterUpstreamHashes(up, ['@acme/core#build'], 'self', 'self#top')).toEqual([
+        ['@acme/core#build', 'h-core'],
+      ])
+    })
+  })
 })
