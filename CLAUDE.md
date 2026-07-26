@@ -208,8 +208,91 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
-- **2026-07-26**: **`vx run` no longer goes GREEN on a task it never ran** —
-  six silent-wrong-behaviour CLI defects, from a repro-mandated hostile audit
+- **2026-07-26**: **Arg parsing stopped REINTERPRETING what the user typed** —
+  the CLI audit's remaining EIGHT defects fixed, one REFUTED, each pinned
+  (completing the wave the six silent-wrong-behaviour fixes opened). **The two
+  that could bite hardest:** `--cache=` with an empty spec was a silent no-op
+  that left caching **FULLY ON** — so `--cache="$POLICY"` with an unset var did
+  the OPPOSITE of the intent, and it's the one value flag where "do less" is the
+  obvious reading; now a UserError naming the valid forms AND pointing at
+  `--no-cache`. And **`--max-size 0` / `--older-than 0d` pruned the ENTIRE
+  cache** — a scripting bug (`--max-size "$LIMIT"` unset) wipes everything, and
+  the developer CHECKED before assuming rather than reasoning from the
+  `--memory 0` precedent: bare `vx cache prune` is an ERROR, so no flag
+  combination expresses "wipe the cache" and refusing `0` removes no capability;
+  both now refuse, naming `rm -rf` the cache dir as the deliberate alternative.
+  **The rest:** `--profile=` (empty) resolved to the cwd DIRECTORY and died
+  `EISDIR` _after doing all the work_, while sibling `--summarize=` degraded
+  gracefully — unified on the graceful reading, because these are
+  OPTIONAL-value flags whose bare form has a documented default, unlike the
+  required-value flags (`--retry=`, `--timeout=`, `--cache-dir=`) the sibling
+  wave rejects; rejecting would have broken a working `--summarize=` for no
+  gain. Numeric flags took anything `Number()` accepts — `--concurrency 0x10`
+  ran **16** workers, `2.7` ran **2**, `--timeout 9007199254740993` silently
+  became …992 — now a strict decimal-integer parse (`parseDecimalInt` in the
+  `util` leaf; `--memory` was ALREADY strict via `parseSize`'s regex, so only
+  concurrency/timeout/retry/verbosity needed it, and its digits-past-2^53 guard
+  was the only gap). `vx watch` silently accepted `--report`/`--verbosity` it
+  cannot honor, an inconsistency in an established pattern (it already rejects
+  `--dry`/`--graph`/`--summarize`/`--profile`). Prune's duration/size units were
+  case-SENSITIVE and had no `=` form. `--filter`/`--concurrency`/
+  `--output-logs`/`--verbosity` were space-only while **`docs/cli.md` already
+  PROMISED both forms** — a doc/behaviour disagreement resolved in the docs'
+  favour. **The `=`-only flags stay `=`-only, guarded by a test:** `--verify`,
+  `--cache`, `--continue`, `--affected`, `--summarize`, `--profile`, `--report`
+  are all valid BARE, so a space form would swallow the next positional and
+  silently retarget an invocation that works today (the sibling wave's
+  reasoning, now pinned so nobody "fixes" the asymmetry). **REFUTED, and the
+  developer was right to refuse it:** I asked for the typo'd-task diagnostic to
+  be stderr on every path, believing the sibling wave had already done it —
+  it hadn't (real run → stdout, `--dry` → stderr), but the message rides
+  `log.status`, and `defaultLogger` routes ALL status output through the one
+  stdout writer that serializes the live region. Forcing stderr means either
+  breaking the Logger abstraction (an embedder's custom logger loses the
+  message) or widening a public contract — both bigger than the cosmetic gain,
+  and the load-bearing part (exit 1) holds either way. My attribution was also
+  wrong: defect 6 of the six was `--verify-allow <csv>`, not the stream.
+  **Docs swept:** `cli.md` still listed `--continue=<mode>` and `--cache-dir` as
+  roadmap gaps though both shipped, plus a THIRD dead bullet the brief didn't
+  name — `--remote-cache-timeout`/`--token`/`--team` "(env vars work)", when
+  `VX_REMOTE_CACHE_*` hasn't existed in core since the Turbo wire was deleted.
+  NO CACHE_VERSION bump (nothing touches key derivation — only which inputs are
+  ACCEPTED and what a flag resolves to). Differentially proven: with `src/`
+  stashed the new suite is **17 fail / 6 pass**, with the fixes **23 pass / 0
+  fail**, the 6 constant passes being deliberate controls (`--cache=local:`
+  still valid, `--summarize=` unchanged, `--memory` size forms, `=`-only stays
+  `=`-only). Re-verified through the real CLI in the main tree. Gates: fmt/lint
+  0, core **1342/0**, cloud 599/0, ui 91/0.
+
+- **2026-07-26**: **A git failure during `--affected` no longer blames your
+  branch name** — plus the test-side hardening that found it. `git rev-parse
+--verify --quiet <ref>` exits **1** for "no such ref" but **128** for "git
+  cannot operate here at all" (not a repository, corrupt objects, no
+  permission); `verifyRef` treated every non-zero exit as `ref "<x>" did not
+  resolve`, so `vx run --affected=main` outside a git repo sent you hunting for
+  a branch that was never the problem. Only exit 1 keeps the ref message now.
+  **Found by diagnosing a CI red, and the diagnosis is the lesson:** the
+  `affected` suite failed with `git ref "HEAD~50" did not resolve` from a
+  fixture that provably makes 51 commits — the error pointed AWAY from whatever
+  actually went wrong, and cost ~20 minutes. Two test-side changes so the next
+  occurrence names itself: the suite's git helper now drains **stdout** as well
+  as stderr (git writes its most useful failure text to stdout — `git commit`
+  with nothing staged exits 1 saying "nothing to commit" on stdout and writes
+  NOTHING to stderr, so the helper's error read as a blank `exited 1: `), and
+  the 50-commit test asserts its own fixture (51 commits) BEFORE invoking the
+  code under test, so a commit that silently fails to land is reported as a
+  fixture problem rather than as a ref problem. **The red itself did not
+  reproduce** — 15 local attempts, twelve of them under 8-way CPU contention,
+  plus three exact mirrors of the fixture in Bun; `affected.ts` was untouched by
+  the branch and the suite runs 5th, before any test the branch adds; the next
+  CI run was green. Recorded as an environment flake, but the mechanism that
+  WOULD produce it is now pinned in the probe record: a same-size content change
+  whose mtime matches the index entry exactly makes `git add` stage nothing and
+  `git commit` exit 1 — which the old helper reported as a blank error.
+  **Process note:** my own verification probe piped the CLI through `tail` and
+  read `$?` — which is _tail's_ exit code, the exact mistake this file warns
+  about; caught it and re-ran without the pipe. Never read an exit code through
+  a pipe.
   of the CLI surface (15 confirmed; the other nine are polish, queued).
   **(1) HIGH, and a live CI footgun:** every non-flag arg becomes a requested
   task, but the "No projects declare task(s)" guard fired ONLY when the ENTIRE
