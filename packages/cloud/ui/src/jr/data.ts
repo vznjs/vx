@@ -69,6 +69,10 @@ interface CompareRow {
   bCacheHit: boolean | null
   bDurationMs: number | null
   deltaLabel: string
+  /** Numeric delta + the A-side magnitude it is relative to — the diverging
+   *  bar needs a number, and the flat band needs something to be flat AGAINST. */
+  deltaMs: number
+  baseMs: number
   deltaKind: 'slower' | 'faster' | 'same' | 'new' | 'gone'
   keyChanged: 'changed' | 'same'
 }
@@ -103,6 +107,9 @@ async function compareRows(runId: string): Promise<CompareRow[]> {
       bCacheHit: t.b?.cacheHit ?? null,
       bDurationMs: t.b?.durationMs ?? null,
       deltaLabel,
+      // NaN when a side is missing: 'new'/'only in prev' is not a zero delta.
+      deltaMs: t.a === null || t.b === null ? Number.NaN : (t.durationDeltaMs ?? 0),
+      baseMs: t.a?.durationMs ?? 0,
       deltaKind,
       keyChanged: t.hashChanged ? 'changed' : 'same',
     }

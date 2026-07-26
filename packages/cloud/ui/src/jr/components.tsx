@@ -240,8 +240,37 @@ export function Empty(c: C<{ title: string; hint?: string; cmd?: string }>) {
   return <EmptyState title={c.props.title} hint={c.props.hint} cmd={c.props.cmd} />
 }
 
+/**
+ * A tone-carrying banner — the ONE way a view says "heads up". The stale-lock
+ * warning, the ingest-only note and the workspace hints were four hand-rolled
+ * class strings before; drift is impossible once they share a component.
+ */
+const CALLOUT_TONE: Record<string, string> = {
+  warn: 'border-warn/40 bg-warn/5 text-warn',
+  info: 'border-info/40 bg-info/5 text-info',
+  muted: 'border-border bg-surface/60 text-fg-2',
+}
+const CALLOUT_ICON: Record<string, string> = {
+  warn: 'i-tabler-alert-triangle',
+  info: 'i-tabler-info-circle',
+  muted: 'i-tabler-info-circle',
+}
+export function Callout(c: C<{ text: string; tone?: 'warn' | 'info' | 'muted'; icon?: boolean }>) {
+  const tone = () => c.props.tone ?? 'info'
+  return (
+    <div
+      class={`flex items-start gap-2 rounded-lg border px-4 py-2.5 text-[12px] ${CALLOUT_TONE[tone()] ?? CALLOUT_TONE['info']!}`}
+    >
+      <Show when={c.props.icon !== false}>
+        <span class={`${CALLOUT_ICON[tone()] ?? CALLOUT_ICON['info']!} text-[13px] shrink-0 mt-px`} />
+      </Show>
+      <span class="min-w-0">{c.props.text}</span>
+    </div>
+  )
+}
+
 // Key/value facts from one entry object + a declarative field list.
-type FactField = { label: string; key: string; kind?: FormatHint | 'shorthash' | 'shorthash16' | 'text'; mono?: boolean }
+type FactField = { label: string; key: string; kind?: FormatHint | 'shorthash' | 'shorthash16' | 'text' | 'status'; mono?: boolean }
 export function Facts(c: C<{ entry?: Row; fields: FactField[]; commandKey?: string }>) {
   const fmt = (f: FactField) => {
     const v = c.props.entry?.[f.key]
@@ -258,7 +287,12 @@ export function Facts(c: C<{ entry?: Row; fields: FactField[]; commandKey?: stri
           {(f) => (
             <div class="flex gap-3 items-baseline">
               <span class="text-fg-3 text-[10px] uppercase tracking-wider w-20 shrink-0">{f.label}</span>
-              <span class={f.mono || f.kind === 'shorthash' || f.kind === 'shorthash16' ? 'font-mono text-fg-1' : ''}>{fmt(f)}</span>
+              <Show
+                when={f.kind !== 'status'}
+                fallback={<StatusBadge status={String(c.props.entry?.[f.key] ?? '')} />}
+              >
+                <span class={f.mono || f.kind === 'shorthash' || f.kind === 'shorthash16' ? 'font-mono text-fg-1' : ''}>{fmt(f)}</span>
+              </Show>
             </div>
           )}
         </For>
@@ -462,7 +496,7 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
 
 // --- DataTable --------------------------------------------------------------
 
-type CellKind = 'text' | 'mono' | 'muted' | 'faint' | FormatHint | 'cpuPct' | 'status' | 'cache' | 'projtask' | 'bar' | 'dots' | 'shorthash' | 'link' | 'download' | 'pin'
+type CellKind = 'text' | 'mono' | 'muted' | 'faint' | FormatHint | 'cpuPct' | 'status' | 'cache' | 'projtask' | 'bar' | 'deltaBar' | 'dots' | 'shorthash' | 'link' | 'download' | 'pin'
 interface ToneRule {
   gt?: number
   lt?: number
@@ -479,6 +513,8 @@ export interface Column {
   kind?: CellKind
   format?: FormatHint // value format for kind:'bar'
   max?: number // fixed bar-track max (rates pin 1); default = column data max
+  baseKey?: string // kind:'deltaBar' — the magnitude the flat band is relative to
+  labelKey?: string // kind:'deltaBar' — shown when the delta is undefined (new/gone)
   baseTone?: Tone
   tone?: ToneRule
   color?: string // static bar color token
@@ -587,6 +623,43 @@ function renderField(col: Column, row: Row, max: number) {
         </div>
       )
     }
+    case 'deltaBar': {
+      // A signed delta reads as a DIVERGING bar around a shared zero: faster
+      // grows left in green, slower right in red. The flat band matters — a
+      // +7ms wobble used to render in full danger red, which is a lie about
+      // significance, so anything under the band is neutral with no bar.
+      const v = Number(row[col.key])
+      const base = Math.abs(Number(row[col.baseKey ?? col.key])) || 0
+      const flat = Math.max(5, base * 0.005)
+      const scale = col.max ?? max
+      const frac = scale > 0 ? Math.min(1, Math.abs(v) / scale) : 0
+      const neutral = !Number.isFinite(v) || Math.abs(v) < flat
+      const tone: Tone = neutral ? 'faint' : v > 0 ? 'danger' : 'success'
+      return (
+        <div class="flex items-center gap-2 justify-end">
+          <span class={`w-16 text-right ${toneText(tone)}`}>
+            {Number.isFinite(v)
+              ? formatValue(col.format, v)
+              : col.labelKey !== undefined
+                ? String(row[col.labelKey] ?? '—')
+                : '—'}
+          </span>
+          <div class="w-20 flex items-center" aria-hidden="true">
+            <div class="w-1/2 flex justify-end">
+              <Show when={!neutral && v < 0}>
+                <div class="h-1.5 rounded-l-full bg-success" style={{ width: `${frac * 100}%` }} />
+              </Show>
+            </div>
+            <div class="w-px h-2.5 bg-border-strong shrink-0" />
+            <div class="w-1/2">
+              <Show when={!neutral && v > 0}>
+                <div class="h-1.5 rounded-r-full bg-danger" style={{ width: `${frac * 100}%` }} />
+              </Show>
+            </div>
+          </div>
+        </div>
+      )
+    }
     case 'bar': {
       const v = Number(row[col.key])
       const color = col.colorKey
@@ -650,7 +723,16 @@ export function DataTable(
     const m: Record<string, number> = {}
     // col.max pins the track (rates use 1) — auto-max would render the
     // best row as full even at 40%, lying about the absolute level.
-    for (const col of c.props.columns ?? []) if (col.kind === 'bar') m[col.key] = col.max ?? Math.max(1, ...(c.props.rows ?? []).map((r) => Number(r[col.key])))
+    for (const col of c.props.columns ?? []) {
+      if (col.kind === 'bar') {
+        m[col.key] = col.max ?? Math.max(1, ...(c.props.rows ?? []).map((r) => Number(r[col.key])))
+      } else if (col.kind === 'deltaBar') {
+        // Diverging bars share ONE scale so a +2s and a -2s read equal.
+        m[col.key] =
+          col.max ??
+          Math.max(1, ...(c.props.rows ?? []).map((r) => Math.abs(Number(r[col.key])) || 0))
+      }
+    }
     return m
   })
   // Type-aware comparator: numbers numerically, strings via localeCompare,

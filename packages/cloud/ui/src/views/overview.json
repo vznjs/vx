@@ -65,7 +65,7 @@
                   "$state": "/catalog/source",
                   "eq": "lock"
                 },
-                "$then": "frozen by vx lock — zero eval",
+                "$then": "frozen by vx lock \u2014 zero eval",
                 "$else": "live evaluation (no vx-lock.json)"
               }
             }
@@ -99,19 +99,18 @@
         ]
       },
       {
-        "type": "Text",
+        "type": "Callout",
         "props": {
           "text": {
             "$computed": "text",
             "args": {
-              "tpl": "The lock is stale for {n} project(s) — run vx lock to refreeze the catalog.",
+              "tpl": "The lock is stale for {n} project(s) \u2014 run vx lock to refreeze the catalog.",
               "n": {
                 "$state": "/catalog/_staleCount"
               }
             }
           },
-          "tone": "warn",
-          "class": "rounded-lg border border-warn/40 bg-warn/5 px-4 py-2.5"
+          "tone": "warn"
         },
         "visible": {
           "$state": "/catalog/_staleCount",
@@ -123,7 +122,7 @@
         "props": {
           "title": "Workspace",
           "actionHref": "/projects",
-          "actionLabel": "projects →"
+          "actionLabel": "projects \u2192"
         },
         "visible": {
           "$state": "/catalogStatus",
@@ -158,11 +157,10 @@
         ]
       },
       {
-        "type": "Text",
+        "type": "Callout",
         "props": {
-          "text": "No workspace catalog here — this serve has no colocated workspace (or predates the catalog routes). Start vx-cloud serve inside the repo to browse projects and resolved task configs; run history and analytics still work.",
-          "tone": "faint",
-          "class": "rounded-lg border border-border bg-surface/60 px-4 py-3"
+          "text": "No workspace catalog here \u2014 this serve has no colocated workspace (or predates the catalog routes). Start vx-cloud serve inside the repo to browse projects and resolved task configs; run history and analytics still work.",
+          "tone": "muted"
         },
         "visible": {
           "$state": "/catalogStatus",
@@ -248,7 +246,7 @@
               {
                 "type": "Text",
                 "props": {
-                  "text": "Every project in the catalog — including ones that never ran — joined with its analytics.",
+                  "text": "Every project in the catalog \u2014 including ones that never ran \u2014 joined with its analytics.",
                   "tone": "muted"
                 }
               }
@@ -265,7 +263,7 @@
               {
                 "type": "Text",
                 "props": {
-                  "text": "Trends, bottlenecks, flaky tasks, cache savings — every row links into its entity.",
+                  "text": "Trends, bottlenecks, flaky tasks, cache savings \u2014 every row links into its entity.",
                   "tone": "muted"
                 }
               }

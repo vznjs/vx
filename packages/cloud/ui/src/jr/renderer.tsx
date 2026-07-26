@@ -26,6 +26,7 @@ const { registry } = defineRegistry(catalog, {
     Metric: C.Metric,
     Text: C.Text,
     Empty: C.Empty,
+    Callout: C.Callout,
     Facts: C.Facts,
     LineChart: C.LineChart,
     Treemap: C.Treemap,

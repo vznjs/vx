@@ -14,10 +14,12 @@ import {
   formatHour,
   formatPercent,
   formatRelativeTime,
+  formatSignedDuration,
 } from '../format.ts'
 
 export type FormatHint =
   | 'duration'
+  | 'signedDuration'
   | 'bytes'
   | 'count'
   | 'percent'
@@ -34,6 +36,8 @@ export type FormatHint =
 
 export function formatValue(hint: FormatHint | undefined, v: number): string {
   switch (hint) {
+    case 'signedDuration':
+      return formatSignedDuration(v)
     case 'duration':
       return formatDuration(v)
     case 'bytes':

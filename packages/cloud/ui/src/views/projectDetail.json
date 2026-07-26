@@ -366,6 +366,7 @@
                   "labelKey": "project",
                   "valueKey": "_value",
                   "valueFormat": "percent0",
+                  "barFrom": "_value",
                   "subKey": "_rankLabel",
                   "highlightKey": "_me",
                   "rowHref": "/projects/{project}",
@@ -390,6 +391,32 @@
                   "labelKey": "project",
                   "valueKey": "_value",
                   "valueFormat": "duration",
+                  "barFrom": "_value",
+                  "subKey": "_rankLabel",
+                  "highlightKey": "_me",
+                  "rowHref": "/projects/{project}",
+                  "emptyTitle": "No projects"
+                }
+              }
+              ,{
+                "type": "Text",
+                "props": {
+                  "text": "By cache hit rate",
+                  "tone": "faint",
+                  "mono": true,
+                  "class": "px-4 pt-3 pb-1 border-t border-border"
+                }
+              },
+              {
+                "type": "RankList",
+                "props": {
+                  "items": {
+                    "$state": "/rankings/byHitRate"
+                  },
+                  "labelKey": "project",
+                  "valueKey": "_value",
+                  "valueFormat": "percent0",
+                  "barFrom": "_value",
                   "subKey": "_rankLabel",
                   "highlightKey": "_me",
                   "rowHref": "/projects/{project}",

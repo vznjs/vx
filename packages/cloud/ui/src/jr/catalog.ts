@@ -20,6 +20,7 @@ export const catalog = defineCatalog(schema, {
     Metric: anyProps(),
     Text: anyProps(),
     Empty: anyProps(),
+    Callout: anyProps(),
     Facts: anyProps(),
     LineChart: anyProps(),
     Treemap: anyProps(),

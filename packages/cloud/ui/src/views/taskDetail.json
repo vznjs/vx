@@ -31,7 +31,7 @@
         }
       },
       {
-        "type": "Text",
+        "type": "Callout",
         "props": {
           "text": {
             "$computed": "flakyText",
@@ -41,8 +41,7 @@
               }
             }
           },
-          "tone": "warn",
-          "class": "rounded-lg border border-warn/40 bg-warn/5 px-4 py-2.5"
+          "tone": "warn"
         },
         "visible": {
           "$state": "/flakyStatus",
