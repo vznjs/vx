@@ -240,6 +240,8 @@ async function handleAnalyticsRequestInner(
     if (task !== null) args.task = task
     const runId = q.get('runId')
     if (runId !== null) args.runId = runId
+    const hash = q.get('hash')
+    if (hash !== null && hash !== '') args.hash = hash
     return json({ runs: await a.listRuns(ws, args) })
   }
   if (p === '/v1/invocations') {
@@ -359,7 +361,18 @@ async function handleAnalyticsRequestInner(
     return json({ points: await a.getParallelismHistory(ws, numParam(q.get('limit')) ?? 50) })
   }
   if (p === '/v1/flakiness') {
-    return json({ tasks: await a.getFlakiestTasks(ws, numParam(q.get('limit')) ?? 25) })
+    // `project`+`task` narrows to a point lookup — the task-detail badge must
+    // not depend on the task ranking inside a top-N page.
+    const args: { limit?: number; project?: string; task?: string } = {}
+    const limit = numParam(q.get('limit'))
+    if (limit !== undefined) args.limit = limit
+    const project = q.get('project')
+    const task = q.get('task')
+    if (project !== null && project !== '' && task !== null && task !== '') {
+      args.project = project
+      args.task = task
+    }
+    return json({ tasks: await a.getFlakiestTasks(ws, args) })
   }
   if (p === '/v1/regressions') {
     const args: { sinceDays?: number; minBranches?: number; limit?: number } = {}

@@ -682,13 +682,14 @@ export async function getInvocation(runId: string): Promise<InvocationDetail | n
 
 /** Per-task run rows, filterable by project / task / runId (`/v1/runs`). */
 export async function listRuns(
-  args: { limit?: number; project?: string; task?: string; runId?: string } = {},
+  args: { limit?: number; project?: string; task?: string; runId?: string; hash?: string } = {},
 ): Promise<RunSummaryRow[]> {
   const params = new URLSearchParams()
   if (args.limit !== undefined) params.set('limit', String(args.limit))
   if (args.project !== undefined) params.set('project', args.project)
   if (args.task !== undefined) params.set('task', args.task)
   if (args.runId !== undefined) params.set('runId', args.runId)
+  if (args.hash !== undefined) params.set('hash', args.hash)
   const r = await getJson<{ runs: RunSummaryRow[] }>(`/v1/runs?${params.toString()}`)
   return r.runs
 }
@@ -1127,6 +1128,15 @@ export async function getParallelismHistory(limit = 50): Promise<ParallelismPoin
 export async function getFlakiest(limit = 25): Promise<FlakyTask[]> {
   const r = await getJson<{ tasks: FlakyTask[] }>(`/v1/flakiness?limit=${limit}`)
   return r.tasks
+}
+
+/** The flaky verdict for ONE task — a point lookup, so the badge survives on a
+ *  workspace with more flaky tasks than any top-N page can hold. */
+export async function getTaskFlaky(project: string, task: string): Promise<FlakyTask | null> {
+  const r = await getJson<{ tasks: FlakyTask[] }>(
+    `/v1/flakiness?project=${encodeURIComponent(project)}&task=${encodeURIComponent(task)}&limit=1`,
+  )
+  return r.tasks[0] ?? null
 }
 
 export interface FlakeTrendPoint {

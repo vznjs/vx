@@ -208,6 +208,31 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **Scale wave 2 — the remaining fetch-a-page-then-find sources
+  become point lookups** (finishing the owner's 1000-project / 10k-task
+  directive; wave 1 fixed the blank project page + the lying rank). Three
+  sources still degraded silently at scale, each now server-side: (1)
+  **`getFlakiestTasks(ws, {project, task})`** — the task-detail flaky badge AND
+  the Recommendations card both did `getFlakiest(100).find(...)`, so a
+  genuinely flaky task ranked below the top 100 lost its badge and its
+  `exec.retries` suggestion on a 10k-task workspace; the pair clamp threads
+  through all three scans in the method (candidates, the windowed durations,
+  and `mixedOutcomeKeyCounts`) so the point lookup is one narrow query, not a
+  filtered full scan. Route: `/v1/flakiness?project=&task=`. (2)
+  **`listRuns({hash})`** — the cache-entry provenance page pulled 1000 runs and
+  matched the hash in the client, missing every older run past that page;
+  filtered in SQL now (`/v1/runs?hash=`). (3) The recommendations aggregator
+  drops its top-100 dependency with it. Pinned: a flaky task buried behind 40
+  noisier pairs resolves by point lookup (and a foreign pair returns empty, so
+  the clamp is a clamp); the wanted cache-entry run is seeded as the OLDEST of
+  31 so a page-then-filter implementation provably misses it. Visual guard
+  10/10 (no surface changed). Gates: fmt/lint 0, cloud 552/0, core 1286/0. NO
+  schema/CACHE bump (read-side + additive query params). **Still open:** the
+  table filter boxes remain client-side over the fetched page — the Projects
+  table now states "showing N of M" so the truncation is honest, but wiring
+  the box to the server's ILIKE search (debounced, through the loader params
+  the way `?window` already flows) is the last presentation piece.
+
 - **2026-07-26**: **Scale correctness — a 1000-project workspace no longer
   renders empty pages or lies about rank** (owner: "you need to design for
   workspaces with 1000 projects and 10k tasks. The ui should handle that and

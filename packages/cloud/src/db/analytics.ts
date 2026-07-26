@@ -163,6 +163,8 @@ export interface ListRunsArgs {
   project?: string
   task?: string
   runId?: string
+  /** Cache-entry provenance: the runs that produced or restored one key. */
+  hash?: string
 }
 
 export interface InvocationDetail {
@@ -1513,9 +1515,12 @@ export class Analytics {
     const fProject = args.project !== undefined ? sql`AND project = ${args.project}` : sql``
     const fTask = args.task !== undefined ? sql`AND task = ${args.task}` : sql``
     const fRun = args.runId !== undefined ? sql`AND run_id = ${args.runId}` : sql``
+    // Server-side hash filter — the cache-entry page used to pull 1000 runs
+    // and filter client-side, which misses every older run at scale.
+    const fHash = args.hash !== undefined ? sql`AND hash = ${args.hash}` : sql``
     const rows = await sql<RawRunRow[]>`
       SELECT ${sql.unsafe(RUN_COLUMNS)} FROM task_runs
-      WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fRun}
+      WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fRun} ${fHash}
       ORDER BY started_at DESC LIMIT ${limit}`
     return rows.map(mapRunRow)
   }
@@ -2562,7 +2567,19 @@ export class Analytics {
     return new Map(rows.map((r) => [pairKey(r.project, r.task), r.mixed]))
   }
 
-  async getFlakiestTasks(workspaceId: string, limit = 25): Promise<FlakyTask[]> {
+  async getFlakiestTasks(
+    workspaceId: string,
+    args: number | { limit?: number; project?: string; task?: string } = 25,
+  ): Promise<FlakyTask[]> {
+    const opts = typeof args === 'number' ? { limit: args } : args
+    const limit = opts.limit ?? 25
+    // A per-task clamp makes this a POINT LOOKUP: the task-detail flaky badge
+    // used `getFlakiest(100).find(...)`, so on a 10k-task workspace a genuinely
+    // flaky task ranked below the top 100 silently lost its badge.
+    const fPair =
+      opts.project !== undefined && opts.task !== undefined
+        ? this.sql`AND project = ${opts.project} AND task = ${opts.task}`
+        : this.sql``
     const pairs = await this.sql<
       {
         project: string
@@ -2577,7 +2594,7 @@ export class Analytics {
              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
              SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END)::int AS within_run_retries,
              MAX(attempts)::int AS max_attempts
-      FROM task_runs WHERE workspace_id = ${workspaceId}
+      FROM task_runs WHERE workspace_id = ${workspaceId} ${fPair}
       GROUP BY project, task
       HAVING count(*) >= 3 OR SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) > 0`
     if (pairs.length === 0) return []
@@ -2589,11 +2606,16 @@ export class Analytics {
         SELECT project, task, duration_ms,
                ROW_NUMBER() OVER (PARTITION BY project, task ORDER BY started_at DESC) AS rn
         FROM task_runs
-        WHERE workspace_id = ${workspaceId}
+        WHERE workspace_id = ${workspaceId} ${fPair}
           AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
       ) t WHERE rn <= 50`
     const dursByKey = durationsByPair(durRows)
-    const mixedByKey = await this.mixedOutcomeKeyCounts(workspaceId)
+    const mixedByKey = await this.mixedOutcomeKeyCounts(
+      workspaceId,
+      opts.project !== undefined && opts.task !== undefined
+        ? { project: opts.project, task: opts.task }
+        : {},
+    )
     const out: FlakyTask[] = pairs.map((p) => {
       const sorted = dursByKey.get(pairKey(p.project, p.task)) ?? []
       const p50 = pickPercentile(sorted, 0.5)

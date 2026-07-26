@@ -1696,6 +1696,84 @@ describe('scale: a workspace larger than one page', () => {
   // the true count, the true ranks, and server-side search.
   const N = 620
 
+  it('cache-entry provenance filters by hash SERVER-side', async () => {
+    const { org, ws } = await newOrgWs(db, 'scale-hash')
+    const now = Date.now()
+    // The wanted run is the OLDEST — a client-side filter over a recent page
+    // would miss it once the workspace outgrows that page.
+    await insertTR(db, ws, org, {
+      runId: 'wanted',
+      project: 'app',
+      task: 'build',
+      hash: 'k-wanted',
+      startedAt: now - 900_000,
+    })
+    for (let i = 0; i < 30; i++) {
+      await insertTR(db, ws, org, {
+        runId: `noise-${i}`,
+        project: 'app',
+        task: 'build',
+        hash: `k-${i}`,
+        startedAt: now - i * 1000,
+      })
+    }
+    const rows = await analytics.listRuns(ws, { hash: 'k-wanted', limit: 200 })
+    expect(rows.map((r) => r.runId)).toEqual(['wanted'])
+  }, 60_000)
+
+  it('flaky verdict for ONE task is a point lookup, not a top-N page scan', async () => {
+    const { org, ws } = await newOrgWs(db, 'scale-flaky')
+    const now = Date.now()
+    // 40 noisy tasks that will rank ABOVE the tail task in any top-N listing,
+    // plus one genuinely flaky task buried at the end (same key failed AND
+    // passed — the definitional signal).
+    for (let i = 0; i < 40; i++) {
+      for (let r = 0; r < 4; r++) {
+        await insertTR(db, ws, org, {
+          runId: `n${i}-${r}`,
+          project: `noisy-${i}`,
+          task: 'test',
+          status: r === 0 ? 'failed' : 'success',
+          exitCode: r === 0 ? 1 : 0,
+          hash: `k${i}-${r}`,
+          duration: 100 + r * 900,
+          startedAt: now - (i * 10 + r) * 1000,
+        })
+      }
+    }
+    await insertTR(db, ws, org, {
+      runId: 'tail-f',
+      project: 'zz-tail',
+      task: 'e2e',
+      hash: 'k-tail',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 5000,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'tail-p',
+      project: 'zz-tail',
+      task: 'e2e',
+      hash: 'k-tail',
+      startedAt: now - 4000,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'tail-p2',
+      project: 'zz-tail',
+      task: 'e2e',
+      hash: 'k-tail',
+      startedAt: now - 3000,
+    })
+
+    // The point lookup finds it regardless of where it would rank.
+    const one = await analytics.getFlakiestTasks(ws, { project: 'zz-tail', task: 'e2e' })
+    expect(one).toHaveLength(1)
+    expect(one[0]!.id).toBe('zz-tail#e2e')
+    expect(one[0]!.mixedOutcomeKeys).toBeGreaterThan(0)
+    // …and it is scoped: a foreign pair returns nothing rather than the page.
+    expect(await analytics.getFlakiestTasks(ws, { project: 'noisy-0', task: 'nope' })).toEqual([])
+  }, 60_000)
+
   it('resolves projects past the page limit, and ranks against ALL of them', async () => {
     const { org, ws } = await newOrgWs(db, 'scale')
     const now = Date.now()

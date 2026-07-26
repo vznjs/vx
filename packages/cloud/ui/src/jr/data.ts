@@ -29,6 +29,7 @@ import {
   getFailures,
   getFlakeTrend,
   getFlakiest,
+  getTaskFlaky,
   getProject,
   getProjectBranchFailures,
   getProjectRank,
@@ -204,12 +205,14 @@ async function taskRecommendations(p: P): Promise<Recommendation[]> {
   if (id === '' || !id.includes('#')) return []
   const [project = '', task = ''] = id.split('#', 2)
   const [flakyList, herm, catalogDetail, detail] = await Promise.all([
-    getFlakiest(100).catch(() => [] as FlakyTask[]),
+    project !== '' && task !== ''
+      ? getTaskFlaky(project, task).catch(() => null)
+      : Promise.resolve(null),
     fetchHermeticity(50).catch(() => null),
     project !== '' && task !== '' ? fetchCatalogProject(project).catch(() => null) : Promise.resolve(null),
     getTaskDetail(id).catch(() => null),
   ])
-  const flaky = flakyList.find((t) => t.id === id) ?? null
+  const flaky = flakyList
   const divergent = herm?.divergent.find((d) => d.taskId === id) ?? null
   const cfg = catalogDetail?.config as { tasks?: Record<string, unknown> } | undefined
   const taskConfig = (cfg?.tasks?.[task] as Record<string, unknown> | undefined) ?? null
@@ -219,9 +222,11 @@ async function taskRecommendations(p: P): Promise<Recommendation[]> {
 
 /** Runs that produced/hit one cache entry — /v1/runs filtered by hash. */
 async function cacheEntryRuns(hash: string): Promise<Record<string, unknown>[]> {
-  const runs = await listRuns({ limit: 1000 })
+  // Filtered SERVER-side: pulling 1000 runs and matching in the client missed
+  // every older run the moment a workspace outgrew that page.
+  const runs = await listRuns({ hash, limit: 200 })
   return runs
-    .filter((r): r is RunSummaryRow & { runId: string } => r.hash === hash && r.runId !== null)
+    .filter((r): r is RunSummaryRow & { runId: string } => r.runId !== null)
     .map((r) => ({ ...r, _taskRef: `${r.project}#${r.task}` }))
 }
 
@@ -580,7 +585,10 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
       : Promise.resolve(null),
   cacheKey: (p) => explainCacheKey(p.id ?? ''),
   // The flaky badge: non-null only when /v1/flakiness flags this task.
-  taskFlaky: (p) => getFlakiest(100).then((ts) => ts.find((t) => t.id === p.id) ?? null),
+  taskFlaky: (p) => {
+    const [project = '', task = ''] = (p.id ?? '').split('#', 2)
+    return project !== '' && task !== '' ? getTaskFlaky(project, task) : Promise.resolve(null)
+  },
   // S4 flake trend: per-day nondeterminism episodes for THIS task, with
   // first/last seen + direction. Null (card hidden) on a healthy task, an
   // older serve (404), or any fetch problem.
