@@ -38,6 +38,7 @@ import {
   expandRequested,
   parseDependencySpec,
   type TaskNode,
+  unresolvedRequests,
 } from '../graph/index.js'
 import { resolveCache } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
@@ -65,6 +66,13 @@ export interface PreparedRun {
    */
   priorities: ReadonlyMap<string, number>
   nodes: Map<string, TaskNode>
+  /**
+   * Requested task specs that matched NO project — a typo, or a stray
+   * positional (the value of an `=`-only flag written with a space).
+   * Nothing they asked for is in `nodes`, so callers must fail rather
+   * than run the remainder silently.
+   */
+  unresolvedTasks: readonly string[]
   workspaceFingerprint: string
   nestedDirsByProject: Map<string, string[]>
   /**
@@ -233,6 +241,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     : [...projects.keys()]
 
   const requested = expandRequested(options.tasks, candidateProjects, projects)
+  const unresolvedTasks = unresolvedRequests(options.tasks, candidateProjects, projects)
 
   const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
   // `--cache-dir <path>` (RunOptions.cacheDir) overrides the workspace
@@ -294,6 +303,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       localCache,
       priorities: new Map(),
       nodes: new Map(),
+      unresolvedTasks,
       workspaceFingerprint,
       nestedDirsByProject,
       gitFilesCache,
@@ -340,6 +350,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     localCache,
     priorities,
     nodes,
+    unresolvedTasks,
     workspaceFingerprint,
     nestedDirsByProject,
     gitFilesCache,

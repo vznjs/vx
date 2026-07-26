@@ -162,6 +162,18 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.excludeDependencies = 'all'
     } else if (a?.startsWith('--excludeDependencies=')) {
       const raw = a.slice('--excludeDependencies='.length)
+      // An empty value is genuinely ambiguous — "drop every edge" (the
+      // bare flag) and "drop none" (an empty list) are equally defensible
+      // readings, and silently picking either does the opposite of what
+      // half the callers mean. Reject and name both explicit forms; the
+      // sibling value flags (--retry=, --timeout=, --memory=, --cache-dir=)
+      // reject an empty `=` value the same way.
+      if (raw === '') {
+        return {
+          ...out,
+          error: `--excludeDependencies= needs a value — pass bare --excludeDependencies to drop every dependsOn edge, or omit the flag to keep them`,
+        }
+      }
       out.excludeDependencies = raw
         .split(',')
         .map((s) => s.trim())
@@ -208,9 +220,15 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
           error: `--verify must be determinism | inputs | fingerprint | all (or bare --verify), got: ${what}`,
         }
       }
-    } else if (a?.startsWith('--verify-allow=')) {
-      out.verifyAllow = a
-        .slice('--verify-allow='.length)
+    } else if (a === '--verify-allow' || a?.startsWith('--verify-allow=')) {
+      const v = a === '--verify-allow' ? before[++i] : a.slice('--verify-allow='.length)
+      if (v === undefined) return { ...out, error: `--verify-allow requires a value` }
+      // A flag-shaped space-form value is always a lost flag (task ids
+      // never start with `-`), never a value the user meant.
+      if (a === '--verify-allow' && v.startsWith('-')) {
+        return { ...out, error: `--verify-allow requires a value, got flag: ${v}` }
+      }
+      out.verifyAllow = v
         .split(',')
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
@@ -223,6 +241,14 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
       if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a value` }
+      // Unlike every other value flag, a cache dir is an arbitrary
+      // string — nothing about its shape rejects a swallowed flag. An
+      // unquoted empty shell var (`--cache-dir $EMPTY --force`) would
+      // otherwise create a directory literally named `--force` and drop
+      // the flag. A path starting with `-` needs the `=` form.
+      if (a === '--cache-dir' && v.startsWith('-')) {
+        return { ...out, error: `--cache-dir requires a path, got flag: ${v}` }
+      }
       out.cacheDir = v
     } else if (a === '--cache') {
       const v = before[++i]
@@ -389,14 +415,25 @@ export async function resolveRunOptions(
   // Project scope applies to bare task names only. Anchored entries
   // (pkg#task) resolve directly to their own project regardless.
   const bareTasks = tasks.filter((t) => !t.includes('#'))
+  const anchoredTasks = tasks.filter((t) => t.includes('#'))
   let projects: string[] | undefined
   if (bareTasks.length === 0) {
     projects = undefined
   } else if (filterStrings.length > 0) {
     const resolved = await resolveFilters(cwd, filterStrings)
     if ('error' in resolved) return { error: resolved.error }
-    if ('empty' in resolved) return { nothingSelected: resolved.empty }
-    projects = resolved.names
+    if ('empty' in resolved) {
+      // "Nothing changed" is a clean exit for the BARE tasks the filter
+      // scopes — but it must never cancel an explicitly anchored
+      // `pkg#task`, which resolves to its own project regardless of
+      // scope. An empty project list keeps the bare tasks unselected
+      // while the anchored ones still run.
+      if (anchoredTasks.length === 0) return { nothingSelected: resolved.empty }
+      process.stderr.write(`vx: ${resolved.empty} — running ${anchoredTasks.join(', ')} only\n`)
+      projects = []
+    } else {
+      projects = resolved.names
+    }
   } else if (parsed.all) {
     projects = undefined
   } else {
@@ -487,6 +524,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // graph + probe the cache; the difference is just the formatter.
   if (parsed.dry !== undefined || parsed.graph !== undefined) {
     const plan = await planRun(opts)
+    if (plan.unresolvedTasks !== undefined && plan.unresolvedTasks.length > 0) {
+      process.stderr.write(
+        `vx run: no projects declare task(s): ${plan.unresolvedTasks.join(', ')}.\n`,
+      )
+      return 1
+    }
     if (plan.tasks.length === 0) {
       process.stderr.write(`vx run: no projects declare task(s): ${tasks.join(', ')}.\n`)
       return 1

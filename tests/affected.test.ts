@@ -15,10 +15,18 @@ async function git(cwd: string, ...args: string[]): Promise<void> {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const exit = await proc.exited
+  // Drain BOTH streams and report both: git sends its most useful failure
+  // messages to stdout, not stderr — `git commit` with nothing staged exits 1
+  // saying "nothing to commit" on stdout and writes NOTHING to stderr, so a
+  // stderr-only error reads as a blank `exited 1: ` and explains nothing.
+  const [stdout, stderr, exit] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
   if (exit !== 0) {
-    const stderr = await new Response(proc.stderr).text()
-    throw new Error(`git ${args.join(' ')} (cwd=${cwd}) exited ${exit}: ${stderr}`)
+    const detail = [stderr.trim(), stdout.trim()].filter((s) => s.length > 0).join(' | ')
+    throw new Error(`git ${args.join(' ')} (cwd=${cwd}) exited ${exit}: ${detail}`)
   }
 }
 
@@ -90,6 +98,27 @@ describe('affectedProjects', () => {
     expect(
       affectedProjects({ workspaceRoot: root, since: 'no-such-branch', projects }),
     ).rejects.toThrow(/did not resolve/)
+  })
+
+  it('reports a git failure as a git failure, not as a missing ref', async () => {
+    // `git rev-parse --verify --quiet` exits 1 for an absent ref but 128 when
+    // git cannot operate here at all. Blaming the ref for the second sends the
+    // user hunting for a branch name while the real fault is the repository.
+    const bare = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-norepo-'))
+    try {
+      const err = await affectedProjects({
+        workspaceRoot: bare,
+        since: 'main',
+        projects: [],
+      }).then(
+        () => null,
+        (e: unknown) => e as Error,
+      )
+      expect(err?.message).toMatch(/not a git repository/i)
+      expect(err?.message).not.toMatch(/did not resolve/)
+    } finally {
+      await rm(bare, { recursive: true, force: true })
+    }
   })
 
   it('ignores changes outside any project directory', async () => {
@@ -251,6 +280,12 @@ describe('affectedProjects', () => {
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', `b-${i}`)
     }
+    // Assert the fixture BEFORE the behaviour under test. `HEAD~50` only
+    // resolves if all 50 commits landed, and if one silently didn't, the
+    // failure surfaces here as "50 commits, got N" rather than downstream as
+    // a mystifying "ref HEAD~50 did not resolve" from the code under test.
+    const count = Bun.spawnSync({ cmd: ['git', 'rev-list', '--count', 'HEAD'], cwd: root })
+    expect(new TextDecoder().decode(count.stdout).trim()).toBe('51')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~50', projects })
     expect([...out]).toEqual(['b'])
   })

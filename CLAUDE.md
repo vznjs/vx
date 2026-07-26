@@ -208,6 +208,60 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **`vx run` no longer goes GREEN on a task it never ran** —
+  six silent-wrong-behaviour CLI defects, from a repro-mandated hostile audit
+  of the CLI surface (15 confirmed; the other nine are polish, queued).
+  **(1) HIGH, and a live CI footgun:** every non-flag arg becomes a requested
+  task, but the "No projects declare task(s)" guard fired ONLY when the ENTIRE
+  set resolved to zero. So a typo BESIDE a good task vanished silently —
+  `vx run build totallybogus` exited 0 having run 2 tasks, never mentioning
+  the typo, and even an ANCHORED `a#totallybogus` was swallowed. `docs/cli.md`
+  actively promotes multi-task runs, so a CI job running `vx run lint test
+typecheck` goes green the day someone renames `typecheck`. This is EXACTLY
+  the class the project already fixed for the single-task case; the multi-task
+  path was left behind. Now `unresolvedRequests()` diffs requested NAMES
+  against what resolved, sharing ONE `declaresTask()` predicate with
+  `expandRequested` so they cannot drift; `run()` refuses, and the
+  `--dry`/`--graph` path errors BEFORE writing any DOT/JSON. **Verified not to
+  over-fire** (the risk I flagged): a name declared by only SOME projects under
+  `--all` stays green, and an EMPTY candidate scope is never reported — that's
+  "nothing selected", not a typo, which is what makes (3) possible.
+  **(2) MED — every `=`-only flag given the SPACE form silently did something
+  else**, exit 0: `--affected origin/main` audited the DEFAULT base (a
+  correctness lie), `--graph out.dot` wrote no file, `--excludeDependencies a,b`
+  excluded ALL deps. Fixed BY (1). **I suggested also accepting the space form;
+  the developer refused and was right:** those flags are all valid BARE, so
+  `vx run --affected build` already means "run build, affected scope" — a space
+  value is indistinguishable from a task name, and accepting it would silently
+  retarget the git base on an invocation that works TODAY. Strictly worse than
+  the loud error. **Honest residual, documented:** `--affected <base>` only
+  goes loud when something IS affected; with nothing changed, selection
+  short-circuits to exit 0 before names are validated (the message does name
+  the base actually used). **(3) MED — an explicitly anchored `pkg#task` was
+  silently skipped** when a co-requested BARE task's filter selected nothing:
+  `vx run a#build build --affected=HEAD` ran nothing, exit 0, contradicting the
+  code's own comment that anchored entries resolve regardless. **(4) MED —
+  `--cache-dir` was the ONLY value-taking flag accepting a flag-shaped value**
+  (9 others were probed and reject one): `--cache-dir $EMPTY --force` created a
+  real `./--force` DIRECTORY and dropped the flag. **(5) MED —
+  `--excludeDependencies=` meant the OPPOSITE of the bare flag** (empty split →
+  no exclusion), so `--excludeDependencies="$SKIP"` with an empty var ran the
+  whole closure. REJECTED rather than reinterpreted: both readings are
+  defensible, so either silent choice does the opposite of what half the
+  callers mean, and every sibling already errors on an empty `=`. **(6) MED —
+  `--verify-allow <csv>` was DOCUMENTED but rejected**; the only test covered
+  the `=` form, which is why nothing caught it. NO CACHE_VERSION bump —
+  nothing touches key derivation or forwardArgs parsing, only which tasks are
+  SELECTED and whether an invocation errors. Pins differentially proven
+  (4 fail / 4 pass and 3 fail / 3 pass with `src/` stashed, the passes being
+  controls that must behave identically). Gates: fmt/lint 0, core **1339/0**
+  (+10), cloud 599/0, ui 91/0. **The audit's REFUTED list is on record and
+  should not be re-examined:** cache-policy precedence matches `docs/cli.md`
+  exactly; `--dry` never executes; `--verify` + a no-write policy is rejected
+  loudly; the `--` forwardArgs split is sound (bare `--` does NOT change the
+  key; forwardArgs scope to requested tasks only); `vx lock --check`, the
+  picker, and the show/info/dispatcher error paths all hold.
+
 - **2026-07-26**: **The other NINE selection/graph defects fixed — the audit's
   tail, each differentially pinned** (completing the wave the two stale-hit
   fixes opened). **(A) MED-HIGH — `pkg#task` was unusable in every scoped

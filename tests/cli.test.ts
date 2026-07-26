@@ -922,12 +922,46 @@ describe('parseRunArgs', () => {
     )
   })
 
-  it('parses --verify-allow as a comma list of task ids', () => {
+  it('parses --verify-allow as a comma list of task ids (space + = forms)', () => {
     expect(parseRunArgs(['build', '--verify-allow=a#build,b#test']).verifyAllow).toEqual([
       'a#build',
       'b#test',
     ])
+    // The space form is what docs/cli.md documents — it must not be an
+    // unknown flag.
+    const spaced = parseRunArgs(['build', '--verify-allow', 'a#build,b#test'])
+    expect(spaced.error).toBeUndefined()
+    expect(spaced.verifyAllow).toEqual(['a#build', 'b#test'])
+    expect(spaced.tasks).toEqual(['build'])
     expect(parseRunArgs(['build']).verifyAllow).toEqual([])
+    expect(parseRunArgs(['build', '--verify-allow']).error).toMatch(
+      /--verify-allow requires a value/,
+    )
+    // A swallowed flag is never a task id.
+    expect(parseRunArgs(['build', '--verify-allow', '--force']).error).toMatch(
+      /--verify-allow requires a value, got flag: --force/,
+    )
+  })
+
+  it('--cache-dir rejects a flag-shaped value in the space form', () => {
+    // `--cache-dir $EMPTY --force` with an unquoted empty var: the arg
+    // vanishes and `--force` would become the cache directory.
+    expect(parseRunArgs(['build', '--cache-dir', '--force']).error).toMatch(
+      /--cache-dir requires a path, got flag: --force/,
+    )
+    // The `=` form still takes a literal leading dash if someone means it.
+    expect(parseRunArgs(['build', '--cache-dir=-weird']).cacheDir).toBe('-weird')
+  })
+
+  it('--excludeDependencies= (empty value) is rejected, not read as "exclude nothing"', () => {
+    const r = parseRunArgs(['build', '--excludeDependencies='])
+    expect(r.error).toMatch(/--excludeDependencies= needs a value/)
+    // Both unambiguous forms keep working.
+    expect(parseRunArgs(['build', '--excludeDependencies']).excludeDependencies).toBe('all')
+    expect(parseRunArgs(['build', '--excludeDependencies=a,b']).excludeDependencies).toEqual([
+      'a',
+      'b',
+    ])
   })
 
   it('parses --all (replaces -r / --recursive)', () => {

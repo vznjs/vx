@@ -15,9 +15,14 @@ export interface PreparedRun {
   workspaceConfig: WorkspaceConfig | null
   cacheDir: string
   cache: CacheLayer // caller owns close()
-  projects: Map<string, ProjectEntry>
-  packageGraph: PackageGraph
   nodes: Map<string, TaskNode> // empty if `empty !== null`
+  /**
+   * Requested specs that matched NO project — a typo, or a stray
+   * positional from an `=`-only flag written with a space. Non-empty
+   * means the caller must refuse: `run()` returns NOT-ok, `planRun()`
+   * returns an abandoned plan carrying the same list.
+   */
+  unresolvedTasks: readonly string[]
   workspaceFingerprint: string
   nestedDirsByProject: Map<string, string[]>
   /**
@@ -47,7 +52,9 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    workspace graph (for cross-package dep edges) but contribute no
    tasks.
 3. **Package + task structure** — `buildPackageGraph`,
-   `computeNestedProjectDirs`, `expandRequested`.
+   `computeNestedProjectDirs`, `expandRequested` (plus
+   `unresolvedRequests`, the same predicate run in reverse to name the
+   specs that resolved to nothing).
 4. **Cache + fingerprint** — `new Cache(resolveCacheDir(root,
 workspaceConfig))`, then the layer resolution (an injected
    `RunOptions.remoteCache` composed into a `LayeredCache` wins; else

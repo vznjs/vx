@@ -134,12 +134,50 @@ export function expandRequested(
     if (idx >= 0) {
       const project = spec.slice(0, idx)
       const task = spec.slice(idx + 1)
-      if (projects.get(project)?.config.tasks?.[task]) push(project, task)
+      if (declaresTask(projects, project, task)) push(project, task)
       continue
     }
     for (const name of candidates) {
-      if (projects.get(name)?.config.tasks?.[spec]) push(name, spec)
+      if (declaresTask(projects, name, spec)) push(name, spec)
     }
+  }
+  return out
+}
+
+/** Shared by `expandRequested` + `unresolvedRequests` so the two can't drift. */
+function declaresTask(projects: Map<string, ProjectEntry>, project: string, task: string): boolean {
+  return projects.get(project)?.config.tasks?.[task] !== undefined
+}
+
+/**
+ * The requested specs `expandRequested` silently dropped — each one
+ * matched NO project, so nothing it asked for will run.
+ *
+ * A bare name matching only SOME projects is normal (sparse tasks across
+ * a workspace) and never reported. An empty `candidates` scope is also
+ * never reported: that is the legitimate "nothing selected" outcome
+ * (`--affected` with nothing changed), not a typo — the CLI's selection
+ * layer owns that message.
+ *
+ * Deduped so `vx run x x` names `x` once.
+ */
+export function unresolvedRequests(
+  tasks: readonly string[],
+  candidates: readonly string[],
+  projects: Map<string, ProjectEntry>,
+): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const spec of tasks) {
+    if (seen.has(spec)) continue
+    const idx = spec.indexOf('#')
+    const resolved =
+      idx >= 0
+        ? declaresTask(projects, spec.slice(0, idx), spec.slice(idx + 1))
+        : candidates.length === 0 || candidates.some((name) => declaresTask(projects, name, spec))
+    if (resolved) continue
+    seen.add(spec)
+    out.push(spec)
   }
   return out
 }

@@ -140,6 +140,17 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const log = busLogger(bus)
 
   const prepared = await prepareRun(options, log)
+  // A requested name that matched no project is a typo (or a stray
+  // positional from an `=`-only flag written with a space). Failing the
+  // whole run — even when OTHER requested tasks resolved — is the point:
+  // a CI job that renames a task must go red, not silently stop running
+  // it. When EVERY name is unresolved this is the `no-tasks-declared`
+  // case too; the message is identical, so that branch stays below.
+  if (prepared.unresolvedTasks.length > 0) {
+    log.status(`No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.`)
+    prepared.cache.close()
+    return { ok: false, outcomes: [] }
+  }
   if (prepared.empty !== null) {
     // `no-tasks-declared` is almost always a typo in CI; we surface
     // a clear message and return NOT-ok so the script exits 1.
@@ -892,6 +903,9 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   const log = options.log ?? defaultLogger()
   const prepared = await prepareRun(options, log)
   try {
+    if (prepared.unresolvedTasks.length > 0) {
+      return { tasks: [], unresolvedTasks: prepared.unresolvedTasks }
+    }
     if (prepared.empty !== null) return { tasks: [] }
     return await plan({
       nodes: prepared.nodes,

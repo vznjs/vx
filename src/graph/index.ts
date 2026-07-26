@@ -24,4 +24,5 @@ export {
   isGroupTask,
   markSurfacedDeps,
   type TaskNode,
+  unresolvedRequests,
 } from './task-graph.js'
