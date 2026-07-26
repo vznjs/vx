@@ -432,6 +432,18 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(triage.status).toBe(200)
     expect(Array.isArray(((await triage.json()) as { rows: unknown[] }).rows)).toBe(true)
 
+    // /v1/projects reports the TRUE total beside the page, and the rank route
+    // is allowlisted (a 1000-project workspace must not be described by a page).
+    const projectsPage = await call('GET', '/v1/projects?limit=10', { cookie })
+    expect(projectsPage.status).toBe(200)
+    const pbody = (await projectsPage.json()) as { projects: unknown[]; total: number }
+    expect(Array.isArray(pbody.projects)).toBe(true)
+    expect(typeof pbody.total).toBe('number')
+    const rank = await call('GET', '/v1/projects/rank?project=a', { cookie })
+    expect(rank.status).toBe(200)
+    expect(typeof ((await rank.json()) as { total: number }).total).toBe('number')
+    expect((await call('GET', '/v1/projects/rank', { cookie })).status).toBe(400)
+
     // /v1/flake-trend is allowlisted too — a session reaches analytics (JSON,
     // not the SPA catch-all); missing params answer 400, not a fall-through.
     const ft = await call('GET', '/v1/flake-trend?project=a&task=build', { cookie })

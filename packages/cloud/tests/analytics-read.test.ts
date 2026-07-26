@@ -1688,3 +1688,61 @@ describe('getFlakeTrend', () => {
     expect(trend.episodes).toBe(1)
   })
 })
+
+describe('scale: a workspace larger than one page', () => {
+  // The dashboard used to fetch a 500-row page and `.find()` in it, so on a
+  // 1000-project workspace half the projects rendered an EMPTY detail page and
+  // the ranking card claimed "vs 500 projects". These pin the point lookup,
+  // the true count, the true ranks, and server-side search.
+  const N = 620
+
+  it('resolves projects past the page limit, and ranks against ALL of them', async () => {
+    const { org, ws } = await newOrgWs(db, 'scale')
+    const now = Date.now()
+    const rows: string[] = []
+    for (let i = 0; i < N; i++) {
+      const name = `pkg-${String(i).padStart(4, '0')}`
+      // Deterministic spread so ranks are well-defined; the TAIL project is
+      // deliberately the slowest so it must rank #1 by avg exec.
+      const dur = i === N - 1 ? 99_000 : 100 + i
+      await insertTR(db, ws, org, {
+        runId: `s${i}`,
+        project: name,
+        task: 'build',
+        duration: dur,
+        startedAt: now - 3600_000 + i,
+      })
+      rows.push(name)
+    }
+    const tail = rows[N - 1]!
+
+    // The page is a page — and the count is the truth.
+    const page = await analytics.listProjects(ws, 500)
+    expect(page).toHaveLength(500)
+    expect(await analytics.countProjects(ws)).toBe(N)
+
+    // Point lookup: the tail project resolves even though it is off the page.
+    const exact = await analytics.listProjects(ws, { projects: [tail] })
+    expect(exact).toHaveLength(1)
+    expect(exact[0]!.project).toBe(tail)
+
+    // Server-side search reaches the tail too (a client filter over the page
+    // could never find it).
+    const found = await analytics.listProjects(ws, { search: tail })
+    expect(found.map((p) => p.project)).toEqual([tail])
+
+    // Ranking: true total, and the tail is genuinely #1 by avg exec.
+    const rank = await analytics.rankProject(ws, tail)
+    expect(rank.total).toBe(N)
+    const me = rank.byAvg.find((r) => r.me)
+    expect(me).toBeDefined()
+    expect(me!.rank).toBe(1)
+    expect(me!.project).toBe(tail)
+    // A mid-pack project reports its TRUE rank, not a within-page position.
+    const mid = await analytics.rankProject(ws, 'pkg-0300')
+    const midMe = mid.byAvg.find((r) => r.me)!
+    expect(midMe.rank).toBeGreaterThan(8)
+    expect(midMe.rank).toBeLessThanOrEqual(N)
+    expect(mid.total).toBe(N)
+  }, 60_000)
+})

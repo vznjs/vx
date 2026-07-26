@@ -30,6 +30,19 @@
         }
       },
       {
+        "type": "Callout",
+        "props": {
+          "tone": "muted",
+          "text": {
+            "$state": "/projects/_note"
+          }
+        },
+        "visible": {
+          "$state": "/projects/_truncated",
+          "eq": true
+        }
+      },
+      {
         "type": "Card",
         "props": {
           "noPad": true
@@ -42,7 +55,7 @@
                 "$computed": "joinProjects",
                 "args": {
                   "rollups": {
-                    "$state": "/projects"
+                    "$state": "/projects/rows"
                   },
                   "catalog": {
                     "$state": "/catalog"
