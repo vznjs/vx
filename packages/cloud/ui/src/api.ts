@@ -682,13 +682,14 @@ export async function getInvocation(runId: string): Promise<InvocationDetail | n
 
 /** Per-task run rows, filterable by project / task / runId (`/v1/runs`). */
 export async function listRuns(
-  args: { limit?: number; project?: string; task?: string; runId?: string } = {},
+  args: { limit?: number; project?: string; task?: string; runId?: string; hash?: string } = {},
 ): Promise<RunSummaryRow[]> {
   const params = new URLSearchParams()
   if (args.limit !== undefined) params.set('limit', String(args.limit))
   if (args.project !== undefined) params.set('project', args.project)
   if (args.task !== undefined) params.set('task', args.task)
   if (args.runId !== undefined) params.set('runId', args.runId)
+  if (args.hash !== undefined) params.set('hash', args.hash)
   const r = await getJson<{ runs: RunSummaryRow[] }>(`/v1/runs?${params.toString()}`)
   return r.runs
 }
@@ -1129,6 +1130,15 @@ export async function getFlakiest(limit = 25): Promise<FlakyTask[]> {
   return r.tasks
 }
 
+/** The flaky verdict for ONE task — a point lookup, so the badge survives on a
+ *  workspace with more flaky tasks than any top-N page can hold. */
+export async function getTaskFlaky(project: string, task: string): Promise<FlakyTask | null> {
+  const r = await getJson<{ tasks: FlakyTask[] }>(
+    `/v1/flakiness?project=${encodeURIComponent(project)}&task=${encodeURIComponent(task)}&limit=1`,
+  )
+  return r.tasks[0] ?? null
+}
+
 export interface FlakeTrendPoint {
   t: number
   runs: number
@@ -1142,6 +1152,37 @@ export interface FlakeTrendResponse {
   episodes: number
   firstSeenAt: number | null
   lastSeenAt: number | null
+}
+
+export interface StabilitySample {
+  hash: string
+  runs: number
+  minMs: number
+  maxMs: number
+  p50Ms: number
+  meanMs: number
+  stddevMs: number
+  cv: number
+}
+
+export interface TaskStabilityResponse {
+  samples: number
+  keys: number
+  cvMedian: number
+  cvWorst: number
+  rangeMedian: number
+  byKey: StabilitySample[]
+}
+
+/** Same-key duration spread — the task's own margin of error. */
+export async function getTaskStability(
+  project: string,
+  task: string,
+  sinceDays = 90,
+): Promise<TaskStabilityResponse> {
+  return getJson<TaskStabilityResponse>(
+    `/v1/stability?project=${encodeURIComponent(project)}&task=${encodeURIComponent(task)}&sinceDays=${sinceDays}`,
+  )
 }
 
 export async function getFlakeTrend(

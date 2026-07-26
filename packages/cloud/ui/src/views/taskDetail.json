@@ -5,6 +5,7 @@
     "config": "catalogTask",
     "flaky": "taskFlaky",
     "flakeTrend": "taskFlakeTrend",
+    "stability": "taskStability",
     "recommendations": "taskRecommendations",
     "trend": "taskTrend"
   },
@@ -103,6 +104,95 @@
                   "yKey": "episodes",
                   "strokeClass": "stroke-warn",
                   "areaClass": "fill-warn/10"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "Card",
+        "props": {
+          "title": "Stability (same cache key)",
+          "actionText": "identical inputs \u2014 spread is margin of error, not regression"
+        },
+        "visible": {
+          "$state": "/stabilityStatus",
+          "eq": "ok"
+        },
+        "children": [
+          {
+            "type": "Facts",
+            "props": {
+              "entry": {
+                "$state": "/stability"
+              },
+              "fields": [
+                {
+                  "label": "typical",
+                  "key": "_typical"
+                },
+                {
+                  "label": "widest",
+                  "key": "_worst"
+                },
+                {
+                  "label": "range",
+                  "key": "_range"
+                },
+                {
+                  "label": "measured",
+                  "key": "_basis"
+                }
+              ]
+            }
+          },
+          {
+            "type": "DataTable",
+            "props": {
+              "rows": {
+                "$state": "/stability/_rows"
+              },
+              "emptyTitle": "No key ran more than once",
+              "columns": [
+                {
+                  "key": "hash",
+                  "label": "Cache key",
+                  "kind": "shorthash"
+                },
+                {
+                  "key": "runs",
+                  "label": "Runs",
+                  "align": "right",
+                  "sortable": true
+                },
+                {
+                  "key": "p50Ms",
+                  "label": "Typical",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "_spread",
+                  "label": "Min\u2013max",
+                  "align": "right",
+                  "kind": "mono"
+                },
+                {
+                  "key": "stddevMs",
+                  "label": "Std dev",
+                  "align": "right",
+                  "kind": "duration"
+                },
+                {
+                  "key": "_cvPct",
+                  "label": "\u00b11\u03c3",
+                  "align": "right",
+                  "sortable": true,
+                  "kind": "bar",
+                  "max": 1,
+                  "format": "percent0",
+                  "color": "warn"
                 }
               ]
             }

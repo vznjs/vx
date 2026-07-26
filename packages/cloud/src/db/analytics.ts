@@ -163,6 +163,8 @@ export interface ListRunsArgs {
   project?: string
   task?: string
   runId?: string
+  /** Cache-entry provenance: the runs that produced or restored one key. */
+  hash?: string
 }
 
 export interface InvocationDetail {
@@ -527,6 +529,44 @@ export interface FlakeTrendPoint {
   retried: number
   /** Failures whose cache key ALSO succeeded inside the window. */
   mixedFailures: number
+}
+
+/** One cache key's repeated-execution spread — identical inputs, N timings. */
+export interface StabilitySample {
+  hash: string
+  runs: number
+  minMs: number
+  maxMs: number
+  p50Ms: number
+  meanMs: number
+  /** Sample standard deviation (0 when n < 2 is impossible here — n >= 2). */
+  stddevMs: number
+  /** stddev / mean — the scale-free spread for THIS key. */
+  cv: number
+}
+
+/**
+ * How repeatable a task's computation is, measured ONLY across executions of
+ * the SAME cache key. Identical inputs cannot "regress" — any spread is the
+ * task's own margin of error (machine, contention, I/O, wall-clock jitter).
+ * This is deliberately NOT the regression signal: regressions compare across
+ * DIFFERENT keys, where a duration change reflects changed work. Read the two
+ * together — a cross-key delta smaller than `cvMedian` is inside the noise and
+ * cannot be called a regression at all.
+ */
+export interface TaskStability {
+  /** Total same-key executions considered (sum over keys with >= 2 runs). */
+  samples: number
+  /** Distinct cache keys that were executed more than once. */
+  keys: number
+  /** Median per-key coefficient of variation — the task's typical ±spread. */
+  cvMedian: number
+  /** The worst (widest) per-key coefficient of variation observed. */
+  cvWorst: number
+  /** Median per-key (max-min)/p50 — the observed full range, relative. */
+  rangeMedian: number
+  /** Per-key detail, widest spread first. */
+  byKey: StabilitySample[]
 }
 
 export interface FlakeTrend {
@@ -1513,9 +1553,12 @@ export class Analytics {
     const fProject = args.project !== undefined ? sql`AND project = ${args.project}` : sql``
     const fTask = args.task !== undefined ? sql`AND task = ${args.task}` : sql``
     const fRun = args.runId !== undefined ? sql`AND run_id = ${args.runId}` : sql``
+    // Server-side hash filter — the cache-entry page used to pull 1000 runs
+    // and filter client-side, which misses every older run at scale.
+    const fHash = args.hash !== undefined ? sql`AND hash = ${args.hash}` : sql``
     const rows = await sql<RawRunRow[]>`
       SELECT ${sql.unsafe(RUN_COLUMNS)} FROM task_runs
-      WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fRun}
+      WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fRun} ${fHash}
       ORDER BY started_at DESC LIMIT ${limit}`
     return rows.map(mapRunRow)
   }
@@ -2562,7 +2605,19 @@ export class Analytics {
     return new Map(rows.map((r) => [pairKey(r.project, r.task), r.mixed]))
   }
 
-  async getFlakiestTasks(workspaceId: string, limit = 25): Promise<FlakyTask[]> {
+  async getFlakiestTasks(
+    workspaceId: string,
+    args: number | { limit?: number; project?: string; task?: string } = 25,
+  ): Promise<FlakyTask[]> {
+    const opts = typeof args === 'number' ? { limit: args } : args
+    const limit = opts.limit ?? 25
+    // A per-task clamp makes this a POINT LOOKUP: the task-detail flaky badge
+    // used `getFlakiest(100).find(...)`, so on a 10k-task workspace a genuinely
+    // flaky task ranked below the top 100 silently lost its badge.
+    const fPair =
+      opts.project !== undefined && opts.task !== undefined
+        ? this.sql`AND project = ${opts.project} AND task = ${opts.task}`
+        : this.sql``
     const pairs = await this.sql<
       {
         project: string
@@ -2577,7 +2632,7 @@ export class Analytics {
              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)::int AS failures,
              SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END)::int AS within_run_retries,
              MAX(attempts)::int AS max_attempts
-      FROM task_runs WHERE workspace_id = ${workspaceId}
+      FROM task_runs WHERE workspace_id = ${workspaceId} ${fPair}
       GROUP BY project, task
       HAVING count(*) >= 3 OR SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) > 0`
     if (pairs.length === 0) return []
@@ -2589,11 +2644,16 @@ export class Analytics {
         SELECT project, task, duration_ms,
                ROW_NUMBER() OVER (PARTITION BY project, task ORDER BY started_at DESC) AS rn
         FROM task_runs
-        WHERE workspace_id = ${workspaceId}
+        WHERE workspace_id = ${workspaceId} ${fPair}
           AND (cache_hit IS NULL OR cache_hit = false) AND status = 'success'
       ) t WHERE rn <= 50`
     const dursByKey = durationsByPair(durRows)
-    const mixedByKey = await this.mixedOutcomeKeyCounts(workspaceId)
+    const mixedByKey = await this.mixedOutcomeKeyCounts(
+      workspaceId,
+      opts.project !== undefined && opts.task !== undefined
+        ? { project: opts.project, task: opts.task }
+        : {},
+    )
     const out: FlakyTask[] = pairs.map((p) => {
       const sorted = dursByKey.get(pairKey(p.project, p.task)) ?? []
       const p50 = pickPercentile(sorted, 0.5)
@@ -2714,6 +2774,81 @@ export class Analytics {
       }
     })
     return { points, episodes, firstSeenAt, lastSeenAt }
+  }
+
+  /**
+   * Same-key duration spread for one task (see `TaskStability`). Only EXECUTED
+   * successes count: a cache hit measures a restore, not the computation, and
+   * a failed run's duration is whenever it gave up. A key needs >= 2 runs to
+   * say anything about spread, so single-execution keys are excluded rather
+   * than reported as perfectly stable — which would be a lie by omission.
+   */
+  async getTaskStability(
+    workspaceId: string,
+    project: string,
+    task: string,
+    args: { sinceDays?: number; limit?: number } = {},
+  ): Promise<TaskStability> {
+    const since = Date.now() - clampInt(args.sinceDays ?? 90, 1, MAX_WINDOW_DAYS) * 86_400_000
+    const limit = clampInt(args.limit ?? 20, 1, 200)
+    const rows = await this.sql<
+      {
+        hash: string
+        runs: number
+        min_ms: number
+        max_ms: number
+        p50: number
+        mean: number
+        sd: number | null
+      }[]
+    >`
+      WITH ex AS (
+        SELECT hash, duration_ms FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
+          AND started_at >= ${since}
+          AND (cache_hit IS NULL OR cache_hit = false)
+          AND status = 'success'
+          AND hash IS NOT NULL AND hash <> ''
+      )
+      SELECT hash,
+             count(*)::int AS runs,
+             min(duration_ms)::int AS min_ms,
+             max(duration_ms)::int AS max_ms,
+             percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms)::float8 AS p50,
+             avg(duration_ms)::float8 AS mean,
+             stddev_samp(duration_ms)::float8 AS sd
+      FROM ex GROUP BY hash HAVING count(*) >= 2
+      ORDER BY count(*) DESC LIMIT ${limit}`
+
+    const byKey: StabilitySample[] = rows.map((r) => {
+      const mean = Number(r.mean)
+      const sd = r.sd === null ? 0 : Number(r.sd)
+      return {
+        hash: r.hash,
+        runs: r.runs,
+        minMs: r.min_ms,
+        maxMs: r.max_ms,
+        p50Ms: Math.round(Number(r.p50)),
+        meanMs: Math.round(mean),
+        stddevMs: Math.round(sd),
+        cv: mean > 0 ? sd / mean : 0,
+      }
+    })
+    byKey.sort((a, b) => b.cv - a.cv)
+    const median = (xs: number[]): number => {
+      if (xs.length === 0) return 0
+      const s = [...xs].sort((a, b) => a - b)
+      return s[Math.floor((s.length - 1) / 2)]!
+    }
+    const ranges = byKey.map((k) => (k.p50Ms > 0 ? (k.maxMs - k.minMs) / k.p50Ms : 0))
+    return {
+      samples: byKey.reduce((acc, k) => acc + k.runs, 0),
+      keys: byKey.length,
+      cvMedian: median(byKey.map((k) => k.cv)),
+      cvWorst: byKey.length > 0 ? Math.max(...byKey.map((k) => k.cv)) : 0,
+      rangeMedian: median(ranges),
+      byKey,
+    }
   }
 
   async getRegressions(workspaceId: string, args: RegressionArgs = {}): Promise<RegressedTask[]> {

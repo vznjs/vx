@@ -1558,6 +1558,83 @@ describe('getNotifications', () => {
   })
 })
 
+describe('getTaskStability', () => {
+  it('measures spread ONLY across repeats of the same key, excluding hits and failures', async () => {
+    const { org, ws } = await newOrgWs(db, 'stability')
+    const now = Date.now()
+    const tr = (t: Partial<TR> & { runId: string; duration: number }) =>
+      insertTR(db, ws, org, {
+        project: 'app',
+        task: 'build',
+        startedAt: now - 100_000 + Math.random() * 1000,
+        ...t,
+      } as TR)
+    // Key A: a tight task — 100/104/108 (mean 104).
+    await tr({ runId: 'a1', hash: 'A', duration: 100, startedAt: now - 90_000 })
+    await tr({ runId: 'a2', hash: 'A', duration: 104, startedAt: now - 89_000 })
+    await tr({ runId: 'a3', hash: 'A', duration: 108, startedAt: now - 88_000 })
+    // Key B: a wildly variable task — 100 vs 900 on IDENTICAL inputs.
+    await tr({ runId: 'b1', hash: 'B', duration: 100, startedAt: now - 80_000 })
+    await tr({ runId: 'b2', hash: 'B', duration: 900, startedAt: now - 79_000 })
+    // Key C: ran once — says nothing about spread, must be excluded.
+    await tr({ runId: 'c1', hash: 'C', duration: 500, startedAt: now - 70_000 })
+    // Noise that must NOT count: a cache hit (measures a restore) and a
+    // failure (measures when it gave up), both on key A.
+    await tr({
+      runId: 'a4',
+      hash: 'A',
+      duration: 5,
+      cacheHit: true,
+      status: 'cache-hit',
+      startedAt: now - 60_000,
+    })
+    await tr({
+      runId: 'a5',
+      hash: 'A',
+      duration: 9999,
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 59_000,
+    })
+
+    const st = await analytics.getTaskStability(ws, 'app', 'build')
+    expect(st.keys).toBe(2) // A and B; C excluded (single execution)
+    expect(st.samples).toBe(5) // 3 + 2 — the hit and the failure are not samples
+    const byHash = new Map(st.byKey.map((k) => [k.hash, k]))
+    expect(byHash.get('A')!.runs).toBe(3)
+    expect(byHash.get('A')!.minMs).toBe(100)
+    expect(byHash.get('A')!.maxMs).toBe(108)
+    expect(byHash.has('C')).toBe(false)
+    // The volatile key is the worst, and is sorted first.
+    expect(st.byKey[0]!.hash).toBe('B')
+    expect(byHash.get('B')!.cv).toBeGreaterThan(byHash.get('A')!.cv)
+    expect(st.cvWorst).toBeCloseTo(byHash.get('B')!.cv, 10)
+  }, 60_000)
+
+  it('a task whose keys each ran once reports nothing measurable', async () => {
+    const { org, ws } = await newOrgWs(db, 'stability-none')
+    const now = Date.now()
+    await insertTR(db, ws, org, {
+      runId: 'x',
+      project: 'app',
+      task: 'once',
+      hash: 'K1',
+      startedAt: now - 5000,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'y',
+      project: 'app',
+      task: 'once',
+      hash: 'K2',
+      startedAt: now - 4000,
+    })
+    const st = await analytics.getTaskStability(ws, 'app', 'once')
+    expect(st.keys).toBe(0)
+    expect(st.samples).toBe(0)
+    expect(st.cvMedian).toBe(0)
+  }, 60_000)
+})
+
 describe('getFlakeTrend', () => {
   const DAY = 86_400_000
 
@@ -1695,6 +1772,84 @@ describe('scale: a workspace larger than one page', () => {
   // the ranking card claimed "vs 500 projects". These pin the point lookup,
   // the true count, the true ranks, and server-side search.
   const N = 620
+
+  it('cache-entry provenance filters by hash SERVER-side', async () => {
+    const { org, ws } = await newOrgWs(db, 'scale-hash')
+    const now = Date.now()
+    // The wanted run is the OLDEST — a client-side filter over a recent page
+    // would miss it once the workspace outgrows that page.
+    await insertTR(db, ws, org, {
+      runId: 'wanted',
+      project: 'app',
+      task: 'build',
+      hash: 'k-wanted',
+      startedAt: now - 900_000,
+    })
+    for (let i = 0; i < 30; i++) {
+      await insertTR(db, ws, org, {
+        runId: `noise-${i}`,
+        project: 'app',
+        task: 'build',
+        hash: `k-${i}`,
+        startedAt: now - i * 1000,
+      })
+    }
+    const rows = await analytics.listRuns(ws, { hash: 'k-wanted', limit: 200 })
+    expect(rows.map((r) => r.runId)).toEqual(['wanted'])
+  }, 60_000)
+
+  it('flaky verdict for ONE task is a point lookup, not a top-N page scan', async () => {
+    const { org, ws } = await newOrgWs(db, 'scale-flaky')
+    const now = Date.now()
+    // 40 noisy tasks that will rank ABOVE the tail task in any top-N listing,
+    // plus one genuinely flaky task buried at the end (same key failed AND
+    // passed — the definitional signal).
+    for (let i = 0; i < 40; i++) {
+      for (let r = 0; r < 4; r++) {
+        await insertTR(db, ws, org, {
+          runId: `n${i}-${r}`,
+          project: `noisy-${i}`,
+          task: 'test',
+          status: r === 0 ? 'failed' : 'success',
+          exitCode: r === 0 ? 1 : 0,
+          hash: `k${i}-${r}`,
+          duration: 100 + r * 900,
+          startedAt: now - (i * 10 + r) * 1000,
+        })
+      }
+    }
+    await insertTR(db, ws, org, {
+      runId: 'tail-f',
+      project: 'zz-tail',
+      task: 'e2e',
+      hash: 'k-tail',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: now - 5000,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'tail-p',
+      project: 'zz-tail',
+      task: 'e2e',
+      hash: 'k-tail',
+      startedAt: now - 4000,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'tail-p2',
+      project: 'zz-tail',
+      task: 'e2e',
+      hash: 'k-tail',
+      startedAt: now - 3000,
+    })
+
+    // The point lookup finds it regardless of where it would rank.
+    const one = await analytics.getFlakiestTasks(ws, { project: 'zz-tail', task: 'e2e' })
+    expect(one).toHaveLength(1)
+    expect(one[0]!.id).toBe('zz-tail#e2e')
+    expect(one[0]!.mixedOutcomeKeys).toBeGreaterThan(0)
+    // …and it is scoped: a foreign pair returns nothing rather than the page.
+    expect(await analytics.getFlakiestTasks(ws, { project: 'noisy-0', task: 'nope' })).toEqual([])
+  }, 60_000)
 
   it('resolves projects past the page limit, and ranks against ALL of them', async () => {
     const { org, ws } = await newOrgWs(db, 'scale')

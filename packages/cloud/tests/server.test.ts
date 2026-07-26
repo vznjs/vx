@@ -444,6 +444,12 @@ describe('platform e2e (real pg + fake S3)', () => {
     expect(typeof ((await rank.json()) as { total: number }).total).toBe('number')
     expect((await call('GET', '/v1/projects/rank', { cookie })).status).toBe(400)
 
+    // /v1/stability is allowlisted (same fall-through-to-SPA class).
+    const stab = await call('GET', '/v1/stability?project=a&task=build', { cookie })
+    expect(stab.status).toBe(200)
+    expect(typeof ((await stab.json()) as { keys: number }).keys).toBe('number')
+    expect((await call('GET', '/v1/stability?project=a', { cookie })).status).toBe(400)
+
     // /v1/flake-trend is allowlisted too — a session reaches analytics (JSON,
     // not the SPA catch-all); missing params answer 400, not a fall-through.
     const ft = await call('GET', '/v1/flake-trend?project=a&task=build', { cookie })

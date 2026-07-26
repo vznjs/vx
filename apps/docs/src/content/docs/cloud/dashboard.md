@@ -181,6 +181,13 @@ successors.
   the latest run, and the latest artifact), a flaky badge, and a
   **Recommendations** card that turns flaky / hermeticity / caching
   signals into concrete config fixes (each with a copy-pasteable snippet).
+  Every task with a repeated cache key gets a **Stability** card: the spread
+  of durations measured across executions of *identical inputs* — typical and
+  widest ±1σ, the min→max range, and a per-key breakdown. Identical inputs
+  cannot regress, so that spread is the task's **margin of error**, not a
+  performance change; it is also the floor under any cross-key comparison, and
+  the Compare view renders a same-key delta as magnitude only, passing no
+  verdict on it.
   A flagged task also gets a **Flakiness trend** card — flaky episodes per
   day over the last 90 days (retried successes + failures whose cache key
   also passed) with first-seen / last-episode timestamps and a

@@ -208,6 +208,67 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **Task stability — the same-key margin of error, and why it
+  is NOT a regression** (owner: "if the same task with the same key has been
+  executed multiple times I want to know what's the computation range… This is
+  different from regression as regression should be based on different keys.
+  Same keys it's just a margin of error"). The insight vx is uniquely able to
+  act on: it knows the CACHE KEY, so it can partition duration measurements by
+  inputs. Same key ⇒ identical inputs ⇒ every millisecond of spread is
+  environmental noise (machine, contention, I/O, wall-clock), never a
+  performance change. New `Analytics.getTaskStability(ws, project, task,
+{sinceDays, limit})` — one grouped query over EXECUTED successes only (a
+  cache hit measures a restore, a failure measures when it gave up), grouped by
+  hash with `HAVING count(*) >= 2`: per key `min/max/p50/mean/stddev_samp` and
+  `cv = stddev/mean`; per task the MEDIAN and WORST cv plus the median relative
+  `(max-min)/p50`. A key that ran ONCE is excluded rather than reported as
+  perfectly stable — that would be a lie by omission. Route `GET
+/v1/stability?project=&task=&sinceDays=` (both required → 400, allowlisted).
+  **UI:** a "Stability (same cache key)" card on task detail — typical/widest
+  ±1σ, the min→max range, "N executions of K identical input sets", and a
+  per-key table (runs, typical, min–max, std dev, a ±1σ meter). **And the
+  connection the owner drew explicitly:** the Compare view's `deltaBar` gained
+  `neutralKey`, so a row whose cache key is UNCHANGED renders its magnitude in
+  neutral ink and passes NO verdict — identical inputs cannot regress, so
+  coloring that delta red was the tool asserting something it cannot know.
+  **A labeling error the browser review caught:** the first cut printed
+  `cv/2` as "±8.4%" while the same card's table showed 17% — one standard
+  deviation IS ±cv, so halving understated the real margin of error; fixed and
+  the column relabeled ±1σ. Pinned: a tight key (100/104/108) vs a volatile one
+  (100 vs 900 on identical inputs) rank correctly by cv, a single-execution key
+  is excluded, and a cache hit + a failure on a measured key are excluded from
+  `samples`; plus a nothing-measurable task and the route's 400. Gates:
+  fmt/lint 0, cloud 554/0, core 1286/0; baseline refreshed (docs screenshot
+  now shows the card). NO schema/CACHE bump (read-side + additive route).
+  **Follow-on worth building:** feed the deltaBar's flat band from the task's
+  MEASURED stability instead of the fixed `max(5ms, 0.5%)` heuristic, and rank
+  least-stable tasks on Insights.
+
+- **2026-07-26**: **Scale wave 2 — the remaining fetch-a-page-then-find sources
+  become point lookups** (finishing the owner's 1000-project / 10k-task
+  directive; wave 1 fixed the blank project page + the lying rank). Three
+  sources still degraded silently at scale, each now server-side: (1)
+  **`getFlakiestTasks(ws, {project, task})`** — the task-detail flaky badge AND
+  the Recommendations card both did `getFlakiest(100).find(...)`, so a
+  genuinely flaky task ranked below the top 100 lost its badge and its
+  `exec.retries` suggestion on a 10k-task workspace; the pair clamp threads
+  through all three scans in the method (candidates, the windowed durations,
+  and `mixedOutcomeKeyCounts`) so the point lookup is one narrow query, not a
+  filtered full scan. Route: `/v1/flakiness?project=&task=`. (2)
+  **`listRuns({hash})`** — the cache-entry provenance page pulled 1000 runs and
+  matched the hash in the client, missing every older run past that page;
+  filtered in SQL now (`/v1/runs?hash=`). (3) The recommendations aggregator
+  drops its top-100 dependency with it. Pinned: a flaky task buried behind 40
+  noisier pairs resolves by point lookup (and a foreign pair returns empty, so
+  the clamp is a clamp); the wanted cache-entry run is seeded as the OLDEST of
+  31 so a page-then-filter implementation provably misses it. Visual guard
+  10/10 (no surface changed). Gates: fmt/lint 0, cloud 552/0, core 1286/0. NO
+  schema/CACHE bump (read-side + additive query params). **Still open:** the
+  table filter boxes remain client-side over the fetched page — the Projects
+  table now states "showing N of M" so the truncation is honest, but wiring
+  the box to the server's ILIKE search (debounced, through the loader params
+  the way `?window` already flows) is the last presentation piece.
+
 - **2026-07-26**: **Scale correctness — a 1000-project workspace no longer
   renders empty pages or lies about rank** (owner: "you need to design for
   workspaces with 1000 projects and 10k tasks. The ui should handle that and
