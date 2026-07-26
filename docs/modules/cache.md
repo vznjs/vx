@@ -324,17 +324,24 @@ Surfaced by `vx info` (and its `vx stats` alias).
   user-driven via `vx cache prune --older-than <d>` / `--max-size <s>`
   (calls into `Cache.prune`).
 - Doesn't verify entries are intact byte-for-byte. The file existence
-  check is the only integrity gate.
+  check is the integrity gate for the artifact as a whole; `restore
+Outputs` additionally refuses when the archive cannot produce an output
+  the `output_files` index recorded (a restore that materializes nothing
+  must never be reported as a hit — the caller has already wiped the
+  declared outputs by then).
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v24'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v25'`; `SCHEMA_VERSION` is
 `'v22'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).
 - The order or framing of existing key fields changes.
-- The on-disk artifact layout changes (file placement, log paths).
+- The on-disk artifact layout changes (file placement, log paths), or
+  the artifact BYTES already written are wrong — existing entries then
+  carry bad content under a key the fixed code would still hit (v25:
+  modes lost at pack time, long entry names dropped at parse time).
 
 Bump `SCHEMA_VERSION` (independently — the gate drops + recreates
 tables) when the SQLite schema changes. A new `CacheKeyInput` field that

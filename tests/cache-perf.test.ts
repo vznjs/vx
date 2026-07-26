@@ -444,9 +444,13 @@ describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
     expect(await Bun.file(path.join(projectDir, 'dist', 'lib', 'x.js')).text()).toBe('LIB')
   })
 
-  it('restoreOutputs is a no-op when the artifact is missing', async () => {
-    // Should not throw — just return without doing anything.
-    await expect(cache.restoreOutputs('does-not-exist', projectDir)).resolves.toBeUndefined()
+  it('restoreOutputs REFUSES when the artifact is missing', async () => {
+    // This used to return quietly, which is silent data loss: the caller has
+    // already wiped the declared outputs by the time it restores, so a quiet
+    // return reports a green cache hit over an emptied output tree.
+    await expect(cache.restoreOutputs('does-not-exist', projectDir)).rejects.toThrow(
+      /corrupt artifact/i,
+    )
   })
 
   it('outputsPath returns the tar file path', () => {
