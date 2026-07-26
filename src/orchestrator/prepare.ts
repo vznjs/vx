@@ -279,10 +279,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         log,
         () => localCache,
       )
-  // `resolveCache`'s fallback returns `localCache` itself, so identity is the
-  // exact test for "no remote layer" — and unlike an `instanceof LayeredCache`
-  // check it stays right for a third-party plugin that ships its own layer.
-  const hasRemoteLayer = cache !== localCache
+  // Ask the LAYER, don't infer. Identity against `localCache` answers a
+  // DIFFERENT question — "did the plugin hand back something other than the
+  // handle I passed in?" — which an ordinary pass-through decorator (a
+  // metrics wrapper, a cache-dir redirect) with no remote at all answers
+  // yes to, skipping the remote-axis clamp below. `hasRemote` is the
+  // layer's own truthful answer; `LayeredCache` sets it, a bare `Cache`
+  // doesn't, and a third-party layer opts in when it really has a remote.
+  const hasRemoteLayer = cache.hasRemote === true
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   const gitFilesCache = new GitFilesCache()

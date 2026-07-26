@@ -83,6 +83,9 @@ export interface LayeredCacheOptions {
 }
 
 export class LayeredCache implements CacheLayer {
+  /** A remote layer is composed in by construction — see `CacheLayer.hasRemote`. */
+  readonly hasRemote = true
+
   /**
    * In-flight remote pulls keyed by hash. `prefetch` and `get` both go
    * through here, so a key probed concurrently by both resolves a
@@ -196,7 +199,14 @@ export class LayeredCache implements CacheLayer {
     // The artifact is now in local, but this *lookup* was a remote
     // hit — flip the source so callers can distinguish "saved work
     // via the remote cache" from "saved work via a prior local run".
-    const materialized = await this.local.get(hash, ctx)
+    //
+    // Read past the local READ gate: `ingest` is deliberately ungated, so
+    // the artifact + index row this pull just wrote exist regardless of
+    // policy, and the gate ("don't serve hits from the pre-existing local
+    // cache") must not discard them. Going through the gated `get` here
+    // made `--cache=local:,remote:rw` download the artifact, throw the hit
+    // away, re-execute and re-upload — on every run, forever.
+    const materialized = await this.local.getIngested(hash)
     return materialized ? { ...materialized, source: 'remote' } : null
   }
 

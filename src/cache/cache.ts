@@ -589,6 +589,43 @@ async function zstdDecompressBounded(
 }
 
 export interface CacheLayer {
+  /**
+   * `true` iff a REMOTE cache sits behind this layer. THE answer to "can
+   * the remote axes of the cache policy do anything on this run?" — the
+   * orchestrator clamps `remoteRead`/`remoteWrite` off when it is absent,
+   * skips the up-front local classify when it is present (that classify's
+   * `cache.get` would be a remote read-through awaited before scheduling),
+   * and drives the prefetch pass off it.
+   *
+   * A layer must answer TRUTHFULLY: identity against the local cache
+   * ("something other than the handle I passed in") is NOT the same
+   * question — an ordinary pass-through decorator with no remote at all
+   * answers yes to it. `LayeredCache` sets it, a bare `Cache` denies it,
+   * and a third-party layer opts in when, and only when, it really has a
+   * remote. Optional so a layer written before this contract keeps
+   * type-checking; absent reads as "no remote", the safe answer.
+   */
+  readonly hasRemote?: boolean
+  /**
+   * Batch existence probe over the remote — the subset of `hashes` stored
+   * remotely, in ONE round-trip, or `null` for "no batch info; use
+   * per-hash". Only meaningful with `hasRemote`; a remote layer that can't
+   * batch omits it and the prefetch pass falls back to per-hash GETs.
+   */
+  remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  /**
+   * Record that the remote has NO artifact for each of `hashes` (from a
+   * batch probe), so a later `get`/`prefetch` short-circuits to a miss with
+   * no round-trip. Only meaningful with `hasRemote`.
+   */
+  markRemoteAbsent?(hashes: Iterable<string>): void
+  /**
+   * Resolve once every background write-through upload settles. The
+   * orchestrator awaits it before `close()` — an upload reading layer state
+   * after close would race. Only meaningful with `hasRemote`; a layer that
+   * uploads synchronously (or not at all) omits it.
+   */
+  drainUploads?(): Promise<void>
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**
@@ -734,6 +771,9 @@ interface EntryRow {
 }
 
 export class Cache implements CacheLayer {
+  /** This IS the local layer — there is nothing slower behind it. */
+  readonly hasRemote = false
+
   private readonly db: Database
   private readonly insertEntry: ReturnType<Database['prepare']>
   private readonly selectEntry: ReturnType<Database['prepare']>
@@ -1214,6 +1254,23 @@ export class Cache implements CacheLayer {
     // Local reads disabled (e.g. `--force` / `--cache=local:w`): report a
     // miss so the task re-executes. The artifact + index are untouched.
     if (!this.read) return null
+    return await this.readEntry(hash)
+  }
+
+  /**
+   * Read an entry BYPASSING the local read gate. The gate means "don't
+   * serve hits out of the PRE-EXISTING local cache" — it must not throw
+   * away bytes this run just downloaded. `LayeredCache` calls this to
+   * deliver an artifact it ingested from the remote; under
+   * `--cache=local:,remote:rw` the gated `get` returned null for the row
+   * `ingest` had just written, so the task re-executed and re-uploaded on
+   * every single run.
+   */
+  async getIngested(hash: string): Promise<CacheEntry | null> {
+    return await this.readEntry(hash)
+  }
+
+  private async readEntry(hash: string): Promise<CacheEntry | null> {
     const row = this.selectEntry.get(hash) as EntryRow | undefined
     if (!row) return null
 
