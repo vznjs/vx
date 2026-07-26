@@ -208,6 +208,57 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **Visual-regression snapshots ARE the docs screenshots — one
+  pipeline, two jobs** (owner: "Make sure our playwright tests also do
+  snapshots for visual regressions and we use those for docs automatically").
+  New `packages/cloud/tests/visual.test.ts` drives the REAL dashboard (built
+  SPA + real platform on ephemeral Postgres + fake S3, seeded through the real
+  `/v1/ingest` wire) in a REAL Chromium across the 9 documented surfaces, and
+  compares each capture against the committed baseline — where the baseline IS
+  the image the docs site embeds (`apps/docs/src/assets/screenshots/<name>.png`,
+  the exact 9 files the cloud docs already reference). So a UI change either
+  fails as a visual regression or is accepted with `VX_UPDATE_SNAPSHOTS=1`,
+  which rewrites the baselines and therefore the docs screenshots IN THE SAME
+  COMMIT — docs screenshots can no longer silently rot behind the product.
+  **Determinism is the whole design**: the seed is anchored to a FIXED epoch
+  (18 days of history + 5 same-day runs + a featured run with staggered
+  per-task wallclock so the flamegraph shows real parallelism), the browser
+  clock is FROZEN to that instant via `addInitScript` (so "2h ago" renders
+  identically forever), animations/transitions are disabled before the
+  shutter, and the shutter itself fires only when two consecutive captures are
+  byte-identical (`stableShot` — a measurement, not a magic timeout; 3
+  consecutive full-suite runs 549/0 after adopting it). Comparison is
+  **dependency-free**: `tests/helpers/png.ts` hand-rolls the PNG reader
+  (IHDR/IDAT + node:zlib inflate + the 5 unfilters incl. Paeth, expanded to
+  RGBA) and a per-channel-tolerance differ — the `tar.ts`/`sigv4.ts` precedent;
+  ~100ms per 3200x2000 image. **Differentially verified**: padding
+  `p-6`→`p-10` on the shell reds 5 shots at 8-11% of pixels with the capture
+  parked in tmp for eyeballing; reverted → green. **Two real defects found by
+  building it.** (1) **`box-sizing` was never reset** — the UnoCSS preflight
+  lacked the universal border-box rule, so every padded full-width element
+  overflowed by exactly its padding: `scrollWidth` 1648 vs `clientWidth` 1600
+  on EVERY dashboard page (a permanent horizontal scrollbar, and the reason
+  the old screenshots clipped their right-hand column). Fixed in the preflight;
+  measured 1600/1600 after. (2) **The committed perf guard was silently
+  SKIPPING** — `bun test` doesn't consult NODE_PATH and this container's
+  playwright is a global install, so `ui-perf.test.ts` had been resolving
+  nothing and skipping for its whole life. New shared
+  `tests/helpers/playwright.ts` (env override → NODE_PATH → conventional
+  global prefixes, importing the package DIRECTORY so node resolution is
+  bypassed entirely) now serves both suites; the perf guard runs here for the
+  first time (5 pass). Skips remain honest: no browser or no built SPA → skip,
+  never fail (CI has neither, so it skips there exactly like the perf guard).
+  Baselines are environment-pinned (a different font set renders different
+  text pixels) — documented in the suite header and in a new
+  `apps/docs/src/assets/screenshots/README.md` placed where someone would try
+  to hand-replace an image. **Gotcha recurrence:** the box-sizing fix's first
+  comment contained backticks INSIDE the uno preflight template literal and
+  broke the build — the same class as the 2026-07-17 SQL-comment backtick
+  note. Never put a backtick in a comment that lives inside a template
+  literal. Gates: fmt/lint 0, cloud 549/0 (3x), core 1286/0, docs site builds
+  clean on the regenerated images. NO schema/wire/CACHE bump (test infra + one
+  CSS reset rule).
+
 - **2026-07-25**: **Design-port wave 1 — identity colors, honest dots, chart
   legends, rate meters** (executing the standing astryx design directives on
   the SHIPPING Solid UI; driven by a 12-item ranked design-consistency audit

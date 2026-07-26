@@ -148,6 +148,12 @@ export default defineConfig({
           --ident-task: 244 114 182;
         }
 
+        /* Utility classes assume the border-box model; without this every
+           padded full-width element overflows its parent by exactly its
+           padding (the dashboard scrolled horizontally by 48px on every
+           page). NB: no backticks in here - this block is a template literal. */
+        *, *::before, *::after { box-sizing: border-box; }
+
         html, body, #root { height: 100%; }
         body {
           margin: 0;

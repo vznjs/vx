@@ -14,6 +14,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import { bootPlatform, type TestPlatform } from './helpers/platform.js'
+import { chromiumExecutablePath, loadChromium } from './helpers/playwright.js'
 
 const DIST = path.join(import.meta.dir, '..', 'ui', 'dist', 'index.html')
 
@@ -44,34 +45,6 @@ interface PwBrowser {
   newContext(opts: Record<string, unknown>): Promise<PwContext>
   close(): Promise<void>
 }
-interface PwChromium {
-  launch(opts: Record<string, unknown>): Promise<PwBrowser>
-}
-
-/**
- * Resolve playwright by normal resolution first, then through each NODE_PATH
- * entry — `bun test` does not consult NODE_PATH the way `bun run` does, and
- * this environment (like most CI images with a global playwright) provides it
- * only there. Any failure → undefined → the suite skips.
- */
-async function loadChromium(): Promise<PwChromium | undefined> {
-  const candidates: string[] = ['playwright']
-  for (const entry of (process.env['NODE_PATH'] ?? '').split(':')) {
-    if (entry !== '') candidates.push(path.join(entry, 'playwright'))
-  }
-  for (const spec of candidates) {
-    try {
-      const resolved =
-        spec === 'playwright' ? spec : Bun.resolveSync('playwright', path.dirname(spec))
-      const pw = (await import(resolved)) as { chromium?: PwChromium }
-      if (pw.chromium !== undefined) return pw.chromium
-    } catch {
-      // try the next candidate
-    }
-  }
-  return undefined
-}
-
 const chromium = await loadChromium()
 const distBuilt = await Bun.file(DIST).exists()
 const available = chromium !== undefined && distBuilt
@@ -230,7 +203,11 @@ describe.skipIf(!available)('dashboard perf guard (real browser, measured)', () 
     const big = await post(summaryFor(BIG_RUN_ID, now - 60_000, bigTasks))
     if (!big.ok) throw new Error(`seed big run failed: ${big.status}`)
 
-    browser = await chromium!.launch({ headless: true, args: ['--disable-dev-shm-usage'] })
+    browser = (await chromium!.launch({
+      headless: true,
+      executablePath: chromiumExecutablePath(),
+      args: ['--disable-dev-shm-usage'],
+    })) as unknown as PwBrowser
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
     await ctx.addCookies([
       {
