@@ -29,6 +29,7 @@ import {
   refreshWorkspaces,
   setOrgAndPersist,
   setWorkspaceAndPersist,
+  wasWorkspaceRemovedHere,
   type NotificationItem,
   type OrgSummary,
   type WorkspaceInfo,
@@ -146,7 +147,9 @@ export const Shell: ParentComponent = (props) => {
         // The link named a workspace this account cannot see. Falling back
         // silently would show data the link did not mean — the exact bug this
         // whole mechanism exists to prevent — so say so, and drop the param.
-        setDeniedWorkspace(fromUrl)
+        // Unless WE deleted it a moment ago: the stale id is then our own, and
+        // "ask whoever shared it for access" would be nonsense.
+        if (!wasWorkspaceRemovedHere(fromUrl)) setDeniedWorkspace(fromUrl)
         params.delete('ws')
         const qs = params.toString()
         navigate(`${location.pathname}${qs === '' ? '' : `?${qs}`}`, { replace: true })

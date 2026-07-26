@@ -621,6 +621,170 @@ describe('tokens + RBAC matrix', () => {
     expect(workspaces.map((w) => w.slug)).toContain('web')
   })
 
+  // A workspace is usually auto-provisioned on the first CI push and named by
+  // the pushing client, so it can be born wrong — and one created by mistake
+  // must be removable.
+  it('workspaces: admin renames; the new name is what the list reports', async () => {
+    const admin = cookies.get('admin@example.com')!
+    const created = await call(ctx, 'POST', `/v1/admin/orgs/${orgId}/workspaces`, {
+      cookie: admin,
+      csrf: true,
+      body: { slug: 'rename-me', name: 'Ugly Autoprovisioned Name' },
+    })
+    const { workspaceId } = (await created.json()) as { workspaceId: string }
+
+    const patched = await call(ctx, 'PATCH', `/v1/admin/orgs/${orgId}/workspaces/${workspaceId}`, {
+      cookie: admin,
+      csrf: true,
+      body: { name: 'Acme Web', slug: 'acme-web' },
+    })
+    expect(patched.status).toBe(200)
+    const list = await call(ctx, 'GET', `/v1/admin/orgs/${orgId}/workspaces`, { cookie: admin })
+    const { workspaces } = (await list.json()) as { workspaces: { slug: string; name: string }[] }
+    const row = workspaces.find((w) => w.slug === 'acme-web')
+    expect(row?.name).toBe('Acme Web')
+    expect(workspaces.some((w) => w.slug === 'rename-me')).toBe(false)
+  })
+
+  it('workspaces: rename validates the slug and 409s on a collision', async () => {
+    const admin = cookies.get('admin@example.com')!
+    const rows = await db.sql<{ id: string }[]>`
+      SELECT id FROM workspaces WHERE org_id = ${orgId} AND slug = 'acme-web'`
+    const wsId = rows[0]!.id
+    const bad = await call(ctx, 'PATCH', `/v1/admin/orgs/${orgId}/workspaces/${wsId}`, {
+      cookie: admin,
+      csrf: true,
+      body: { slug: 'Not A Slug' },
+    })
+    expect(bad.status).toBe(400)
+    const empty = await call(ctx, 'PATCH', `/v1/admin/orgs/${orgId}/workspaces/${wsId}`, {
+      cookie: admin,
+      csrf: true,
+      body: {},
+    })
+    expect(empty.status).toBe(400)
+    // 'web' is taken by the workspace the previous test created.
+    const collide = await call(ctx, 'PATCH', `/v1/admin/orgs/${orgId}/workspaces/${wsId}`, {
+      cookie: admin,
+      csrf: true,
+      body: { slug: 'web' },
+    })
+    expect(collide.status).toBe(409)
+    // The failed rename left the row alone.
+    const after = await db.sql<{ slug: string }[]>`SELECT slug FROM workspaces WHERE id = ${wsId}`
+    expect(after[0]!.slug).toBe('acme-web')
+  })
+
+  it('workspaces: a viewer/member cannot rename or delete', async () => {
+    const rows = await db.sql<{ id: string }[]>`
+      SELECT id FROM workspaces WHERE org_id = ${orgId} AND slug = 'acme-web'`
+    const wsId = rows[0]!.id
+    for (const who of ['viewer@example.com', 'member@example.com']) {
+      const patch = await call(ctx, 'PATCH', `/v1/admin/orgs/${orgId}/workspaces/${wsId}`, {
+        cookie: cookies.get(who)!,
+        csrf: true,
+        body: { name: 'Hijacked' },
+      })
+      expect(patch.status).toBe(403)
+      const del = await call(ctx, 'DELETE', `/v1/admin/orgs/${orgId}/workspaces/${wsId}`, {
+        cookie: cookies.get(who)!,
+        csrf: true,
+        body: { confirm: 'acme-web' },
+      })
+      expect(del.status).toBe(403)
+    }
+    const after = await db.sql<{ name: string }[]>`SELECT name FROM workspaces WHERE id = ${wsId}`
+    expect(after[0]!.name).toBe('Acme Web')
+  })
+
+  it('workspaces: a cross-org rename/delete is a 404 that does NOT act', async () => {
+    // A second org the admin@ user never joined, holding its own workspace.
+    const created = await call(ctx, 'POST', '/v1/admin/orgs', {
+      cookie: ownerCookie,
+      csrf: true,
+      body: { slug: 'foreign', name: 'Foreign' },
+    })
+    const { orgId: foreignOrg } = (await created.json()) as { orgId: string }
+    const ws = await call(ctx, 'POST', `/v1/admin/orgs/${foreignOrg}/workspaces`, {
+      cookie: ownerCookie,
+      csrf: true,
+      body: { slug: 'secret', name: 'Secret' },
+    })
+    const { workspaceId: foreignWs } = (await ws.json()) as { workspaceId: string }
+
+    const admin = cookies.get('admin@example.com')!
+    // Reached through the foreign org: no standing there at all.
+    expect(
+      (
+        await call(ctx, 'PATCH', `/v1/admin/orgs/${foreignOrg}/workspaces/${foreignWs}`, {
+          cookie: admin,
+          csrf: true,
+          body: { name: 'Pwned' },
+        })
+      ).status,
+    ).toBe(404)
+    // And smuggled through the admin's OWN org, where the id does not belong:
+    // the `org_id` clamp must refuse it rather than reaching across.
+    expect(
+      (
+        await call(ctx, 'PATCH', `/v1/admin/orgs/${orgId}/workspaces/${foreignWs}`, {
+          cookie: admin,
+          csrf: true,
+          body: { name: 'Pwned' },
+        })
+      ).status,
+    ).toBe(404)
+    expect(
+      (
+        await call(ctx, 'DELETE', `/v1/admin/orgs/${orgId}/workspaces/${foreignWs}`, {
+          cookie: admin,
+          csrf: true,
+          body: { confirm: 'secret' },
+        })
+      ).status,
+    ).toBe(404)
+    const survived = await db.sql<{ name: string }[]>`
+      SELECT name FROM workspaces WHERE id = ${foreignWs}`
+    expect(survived[0]!.name).toBe('Secret')
+  })
+
+  it('workspaces: delete demands the slug echoed back, then removes the row', async () => {
+    const admin = cookies.get('admin@example.com')!
+    const created = await call(ctx, 'POST', `/v1/admin/orgs/${orgId}/workspaces`, {
+      cookie: admin,
+      csrf: true,
+      body: { slug: 'doomed', name: 'Doomed' },
+    })
+    const { workspaceId } = (await created.json()) as { workspaceId: string }
+    const path = `/v1/admin/orgs/${orgId}/workspaces/${workspaceId}`
+
+    const noConfirm = await call(ctx, 'DELETE', path, { cookie: admin, csrf: true })
+    expect(noConfirm.status).toBe(400)
+    expect(((await noConfirm.json()) as { error: string }).error).toContain('doomed')
+    const wrong = await call(ctx, 'DELETE', path, {
+      cookie: admin,
+      csrf: true,
+      body: { confirm: 'dooomed' },
+    })
+    expect(wrong.status).toBe(400)
+    expect(
+      (await db.sql<{ id: string }[]>`SELECT id FROM workspaces WHERE id = ${workspaceId}`).length,
+    ).toBe(1)
+
+    // The name is accepted too — it is what the dashboard shows.
+    const ok = await call(ctx, 'DELETE', path, {
+      cookie: admin,
+      csrf: true,
+      body: { confirm: 'Doomed' },
+    })
+    expect(ok.status).toBe(200)
+    expect(
+      (await db.sql<{ id: string }[]>`SELECT id FROM workspaces WHERE id = ${workspaceId}`).length,
+    ).toBe(0)
+    // Gone means gone: a second delete is a 404, not a silent success.
+    expect((await call(ctx, 'DELETE', path, { cookie: admin, csrf: true })).status).toBe(404)
+  })
+
   it('a workspace-scoped token carries its workspaceId; expired tokens are dead', async () => {
     const wsRows = await db.sql<{ id: string }[]>`
       SELECT id FROM workspaces WHERE org_id = ${orgId} AND slug = 'web'`
