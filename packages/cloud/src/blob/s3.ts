@@ -108,6 +108,15 @@ export class S3Backend implements BlobBackend {
     if (!res.ok) throw new Error(`S3 PUT ${key} → ${res.status}${await bodyHead(res)}`)
   }
 
+  async delete(key: string): Promise<void> {
+    const res = await this.request('DELETE', this.objectUrl(key))
+    // S3 answers 204 whether or not the key existed (delete is idempotent by
+    // spec); some compatible stores answer 404 for an absent key. Both mean
+    // gone — only a real refusal (403, 5xx) is a failure.
+    if (res.ok || res.status === 404) return
+    throw new Error(`S3 DELETE ${key} → ${res.status}${await bodyHead(res)}`)
+  }
+
   presignGet(key: string): string {
     return presignUrl({
       method: 'GET',

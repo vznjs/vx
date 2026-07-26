@@ -77,13 +77,20 @@ export interface Principal {
  *  seam. The platform gate always builds a real token-derived principal. */
 export const DEFAULT_PRINCIPAL: Principal = { orgId: 'default', tier: 'trusted', bucket: 'default' }
 
+/** Everything one workspace owns lives under this prefix — both tiers and
+ *  every untrusted sub-scope hang off it. The single definition of the
+ *  tenancy layout (`basePrefix` for reads/writes, the reaper for deletes). */
+function tenantPrefix(orgId: string, workspaceId: string): string {
+  return `org/${orgId}/ws/${workspaceId}`
+}
+
 /**
  * The scope base a principal reads/writes under: an explicit `bucket` override
  * (transitional serve / unit tests), else the tenant prefix. Server-derived —
  * a client value never reaches here.
  */
 function basePrefix(p: Principal): string {
-  return p.bucket ?? `org/${p.orgId}/ws/${p.workspaceId ?? ORG_SHARED_WS}`
+  return p.bucket ?? tenantPrefix(p.orgId, p.workspaceId ?? ORG_SHARED_WS)
 }
 
 // The hash becomes a filename — accept only a safe path token so a hostile
@@ -102,6 +109,14 @@ export const BATCH_HASH_CAP = 1024
 // Body cap for `/v1/cache/batch` — BATCH_HASH_CAP hashes at ≤128 chars each
 // plus JSON overhead fits comfortably; anything larger is refused with 413.
 const MAX_BATCH_BODY_BYTES = 256 * 1024
+// Per-workspace reap fan-out, mirroring HASMANY_CONCURRENCY: one deleted
+// workspace must not flood the backend.
+const REAP_CONCURRENCY = 32
+// A backend's `list` truncates at its own page cap (S3Backend: MAX_LIST_PAGES),
+// so one pass can't see a large workspace whole — re-list until a pass finds
+// nothing, bounded so a backend that accepts deletes without applying them
+// can't spin forever.
+const MAX_REAP_ROUNDS = 64
 
 /**
  * Scopes a principal may READ, in priority order, each tagged with its tier.
@@ -589,4 +604,69 @@ export class ArtifactStore {
       { status: 405, headers: { Allow: 'GET, HEAD, PUT' } },
     )
   }
+}
+
+/** A tenancy segment safe to build a REAP prefix from: one path token, never a
+ *  traversal, and never the org-shared `_org` scope — that one is written by
+ *  every org-wide token and read by every workspace in the org, so reaping it
+ *  while deleting ONE workspace would destroy the whole org's cache. */
+function reapableSegment(seg: string): boolean {
+  return seg !== ORG_SHARED_WS && seg !== '.' && seg !== '..' && SEGMENT_RE.test(seg)
+}
+
+/**
+ * Delete every artifact a deleted workspace owned — the whole
+ * `org/<orgId>/ws/<workspaceId>/` subtree, both tiers and every untrusted
+ * sub-scope. Without this the bytes rest in object storage forever under a
+ * scope prefix nothing can ever address again.
+ *
+ * BEST-EFFORT by construction: the database rows are the system of record, so
+ * a bucket that is down, slow or refusing leaves artifacts behind (exactly the
+ * state before this existed) instead of failing a workspace delete. It reports
+ * what it managed and throws only when asked to reap something that is not one
+ * workspace's scope.
+ */
+export async function reapWorkspaceArtifacts(
+  backend: BlobBackend,
+  orgId: string,
+  workspaceId: string,
+): Promise<{ deleted: number; failed: number }> {
+  if (!reapableSegment(orgId) || !reapableSegment(workspaceId)) {
+    throw new Error(`refusing to reap artifacts for scope org/${orgId}/ws/${workspaceId}`)
+  }
+  const prefix = tenantPrefix(orgId, workspaceId)
+  let deleted = 0
+  let failed = 0
+  for (let round = 0; round < MAX_REAP_ROUNDS; round++) {
+    let keys: string[]
+    try {
+      keys = (await backend.list(prefix)).map((b) => b.key)
+    } catch {
+      failed++
+      break
+    }
+    if (keys.length === 0) break
+    const deletedBefore = deleted
+    let next = 0
+    const worker = async (): Promise<void> => {
+      while (next < keys.length) {
+        const key = keys[next++]!
+        // This deletes, so it never trusts the listing: a key the backend
+        // reports from outside the prefix it was handed is skipped, not removed.
+        if (!key.startsWith(`${prefix}/`)) continue
+        try {
+          await backend.delete(key)
+          deleted++
+        } catch {
+          failed++
+        }
+      }
+    }
+    await Promise.all(
+      Array.from({ length: Math.min(REAP_CONCURRENCY, keys.length) }, () => worker()),
+    )
+    // Nothing went away this round — the backend is refusing; stop hammering it.
+    if (deleted === deletedBefore) break
+  }
+  return { deleted, failed }
 }

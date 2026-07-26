@@ -90,9 +90,13 @@ signup closes and everyone else joins by invite (see
   **delete** one created by mistake. Delete is not reversible: it removes
   every run, task result and log the workspace ever recorded, plus its
   projects and any workspace-scoped API token — so it asks you to type
-  the workspace's slug to confirm. Cached artifacts already in object
-  storage are left in place; they simply become unreachable. Deleting the
-  workspace you're currently viewing drops you onto a surviving one.
+  the workspace's slug to confirm. Its cached artifacts are then swept
+  from object storage (both trust tiers and every per-PR sub-scope);
+  that sweep is best-effort and runs after the delete, so a bucket that
+  is unreachable at that moment leaves the bytes behind — unreachable,
+  as before. The cache an org-wide token shares across workspaces is
+  never touched. Deleting the workspace you're currently viewing drops
+  you onto a surviving one.
 - The **Admin** area (for `owner`/`admin` roles) manages
   **organizations**, **workspaces**, **members** (roles `owner`, `admin`,
   `member`, `viewer`), **invites**, and **API tokens** (`vxc_`, a

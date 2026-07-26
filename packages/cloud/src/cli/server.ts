@@ -23,7 +23,7 @@ import { handleAnalyticsRequest, type AnalyticsRouteCtx } from '../db/analytics-
 import { createLoginThrottle, handleAuthRoutes, type AuthRoutesContext } from '../auth/routes.js'
 import { hasOrgRole, resolvePrincipal } from '../auth/rbac.js'
 import { lookupToken } from '../auth/tokens.js'
-import { DEFAULT_PRINCIPAL, type Principal } from '../artifact-store.js'
+import { DEFAULT_PRINCIPAL, reapWorkspaceArtifacts, type Principal } from '../artifact-store.js'
 import { S3Backend } from '../blob/s3.js'
 import { loadUiHtmlPath, startPlatformHttp, type Grant, type ResolvedS3Config } from './dispatch.js'
 
@@ -313,8 +313,11 @@ export async function startServer(opts: {
   const applied = await runMigrations(db)
   if (applied > 0) log(`migrations: applied ${applied}`)
 
+  // One realized backend for the boot probe AND the workspace-delete reaper
+  // (the cache wire's own store is built by the HTTP host from the same config).
+  const blobs = new S3Backend(config.s3)
   try {
-    await new S3Backend(config.s3).list('vx-boot-probe')
+    await blobs.list('vx-boot-probe')
   } catch (err) {
     await db.close().catch(() => undefined)
     throw new Error(
@@ -386,6 +389,24 @@ export async function startServer(opts: {
     openSignup: config.openSignup,
     openOrgCreate: config.openOrgCreate,
     throttle: createLoginThrottle(),
+    reapArtifacts: (orgId, workspaceId) => {
+      // Fire-and-forget: the workspace row is already gone (that is what makes
+      // its artifacts unreachable), and sweeping tens of thousands of objects —
+      // or waiting on a bucket that is down — must neither stall nor fail the
+      // admin's delete. A failed reap just leaves the bytes, exactly as before.
+      void reapWorkspaceArtifacts(blobs, orgId, workspaceId)
+        .then(({ deleted, failed }) => {
+          const note = failed > 0 ? ` (${failed} failed — bytes left in the bucket)` : ''
+          log(`workspace ${workspaceId}: reaped ${deleted} cached artifact(s)${note}`)
+        })
+        .catch((err: unknown) => {
+          log(
+            `workspace ${workspaceId}: artifact reap failed, bytes left in the bucket: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          )
+        })
+    },
   }
 
   const startedAt = Date.now()

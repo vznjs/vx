@@ -16,7 +16,10 @@ export interface BlobStat {
   meta: Record<string, string>
 }
 
-/** One row of `list()` — key is relative to the store root. */
+/** One row of `list()` — key is relative to the store root. `list` reports
+ *  every blob UNDER the prefix, at any depth (a scope prefix names a leaf
+ *  scope; the workspace reaper passes a tenancy prefix spanning both tiers and
+ *  every untrusted sub-scope). */
 export interface BlobListEntry {
   key: string
   size: number
@@ -33,6 +36,10 @@ export interface BlobBackend {
   /** Persist a spooled file (exact size known); `meta` rides with it. The
    *  STORE owns the spool file's lifetime (it unlinks after put returns). */
   put(key: string, file: string, size: number, meta: Record<string, string>): Promise<void>
+  /** Remove a blob AND whatever sidecars the backend keeps beside it. A key
+   *  that is already absent is NOT an error (delete is idempotent). Real
+   *  failures THROW — the workspace reaper counts and logs them. */
+  delete(key: string): Promise<void>
   /** A URL the CLIENT can GET directly (the 307 offload target), or null →
    *  the store serves the bytes itself (via `localPathFor`). */
   presignGet(key: string): Promise<string> | string | null

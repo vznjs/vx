@@ -208,6 +208,42 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **A deleted workspace's artifacts are REAPED — and the guard
+  that stops the reaper eating the org's shared cache is the whole feature**
+  (closing the leak the delete wave had to admit to in its own confirm dialog:
+  `BlobBackend` had no `delete`, so a deleted workspace's bytes rested in
+  object storage forever under a scope prefix nothing could ever address
+  again). `delete(key)` on both backends — `LocalDirBackend` unlinks the key
+  **plus its `.duration`/`.digest` sidecars** (`list` only ever reports
+  `.tar.zst`, so a sidecar left behind is a permanent invisible leak), `S3`
+  is a SigV4 `DELETE` through the existing hand-rolled signer (204 and 404
+  both mean gone). **THE HAZARD, which is why this needed care at all:** an
+  ORG-WIDE token writes under a shared `_org` segment that EVERY workspace in
+  the org reads, so a reaper that swept `org/<orgId>/ws` instead of
+  `org/<orgId>/ws/<workspaceId>` would destroy the entire org's cache on any
+  single workspace delete. `reapableSegment` refuses `_org`, `.`, `..` and any
+  non-segment; the pin is DISCRIMINATING — broadening the prefix makes it
+  delete 4 objects instead of 2 and fail. **Best-effort by construction, and
+  the TYPE enforces it:** `AuthRoutesContext.reapArtifacts` returns `void`, so
+  the route CANNOT await it — it fires post-commit, because the rows are the
+  system of record, a workspace can hold tens of thousands of objects, and a
+  failed reap leaves exactly the state that existed before this feature. Also
+  made `LocalDirBackend.list` recursive so a prefix listing is depth-blind like
+  S3's — verified safe for the read path because every scope a principal lists
+  is a LEAF (`trusted` is flat; an untrusted principal lists only its own
+  `untrusted/<sub>`), so recursion cannot widen enumeration; the reaper needs
+  it because `ws/<id>` is the one non-leaf prefix in the layout. Docs synced,
+  including an `api.md` row that still claimed artifacts are NOT removed.
+  **Not done, deliberately:** no retry/queue for a failed reap (a durable
+  orphaned-prefix sweep needs somewhere to record the intent — its own wave);
+  empty dirs remain on the test-only local backend. Gates: fmt/lint 0, cloud
+  **599/0**, core 1297/0, ui 91/0, visual 10/10 byte-stable. NO
+  migration/schema/wire/CACHE bump. **Process note:** this agent symlinked
+  `packages/cloud/ui/node_modules` AND built `ui/dist` so the browser suites
+  actually RAN rather than skipping — the first agent today whose reported
+  gates were trustworthy on their own. The rule stands regardless: cherry-pick
+  into the main tree and re-run.
+
 - **2026-07-26**: **Workspaces can be RENAMED and DELETED — and the delete had
   to reach past the cascade, which does not go where the schema suggests**
   (closing the lifecycle gap the context work exposed: the admin surface was

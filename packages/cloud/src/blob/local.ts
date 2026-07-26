@@ -4,8 +4,20 @@
 // existing local deployments keep their warm store.
 
 import path from 'node:path'
-import { mkdir, readdir, rename, stat } from 'node:fs/promises'
+import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises'
 import type { BlobBackend, BlobListEntry, BlobStat } from './backend.js'
+
+/** The sidecar files this backend writes beside an artifact (S3 carries the
+ *  same metadata inline as object user metadata). */
+const SIDECAR_EXTS = ['.duration', '.digest']
+
+async function unlinkIfPresent(p: string): Promise<void> {
+  try {
+    await unlink(p)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+  }
+}
 
 export class LocalDirBackend implements BlobBackend {
   constructor(private readonly dir: string) {}
@@ -36,6 +48,14 @@ export class LocalDirBackend implements BlobBackend {
     if (digest !== undefined) await Bun.write(`${base}.digest`, digest)
   }
 
+  async delete(key: string): Promise<void> {
+    const dest = this.localPathFor(key)
+    const base = dest.replace(/\.tar\.zst$/, '')
+    // The sidecars go with the artifact or they leak forever: `list` reports
+    // only `.tar.zst`, so nothing would ever find them again.
+    await Promise.all([dest, ...SIDECAR_EXTS.map((e) => `${base}${e}`)].map(unlinkIfPresent))
+  }
+
   presignGet(): null {
     return null
   }
@@ -44,16 +64,20 @@ export class LocalDirBackend implements BlobBackend {
     const dirPath = path.join(this.dir, prefix)
     let names: string[]
     try {
-      names = await readdir(dirPath)
+      // Recursive: a scope prefix names a leaf dir (nothing nested to find),
+      // but the reaper lists a whole tenancy prefix — matching S3, where a
+      // prefix listing is depth-blind.
+      names = await readdir(dirPath, { recursive: true })
     } catch {
       return [] // scope dir doesn't exist yet — nothing stored there
     }
     const out: BlobListEntry[] = []
-    for (const n of names) {
-      if (!n.endsWith('.tar.zst')) continue
+    for (const raw of names) {
+      if (!raw.endsWith('.tar.zst')) continue
+      const n = raw.split(path.sep).join('/')
       let st: Awaited<ReturnType<typeof stat>>
       try {
-        st = await stat(path.join(dirPath, n))
+        st = await stat(path.join(dirPath, raw))
       } catch {
         continue // raced with a prune — skip
       }
@@ -63,7 +87,7 @@ export class LocalDirBackend implements BlobBackend {
         storedAt: Math.round(st.mtimeMs),
       }
       const durationFile = Bun.file(
-        path.join(dirPath, `${n.slice(0, -'.tar.zst'.length)}.duration`),
+        path.join(dirPath, `${raw.slice(0, -'.tar.zst'.length)}.duration`),
       )
       if (await durationFile.exists()) {
         const d = Number((await durationFile.text()).trim())

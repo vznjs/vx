@@ -137,6 +137,14 @@ export interface AuthRoutesContext {
   openOrgCreate: boolean
   throttle: LoginThrottle
   now?: () => number
+  /**
+   * Reap a deleted workspace's cached artifacts from object storage. Returns
+   * VOID by type, and that is the contract: the request must never wait on the
+   * bucket (a workspace can own tens of thousands of objects) and must never
+   * fail because of it — the rows are already gone, which is what makes them
+   * unreachable. The wiring runs it in the background and logs the outcome.
+   */
+  reapArtifacts?: (orgId: string, workspaceId: string) => void
 }
 
 async function readBody(req: Request): Promise<Record<string, unknown> | null> {
@@ -773,6 +781,14 @@ async function adminRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promi
       // A workspace-scoped token just died with the workspace — its bearer
       // must stop authenticating now, not when the memo's TTL lapses.
       resetTokenCache()
+      // Storage cleanup AFTER the commit, and isolated from it: the workspace
+      // is already gone, so a reaper that throws must not turn a completed
+      // delete into a 500.
+      try {
+        ctx.reapArtifacts?.(org!.id, itemId)
+      } catch {
+        // the wiring owns logging; the delete stands either way
+      }
       return json({ ok: true })
     }
     return json({ error: 'not found' }, 404)

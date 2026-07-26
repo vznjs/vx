@@ -15,8 +15,11 @@ import {
   ArtifactStore,
   BATCH_HASH_CAP,
   MAX_ARTIFACT_BYTES,
+  reapWorkspaceArtifacts,
   type Principal,
 } from '../src/artifact-store.js'
+import type { BlobBackend } from '../src/blob/backend.js'
+import { LocalDirBackend } from '../src/blob/local.js'
 import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
 import { cloud } from '../src/plugin.js'
 
@@ -563,6 +566,7 @@ describe('ArtifactStore — batch existence (POST /v1/cache/batch)', () => {
         throw new Error('bucket down')
       },
       async put() {},
+      async delete() {},
       presignGet() {
         return null
       },
@@ -672,3 +676,122 @@ describe('ArtifactStore.list — trust-scoped listing (/v1/artifacts source)', (
 // (GET /v1/artifacts with the Postgres task_runs provenance join is driven
 // against the platform server in server.test.ts; ArtifactStore.list scoping is
 // unit-tested directly above.)
+
+describe('reapWorkspaceArtifacts — deleting a workspace reclaims its bytes', () => {
+  let dir: string
+  let backend: LocalDirBackend
+  let store: ArtifactStore
+
+  // Tenancy principals (no `bucket` override): the real
+  // `org/<orgId>/ws/<workspaceId>/<tier>[/<sub>]` layout.
+  const ORG = 'org-1'
+  const wsA: Principal = { orgId: ORG, workspaceId: 'ws-a', tier: 'trusted' }
+  const wsAPr: Principal = { orgId: ORG, workspaceId: 'ws-a', tier: 'untrusted' }
+  const wsB: Principal = { orgId: ORG, workspaceId: 'ws-b', tier: 'trusted' }
+  // An ORG-WIDE token has no workspace binding: it writes the shared `_org`
+  // scope, which every workspace in the org reads.
+  const orgWide: Principal = { orgId: ORG, tier: 'trusted' }
+
+  const put = (hash: string, tag: string, p: Principal, scope?: string) =>
+    store.handle(
+      new Request(`http://x/v1/cache/${hash}`, {
+        method: 'PUT',
+        body: zbody(tag),
+        headers: {
+          'x-vx-duration-ms': '77',
+          'x-vx-digest': `xxh3:${Bun.hash.xxHash3(zbody(tag)).toString(16).padStart(16, '0')}`,
+          ...(scope !== undefined ? { 'x-vx-cache-scope': scope } : {}),
+        },
+      }),
+      hash,
+      p,
+    )
+  const files = async (...segs: string[]): Promise<string[]> =>
+    (
+      await readdir(path.join(dir, 'artifacts', ...segs), { recursive: true }).catch(
+        () => [] as string[],
+      )
+    )
+      .filter((n) => /\.(tar\.zst|duration|digest)$/.test(n))
+      .sort()
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'vx-reap-'))
+    backend = new LocalDirBackend(path.join(dir, 'artifacts'))
+    store = new ArtifactStore(backend)
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('sweeps both tiers and every PR sub-scope, and NEVER the org-shared scope', async () => {
+    await put('aaaaaaaaaaaaaaa1', 'doomed-trusted', wsA)
+    await put('aaaaaaaaaaaaaaa2', 'doomed-pr', wsAPr, 'pr-7')
+    await put('bbbbbbbbbbbbbbb1', 'sibling', wsB)
+    await put('ccccccccccccccc1', 'org-shared', orgWide)
+    expect(await files('org', ORG, 'ws', 'ws-a')).toHaveLength(6) // 2 artifacts + 4 sidecars
+
+    const res = await reapWorkspaceArtifacts(backend, ORG, 'ws-a')
+    expect(res).toEqual({ deleted: 2, failed: 0 })
+
+    // The whole workspace subtree is empty — sidecars included, or they would
+    // leak forever (nothing lists them again).
+    expect(await files('org', ORG, 'ws', 'ws-a')).toEqual([])
+    // THE INVARIANT: `_org` is written by every org-wide token and read by
+    // every workspace in the org. Deleting ONE workspace must not touch it.
+    expect(await files('org', ORG, 'ws', '_org')).toHaveLength(3)
+    expect((await store.list(orgWide)).map((r) => r.hash)).toEqual(['ccccccccccccccc1'])
+    // …and the sibling workspace is untouched.
+    expect((await store.list(wsB)).map((r) => r.hash)).toEqual(['bbbbbbbbbbbbbbb1'])
+  })
+
+  it('refuses a scope that is not one workspace — `_org` and traversals throw', async () => {
+    await put('ddddddddddddddd1', 'org-shared', orgWide)
+    for (const bad of ['_org', '..', '.', 'a/b']) {
+      await expect(reapWorkspaceArtifacts(backend, ORG, bad)).rejects.toThrow('refusing to reap')
+    }
+    await expect(reapWorkspaceArtifacts(backend, '..', 'ws-a')).rejects.toThrow('refusing to reap')
+    expect(await files('org', ORG, 'ws', '_org')).toHaveLength(3)
+  })
+
+  it('an empty workspace reaps nothing and a missing key deletes cleanly', async () => {
+    expect(await reapWorkspaceArtifacts(backend, ORG, 'never-used')).toEqual({
+      deleted: 0,
+      failed: 0,
+    })
+    // Delete is idempotent: a key that is already absent is not an error.
+    await backend.delete(`org/${ORG}/ws/ws-a/trusted/nothing-here.tar.zst`)
+  })
+
+  it('a refusing backend degrades to counted failures — it never throws', async () => {
+    const broken: BlobBackend = {
+      async head() {
+        return null
+      },
+      async put() {},
+      async delete() {
+        throw new Error('bucket down')
+      },
+      presignGet() {
+        return null
+      },
+      async list(prefix) {
+        return [{ key: `${prefix}/trusted/aaaaaaaaaaaaaaa1.tar.zst`, size: 1, storedAt: 1 }]
+      },
+      localPathFor() {
+        return null
+      },
+    }
+    // The list never empties (every delete throws), so the no-progress guard
+    // is what stops it — one round, not MAX_REAP_ROUNDS.
+    expect(await reapWorkspaceArtifacts(broken, ORG, 'ws-a')).toEqual({ deleted: 0, failed: 1 })
+
+    const unlistable: BlobBackend = {
+      ...broken,
+      async list() {
+        throw new Error('bucket down')
+      },
+    }
+    expect(await reapWorkspaceArtifacts(unlistable, ORG, 'ws-a')).toEqual({ deleted: 0, failed: 1 })
+  })
+})

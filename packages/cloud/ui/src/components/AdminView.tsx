@@ -763,8 +763,9 @@ function WorkspacesSection(props: { orgId: string; canAdmin: boolean }) {
                               <span>
                                 Deleting <span class="font-mono text-fg">{w.name}</span> removes
                                 every run, task result and log it ever recorded, plus its projects
-                                and any workspace-scoped API token. This cannot be undone. Cached
-                                artifacts already in object storage are not deleted.
+                                and any workspace-scoped API token. This cannot be undone. Its
+                                cached artifacts are then swept from object storage; if the bucket
+                                is unreachable they are left behind, unreachable.
                               </span>
                             </div>
                             <div class="flex items-end gap-2 flex-wrap">
