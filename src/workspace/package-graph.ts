@@ -51,7 +51,7 @@ export function buildPackageGraph(projects: ProjectMeta[]): PackageGraph {
   // per-call sort. Package graphs (unlike task graphs) may legally
   // contain cycles; the bitset sweep requires a DAG, so a cycle
   // (detected by the Kahn pass not draining) falls back wholesale to
-  // the legacy DFS — byte-identical behavior for that rare case.
+  // a per-query reachability search for that rare case.
   const names = [...byName.keys()].sort()
   const index = new Map<string, number>()
   for (let i = 0; i < names.length; i++) index.set(names[i]!, i)
@@ -92,32 +92,35 @@ export function buildPackageGraph(projects: ProjectMeta[]): PackageGraph {
     return closure
   }
 
-  function legacyTransitive(
-    name: string,
-    edges: Map<string, string[]>,
-    cache: Map<string, string[]>,
-    stack: Set<string> = new Set(),
-  ): string[] {
-    const cached = cache.get(name)
-    if (cached) return cached
-    if (stack.has(name)) return []
-    stack.add(name)
-    const out = new Set<string>()
-    for (const d of edges.get(name) ?? []) {
-      out.add(d)
-      for (const t of legacyTransitive(d, edges, cache, stack)) out.add(t)
+  // Cyclic fallback: everything reachable from `name` via ≥1 edge (so a
+  // node inside a cycle includes itself). Deliberately a self-contained
+  // per-query search rather than a memoized recursion over sub-results:
+  // in a cycle the back-edge contributes nothing, so a shared recursion
+  // computes TRUNCATED closures for the nodes below it and caching those
+  // makes every later answer depend on which node was asked for first.
+  function reachableFrom(name: string, edges: Map<string, string[]>): string[] {
+    const seen = new Set<string>()
+    const stack = [...(edges.get(name) ?? [])]
+    while (stack.length > 0) {
+      const cur = stack.pop()!
+      if (seen.has(cur)) continue
+      seen.add(cur)
+      for (const d of edges.get(cur) ?? []) stack.push(d)
     }
-    stack.delete(name)
-    const result = [...out].sort()
-    cache.set(name, result)
-    return result
+    return [...seen].sort()
   }
 
   function makeAccessor(edges: Map<string, string[]>): (name: string) => string[] {
     const closures = bitsetClosures(edges)
     const memo = new Map<string, string[]>()
     if (closures === null) {
-      return (name) => legacyTransitive(name, edges, memo)
+      return (name) => {
+        const cached = memo.get(name)
+        if (cached) return cached
+        const result = reachableFrom(name, edges)
+        memo.set(name, result)
+        return result
+      }
     }
     const words = (names.length + 31) >>> 5
     return (name) => {

@@ -285,6 +285,52 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stderr).toContain('no projects matched')
   })
 
+  it('--affected with an empty change set exits 0 (nothing affected is not an error)', async () => {
+    // A docs-only commit must not red the CI recipe
+    // `vx run lint test build --affected=origin/<base>`.
+    const commit = (...args: string[]): void => {
+      Bun.spawnSync({
+        cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
+        cwd: workspaceRoot,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+    }
+    commit('add', '.')
+    commit('commit', '-q', '-m', 'baseline')
+
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+
+    const code = await run(['run', '--affected=HEAD', 'hello'])
+    expect(code).toBe(0)
+    expect(stderr).toContain('nothing affected')
+    expect(stderr).not.toContain('no projects matched')
+  })
+
+  it('a filter that matches nothing warns, even when another one matched', async () => {
+    let stdout = ''
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+
+    const code = await run(['run', '--filter', 'one', '--filter', 'noSuchPkg', 'hello'])
+    expect(code).toBe(0)
+    expect(stdout).toContain('success miss   one#hello')
+    expect(stderr).toContain('noSuchPkg')
+    expect(stderr).toContain('matched no projects')
+  })
+
   it('-v prints a verbose summary table', async () => {
     let stdout = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {

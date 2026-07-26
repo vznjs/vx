@@ -33,7 +33,12 @@ import {
   resolveCacheDir,
   type ProjectEntry,
 } from '../workspace/index.js'
-import { buildTaskGraph, expandRequested, type TaskNode } from '../graph/index.js'
+import {
+  buildTaskGraph,
+  expandRequested,
+  parseDependencySpec,
+  type TaskNode,
+} from '../graph/index.js'
 import { resolveCache } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
@@ -93,6 +98,25 @@ export interface PreparedRun {
   empty: null | 'no-tasks-declared' | 'empty-graph'
 }
 
+/** Project names named by a `pkg#task` dependsOn entry anywhere in `config`. */
+function crossDepProjects(config: ProjectConfig): string[] {
+  const out: string[] = []
+  for (const task of Object.values(config.tasks ?? {})) {
+    for (const raw of task.dependsOn ?? []) {
+      // A malformed spec is the graph builder's error to report — it names
+      // the offending task. Here it just contributes no project.
+      if (!raw.includes('#')) continue
+      try {
+        const spec = parseDependencySpec(raw)
+        if (spec.kind === 'cross') out.push(spec.project)
+      } catch {
+        continue
+      }
+    }
+  }
+  return out
+}
+
 /**
  * Build the prepared-run context: workspace discovery, project-config
  * load, package + task graph, cache handle (local, optionally wrapped
@@ -111,12 +135,12 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   // SCOPED config loading: configs are programs, and evaluating 1090
   // of them costs ~200 ms — the dominant fixed cost of small runs.
-  // Only the in-scope projects and their transitive dependency
-  // closure can contribute graph nodes (frontier '^task' expansion
-  // never escapes the closure), so only those configs are evaluated.
-  // Side effect, deliberate and Turbo-like: a broken config in an
-  // unrelated package no longer fails a scoped run — it surfaces
-  // when that package enters a run's scope.
+  // Only the in-scope projects, their transitive dependency closure
+  // (which bounds '^task' frontier expansion) and any project named by
+  // a `pkg#task` dependsOn entry can contribute graph nodes, so only
+  // those configs are evaluated. Side effect, deliberate and
+  // Turbo-like: a broken config in an unrelated package no longer
+  // fails a scoped run — it surfaces when that package enters scope.
   const packageGraph = buildPackageGraph(projectMetas)
   const projectsWithConfigs = projectMetas.filter(
     (m): m is typeof m & { configPath: string } =>
@@ -146,13 +170,22 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   for (const project of anchored) {
     if (haveConfig.has(project)) seeds.add(project)
   }
-  const needed = new Set<string>(seeds)
-  for (const seed of seeds) {
-    for (const dep of packageGraph.transitiveDeps(seed)) needed.add(dep)
+  type ConfigMeta = (typeof projectsWithConfigs)[number]
+  const metaByName = new Map<string, ConfigMeta>(projectsWithConfigs.map((m) => [m.name, m]))
+  const needed = new Set<string>()
+  const pending: ConfigMeta[] = []
+  const consider = (name: string): void => {
+    if (needed.has(name)) return
+    needed.add(name)
+    const meta = metaByName.get(name)
+    if (meta) pending.push(meta)
   }
+  const considerWithDeps = (name: string): void => {
+    consider(name)
+    for (const dep of packageGraph.transitiveDeps(name)) consider(dep)
+  }
+  for (const seed of seeds) considerWithDeps(seed)
 
-  const projects = new Map<string, ProjectEntry>()
-  const toLoad = projectsWithConfigs.filter((m) => needed.has(m.name))
   // Frozen mode (--frozen, CI): configs load FROM vx-lock.json after a
   // content-hash tripwire — no evaluation; env-dependent configs keep
   // their locked values. Default (local) runs ALWAYS evaluate live:
@@ -166,15 +199,26 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       `--frozen requires vx-lock.json at the workspace root — run 'vx lock' and commit it`,
     )
   }
-  const configs = await Promise.all(
-    toLoad.map((m) =>
-      lock ? frozenProjectConfig(lock, m, workspaceRoot) : loadProjectConfig(m.configPath),
-    ),
-  )
-  for (let i = 0; i < toLoad.length; i++) {
-    const meta = toLoad[i]!
-    const config = configs[i] as ProjectConfig
-    projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
+
+  // Load in rounds to a fixpoint. A `pkg#task` dependsOn entry names a
+  // project the PACKAGE graph cannot reach (the cross form ignores npm
+  // deps by design), so its config has to be pulled in — and that config
+  // may declare cross edges of its own. The common case (no cross deps)
+  // is a single round, identical to loading the closure in one batch.
+  const projects = new Map<string, ProjectEntry>()
+  while (pending.length > 0) {
+    const round = pending.splice(0, pending.length)
+    const configs = await Promise.all(
+      round.map((m) =>
+        lock ? frozenProjectConfig(lock, m, workspaceRoot) : loadProjectConfig(m.configPath),
+      ),
+    )
+    for (let i = 0; i < round.length; i++) {
+      const meta = round[i]!
+      const config = configs[i] as ProjectConfig
+      projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
+      for (const name of crossDepProjects(config)) considerWithDeps(name)
+    }
   }
 
   // Boundary geometry considers every config-bearing project in the

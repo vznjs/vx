@@ -137,6 +137,40 @@ describe('buildTaskGraph', () => {
     expect(nodes.has('c#build')).toBe(false)
   })
 
+  it('^name never wraps back into the declaring project on a package cycle', () => {
+    // `a` and `b` npm-depend on each other (the ubiquitous "b devDepends on
+    // a for tests" shape). Walking a's frontier reaches b, which bridges
+    // back to a — the origin must be excluded or the walk adds a self-edge.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('a', { build: { ...cmd('build a'), dependsOn: ['^build'] } }),
+        project('b', { lint: cmd('lint b') }),
+      ),
+      packageGraph: packageGraph({ a: ['b'], b: ['a'] }),
+      requested: [{ project: 'a', task: 'build' }],
+    })
+    expect(nodes.get('a#build')?.deps).toEqual([])
+  })
+
+  it('^pattern never wraps back into the declaring project on a package cycle', () => {
+    // The pattern form is worse than the exact form: instead of an obvious
+    // self-cycle error it silently adds edges to the origin's OTHER matching
+    // tasks, pulling them into the graph and into the upstream-hash fold.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('a', {
+          build: { ...cmd('build a'), dependsOn: ['^build.*'] },
+          'build.inner': cmd('build a inner'),
+        }),
+        project('b', { lint: cmd('lint b') }),
+      ),
+      packageGraph: packageGraph({ a: ['b'], b: ['a'] }),
+      requested: [{ project: 'a', task: 'build' }],
+    })
+    expect(nodes.get('a#build')?.deps).toEqual([])
+    expect(nodes.has('a#build.inner')).toBe(false)
+  })
+
   it('^name dedupes a shared subtree reached via multiple bridged paths', () => {
     // left and right both lack `build`; both bridge to shared. The
     // visited-set must collapse the two paths into one edge.

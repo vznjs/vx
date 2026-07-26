@@ -208,6 +208,61 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **The other NINE selection/graph defects fixed — the audit's
+  tail, each differentially pinned** (completing the wave the two stale-hit
+  fixes opened). **(A) MED-HIGH — `pkg#task` was unusable in every scoped
+  run.** Scoped config loading computed `needed = seeds ∪ transitiveDeps(seeds)`
+  and its comment justified that with "frontier `^task` expansion never escapes
+  the closure" — true for `^task`, FALSE for `pkg#task`, which by design ignores
+  the package graph. The target's config was never loaded, so the user got
+  "no such project or task is declared" about a project that plainly exists;
+  ONLY `--all` worked. Now loading runs in fixpoint ROUNDS, scanning each
+  round's configs for `cross` specs and queueing those projects plus their own
+  closures (a cross target may itself declare `^task`). No cross deps anywhere
+  ⇒ one round, byte-identical. **(B) MED — the `^task` frontier wrapped back to
+  the DECLARING project on a package cycle** (`directDeps` includes devDeps, so
+  the ubiquitous "a deps b, b devDeps a for tests" shape triggers it): the exact
+  form threw `Cycle detected: a#build -> a#build` — a lie, there is no
+  task-graph cycle — and the pattern form silently added a bogus
+  `a#build.inner -> a#build` edge that reached the CACHE KEY. A 3892-graph fuzz
+  found 90 self-loop failures. Fixed by seeding `visited` with `projectName`,
+  mirroring the self-pattern rule. **CACHE_VERSION: no bump, and the developer
+  proved it empirically rather than arguing it** — measured on a real
+  workspace: buggy+cycle `f9f235d7…`, buggy+acyclic `654fdcda…`, FIXED
+  `654fdcda…` either way. The fix CONVERGES on the key a correct layout already
+  derives, so the wrong entry is orphaned, never hit; an acyclic graph is
+  byte-identical. A bump would invalidate every correct workspace to clean up
+  after a shape that couldn't run. **(C) MED — a package cycle poisoned the
+  closure memo**: `legacyTransitive` returned `[]` on the back-edge but CACHED
+  that truncated result, so `--filter` answers depended on QUERY ORDER — 1796
+  of 25752 mixed-filter cases wrong in BOTH directions (work silently skipped,
+  and an explicitly-EXCLUDED package still selected and run). Replaced with an
+  iterative `reachableFrom` memoized only on the complete result. **(D+G) MED —
+  `--affected` was blind to any changed file with a non-ASCII / `"` / `\` name**
+  (no `-z`, so git C-quotes and the literal quoted string matches no project
+  dir) **and to untracked files** — while the cache-key enumeration uses `-z`
+  AND `--others`, so the two surfaces disagreed about what changed. The
+  documented CI recipe silently skipped a genuinely-changed package. Now `-z` +
+  a concurrent `git ls-files --others`. **(E) MED — `--filter '*'` matched only
+  UNSCOPED packages** (`Bun.Glob` treats `/` as a path separator), so
+  `docs/cli.md`'s own recipe under-selected and `'*core*'` couldn't match
+  `@acme/core`; replaced with a name-glob compiler, path forms untouched.
+  **(F) LOW-MED — `--affected` with an empty change set exited 1**, so a
+  docs-only commit redded CI on the flagship guide recipe (Turbo and Nx exit 0);
+  now `nothing affected since <ref>` + exit 0, while an empty NAME/PATH pattern
+  still fails loud. **(H)** a non-matching filter beside a matching one warns
+  per filter instead of silently under-selecting. **(I)** a member whose
+  `package.json` has no `name` now warns — but ONLY when the dir has a
+  `vx.config.*` (the "meant to run, vanished" case); warning on the rest would
+  be noise. **(J)** `-F` never existed (the parser rejects it, as it does `-r`
+  and `-v`) — source comments corrected and the 2026-05 entry annotated rather
+  than rewritten, since it is an accurate historical record of intent. Gates:
+  fmt/lint 0, core **1329/0** (+18), cloud 599/0, ui 91/0. **Environment note:**
+  the cloud suite first failed with `No space left on device` — 79 leaked
+  ephemeral-Postgres clusters (~820 MB each, 29 GB) from test runs killed
+  mid-flight today. Not a code defect; but if `bun test` ever fails with
+  PostgresError 53100, check `/tmp/vx-test-pg-*` before suspecting the diff.
+
 - **2026-07-26**: **TWO STALE-HIT BUGS FIXED — running from inside a package
   silently made that package the whole workspace; and a glob in the PROJECT
   half of `cache.inputs.tasks` selected nothing** (a repro-mandated hostile
@@ -8681,6 +8736,8 @@ LayeredCache` union). `SaveArgs` exported as `Parameters<CacheLayer['save']>[0]`
 - **2026-05**: CLI aligned with vite-task — default scope is cwd
   project, `-r` for all, `-F` for filter DSL, `--` separator, `pkg#task`
   addressing, `--no-cache` (was `--force`), `-v` for verbose. PR #2.
+  (Both short aliases were later dropped: the parser rejects `-F` and
+  `-r`; `--filter` / `--all` are the shipped flags.)
 
 ## Active workstreams (prioritized)
 

@@ -1,6 +1,6 @@
-// Filter DSL — pnpm-style selectors for `-F / --filter`.
+// Filter DSL — pnpm-style selectors for `--filter`.
 //
-//   <pattern>        name glob (e.g. foo, @scope/*)
+//   <pattern>        name glob, `*` = any characters (e.g. foo, @scope/*)
 //   ./<dir>          packages whose dir is at or under <dir> (relative to workspace root)
 //   {<dir>}          same as ./<dir>
 //   <pattern>...     pattern + its transitive workspace dependencies
@@ -107,11 +107,22 @@ function matchProjects(
     }
     return out
   }
-  const glob = new Bun.Glob(filter.matcher)
+  const re = compileNameGlob(filter.matcher)
   for (const p of projects) {
-    if (glob.match(p.name)) out.push(p.name)
+    if (re.test(p.name)) out.push(p.name)
   }
   return out
+}
+
+/**
+ * Compile a name pattern where `*` is the sole metacharacter and means "any
+ * characters" — pnpm's rule. A path glob would treat `/` as a separator, so
+ * `*` could never cross the `@scope/` boundary: `--filter '*'` would select
+ * only UNSCOPED packages, and `*core*` would match nothing at all.
+ */
+function compileNameGlob(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
+  return new RegExp(`^${escaped}$`)
 }
 
 export interface ApplyFiltersOptions {
@@ -125,6 +136,12 @@ export interface ApplyFiltersOptions {
    * stays pure + sync.
    */
   affectedByFilter?: Map<ParsedFilter, Set<string>>
+  /**
+   * Called once per filter that matched zero projects, before expansion.
+   * Only the TOTAL empty selection is an error, so without this a typo among
+   * several filters silently under-selects.
+   */
+  onNoMatch?: (filter: ParsedFilter) => void
 }
 
 export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
@@ -134,6 +151,7 @@ export function applyFilters(opts: ApplyFiltersOptions): Set<string> {
 
   for (const f of opts.filters) {
     const matched = matchProjects(f, opts.projects, opts.affectedByFilter)
+    if (matched.length === 0) opts.onNoMatch?.(f)
     const expanded = new Set<string>()
     for (const name of matched) {
       if (!f.onlyDeps) expanded.add(name)

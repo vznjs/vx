@@ -105,6 +105,95 @@ describe('scoped config loading', () => {
   )
 
   it(
+    'a pkg#task dep loads a project the PACKAGE closure never reaches',
+    async () => {
+      // `docs` declares no npm dependency on `app`, so `app` is outside
+      // `transitiveDeps('docs')`. The cross form deliberately ignores the
+      // package graph, so its target's config must still be evaluated.
+      await addProject('app', GOOD)
+      await addProject(
+        'docs',
+        `export default { tasks: { build: {
+          dependsOn: ['app#build'],
+          exec: { command: 'echo docs > out.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        } } }`,
+      )
+      const r = await run({ cwd: root, tasks: ['docs#build'], log: silent() })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes.map((o) => o.node.id).sort()).toEqual(['app#build', 'docs#build'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'cross-dep loading reaches a fixpoint (a pulled-in config may cross again)',
+    async () => {
+      await addProject('tools', GOOD)
+      await addProject(
+        'app',
+        `export default { tasks: { build: {
+          dependsOn: ['tools#build'],
+          exec: { command: 'echo app > out.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        } } }`,
+      )
+      await addProject(
+        'docs',
+        `export default { tasks: { build: {
+          dependsOn: ['app#build'],
+          exec: { command: 'echo docs > out.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        } } }`,
+      )
+      // Filter scope (not anchored) — the second hop is only reachable if
+      // the pre-scan iterates rather than doing a single pass.
+      const r = await run({ cwd: root, tasks: ['build'], projects: ['docs'], log: silent() })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes.map((o) => o.node.id).sort()).toEqual([
+        'app#build',
+        'docs#build',
+        'tools#build',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a cross-dep target pulls in ITS package closure too',
+    async () => {
+      // `app` npm-depends on `lib` and declares `^build`. Reaching app via a
+      // cross edge must also load lib, or app's frontier finds nothing.
+      await addProject('lib', GOOD)
+      await addProject(
+        'app',
+        `export default { tasks: { build: {
+          dependsOn: ['^build'],
+          exec: { command: 'echo app > out.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        } } }`,
+        ['lib'],
+      )
+      await addProject(
+        'docs',
+        `export default { tasks: { build: {
+          dependsOn: ['app#build'],
+          exec: { command: 'echo docs > out.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        } } }`,
+      )
+      const r = await run({ cwd: root, tasks: ['docs#build'], log: silent() })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes.map((o) => o.node.id).sort()).toEqual([
+        'app#build',
+        'docs#build',
+        'lib#build',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'full-scope runs still surface broken configs',
     async () => {
       await addProject('a', GOOD)

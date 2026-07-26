@@ -202,7 +202,18 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
   const projects: ProjectMeta[] = []
   const seenName = new Map<string, string>()
   for (const { dir, pkg, configPath } of loaded) {
-    if (!pkg.name) continue
+    if (!pkg.name) {
+      // A nameless manifest can't be addressed, filtered, or made affected —
+      // and vx identifies projects by name, so it simply vanishes. Silent is
+      // fine for a dir that declares no tasks; a dir with a vx config was
+      // meant to run.
+      if (configPath !== null) {
+        process.stderr.write(
+          `vx: ${relPosix(workspace.root, dir)} has a vx config but its package.json has no "name" — skipped\n`,
+        )
+      }
+      continue
+    }
     const previous = seenName.get(pkg.name)
     if (previous) {
       throw new UserError(

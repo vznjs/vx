@@ -23,8 +23,8 @@ export interface TaskNode {
   /** Ids of tasks that must complete before this one runs. */
   deps: string[]
   /**
-   * True for the tasks the user actually asked for (via cwd, `-r`, `-F`,
-   * or `pkg#task`). False for dependencies pulled in by `dependsOn`
+   * True for the tasks the user actually asked for (via cwd, `--all`,
+   * `--filter`, or `pkg#task`). False for deps pulled in by `dependsOn`
    * expansion. Used by the orchestrator to scope `forwardArgs` so trailing
    * CLI args don't leak into upstream tasks the user didn't address.
    */
@@ -268,8 +268,14 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         // AT LEAST ONE matching task and it receives edges to ALL its
         // matches — holder-ness is about declaration, so a holder still
         // stops the walk even when every match is --excludeDependencies'd.
+        //
+        // The declaring project seeds `visited`: package graphs may legally
+        // contain cycles (the common "b devDepends on a for its tests"
+        // shape), and a cycle walks the frontier straight back to the
+        // origin. Mirrors the self-pattern rule below — a task can never
+        // depend on itself.
         const re = isTaskPattern(spec.task) ? compileTaskPattern(spec.task) : null
-        const visited = new Set<string>()
+        const visited = new Set<string>([projectName])
         const frontier = [...packageGraph.directDeps(projectName)]
         while (frontier.length > 0) {
           const target = frontier.pop()!

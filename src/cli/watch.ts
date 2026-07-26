@@ -59,6 +59,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx watch: ${resolved.error}\n`)
     return 1
   }
+  if ('nothingSelected' in resolved) {
+    process.stderr.write(`vx watch: ${resolved.nothingSelected}\n`)
+    return 0
+  }
   // The watch loop owns SIGINT/SIGTERM for its whole lifetime (the
   // process.once handlers below close watchers and resolve 0). A
   // cycle's run() must not install its exit-the-process handlers —
