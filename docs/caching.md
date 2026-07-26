@@ -99,18 +99,29 @@ over (in order):
     contributing its **git blob OID** (v20). On a clean tree the OID
     comes straight from the index — the same bulk
     `git ls-files -s --others --exclude-standard` spawn that enumerates
-    files also yields every tracked file's OID, and one
-    `git status --porcelain` prunes paths whose working tree diverges,
-    so deriving these hashes costs zero file reads, zero per-file
-    stats, zero SQLite lookups. Dirty / untracked files (and symlinks)
-    fall back to an in-process
-    `HASH("blob " + len + "\0" + content)` computation (sha1, or
-    sha256 in `--object-format=sha256` repos) with the
-    `file_hashes` mtime+size memo as the fast path — byte-identical
-    to the index OID for identical content, so a file's contribution
-    never flips across dirty↔clean transitions. Folded as
-    `(relPath, oid)` pairs, sorted for stability across OSes and walk
-    orders.
+    files also yields every tracked file's OID — so deriving these
+    hashes costs zero file reads, zero per-file stats, zero SQLite
+    lookups.
+
+    An index OID is only trusted where git stores the worktree bytes
+    **verbatim**, so three concurrent probes prune it:
+    `git status --porcelain` drops paths whose working tree diverges;
+    `git ls-files -v` drops `skip-worktree` / `assume-unchanged`
+    entries, whose OID says nothing about what is (or isn't) on disk;
+    and a clean-filter gate drops paths where `text` / `eol` / `ident`
+    or `core.autocrlf` can rewrite bytes between index and worktree
+    (the blob would be the LF-normalized form while the task reads the
+    CRLF file). The gate costs nothing in a repo with no attributes
+    and no `core.autocrlf` — see "Clean filters" below.
+
+    Every pruned path, plus untracked files and symlinks, falls back
+    to an in-process `HASH("blob " + len + "\0" + content)` over the
+    **worktree bytes** (sha1, or sha256 in `--object-format=sha256`
+    repos), memoized in `file_hashes` on `(mtime, size, ctime, ino)`.
+    That is the same value the index holds whenever no filter applies,
+    so a file's contribution doesn't flip across dirty↔clean
+    transitions. Folded as `(relPath, oid)` pairs, sorted for
+    stability across OSes and walk orders.
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.
@@ -397,6 +408,43 @@ care about boundaries; it is bad practice but is there"). Prefer
 project-relative declarations; reach for workspaceFiles only for
 genuinely root-anchored files.
 
+## Clean filters (`text` / `eol` / `ident`, `core.autocrlf`)
+
+Git can store a file's blob in a different form than the bytes in your
+working tree. Under a `text`, `eol` or `ident` attribute — or with
+`core.autocrlf` set to `true`/`input` — the index holds the
+LF-normalized (or ident-collapsed) blob while your editor and your
+build see the CRLF (or expanded) file.
+
+That matters because `git status` compares **after** applying the
+filter, so such a file reports _clean_: git considers it unmodified
+even though the blob and the worktree file are different byte
+sequences. Trusting the index OID as the file's content hash would
+then let two genuinely different worktree contents fold the **same**
+cache key, and a real change would be invisible.
+
+So vx does not trust an index OID where a filter can apply. The check
+is gated in three steps, and the common case pays nothing:
+
+1. `core.autocrlf` is `true`/`input` — conversion applies to every
+   auto-detected text file with no attribute needed, so no OID is
+   trusted.
+2. Otherwise, if no attributes source exists anywhere (no in-tree
+   `.gitattributes`, no `$GIT_DIR/info/attributes`, no
+   `core.attributesFile`), no rule can name a filter and vx does
+   **no** extra work. This is the default `git init` repo.
+3. Otherwise `git check-attr` resolves the three attributes from the
+   index — without reading worktree content — and only the paths
+   actually carrying one lose their OID.
+
+`-text` (explicitly unset) and unspecified paths keep their OIDs:
+both leave the blob byte-identical to the worktree file.
+
+Losing an OID is not over-invalidation. It routes that path to the
+content hasher, which hashes the worktree bytes — the correct source
+either way. The only cost is reading the file, which is exactly what
+the gate exists to avoid paying needlessly.
+
 ## Runtime inputs and the lock (the env parallel)
 
 `cache.inputs.runtime` / `cache.inputs.workspaceRuntime` are modeled
@@ -589,9 +637,10 @@ moat.
 
 - **Hashing cost** on a clean tree is near-zero per file: git index
   OIDs come from the bulk enumeration spawn, so key derivation does no
-  file reads. Dirty/untracked files hash in-process (whole-file read,
-  behind an mtime+size memo). Narrow `inputs.files` still helps on
-  heavily dirty trees.
+  file reads. Dirty/untracked files — and any path whose OID is not
+  trustworthy (see "Clean filters") — hash in-process (whole-file
+  read, behind a `(mtime, size, ctime, ino)` memo). Narrow
+  `inputs.files` still helps on heavily dirty trees.
 - **Cache read** is one indexed `SELECT` (+ a stat of the artifact).
   Restore is a tar.zst extract, skipped entirely when the on-disk
   tree already matches. `accessed_at` bumps are batched into one
@@ -651,6 +700,28 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
 
 ### History
 
+- **SCHEMA v23 → v24 (no `CACHE_VERSION` bump)**: `file_hashes` gains
+  `ctime_ms` + `ino`. The memo keyed on `(mtime, size)` alone, and its
+  row persists across runs, so any producer that preserves mtime —
+  `tar -x`, `unzip`, `cp -p`, `rsync --times`, a `SOURCE_DATE_EPOCH`
+  generator — got the previous run's digest for genuinely different
+  bytes: a stale cache hit. `utimes` cannot suppress ctime
+  unprivileged and an atomic write-then-rename changes the inode, so
+  the two together close it (git's index keys on ctime+ino+dev for the
+  same reason); both come free from the stat already taken. The key
+  DERIVATION is unchanged — the memo simply stops answering wrongly —
+  so an affected task's key moves from a wrong value to the right one:
+  it misses once, re-runs, re-caches. Self-healing, never a wrong hit.
+  Landed alongside two other stale-hit fixes that needed no schema
+  change: the cache-miss path now marks the outputs `cleanOutputs`
+  wiped (it was the only one of four sibling call sites that dropped
+  the return, so a deleted output kept a live index OID and stayed in
+  a consumer's input set), and `skip-worktree` / `assume-unchanged`
+  entries no longer keep a trusted OID (they sit at stage 0 and
+  `git status` reports nothing for them, so a sparse-checkout path
+  that was absent from disk still counted as an input). The schema
+  gate drops + recreates on the version mismatch (pre-alpha, no
+  migration), so this costs one cold rebuild.
 - **SCHEMA v21 → v22 (no `CACHE_VERSION` bump)**: Tier-3 dashboard
   tables — `invocations` (one header row per `vx run` with command,
   git/CI/host context, tags, and run-level counts, recorded with `runs`

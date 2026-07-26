@@ -84,7 +84,11 @@ ls-files` yields tracked files PLUS untracked-but-not-ignored
    Prevents self-invalidation.
 7. **Existence check** — `git ls-files --cached` can surface a
    deleted-but-tracked path; we drop entries that don't exist on
-   disk so the hasher doesn't throw ENOENT.
+   disk so the hasher doesn't throw ENOENT. Paths carrying a trusted
+   index OID skip the probe (a clean tracked file necessarily exists),
+   which is why `skip-worktree` / `assume-unchanged` entries have
+   their OID dropped up front — git is not watching those, so their
+   OID says nothing about whether the file is on disk.
 
 The matched absolute paths are sorted alphabetically and returned.
 
