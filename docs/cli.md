@@ -48,6 +48,14 @@ specific project; bare entries follow the usual scope rules
 (default = the cwd project; broaden with `--all` / `--filter` /
 `--affected`).
 
+**Every requested name must resolve.** If any positional matches no
+project in scope, the run refuses to start — `no projects declare
+task(s): <name>` on stderr, exit 1 — even when the other names resolved
+fine. A bare name declared by only SOME projects is normal and stays
+green; the guard fires only when a name matched nowhere. So a CI job
+running `vx run lint test typecheck` goes red the day `typecheck` is
+renamed, instead of silently running two of three.
+
 (No `-V` for version; `vx --version` only — matches Turbo.)
 
 ## `vx run`
@@ -140,6 +148,12 @@ pattern that matches nothing is still an error (a probable typo), and a
 pattern that matches nothing alongside one that matched is warned about
 on stderr.
 
+**An empty selection never cancels an anchored task.** Project scope
+applies to bare names only, so `vx run app#deploy build
+--affected=origin/main` with nothing changed still runs `app#deploy`
+(vx notes `nothing affected since <ref> — running app#deploy only` on
+stderr). Only a bare-name-only invocation short-circuits to exit 0.
+
 ### Argument forwarding (`--`)
 
 Anything after `--` is forwarded (shell-quoted) to the task's
@@ -162,12 +176,12 @@ stays clean).
 | `--filter <pattern>`              | repeatable     | (none)                             | pnpm-style filter DSL (see above).                                                                                                                                                                                                                                                                                                                                               |
 | `--all`                           | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                     |
 | `--affected[=<base>]`             | optional value | off                                | Filter to projects changed since `<base>` (default `origin/HEAD`).                                                                                                                                                                                                                                                                                                               |
-| `--excludeDependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those names.                                                                                                                                                                                                                                                                       |
+| `--excludeDependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those names. An empty `=` value is a parse error (ambiguous — see below).                                                                                                                                                                                                          |
 | `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency`    | Maximum parallel tasks. `1` serializes.                                                                                                                                                                                                                                                                                                                                          |
 | `--no-cache`                      | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                    |
 | `--force`                         | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                |
 | `--cache <spec>`                  | value          | all axes on                        | Per-layer read/write control. See below.                                                                                                                                                                                                                                                                                                                                         |
-| `--cache-dir <path>`              | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too.                                                                                                                                      |
+| `--cache-dir <path>`              | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`.                                                                                    |
 | `--retry <n>`                     | value          | `0`                                | Re-run a failed task up to `n` more times. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                    |
 | `--timeout <ms>`                  | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                          |
 | `--memory <size>`                 | size           | total system RAM                   | Memory budget that per-task `exec.resources.memory` reservations pack against (`8GB`, `512MB`). Pass it in cgroup-limited containers — the default reads the HOST's RAM. Reservations are per-task config, not flags. Never affects cache keys. `--memory=<size>` form too.                                                                                                      |
@@ -190,6 +204,28 @@ Mutual exclusion:
   two need a real run.
 
 Unknown flags are a parse error (`unknown flag: --foo`).
+
+**Optional-value flags take their value with `=` only.** `--affected`,
+`--excludeDependencies`, `--dry`, `--graph`, `--summarize`, `--profile`,
+`--verify` and `--report` are all valid bare, so a following word is
+always read as a task name — `vx run --affected build` means "run
+`build`, affected scope", and there is no way to tell that apart from
+"`build` is the git base". Write `--graph=out.dot`, `--affected=origin/main`,
+`--verify=determinism`. Getting it wrong is loud, not silent: the value
+becomes a positional that matches no project, so the run refuses to
+start (see "Every requested name must resolve" above).
+
+`--excludeDependencies=` with an EMPTY value is rejected rather than
+guessed — "drop every edge" and "drop none" are both plausible readings.
+Pass bare `--excludeDependencies` for the first, omit the flag for the
+second.
+
+Value flags (`--filter`, `--concurrency`, `--cache-dir`,
+`--verify-allow`, …) accept both `--flag value` and `--flag=value`. In
+the space form, `--cache-dir` and `--verify-allow` reject a value
+starting with `-`: that is always a swallowed flag (an unquoted empty
+shell variable), never a path or task id. Use the `=` form for a
+literal leading dash.
 
 #### Cache control: `--cache`, `--no-cache`, `--force`
 

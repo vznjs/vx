@@ -57,6 +57,12 @@ export interface RunPlan {
   tasks: PlannedTask[]
   /** Present when a history provider was available and usable. */
   predicted?: PlanPrediction
+  /**
+   * Requested task specs that matched no project. Non-empty means the
+   * plan was abandoned: planning what WOULD run is meaningless when the
+   * equivalent `vx run` would refuse to start.
+   */
+  unresolvedTasks?: readonly string[]
 }
 
 export interface PlanArgs {

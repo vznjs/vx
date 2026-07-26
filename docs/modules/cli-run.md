@@ -94,7 +94,9 @@ If `--dry` or `--graph` is set:
    - `--dry=text` (default) → `formatPlanText(plan)` → stdout.
    - `--graph=''` → `formatGraphDot(plan)` → stdout.
    - `--graph=<path>` → `formatGraphDot(plan)` → `Bun.write(path, ...)`.
-3. Empty plan → exits 1 with `no projects declare task(s): …`.
+3. A requested name that matched no project (`plan.unresolvedTasks`),
+   or an empty plan → exits 1 with `no projects declare task(s): …`,
+   before any DOT / JSON is written.
 
 ## Verbose summary
 
