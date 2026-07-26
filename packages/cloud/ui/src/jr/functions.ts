@@ -531,6 +531,21 @@ export interface SlowdownRow {
   ratio: number
   /** When the slow run happened (epoch ms). */
   at: number
+  /**
+   * Whether the slow run's cache key was ALREADY seen among this task's
+   * earlier executions. Same key ⇒ identical inputs ⇒ the extra time cannot
+   * be attributed to changed work; it is the environment (machine,
+   * contention, I/O) or the task's own variance.
+   */
+  sameInputs: boolean
+  /**
+   * Display label for that distinction. `no earlier run` is the honest
+   * third state: with no prior keyed execution in the window there is no
+   * evidence either way, so the row must NOT claim the inputs changed.
+   */
+  cause: 'inputs changed' | 'same inputs — environment' | 'no earlier run'
+  /** Worst time previously observed for the SAME key (0 when key is new). */
+  priorWorst: number
 }
 
 interface SlowdownHistory {
@@ -544,6 +559,8 @@ interface SlowdownRun {
   cacheHit: boolean | null
   durationMs: number
   startedAt: number
+  /** Cache key of the run — what makes "same inputs" answerable. */
+  hash?: string | null
 }
 
 /**
@@ -551,6 +568,13 @@ interface SlowdownRun {
  * duration, with a >= 100ms absolute floor so millisecond noise never flags.
  * Cache hits are excluded on both sides — this compares real work against
  * real work. `rows` must be newest-first (the /v1/runs order).
+ *
+ * KEY-AWARE: a slow run whose cache key was already seen ran on IDENTICAL
+ * inputs, so the extra time is environment or variance — never "the code got
+ * slower". Those rows are still surfaced (a machine that got slower is worth
+ * knowing) but are labeled as such, AND must beat the worst time previously
+ * observed for that same key: a duration already seen for those exact inputs
+ * is the task's known spread, not news.
  */
 export function detectSlowdowns(
   hist: readonly SlowdownHistory[],
@@ -560,27 +584,59 @@ export function detectSlowdowns(
     hist.filter((h) => (h.p50DurationMs ?? 0) > 0).map((h) => [h.id, h.p50DurationMs ?? 0]),
   )
   const latest = new Map<string, SlowdownRun>()
+  // Earlier executed durations per (task, key) — the evidence for whether a
+  // slow run's inputs were ever run before, and how long they took then.
+  const priorByKey = new Map<string, number[]>()
+  // Tasks with at least one EARLIER keyed execution. Without one there is no
+  // evidence either way, so a new-looking key must not be read as a change.
+  const hasPriorKey = new Set<string>()
   for (const r of rows) {
     if (r.status !== 'success' || r.cacheHit === true) continue
     const id = `${r.project}#${r.task}`
-    if (!latest.has(id)) latest.set(id, r) // newest-first ⇒ first seen wins
+    if (!latest.has(id)) {
+      latest.set(id, r) // newest-first ⇒ first seen wins
+      continue
+    }
+    // Everything after the newest is "prior" for this task.
+    if (r.hash !== undefined && r.hash !== null && r.hash !== '') {
+      hasPriorKey.add(id)
+      const k = `${id}\u0000${r.hash}`
+      const list = priorByKey.get(k)
+      if (list === undefined) priorByKey.set(k, [r.durationMs])
+      else list.push(r.durationMs)
+    }
   }
   const out: SlowdownRow[] = []
   for (const [id, r] of latest) {
     const p50 = p50ById.get(id)
     if (p50 === undefined) continue
     const ratio = r.durationMs / p50
-    if (ratio >= 2 && r.durationMs - p50 >= 100) {
-      out.push({
-        id,
-        project: r.project,
-        task: r.task,
-        p50,
-        last: r.durationMs,
-        ratio,
-        at: r.startedAt,
-      })
-    }
+    if (ratio < 2 || r.durationMs - p50 < 100) continue
+    const prior =
+      r.hash !== undefined && r.hash !== null && r.hash !== ''
+        ? (priorByKey.get(`${id}\u0000${r.hash}`) ?? [])
+        : []
+    const sameInputs = prior.length > 0
+    const priorWorst = sameInputs ? Math.max(...prior) : 0
+    // Identical inputs that already took this long are the task's known
+    // spread — reporting them as a slowdown would be reporting noise.
+    if (sameInputs && r.durationMs <= priorWorst) continue
+    out.push({
+      id,
+      project: r.project,
+      task: r.task,
+      p50,
+      last: r.durationMs,
+      ratio,
+      at: r.startedAt,
+      sameInputs,
+      cause: sameInputs
+        ? 'same inputs — environment'
+        : hasPriorKey.has(id)
+          ? 'inputs changed'
+          : 'no earlier run',
+      priorWorst,
+    })
   }
   return out.sort((a, b) => b.ratio - a.ratio).slice(0, 8)
 }

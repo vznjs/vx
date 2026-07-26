@@ -324,7 +324,7 @@
         "type": "Card",
         "props": {
           "title": "Got slower",
-          "actionText": "latest executed run vs the task's own p50 \u2014 cache hits excluded",
+          "actionText": "latest executed run vs the task\u2019s own p50 \u2014 same-key rows are environment, not changed work",
           "noPad": true
         },
         "children": [
@@ -369,6 +369,11 @@
                       "map": "delta"
                     }
                   ]
+                },
+                {
+                  "key": "_cause",
+                  "label": "Cause",
+                  "kind": "faint"
                 },
                 {
                   "key": "at",
