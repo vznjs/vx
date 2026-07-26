@@ -75,6 +75,7 @@ interface PwPage {
   on(event: 'pageerror', cb: (err: unknown) => void): void
 }
 interface PwContext {
+  close(): Promise<void>
   addCookies(cookies: Record<string, unknown>[]): Promise<void>
   addInitScript(script: string): Promise<void>
   newPage(): Promise<PwPage>
@@ -329,6 +330,7 @@ describe.skipIf(!available)('visual snapshots (docs screenshots)', () => {
   let platform: TestPlatform
   let browser: PwBrowser
   let page: PwPage
+  let ctx: PwContext
   const errors: string[] = []
 
   beforeAll(async () => {
@@ -346,7 +348,7 @@ describe.skipIf(!available)('visual snapshots (docs screenshots)', () => {
     }
 
     browser = (await sharedBrowser(chromium!)) as unknown as PwBrowser
-    const ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE })
+    ctx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE })
     // Freeze the clock BEFORE any page script runs: every relative timestamp
     // ("2h ago") is then a pure function of the seed, not of wall-clock time.
     await ctx.addInitScript(`(() => {
@@ -400,6 +402,10 @@ describe.skipIf(!available)('visual snapshots (docs screenshots)', () => {
   // The browser is shared process-wide (helpers/playwright.ts) — closing it
   // here would break every later browser suite. Only the platform is ours.
   afterAll(async () => {
+    // Close OUR context, never the shared browser: an open page keeps an SSE
+    // connection to the platform, and `server.stop()` waits on it — which hung
+    // teardown until it timed out and took the shared browser down with it.
+    await ctx?.close().catch(() => {})
     await platform?.stop()
   }, 120_000)
 

@@ -459,13 +459,15 @@ async function handleAnalyticsRequestInner(
     })
   }
   if (p === '/v1/history') {
-    const args: { project?: string; task?: string; limit?: number } = {}
+    const args: { project?: string; task?: string; search?: string; limit?: number } = {}
     const limit = numParam(q.get('limit'))
     if (limit !== undefined) args.limit = limit
     const project = q.get('project')
     if (project !== null) args.project = project
     const task = q.get('task')
     if (task !== null) args.task = task
+    const search = q.get('search')
+    if (search !== null && search !== '') args.search = search
     return json({ history: await a.getHistory(ws, args) })
   }
   {

@@ -38,6 +38,7 @@ interface PwPage {
   on(event: 'pageerror', cb: (err: unknown) => void): void
 }
 interface PwContext {
+  close(): Promise<void>
   addCookies(cookies: Record<string, unknown>[]): Promise<void>
   newPage(): Promise<PwPage>
 }
@@ -168,6 +169,7 @@ describe.skipIf(!available)('dashboard perf guard (real browser, measured)', () 
   let platform: TestPlatform
   let browser: PwBrowser
   let page: PwPage
+  let ctx: PwContext
   const consoleErrors: string[] = []
 
   beforeAll(async () => {
@@ -204,7 +206,7 @@ describe.skipIf(!available)('dashboard perf guard (real browser, measured)', () 
     if (!big.ok) throw new Error(`seed big run failed: ${big.status}`)
 
     browser = (await sharedBrowser(chromium!)) as unknown as PwBrowser
-    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+    ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
     await ctx.addCookies([
       {
         name: 'vx_session',
@@ -227,6 +229,10 @@ describe.skipIf(!available)('dashboard perf guard (real browser, measured)', () 
   // The browser is shared process-wide (helpers/playwright.ts) — closing it
   // here would break every later browser suite. Only the platform is ours.
   afterAll(async () => {
+    // Close OUR context, never the shared browser: an open page keeps an SSE
+    // connection to the platform, and `server.stop()` waits on it — which hung
+    // teardown until it timed out and took the shared browser down with it.
+    await ctx?.close().catch(() => {})
     await platform?.stop()
   }, 120_000)
 

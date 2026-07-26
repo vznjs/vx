@@ -750,12 +750,13 @@ export async function getCacheStats(windowDays?: number): Promise<CacheStats> {
 }
 
 export async function getHistory(
-  args: { limit?: number; project?: string; task?: string } = {},
+  args: { limit?: number; project?: string; task?: string; search?: string } = {},
 ): Promise<TaskHistoryRow[]> {
   const params = new URLSearchParams()
   if (args.limit !== undefined) params.set('limit', String(args.limit))
   if (args.project !== undefined) params.set('project', args.project)
   if (args.task !== undefined) params.set('task', args.task)
+  if (args.search !== undefined && args.search !== '') params.set('search', args.search)
   const r = await getJson<{ history: TaskHistoryRow[] }>(`/v1/history?${params.toString()}`)
   return r.history
 }

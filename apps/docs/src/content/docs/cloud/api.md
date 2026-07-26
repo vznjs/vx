@@ -150,8 +150,8 @@ segment is a 400. Limits shown as `default/max` where the code clamps.
 | `/v1/top-tasks` | `limit` (10) | Top time-burners. |
 | `/v1/failures` | `limit` (25) | Recent failed tasks. |
 | `/v1/notifications` | `limit` (20) | Recent broken invocations (the dashboard bell's feed). |
-| `/v1/projects` | `limit` (100) | Per-project rollups. |
-| `/v1/history` | `project`, `task`, `limit` | Per-task lifetime aggregates. |
+| `/v1/projects` | `limit` (100), `search`, `project` (repeatable) | Per-project rollups plus `total`, the workspace's TRUE project count. `search` is a case-insensitive substring match on the project name; `project` is an exact-name point lookup. Both narrow server-side, so the dashboard's filter box reaches a project past the page. |
+| `/v1/history` | `project`, `task`, `search`, `limit` | Per-task lifetime aggregates. `search` is a case-insensitive substring match on `project#task`, so one box matches `orders`, `build` and `orders#build` alike — narrowed server-side, since the result is a page. |
 | `/v1/hermeticity` | `limit` (50/500) | Cross-machine output-fingerprint divergences (`--verify=fingerprint` data). |
 
 ### Explainability

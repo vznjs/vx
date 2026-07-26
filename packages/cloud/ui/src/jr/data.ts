@@ -523,6 +523,42 @@ export function windowDaysOf(p: P, fallback: number): number {
   const w = p.window
   return w !== undefined && w in WINDOW_DAYS ? WINDOW_DAYS[w]! : fallback
 }
+/** How many rows a list source asks for. The server clamps to this too, so a
+ *  full page means "there are more" rather than "that's the workspace". */
+export const LIST_PAGE = 500
+/**
+ * The `?q` the Projects/Tasks filter box writes (debounced by DataTable). It
+ * rides the SAME loader params `?window` does, so a keystroke re-keys the
+ * page's sources and the SERVER narrows — which is the only way the box can
+ * reach a row past the page on a 1000-project / 10k-task workspace.
+ */
+export function searchOf(p: P): string {
+  return (p.q ?? '').trim()
+}
+
+/**
+ * The Projects table's truncation notice. Two different truths: with no search
+ * the workspace total is the denominator ("N of M"); WITH one the server
+ * answered a match set, so the total is not its denominator and a full page is
+ * the only honest signal that matches were left out.
+ */
+export function pageNote(
+  search: string,
+  shown: number,
+  total: number,
+): { _truncated: boolean; _note: string } {
+  if (search !== '') {
+    return {
+      _truncated: shown >= LIST_PAGE,
+      _note: `showing the first ${shown} matches for “${search}” — refine the search to narrow it`,
+    }
+  }
+  return {
+    _truncated: total > shown,
+    _note: `showing ${shown} of ${total} projects — the filter box searches all of them`,
+  }
+}
+
 /** Trends respect the timeframe: a 24h window is hourly over the last day;
  *  anything longer is daily over that span. */
 export function trendArgsOf(p: P): { bucket: 'hour' | 'day'; from: number; to: number } {
@@ -539,18 +575,24 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   failures: () => getFailures(8),
   // The page PLUS the workspace's true size. A 1000-project workspace must
   // say so rather than silently presenting 500 rows as the whole truth.
-  projectsAll: async () => {
-    const { projects, total } = await listProjectsPage({ limit: 500 })
+  projectsAll: async (p) => {
+    const search = searchOf(p)
+    const { projects, total } = await listProjectsPage({
+      limit: LIST_PAGE,
+      ...(search !== '' ? { search } : {}),
+    })
     return {
       rows: projects,
       total,
       shown: projects.length,
-      _truncated: total > projects.length,
-      _note: `showing ${projects.length} of ${total} projects — search to reach the rest`,
+      ...pageNote(search, projects.length, total),
     }
   },
   trends: (p) => getRunTrends(trendArgsOf(p)).then((r) => r.points),
-  history: () => getHistory({ limit: 500 }),
+  history: (p) => {
+    const search = searchOf(p)
+    return getHistory({ limit: LIST_PAGE, ...(search !== '' ? { search } : {}) })
+  },
   // "Got slower" (dev-scenarios S5): each task's LATEST executed run vs its
   // own p50 — composed client-side from two reads the hub already knows.
   slowdowns: async () => {

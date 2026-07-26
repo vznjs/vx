@@ -91,6 +91,12 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let browser: { newContext(o: unknown): Promise<any>; close(): Promise<void> }
   let page: Pg
+  let ctx: {
+    close(): Promise<void>
+    newPage(): Promise<unknown>
+    addCookies(c: unknown[]): Promise<void>
+    addInitScript(s: string): Promise<void>
+  }
   const errors: string[] = []
 
   const ingest = async (
@@ -115,11 +121,29 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
    * A hash-only `goto` is a same-document navigation, so module state (and the
    * memoized workspace list) survives — reload to model a genuinely fresh tab.
    */
-  const freshLoad = async () => {
-    await page.goto(`${platform.origin}/#/runs`)
+  const freshLoad = async (route = '/#/runs') => {
+    await page.goto(`${platform.origin}${route}`)
+    // `goto` between two hash URLs is a same-document navigation, so the app
+    // keeps running and its URL-mirror effect can rewrite the address before
+    // the reload — which would then load a URL this test never asked for.
+    // Stamp the exact target in, THEN reload, so the fresh document boots
+    // from precisely the route under test.
+    await page.evaluate(
+      `history.replaceState(null, '', ${JSON.stringify(platform.origin + route)})`,
+    )
     await page.reload()
     await page.waitForLoadState('networkidle').catch(() => {})
     await page.waitForTimeout(1500)
+  }
+
+  const url = async (): Promise<string> => (await page.evaluate(`location.href`)) as string
+
+  const wsIds = async (): Promise<Record<string, string>> => {
+    const r = await fetch(`${platform.origin}/v1/workspaces`, {
+      headers: { cookie: `vx_session=${platform.cookie}` },
+    })
+    const body = (await r.json()) as { workspaces: { id: string; name: string }[] }
+    return Object.fromEntries(body.workspaces.map((w) => [w.name, w.id]))
   }
 
   const contextText = async (): Promise<string> =>
@@ -133,7 +157,7 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
   beforeAll(async () => {
     platform = await bootPlatform({ bucket: 'ws-context', uiHtmlPath: DIST })
     browser = (await sharedBrowser(chromium!)) as never
-    const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+    ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } })
     await ctx.addCookies([
       {
         name: 'vx_session',
@@ -156,6 +180,10 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
   // The browser is shared process-wide (helpers/playwright.ts) — closing it
   // here would break every later browser suite. Only the platform is ours.
   afterAll(async () => {
+    // Close OUR context, never the shared browser: an open page keeps an SSE
+    // connection to the platform, and `server.stop()` waits on it — which hung
+    // teardown until it timed out and took the shared browser down with it.
+    await ctx?.close().catch(() => {})
     await platform?.stop()
   }, 120_000)
 
@@ -170,18 +198,18 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
   it('a SINGLE workspace is still named — the scope is never implicit', async () => {
     await ingest('client-alpha', 'acme/alpha', 'run-alpha-1', 'checkout', NOW - 7200_000)
     await freshLoad()
-    const ctx = await contextText()
-    expect(ctx).toContain('acme/alpha')
-    expect(ctx).not.toContain('No workspace yet')
+    const sidebar = await contextText()
+    expect(sidebar).toContain('acme/alpha')
+    expect(sidebar).not.toContain('No workspace yet')
   })
 
   it('a second workspace appears with a count, and reads scope to one of them', async () => {
     await ingest('client-beta', 'acme/beta', 'run-beta-1', 'billing', NOW - 3600_000)
     await freshLoad()
-    const ctx = await contextText()
+    const sidebar = await contextText()
     // Most-recently-active wins when nothing is pinned — mirroring the server.
-    expect(ctx).toContain('acme/beta')
-    expect(ctx).toContain('2 workspaces')
+    expect(sidebar).toContain('acme/beta')
+    expect(sidebar).toContain('2 workspaces')
     const body = await bodyText()
     expect(body).toContain('run-beta')
     expect(body).not.toContain('run-alph')
@@ -205,6 +233,54 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
     const body = await bodyText()
     expect(body).toContain('run-alph')
     expect(body).not.toContain('run-bet')
+  })
+
+  // The context must ride the URL, or a shared link opens against the
+  // RECIPIENT's workspace and silently shows them different data.
+  it('mirrors the selected workspace into the URL', async () => {
+    await freshLoad()
+    const ids = await wsIds()
+    expect(await url()).toContain(`ws=${ids['acme/alpha']}`)
+  })
+
+  it('a link carrying ?ws= wins over the local preference', async () => {
+    const ids = await wsIds()
+    // Persisted selection is alpha (previous test); the link names beta.
+    await freshLoad(`/#/runs?ws=${ids['acme/beta']}`)
+    expect(await contextText()).toContain('acme/beta')
+    const body = await bodyText()
+    expect(body).toContain('run-beta')
+    expect(body).not.toContain('run-alph')
+  })
+
+  it('keeps the scope across an internal link that knows nothing about it', async () => {
+    const ids = await wsIds()
+    await page.evaluate(`(() => {
+      const a = [...document.querySelectorAll('aside a')].find((x) => x.textContent.includes('Insights'))
+      a.click()
+    })()`)
+    await page.waitForTimeout(1200)
+    const after = await url()
+    expect(after).toContain('#/insights')
+    expect(after).toContain(`ws=${ids['acme/beta']}`)
+  })
+
+  it('adds ?ws= without eating the params a view already owns', async () => {
+    const ids = await wsIds()
+    await freshLoad('/#/insights?window=7d')
+    const after = await url()
+    expect(after).toContain('window=7d')
+    expect(after).toContain(`ws=${ids['acme/beta']}`)
+  })
+
+  it('says so when a link names a workspace this account cannot see', async () => {
+    // A well-formed uuid that belongs to no workspace here.
+    await freshLoad('/#/runs?ws=00000000-0000-4000-8000-00000000dead')
+    const body = await bodyText()
+    expect(body).toContain("can't see")
+    // ...and it fell back rather than rendering an empty page.
+    expect(await contextText()).toContain('acme/')
+    expect(await url()).not.toContain('dead')
   })
 
   it('renders all of that with no console errors', () => {

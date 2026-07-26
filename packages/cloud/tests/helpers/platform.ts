@@ -82,7 +82,15 @@ export async function bootPlatform(
     untrustedToken,
     s3,
     stop: async () => {
-      await server.stop()
+      // `server.stop()` force-closes the HTTP listener but then awaits
+      // `db.close()`, which waits on whatever the pool is still doing — and
+      // boot fires `ensureIndexes` (CREATE INDEX CONCURRENTLY per partition)
+      // in the BACKGROUND. On the shared ephemeral cluster, by the time the
+      // late suites run that build is slow enough to stall teardown past the
+      // hook timeout, which strands the shared browser and fails every browser
+      // suite after it. The connections die with the process; a test does not
+      // need to wait for an index it never queries.
+      await Promise.race([server.stop(), Bun.sleep(5_000)])
       s3.stop()
       await rm(dataDir, { recursive: true, force: true })
     },

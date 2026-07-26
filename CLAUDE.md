@@ -208,6 +208,67 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-26**: **The workspace context rides the URL — a shared link carries
+  its scope** (closing the caveat the sidebar-context wave named). Stored only
+  in localStorage, `/runs/:id` opened against the RECIPIENT's workspace and
+  silently showed them different data than the link meant. **Design — the URL
+  is a MIRROR plus an INBOUND override, NOT a threaded param:** the signal
+  stays the source of truth for fetching (`scopedPathFor` already appends
+  `?ws=`, `getConnectionKey` already includes it), and ONE effect in the Shell
+  adopts `?ws=` on load and replace-navigates to re-add it after any navigation
+  that dropped it. Threading the param through every `<A href>`, `navigate()`
+  and `_href` data string would have touched a dozen sites and GUARANTEED a
+  missed one; this way no link site knows the workspace exists. `replace`
+  throughout, so the mirror adds no history entry and Back still works, and
+  every other param survives (`?window=`, `?task=`, the Runs facets — losing
+  those while fixing a different deep link would be a regression, not a
+  tradeoff; pinned). **The honest failure state is the point:** a link naming a
+  workspace the account cannot see falls back AND says so in a banner, because
+  falling back silently shows data the link did not mean — the exact bug the
+  mechanism exists to prevent — just relocated. **A self-pin the first cut
+  introduced and the tests caught:** the mirror wrote the default into the URL,
+  the adopt branch then read it back and PERSISTED it, so merely visiting
+  turned "let the server pick" into a choice the user never made; the adopt
+  branch now compares against the EFFECTIVE scope, not the stored one, so only
+  a genuine inbound override pins. Pinned by 5 browser cases (mirror, link
+  beats local pref, scope survives an internal link that knows nothing about
+  it, existing params preserved, denied workspace falls back + warns).
+  **Test-infra, two real fixes:** (1) the browser suites now close their own
+  CONTEXT in teardown — with a shared browser, an open page keeps an SSE
+  connection alive and `server.stop()` waits on it; (2) `bootPlatform.stop()`
+  bounds the wait, because `server.stop()` force-closes the listener then
+  awaits `db.close()`, which waits on the BACKGROUND `ensureIndexes` (CREATE
+  INDEX CONCURRENTLY per partition) — slow enough on the shared cluster by the
+  late suites to blow the hook timeout, strand the shared browser and fail
+  every browser suite after it. A test needn't wait for an index it never
+  queries. Cloud suite **580/0 in 100s**. Also: the suite's own `freshLoad`
+  raced the mirror (a hash-only `goto` doesn't reload, so the app rewrote the
+  address before `reload()` read it) — it now stamps the exact target with
+  `history.replaceState` first. NO schema/wire/CACHE bump (UI + test infra).
+
+- **2026-07-26**: **The table filter boxes search the WHOLE workspace, not the
+  fetched page** (the last open piece of the 1000-project / 10k-task scale
+  directive; the Projects table's "showing N of M" Callout was the honest
+  placeholder this replaces). Every list read answers a PAGE, so a box that
+  filters the fetched rows can never reach a tail project or task — only the
+  server can. New shared `searchFilter(sql, term, 'project' | 'pair')` emits a
+  parameterized `ILIKE %term%` (or nothing), threaded through `getHistory`'s
+  three scans + `mixedOutcomeKeyCounts` and reused by `listProjects` (whose
+  hand-rolled clause it replaces, so the two can't drift). `pair` matches
+  `project || '#' || task`, so ONE box serves "orders", "build" and
+  "orders#build" alike. **Client:** `DataTable` gains an opt-in `searchParam` —
+  the box debounces 250ms into a URL param (`replace`, so typing never buries
+  the previous page in history), seeds itself FROM the URL (a shared or
+  reloaded link restores the search and the box agrees with the rows the server
+  narrowed), and adopts an externally-changed param (back/forward) — but never
+  while a keystroke is still owed to the URL, or typing fights itself. **Local
+  filtering deliberately stays layered on top**: these tables join CATALOG rows
+  (never-run projects/tasks) the server never saw, so dropping it would leave
+  those unfilterable. Tables without `searchParam` are untouched. Projects
+  dropped `dir` from `filterFrom` so local and server narrow on the same field.
+  Gates: fmt/lint 0, cloud 575/0, core 1286/0, ui 91/0, visual 10/10 (no pixel
+  change). NO schema/wire/CACHE bump (read-side + an additive query param).
+
 - **2026-07-26**: **The WORKSPACE is the context, so it lives where context
   lives — sidebar top, always stated** (owner: "Vx cloud should support
   multiple workspaces. Now it shows just one. I should be able select context
