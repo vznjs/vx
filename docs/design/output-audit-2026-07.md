@@ -5,11 +5,18 @@ Contract: `docs/cli.md` §"Output flows", §`--output-logs`, §"Run artifacts".
 Method: real CLI (`bun src/bin.ts run …`) against temp fixtures under `/tmp/oa`.
 READ-ONLY on `src/` — nothing fixed.
 
-Status: COMPLETE. F1, F2, F5, F6 and F7 are FIXED (see the 2026-07-27 decision-log
-entry). F4, F8, F9 and F10 are recorded here and still open — they are a separate
-wave. The refuted list below is the durable half: it exists so the next audit does
-not re-tread this ground, and it CORRECTS a standing residual (the corruption axis
-is terminal WIDTH, not height).
+Status: COMPLETE and CLOSED. All nine findings are fixed across two waves (see the
+2026-07-27 decision-log entries). The refuted list below is the durable half: it
+exists so the next audit does not re-tread this ground, and it CORRECTS a standing
+residual (the corruption axis is terminal WIDTH, not height).
+
+Two findings were sharper than written here, and the fixes record why. F10 has
+THREE unbounded accumulators, not two — `fragment` is the smallest, but bounding
+the other two makes it the dominant one, so the `\r`-vs-`\n` framing in both this
+report and the older residual is a distraction. F4 is fixed only for
+`--output-logs none`, the one mode whose contract guarantees the output is
+discarded; the warm-cache-hit half is NOT the logger's cost and remains open,
+measured and explained in the decision log.
 
 ---
 

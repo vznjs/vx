@@ -197,6 +197,7 @@ stays clean).
 | `--profile[=<path>]`              | optional value | off (`profile.json` when set)      | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                            |
 | `--tag <k=v>`                     | repeatable     | (none)                             | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                              |
 | `--report[=markdown]`             | optional value | off                                | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                         |
+| `--report-file <path>`            | value          | off                                | After the run, APPEND the same markdown report to `<path>`. Use this for `$GITHUB_STEP_SUMMARY` — redirecting stdout captures the whole run log too. `--report-file=<path>` form too.                                                                                                                                                                                            |
 
 Mutual exclusion:
 
@@ -222,11 +223,12 @@ Pass bare `--excludeDependencies` for the first, omit the flag for the
 second.
 
 Value flags (`--filter`, `--concurrency`, `--output-logs`,
-`--verbosity`, `--cache-dir`, `--verify-allow`, …) accept both
-`--flag value` and `--flag=value`. In the space form, `--cache-dir` and
-`--verify-allow` reject a value starting with `-`: that is always a
-swallowed flag (an unquoted empty shell variable), never a path or task
-id. Use the `=` form for a literal leading dash.
+`--verbosity`, `--cache-dir`, `--verify-allow`, `--report-file`, …)
+accept both `--flag value` and `--flag=value`. In the space form,
+`--cache-dir`, `--report-file` and `--verify-allow` reject a value
+starting with `-`: that is always a swallowed flag (an unquoted empty
+shell variable), never a path or task id. Use the `=` form for a literal
+leading dash.
 
 **Numeric flags take a plain decimal integer.** `--concurrency`,
 `--timeout`, `--retry` and `--verbosity` reject hex (`0x10`), exponent
@@ -463,15 +465,37 @@ status word) the task axis.
 | `⦿`   | running (worker row)      | running        |
 | `▸`   | persistent (dev server)   | running        |
 
-Per-task visibility by outcome:
+Per-task visibility by outcome. Each cell is the SHAPE of what prints —
+`silent`, `one-liner`, `frame`, or a conditional; the table is pinned to
+the renderer by `tests/output-doc-drift.test.ts`, so the vocabulary is
+fixed:
 
-| Outcome                | focused (requested task)    | focused (dependency)      | broad                     | CI / `full`                  |
-| ---------------------- | --------------------------- | ------------------------- | ------------------------- | ---------------------------- |
-| executed               | raw output, streamed live   | silent                    | grid one-liner            | frame                        |
-| restored-local/-remote | replayed stdout, streamed   | silent                    | silent                    | frame, or one-liner if quiet |
-| up-to-date             | one-liner (nothing to show) | silent                    | silent                    | one-liner                    |
-| failed                 | raw output, streamed live   | one-liner + frame replays | one-liner + frame replays | frame                        |
-| skipped                | frame                       | silent                    | silent                    | frame                        |
+| Outcome                | focused (requested task) | focused (dependency)      | broad                     | CI / `full`                  |
+| ---------------------- | ------------------------ | ------------------------- | ------------------------- | ---------------------------- |
+| executed               | frame                    | silent                    | one-liner                 | frame                        |
+| restored-local/-remote | frame                    | silent                    | silent                    | frame, or one-liner if quiet |
+| up-to-date             | frame                    | silent                    | silent                    | frame, or one-liner if quiet |
+| failed                 | frame                    | one-liner + frame replays | one-liner + frame replays | frame                        |
+| skipped                | one-liner                | silent                    | silent                    | one-liner                    |
+
+What the shapes mean in each column:
+
+- **focused, requested task.** The frame is LIVE when it is the only
+  requested task: `┌─` prints at task start, the command's output (or a
+  hit's replayed stdout) streams raw between the brackets, `└─` closes
+  it. With several requested tasks the same frame is buffered and
+  emitted atomically (see below). Every outcome that ran or was cached
+  gets one — including an `up-to-date` hit, whose frame carries the
+  `$ cmd` line so a requested task looks the same whether it ran or not.
+- **skipped** is the exception: it never started, so no frame was opened,
+  and it produced nothing a frame could hold. The one-liner says
+  everything.
+- **`frame, or one-liner if quiet`** — a cache hit with stored stdout is
+  worth a frame (the output is the point); a hit with nothing to replay
+  compresses to one line, which is what keeps a 2000-task warm run
+  readable.
+- **`one-liner + frame replays`** — the `◼ … failed` line prints
+  immediately; the full frame is held and replayed at run end.
 
 When a dependency fails mid-run, the stream gets ONE permanent
 `◼ … failed miss <id>` line and the run continues; **all full failure
@@ -501,10 +525,11 @@ between its open (`┌─`) and close (`└─`) lines — with two requested
 tasks running concurrently their frames would interleave into garbage.
 So when more than one task is requested (`vx run build test`), each
 requested task instead **buffers** its output and renders as a single
-atomic block at completion (success/failure/cache-hit-with-replay get
-a full frame, up-to-date/skipped get a one-liner). The blocks are
-blank-line separated and never interleave. A single `vx run test`
-keeps the live-stream experience unchanged.
+atomic block at completion. The shapes are the ones in the table above —
+anything that ran or was cached gets a full frame, `up-to-date`
+included; only `skipped` is a one-liner. The blocks are blank-line
+separated and never interleave. A single `vx run test` keeps the
+live-stream experience unchanged.
 
 On an interactive terminal (TTY stdout, not CI) a status region
 tracks the run live. Top to bottom:
@@ -767,12 +792,30 @@ distinction is the point:
 
 Only `markdown` is supported today (`json` is reserved; a bad value is a
 parse error). Built purely from the run's outcomes after it returns — it
-adds zero cost when the flag is absent. The intended use is CI step
-summaries:
+adds zero cost when both flags are absent.
+
+### `--report-file <path>`
+
+Writes the same markdown report to a file instead of (or as well as)
+stdout, and is the form to use for a CI step summary:
 
 ```sh
-vx run ci --report=markdown >> "$GITHUB_STEP_SUMMARY"
+vx run ci --report-file="$GITHUB_STEP_SUMMARY"
 ```
+
+**Do not redirect stdout for this.** The report itself is machine-clean,
+but stdout is not vx's alone — the status logger writes frames, meter
+bars and `::group::` workflow commands to the same stream, so
+`--report=markdown >> "$GITHUB_STEP_SUMMARY"` puts the entire run log
+into the step summary above the table.
+
+The report is **appended**, never truncated: `$GITHUB_STEP_SUMMARY` is a
+shared, append-only file that other steps in the same job also write to,
+so overwriting it would silently discard their content. Passing both
+flags writes the report to stdout AND appends it to the file. A write
+failure is reported (`vx: failed to write report to …`) but does not
+change the exit code — the run already happened, the same contract
+`--summarize` and `--profile` follow.
 
 ### `--tag <k=v>`
 

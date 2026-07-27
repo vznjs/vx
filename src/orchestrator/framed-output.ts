@@ -60,6 +60,14 @@ export interface TaskBlockBody {
   stdout?: string
   /** stderr chunks. Renders under `├─ stderr`. */
   stderr?: string
+  /**
+   * Characters the capture dropped from the head of each stream. Non-zero
+   * only for a task whose output is bounded (a persistent one — nothing
+   * else can outrun its own exit), and rendered so a capped log can never
+   * read as a complete one.
+   */
+  droppedStdout?: number
+  droppedStderr?: number
 }
 
 export function formatTaskBlock(
@@ -98,17 +106,8 @@ export function formatTaskBlock(
     lines.push('', corner(`$ ${node.config.exec?.command ?? ''}`), '')
   }
 
-  if (stdout.trim().length > 0) {
-    lines.push(section('STDOUT', SUCCESS), '')
-    pushBodyLines(lines, stdout)
-    lines.push('')
-  }
-
-  if (stderr.trim().length > 0) {
-    lines.push(section('STDERR', ERROR), '')
-    pushBodyLines(lines, stderr)
-    lines.push('')
-  }
+  pushStreamSection(lines, stdout, 'STDOUT', SUCCESS, body.droppedStdout ?? 0, colors)
+  pushStreamSection(lines, stderr, 'STDERR', ERROR, body.droppedStderr ?? 0, colors)
 
   // Sandbox violations get a dedicated section inside the frame so the
   // user sees them in context with the failing task, not as loose
@@ -122,6 +121,28 @@ export function formatTaskBlock(
 
   lines.push(`${corner('└─')} ${idPainted} ${corner('──')}${formatBlockFooter(outcome, colors)}`)
   return lines.join('\n') + '\n'
+}
+
+/**
+ * One `├─ <LABEL>` section of captured output, with the head-dropped notice
+ * when the capture was bounded. Shared by the task frame and the persistent
+ * tail block so the two renderings of the same bytes cannot drift.
+ */
+function pushStreamSection(
+  lines: string[],
+  text: string,
+  title: string,
+  color: string,
+  lost: number,
+  colors: ColorSupport,
+): void {
+  if (text.trim().length === 0) return
+  lines.push(sectionLine(title, color, colors), '')
+  if (lost > 0) {
+    lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
+  }
+  pushBodyLines(lines, text)
+  lines.push('')
 }
 
 /**
@@ -411,17 +432,8 @@ export function formatPersistentTailBlock(
   const stderr = body.stderr ?? ''
   if (stdout.trim().length === 0 && stderr.trim().length === 0) return ''
   const lines: string[] = [formatFrameOpen(node, colors)]
-  const pushStream = (text: string, title: string, color: string, lost: number): void => {
-    if (text.trim().length === 0) return
-    lines.push(sectionLine(title, color, colors), '')
-    if (lost > 0) {
-      lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
-    }
-    pushBodyLines(lines, text)
-    lines.push('')
-  }
-  pushStream(stdout, 'STDOUT (since ready)', SUCCESS, dropped.stdout ?? 0)
-  pushStream(stderr, 'STDERR (since ready)', ERROR, dropped.stderr ?? 0)
+  pushStreamSection(lines, stdout, 'STDOUT (since ready)', SUCCESS, dropped.stdout ?? 0, colors)
+  pushStreamSection(lines, stderr, 'STDERR (since ready)', ERROR, dropped.stderr ?? 0, colors)
   lines.push(formatFrameClose(node, outcome, colors))
   return lines.join('\n') + '\n'
 }

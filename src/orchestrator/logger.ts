@@ -18,6 +18,7 @@ import {
 } from './status-line.js'
 import { formatDuration, formatSummarySection, type RunContext } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
+import { appendTail, createTail, resetTail, tailText, type Tail } from '../util/index.js'
 
 export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
@@ -82,42 +83,6 @@ export interface OutputView {
 /** CI=0 / CI=false count as "not CI" — several vendors use CI=true. */
 function truthyEnv(v: string | undefined): boolean {
   return v !== undefined && v !== '' && v !== '0' && v !== 'false'
-}
-
-/**
- * Per-stream cap on the output a persistent task writes AFTER its outcome
- * lands. A dev server or watcher runs for the rest of the run and can log
- * without bound, so the tail keeps only the most recent slice — the part
- * that explains whatever just failed against it.
- */
-const PERSISTENT_TAIL_CHARS = 64 * 1024
-
-/** Bounded head-evicting tail for one stream of one still-running task. */
-interface Tail {
-  chunks: string[]
-  chars: number
-  dropped: number
-}
-
-function appendTail(t: Tail, chunk: string): void {
-  if (chunk.length === 0) return
-  t.chunks.push(chunk)
-  t.chars += chunk.length
-  // Evict WHOLE chunks from the head — no concatenation until the flush
-  // joins once, so a chatty server costs one array push per chunk.
-  while (t.chars > PERSISTENT_TAIL_CHARS && t.chunks.length > 1) {
-    const gone = t.chunks.shift()!
-    t.chars -= gone.length
-    t.dropped += gone.length
-  }
-  // A single chunk over the cap is the one place we copy.
-  if (t.chars > PERSISTENT_TAIL_CHARS) {
-    const only = t.chunks[0]!
-    const keep = only.slice(only.length - PERSISTENT_TAIL_CHARS)
-    t.dropped += only.length - keep.length
-    t.chunks[0] = keep
-    t.chars = keep.length
-  }
 }
 
 // ── GitHub Actions workflow-command escaping ────────────────────────
@@ -225,6 +190,23 @@ export function defaultLogger(
     return arr.length === 1 ? arr[0]! : arr.join('')
   }
 
+  // `none` is the ONE mode whose contract guarantees the output is
+  // discarded — "no per-task output at all" (docs/cli.md) — so its chunks
+  // are dropped on arrival instead of accumulated and thrown away at
+  // `taskComplete`. Buffering output the mode promises never to print made
+  // `--output-logs none`, the obvious mitigation for a chatty task, cost
+  // exactly as much memory as printing it: 400 MB of task stdout drove the
+  // vx process to 852 MiB RSS, unbounded and linear, and a warm CACHE HIT
+  // paid it too (the stored stdout is replayed through this same path).
+  //
+  // Deliberately ONLY `none`, and the boundary is the point: `full`,
+  // `broad`, `focused` and `errors-only` all PRINT this output — for
+  // `errors-only` a failed task's log is precisely what the user asked to
+  // see — and silently truncating someone's build log is a worse failure
+  // than the memory it costs. So those modes stay unbounded by decision,
+  // not by oversight.
+  const discardsOutput = view.mode === 'none'
+
   // One per run, and only in GHA mode: the fence token must be something the
   // fenced task output cannot print.
   const ghaToken = view.gha === true ? crypto.randomUUID() : ''
@@ -283,17 +265,26 @@ export function defaultLogger(
   const deferredFailures: string[] = []
   const pinnedPersistent: string[] = []
   let flushedFailures = false
-  // A persistent task's outcome lands at READY while its child keeps
-  // writing. Those chunks used to land back in the per-task buffers that
-  // `taskComplete` had already drained, so nothing ever emitted them and
-  // nothing ever freed them: invisible in every view but a live-streaming
-  // focused one, and retained for the rest of the run. Post-ready chunks
-  // route here instead — bounded, and flushed as one trailing block at
-  // runEnd. Registration is unconditional (the bound is a memory
-  // invariant, not a display choice); only the flush is view-gated.
+  // A persistent task (dev server, watcher, daemon) is the one task kind
+  // nothing bounds: a one-shot command's output ends when it exits, but a
+  // server writes for as long as the run lasts. So its chunks route into a
+  // bounded tail for its WHOLE life, not the unbounded per-task buffers —
+  // registered at `taskStart` and drained at `taskComplete` for the frame,
+  // then reset to keep capturing what it writes after its outcome landed
+  // (which arrives at READY, while the child keeps running) and flushed as
+  // one trailing block at runEnd.
+  //
+  // Registering only at READY was the defect: a `readyWhen` that never
+  // matches never reaches `taskComplete`, so the 64 KiB cap never engaged
+  // and its output accumulated in the ordinary per-task buffer instead —
+  // ~100 MiB/s, with no `exec.timeout` needed to reach it.
+  //
+  // `outcome` is absent until the task completes. Registration is
+  // unconditional (the bound is a memory invariant, not a display choice);
+  // only the flush is view-gated.
   const persistentTails = new Map<
     string,
-    { node: TaskNode; outcome: TaskOutcome; out: Tail; err: Tail }
+    { node: TaskNode; outcome?: TaskOutcome; out: Tail; err: Tail }
   >()
   let flushedPersistent = false
 
@@ -414,6 +405,11 @@ export function defaultLogger(
         emitLine(formatFrameOpen(node, colors))
         return
       }
+      // Bound a persistent task's output from its FIRST chunk. Waiting for
+      // its outcome would leave a never-ready one uncapped forever.
+      if (node.config.exec?.persistent !== undefined && !persistentTails.has(node.id)) {
+        persistentTails.set(node.id, { node, out: createTail(), err: createTail() })
+      }
       const slot: WorkerSlot = { id: node.id, startedMs: Date.now() }
       const free = slots.indexOf(null)
       if (free >= 0) slots[free] = slot
@@ -434,11 +430,15 @@ export function defaultLogger(
         flushedPersistent = true
         if (view.mode !== 'none' && view.mode !== 'errors-only') {
           for (const t of persistentTails.values()) {
+            // No outcome means the task never completed — it is still
+            // pre-ready, so there is no "since ready" window to render and
+            // its buffered output belongs to the frame it never got.
+            if (t.outcome === undefined) continue
             emitBlock(
               formatPersistentTailBlock(
                 t.node,
                 t.outcome,
-                { stdout: t.out.chunks.join(''), stderr: t.err.chunks.join('') },
+                { stdout: tailText(t.out), stderr: tailText(t.err) },
                 { stdout: t.out.dropped, stderr: t.err.dropped },
                 colors,
               ),
@@ -446,10 +446,8 @@ export function defaultLogger(
           }
         }
         for (const t of persistentTails.values()) {
-          t.out.chunks.length = 0
-          t.err.chunks.length = 0
-          t.out.chars = 0
-          t.err.chars = 0
+          resetTail(t.out)
+          resetTail(t.err)
         }
       }
       // Failures end the log: every deferred frame replays here, right
@@ -462,6 +460,7 @@ export function defaultLogger(
       }
     },
     taskStdout(node, chunk) {
+      if (discardsOutput) return
       if (streamsLive(node)) {
         streamed.add(node.id)
         streamedSinceBlock = true
@@ -477,6 +476,7 @@ export function defaultLogger(
       pushChunk(stdoutBuffers, node.id, chunk)
     },
     taskStderr(node, chunk) {
+      if (discardsOutput) return
       if (streamsLive(node)) {
         streamed.add(node.id)
         streamedSinceBlock = true
@@ -492,8 +492,20 @@ export function defaultLogger(
       pushChunk(stderrBuffers, node.id, chunk)
     },
     taskComplete(node, outcome) {
-      const stdout = takeChunks(stdoutBuffers, node.id)
-      const stderr = takeChunks(stderrBuffers, node.id)
+      // A persistent task buffered into its bounded tail rather than the
+      // per-task buffers (see taskStart), so its frame is drained from
+      // there — carrying how much the cap dropped, since a truncated log
+      // that reads as complete is worse than one that says what it lost.
+      const preReady = persistentTails.get(node.id)
+      const stdout = preReady ? tailText(preReady.out) : takeChunks(stdoutBuffers, node.id)
+      const stderr = preReady ? tailText(preReady.err) : takeChunks(stderrBuffers, node.id)
+      const dropped =
+        preReady && (preReady.out.dropped > 0 || preReady.err.dropped > 0)
+          ? { droppedStdout: preReady.out.dropped, droppedStderr: preReady.err.dropped }
+          : {}
+      // The pre-ready window closed either way: a failed task is over, and
+      // a ready one starts a fresh post-ready tail below.
+      persistentTails.delete(node.id)
       // An aborted task (child killed by a shutdown signal) reverts
       // to pending: free its worker slot, but never count or render it
       // — the run is tearing down and it has no honest outcome.
@@ -521,12 +533,7 @@ export function defaultLogger(
           // node already owns the terminal, so buffering it would emit
           // its output twice.
           if (!streamsLive(node)) {
-            persistentTails.set(node.id, {
-              node,
-              outcome,
-              out: { chunks: [], chars: 0, dropped: 0 },
-              err: { chunks: [], chars: 0, dropped: 0 },
-            })
+            persistentTails.set(node.id, { node, outcome, out: createTail(), err: createTail() })
           }
         }
         // Free the task's slot; the longest-waiting queued task
@@ -569,7 +576,9 @@ export function defaultLogger(
         case 'errors-only':
           if (outcome.status !== 'failed') return
           emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
-          deferredFailures.push(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+          deferredFailures.push(
+            formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
+          )
           return
         case 'broad':
           // News only: executed work gets a one-liner, failures get
@@ -579,7 +588,9 @@ export function defaultLogger(
           if (outcome.status === 'failed') {
             // ✗ marker now; the full frame replays at runEnd.
             emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
-            deferredFailures.push(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+            deferredFailures.push(
+              formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
+            )
           } else if (outcome.status === 'success') {
             emitLine(formatTaskExecutedLine(node, outcome, colors))
           }
@@ -612,19 +623,23 @@ export function defaultLogger(
             // ONE atomic block from the buffered output.
             if (outcome.status === 'failed') {
               emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
-              deferredFailures.push(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+              deferredFailures.push(
+                formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
+              )
               return
             }
             // forceCommand: a requested task's frame shows `$ cmd`
             // whether it ran or was cached — same frame every run.
-            emitBlock(formatTaskBlock(node, outcome, { stdout, stderr }, colors, true))
+            emitBlock(formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors, true))
             return
           }
           // Dependency-pulled nodes: silent on success; failures get
           // the ✗ marker now and their frame replayed at runEnd.
           if (outcome.status === 'failed') {
             emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
-            deferredFailures.push(formatTaskBlock(node, outcome, { stdout, stderr }, colors))
+            deferredFailures.push(
+              formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
+            )
           }
           return
         case 'full': {
@@ -642,7 +657,7 @@ export function defaultLogger(
             emitLine(formatTaskSkippedLine(node, colors))
             return
           }
-          const block = formatTaskBlock(node, outcome, { stdout, stderr }, colors)
+          const block = formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors)
           if (block.length === 0) return
           if (view.gha) {
             // The block is the task's own output — fenced, so a task that

@@ -101,16 +101,26 @@ describe('vx watch rejects flags it cannot honor', () => {
 
   it('rejects --report (a watch loop has no single run to report)', async () => {
     expect(await run(['watch', 'build', '--report=markdown'])).toBe(1)
-    expect(stderr).toContain('--report / --verbosity are not supported in watch mode')
+    expect(stderr).toContain('are not supported in watch mode')
+    expect(stderr).toContain('--report')
+  })
+
+  // Same reasoning as --report, plus a sharper one: a watch loop would append
+  // one report per cycle, growing the file without bound.
+  it('rejects --report-file', async () => {
+    expect(await run(['watch', 'build', '--report-file=out.md'])).toBe(1)
+    expect(stderr).toContain('--report-file')
   })
 
   it('rejects --verbosity above 0', async () => {
     expect(await run(['watch', 'build', '--verbosity', '2'])).toBe(1)
-    expect(stderr).toContain('--report / --verbosity are not supported in watch mode')
+    expect(stderr).toContain('are not supported in watch mode')
+    expect(stderr).toContain('--verbosity')
   })
 
-  it('still parses both flags for vx run', () => {
+  it('still parses all three flags for vx run', () => {
     expect(parseRunArgs(['build', '--report=markdown']).report).toBe('markdown')
+    expect(parseRunArgs(['build', '--report-file=out.md']).reportFile).toBe('out.md')
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
   })
 })

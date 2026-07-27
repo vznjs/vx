@@ -437,6 +437,85 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stdout).toContain('| Task | Status | Cache | Duration |')
   })
 
+  // The documented step-summary recipe was `--report=markdown >> $FILE`, but
+  // the status logger writes to stdout too, so the redirect captured frames,
+  // meter bars and `::group::` commands above the table. `--report-file`
+  // writes the report and nothing else.
+  it('--report-file writes ONLY the report — no frames, no meters', async () => {
+    const path = await import('node:path')
+    const { readFile } = await import('node:fs/promises')
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const target = path.join(workspaceRoot, 'summary.md')
+    const code = await run([
+      'run',
+      '--all',
+      'hello',
+      '--output-logs',
+      'full',
+      `--report-file=${target}`,
+    ])
+    expect(code).toBe(0)
+    const written = await readFile(target, 'utf8')
+    expect(written).toContain('| Task | Status | Cache | Duration |')
+    expect(written).toMatch(/\| one#hello \| success \| miss \|/)
+    // The whole point: everything the logger printed to stdout stays out.
+    expect(written).not.toContain('┌─')
+    expect(written).not.toContain('▰')
+    expect(written).not.toContain('$ echo hello-cli')
+    expect(written.startsWith('## vx run')).toBe(true)
+    // …and stdout did carry that noise, so the assertion above is not
+    // passing because the run printed nothing.
+    expect(stdout).toContain('┌─')
+    // No `--report`, so the table is NOT also on stdout.
+    expect(stdout).not.toContain('| Task | Status | Cache | Duration |')
+  })
+
+  it('--report-file appends, so a shared step summary is never truncated', async () => {
+    const path = await import('node:path')
+    const { readFile, writeFile } = await import('node:fs/promises')
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const target = path.join(workspaceRoot, 'summary.md')
+    await writeFile(target, 'FROM-AN-EARLIER-STEP\n')
+    expect(await run(['run', '--all', 'hello', `--report-file=${target}`])).toBe(0)
+    expect(await run(['run', '--all', 'hello', `--report-file=${target}`])).toBe(0)
+    const written = await readFile(target, 'utf8')
+    // Another step's content survives — GitHub documents the summary file as
+    // append-only and several steps write to it.
+    expect(written).toContain('FROM-AN-EARLIER-STEP')
+    expect(written.match(/^## vx run/gm)?.length).toBe(2)
+  })
+
+  it('--report and --report-file together write both sinks', async () => {
+    const path = await import('node:path')
+    const { readFile } = await import('node:fs/promises')
+    let stdout = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    const target = path.join(workspaceRoot, 'summary.md')
+    const code = await run([
+      'run',
+      '--all',
+      'hello',
+      '--report=markdown',
+      `--report-file=${target}`,
+    ])
+    expect(code).toBe(0)
+    expect(stdout).toContain('| Task | Status | Cache | Duration |')
+    expect(await readFile(target, 'utf8')).toContain('| Task | Status | Cache | Duration |')
+  })
+
   it('no --report flag prints no markdown table', async () => {
     let stdout = ''
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
@@ -1241,6 +1320,22 @@ describe('parseRunArgs', () => {
 
   it('defaults --report to undefined', () => {
     expect(parseRunArgs(['build']).report).toBeUndefined()
+  })
+
+  it('parses --report-file in both forms, and never as --report', () => {
+    expect(parseRunArgs(['build', '--report-file=out.md']).reportFile).toBe('out.md')
+    expect(parseRunArgs(['build', '--report-file', 'out.md']).reportFile).toBe('out.md')
+    // `--report-file` must not be swallowed by the `--report` branch — the
+    // report would then go to stdout and the path become a task name.
+    expect(parseRunArgs(['build', '--report-file=out.md']).report).toBeUndefined()
+    expect(parseRunArgs(['build', '--report-file=out.md']).tasks).toEqual(['build'])
+    expect(parseRunArgs(['build']).reportFile).toBeUndefined()
+  })
+
+  it('rejects an empty or flag-shaped --report-file value', () => {
+    expect(parseRunArgs(['build', '--report-file=']).error).toMatch(/--report-file requires a path/)
+    expect(parseRunArgs(['build', '--report-file']).error).toMatch(/--report-file requires a path/)
+    expect(parseRunArgs(['build', '--report-file', '--all']).error).toMatch(/got flag: --all/)
   })
 
   it('rejects a non-markdown --report value (json reserved)', () => {
