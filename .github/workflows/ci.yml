@@ -76,8 +76,19 @@ jobs:
       # alongside lint+test starves the runner. vx prepends each
       # project's node_modules/.bin to PATH per task, so oxlint / oxfmt
       # resolve from a raw shell.
+      #
+      # `--report-file` appends the per-task result table to the job summary,
+      # so a red run says WHICH task failed on the PR page instead of only in
+      # the log. Dogfooding it here is deliberate: the flag exists because the
+      # documented `--report=markdown >> "$GITHUB_STEP_SUMMARY"` recipe wrote
+      # the entire run log into the summary, and nothing caught that for
+      # months because this repo never ran its own recipe.
+      #
+      # No `if: always()` needed: vx writes the report itself before exiting,
+      # so a FAILING run — the case this is for — still lands its table, and
+      # the step's exit code still gates the job.
       - name: vx run ci
-        run: bun src/bin.ts run ci
+        run: bun src/bin.ts run ci --report-file="$GITHUB_STEP_SUMMARY"
 
   cloud:
     name: vx-cloud tests (postgres)

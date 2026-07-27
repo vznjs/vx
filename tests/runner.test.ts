@@ -64,6 +64,11 @@ describe('runCommand', () => {
     // post-exit drain bound the reader would block until the sleep ends (~10s,
     // and forever for a real server); with it, runCommand returns just after
     // the child exits + the short grace.
+    //
+    // DELIBERATELY leaks an orphaned sleeper: a backgrounded grandchild that
+    // outlives its parent IS the subject here, so it cannot be `exec`-wrapped
+    // away without deleting the test. The 10s duration must stay above the 3s
+    // assertion below.
     const t0 = Date.now()
     const result = await runCommand({
       command: 'sleep 10 & echo up',
@@ -153,6 +158,11 @@ describe('signalExitCode', () => {
   })
 })
 
+// The trailing sleeper is `exec`'d in every fixture below: without it the
+// tracked child is `sh`, and killing `sh` leaves the sleeper orphaned at
+// PPID 1 for its full duration, stealing the next suite's machine. `exec`
+// replaces the shell so the pid we kill IS the sleeper. Output printed
+// before the exec still reaches the pipe (the fd survives exec).
 describe('runPersistent', () => {
   let cwd: string
 
@@ -168,7 +178,7 @@ describe('runPersistent', () => {
     // Prompt-style banner: no newline after the marker, child stays
     // alive. Line-by-line-only matching would hang here forever.
     const spawn = runPersistent({
-      command: `printf 'Listening on :3000'; sleep 30`,
+      command: `printf 'Listening on :3000'; exec sleep 30`,
       cwd,
       env: { PATH: process.env.PATH ?? '' },
       readyWhen: 'Listening on',
@@ -192,7 +202,7 @@ describe('runPersistent', () => {
     // flowing to the live callbacks WITHOUT accreting into vx's heap.
     const live: string[] = []
     const spawn = runPersistent({
-      command: `printf 'server ready\\n'; sleep 0.2; printf 'later chatter\\n'; sleep 30`,
+      command: `printf 'server ready\\n'; sleep 0.2; printf 'later chatter\\n'; exec sleep 30`,
       cwd,
       env: { PATH: process.env.PATH ?? '' },
       readyWhen: 'server ready',
@@ -215,7 +225,7 @@ describe('runPersistent', () => {
 
   it('matches a marker split across chunks within one line', async () => {
     const spawn = runPersistent({
-      command: `printf 'Listen'; sleep 0.15; printf 'ing on :3000'; sleep 30`,
+      command: `printf 'Listen'; sleep 0.15; printf 'ing on :3000'; exec sleep 30`,
       cwd,
       env: { PATH: process.env.PATH ?? '' },
       readyWhen: 'Listening on',
@@ -234,7 +244,7 @@ describe('runPersistent', () => {
 
   it('still matches a marker on a complete newline-terminated line', async () => {
     const spawn = runPersistent({
-      command: `echo 'Local: http://localhost:5173'; sleep 30`,
+      command: `echo 'Local: http://localhost:5173'; exec sleep 30`,
       cwd,
       env: { PATH: process.env.PATH ?? '' },
       readyWhen: 'Local:',

@@ -208,6 +208,60 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-27**: **Test fixtures stopped orphaning sleeper grandchildren — and
+  the CPU-contention story I told about them is REFUTED by measurement.** Two
+  results, and the second matters more than the first. **(1) The sweep.** A
+  fixture command like `echo ready && sleep 30` runs under `sh -c`; `execWrap`
+  exec-prefixes only a SINGLE external command, so a compound one keeps the
+  shell, and a task SIGTERM kills `sh` while the sleeper survives at PPID 1 for
+  its full duration. Fixed by prefixing `exec` where the sleeper is last (13
+  sites across 6 files) — the form `signal-handling.test.ts` already used, which
+  leaked 0 and is the control proving the approach. Distinct PIDs created per
+  suite run **21 → 4**; orphan-SECONDS **536 → 75**. The point-in-time `ps` count
+  that produced the earlier "~9" UNDERCOUNTS, because 30 s sleepers expire during
+  a 120 s suite. Two shapes are left deliberately and now say so in-code:
+  `runner.test.ts:69` (a backgrounded grandchild holding the pipe IS the subject)
+  and `task-timeout.test.ts:352` (the shell must survive to run its trap; `&
+wait` is load-bearing per the 2026-07-19 entry, and it guards a HIGH-severity
+  cache-corruption bug). **(2) A test that was PROVABLY vacuous**, which is the
+  real find: `persistent.test.ts`'s "persistent subprocess is actually SIGTERMd
+  before run() returns" asserted only `outcomes.length === 1`. Disabling BOTH the
+  teardown SIGTERM and the SIGKILL escalation in `src/` left the old file
+  **14 pass / 0 fail with 10 orphans still alive**; the new file fails exactly
+  that test. Same class for the `pid.txt` assertions — without `exec`, `pid.txt`
+  holds a pid whose `comm` is `sh`, so it dies, the assertion passes, and a
+  sleeper is still running. `$$` before `exec` IS the exec'd pid (exec keeps the
+  pid, replaces the image), and `SIG_IGN` survives `exec` while handlers reset to
+  SIG*DFL — so the two `trap` tests keep their meaning and now exercise the real
+  sleeper. Every touched test was re-checked for non-vacuity by breaking the
+  behaviour it guards. **THE CORRECTION, and it is mine:** the entry below
+  attributed `scale-graph`'s 24.1 s perf-guard red to these orphans "stealing
+  CPU". **That is wrong.** A process blocked in `nanosleep` is not runnable and
+  consumes nothing. Measured twice, independently, with 18 idle orphans:
+  **9.18/9.15 s clean vs 8.80/8.78 s dirty** — no effect, and the dirty runs were
+  marginally FASTER. I asserted a mechanism that sounded obvious without
+  measuring it, in the same breath as praising the split-method diagnosis that
+  DID hold. So: **the 24.1 s red is UNEXPLAINED.** The better suspect is
+  `output-memory.test.ts`, which spawns children allocating hundreds of MB and
+  flooding at ~100 MiB/s and sorts before `scale-graph` — plausible via memory
+  pressure, NOT proven, and explicitly not to be written up as cause until it is.
+  The sweep is still worth having: leaked processes are a genuine diagnostic
+  confounder and bad hygiene, and it exposed the vacuous test. It is simply not
+  the perf fix I claimed. **Also corrected:** the candidate list I briefed was
+  incomplete — `run-record-completeness.test.ts` (3 leaks) was absent and had been
+  \_shortened* to `sleep 2` by an earlier wave while still orphaning, so `exec`
+  removes it properly and its header comment documenting the old workaround is
+  updated; `aborted-outcome.test.ts` leaks 0; and `signal-handling.test.ts`, which
+  I listed as a candidate, was already clean. Bare `sleep 30` sites needed nothing
+  (`execWrap` handles single commands) — and dash does NOT implicitly exec the
+  last command of a list, verified rather than assumed. Bundled: this repo's own
+  CI gate now runs `--report-file="$GITHUB_STEP_SUMMARY"`, dogfooding the flag
+  whose absence is exactly why F9 survived undetected — a red run now names the
+  failing task on the PR page. No `if: always()`: vx writes the report before
+  exiting, verified end-to-end on a failing run. Tests + workflow only, `src/`
+  untouched (`git diff src/` = 0 lines). Gates: fmt/lint 0, core **1548/0** across
+  THREE consecutive runs with no cleanup between — which is the actual claim.
+
 - **2026-07-27**: **The output layer's unbounded buffers are bounded, and the
   documented CI recipe finally produces the artifact it promises** (the output
   audit's second and final wave — F4, F10, F9, F8; with this
@@ -273,9 +327,13 @@ serving none of them is probably org-analytics scope creep.
   = sandbox). **A full-suite red that was NOT this wave, diagnosed rather than
   written off:** `scale-graph`'s perf guard failed at 24.1 s against its 6 s bound.
   Split per the documented method — the new memory suite alone passes, memory-then-
-  scale passes, `scale-graph` alone passes 2/0 — and `ps` gave it away: **9 orphaned
-  `sleep 30`/`sleep 60` processes at PPID 1** left by a PREVIOUS suite run, stealing
-  CPU. Clearing them first, the full suite is 1548/0. This is the 2026-07-27
+  scale passes, `scale-graph` alone passes 2/0 — and `ps` showed **9 orphaned
+  `sleep 30`/`sleep 60` processes at PPID 1** left by a PREVIOUS suite run.
+  Clearing them first, the full suite is 1548/0. **[CORRECTED the same day —
+  the orphans were NOT the cause. A process blocked in `nanosleep` is not
+  runnable and steals no CPU; measured twice, independently, at 18 orphans:
+  9.18/9.15 s clean vs 8.80/8.78 s dirty. The red is UNEXPLAINED; see the
+  entry above.]** This is the 2026-07-27
   grandchild-orphan hazard recurring from PRE-EXISTING fixtures (`runner`,
   `persistent`, `persistent-ready-timeout`, `task-timeout`, `signal-handling`,
   `cache-hygiene` all use compound `… && sleep 30`, so SIGTERM kills the shell and

@@ -345,6 +345,15 @@ describe('task timeout — classification + escalation', () => {
       // killed mid-work. Before the fix this classified `success` and cached the
       // PARTIAL output (`out.txt` = "PARTIAL", COMPLETE never written), replayed
       // as a green cache-hit forever. It must be `failed` and never cached.
+      //
+      // DELIBERATELY not `exec`-wrapped, unlike the other sleepers in this
+      // suite: the shell must SURVIVE to run its trap and reach the `echo
+      // COMPLETE` line, and `sleep 30 & wait` is load-bearing — dash interrupts
+      // `wait` on a trapped signal so the child exits 0 PROMPTLY, whereas a
+      // foreground sleep defers the trap and the child rides the SIGKILL
+      // escalation to 137, masking the very misclassification under test.
+      // Cost: this fixture orphans its backgrounded sleeper by construction
+      // (twice — the run below happens twice). That is the scenario, not a bug.
       const dir = await addProject(
         fixture.root,
         'a',
@@ -385,10 +394,14 @@ describe('task timeout — classification + escalation', () => {
       // nothing; without SIGKILL escalation `await proc.exited` waits out the
       // full `sleep 10` (or forever for a truly-wedged child). The escalation
       // bounds the run to timeout + grace (~0.25s + 2s), well under 10s.
+      // The sleeper is `exec`'d so the process that ignores SIGTERM IS the one
+      // the escalation must SIGKILL (SIG_IGN survives exec) — as a plain
+      // compound only the shell ignored it, and the SIGKILL that reaped the
+      // shell orphaned the sleeper.
       await addProject(
         fixture.root,
         'a',
-        `export default { tasks: { run: { exec: { command: "trap '' TERM; sleep 10", timeout: 250 } } } }`,
+        `export default { tasks: { run: { exec: { command: "trap '' TERM; exec sleep 10", timeout: 250 } } } }`,
       )
       const started = Date.now()
       const r = await run({

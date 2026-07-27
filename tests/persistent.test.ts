@@ -2,6 +2,13 @@
 // stand-ins for dev servers: `sleep N` (no output → tests
 // "ready immediately"), and a shell loop that prints `READY` once,
 // then sleeps (tests `readyWhen` regex matching).
+//
+// A trailing sleeper in a COMPOUND command is always `exec`'d. vx only
+// exec-wraps a single external command (`execWrap`), so `echo READY; sleep 30`
+// leaves `sh` as the tracked child: the end-of-run SIGTERM kills the shell and
+// orphans the sleeper at PPID 1 for its full 30s, where it outlives this suite
+// and perturbs whatever runs next. `exec` makes the sleeper the tracked child,
+// so it takes the signal and dies with the task.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -37,6 +44,24 @@ const silentLogger = (fixture: Fixture): Logger => {
       if (body.trim().length > 0) fixture.log.push(body.trimEnd())
     },
   }
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function waitForDead(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (!isAlive(pid)) return true
+    await Bun.sleep(50)
+  }
+  return !isAlive(pid)
 }
 
 async function makeWorkspace(): Promise<Fixture> {
@@ -132,7 +157,7 @@ describe('exec.persistent (e2e)', () => {
             tasks: {
               dev: {
                 exec: {
-                  command: 'sleep 0.2; echo "Local: http://localhost:5173"; sleep 30',
+                  command: 'sleep 0.2; echo "Local: http://localhost:5173"; exec sleep 30',
                   persistent: { readyWhen: 'Local:' },
                 },
               },
@@ -227,14 +252,21 @@ describe('exec.persistent (e2e)', () => {
     'persistent subprocess is actually SIGTERMd before run() returns',
     async () => {
       // Spawn a sleeper and capture its PID via stdout. After run()
-      // returns, /proc/<pid> should be gone (or signal a kill).
+      // returns, that pid must be gone.
+      //
+      // `exec` is load-bearing for the ASSERTION, not just for hygiene:
+      // `$$` is the shell's pid, and exec replaces the shell image while
+      // KEEPING that pid — so pid.txt/stdout names the sleeper itself.
+      // Without it we would record a shell that dies on SIGTERM while the
+      // orphaned sleeper lives on, and the check below would pass while
+      // proving nothing.
       await addProject(fixture.root, 'app', {
         config: `
           export default {
             tasks: {
               dev: {
                 exec: {
-                  command: 'echo PID=$$; sleep 60',
+                  command: 'echo PID=$$; exec sleep 60',
                   persistent: { readyWhen: 'PID=' },
                 },
               },
@@ -249,12 +281,11 @@ describe('exec.persistent (e2e)', () => {
         log: silentLogger(fixture),
       })
       expect(r.outcomes[0]?.status).toBe('success')
-      // We don't pin the exact PID — that depends on the shell. We
-      // just verify the run() returned quickly without blocking, and
-      // no hung subprocesses are reported by the registry indirectly:
-      // any leak would show as a hung test (the SIGTERM is the only
-      // way the sleep ends before the 10s test timeout).
       expect(r.outcomes).toHaveLength(1)
+
+      const pid = Number(/PID=(\d+)/.exec(fixture.log.join('\n'))?.[1])
+      expect(Number.isInteger(pid)).toBe(true)
+      expect(await waitForDead(pid, 3_000)).toBe(true)
     },
     TIMEOUT,
   )
@@ -268,7 +299,7 @@ describe('exec.persistent (e2e)', () => {
             tasks: {
               dev: {
                 exec: {
-                  command: 'echo READY; sleep 30',
+                  command: 'echo READY; exec sleep 30',
                   persistent: { readyWhen: 'READY' },
                 },
               },
@@ -303,13 +334,16 @@ describe('exec.persistent (e2e)', () => {
       // `dev` traps + ignores SIGTERM, so the end-of-run graceful shutdown can't
       // reap it — without the bounded SIGKILL escalation, run() would block on
       // its exit until `sleep 30` ends (~30s), hanging a NORMAL completion.
+      // The sleeper is `exec`'d so the SLEEPER itself is what ignores SIGTERM
+      // (SIG_IGN survives exec) rather than a wrapping shell whose death would
+      // orphan it — the escalation is exercised against the real process.
       await addProject(fixture.root, 'app', {
         config: `
           export default {
             tasks: {
               dev: {
                 exec: {
-                  command: "trap '' TERM; echo READY; sleep 30",
+                  command: "trap '' TERM; echo READY; exec sleep 30",
                   persistent: { readyWhen: 'READY' },
                 },
               },
@@ -352,7 +386,7 @@ describe('exec.persistent (e2e)', () => {
             tasks: {
               dev: {
                 exec: {
-                  command: 'echo hello-dev; sleep 0.05; echo READY; sleep 30',
+                  command: 'echo hello-dev; sleep 0.05; echo READY; exec sleep 30',
                   persistent: { readyWhen: 'READY' },
                 },
               },
@@ -385,7 +419,7 @@ describe('exec.persistent (e2e)', () => {
             tasks: {
               dev: {
                 exec: {
-                  command: 'sleep 0.2; echo READY; sleep 30',
+                  command: 'sleep 0.2; echo READY; exec sleep 30',
                   persistent: { readyWhen: 'READY' },
                 },
               },
