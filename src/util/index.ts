@@ -7,4 +7,12 @@ export { clampInt, parseDecimalInt } from './num.js'
 export { relPosix } from './paths.js'
 export { settleWithin, teardownTimeoutMs } from './settle.js'
 export { parseSize } from './size.js'
+export {
+  appendTail,
+  createTail,
+  PERSISTENT_TAIL_CHARS,
+  resetTail,
+  tailText,
+  type Tail,
+} from './tail.js'
 export { ulid } from './ulid.js'

@@ -208,6 +208,85 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-27**: **The output layer's unbounded buffers are bounded, and the
+  documented CI recipe finally produces the artifact it promises** (the output
+  audit's second and final wave — F4, F10, F9, F8; with this
+  `docs/design/output-audit-2026-07.md` is fully closed). **F4: per-task output
+  was buffered UNBOUNDED even in modes contractually guaranteed to discard it** —
+  measured `--output-logs none`: 402 MB of task stdout → **878 MiB** RSS. Fixed
+  where the contract GUARANTEES discard (`none` alone: 878 → **597 MiB**);
+  `full`/`broad`/`focused`/`errors-only` stay unbounded ON PURPOSE, because they
+  print the output and for `errors-only` a failing task's log is exactly what the
+  user needs — silently truncating a build log is a worse failure than the
+  memory. Stated at the site as a decision, with a test pinning `full` unbounded
+  so a future "just bound everything" has to argue with it. Net effect worth
+  naming: `--output-logs none` becomes an actual mitigation for a chatty task,
+  which it was not. **F10 had THREE unbounded accumulators, not the two my brief
+  named, and the developer was right to keep going.** It bounded the pre-ready
+  `runner.ts` buffer and moved the logger's existing 64 KiB cap to register at
+  `taskStart` instead of at ready (the reason it never engaged for a task that
+  never becomes ready) — and the `\r` shape STILL grew 285 → 464 MiB, because
+  `fragment` never trims without newlines. **Both my correction and the audit
+  were right that `\n` grows faster, so `fragment` is the SMALLER term — but
+  smaller is not bounded, and once the other two were capped it became the
+  dominant one.** Fixing only what I named would have left F10 reachable by a
+  one-character change to a task's command. All three bounded: both shapes now
+  ~88 MiB and FLAT over 6 s (from 651 and 488 MiB). A measured surprise:
+  `--output-logs none` made it WORSE (713 → 1075 MiB) because dropping chunks
+  removes the back-pressure. `Tail`/`appendTail` moved to `src/util/tail.ts`
+  because `exec` cannot import `orchestrator` (the `util/settle.ts` precedent) —
+  one copy having a bound while the other did not IS this defect. **F9: the
+  documented `>> "$GITHUB_STEP_SUMMARY"` recipe wrote the whole run log** —
+  `::group::` commands, frames and three 50-cell meter bars above the real table
+  — because the logger shares stdout with the report, while `cli/run.ts` claimed
+  it "goes to stdout (NOT the status logger) so it stays machine-clean". New
+  `--report-file=<path>`, consistent with `--summarize`/`--profile` (both already
+  take paths; `--report` taking only a format was the outlier); `--report`
+  unchanged, `vx watch` rejects it, the false comment corrected in three places.
+  **A call I did not specify and the developer got right: it APPENDS.**
+  `$GITHUB_STEP_SUMMARY` is documented append-only and shared with other steps, so
+  truncating would silently destroy their content and make replacing `>>` a
+  behaviour change rather than a drop-in — it therefore diverges from
+  `--summarize`/`--profile` deliberately. Verified myself: a prior step's content
+  survives, two runs both append, zero log noise. **F8: `docs/cli.md`'s visibility
+  table was wrong in four cells** (frame↔one-liner for `skipped` and `up-to-date`),
+  now fixed AND PINNED (`tests/output-doc-drift.test.ts`) — the guard drives the
+  REAL `defaultLogger` per (column, outcome) and compares all 20 cells in one
+  assertion, so it asserts behaviour and only fails on genuine drift; the cost is
+  that the cells became a controlled vocabulary, which is the right trade against
+  mapping free prose onto a classifier. The guard caught a bug in ITSELF (its
+  harness called `taskStart` for a skipped task, which the scheduler never does —
+  precisely why a skip opens no frame). **Recorded, not fixed:** the warm
+  CACHE-HIT half of F4 is unchanged (293 → 292 MiB) and the logger was never the
+  cost — `Cache.get`→`readEntry` does `SELECT … stdout …` and materialises the
+  whole string into `CacheEntry.stdout` before the logger sees it; avoiding that
+  needs the view threaded into the cache layer or a lazy getter on a public façade
+  type. Also `runner.ts`'s `streamToString` still accumulates `full += chunk` for
+  `RunResult.stdout`, whose sole consumer is `cache.save` — not contractually
+  discarded, so out of scope. And `PersistentSpawn.bufferedStdout()`/
+  `bufferedStderr()` have **ZERO production consumers** (only `tests/runner.test.ts`
+  calls them); bounded rather than deleted, flagged for a later sweep. Two existing
+  `cli-arg-hygiene` assertions were repinned, justified: they pinned the
+  watch-rejection prose VERBATIM, so a third flag joining the message broke them —
+  over-specified, and they now assert flag and reason separately. NO
+  CACHE*VERSION/SCHEMA/wire bump. Gates: fmt/lint 0, core **1548/0** (+17; 21 skip
+  = sandbox). **A full-suite red that was NOT this wave, diagnosed rather than
+  written off:** `scale-graph`'s perf guard failed at 24.1 s against its 6 s bound.
+  Split per the documented method — the new memory suite alone passes, memory-then-
+  scale passes, `scale-graph` alone passes 2/0 — and `ps` gave it away: **9 orphaned
+  `sleep 30`/`sleep 60` processes at PPID 1** left by a PREVIOUS suite run, stealing
+  CPU. Clearing them first, the full suite is 1548/0. This is the 2026-07-27
+  grandchild-orphan hazard recurring from PRE-EXISTING fixtures (`runner`,
+  `persistent`, `persistent-ready-timeout`, `task-timeout`, `signal-handling`,
+  `cache-hygiene` all use compound `… && sleep 30`, so SIGTERM kills the shell and
+  orphans the sleeper). **KNOWN-OPEN:** every core suite run leaks ~9 such orphans,
+  so a \_subsequent* local run's perf guard can fail for reasons that have nothing
+  to do with the diff. CI is unaffected (fresh runner each time). The fix is
+  per-fixture (`exec sleep` so the sleeper replaces the shell and takes the signal,
+  or a shorter sleep where duration is incidental) and needs care — some tests
+  assert the child is still alive, so a blanket shortening would make them vacuous.
+  Its own wave.
+
 - **2026-07-27**: **The terminal output layer stopped corrupting narrow terminals
   and stopped telling three different stories about one run** (the first hostile
   audit of the LAST core surface never adversarially reviewed — the one every

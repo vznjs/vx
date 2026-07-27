@@ -180,8 +180,11 @@ see. GitHub renders it as markdown right on the job page:
 
 Two ways to get it:
 
-- **Core, one flag.** `vx run ci --report=markdown >> "$GITHUB_STEP_SUMMARY"`
+- **Core, one flag.** `vx run ci --report-file="$GITHUB_STEP_SUMMARY"`
   writes the table from the run's own outcomes — no plugin, no server.
+  Use `--report-file`, not `--report=markdown >> …`: the report is
+  machine-clean but stdout is shared with vx's own run output, so a
+  redirect puts the whole log in the summary above the table.
 - **Automatic.** The first-party CI telemetry plugin appends the summary on
   every `vx run` inside Actions (and adds PR checks, below) with **no
   server connected** — the summary is formatted locally from the

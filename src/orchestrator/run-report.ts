@@ -1,9 +1,13 @@
-// Markdown run report (`vx run --report=markdown`). A moon-style table —
-// one row per task plus a header line of totals — written verbatim to
-// stdout after a run so CI can append it to a step summary
-// (`vx run ci --report=markdown >> $GITHUB_STEP_SUMMARY`). Pure: the
-// run's finished outcomes in, a markdown string out. No ANSI, no live
-// region — keep it machine-clean and diffable.
+// Markdown run report (`vx run --report=markdown` / `--report-file=<path>`).
+// A moon-style table — one row per task plus a header line of totals —
+// rendered after a run so CI can put it in a step summary
+// (`vx run ci --report-file="$GITHUB_STEP_SUMMARY"`). Pure: the run's
+// finished outcomes in, a markdown string out. No ANSI, no live region —
+// keep it machine-clean and diffable.
+//
+// Machine-clean is a property of this STRING, not of stdout: the status
+// logger shares that stream, so redirecting it captures the whole run log
+// too. `--report-file` is the sink that carries the property end to end.
 
 import type { RunResult } from './protocol.js'
 import type { OutcomeView } from './events.js'

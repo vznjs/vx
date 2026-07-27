@@ -1,4 +1,5 @@
 import readline from 'node:readline/promises'
+import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   affectedProjects,
@@ -102,6 +103,12 @@ export interface RunArgs {
   tags: Record<string, string>
   /** `--report[=markdown]`. Undefined when the flag wasn't passed. */
   report: 'markdown' | undefined
+  /**
+   * `--report-file=<path>`. Undefined when the flag wasn't passed. Writes
+   * the same markdown as `--report`, but to a file — because redirecting
+   * vx's stdout captures the whole run log, not just the report.
+   */
+  reportFile: string | undefined
   error?: string
 }
 
@@ -129,6 +136,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     affected: undefined,
     tags: {},
     report: undefined,
+    reportFile: undefined,
   }
 
   const sepIdx = args.indexOf('--')
@@ -323,6 +331,16 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       const eq = raw.indexOf('=')
       if (eq <= 0) return { ...out, error: `invalid --tag (expected k=v): ${raw}` }
       out.tags[raw.slice(0, eq)] = raw.slice(eq + 1)
+    } else if (a === '--report-file' || a?.startsWith('--report-file=')) {
+      const v = a === '--report-file' ? before[++i] : a.slice('--report-file='.length)
+      if (v === undefined || v === '') return { ...out, error: `--report-file requires a path` }
+      // Same reasoning as --cache-dir: a path is an arbitrary string, so
+      // nothing about its shape rejects a swallowed flag. A path starting
+      // with `-` needs the `=` form.
+      if (a === '--report-file' && v.startsWith('-')) {
+        return { ...out, error: `--report-file requires a path, got flag: ${v}` }
+      }
+      out.reportFile = v
     } else if (a === '--report') {
       out.report = 'markdown'
     } else if (a?.startsWith('--report=')) {
@@ -577,11 +595,32 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   )
   const result = await backend.run(request)
   if (parsed.verbosity > 0) printSummary(result)
-  // Report generation is post-run, gated on the flag — zero cost when
-  // absent. Goes to stdout (NOT the status logger) so it stays
-  // machine-clean for `vx run ci --report=markdown >> $GITHUB_STEP_SUMMARY`.
-  if (parsed.report === 'markdown') {
-    process.stdout.write(formatRunReportMarkdown(result))
+  // Report generation is post-run, gated on the flags — zero cost when
+  // both are absent. Rendered once, however many sinks asked for it.
+  if (parsed.report === 'markdown' || parsed.reportFile !== undefined) {
+    const md = formatRunReportMarkdown(result)
+    // `--report` writes stdout. The report ITSELF is machine-clean, but
+    // stdout is not vx's alone — the status logger writes there too, so
+    // `--report=markdown >> "$GITHUB_STEP_SUMMARY"` captures every frame,
+    // meter bar and `::group::` command above the table. `--report-file`
+    // is the redirect-free form.
+    if (parsed.report === 'markdown') process.stdout.write(md)
+    if (parsed.reportFile !== undefined) {
+      const target = path.resolve(cwd, parsed.reportFile)
+      try {
+        // APPEND, not overwrite: the flag exists for `$GITHUB_STEP_SUMMARY`,
+        // which GitHub documents as append-only and which other steps in the
+        // same job also write to. Truncating it would silently destroy their
+        // content, and would make replacing the documented `>>` recipe a
+        // behaviour change rather than a drop-in.
+        await appendFile(target, md)
+      } catch (err) {
+        // Same contract as --summarize / --profile: the run already
+        // happened, so a write failure is reported, not fatal.
+        const message = err instanceof Error ? err.message : String(err)
+        process.stderr.write(`vx: failed to write report to ${target}: ${message}\n`)
+      }
+    }
   }
   return result.ok ? 0 : 1
 }

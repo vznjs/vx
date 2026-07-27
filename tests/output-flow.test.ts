@@ -1039,3 +1039,88 @@ describe('persistent post-ready output', () => {
     expect(out.text()).not.toContain('since ready')
   })
 })
+
+// The bound above engaged only at READY, which is the one moment a task with
+// a never-matching `readyWhen` never reaches — so its PRE-ready output landed
+// in the ordinary unbounded per-task buffer and grew for the whole run
+// (~100 MiB/s measured through the real CLI). A persistent task is the one
+// kind nothing bounds, so it buffers into the capped tail for its whole life,
+// from `taskStart`.
+describe('persistent pre-ready output is bounded too', () => {
+  const mkPersistent = (id: string): TaskNode => {
+    const n = mkNode(id)
+    ;(n as { config: unknown }).config = {
+      exec: { command: 'sh ./server.sh', persistent: { readyWhen: 'NEVER-MATCHES' } },
+    }
+    return n
+  }
+
+  it('a never-ready flood is capped, and the frame says what it dropped', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkPersistent('app#server')
+    log.taskStart?.(n)
+    // 1 MiB written before the readiness deadline gives up.
+    for (let i = 0; i < 1024; i++) log.taskStdout(n, 'x'.repeat(1024))
+    log.taskStdout(n, '\nNEWEST-PRE-READY-LINE\n')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1 }))
+    log.runEnd?.()
+
+    const text = out.text()
+    // The newest output explains why it never became ready, so it survives…
+    expect(text).toContain('NEWEST-PRE-READY-LINE')
+    // …in the failure frame, not a "since ready" block — it never was.
+    expect(text).toContain('┌─ app#server')
+    expect(text).not.toContain('since ready')
+    // …and the frame stays far under the megabyte that was written, while
+    // saying so, so a capped log can never read as a complete one.
+    expect(text.length).toBeLessThan(256 * 1024)
+    expect(text).toMatch(/… \d+ earlier characters dropped/)
+  })
+
+  it('ordinary-sized pre-ready output is untouched and unannotated', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkPersistent('app#server')
+    log.taskStart?.(n)
+    log.taskStdout(n, 'listening on :3000\n')
+    log.taskStderr(n, 'warn: no TLS\n')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1 }))
+    const text = out.text()
+    expect(text).toContain('listening on :3000')
+    expect(text).toContain('warn: no TLS')
+    expect(text).not.toContain('characters dropped')
+  })
+
+  it('a ready server still starts a fresh post-ready tail after its frame', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkPersistent('app#server')
+    log.taskStart?.(n)
+    log.taskStdout(n, 'PRE-READY-LINE\n')
+    log.taskComplete(n, mkOutcome(n, 'success'))
+    log.taskStdout(n, 'POST-READY-LINE\n')
+    log.runEnd?.()
+    const text = out.text()
+    // Each phase renders once, in its own block — the pre-ready window is
+    // drained into the completion frame, not replayed by the tail.
+    expect(text.match(/PRE-READY-LINE/g)?.length).toBe(1)
+    expect(text.match(/POST-READY-LINE/g)?.length).toBe(1)
+    expect(text.indexOf('PRE-READY-LINE')).toBeLessThan(text.indexOf('POST-READY-LINE'))
+    expect(text).toContain('STDOUT (since ready)')
+  })
+
+  it('a NON-persistent task is deliberately not capped', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkNode('app#build')
+    log.taskStart?.(n)
+    for (let i = 0; i < 1024; i++) log.taskStdout(n, 'y'.repeat(1024))
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1 }))
+    const text = out.text()
+    // A one-shot command's output ends when it exits, so it is bounded by
+    // the task itself — truncating a build log would lose real diagnostics.
+    expect(text.length).toBeGreaterThan(1024 * 1024)
+    expect(text).not.toContain('characters dropped')
+  })
+})

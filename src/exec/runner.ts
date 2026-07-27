@@ -5,6 +5,7 @@
 // folded into the v11 `runs` table by the orchestrator.
 
 import { constants as osConstants } from 'node:os'
+import { appendTail, createTail, tailText } from '../util/index.js'
 
 export interface RunResult {
   exitCode: number
@@ -210,6 +211,13 @@ export async function drainOrAbort(streams: Promise<unknown>, ac: AbortControlle
   if (winner === 'timeout') ac.abort()
 }
 
+/**
+ * Upper bound on the text a `readyWhen` regex is tested against. The matcher
+ * normally keeps only the trailing partial line, so this bites only when the
+ * stream has no line breaks at all.
+ */
+const READY_MATCH_WINDOW_CHARS = 64 * 1024
+
 export interface PersistentSpawn {
   /** Underlying Bun subprocess so the orchestrator can SIGTERM it later. */
   child: ReturnType<typeof Bun.spawn>
@@ -220,9 +228,18 @@ export interface PersistentSpawn {
    * Rejects with the spawn error if the child fails to start.
    */
   ready: Promise<void>
-  /** Captured stdout/stderr up to the moment ready resolved. */
+  /**
+   * Captured stdout/stderr up to the moment ready resolved, capped at
+   * `PERSISTENT_TAIL_CHARS` per stream with the oldest text evicted first.
+   * A task whose `readyWhen` never matches never becomes ready, so this
+   * window has no natural end — uncapped it grew vx's heap by ~100 MiB/s
+   * (measured >1 GiB in 6 s), and no `exec.timeout` is required.
+   */
   bufferedStdout: () => string
   bufferedStderr: () => string
+  /** Characters evicted from the head of each buffer above (0 = complete). */
+  droppedStdout: () => number
+  droppedStderr: () => number
   /** ms elapsed from spawn to ready (or to current time if not yet ready). */
   readyMs: () => number
 }
@@ -251,8 +268,8 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs'> {
  */
 export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const start = Date.now()
-  let bufferedStdout = ''
-  let bufferedStderr = ''
+  const preReadyOut = createTail()
+  const preReadyErr = createTail()
   let readyAt: number | undefined
 
   // Pattern compiled once; thrown errors surface synchronously so the
@@ -275,6 +292,8 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       ready: Promise.reject(new Error(`failed to spawn persistent task: ${message}`)),
       bufferedStdout: () => '',
       bufferedStderr: () => `\n[vx] failed to spawn: ${message}\n`,
+      droppedStdout: () => 0,
+      droppedStderr: () => 0,
       readyMs: () => Date.now() - start,
     }
   }
@@ -310,12 +329,15 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       if (chunk.length === 0) return
       // Buffers capture "up to the moment ready resolved" (their
       // documented contract) — a dev server kept alive for hours must
-      // not accrete its whole log history into vx's heap.
+      // not accrete its whole log history into vx's heap. Becoming ready
+      // is not a bound on its own, though: a `readyWhen` that never
+      // matches leaves this window open for the whole run, so the buffers
+      // are bounded tails rather than raw accumulators.
       if (isStderr) {
-        if (readyAt === undefined) bufferedStderr += chunk
+        if (readyAt === undefined) appendTail(preReadyErr, chunk)
         opts.onStderr?.(chunk)
       } else {
-        if (readyAt === undefined) bufferedStdout += chunk
+        if (readyAt === undefined) appendTail(preReadyOut, chunk)
         opts.onStdout?.(chunk)
       }
       if (readyRe && readyAt === undefined) {
@@ -326,6 +348,17 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         } else {
           const lastNl = fragment.lastIndexOf('\n')
           if (lastNl >= 0) fragment = fragment.slice(lastNl + 1)
+          // Dropping complete lines assumes the stream HAS line breaks.
+          // `\r`-only output — a progress bar, a spinner — is one endless
+          // line, so the trim above never fires and the fragment becomes a
+          // third unbounded accumulator (measured 464 MiB in 6 s, and the
+          // per-chunk `test` over an ever-growing string makes it quadratic
+          // in CPU too). Keep the most RECENT window: a match may span the
+          // chunk boundary, and no readiness marker is anywhere near this
+          // long.
+          if (fragment.length > READY_MATCH_WINDOW_CHARS) {
+            fragment = fragment.slice(fragment.length - READY_MATCH_WINDOW_CHARS)
+          }
         }
       }
     }
@@ -393,8 +426,10 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   return {
     child,
     ready,
-    bufferedStdout: () => bufferedStdout,
-    bufferedStderr: () => bufferedStderr,
+    bufferedStdout: () => tailText(preReadyOut),
+    bufferedStderr: () => tailText(preReadyErr),
+    droppedStdout: () => preReadyOut.dropped,
+    droppedStderr: () => preReadyErr.dropped,
     readyMs: () => (readyAt ?? Date.now()) - start,
   }
 }
