@@ -14,7 +14,7 @@
 // Both are no-ops if the corresponding RunOptions field is undefined.
 
 import path from 'node:path'
-import type { TaskOutcome } from '../graph/index.js'
+import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { tallyOutcomes } from './tally.js'
 
 export interface SummarizeArgs {
@@ -34,12 +34,16 @@ export async function writeRunSummary(args: SummarizeArgs): Promise<string> {
     args.target === ''
       ? path.join(args.cacheDir, 'runs', `${args.runId}.json`)
       : path.resolve(args.cwd, args.target)
+  // `tasks` and `summary` must describe the same population, or one artifact
+  // contradicts itself (a group task listed in `tasks` but absent from
+  // `summary.total`). `tallyOutcomes` owns the rule; mirror its filter here.
+  const counted = args.outcomes.filter((o) => !isGroupTask(o.node) && o.status !== 'aborted')
   const payload = {
     runId: args.runId,
     startedAt: new Date(args.startedAtMs).toISOString(),
     endedAt: new Date(args.endedAtMs).toISOString(),
     totalMs: args.totalMs,
-    tasks: args.outcomes.map((o) => ({
+    tasks: counted.map((o) => ({
       id: o.node.id,
       project: o.node.projectName,
       task: o.node.taskName,
@@ -54,7 +58,7 @@ export async function writeRunSummary(args: SummarizeArgs): Promise<string> {
       ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: String(o.wallclockStartNs) } : {}),
       ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: String(o.wallclockEndNs) } : {}),
     })),
-    summary: tallyOutcomes(args.outcomes),
+    summary: tallyOutcomes(counted),
   }
   await Bun.write(outPath, JSON.stringify(payload, null, 2))
   return outPath

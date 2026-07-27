@@ -187,9 +187,10 @@ describe('writeRunSummary', () => {
   })
 
   it('summary block counts only exec tasks (group tasks excluded from totals)', async () => {
-    // Group tasks appear in tasks[] (so observers see the shape of
-    // the run) but do NOT inflate the summary counts — same exclusion
-    // the end-of-run summary applies.
+    // `tasks[]` and `summary` describe the SAME population. Listing a group
+    // task while excluding it from `summary.total` made one artifact
+    // contradict itself (3 entries, total 2); `tallyOutcomes` owns the rule
+    // and both halves follow it.
     const out = await writeRunSummary({
       target: path.join(tmp, 's.json'),
       cacheDir,
@@ -211,9 +212,9 @@ describe('writeRunSummary', () => {
       tasks: Array<{ id: string }>
       summary: Record<string, number>
     }
-    // tasks[] preserves the group entry.
-    expect(parsed.tasks.map((t) => t.id)).toContain('pkg#ci')
-    // summary excludes it.
+    // The group entry is excluded from BOTH halves, which therefore agree.
+    expect(parsed.tasks.map((t) => t.id)).not.toContain('pkg#ci')
+    expect(parsed.tasks.length).toBe(parsed.summary['total']!)
     expect(parsed.summary['total']).toBe(5)
     expect(parsed.summary['successful']).toBe(3) // success + cache-hit + cache-hit-remote
     expect(parsed.summary['failed']).toBe(1)

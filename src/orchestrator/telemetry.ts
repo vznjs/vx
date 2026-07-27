@@ -17,6 +17,7 @@
 // core calls INTO; those are the behavior capabilities, kept separate.
 
 import type { OutputFingerprint, TaskStatus, VerifyVerdict } from '../graph/index.js'
+import { settleWithin, teardownTimeoutMs } from '../util/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
@@ -76,8 +77,9 @@ export interface RunContextRecord {
    * A run is a TRUNK run iff `branch === defaultBranch` (both non-null);
    * everything else is PR / feature-branch work. Consumers use it to keep
    * branch-experiment timings out of the shared scheduling baseline; null
-   * (undetectable) means "count all runs" — no regression. Absent on a v1
-   * push; a reader treats absent as null.
+   * (undetectable) means "count all runs" — no regression. Required of a v2
+   * producer (every one emits it); a reader parsing an older v1 push, which
+   * predates the field, treats absent as null.
    */
   defaultBranch: string | null
   dirty: boolean | null
@@ -238,7 +240,13 @@ export interface TelemetrySink {
   onRecord?(record: TelemetryRecord): void
   /** The per-run summary, at run:end. MUST return promptly. */
   onRunSummary?(summary: RunSummaryRecord): void
-  /** Drain buffered data. Awaited (time-bounded by the sink) at run:end. */
+  /**
+   * Drain buffered data. Awaited at run:end under a deadline — a sink that
+   * has not settled by then is abandoned and its buffered records are lost.
+   * Losing a slow sink's telemetry is strictly better than the alternative:
+   * `run()` never returns, so the cache never closes and `vx` exits 0 on a
+   * failed run.
+   */
   flush?(): Promise<void>
 }
 
@@ -257,7 +265,7 @@ export interface TelemetrySource {
   readonly subscriber: RunEventSubscriber
   /** Fan the per-run summary to every sink's `onRunSummary` (crash-isolated). */
   emitSummary(summary: RunSummaryRecord): void
-  /** Await every sink's `flush()` (each crash-isolated). */
+  /** Await every sink's `flush()` (each crash-isolated, all time-bounded). */
   flush(): Promise<void>
 }
 
@@ -282,8 +290,10 @@ const DEFAULT_KINDS: ReadonlyArray<TelemetryRecord['kind']> = [
 export function createTelemetrySource(args: {
   sinks: readonly TelemetrySink[]
   run: RunContextRecord
+  /** Where a dropped-flush notice goes; absent = stay silent. */
+  warn?: (message: string) => void
 }): TelemetrySource {
-  const { sinks, run } = args
+  const { sinks, run, warn } = args
   const runId = run.runId
   // A sink is disabled the first time it throws — its name (or index) goes
   // here and it's skipped for the rest of the run.
@@ -402,16 +412,28 @@ export function createTelemetrySource(args: {
       }
     },
     async flush(): Promise<void> {
-      await Promise.all(
-        sinks.map(async (sink) => {
-          if (sink.flush === undefined) return
-          try {
-            await sink.flush()
-          } catch {
-            // a sink's flush failure can never break the run
-          }
-        }),
+      const ms = teardownTimeoutMs()
+      // Bounded, for the same reason the `eventSink` sibling is bounded in
+      // plugin-host.ts: run() awaits this BEFORE closeCache() and before it
+      // returns, and bin.ts is `process.exit(await run(...))`. A sink whose
+      // flush never settles therefore drains the event loop with no exit code
+      // pending — Bun exits 0 and a FAILED run reports green, with the cache's
+      // accessed_at bumps and every later plugin's teardown lost with it.
+      // Sinks race concurrently, so each still gets the whole budget.
+      const settled = await settleWithin(
+        Promise.all(
+          sinks.map(async (sink) => {
+            if (sink.flush === undefined) return
+            try {
+              await sink.flush()
+            } catch {
+              // a sink's flush failure can never break the run
+            }
+          }),
+        ),
+        ms,
       )
+      if (!settled) warn?.(`[vx] telemetry flush timed out after ${ms}ms; buffered records lost`)
     },
   }
 }
