@@ -1049,22 +1049,27 @@ describe('getProjectTaskTrends', () => {
     const { org, ws } = await newOrgWs(db, 'tasktrend')
     const now = Date.now()
     const dayFloor = Math.floor(now / DAY) * DAY
+    // Stagger within today, but never PAST `now`: the query window ends at
+    // the current instant, so seeding at a fixed hour-of-day put every row
+    // in the future — and out of the window — for any run before 04:00 UTC.
+    // That is not a flake; it failed for the first four hours of every day.
+    const todayAt = (h: number): number => Math.min(dayFloor + h * HOUR, now)
     // app#build: two success runs today (100, 300 → avg 200), one yesterday (500).
-    await insertINV(db, ws, org, { runId: 'b1', startedAt: dayFloor + HOUR })
+    await insertINV(db, ws, org, { runId: 'b1', startedAt: todayAt(1) })
     await insertTR(db, ws, org, {
       runId: 'b1',
       project: 'app',
       task: 'build',
       duration: 100,
-      startedAt: dayFloor + HOUR,
+      startedAt: todayAt(1),
     })
-    await insertINV(db, ws, org, { runId: 'b2', startedAt: dayFloor + 2 * HOUR })
+    await insertINV(db, ws, org, { runId: 'b2', startedAt: todayAt(2) })
     await insertTR(db, ws, org, {
       runId: 'b2',
       project: 'app',
       task: 'build',
       duration: 300,
-      startedAt: dayFloor + 2 * HOUR,
+      startedAt: todayAt(2),
     })
     await insertINV(db, ws, org, { runId: 'b0', startedAt: dayFloor - DAY + HOUR })
     await insertTR(db, ws, org, {
@@ -1075,7 +1080,7 @@ describe('getProjectTaskTrends', () => {
       startedAt: dayFloor - DAY + HOUR,
     })
     // app#test: one failure + one success today.
-    await insertINV(db, ws, org, { runId: 't1', startedAt: dayFloor + 3 * HOUR })
+    await insertINV(db, ws, org, { runId: 't1', startedAt: todayAt(3) })
     await insertTR(db, ws, org, {
       runId: 't1',
       project: 'app',
@@ -1083,25 +1088,25 @@ describe('getProjectTaskTrends', () => {
       status: 'failed',
       exitCode: 1,
       duration: 90,
-      startedAt: dayFloor + 3 * HOUR,
+      startedAt: todayAt(3),
     })
-    await insertINV(db, ws, org, { runId: 't2', startedAt: dayFloor + 4 * HOUR })
+    await insertINV(db, ws, org, { runId: 't2', startedAt: todayAt(4) })
     await insertTR(db, ws, org, {
       runId: 't2',
       project: 'app',
       task: 'test',
       status: 'success',
       duration: 80,
-      startedAt: dayFloor + 4 * HOUR,
+      startedAt: todayAt(4),
     })
     // A decoy project — must not appear.
-    await insertINV(db, ws, org, { runId: 'x1', startedAt: dayFloor + HOUR })
+    await insertINV(db, ws, org, { runId: 'x1', startedAt: todayAt(1) })
     await insertTR(db, ws, org, {
       runId: 'x1',
       project: 'web',
       task: 'build',
       duration: 999,
-      startedAt: dayFloor + HOUR,
+      startedAt: todayAt(1),
     })
 
     const pts = await analytics.getProjectTaskTrends(ws, 'app', { bucket: 'day' })
