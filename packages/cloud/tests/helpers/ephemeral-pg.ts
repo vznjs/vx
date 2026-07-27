@@ -2,20 +2,24 @@
 // ONE cluster per test process, lazily booted — initdb into a scratch dir,
 // unix-socket only (no port contention, no TCP auth), fsync off. Migrations
 // apply ONCE into `template_vx`; each suite clones a fresh database from the
-// template in milliseconds. Torn down on process exit.
+// template in milliseconds. The exit handler that tears it down does NOT run
+// under `bun test` (measured), so the previous run's cluster is reaped at boot
+// instead — see `reapAbandonedClusters`.
 //
 // Root quirk (this dev env runs as uid 0): initdb/postgres refuse to run as
 // root, so the cluster is owned by and runs as the `postgres` system user via
 // `runuser`; trust auth on the socket means the test process connects fine.
 // CI runners (non-root) take the direct path.
 
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { openDb } from '../../src/db/client.js'
 import { runMigrations } from '../../src/db/migrate.js'
 
 const PG_USER = 'vx'
+/** Records the test process that owns a scratch cluster (see reapAbandonedClusters). */
+const OWNER_PID_FILE = 'owner.pid'
 const TEMPLATE_DB = 'template_vx'
 
 export interface EphemeralPg {
@@ -58,9 +62,84 @@ function runOrThrow(cmd: string[], what: string): void {
   }
 }
 
+/** True while `pid` names a live process (signal 0 delivers nothing). */
+function alive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    // EPERM means it exists but belongs to someone else — still alive.
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+/**
+ * Shut down and delete the clusters previous test processes abandoned.
+ *
+ * `boot` registers its teardown on `process.on('exit')`, and **`bun test` never
+ * fires that** — measured: a clean run (1 pass, exit 0) leaves the postmaster
+ * running and the scratch dir on disk. So EVERY `bun test` invocation leaked a
+ * cluster, not just runs killed mid-flight as the decision log previously read.
+ * At ~820 MB each, that is what fills the disk and resurfaces as
+ * `PostgresError 53100`.
+ *
+ * `afterAll` does fire, but it is the wrong hook: the cluster is memoized per
+ * PROCESS and Bun runs every test file in one, so a per-file `afterAll` would
+ * stop the shared cluster after the first file and force an initdb per file.
+ * Reaping at boot instead bounds the residue at one cluster — the running one.
+ *
+ * Liveness of the POSTMASTER cannot decide this: an abandoned one is still
+ * running (that is the leak), and it daemonizes to PPID 1 immediately, so the
+ * parent tells us nothing either. The owning test process is the signal — each
+ * cluster records its PID, and a cluster is abandoned exactly when that process
+ * is gone. A cluster whose owner still lives is left alone, so concurrent test
+ * processes are safe.
+ */
+function reapAbandonedClusters(): void {
+  let entries: string[]
+  try {
+    entries = readdirSync(os.tmpdir()).filter((n) => n.startsWith('vx-test-pg-'))
+  } catch {
+    return
+  }
+  for (const name of entries) {
+    const dir = path.join(os.tmpdir(), name)
+    try {
+      const ownerFile = path.join(dir, OWNER_PID_FILE)
+      // No owner file: either a cluster from before this mechanism, or one
+      // caught mid-initdb. Both are safe to reap only if nothing is serving it.
+      const owner = existsSync(ownerFile) ? Number.parseInt(readFileSync(ownerFile, 'utf8'), 10) : 0
+      if (alive(owner)) continue
+      const pidFile = path.join(dir, 'data', 'postmaster.pid')
+      if (existsSync(pidFile)) {
+        const pm = Number.parseInt(readFileSync(pidFile, 'utf8'), 10)
+        if (alive(pm)) {
+          // SIGQUIT is Postgres's immediate shutdown — no checkpoint, which is
+          // right for a scratch cluster about to be deleted.
+          process.kill(pm, 'SIGQUIT')
+          // Then WAIT for it to go. Deleting out from under a still-exiting
+          // postmaster loses the race: it keeps writing, rmSync throws, and the
+          // dir survives to be reaped a run later. Measured on the first cut —
+          // postmasters dropped 3 -> 1 while dirs went 3 -> 4, i.e. every kill
+          // landed and every delete failed. Bounded, because a wedged
+          // postmaster must not block the suite from starting; the next run
+          // reaps it instead.
+          for (let i = 0; i < 100 && alive(pm); i++) Bun.sleepSync(20)
+        }
+      }
+      rmSync(dir, { recursive: true, force: true })
+    } catch {
+      // A cluster we cannot read or signal belongs to someone else; skip it.
+    }
+  }
+}
+
 async function boot(): Promise<EphemeralPg> {
   const bin = resolvePgBinDir()
+  reapAbandonedClusters()
   const scratch = mkdtempSync(path.join(os.tmpdir(), 'vx-test-pg-'))
+  writeFileSync(path.join(scratch, OWNER_PID_FILE), String(process.pid))
   const dataDir = path.join(scratch, 'data')
   const sockDir = path.join(scratch, 'sock')
   runOrThrow(['mkdir', '-p', sockDir], 'mkdir')
