@@ -143,6 +143,8 @@ const SCHEMA_VERSION = 'v24'
  * Lives here, beside the schema, because the same figure is computed in more
  * than one place (`Cache.stats` and `metrics.getCacheStatsSql` both answer
  * "runs in the last 24h") and two copies of a rule are how they drift apart.
+ * The cloud analytics copy mirrors it as `EXECUTED_TASK_RUNS_SQL` over
+ * Postgres `task_runs`, which receives the same rows.
  */
 export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
 
