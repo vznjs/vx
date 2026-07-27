@@ -551,6 +551,90 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
   )
 
   it(
+    '--dry reads the same clamped policy the run will use',
+    async () => {
+      const fixture = await makeWorkspace()
+      const remote = startArtifactServer()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        // Remote axes only — and NO remote layer to serve them. run()
+        // clamps those axes off, so caching is entirely disabled; the plan
+        // must say so instead of predicting a miss that "would be stored".
+        const remoteOnly = {
+          localRead: false,
+          localWrite: false,
+          remoteRead: true,
+          remoteWrite: true,
+        }
+        const planned = await planRun({
+          cwd: fixture.root,
+          tasks: ['build'],
+          cache: remoteOnly,
+          log: silentLogger(fixture),
+        })
+        expect(planned.tasks.map((t) => t.cacheStatus)).toEqual(['no-cache'])
+
+        // Control: the SAME policy WITH a remote layer keeps its remote
+        // axes, so the plan probes and reports a genuine miss. The clamp
+        // must not swallow a policy the run will really honour.
+        const withRemote = await planRun({
+          cwd: fixture.root,
+          tasks: ['build'],
+          cache: remoteOnly,
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(withRemote.tasks.map((t) => t.cacheStatus)).toEqual(['miss'])
+      } finally {
+        await remote.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'closes the cache handle when the run throws mid-way',
+    async () => {
+      const fixture = await makeWorkspace()
+      const remote = startArtifactServer()
+      // `recordRunBundle` is the one unguarded call between the last task
+      // finishing and the normal close. A throw there (SQLITE_BUSY past the
+      // busy_timeout, disk-full) used to skip close() entirely — leaking the
+      // SQLite handle and, with it, the run's deferred accessed_at flush, so
+      // an LRU `vx cache prune` could evict entries this run just hit.
+      const closeSpy = spyOn(Cache.prototype, 'close')
+      const recordSpy = spyOn(Cache.prototype, 'recordRunBundle').mockImplementation(() => {
+        throw new Error('SQLITE_BUSY: database is locked')
+      })
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        await expect(
+          run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: remote.layer,
+          }),
+        ).rejects.toThrow(/SQLITE_BUSY/)
+        expect(closeSpy).toHaveBeenCalled()
+      } finally {
+        recordSpy.mockRestore()
+        closeSpy.mockRestore()
+        await remote.server.stop(true)
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'local:,remote:rw uploads to remote even with local writes disabled (packs bytes in memory)',
     async () => {
       const fixture = await makeWorkspace()

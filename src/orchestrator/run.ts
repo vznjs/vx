@@ -89,6 +89,20 @@ function compactCachePolicy(p: CachePolicy): string {
 }
 
 /**
+ * The policy that will actually govern the run. The remote axes are inert
+ * without a remote layer to serve them: a `remote:w` policy over a bare
+ * local cache writes NOWHERE, yet the write axis reads as on. Normalising
+ * here — the ONE place both `run()` and `planRun()` derive it from — is
+ * what keeps `--dry` describing the run you are about to get: reading the
+ * raw request made the plan label `--cache=local:,remote:rw` "cache miss —
+ * would exec" (a result that will be stored) for a run in which caching is
+ * entirely off.
+ */
+function effectiveCachePolicy(requested: CachePolicy, hasRemoteLayer: boolean): CachePolicy {
+  return hasRemoteLayer ? requested : { ...requested, remoteRead: false, remoteWrite: false }
+}
+
+/**
  * The perf firewall for the local short-circuit. Always-on; the only
  * gates are correctness/no-op gates:
  *   - LOCAL-ONLY cache. Behind a remote layer, `cache.get` is a remote
@@ -263,6 +277,21 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     process.on('SIGINT', onSigint)
     process.on('SIGTERM', onSigterm)
   }
+  // The cache handle must be released on EVERY exit path, not just the
+  // happy one: `close()` is also where the run's deferred `accessed_at`
+  // bumps are flushed, so a throw between opening the cache and the
+  // normal close leaked the SQLite handle (it matters in a long-lived
+  // host) AND lost this run's touch record, after which an LRU
+  // `vx cache prune` can evict entries the run just hit. Once-only
+  // because the normal path closes before the persistent-task wait —
+  // holding the handle open for a dev server's whole lifetime would be
+  // worse — and because close() re-runs its retention DELETEs.
+  let cacheClosed = false
+  const closeCache = (): void => {
+    if (cacheClosed) return
+    cacheClosed = true
+    cache.close()
+  }
   try {
     // One run-id per `vx run` invocation. Every task in the resulting
     // graph carries it so analytics queries can group by invocation.
@@ -270,19 +299,17 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
     const remoteCacheEnabled = prepared.hasRemoteLayer
-    // The remote axes are inert without a remote layer to serve them: a
-    // `remote:w` policy over a bare local cache writes NOWHERE, yet the
-    // write axis read as on — so tasks cleaned their outputs before every
-    // exec for a save that never happened, and `--verify` went on to clean
-    // them AGAIN and restore an artifact that was never written (wiping a
-    // successful build's tree and reporting it failed). Normalise ONCE
-    // here so every consumer — the verify gate, execute-task, the dedup
-    // predicate, the recorded invocation row — reads the policy that
-    // actually governed the run.
-    const requestedPolicy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
-    const policy: CachePolicy = prepared.hasRemoteLayer
-      ? requestedPolicy
-      : { ...requestedPolicy, remoteRead: false, remoteWrite: false }
+    // Normalised ONCE so every consumer — the verify gate, execute-task,
+    // the dedup predicate, the recorded invocation row — reads the policy
+    // that actually governed the run. Reading the raw request here made
+    // tasks clean their outputs before every exec for a save that never
+    // happened, and `--verify` clean them AGAIN and restore an artifact
+    // that was never written (wiping a successful build's tree and
+    // reporting it failed).
+    const policy: CachePolicy = effectiveCachePolicy(
+      options.cache ?? FULL_CACHE_POLICY,
+      prepared.hasRemoteLayer,
+    )
 
     // `--verify` observes the miss-then-save path and then RESTORES attempt
     // 1 from the artifact that save wrote, so the tree ends byte-identical
@@ -299,7 +326,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // verification must never have (same platform-honesty rule as the
     // sandbox-unavailable error). `--force --verify` re-verifies a warm graph.
     if (options.verify !== undefined && !policy.localWrite) {
-      prepared.cache.close()
       throw new UserError(
         '--verify needs the LOCAL cache write axis: it re-runs the task, then restores ' +
           'attempt 1 from the local artifact so the outputs on disk are the ones that were ' +
@@ -374,7 +400,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     if (anySandboxed) {
       const avail = await probeSandbox()
       if (!avail.available) {
-        prepared.cache.close()
         throw new UserError(
           verifyInputs
             ? `--verify=inputs needs the sandbox, which is not available: ${avail.reason}`
@@ -873,7 +898,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // settle here for the same reason.
     await prefetchDone
     await cache.drainUploads?.()
-    cache.close()
+    closeCache()
 
     // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
     // no task was sandboxed; otherwise SRT keeps proxy servers alive and
@@ -911,6 +936,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     disposePlugins?.()
     eventSinks?.dispose()
     telemetry?.dispose()
+    // No-op after the normal path's close. On a throw this is the only
+    // close there is, and it must not itself throw — that would replace
+    // the run's real error with a teardown one. Background uploads are
+    // NOT drained here: they hold no database state, and awaiting a
+    // wedged remote would turn a failing run into a hanging one.
+    try {
+      closeCache()
+    } catch {
+      // teardown must not throw on the way out
+    }
   }
 }
 
@@ -938,7 +973,10 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       workspaceRoot: prepared.workspaceRoot,
       workspaceFingerprint: prepared.workspaceFingerprint,
       cache: prepared.cache,
-      cachePolicy: options.cache ?? FULL_CACHE_POLICY,
+      cachePolicy: effectiveCachePolicy(
+        options.cache ?? FULL_CACHE_POLICY,
+        prepared.hasRemoteLayer,
+      ),
       forwardArgs: options.forwardArgs,
       nestedDirsByProject: prepared.nestedDirsByProject,
       gitFilesCache: prepared.gitFilesCache,
