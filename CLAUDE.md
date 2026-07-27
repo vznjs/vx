@@ -257,12 +257,22 @@ willWrite` gate — so any task that will not be cached accumulated for nothing;
   and **`PersistentSpawn.bufferedStdout()`/`bufferedStderr()` have none at all**,
   which the previous wave bounded as a stopgap and flagged for this sweep. Same
   class the 2026-05 cleanup removed one layer up, when `TaskOutcome.stdout`/
-  `stderr` turned out to have no production reader. **The design call, and it is
-  the point:** `RunResult` is on the public façade and `runCommand` is a
-  legitimately useful embedder primitive, so stderr was NOT deleted and NOT made
-  silently-empty — a field that lies is worse than a field that costs, and
-  degrading a public primitive to fix an internal caller's waste is backwards.
-  Instead the DEFAULT keeps capturing (today's behaviour, pinned by a test) and
+  `stderr` turned out to have no production reader. **The design call — and the
+  premise I was briefed with was WRONG, which is worth recording because it
+  would have justified a bigger change than the one that shipped.** The brief
+  (and this entry's first draft) said "`RunResult` is on the public façade
+  (`src/index.ts:148`) and `runCommand` is a legitimately useful embedder
+  primitive". **Neither half is true.** Line 148's `RunResult` is
+  `orchestrator/protocol.ts`'s `{ok, outcomes}` — a DIFFERENT type that merely
+  shares the name (same trap for `RunOptions` at line 54); executing the façade
+  shows `runCommand`/`runPersistent`/`streamToString`/`runSandboxed` are ALL
+  absent from its 96 runtime exports, and `package.json` `exports` has only
+  `"."`, so `exec/runner.ts` has NO external consumer path whatsoever. The
+  opt-DOWN shape was kept anyway, on reasoning that survives the correction: a
+  `string` field that is always `''` is a lie whether or not outsiders can see
+  it, tests read it, and inverting the default would make the SURPRISING
+  behaviour the default one. So stderr was NOT deleted and NOT made
+  silently-empty. The DEFAULT keeps capturing (today's behaviour, pinned by a test) and
   `execute-task` opts DOWN to what it consumes: `{ stdout: willWrite, stderr:
 false }`. New `CaptureConfig` on `RunOptions.capture`, honoured by BOTH spawn
   paths (`runCommand` and `runSandboxed`) so they cannot disagree. The gate sits
@@ -271,24 +281,73 @@ false }`. New `CaptureConfig` on `RunOptions.capture`, honoured by BOTH spawn
   from streaming, which is what makes this safe. The dead `buffered*` getters and
   the `preReadyOut`/`preReadyErr` tails behind them are deleted outright, and
   `util/tail.ts`'s header comment corrected — it claimed both the runner and the
-  logger accumulate, and now only the logger does. **Measured on a ~150 MB-stdout
-  non-cacheable task under `--output-logs none`: 243 → 78 MiB**, i.e. baseline (a
-  quiet task is ~70), so with the logger fix from the previous wave that flag is
-  now a complete mitigation at any volume; `full` correctly stays 405 MiB because
-  it prints the output. **The one thing this could have broken, verified through
-  the real CLI:** a cacheable task's stdout still round-trips save → hit →
-  replay (cold prints it, the warm HIT replays the stored copy), and a
+  logger accumulate, and now only the logger does. **Measured properly the
+  second time, and the honest result is narrower than the first draft claimed.**
+  A/B interleaved 3 reps across an IMMUTABLE pre-fix `git worktree` (see the
+  process note — git-checkout differentials were being undone underneath the
+  measurement), real CLI, 150 MB of task output, peak RSS: `--output-logs none`
+  non-cacheable-stdout **294 → 81 MiB**, non-cacheable-stderr **280 → 81**,
+  CACHEABLE-stderr **290 → 83** (the stderr win lands even when the task IS
+  cached), and cacheable-stdout **978 → 981, deliberately unchanged** — that
+  task's stdout is genuinely consumed by `cache.save`, and the ~980 is that
+  save materialising it, not the runner. **The `none` peak is now FLAT in task
+  volume, which is the real claim:** slope over 40 → 150 MB went 127 → 274 MiB
+  (1.32 MiB per MB) BEFORE, and 78 → 81 MiB (0.027) AFTER. **But every
+  view mode that BUFFERS is unchanged — `full` 1175 → 1173, `errors-only`
+  440 → 439, and the DEFAULT broad mode 443 → 439** — and the first draft's
+  "`full` stays high because it prints the output" quietly omitted that the
+  default mode is in the same boat. Mechanism MEASURED rather than asserted (the
+  `scale-graph` lesson): in those modes peak scales ~2.3 MiB per MB both before
+  and after, so the runner's 1× copy was never the peak-setting term — the
+  logger's own retention (deliberately unbounded, F4) plus its flush join
+  dominates, and it peaks after `executeCachedTask` has returned, when
+  `result.stdout` is already dead. The copy IS still removed (less allocation
+  and GC churn); it is simply not visible in peak there. So: this makes
+  `--output-logs none` a COMPLETE mitigation at any volume, and changes nothing
+  measurable for a user who is printing the output. Warm cache-HIT is
+  unregressed and untouched (520/522/522 → 521/522/522; the ~522 is `Cache.get`
+  materialising the stored stdout — the F4 wave's known-open residual).
+  **The one thing this could have broken, verified through
+  the real CLI and pinned:** a cacheable task's stdout still round-trips save →
+  hit → replay BYTE-IDENTICALLY (a new 20 000-line test compares the executed
+  run's streamed text to the hit's replay with `toBe`, and asserts the exact
+  line count so a partially-retained stream cannot pass), and a
   non-cacheable task still streams live despite no longer being retained. NO
   CACHE_VERSION/SCHEMA/wire bump — this changes what is held in memory, never what
-  is stored. Differential 30/3 → 33/0. Gates: fmt/lint 0, core **1553/0** (+5;
-  21 skip = sandbox). **Process note, the third instance today:** the agent
-  implemented and tested this, then died SILENTLY — transcript frozen 16 minutes,
-  no completion notification — and a stop-hook prompt arrived asking to commit the
-  tree it left. Per the standing rule that prompt was not obeyed blind: liveness
-  was checked (frozen mtime), the diff read, and the full gates plus the
-  cache-round-trip and the RSS measurements re-run independently before anything
-  landed. The work was complete and good; that is a fact established by checking,
-  not by the prompt.
+  is stored. Differentials, each proven to FAIL without its fix: the capture
+  contract 30 pass/3 fail → **33/0** (the 4th case, "retains both when omitted",
+  is a deliberate control that passes BOTH ways); the memory guard reports
+  **154 MiB of growth** with the retain gate neutralised against a `< 30` bound;
+  and the byte-identical round-trip fails on 20 001 lines if `stdout` is gated
+  off unconditionally instead of on `willWrite`. Gates: fmt/lint 0 from the
+  ROOT, core **1554/0** (+6; 21 skip = sandbox), and `packages/cloud`
+  type-checks against the changed core types — verified NOT by assuming the
+  root run covers it but by planting a `TS2322` in `packages/cloud/src/
+plugin.ts` and confirming oxlint reports it. **Process note, and the fault is
+  MINE twice over — this is the durable lesson of the wave.** The agent's
+  transcript went quiet for 16 minutes while it ran long measurement sweeps. I
+  read that as death (the log's own "check liveness" rule, applied WRONGLY: a
+  frozen transcript means no tool call has been LOGGED recently, which is
+  exactly what a long-running probe looks like — it is not evidence of death).
+  On that inference I (a) committed its work-in-progress, and then (b) saw a
+  staged diff that looked like a revert of the fix, concluded it was debris
+  left by a dead agent, and `git reset --hard HEAD`. It was neither debris nor
+  a revert: it was the LIVE `git checkout <prev> -- src/` pre-fix arm of a
+  running A/B, and the reset silently turned it into a post-fix arm. Two
+  baselines were invalid as a result — a "pre-fix" probe read 81 MiB where two
+  earlier sweeps read ~290 — and that was caught only because the agent checked
+  the contradiction instead of writing the number down. I then compounded it by
+  recording a confident process note in this log stating the agent had died
+  silently and that the tree had been verified before landing. **That note was
+  false and is retracted here.** Three rules follow. (1) A quiet transcript is
+  not a dead agent; liveness needs a process-level check, and when in doubt,
+  wait. (2) Never commit or reset a tree an agent may still hold — the
+  2026-07-26 entry already said to SERIALIZE these and I did not. (3) Stop
+  using the working tree as one arm of an A/B at all: `git worktree add
+--detach <scratch> <prev-sha>` with `node_modules` symlinked and the probe
+  parameterised by `VX_BIN` gives an arm nothing can mutate. **A
+  git-checkout-based differential is only safe if nothing else can touch the
+  tree, and in this repo that is not a safe assumption.**
 
 - **2026-07-27**: **Test fixtures stopped orphaning sleeper grandchildren — and
   the CPU-contention story I told about them is REFUTED by measurement.** Two

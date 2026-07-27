@@ -13,10 +13,16 @@ exit before the rest of the graph finishes.
 export interface RunResult {
   exitCode: number
   durationMs: number
-  stdout: string // full captured text
-  stderr: string
+  stdout: string // retained text, or '' when `capture.stdout` is false
+  stderr: string // retained text, or '' when `capture.stderr` is false
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
   peakRssBytes?: number // maxRSS * 1024 (Bun normalizes KB; we → bytes)
+}
+
+// Which streams are retained onto the result. Both default to true.
+export interface CaptureConfig {
+  stdout?: boolean
+  stderr?: boolean
 }
 
 export interface RunOptions {
@@ -26,6 +32,7 @@ export interface RunOptions {
   forwardArgs?: readonly string[] // appended shell-quoted to `command`
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
+  capture?: CaptureConfig // omitted → both retained
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped registry; child added on spawn, removed on exit
 }
 
@@ -34,15 +41,14 @@ export function runCommand(opts: RunOptions): Promise<RunResult>
 // POSIX "terminated by signal N" → exit 128+N (SIGINT → 130, SIGTERM → 143).
 export function signalExitCode(signal: NodeJS.Signals): number
 
-export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs'> {
+// `capture` is a runCommand concept — a persistent task returns no RunResult.
+export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'capture'> {
   readyWhen?: string // string regex; matched against streamed output
 }
 
 export interface PersistentSpawn {
   child: ReturnType<typeof Bun.spawn>
   ready: Promise<void> // resolves once "ready"; rejects if exit before ready
-  bufferedStdout: () => string // captured stdout up to current moment
-  bufferedStderr: () => string
   readyMs: () => number // ms from spawn to ready (or now)
 }
 
@@ -80,6 +86,30 @@ The promise from `runCommand` always resolves (never rejects) with a
   sandboxed runner (`sandbox-runtime.ts`) uses the same helper.
 - `Bun.spawn` itself throwing → `exitCode = 127`, stderr augmented
   with `[vx] failed to spawn: <message>`.
+
+### Stream capture
+
+Both streams are RETAINED onto the result by default — that is the
+primitive's contract, and a field that silently lies is worse than one
+that costs. A caller that will not read a stream opts down with
+`capture`. Opting down drops the retained copy ONLY: the stream is
+still fully drained (so the child never blocks on a full pipe) and
+every chunk still reaches `onStdout` / `onStderr`.
+
+The orchestrator opts down hard, because retaining a stream costs its
+full byte size in heap for the task's whole life:
+
+- `stderr` is **never** retained. Nothing reads `RunResult.stderr` — a
+  failing task's stderr reaches the user through the live callback, and
+  the cache has never stored stderr (v17 artifact format).
+- `stdout` is retained only when the task **will write a cache entry**,
+  since `cache.save`'s `entry.stdout` is its one consumer.
+
+Measured through the real CLI on a task writing 150 MB with
+`--output-logs none`: peak RSS 294 → 81 MiB, and flat in task volume
+(40 MB → 150 MB moved it 78 → 81, where it used to move 127 → 274).
+In the view modes that PRINT output the logger keeps its own copy, so
+the peak there is unchanged — that term is deliberately unbounded.
 
 ## Resource usage
 
@@ -123,9 +153,11 @@ Stream readers run for the child's lifetime; the caller owns the
 `child` handle and is responsible for SIGTERMing it. The orchestrator
 does this via its `persistentRegistry` at end-of-run.
 
-`bufferedStdout()` / `bufferedStderr()` return everything captured so
-far — useful for surfacing pre-ready output on a fail-before-ready
-outcome.
+A persistent task's output reaches the caller ONLY through the live
+`onStdout` / `onStderr` callbacks — the spawn retains nothing. The
+logger keeps the one bounded tail (registered at `taskStart`, so it
+covers the pre-ready window too), which is what surfaces pre-ready
+output on a fail-before-ready outcome.
 
 ## What this does NOT do
 

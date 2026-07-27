@@ -737,6 +737,13 @@ So a never-ready persistent task accumulates its output **twice**, in two
 separate unbounded buffers, and the documented mitigation (the tail cap) applies
 to neither.
 
+> **As shipped, 2026-07-27 (later wave).** Accumulator (1) is GONE, not merely
+> bounded: `bufferedStdout()` / `bufferedStderr()` had zero consumers anywhere
+> but `tests/runner.test.ts`, so the pre-ready tails behind them were deleted
+> along with the getters. The logger's tail — accumulator (2), now registered at
+> `taskStart` — is the single remaining holder, which is why `util/tail.ts`'s
+> "both sides accumulate" rationale no longer applies.
+
 The residual's own parenthetical already says the docstring claim is _"true
 post-ready, false pre-ready"_ — this measurement confirms that and shows the `\r`
 framing is a red herring.
