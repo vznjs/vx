@@ -224,8 +224,7 @@ serving none of them is probably org-analytics scope creep.
   (differential: `…706360` unchanged across the hung run, `…709165` on the
   control) — after which `vx cache prune --max-size` can evict entries the run
   just hit; retention prune skipped, SQLite handle leaked, every other plugin's
-  flush/teardown skipped, and `--report=markdown` emitted **0** rows instead of
-  3. **The sharp part: the DEPRECATED `eventSink` path was already bounded**
+  flush/teardown skipped, and `--report=markdown` emitted **0** rows instead of 3. **The sharp part: the DEPRECATED `eventSink` path was already bounded**
   (`settleWithin`, 3 s) while the CANONICAL path was not — so the fix moved
   `settleWithin` into `src/util/settle.ts` and made `plugin-host.ts` import it,
   so the divergence that caused this cannot reappear. The bound sits in
@@ -278,7 +277,7 @@ failedCount: 0, exitOk: false` — a red run invisible to the dashboard and to
   `startedAt` pushes `undefined` onto live readers under
   `exactOptionalPropertyTypes` for zero runtime gain, and a v3 bump would
   invalidate v2 readers that already handle both correctly — core always emits
-  them, so *required in v2* is accurate and the misleading half was the prose.
+  them, so _required in v2_ is accurate and the misleading half was the prose.
   **A pre-existing test ENCODED defect #6** (asserting `tasks[]` holds a group
   while `summary.total` excludes it, with a comment rationalizing it) — same
   class as the memo test that asserted a stale digest; it now asserts
