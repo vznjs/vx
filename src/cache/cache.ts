@@ -130,6 +130,31 @@ const CACHE_VERSION = 'vx-cache-v26'
 const SCHEMA_VERSION = 'v24'
 
 /**
+ * SQL predicate selecting `runs` rows that record an EXECUTION.
+ *
+ * Every non-group, non-aborted outcome of a run gets a row, so the header's
+ * `task_count` matches `COUNT(*)` and the run-detail timeline is complete.
+ * But a `skipped` row is a task the run never executed — its upstream failed,
+ * so it has no exit of its own, no duration, and made no cache decision.
+ * Counting it in a RATE or a MEAN dilutes that figure with a non-event: a
+ * task skipped as often as it succeeds reads 50% success, and a zero-duration
+ * row drags every average toward zero.
+ *
+ * Lives here, beside the schema, because the same figure is computed in more
+ * than one place (`Cache.stats` and `metrics.getCacheStatsSql` both answer
+ * "runs in the last 24h") and two copies of a rule are how they drift apart.
+ */
+export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
+
+/**
+ * SQL predicate selecting `runs` rows that recorded a cache key. `hash` is
+ * `''` for an outcome that never derived one (see {@link RunRecord.hash}),
+ * and `''` is not a key: it can neither corroborate flakiness nor say the
+ * inputs changed. Mirrors the `hash <> ''` guards in the cloud analytics copy.
+ */
+export const KEYED_RUNS_SQL = "hash <> ''"
+
+/**
  * Artifact + `output_files` namespace prefix for workspace-root-
  * anchored outputs (`cache.outputs.workspaceFiles`). Project outputs
  * keep their bare project-relative `path` rows; workspace rows store
@@ -324,7 +349,17 @@ export interface CacheEntry {
 }
 
 export interface RunRecord {
-  hash: string
+  /**
+   * The task's cache key. ABSENT when the outcome never derived one — a
+   * `skipped` task (its upstream failed, so it never probed) or a
+   * `persistent` one (a dev server is never cached). Such a row is still a
+   * task of the run and must be recorded, so the column keeps a `''`
+   * sentinel rather than going nullable: `''` is impossible for a real key
+   * (`Cache.key` returns 16 hex chars), the reads that must not treat it as
+   * a key already guard it, and it matches what the cloud `task_runs.hash`
+   * column has stored for the same concept since its first migration.
+   */
+  hash?: string
   project: string
   task: string
   status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
@@ -865,6 +900,8 @@ export class Cache implements CacheLayer {
       );
       CREATE TABLE IF NOT EXISTS runs (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        -- '' when the outcome derived no cache key (skipped / persistent).
+        -- Every reader that must not mistake it for a key guards hash != ''.
         hash                TEXT NOT NULL,
         project             TEXT NOT NULL,
         task                TEXT NOT NULL,
@@ -1846,7 +1883,7 @@ export class Cache implements CacheLayer {
     const since = Date.now() - 24 * 60 * 60 * 1000
     const runs = this.db
       .prepare(
-        `SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status IN ('cache-hit', 'cache-hit-remote') THEN 1 ELSE 0 END), 0) AS hits FROM runs WHERE started_at >= ?${
+        `SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status IN ('cache-hit', 'cache-hit-remote') THEN 1 ELSE 0 END), 0) AS hits FROM runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}${
           scoped ? ' AND project = ?' : ''
         }`,
       )
@@ -1957,7 +1994,9 @@ export class Cache implements CacheLayer {
  */
 function bindRun(run: RunRecord): SQLQueryBindings[] {
   return [
-    run.hash,
+    // The ONE place the no-key sentinel is applied, so the column's
+    // NOT NULL invariant can't be violated from a call site.
+    run.hash ?? '',
     run.project,
     run.task,
     run.status,

@@ -534,7 +534,7 @@ CREATE TABLE entries (
 
 CREATE TABLE runs (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-  hash                TEXT NOT NULL,
+  hash                TEXT NOT NULL,   -- '' when the outcome derived no key (see below)
   project             TEXT NOT NULL,
   task                TEXT NOT NULL,
   status              TEXT NOT NULL,   -- success | failed | cache-hit | cache-hit-remote | skipped
@@ -555,6 +555,21 @@ CREATE INDEX runs_hash       ON runs(hash);
 CREATE INDEX runs_started_at ON runs(started_at);
 CREATE INDEX runs_project    ON runs(project, task);
 CREATE INDEX runs_run_id     ON runs(run_id);
+
+-- Every non-group, non-aborted outcome of a run gets a row, so
+-- `invocations.task_count` always equals `COUNT(*)` here for that run_id
+-- and the terminal summary's "N total". Two of those outcomes never derive
+-- a cache key — a `skipped` task (its upstream failed, so it never probed)
+-- and a `persistent` one (a dev server is not cacheable) — and they store
+-- `hash = ''`. `''` is impossible for a real key (16 hex chars), so it reads
+-- unambiguously as "no key recorded"; the key-diff surfaces (`vx mcp`'s
+-- whyDidThisRerun, the cache-key diff) guard it rather than reporting
+-- "inputs unchanged" from two rows that never had inputs to compare.
+--
+-- A `skipped` row is a task of the run but NOT an execution, so the rate and
+-- average aggregates in metrics.ts exclude it: counting a zero-duration
+-- non-event would dilute success rate, hit rate and mean duration. The
+-- completeness reads (listRuns / getRun / the run-detail timeline) include it.
 
 -- v22 (Tier 3): one header row per `vx run` invocation. The `runs`
 -- table is per-task; this is the per-invocation record carrying the

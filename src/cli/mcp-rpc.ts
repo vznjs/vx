@@ -9,7 +9,7 @@
 // open across calls via `setMcpContext`.
 
 import { Cache } from '../cache/index.js'
-import { LocalHistoryProvider } from '../orchestrator/index.js'
+import { LocalHistoryProvider, whyDidThisRerunQuery } from '../orchestrator/index.js'
 import { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from '../workspace/index.js'
 import { clampInt, UserError } from '../util/index.js'
 
@@ -266,43 +266,13 @@ async function whyDidThisRerun(args: Record<string, unknown>): Promise<Record<st
   if (!taskId.includes('#')) {
     throw new UserError('whyDidThisRerun: taskId must be a "project#task" string')
   }
-  const [project, task] = taskId.split('#', 2) as [string, string]
   const { cache } = await openCache()
   try {
-    const db = cache.dbHandle()
-    const this_ = db
-      .query(
-        `SELECT hash, status, cache_hit AS cacheHit, started_at AS startedAt
-         FROM runs WHERE run_id = ? AND project = ? AND task = ?`,
-      )
-      .get(runId, project, task) as
-      | { hash: string; status: string; cacheHit: number | null; startedAt: number }
-      | undefined
-    if (!this_) {
-      return { runId, taskId, found: false, note: 'no row matching that runId + taskId' }
-    }
-    const prev = db
-      .query(
-        `SELECT hash, status, cache_hit AS cacheHit, started_at AS startedAt
-         FROM runs WHERE project = ? AND task = ? AND started_at < ?
-         ORDER BY started_at DESC LIMIT 1`,
-      )
-      .get(project, task, this_.startedAt) as
-      | { hash: string; status: string; cacheHit: number | null; startedAt: number }
-      | undefined
-    return {
-      runId,
-      taskId,
-      thisRun: this_,
-      previousRun: prev ?? null,
-      hashChanged: prev ? prev.hash !== this_.hash : null,
-      note:
-        prev && prev.hash !== this_.hash
-          ? 'cache key changed between the previous run and this one (inputs differ)'
-          : prev
-            ? 'cache key unchanged — re-run with the same key (likely --no-cache or unrelated)'
-            : 'no prior run for this (project, task)',
-    }
+    // Delegates to the canonical query rather than re-implementing it: this
+    // handler used to carry its own copy of the SQL, so the two could (and
+    // did) answer differently once one of them learned about rows that
+    // recorded no cache key. Same reason `failure-mode.ts` exists.
+    return { ...whyDidThisRerunQuery(cache.dbHandle(), runId, taskId) }
   } finally {
     cache.close()
   }

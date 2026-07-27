@@ -12,6 +12,7 @@
 //                            when such an RPC actually exists.
 
 import type { Database } from 'bun:sqlite'
+import { EXECUTED_RUNS_SQL } from '../cache/index.js'
 import { classifyFailureMode } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
 
@@ -74,6 +75,11 @@ export class LocalHistoryProvider implements HistoryProvider {
     // (cache_hit = 1) are excluded from the duration percentiles so
     // p50/p99 reflect work the runner actually did. successRate +
     // hitRate are computed over ALL recent rows.
+    //
+    // `skipped` rows are excluded from the window entirely: a skip is a task
+    // the run never executed, so it neither belongs in a success/hit RATE nor
+    // deserves to occupy one of the `recent` slots — a task whose upstream
+    // keeps breaking would otherwise push its own real history out of view.
     const sql = `
       WITH recent AS (
         SELECT
@@ -86,6 +92,7 @@ export class LocalHistoryProvider implements HistoryProvider {
           ROW_NUMBER() OVER (PARTITION BY project, task ORDER BY started_at DESC) AS rn
         FROM runs
         WHERE (project, task) IN (VALUES ${tuplePlaceholders})
+          AND ${EXECUTED_RUNS_SQL}
       )
       SELECT
         project,

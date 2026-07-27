@@ -6,6 +6,7 @@
 // rule cannot fork again.
 
 import type { Database } from 'bun:sqlite'
+import { KEYED_RUNS_SQL } from '../cache/index.js'
 
 export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
 
@@ -20,7 +21,7 @@ export function mixedOutcomeKeyCount(db: Database, project: string, task: string
     .query(
       `SELECT COUNT(*) AS n FROM (
          SELECT hash FROM runs
-         WHERE project = ? AND task = ? AND hash IS NOT NULL AND hash != ''
+         WHERE project = ? AND task = ? AND ${KEYED_RUNS_SQL}
          GROUP BY hash
          HAVING SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 0
             AND SUM(CASE WHEN status = 'success' OR status LIKE 'cache-hit%' OR cache_hit = 1

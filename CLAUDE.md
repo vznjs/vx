@@ -208,6 +208,83 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-27**: **A skipped or persistent task is now RECORDED — and the real
+  work was stopping those rows from corrupting every rate and mean.** Closing
+  the residual the telemetry wave deferred: `toRecord` skipped `if (!o.hash)`,
+  which selects exactly `{skipped, persistent}`, so the `invocations` header and
+  the `runs` rows under-reported. Reproduced through the real CLI: a persistent
+  task that never becomes ready printed `1 failed · 1 total` and exit 1 while
+  recording `taskCount: 0, failedCount: 0, exitOk: false` and **0 runs rows**;
+  a failed task with a skipped dependent recorded 1 of 2. **A third case the
+  brief missed:** a persistent task that SUCCEEDS (`vx run dev` — the common
+  use) also recorded `taskCount: 0`. **I briefed the wrong fix and the developer
+  refused it, correctly.** I argued `runs.hash TEXT NOT NULL` was itself the
+  defect (a skipped task has no key, so the column asserted something untrue)
+  and that pre-alpha makes a SCHEMA bump cheap. Three findings killed that:
+  (a) NULL and `''` are behaviourally INDISTINGUISHABLE here — no query does
+  `WHERE runs.hash = ?`, there is no `COUNT(hash)`, and the one `GROUP BY hash`
+  (`mixedOutcomeKeyCount`) already guarded `IS NOT NULL AND != ''`, so the NULL
+  analogue I asked them to add was already present; (b) `''` is ALREADY the
+  convention for this exact concept — cloud's `task_runs.hash` is `NOT NULL`
+  written as `t.hash ?? ''` with `hash <> ''` guards, and since #192 widened
+  telemetry cloud is already receiving these rows that way, so NULL in core
+  would give one concept two sentinels across two copies of `whyDidThisRerun` /
+  `cacheKeyDiff` — the drift class `failure-mode.ts` exists to kill; (c) NULL
+  makes the TS types LIE (`RunSummaryRow.hash` is `string` behind an `as` cast,
+  so tsgolint cannot catch it) — the class that already shipped the `shorthash`
+  cell rendering `null…`. So: column unchanged, `''` sentinel, `RunRecord.hash`
+  optional with `bindRun` normalising in ONE place. **NO SCHEMA bump** (no DDL,
+  no column, no index changed; existing rows stay valid) and **NO CACHE_VERSION
+  bump** (`Cache.key()` never reads the `runs` table; `history.ts` feeds
+  scheduling PRIORITY, which is in no key). Also: `docs/caching.md` already
+  documented `task_count` as "non-group, non-aborted tasks recorded" and
+  `RunRecord.status` always included `'skipped'` — **the code was the outlier,
+  not the doc.** **THE ACTUAL WORK — writing the rows would have silently
+  corrupted every aggregate.** Measured on 2×100 ms successes + 3 skips:
+  `getHistory` 5 runs / successRate **0.4** (truth 2 / 1.0), `listProjects`
+  avgMs **40** (truth 100), `getCacheStats` runs24h **5** (truth 2), and worst
+  the predictive window reporting successRate **0** for a task that has NEVER
+  failed — skips are the NEWEST rows, so they evict real history from the
+  window. Rule adopted, and it was already encoded in `getRegressions`' own
+  latest-state CTE rather than invented: **a skip is a task of the run but not
+  an execution.** Guarded: getHistory, listProjects, getCacheStatsSql,
+  getHitRateSplit, getRunTrends, getRunHeatmap, getFlakiestTasks, getRegressions'
+  window, periodStats, getParallelismHistory, LocalHistoryProvider. Deliberately
+  NOT guarded: `listRuns`/`getRun`/`compareRuns` (the completeness surfaces —
+  the whole point) and `getRecentFailures` (a failed persistent task surfacing
+  there IS the win). Net effect on existing data: byte-identical, since these
+  rows did not exist before. **Two duplicates found while checking, both
+  deduped:** `Cache.stats()` is a SECOND implementation of the 24h run count +
+  hit rate — what `vx info` and `vx mcp` read, while the dashboard reads
+  `getCacheStatsSql` — so one was guarded and the other was not; both predicates
+  now live beside the schema (`EXECUTED_RUNS_SQL`, `KEYED_RUNS_SQL`) with a test
+  pinning the two copies EQUAL. And `mcp-rpc.ts` carried a hand-rolled duplicate
+  of `whyDidThisRerun`, now delegating to the canonical query. Both got the
+  no-key guard plus "pick the previous KEYED run" — otherwise a task whose
+  previous run was skipped is told "cache key unchanged", a claim about inputs
+  made from two rows that never had a key. Differential, and the third row is
+  the sharp one: src at HEAD **0 pass / 14 fail**; fixed **14/0**; cache+run
+  fixed but **metrics/history at HEAD 4 pass / 10 fail** — proving the aggregate
+  guards are independently load-bearing, not incidental to writing the rows (I
+  re-ran that third case myself). Gates: fmt/lint 0, core **1506/0** (21 skip =
+  sandbox). **Process note worth keeping:** a full-suite run flagged
+  `scale-graph`'s perf guard at **27.1 s against a 6000 ms bound**, twice at
+  near-identical durations, and it was NOT written off — splitting it showed
+  fixed-src-without-the-new-file passed 2/2, with-the-file failed 2/3, and
+  RENAMING the file to sort after `scale-graph` passed 2/2. `ps` gave the
+  mechanism: the new persistent fixtures used `sh -c 'echo … && sleep 30'`, a
+  compound command, so SIGTERM kills the shell and ORPHANS the sleeper (the
+  documented grandchild limit) — three 30-second processes plus a zombie
+  outliving the test and stealing CPU from the next suite. Cut to `sleep 2`;
+  3/3 green. A test fixture that orphans a grandchild is a cross-suite perf
+  hazard, not just its own problem. **Recorded, not fixed:** a skipped row has
+  no wallclock offset so it draws as a zero-width mark at the run's right edge
+  in the flamegraph (honest — a skip has no span — but odd; giving skips a real
+  timestamp needs the scheduler to stamp them); and cloud's `whyRunReran`
+  prev-run LATERAL has no status filter, so it can pair against a `hash=''` row
+  — it degrades correctly via its `noKey` guard but does not skip past to the
+  previous keyed run the way core now does.
+
 - **2026-07-27**: **A hung telemetry `flush()` no longer turns a RED run GREEN —
   and a failing run stops ingesting as `0 tasks, 0 failures`** (a repro-mandated
   hostile audit of the telemetry / plugin-host / wire surface, the last major
