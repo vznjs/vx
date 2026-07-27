@@ -208,6 +208,98 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-27**: **A hung telemetry `flush()` no longer turns a RED run GREEN —
+  and a failing run stops ingesting as `0 tasks, 0 failures`** (a repro-mandated
+  hostile audit of the telemetry / plugin-host / wire surface, the last major
+  core seam never adversarially reviewed; its cardinal rule is "observability
+  must never break a run", so every finding is that rule being broken by the
+  subsystem that states it). **HIGH: `TelemetrySource.flush` had NO deadline**
+  and `run.ts` awaits it before `closeCache()`, before `teardownPlugins`, and
+  before `return` — and `bin.ts` is `process.exit(await run(...))`, so a
+  never-returning `run()` lets Bun drain an empty event loop and **exit 0**.
+  Reproduced through the real CLI: the run printed `failed (exit 3)` and
+  `1 failed · 1 total`, then exited **0**; control exited 1. CI calls that build
+  green. Collateral, all measured: `Cache.close()` never runs, so
+  `flushAccessed()` is skipped and the run's `accessed_at` bumps are LOST
+  (differential: `…706360` unchanged across the hung run, `…709165` on the
+  control) — after which `vx cache prune --max-size` can evict entries the run
+  just hit; retention prune skipped, SQLite handle leaked, every other plugin's
+  flush/teardown skipped, and `--report=markdown` emitted **0** rows instead of
+  3. **The sharp part: the DEPRECATED `eventSink` path was already bounded**
+  (`settleWithin`, 3 s) while the CANONICAL path was not — so the fix moved
+  `settleWithin` into `src/util/settle.ts` and made `plugin-host.ts` import it,
+  so the divergence that caused this cannot reappear. The bound sits in
+  `createTelemetrySource.flush()` (contract level, so embedders inherit it),
+  sinks race concurrently so each keeps the full budget, and it WARNS rather
+  than dropping silently; `VX_TEARDOWN_TIMEOUT_MS` drives it per call — the
+  `VX_CONFIG_WORKER_TIMEOUT_MS` precedent, without which the pin would wait out
+  3 s and the no-deadline case would hang to its guard. **MED-HIGH: a failing
+  run could ingest as ZERO tasks.** `assembleRunSummary` is documented as the
+  single source shared by the local and dist paths, but its callers filtered
+  differently — local added `!o.hash`, which selects exactly `{skipped,
+persistent}` (the scheduler finishes a skip with no hash; `executePersistentTask`
+  returns none on either branch). A persistent task that fails to become ready
+  printed `1 failed · 1 total` while telemetry reported `taskCount: 0,
+failedCount: 0, exitOk: false` — a red run invisible to the dashboard and to
+  every cloud failure/regression surface; a failed task with a skipped dependent
+  reported 1 of 2. `run-state.ts` DOES count skipped, which is what proves the
+  hash filter an outlier rather than a convention. **The developer refined my
+  brief here and was right:** I said "make both callers agree"; it did NOT widen
+  the shared loop, because `runs.hash` is `TEXT NOT NULL` and the `runs_hash`
+  index + `entry_inputs` key-diff join through it — so hash-less outcomes have no
+  row by construction. It split the filters instead (telemetry widens to
+  group/aborted-only, matching what the dist controller already emits;
+  `toRecord` keeps `!o.hash`). **NO TELEMETRY_SCHEMA_VERSION bump:** no field
+  changed shape, the records were INCOMPLETE, and all three downstream consumers
+  were checked to handle the wider set (cloud ingest already writes
+  `t.hash ?? ''`; `github-summary` has an explicit `skipped` case;
+  `taskStatusCode` maps skipped to `STATUS_UNSET`). **The rest:** `telemetry()`
+  returning `null` — the natural way to express "decline" — aborted the WHOLE RUN
+  with a raw TypeError before any task ran, because `createTelemetrySource` sat
+  OUTSIDE the try whose docstring promises a throwing plugin is logged and
+  skipped (also `[null]`, `[undefined]`, `wants: 5`, a throwing `wants` getter);
+  `createWireRenderer` silently DROPPED skipped tasks (the scheduler finishes a
+  skip without `onStart`, so `task:complete` arrives with no `task:start` and the
+  `if (node)` guard swallowed it) while still forwarding a footer claiming the
+  higher total — the two functions are public and documented as inverses; the
+  zero-cost gate keyed on `hasPlugins` rather than "contributes telemetry", so a
+  backend-only plugin paid 2 git spawns and a `.vx/workspace-id` WRITE;
+  `--summarize` was internally inconsistent (`tasks.length` 3 vs
+  `summary.total` 2); and `captureDefaultBranch` HUNG on a character-device
+  `GITHUB_EVENT_PATH` (`/dev/zero`) — so hard that the synchronous `readFileSync`
+  wedged the whole `bun test` process past 2 minutes, uninterruptible by the
+  per-test timeout. **Two more places the developer corrected me:** the dist
+  controller's synthesized `task:start` is NOT a workaround for the wire defect
+  (dist builds `WireEvent`s directly rather than through `wireForwarder`, so it
+  solves the same requirement in the other producer) — left in place; and fix #5
+  does NOT reduce THIS repo's own cost, because `otel()` and `cloud()` both
+  HAVE the telemetry capability — it fixes backend/cache-only plugins. On #8 it
+  argued against BOTH loosening and bumping: loosening `defaultBranch`/
+  `startedAt` pushes `undefined` onto live readers under
+  `exactOptionalPropertyTypes` for zero runtime gain, and a v3 bump would
+  invalidate v2 readers that already handle both correctly — core always emits
+  them, so *required in v2* is accurate and the misleading half was the prose.
+  **A pre-existing test ENCODED defect #6** (asserting `tasks[]` holds a group
+  while `summary.total` excludes it, with a comment rationalizing it) — same
+  class as the memo test that asserted a stale digest; it now asserts
+  `tasks.length === summary.total`. Differentials: new lifecycle suite **13 fail
+  / 5 pass → 18 / 0** (the 5 constant passes are deliberate controls), events +
+  run-artifacts **3 fail → 0**, and the `/dev/zero` pin went from wedging the
+  runner to passing in 3 ms. Gates: fmt/lint 0, core **1492/0** (21 skip =
+  sandbox), cloud contract suites (dist-scheduler / dist-ingest / plugin /
+  wire-dist) 50/0. **Named residual:** `invocations.taskCount` still
+  under-reports the same way telemetry did, because the header row is built from
+  `toRecord` which correctly keeps `!o.hash` — so a failed persistent run still
+  records `taskCount: 0` locally for `vx info` / `vx mcp` / `metrics.ts`. Fixing
+  it needs a nullable `runs.hash` (SCHEMA bump + one cold rebuild) or decoupled
+  header counters that would stop matching `COUNT(*) FROM runs` — its own
+  decision, deliberately not made in a no-bump wave. **Container note:** the full
+  cloud suite is not a usable signal here — the browser suites fail
+  non-deterministically under load (9 fails at HEAD, then 2, then 10 with the
+  same fixes); the decisive check is isolated, where `visual.test.ts` gives an
+  identical 9 pass / 1 fail (`task-detail`) both at HEAD and with the fixes,
+  i.e. the documented pre-existing baseline drift.
+
 - **2026-07-27**: **The upload queue stops holding every pending artifact's bytes
   in RAM — plus the remote-cache audit's three LOW residuals closed.** `save()`
   eagerly read the whole artifact and pushed a closure CAPTURING those bytes into

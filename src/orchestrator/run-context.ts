@@ -3,6 +3,10 @@
 // probes are best-effort — a missing git binary, a non-repo cwd, or an
 // unset env degrades each field to null and NEVER throws. Telemetry must
 // not be able to fail a build.
+//
+// Cost: ONE git spawn (`captureGitContext`) on every run, plus two more
+// (`captureWorkspaceIdentity`, `captureDefaultBranch`) only when a plugin
+// declares the `telemetry` capability — nobody else needs those fields.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -90,6 +94,10 @@ export function captureDefaultBranch(
   const eventPath = env['GITHUB_EVENT_PATH']
   if (typeof eventPath === 'string' && eventPath.length > 0) {
     try {
+      // Only a regular file. A character device (`/dev/zero`) never reaches
+      // EOF, so readFileSync would spin forever — "never throws" is not the
+      // same as "never hangs", and a run must not wedge on a stray env var.
+      if (!fs.statSync(eventPath).isFile()) throw new Error('not a regular file')
       const payload = JSON.parse(fs.readFileSync(eventPath, 'utf8')) as {
         repository?: { default_branch?: unknown }
       }

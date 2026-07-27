@@ -6,7 +6,7 @@
 // See docs/design/core-cloud-split-2026-06.md §5.1.
 
 import type { Cache, CacheLayer } from '../cache/index.js'
-import { UserError } from '../util/index.js'
+import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import type { EventBus } from './events.js'
 import { wireForwarder } from './events.js'
 import type { Logger } from './logger.js'
@@ -129,31 +129,12 @@ export async function subscribeEventSinks(
   }
 }
 
-/** Upper bound on each teardown()/flush() await — a wedged plugin must
- *  not hold the run's exit hostage. */
-const TEARDOWN_TIMEOUT_MS = 3000
-
-async function settleWithin(p: Promise<unknown>, ms: number): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const deadline = new Promise<void>((resolve) => {
-    timer = setTimeout(resolve, ms)
-  })
-  try {
-    await Promise.race([p, deadline])
-  } finally {
-    clearTimeout(timer)
-    // A rejection landing after the deadline won already resolved the
-    // race must not surface as an unhandled-rejection crash.
-    void p.catch(() => {})
-  }
-}
-
 /**
  * End-of-run plugin lifecycle: await each event sink's optional
  * `flush()` (its last chance to ship buffered records), then each
  * plugin's optional `teardown()`. Crash-isolated — a throwing
  * flush/teardown is logged and skipped, never propagated — and each
- * call is time-bounded at {@link TEARDOWN_TIMEOUT_MS}. Runs on the
+ * call is time-bounded by {@link teardownTimeoutMs}. Runs on the
  * normal completion path only; the finally-path disposers just
  * unsubscribe.
  */
@@ -165,7 +146,7 @@ export async function teardownPlugins(
   for (const { pluginName, sink } of sinks) {
     if (sink.flush === undefined) continue
     try {
-      await settleWithin(Promise.resolve(sink.flush()), TEARDOWN_TIMEOUT_MS)
+      await settleWithin(Promise.resolve(sink.flush()), teardownTimeoutMs())
     } catch (err) {
       warn(
         `[vx] plugin '${pluginName}' event sink flush failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -175,7 +156,7 @@ export async function teardownPlugins(
   for (const plugin of plugins) {
     if (plugin.teardown === undefined) continue
     try {
-      await settleWithin(Promise.resolve(plugin.teardown()), TEARDOWN_TIMEOUT_MS)
+      await settleWithin(Promise.resolve(plugin.teardown()), teardownTimeoutMs())
     } catch (err) {
       warn(
         `[vx] plugin '${plugin.name}' teardown failed: ${err instanceof Error ? err.message : String(err)}`,

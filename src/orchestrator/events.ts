@@ -154,6 +154,14 @@ export function wireForwarder(send: (event: WireEvent) => void): RunEventSubscri
   // lines, so a consumer that renders them (the serve client) gets the
   // footer. A consumer that ignores run:status (the dev hub) is unaffected.
   let endForwarded = false
+  // Which tasks the consumer has been told about. A skipped task never
+  // reaches the scheduler's onStart, so its completion arrives with no
+  // preceding task:start — and `createWireRenderer` resolves a completion's
+  // node from the start it recorded, so it would drop the task entirely
+  // while the forwarded footer still counted it. Synthesize the start here,
+  // where the live TaskNode is in hand, so the projection stays full
+  // fidelity (real requested/surfaced/command) instead of a stand-in.
+  const started = new Set<string>()
   return (event) => {
     if (event.kind === 'run:end') {
       if (endForwarded) return
@@ -163,6 +171,11 @@ export function wireForwarder(send: (event: WireEvent) => void): RunEventSubscri
       isGroupTask(event.node)
     ) {
       return
+    } else if (event.kind === 'task:start') {
+      started.add(event.node.id)
+    } else if (event.kind === 'task:complete' && !started.has(event.node.id)) {
+      started.add(event.node.id)
+      send({ kind: 'task:start', task: projectNode(event.node) })
     }
     send(toWireEvent(event))
   }

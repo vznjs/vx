@@ -352,9 +352,15 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // so a plain run does ZERO extra work: no record allocation, no bus
     // subscriber, no summary building. The hot path stays off-limits.
     let runContextRecord: RunContextRecord | undefined
-    const hasPlugins =
-      prepared.workspaceConfig?.plugins !== undefined && prepared.workspaceConfig.plugins.length > 0
-    if (hasPlugins || options.telemetrySinks !== undefined) {
+    // Gate on a plugin that can actually CONTRIBUTE a sink, not on declaring
+    // any plugin at all: a backend/cache-only plugin has no telemetry hook to
+    // consult, so paying for the record (2 git spawns + a `.vx/workspace-id`
+    // write on a remote-less repo) buys nothing. A plugin that has the hook
+    // but declines still pays — its answer is only knowable by asking.
+    const hasTelemetryPlugin =
+      prepared.workspaceConfig?.plugins?.some((p) => (p as VxPlugin).telemetry !== undefined) ===
+      true
+    if (hasTelemetryPlugin || options.telemetrySinks !== undefined) {
       // Workspace identity (telemetry v2): one git spawn, paid only when a
       // telemetry consumer can exist — a plain run never reaches here.
       const wsIdentity = captureWorkspaceIdentity(workspaceRoot)
@@ -776,7 +782,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     let hitLocalCount = 0
     let hitRemoteCount = 0
     for (const o of list) {
-      if (!o.hash) continue
       if (isGroupTask(o.node)) continue
       // aborted (killed by a shutdown signal) isn't a real run.
       if (o.status === 'aborted') continue
@@ -800,6 +805,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
         summaryTasks.push(t)
       }
+      // The `runs` table is keyed by cache hash (`hash TEXT NOT NULL`, the
+      // runs_hash index, and the entry_inputs key-diff joins through it), so
+      // an outcome with no hash — a skipped task, or a persistent one, neither
+      // of which ever probed the cache — has no row to write. Telemetry's
+      // `hash` is optional and its task set deliberately DOES include them,
+      // so it agrees with both the terminal tally and the distributed
+      // controller (which filters group/aborted and nothing else). Filtering
+      // them out of telemetry too is what let a failed persistent task ingest
+      // as `0 tasks, 0 failures` on a run the terminal called red.
+      if (!o.hash) continue
       toRecord.push({
         hash: o.hash,
         project: o.node.projectName,

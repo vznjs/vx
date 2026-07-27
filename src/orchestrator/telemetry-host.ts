@@ -31,6 +31,18 @@ export interface TelemetryHandle {
   dispose(): void
 }
 
+/** Reject anything that is not sink-shaped, naming what arrived. */
+function checkSink(sink: unknown): TelemetrySink {
+  if (typeof sink !== 'object' || sink === null) {
+    throw new Error(`telemetry sink must be an object, got ${sink === null ? 'null' : typeof sink}`)
+  }
+  const wants = (sink as TelemetrySink).wants
+  if (wants !== undefined && !Array.isArray(wants)) {
+    throw new Error(`telemetry sink 'wants' must be an array, got ${typeof wants}`)
+  }
+  return sink as TelemetrySink
+}
+
 /**
  * Consult every plugin's `telemetry` capability, collect the sinks, and —
  * only if at least one sink results — create a TelemetrySource and subscribe
@@ -49,23 +61,29 @@ export async function subscribeTelemetry(
   const sinks: TelemetrySink[] = extraSinks === undefined ? [] : [...extraSinks]
   for (const plugin of plugins) {
     if (plugin.telemetry === undefined) continue
-    let result
+    // A plugin's return value is user input, so it is checked here rather
+    // than trusted downstream: `createTelemetrySource` reads `.wants` off
+    // every sink immediately, so one `null` in the list used to abort the
+    // whole run with a raw TypeError before a single task had run. Staging
+    // into `accepted` keeps a partly-bad array all-or-nothing, and the shape
+    // check sits INSIDE the try so a throwing `wants` getter is caught too.
+    let accepted: TelemetrySink[]
     try {
-      result = await plugin.telemetry(ctx)
+      const result = await plugin.telemetry(ctx)
+      const list = result === undefined ? [] : Array.isArray(result) ? result : [result]
+      accepted = list.map((sink) => checkSink(sink))
     } catch (err) {
       ctx.warn(
         `[vx] plugin '${plugin.name}' telemetry failed to initialize; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
       )
       continue
     }
-    if (result === undefined) continue
-    if (Array.isArray(result)) sinks.push(...result)
-    else sinks.push(result)
+    sinks.push(...accepted)
   }
 
   if (sinks.length === 0) return undefined
 
-  const source = createTelemetrySource({ sinks, run })
+  const source = createTelemetrySource({ sinks, run, warn: (m) => ctx.warn(m) })
   const dispose = bus.subscribe(source.subscriber)
   let disposed = false
   return {
