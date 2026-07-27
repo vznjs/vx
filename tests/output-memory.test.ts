@@ -30,22 +30,24 @@ function probeRssMib(script: string): number {
   return Number(m[1])
 }
 
-const CHUNKS = 40
 const CHUNK_BYTES = 4 * 1024 * 1024
-const FED_MIB = (CHUNKS * CHUNK_BYTES) / 1024 / 1024
+const FEW_CHUNKS = 20
+const MANY_CHUNKS = 60
+/** Extra bytes the many-chunk run feeds over the few-chunk one. */
+const EXTRA_MIB = ((MANY_CHUNKS - FEW_CHUNKS) * CHUNK_BYTES) / 1024 / 1024
 
 /**
- * Feed `CHUNKS` distinct multi-MB chunks through `defaultLogger` in one view
+ * Feed `chunks` distinct multi-MB chunks through `defaultLogger` in one view
  * mode and report the process RSS while the task is still in flight — i.e.
  * the peak the logger's per-task buffers are responsible for. The chunks are
  * built inline so the probe itself retains none of them.
  */
-function loggerProbe(mode: string): string {
+function loggerProbe(mode: string, chunks: number): string {
   return `
     import { defaultLogger } from ${JSON.stringify(LOGGER)}
     const log = defaultLogger({ enabled: false }, { mode: ${JSON.stringify(mode)} }, { write: () => true })
     const node = { id: 'p#t', projectName: 'p', taskName: 't', requested: false, surfaced: false, deps: [], config: { exec: { command: 'noop' } } }
-    for (let i = 0; i < ${CHUNKS}; i++) log.taskStdout(node, i + ':' + 'x'.repeat(${CHUNK_BYTES}))
+    for (let i = 0; i < ${chunks}; i++) log.taskStdout(node, i + ':' + 'x'.repeat(${CHUNK_BYTES}))
     console.log('rss_mib=' + Math.round(process.memoryUsage().rss / 1024 / 1024))
   `
 }
@@ -54,21 +56,35 @@ describe('logger per-task buffering', () => {
   it(
     '`none` discards chunks on arrival; the printing modes still buffer them',
     () => {
-      // The control runs FIRST so a harness that measured nothing would show
-      // it here rather than passing vacuously on the bounded side.
-      const full = probeRssMib(loggerProbe('full'))
-      const none = probeRssMib(loggerProbe('none'))
+      // Assert on how RSS RESPONDS TO VOLUME, not on either absolute figure.
+      // Comparing the two modes at one volume looked like the obvious test and
+      // is not: building each chunk allocates it, so a run's peak also carries
+      // whatever transient garbage GC has not reclaimed yet, and how much that
+      // is differs per machine. It passed here (85 vs 201 MiB) and failed on a
+      // CI runner at 129 vs 206 — where the fix was plainly working, since 129
+      // is far below what 160 MiB of retained chunks costs. Feeding two volumes
+      // to the SAME mode cancels that: the baseline and the garbage are common
+      // to both, so the difference is what the buffers actually retained.
+      //
+      // The control runs FIRST so a harness that measured nothing would show it
+      // here rather than passing vacuously on the bounded side.
+      const fullFew = probeRssMib(loggerProbe('full', FEW_CHUNKS))
+      const fullMany = probeRssMib(loggerProbe('full', MANY_CHUNKS))
+      const noneFew = probeRssMib(loggerProbe('none', FEW_CHUNKS))
+      const noneMany = probeRssMib(loggerProbe('none', MANY_CHUNKS))
 
-      // `full` prints this output, so it must still hold it — that is the
-      // deliberate boundary, not an oversight: silently truncating a build
-      // log is worse than the memory. Pinned so a future "bound everything"
-      // change has to argue with this line.
-      expect(full).toBeGreaterThan(FED_MIB * 0.75)
+      // `full` prints this output, so it must still hold it — the deliberate
+      // boundary, not an oversight: silently truncating a build log is worse
+      // than the memory. Pinned so a future "bound everything" change has to
+      // argue with this line. It grows with the volume it is holding.
+      expect(fullMany - fullFew).toBeGreaterThan(EXTRA_MIB * 0.5)
 
-      // `none` guarantees "no per-task output at all", so it must not pay
-      // for output it will never print. Before the fix both modes measured
-      // identically (201 MiB each for 160 MiB fed).
-      expect(none).toBeLessThan(full / 2)
+      // `none` guarantees "no per-task output at all", so it must not pay for
+      // output it will never print: tripling the volume must not move it. The
+      // slack covers GC noise while staying far under the 160 MiB the extra
+      // chunks would cost if they were retained (before the fix both modes
+      // grew together).
+      expect(noneMany - noneFew).toBeLessThan(EXTRA_MIB * 0.25)
     },
     TIMEOUT,
   )
