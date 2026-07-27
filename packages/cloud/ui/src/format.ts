@@ -55,7 +55,11 @@ export function formatCount(n: number): string {
 const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const
 
 export function formatBytes(b: number): string {
-  if (!Number.isFinite(b) || b <= 0) return '0 B'
+  // Unknown (non-finite) is '—'; a real zero is still '0 B'. Reporting an
+  // unknown size as a confident "0 B" is the same lie as an unknown count
+  // reporting "0" — see formatValue's contract.
+  if (!Number.isFinite(b)) return '—'
+  if (b <= 0) return '0 B'
   // Clamp to [0, SIZE_UNITS.length-1]. Fractional inputs (chart Y mid-ticks)
   // can produce a negative log and an undefined unit otherwise.
   const i = Math.max(0, Math.min(SIZE_UNITS.length - 1, Math.floor(Math.log(b) / Math.log(1024))))

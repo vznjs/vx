@@ -34,6 +34,17 @@ export type FormatHint =
   | 'cpuPct'
   | 'text'
 
+/**
+ * Render one number under a display hint.
+ *
+ * A non-finite `v` means UNKNOWN (the value could not be computed — an absent
+ * source, an aggregate with nothing to aggregate), and every hint renders that
+ * as the `'—'` sentinel. That rule was already true for 8 of the 11 hints via
+ * their formatters (`formatDuration`/`formatCount`/`formatPercent` all guard
+ * `Number.isFinite`); `multiplier`, `fixed1` and `bytes` used to print `NaN×`,
+ * `NaN` and a confident `0 B`. NB `'—'` is only for UNKNOWN — a real 0 still
+ * renders `0`/`0.00×`/`0 B`.
+ */
 export function formatValue(hint: FormatHint | undefined, v: number): string {
   switch (hint) {
     case 'signedDuration':
@@ -59,9 +70,9 @@ export function formatValue(hint: FormatHint | undefined, v: number): string {
     case 'number':
       return Number.isFinite(v) ? String(Math.round(v)) : '—'
     case 'multiplier':
-      return `${v.toFixed(2)}×`
+      return Number.isFinite(v) ? `${v.toFixed(2)}×` : '—'
     case 'fixed1':
-      return v.toFixed(1)
+      return Number.isFinite(v) ? v.toFixed(1) : '—'
     case 'cpuPct':
       // v is already a percentage (e.g. 76 → "76%"), not a 0..1 ratio.
       return Number.isFinite(v) ? `${Math.round(v)}%` : '—'

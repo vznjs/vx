@@ -113,7 +113,7 @@
               "sub": {
                 "$computed": "text",
                 "args": {
-                  "tpl": "{a} ok · {b} fail · {c} hits",
+                  "tpl": "{a} ok · {b} fail · {s} skipped · {c} hits",
                   "a": {
                     "$computed": "countWhere",
                     "args": {
@@ -132,6 +132,16 @@
                       },
                       "field": "status",
                       "eq": "failed"
+                    }
+                  },
+                  "s": {
+                    "$computed": "countWhere",
+                    "args": {
+                      "arr": {
+                        "$state": "/run/tasks"
+                      },
+                      "field": "status",
+                      "eq": "skipped"
                     }
                   },
                   "c": {
@@ -209,39 +219,48 @@
             "props": {
               "label": "Outcome",
               "value": {
-                "$computed": "gt",
+                "$computed": "runOutcome",
                 "args": {
-                  "v": {
-                    "$computed": "countWhere",
-                    "args": {
-                      "arr": {
-                        "$state": "/run/tasks"
-                      },
-                      "field": "status",
-                      "eq": "failed"
-                    }
+                  "inv": {
+                    "$state": "/invocation"
                   },
-                  "n": 0,
-                  "then": "failed",
-                  "else": "success"
+                  "tasks": {
+                    "$state": "/run/tasks"
+                  },
+                  "status": {
+                    "$state": "/invocationStatus"
+                  },
+                  "field": "label"
+                }
+              },
+              "sub": {
+                "$computed": "runOutcome",
+                "args": {
+                  "inv": {
+                    "$state": "/invocation"
+                  },
+                  "tasks": {
+                    "$state": "/run/tasks"
+                  },
+                  "status": {
+                    "$state": "/invocationStatus"
+                  },
+                  "field": "sub"
                 }
               },
               "tone": {
-                "$computed": "gt",
+                "$computed": "runOutcome",
                 "args": {
-                  "v": {
-                    "$computed": "countWhere",
-                    "args": {
-                      "arr": {
-                        "$state": "/run/tasks"
-                      },
-                      "field": "status",
-                      "eq": "failed"
-                    }
+                  "inv": {
+                    "$state": "/invocation"
                   },
-                  "n": 0,
-                  "then": "bad",
-                  "else": "good"
+                  "tasks": {
+                    "$state": "/run/tasks"
+                  },
+                  "status": {
+                    "$state": "/invocationStatus"
+                  },
+                  "field": "tone"
                 }
               }
             }

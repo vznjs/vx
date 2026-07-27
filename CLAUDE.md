@@ -246,6 +246,74 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-27**: **The dashboard stopped reporting a RED run as green and
+  stopped answering "0 flaky tasks" when the probe FAILED** (the two HIGH
+  findings of the first hostile audit of the dashboard's CLIENT-SIDE derivation
+  layer — the layer between correct API rows and what a dev actually reads,
+  which has produced false statements with NO server bug behind it four times
+  before: `detectSlowdowns` blaming code for environment noise, `cv/2` printed
+  as the ±1σ margin, `deltaBar` painting trivial noise danger-red, a group node
+  rendered as executed work; full report + the 17 REFUTED probes in
+  `/tmp/cloud-deriv-audit.md`). **F2, and it is the sharpest defect of the day:
+  run detail derived its verdict from TASK ROWS** (`countWhere(status ===
+'failed') > 0`) while the authoritative `exitOk` sat fetched and rendered by
+  ZERO views — and the Runs list DID read it, so the two surfaces contradicted
+  each other about the same run. `execute-task.ts:743` sets a task's status from
+  its exit code and attaches the verify verdict SEPARATELY, so a `--verify` run
+  failing on `nondeterministic` has `exitOk:false`, `failedCount:0`, every row
+  `success` — **vx's flagship cache-correctness feature firing read as GREEN.**
+  Same class as the output audit's F7 (`--summarize` rendering an exit-1 run
+  green), except here the field already existed and was ignored. **A third shape
+  the audit did not name and the developer found — and it is the COMMON one:**
+  incremental ingest writes `task_runs` per task but the `invocations` header
+  only at run END, so `/v1/invocations/:id` 404s for the whole of a live run;
+  run detail polls every 5 s and, from the first task onward, stated a confident
+  green `success` for a run that had not finished. New `runOutcome(inv, tasks,
+status)` uses the SAME `invocationPassed` predicate as the Runs list when a
+  header exists (so they cannot diverge), and with no header the rows may prove
+  a run RED but never GREEN, naming the true reason (`missing` → "not recorded
+  yet", `error` → "unavailable") rather than one sentence for both. Verified
+  myself across all six shapes. Neighbourhood checked and deliberately left:
+  `Tasks`/`Wall time`/`CPU time` stay row-derived because the rows ARE
+  authoritative for what was recorded and `getRun`'s own `startedAt/endedAt` are
+  min/max over those same rows — the verdict was the only run-level CLAIM the
+  rows cannot make. **F1: "Flaky tasks: 0" and "Avg parallelism: 0.00×" on a
+  FAILED probe** — the only two of nine aggregate-backed metrics with no gate,
+  sitting in the same row as two that honestly render `—`, on the surface that
+  answers lens question #4. **Worse than the audit stated:** the failed-probe
+  tile also carried `tone=good` and painted GREEN, i.e. an affirmative "you're
+  clean", not a neutral zero. **Fixed STRUCTURALLY at the value layer rather
+  than with per-metric `visible` gates, and the reasoning is the durable part:**
+  the other seven gate at GRID level, which works only because those grids draw
+  from ONE source; the Insights headline grid draws from FOUR, so per-tile gates
+  were the only `visible` form available — and they blink a tile out of a
+  4-column row on every load (sources resolve async) AND stay opt-in, which is
+  precisely how two of nine were forgotten. The value layer already had the
+  convention (non-finite ⇒ `'—'`, true for 8 of 11 format hints — exactly why
+  "Time saved" and "Hit rate" were honest in the same row), so the fix COMPLETES
+  it: scalar aggregators answer NaN for an absent array, `aggTone`/`gt`/`lt` pick
+  NEITHER branch on an unknown value (the green-tile half), and an EMPTY array
+  still reads a real `0`. **The guard found two more instances while being
+  written:** `countCold`/`coldBytes` on the Cache page gate on a CAPABILITY, not
+  their source's status, so a failed `/entries` fetch rendered `0` and `0 B`.
+  NO schema/wire/CACHE bump (browser-side derivation over fields the API already
+  returned). Differentials: new `views.test.ts` drives the SHIPPED view JSON
+  through the real `@json-render/core` resolver AND the real
+  `evaluateVisibility` — 12/0 fixed vs **2 pass / 8 fail** at HEAD;
+  `functions.test.ts` 51 → 64; UI suite 91 → **113**. Gates: fmt/lint 0, core
+  **1554/0**, UI 113/0. **Recorded, not fixed:** an aborted task is written
+  NOWHERE (`run.ts` skips it before both `toRecord` and `summaryTasks`), so the
+  verdict is now right while the task itself stays invisible to the dashboard —
+  a server/telemetry gap, not a client one. **Two process notes.** (1) The
+  audit's own saved probe did NOT reproduce its finding: it passed
+  `{ state, functions }` while `resolvePropValue` reads `ctx.stateModel`, so
+  both arms resolved to undefined and printed identically. The finding was real;
+  the artifact was stale — **re-derive from a saved probe, never trust it.**
+  (2) `packages/cloud/ui` is excluded from the root oxlint AND oxfmt, so changes
+  there are NOT covered by the repo gate; they were checked with an out-of-tree
+  config against the same files at HEAD (identical counts, zero new). That
+  exclusion is a standing hole worth closing.
+
 - **2026-07-27**: **The runner stopped accumulating output nothing reads —
   a chatty task's floor drops to baseline.** Closing the residuals the output
   audit named. Verified consumer counts first, because the whole wave rests on

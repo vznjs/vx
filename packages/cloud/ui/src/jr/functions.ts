@@ -35,7 +35,28 @@ function entryHeat(row: Row, now: number): 'cold' | 'stale' | 'warm' {
 // a cold entry is a fact, not a failure; status colors are only for status).
 const HEAT_TOKEN = { warm: 'warm', stale: 'stale', cold: 'cold' } as const
 
+/**
+ * True when a state key holds no array — the source is LOADING, its fetch
+ * FAILED, or it resolved `null` ('missing'). `page.tsx` leaves the key
+ * `undefined` in the first two cases, and `arr()` used to flatten all of them
+ * to `[]`.
+ *
+ * THE RULE: a SCALAR aggregator over an absent array answers UNKNOWN (NaN),
+ * never 0. The display layer already renders unknown as the '—' sentinel
+ * (`formatValue`), so absence stays honest for every aggregate-backed binding
+ * without each one having to opt into a `visible` gate — which is exactly what
+ * two of the nine metric tiles had forgotten to do, leaving "Flaky tasks: 0"
+ * (in green) on a failed probe. An EMPTY array is a real answer and still
+ * aggregates to 0.
+ *
+ * Row-MAPPING helpers (coldEntries / withFlakyFix / joinProjects …) keep
+ * returning `[]` for an absent input: their consumer is a DataTable, which has
+ * its own `status` prop and renders a LoadError.
+ */
+const absent = (v: unknown): boolean => !Array.isArray(v)
+
 function aggregate(a: Args): number {
+  if (absent(a.arr)) return Number.NaN
   const rows = arr(a.arr)
   const field = String(a.field)
   if (a.op === 'count') return rows.length
@@ -63,22 +84,38 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
   ratioFmt: (a) => {
     const b = aggregate({ arr: a.arr, field: a.b, op: 'sum' })
     const top = aggregate({ arr: a.arr, field: a.a, op: 'sum' })
-    return formatValue(a.fmt as FormatHint, b > 0 ? top / b : 0)
+    // Unknown in, unknown out — no exception to the absence rule above.
+    return formatValue(a.fmt as FormatHint, Number.isFinite(b) && b > 0 ? top / b : Number.NaN)
   },
-  aggTone: (a) => (aggregate(a) > n(a.gt) ? a.then : (a.else ?? 'default')),
+  // An UNKNOWN aggregate asserts no tone — an absent source must not paint a
+  // tile green (`else`), which is what "Flaky tasks: 0 ✅" on a failed probe
+  // did. 'default' is what the sibling `gt`-toned tiles already fall back to.
+  aggTone: (a) => {
+    const v = aggregate(a)
+    if (!Number.isFinite(v)) return 'default'
+    return v > n(a.gt) ? a.then : (a.else ?? 'default')
+  },
 
-  // string composition: text({ tpl: '{a} / {b} runs', a, b })
-  text: (a) => String(a.tpl ?? '').replace(/\{(\w+)\}/g, (_m, k) => (a[k] === undefined ? '' : String(a[k]))),
+  // string composition: text({ tpl: '{a} / {b} runs', a, b }). An unknown
+  // numeric slot renders '—' rather than the literal 'NaN'.
+  text: (a) =>
+    String(a.tpl ?? '').replace(/\{(\w+)\}/g, (_m, k) => {
+      const v = a[k]
+      if (v === undefined) return ''
+      if (typeof v === 'number' && !Number.isFinite(v)) return '—'
+      return String(v)
+    }),
 
-  // tone selection on a single value (since $cond can't compare a $computed)
-  gt: (a) => (n(a.v) > n(a.n) ? a.then : (a.else ?? 'default')),
-  lt: (a) => (n(a.v) < n(a.n) ? a.then : (a.else ?? 'default')),
+  // tone selection on a single value (since $cond can't compare a $computed).
+  // Same rule as aggTone: an unknown value picks neither branch.
+  gt: (a) => (Number.isFinite(n(a.v)) ? (n(a.v) > n(a.n) ? a.then : (a.else ?? 'default')) : 'default'),
+  lt: (a) => (Number.isFinite(n(a.v)) ? (n(a.v) < n(a.n) ? a.then : (a.else ?? 'default')) : 'default'),
 
   // chart-palette token for a category key
   palette: (a) => paletteFor(String(a.key)),
 
   // count rows where a field equals a value (e.g. status === 'success')
-  countWhere: (a) => arr(a.arr).filter((r) => r[String(a.field)] === a.eq).length,
+  countWhere: (a) => (absent(a.arr) ? Number.NaN : arr(a.arr).filter((r) => r[String(a.field)] === a.eq).length),
 
   // Annotate cache entries with heat: adds `_heat` ('cold'|'stale'|'warm') and
   // `_heatToken` (a failureMode token the dots map colors), plus `_taskId` for
@@ -93,12 +130,14 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
 
   // # of cold (written-but-never-rehit) entries.
   countCold: (a) => {
+    if (absent(a.arr)) return Number.NaN
     const now = Date.now()
     return arr(a.arr).filter((r) => entryHeat(r, now) === 'cold').length
   },
 
   // Reclaimable bytes = total size of cold entries, formatted.
   coldBytes: (a) => {
+    if (absent(a.arr)) return formatValue('bytes', Number.NaN)
     const now = Date.now()
     const b = arr(a.arr).reduce((acc, r) => (entryHeat(r, now) === 'cold' ? acc + n(r.sizeBytes) : acc), 0)
     return formatValue('bytes', b)
@@ -106,6 +145,7 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
 
   // max(end) - min(start) across rows (run wall time)
   span: (a) => {
+    if (absent(a.arr)) return Number.NaN
     const rows = arr(a.arr)
     if (!rows.length) return 0
     return Math.max(...rows.map((r) => n(r[String(a.end)]))) - Math.min(...rows.map((r) => n(r[String(a.start)])))
@@ -140,6 +180,11 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
       vx: inv.vxVersion ?? null,
     }
   },
+
+  // The run's verdict for the run-detail Outcome metric. Called once per prop
+  // (`field: 'label' | 'tone' | 'sub'`) the way `gt` already is — reads the
+  // authoritative header, falls back to what the rows can prove. See runOutcome.
+  runOutcome: (a) => runOutcome(a.inv, arr(a.tasks), a.status)[(a.field as keyof RunOutcome) ?? 'label'],
 
   // Two rows (Local / Remote) for the cache hit-source split table — each with
   // its raw count and a 0..1 share fraction for the bar column. Built here so
@@ -352,6 +397,49 @@ interface InvocationLike {
 /** A run passed iff no task failed AND it exited ok. */
 export function invocationPassed(inv: InvocationLike): boolean {
   return (Number(inv.failedCount) || 0) === 0 && inv.exitOk !== false
+}
+
+/** The run's verdict, ready for a Metric (`label` / `tone` / `sub`). */
+export interface RunOutcome {
+  label: string
+  tone: 'good' | 'bad' | 'default'
+  sub: string
+}
+
+/**
+ * A run's verdict, from the invocation HEADER — never inferred from task rows.
+ *
+ * `exitOk` is what `vx run` actually exited on, and the run is red for reasons
+ * no task row can show:
+ *  - `--verify` proving a task's outputs non-reproducible leaves the task's own
+ *    status `'success'` (execute-task deliberately does not flip its exit code),
+ *    yet `run.ts` makes `ok` false — the flagship cache-correctness feature
+ *    firing used to render green here;
+ *  - an ABORTED task (killed by SIGINT/SIGTERM) is excluded from telemetry
+ *    entirely, so it contributes no row at all while making `ok` false.
+ * Deriving the verdict from `countWhere(status === 'failed')` therefore
+ * contradicted the Runs list and the CI-health strip, which both read the
+ * header through `invocationPassed`. Same predicate here, so they agree.
+ *
+ * With NO header — a run in flight (task rows are ingested incrementally, the
+ * header only at run end) or a failed header fetch — the rows can prove the run
+ * RED but never GREEN, so a failed row still reads `failed` and everything else
+ * states nothing. `status` is the header source's own load state, so the reason
+ * given is the true one: 404 ('missing') really is "not recorded yet", but a
+ * failed fetch must not claim that.
+ */
+export function runOutcome(inv: unknown, tasks: readonly Row[], status?: unknown): RunOutcome {
+  if (inv !== null && typeof inv === 'object') {
+    return invocationPassed(inv as InvocationLike)
+      ? { label: 'success', tone: 'good', sub: '' }
+      : { label: 'failed', tone: 'bad', sub: '' }
+  }
+  const why =
+    status === 'error' ? 'run header unavailable' : status === 'loading' ? '' : 'run header not recorded yet'
+  if (tasks.some((t) => t.status === 'failed')) {
+    return { label: 'failed', tone: 'bad', sub: why === '' ? 'a task failed' : `a task failed · ${why}` }
+  }
+  return { label: '—', tone: 'default', sub: why }
 }
 
 /**
