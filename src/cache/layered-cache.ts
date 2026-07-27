@@ -196,10 +196,6 @@ export class LayeredCache implements CacheLayer {
     const ingested = await this.pullFromRemote(hash, ctx)
     if (!ingested) return null
 
-    // The artifact is now in local, but this *lookup* was a remote
-    // hit — flip the source so callers can distinguish "saved work
-    // via the remote cache" from "saved work via a prior local run".
-    //
     // Read past the local READ gate: `ingest` is deliberately ungated, so
     // the artifact + index row this pull just wrote exist regardless of
     // policy, and the gate ("don't serve hits from the pre-existing local
@@ -207,7 +203,16 @@ export class LayeredCache implements CacheLayer {
     // made `--cache=local:,remote:rw` download the artifact, throw the hit
     // away, re-execute and re-upload — on every run, forever.
     const materialized = await this.local.getIngested(hash)
-    return materialized ? { ...materialized, source: 'remote' } : null
+    if (!materialized) return null
+
+    // `remoteSourced` — not merely "the pull returned true" — is what says
+    // the remote cache saved this work. `doPullFromRemote` also returns true
+    // for its local-first skip, which issues NO remote GET: when a run
+    // sharing this cache dir ingests the artifact between the local read
+    // above and that skip's `local.has`, stamping 'remote' here reported a
+    // purely-local hit as `cache-hit-remote` and inflated the remote
+    // hit-rate. Whatever provenance the entry has is the truth.
+    return this.remoteSourced.has(hash) ? { ...materialized, source: 'remote' } : materialized
   }
 
   // Existence probe: local first, then a remote HEAD — no body
@@ -303,28 +308,43 @@ export class LayeredCache implements CacheLayer {
     // local writes are disabled).
     await this.local.save(args)
     if (!this.policy.remoteWrite) return
-    // Write-through upload, OFF the task's critical path. The bytes are
-    // captured NOW — read from the artifact the local layer just wrote
-    // (same format on both sides, no repacking), or, when local writes
-    // are disabled (`--cache=local:,remote:rw`), packed in memory while
-    // the output files are guaranteed still on disk. The PUT itself then
-    // runs in the bounded background pool so the task's worker slot is
-    // released immediately; `run()` awaits `drainUploads()` before
-    // closing the cache. Errors are logged, not propagated: the task
-    // already succeeded; we don't fail it on cache-server issues.
-    let bytes: Uint8Array
-    try {
-      bytes = this.local.localWritesEnabled
-        ? await Bun.file(this.local.outputsPath(args.hash)).bytes()
-        : await this.local.packArtifactBytes(args)
-    } catch (err) {
-      this.reportRemoteError(err)
-      return
-    }
+    // Write-through upload, OFF the task's critical path: the PUT runs in
+    // the bounded background pool so the task's worker slot is released
+    // immediately, and `run()` awaits `drainUploads()` before closing the
+    // cache. Errors are logged, not propagated: the task already
+    // succeeded; we don't fail it on cache-server issues.
+    //
+    // The artifact bytes are read INSIDE the job, not here.
+    // UPLOAD_CONCURRENCY bounds sockets, not memory: a queued closure
+    // holding its own artifact keeps the WHOLE backlog resident, so peak
+    // RSS scaled with a run's total miss artifact bytes rather than with
+    // the pool — any cold monorepo run whose remote uploads slower than the
+    // build produces artifacts held every pending one at once. Reading in
+    // the job caps resident artifact bytes at UPLOAD_CONCURRENCY. The
+    // artifact is content-addressed and immutable, so a deferred read sees
+    // the same bytes; if a concurrent `vx cache prune` removed it first the
+    // read throws and this upload is skipped — the never-fail contract.
+    const hash = args.hash
     const durationMs = args.entry.durationMs
+    // Local writes disabled (`--cache=local:,remote:rw`): there is no
+    // on-disk artifact to read later, so the bytes must be packed NOW,
+    // while this task's output files are still on disk. Deferring THIS
+    // read would pack whatever the tree happens to hold when the job
+    // runs. Such a run keeps the old memory profile by necessity — the
+    // bytes exist nowhere else.
+    let packed: Uint8Array | undefined
+    if (!this.local.localWritesEnabled) {
+      try {
+        packed = await this.local.packArtifactBytes(args)
+      } catch (err) {
+        this.reportRemoteError(err)
+        return
+      }
+    }
     this.enqueueUpload(async () => {
       try {
-        await this.remote.put(args.hash, bytes, { durationMs })
+        const bytes = packed ?? (await Bun.file(this.local.outputsPath(hash)).bytes())
+        await this.remote.put(hash, bytes, { durationMs })
       } catch (err) {
         this.reportRemoteError(err)
       }

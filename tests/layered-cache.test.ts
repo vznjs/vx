@@ -420,6 +420,119 @@ describe('LayeredCache', () => {
     expect(remote.putFinished).toBe(true)
   })
 
+  it('a queued upload holds no artifact bytes — it reads them when the PUT runs', async () => {
+    // UPLOAD_CONCURRENCY bounds sockets, not memory: a queued closure that
+    // captured its own artifact keeps the WHOLE backlog resident, so peak
+    // RSS scaled with total miss artifact bytes. Proving non-retention
+    // WITHOUT an RSS assertion: stall the pool, save, then delete the local
+    // artifacts. Bytes captured at save time would still upload; bytes read
+    // at PUT time cannot. Deleting stands in for the documented racer, a
+    // concurrent `vx cache prune`.
+    let releasePut!: () => void
+    remote.putGate = new Promise<void>((resolve) => {
+      releasePut = resolve
+    })
+    const errors: Error[] = []
+    const layered = makeLayered({ onRemoteError: (e) => errors.push(e) })
+
+    // One more save than the pool can run at once, so some genuinely queue.
+    const queuedHashes = ['h-q0', 'h-q1', 'h-q2', 'h-q3', 'h-q4', 'h-q5']
+    for (const hash of queuedHashes) {
+      const outFile = path.join(projectDir, 'dist', `${hash}.txt`)
+      await mkdir(path.dirname(outFile), { recursive: true })
+      await writeFile(outFile, `produced-${hash}`)
+      // save() must not block on the gated pool — the upload is off the
+      // task's critical path whether or not the bytes are read here.
+      await layered.save({
+        hash,
+        projectDir,
+        outputFiles: [outFile],
+        entry: { taskId: 'pkg#build', command: 'c', exitCode: 0, durationMs: 1, stdout: '' },
+      })
+    }
+    await Bun.sleep(20)
+    // Every artifact landed locally; only the uploads are backed up.
+    for (const hash of queuedHashes) expect(await local.get(hash)).not.toBeNull()
+
+    // Remove the artifacts the still-queued uploads have not read yet.
+    await rm(cacheDir, { recursive: true, force: true })
+
+    const drain = layered.drainUploads()
+    releasePut()
+    await drain
+
+    // Only the uploads already RUNNING when the artifacts vanished could
+    // have read their bytes; every queued one found nothing to send.
+    expect(remote.store.size).toBeLessThan(queuedHashes.length)
+    expect(errors.length).toBeGreaterThan(0)
+    // And the vanished artifact never failed anything — the never-fail
+    // contract covers the deferred read too.
+    expect(errors.every((e) => e instanceof Error)).toBe(true)
+  })
+
+  it('save() still packs in memory when local writes are disabled', async () => {
+    // Control for the deferred read: with `--cache=local:,remote:rw` there
+    // is no on-disk artifact to read later, so those bytes MUST be captured
+    // during save() while the task's outputs are still on disk. Must behave
+    // identically before and after the deferral.
+    const writeless = new Cache(path.join(workspaceRoot, '.vx', 'nowrite'), {
+      read: false,
+      write: false,
+    })
+    try {
+      const layered = new LayeredCache(writeless, remote.layer, { onRemoteError: () => {} })
+      const outFile = path.join(projectDir, 'dist', 'packed.txt')
+      await mkdir(path.dirname(outFile), { recursive: true })
+      await writeFile(outFile, 'packed-in-memory')
+      await layered.save({
+        hash: 'h-packed',
+        projectDir,
+        outputFiles: [outFile],
+        entry: { taskId: 'pkg#build', command: 'c', exitCode: 0, durationMs: 1, stdout: '' },
+      })
+      // Deleting the outputs after save() must not affect the upload: the
+      // bytes were already packed.
+      await rm(outFile)
+      await layered.drainUploads()
+      expect(remote.store.get('h-packed')!.byteLength).toBeGreaterThan(0)
+    } finally {
+      writeless.close()
+    }
+  })
+
+  it('get() keeps source local when the pull skipped the remote (no GET issued)', async () => {
+    // `doPullFromRemote` also returns true for its local-first skip, which
+    // issues NO remote GET. A run sharing this cache dir can ingest the
+    // artifact between get()'s local read and that skip's `local.has` —
+    // stamping 'remote' there reported a purely-local hit as
+    // cache-hit-remote and inflated the remote hit-rate.
+    await saveSample(local, 'h-src-race')
+
+    // The first local read misses, later reads see the artifact — exactly
+    // what a concurrent run ingesting into the shared cache dir produces.
+    let firstRead = true
+    const racy = new Proxy(local, {
+      get(target, prop, receiver) {
+        if (prop === 'get') {
+          return async (hash: string, ctx?: unknown) => {
+            if (firstRead) {
+              firstRead = false
+              return null
+            }
+            return await (target.get as (h: string, c?: unknown) => Promise<unknown>)(hash, ctx)
+          }
+        }
+        return Reflect.get(target, prop, receiver) as unknown
+      },
+    })
+    const layered = new LayeredCache(racy, remote.layer, { onRemoteError: () => {} })
+
+    const hit = await layered.get('h-src-race', { taskId: 'pkg#build', command: 'echo produced' })
+    expect(hit).not.toBeNull()
+    expect(hit?.source).toBe('local')
+    expect(remote.gets).toBe(0)
+  })
+
   it('has() reports local / remote / null without moving bytes', async () => {
     const layered = makeLayered()
     await saveSample(local, 'h-has-local')

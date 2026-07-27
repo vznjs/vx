@@ -208,6 +208,60 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-27**: **The upload queue stops holding every pending artifact's bytes
+  in RAM — plus the remote-cache audit's three LOW residuals closed.** `save()`
+  eagerly read the whole artifact and pushed a closure CAPTURING those bytes into
+  an uncapped queue, so `UPLOAD_CONCURRENCY` bounded sockets and nothing bounded
+  memory. The decisive measurement is the SCALING, not one pair — with 4 uploads
+  stalled and 16.78 MB artifacts: 8 saves 313.7→195.9 MB, 16 saves 474.8→182.7,
+  32 saves 725.9→181.9. Pre-fix slope **17.2 MB per additional save** — exactly
+  one artifact — so peak scaled with a run's TOTAL miss artifact bytes; post-fix
+  flat, gap unbounded. End-to-end through `run()` (24 × 16 MB, stalled remote):
+  peak RSS ~700-728 MB → ~465-510 MB. **Deferred the read rather than
+  backpressuring `save()`**: backpressure would stall a task's completion on
+  upload bandwidth, i.e. change run wall-clock, which this codebase does not do
+  silently. The deferral is **ASYMMETRIC and that is the load-bearing part** —
+  when `localWrite` is off (`--cache=local:,remote:rw`) there is no on-disk
+  artifact to read later, so those bytes are still packed eagerly while the
+  task's outputs are still on disk; deferring THAT read would pack whatever the
+  tree happens to hold when the job runs. That path keeps the old memory profile
+  by necessity (stated in the comment, and a residual). On the dominant path the
+  artifact is content-addressed and immutable, so a deferred read sees identical
+  bytes, and a concurrent `vx cache prune` makes it throw → skipped upload under
+  the existing never-fail contract. Bonus: the closure no longer captures `args`,
+  so the queue also stops retaining each task's stdout. **Hot path measured
+  interleaved AND order-balanced, and the first attempt was a false negative
+  worth remembering:** it showed "11% slower" purely because the fixed variant
+  always ran first against a colder freshly-created workspace — an ORDERING
+  BIAS, not a signal. Order-alternating min-of-5: time inside `save()` 846→777 ms
+  (−8.2% min, −3.6% median), total-with-drain 888→806 ms, `drainUploads` tail
+  ~1 ms both ways. **The three LOWs:** `planRun` read the UNCLAMPED policy, so
+  `--dry --cache=local:,remote:rw` with no remote printed `cache miss — would
+exec` for a run that recorded `cache_policy = ""` and stored nothing — the
+  real fix was structural, hoisting the clamp into a shared
+  `effectiveCachePolicy(requested, hasRemoteLayer)` that `run()` and `planRun()`
+  both derive from, so they cannot drift again (the call site was only the
+  symptom). A purely-local hit could be stamped `source: 'remote'` with
+  **0 remote GETs issued** — `doPullFromRemote`'s local-first skip returns true
+  without setting `remoteSourced` while `get()` stamped remote on anything the
+  pull returned true for (analytics only: inflates `hitRemoteCount` and the
+  "did the remote save me work?" signal). And `cache.close()` sat on the normal
+  path only, so a throwing `recordRunBundle` leaked the SQLite handle and skipped
+  `flushAccessed()` — losing the run's `accessed_at` bumps, after which LRU prune
+  can evict hot entries; moved into a `finally`, which let the two ad-hoc
+  pre-throw `close()` calls be deleted rather than double-closing. NO
+  CACHE_VERSION bump: no key changes, no artifact bytes change, and nothing
+  already cached becomes wrong or unreadable — only WHEN a byte read happens,
+  what a `--dry` line is labelled, what a hit's provenance says, and that a
+  handle is closed. NO existing assertion repinned. Differential 41 pass / 4 fail
+  → 45 / 0; gates fmt/lint 0, core **1469/0** (21 skip = sandbox). **Residuals,
+  named:** the in-memory-pack path above; `drainUploads()` still has no timeout
+  and is deliberately NOT added to the `finally` (uploads hold no DB state, and
+  awaiting a wedged remote would turn a failing run into a HANGING one), so a
+  throw path still drops queued uploads — best-effort for a run that already
+  failed; `cacheClosed` is set before `close()` so a throwing close does not get
+  retried and mask the real error.
+
 - **2026-07-26**: **`--verify` no longer wipes a successful build's outputs when
   the ONLY write axis is remote — and `hasRemoteLayer` now actually asks whether
   there is a remote** (a repro-mandated hostile audit of remote-cache
