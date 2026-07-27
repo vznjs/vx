@@ -7,66 +7,46 @@
 
 import type { RunResult } from './protocol.js'
 import type { OutcomeView } from './events.js'
+import { tallyViews, type Tally } from './tally.js'
 
 /**
- * Outcome buckets for the report header. Mirrors the terminal summary's
- * `tallyOutcomes` partition (success counts hits; `aborted` is no work and
- * so joins no bucket and no total), but derives from the serializable
- * `OutcomeView` the CLI holds after a run rather than the in-process
- * `TaskOutcome` — so it needs no graph back-ref and stays self-contained here.
+ * The report header's numbers. The outcome BUCKETS come from the shared
+ * `tallyViews` — the same rules the terminal summary and `--summarize` use,
+ * so three surfaces describing one run cannot disagree. Only the two
+ * durations are report-specific.
+ *
+ * This used to be a private copy of the partition, and it drifted: it had no
+ * group filter (it could not have one — `OutcomeView` had no `isGroup`), so
+ * every organizational node was counted as a successful task and rendered as
+ * a row claiming `success | miss | 0ms`.
  */
-interface ReportTally {
-  total: number
-  successful: number
-  failed: number
-  skipped: number
-  cached: number
-  /** Killed by a shutdown signal. Counted apart so a red report that has no
-   *  failing row still says why — the run reports `failed` either way. */
-  aborted: number
+interface ReportTally extends Tally {
   /** Wall-clock ms summed over tasks that actually executed (misses). */
   executedMs: number
-  /** Wall-clock ms summed over cache hits — the work the cache skipped. */
+  /**
+   * Ms of work the cache SKIPPED — the sum of the hits' STORED exec times.
+   * Deliberately not `durationMs`, which for a hit is the restore this run
+   * paid: summing that reported a 2.01 s task as "6ms saved".
+   */
   savedMs: number
 }
 
 function tally(outcomes: readonly OutcomeView[]): ReportTally {
-  const t: ReportTally = {
-    total: 0,
-    successful: 0,
-    failed: 0,
-    skipped: 0,
-    cached: 0,
-    aborted: 0,
-    executedMs: 0,
-    savedMs: 0,
-  }
+  const t: ReportTally = { ...tallyViews(outcomes), executedMs: 0, savedMs: 0 }
   for (const o of outcomes) {
-    // A child killed by a shutdown signal is no work — kept out of totals
-    // and every outcome bucket, like the terminal tally, but still counted
-    // so the header can name it.
-    if (o.status === 'aborted') {
-      t.aborted++
-      continue
-    }
-    t.total++
+    if (o.isGroup === true) continue
     switch (o.status) {
       case 'success':
-        t.successful++
+      case 'failed':
         t.executedMs += o.durationMs
         break
       case 'cache-hit':
       case 'cache-hit-remote':
-        t.successful++
-        t.cached++
-        t.savedMs += o.durationMs
-        break
-      case 'failed':
-        t.failed++
-        t.executedMs += o.durationMs
-        break
-      case 'skipped':
-        t.skipped++
+        // An outcome that doesn't know what it skipped contributes nothing:
+        // better to omit the claim than to substantiate it with the restore
+        // cost. (Only reachable across a version skew — every hit this
+        // binary produces carries the stored duration.)
+        t.savedMs += o.storedDurationMs ?? 0
         break
     }
   }
@@ -123,11 +103,12 @@ function cell(value: string): string {
  */
 export function formatRunReportMarkdown(result: RunResult): string {
   const t = tally(result.outcomes)
+  const cached = t.cachedLocal + t.cachedRemote
   const parts = [
     `**${t.total} task${t.total === 1 ? '' : 's'}**`,
     `${t.successful} success`,
     `${t.failed} failed`,
-    `${t.cached} cached`,
+    `${cached} cached`,
   ]
   if (t.skipped > 0) parts.push(`${t.skipped} skipped`)
   if (t.aborted > 0) parts.push(`${t.aborted} aborted`)
@@ -142,6 +123,10 @@ export function formatRunReportMarkdown(result: RunResult): string {
   lines.push('| Task | Status | Cache | Duration |')
   lines.push('| --- | --- | --- | --- |')
   for (const o of result.outcomes) {
+    // A group node did no work: no command, no cache decision, 0ms. Rendering
+    // one as `success | miss | 0ms` invents a task the user never wrote a
+    // command for. Same exclusion the header's tally makes.
+    if (o.isGroup === true) continue
     lines.push(
       `| ${cell(o.taskId)} | ${cell(statusWord(o))} | ${cell(cacheWord(o))} | ${cell(
         fmtDuration(o.durationMs),

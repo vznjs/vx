@@ -160,6 +160,51 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    'a cache hit reports the exec time it SKIPPED apart from the restore it cost',
+    async () => {
+      // `durationMs` is what THIS run spent; `storedDurationMs` is the work
+      // the hit avoided. `--report`'s "N saved" summed the former, so a task
+      // that takes seconds cold reported milliseconds saved.
+      await addProject(fixture.root, 'slow', {
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'sleep 0.4 && echo built > out.txt' },
+                cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      const cold = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        projects: ['slow'],
+        log: silentLogger(fixture),
+      })
+      const coldMs = cold.outcomes[0]!.durationMs
+      expect(cold.outcomes[0]?.status).toBe('success')
+      // Nothing was skipped — the task executed.
+      expect(cold.outcomes[0]?.storedDurationMs).toBeUndefined()
+      expect(coldMs).toBeGreaterThanOrEqual(400)
+
+      const warm = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        projects: ['slow'],
+        log: silentLogger(fixture),
+      })
+      expect(warm.outcomes[0]?.status).toBe('cache-hit')
+      // The stored figure is the cold exec; the restore is far cheaper. The
+      // relation is what matters — absolute durations vary with load.
+      expect(warm.outcomes[0]?.storedDurationMs).toBeGreaterThanOrEqual(400)
+      expect(warm.outcomes[0]?.durationMs).toBeLessThan(warm.outcomes[0]!.storedDurationMs!)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'RunOptions.cacheDir redirects the cache away from .vx/cache; hits from there',
     async () => {
       const dir = await addProject(fixture.root, 'cd', {

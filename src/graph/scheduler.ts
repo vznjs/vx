@@ -77,6 +77,15 @@ export interface TaskOutcome {
   /** Cache key hash, if one was computed. Folded into dependents' keys
    *  (pure-input transitive — the upstream's input key, not its output). */
   hash?: string
+  /**
+   * For cache-hit statuses: the exec time the ENTRY was stored with — i.e.
+   * the work this hit skipped. Distinct from `durationMs`, which is always
+   * what THIS run spent (a hit's restore cost). The two differ by whatever
+   * the exec:restore ratio happens to be, so a surface reporting "time
+   * saved" must read this one; a surface reporting "time spent" must not.
+   * Undefined on every non-hit outcome — nothing was skipped.
+   */
+  storedDurationMs?: number
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number

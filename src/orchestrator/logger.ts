@@ -120,6 +120,39 @@ function appendTail(t: Tail, chunk: string): void {
   }
 }
 
+// ── GitHub Actions workflow-command escaping ────────────────────────
+// The runner parses `::`-prefixed LINES out of the log, so anything
+// interpolated into one has to be encoded or it changes the command's shape.
+// Both halves are reachable without malice: a task name is an arbitrary TS
+// object key (the loader accepts newlines — `run-report.ts` already escapes
+// them for the same reason), and a task can legitimately print
+// command-shaped text (a test asserting on annotation formatting, a nested
+// tool emitting its own workflow commands).
+// https://docs.github.com/actions/reference/workflow-commands-for-github-actions
+
+/** Message text. `%` first, or we would re-escape our own escapes. */
+function ghaData(value: string): string {
+  return value.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A')
+}
+
+/**
+ * A property VALUE additionally reserves `:` and `,` — the delimiters
+ * between a command's name, its properties and its message. Without this an
+ * id containing `::` truncates the annotation mid-title.
+ */
+function ghaProperty(value: string): string {
+  return ghaData(value).replace(/:/g, '%3A').replace(/,/g, '%2C')
+}
+
+/**
+ * Fence untrusted text so the runner stops interpreting workflow commands
+ * inside it. `token` must be unguessable by the fenced text itself — a fixed
+ * one could simply be printed by the task — so it is a per-run UUID.
+ */
+function ghaFence(body: string, token: string): string {
+  return `::stop-commands::${token}\n${body}::${token}::\n`
+}
+
 /** The unified outcome vocabulary word for a non-failed outcome. */
 function outcomeWord(o: TaskOutcome): string {
   switch (o.status) {
@@ -191,6 +224,10 @@ export function defaultLogger(
     buffers.delete(id)
     return arr.length === 1 ? arr[0]! : arr.join('')
   }
+
+  // One per run, and only in GHA mode: the fence token must be something the
+  // fenced task output cannot print.
+  const ghaToken = view.gha === true ? crypto.randomUUID() : ''
 
   // All stdout flows through the writer so the status line can never
   // interleave with content. Inert (pure passthrough) on non-TTY
@@ -608,14 +645,23 @@ export function defaultLogger(
           const block = formatTaskBlock(node, outcome, { stdout, stderr }, colors)
           if (block.length === 0) return
           if (view.gha) {
+            // The block is the task's own output — fenced, so a task that
+            // prints `::endgroup::` can't close vx's group early and an
+            // `::error` line in its output can't become a real annotation.
+            const body = ghaFence(block, ghaToken)
             // Failed tasks stay pre-expanded in the Actions viewer:
             // an ::error annotation instead of a collapsed group.
             if (outcome.status === 'failed') {
-              emitBlock(`::error title=${node.id}::failed (exit ${outcome.exitCode})\n${block}`)
+              // The message is ours (a literal + an integer); only the title
+              // carries user input.
+              emitBlock(
+                `::error title=${ghaProperty(node.id)}::failed (exit ${outcome.exitCode})\n${body}`,
+              )
             } else {
               emitBlock(
-                `::group::${node.id} (${outcomeWord(outcome)} ${formatDuration(outcome.durationMs)})\n` +
-                  `${block}::endgroup::\n`,
+                `::group::${ghaData(
+                  `${node.id} (${outcomeWord(outcome)} ${formatDuration(outcome.durationMs)})`,
+                )}\n${body}::endgroup::\n`,
               )
             }
             return

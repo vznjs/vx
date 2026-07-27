@@ -880,7 +880,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     node,
     status,
     exitCode: hit.exitCode,
+    // What THIS run spent: probe + restore. NOT the stored exec time — see
+    // `storedDurationMs`, which is what the hit skipped.
     durationMs: Math.round(performance.now() - cacheOpStart),
+    storedDurationMs: hit.durationMs,
     hash,
     restored,
     // Under `--verify`, a cache hit didn't execute this run — so it wasn't

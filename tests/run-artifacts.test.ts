@@ -67,6 +67,7 @@ describe('writeRunSummary', () => {
       startedAtMs: 1_700_000_000_000,
       endedAtMs: 1_700_000_005_000,
       totalMs: 5000,
+      ok: true,
       outcomes: [outcome({ node: execNode('pkg', 'build') })],
     })
     expect(out).toBe(path.join(cacheDir, 'runs', '01ABCDEFG.json'))
@@ -83,6 +84,7 @@ describe('writeRunSummary', () => {
       startedAtMs: 0,
       endedAtMs: 1,
       totalMs: 1,
+      ok: true,
       outcomes: [],
     })
     expect(out).toBe(path.join(tmp, 'reports', 'summary.json'))
@@ -100,6 +102,7 @@ describe('writeRunSummary', () => {
       startedAtMs: 0,
       endedAtMs: 1,
       totalMs: 1,
+      ok: true,
       outcomes: [],
     })
     expect(out).toBe(absolute)
@@ -114,6 +117,7 @@ describe('writeRunSummary', () => {
       startedAtMs: 1_700_000_000_000,
       endedAtMs: 1_700_000_005_000,
       totalMs: 5000,
+      ok: true,
       outcomes: [],
     })
     const parsed = JSON.parse(await readFile(out, 'utf8')) as Record<string, string>
@@ -137,6 +141,7 @@ describe('writeRunSummary', () => {
       startedAtMs: 0,
       endedAtMs: 1,
       totalMs: 1,
+      ok: true,
       outcomes: [o],
     })
     const parsed = JSON.parse(await readFile(out, 'utf8')) as {
@@ -155,6 +160,7 @@ describe('writeRunSummary', () => {
       startedAtMs: 0,
       endedAtMs: 1,
       totalMs: 1,
+      ok: true,
       outcomes: [
         outcome({ node: execNode('a', 'build'), cpuMs: 123, peakRssBytes: 45678 }),
         outcome({ node: execNode('b', 'lint') }),
@@ -178,6 +184,7 @@ describe('writeRunSummary', () => {
       startedAtMs: 0,
       endedAtMs: 1,
       totalMs: 1,
+      ok: true,
       outcomes: [outcome({ node: execNode('pkg', 'lint') })],
     })
     const parsed = JSON.parse(await readFile(out, 'utf8')) as {
@@ -199,6 +206,7 @@ describe('writeRunSummary', () => {
       startedAtMs: 0,
       endedAtMs: 1,
       totalMs: 1,
+      ok: true,
       outcomes: [
         outcome({ node: groupNode('pkg', 'ci') }),
         outcome({ node: execNode('pkg', 'lint'), status: 'success' }),
@@ -221,6 +229,108 @@ describe('writeRunSummary', () => {
     expect(parsed.summary['skipped']).toBe(1)
     expect(parsed.summary['cachedLocal']).toBe(1)
     expect(parsed.summary['cachedRemote']).toBe(1)
+  })
+
+  // A run that exits 1 must not read as a clean pass. `aborted` outcomes
+  // (child killed by a shutdown signal) join no bucket and no total, so
+  // filtering them out of `tasks[]` — correct, it keeps `tasks.length ===
+  // summary.total` — left the artifact with NO evidence of the task that
+  // made the run red. The terminal prints an Aborted section and
+  // `--report`/`--profile` both carry it; a parser must not be told less.
+  it('states the run verdict: ok + exitCode', async () => {
+    const out = await writeRunSummary({
+      target: path.join(tmp, 's.json'),
+      cacheDir,
+      cwd: tmp,
+      runId: 'x',
+      startedAtMs: 0,
+      endedAtMs: 1,
+      totalMs: 1,
+      ok: false,
+      outcomes: [outcome({ node: execNode('pkg', 'broken'), status: 'failed', exitCode: 2 })],
+    })
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as Record<string, unknown>
+    expect(parsed['ok']).toBe(false)
+    expect(parsed['exitCode']).toBe(1)
+  })
+
+  it('a passing run reports ok: true / exitCode: 0', async () => {
+    const out = await writeRunSummary({
+      target: path.join(tmp, 's.json'),
+      cacheDir,
+      cwd: tmp,
+      runId: 'x',
+      startedAtMs: 0,
+      endedAtMs: 1,
+      totalMs: 1,
+      ok: true,
+      outcomes: [outcome({ node: execNode('pkg', 'lint'), status: 'success' })],
+    })
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as Record<string, unknown>
+    expect(parsed['ok']).toBe(true)
+    expect(parsed['exitCode']).toBe(0)
+  })
+
+  it('an aborted task is listed and counted, without breaking tasks/total parity', async () => {
+    const out = await writeRunSummary({
+      target: path.join(tmp, 's.json'),
+      cacheDir,
+      cwd: tmp,
+      runId: 'x',
+      startedAtMs: 0,
+      endedAtMs: 1,
+      totalMs: 1,
+      ok: false,
+      outcomes: [
+        outcome({ node: groupNode('pkg', 'ci') }),
+        outcome({ node: execNode('pkg', 'ok'), status: 'success' }),
+        outcome({ node: execNode('pkg', 'killed'), status: 'aborted', exitCode: 143 }),
+      ],
+    })
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as {
+      ok: boolean
+      exitCode: number
+      tasks: Array<{ id: string }>
+      aborted: Array<{ id: string; status: string; exitCode: number }>
+      summary: Record<string, number>
+    }
+    // The run is red and says so.
+    expect(parsed.ok).toBe(false)
+    expect(parsed.exitCode).toBe(1)
+    // The aborted task is named, with its signal exit code.
+    expect(parsed.aborted.map((t) => t.id)).toEqual(['pkg#killed'])
+    expect(parsed.aborted[0]?.status).toBe('aborted')
+    expect(parsed.aborted[0]?.exitCode).toBe(143)
+    expect(parsed.summary['aborted']).toBe(1)
+    // …and the counted population is untouched: still no aborted task in
+    // `tasks[]`, still no aborted task in any bucket, still in parity.
+    expect(parsed.tasks.map((t) => t.id)).toEqual(['pkg#ok'])
+    expect(parsed.tasks.length).toBe(parsed.summary['total']!)
+    expect(parsed.summary['total']).toBe(1)
+    expect(parsed.summary['successful']).toBe(1)
+    expect(parsed.summary['failed']).toBe(0)
+    // A group task is a group task in both halves — never "aborted".
+    expect(parsed.aborted.map((t) => t.id)).not.toContain('pkg#ci')
+  })
+
+  it('a run with nothing aborted carries an empty list and a zero count', async () => {
+    const out = await writeRunSummary({
+      target: path.join(tmp, 's.json'),
+      cacheDir,
+      cwd: tmp,
+      runId: 'x',
+      startedAtMs: 0,
+      endedAtMs: 1,
+      totalMs: 1,
+      ok: true,
+      outcomes: [outcome({ node: execNode('pkg', 'lint'), status: 'success' })],
+    })
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as {
+      aborted: unknown[]
+      summary: Record<string, number>
+    }
+    expect(parsed.aborted).toEqual([])
+    expect(parsed.summary['aborted']).toBe(0)
   })
 })
 

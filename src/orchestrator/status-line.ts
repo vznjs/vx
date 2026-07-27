@@ -19,6 +19,12 @@ const CLEAR = '\x1b[2K\r'
 export interface StatusStream {
   write(chunk: string): unknown
   isTTY?: boolean
+  /**
+   * Terminal width in columns. Read fresh on every draw — `process.stdout`
+   * updates it on SIGWINCH, so a mid-run resize is picked up. Absent (not a
+   * TTY) means the region is never drawn anyway.
+   */
+  columns?: number
 }
 
 export interface OutputWriter {
@@ -68,7 +74,9 @@ export function createOutputWriter(
 
   let current: readonly string[] | null = null
   let shown = false
-  let shownHeight = 0
+  // PHYSICAL rows the shown region occupies, not logical lines — see
+  // `regionRows`.
+  let shownRows = 0
   let dead = false
   let lastDraw = -Infinity
   // Trailing draw scheduled when a forced set lands inside the floor.
@@ -85,10 +93,33 @@ export function createOutputWriter(
     }
   }
 
-  // Erase sequence for whatever is currently shown. Single line keeps
-  // the exact legacy bytes (ESC[2K\r); a taller region moves to its
-  // top line and clears to end of screen.
-  const eraseSeq = (): string => (shownHeight > 1 ? `\r\x1b[${shownHeight - 1}A\x1b[J` : CLEAR)
+  /**
+   * How many PHYSICAL terminal rows `lines` occupies. The terminal wraps
+   * any line wider than the viewport, so a region of N logical lines can
+   * cover more than N rows — and erasing by the logical count moves the
+   * cursor up too few rows, leaving the top of the region on screen. It
+   * accumulates, because every redraw is short by the same amount.
+   *
+   * Both triggers are ordinary: the summary section is a fixed 62 visible
+   * columns (narrower terminal ⇒ every bar row wraps), and a task id is
+   * deliberately never truncated (long id ⇒ the worker row wraps at any
+   * width). Width is read per draw so a mid-run resize is handled; when
+   * it's unknown the region is not drawn at all, so "no wrapping" is the
+   * consistent answer. Width must be VISIBLE width — these lines carry
+   * ANSI, which occupies no column.
+   */
+  const regionRows = (lines: readonly string[]): number => {
+    const cols = stream.columns
+    if (cols === undefined || cols <= 0) return lines.length
+    let rows = 0
+    for (const line of lines) rows += Math.max(1, Math.ceil(Bun.stringWidth(line) / cols))
+    return rows
+  }
+
+  // Erase sequence for whatever is currently shown. A single row keeps
+  // the exact legacy bytes (ESC[2K\r); anything taller moves to its
+  // top row and clears to end of screen.
+  const eraseSeq = (): string => (shownRows > 1 ? `\r\x1b[${shownRows - 1}A\x1b[J` : CLEAR)
 
   const draw = (): void => {
     // Whatever was pending is now painted — the trailing draw would
@@ -97,7 +128,7 @@ export function createOutputWriter(
     const erase = shown ? eraseSeq() : CLEAR
     stream.write(erase + current!.join('\n'))
     shown = true
-    shownHeight = current!.length
+    shownRows = regionRows(current!)
     lastDraw = now()
   }
   const set = (lines: readonly string[], o: { force?: boolean }): void => {
@@ -136,7 +167,7 @@ export function createOutputWriter(
       if (shown) {
         stream.write(eraseSeq())
         shown = false
-        shownHeight = 0
+        shownRows = 0
       }
       stream.write(chunk)
       if (chunk.length > 0) atLineStart = chunk.endsWith('\n')
@@ -156,7 +187,7 @@ export function createOutputWriter(
       if (shown) {
         stream.write(eraseSeq())
         shown = false
-        shownHeight = 0
+        shownRows = 0
       }
     },
   }

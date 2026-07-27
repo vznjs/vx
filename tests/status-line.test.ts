@@ -559,6 +559,95 @@ describe('createOutputWriter region mechanics', () => {
     w.setRegion(['again'], { force: true })
     expect(s.chunks.at(-1)).toBe('\r\x1b[1A\x1b[J')
   })
+})
+
+// The erase has to move up as many rows as the region actually OCCUPIES.
+// The terminal wraps any line wider than the viewport, so a region of N
+// logical lines can cover more than N rows; erasing by the logical count
+// leaves the top of the region on screen, and because every redraw is short
+// by the same amount the residue accumulates for the whole run (measured on
+// a real pty: ~10 junk rows/second). Both triggers are ordinary — a terminal
+// under the summary's fixed 62 columns, or a task id long enough to overflow
+// a worker row at the user's width.
+describe('createOutputWriter region erase accounts for wrapped rows', () => {
+  const ttyW = (columns: number): StatusStream & { chunks: string[]; text(): string } => ({
+    ...tty(),
+    columns,
+  })
+
+  it('erases by PHYSICAL rows when region lines wrap', () => {
+    const s = ttyW(10)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    // 3 logical lines; the middle one is 25 cols wide → 3 rows on a
+    // 10-column terminal. 1 + 3 + 1 = 5 physical rows.
+    w.setRegion(['l1', 'x'.repeat(25), 'l3'], { force: true })
+    w.setRegion(['n1', 'n2'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[4A\x1b[Jn1\nn2')
+  })
+
+  it('a single logical line that wraps still uses the cursor-up erase', () => {
+    const s = ttyW(10)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    // One line, 25 cols → 3 rows. The legacy single-line ESC[2K\r would
+    // erase only the last of them.
+    w.setRegion(['y'.repeat(25)], { force: true })
+    w.setRegion(['short'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[2A\x1b[Jshort')
+  })
+
+  it('a foreign write erases every wrapped row before printing', () => {
+    const s = ttyW(10)
+    const w = createOutputWriter(s)
+    w.setRegion(['a'.repeat(15), 'b'], { force: true })
+    const before = s.chunks.length
+    w.write('content\n')
+    // 2 rows + 1 row = 3 physical rows → up 2.
+    expect(s.chunks[before]).toBe('\r\x1b[2A\x1b[J')
+  })
+
+  it('measures VISIBLE width: ANSI colour never counts as columns', () => {
+    const s = ttyW(10)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    // 8 visible columns wrapped in colour escapes — must NOT read as wrapped.
+    w.setRegion([`\x1b[31m${'z'.repeat(8)}\x1b[0m`, 'l2'], { force: true })
+    w.setRegion(['n1'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[1A\x1b[Jn1')
+  })
+
+  it('picks up a mid-run resize: width is read per draw', () => {
+    const s = ttyW(40)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    const region = ['q'.repeat(30), 'l2']
+    w.setRegion(region, { force: true })
+    // 30 cols fits in 40 → 2 physical rows → up 1.
+    w.setRegion(['n1'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[1A\x1b[Jn1')
+    // The user drags the split narrower; process.stdout.columns follows.
+    s.columns = 10
+    w.setRegion(region, { force: true })
+    w.setRegion(['n2'], { force: true })
+    // 30 cols now wraps to 3 rows → 4 physical rows → up 3.
+    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jn2')
+  })
+
+  it('unknown width (no TTY columns) keeps the logical-line erase', () => {
+    // The region is only ever drawn on a TTY, so "no width" has no wrapping
+    // to account for — and every other test in this file relies on it.
+    const s = tty()
+    expect(s.columns).toBeUndefined()
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.setRegion(['a'.repeat(500), 'b'], { force: true })
+    w.setRegion(['n1'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[1A\x1b[Jn1')
+  })
+
+  it('a region that fits is byte-identical to the width-unaware erase', () => {
+    const s = ttyW(200)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.setRegion(['l1', 'l2', 'l3'], { force: true })
+    w.setRegion(['x1', 'x2', 'x3'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[2A\x1b[Jx1\nx2\nx3')
+  })
 
   it('focused replay pin: a requested cache hit streams its stored stdout raw', () => {
     const s = tty()

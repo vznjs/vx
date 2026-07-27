@@ -230,6 +230,34 @@ describe('projectOutcome', () => {
     const view = projectOutcome(mkOutcome(mkNode({ id: 'a#b', command: 'x' })))
     expect(view).toEqual({ taskId: 'a#b', status: 'success', exitCode: 0, durationMs: 42 })
   })
+
+  // A consumer holding only outcomes (the `--report` writer) has no node to
+  // ask, so group-ness has to ride the projection — without it every
+  // organizational node counted as a successful task.
+  it('flags a group node so a node-less consumer can exclude it', () => {
+    const view = projectOutcome(mkOutcome(mkNode({ id: 'pkg#ci' }))) // no command ⇒ group
+    expect(view.isGroup).toBe(true)
+  })
+
+  it('a real task carries no isGroup flag', () => {
+    const view = projectOutcome(mkOutcome(mkNode({ id: 'pkg#build', command: 'x' })))
+    expect(view.isGroup).toBeUndefined()
+  })
+
+  // `durationMs` is what THIS run spent (a hit's restore); the work the hit
+  // SKIPPED is a separate number, and conflating them made `--report` state
+  // the restore cost as the time saved.
+  it('carries the stored exec time separately from the restore cost', () => {
+    const view = projectOutcome(
+      mkOutcome(mkNode({ id: 'a#build', command: 'x' }), {
+        status: 'cache-hit',
+        durationMs: 6,
+        storedDurationMs: 2006,
+      }),
+    )
+    expect(view.durationMs).toBe(6)
+    expect(view.storedDurationMs).toBe(2006)
+  })
 })
 
 describe('toWireEvent', () => {

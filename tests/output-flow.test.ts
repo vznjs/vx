@@ -587,6 +587,102 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     log.taskStdout(n, 'work\n')
     log.taskComplete(n, mkOutcome(n, 'success'))
     expect(out.text()).not.toContain('::group::')
+    expect(out.text()).not.toContain('::stop-commands::')
+  })
+
+  // The runner parses `::` LINES out of the log, so an interpolated value can
+  // change a command's shape. Reachable without malice: a task name is an
+  // arbitrary TS object key, and a task can legitimately print
+  // command-shaped text.
+  it('percent-encodes an annotation title so a newline cannot truncate it', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#bad\nname::x')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 2 }))
+    const text = out.text()
+    // One intact annotation line — the raw name would have split it in two
+    // and leaked the remainder into the log as text.
+    expect(text).toContain('::error title=one#bad%0Aname%3A%3Ax::failed (exit 2)\n')
+    const annotation = text.split('\n').filter((l) => l.startsWith('::error'))
+    expect(annotation.length).toBe(1)
+    expect(annotation[0]).not.toContain('\n')
+  })
+
+  it('percent-encodes a group name so a newline cannot truncate it', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#bad\nname')
+    log.taskStdout(n, 'work\n')
+    log.taskComplete(n, mkOutcome(n, 'success', { durationMs: 5 }))
+    expect(out.text()).toContain('::group::one#bad%0Aname (success 5ms)\n')
+  })
+
+  it('escapes `%` first so an escape is never double-encoded', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#a%0Ab')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1 }))
+    // The literal name `a%0Ab` must arrive as `a%250Ab`, not as a newline.
+    expect(out.text()).toContain('::error title=one#a%250Ab::')
+  })
+
+  it('fences task output so it cannot close vx’s group or forge an annotation', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#evil')
+    log.taskStdout(n, '::endgroup::\n::error title=HIJACK::pwned\nreal output\n')
+    log.taskComplete(n, mkOutcome(n, 'success', { durationMs: 5 }))
+    const text = out.text()
+    const token = /::stop-commands::([0-9a-f-]{36})\n/.exec(text)?.[1]
+    expect(token).toBeDefined()
+    // The fence opens before the body and closes before vx's own ::endgroup::,
+    // so the group is matched and the task's commands are inert text.
+    const open = text.indexOf(`::stop-commands::${token}`)
+    const close = text.indexOf(`::${token}::`, open + 1)
+    const hostile = text.indexOf('::endgroup::\n::error title=HIJACK')
+    const ownEnd = text.lastIndexOf('::endgroup::')
+    expect(open).toBeGreaterThanOrEqual(0)
+    expect(close).toBeGreaterThan(open)
+    expect(hostile).toBeGreaterThan(open)
+    expect(hostile).toBeLessThan(close)
+    expect(ownEnd).toBeGreaterThan(close)
+    // The output itself is still shown verbatim — fencing is not filtering.
+    expect(text).toContain('real output')
+  })
+
+  it('fences a failed task’s output too', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#boom')
+    log.taskStderr(n, '::error title=FORGED::nope\n')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 3 }))
+    const text = out.text()
+    const token = /::stop-commands::([0-9a-f-]{36})\n/.exec(text)?.[1]
+    expect(token).toBeDefined()
+    // vx's own annotation is OUTSIDE the fence (it must reach the runner);
+    // the task's forged one is inside it.
+    expect(text.indexOf('::error title=one#boom::')).toBeLessThan(
+      text.indexOf(`::stop-commands::${token}`),
+    )
+    expect(text.indexOf('::error title=FORGED::')).toBeGreaterThan(
+      text.indexOf(`::stop-commands::${token}`),
+    )
+    expect(text).toContain(`::${token}::`)
+  })
+
+  it('the fence token is per-run, so fenced output cannot print it', () => {
+    const tokenOf = (): string => {
+      const out = sink()
+      const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+      const n = mkNode('one#build')
+      log.taskStdout(n, 'x\n')
+      log.taskComplete(n, mkOutcome(n, 'success'))
+      return /::stop-commands::([0-9a-f-]{36})\n/.exec(out.text())?.[1] ?? ''
+    }
+    const a = tokenOf()
+    const b = tokenOf()
+    expect(a).not.toBe('')
+    expect(a).not.toBe(b)
   })
 })
 

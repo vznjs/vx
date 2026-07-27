@@ -208,6 +208,98 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-27**: **The terminal output layer stopped corrupting narrow terminals
+  and stopped telling three different stories about one run** (the first hostile
+  audit of the LAST core surface never adversarially reviewed — the one every
+  `vx run` passes through; full record in `docs/design/output-audit-2026-07.md`,
+  which keeps the refuted list too). **F2, HIGH: the live status region erased by
+  LOGICAL line count while the terminal lays lines out in PHYSICAL rows.** Any
+  line wider than the viewport wraps, the cursor-up moves too few rows, `ESC[J`
+  erases from INSIDE the previous region, and its top survives every redraw —
+  ~10 junk rows per second, still on screen under the final summary. Two ORDINARY
+  triggers, neither exotic: a terminal under 62 columns (the summary section is a
+  fixed 62 visible columns, so the threshold lands exactly there — 62 clean, 61
+  dirty), and **any task id long enough to overflow a worker row at the classic
+  80-column default** (26 + id length; ids are deliberately never truncated).
+  Proven twice over, on a real pty (`python3 pty.openpty` + `TIOCSWINSZ`) and by
+  an emulator-independent byte audit: the region drew 17 physical rows and erased
+  15 on ALL 42 redraws. Fixed by reading `stream.columns` PER DRAW (so a mid-run
+  SIGWINCH is picked up — verified live, 61 → 123) and summing
+  `ceil(Bun.stringWidth(line)/cols)` — VISIBLE width, since these lines carry
+  ANSI. Zero stale rows at every width 40-100 after, and strictly MORE real
+  content survives (markers 2→3 at w50, 2→4 at w60), so it is not over-erasing.
+  **CORRECTION TO A STANDING RESIDUAL, and the reason to record refutations at
+  all:** the 2026-07-26 note blamed region HEIGHT ("no terminal-height check").
+  That is wrong — `ESC[nA` CLAMPS at row 0, so an over-tall region simply
+  repaints; probed at 120×{40,15,8} with a 26-line region, zero residue at every
+  height and all output present in the byte stream. The axis is WIDTH. Height was
+  left alone. **F7, MED-HIGH: `--summarize` rendered a run that EXITED 1 as
+  entirely green** — `aborted` was filtered out of both `tasks[]` and `summary`
+  and the payload carried no run-level status, so a CI job gating on the one
+  documented machine-readable artifact read `failed: 0` with an all-success task
+  list. Sharpest because it is the least recoverable: a human at least sees the
+  terminal's Aborted section, a parser saw nothing. Note the PROVENANCE — the
+  telemetry wave that fixed `--summarize`'s internal `tasks.length` vs
+  `summary.total` disagreement did so by filtering `tasks[]` down to match, and
+  in the same move removed the last evidence of the aborted task. So the fix
+  ADDS `ok`/`exitCode`/`summary.aborted` and a separate `aborted[]` list rather
+  than widening `tasks[]`, PRESERVING that pinned invariant. **F5, MED-HIGH:
+  `--report`'s headline "N saved" summed what the cache SPENT.** A hit's
+  `durationMs` is the restore cost, so a task taking 2.01 s cold reported
+  **"4ms saved"** warm — 500× understated, on the one number a reader of a PR
+  step summary cares about, while the entry held `duration_ms: 2006` the whole
+  time. **Settled the design question rather than patching around it:**
+  `durationMs` STAYS the restore cost everywhere (it is what the run actually
+  spent, and the terminal's `time` total has to add up); `savedMs` now reads a
+  new additive `storedDurationMs`; and the comment at `framed-output.ts:474`
+  asserting the OPPOSITE of the code is corrected, with the meaning now stated in
+  `docs/cli.md`. Verified end-to-end: cold 2.01s → warm **"2.01s saved"**.
+  **F1: `--report=markdown` counted GROUP tasks** while the terminal and
+  `--summarize` did not (terminal 5/3, `--summarize` 5/3, `--report` 6/4), and
+  rendered each group as a row claiming `success | miss | 0ms` — this repo's own
+  `ci`/`lint`/`build` are groups, so its own PR summaries were affected. The
+  developer improved on my brief here: rather than fixing the private copy it
+  SHARED the tally outright — one `fold()` owns every bucket rule, with
+  `tallyOutcomes` (live) and `tallyViews` (projection) differing only in where
+  group-ness comes from, `tallyViews` taking a structural type declared in
+  `tally.ts` because importing `OutcomeView` would close a cycle
+  (events → summary → tally). **F6, LOW:** GHA workflow commands were emitted
+  unescaped, so a newline in a task name truncated the `::error` annotation and
+  task output containing `::endgroup::` closed vx's group early and turned a
+  fabricated `::error` into a real annotation — reachable with no malice at all.
+  `run-report.ts` already carried a `cell()` escaper for exactly this class; the
+  GHA path had none. NO CACHE_VERSION/SCHEMA/wire bump (the new outcome field is
+  additive-optional, the `attempts`/`verify`/`outputFp` precedent — and
+  `wire-render.ts` needed no change because it copies only what the formatters
+  read). Differentials: F2 40/4 → 44/0, F7 14/4 → 18/0, F6 59/6 → 65/0. Tests are
+  **456 insertions / 0 deletions** — purely additive, NO existing test repinned,
+  which for once means no test had encoded a defect. Gates: fmt/lint 0, core
+  **1531/0** (+25; 21 skip = sandbox), and I re-verified F1/F5/F7 myself through
+  the real CLI. **Three notes worth keeping.** (1) A `savedMs` fallback my brief
+  did not specify: `?? 0`, chosen over `?? durationMs`, so an outcome that cannot
+  substantiate a saving makes NO claim rather than degrading to the
+  wrong-but-plausible number. (2) `storedDurationMs` turns out to be this
+  codebase's existing vocabulary (`artifact-store.ts:328` means exactly that) —
+  fortunate, not designed. (3) **A measurement trap that would have put the fix
+  one column off:** a pty is in ONLCR, so `\n` arrives as `\r\n`, and counting
+  the trailing `\r` as a column inflates every line by 1 and makes width 62 look
+  like a wrap. Strip it, after which the byte audit and the screen render agree
+  exactly. **KNOWN-OPEN, from the same audit, deliberately a separate wave:**
+  **F4** — per-task output is buffered UNBOUNDED in every view mode including
+  ones contractually guaranteed to discard it (measured `--output-logs none`:
+  400 MB of task stdout → **852 MiB** RSS; a warm CACHE HIT pays it too, 267 MiB,
+  reading stored output out of SQLite purely to throw it away). **F10** — a
+  persistent task whose `readyWhen` never matches accumulates in TWO unbounded
+  buffers at ~100 MiB/s, and the 64 KiB tail cap only registers at
+  `taskComplete`, i.e. at ready, so it never engages; the residual's `\r`-vs-`\n`
+  framing is a red herring, the newline case grows FASTER (679 vs 507 MiB).
+  **F9** — the documented `>> "$GITHUB_STEP_SUMMARY"` recipe writes the entire
+  run log into the step summary, because the logger shares stdout with the
+  report (the code comment claims otherwise). **F8** — `docs/cli.md`'s visibility
+  table is wrong in three cells. Also recorded there, as design questions rather
+  than defects: an aborted task's captured output is discarded in every view, and
+  the live region's `total` counts aborted tasks the final summary will not.
+
 - **2026-07-27**: **A skipped row stopped skewing every cloud rate, mean and run
   count — the aggregate half the previous wave named as unported.** `task_runs`
   began receiving `skipped` rows when core widened telemetry to every

@@ -743,6 +743,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
           startedAtMs: endedAtMsAtStart,
           endedAtMs,
           totalMs,
+          ok,
           outcomes: list,
         })
         log.status(`vx: summary written to ${wrote}`)
