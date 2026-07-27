@@ -948,6 +948,23 @@ const BRANCH_CAP = 12
  */
 const KEYED_TASK_RUNS_SQL = "hash <> ''"
 
+/**
+ * SQL predicate selecting `task_runs` rows that EXECUTED. Ingest records every
+ * non-aborted outcome so a run's detail is complete, which means `skipped`
+ * rows land here — but a skip is a task of the run, not an execution: it has
+ * no exit of its own, no duration, and made no cache decision.
+ *
+ * Counting one in a rate or a mean reports a non-event as data: a task skipped
+ * as often as it succeeds reads 50% success, and its zero-duration row drags
+ * every average toward zero. So every rate, mean, percentile and "runs" count
+ * is taken over this subset, while the COMPLETENESS surfaces (`getRun`,
+ * `listRuns`, `compareRuns`) deliberately do not filter — showing what a run
+ * actually did is their whole job.
+ *
+ * The mirror of core's `EXECUTED_RUNS_SQL`; the two must not drift.
+ */
+const EXECUTED_TASK_RUNS_SQL = "status <> 'skipped'"
+
 /** The note both key-comparison surfaces return for a keyless subject row. */
 const NO_KEY_NOTE = 'this task recorded no cache key (skipped, or a persistent task)'
 
@@ -1707,7 +1724,8 @@ export class Analytics {
         SELECT count(*)::int AS total,
                COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0)::int AS hit_local,
                COALESCE(SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0)::int AS hit_remote
-        FROM task_runs WHERE workspace_id = ${workspaceId} AND started_at >= ${since}`
+        FROM task_runs WHERE workspace_id = ${workspaceId} AND started_at >= ${since}
+          AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}`
     )[0]!
     const hits = runs.hit_local + runs.hit_remote
     // The analytics schema holds no cache-entry inventory (§5.1) — entryCount /
@@ -1730,7 +1748,8 @@ export class Analytics {
         SELECT count(*)::int AS total,
                COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0)::int AS hit_local,
                COALESCE(SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0)::int AS hit_remote
-        FROM task_runs WHERE workspace_id = ${workspaceId} AND started_at >= ${since}`
+        FROM task_runs WHERE workspace_id = ${workspaceId} AND started_at >= ${since}
+          AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}`
     )[0]!
     const hits = r.hit_local + r.hit_remote
     return {
@@ -1753,13 +1772,17 @@ export class Analytics {
     // workspace the filter box can only reach a tail task if the narrowing
     // happens here, not over the fetched rows.
     const fSearch = searchFilter(sql, args.search, 'pair')
+    // Every figure below is a rate, a mean or a count of runs, so all of them
+    // read executions only. It also decides the PAGE: a pair that has never
+    // done anything but skip has no history to show, so it is not a row.
+    const fExec = sql`AND ${sql.unsafe(EXECUTED_TASK_RUNS_SQL)}`
     // The pairs to render, ranked + LIMITed in SQL. The result is a PAGE, so
     // slicing an unordered DISTINCT scan in JS returned the ALPHABETICAL
     // prefix — dropping exactly the task that just ran on any workspace with
     // more pairs than the limit.
     const pairs = await sql<{ project: string; task: string }[]>`
       SELECT project, task FROM task_runs
-      WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fSearch}
+      WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fSearch} ${fExec}
       GROUP BY project, task
       ORDER BY MAX(started_at) DESC
       LIMIT ${limit}`
@@ -1790,7 +1813,7 @@ export class Analytics {
              SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END)::int AS retried,
              SUM(duration_ms)::float8 AS total_duration_ms,
              MAX(ended_at) AS last_seen_at
-      FROM task_runs WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fSearch}
+      FROM task_runs WHERE workspace_id = ${workspaceId} ${fProject} ${fTask} ${fSearch} ${fExec}
       GROUP BY project, task`
     const durRows = await sql<{ project: string; task: string; duration_ms: number }[]>`
       SELECT project, task, duration_ms FROM (
@@ -2415,7 +2438,7 @@ export class Analytics {
   async countProjects(workspaceId: string): Promise<number> {
     const rows = await this.sql<{ n: number }[]>`
       SELECT count(DISTINCT project)::int AS n FROM task_runs
-      WHERE workspace_id = ${workspaceId}`
+      WHERE workspace_id = ${workspaceId} AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}`
     return rows[0]?.n ?? 0
   }
 
@@ -2458,6 +2481,7 @@ export class Analytics {
                COALESCE(trunc(avg(duration_ms)), 0)::int AS avg_dur,
                SUM(CASE WHEN cache_hit = true OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END)::float8 AS hits
         FROM task_runs WHERE workspace_id = ${workspaceId}
+          AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
         GROUP BY project
       ),
       rated AS (
@@ -2535,6 +2559,7 @@ export class Analytics {
              trunc(avg(duration_ms))::int AS avg_duration_ms,
              MAX(ended_at) AS last_run_at
       FROM task_runs WHERE workspace_id = ${workspaceId} ${fSearch} ${fNames}
+        AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
       GROUP BY project ORDER BY SUM(duration_ms) DESC LIMIT ${clampInt(limit, 1, 1000)}`
     // Estimated time saved per project, computed for ALL projects in ONE
     // set-based query instead of a correlated subquery per project (the old
@@ -2620,6 +2645,7 @@ export class Analytics {
              SUM(duration_ms)::float8 AS total_duration_ms
       FROM task_runs
       WHERE workspace_id = ${workspaceId} AND started_at >= ${from} AND started_at <= ${to} ${fProject}
+        AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
       GROUP BY t ORDER BY t ASC`
     const byT = new Map(rows.map((r) => [num(r.t), r]))
     const start = Math.floor(from / bucketMs) * bucketMs
@@ -2661,6 +2687,7 @@ export class Analytics {
              COALESCE(SUM(duration_ms), 0)::float8 AS total
       FROM task_runs
       WHERE workspace_id = ${workspaceId} AND started_at >= ${since}
+        AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
       GROUP BY dow, hour`
     const grid: HeatmapCell[] = []
     for (let d = 0; d < 7; d++)
@@ -2729,6 +2756,7 @@ export class Analytics {
              SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END)::int AS within_run_retries,
              MAX(attempts)::int AS max_attempts
       FROM task_runs WHERE workspace_id = ${workspaceId} ${fPair}
+        AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
       GROUP BY project, task
       HAVING count(*) >= 3 OR SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) > 0`
     if (pairs.length === 0) return []
@@ -2825,7 +2853,7 @@ export class Analytics {
       WITH win AS (
         SELECT run_id, started_at, status, attempts, hash, cache_hit FROM task_runs
         WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
-          AND started_at >= ${since}
+          AND started_at >= ${since} AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
       ),
       keys AS (
         SELECT hash,
@@ -3107,6 +3135,7 @@ export class Analytics {
              MIN(CASE WHEN status = 'failed' THEN started_at END) AS first_failed,
              MAX(started_at) AS last_run
       FROM task_runs WHERE workspace_id = ${workspaceId} AND started_at >= ${since}
+        AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
       GROUP BY project, task`
     const winByTask = new Map(winRows.map((w) => [`${w.project}#${w.task}`, w]))
     const passedRows = await this.sql<{ project: string; task: string }[]>`
@@ -3278,6 +3307,7 @@ export class Analytics {
         SELECT task FROM task_runs
         WHERE workspace_id = ${workspaceId} AND project = ${project}
           AND started_at >= ${from} AND started_at <= ${to}
+          AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
         GROUP BY task
         -- Rank by the SAME population the series displays (executed
         -- successes) — ranking over ALL rows lets a cache-hit-dominated task
@@ -3298,6 +3328,7 @@ export class Analytics {
       FROM task_runs r JOIN top USING (task)
       WHERE r.workspace_id = ${workspaceId} AND r.project = ${project}
         AND r.started_at >= ${from} AND r.started_at <= ${to}
+        AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
       GROUP BY r.task, t ORDER BY r.task, t`
     return rows.map((r) => ({
       task: r.task,
@@ -3411,7 +3442,8 @@ export class Analytics {
                round(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) FILTER (
                  WHERE (cache_hit IS NULL OR cache_hit = false) AND status = 'success'))::int AS p95
         FROM task_runs WHERE workspace_id = ${workspaceId}
-          AND started_at >= ${from} AND started_at < ${to} ${fProject} ${fTask}`
+          AND started_at >= ${from} AND started_at < ${to} ${fProject} ${fTask}
+          AND ${sql.unsafe(EXECUTED_TASK_RUNS_SQL)}`
     )[0]!
     const taskRuns = agg.task_runs
     return {
@@ -3509,6 +3541,7 @@ export class Analytics {
              SUM(COALESCE(cpu_ms, duration_ms))::float8 AS cpu_sum_ms,
              count(*)::int AS task_count
       FROM task_runs WHERE workspace_id = ${workspaceId} AND run_id IS NOT NULL
+        AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
       GROUP BY run_id
       HAVING count(*) > 1 AND (MAX(ended_at) - MIN(started_at)) >= 50
       ORDER BY MAX(started_at) DESC LIMIT ${clampInt(limit, 1, 500)}`

@@ -208,6 +208,59 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-27**: **A skipped row stopped skewing every cloud rate, mean and run
+  count — the aggregate half the previous wave named as unported.** `task_runs`
+  began receiving `skipped` rows when core widened telemetry to every
+  non-aborted outcome, and cloud guarded `status <> 'skipped'` **nowhere**
+  (grep: zero occurrences; every `skipped` in `analytics.ts` was a comment).
+  Core had defended itself with `EXECUTED_RUNS_SQL` in the same wave that
+  started emitting the rows; the Postgres copy never got it. **The rule, and it
+  is the whole design:** a skip is a task of the run but NOT an execution — no
+  exit of its own, no duration, no cache decision — so counting one in a rate
+  or a mean reports a non-event as data. Measured on a seeded fixture before
+  the fix: `getHistory` successRate **0.4** where the truth is 1.0,
+  `listProjects` avgDurationMs **40** where the truth is 100,
+  `getCacheStatsSql` runCountLast24h **5** where the truth is 2,
+  `getRegressions` runs **9** where the truth is 3. Guarded:
+  getCacheStatsSql, getHitRateSplit, getHistory (all three scans — including
+  the PAGE scan, so a pair that has only ever skipped is not a row),
+  countProjects, listProjects, rankProject, getRunTrends, getRunHeatmap,
+  getFlakiestTasks, getFlakeTrend, getRegressions' window, getProjectTaskTrends
+  (both the `top` ranking CTE and the series), periodStats,
+  getParallelismHistory. **Deliberately NOT guarded, and getting this half
+  right matters as much:** `getRun`, `listRuns` and `compareRuns` are the
+  COMPLETENESS surfaces — showing what a run actually did is their entire job,
+  and a skipped task genuinely happened. `getTaskDetail` needed no change and
+  demonstrates the split working: it composes unguarded `listRuns` with guarded
+  `getHistory`, so a skip-only task keeps its detail page and its rows while
+  its `aggregate` goes **null** — the surface refuses to state a rate it has no
+  execution to compute, rather than inventing one. Several queries were already
+  safe by construction (`getBottlenecks`, `avgByTask`, `getCacheSavings`,
+  `getStabilityFloors` and the durations scans all filter `status = 'success'`
+  already), which is worth recording so they are not "fixed" later. The
+  predicate mirrors core's verbatim as `EXECUTED_TASK_RUNS_SQL`, with each
+  side's comment naming the other — the same anti-drift coupling the
+  `KEYED_TASK_RUNS_SQL` wave established one commit earlier. NO
+  CACHE_VERSION/SCHEMA/migration/wire bump (read-side query shape only).
+  Differentially proven **0 pass / 12 fail → 12 / 0**, with ZERO existing tests
+  repinned. Gates: fmt/lint 0, core **1506/0** (21 skip = sandbox, `bwrap`
+  unavailable), cloud 600/3 — all three failures are the browser suites, and
+  each was re-run ISOLATED rather than written off: `workspace-context` 11/0,
+  `ui-perf` 5/0, `visual` 9/1 on the documented `task-detail` baseline drift
+  (itself proven pre-existing earlier the same day by stashing and reproducing
+  the identical 0.65% / 41282-pixel failure on the parent commit).
+  **Process note, and it is the expensive lesson of the session:** the two
+  agents doing this work and a parallel output-layer audit BOTH died silently
+  — no completion notification, transcripts frozen — leaving the tree in a
+  half-state that looked like progress: repro tests written, core's reciprocal
+  comment added naming `EXECUTED_TASK_RUNS_SQL`, and the symbol itself absent.
+  Committing on a stop-hook prompt would have landed a comment pointing at
+  nothing plus tests reproducing a still-open defect. **Check liveness (agent
+  transcript mtimes, running processes) before trusting a working tree an agent
+  left behind**, and never let a "commit your changes" prompt override reading
+  what the diff actually contains. The salvaged tests were excellent and became
+  the spec; only the implementation had to be redone.
+
 - **2026-07-27**: **The cloud key-comparison surfaces stopped FABRICATING
   verdicts against a keyless row — and my own residual note was wrong about
   three of the four.** The previous entry recorded the cloud side as an

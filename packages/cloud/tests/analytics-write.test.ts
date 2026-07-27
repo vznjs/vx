@@ -39,6 +39,14 @@ function task(
   }
 }
 
+/** The same task with no `hash` KEY at all — what core emits for an outcome
+ *  that never derived one. Deleting beats `hash: undefined`, which
+ *  `exactOptionalPropertyTypes` rejects and which is a different type besides. */
+function omitHash(t: TaskTelemetry): TaskTelemetry {
+  const { hash: _hash, ...rest } = t
+  return rest
+}
+
 function summary(over: {
   runId?: string
   workspaceId?: string
@@ -317,6 +325,46 @@ describe('ingest', () => {
     const trs = await db.sql<{ task: string }[]>`
       SELECT task FROM task_runs WHERE workspace_id = ${res.workspaceId} ORDER BY task`
     expect(trs.map((t) => t.task)).toEqual(['x'])
+  })
+
+  it('records a skipped and a persistent task — keyless, but part of the run', async () => {
+    // Core widened telemetry to every non-aborted outcome, so these arrive:
+    // a skip (upstream failed) and a persistent task (never cacheable). Both
+    // record no cache key, which ingest stores as the `''` sentinel. The read
+    // side must then keep a skip out of every rate and mean
+    // (EXECUTED_TASK_RUNS_SQL) and both out of key comparisons
+    // (KEYED_TASK_RUNS_SQL) — neither guard is reachable without these rows.
+    const org = await seedOrg(db, 'ingest-keyless')
+    const res = await analytics.ingest({
+      orgId: org,
+      summary: summary({
+        workspaceId: 'wskeyless',
+        tasks: [
+          task({ project: 'app', task: 'build' }),
+          {
+            taskId: 'app#gen',
+            project: 'app',
+            task: 'gen',
+            status: 'skipped',
+            cacheSource: 'miss',
+            exitCode: 1,
+            durationMs: 0,
+          },
+          // A persistent task: succeeds, but never derives a key. The property
+          // is OMITTED rather than set to undefined — `exactOptionalPropertyTypes`
+          // makes those different types, and only omission is what core emits.
+          omitHash(task({ project: 'app', task: 'dev' })),
+        ],
+      }),
+    })
+    const rows = await db.sql<{ task: string; status: string; hash: string }[]>`
+      SELECT task, status, hash FROM task_runs WHERE workspace_id = ${res.workspaceId}
+      ORDER BY task`
+    expect(rows).toEqual([
+      { task: 'build', status: 'success', hash: 'h0' },
+      { task: 'dev', status: 'success', hash: '' },
+      { task: 'gen', status: 'skipped', hash: '' },
+    ])
   })
 })
 

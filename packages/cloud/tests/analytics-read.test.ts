@@ -2209,3 +2209,203 @@ describe('scale: a workspace larger than one page', () => {
     expect(page[0]!.id).toBe('zzz-just-ran#build')
   }, 60_000)
 })
+
+describe('skipped rows never skew a rate, a mean or a run count', () => {
+  // Ingest records every non-aborted outcome so a run's detail is complete,
+  // which means `skipped` rows land in task_runs. A skip is a task of the run
+  // but NOT an execution: no exit of its own, no duration, no cache decision.
+  // Counting one in a rate or a mean reports a non-event as data.
+  //
+  // The fixture mirrors what ingest writes for a skip: no hash (`''`), zero
+  // duration, exit 1, and — since a skip has no wallclock ns — started_at at
+  // the RUN start with ended_at at the run end.
+  const RUN_MS = 500
+  let org: string
+  let ws: string
+  let t0: number
+
+  const skip = (runId: string, project: string, task: string, startedAt: number): Promise<void> =>
+    insertTR(db, ws, org, {
+      runId,
+      project,
+      task,
+      status: 'skipped',
+      hash: '',
+      duration: 0,
+      exitCode: 1,
+      startedAt,
+      endedAt: startedAt + RUN_MS,
+    })
+
+  beforeAll(async () => {
+    ;({ org, ws } = await newOrgWs(db, 'skew'))
+    t0 = Date.now() - 6 * HOUR
+
+    // S1/S2 (main): app#build succeeds twice; app#e2e passes then fails on the
+    // SAME key (the definitional flake) and leaves main's latest run failing.
+    await insertINV(db, ws, org, { runId: 'S1', startedAt: t0 })
+    await insertTR(db, ws, org, {
+      runId: 'S1',
+      project: 'app',
+      task: 'build',
+      hash: 'k1',
+      startedAt: t0,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'S1',
+      project: 'app',
+      task: 'e2e',
+      hash: 'kf',
+      startedAt: t0,
+    })
+    await insertINV(db, ws, org, { runId: 'S2', startedAt: t0 + HOUR, failedCount: 1 })
+    await insertTR(db, ws, org, {
+      runId: 'S2',
+      project: 'app',
+      task: 'build',
+      hash: 'k1',
+      startedAt: t0 + HOUR,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'S2',
+      project: 'app',
+      task: 'e2e',
+      hash: 'kf',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: t0 + HOUR,
+    })
+    // S3/S4: nothing ran. `app#gone` and the whole `ghost` project exist ONLY
+    // as skips — they have never executed anything, ever.
+    await insertINV(db, ws, org, { runId: 'S3', startedAt: t0 + 2 * HOUR })
+    await skip('S3', 'app', 'build', t0 + 2 * HOUR)
+    await skip('S3', 'app', 'e2e', t0 + 2 * HOUR)
+    await skip('S3', 'app', 'gone', t0 + 2 * HOUR)
+    await skip('S3', 'ghost', 'build', t0 + 2 * HOUR)
+    await insertINV(db, ws, org, { runId: 'S4', startedAt: t0 + 3 * HOUR })
+    await skip('S4', 'app', 'build', t0 + 3 * HOUR)
+    await skip('S4', 'app', 'e2e', t0 + 3 * HOUR)
+    // S5 (feature): a second branch where e2e's latest run is also failing.
+    await insertINV(db, ws, org, {
+      runId: 'S5',
+      startedAt: t0 + 4 * HOUR,
+      branch: 'feature',
+      failedCount: 1,
+    })
+    await insertTR(db, ws, org, {
+      runId: 'S5',
+      project: 'app',
+      task: 'e2e',
+      hash: 'kf2',
+      status: 'failed',
+      exitCode: 1,
+      startedAt: t0 + 4 * HOUR,
+    })
+    await skip('S5', 'app', 'build', t0 + 4 * HOUR)
+  })
+
+  // 12 rows total; 5 of them are executions.
+  it('getHistory counts executions, and drops a pair that has only ever skipped', async () => {
+    const rows = await analytics.getHistory(ws, {})
+    const build = rows.find((r) => r.id === 'app#build')!
+    expect(build.runs).toBe(2)
+    expect(build.successRate).toBe(1)
+    const e2e = rows.find((r) => r.id === 'app#e2e')!
+    expect(e2e.runs).toBe(3)
+    expect(e2e.successRate).toBeCloseTo(1 / 3, 5)
+    expect(rows.map((r) => r.id)).not.toContain('app#gone')
+    expect(rows.map((r) => r.id)).not.toContain('ghost#build')
+  })
+
+  it('listProjects / countProjects share ONE population, and a skip-only project is not in it', async () => {
+    const rows = await analytics.listProjects(ws)
+    const app = rows.find((r) => r.project === 'app')!
+    expect(app.runs).toBe(5)
+    expect(app.taskCount).toBe(2)
+    expect(app.avgDurationMs).toBe(100)
+    expect(rows.map((r) => r.project)).not.toContain('ghost')
+    // The "showing N of M" denominator must match the page's own population.
+    expect(await analytics.countProjects(ws)).toBe(1)
+  })
+
+  it('rankProject ranks over executions only', async () => {
+    const rank = await analytics.rankProject(ws, 'app')
+    expect(rank.total).toBe(1)
+    expect(rank.byFailRate.find((r) => r.project === 'app')!.value).toBeCloseTo(2 / 5, 5)
+    expect(rank.byAvg.find((r) => r.project === 'app')!.value).toBe(100)
+  })
+
+  it('the 24h cache counters count executions', async () => {
+    expect((await analytics.getCacheStatsSql(ws)).runCountLast24h).toBe(5)
+    expect((await analytics.getHitRateSplit(ws)).total).toBe(5)
+  })
+
+  it('the trend + heatmap buckets count executions', async () => {
+    const trend = await analytics.getRunTrends(ws, { bucket: 'hour', from: t0 - HOUR })
+    expect(trend.reduce((n, p) => n + p.runs, 0)).toBe(5)
+    // The all-skipped run's bucket is empty, not a spike of four.
+    expect(trend.find((p) => p.t === Math.floor((t0 + 2 * HOUR) / HOUR) * HOUR)?.runs ?? 0).toBe(0)
+    const heat = await analytics.getRunHeatmap(ws, 30)
+    expect(heat.reduce((n, c) => n + c.runs, 0)).toBe(5)
+  })
+
+  it('the flaky failure rate is over executions', async () => {
+    const flaky = await analytics.getFlakiestTasks(ws)
+    const e2e = flaky.find((f) => f.id === 'app#e2e')!
+    expect(e2e.runs).toBe(3)
+    expect(e2e.failureRate).toBeCloseTo(2 / 3, 5)
+    expect(e2e.mixedOutcomeKeys).toBe(1)
+  })
+
+  it('the flake trend counts executions per bucket', async () => {
+    const trend = await analytics.getFlakeTrend(ws, 'app', 'e2e')
+    expect(trend.points.reduce((n, p) => n + p.runs, 0)).toBe(3)
+  })
+
+  it('period stats count executions, and a run of nothing but skips is not a run', async () => {
+    const cmp = await analytics.getPeriodComparison(ws, { windowDays: 1 })
+    expect(cmp.current.stats.taskRuns).toBe(5)
+    expect(cmp.current.stats.executed).toBe(5)
+    expect(cmp.current.stats.runs).toBe(3)
+    expect(cmp.current.stats.failureRate).toBeCloseTo(2 / 5, 5)
+  })
+
+  it('per-task trends drop a task with nothing but skips', async () => {
+    const points = await analytics.getProjectTaskTrends(ws, 'app', {
+      bucket: 'hour',
+      from: t0 - HOUR,
+    })
+    expect([...new Set(points.map((p) => p.task))].sort()).toEqual(['build', 'e2e'])
+    expect(points.filter((p) => p.task === 'e2e').reduce((n, p) => n + p.runs, 0)).toBe(3)
+  })
+
+  it('regression windows count executions', async () => {
+    const rows = await analytics.getRegressions(ws, { sinceDays: 1, minBranches: 2 })
+    const e2e = rows.find((r) => r.id === 'app#e2e')!
+    expect(e2e.branchesFailing).toBe(2)
+    expect(e2e.runs).toBe(3)
+    expect(e2e.failures).toBe(2)
+  })
+
+  it('parallelism reads executions — a run of nothing but skips has none', async () => {
+    const points = await analytics.getParallelismHistory(ws)
+    // S3/S4 are pure skips; S5 has ONE execution, so it is not parallelism.
+    expect(points.map((p) => p.runId).sort()).toEqual(['S1', 'S2'])
+    expect(points.every((p) => p.taskCount === 2)).toBe(true)
+  })
+
+  it('the completeness surfaces still show every skipped row', async () => {
+    // The point of the guard is rates and means — never hiding what a run did.
+    const run = await analytics.getRun(ws, 'S3')
+    expect(run?.tasks.map((t) => t.status)).toEqual(['skipped', 'skipped', 'skipped', 'skipped'])
+    expect(await analytics.listRuns(ws, { limit: 500 })).toHaveLength(12)
+    const cmp = await analytics.compareRuns(ws, 'S3')
+    expect(cmp.tasks.map((t) => t.taskId)).toContain('app#gone')
+    // A skip-only task keeps its detail page (its rows are real history); only
+    // the AGGREGATE refuses to state a rate it has no execution to compute.
+    const detail = await analytics.getTaskDetail(ws, 'app#gone')
+    expect(detail).not.toBeNull()
+    expect(detail!.aggregate).toBeNull()
+    expect(detail!.recent.map((r) => r.status)).toEqual(['skipped'])
+  })
+})
