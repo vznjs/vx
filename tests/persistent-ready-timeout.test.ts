@@ -96,7 +96,7 @@ describe('exec.timeout — normal task', () => {
         `export default {
           tasks: {
             build: {
-              exec: { command: 'echo $$ > pid.txt && sleep 30', timeout: 300 },
+              exec: { command: 'echo $$ > pid.txt && exec sleep 30', timeout: 300 },
               cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
             },
           },
@@ -111,7 +111,11 @@ describe('exec.timeout — normal task', () => {
       expect(r.outcomes[0]!.status).toBe('failed')
       // The timeout note streamed into the task's output.
       expect(fixture.err.join('\n')).toContain('timed out after 300ms')
-      // The child must be dead once the run returns.
+      // The child must be dead once the run returns. `exec` in the fixture is
+      // what gives this assertion teeth: `$$` is the shell's pid and exec keeps
+      // that pid while replacing the image, so pid.txt names the SLEEPER. As a
+      // plain compound the shell died on SIGTERM and the sleeper was orphaned —
+      // this check passed while the real process ran on for another 30s.
       const pid = Number(readFileSync(path.join(dir, 'pid.txt'), 'utf8').trim())
       await Bun.sleep(200)
       expect(isAlive(pid)).toBe(false)
@@ -159,7 +163,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
           tasks: {
             dev: {
               exec: {
-                command: 'echo $$ > pid.txt && echo wrong-banner && sleep 30',
+                command: 'echo $$ > pid.txt && echo wrong-banner && exec sleep 30',
                 timeout: 300,
                 persistent: { readyWhen: 'Listening' },
               },
@@ -178,7 +182,11 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       // Fast failure, not a 30s hang on the sleep.
       expect(Date.now() - started).toBeLessThan(5000)
       expect(stderrText).toContain('not ready within 300ms')
-      // The child must be dead once the run returns.
+      // The child must be dead once the run returns. `exec` in the fixture is
+      // what gives this assertion teeth: `$$` is the shell's pid and exec keeps
+      // that pid while replacing the image, so pid.txt names the SLEEPER. As a
+      // plain compound the shell died on SIGTERM and the sleeper was orphaned —
+      // this check passed while the real process ran on for another 30s.
       const pid = Number(readFileSync(path.join(dir, 'pid.txt'), 'utf8').trim())
       await Bun.sleep(200)
       expect(isAlive(pid)).toBe(false)
@@ -202,7 +210,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
           tasks: {
             dev: {
               exec: {
-                command: 'echo lived > lived.txt && echo Listening on :3000 && sleep 30',
+                command: 'echo lived > lived.txt && echo Listening on :3000 && exec sleep 30',
                 timeout: 5000,
                 persistent: { readyWhen: 'Listening' },
               },

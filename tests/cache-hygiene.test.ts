@@ -67,7 +67,13 @@ describe('interrupted run publishes nothing', () => {
   it(
     'SIGTERM mid-task → no entries row, no live or tmp artifact',
     async () => {
-      await addProject('slow', 'sleep 30 && echo done > out.txt')
+      // `exec` cannot apply here (the sleeper is not the last command — the
+      // trailing `&& echo` is what makes this a task that WOULD publish an
+      // output), so the shell stays and its sleeper is orphaned by SIGTERM.
+      // Bounding the duration bounds the blast radius instead. The only
+      // constraint is that the sleeper must still be running when the kill
+      // lands at ~1.2s below, so this must stay comfortably above that.
+      await addProject('slow', 'sleep 5 && echo done > out.txt')
       const proc = Bun.spawn({
         cmd: [process.execPath, BIN, 'run', 'build', '--all'],
         cwd: root,

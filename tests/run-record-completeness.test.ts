@@ -14,10 +14,14 @@
 // a skip is a task of the run but not an execution, so it belongs in the
 // completeness surfaces (listRuns / getRun / task_count) and nowhere else.
 //
-// The persistent fixtures sleep 2s, not 30: a compound `sh -c 'a && b'` means
-// SIGTERM reaches the shell and ORPHANS the sleeper (the documented
-// grandchild limit), so a 30s child outlives its own test by half a minute.
-// Three of those measurably degraded the neighbouring scale guard.
+// The persistent fixtures `exec` their sleeper. vx only exec-wraps a SINGLE
+// external command (`execWrap`), so a compound `sh -c 'a && b'` leaves `sh` as
+// the tracked child: SIGTERM kills the shell and ORPHANS the sleeper at PPID 1
+// (the documented grandchild limit), where it outlives its own test and
+// perturbs the neighbouring scale guard. `exec` makes the sleeper the tracked
+// child, so it takes the signal. (The 2s duration is a leftover of the earlier
+// shorten-the-blast-radius workaround; with `exec` the duration no longer
+// matters, and it is kept only because nothing here needs longer.)
 
 import { Database } from 'bun:sqlite'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
@@ -146,7 +150,7 @@ describe('every recorded outcome earns a row (real CLI)', () => {
           tasks: {
             dev: {
               exec: {
-                command: 'echo wrong-banner && sleep 2',
+                command: 'echo wrong-banner && exec sleep 2',
                 timeout: 400,
                 persistent: { readyWhen: 'Listening' },
               },
@@ -179,7 +183,7 @@ describe('every recorded outcome earns a row (real CLI)', () => {
           tasks: {
             dev: {
               exec: {
-                command: 'echo Listening && sleep 2',
+                command: 'echo Listening && exec sleep 2',
                 persistent: { readyWhen: 'Listening' },
               },
             },
@@ -251,7 +255,7 @@ describe('every recorded outcome earns a row (real CLI)', () => {
           tasks: {
             dev: {
               exec: {
-                command: 'echo nope && sleep 2',
+                command: 'echo nope && exec sleep 2',
                 timeout: 400,
                 persistent: { readyWhen: 'Listening' },
               },
