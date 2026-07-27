@@ -206,6 +206,44 @@ When adding a dashboard feature, ask "which of these five does it
 serve, and how many clicks from the dev's entry point?" — a feature
 serving none of them is probably org-analytics scope creep.
 
+## Never stop — run cycles (standing owner directive, 2026-07-27)
+
+**"Continue on cycles, never stop."** Work is CONTINUOUS, not request-driven.
+There is no state in which this project is "done" and waiting for input; a
+finished wave is the start of the next one, and **vx cloud is the named
+default subject** when nothing more urgent is open.
+
+The cycle that has repeatedly worked here, in order:
+
+1. **Audit** a surface hostilely — pick one never reviewed, or one a recent
+   wave just changed (the 2026-07-26 remote-cache wave found BOTH its HIGHs in
+   code the previous wave had just landed; new code is where the bugs are).
+2. **Fix** what the audit CONFIRMS by executed reproduction, and record what it
+   REFUTES with the probe — the refuted list is half the value, because it is
+   what stops the next audit re-treading the ground.
+3. **Verify** differentially: every fix fails without itself, gates from the
+   repo root, and re-check the load-bearing claims yourself rather than
+   relaying an agent's summary.
+4. **Record** in the decision log — including corrections to earlier entries.
+   An entry that turns out wrong gets CORRECTED IN PLACE, not quietly dropped.
+5. **Land** it, then pick the next surface. Do not ask what to do next; say
+   what you are doing next.
+
+**For vx cloud specifically**, rotate across: the analytics read queries (they
+answer questions about a dev's work and have repeatedly answered them wrongly
+— skew, fabricated verdicts, N+1 shapes), the dashboard's client-side
+derivations (`ui/src/jr/{data,functions}.ts` — computations that can lie to
+the dev without any server bug), the platform/auth/tenancy boundary, the
+distributed-execution path, and the five product-lens questions above (a
+surface serving none of them is scope creep; a lens question with no surface
+is the gap to close). Cloud features are not done until their docs land in the
+same wave — that is the 2026-07-16 directive and it still stands.
+
+**Standing quality bar for every cycle:** repro-mandated findings, no
+half-finished work behind flags, measurement before optimisation claims, and
+the honesty rules — report what failed, correct yourself in place, and never
+write a plausible cause into the log that you have not proven.
+
 ## Decision log
 
 - **2026-07-27**: **The runner stopped accumulating output nothing reads —
@@ -10201,6 +10239,10 @@ turn:
 3. Update this doc when decisions are made.
 4. Never end a turn with "what next?" — instead, state what you're
    doing next.
+
+**Run cycles continuously** — see "Never stop — run cycles" above for the
+audit → fix → verify → record → land loop and the vx-cloud rotation. A
+merged PR is the start of the next cycle, never a stopping point.
 
 When uncertain about a non-trivial architectural call, use the
 **architect** subagent (`.claude/agents/architect.md`). When you have
