@@ -208,6 +208,50 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-27**: **The runner stopped accumulating output nothing reads —
+  a chatty task's floor drops to baseline.** Closing the residuals the output
+  audit named. Verified consumer counts first, because the whole wave rests on
+  them: **`RunResult.stderr` has ZERO production consumers** (nothing in `src/`
+  or `packages/*/src/` reads it; one test did) yet `streamToString` accumulated
+  every byte of it for EVERY task; **`RunResult.stdout` has exactly ONE**,
+  `cache.save`'s `entry.stdout`, inside the `effectiveExitCode === 0 &&
+willWrite` gate — so any task that will not be cached accumulated for nothing;
+  and **`PersistentSpawn.bufferedStdout()`/`bufferedStderr()` have none at all**,
+  which the previous wave bounded as a stopgap and flagged for this sweep. Same
+  class the 2026-05 cleanup removed one layer up, when `TaskOutcome.stdout`/
+  `stderr` turned out to have no production reader. **The design call, and it is
+  the point:** `RunResult` is on the public façade and `runCommand` is a
+  legitimately useful embedder primitive, so stderr was NOT deleted and NOT made
+  silently-empty — a field that lies is worse than a field that costs, and
+  degrading a public primitive to fix an internal caller's waste is backwards.
+  Instead the DEFAULT keeps capturing (today's behaviour, pinned by a test) and
+  `execute-task` opts DOWN to what it consumes: `{ stdout: willWrite, stderr:
+false }`. New `CaptureConfig` on `RunOptions.capture`, honoured by BOTH spawn
+  paths (`runCommand` and `runSandboxed`) so they cannot disagree. The gate sits
+  on `full += chunk` ONLY — **the stream is still fully drained and `onChunk`
+  still fires per chunk**, so live display is untouched; retention is decoupled
+  from streaming, which is what makes this safe. The dead `buffered*` getters and
+  the `preReadyOut`/`preReadyErr` tails behind them are deleted outright, and
+  `util/tail.ts`'s header comment corrected — it claimed both the runner and the
+  logger accumulate, and now only the logger does. **Measured on a ~150 MB-stdout
+  non-cacheable task under `--output-logs none`: 243 → 78 MiB**, i.e. baseline (a
+  quiet task is ~70), so with the logger fix from the previous wave that flag is
+  now a complete mitigation at any volume; `full` correctly stays 405 MiB because
+  it prints the output. **The one thing this could have broken, verified through
+  the real CLI:** a cacheable task's stdout still round-trips save → hit →
+  replay (cold prints it, the warm HIT replays the stored copy), and a
+  non-cacheable task still streams live despite no longer being retained. NO
+  CACHE_VERSION/SCHEMA/wire bump — this changes what is held in memory, never what
+  is stored. Differential 30/3 → 33/0. Gates: fmt/lint 0, core **1553/0** (+5;
+  21 skip = sandbox). **Process note, the third instance today:** the agent
+  implemented and tested this, then died SILENTLY — transcript frozen 16 minutes,
+  no completion notification — and a stop-hook prompt arrived asking to commit the
+  tree it left. Per the standing rule that prompt was not obeyed blind: liveness
+  was checked (frozen mtime), the diff read, and the full gates plus the
+  cache-round-trip and the RSS measurements re-run independently before anything
+  landed. The work was complete and good; that is a fact established by checking,
+  not by the prompt.
+
 - **2026-07-27**: **Test fixtures stopped orphaning sleeper grandchildren — and
   the CPU-contention story I told about them is REFUTED by measurement.** Two
   results, and the second matters more than the first. **(1) The sweep.** A

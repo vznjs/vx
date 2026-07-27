@@ -6,13 +6,17 @@
 // needs a cap, and the cap has to be honest — a truncated log that reads as
 // complete is worse than one that says what it lost.
 //
-// Lives in `util` because BOTH sides of that task's lifetime accumulate:
-// `exec/runner.ts` holds the pre-ready output and `orchestrator/logger.ts`
-// holds what the task writes for the rest of the run. Two copies of this
-// rule is how they drift — one grew a bound and the other did not, which is
-// exactly the defect this file closes (a never-ready `readyWhen` grew vx's
-// heap ~100 MiB/s with the 64 KiB cap sitting unused, because it was only
-// ever engaged once the task became ready).
+// `orchestrator/logger.ts` is the sole holder: it registers a tail per
+// persistent task at taskStart and keeps one for the rest of the run, so a
+// single mechanism covers both the pre-ready window and everything after.
+// `exec/runner.ts` used to keep a SECOND pre-ready copy fed from the same
+// chunks that nothing ever read; it was deleted rather than kept in sync,
+// since two copies of this rule is how they drift — one grew a bound and
+// the other did not, which is the defect this file was extracted to close
+// (a never-ready `readyWhen` grew vx's heap ~100 MiB/s with the 64 KiB cap
+// sitting unused, because it was only ever engaged once the task became
+// ready). It stays in `util` because `exec` cannot import `orchestrator`,
+// so a future second holder on that side has somewhere to import from.
 
 /** Per-stream cap on retained output for a task that may never end. */
 export const PERSISTENT_TAIL_CHARS = 64 * 1024

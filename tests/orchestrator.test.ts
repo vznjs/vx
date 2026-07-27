@@ -1441,6 +1441,62 @@ describe('orchestrator e2e', () => {
   )
 
   it(
+    'a cacheable task stores its FULL stdout and replays it byte-identically',
+    async () => {
+      // `cache.save` is the only consumer of `RunResult.stdout`, so the
+      // executed run retains it while a non-cacheable one does not. This is
+      // the one thing that gate can break: it must still be the WHOLE
+      // stream, not a prefix, and it must survive the round trip unchanged.
+      // Deliberately larger than one pipe chunk, so a partially-retained
+      // stream would show up here rather than in a one-line fixture.
+      const lines = 20_000
+      await addProject(fixture.root, 'chatty', {
+        config: `
+          export default {
+            tasks: {
+              run: {
+                exec: {
+                  command: "node -e 'for (let i = 0; i < ${lines}; i++) process.stdout.write(\\"line-\\" + i + \\"\\\\n\\")'",
+                },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+              },
+            },
+          }
+        `,
+      })
+      const captured: string[] = []
+      const capture = (): Logger => {
+        let buf = ''
+        return {
+          status() {},
+          taskStdout(_node, chunk) {
+            buf += chunk
+          },
+          taskStderr() {},
+          taskComplete() {
+            captured.push(buf)
+            buf = ''
+          },
+        }
+      }
+
+      const miss = await run({ cwd: fixture.root, tasks: ['run'], log: capture() })
+      expect(miss.outcomes[0]?.status).toBe('success')
+      const hit = await run({ cwd: fixture.root, tasks: ['run'], log: capture() })
+      expect(hit.outcomes[0]?.status).toBe('cache-hit')
+
+      const [executed, replayed] = captured
+      // Whole stream, not a prefix: first line, last line, exact length.
+      expect(executed).toContain('line-0\n')
+      expect(executed).toContain(`line-${lines - 1}\n`)
+      expect(executed!.split('\n').filter((l) => l.length > 0)).toHaveLength(lines)
+      // …and the replay is the same bytes, not merely similar.
+      expect(replayed).toBe(executed)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'upstream env change invalidates the dependent (pure-input transitive; no cutoff)',
     async () => {
       await addProject(fixture.root, 'lib', {

@@ -22,6 +22,7 @@ import {
   resolveSandboxConfig,
   shellQuote,
   signalExitCode,
+  type CaptureConfig,
   type SandboxViolation,
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome, type VerifyVerdict } from '../graph/index.js'
@@ -246,6 +247,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const willRead = cfgCacheable && (policy.localRead || policy.remoteRead)
   const willWrite = cfgCacheable && (policy.localWrite || policy.remoteWrite)
 
+  // Retain only what is read back. `cache.save` below is the single consumer
+  // of `result.stdout`, and it runs only when this task will WRITE an entry;
+  // `result.stderr` has no consumer at all (a failing task's stderr reaches
+  // the user through the live `onStderr` callback, and the cache has never
+  // stored stderr — see the v17 artifact format). Both streams are still
+  // drained and still stream chunk-by-chunk to the logger; only the retained
+  // copy is dropped, which for a chatty task is its full byte size in heap.
+  const capture: CaptureConfig = { stdout: willWrite, stderr: false }
+
   const outputs = cacheCfg?.outputs.files ?? []
   const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
@@ -445,6 +455,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       forwardArgs: effectiveForwardArgs,
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
+      capture,
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
     })
@@ -497,6 +508,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       forwardArgs: effectiveForwardArgs,
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
+      capture,
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       baseAllowRead: [...resolved.files, ...baseAllowWrite],
