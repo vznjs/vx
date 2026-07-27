@@ -91,15 +91,70 @@ describe('logger per-task buffering', () => {
 })
 
 /**
+ * Feed `mib` megabytes through `runCommand` and report RSS while the result
+ * is still referenced — i.e. the peak `RunResult.stdout` is responsible for.
+ * `retain` drives the `capture` option both ways.
+ */
+function capturedProbe(retain: boolean, mib: number): string {
+  return `
+    import { runCommand } from ${JSON.stringify(RUNNER)}
+    const r = await runCommand({
+      command: 'head -c ' + (${mib} * 1024 * 1024) + ' /dev/zero | tr "\\\\0" "a"',
+      cwd: process.cwd(),
+      env: process.env,
+      capture: { stdout: ${retain}, stderr: ${retain} },
+    })
+    if (r.exitCode !== 0) throw new Error('probe exited ' + r.exitCode)
+    // Reference the result so a retained string cannot be collected before
+    // the measurement — otherwise the control could read as flat too.
+    if (r.stdout.length < 0) throw new Error('unreachable')
+    console.log('rss_mib=' + Math.round(process.memoryUsage().rss / 1024 / 1024))
+  `
+}
+
+const CAP_FEW_MIB = 40
+const CAP_MANY_MIB = 160
+const CAP_EXTRA_MIB = CAP_MANY_MIB - CAP_FEW_MIB
+
+describe('runCommand stream capture', () => {
+  it(
+    'an opted-down stream does not grow with the volume the child writes',
+    () => {
+      // Same differential shape as the logger test above: assert on how RSS
+      // RESPONDS TO VOLUME, never on an absolute figure, so the bound does
+      // not encode this container's speed or GC timing.
+      //
+      // The retaining control runs FIRST, so a harness that measured nothing
+      // fails here rather than passing vacuously on the opted-down side.
+      const keepFew = probeRssMib(capturedProbe(true, CAP_FEW_MIB))
+      const keepMany = probeRssMib(capturedProbe(true, CAP_MANY_MIB))
+      const dropFew = probeRssMib(capturedProbe(false, CAP_FEW_MIB))
+      const dropMany = probeRssMib(capturedProbe(false, CAP_MANY_MIB))
+
+      // Retaining is the documented default: `RunResult.stdout` holds what
+      // the child wrote, so it MUST grow with the volume. Pinned so that
+      // "just stop capturing everywhere" has to argue with this line.
+      expect(keepMany - keepFew).toBeGreaterThan(CAP_EXTRA_MIB * 0.5)
+
+      // Opted down, the same 120 MiB of extra output must not move it: the
+      // stream is still fully drained, just not retained. Measured 102→243
+      // MiB retaining vs 50→51 MiB not.
+      expect(dropMany - dropFew).toBeLessThan(CAP_EXTRA_MIB * 0.25)
+    },
+    TIMEOUT,
+  )
+})
+
+/**
  * A persistent task whose `readyWhen` never matches, with no `exec.timeout`,
  * writing as fast as the shell can — the one task kind nothing bounds, since
  * a one-shot command's output ends when it exits.
  *
- * Both line shapes are measured because they exercise DIFFERENT accumulators:
- * `\n`-terminated output grows the pre-ready buffer and the logger's per-task
- * buffer, while `\r`-only output (a progress bar) additionally defeats the
- * ready-matcher's discard-complete-lines trim. Fixing only one leaves the
- * other reachable by a one-character change to the task's command.
+ * This probe drives `runPersistent` with NO logger attached, so it measures
+ * what the RUNNER itself retains. That is now only the ready-matcher's
+ * `fragment`, and the two line shapes exercise it differently: `\r`-only
+ * output (a progress bar) is one endless line, which defeats the
+ * discard-complete-lines trim that `\n`-terminated output relies on.
  */
 function persistentProbe(seconds: number, terminator: '\\n' | '\\r'): string {
   const printf = terminator === '\\n' ? '%0200d\\\\n' : '%0200d\\\\r'

@@ -146,6 +146,79 @@ describe('runCommand', () => {
   })
 })
 
+// Retaining a stream costs its full byte size in heap for the whole task, so
+// a caller that will not read one opts down. The contract that makes this
+// safe: opting down drops the RETAINED COPY ONLY — the stream is still fully
+// drained and every chunk still reaches the live callback.
+describe('runCommand capture', () => {
+  let cwd: string
+
+  beforeEach(async () => {
+    cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-capture-'))
+  })
+
+  afterEach(async () => {
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  const BOTH = 'sh -c "echo OUT; echo ERR >&2"'
+
+  it('retains both streams when capture is omitted (the default contract)', async () => {
+    const result = await runCommand({ command: BOTH, cwd, env: { PATH: process.env.PATH ?? '' } })
+    expect(result.stdout).toContain('OUT')
+    expect(result.stderr).toContain('ERR')
+  })
+
+  it('capture.stderr=false empties RunResult.stderr but still streams every chunk', async () => {
+    const chunks: string[] = []
+    const result = await runCommand({
+      command: BOTH,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      onStderr: (c) => chunks.push(c),
+      capture: { stderr: false },
+    })
+    expect(result.stderr).toBe('')
+    // The bytes were read, not skipped — the live view is unaffected.
+    expect(chunks.join('')).toContain('ERR')
+    // …and the other axis is independent.
+    expect(result.stdout).toContain('OUT')
+  })
+
+  it('capture.stdout=false empties RunResult.stdout but still streams every chunk', async () => {
+    const chunks: string[] = []
+    const result = await runCommand({
+      command: BOTH,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      onStdout: (c) => chunks.push(c),
+      capture: { stdout: false },
+    })
+    expect(result.stdout).toBe('')
+    expect(chunks.join('')).toContain('OUT')
+    expect(result.stderr).toContain('ERR')
+  })
+
+  it('an un-retained stream is still fully drained (the child is not blocked)', async () => {
+    // A reader that stopped reading would wedge the child on a full pipe
+    // buffer once it wrote past ~64 KiB. Write far past it and require a
+    // clean exit plus every byte delivered live.
+    let bytes = 0
+    const result = await runCommand({
+      command: `sh -c 'head -c 2000000 /dev/zero | tr "\\0" "z"; echo DONE'`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      onStdout: (c) => {
+        bytes += c.length
+      },
+      capture: { stdout: false },
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toBe('')
+    expect(bytes).toBeGreaterThan(2_000_000)
+  }, 15_000)
+})
+
 describe('signalExitCode', () => {
   it('maps common signals via the platform signal table', () => {
     expect(signalExitCode('SIGKILL')).toBe(137)
@@ -177,11 +250,13 @@ describe('runPersistent', () => {
   it('resolves ready when the marker arrives without a trailing newline', async () => {
     // Prompt-style banner: no newline after the marker, child stays
     // alive. Line-by-line-only matching would hang here forever.
+    const live: string[] = []
     const spawn = runPersistent({
       command: `printf 'Listening on :3000'; exec sleep 30`,
       cwd,
       env: { PATH: process.env.PATH ?? '' },
       readyWhen: 'Listening on',
+      onStdout: (c) => live.push(c),
     })
     try {
       const settled = await Promise.race([
@@ -189,17 +264,19 @@ describe('runPersistent', () => {
         Bun.sleep(3_000).then(() => 'timed out'),
       ])
       expect(settled).toBe('ready')
-      expect(spawn.bufferedStdout()).toContain('Listening on :3000')
+      // The banner reaches the caller through the live callback — the only
+      // route a persistent task's text has (the spawn retains nothing).
+      expect(live.join('')).toContain('Listening on :3000')
     } finally {
       spawn.child.kill('SIGKILL')
       await spawn.child.exited
     }
   }, 8_000)
 
-  it('stops buffering once ready has resolved (buffers capture up to ready only)', async () => {
-    // A kept-alive dev server streams for hours; the buffers' contract is
-    // "captured up to the moment ready resolved" — later output must keep
-    // flowing to the live callbacks WITHOUT accreting into vx's heap.
+  it('keeps streaming to the live callbacks after ready has resolved', async () => {
+    // A kept-alive dev server streams for hours. `ready` resolving is not the
+    // end of its output: everything it writes afterwards must keep reaching
+    // the callbacks, which are the caller's ONLY route to it.
     const live: string[] = []
     const spawn = runPersistent({
       command: `printf 'server ready\\n'; sleep 0.2; printf 'later chatter\\n'; exec sleep 30`,
@@ -214,9 +291,8 @@ describe('runPersistent', () => {
       while (!live.join('').includes('later chatter') && Date.now() < deadline) {
         await Bun.sleep(25)
       }
+      expect(live.join('')).toContain('server ready')
       expect(live.join('')).toContain('later chatter')
-      expect(spawn.bufferedStdout()).toContain('server ready')
-      expect(spawn.bufferedStdout()).not.toContain('later chatter')
     } finally {
       spawn.child.kill('SIGKILL')
       await spawn.child.exited

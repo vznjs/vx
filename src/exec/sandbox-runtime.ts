@@ -32,6 +32,7 @@ import {
   signalExitCode,
   streamToString,
   resourceUsageToCpuRss,
+  type CaptureConfig,
   type RunResult,
 } from './runner.js'
 import { xxh3hex } from '../util/index.js'
@@ -169,6 +170,8 @@ export interface SandboxedRunArgs {
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   /** See `RunOptions.timeoutMs` — SIGTERM the child after this many ms. */
   timeoutMs?: number
+  /** See `CaptureConfig` — which streams are retained on the result. */
+  capture?: CaptureConfig
   /**
    * Baseline reads — paths the sandbox unconditionally allows. The
    * caller builds this from resolved `cache.inputs.files`.
@@ -336,8 +339,8 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   const timeout = armTimeout(proc, args.timeoutMs)
   const ac = new AbortController()
   const streams = Promise.all([
-    streamToString(proc.stdout, args.onStdout, ac.signal),
-    streamToString(proc.stderr, args.onStderr, ac.signal),
+    streamToString(proc.stdout, args.onStdout, ac.signal, args.capture?.stdout ?? true),
+    streamToString(proc.stderr, args.onStderr, ac.signal, args.capture?.stderr ?? true),
   ])
   // See runCommand: gate on child exit; a lingering grandchild pipe (timeout
   // OR a clean exit that backgrounds a process) can't hang the run — timeout

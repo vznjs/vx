@@ -5,7 +5,6 @@
 // folded into the v11 `runs` table by the orchestrator.
 
 import { constants as osConstants } from 'node:os'
-import { appendTail, createTail, tailText } from '../util/index.js'
 
 export interface RunResult {
   exitCode: number
@@ -26,6 +25,20 @@ export interface RunResult {
   peakRssBytes?: number
 }
 
+/**
+ * Which streams `runCommand` retains into `RunResult.stdout` / `.stderr`.
+ * Both default to true — the primitive's contract is that those fields hold
+ * what the child wrote, and a field that silently lies is worse than one
+ * that costs. A caller that will not READ a stream opts down here: the live
+ * `onStdout` / `onStderr` callbacks still fire for every chunk, so only the
+ * retained string is dropped. Retaining a stream nothing reads costs its
+ * full byte size in heap, for the whole task.
+ */
+export interface CaptureConfig {
+  stdout?: boolean
+  stderr?: boolean
+}
+
 export interface RunOptions {
   command: string
   cwd: string
@@ -35,6 +48,8 @@ export interface RunOptions {
   /** Called for each chunk of stdout/stderr as it arrives, for live output. */
   onStdout?: (chunk: string) => void
   onStderr?: (chunk: string) => void
+  /** See `CaptureConfig`. Omitted → both streams retained (today's behaviour). */
+  capture?: CaptureConfig
   /**
    * Upper bound (ms) on the child's run time. When it elapses the
    * child is SIGTERMed and the result is flagged `timedOut`. Undefined
@@ -228,23 +243,15 @@ export interface PersistentSpawn {
    * Rejects with the spawn error if the child fails to start.
    */
   ready: Promise<void>
-  /**
-   * Captured stdout/stderr up to the moment ready resolved, capped at
-   * `PERSISTENT_TAIL_CHARS` per stream with the oldest text evicted first.
-   * A task whose `readyWhen` never matches never becomes ready, so this
-   * window has no natural end — uncapped it grew vx's heap by ~100 MiB/s
-   * (measured >1 GiB in 6 s), and no `exec.timeout` is required.
-   */
-  bufferedStdout: () => string
-  bufferedStderr: () => string
-  /** Characters evicted from the head of each buffer above (0 = complete). */
-  droppedStdout: () => number
-  droppedStderr: () => number
   /** ms elapsed from spawn to ready (or to current time if not yet ready). */
   readyMs: () => number
 }
 
-export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs'> {
+// `capture` is a `runCommand` concept: a persistent task never returns a
+// RunResult (it is handed back at READY, still running), so there is no
+// retained string to opt out of. Its output reaches the caller only through
+// the live callbacks.
+export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'capture'> {
   /**
    * String regex. The first stdout/stderr line that matches signals
    * "ready". Undefined → ready immediately on spawn.
@@ -268,8 +275,6 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs'> {
  */
 export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const start = Date.now()
-  const preReadyOut = createTail()
-  const preReadyErr = createTail()
   let readyAt: number | undefined
 
   // Pattern compiled once; thrown errors surface synchronously so the
@@ -290,10 +295,6 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     return {
       child: undefined as unknown as ReturnType<typeof Bun.spawn>,
       ready: Promise.reject(new Error(`failed to spawn persistent task: ${message}`)),
-      bufferedStdout: () => '',
-      bufferedStderr: () => `\n[vx] failed to spawn: ${message}\n`,
-      droppedStdout: () => 0,
-      droppedStderr: () => 0,
       readyMs: () => Date.now() - start,
     }
   }
@@ -327,19 +328,13 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     let fragment = ''
     const handleChunk = (chunk: string): void => {
       if (chunk.length === 0) return
-      // Buffers capture "up to the moment ready resolved" (their
-      // documented contract) — a dev server kept alive for hours must
-      // not accrete its whole log history into vx's heap. Becoming ready
-      // is not a bound on its own, though: a `readyWhen` that never
-      // matches leaves this window open for the whole run, so the buffers
-      // are bounded tails rather than raw accumulators.
-      if (isStderr) {
-        if (readyAt === undefined) appendTail(preReadyErr, chunk)
-        opts.onStderr?.(chunk)
-      } else {
-        if (readyAt === undefined) appendTail(preReadyOut, chunk)
-        opts.onStdout?.(chunk)
-      }
+      // Chunks are forwarded, never retained. The one consumer of a
+      // persistent task's text is the logger, which keeps its OWN bounded
+      // tail fed from these same callbacks (registered at taskStart, so it
+      // covers the pre-ready window too) — a second copy here was read by
+      // nobody.
+      if (isStderr) opts.onStderr?.(chunk)
+      else opts.onStdout?.(chunk)
       if (readyRe && readyAt === undefined) {
         fragment += chunk
         if (readyRe.test(fragment)) {
@@ -426,10 +421,6 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   return {
     child,
     ready,
-    bufferedStdout: () => tailText(preReadyOut),
-    bufferedStderr: () => tailText(preReadyErr),
-    droppedStdout: () => preReadyOut.dropped,
-    droppedStderr: () => preReadyErr.dropped,
     readyMs: () => (readyAt ?? Date.now()) - start,
   }
 }
@@ -464,8 +455,8 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const timeout = armTimeout(proc, opts.timeoutMs)
   const ac = new AbortController()
   const streams = Promise.all([
-    streamToString(proc.stdout, opts.onStdout, ac.signal),
-    streamToString(proc.stderr, opts.onStderr, ac.signal),
+    streamToString(proc.stdout, opts.onStdout, ac.signal, opts.capture?.stdout ?? true),
+    streamToString(proc.stderr, opts.onStderr, ac.signal, opts.capture?.stderr ?? true),
   ])
   // Gate on the child's own exit, not on stream EOF: an orphaned grandchild
   // can keep the pipe open past the child's exit (a timeout SIGTERM leaves the
@@ -493,12 +484,16 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
 
 /**
  * Drain a `Bun.spawn` stdout/stderr stream while invoking the live
- * callback per UTF-8 chunk. Returns the full accumulated string.
+ * callback per UTF-8 chunk. Returns the accumulated string, or `''` when
+ * `retain` is false — the stream is still fully drained and every chunk
+ * still reaches `onChunk`; only the retained copy is dropped, so a caller
+ * that will not read it does not pay its byte size in heap.
  */
 export async function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
   signal?: AbortSignal,
+  retain = true,
 ): Promise<string> {
   // Bun.spawn types stdout/stderr as `ReadableStream | number | undefined`
   // — the `number` is for inheritance modes, only present when the caller
@@ -522,12 +517,12 @@ export async function streamToString(
       const { value, done } = await reader.read()
       if (done) break
       const chunk = decoder.decode(value, { stream: true })
-      full += chunk
+      if (retain) full += chunk
       onChunk?.(chunk)
     }
     const tail = decoder.decode()
     if (tail.length > 0) {
-      full += tail
+      if (retain) full += tail
       onChunk?.(tail)
     }
   } finally {
