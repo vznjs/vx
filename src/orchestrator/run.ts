@@ -805,18 +805,17 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
         summaryTasks.push(t)
       }
-      // The `runs` table is keyed by cache hash (`hash TEXT NOT NULL`, the
-      // runs_hash index, and the entry_inputs key-diff joins through it), so
-      // an outcome with no hash — a skipped task, or a persistent one, neither
-      // of which ever probed the cache — has no row to write. Telemetry's
-      // `hash` is optional and its task set deliberately DOES include them,
-      // so it agrees with both the terminal tally and the distributed
-      // controller (which filters group/aborted and nothing else). Filtering
-      // them out of telemetry too is what let a failed persistent task ingest
-      // as `0 tasks, 0 failures` on a run the terminal called red.
-      if (!o.hash) continue
+      // Every non-group, non-aborted outcome gets a row — the same set
+      // `tallyOutcomes` counts, so `invocations.task_count` equals both the
+      // terminal's "N total" and `COUNT(*) FROM runs WHERE run_id = ?`.
+      // An outcome with NO hash (a `skipped` task never probed the cache; a
+      // `persistent` one is never cacheable) used to be dropped here because
+      // `runs.hash` is NOT NULL — which made a failing persistent task record
+      // `0 tasks, 0 failures` on a run the terminal called red, and a failed
+      // task with a skipped dependent record 1 of 2. `bindRun` stores `''` for
+      // those instead; the key-diff readers guard it.
       toRecord.push({
-        hash: o.hash,
+        ...(o.hash !== undefined ? { hash: o.hash } : {}),
         project: o.node.projectName,
         task: o.node.taskName,
         status: o.status,
@@ -825,9 +824,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
         // Anchor to the REAL per-task wall-clock window: run-start wall time +
         // the task's ns offset (captured for hits and executed tasks alike).
-        // The `now - duration` fallback only applies to outcomes without an
-        // offset (none today). Using run-end-minus-duration for everything was
-        // the old bug that piled every task at the right edge of the timeline.
+        // The `now - duration` fallback applies to outcomes without an offset —
+        // today only `skipped`, which the scheduler finishes synchronously with
+        // no span, so it collapses to a zero-width mark at the run's end. Using
+        // run-end-minus-duration for EVERYTHING was the old bug that piled every
+        // task at the right edge of the timeline.
         startedAt:
           o.wallclockStartNs !== undefined
             ? endedAtMsAtStart + Math.round(Number(o.wallclockStartNs) / 1e6)

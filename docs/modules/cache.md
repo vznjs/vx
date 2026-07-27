@@ -139,7 +139,7 @@ export interface CacheEntry {
 }
 
 export interface RunRecord {
-  hash: string
+  hash?: string // absent = no cache key derived (skipped / persistent); stored as ''
   project: string
   task: string
   status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
@@ -155,8 +155,7 @@ export interface RunRecord {
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   cacheHit?: boolean // convenience for flamegraph color
-  bytesUploaded?: number // remote-cache push size
-  bytesDownloaded?: number // remote-cache pull size on hit
+  attempts?: number // >1 when the task retried (the within-run flaky signal)
 }
 
 export interface CacheStats {

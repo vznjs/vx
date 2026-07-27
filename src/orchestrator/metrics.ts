@@ -13,6 +13,10 @@
 // for JSON compatibility (matches the WireEvent timeUnixNano rule).
 
 import type { Database } from 'bun:sqlite'
+// The two `runs` predicates live beside the schema in cache/cache.ts: the 24h
+// run count is answered BOTH here and by `Cache.stats` (what `vx info` and
+// `vx mcp` read), and a rule written twice is a rule that drifts.
+import { EXECUTED_RUNS_SQL, KEYED_RUNS_SQL } from '../cache/index.js'
 import { clampInt } from '../util/index.js'
 import { classifyFailureMode, mixedOutcomeKeyCount } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
@@ -312,7 +316,7 @@ export function getCacheStatsSql(db: Database): CacheStatsResult {
       `SELECT COUNT(*) AS total,
               COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0) AS hitLocal,
               COALESCE(SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0) AS hitRemote
-       FROM runs WHERE started_at >= ?`,
+       FROM runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}`,
     )
     .get(since) as { total: number; hitLocal: number; hitRemote: number }
   const hits = runs.hitLocal + runs.hitRemote
@@ -348,7 +352,7 @@ export function getHitRateSplit(db: Database, days = 1): HitRateSplit {
       `SELECT COUNT(*) AS total,
               COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0) AS hitLocal,
               COALESCE(SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0) AS hitRemote
-       FROM runs WHERE started_at >= ?`,
+       FROM runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}`,
     )
     .get(since) as { total: number; hitLocal: number; hitRemote: number }
   const hits = r.hitLocal + r.hitRemote
@@ -405,7 +409,12 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
     where.push('task = ?')
     params.push(args.task)
   }
-  const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+  // Execution history only: a task that has so far only ever been SKIPPED has
+  // none, and every field below (successRate / hitRate / the percentiles /
+  // failureMode's denominator) would be computed over a non-event. Its rows
+  // still show on `getTaskDetail.recent`, which reads `listRuns` unfiltered.
+  where.push(EXECUTED_RUNS_SQL)
+  const clause = `WHERE ${where.join(' AND ')}`
   // Rank + LIMIT in SQL: the result is a PAGE, so slicing an unordered
   // DISTINCT scan in JS returns the ALPHABETICAL prefix — the task that just
   // ran is exactly the one a truncated page must not drop.
@@ -432,7 +441,7 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
            SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) AS retried,
            SUM(duration_ms) AS totalDurationMs,
            MAX(ended_at) AS lastSeenAt
-         FROM runs WHERE project = ? AND task = ?`,
+         FROM runs WHERE project = ? AND task = ? AND ${EXECUTED_RUNS_SQL}`,
       )
       .get(p.project, p.task) as {
       total: number
@@ -787,15 +796,21 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
       note: 'no row matching that runId + taskId',
     }
   }
+  // The previous run to compare against is the previous run that RECORDED A
+  // KEY. A skipped or persistent row carries `hash = ''`, and comparing
+  // against it would answer "cache key unchanged" for two runs that never had
+  // a key — a statement about inputs, made from no evidence.
   const prev = db
     .query(
       `SELECT hash, status, cache_hit AS cacheHit, started_at AS startedAt
-       FROM runs WHERE project = ? AND task = ? AND started_at < ?
+       FROM runs WHERE project = ? AND task = ? AND started_at < ? AND ${KEYED_RUNS_SQL}
        ORDER BY started_at DESC LIMIT 1`,
     )
     .get(project, task, this_.startedAt) as
     | { hash: string; status: string; cacheHit: number | null; startedAt: number }
     | undefined
+  // …and this run must have one too, or there is nothing to compare.
+  const noKey = this_.hash === ''
   return {
     runId,
     taskId,
@@ -804,9 +819,10 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
     previousRun: prev
       ? { ...prev, cacheHit: prev.cacheHit === null ? null : Boolean(prev.cacheHit) }
       : null,
-    hashChanged: prev ? prev.hash !== this_.hash : null,
-    note:
-      prev && prev.hash !== this_.hash
+    hashChanged: prev && !noKey ? prev.hash !== this_.hash : null,
+    note: noKey
+      ? 'this task recorded no cache key (skipped, or a persistent task) — nothing to compare'
+      : prev && prev.hash !== this_.hash
         ? 'cache key changed between the previous run and this one (inputs differ)'
         : prev
           ? 'cache key unchanged — re-run with the same key (likely --no-cache or unrelated)'
@@ -888,10 +904,25 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
     }
   }
 
+  // No key on this side → no diff to compute. `''` is the recorded-no-key
+  // sentinel (skipped / persistent); treating it as a key would resolve the
+  // `prev.hash === this_.hash` branch below and claim "same inputs".
+  if (this_.hash === '') {
+    return {
+      runId,
+      taskId,
+      found: true,
+      previousRunId: null,
+      entries: [],
+      unchangedCount: 0,
+      note: 'this task recorded no cache key (skipped, or a persistent task) — nothing to diff',
+    }
+  }
+
   const prev = db
     .query(
       `SELECT run_id AS runId, hash FROM runs
-       WHERE project = ? AND task = ? AND started_at < ?
+       WHERE project = ? AND task = ? AND started_at < ? AND ${KEYED_RUNS_SQL}
        ORDER BY started_at DESC LIMIT 1`,
     )
     .get(project, task, this_.startedAt) as { runId: string | null; hash: string } | undefined
@@ -1179,7 +1210,8 @@ export function listProjects(db: Database, limit = 100): ProjectRollup[] {
               SUM(duration_ms) AS totalDurationMs,
               CAST(AVG(duration_ms) AS INTEGER) AS avgDurationMs,
               MAX(ended_at) AS lastRunAt
-       FROM runs GROUP BY project ORDER BY SUM(duration_ms) DESC LIMIT ?`,
+       FROM runs WHERE ${EXECUTED_RUNS_SQL}
+       GROUP BY project ORDER BY SUM(duration_ms) DESC LIMIT ?`,
     )
     .all(clampInt(limit, 1, 500)) as Array<{
     project: string
@@ -1279,7 +1311,7 @@ export function getRunTrends(
               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
               SUM(duration_ms) AS totalDurationMs
        FROM runs
-       WHERE started_at >= ? AND started_at <= ?
+       WHERE started_at >= ? AND started_at <= ? AND ${EXECUTED_RUNS_SQL}
        GROUP BY t ORDER BY t ASC`,
     )
     .all(bucketMs, bucketMs, from, to) as TrendPoint[]
@@ -1326,7 +1358,9 @@ export function getRunHeatmap(db: Database, days = 30): HeatmapCell[] {
   // Pull raw rows; bucket in JS (timezone math is ugly in pure SQLite, and
   // `days * 24 * runs/day` rows is a few thousand at most).
   const rows = db
-    .query('SELECT started_at, duration_ms FROM runs WHERE started_at >= ?')
+    .query(
+      `SELECT started_at, duration_ms FROM runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}`,
+    )
     .all(since) as { started_at: number; duration_ms: number }[]
   const grid: HeatmapCell[] = []
   for (let d = 0; d < 7; d++)
@@ -1386,7 +1420,8 @@ export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
               SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) AS within_run_retries,
               MAX(attempts) AS max_attempts
-       FROM runs GROUP BY project, task
+       FROM runs WHERE ${EXECUTED_RUNS_SQL}
+       GROUP BY project, task
        HAVING runs >= 3 OR within_run_retries > 0`,
     )
     .all() as {
@@ -1550,7 +1585,8 @@ export function getRegressions(db: Database, args: RegressionArgs = {}): Regress
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
                 MIN(CASE WHEN status = 'failed' THEN started_at END) AS first_failed,
                 MAX(started_at) AS last_run
-         FROM runs WHERE project = ? AND task = ? AND started_at >= ?`,
+         FROM runs
+         WHERE project = ? AND task = ? AND started_at >= ? AND ${EXECUTED_RUNS_SQL}`,
       )
       .get(agg.project, agg.task, since) as {
       runs: number
@@ -1694,7 +1730,7 @@ function periodStats(db: Database, from: number, to: number, scope: PeriodScope)
               COALESCE(SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END), 0) AS cacheHits,
               COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN 1 ELSE 0 END), 0) AS executed,
               COALESCE(SUM(CASE WHEN cache_hit IS NULL OR cache_hit = 0 THEN duration_ms ELSE 0 END), 0) AS totalDurationMs
-       FROM runs WHERE started_at >= ? AND started_at < ?${sql}`,
+       FROM runs WHERE started_at >= ? AND started_at < ? AND ${EXECUTED_RUNS_SQL}${sql}`,
     )
     .get(from, to, ...params) as {
     taskRuns: number
@@ -1886,7 +1922,7 @@ export function getParallelismHistory(db: Database, limit = 50): ParallelismPoin
               SUM(COALESCE(cpu_ms, duration_ms)) AS cpuSumMs,
               COUNT(*) AS taskCount
        FROM runs
-       WHERE run_id IS NOT NULL
+       WHERE run_id IS NOT NULL AND ${EXECUTED_RUNS_SQL}
        GROUP BY run_id
        HAVING taskCount > 1 AND (MAX(ended_at) - MIN(started_at)) >= 50
        ORDER BY MAX(started_at) DESC
