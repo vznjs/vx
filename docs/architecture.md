@@ -273,11 +273,12 @@ never branches on layering.
   shell-quoted and appended. `exec.timeout` arms a SIGTERM timer
   (`armTimeout`); an overrun is a real `failed`, never cached.
 - **`runPersistent`** — for dev servers + watchers. Spawns the command
-  but does NOT await exit. Returns `{ ready, child, bufferedStdout(),
-bufferedStderr(), readyMs() }`. `ready` resolves when a regex match
-  appears in stdout/stderr (or immediately when no `readyWhen` is set).
-  If the child exits before ready, `ready` rejects. `exec.timeout`
-  bounds the readiness wait.
+  but does NOT await exit. Returns `{ ready, child, readyMs() }`.
+  `ready` resolves when a regex match appears in stdout/stderr (or
+  immediately when no `readyWhen` is set). If the child exits before
+  ready, `ready` rejects. `exec.timeout` bounds the readiness wait.
+  The spawn retains no output: chunks reach the caller through the
+  live callbacks, and the logger keeps the one bounded tail.
 
 - **`runSandboxed`** (`exec/sandbox-runtime.ts`) — opt-in per-task
   sandboxing via `@anthropic-ai/sandbox-runtime`, activated by a

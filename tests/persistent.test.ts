@@ -376,10 +376,11 @@ describe('exec.persistent (e2e)', () => {
     'persistent task streams output captured before ready into the body',
     async () => {
       // With readyWhen present, the ready marker is preceded by the
-      // line containing the pattern. The runner buffers everything
-      // up to (and including) that line; the task body must contain
-      // it. Deterministic — no race window because we synchronously
-      // wait on `ready`.
+      // line containing the pattern. The runner retains nothing — it
+      // forwards every chunk to the logger, whose per-task tail is
+      // registered at taskStart and so covers the pre-ready window;
+      // the task body must contain it. Deterministic — no race window
+      // because we synchronously wait on `ready`.
       await addProject(fixture.root, 'app', {
         config: `
           export default {
