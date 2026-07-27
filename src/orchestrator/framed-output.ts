@@ -471,10 +471,13 @@ function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
 }
 
 function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
-  // Footer pattern: ` (<dur>) <status>`. Duration is always shown.
-  // For cache hits it's the *original* exec time the entry was
-  // stored with (set by execute-task), not the ~0ms replay cost.
-  // Status differs by outcome — see formatStatusTag.
+  // Footer pattern: ` (<dur>) <status>`. Duration is always shown, and it is
+  // always what THIS run spent — for a cache hit, the probe + restore, not
+  // the exec time the entry was stored with. (The comment here used to claim
+  // the opposite; the code never did, and `--report` summed these as "time
+  // saved" on the strength of it. The stored time lives on
+  // `TaskOutcome.storedDurationMs`.) Status differs by outcome — see
+  // formatStatusTag.
   const dur = paint('', `(${formatDuration(o.durationMs)})`, colors, { dim: true })
   const tag = formatStatusTag(o, colors)
   return ` ${dur} ${tag}`

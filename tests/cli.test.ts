@@ -1478,6 +1478,94 @@ describe('formatRunReportMarkdown', () => {
     expect(md).toContain('| p1#evil\\|col | success | miss | 3ms |')
     expect(md).toContain('| p1#evil row | success | miss | 4ms |')
   })
+
+  // "N saved" is the report's headline claim and it summed the wrong number:
+  // a cache hit's `durationMs` is the RESTORE this run paid, not the exec time
+  // the entry was stored with. Measured on a real fixture, a task that takes
+  // 2.01s cold reported "6ms saved".
+  it('"saved" sums the STORED exec time, not the restore cost', () => {
+    const md = formatRunReportMarkdown({
+      ok: true,
+      outcomes: [
+        {
+          taskId: 'web#build',
+          status: 'cache-hit',
+          exitCode: 0,
+          durationMs: 6,
+          storedDurationMs: 2006,
+          restored: true,
+        },
+        {
+          taskId: 'api#build',
+          status: 'cache-hit-remote',
+          exitCode: 0,
+          durationMs: 4,
+          storedDurationMs: 1000,
+          restored: true,
+        },
+      ],
+    })
+    // 2006 + 1000 = 3.01s of work skipped — not the 10ms it cost to restore.
+    expect(md).toContain('3.01s saved')
+    expect(md).not.toContain('10ms saved')
+    // The per-task Duration column stays what THIS run spent.
+    expect(md).toContain('| web#build | success | local | 6ms |')
+  })
+
+  it('claims no saving for a hit that does not know what it skipped', () => {
+    // Only reachable across a version skew. Substantiating "saved" with the
+    // restore cost is the defect; saying nothing is the honest degrade.
+    const md = formatRunReportMarkdown({
+      ok: true,
+      outcomes: [
+        { taskId: 'web#build', status: 'cache-hit', exitCode: 0, durationMs: 7, restored: true },
+      ],
+    })
+    expect(md).not.toContain('saved')
+    expect(md).toContain('1 cached')
+  })
+
+  // Three surfaces describe one run. The terminal summary and `--summarize`
+  // share `tallyOutcomes` and so cannot disagree; the report had its own copy
+  // with no group filter (it could not have one — `OutcomeView` carried no
+  // `isGroup`), so every organizational node was counted as a successful task
+  // AND rendered as a row claiming `success | miss | 0ms`.
+  it('excludes group tasks from the totals and from the table', () => {
+    const md = formatRunReportMarkdown({
+      ok: true,
+      outcomes: [
+        { taskId: 'pkg#real', status: 'success', exitCode: 0, durationMs: 6 },
+        { taskId: 'pkg#grp', status: 'success', exitCode: 0, durationMs: 0, isGroup: true },
+      ],
+    })
+    expect(md).toContain('**1 task**')
+    expect(md).toContain('1 success')
+    expect(md).toContain('| pkg#real | success | miss | 6ms |')
+    expect(md).not.toContain('pkg#grp')
+  })
+
+  it('a group node never contributes a duration or a cache bucket', () => {
+    const md = formatRunReportMarkdown({
+      ok: true,
+      outcomes: [
+        {
+          taskId: 'pkg#hit',
+          status: 'cache-hit',
+          exitCode: 0,
+          durationMs: 3,
+          storedDurationMs: 500,
+          restored: true,
+        },
+        // A group's rolled-up outcome reads `success` with 0ms; counting it
+        // would report 2 tasks / 2 success for one task's worth of work.
+        { taskId: 'pkg#ci', status: 'success', exitCode: 0, durationMs: 0, isGroup: true },
+      ],
+    })
+    expect(md).toContain('**1 task**')
+    expect(md).toContain('1 cached')
+    expect(md).toContain('500ms saved')
+    expect(md).toContain('0ms total') // the group added no executed time
+  })
 })
 
 describe('--continue parsing', () => {

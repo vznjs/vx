@@ -637,6 +637,8 @@ Writes a per-run JSON file:
 ```json
 {
   "runId": "01HKQ...",
+  "ok": true,
+  "exitCode": 0,
   "startedAt": "2026-05-13T22:00:00.123Z",
   "endedAt": "2026-05-13T22:00:05.567Z",
   "totalMs": 5443.7,
@@ -655,12 +657,14 @@ Writes a per-run JSON file:
       "wallclockEndNs": "12356789"
     }
   ],
+  "aborted": [],
   "summary": {
     "successful": 3,
     "failed": 0,
     "skipped": 0,
     "cachedLocal": 2,
     "cachedRemote": 0,
+    "aborted": 0,
     "total": 3
   }
 }
@@ -669,6 +673,26 @@ Writes a per-run JSON file:
 Default path: `<cacheDir>/runs/<run_id>.json`. hrtime fields are
 strings (bigints serialized as strings) to preserve ns precision
 through JSON.
+
+**`ok` / `exitCode`** are the run's verdict — the same value the CLI
+exits with. Gate on these rather than re-deriving a pass from the
+buckets: a run can be red without a single failed task (see `aborted`).
+
+**`tasks[]` and `summary` describe the same population**, so
+`tasks.length === summary.total` always holds. Group tasks (no `exec`)
+are in neither — they do no work.
+
+**`aborted[]`** lists tasks whose child was killed by a shutdown signal
+(Ctrl-C, an external `kill`, a self-terminating script). Such a task did
+not finish on its own terms, so it joins no outcome bucket and no
+`total` — but it does make the run red, so it is listed separately with
+its signal exit code, and counted as `summary.aborted`.
+
+**`durationMs` is always what THIS run spent on the task.** For a cache
+hit that is the probe + restore, not the exec time the entry was stored
+with — so it is small even for an expensive task. The work a hit
+_skipped_ is a different number; `--report`'s "N saved" is the surface
+that reports it.
 
 ### `--profile[=<path>]`
 
@@ -725,7 +749,21 @@ totals plus a table, one row per task:
 
 `Status` is the task outcome (`success` / `failed (exit N)` / `skipped`);
 `Cache` is its provenance (`miss` / `local` / `remote` / `up-to-date` /
-`—`). Aborted tasks (a Ctrl-C teardown) are excluded.
+`—`). Aborted tasks (a Ctrl-C teardown) are excluded from the totals but
+still get a row and an `N aborted` count, so a red report with no failing
+row still says why. Group tasks (no `exec`) get neither — they are not
+work, and the header's counts match the terminal summary and
+`--summarize` exactly.
+
+The two durations in the header mean different things, and the
+distinction is the point:
+
+- **`N total`** sums `Duration` over the tasks that actually EXECUTED —
+  the time this run spent.
+- **`N saved`** sums the exec times the cache hits SKIPPED, read from
+  each entry as it was stored. It is deliberately not the hits'
+  `Duration` column, which is the restore they cost this run: summing
+  that reported a task taking 2.01s cold as "6ms saved".
 
 Only `markdown` is supported today (`json` is reserved; a bad value is a
 parse error). Built purely from the run's outcomes after it returns — it

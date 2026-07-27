@@ -213,6 +213,16 @@ export interface OutcomeView {
   status: TaskOutcome['status']
   exitCode: number
   durationMs: number
+  /**
+   * Group node (no `exec`) — organizational, not work. `TaskView` carries
+   * this too, but a consumer that only holds outcomes (the `--report`
+   * writer) has no node to ask, and counting groups as executed tasks is
+   * exactly how it drifted from the terminal and `--summarize`.
+   */
+  isGroup?: boolean
+  /** Cache hits only: the exec time the entry was stored with — the work
+   *  this hit skipped, as opposed to `durationMs`, the restore it cost. */
+  storedDurationMs?: number
   hash?: string
   cpuMs?: number
   peakRssBytes?: number
@@ -245,6 +255,8 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
     exitCode: outcome.exitCode,
     durationMs: outcome.durationMs,
   }
+  if (isGroupTask(outcome.node)) view.isGroup = true
+  if (outcome.storedDurationMs !== undefined) view.storedDurationMs = outcome.storedDurationMs
   if (outcome.hash !== undefined) view.hash = outcome.hash
   if (outcome.cpuMs !== undefined) view.cpuMs = outcome.cpuMs
   if (outcome.peakRssBytes !== undefined) view.peakRssBytes = outcome.peakRssBytes

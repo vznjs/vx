@@ -26,7 +26,28 @@ export interface SummarizeArgs {
   startedAtMs: number
   endedAtMs: number
   totalMs: number
+  /** The run's verdict — the same value the CLI turns into the exit code. */
+  ok: boolean
   outcomes: readonly TaskOutcome[]
+}
+
+/** One task's entry. Shared by `tasks` and `aborted` so they read alike. */
+function taskEntry(o: TaskOutcome): Record<string, unknown> {
+  return {
+    id: o.node.id,
+    project: o.node.projectName,
+    task: o.node.taskName,
+    status: o.status,
+    exitCode: o.exitCode,
+    durationMs: o.durationMs,
+    hash: o.hash ?? null,
+    ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
+    ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
+    // hrtime spans are bigints → emit as strings so JSON.parse on
+    // the consumer side doesn't truncate the ns precision.
+    ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: String(o.wallclockStartNs) } : {}),
+    ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: String(o.wallclockEndNs) } : {}),
+  }
 }
 
 export async function writeRunSummary(args: SummarizeArgs): Promise<string> {
@@ -38,27 +59,27 @@ export async function writeRunSummary(args: SummarizeArgs): Promise<string> {
   // contradicts itself (a group task listed in `tasks` but absent from
   // `summary.total`). `tallyOutcomes` owns the rule; mirror its filter here.
   const counted = args.outcomes.filter((o) => !isGroupTask(o.node) && o.status !== 'aborted')
+  // A task killed by a shutdown signal is in no bucket and no total, yet it
+  // makes the run red. Listing it separately keeps `tasks.length ===
+  // summary.total` while leaving the artifact able to explain a non-zero
+  // exit — the terminal has said so in its Aborted section all along, and a
+  // parser must not be told less than a human is.
+  const aborted = args.outcomes.filter((o) => !isGroupTask(o.node) && o.status === 'aborted')
   const payload = {
     runId: args.runId,
+    // The run-level verdict, first: a consumer gating on this artifact must
+    // not have to re-derive it by re-implementing the bucket rules.
+    ok: args.ok,
+    exitCode: args.ok ? 0 : 1,
     startedAt: new Date(args.startedAtMs).toISOString(),
     endedAt: new Date(args.endedAtMs).toISOString(),
     totalMs: args.totalMs,
-    tasks: counted.map((o) => ({
-      id: o.node.id,
-      project: o.node.projectName,
-      task: o.node.taskName,
-      status: o.status,
-      exitCode: o.exitCode,
-      durationMs: o.durationMs,
-      hash: o.hash ?? null,
-      ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
-      ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
-      // hrtime spans are bigints → emit as strings so JSON.parse on
-      // the consumer side doesn't truncate the ns precision.
-      ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: String(o.wallclockStartNs) } : {}),
-      ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: String(o.wallclockEndNs) } : {}),
-    })),
-    summary: tallyOutcomes(counted),
+    tasks: counted.map(taskEntry),
+    aborted: aborted.map(taskEntry),
+    // The FULL list: `tallyOutcomes` applies the same group/aborted
+    // exclusions internally, so every counted bucket is unchanged by passing
+    // it — but `summary.aborted` is only non-zero if it sees them.
+    summary: tallyOutcomes(args.outcomes),
   }
   await Bun.write(outPath, JSON.stringify(payload, null, 2))
   return outPath
