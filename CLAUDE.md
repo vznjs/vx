@@ -208,6 +208,59 @@ serving none of them is probably org-analytics scope creep.
 
 ## Decision log
 
+- **2026-07-27**: **The cloud key-comparison surfaces stopped FABRICATING
+  verdicts against a keyless row — and my own residual note was wrong about
+  three of the four.** The previous entry recorded the cloud side as an
+  unported quality gap: "cloud degrades correctly via its `noKey` guard — a
+  quality gap, not a wrong answer." **False.** Only `triageRun` has that guard;
+  `whyRunReran`, `whyDidThisRerun` and `cacheKeyDiff` have NONE, so once
+  `task_runs` began receiving keyless rows (`hash ?? ''` for the newly-recorded
+  skipped/persistent outcomes) they answered questions about INPUTS from a row
+  that records none. Reproduced end-to-end through the real `analytics.ingest`
+  wire on ephemeral Postgres: `whyDidThisRerun` reported `hashChanged: true` for
+  a task whose key never changed (it paired the real run against a keyless one),
+  and `cacheKeyDiff` reported "same inputs" out of `'' === ''`. **The sharpest
+  one is the one that reads plausibly:** `triageRun`'s guard yields
+  `keyChanged: null`, which the UI renders as **"first recorded run of this
+  task"** — a confident, wrong sentence about a task that has run many times.
+  Fixed with `KEYED_TASK_RUNS_SQL = "hash <> ''"` on all four prev-run LATERAL
+  lookups (so "the previous run" means the previous KEYED run, skipping PAST a
+  keyless row rather than pairing with it) plus `noKey` guards for a keyless
+  SUBJECT — still reachable, because `status IN ('success','failed')` excludes
+  skips yet admits a persistent task, which is never cacheable. The predicate
+  deliberately mirrors core's `KEYED_RUNS_SQL` verbatim, with each side's
+  comment naming the other, since two copies of a rule are how they drift.
+  **Second fix, and the developer's call beat my brief:** `materializeOutputs`
+  reused `prepared.cache` when it happened to be a `LayeredCache`, on the
+  premise that "prepareRun composed no remote layer." That holds only for the
+  INJECTION path — the request carries no remote, but a workspace-declared
+  `cache` plugin still contributes one, and `prepareRun` takes it. Such a layer
+  points wherever the PLUGIN points, not necessarily this serve, so
+  materialization read a store the agents never wrote to, every `get` missed,
+  and outputs were left silently unrestored. I proposed BROADENING the
+  predicate; the developer DELETED it instead, reasoning that the store is
+  determined by `opts.origin`/`opts.token` and never by `prepared.cache` — so
+  materialization now builds its layer over the SAME `agentRemoteCache`
+  instance the self-agent was given, over the unwrapped `prepared.localCache`
+  (a plugin's layer may decorate reads; the restore must land in the real local
+  cache). Broadening would have turned a silent bypass into a silent
+  wrong-store read; deleting removes the class. NO CACHE_VERSION/SCHEMA/wire
+  bump (read-side query shape + which cache instance a restore addresses).
+  Differentially proven: 64 pass / 3 fail → 67 / 0 and 11 / 1 → 12 / 0, with
+  ZERO existing tests repinned. Gates: fmt/lint 0, core **1527/0** (21 skip =
+  sandbox, `bwrap` unavailable), cloud 602/1 — the 1 is the documented
+  `visual > task-detail` baseline drift, confirmed pre-existing by stashing
+  this wave and reproducing the IDENTICAL 0.65% / 41282-pixel failure on the
+  parent commit. **KNOWN-OPEN, named precisely so it is not re-discovered:**
+  cloud has the ENTIRE aggregate-skew half of the previous wave **unported** —
+  `task_runs` now receives skipped rows and cloud guards `status <> 'skipped'`
+  **nowhere** (grep: zero occurrences; every `skipped` in `analytics.ts` is a
+  comment). Measured on seeded data: `getHistory` successRate **0.4** where the
+  truth is 1.0, `listProjects` avgDurationMs **40** where the truth is 100,
+  `getCacheStatsSql` runCountLast24h **5** where the truth is 2, `getRegressions`
+  runs **4 → 9**. It wants its own wave, porting core's `EXECUTED_RUNS_SQL`
+  beside the `KEYED_TASK_RUNS_SQL` this one added.
+
 - **2026-07-27**: **A skipped or persistent task is now RECORDED — and the real
   work was stopping those rows from corrupting every rate and mean.** Closing
   the residual the telemetry wave deferred: `toRecord` skipped `if (!o.hash)`,

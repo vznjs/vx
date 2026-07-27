@@ -392,6 +392,134 @@ describe('base fixture reads', () => {
     expect(diff.note).not.toContain('unchanged')
   })
 
+  // Since core widened telemetry (#192) and started recording skipped +
+  // persistent tasks (#193), `task_runs` holds rows with `hash = ''` — the
+  // recorded-no-key sentinel. A key comparison must skip PAST those to the
+  // previous KEYED run, and must claim nothing when the SUBJECT has no key.
+  it('"previous run" skips past a keyless row to the previous KEYED run', async () => {
+    const { org: o2, ws: w2 } = await newOrgWs(db, 'why-keyless-prev')
+    const now = Date.now()
+    // K1 ran with key A; K2 SKIPPED (upstream failed → no key); K3 ran again
+    // with the SAME key A. Pairing K3 against K2 reports "inputs changed" —
+    // a claim about inputs drawn from a row that never had a key.
+    await insertTR(db, w2, o2, {
+      runId: 'K1',
+      project: 'app',
+      task: 'build',
+      hash: 'A',
+      startedAt: now - 3 * HOUR,
+    })
+    await insertTR(db, w2, o2, {
+      runId: 'K2',
+      project: 'app',
+      task: 'build',
+      status: 'skipped',
+      hash: '',
+      startedAt: now - 2 * HOUR,
+    })
+    await insertTR(db, w2, o2, {
+      runId: 'K3',
+      project: 'app',
+      task: 'build',
+      hash: 'A',
+      startedAt: now - HOUR,
+    })
+
+    const rows = await analytics.whyRunReran(w2, 'K3')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.previousRunId).toBe('K1')
+    expect(rows[0]!.reason).toContain('not cacheable')
+
+    const why = await analytics.whyDidThisRerun(w2, 'K3', 'app#build')
+    expect(why.previousRun?.hash).toBe('A')
+    expect(why.hashChanged).toBe(false)
+    expect(why.note).toContain('unchanged')
+
+    const diff = await analytics.cacheKeyDiff(w2, 'K3', 'app#build')
+    expect(diff.previousRunId).toBe('K1')
+    expect(diff.note).toContain('unchanged')
+  })
+
+  it('a keyless SUBJECT row (a persistent task) claims no key verdict', async () => {
+    const { org: o2, ws: w2 } = await newOrgWs(db, 'why-keyless-subject')
+    const now = Date.now()
+    // A dev server: `status: 'success'`, never cacheable, so no key on
+    // either run. `whyRunReran`'s `status IN ('success','failed')` admits it.
+    await insertTR(db, w2, o2, {
+      runId: 'P1',
+      project: 'app',
+      task: 'dev',
+      hash: '',
+      startedAt: now - 2 * HOUR,
+    })
+    await insertTR(db, w2, o2, {
+      runId: 'P2',
+      project: 'app',
+      task: 'dev',
+      hash: '',
+      startedAt: now - HOUR,
+    })
+
+    const rows = await analytics.whyRunReran(w2, 'P2')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.reason).toContain('recorded no cache key')
+    expect(rows[0]!.previousRunId).toBeNull()
+
+    const why = await analytics.whyDidThisRerun(w2, 'P2', 'app#dev')
+    expect(why.found).toBe(true)
+    expect(why.hashChanged).toBeNull()
+    expect(why.note).toContain('recorded no cache key')
+
+    // Without the guard this resolves `prev.hash === this_.hash` ('' === '')
+    // and reports "same inputs" for two runs that never had inputs hashed.
+    const diff = await analytics.cacheKeyDiff(w2, 'P2', 'app#dev')
+    expect(diff.note).toContain('recorded no cache key')
+    expect(diff.previousRunId).toBeNull()
+  })
+
+  it('triageRun reads keyChanged across a keyless previous row', async () => {
+    const { org: o2, ws: w2 } = await newOrgWs(db, 'triage-keyless-prev')
+    const now = Date.now()
+    // T1 ran with key A; T2 SKIPPED; T3 FAILED with a NEW key B. The truth
+    // is "this run changed its inputs" — which the GitHub check renders as
+    // `🆕 new failure — this run changed its inputs`. Pairing against T2
+    // yields `keyChanged: null`, which the dashboard renders as the flatly
+    // wrong "first recorded run of this task".
+    await insertINV(db, w2, o2, { runId: 'T1', startedAt: now - 3 * HOUR })
+    await insertTR(db, w2, o2, {
+      runId: 'T1',
+      project: 'app',
+      task: 'build',
+      hash: 'A',
+      startedAt: now - 3 * HOUR,
+    })
+    await insertINV(db, w2, o2, { runId: 'T2', startedAt: now - 2 * HOUR })
+    await insertTR(db, w2, o2, {
+      runId: 'T2',
+      project: 'app',
+      task: 'build',
+      status: 'skipped',
+      hash: '',
+      startedAt: now - 2 * HOUR,
+    })
+    await insertINV(db, w2, o2, { runId: 'T3', startedAt: now - HOUR })
+    await insertTR(db, w2, o2, {
+      runId: 'T3',
+      project: 'app',
+      task: 'build',
+      status: 'failed',
+      hash: 'B',
+      exitCode: 1,
+      startedAt: now - HOUR,
+    })
+
+    const rows = await analytics.triageRun(w2, 'T3')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.verdict).toBe('new-failure')
+    expect(rows[0]!.previousRunId).toBe('T1')
+    expect(rows[0]!.keyChanged).toBe(true)
+  })
+
   it('compareRuns diffs a run against the previous invocation', async () => {
     const cmp = await analytics.compareRuns(ws, 'R3')
     expect(cmp.found).toBe(true)

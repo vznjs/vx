@@ -934,6 +934,23 @@ function parseRequestedTasks(raw: unknown): string[] {
 const PASS_STATUSES = ['success', 'cache-hit', 'cache-hit-remote'] as const
 const BRANCH_CAP = 12
 
+/**
+ * SQL predicate selecting `task_runs` rows that RECORDED a cache key. Core
+ * emits no hash for an outcome that never derived one — a `skipped` task
+ * never probed the cache, and a `persistent` one is never cacheable — and
+ * ingest stores those as `''` (`t.hash ?? ''`, the column is NOT NULL).
+ *
+ * `''` is not a key: it can neither say the inputs changed nor say they are
+ * the same. So the "previous run" a key comparison resolves to must be the
+ * previous KEYED run — skipping PAST a keyless row rather than pairing with
+ * it, which would answer a question about inputs from a row that has none.
+ * The mirror of core's `KEYED_RUNS_SQL`; the two must not drift.
+ */
+const KEYED_TASK_RUNS_SQL = "hash <> ''"
+
+/** The note both key-comparison surfaces return for a keyless subject row. */
+const NO_KEY_NOTE = 'this task recorded no cache key (skipped, or a persistent task)'
+
 /** Bounded per-hash fingerprint rows loaded for the O(N²) divergence diff. */
 const FP_MAX_ROWS_PER_HASH = 64
 
@@ -2023,6 +2040,7 @@ export class Analytics {
         SELECT run_id, hash FROM task_runs
         WHERE workspace_id = t.workspace_id AND project = t.project AND task = t.task
           AND started_at < t.started_at AND run_id <> t.run_id
+          AND ${this.sql.unsafe(KEYED_TASK_RUNS_SQL)}
         ORDER BY started_at DESC LIMIT 1
       ) p ON true
       WHERE t.workspace_id = ${workspaceId} AND t.run_id = ${runId}
@@ -2032,13 +2050,19 @@ export class Analytics {
       taskId: `${r.project}#${r.task}`,
       project: r.project,
       task: r.task,
-      previousRunId: r.prev_run_id,
+      // A keyless PREVIOUS row can no longer be selected, but a keyless
+      // SUBJECT still can: `status IN ('success','failed')` excludes skips
+      // yet admits a persistent task, which is never cacheable. Comparing
+      // its `''` against anything would fabricate a verdict.
+      previousRunId: r.this_hash === '' ? null : r.prev_run_id,
       reason:
-        r.prev_run_id === null
-          ? 'first run'
-          : r.prev_hash !== r.this_hash
-            ? 'inputs changed'
-            : 'ran without a cache hit (not cacheable / forced)',
+        r.this_hash === ''
+          ? NO_KEY_NOTE
+          : r.prev_run_id === null
+            ? 'first run'
+            : r.prev_hash !== r.this_hash
+              ? 'inputs changed'
+              : 'ran without a cache hit (not cacheable / forced)',
     }))
   }
 
@@ -2084,6 +2108,7 @@ export class Analytics {
         SELECT run_id, hash FROM task_runs
         WHERE workspace_id = t.workspace_id AND project = t.project AND task = t.task
           AND started_at < t.started_at AND run_id <> t.run_id
+          AND ${this.sql.unsafe(KEYED_TASK_RUNS_SQL)}
         ORDER BY started_at DESC LIMIT 1
       ) p ON true
       LEFT JOIN LATERAL (
@@ -2103,6 +2128,9 @@ export class Analytics {
     return rows.map((r) => {
       // An empty hash is "no key recorded", never key evidence: it can't
       // corroborate flakiness (the SQL guard) and can't say the key changed.
+      // `prev_hash` is now keyed by construction (the LATERAL skips past
+      // keyless rows), so only a keyless SUBJECT — a failed persistent task,
+      // which `status = 'failed'` admits — can still reach this.
       const noKey = r.this_hash === '' || r.prev_hash === ''
       const sameKey = r.same_key_successes
       const trunkFailing = r.trunk_status === 'failed'
@@ -2140,7 +2168,8 @@ export class Analytics {
     }
     // Earliest-copy anchor + own-run exclusion: a re-pushed summary duplicates
     // this run's rows at a shifted started_at, and "previous" must never
-    // resolve to the run's own other copy (the triageRun convention).
+    // resolve to the run's own other copy (the triageRun convention). And the
+    // previous run must be the previous KEYED one — see KEYED_TASK_RUNS_SQL.
     const prev = (
       await this.sql<
         { hash: string; status: string; cache_hit: boolean | null; started_at: string }[]
@@ -2148,8 +2177,11 @@ export class Analytics {
         SELECT hash, status, cache_hit, started_at FROM task_runs
         WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
           AND started_at < ${num(this_.started_at)} AND run_id <> ${runId}
+          AND ${this.sql.unsafe(KEYED_TASK_RUNS_SQL)}
         ORDER BY started_at DESC LIMIT 1`
     )[0]
+    // …and this run must have a key too, or there is nothing to compare.
+    const noKey = this_.hash === ''
     return {
       runId,
       taskId,
@@ -2169,9 +2201,10 @@ export class Analytics {
               startedAt: num(prev.started_at),
             }
           : null,
-      hashChanged: prev !== undefined ? prev.hash !== this_.hash : null,
-      note:
-        prev !== undefined && prev.hash !== this_.hash
+      hashChanged: prev !== undefined && !noKey ? prev.hash !== this_.hash : null,
+      note: noKey
+        ? `${NO_KEY_NOTE} — nothing to compare`
+        : prev !== undefined && prev.hash !== this_.hash
           ? 'cache key changed between the previous run and this one (inputs differ)'
           : prev !== undefined
             ? 'cache key unchanged — re-run with the same key (likely --no-cache or unrelated)'
@@ -2205,13 +2238,29 @@ export class Analytics {
         note: 'no row matching that runId + taskId',
       }
     }
+    // No key on this side → no diff to compute. `''` is the recorded-no-key
+    // sentinel (skipped / persistent); treating it as a key would resolve the
+    // `prev.hash === this_.hash` branch below and claim "same inputs".
+    if (this_.hash === '') {
+      return {
+        runId,
+        taskId,
+        found: true,
+        previousRunId: null,
+        entries: [],
+        unchangedCount: 0,
+        note: `${NO_KEY_NOTE} — nothing to diff`,
+      }
+    }
     // Same re-push convention as whyDidThisRerun/triageRun: never diff a run
-    // against its own duplicate copy.
+    // against its own duplicate copy — and never against a keyless one
+    // (KEYED_TASK_RUNS_SQL), which would misreport the previous run's id too.
     const prev = (
       await this.sql<{ run_id: string; hash: string }[]>`
         SELECT run_id, hash FROM task_runs
         WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
           AND started_at < ${num(this_.started_at)} AND run_id <> ${runId}
+          AND ${this.sql.unsafe(KEYED_TASK_RUNS_SQL)}
         ORDER BY started_at DESC LIMIT 1`
     )[0]
     if (prev === undefined) {

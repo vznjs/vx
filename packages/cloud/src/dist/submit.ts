@@ -226,10 +226,11 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
           nodes,
         }
 
-        // The self-agent's scoped runs use the serve's own artifact store as
-        // their remote layer — injected explicitly (shared with the `agent`
-        // verb) — and the process is flagged as an agent so the telemetry
-        // rung declines.
+        // The serve's own artifact store — the ONE store this submission
+        // reads and writes. Injected explicitly (shared with the `agent`
+        // verb) into the self-agent's scoped runs AND into output
+        // materialization below, so both sides address the same bytes. The
+        // process is flagged as an agent so the telemetry rung declines.
         const remoteCache = agentRemoteCache(opts.origin, opts.token)
         markAgentProcess()
 
@@ -254,8 +255,7 @@ export function distributedBackend(opts: DistributedBackendOptions): RunBackend 
 
         await materializeOutputs({
           prepared,
-          origin: opts.origin,
-          token: opts.token,
+          remoteCache,
           outcomes: result.outcomes,
           selfExecuted,
         })
@@ -371,19 +371,29 @@ function submitAndRender(args: {
  */
 async function materializeOutputs(args: {
   prepared: PreparedRun
-  origin: string
-  token: string | undefined
+  remoteCache: RemoteCacheLayer
   outcomes: readonly OutcomeView[]
   selfExecuted: ReadonlySet<string>
 }): Promise<void> {
   const { prepared } = args
   const byId = new Map(args.outcomes.map((o) => [o.taskId, o]))
-  // prepareRun composed no remote layer (the request carries none), so build
-  // the layered view over the serve's store explicitly when needed.
-  const layered =
-    prepared.cache instanceof LayeredCache
-      ? prepared.cache
-      : new LayeredCache(prepared.localCache, agentRemoteCache(args.origin, args.token), {})
+  // There is exactly ONE store these artifacts can be in: the serve's, which
+  // is where every agent uploaded them and where the self-agent's own scoped
+  // runs wrote — so the layer is built over `args.remoteCache` (the SAME
+  // instance the self-agent was given) and never read off `prepared.cache`.
+  //
+  // It used to reuse `prepared.cache` when that was a LayeredCache, on the
+  // premise that "prepareRun composed no remote layer". That is true only of
+  // the INJECTION path: the request carries no remote, but a workspace-
+  // declared `cache` plugin can still contribute one, and `prepareRun` takes
+  // it. Such a layer points wherever the plugin points — not necessarily this
+  // serve — so materialization read a store the agents never wrote to and
+  // every `get` missed, leaving outputs silently unrestored.
+  //
+  // The local half is `prepared.localCache`, the unwrapped SQLite handle: a
+  // plugin's layer may decorate reads, and the restore must land in the real
+  // local cache.
+  const layered = new LayeredCache(prepared.localCache, args.remoteCache, {})
 
   for (const id of topoOrder(prepared.nodes)) {
     const node = prepared.nodes.get(id)!

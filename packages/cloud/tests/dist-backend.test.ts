@@ -353,3 +353,115 @@ describe('distributedBackend — ambient mode fails SAFE (the local-pool keyston
     }
   })
 })
+
+// Output materialization (§6.6) restores what the AGENTS uploaded, and there
+// is exactly one store that can hold those bytes: the serve's. It used to be
+// read off `prepared.cache` whenever that happened to be a LayeredCache, on
+// the premise that prepareRun composes no remote layer — true only of the
+// INJECTION path. A workspace-declared `cache` plugin can contribute one, and
+// prepareRun takes it, so materialization addressed a store the agents never
+// wrote to and every restore silently missed.
+describe('output materialization addresses the serve, not a plugin layer', () => {
+  /** A serve stand-in that accepts the submit, returns one successful
+   *  outcome, and records every artifact GET routed at it. */
+  function materializeServe(hash: string): {
+    origin: string
+    stop(): void
+    cacheGets: () => string[]
+  } {
+    const cacheGets: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      fetch(req, srv): Response | undefined {
+        const url = new URL(req.url)
+        if (url.pathname === '/health') return new Response('ok')
+        if (url.pathname.startsWith('/v1/cache/')) {
+          cacheGets.push(url.pathname)
+          // A miss is enough: the assertion is WHICH store was addressed.
+          return new Response('miss', { status: 404 })
+        }
+        if (srv.upgrade(req)) return undefined
+        return new Response('x', { status: 404 })
+      },
+      websocket: {
+        message(ws, raw) {
+          const msg = JSON.parse(String(raw)) as { t?: string }
+          if (msg.t !== 'dist:submit') return
+          ws.send(
+            JSON.stringify({
+              t: 'result',
+              result: {
+                ok: true,
+                outcomes: [
+                  {
+                    taskId: 'app#build',
+                    status: 'success',
+                    exitCode: 0,
+                    durationMs: 1,
+                    hash,
+                  },
+                ],
+              },
+            }),
+          )
+        },
+      },
+    })
+    return {
+      origin: `http://localhost:${server.port}`,
+      stop: () => void server.stop(true),
+      cacheGets: () => cacheGets,
+    }
+  }
+
+  it('a workspace cache plugin returning a LayeredCache never captures the restore', async () => {
+    const root = await makeWorkspace()
+    const hash = 'abcdef0123456789'
+    // The workspace declares a cache plugin whose LayeredCache points at a
+    // remote that is NOT this serve — exactly the shape `instanceof
+    // LayeredCache` used to accept. It records any get routed to it.
+    const marker = path.join(root, 'foreign-gets.txt')
+    await writeFile(
+      path.join(root, 'vx.workspace.ts'),
+      `import { LayeredCache } from '${Bun.resolveSync('@vzn/vx', import.meta.dir)}'
+       import { appendFileSync } from 'node:fs'
+       const foreignRemote = {
+         async get(h) { appendFileSync(${JSON.stringify(marker)}, h + '\\n'); return null },
+         async put() {},
+         async has() { return false },
+       }
+       export default {
+         plugins: [
+           {
+             name: 'test/foreign-cache',
+             cache(ctx) {
+               return new LayeredCache(ctx.localCache, foreignRemote, { policy: ctx.policy })
+             },
+           },
+         ],
+       }`,
+    )
+    const git = (...args: string[]) => Bun.spawnSync({ cmd: ['git', ...args], cwd: root })
+    git('add', '-A')
+    git('commit', '-qm', 'declare cache plugin')
+
+    const serve = materializeServe(hash)
+    try {
+      const backend = distributedBackend({
+        origin: serve.origin,
+        expectedAgents: 1,
+        sink: silentLogger,
+        warn: () => {},
+      })
+      const result = await backend.run({ tasks: ['build'], cwd: root, outputLogs: 'none' })
+      expect(result.ok).toBe(true)
+      // The restore addressed the SERVE's artifact store…
+      expect(serve.cacheGets()).toContain(`/v1/cache/${hash}`)
+      // …and never the plugin's foreign remote.
+      expect(await Bun.file(marker).exists()).toBe(false)
+    } finally {
+      serve.stop()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
