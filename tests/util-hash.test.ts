@@ -351,6 +351,26 @@ describe('xxh3 — input domain', () => {
     expect(xxh3(flipped)).not.toBe(xxh3(bin))
   })
 
+  /**
+   * A copy of `src` with one bit flipped.
+   *
+   * Written as a read-check-write rather than `copy[i] ^= 1` because
+   * `noUncheckedIndexedAccess` types an indexed read as `number | undefined`.
+   * The explicit throw matters beyond satisfying the checker: writing past the
+   * end of a Uint8Array is a SILENT no-op, so a bad index would otherwise leave
+   * the buffer identical and the digest unchanged — the test would fail while
+   * pointing at the hash rather than at its own fixture.
+   */
+  function withFlippedBit(src: Uint8Array, index: number): Uint8Array {
+    const copy = new Uint8Array(src)
+    const byte = copy[index]
+    if (byte === undefined) {
+      throw new Error(`fixture error: index ${index} is outside a ${src.length}-byte buffer`)
+    }
+    copy[index] = byte ^ 1
+    return copy
+  }
+
   it('a multi-megabyte buffer hashes correctly at both ends', () => {
     // xxh3 switches internal code paths by length (short / mid / long);
     // a chunk-boundary bug would typically ignore the head or the tail.
@@ -360,17 +380,9 @@ describe('xxh3 — input domain', () => {
     expect(xxh3(big)).toBe(base)
     expect(xxh3hex(big)).toHaveLength(16)
 
-    const firstFlipped = new Uint8Array(big)
-    firstFlipped[0] ^= 1
-    expect(xxh3(firstFlipped)).not.toBe(base)
-
-    const lastFlipped = new Uint8Array(big)
-    lastFlipped[lastFlipped.length - 1] ^= 1
-    expect(xxh3(lastFlipped)).not.toBe(base)
-
-    const midFlipped = new Uint8Array(big)
-    midFlipped[big.length >> 1] ^= 1
-    expect(xxh3(midFlipped)).not.toBe(base)
+    expect(xxh3(withFlippedBit(big, 0))).not.toBe(base)
+    expect(xxh3(withFlippedBit(big, big.length - 1))).not.toBe(base)
+    expect(xxh3(withFlippedBit(big, big.length >> 1))).not.toBe(base)
 
     // Truncation must change the digest (a length-blind hash would let
     // a truncated artifact restore under the full artifact's key).
