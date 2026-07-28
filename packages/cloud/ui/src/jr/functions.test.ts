@@ -16,6 +16,7 @@ import {
   invocationPassed,
   passRateWithin,
   rateTone,
+  runOutcome,
   runTicks,
   suggestedRetriesFor,
 } from './functions.ts'
@@ -576,5 +577,139 @@ describe('detectSlowdowns is key-aware', () => {
     const out = detectSlowdowns([h('a#t', 500)], [r('a', 't', 1500, 9, 'ONLY')])
     expect(out).toHaveLength(1)
     expect(out[0]!.cause).toBe('no earlier run')
+  })
+})
+
+// --- Absence is not zero (F1) ------------------------------------------------
+// `page.tsx` leaves a source's state key `undefined` while it LOADS and when
+// its fetch FAILED. Every aggregate-backed binding must therefore distinguish
+// "the server said nothing is there" ([] → a real 0) from "we never got an
+// answer" (undefined → '—'), and must assert no tone on the latter.
+
+describe('aggregate: absent vs empty', () => {
+  const agg = FUNCTIONS['agg']!
+  const aggFmt = FUNCTIONS['aggFmt']!
+  const aggTone = FUNCTIONS['aggTone']!
+  const text = FUNCTIONS['text']!
+
+  it('an ABSENT array is unknown, not zero', () => {
+    expect(agg({ arr: undefined, op: 'count' })).toBeNaN()
+    expect(agg({ arr: null, op: 'count' })).toBeNaN()
+    expect(agg({ arr: undefined, field: 'factor', op: 'avg' })).toBeNaN()
+    expect(agg({ arr: undefined, field: 'factor', op: 'max' })).toBeNaN()
+    expect(agg({ arr: undefined, field: 'ms', op: 'sum' })).toBeNaN()
+  })
+
+  it('an EMPTY array is a real answer and still aggregates to zero', () => {
+    expect(agg({ arr: [], op: 'count' })).toBe(0)
+    expect(agg({ arr: [], field: 'factor', op: 'avg' })).toBe(0)
+    expect(agg({ arr: [], field: 'ms', op: 'sum' })).toBe(0)
+  })
+
+  it('formats unknown as the — sentinel, empty as a zero', () => {
+    // The two Insights headline metrics, exactly as insights.json binds them.
+    expect(aggFmt({ arr: undefined, op: 'count', fmt: 'number' })).toBe('—')
+    expect(aggFmt({ arr: undefined, field: 'factor', op: 'avg', fmt: 'multiplier' })).toBe('—')
+    expect(aggFmt({ arr: [], op: 'count', fmt: 'number' })).toBe('0')
+    expect(aggFmt({ arr: [], field: 'factor', op: 'avg', fmt: 'multiplier' })).toBe('0.00×')
+    expect(aggFmt({ arr: [{ factor: 3 }, { factor: 5 }], field: 'factor', op: 'avg', fmt: 'multiplier' })).toBe('4.00×')
+  })
+
+  // `then` / `else` are the tone-branch arg names the aggTone/gt bindings take
+  // (they mirror the JSON). This bag is an args record, never awaited.
+  const withBranches = (base: Record<string, unknown>, hit: string, miss: string) => {
+    const a = { ...base }
+    // oxlint-disable-next-line unicorn/no-thenable
+    a['then'] = hit
+    a['else'] = miss
+    return a
+  }
+
+  it('asserts NO tone on an unknown aggregate — an absent probe must not read green', () => {
+    const args = (arr: unknown) => withBranches({ arr, op: 'count', gt: 0 }, 'warn', 'good')
+    expect(aggTone(args(undefined))).toBe('default')
+    // …while a real empty answer keeps its good news, and real rows warn.
+    expect(aggTone(args([]))).toBe('good')
+    expect(aggTone(args([{}]))).toBe('warn')
+  })
+
+  it('gt/lt assert no tone on an unknown value', () => {
+    const args = (v: unknown) => withBranches({ v, n: 0 }, 'good', 'bad')
+    expect(FUNCTIONS['gt']!(args(undefined))).toBe('default')
+    expect(FUNCTIONS['lt']!(args(undefined))).toBe('default')
+    expect(FUNCTIONS['gt']!(args(1))).toBe('good')
+    expect(FUNCTIONS['lt']!(args(-1))).toBe('good')
+  })
+
+  it('a template slot fed an unknown number renders — not "NaN"', () => {
+    expect(text({ tpl: 'Tasks ({n})', n: agg({ arr: undefined, op: 'count' }) })).toBe('Tasks (—)')
+    expect(text({ tpl: 'Tasks ({n})', n: agg({ arr: [], op: 'count' }) })).toBe('Tasks (0)')
+    // undefined keeps its existing empty-slot behavior.
+    expect(text({ tpl: '{a} local · {b} remote', a: undefined, b: 2 })).toBe(' local · 2 remote')
+  })
+})
+
+// --- The run's verdict comes from the header (F2) ----------------------------
+
+describe('runOutcome', () => {
+  const green = { failedCount: 0, exitOk: true }
+  const t = (status: string) => ({ status })
+
+  it('reads the authoritative header, not the task rows', () => {
+    expect(runOutcome(green, [t('success')])).toEqual({ label: 'success', tone: 'good', sub: '' })
+    expect(runOutcome({ failedCount: 1, exitOk: false }, [t('failed')])).toEqual({
+      label: 'failed',
+      tone: 'bad',
+      sub: '',
+    })
+  })
+
+  it('a --verify run whose task exited 0 is FAILED — every row still reads success', () => {
+    // execute-task does not flip the exit code for a nondeterministic verdict,
+    // so the task row is 'success' while run.ts makes `ok` false.
+    const inv = { failedCount: 0, exitOk: false }
+    expect(runOutcome(inv, [t('success')]).label).toBe('failed')
+    expect(runOutcome(inv, [t('success')]).tone).toBe('bad')
+    // …and it agrees with what the Runs list says about the same run.
+    expect(invocationPassed(inv)).toBe(false)
+  })
+
+  it('an ABORTED task leaves no row at all — the header still carries the red', () => {
+    // run.ts excludes aborted outcomes from telemetry entirely.
+    expect(runOutcome({ failedCount: 0, exitOk: false }, [t('success')]).label).toBe('failed')
+  })
+
+  it('with NO header the rows can prove RED but never GREEN', () => {
+    // In-flight run: task_runs are ingested per task, the invocation header
+    // only at run end, so /v1/invocations/:id 404s for the whole run.
+    expect(runOutcome(undefined, [t('success')], 'missing')).toEqual({
+      label: '—',
+      tone: 'default',
+      sub: 'run header not recorded yet',
+    })
+    expect(runOutcome(null, [t('success'), t('cache-hit')], 'missing').label).toBe('—')
+    const failing = runOutcome(undefined, [t('success'), t('failed')], 'missing')
+    expect(failing.label).toBe('failed')
+    expect(failing.tone).toBe('bad')
+  })
+
+  it('gives the TRUE reason the header is missing', () => {
+    // 404 really is "not recorded yet"; a failed fetch must not claim that, and
+    // a still-loading source claims nothing at all.
+    expect(runOutcome(undefined, [], 'missing').sub).toBe('run header not recorded yet')
+    expect(runOutcome(undefined, [], 'error').sub).toBe('run header unavailable')
+    expect(runOutcome(undefined, [], 'loading').sub).toBe('')
+    expect(runOutcome(undefined, [t('failed')], 'loading').sub).toBe('a task failed')
+    expect(runOutcome(undefined, [t('failed')], 'error').sub).toBe('a task failed · run header unavailable')
+  })
+
+  it('the $computed binding returns one field per call', () => {
+    const f = FUNCTIONS['runOutcome']!
+    const args = { inv: { failedCount: 0, exitOk: false }, tasks: [t('success')] }
+    expect(f({ ...args, field: 'label' })).toBe('failed')
+    expect(f({ ...args, field: 'tone' })).toBe('bad')
+    expect(f({ ...args, field: 'sub' })).toBe('')
+    // Absent field defaults to the label; a non-array `tasks` never throws.
+    expect(f({ inv: undefined, tasks: undefined })).toBe('—')
   })
 })
