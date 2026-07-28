@@ -4,7 +4,9 @@
 // route params. This is infra, written once — never per page.
 
 import {
+  type CompareTaskRow,
   type FlakyTask,
+  type TriageRow,
   type ProjectRankRow as ApiProjectRankRow,
   type PeriodComparison,
   type ProjectRollup,
@@ -82,57 +84,98 @@ interface CompareRow {
   baseMs: number
   deltaKind: 'slower' | 'faster' | 'same' | 'new' | 'gone'
   keyChanged: 'changed' | 'same'
-  _sameKey: boolean
+  /** The row carries no PERFORMANCE verdict — see `compareRows`. */
+  _unjudged: boolean
   _noiseMs: number | undefined
+}
+
+/**
+ * One /v1/triage row with its display verdict + evidence sentence.
+ *
+ * `keyChanged: null` means "no key evidence", NOT "first run" — the server
+ * (`analytics.ts:2172`) answers it for two different reasons and the client
+ * used to print one sentence for both, claiming a task that had run hundreds
+ * of times was running for the first time, beside a link to its previous run.
+ * The row CAN tell them apart: `previousRunId` and the hash the server compares
+ * come from the same KEYED lateral, so a non-null one proves an earlier keyed
+ * run exists — and the missing key must then be the SUBJECT's, i.e. a failed
+ * persistent task, which is never cacheable.
+ */
+export function triageRowOf(r: TriageRow): Record<string, unknown> {
+  const evidence =
+    r.verdict === 'flaky'
+      ? `the same cache key passed ${r.sameKeySuccesses}× in other runs — nondeterminism, not this change`
+      : r.verdict === 'pre-existing'
+        ? 'the default branch’s latest run of this task is also failing — inherited, not introduced'
+        : r.keyChanged === null
+          ? r.previousRunId !== null
+            ? 'this task records no cache key, so its inputs cannot be compared'
+            : 'no earlier keyed run of this task to compare inputs against'
+          : r.keyChanged
+            ? 'first failure of this key — this run changed the task’s inputs'
+            : 'first failure of this key'
+  return {
+    ...r,
+    _label:
+      r.verdict === 'flaky' ? 'flaky' : r.verdict === 'pre-existing' ? 'already broken' : 'new failure',
+    _evidence: evidence,
+    _evidenceRunId: r.verdict === 'pre-existing' ? r.defaultBranchRunId : r.previousRunId,
+  }
+}
+
+/** One /v1/compare task flattened into the display row the table binds. */
+export function compareRowOf(t: CompareTaskRow): CompareRow {
+  let deltaKind: CompareRow['deltaKind']
+  let deltaLabel: string
+  if (t.a === null) {
+    deltaKind = 'gone'
+    deltaLabel = 'only in prev'
+  } else if (t.b === null) {
+    deltaKind = 'new'
+    deltaLabel = 'new'
+  } else if (t.durationDeltaMs === null || t.durationDeltaMs === 0) {
+    deltaKind = 'same'
+    deltaLabel = '±0'
+  } else {
+    deltaKind = t.durationDeltaMs > 0 ? 'slower' : 'faster'
+    deltaLabel = formatSignedDuration(t.durationDeltaMs)
+  }
+  return {
+    taskId: t.taskId,
+    project: t.project,
+    task: t.task,
+    aStatus: t.a?.status ?? null,
+    aCacheHit: t.a?.cacheHit ?? null,
+    aDurationMs: t.a?.durationMs ?? null,
+    bStatus: t.b?.status ?? null,
+    bCacheHit: t.b?.cacheHit ?? null,
+    bDurationMs: t.b?.durationMs ?? null,
+    deltaLabel,
+    // NaN when a side is missing: 'new'/'only in prev' is not a zero delta.
+    deltaMs: t.a === null || t.b === null ? Number.NaN : (t.durationDeltaMs ?? 0),
+    baseMs: t.a?.durationMs ?? 0,
+    deltaKind,
+    keyChanged: t.hashChanged ? 'changed' : 'same',
+    // The table renders magnitude but passes no verdict when the two numbers
+    // do not measure comparable things. Two shapes: same key ⇒ identical
+    // inputs ⇒ the delta is this task's measurement noise; and a cache HIT on
+    // either side ⇒ that side's `durationMs` is a RESTORE cost, not work, so
+    // the pair is not a performance comparison at all. The second is the
+    // ordinary warm-CI shape — you edit a task, so this run executes while the
+    // previous one hit — and it used to paint every touched task red.
+    _unjudged: !t.hashChanged || t.a?.cacheHit === true || t.b?.cacheHit === true,
+    // The task's OWN measured noise floor: a cross-key delta smaller than
+    // this is inside the margin of error, so the table must not call it a
+    // change. Absent (undefined) ⇒ the cell falls back to its heuristic.
+    _noiseMs:
+      t.noiseCv !== undefined && t.a !== null ? Math.round(t.noiseCv * t.a.durationMs) : undefined,
+  }
 }
 
 /** Fetch /v1/compare and flatten each task into a display row. */
 async function compareRows(runId: string): Promise<CompareRow[]> {
   const cmp = await compareRuns(runId)
-  return cmp.tasks.map((t): CompareRow => {
-    let deltaKind: CompareRow['deltaKind']
-    let deltaLabel: string
-    if (t.a === null) {
-      deltaKind = 'gone'
-      deltaLabel = 'only in prev'
-    } else if (t.b === null) {
-      deltaKind = 'new'
-      deltaLabel = 'new'
-    } else if (t.durationDeltaMs === null || t.durationDeltaMs === 0) {
-      deltaKind = 'same'
-      deltaLabel = '±0'
-    } else {
-      deltaKind = t.durationDeltaMs > 0 ? 'slower' : 'faster'
-      deltaLabel = formatSignedDuration(t.durationDeltaMs)
-    }
-    return {
-      taskId: t.taskId,
-      project: t.project,
-      task: t.task,
-      aStatus: t.a?.status ?? null,
-      aCacheHit: t.a?.cacheHit ?? null,
-      aDurationMs: t.a?.durationMs ?? null,
-      bStatus: t.b?.status ?? null,
-      bCacheHit: t.b?.cacheHit ?? null,
-      bDurationMs: t.b?.durationMs ?? null,
-      deltaLabel,
-      // NaN when a side is missing: 'new'/'only in prev' is not a zero delta.
-      deltaMs: t.a === null || t.b === null ? Number.NaN : (t.durationDeltaMs ?? 0),
-      baseMs: t.a?.durationMs ?? 0,
-      deltaKind,
-      keyChanged: t.hashChanged ? 'changed' : 'same',
-      // Same key ⇒ identical inputs ⇒ the delta is this task's measurement
-      // noise. The table renders magnitude but passes no verdict on it.
-      _sameKey: !t.hashChanged,
-      // The task's OWN measured noise floor: a cross-key delta smaller than
-      // this is inside the margin of error, so the table must not call it a
-      // change. Absent (undefined) ⇒ the cell falls back to its heuristic.
-      _noiseMs:
-        t.noiseCv !== undefined && t.a !== null
-          ? Math.round(t.noiseCv * t.a.durationMs)
-          : undefined,
-    }
-  })
+  return cmp.tasks.map(compareRowOf)
 }
 
 /**
@@ -391,15 +434,53 @@ function mergeMoverDelta(
  * SparkList binds. "Spot per-task outliers/spikes/trends" at a glance. `null` =
  * older serve without /v1/trends/tasks.
  */
+/** Fallback band when the task never repeated a cache key often enough for the
+ *  server to measure its spread. */
+const TREND_FALLBACK_BAND = 0.1
+
+/**
+ * Direction of a duration series: `up` = slower (bad), `down` = faster (good).
+ *
+ * Two rules, both of which the endpoint-vs-endpoint version got wrong. The
+ * comparison is HALVES (the `foldFlakeTrend` shape), because first-vs-last
+ * lets a single lucky or loaded bucket set the verdict — measurably inverting
+ * it: one 15%-low opening bucket used to read "slower" while the window's mean
+ * had gone DOWN. And the band is the task's OWN measured same-key spread
+ * (`noiseCv`), because a hardcoded ±10% calls noise a regression on any task
+ * whose real cv exceeds it — this repo has measured 17% and 58.8%. Using a
+ * per-run cv against a mean-of-runs is deliberately CONSERVATIVE (the mean's
+ * own error is smaller), so the bias is toward claiming nothing.
+ */
+export function trendOf(series: readonly number[], noiseCv?: number): 'up' | 'down' | 'flat' {
+  const half = Math.floor(series.length / 2)
+  if (half < 1) return 'flat'
+  const mean = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
+  // Odd counts drop the middle bucket so the two halves stay symmetric.
+  const older = mean(series.slice(0, half))
+  const newer = mean(series.slice(series.length - half))
+  if (older <= 0 || newer <= 0) return 'flat'
+  const band = noiseCv !== undefined && Number.isFinite(noiseCv) && noiseCv > 0 ? noiseCv : TREND_FALLBACK_BAND
+  const change = (newer - older) / older
+  return change > band ? 'up' : change < -band ? 'down' : 'flat'
+}
+
 export function foldTaskTrendPoints(
   project: string,
-  points: { task: string; t: number; avgDurationMs: number; failures: number }[],
+  points: {
+    task: string
+    t: number
+    avgDurationMs: number
+    failures: number
+    noiseCv?: number
+  }[],
 ): Record<string, unknown>[] {
   const byTask = new Map<string, { t: number; avg: number; failures: number }[]>()
+  const noiseByTask = new Map<string, number>()
   for (const p of points) {
     const arr = byTask.get(p.task) ?? []
     arr.push({ t: p.t, avg: p.avgDurationMs, failures: p.failures })
     byTask.set(p.task, arr)
+    if (p.noiseCv !== undefined) noiseByTask.set(p.task, p.noiseCv)
   }
   const items = [...byTask.entries()].map(([task, cells]) => {
     cells.sort((a, b) => a.t - b.t)
@@ -411,10 +492,8 @@ export function foldTaskTrendPoints(
     const series = cells.map((c) => c.avg).filter((v) => v > 0)
     const failures = cells.reduce((s, c) => s + c.failures, 0)
     const latest = series.length > 0 ? series[series.length - 1]! : 0
-    const first = series[0] ?? 0
-    const last = latest
     // Trend over the window (duration): up = slower (bad), down = faster (good).
-    const trend = first === 0 || last === 0 || series.length < 2 ? 'flat' : last > first * 1.1 ? 'up' : last < first * 0.9 ? 'down' : 'flat'
+    const trend = trendOf(series, noiseByTask.get(task))
     return {
       task,
       _taskRef: `${project}#${task}`,
@@ -469,6 +548,7 @@ async function branchFailureRows(
 function taskDebugRows(detail: TaskDetail): {
   runs: Record<string, unknown>[]
   artifact: Record<string, unknown>[]
+  store: Record<string, unknown>[]
 } {
   const ref = `${detail.project}#${detail.task}`
   const runs: Record<string, unknown>[] = []
@@ -494,7 +574,14 @@ function taskDebugRows(detail: TaskDetail): {
       _hash: detail.latestEntry.hash,
     })
   }
-  return { runs, artifact }
+  // The artifact STORE, which a platform serve does have. `latestEntry` is
+  // cache-ENTRY inventory and is null by construction there (analytics.ts:1998
+  // — the Postgres schema deliberately holds none), so the card used to assert
+  // "No cached artifact yet" for every task on every platform deployment while
+  // /v1/artifacts listed that task's artifacts. This row is a route, never a
+  // claim about existence, and it lands pre-filtered to this task.
+  const store = [{ label: 'Artifacts for this task — store listing + download', _taskId: ref }]
+  return { runs, artifact, store }
 }
 
 /**
@@ -526,6 +613,10 @@ export function windowDaysOf(p: P, fallback: number): number {
 /** How many rows a list source asks for. The server clamps to this too, so a
  *  full page means "there are more" rather than "that's the workspace". */
 export const LIST_PAGE = 500
+/** Rows the "Got slower" detector reads. It is a WINDOW: when the fetch comes
+ *  back full, an older same-key run may sit past its edge, which is why the
+ *  limit is handed to `detectSlowdowns` rather than only to `listRuns`. */
+export const SLOWDOWN_RUN_WINDOW = 300
 /**
  * The `?q` the Projects/Tasks filter box writes (debounced by DataTable). It
  * rides the SAME loader params `?window` does, so a keystroke re-keys the
@@ -598,9 +689,9 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   slowdowns: async () => {
     const [hist, rows] = await Promise.all([
       getHistory({ limit: 500 }).catch(() => []),
-      listRuns({ limit: 300 }).catch(() => []),
+      listRuns({ limit: SLOWDOWN_RUN_WINDOW }).catch(() => []),
     ])
-    return detectSlowdowns(hist, rows).map((s) => ({
+    return detectSlowdowns(hist, rows, SLOWDOWN_RUN_WINDOW).map((s) => ({
       ...s,
       _ratioLabel: `${s.ratio.toFixed(1)}× slower`,
       // Only a CONFIRMED input change earns the regression dot. Same inputs
@@ -616,7 +707,22 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   heatmap: (p) => getHeatmap(windowDaysOf(p, 30)),
   parallelism: () => getParallelismHistory(50),
   bottlenecks: (p) => getBottlenecks(windowDaysOf(p, 14), 25),
-  flaky: () => getFlakiest(25),
+  // A PAGE of rows plus the workspace's real count — the `projects` shape. The
+  // headline metric binds `/flaky/total`, never the page length: it read 25 for
+  // a workspace with 200 flaky tasks. `total` is undefined on an older serve,
+  // and `fmtNumber`/`gt` render an unknown as '—' with no tone.
+  flaky: async () => {
+    const { tasks, total } = await getFlakiest(25)
+    return {
+      rows: tasks,
+      total,
+      shown: tasks.length,
+      // Only a KNOWN total can prove the page truncated — an older serve sends
+      // none, and claiming truncation on an unknown would be the same class of
+      // invention this fix removes.
+      _truncated: total !== undefined && total > tasks.length,
+    }
+  },
   analysis: (p) => analysisData(windowDaysOf(p, 7)),
   regressions: (p) => regressionRows(windowDaysOf(p, 14)),
   prunable: () => getPrunable(7, 25),
@@ -717,30 +823,7 @@ export const SOURCES: Record<string, (p: P) => Promise<unknown>> = {
   // Batched failure triage — null (card hidden) when the run has no failures.
   // Display fields are derived HERE so the pure-JSON view binds plain paths.
   runTriage: (p) =>
-    fetchRunTriage(p.id ?? '').then((rows) =>
-      rows === null
-        ? null
-        : rows.map((r) => ({
-            ...r,
-            _label:
-              r.verdict === 'flaky'
-                ? 'flaky'
-                : r.verdict === 'pre-existing'
-                  ? 'already broken'
-                  : 'new failure',
-            _evidence:
-              r.verdict === 'flaky'
-                ? `the same cache key passed ${r.sameKeySuccesses}× in other runs — nondeterminism, not this change`
-                : r.verdict === 'pre-existing'
-                  ? 'the default branch’s latest run of this task is also failing — inherited, not introduced'
-                  : r.keyChanged === null
-                    ? 'first recorded run of this task'
-                    : r.keyChanged
-                      ? 'first failure of this key — this run changed the task’s inputs'
-                      : 'first failure of this key',
-            _evidenceRunId: r.verdict === 'pre-existing' ? r.defaultBranchRunId : r.previousRunId,
-          })),
-    ),
+    fetchRunTriage(p.id ?? '').then((rows) => (rows === null ? null : rows.map(triageRowOf))),
   runSelectedTask: (p) => runSelectedTask(p),
   invocationDetail: (p) => getInvocation(p.id ?? ''),
   compare: (p) => compareRuns(p.id ?? ''),

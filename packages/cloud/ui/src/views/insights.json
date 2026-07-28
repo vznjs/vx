@@ -125,24 +125,21 @@
             "props": {
               "label": "Flaky tasks",
               "value": {
-                "$computed": "aggFmt",
+                "$computed": "fmtNumber",
                 "args": {
-                  "arr": {
-                    "$state": "/flaky"
-                  },
-                  "op": "count",
-                  "fmt": "number"
+                  "n": {
+                    "$state": "/flaky/total"
+                  }
                 }
               },
               "sub": "confirmed + inferred",
               "tone": {
-                "$computed": "aggTone",
+                "$computed": "gt",
                 "args": {
-                  "arr": {
-                    "$state": "/flaky"
+                  "v": {
+                    "$state": "/flaky/total"
                   },
-                  "op": "count",
-                  "gt": 0,
+                  "n": 0,
                   "then": "warn",
                   "else": "good"
                 }
@@ -692,13 +689,35 @@
             },
             "children": [
               {
+                "type": "Callout",
+                "props": {
+                  "tone": "muted",
+                  "text": {
+                    "$computed": "text",
+                    "args": {
+                      "tpl": "showing the {shown} flakiest of {total} \u2014 open a task for its own history",
+                      "shown": {
+                        "$state": "/flaky/shown"
+                      },
+                      "total": {
+                        "$state": "/flaky/total"
+                      }
+                    }
+                  }
+                },
+                "visible": {
+                  "$state": "/flaky/_truncated",
+                  "eq": true
+                }
+              },
+              {
                 "type": "DataTable",
                 "props": {
                   "rows": {
                     "$computed": "withFlakyFix",
                     "args": {
                       "arr": {
-                        "$state": "/flaky"
+                        "$state": "/flaky/rows"
                       }
                     }
                   },

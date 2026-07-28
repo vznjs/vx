@@ -47,6 +47,7 @@
                 "tier"
               ],
               "filterPlaceholder": "filter by hash, task, or tier…",
+              "searchParam": "q",
               "initialSort": {
                 "key": "storedAt",
                 "desc": true

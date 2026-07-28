@@ -64,6 +64,47 @@ describe('foldTaskTrendPoints', () => {
     expect(single[0]!._trend).toBe('flat')
   })
 
+  // F6. The arrow used to be decided by the FIRST and LAST bucket against a
+  // hardcoded ±10%, so one lucky or loaded day set the verdict — and could
+  // invert it against the window's actual movement.
+  describe('the trend arrow survives a single lucky or loaded bucket', () => {
+    const flat6 = (avgs: number[], noiseCv?: number) =>
+      foldTaskTrendPoints(
+        'app',
+        avgs.map((avg, i) => ({
+          task: 'a',
+          t: i + 1,
+          avgDurationMs: avg,
+          failures: 0,
+          ...(noiseCv !== undefined ? { noiseCv } : {}),
+        })),
+      )[0]!
+
+    it('a 15% opening bucket does not invert a flat task', () => {
+      // The sharp case: this used to read 'up' (red, "slower") while the
+      // window's own mean had gone DOWN.
+      expect(flat6([850, 1000, 1000, 1000, 1000, 1000])._trend).toBe('flat')
+      expect(flat6([1150, 1000, 1000, 1000, 1000, 1000])._trend).toBe('flat')
+    })
+
+    it('a 15% closing bucket does not flag a flat task', () => {
+      expect(flat6([1000, 1000, 1000, 1000, 1000, 1150])._trend).toBe('flat')
+    })
+
+    it('the band is the task’s MEASURED spread, not a guessed 10%', () => {
+      // Same 20% drift, judged twice. A task measured at cv=0.30 is simply
+      // this variable, so the movement is inside its own noise.
+      const drift = [1000, 1000, 1000, 1200, 1200, 1200]
+      expect(flat6(drift)._trend).toBe('up')
+      expect(flat6(drift, 0.3)._trend).toBe('flat')
+    })
+
+    it('a real sustained move is still called, both directions', () => {
+      expect(flat6([1000, 1000, 1000, 2000, 2000, 2000], 0.05)._trend).toBe('up')
+      expect(flat6([2000, 2000, 2000, 1000, 1000, 1000], 0.05)._dir).toBe('faster')
+    })
+  })
+
   it('sorts slowest-latest on top and time-orders unsorted rows', () => {
     const items = foldTaskTrendPoints('app', [
       pt('slow', 2000, 900),

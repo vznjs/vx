@@ -330,6 +330,20 @@
               "valueFormat": "relativeTime",
               "rowHref": "/cache/{_hash}",
               "emptyTitle": "No cached artifact yet"
+            },
+            "visible": {
+              "$state": "/capsCacheMissing",
+              "eq": false
+            }
+          },
+          {
+            "type": "RankList",
+            "props": {
+              "items": {
+                "$state": "/detail/_debug/store"
+              },
+              "labelKey": "label",
+              "rowHref": "/artifacts?q={_taskId}"
             }
           }
         ]

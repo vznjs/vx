@@ -643,6 +643,10 @@ export interface ProjectTaskTrendPoint {
   failures: number
   avgDurationMs: number
   p95DurationMs: number
+  /** The task's measured same-key spread (stddev/mean), so a client can judge
+   *  a movement against this task's OWN noise instead of a guessed threshold.
+   *  Absent when nothing repeated a key often enough to measure. */
+  noiseCv?: number
 }
 
 export interface PeriodStats {
@@ -2731,7 +2735,7 @@ export class Analytics {
   async getFlakiestTasks(
     workspaceId: string,
     args: number | { limit?: number; project?: string; task?: string } = 25,
-  ): Promise<FlakyTask[]> {
+  ): Promise<{ tasks: FlakyTask[]; total: number }> {
     const opts = typeof args === 'number' ? { limit: args } : args
     const limit = opts.limit ?? 25
     // A per-task clamp makes this a POINT LOOKUP: the task-detail flaky badge
@@ -2759,7 +2763,7 @@ export class Analytics {
         AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
       GROUP BY project, task
       HAVING count(*) >= 3 OR SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) > 0`
-    if (pairs.length === 0) return []
+    if (pairs.length === 0) return { tasks: [], total: 0 }
     // ONE windowed durations query for ALL candidates (the last-50 successful
     // non-hit rows per pair — the same set `successDurations` fetched),
     // replacing the former per-candidate round-trip.
@@ -2799,7 +2803,7 @@ export class Analytics {
         p99DurationMs: p99,
       }
     })
-    return out
+    const flaky = out
       .filter(
         (r) =>
           r.flakyConfirmed ||
@@ -2816,7 +2820,11 @@ export class Analytics {
           (r.durationTailRatio ?? 1)
         return score(b) - score(a)
       })
-      .slice(0, clampInt(limit, 1, 200))
+    // The page AND how many there are. The candidate scan has no LIMIT (the
+    // GROUP BY covers the workspace), so this length is the real count — and
+    // it is free, computed before the slice. Without it the headline metric
+    // counted the PAGE and read 25 for a workspace with 200.
+    return { tasks: flaky.slice(0, clampInt(limit, 1, 200)), total: flaky.length }
   }
 
   /**
@@ -3330,14 +3338,21 @@ export class Analytics {
         AND r.started_at >= ${from} AND r.started_at <= ${to}
         AND ${this.sql.unsafe(EXECUTED_TASK_RUNS_SQL)}
       GROUP BY r.task, t ORDER BY r.task, t`
-    return rows.map((r) => ({
-      task: r.task,
-      t: num(r.t),
-      runs: r.runs,
-      failures: r.failures,
-      avgDurationMs: r.avg_dur,
-      p95DurationMs: r.p95 ?? 0,
-    }))
+    // ONE batched grouped query for every pair's spread — the same method (and
+    // the same anti-N+1 reasoning) `compareRuns` uses to attach `noiseCv`.
+    const floors = await this.getStabilityFloors(workspaceId)
+    return rows.map((r) => {
+      const cv = floors.get(pairKey(project, r.task))
+      return {
+        task: r.task,
+        t: num(r.t),
+        runs: r.runs,
+        failures: r.failures,
+        avgDurationMs: r.avg_dur,
+        p95DurationMs: r.p95 ?? 0,
+        ...(cv !== undefined ? { noiseCv: cv } : {}),
+      }
+    })
   }
 
   async getPeriodComparison(

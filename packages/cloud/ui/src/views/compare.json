@@ -160,7 +160,7 @@
                   "kind": "deltaBar",
                   "baseKey": "baseMs",
                   "labelKey": "deltaLabel",
-                  "neutralKey": "_sameKey",
+                  "neutralKey": "_unjudged",
                   "noiseKey": "_noiseMs",
                   "format": "signedDuration"
                 },

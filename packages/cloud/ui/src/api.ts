@@ -1103,6 +1103,9 @@ export interface ProjectTaskTrendPoint {
   failures: number
   avgDurationMs: number
   p95DurationMs: number
+  /** The task's measured same-key spread. Absent on an older serve, and on a
+   *  task that never repeated a key — the trend then falls back to a band. */
+  noiseCv?: number
 }
 
 /**
@@ -1141,9 +1144,14 @@ export async function getParallelismHistory(limit = 50): Promise<ParallelismPoin
   return r.points
 }
 
-export async function getFlakiest(limit = 25): Promise<FlakyTask[]> {
-  const r = await getJson<{ tasks: FlakyTask[] }>(`/v1/flakiness?limit=${limit}`)
-  return r.tasks
+/** A PAGE of the flakiest tasks plus how many the workspace really has — the
+ *  headline count must not be the page length. `total` is absent on an older
+ *  serve, which the caller must render as unknown rather than as the page. */
+export async function getFlakiest(
+  limit = 25,
+): Promise<{ tasks: FlakyTask[]; total: number | undefined }> {
+  const r = await getJson<{ tasks: FlakyTask[]; total?: number }>(`/v1/flakiness?limit=${limit}`)
+  return { tasks: r.tasks, total: r.total }
 }
 
 /** The flaky verdict for ONE task — a point lookup, so the badge survives on a

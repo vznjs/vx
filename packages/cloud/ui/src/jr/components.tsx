@@ -925,7 +925,8 @@ export function RankList(
     items: Row[]
     labelKey?: string
     labelTemplate?: string // display label e.g. "{project}#{task}"
-    valueKey: string
+    /** Optional: a pure navigation row carries no value. */
+    valueKey?: string
     valueFormat?: FormatHint
     indexed?: boolean
     metaKey?: string
@@ -974,7 +975,12 @@ export function RankList(
                   <span class="font-mono truncate flex-1">{c.props.labelTemplate ? interpolateRaw(c.props.labelTemplate, it) : String(it[c.props.labelKey ?? 'id'])}</span>
                   <Show when={c.props.subKey && it[c.props.subKey!] !== undefined}><span class="text-fg-3 text-[10px] shrink-0">{String(it[c.props.subKey!])}</span></Show>
                   <Show when={meta(it) !== undefined}><span class="text-fg-3 font-mono text-[10px] shrink-0">{meta(it)}</span></Show>
-                  <span class="font-mono shrink-0">{formatValue(c.props.valueFormat, Number(it[c.props.valueKey]))}</span>
+                  {/* A row that carries no value renders none. `Number(undefined)`
+                      is NaN, which the hint-less path stringified as a literal
+                      'NaN' — a navigation row (no timestamp) printed it. */}
+                  <Show when={c.props.valueKey !== undefined && it[c.props.valueKey] !== undefined}>
+                    <span class="font-mono shrink-0">{formatValue(c.props.valueFormat, Number(it[c.props.valueKey!]))}</span>
+                  </Show>
                 </div>
                 <Show when={c.props.barFrom}>
                   <HBar fraction={Number(it[c.props.barFrom!]) / max()} colorClass={barBg(c.props.colorFrom ? paletteFor(String(it[c.props.colorFrom])) : 'accent')} />

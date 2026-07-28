@@ -627,11 +627,15 @@ export interface SlowdownRow {
    */
   sameInputs: boolean
   /**
-   * Display label for that distinction. `no earlier run` is the honest
-   * third state: with no prior keyed execution in the window there is no
-   * evidence either way, so the row must NOT claim the inputs changed.
+   * Display label for that distinction. `no earlier run` and `inputs unknown`
+   * are the honest non-verdicts: absence of a same-key prior is only evidence
+   * of changed inputs when the rows in hand ARE the task's whole history.
    */
-  cause: 'inputs changed' | 'same inputs — environment' | 'no earlier run'
+  cause:
+    | 'inputs changed'
+    | 'same inputs — environment'
+    | 'no earlier run'
+    | 'inputs unknown — history truncated'
   /** Worst time previously observed for the SAME key (0 when key is new). */
   priorWorst: number
 }
@@ -663,11 +667,18 @@ interface SlowdownRun {
  * knowing) but are labeled as such, AND must beat the worst time previously
  * observed for that same key: a duration already seen for those exact inputs
  * is the task's known spread, not news.
+ *
+ * `fetchedWithLimit` is the LIMIT `rows` was fetched with. When the fetch came
+ * back full the rows are a WINDOW, not a history: a same-key run may simply sit
+ * past its edge, so absence of one proves nothing and no row may claim the
+ * inputs changed. Omit it only when `rows` is the complete set.
  */
 export function detectSlowdowns(
   hist: readonly SlowdownHistory[],
   rows: readonly SlowdownRun[],
+  fetchedWithLimit?: number,
 ): SlowdownRow[] {
+  const truncated = fetchedWithLimit !== undefined && rows.length >= fetchedWithLimit
   const p50ById = new Map(
     hist.filter((h) => (h.p50DurationMs ?? 0) > 0).map((h) => [h.id, h.p50DurationMs ?? 0]),
   )
@@ -720,9 +731,11 @@ export function detectSlowdowns(
       sameInputs,
       cause: sameInputs
         ? 'same inputs — environment'
-        : hasPriorKey.has(id)
-          ? 'inputs changed'
-          : 'no earlier run',
+        : truncated
+          ? 'inputs unknown — history truncated'
+          : hasPriorKey.has(id)
+            ? 'inputs changed'
+            : 'no earlier run',
       priorWorst,
     })
   }
