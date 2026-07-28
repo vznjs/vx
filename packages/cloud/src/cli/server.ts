@@ -40,7 +40,12 @@ const PARTITION_TICK_MS = 24 * 60 * 60 * 1000
  * — they stay on the serve side. (Run delegation, its `/v1/runs/queue`, and the
  * colocated `/v1/graph` were removed with delegation, platform §12 P3.)
  */
-function isAnalyticsSurface(pathname: string, method: string): boolean {
+// Exported ONLY so tests/analytics-route-drift.test.ts can pin it against the
+// routes `dispatchAnalytics` actually answers. The two lists have silently
+// drifted three times, and every time the symptom was a session request
+// falling through to the SPA catch-all and receiving HTML where it expected
+// JSON (`/v1/notifications`, `/v1/why`, `/v1/branch-failures`).
+export function isAnalyticsSurface(pathname: string, method: string): boolean {
   if (
     pathname === '/v1/ingest' ||
     pathname === '/v1/ingest/task' ||
