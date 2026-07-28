@@ -372,7 +372,7 @@ async function handleAnalyticsRequestInner(
       args.project = project
       args.task = task
     }
-    return json({ tasks: await a.getFlakiestTasks(ws, args) })
+    return json(await a.getFlakiestTasks(ws, args))
   }
   if (p === '/v1/regressions') {
     const args: { sinceDays?: number; minBranches?: number; limit?: number } = {}

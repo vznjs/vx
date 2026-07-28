@@ -578,6 +578,51 @@ describe('detectSlowdowns is key-aware', () => {
     expect(out).toHaveLength(1)
     expect(out[0]!.cause).toBe('no earlier run')
   })
+
+  // F3. `rows` is a bounded newest-first WINDOW. A full fetch means older rows
+  // exist past its edge, so "I never saw this key before" stops being evidence
+  // — and the row must not blame the dev's change for it.
+  describe('a saturated window is not evidence of changed inputs', () => {
+    // Ground truth is IDENTICAL in both arms: key A has run before. The only
+    // difference is whether that earlier A fits inside the window.
+    const noise = (n: number) =>
+      Array.from({ length: n }, (_, i) => r('web', `noise${i}`, 5, 9000 - i, 'N'))
+    const rows = (fill: number) => [
+      r('web', 'build', 6000, 9999, 'A'),
+      r('web', 'build', 1000, 9998, 'B'),
+      ...noise(fill),
+    ]
+    const hist = [h('web#build', 1000)]
+
+    it('claims nothing when the fetch came back full', () => {
+      const out = detectSlowdowns(hist, rows(298), 300)
+      expect(out).toHaveLength(1)
+      expect(out[0]!.cause).toBe('inputs unknown — history truncated')
+    })
+
+    it('still attributes when the rows ARE the whole history', () => {
+      const out = detectSlowdowns(hist, rows(48), 300)
+      expect(out).toHaveLength(1)
+      expect(out[0]!.cause).toBe('inputs changed')
+    })
+
+    it('positive same-key evidence outranks truncation', () => {
+      const seen = [
+        r('web', 'build', 6000, 9999, 'A'),
+        r('web', 'build', 900, 9998, 'A'),
+        ...noise(298),
+      ]
+      expect(detectSlowdowns(hist, seen, 300)[0]!.cause).toBe('same inputs — environment')
+    })
+
+    it('only the regression dot is earned by a confirmed input change', () => {
+      // `data.ts` paints danger red for exactly one cause; the truncated state
+      // must not be it.
+      const dirOf = (c: string) => (c === 'inputs changed' ? 'slower' : 'unattributed')
+      expect(dirOf(detectSlowdowns(hist, rows(298), 300)[0]!.cause)).toBe('unattributed')
+      expect(dirOf(detectSlowdowns(hist, rows(48), 300)[0]!.cause)).toBe('slower')
+    })
+  })
 })
 
 // --- Absence is not zero (F1) ------------------------------------------------

@@ -246,6 +246,81 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-27**: **Six dashboard surfaces stopped asserting things they cannot
+  know** (the MED half of the client-side derivation audit; with this the audit
+  is closed, 2 HIGH + 6 MED fixed, 17 refuted). **F3: "Got slower" said "inputs
+  changed" — with the danger dot — when the same-key prior had merely fallen out
+  of a 300-row window.** Measured reach: 300 rows buys 30 runs of history at 10
+  tasks/run, **3 at 100**, 0.19 at 1600, so on a real monorepo the evidence is
+  almost never there. Fixed by distinguishing evidence-of-change from
+  absence-of-evidence — a 4th cause `inputs unknown — history truncated` taking
+  the NEUTRAL dot — which extends the honest third state the 2026-07-26 wave
+  added to this same function rather than inventing a convention. **I told it not
+  to just widen the window and that was right, but the saturation signal was
+  VERIFIED not assumed:** `/v1/runs` passes `limit` through and `listRuns` clamps
+  `1..100_000`, so `length >= limit` genuinely means saturated; the check runs
+  BEFORE `hasPriorKey`, so `no earlier run` also stops being asserted on
+  truncated evidence. The per-candidate server lookup was deliberately NOT built
+  — a per-row fan-out on a 30 s-refresh card is the class the batched
+  `/v1/why/:runId` wave removed. **F5:** the compare view rendered a cache
+  RESTORE against an EXECUTION as a red "+2.00s slower" — not a performance
+  comparison at all; `_sameKey` became `_unjudged` (renamed rather than widened,
+  since "same key" would have become a lie), magnitude still shown, only the
+  verdict withheld. **F6:** the per-task sparkline arrow inverted on one lucky or
+  loaded day — first-vs-last bucket against a hardcoded ±10% while measured `cv`
+  for these tasks reaches 17-58%. Both halves reuse in-repo precedent: window
+  HALVES (the `foldFlakeTrend` shape) and the task's MEASURED `noiseCv` (the
+  `deltaBar` fix), threaded additively off the same batched `getStabilityFloors`
+  `compareRuns` already uses. **F7: the client half of #194's server fix, and the
+  lesson is the pattern.** That wave made `triageRun` return `keyChanged: null`
+  honestly for a keyless row; the STRING never narrowed, so the dashboard still
+  said "first recorded run of this task" beside a link to that task's previous
+  run. The two causes are separable and the developer verified WHY rather than
+  inferring: `prev_run_id` and `prev_hash` come from the same
+  `KEYED_TASK_RUNS_SQL` lateral, so a non-null `previousRunId` proves an earlier
+  keyed run exists and the missing key must be the SUBJECT's. **Third time today
+  a fix landed on the server and never reached the sentence a user reads**
+  (`--summarize` green on exit 1; run detail green on `exitOk:false`; this) —
+  check the surface, not just the query. **F8:** the "Flaky tasks" headline
+  reported a fixed 25-row PAGE as the workspace count (25 whether the truth was
+  25, 60 or 200) — and the true count was already computed and thrown away, since
+  the candidate scan has no `LIMIT` and `.slice()` is last, so this became
+  ACCURATE rather than merely honest (`{tasks, total}`, the `listProjectsPage`
+  shape; an older serve's absent `total` reads `—`, never the page length).
+  **F11 — I made the wrong design call and the developer was right to refuse
+  it.** I said to answer the Debug card from `/v1/artifacts` provenance. Two
+  facts kill that: the row links to `/cache/{hash}`, which is ITSELF entry-backed
+  and says "may have been pruned" on every platform serve, so a perfect lookup
+  lands the dev on a SECOND dead end; and `/v1/cache/batch` is
+  `isMachineTokenOnly`, so a browser session gets 403 while client-side filtering
+  of `/v1/artifacts` reintroduces the fetch-a-page-then-`.find()` anti-pattern
+  the point-lookup wave removed. It routes to the surface that WORKS —
+  `/artifacts?q={taskId}`, with `searchParam` added so the link lands
+  pre-filtered — and gates the false claim on `capsCacheMissing`. NO
+  schema/wire/CACHE bump (two additive read-side fields, tenant clamp inside the
+  batched query it reuses). Differentials, each proven to fail without its fix:
+  F3 65/2→67/0, F5 12/2→14/0 (isolated by reverting only the predicate — the new
+  tests cannot LOAD at HEAD, so the naive differential was non-discriminating),
+  F6 client 9/3→12/0 + server 79/1→80/0, F7 15/2→17/0, F8 client 19/2→21/0 +
+  server 76/5→81/0, F11 21/4→25/0. Gates: fmt/lint 0, core **1554/0**, UI
+  **137/0** (was 113), cloud 663/1. **Two process findings worth more than the
+  fixes.** (1) **The developer caught a defect in its OWN fix by reading a
+  capture it was entitled to skip:** `visual > task-detail` is documented
+  pre-existing, but its diff touched that view, so it looked — and found
+  `Artifacts for this task … NaN`, because `RankList` rendered
+  `Number(it[valueKey])` unconditionally and a navigation row has no timestamp.
+  Fixed at the component (any value-less row would have done it) and pinned.
+  **A documented-pre-existing red is not a licence to skip reading it when your
+  diff touches that surface.** (2) **That baseline is now a blind spot and the
+  numbers prove it:** this log records 0.65% / 41282 px (I measured that myself
+  this morning); it is now **1.56% / 99714** — the drift MORE THAN DOUBLED,
+  because our own changes to shared derivation code legitimately altered what
+  task-detail renders. The suite SKIPS in CI (no playwright, no dist), so it runs
+  only locally, where it is permanently red — a guard nobody reads, absorbing
+  real change. Refreshing the baseline also republishes the docs screenshots by
+  design, so it is a deliberate step, not a bundled one. **KNOWN-OPEN, and it is
+  now the top of the queue.**
+
 - **2026-07-27**: **The dashboard stopped reporting a RED run as green and
   stopped answering "0 flaky tasks" when the probe FAILED** (the two HIGH
   findings of the first hostile audit of the dashboard's CLIENT-SIDE derivation

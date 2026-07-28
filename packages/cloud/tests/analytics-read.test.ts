@@ -303,7 +303,7 @@ describe('base fixture reads', () => {
   })
 
   it('getFlakiestTasks confirms the retried task and ranks it first', async () => {
-    const flaky = await analytics.getFlakiestTasks(ws)
+    const { tasks: flaky } = await analytics.getFlakiestTasks(ws)
     const lint = flaky.find((f) => f.id === 'lib#lint')
     expect(lint).toBeDefined()
     expect(lint!.flakyConfirmed).toBe(true)
@@ -1301,6 +1301,49 @@ describe('getProjectTaskTrends', () => {
     const pts = await analytics.getProjectTaskTrends(ws, 'app', { bucket: 'day', limit: 1 })
     expect(new Set(pts.map((p) => p.task))).toEqual(new Set(['exec-real']))
   })
+
+  // The client judges a task's movement against its OWN measured spread rather
+  // than a guessed threshold, so the series has to carry that spread. Batched
+  // from the same `getStabilityFloors` grouped query `compareRuns` uses — never
+  // a per-task lookup.
+  it('carries each task’s measured same-key spread, and omits it when unmeasurable', async () => {
+    const { org, ws } = await newOrgWs(db, 'trendnoise')
+    const now = Date.now()
+    const dayFloor = Math.floor(now / DAY) * DAY
+    const at = (h: number): number => Math.min(dayFloor + h * HOUR, now)
+    // `jittery` runs one key repeatedly with real spread → measurable.
+    for (const [i, d] of [400, 800, 1200, 1600].entries()) {
+      await insertINV(db, ws, org, { runId: `j${i}`, startedAt: at(i) })
+      await insertTR(db, ws, org, {
+        runId: `j${i}`,
+        project: 'app',
+        task: 'jittery',
+        hash: 'SAME',
+        duration: d,
+        startedAt: at(i),
+      })
+    }
+    // `once` never repeats a key → nothing to measure, so no claim.
+    for (const [i, d] of [500, 900].entries()) {
+      await insertINV(db, ws, org, { runId: `o${i}`, startedAt: at(i) })
+      await insertTR(db, ws, org, {
+        runId: `o${i}`,
+        project: 'app',
+        task: 'once',
+        hash: `K${i}`,
+        duration: d,
+        startedAt: at(i),
+      })
+    }
+
+    const pts = await analytics.getProjectTaskTrends(ws, 'app', { bucket: 'day' })
+    const jittery = pts.filter((p) => p.task === 'jittery')
+    expect(jittery.length).toBeGreaterThan(0)
+    expect(jittery[0]!.noiseCv).toBeGreaterThan(0.1)
+    // Absent, not zero: zero would read as "perfectly stable" and make every
+    // movement a verdict.
+    expect(pts.find((p) => p.task === 'once')!.noiseCv).toBeUndefined()
+  })
 })
 
 describe('hermeticity + logs', () => {
@@ -2064,11 +2107,42 @@ describe('scale: a workspace larger than one page', () => {
 
     // The point lookup finds it regardless of where it would rank.
     const one = await analytics.getFlakiestTasks(ws, { project: 'zz-tail', task: 'e2e' })
-    expect(one).toHaveLength(1)
-    expect(one[0]!.id).toBe('zz-tail#e2e')
-    expect(one[0]!.mixedOutcomeKeys).toBeGreaterThan(0)
+    expect(one.tasks).toHaveLength(1)
+    expect(one.tasks[0]!.id).toBe('zz-tail#e2e')
+    expect(one.tasks[0]!.mixedOutcomeKeys).toBeGreaterThan(0)
     // …and it is scoped: a foreign pair returns nothing rather than the page.
-    expect(await analytics.getFlakiestTasks(ws, { project: 'noisy-0', task: 'nope' })).toEqual([])
+    expect(
+      (await analytics.getFlakiestTasks(ws, { project: 'noisy-0', task: 'nope' })).tasks,
+    ).toEqual([])
+  }, 60_000)
+
+  // The headline metric used to count the fetched PAGE, so it read "25" for a
+  // workspace with far more. The candidate scan has no LIMIT, so the real count
+  // is free — it just has to leave the method.
+  it('reports how many flaky tasks there ARE, not how many fit the page', async () => {
+    const { org, ws } = await newOrgWs(db, 'flakycount')
+    const now = Date.now()
+    // 30 tasks, each CONFIRMED flaky by a within-run retry.
+    for (let i = 0; i < 30; i++) {
+      for (let r = 0; r < 3; r++) {
+        const runId = `fc-${i}-${r}`
+        await insertINV(db, ws, org, { runId, startedAt: now - (i * 10 + r) * 1000 })
+        await insertTR(db, ws, org, {
+          runId,
+          project: 'app',
+          task: `flaky${i}`,
+          hash: `K${i}`,
+          attempts: r === 0 ? 2 : 1,
+          startedAt: now - (i * 10 + r) * 1000,
+        })
+      }
+    }
+    const page = await analytics.getFlakiestTasks(ws, { limit: 25 })
+    expect(page.tasks).toHaveLength(25)
+    expect(page.total).toBe(30)
+    // The total is a property of the workspace, not of the page size.
+    expect((await analytics.getFlakiestTasks(ws, { limit: 5 })).total).toBe(30)
+    expect((await analytics.getFlakiestTasks(ws, { limit: 5 })).tasks).toHaveLength(5)
   }, 60_000)
 
   it('resolves projects past the page limit, and ranks against ALL of them', async () => {
@@ -2350,7 +2424,7 @@ describe('skipped rows never skew a rate, a mean or a run count', () => {
   })
 
   it('the flaky failure rate is over executions', async () => {
-    const flaky = await analytics.getFlakiestTasks(ws)
+    const { tasks: flaky } = await analytics.getFlakiestTasks(ws)
     const e2e = flaky.find((f) => f.id === 'app#e2e')!
     expect(e2e.runs).toBe(3)
     expect(e2e.failureRate).toBeCloseTo(2 / 3, 5)

@@ -29,13 +29,33 @@
       {
         "type": "Empty",
         "props": {
-          "title": "No cache entry with this hash",
-          "hint": "The entry may have been pruned, or it lives in a different workspace's cache."
+          "title": "Cache-entry details are not available on this serve",
+          "hint": "Entry inventory (command, size, timings) lives in the workspace's local cache.db — start vx-cloud serve inside the repo to see it. The artifact itself may still be in this serve's store: see Artifacts."
         },
         "visible": {
-          "$state": "/entryStatus",
-          "eq": "missing"
+          "$state": "/capsCacheMissing",
+          "eq": true
         }
+      },
+      {
+        "type": "Stack",
+        "visible": {
+          "$state": "/capsCacheMissing",
+          "eq": false
+        },
+        "children": [
+          {
+            "type": "Empty",
+            "props": {
+              "title": "No cache entry with this hash",
+              "hint": "The entry may have been pruned, or it lives in a different workspace's cache."
+            },
+            "visible": {
+              "$state": "/entryStatus",
+              "eq": "missing"
+            }
+          }
+        ]
       },
       {
         "type": "Card",

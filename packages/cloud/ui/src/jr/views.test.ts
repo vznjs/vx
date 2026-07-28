@@ -10,6 +10,7 @@
 import { evaluateVisibility, resolvePropValue } from '@json-render/core'
 import { describe, expect, it } from 'bun:test'
 import { FUNCTIONS, invocationPassed } from './functions.ts'
+import { compareRowOf, triageRowOf } from './data.ts'
 import ARTIFACTS from '../views/artifacts.json'
 import CACHE from '../views/cache.json'
 import CACHE_ENTRY from '../views/cacheEntry.json'
@@ -156,7 +157,8 @@ describe('metric tiles never state a number for a source that failed', () => {
       'Flaky tasks=—',
     ])
     // The server ANSWERED and there is nothing to report — a real zero, not '—'.
-    expect(read({ savings: { estimatedTimeSavedTotalMs: 0 }, stats: { hitRate24h: 0 }, parallelism: [], flaky: [] })).toEqual([
+    // `flaky` is a PAGE + its workspace total, so a real zero is `total: 0`.
+    expect(read({ savings: { estimatedTimeSavedTotalMs: 0 }, stats: { hitRate24h: 0 }, parallelism: [], flaky: { rows: [], total: 0, shown: 0 } })).toEqual([
       'Time saved (all-time)=<1ms',
       'Hit rate=0%',
       'Avg parallelism=0.00×',
@@ -167,7 +169,7 @@ describe('metric tiles never state a number for a source that failed', () => {
         savings: { estimatedTimeSavedTotalMs: 90_000 },
         stats: { hitRate24h: 0.8 },
         parallelism: [{ factor: 3 }, { factor: 5 }],
-        flaky: [{}, {}, {}, {}],
+        flaky: { rows: [{}, {}, {}, {}], total: 4, shown: 4 },
       }),
     ).toEqual([
       'Time saved (all-time)=1m 30s',
@@ -264,5 +266,267 @@ describe('run detail states the run’s real outcome', () => {
     // (stored since telemetry widened to every non-aborted outcome) used to
     // fall outside all three buckets.
     expect(resolve(tasksTile['sub'], state)).toBe('1 ok · 1 fail · 1 skipped · 2 hits')
+  })
+})
+
+// --- F5: the compare table passes no PERFORMANCE verdict on a restore --------
+
+describe('compare never judges a cache restore against an execution', () => {
+  /** The `neutralKey` the SHIPPED compare.json hands the deltaBar cell. */
+  const neutralKey = ((): string => {
+    let found: string | undefined
+    walk(COMPARE as Node, (n) => {
+      if (n['kind'] === 'deltaBar' && typeof n['neutralKey'] === 'string') found = n['neutralKey']
+    })
+    if (found === undefined) throw new Error('compare.json has no deltaBar neutralKey')
+    return found
+  })()
+
+  /** `components.tsx`'s deltaBar tone decision, verbatim. */
+  function tone(row: Record<string, unknown>): 'faint' | 'danger' | 'success' {
+    const v = Number(row['deltaMs'])
+    const base = Math.abs(Number(row['baseMs'])) || 0
+    const measured = Number(row['_noiseMs'])
+    const flat = Number.isFinite(measured) && measured > 0 ? measured : Math.max(5, base * 0.005)
+    const neutral = row[neutralKey] === true || !Number.isFinite(v) || Math.abs(v) < flat
+    return neutral ? 'faint' : v > 0 ? 'danger' : 'success'
+  }
+
+  const side = (durationMs: number, cacheHit: boolean) => ({
+    status: 'success',
+    durationMs,
+    hash: cacheHit ? 'K' : 'K2',
+    cacheHit,
+    exitCode: 0,
+  })
+  const row = (a: ReturnType<typeof side>, b: ReturnType<typeof side>) =>
+    compareRowOf({
+      taskId: 'web#build',
+      project: 'web',
+      task: 'build',
+      a,
+      b,
+      hashChanged: true,
+      durationDeltaMs: a.durationMs - b.durationMs,
+      noiseCv: 0.05,
+      statusChanged: false,
+    } as never) as unknown as Record<string, unknown>
+
+  it('the shipped view reads a key the mapper actually sets', () => {
+    expect(row(side(2000, false), side(1000, false))[neutralKey]).toBeDefined()
+  })
+
+  it('an execution against a restored predecessor passes no verdict', () => {
+    // The ordinary warm-CI shape: you edited the task, so THIS run executed
+    // while the PREVIOUS run was restored from cache in 4ms.
+    expect(tone(row(side(2000, false), side(4, true)))).toBe('faint')
+  })
+
+  it('a restore against an executed predecessor passes no verdict either', () => {
+    expect(tone(row(side(4, true), side(2000, false)))).toBe('faint')
+  })
+
+  it('two real executions are still judged in both directions', () => {
+    expect(tone(row(side(2000, false), side(1000, false)))).toBe('danger')
+    expect(tone(row(side(1000, false), side(2000, false)))).toBe('success')
+  })
+})
+
+// --- F7: triage never claims a task is running for the first time -----------
+
+describe('triage evidence distinguishes "no key" from "no earlier run"', () => {
+  const row = (over: Record<string, unknown>) =>
+    triageRowOf({
+      taskId: 'web#dev',
+      project: 'web',
+      task: 'dev',
+      verdict: 'new-failure',
+      sameKeySuccesses: 0,
+      defaultBranchFailing: false,
+      defaultBranchRunId: null,
+      keyChanged: null,
+      previousRunId: null,
+      ...over,
+    } as never)
+
+  it('a keyless SUBJECT with a previous run says so, and stops claiming a first run', () => {
+    // `vx run dev` failing to become ready on its 500th run: persistent tasks
+    // are never cacheable, so the subject has no key while an earlier keyed
+    // run plainly exists — the server hands us its id.
+    const r = row({ previousRunId: 'run-499' })
+    expect(r['_evidence']).toBe('this task records no cache key, so its inputs cannot be compared')
+    // The row links to that run, so the sentence beside it must not deny it.
+    expect(r['_evidenceRunId']).toBe('run-499')
+    expect(String(r['_evidence'])).not.toContain('first recorded run')
+  })
+
+  it('genuinely no earlier keyed run says THAT, not "first run of this task"', () => {
+    const r = row({ previousRunId: null })
+    expect(r['_evidence']).toBe('no earlier keyed run of this task to compare inputs against')
+    expect(String(r['_evidence'])).not.toContain('first recorded run')
+  })
+
+  it('the verdicts that DO have key evidence are unchanged', () => {
+    expect(row({ keyChanged: true, previousRunId: 'p' })['_evidence']).toBe(
+      'first failure of this key — this run changed the task’s inputs',
+    )
+    expect(row({ keyChanged: false, previousRunId: 'p' })['_evidence']).toBe(
+      'first failure of this key',
+    )
+    expect(String(row({ verdict: 'flaky', sameKeySuccesses: 3 })['_evidence'])).toContain(
+      'passed 3× in other runs',
+    )
+  })
+})
+
+// --- F8: the flaky headline counts the WORKSPACE, not the page --------------
+
+describe('the flaky headline reports the workspace, not the page size', () => {
+  const tile = (() => {
+    let found: Node | undefined
+    walk(INSIGHTS as Node, (n) => {
+      if (n['type'] === 'Metric' && (n['props'] as Node)?.['label'] === 'Flaky tasks')
+        found = n['props'] as Node
+    })
+    if (found === undefined) throw new Error('insights.json has no "Flaky tasks" metric')
+    return found
+  })()
+  const PAGE = 25
+  const state = (total: number | undefined) => {
+    const shown = Math.min(total ?? 0, PAGE)
+    return {
+      flaky: {
+        rows: Array.from({ length: shown }, (_, i) => ({ id: `t${i}` })),
+        total,
+        shown,
+        _truncated: total !== undefined && total > shown,
+      },
+    }
+  }
+
+  it('reads the real count past the page, in both directions', () => {
+    expect(resolve(tile['value'], state(7))).toBe('7')
+    expect(resolve(tile['value'], state(25))).toBe('25')
+    // The two that used to read "25".
+    expect(resolve(tile['value'], state(60))).toBe('60')
+    expect(resolve(tile['value'], state(200))).toBe('200')
+  })
+
+  it('an older serve sends no total, so the tile claims nothing', () => {
+    // Absent must not silently degrade to the page length — that is the very
+    // number this fix removed.
+    expect(resolve(tile['value'], state(undefined))).toBe('—')
+    expect(resolve(tile['tone'], state(undefined))).toBe('default')
+  })
+
+  it('still tones a clean workspace green and a flaky one warn', () => {
+    expect(resolve(tile['tone'], state(0))).toBe('good')
+    expect(resolve(tile['tone'], state(3))).toBe('warn')
+  })
+
+  it('the card admits truncation only when the total PROVES it', () => {
+    const callout = (() => {
+      let found: Node | undefined
+      walk(INSIGHTS as Node, (n) => {
+        if (n['type'] === 'Callout' && JSON.stringify(n).includes('flakiest')) found = n
+      })
+      if (found === undefined) throw new Error('insights.json has no flaky truncation callout')
+      return found
+    })()
+    const shows = (total: number | undefined): boolean =>
+      visibleUnder([callout['visible']], state(total))
+    expect(shows(60)).toBe(true)
+    expect(shows(25)).toBe(false)
+    expect(shows(undefined)).toBe(false)
+    expect(String(resolve((callout['props'] as Node)['text'], state(60)))).toBe(
+      'showing the 25 flakiest of 60 — open a task for its own history',
+    )
+  })
+})
+
+// --- F11: the Debug card stops asserting an artifact does not exist ---------
+
+describe('task debug never claims "no artifact" on a serve that holds no inventory', () => {
+  /** Every typed element with the `visible` gates of its ancestors. */
+  function elements(doc: Node): Array<{ n: Node; gates: unknown[] }> {
+    const out: Array<{ n: Node; gates: unknown[] }> = []
+    const descend = (node: unknown, gates: unknown[]): void => {
+      if (Array.isArray(node)) {
+        for (const v of node) descend(v, gates)
+        return
+      }
+      if (node === null || typeof node !== 'object') return
+      const n = node as Node
+      const next = n['type'] !== undefined && n['visible'] !== undefined ? [...gates, n['visible']] : gates
+      if (n['type'] !== undefined) out.push({ n, gates: next })
+      for (const v of Object.values(n)) descend(v, next)
+    }
+    descend(doc, [])
+    return out
+  }
+  const debugLists = elements(TASK_DETAIL as Node).filter(
+    (e) => e['n']['type'] === 'RankList' && JSON.stringify((e.n['props'] as Node)['items']).includes('_debug'),
+  )
+  const state = (capsCacheMissing: boolean) => ({
+    capsCacheMissing,
+    detailStatus: 'ok',
+    detail: {
+      _debug: {
+        runs: [],
+        // Null by construction on a platform serve (analytics.ts:1998).
+        artifact: [],
+        store: [{ label: 'Artifacts for this task — store listing + download', _taskId: 'web#build' }],
+      },
+    },
+  })
+  const shownWith = (props: (p: Node) => boolean, caps: boolean) =>
+    debugLists.filter((e) => props(e.n['props'] as Node) && visibleUnder(e.gates, state(caps)))
+
+  const isEntryList = (p: Node) => String(JSON.stringify(p['items'])).includes('/artifact')
+  const isStoreList = (p: Node) => String(JSON.stringify(p['items'])).includes('/store')
+
+  it('the entry-backed list is not rendered where entry inventory cannot exist', () => {
+    // Its empty title is a claim ("No cached artifact yet") that was false for
+    // EVERY task on EVERY platform deployment.
+    expect(shownWith(isEntryList, true)).toHaveLength(0)
+    // …and is untouched on a colocated serve, where `latestEntry` is real.
+    expect(shownWith(isEntryList, false)).toHaveLength(1)
+  })
+
+  it('a route to the artifact store is offered in BOTH modes', () => {
+    expect(shownWith(isStoreList, true)).toHaveLength(1)
+    expect(shownWith(isStoreList, false)).toHaveLength(1)
+  })
+
+  it('the route row declares no value, so none is fabricated', () => {
+    // A navigation row has no timestamp. `RankList` rendered
+    // `Number(undefined)` unconditionally, so the real browser painted a
+    // literal 'NaN' in the value column (caught by the visual capture).
+    const props = shownWith(isStoreList, true)[0]!.n['props'] as Node
+    expect(props['valueKey']).toBeUndefined()
+  })
+
+  it('that route lands on the artifacts page pre-filtered to this task', () => {
+    const props = shownWith(isStoreList, true)[0]!.n['props'] as Node
+    expect(props['rowHref']).toBe('/artifacts?q={_taskId}')
+    const rows = resolve(props['items'], state(true)) as Array<Record<string, unknown>>
+    expect(rows[0]!['_taskId']).toBe('web#build')
+    // The artifacts table has to READ that param, or the link is decoration.
+    let searchParam: unknown
+    walk(ARTIFACTS as Node, (n) => {
+      if (n['type'] === 'DataTable') searchParam = (n['props'] as Node)['searchParam']
+    })
+    expect(searchParam).toBe('q')
+  })
+
+  it('the cache-entry page explains absence instead of inventing a cause', () => {
+    const empties = elements(CACHE_ENTRY as Node).filter((e) => e.n['type'] === 'Empty')
+    const titlesFor = (capsCacheMissing: boolean) =>
+      empties
+        .filter((e) => visibleUnder(e.gates, { capsCacheMissing, entryStatus: 'missing' }))
+        .map((e) => String((e.n['props'] as Node)['title']))
+    // "may have been pruned" is a fabricated cause where inventory never exists.
+    expect(titlesFor(true)).toEqual(['Cache-entry details are not available on this serve'])
+    expect(titlesFor(false)).toEqual(['No cache entry with this hash'])
   })
 })

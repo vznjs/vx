@@ -276,8 +276,8 @@ describe('analytics reads at ~12k task_runs', () => {
   it('getFlakiestTasks (N+1 percentile fetches) stays fast', async () => {
     // Calibration: ~46 ms. Bound ~17x.
     const { best, res } = await bench(() => analytics.getFlakiestTasks(wsAcme))
-    expect(res.length).toBeGreaterThan(0)
-    expect(res.some((f) => f.flakyConfirmed)).toBe(true)
+    expect(res.tasks.length).toBeGreaterThan(0)
+    expect(res.tasks.some((f) => f.flakyConfirmed)).toBe(true)
     expect(best).toBeLessThan(800)
   }, 120_000)
 
