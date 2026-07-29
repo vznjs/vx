@@ -363,6 +363,13 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `let cleanOutputs delete files outside it)`,
           )
         }
+        if (g.startsWith('!')) {
+          throw new UserError(
+            `${where}.cache.outputs.files: negation is not supported (got "${g}") — ` +
+              `unlike inputs, output globs are never split on '!', so this is read as a literal ` +
+              `path beginning with '!' and matches nothing. List the outputs you DO produce.`,
+          )
+        }
       }
       // Same for inputs.files.
       for (const g of (inputs as { files: unknown[] }).files) {
@@ -383,6 +390,17 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           )
         }
       }
+      // A list of ONLY negations selects nothing at all. `resolveFiles`
+      // builds the file set from the POSITIVE globs and uses the `!` entries
+      // purely to subtract, so with no positive pattern it returns `[]` — the
+      // task folds ZERO file inputs and its key stops moving with its source,
+      // which is a stale hit waiting to happen.
+      //
+      // Every gitignore-trained reader parses `['!**/*.spec.ts']` as
+      // "everything except specs", and Turbo makes exactly this a hard config
+      // error for the same reason. Refusing costs nothing: such a config was
+      // already silently broken, so no working key changes.
+      assertNotNegationOnly((inputs as { files: string[] }).files, `${where}.cache.inputs.files`)
       // The only CacheInputs field that reached the run unvalidated: a
       // non-string entry crashes deep in `filterUpstreamHashes` /
       // `parseDependencySpec` with a raw TypeError naming neither the task
@@ -415,11 +433,11 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       // never absolute (they're workspace-root-relative by definition).
       const wsInputs = (inputs as { workspaceFiles?: unknown }).workspaceFiles
       if (wsInputs !== undefined) {
-        validateWorkspaceGlobs(wsInputs, `${where}.cache.inputs.workspaceFiles`)
+        validateWorkspaceGlobs(wsInputs, `${where}.cache.inputs.workspaceFiles`, true)
       }
       const wsOutputs = (outputs as { workspaceFiles?: unknown }).workspaceFiles
       if (wsOutputs !== undefined) {
-        validateWorkspaceGlobs(wsOutputs, `${where}.cache.outputs.workspaceFiles`)
+        validateWorkspaceGlobs(wsOutputs, `${where}.cache.outputs.workspaceFiles`, false)
       }
     }
     const sandbox = (task as { sandbox?: unknown }).sandbox
@@ -470,7 +488,34 @@ function hasParentSegment(glob: string): boolean {
   return g.split('/').some((seg) => seg === '..')
 }
 
-function validateWorkspaceGlobs(v: unknown, where: string): void {
+/**
+ * Refuse a non-empty glob list made up ENTIRELY of negations.
+ *
+ * The resolvers build their file set from the POSITIVE globs and use `!`
+ * entries only to subtract, so with no positive pattern they return `[]` —
+ * the task folds zero file inputs and its cache key stops moving with its
+ * source. That is a stale hit, and it is silent.
+ *
+ * Refusing is free: such a config was ALREADY selecting nothing, so no
+ * working task's key changes and no CACHE_VERSION bump is owed.
+ */
+function assertNotNegationOnly(globs: readonly string[], where: string): void {
+  if (globs.length === 0) return
+  if (globs.some((g) => !g.startsWith('!'))) return
+  throw new UserError(
+    `${where}: every entry is a negation, which selects NOTHING (got ${JSON.stringify(globs)}) — ` +
+      `negations only subtract from the files a positive glob already matched, so this task ` +
+      `would fold zero file inputs and its cache key would stop tracking its source. ` +
+      `Add the positive glob you meant, e.g. ['**/*', ${JSON.stringify(globs[0])}].`,
+  )
+}
+
+/**
+ * `negation: false` for OUTPUT globs — `resolveOutputs` /
+ * `resolveWorkspaceOutputs` never split on `!`, so such an entry is read as a
+ * literal path starting with `!` and matches nothing.
+ */
+function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): void {
   if (!Array.isArray(v)) {
     throw new UserError(`${where} must be an array of glob strings`)
   }
@@ -490,7 +535,15 @@ function validateWorkspaceGlobs(v: unknown, where: string): void {
           `entries are workspace-root-relative and must stay within the workspace root`,
       )
     }
+    if (!negation && g.startsWith('!')) {
+      throw new UserError(
+        `${where}: negation is not supported (got "${g}") — ` +
+          `unlike inputs, output globs are never split on '!', so this is read as a literal ` +
+          `path beginning with '!' and matches nothing. List the outputs you DO produce.`,
+      )
+    }
   }
+  if (negation) assertNotNegationOnly(v as string[], where)
 }
 
 const SANDBOX_PATH_FIELDS = ['allowRead', 'allowWrite'] as const

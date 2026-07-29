@@ -160,6 +160,27 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
         tasks: { b: { ...ok, cache: { inputs: { files: [] }, outputs: { files: {} } } } },
       }),
   ],
+  [
+    // Both refusals below turn a config that silently selected NOTHING into a
+    // loud error, so the message is what a user greps when their build starts
+    // failing at load time.
+    'cache.inputs.files: every entry is a negation, which selects NOTHING',
+    () =>
+      validated({
+        tasks: {
+          b: { ...ok, cache: { inputs: { files: ['!**/*.spec.ts'] }, outputs: { files: [] } } },
+        },
+      }),
+  ],
+  [
+    'cache.outputs.files: negation is not supported',
+    () =>
+      validated({
+        tasks: {
+          b: { ...ok, cache: { inputs: { files: [] }, outputs: { files: ['!dist/x'] } } },
+        },
+      }),
+  ],
   ['description must be a string', () => validated({ tasks: { b: { ...ok, description: 42 } } })],
 ]
 

@@ -798,11 +798,15 @@ describe('list_runs — limit defaults and coercions', () => {
     expect(r.runs.map((x) => x.runId)).toEqual(['a-run-2', 'a-run-1'])
   })
 
-  it('a STRING limit is silently ignored and the default applies', async () => {
+  it('SUSPECTED DEFECT: a STRING limit is silently ignored and the default applies', async () => {
     // `typeof args['limit'] === 'number'` — and JSON-RPC arguments come from a
-    // model, which produces `"2"` about as readily as `2`. The request is not
-    // refused and the response says nothing, so the caller sees 3 rows where it
-    // asked for 2 and has no way to notice. Pinned as CURRENT behaviour.
+    // model, which produces `"2"` about as readily as `2`. Nothing validates
+    // arguments against the advertised `inputSchema` (the MCP spec says a
+    // server SHOULD), so the request is neither refused nor corrected: the
+    // caller asked for 2 and receives the default page with no signal. On a
+    // 600-run workspace that is 50 rows presented as the answer to "give me 2".
+    // Pinned as CURRENT behaviour; validating against inputSchema — or at least
+    // refusing a wrong-typed argument the way `requireString` does — is the fix.
     const r = await tool<{ runs: unknown[] }>('list_runs', {
       workspace: ws['alpha']!,
       limit: '2',
@@ -933,7 +937,10 @@ describe('run_trends — bucket coercion and slice direction', () => {
       limit: -3,
     })
     expect(r.points).toHaveLength(22)
-    // And limit: 0 empties the series entirely — `slice(-0)` is `slice(0)`.
+    // `limit: 0` is the other unclamped edge and lands somewhere different
+    // again: `-0` is falsy-but-a-number, so it passes the `typeof` guard, and
+    // `slice(-0)` is `slice(0)` — the whole series. So "give me no points" and
+    // "give me every point" are the same request, silently.
     const zero = await tool<{ points: unknown[] }>('run_trends', {
       workspace: trendWs(),
       bucket: 'hour',
