@@ -246,6 +246,81 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-29**: **Eight core surfaces that had NO test file now have one, and
+  the Turbo/Nx research found six reproduced defects nobody had a test for**
+  (owner: "add more tests. 3x what we have… Check nx and turbo repo make sure we
+  cover everything"). Baseline measured first, because "3x" needs a denominator:
+  core **1511 `it()` across 91 files (1554 at runtime)**, cloud 514/38 (663), UI
+  137/7 — ~2354 runtime. This wave: **1554 → 2077 core (+523), 91 → 101 files.**
+  **The research is the more valuable half.** Two independent passes against the
+  CURRENT upstream trees, in `docs/design/turbo-nx-parity-2026-07.md` (1622
+  lines). It CORRECTS the 2026-05 doc rather than replacing it: the prysk/cram
+  `.t` tests that doc cites **no longer exist** in vercel/turborepo — ported to
+  Rust at `crates/turborepo/tests/*.rs`. **Both passes independently reached the
+  same defect, from different upstreams by different methods:** a negation-only
+  `cache.inputs.files` folds **ZERO** file inputs, because `resolveFiles` returns
+  `[]` when no positive pattern is present — so `files: ['!**/*.spec.ts']`, which
+  every gitignore-trained reader parses as "everything except specs", silently
+  means NOTHING and the task's key stops moving with its source. Turbo makes it a
+  hard config error; Nx pins the opposite semantics. Two reviewers converging is
+  the strongest signal either produced. Five more reproduced END-TO-END rather
+  than reasoned about: a gitignored file NAMED in `cache.inputs.files`
+  contributes nothing (the glob only FILTERS the `git ls-files` set, so an
+  ignored path can never be filtered back IN — and the run replays cached stdout,
+  so it LOOKS like it executed); two tasks with overlapping `outputs.files`
+  destroy each other's outputs while the run stays GREEN (a hazard vx CREATED
+  with strict output ownership — Turbo restores additively and cannot hit it,
+  which is why no Turbo test surfaces it); `--affected` selecting ZERO projects
+  for a change that busts every affected cache key, violating a principle
+  `docs/cli.md:139` states verbatim; `ESSENTIAL_ENV` forwarding `NODE_OPTIONS`/
+  `LC_ALL`/`CI` to every child invisibly to every key; and negation in
+  `cache.outputs.files` being a silent no-op. **Deliberately NOT fixed here** —
+  they are source defects, not test gaps, and the negation fix changes cache keys
+  for every affected config, so it needs its own wave with a CACHE_VERSION
+  decision that landing it inside a test change would BURY. The negative results
+  are kept on purpose: vx's flakiness rule has **no gap** against Nx's, and a
+  21-row "checked and already covered" table plus a "deliberately not listed"
+  section (the owner-rejected `namedInputs`/`targetDefaults`/globals) stop the
+  next pass re-treading the ground. **Surfaces covered:** all six `src/util/*`
+  (hash — every task key folds through `xxh3`, so the seed-chaining fold and the
+  16-char pad are pinned; num — the family `Number()` silently ACCEPTS, including
+  the full Unicode whitespace set that is INVISIBLE in a terminal where the user
+  sees "4"; paths — `toPosix` is the IDENTITY on Linux, so the hazard is the
+  "obvious cross-platform fix" folding `a\b` and `a/b` into one key; settle, size,
+  tail), plus `tally` (one fold, three surfaces, and the anti-drift equivalence
+  the `--report`-counts-groups defect wanted), `failure-mode`, `protocol`, and
+  `fingerprint`. Plus a cloud **route drift guard**: `dispatchAnalytics` and
+  `isAnalyticsSurface` describe one set, have drifted THREE times, and nothing
+  tied them together — measured 4 POST + 29 exact + 10 parameterized on each side,
+  **no live drift today**, so it pins rather than fixes. **Method, and it is the
+  transferable part:** every file mutation-tested with byte-exact restores between
+  — hard-coding the path separator fails 16, `break` instead of `continue` in the
+  fingerprint fold fails **19** (it silently stops tracking every LATER entry, the
+  workspace definition most of all, since it is declared last), forgetting `tags`
+  in `optionsToRequest` fails 4 (the real shipped `--tag` bug), a new
+  `RunRequest` field nobody mapped fails 3. **Three honesty notes.** (1) **An
+  assertion of mine was VACUOUS and I deleted it** rather than leave a false
+  guarantee: asserting a hash-shaped `/v1/cache/<hex>` is refused catches nothing,
+  since it returns false whether or not the exclusion block exists — mutation
+  proved widening the regex moved it not at all. What that block genuinely
+  protects is the OTHER side of the boundary (a regex loose enough to swallow the
+  sibling `/v1/cache/*` analytics routes), and that IS covered, by six generated
+  assertions. (2) **A suspected coverage hole was a source finding:** deleting
+  `void p.catch(() => {})` from `settle.ts` is caught by nothing, because
+  `p.then(() => true)` is built EAGERLY as a race argument so `p` always carries a
+  reaction — the line is inert and its comment overstates it. (3) **A flaky memory
+  bound was root-caused, not loosened:** RSS is a HIGH-WATER MARK, so `none` can
+  never be flat — `Bun.gc(true)` gives Δ 8 MiB against 9 without, since JSC does
+  not return pages; and reusing one pre-built chunk would break the control, since
+  60 ropes sharing one body retain 4 MiB not 240. **Process:** the first workflow
+  died mid-recon to a context compaction (2 agents started, 0 completed, nothing
+  salvageable), so waves now LAND as their own PR — a death costs one phase, not
+  everything. And **`ps aux | grep bun` is NOT a liveness signal for agents** —
+  they are API-driven, nothing runs locally; I read zero processes as "dead"
+  twice and nearly overwrote a live agent's 26 KB in-progress file, saved only by
+  the Write tool's read-before-write guard. The real signal is transcript mtimes.
+  Same class as the 2026-07-27 quiet-transcript mistake.
+
 - **2026-07-27**: **Six dashboard surfaces stopped asserting things they cannot
   know** (the MED half of the client-side derivation audit; with this the audit
   is closed, 2 HIGH + 6 MED fixed, 17 refuted). **F3: "Got slower" said "inputs
