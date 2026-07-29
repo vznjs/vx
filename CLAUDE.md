@@ -246,6 +246,101 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-29**: **Writing the tests found two shipped defects and fixed them —
+  a wire value that HANGS a run, and a dashboard number that never rendered**
+  (the second wave of the 3x directive; core **2077 → 2157**, cloud **663 → 983**,
+  UI **137 → 248**, so ~2354 → ~3388 runtime across the two waves). **(1) HIGH,
+  and it wedges a serve: `concurrency: 0` off the wire never resolves.** The
+  scheduler dispatches under `while (active < concurrency)`, which never fires at
+  0, so the "all outcomes in and nothing active" resolve condition is never
+  reached and the run promise NEVER SETTLES. `vx run` was always safe — the
+  parser refuses `--concurrency` below 1 — but nothing guarded the wire, and a
+  `RunRequest` is untrusted input that may arrive over a socket from a client this
+  process never validated; on a serve the submission slot hangs with the run.
+  Reproduced twice on a one-task workspace (killed at an 8s timeout, exit 124),
+  then verified to error cleanly. Guarded in `requestToOptions`, the ONE choke
+  point every executing side goes through, per the "validate only at system
+  boundaries" rule; `optionsToRequest` still transmits faithfully, because it maps
+  already-validated local options and making the outbound half lossy would hide a
+  caller's mistake rather than report it. Negative/fractional/NaN/Infinity refused
+  with it; 1-and-up still pass (`--concurrency 1` is how a flaky build gets
+  serialised); ABSENT stays absent so the executing side still picks its own
+  default. **The pin for it began as recorded-not-endorsed** — an agent found the
+  defect, could not touch `src/` under its rules, and pinned CURRENT behaviour
+  with the mechanism written out; flipping that pin to assert the fix is the
+  intended end of that loop, and the constraint produced a better outcome than
+  letting the agent patch src would have. Differential 80/0 → 75 pass / 5 fail.
+  **(2) The Runs CI-health strip has shown NO flaky count at all**, and the reason
+  it survived is the more useful half. `getFlakiest` returns `{tasks, total}`
+  since the F8 fix, but `RunsView` still read `.length` on that object, so the
+  value was permanently `undefined`. It degraded to '—' rather than a confident
+  zero — the value layer's absence rule doing exactly its job — but the number
+  never reached the user. It now reads `total`, the workspace count, NOT
+  `tasks.length`, which is one page: reporting a page as the workspace total is
+  the precise lie the `{tasks, total}` shape was introduced to stop, and an older
+  serve omitting `total` correctly keeps rendering '—'. **Why nothing caught it:**
+  `vite build` is esbuild, so it never type-checks, and the UI tsconfig had no
+  `bun` types — every test file failed to resolve `bun:test`, burying the real
+  error in noise and making `tsc --noEmit` useless. With `"types": ["vite/client",
+"bun"]` and two latent `undefined` assertions fixed, **the UI now type-checks
+  clean (exit 0)** for the first time — closing part of the standing hole, since
+  `packages/cloud/ui` is excluded from the ROOT oxlint and oxfmt too. **Surfaces
+  covered:** `protocol.ts` (the RunOptions⇄RunRequest mapping — the `--tag` class,
+  where a flag reached the parser and the schema but never the request, so a
+  delegated run silently ignored it; the load-bearing tests read the SOURCE
+  because an omission has no runtime shape, asserting that RunOptions partitions
+  EXACTLY into wire fields plus an explicit host-only list, and that every
+  RunRequest field is named in both mapper bodies), `fingerprint.ts` (folded into
+  every cache key, so stability and sensitivity both — the sharpest case being
+  that the digest must not depend on the ORDER lockfiles were created, since that
+  is what differs between a laptop and a fresh CI checkout and would make a shared
+  remote cache never hit), the options/timeout precedence ladders, `plan.ts`,
+  `config-eval.ts`'s data-URL Worker, `protocol-dist.ts`'s v2 wire, the UI value
+  layer, and **`analytics-routes.ts` — 525 lines that ZERO cloud tests referenced,
+  the largest single gap in the package**, now 97 tests driving real requests
+  against a real server on ephemeral Postgres (clamps, a hostile
+  `from=0&to=1e15&limit=1e9` staying bounded, malformed encoding answering 400 not
+  500, and the tenant clamp proven with a decoy workspace). **Three findings filed
+  as their own waves rather than patched here.** (a) **The 32-bit timer clamp is a
+  PATTERN, not a one-off** — a timeout ≥ 2^31 does not fit a signed 32-bit delay,
+  so `setTimeout` silently clamps to **1ms**, the exact inverse of the request;
+  Bun prints a TimeoutOverflowWarning a CI log swallows. Two agents found it
+  independently at two sites — `VX_TEARDOWN_TIMEOUT_MS` (every telemetry flush
+  times out, every buffered record dropped) and `VX_CONFIG_WORKER_TIMEOUT_MS`
+  (every worker config load times out, breaking `vx watch`) — which is what makes
+  it a class worth sweeping rather than two spot fixes. (b) `n = Number(v)` in the
+  UI value layer maps `null` → **0** while `undefined` → NaN, so a field arriving
+  as JSON `null` renders a confident `0 B` / `<1ms` and gets PAINTED instead of
+  '—'; same class as the "Flaky tasks: 0" tile, still open for one input shape,
+  and reachable because `null` is what a SQL aggregate over zero rows returns. (c)
+  the Turbo/Nx six, unchanged. **Method notes, and two are about my own work.**
+  The mutation counts show where weight sits: `break` instead of `continue` in the
+  fingerprint fold fails **19** (it silently stops tracking every LATER entry, the
+  workspace definition most of all, since it is declared last), forgetting `tags`
+  in `optionsToRequest` fails 4 (the real shipped bug), hard-coding the path
+  separator fails 16, `absent()` always-false in the value layer fails 44.
+  **A guard of mine had a hole and only a fixture typo revealed it:** the dist-wire
+  completeness check parsed the union for inline object literals, but a member can
+  also be a bare INTERFACE NAME — so `agent:hello`, the union's one named member
+  AND the carrier of `ownerSubmissionId`, was never tested. Had the fixture been
+  correct the file would have passed 38/38 while covering six of seven kinds.
+  Named members now resolve to their declaration, with a THROW when one cannot be.
+  **And a mutation of mine was caught by nothing:** `ratioFmt` dividing by zero,
+  because every case I had yields NaN through plain division anyway — the guard is
+  `b > 0`, so only a NEGATIVE denominator distinguishes it (ungated it renders
+  '-250.0%'). That case was added rather than the hole left. **Process:** the
+  workflow died twice more (usage limits, then silently), so most of this was
+  written directly; the durable lesson is that **`ps aux | grep bun` is NOT a
+  liveness signal for agents** — I read zero processes as "dead" twice and nearly
+  overwrote a live agent's 26 KB in-progress file, saved only by the Write tool's
+  read-before-write guard. Transcript mtimes are the signal. Same class as the
+  2026-07-27 quiet-transcript mistake, now recorded in the plan doc as well.
+  Gates: fmt/lint 0 from the ROOT, core **2157/0** across 104 files, cloud 942/3
+  where all three are the documented browser-suite load flakes (each passes
+  isolated: workspace-context 11/0, ui-perf 5/0, visual 9/1 on the known
+  `task-detail` drift at **1.56% / 99580 px**, matching the recorded figure — and
+  the **Runs** shot, the surface this wave's UI fix touched, PASSES).
+
 - **2026-07-29**: **Eight core surfaces that had NO test file now have one, and
   the Turbo/Nx research found six reproduced defects nobody had a test for**
   (owner: "add more tests. 3x what we have… Check nx and turbo repo make sure we
