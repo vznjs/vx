@@ -288,10 +288,12 @@ describe('affectedProjects', () => {
       ? 'present'
       : `MISSING — root ${existsSync(root) ? `holds [${readdirSync(root).join(', ')}]` : 'is gone'}`
     expect(fixture).toBe('present')
+    // `-a` instead of a separate `git add .`: file.txt is tracked from the
+    // fixture's initial commit, so staging tracked modifications is exactly
+    // equivalent here and halves the subprocess count (150 spawns → 100).
     for (let i = 0; i < 50; i++) {
       await writeFile(path.join(root, 'packages/b/file.txt'), `b-v${i}`)
-      await git(root, 'add', '.')
-      await git(root, 'commit', '-q', '-m', `b-${i}`)
+      await git(root, 'commit', '-q', '-a', '-m', `b-${i}`)
     }
     // Assert the fixture BEFORE the behaviour under test. `HEAD~50` only
     // resolves if all 50 commits landed, and if one silently didn't, the
@@ -301,7 +303,20 @@ describe('affectedProjects', () => {
     expect(new TextDecoder().decode(count.stdout).trim()).toBe('51')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~50', projects })
     expect([...out]).toEqual(['b'])
-  })
+    // An explicit budget, because the DEFAULT one was never chosen for this
+    // test. It performs 100 real git subprocess spawns; at the ~30-50ms a
+    // spawn costs on a loaded shared runner that is 3-5s, so bun's 5s default
+    // sits right on the line — and this is the THIRD time it has redded CI
+    // (see the two prior occurrences described above, both of which pointed
+    // away from the cause).
+    //
+    // Raising a timeout is usually the wrong instinct and this file's own
+    // history says so, but the distinction the decision log draws applies
+    // here: the watch flake failed by LOSING an event, so more time could
+    // never help. This one fails by running long — the last CI failure
+    // overshot by 63ms — and the work it does is genuinely several seconds.
+    // The bound still catches a real hang, which is what it is for.
+  }, 30_000)
 })
 
 describe('defaultAffectedBase', () => {
