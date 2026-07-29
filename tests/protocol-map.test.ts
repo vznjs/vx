@@ -340,7 +340,9 @@ describe('falsy values are transmitted, not swallowed', () => {
   const cases: ReadonlyArray<readonly [string, Partial<RunOptions>, (r: RunRequest) => unknown]> = [
     ['retries: 0 — explicitly no retries', { retries: 0 }, (r) => r.retries],
     ['timeout: 0', { timeout: 0 }, (r) => r.timeout],
-    ['concurrency: 0', { concurrency: 0 }, (r) => r.concurrency],
+    // `concurrency: 0` is NOT in this table — see the rejection block below.
+    // Zero workers is not a legal value that happens to be falsy; it is the
+    // one value that makes the run hang.
     ['memory: 0', { memory: 0 }, (r) => r.memory],
     ['frozen: false', { frozen: false }, (r) => r.frozen],
     ['summarize: "" — the bare-flag default', { summarize: '' }, (r) => r.summarize],
@@ -372,6 +374,66 @@ describe('falsy values are transmitted, not swallowed', () => {
     const req = optionsToRequest({ tasks: ['t'], cwd: '/w', tags: {} })
     expect(req.tags).toEqual({})
     expect('tags' in req).toBe(true)
+  })
+})
+
+describe('the wire refuses a worker count that would wedge the run', () => {
+  // A request is UNTRUSTED input — it may arrive over a socket from a client
+  // this process never validated. `vx run` itself is safe, because the parser
+  // refuses `--concurrency` below 1; nothing guarded the wire.
+  //
+  // Zero is not merely an odd value: the scheduler dispatches under
+  // `while (active < concurrency)`, which never fires at 0, so the "all
+  // outcomes in and nothing active" resolve condition is never reached and the
+  // run promise NEVER SETTLES. Reproduced before the guard existed, on a
+  // one-task workspace: the process had to be killed at an 8s timeout.
+  //
+  // On a serve that is worse than a failed run — the submission slot hangs
+  // with it.
+  const wedging: ReadonlyArray<readonly [string, number]> = [
+    ['0 — no worker ever starts', 0],
+    ['-1', -1],
+    ['-1000', -1000],
+  ]
+
+  for (const [what, concurrency] of wedging) {
+    it(`refuses concurrency ${what}`, () => {
+      expect(() => requestToOptions({ tasks: ['t'], cwd: '/w', concurrency })).toThrow(
+        /invalid concurrency/,
+      )
+    })
+  }
+
+  it('refuses a fractional worker count', () => {
+    // 0.5 does not hang (0 < 0.5 admits one task) but it is not a worker
+    // count either, and the CLI refuses it — the wire should not be the
+    // laxer door.
+    expect(() => requestToOptions({ tasks: ['t'], cwd: '/w', concurrency: 2.5 })).toThrow(
+      /invalid concurrency/,
+    )
+  })
+
+  it('refuses NaN and Infinity', () => {
+    for (const n of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(() => requestToOptions({ tasks: ['t'], cwd: '/w', concurrency: n })).toThrow(
+        /invalid concurrency/,
+      )
+    }
+  })
+
+  it('accepts 1 and any larger integer', () => {
+    // The guard must not overshoot: single-worker runs are ordinary, and
+    // `--concurrency 1` is how a user serialises a flaky build.
+    for (const n of [1, 2, 16, 1024]) {
+      expect(requestToOptions({ tasks: ['t'], cwd: '/w', concurrency: n }).concurrency).toBe(n)
+    }
+  })
+
+  it('still treats an ABSENT concurrency as "use the default"', () => {
+    // Absent must stay absent rather than becoming an error or a hard-coded
+    // number — the executing side picks the default from its own CPU count.
+    const opts = requestToOptions({ tasks: ['t'], cwd: '/w' })
+    expect('concurrency' in opts).toBe(false)
   })
 })
 

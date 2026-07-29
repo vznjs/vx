@@ -4,6 +4,7 @@
 // local unix/ws hop today or a hosted `wss://` link tomorrow. Pure types +
 // the RunOptions⇄RunRequest mapping; no transport, no execution here.
 
+import { UserError } from '../util/index.js'
 import type { CachePolicy } from '../cache/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import type { OutcomeView, WireEvent } from './events.js'
@@ -123,11 +124,28 @@ export function optionsToRequest(options: RunOptions): RunRequest {
  * Rebuild `RunOptions` from a request, for the side that actually executes
  * (the local backend, or the service). The caller adds the host-side
  * fields it needs (`bus`, `log`, `handleSignals`).
+ *
+ * This is the one choke point every executing side goes through, and a request
+ * is untrusted input — it may arrive over a socket from a client this process
+ * did not validate. So the few fields that can wedge a run are checked here
+ * rather than in each consumer.
  */
 export function requestToOptions(request: RunRequest): RunOptions {
   const options: RunOptions = { cwd: request.cwd, tasks: [...request.tasks] }
   if (request.projects !== undefined) options.projects = [...request.projects]
-  if (request.concurrency !== undefined) options.concurrency = request.concurrency
+  if (request.concurrency !== undefined) {
+    // A non-positive worker count HANGS the run forever rather than failing:
+    // the scheduler dispatches under `while (active < concurrency)`, which
+    // never fires at 0, so the "all outcomes in and nothing active" resolve
+    // condition is never reached and the promise never settles. `vx run`
+    // itself is safe (the parser refuses `< 1`), but nothing guarded the wire,
+    // so a submitted `concurrency: 0` wedged the run — and on a serve, the
+    // submission slot with it.
+    if (!Number.isInteger(request.concurrency) || request.concurrency < 1) {
+      throw new UserError(`invalid concurrency: ${String(request.concurrency)}`)
+    }
+    options.concurrency = request.concurrency
+  }
   if (request.cache !== undefined) options.cache = request.cache
   if (request.cacheDir !== undefined) options.cacheDir = request.cacheDir
   if (request.continueMode !== undefined) options.continueMode = request.continueMode
