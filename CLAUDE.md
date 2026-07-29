@@ -326,9 +326,48 @@ write a plausible cause into the log that you have not proven.
   ENDED, Cache by where the result CAME from — they deliberately overlap and do
   not sum to the total), and the cache meter partitions the WHOLE run including
   skipped, because otherwise the two meters would disagree about the size of
-  the same run. Gates: fmt/lint 0 from the ROOT, core **2388/0** (21 skip =
-  sandbox). NO CACHE_VERSION/SCHEMA/wire bump — tests plus one dead
-  `eslint-disable` directive naming a linter this repo does not use.
+  the same run. **The cloud half, +136:** `cli/mcp.ts` (329 lines, NO dedicated
+  test file — three incidental assertions in server.test.ts were the whole of
+  it) gets the same data-not-echo treatment as core's, plus a two-way
+  tools/list↔dispatcher cross-check and hard pins on the LOSSY COERCIONS a
+  caller cannot see (`run_trends` silently falls back to hourly for anything
+  not exactly `'day'`; its limit takes the LAST n points). And the eight
+  migrations, which had no assertion of what they BUILD — `db-migrate` covers
+  the runner, so re-reading DDL strings would prove nothing when later
+  migrations alter earlier ones' work (0007 indexes 0004's table, 0008 adds a
+  column to it); every assertion now interrogates `information_schema` /
+  `pg_catalog` after a real migrate. **Two shapes worth reusing:** the
+  tenant-axis test asserts EVERY index on the four analytics tables leads with
+  `workspace_id` except three NAMED exemptions with their reasons, so a new
+  index without one forces a deliberate entry rather than silently shipping a
+  cross-tenant scan (a companion test re-asserts the three still lead with what
+  they claim, so the exemption cannot hide a rename); and the most valuable
+  assertion is of an ABSENCE — the four analytics tables carry `workspace_id`
+  with NO foreign key deliberately, because an FK off a range-partitioned table
+  would validate across every partition, so **adding the "missing" FK now fails
+  two tests.** Three more findings from that half: an invite's `used_by` omits
+  `ON DELETE` while its sibling `created_by` has SET NULL (a future
+  account-deletion route would fail for exactly the users who onboarded via
+  invite); `GITHUB_RUN_ATTEMPT` alone is read with `??` rather than the
+  empty-string guard every sibling uses, which becomes a distributed PAIRING
+  failure when submitter and agent see different values; and `hashPassword` is
+  unguarded where `verifyPassword` is. **A fourth way mutation testing lies,
+  from that agent:** one mutation survived because the ALTER hit the WRONG
+  TABLE — its own targeting error, corrected rather than reported as a passing
+  result. Gates: fmt/lint 0 from the ROOT, core **2388/0** (21 skip = sandbox),
+  cloud **1134/1** (the documented pre-existing `visual > task-detail` baseline
+  drift). NO CACHE_VERSION/SCHEMA/wire bump — tests, one test-budget change,
+  and one dead `eslint-disable` directive naming a linter this repo does not
+  use. **Also fixed: the 50-commit `affected` test's THIRD CI red.** It does
+  100 real git spawns on bun's DEFAULT 5s budget — one nobody chose for it —
+  and overshot by 63ms. Given an explicit bound plus a halving of the spawns
+  (`git commit -a`, since the file is tracked from the initial commit; 708 →
+  577 ms measured interleaved). Stated plainly in the commit: on a dev machine
+  the loop runs well under a second either way, so **the budget is the fix and
+  the spawn cut is not** — the runner is ~7× slower at spawning git. This is
+  the one case where raising a timeout is right rather than papering over: the
+  watch flake failed by LOSING an event, so more time could never help; this
+  one fails by running long.
 
 - **2026-07-29**: **Writing the tests found two shipped defects and fixed them —
   a wire value that HANGS a run, and a dashboard number that never rendered**
