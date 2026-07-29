@@ -340,7 +340,6 @@ describe('structure', () => {
       view({ taskId: 'a#build', status: 'failed', exitCode: 1 }),
       view({ taskId: 'b#build', status: 'cache-hit', storedDurationMs: 500 }),
     ])
-    // eslint-disable-next-line no-control-regex
     expect(/\[/.test(md)).toBe(false)
   })
 })
