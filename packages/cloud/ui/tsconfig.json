@@ -15,7 +15,7 @@
     "noEmit": true,
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
-    "types": ["vite/client"]
+    "types": ["vite/client", "bun"]
   },
   "include": ["src/**/*", "vite.config.ts", "uno.config.ts"],
   "exclude": ["dist", "node_modules"]

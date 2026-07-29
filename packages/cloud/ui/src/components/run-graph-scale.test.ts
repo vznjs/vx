@@ -109,7 +109,7 @@ describe('run-graph layout — wide dense DAG (~3000 nodes)', () => {
     // levelCount matches the independent longest-depth oracle.
     const oracle = depthOracle(nodes)
     expect(levelCount).toBe(oracle.levelCount)
-    for (const n of nodes) expect(pos.get(n.id)!.level).toBe(oracle.depthOf.get(n.id))
+    for (const n of nodes) expect(pos.get(n.id)!.level).toBe(oracle.depthOf.get(n.id)!)
   })
 
   it('critical path equals the true longest-duration chain', () => {
@@ -122,7 +122,7 @@ describe('run-graph layout — wide dense DAG (~3000 nodes)', () => {
       sum += dur(cp.chain[i]!)
       if (i > 0) {
         const node = nodes.find((n) => n.id === cp.chain[i])!
-        expect(node.deps).toContain(cp.chain[i - 1])
+        expect(node.deps).toContain(cp.chain[i - 1]!)
       }
     }
     expect(sum).toBe(cp.totalMs)

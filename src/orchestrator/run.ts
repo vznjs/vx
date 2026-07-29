@@ -66,8 +66,11 @@ import type { RunOptions, RunSummary } from './options.js'
  * timeout default. A missing/empty/non-positive-integer value yields
  * `undefined` (ignored), so a typo never silently disables a task's own
  * `exec.timeout`.
+ *
+ * Exported for `tests/options-resolve.test.ts`, which pins every accepted
+ * and ignored form of this rung; it has no other caller outside this file.
  */
-function readTaskTimeoutEnv(): number | undefined {
+export function readTaskTimeoutEnv(): number | undefined {
   const raw = process.env['VX_TASK_TIMEOUT']
   if (raw === undefined || raw === '') return undefined
   const n = Number(raw)

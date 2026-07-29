@@ -318,7 +318,17 @@ export function RunsView() {
   const passRate24h = createMemo(() =>
     passRateWithin(invocationRows() ?? [], 24 * 60 * 60 * 1000, Date.now()),
   )
-  const flakyCount = () => flaky()?.length
+  // `total` — the workspace count — NOT `tasks.length`, which is one page.
+  // `getFlakiest` returns `{tasks, total}`; this read `.length` on that object
+  // and was therefore permanently `undefined`, so the tile has rendered '—'
+  // ever since the shape changed. It degraded to "unknown" rather than a
+  // confident zero (the value layer's absence rule doing its job), but the
+  // count never reached the strip.
+  //
+  // An older serve omits `total`, and '—' is the RIGHT answer there: reporting
+  // the page length as the workspace count is the exact lie the `{tasks,
+  // total}` shape was introduced to stop.
+  const flakyCount = () => flaky()?.total
   const nonHermeticCount = () => hermeticity()?.divergent.length
 
   // Serve-side queue state, polled at 2s while the view is mounted (an
