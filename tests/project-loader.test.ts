@@ -181,6 +181,119 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/absolute paths are not allowed/)
     })
 
+    // Two refusals for glob forms that currently select NOTHING and say so
+    // nowhere. Both were reproduced end-to-end against the Turbo/Nx parity
+    // research (docs/design/turbo-nx-parity-2026-07.md); both are refusals
+    // rather than semantic changes, so no working config's cache key moves
+    // and no CACHE_VERSION bump is owed — a config using either form was
+    // already broken, just silently.
+
+    it('rejects a cache.inputs.files list that is ONLY negations', async () => {
+      // The sharpest of the six parity defects, and two independent research
+      // passes reached it from different upstreams by different methods.
+      // `resolveFiles` builds its set from the POSITIVE globs and uses `!`
+      // entries only to subtract, so with no positive pattern it returns [] —
+      // the task folds ZERO file inputs and its key stops moving with its
+      // source. Every gitignore-trained reader parses this as "everything
+      // except specs". Turbo makes it a hard config error for the same reason.
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['!**/*.spec.ts'] }, outputs: { files: ['dist/**'] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/every entry is a negation/)
+      // The message has to carry the fix, because the reader's mental model is
+      // the one that produced the bug.
+      await expect(loadProjectConfig(file)).rejects.toThrow(/\*\*\/\*/)
+    })
+
+    it('accepts negations ALONGSIDE a positive glob — that form works', async () => {
+      // The control. Negation is a supported and useful feature; only the
+      // degenerate all-negations list selects nothing. Without this the
+      // refusal above could have been implemented as "reject any negation"
+      // and still passed.
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: {
+            inputs: { files: ['src/**', '!**/*.spec.ts'] },
+            outputs: { files: ['dist/**'] },
+          },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+    })
+
+    it('accepts an EMPTY cache.inputs.files list', async () => {
+      // Empty is a different statement from all-negations: it declares no file
+      // inputs at all, which is legitimate for a task keyed only on env or
+      // upstream hashes. Refusing it would break working configs.
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: [] }, outputs: { files: ['dist/**'] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+    })
+
+    it('rejects a negation in cache.outputs.files (unsupported, silently matches nothing)', async () => {
+      // Asymmetric with inputs on purpose: `resolveOutputs` never splits on
+      // '!', so the entry is read as a literal path beginning with '!' and
+      // matches nothing at all. A user who writes it believes they excluded
+      // something from the artifact; they excluded nothing and declared a
+      // nonexistent output.
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(
+        file,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '!dist/*.map'] } },
+        } } }`,
+      )
+      await expect(loadProjectConfig(file)).rejects.toThrow(/negation is not supported/)
+    })
+
+    it('rejects a negation-only cache.inputs.workspaceFiles, and a negation in outputs.workspaceFiles', async () => {
+      // The workspace-anchored namespace has the SAME split in both
+      // directions — `resolveWorkspaceFiles` returns [] with no positive
+      // glob, `resolveWorkspaceOutputs` never splits — so both rules apply
+      // there too. Missing this pair would leave the documented escape hatch
+      // carrying exactly the defect just closed on the project-relative one.
+      const inputsOnly = path.join(dir, 'ws-in.mjs')
+      await writeFile(
+        inputsOnly,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: {
+            inputs: { files: ['src/**'], workspaceFiles: ['!tsconfig.json'] },
+            outputs: { files: ['dist/**'] },
+          },
+        } } }`,
+      )
+      await expect(loadProjectConfig(inputsOnly)).rejects.toThrow(/every entry is a negation/)
+
+      const outNeg = path.join(dir, 'ws-out.mjs')
+      await writeFile(
+        outNeg,
+        `export default { tasks: { build: {
+          exec: { command: 'tsc' },
+          cache: {
+            inputs: { files: ['src/**'] },
+            outputs: { files: ['dist/**'], workspaceFiles: ['!generated/x'] },
+          },
+        } } }`,
+      )
+      await expect(loadProjectConfig(outNeg)).rejects.toThrow(/negation is not supported/)
+    })
+
     it('rejects non-string entries in cache.outputs.files', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(

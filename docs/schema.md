@@ -1123,6 +1123,8 @@ and surfaces `UserError` (clean output, no stack):
 | `cache.inputs.tasks must be an array of non-empty strings`                          | Non-string / empty entry, or a bare string.        |
 | `cache.outputs is required when cache is set`                                       | Forgot `outputs`.                                  |
 | `cache.outputs.files must be an array`                                              | Wrong shape.                                       |
+| `cache.inputs.files: every entry is a negation, which selects NOTHING`              | Only `!` globs — nothing to subtract from.         |
+| `cache.outputs.files: negation is not supported`                                    | Output globs are never split on `!`.               |
 | `description must be a string`                                                      | Non-string description.                            |
 
 **Unknown fields are rejected**, not ignored, at every level that feeds
