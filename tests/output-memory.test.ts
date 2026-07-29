@@ -80,11 +80,23 @@ describe('logger per-task buffering', () => {
       expect(fullMany - fullFew).toBeGreaterThan(EXTRA_MIB * 0.5)
 
       // `none` guarantees "no per-task output at all", so it must not pay for
-      // output it will never print: tripling the volume must not move it. The
-      // slack covers GC noise while staying far under the 160 MiB the extra
-      // chunks would cost if they were retained (before the fix both modes
-      // grew together).
-      expect(noneMany - noneFew).toBeLessThan(EXTRA_MIB * 0.25)
+      // output it will never print: tripling the volume must not move it much.
+      //
+      // The bound is 0.5 rather than something tight because RSS is a
+      // HIGH-WATER MARK, so this can never be perfectly flat. The probe has to
+      // allocate each 4 MiB chunk before the logger can discard it, and the
+      // 60-chunk run therefore touches more pages than the 20-chunk one even
+      // though nothing is retained. Forcing a collection does not help —
+      // measured `Bun.gc(true)` before the reading: Δ was 8 MiB with it and
+      // 9 without, because JSC does not return the pages to the OS. So the
+      // residual is allocator high-water, not garbage, and it grows with
+      // machine load. A tighter 0.25 bound passed here (measured Δ of −3..+5
+      // across reps) and still failed on a loaded CI runner.
+      //
+      // 0.5 keeps the assertion sharp: retention costs the FULL 160 MiB, which
+      // is 2x this bound, while the observed noise is ~10x below it. Verified
+      // by mutation — making `none` retain fails this line.
+      expect(noneMany - noneFew).toBeLessThan(EXTRA_MIB * 0.5)
     },
     TIMEOUT,
   )
