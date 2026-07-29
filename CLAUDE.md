@@ -246,6 +246,90 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-29**: **The function that derives EVERY cache key had no direct test,
+  and four more load-bearing surfaces were thin** (third wave of the 3x
+  directive; core **2157 → 2388** across 104 → 110 files, +231). The selection
+  rule this wave: not "what is untested" but "what is load-bearing AND thin",
+  because the two are different lists and only the second is worth the tokens.
+  **`computeTaskHash` was the headline gap** — `tests/task-hash.test.ts` covers
+  only `computeGroupHash`, so the derivation itself was reachable only through
+  e2e runs, which exercise it but pin none of its rules. That is the worst
+  possible place to have none: a wrong key does not throw and does not fail a
+  run, it replays a stale artifact and reports `up-to-date`, and **eight
+  separate stale-hit defects in this log route through that function.**
+  Assertions are split SENSITIVITY vs STABILITY because both directions are
+  load-bearing — missing sensitivity is a stale hit, missing stability is a
+  cache that never hits — and several encode decisions this log says would cost
+  a CACHE_VERSION bump to reverse (`exec.resources` stripped so tuning a
+  reservation never busts a cache; `timeout`/`retries` sitting beside it in the
+  same object deliberately NOT stripped, so the obvious "strip the rest too"
+  refactor has to fail a test first). **The lockfile boundary**
+  (`readLockfile` is committed + hand-editable, so its rejections are messages
+  read while CI is red — the messages are asserted, not just the throws) plus
+  the ASYMMETRY that reads like a bug: a `--frozen` run trusts the lock and
+  checks nothing, not even the configHash it carries, so a hand-tampered lock
+  IS executed. Pinned with the reasoning attached (`--check` re-evaluates
+  everything; a byte-hash re-check would be redundant AND weaker, since a file
+  hash cannot see an import closure or an env read), so anyone tightening it
+  changes `--check` instead. **The wire round-trip** — `wireForwarder` and
+  `createWireRenderer` are documented inverses guaranteeing a delegated run
+  renders like a local one, each had its own tests, and NOTHING drove them
+  together; that is exactly how the 2026-07-27 skipped-task drop survived,
+  since the fix landed producer-side where neither side's own tests could see
+  it. Three asymmetries pinned as deliberate rather than smoothed over (a skip
+  gets a synthesized start so the delegated arm has MORE calls; groups are
+  filtered at the source and never cross; the duplicate `run:end` is deduped
+  while the footer between the two ends still crosses). Transport constraints
+  are ASSERTED not assumed — a raw outcome genuinely throws on
+  `JSON.stringify` from its bigint wallclock, and the round-trip renders from
+  JSON-revived copies. **The markdown run report** (no dedicated file despite
+  three defects, every one a WRONG NUMBER rather than a crash) and **the
+  summary meters** (the allocation under the legend: a bar is always 50 cells,
+  and a non-zero bucket always gets one — without which `1 failed` of 400
+  floors to zero and renders an ALL-GREEN bar over a red legend; swept over
+  2000 generated tallies because the interesting inputs are where rounding and
+  the min-one correction interact). Plus **the core MCP surface** (371 lines
+  against 16 tests) via agent: scope tests assert on the DATA not the echo,
+  since the original defect was advertising a scope, ignoring it, AND echoing
+  it back; the stdio block drives a REAL `bun src/bin.ts mcp` subprocess
+  because `mcp.ts` owns no framing. **Nine findings pinned as wrong-but-current
+  rather than fixed** (task #68): the MCP header advertises a `runTasks` tool
+  that does not exist — the one listed tool that would MUTATE the machine, so a
+  reader concludes `vx mcp` can execute builds; a non-numeric `limit` silently
+  becomes 50 and an `Infinity` limit collapses to ONE row, so an agent reaching
+  for everything may conclude the workspace ran one task; a non-string project
+  filter is ignored with no echo revealing it; `split('#', 2)` truncates a
+  three-segment id while echoing the full one, and history splits the same
+  string the OTHER way; an empty cache reports `hitRate24h: 0`, byte-identical
+  to a cache that hit nothing; a read-only RPC materializes a cache.db wherever
+  cwd points; and `readLockfile` has NO `Array.isArray` guard anywhere while
+  `validateProjectConfig` one layer down has one explicitly, so a `projects`
+  array validates as a project named "0" and a top-level array misreports as
+  "unsupported version undefined". **Method, and it is the transferable part —
+  three near-misses, each a different failure of mutation testing itself.**
+  (1) **A test was DELETED rather than shipped:** it claimed to verify the
+  lockfile's POSIX path normalization, but on Linux `path.relative` already
+  returns POSIX separators, so `relPosix` is the IDENTITY and the assertion
+  passed with or without it — replacing it with a bare `path.relative` killed
+  nothing. Same class as the `toPosix` hazard recorded in `util-paths`; the gap
+  is now recorded in place so nobody re-adds the passing-both-ways version.
+  (2) **A mutation NEVER APPLIED** — the pattern did not match, so the run
+  proved nothing, and it was only caught by checking `git diff --stat` after
+  each mutation. **A mutation must be verified to have changed the file before
+  its result means anything.** (3) **Two mutations applied and were invisible
+  because the FIXTURES were too realistic:** a 4ms cache restore and a 0ms
+  group both round away in a formatted total, so the guards could be deleted
+  without failing. Fixtures for a rounding-sensitive assertion need values large
+  enough for the guard to be observable. **Two corrections where I was wrong and
+  the code was right,** both recorded because both are easy to re-derive
+  incorrectly: `successful` COUNTS cache hits (Tasks partitions by how a task
+  ENDED, Cache by where the result CAME from — they deliberately overlap and do
+  not sum to the total), and the cache meter partitions the WHOLE run including
+  skipped, because otherwise the two meters would disagree about the size of
+  the same run. Gates: fmt/lint 0 from the ROOT, core **2388/0** (21 skip =
+  sandbox). NO CACHE_VERSION/SCHEMA/wire bump — tests plus one dead
+  `eslint-disable` directive naming a linter this repo does not use.
+
 - **2026-07-29**: **Writing the tests found two shipped defects and fixed them —
   a wire value that HANGS a run, and a dashboard number that never rendered**
   (the second wave of the 3x directive; core **2077 → 2157**, cloud **663 → 983**,
