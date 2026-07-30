@@ -206,6 +206,39 @@ describe('workspaceFiles outputs ignore project boundaries, so any two tasks can
   })
 })
 
+describe('the check must not cost the graph its linearity', () => {
+  it('stays near-linear at 1000 projects x 10 tasks', () => {
+    // The first cut of this check compared ALL PAIRS of nodes and filtered by
+    // project inside the loop. That is quadratic in the whole graph, and it
+    // measured 1614 ms at this shape — on every run, against a ~120 ms warm
+    // run. Indexing by project first (and by "declares workspaceFiles" for the
+    // boundary-free namespace) took it to ~17 ms, of which ~5 ms is the check.
+    //
+    // Same failure mode as the scheduler's priority closure, which took 8.5 s
+    // on a 1090-package repo before it was rewritten — so this is guarded
+    // rather than trusted. The bound is ~30x the measured cost: it separates
+    // an indexed pass from an accidental return to all-pairs (which would be
+    // seconds here), while staying robust to CI noise.
+    const PROJECTS = 1000
+    const TASKS = 10
+    const projects: Record<string, Record<string, TaskConfig>> = {}
+    for (let p = 0; p < PROJECTS; p++) {
+      const tasks: Record<string, TaskConfig> = {}
+      // Distinct literal outputs — the shape a real monorepo has, and the one
+      // that must NOT be flagged.
+      for (let t = 0; t < TASKS; t++) tasks[`task${t}`] = task([`dist/out-${t}.js`])
+      projects[`p${p}`] = tasks
+    }
+    let best = Infinity
+    for (let r = 0; r < 3; r++) {
+      const t0 = performance.now()
+      graph(projects)
+      best = Math.min(best, performance.now() - t0)
+    }
+    expect(best).toBeLessThan(600)
+  }, 120_000)
+})
+
 describe('the data loss itself, end to end', () => {
   it('a second task really does delete the first task’s output', async () => {
     // Proves the refusal is protecting against something real rather than a
