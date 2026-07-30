@@ -246,6 +246,55 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **Two surfaces disagreed by 300x about the same task's noise, and
+  the one that decides "regression or noise" was acting on two data points**
+  (task #77; the stability/noise surface, picked the same way as the wave before
+  it — `getStabilityFloors` was the ONLY analytics read method with **zero**
+  direct test references, and it is what the compare view judges every duration
+  delta against). **CONFIRMED by repro, and the fix direction is the sibling that
+  already got it right.** A task whose only repeated cache key ran exactly TWICE
+  (100ms, 300ms) yields `stddev_samp/mean` = **0.707** — a **707ms band on a
+  1000ms task**. Driven end-to-end through the real `compareRuns` and the real
+  client arithmetic, a genuine **+600ms (1.6x) slowdown on CHANGED inputs
+  rendered NEUTRAL**: no regression shown, from two points. The tell was the
+  inconsistency, not the statistic: `getLeastStableTasks` REFUSES to rank that
+  same task as unstable (`minRuns` 3, it has 2 samples), so the surface that
+  REPORTS instability had a minimum-evidence bar while the surface that
+  SUPPRESSES regression verdicts had none. The floor now applies the same bar;
+  below it the pair is simply ABSENT from the map, which is the safe direction
+  because the consumer already handles absence correctly — verified before
+  relying on it: `_noiseMs` stays undefined, `Number(undefined)` is NaN, and the
+  delta cell falls back to its heuristic band rather than to zero.
+  **CONFIRMED, and this one is a presentation cap silently changing a
+  statistic.** `getTaskStability`'s `LIMIT 20` sat INSIDE the per-key
+  aggregation, so `cvMedian`/`cvWorst`/`rangeMedian`/`samples`/`keys` were all
+  computed over the truncated set — contradicting their own docstrings ("sum
+  over keys with >= 2 runs", "distinct cache keys that were executed more than
+  once") and, worse, contradicting the floor. Measured on a 25-key task: the
+  card reported a typical spread of **+/-64.1%** (median of the 20 most-RUN
+  keys) while the compare view judged the very same task with **+/-0.2%**
+  (median of all 25). Same task, same window, same rows. The summary now
+  aggregates over ALL qualifying keys and the table takes the **widest-spread**
+  `limit` of them — which is what "widest spread first" means once a cap exists,
+  and which makes `cvWorst === byKey[0].cv` true BY CONSTRUCTION even when the
+  list is truncated (an invariant the existing test already pinned, and which
+  capping by run-count would have quietly broken the day a task exceeded 20
+  keys). Two bounded queries over a shared CTE, never a per-key fan-out.
+  **REFUTED by execution, so nobody re-audits:** the tenant clamp holds on all
+  three methods (a foreign workspace's rows leave ours bit-identical; measured
+  ours 0.0196 vs theirs 0.9967); the window bound really bounds (a 200-day-old
+  key is absent at the 90d default and present at 365d — re-checked with THREE
+  samples, because the first check used two and the new minimum-evidence bar
+  would have confounded it); cache hits and failures never feed any of the three
+  (all three share the executed-success-and-keyed filter); and the consumer key
+  format is consistent — `pairKey` is `JSON.stringify([project, task])` and
+  `compareRuns` looks up through the SAME function, so the `p#task` mismatch I
+  first suspected was **my probe's bug, not the code's**. Differentials, each
+  isolating its own fix: dropping the floor's minimum-evidence bar fails 1,
+  re-truncating the summary population fails 1. NO schema/wire/CACHE bump —
+  read-side query shape only, and `getStabilityFloors` gained an optional
+  `minRuns` matching its sibling's.
+
 - **2026-07-30**: **A reaped agent could still speak for work it no longer held —
   garbling one task's log with two machines' output, and authoring the run's
   verdict from a box the serve had already declared dead** (task #76; the

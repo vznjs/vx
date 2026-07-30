@@ -2928,12 +2928,23 @@ export class Analytics {
    */
   async getStabilityFloors(
     workspaceId: string,
-    args: { sinceDays?: number } = {},
+    args: { sinceDays?: number; minRuns?: number } = {},
   ): Promise<Map<string, number>> {
     const since = Date.now() - clampInt(args.sinceDays ?? 90, 1, MAX_WINDOW_DAYS) * 86_400_000
+    // The SAME minimum-evidence bar `getLeastStableTasks` applies, and it has to
+    // be the same one: that surface REPORTS a task as unstable, this one SUPPRESSES
+    // regression verdicts for it, and it made no sense for the second to act on
+    // evidence the first refuses to publish. A task whose only repeated key ran
+    // exactly TWICE (100ms, 300ms) yields cv = 0.707 — a 707ms band on a 1000ms
+    // task — so a real 1.6x slowdown on changed inputs rendered NEUTRAL, from two
+    // data points. Below the bar the pair is simply absent from the map, which the
+    // consumer already handles: `_noiseMs` stays undefined and the delta cell falls
+    // back to its heuristic band rather than to zero.
+    const minRuns = clampInt(args.minRuns ?? 3, 2, 1000)
     const rows = await this.sql<{ project: string; task: string; cv: number | null }[]>`
       WITH per_key AS (
         SELECT project, task, hash,
+               count(*)::int AS n,
                avg(duration_ms)::float8 AS mean,
                stddev_samp(duration_ms)::float8 AS sd
         FROM task_runs
@@ -2948,7 +2959,8 @@ export class Analytics {
              percentile_cont(0.5) WITHIN GROUP (
                ORDER BY CASE WHEN mean > 0 THEN sd / mean ELSE 0 END
              )::float8 AS cv
-      FROM per_key GROUP BY project, task`
+      FROM per_key GROUP BY project, task
+      HAVING SUM(n) >= ${minRuns}`
     const out = new Map<string, number>()
     for (const r of rows) {
       if (r.cv !== null) out.set(pairKey(r.project, r.task), Number(r.cv))
@@ -3013,6 +3025,35 @@ export class Analytics {
   ): Promise<TaskStability> {
     const since = Date.now() - clampInt(args.sinceDays ?? 90, 1, MAX_WINDOW_DAYS) * 86_400_000
     const limit = clampInt(args.limit ?? 20, 1, 200)
+    // `limit` bounds the RENDERED per-key table, and only that. It used to sit
+    // inside the per-key aggregation, so every summary field below — cvMedian,
+    // cvWorst, rangeMedian, samples, keys — was computed over the truncated set
+    // while its own docstring says "sum over keys with >= 2 runs" and "distinct
+    // cache keys that were executed more than once". A presentation cap was
+    // silently changing a statistic, and the two surfaces then contradicted each
+    // other on the same task: measured on 25 keys, this card reported a typical
+    // spread of ±64.1% (median of the 20 most-RUN keys) while `getStabilityFloors`
+    // judged the very same task's deltas with ±0.2% (median of all 25).
+    //
+    // So the summary aggregates over ALL qualifying keys, and the table takes the
+    // widest-spread `limit` of them — which is what "widest spread first" means
+    // once a cap exists, and which keeps `cvWorst === byKey[0].cv` true even when
+    // the list is truncated. Two bounded queries, never a per-key fan-out.
+    const perKey = this.sql`
+        SELECT hash,
+               count(*)::int AS runs,
+               min(duration_ms)::int AS min_ms,
+               max(duration_ms)::int AS max_ms,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms)::float8 AS p50,
+               avg(duration_ms)::float8 AS mean,
+               stddev_samp(duration_ms)::float8 AS sd
+        FROM task_runs
+        WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
+          AND started_at >= ${since}
+          AND (cache_hit IS NULL OR cache_hit = false)
+          AND status = 'success'
+          AND hash IS NOT NULL AND hash <> ''
+        GROUP BY hash HAVING count(*) >= 2`
     const rows = await this.sql<
       {
         hash: string
@@ -3024,23 +3065,29 @@ export class Analytics {
         sd: number | null
       }[]
     >`
-      WITH ex AS (
-        SELECT hash, duration_ms FROM task_runs
-        WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task}
-          AND started_at >= ${since}
-          AND (cache_hit IS NULL OR cache_hit = false)
-          AND status = 'success'
-          AND hash IS NOT NULL AND hash <> ''
-      )
-      SELECT hash,
-             count(*)::int AS runs,
-             min(duration_ms)::int AS min_ms,
-             max(duration_ms)::int AS max_ms,
-             percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms)::float8 AS p50,
-             avg(duration_ms)::float8 AS mean,
-             stddev_samp(duration_ms)::float8 AS sd
-      FROM ex GROUP BY hash HAVING count(*) >= 2
-      ORDER BY count(*) DESC LIMIT ${limit}`
+      WITH per_key AS (${perKey})
+      SELECT * FROM per_key
+      ORDER BY CASE WHEN mean > 0 THEN sd / mean ELSE 0 END DESC NULLS LAST
+      LIMIT ${limit}`
+    const [totals] = await this.sql<
+      {
+        samples: number | null
+        keys: number
+        cv_median: number | null
+        cv_worst: number | null
+        range_median: number | null
+      }[]
+    >`
+      WITH per_key AS (${perKey})
+      SELECT SUM(runs)::int AS samples, count(*)::int AS keys,
+             percentile_cont(0.5) WITHIN GROUP (
+               ORDER BY CASE WHEN mean > 0 THEN sd / mean ELSE 0 END
+             )::float8 AS cv_median,
+             max(CASE WHEN mean > 0 THEN sd / mean ELSE 0 END)::float8 AS cv_worst,
+             percentile_cont(0.5) WITHIN GROUP (
+               ORDER BY CASE WHEN p50 > 0 THEN (max_ms - min_ms) / p50 ELSE 0 END
+             )::float8 AS range_median
+      FROM per_key`
 
     const byKey: StabilitySample[] = rows.map((r) => {
       const mean = Number(r.mean)
@@ -3057,18 +3104,12 @@ export class Analytics {
       }
     })
     byKey.sort((a, b) => b.cv - a.cv)
-    const median = (xs: number[]): number => {
-      if (xs.length === 0) return 0
-      const s = [...xs].sort((a, b) => a - b)
-      return s[Math.floor((s.length - 1) / 2)]!
-    }
-    const ranges = byKey.map((k) => (k.p50Ms > 0 ? (k.maxMs - k.minMs) / k.p50Ms : 0))
     return {
-      samples: byKey.reduce((acc, k) => acc + k.runs, 0),
-      keys: byKey.length,
-      cvMedian: median(byKey.map((k) => k.cv)),
-      cvWorst: byKey.length > 0 ? Math.max(...byKey.map((k) => k.cv)) : 0,
-      rangeMedian: median(ranges),
+      samples: Number(totals?.samples ?? 0),
+      keys: Number(totals?.keys ?? 0),
+      cvMedian: Number(totals?.cv_median ?? 0),
+      cvWorst: Number(totals?.cv_worst ?? 0),
+      rangeMedian: Number(totals?.range_median ?? 0),
       byKey,
     }
   }
