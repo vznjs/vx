@@ -279,6 +279,15 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
       // real CHECK RUN on the commit when the step was handed a GITHUB_TOKEN
       // (that hand-off IS the opt-in; the token is never ambient in Actions).
       // Nothing → decline, so a plain local `vx run` is still untouched.
+      // `?? prToken`, like every other rung (both backend paths and the cache).
+      // A FORK-PR job holds ONLY the PR token — that is the point, since repo
+      // secrets are not exposed to forks — so reading `token` alone sent the
+      // run summary with NO Authorization header at all, guaranteeing a 401:
+      // fork-PR runs never reached the dashboard and never got triage verdicts
+      // on their check. Which token is presented IS the tier, and the server
+      // decides what an untrusted bearer may do; sending none removes that
+      // decision and makes the answer always "no".
+      const ingestToken = conn?.token ?? conn?.prToken
       const ghaSummary = firstEnv('GITHUB_STEP_SUMMARY')
       const ghaCheck = githubCheckCandidate(process.env)
       if (conn === undefined && ghaSummary === undefined && !ghaCheck) return undefined
@@ -287,7 +296,7 @@ export function cloud(opts: CloudPluginOptions = {}): VxPlugin {
           ? {
               connection: {
                 baseUrl: conn.url,
-                ...(conn.token !== undefined ? { token: conn.token } : {}),
+                ...(ingestToken !== undefined ? { token: ingestToken } : {}),
               },
             }
           : {}),

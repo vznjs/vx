@@ -419,6 +419,60 @@ write a plausible cause into the log that you have not proven.
   empty). Gates from the ROOT: fmt/lint 0, cloud **1179/1** (+7), the 1 being the
   documented `visual > task-detail` baseline drift.
 
+- **2026-07-30**: **A fork-PR run could never reach the dashboard — telemetry
+  was the ONE rung that ignored the PR token** (second finding of the `cloud()`
+  plugin audit, and it was surfaced BY the fix before it: #226 made the refusal
+  audible, and the message it printed was wrong for this user, which is how the
+  cause showed itself). Three of the four rungs resolve their bearer as
+  `conn.token ?? conn.prToken` — both backend paths and the cache. The telemetry
+  rung read `conn.token` alone. **A fork-PR job holds ONLY `VX_CLOUD_PR_TOKEN`**
+  — that is the entire reason the PR token exists, since repo secrets are not
+  exposed to fork PRs — so its run summary went out with **no Authorization
+  header at all**, guaranteeing a 401. Reproduced: `authorization: [null]`.
+  Fork-PR runs never appeared in run history, and (same root cause, since
+  `fetchTriage` reads the same field) never got triage verdicts on their check
+  either. **The give-away was #226's own warning text.** With the ingest failure
+  now audible, the fork-PR case printed _"no token was sent; set
+  `VX_CLOUD_TOKEN`"_ — actively MISLEADING, because that user did configure a
+  token and the one it names cannot work in a fork. That is the argument for
+  fixing the SEND rather than the message: which token is presented IS the tier,
+  and the server decides what an untrusted bearer may do; sending none removes
+  the decision and makes the answer always "no". Precedence matches the other
+  rungs (trusted wins when a job holds both), pinned so a trusted job cannot
+  silently downgrade itself, with a no-token control proving the fallback does
+  not invent a credential. Differential: dropping `?? conn?.prToken` fails
+  exactly 1 of the 3 new pins — the other two are controls that must pass both
+  ways. NO CACHE_VERSION/SCHEMA/wire/migration bump. Gates from the ROOT:
+  fmt/lint 0, cloud **1190/1**, the 1 being the documented `visual >
+task-detail` drift. **Two REFUTED by executed probe, recorded so the next
+  audit does not re-tread them:** the sink does NOT buffer log tails it cannot
+  ship — I read `logsEnabled(opts)` being passed unconditionally and inferred a
+  waste path when a GHA summary activates the sink with no connection, but
+  `this.incremental = opts.connection !== undefined` wraps the whole `wants`
+  construction, so `wants` is `[]` and the chunk path is never projected (probed:
+  `GITHUB_STEP_SUMMARY` set, no connection → `wants: []`), and the comment
+  already states the reason. Timer hygiene is correct at both fetch sites —
+  clearable `AbortController` + `clearTimeout` in `finally`, never
+  `AbortSignal.timeout`, with the reason written at each. **Recorded, NOT fixed
+  (LOW, degradation-only):** `serveAdvertisesCacheWire`'s memo caches a
+  `false` for the life of the process, so a `vx watch` session that starts while
+  the serve is down never picks the remote cache back up even after it returns.
+  Narrow — it needs a CONNECTED ENVIRONMENT, since an explicit URL skips the
+  probe entirely — and it degrades to the local cache rather than answering
+  wrongly, so a negative-result TTL is a decision to take on its own rather than
+  a bug to slip into this wave. **Process, and it is a repeat offence of mine:**
+  I wrote a differential backup to a bare `/tmp/pl.bak`, the `cp` that should
+  have created it failed silently (a `cd` had persisted from an earlier command
+  in the same chain, so the relative source path missed), and the restore then
+  copied a **July-29 file left by a DIFFERENT session** over `plugin.ts`,
+  reverting the whole file to a month-old state. Caught immediately because the
+  next grep for my own fix returned zero, and recovered with `git checkout HEAD
+--` since the work was uncommitted and nothing else had touched that file.
+  This log ALREADY records the scratchpad-collision hazard and the rule ("use a
+  private, collision-proof scratchpad path per agent"); I reached for `/tmp`
+  anyway. Two rules, both cheap: use the session scratchpad dir, and never let a
+  `cd` persist across a compound command whose later steps use relative paths.
+
 - **2026-07-30**: **A refused cloud ingest was discarded in TOTAL SILENCE — the
   CI path pushed every run into a 401 and said nothing** (first finding of the
   `cloud()` plugin audit, the seam every connected workspace rides: 656 lines
