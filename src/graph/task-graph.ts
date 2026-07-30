@@ -364,7 +364,100 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   }
 
   detectCycle(nodes)
+  detectOutputCollisions(nodes)
   return nodes
+}
+
+/** A glob with no wildcard — it names exactly one path. */
+function isLiteralGlob(g: string): boolean {
+  return g.search(/[*?[\]]/) === -1
+}
+
+/**
+ * True only when two output globs PROVABLY select an overlapping set.
+ *
+ * Deliberately conservative, because the caller REFUSES the run: a false
+ * positive breaks a build that works today, which is worse than the defect
+ * being caught. So the three cases are exactly the ones that can be decided
+ * without a general glob-intersection algorithm:
+ *
+ *   both literal    — equal paths
+ *   literal vs glob — ask the glob whether it matches the literal (exact)
+ *   both globs      — only identical strings; anything else is undecided
+ *                     here and deliberately allowed through
+ *
+ * The rejected alternative was comparing each glob's static prefix. It is
+ * cheaper and catches more, but it is UNSOUND for a refusal — measured:
+ * `dist/vx-*` and `dist/other.txt` share the prefix `dist` while matching
+ * disjoint sets, so a prefix check refuses a legitimate config. (vx's own
+ * `build.bun.*` tasks escape only because they declare distinct literals.)
+ */
+function outputsOverlap(a: string, b: string): boolean {
+  if (isLiteralGlob(a) && isLiteralGlob(b)) return a === b
+  if (isLiteralGlob(a)) return new Bun.Glob(b).match(a)
+  if (isLiteralGlob(b)) return new Bun.Glob(a).match(b)
+  return a === b
+}
+
+/**
+ * Refuse a graph in which two tasks declare overlapping outputs.
+ *
+ * vx cleans a task's declared outputs before it runs AND before a cache-hit
+ * restore, so that the tree ends byte-identical to the cached artifact. That
+ * makes output ownership STRICT — and two tasks claiming the same path
+ * silently destroy each other's work, in whichever order they happen to run,
+ * while the run reports success. It is data loss with a green summary.
+ *
+ * This is a hazard vx CREATED: Turbo restores additively and cannot hit it,
+ * which is why no Turbo test surfaces it and why the parity research had to
+ * reproduce it end to end.
+ *
+ * Scope follows the two namespaces' reach. `outputs.files` is
+ * project-relative, so only tasks in the SAME project can collide;
+ * `outputs.workspaceFiles` is anchored at the workspace root and ignores
+ * project boundaries by design, so ANY two tasks can. No cache key changes —
+ * this only refuses a graph that was already destroying files.
+ */
+function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
+  const list = [...nodes.values()]
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i]!
+    for (let j = i + 1; j < list.length; j++) {
+      const b = list[j]!
+      // Project-relative outputs reach only inside their own project dir.
+      if (a.projectName === b.projectName) {
+        collide(a, b, a.config.cache?.outputs.files, b.config.cache?.outputs.files, 'files')
+      }
+      collide(
+        a,
+        b,
+        a.config.cache?.outputs.workspaceFiles,
+        b.config.cache?.outputs.workspaceFiles,
+        'workspaceFiles',
+      )
+    }
+  }
+}
+
+function collide(
+  a: TaskNode,
+  b: TaskNode,
+  aGlobs: readonly string[] | undefined,
+  bGlobs: readonly string[] | undefined,
+  field: 'files' | 'workspaceFiles',
+): void {
+  for (const ga of aGlobs ?? []) {
+    for (const gb of bGlobs ?? []) {
+      if (!outputsOverlap(ga, gb)) continue
+      throw new UserError(
+        `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
+          (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +
+          ` in cache.outputs.${field} — vx cleans a task's declared outputs before it runs and ` +
+          `before a cache-hit restore, so whichever of these runs second DELETES the other's ` +
+          `output and the run still reports success. Give each task its own output path.`,
+      )
+    }
+  }
 }
 
 function detectCycle(nodes: Map<string, TaskNode>): void {
