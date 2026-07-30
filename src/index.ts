@@ -55,7 +55,17 @@ export type {
   RunSummary,
 } from './orchestrator/index.js'
 export { defaultLogger, resolveOutputView } from './orchestrator/index.js'
-export { buildTaskGraph, expandRequested, isGroupTask, markSurfacedDeps } from './graph/index.js'
+// `splitTaskId` is on the façade because the alternative is what happened:
+// with only `taskId()` to JOIN an id and nothing exported to SPLIT one,
+// consumers roll their own `split('#', 2)` and drift from the graph, which
+// splits on the FIRST '#'.
+export {
+  buildTaskGraph,
+  expandRequested,
+  isGroupTask,
+  markSurfacedDeps,
+  splitTaskId,
+} from './graph/index.js'
 export type {
   OutputFingerprint,
   TaskNode,

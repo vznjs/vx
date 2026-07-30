@@ -2483,3 +2483,38 @@ describe('skipped rows never skew a rate, a mean or a run count', () => {
     expect(detail!.recent.map((r) => r.status)).toEqual(['skipped'])
   })
 })
+
+describe('task ids split on the FIRST #', () => {
+  let w: { org: string; ws: string }
+  beforeAll(async () => {
+    w = await newOrgWs(db, 'hashsplit')
+    await insertINV(db, w.ws, w.org, { runId: 'H1', startedAt: Date.now() - HOUR })
+  })
+
+  it('splits a task id on the FIRST # so a dotted-or-hashed task name resolves', async () => {
+    // These read surfaces used to hand-roll `taskId.split('#', 2)`, which DROPS
+    // everything past the second segment: `app#b#c` was answered with task
+    // `b`'s data under the label the caller asked for. The graph — the surface
+    // that decides what actually RUNS — has always split on the FIRST '#', so
+    // the query layer and the graph disagreed about the identity of one task.
+    //
+    // Core fixed its seven call sites by exporting `splitTaskId`; cloud kept
+    // five of its own, because the helper was not on the façade. It is now, and
+    // these five use it.
+    await insertTR(db, w.ws, w.org, {
+      runId: 'R1',
+      project: 'app',
+      task: 'b#c',
+      duration: 70,
+      startedAt: Date.now() - HOUR,
+      hash: 'kh',
+    })
+    const detail = await analytics.getTaskDetail(w.ws, 'app#b#c')
+    expect(detail).not.toBeNull()
+    expect(detail!.recent[0]).toMatchObject({ project: 'app', task: 'b#c' })
+    // The control that makes it discriminating: `split('#', 2)` would have
+    // answered with task `b`, which does not exist here — so a wrong split
+    // resolves to null rather than to this row.
+    expect(await analytics.getTaskDetail(w.ws, 'app#b')).toBeNull()
+  })
+})

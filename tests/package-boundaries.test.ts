@@ -174,6 +174,7 @@ describe('package boundaries', () => {
       'resolveOutputs',
       'run',
       'serverMessageToEnvelope',
+      'splitTaskId',
       'toWireEvent',
       'whyDidThisRerunQuery',
       'wireForwarder',
