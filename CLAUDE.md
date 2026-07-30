@@ -325,6 +325,58 @@ write a plausible cause into the log that you have not proven.
   drift guard and the filter matrix rather than a second copy of what exists.
   Gates from the ROOT: fmt/lint 0, core **2544/0** (+18; 21 skip = sandbox).
 
+- **2026-07-30**: **A hostile audit of the platform's single HTTP host, whose one
+  proposed fix was REFUTED BY THE CODEBASE — and the refutation is the entry**
+  (`cli/dispatch.ts`, picked by the "load-bearing AND thin" rule: 563 lines
+  owning the cache wire, the batch probe, `/mcp`, `/v1/artifacts`, both WS
+  upgrades, the SSE/NDJSON streams and the SPA catch-all, reached by tests ONLY
+  as a fixture step — and it has already produced two real defects that way, the
+  cross-tenant SSE broadcast and the silently-dropped CSWSH gate).
+  **CONFIRMED by repro:** an authenticated `GET /v1/bogus-route` answers **200
+  `text/plain`** with the SPA sentinel, not a 404. That is exactly what hid three
+  shipped routes — `/v1/notifications`, `/v1/why/:runId` and
+  `/v1/branch-failures` each shipped MISSING from the gate's allowlist, and the
+  miss surfaced as a 200 whose body would not parse, found late by a browser
+  check instead of by the request failing. **So I made unmatched `/v1/*` a JSON
+  404, and it was WRONG.** Two existing tests encode the fallthrough as a
+  DELIBERATE contract, with their reasons written out: `server.test.ts` pins that
+  a route REMOVED from the platform (`/v1/graph`, which died with the SQLite
+  catalog) must degrade to the app rather than 500, and
+  `analytics-route-params.test.ts` pins that the analytics allowlist must not
+  become a catch-all. On top of that **five browser suites failed on console
+  errors** — empirical proof the dashboard depends on the behaviour, not just a
+  stale pin. Reverted. **The cost is now recorded IN PLACE rather than shrugged
+  at** — the source comment and the test both name the three routes the
+  fallthrough hid and name the right shape for that class: a BUILD-TIME check
+  that every route the client calls is actually routed, not a runtime refusal
+  that breaks working behaviour. This is the #209 lesson again (a refusal breaks
+  a working build, so only refuse what is provable), reached from a new
+  direction: here the "defect" and the "feature" are the same line of code.
+  **REFUTED, so nobody re-audits it:** the CSWSH gate is intact and STRONGER than
+  I expected — it keys on `Upgrade: websocket` for ANY path, so it covers both
+  the `/v1/agents` upgrade and the catch-all run-submitter upgrade (which
+  connects on the BARE origin, not a `/v1` path), plus all three stream paths by
+  name; the 2026-07-12 regression has not recurred. The org-scoped `broadcast`
+  still filters `sub.orgId !== orgId`, and subscribers drop on BOTH `abort` and
+  `cancel`. **CONFIRMED-but-recorded, not fixed, because neither shows a wrong
+  ANSWER:** `/v1/agents` returns its capacity JSON for GET, POST and DELETE
+  alike (a read-only endpoint answering any method — sloppy, not a defect), and
+  `/v1/artifacts?limit=` accepts `1e3`, `0x10`, `abc`, `-5` and `2.7` all with
+  200 via a bare `Number()` — the #219 lax-coercion class, but bounded by its
+  own 1..1000 clamp, so the blast radius is a different page size rather than a
+  wrong answer. Both want their own decision about whether a 400 is worth a wire
+  change. **Two of my own test premises were wrong and the failures said so:**
+  the nested-path case used `/v1/why/<id>/<task>`, which is a REAL allowlisted
+  route and correctly answered 200; and the no-Origin stream control WEDGED the
+  request until `Bun.serve`'s 10 s idle timeout, then ECONNRESET, because an
+  accepted reader opens a body that never completes — so "not refused" is now a
+  race between the response and a short timer, since a 403 resolves instantly
+  and an acceptance does not. Both controls are deliberate: without the
+  no-Origin one, the three 403 assertions pass for a gate that refuses
+  everything. Eight pins land, ZERO `src/` change in core (`git diff src/`
+  empty). Gates from the ROOT: fmt/lint 0, cloud **1179/1** (+7), the 1 being the
+  documented `visual > task-detail` baseline drift.
+
 - **2026-07-30**: **The task-status vocabulary had TEN hand-rolled copies; it now
   has one, and the mechanism is a compile error rather than a convention** (the
   duplicate sweep's payoff — third and largest finding after
