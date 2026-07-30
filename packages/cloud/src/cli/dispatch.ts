@@ -306,7 +306,18 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
     if (url.pathname === '/stream') {
       return streamResponse(req, encodeForNDJSON, 'application/x-ndjson', principal.orgId)
     }
-    // A run submitter's WS (dist:submit). Anything else is the SPA catch-all.
+    // A run submitter's WS (dist:submit). Anything else is the SPA catch-all —
+    // INCLUDING an unmatched `/v1/*`, which is deliberate and load-bearing in
+    // two directions: a route REMOVED from the platform (`/v1/graph` died with
+    // the SQLite catalog) must degrade to the app rather than 500, and the
+    // dashboard probes absent capabilities by asking for them. Answering every
+    // unmatched `/v1/*` with a JSON 404 was tried and reverted — it broke both
+    // pins plus five browser suites on console errors. The cost of the choice
+    // is real and worth knowing: it is what let `/v1/notifications`,
+    // `/v1/why/:runId` and `/v1/branch-failures` each ship missing from the
+    // gate's allowlist, since the miss looked like a 200 instead of a 404. The
+    // answer to that is a build-time check that every route the client calls is
+    // routed — not a runtime refusal that breaks working behaviour.
     if (srv.upgrade(req, { data: { role: 'run', principal } })) return undefined
     if (opts.uiHtmlPath !== undefined) {
       return withCors(
