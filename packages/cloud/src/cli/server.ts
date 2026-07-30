@@ -13,7 +13,7 @@
 // `/mcp` tools all read Postgres. (P4 absorbed the transitional `cli/serve.ts`.)
 
 import path from 'node:path'
-import { VERSION } from '@vzn/vx'
+import { parseDecimalInt, VERSION } from '@vzn/vx'
 import { openDb, type DbClient } from '../db/client.js'
 import { ensureIndexes } from '../db/indexes.js'
 import { runMigrations } from '../db/migrate.js'
@@ -212,27 +212,33 @@ export function resolveServerConfig(
     if (v === undefined)
       errors.push(`${k} is required (S3-compatible artifact storage is mandatory)`)
   }
+  // Every numeric knob below parses with `parseDecimalInt`, not `Number`:
+  // these are OPERATOR input read once at boot, and `Number` accepts
+  // `0x50` as 80 and `1e3` as 1000 — so a typo'd port silently binds a
+  // different one, and a typo'd retention silently keeps data on a different
+  // schedule. `parseDecimalInt` is digits-only, so it also refuses the
+  // negatives these checks used to test for separately.
   let presignTtlSeconds = 300
   const ttlRaw = read('VX_CLOUD_S3_PRESIGN_TTL')
   if (ttlRaw !== undefined) {
-    const n = Number(ttlRaw)
-    if (!Number.isInteger(n) || n <= 0) errors.push(`invalid VX_CLOUD_S3_PRESIGN_TTL: ${ttlRaw}`)
+    const n = parseDecimalInt(ttlRaw)
+    if (n === null || n <= 0) errors.push(`invalid VX_CLOUD_S3_PRESIGN_TTL: ${ttlRaw}`)
     else presignTtlSeconds = n
   }
 
   let port = 4321
   const portRaw = read('VX_CLOUD_PORT')
   if (portRaw !== undefined) {
-    const n = Number(portRaw)
-    if (!Number.isInteger(n) || n < 0 || n > 65535) errors.push(`invalid VX_CLOUD_PORT: ${portRaw}`)
+    const n = parseDecimalInt(portRaw)
+    if (n === null || n > 65535) errors.push(`invalid VX_CLOUD_PORT: ${portRaw}`)
     else port = n
   }
 
   let retentionDays = 180
   const retRaw = read('VX_CLOUD_RETENTION_DAYS')
   if (retRaw !== undefined) {
-    const n = Number(retRaw)
-    if (!Number.isInteger(n) || n <= 0) errors.push(`invalid VX_CLOUD_RETENTION_DAYS: ${retRaw}`)
+    const n = parseDecimalInt(retRaw)
+    if (n === null || n <= 0) errors.push(`invalid VX_CLOUD_RETENTION_DAYS: ${retRaw}`)
     else retentionDays = n
   }
 

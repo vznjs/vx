@@ -165,6 +165,7 @@ describe('package boundaries', () => {
       'markSurfacedDeps',
       'optionsToRequest',
       'parseCachePolicy',
+      'parseDecimalInt',
       'planRun',
       'prepareRun',
       'projectNode',

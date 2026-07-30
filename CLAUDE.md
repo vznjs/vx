@@ -419,6 +419,50 @@ write a plausible cause into the log that you have not proven.
   empty). Gates from the ROOT: fmt/lint 0, cloud **1179/1** (+7), the 1 being the
   documented `visual > task-detail` baseline drift.
 
+- **2026-07-30**: **Every numeric knob cloud reads was HALF-strict — it refused
+  `abc` and accepted `0x10` as 16** (third finding of the `cloud()` audit, and
+  the third instance in one session of the same structural shape: the helper
+  exists in core, the façade does not export it, so the consumer writes a weaker
+  copy). Probed rather than read: `VX_CLOUD_DISTRIBUTE` rejects `0`/`-1`/`1.5`/
+  `abc` with a clear `UserError` naming the variable, then silently accepts
+  `1e3` as **1000**, `0x10` as **16**, and `" 2 "` as 2. A validator that
+  refuses junk and accepts hex teaches the reader it validates when it only half
+  does. **The measurement is what turned this from one fix into a wave:** it is
+  not one site but FOUR hand-rolled copies of "parse a positive integer" —
+  `distributeOf`, `env.ts --distribute=`, `submit.ts parsePositiveInt`, and
+  `server.ts`'s three boot knobs — all `Number()` + `Number.isInteger`, all
+  identically lax. Core's `parseDecimalInt` was written for exactly this
+  (its docstring names `0x10 → 16` and `1e3 → 1000` as the reason it exists,
+  and it rejects past-MAX_SAFE_INTEGER too) and sits on `src/util/index.js`
+  but NOT on the façade — the `splitTaskId` and `clampInt` shape, twice already
+  today. Now exported and routed through all six call sites. **`VX_CLOUD_RETENTION_DAYS`
+  is the one with teeth**: a typo'd `1e2` silently keeps data on a different
+  schedule than the operator intended, and unlike a wrong port you do not notice
+  by trying to connect. `parseDecimalInt` being digits-only also made the
+  separate `n < 0` arm on the port check dead, so it went. **REFUTED and left
+  alone, which is the half worth recording:** `native-cache.ts`'s
+  `Number(declaredRaw)` on a remote content-length is SOUND — it gates on
+  `/^\d+$/` FIRST, so `Number` only ever sees plain digits. That is the correct
+  pattern, and mechanically converting it would have been the
+  dutifully-deduplicated mistake this log already warns about. `dispatch.ts`'s
+  `/v1/artifacts` limit stays as recorded in the #224 audit: lax, but clamped
+  1..1000, so the blast radius is a different page size rather than a wrong
+  answer. Differential: reverting `distributeOf` to `Number()` fails exactly the
+  5 lax-coercion pins — hex, exponent, whitespace, leading `+`, past-safe-integer
+  — while the values `Number()` also rejected and the two plain-count controls
+  pass both ways, which is what makes those controls rather than filler. An
+  empty value is pinned as UNSET rather than an error, since `VX_CLOUD_DISTRIBUTE=""`
+  is how a CI matrix says "not this job". NO CACHE_VERSION/SCHEMA/wire/migration
+  bump. Gates from the ROOT: fmt/lint 0, core **2570/0** (21 skip = sandbox),
+  cloud **1202/1**, the 1 being the documented `visual > task-detail` drift.
+  **Worth naming as a pattern, not three coincidences:** `splitTaskId`,
+  `clampInt` and now `parseDecimalInt` were each widened onto the façade under
+  duress, after a consumer had already shipped a weaker copy. The façade is
+  being discovered one defect at a time. A deliberate pass over
+  `src/util/index.ts` — 15 symbols, of which the façade re-exports 3 — asking
+  which an integration package legitimately needs, would beat waiting for the
+  fourth.
+
 - **2026-07-30**: **A fork-PR run could never reach the dashboard — telemetry
   was the ONE rung that ignored the PR token** (second finding of the `cloud()`
   plugin audit, and it was surfaced BY the fix before it: #226 made the refusal

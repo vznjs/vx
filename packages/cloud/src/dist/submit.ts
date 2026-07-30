@@ -20,6 +20,7 @@ import {
   detectCi,
   findWorkspaceRoot,
   isPassStatus,
+  parseDecimalInt,
   prepareRun,
   projectNode,
   projectOutcome,
@@ -447,8 +448,8 @@ function topoOrder(nodes: Map<string, TaskNode>): string[] {
 
 function parsePositiveInt(raw: string | undefined): number | undefined {
   if (raw === undefined || raw === '') return undefined
-  const n = Number(raw)
-  return Number.isInteger(n) && n > 0 ? n : undefined
+  const n = parseDecimalInt(raw)
+  return n !== null && n > 0 ? n : undefined
 }
 
 async function reachable(origin: string): Promise<boolean> {

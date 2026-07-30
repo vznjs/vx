@@ -6,7 +6,7 @@
 // — a local serve is connected the same way (`vx-cloud connect
 // http://localhost:4321`), never auto-detected.
 
-import { UserError } from '@vzn/vx'
+import { parseDecimalInt, UserError } from '@vzn/vx'
 import {
   ENVIRONMENTS_VERSION,
   environmentsPath,
@@ -91,8 +91,8 @@ export function parseConnectArgs(args: readonly string[]): ConnectArgs {
     }
     if (a.startsWith('--distribute=')) {
       const v = a.slice('--distribute='.length)
-      const n = Number(v)
-      if (!Number.isInteger(n) || n < 1) {
+      const n = parseDecimalInt(v)
+      if (n === null || n < 1) {
         return { ...out, error: `invalid --distribute: ${v} (expected a positive integer)` }
       }
       out.distribute = n
