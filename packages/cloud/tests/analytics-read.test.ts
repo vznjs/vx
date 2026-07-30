@@ -1787,6 +1787,45 @@ describe('getTaskStability', () => {
     expect(st.cvWorst).toBeCloseTo(byHash.get('B')!.cv, 10)
   }, 60_000)
 
+  it('summarises over ALL keys while the table shows the widest `limit` of them', async () => {
+    // `limit` bounds the RENDERED table and nothing else. It used to sit inside
+    // the per-key aggregation, so every summary field was computed over the
+    // truncated set — contradicting their own docstrings ("sum over keys with
+    // >= 2 runs", "distinct cache keys that were executed more than once") and,
+    // worse, contradicting `getStabilityFloors`: on a 25-key task this card
+    // reported a typical spread of +/-64.1% (median of the 20 most-RUN keys)
+    // while the compare view judged the same task's deltas with +/-0.2%
+    // (median of all 25). Two surfaces, one task, a 300x disagreement.
+    const { org, ws } = await newOrgWs(db, 'stability-limit')
+    const now = Date.now()
+    let n = 0
+    for (let k = 0; k < 25; k++) {
+      for (const d of [500, 510, 520]) {
+        await insertTR(db, ws, org, {
+          runId: `r${n++}`,
+          project: 'app',
+          task: 'many',
+          hash: `K${k}`,
+          duration: d,
+          startedAt: now - 500_000 + n * 100,
+        })
+      }
+    }
+    const st = await analytics.getTaskStability(ws, 'app', 'many')
+    // The summary counts every qualifying key; the table is capped.
+    expect({ keys: st.keys, samples: st.samples, rows: st.byKey.length }).toEqual({
+      keys: 25,
+      samples: 75,
+      rows: 20,
+    })
+    // Capping by WIDEST spread is what keeps this invariant true even when the
+    // list is truncated — the worst key is always the row a reader sees first.
+    expect(st.cvWorst).toBeCloseTo(st.byKey[0]!.cv, 12)
+    // And the card now agrees with the floor the compare view judges by.
+    const floor = (await analytics.getStabilityFloors(ws)).get(JSON.stringify(['app', 'many']))
+    expect(floor).toBeCloseTo(st.cvMedian, 12)
+  }, 60_000)
+
   it('a task whose keys each ran once reports nothing measurable', async () => {
     const { org, ws } = await newOrgWs(db, 'stability-none')
     const now = Date.now()
@@ -1812,6 +1851,45 @@ describe('getTaskStability', () => {
 })
 
 describe('stability floors + least-stable ranking', () => {
+  it('refuses to publish a floor from a key that ran only TWICE', async () => {
+    // The floor SUPPRESSES regression verdicts, so it must not act on evidence
+    // its sibling refuses to publish: `getLeastStableTasks` requires `minRuns`
+    // (3) before it will even call a task unstable, while the floor used to
+    // accept a single 2-run key. Measured, that key yields cv = 0.707 — a 707ms
+    // band on a 1000ms task — so a genuine 1.6x slowdown on CHANGED inputs
+    // rendered neutral, from two data points.
+    const { org, ws } = await newOrgWs(db, 'floor-thin')
+    const now = Date.now()
+    for (const [i, d] of [100, 300].entries()) {
+      await insertTR(db, ws, org, {
+        runId: `t${i}`,
+        project: 'app',
+        task: 'thin',
+        hash: 'K',
+        duration: d,
+        startedAt: now - 50_000 + i * 1000,
+      })
+    }
+    const floors = await analytics.getStabilityFloors(ws)
+    expect(floors.has(JSON.stringify(['app', 'thin']))).toBe(false)
+    // The two surfaces now agree that there is not enough evidence.
+    const ranked = await analytics.getLeastStableTasks(ws)
+    expect(ranked.some((r) => r.id === 'app#thin')).toBe(false)
+
+    // A third run of the same key clears the bar, and THEN a floor is published
+    // — the guard is a minimum-evidence bar, not a blanket refusal.
+    await insertTR(db, ws, org, {
+      runId: 't2',
+      project: 'app',
+      task: 'thin',
+      hash: 'K',
+      duration: 200,
+      startedAt: now - 47_000,
+    })
+    const after = await analytics.getStabilityFloors(ws)
+    expect(after.get(JSON.stringify(['app', 'thin']))).toBeGreaterThan(0)
+  }, 60_000)
+
   it("compareRuns carries each task's MEASURED noise floor", async () => {
     const { org, ws } = await newOrgWs(db, 'noise-floor')
     const now = Date.now()
