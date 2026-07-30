@@ -246,6 +246,48 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **The de-duplication sweep found its first target immediately —
+  cloud had FIVE more hand-rolled `split('#', 2)` sites** (task #72, and the
+  hypothesis came from a finding rather than speculation). The `vx watch` wave
+  had just shown that a fix which centralises a list SPECIFICALLY to stop drift
+  can itself miss a call site, and that the miss is invisible while the copies
+  happen to agree. So the next move was to ask which OTHER centralisations had
+  survivors. **`splitTaskId` was the hit.** #217 fixed core's seven sites and
+  named the root cause in the source — `taskId()` existed to JOIN an id and
+  nothing existed to SPLIT one, so call sites rolled their own — but
+  `packages/cloud/src/db/analytics.ts` had five of its own, for the concrete
+  reason that **`splitTaskId` was never put on the core façade**, so cloud
+  COULD NOT import it. The fix is therefore two-part: widen the façade (with the
+  reason written at the export, so the next reader sees why a split helper is
+  public), then convert the five. Reached surfaces are `getTaskDetail`,
+  `explainCacheKey`, `whyDidThisRerun`, `cacheKeyDiff` and `compareRuns`'s
+  per-row fold — i.e. a task named `a#b#c` was answered with task `b`'s data
+  under the label the caller asked for, on the read side, while the graph (the
+  surface that decides what actually RUNS) has always split on the FIRST `#`.
+  **Clean negative results, recorded so the sweep is not re-run:**
+  `WORKSPACE_FINGERPRINT_FILES` is complete at 3/3 — the remaining
+  `pnpm-workspace.yaml` hits in `workspace.ts` are workspace-ROOT DETECTION,
+  a genuinely different concept ("is this dir a root?" vs "which files re-key
+  everything"), not a fourth copy. `ALWAYS_IGNORE` has one definition. And the
+  core↔cloud SQL predicates are guarded PROPERLY, by the best-shaped pin in the
+  repo: `failure-mode.test.ts` reads the cloud SOURCE and asserts it contains
+  the literal core constant (`const KEYED_TASK_RUNS_SQL = "${KEYED_RUNS_SQL}"`),
+  so changing core's predicate breaks the cloud check — an equality-of-values
+  test would have passed. `clampInt` IS duplicated core/cloud and was left:
+  it is four lines of arithmetic with no shared vocabulary to drift, unlike a
+  LIST whose membership is the thing that changes. **Process note, and it is my
+  mistake:** the first pin was inserted into the SHARED `base fixture` describe,
+  and adding one row there broke two existing tests that count rows — a fixture
+  other tests assert on is not a place to add data. Re-homed into its own
+  org/workspace via `newOrgWs`, after which the shared fixture is untouched.
+  The pin is discriminating by construction: it asserts `app#b#c` resolves AND
+  that `app#b` (what the wrong split would have queried) resolves to null.
+  Differential: reverting the four `taskId` sites fails exactly 1/82. Gates from
+  the ROOT: fmt/lint 0, core **2544/0**, cloud **1166/1** — and that 1 was read
+  rather than assumed, since this wave changes `getTaskDetail`, which IS what
+  task-detail renders: **99568 px at 1.56%**, byte-for-byte the recorded
+  baseline drift, so nothing on that page moved.
+
 - **2026-07-30**: **A THIRD copy of the lockfile list — the one the `--affected`
   fix exported a shared constant to prevent, and then missed** (task #71).
   `--affected`'s wave widened selection off `WORKSPACE_FINGERPRINT_FILES`

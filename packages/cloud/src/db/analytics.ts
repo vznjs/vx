@@ -17,7 +17,10 @@
 // (§5.5) and auto-provisions on first push.
 
 import type { SQL } from 'bun'
-import { diffOutputTrees } from '@vzn/vx'
+// `splitTaskId` is core's — the graph splits a task id on the FIRST '#', and a
+// hand-rolled `split('#', 2)` here silently disagreed with it for any task name
+// containing one.
+import { diffOutputTrees, splitTaskId } from '@vzn/vx'
 import type { OutputFingerprint, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 import {
   RUN_LOG_BUDGET_CHARS,
@@ -1988,7 +1991,7 @@ export class Analytics {
   }
 
   async getTaskDetail(workspaceId: string, taskId: string): Promise<TaskDetail | null> {
-    const [project, task] = taskId.split('#', 2) as [string, string]
+    const [project, task] = splitTaskId(taskId)
     const exists = await this.sql<{ one: number }[]>`
       SELECT 1 AS one FROM task_runs
       WHERE workspace_id = ${workspaceId} AND project = ${project} AND task = ${task} LIMIT 1`
@@ -2030,7 +2033,7 @@ export class Analytics {
   }
 
   async explainCacheKey(_workspaceId: string, taskId: string): Promise<CacheKeyExplanation> {
-    const [project, task] = taskId.split('#', 2) as [string, string]
+    const [project, task] = splitTaskId(taskId)
     return {
       taskId,
       project,
@@ -2180,7 +2183,7 @@ export class Analytics {
     runId: string,
     taskId: string,
   ): Promise<WhyDidThisRerun> {
-    const [project, task] = taskId.split('#', 2) as [string, string]
+    const [project, task] = splitTaskId(taskId)
     const this_ = (
       await this.sql<
         { hash: string; status: string; cache_hit: boolean | null; started_at: string }[]
@@ -2246,7 +2249,7 @@ export class Analytics {
    * exact branch core takes when an entry has been pruned.
    */
   async cacheKeyDiff(workspaceId: string, runId: string, taskId: string): Promise<CacheKeyDiff> {
-    const [project, task] = taskId.split('#', 2) as [string, string]
+    const [project, task] = splitTaskId(taskId)
     const this_ = (
       await this.sql<{ hash: string; started_at: string }[]>`
         SELECT hash, started_at FROM task_runs
@@ -2396,7 +2399,7 @@ export class Analytics {
       if (!b) tasksOnlyInA++
       if (!a) tasksOnlyInB++
       if (hashChanged || statusChanged) tasksChanged++
-      const [project, task] = key.split('#', 2) as [string, string]
+      const [project, task] = splitTaskId(key)
       const cv = floors.get(pairKey(project, task))
       return {
         taskId: key,
