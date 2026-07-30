@@ -343,7 +343,22 @@ ingest}` + the real-subprocess `agents-e2e`: **70/0**) and the ONLY failure
   measured now it is **1.54% / 98293 px** — and byte-identical with this wave
   STASHED, which is what makes it pre-existing rather than mine. That baseline
   runs only locally (the suite skips in CI without playwright/dist), which is
-  precisely how it absorbs change unnoticed; it stays KNOWN-OPEN. **A second
+  precisely how it absorbs change unnoticed; it stays KNOWN-OPEN.
+  **A CI red on this PR is recorded with its ACTUAL error rather than filed as
+  the known flake, and the fixture is fixed to say more next time.** The
+  50-commit `affected` test redded a FOURTH time — but not the way the previous
+  three did: it failed in 886 ms against its 30 s budget, so it was an ASSERTION,
+  not the timeout the budget was raised for. Pulling the job log gives
+  `Expected: "51" / Received: ""` — `git rev-list --count HEAD` returned EMPTY
+  stdout, which is a different failure from a wrong count and from a missing
+  fixture (the fixture-present assertion above it passed, and the 50-commit loop
+  never threw). **The cause is NOT diagnosed and no plausible one is written
+  here** — the count step was the last one still using a bare `spawnSync`, so
+  unlike the suite's `git()` helper it discarded git's exit code and stderr and
+  could not say why stdout was empty. It now asserts all three in one object, so
+  occurrence #5 names itself. Worth noting alongside, NOT as the cause: all three
+  checks on that push sat `in_progress` for ~40 min with their logs 404'ing,
+  where the same three jobs on the parent commit finished in 90-120 s. **A second
   failure mode showed up while measuring and is worth knowing before the next
   wave trusts a cloud total:** two full cloud suites running CONCURRENTLY share
   one Chromium, and the loser reports the perf guard AND the visual shot as

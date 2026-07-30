@@ -457,7 +457,19 @@ describe('affectedProjects', () => {
     // failure surfaces here as "50 commits, got N" rather than downstream as
     // a mystifying "ref HEAD~50 did not resolve" from the code under test.
     const count = Bun.spawnSync({ cmd: ['git', 'rev-list', '--count', 'HEAD'], cwd: root })
-    expect(new TextDecoder().decode(count.stdout).trim()).toBe('51')
+    const dec = (b: Uint8Array | null) => (b === null ? '' : new TextDecoder().decode(b).trim())
+    // Report the EXIT CODE and stderr, not just stdout. On the fourth CI red of
+    // this test the assertion said `Expected: "51" / Received: ""` — an EMPTY
+    // stdout, which is a different failure from a wrong count and says nothing
+    // about why: the count command was the one step here still using a bare
+    // `spawnSync`, so unlike the `git()` helper above it discarded git's exit
+    // code and its stderr. That is the gap this fixture was hardened to close
+    // and the one place it had not been closed.
+    expect({
+      count: dec(count.stdout),
+      exitCode: count.exitCode,
+      stderr: dec(count.stderr),
+    }).toEqual({ count: '51', exitCode: 0, stderr: '' })
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~50', projects })
     expect([...out]).toEqual(['b'])
     // An explicit budget, because the DEFAULT one was never chosen for this
