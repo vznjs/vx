@@ -296,11 +296,17 @@ describe('DistScheduler — dispatch', () => {
     // Tie at first dispatch → first free.
     expect(a1.assigned()).toEqual(['pkg#a'])
 
-    // Simulate a2 having executed the dep after a reassignment story: mark
-    // done from a2 → the dependent lands on a2 despite a1 being first.
+    // a1 dies mid-task and pkg#a is reassigned to a2 — the real path by which
+    // a2 becomes the dep's executor. It goes through `assign()`, which is what
+    // both sends `task:assign` AND records the holder claim; a done is gated on
+    // that claim, so a fixture that skipped the reassignment and simply had a2
+    // report a task it never held was modelling something dispatch cannot
+    // produce.
     a1.inFlight.clear()
+    sched.assign('pkg#a', a2)
     sched.onAgentMessage(a2, { t: 'agent:done', taskId: 'pkg#a', outcome: outcome('pkg#a') })
-    expect(a2.assigned()).toEqual(['pkg#b'])
+    // The dependent then lands on a2 by affinity, despite a1 being first free.
+    expect(a2.assigned()).toEqual(['pkg#a', 'pkg#b'])
     expect(a1.assigned()).toEqual(['pkg#a'])
   })
 
@@ -476,6 +482,11 @@ describe('DistScheduler — graph semantics', () => {
 
   it('warns loudly when zero REMOTE agents join within the timeout (the submitter does not count)', async () => {
     const self = fakeAgent('self', 4, [SUBMITTER_LABEL])
+    // A self-agent is eligible ONLY for the submission that owns it, so without
+    // this it is never dispatched to and `pkg#a` is never actually assigned —
+    // the run then only "finished" because a done used to be accepted from a
+    // non-holder. Owning the submission is what the real submitter sends.
+    self.ownerSubmissionId = 'sub-a'
     const out = collector()
     const sched = new DistScheduler({
       submit: submitMsg([node('pkg#a')], 20),
@@ -492,6 +503,10 @@ describe('DistScheduler — graph semantics', () => {
         m.event.line.includes('0 remote agents'),
     )
     expect(warning).toBeDefined()
+    // The fixture's own precondition: the task really was dispatched to the
+    // self-agent, so the done below is a holder's done and the run genuinely
+    // completes rather than being waved to the finish line.
+    expect(self.assigned()).toEqual(['pkg#a'])
     sched.onAgentMessage(self, { t: 'agent:done', taskId: 'pkg#a', outcome: outcome('pkg#a') })
     expect(await sched.done).toEqual({ ok: true })
   })

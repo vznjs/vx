@@ -304,3 +304,85 @@ describe('multi-run — a shared agent death re-queues only its owner-submission
     expect(b1Placements).toHaveLength(1)
   })
 })
+
+describe('multi-run — a reaped agent cannot speak for work it no longer holds', () => {
+  // The registry gates a task's stream on "does this agent currently hold it?"
+  // precisely so a dropped agent's still-running detached run() cannot
+  // interleave a second machine's output into one task. That gate reads
+  // `agent.inFlight`, and `drop()` used to leave the claim in place — so the
+  // agent stayed a co-holder of the very tasks it had just handed back, and the
+  // gate passed for both machines. These pin both halves of what that allowed.
+  function reassignFixture() {
+    const reg = new AgentRegistry()
+    const a = join(reg, 'agent-a', { capacity: 1 })
+    const b = join(reg, 'agent-b', { capacity: 1 })
+    const s = submit(reg, 'sub-1', [node('pkg#build')])
+    return { reg, a, b, s }
+  }
+
+  it("drops a reaped agent's stale output instead of interleaving it", async () => {
+    const { reg, a, b, s } = reassignFixture()
+    await s.sched.start()
+    expect(a.assigns.map((x) => x.taskId)).toEqual(['pkg#build'])
+
+    // Agent A goes silent past the heartbeat threshold and is reaped; its task
+    // is handed back and reassigned to B. A's process is NOT dead — its
+    // detached run() keeps executing and keeps streaming.
+    reg.drop(a.handle)
+    expect(b.assigns.map((x) => x.taskId)).toEqual(['pkg#build'])
+
+    const chunk = (d: Driver, text: string) =>
+      reg.dispatch(d.handle, {
+        t: 'agent:stdout',
+        taskId: 'pkg#build',
+        submissionId: 'sub-1',
+        chunk: text,
+      })
+    chunk(a, 'STALE-FROM-A\n')
+    chunk(b, 'live-from-B\n')
+
+    const relayed = s.messages
+      .filter((m): m is Extract<ServerMessage, { t: 'event' }> => m.t === 'event')
+      .filter((m) => m.event.kind === 'task:stdout')
+      .map((m) => (m.event as { chunk: string }).chunk)
+    // Only the holder's bytes reach the submitter's terminal and the stored log.
+    expect(relayed).toEqual(['live-from-B\n'])
+  })
+
+  it("refuses a reaped agent's outcome, so the live replacement authors the verdict", async () => {
+    const { reg, a, b, s } = reassignFixture()
+    await s.sched.start()
+    reg.drop(a.handle)
+
+    // A reports FAILED for the task it no longer holds. Accepting it would make
+    // a machine the serve has already declared dead the author of the run's
+    // verdict — and worse, the replacement's real result would then be thrown
+    // away by the first-done-wins dedupe as the "stale" duplicate.
+    reg.dispatch(a.handle, {
+      t: 'agent:done',
+      taskId: 'pkg#build',
+      submissionId: 'sub-1',
+      outcome: { taskId: 'pkg#build', status: 'failed', exitCode: 7, durationMs: 1, hash: 'h' },
+    })
+    expect(resultOf(s.messages)).toBeUndefined()
+
+    // B — the actual holder — finishes, and its result is the run's.
+    drainAll(reg, [b])
+    const result = resultOf(s.messages)
+    expect(result?.ok).toBe(true)
+    expect(result?.outcomes.map((o) => o.status)).toEqual(['success'])
+    expect(await s.sched.done).toEqual({ ok: true })
+  })
+
+  it("still accepts the holder's own done (the guard is a gate, not a wall)", async () => {
+    // The control: no drop, no reassignment — the ordinary path must be
+    // untouched, or the gate above would simply be breaking distribution.
+    const reg = new AgentRegistry()
+    const g = join(reg, 'g1', { capacity: 2 })
+    const s = submit(reg, 'sub-1', [node('pkg#a'), node('pkg#b')])
+    await s.sched.start()
+    drainAll(reg, [g])
+    expect(resultOf(s.messages)?.ok).toBe(true)
+    expect(g.assigns.map((x) => x.taskId).sort()).toEqual(['pkg#a', 'pkg#b'])
+  })
+})

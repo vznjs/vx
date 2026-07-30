@@ -339,6 +339,15 @@ export class DistScheduler implements ActiveSubmission {
       return
     }
     if (msg.t === 'agent:done') {
+      // Same holder gate as the stream, for the same reason: only the agent
+      // that CURRENTLY holds the task may end it. Without this a reaped agent
+      // (dropped, its task already handed back and reassigned) could still
+      // report first and make a machine the serve has declared dead the author
+      // of the run's verdict — while the live replacement's real result was
+      // then discarded by the `outcomes.has` dedupe below as the "stale"
+      // duplicate. `drop()` releases the claim, so a legit done always passes
+      // and only an evicted agent's is refused.
+      if (!(agent.inFlight.get(this.submissionId)?.has(msg.taskId) ?? false)) return
       agent.inFlight.get(this.submissionId)?.delete(msg.taskId)
       this.executedBy.set(msg.taskId, agent.agentId)
       // A task reassigned after this agent's death may already be
