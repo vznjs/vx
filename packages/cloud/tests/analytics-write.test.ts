@@ -2,7 +2,12 @@ import { beforeAll, describe, expect, it } from 'bun:test'
 import type { RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 import { openDb, type DbClient } from '../src/db/client.js'
 import { Analytics, WorkspaceForbiddenError } from '../src/db/analytics.js'
-import type { TaskLogBundle } from '../src/task-log-capture.js'
+import {
+  RUN_LOG_BUDGET_CHARS,
+  TASK_LOG_TAIL_CHARS,
+  TaskLogBuffer,
+  type TaskLogBundle,
+} from '../src/task-log-capture.js'
 import { ephemeralPg } from './helpers/ephemeral-pg.js'
 
 async function freshDb(): Promise<DbClient> {
@@ -512,6 +517,48 @@ describe('ingestLogs', () => {
     // Re-delivery adds nothing.
     const second = await analytics.ingestLogs({ orgId: org, bundle })
     expect(second.stored).toBe(0)
+  })
+
+  it('a budget-evicted stub round-trips as "everything truncated", not as absent', async () => {
+    // The capture side and the store side must agree on how to run out of
+    // budget. The store already degrades an over-budget entry to empty content
+    // with the remainder in `truncated_head`; TaskLogBuffer now does the same
+    // rather than deleting the entry. This pins that they COMPOSE — a real
+    // over-budget run, drained and ingested, must read back as a stub that can
+    // say it was truncated, because an absent row is what the reader is told
+    // when a task printed nothing.
+    const org = await seedOrg(db, 'logs-stub')
+    const ws = await analytics.ingest({
+      orgId: org,
+      summary: summary({ workspaceId: 'sw', runId: 'run-stub' }),
+    })
+    const buf = new TaskLogBuffer()
+    const n = Math.ceil(RUN_LOG_BUDGET_CHARS / TASK_LOG_TAIL_CHARS) + 1
+    for (let i = 0; i < n; i++) {
+      buf.append(`p#f${i}`, `f${i}:`.padEnd(TASK_LOG_TAIL_CHARS, 'z'))
+      buf.finish(`p#f${i}`, 'failed', 'miss')
+    }
+    const drained = buf.drain('run-stub', 'sw')
+    expect(await analytics.ingestLogs({ orgId: org, bundle: drained })).toMatchObject({
+      stored: n,
+    })
+
+    const stub = await analytics.logFor(ws.workspaceId, 'run-stub', 'p#f0')
+    expect({
+      content: stub?.content,
+      charsFull: stub?.charsFull,
+      truncatedHeadChars: stub?.truncatedHeadChars,
+    }).toEqual({
+      content: '',
+      charsFull: TASK_LOG_TAIL_CHARS,
+      truncatedHeadChars: TASK_LOG_TAIL_CHARS,
+    })
+    // The newest failure kept its real output.
+    const kept = await analytics.logFor(ws.workspaceId, 'run-stub', `p#f${n - 1}`)
+    expect(kept!.content.length).toBeGreaterThan(0)
+    // And a task that was never captured at all still reads as absent, which is
+    // what makes the stub above distinguishable.
+    expect(await analytics.logFor(ws.workspaceId, 'run-stub', 'p#never')).toBeUndefined()
   })
 })
 

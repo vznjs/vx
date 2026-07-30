@@ -9,6 +9,10 @@
 //   - per run: only RUN_LOG_BUDGET_CHARS of RETAINED completed tails ship, and
 //     failed tails are never evicted by successes — a failure's output is the
 //     one thing you always want to read.
+//
+// Both caps report themselves: an evicted or head-trimmed task still ships,
+// carrying how much was dropped, so "we truncated this" never reads as "this
+// task printed nothing".
 
 import type { CacheSource, TaskStatus } from '@vzn/vx'
 
@@ -49,6 +53,8 @@ interface Retained {
   taskId: string
   hash?: string
   status: 'success' | 'failed'
+  /** Emptied when the run budget evicts this task; `chars` goes to 0 and the
+   *  dropped count moves to `truncatedHeadChars` (see `evictToBudget`). */
   chunks: string[]
   chars: number
   charsFull: number
@@ -195,6 +201,24 @@ export class TaskLogBuffer {
    * Evict until `retainedChars <= RUN_LOG_BUDGET_CHARS`. Successes go first
    * (oldest by seq); only when failures ALONE still exceed the budget do the
    * oldest failures go — a failure is never dropped to keep a success.
+   *
+   * An evicted task is degraded to a STUB (no content, `truncatedHeadChars`
+   * = everything it emitted) rather than removed. Dropping the entry makes a
+   * budget eviction indistinguishable from a task that printed nothing — the
+   * reader gets "no logs captured" either way, which is a confident false
+   * statement in the one case where they most need the output (a run with
+   * enough failing tasks to blow the budget). A stub costs a few dozen bytes,
+   * keeps the `content.length === charsFull - truncatedHeadChars` accounting
+   * honest, and renders through the truncation banner the per-task cap
+   * already uses. It is also what the STORE does when its own run budget runs
+   * out (`Analytics.ingestLogs` slices to empty and adds the remainder to
+   * `truncated_head`) — the two sides now degrade the same way.
+   *
+   * The cost is a stub per evicted task in the end-of-run bundle: measured at
+   * ~190 JSON bytes each, so ~1.9 MiB at the 10k-task scale target and ~9.3 MiB
+   * at 50k, against the 16 MiB `/v1/ingest/logs` cap. A run evicting past ~66k
+   * tasks would 413 the batch — remote (6x the scale target), and it does not
+   * touch the connected default, which ships per task as it finishes.
    */
   private evictToBudget(): void {
     if (this.retainedChars <= RUN_LOG_BUDGET_CHARS) return
@@ -206,8 +230,11 @@ export class TaskLogBuffer {
     })
     for (const e of order) {
       if (this.retainedChars <= RUN_LOG_BUDGET_CHARS) break
-      this.retained.delete(e.taskId)
+      if (e.chars === 0) continue // already a stub — frees nothing
       this.retainedChars -= e.chars
+      e.truncatedHeadChars += e.chars
+      e.chunks = []
+      e.chars = 0
     }
   }
 }

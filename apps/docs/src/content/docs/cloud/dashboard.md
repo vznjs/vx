@@ -300,6 +300,12 @@ a 16 MiB request cap, plus an age + byte-ceiling retention on the server.
 Cache-hit tasks store nothing — they resolve by hash to the run that
 produced the bytes.
 
+Every cap reports itself. A task whose output was trimmed — from the head
+by the per-task cap, or entirely by the per-run budget — still appears,
+and its log panel says how much was dropped (`… earlier output truncated
+(N KiB dropped)`). Only a task that genuinely produced no output reads as
+"No logs captured", so the two are never confused.
+
 **Privacy.** Log tails are program output and may echo secrets. This is
 the same trust boundary the remote cache already crosses (a cacheable
 success ships its full stdout to the same platform, under the same token +
