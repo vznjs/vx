@@ -311,6 +311,39 @@ describe('ArtifactStore on the S3 backend', () => {
     ])
     const pr2 = await store.list(untrusted, 'pr-2')
     expect(pr2.map((r) => r.hash).includes('bbbbbbbbbbbbbbb1')).toBe(false)
+
+    // And the sharp case S3 uniquely has: a sub-scope whose name EXTENDS
+    // another's. `pr-10` starts with `pr-1`, and ListObjectsV2 matches a raw
+    // string prefix, so this is where one fork PR could enumerate another's
+    // cache keys. TWO guards close it and they are MUTUALLY REDUNDANT —
+    // measured, not assumed: `S3Backend.list` queries `…/pr-1/` with a
+    // trailing slash, and `ArtifactStore.list` drops any derived hash failing
+    // HASH_RE (a swept-in sibling key leaves a `/` in the residual). Removing
+    // either ALONE keeps this green; removing BOTH fails it. So this pins the
+    // property, not one implementation of it.
+    expect(
+      (
+        await put(store, 'bbbbbbbbbbbbbbb2', 'pr10-only', untrusted, {
+          'x-vx-cache-scope': 'pr-10',
+        })
+      ).status,
+    ).toBe(200)
+    // Assert the EXACT set, not the absence of one string: a leak arrives with
+    // a mangled hash (`0/bbbb…2`, the residual after slicing the shorter
+    // scope), so `not.toContain('bbbb…2')` would pass straight through it.
+    expect((await store.list(untrusted, 'pr-1')).map((r) => r.hash).sort()).toEqual([
+      'aaaaaaaaaaaaaaa1',
+      'aaaaaaaaaaaaaaa2',
+      'aaaaaaaaaaaaaaa3',
+      'bbbbbbbbbbbbbbb1',
+    ])
+    // The extending sibling still sees its own — real scoping, not a dead probe.
+    expect((await store.list(untrusted, 'pr-10')).map((r) => r.hash).sort()).toEqual([
+      'aaaaaaaaaaaaaaa1',
+      'aaaaaaaaaaaaaaa2',
+      'aaaaaaaaaaaaaaa3',
+      'bbbbbbbbbbbbbbb2',
+    ])
   })
 
   it('a configured key prefix namespaces every object', async () => {

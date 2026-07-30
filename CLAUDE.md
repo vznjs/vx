@@ -246,6 +246,47 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **A clean audit of the artifact store's trust scopes — ZERO
+  defects — and the entry worth reading is that I got the MECHANISM wrong three
+  times and the differential caught each one** (task #80; `artifact-store.ts`,
+  672 lines against 2 test files, the thinnest load-bearing cloud module by that
+  measure and the one enforcing the fork-PR cache invariant. Deliberately aimed
+  at what the 2026-07-17 trusted-GET review did NOT cover, since that pass
+  targeted the redirect fast path while `hasMany` and the workspace reaper landed
+  after it). **REFUTED by executed probe on every axis:** `hasMany`'s reach is
+  byte-identical to `has()`/GET for both tiers on every hash (it routes through
+  the same `findReadKey`/`readScopes` path, dedupes, HASH_RE-filters, bounded
+  fan-out, swallows per-hash); a trusted principal never lists an untrusted
+  entry; all EIGHT hostile `x-vx-cache-scope` values (`..`, `.`, `../trusted`,
+  `../../..`, `pr-4/../pr-42`, `%2e%2e`, `''`, `trusted`) collapse to `shared`
+  and reach no other PR; the reaper refuses `_org`/`.`/`..`/`a/b`/empty and
+  re-checks every listed key against its own prefix before deleting, so reaping
+  `ws-1` removed exactly its 3 keys and left `_org` and `ws-2` intact.
+  **The lesson is the method, not the surface.** The one genuinely unpinned
+  property was cross-PR isolation on a sub-scope whose name EXTENDS another's
+  (`pr-42` starts with `pr-4`) — the only read path resolving a scope as a
+  PREFIX. I asserted the mechanism was `HASH_RE` rejecting the residual `/`,
+  wrote the pin, and **the mutation survived**. Root cause: `LocalDirBackend.list`
+  does a rooted `readdir`, NOT a string-prefix match, so on that backend the case
+  is structurally impossible and the test could never discriminate. Retargeted at
+  S3 (a real `ListObjectsV2` prefix), claimed the trailing slash in
+  `${prefix}/` was the guard — **that mutation survived too**. Removed BOTH and
+  it STILL passed, which is what exposed the actual bug: **my assertion**. A leak
+  surfaces under a MANGLED hash (`0/bbbb…2`, the residual after slicing the
+  shorter scope), so `not.toContain('bbbb…2')` passes straight through it.
+  Rewritten to assert the EXACT expected set, after which the double mutation
+  fails and each single mutation passes — so the two guards are **MUTUALLY
+  REDUNDANT**, the pattern this log already records from the agent-loop wave
+  (neither observable alone, both together killed). Both test comments are
+  corrected in place: the first claimed a hierarchy (slash primary, HASH_RE
+  "defence in depth") that is provably wrong. **Three transferable rules:** a
+  differential that survives means the TEST is wrong at least as often as the
+  claim; a pin is only as good as the backend it runs against (a fake that is
+  structurally safer than production proves nothing); and **asserting the absence
+  of one expected string cannot catch a leak that arrives mangled** — assert the
+  exact set. ZERO `src/` change in this wave (`git diff packages/cloud/src`
+  empty); pins only, no CACHE_VERSION/SCHEMA/wire/migration bump.
+
 - **2026-07-30**: **A log dropped for space and a task that printed nothing read
   IDENTICALLY — "No logs captured for this task", in the one case where a dev
   most needs the output** (task #79; `task-log-capture.ts`, 213 lines against 2

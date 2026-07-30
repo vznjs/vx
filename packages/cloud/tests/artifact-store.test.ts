@@ -620,6 +620,51 @@ describe('ArtifactStore.list — trust-scoped listing (/v1/artifacts source)', (
     expect(await store.list(trusted)).toEqual([])
   })
 
+  it('one PR never lists a SIBLING PR whose sub-scope extends its own name', async () => {
+    // `list` is the only read path that resolves a scope as a PREFIX rather
+    // than an exact key, so a sub-scope whose name EXTENDS another's is the
+    // shape to worry about: `pr-42` starts with `pr-4`. On THIS backend the
+    // case is structurally impossible — LocalDirBackend.list reads the `pr-4`
+    // DIRECTORY, so a sibling directory is unreachable however the scope
+    // string is built. The version with teeth is the S3 one (a raw string
+    // prefix), pinned in blob-store-s3.test.ts; this is the local-backend
+    // counterpart so the behaviour is stated for both.
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'aaaaaaaaaaaaaaaa', 'baseline', trusted)
+    await put(store, 'bbbbbbbbbbbbbbbb', 'mine', untrusted, 'pr-4')
+    await put(store, 'cccccccccccccccc', 'theirs', untrusted, 'pr-42')
+
+    const mine = await store.list(untrusted, 'pr-4')
+    expect(mine.map((r) => r.hash).sort()).toEqual(['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'])
+    // The batch probe must reach exactly as far as the listing, never further.
+    const batch = await store.hasMany(
+      ['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb', 'cccccccccccccccc'],
+      untrusted,
+      'pr-4',
+    )
+    expect([...batch].sort()).toEqual(['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'])
+    // …and the sibling still sees its OWN artifact, so the isolation above is
+    // real scoping and not the store simply failing to find anything.
+    expect((await store.list(untrusted, 'pr-42')).map((r) => r.hash).sort()).toEqual([
+      'aaaaaaaaaaaaaaaa',
+      'cccccccccccccccc',
+    ])
+  })
+
+  it('a hostile x-vx-cache-scope collapses to `shared`, reaching no other PR', async () => {
+    const store = new ArtifactStore(path.join(dir, 'artifacts'))
+    await put(store, 'aaaaaaaaaaaaaaaa', 'baseline', trusted)
+    await put(store, 'cccccccccccccccc', 'theirs', untrusted, 'pr-42')
+    for (const raw of ['..', '.', '../trusted', '../../..', 'pr-4/../pr-42', '%2e%2e', '']) {
+      // Every one falls back to the `shared` partition — which holds nothing —
+      // so the principal sees the trusted baseline and nothing else.
+      expect({ raw, hashes: (await store.list(untrusted, raw)).map((r) => r.hash) }).toEqual({
+        raw,
+        hashes: ['aaaaaaaaaaaaaaaa'],
+      })
+    }
+  })
+
   it('a trusted principal NEVER lists untrusted entries', async () => {
     const store = new ArtifactStore(path.join(dir, 'artifacts'))
     await put(store, 'aaaaaaaaaaaaaaaa', 'evil', untrusted)
