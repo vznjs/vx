@@ -976,6 +976,85 @@ describe('a refused ingest is reported, not swallowed', () => {
   })
 })
 
+// A fork-PR job holds ONLY `VX_CLOUD_PR_TOKEN` — repo secrets are not exposed
+// to forks, which is the entire reason the PR token exists. Three of the four
+// rungs already fell back to it (`conn.token ?? conn.prToken`: both backend
+// paths and the cache); telemetry read `conn.token` alone, so the run summary
+// went out with NO Authorization header and was guaranteed a 401.
+describe('the fork-PR token reaches the ingest', () => {
+  async function pushWith(env: Record<string, string>): Promise<{
+    auth: (string | null)[]
+    warnings: string[]
+  }> {
+    const auth: (string | null)[] = []
+    const srv = Bun.serve({
+      port: 0,
+      fetch(req) {
+        auth.push(req.headers.get('authorization'))
+        return new Response('{}')
+      },
+    })
+    const keys = [
+      'VX_CLOUD_URL',
+      'VX_CLOUD_TOKEN',
+      'VX_CLOUD_INGEST_TOKEN',
+      'VX_CLOUD_PR_TOKEN',
+      'VX_CLOUD_AGENT',
+      'GITHUB_STEP_SUMMARY',
+    ]
+    const saved: Record<string, string | undefined> = {}
+    for (const k of keys) {
+      saved[k] = process.env[k]
+      delete process.env[k]
+    }
+    process.env['VX_CLOUD_URL'] = `http://localhost:${srv.port}`
+    for (const [k, v] of Object.entries(env)) process.env[k] = v
+    const warnings: string[] = []
+    try {
+      const sink = (await cloud().telemetry!({
+        ...telemetryCtx(process.cwd()),
+        warn: (m: string) => warnings.push(m),
+      })) as TelemetrySink
+      sink.onRunSummary?.(fakeSummary())
+      await sink.flush?.()
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+      void srv.stop(true)
+    }
+    return { auth, warnings }
+  }
+
+  it('presents the PR token when it is the only one — the fork-PR job', async () => {
+    const { auth, warnings } = await pushWith({ VX_CLOUD_PR_TOKEN: 'vxc_pr_fork' })
+    expect(auth).toEqual(['Bearer vxc_pr_fork'])
+    // The server accepted it, so nothing to report. Before the fix this sent
+    // no header at all and the run silently vanished.
+    expect(warnings).toEqual([])
+  })
+
+  it('prefers the TRUSTED token when a job holds both', async () => {
+    // Same precedence as every other rung — a trusted job that also happens to
+    // export a PR token must not downgrade itself to the untrusted scope.
+    const { auth } = await pushWith({
+      VX_CLOUD_TOKEN: 'vxc_trusted',
+      VX_CLOUD_PR_TOKEN: 'vxc_pr',
+    })
+    expect(auth).toEqual(['Bearer vxc_trusted'])
+  })
+
+  it('still sends nothing when there is genuinely no token', async () => {
+    // The control: the fallback must not invent a credential. This is the case
+    // whose 401 warning names VX_CLOUD_TOKEN — correct here, and NOT correct
+    // for the fork-PR job above, which is why that one had to be fixed by
+    // sending the token rather than by rewording the message.
+    const { auth } = await pushWith({})
+    expect(auth).toEqual([null])
+  })
+})
+
 describe('cloud() end-to-end through defineWorkspace', () => {
   it('is accepted by the loader and a CLI run completes with the plugin declared', async () => {
     const root = await makeWorkspace()
