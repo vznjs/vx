@@ -419,6 +419,64 @@ write a plausible cause into the log that you have not proven.
   empty). Gates from the ROOT: fmt/lint 0, cloud **1179/1** (+7), the 1 being the
   documented `visual > task-detail` baseline drift.
 
+- **2026-07-30**: **A refused cloud ingest was discarded in TOTAL SILENCE — the
+  CI path pushed every run into a 401 and said nothing** (first finding of the
+  `cloud()` plugin audit, the seam every connected workspace rides: 656 lines
+  against 23 tests, the thinnest ratio among the large cloud files). `post()`
+  did `await fetch(...)` and never looked at `res.ok`. **A non-2xx does not
+  reject `fetch`**, so `send()`'s catch never fired and its `warn` never ran:
+  a 401/403/404/500 read as success. Reproduced directly — the sink activates,
+  the server replies **401**, the user sees **zero** warnings; the dashboard
+  stays empty forever with no signal at all. **The docstring already claimed
+  the guarantee it did not deliver** ("every error swallowed + warned") — it
+  delivered the swallow without the warn, which is the THIRD instance of that
+  exact class recorded today, after `deriveCacheSource` and the
+  `MAX_WINDOW_DAYS` "mirrors" claim. And `post()` was the OUTLIER, not the
+  convention: `fetchTriage` twenty lines above it checks `res.ok`, as does the
+  `/v1/meta` probe. **Why it matters more than a missing log line:**
+  `vx-cloud connect` was deliberately hardened to REFUSE a tokenless connect,
+  naming the Admin → Tokens fixit, precisely because "connected but silently
+  401ing showed an empty dashboard forever" — but the env rung
+  (`VX_CLOUD_URL` + a missing/expired/wrong-scoped token) IS the CI path and
+  never passes through `connect`, so the front-door fix never covered it.
+  Blast radius is all three ingest surfaces (`/v1/ingest`, `/v1/ingest/task`,
+  `/v1/ingest/logs`), which share `post()`. **The fix had a second problem to
+  solve, which is why it is not a one-liner:** `sendTaskIncremental` fires once
+  per executed task, so warning naively would print 500 identical lines on a
+  500-task run and bury the run's real output. Warnings are deduped BY MESSAGE
+  — a repeated identical failure warns once, a genuinely different one
+  (another status, another surface) still gets its own line, and the set is
+  bounded by the handful of distinct (label, status) pairs. The message
+  distinguishes **token-sent from no-token**, because telling someone whose
+  token just expired to "set VX_CLOUD_TOKEN" sends them the wrong way; both
+  forms end with "the run was NOT recorded", which is the load-bearing half a
+  reader could otherwise mistake for noise. Never-fail is untouched: warning is
+  the contract, failing is not. Differential: neutralising the `res.ok` check
+  fails 4 of the 5 new pins — the 5th, "stays silent when the ingest is
+  accepted", is a deliberate control that must pass both ways. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump. Gates from the ROOT: fmt/lint 0,
+  cloud **1186/1**, the 1 being the documented `visual > task-detail` drift.
+  **Two process failures of mine, both worth more than the fix.** (1) **A
+  stale `/tmp` backup silently overwrote current work.** I wrote a differential
+  backup to a bare `/tmp/pl.bak`, the `cp` that created it failed (wrong cwd —
+  a `cd` had persisted from an earlier command in the same chain), and the
+  restore then copied a **July-29 file left by a different session** over
+  `plugin.ts`. Recovered with `git checkout HEAD --`, because the fix was not
+  yet committed and nothing else had touched that file. This is the
+  scratchpad-collision hazard this log ALREADY records from 2026-07-30 — "use
+  a private, collision-proof scratchpad path per agent" — and I walked into it
+  anyway by reaching for `/tmp`. Use the session scratchpad dir, and never
+  trust that a backup path is yours. (2) **The stale-dist trap bit a SECOND
+  time in one session, and it is systematic rather than bad luck.** The full
+  cloud run reported `run-detail` at **19.85% of pixels** — a huge, alarming
+  diff on a wave whose only source change is server-side. It was the old
+  bundle: a branch sync REWRITES the UI source files, so `ui/dist` goes stale
+  on **every** sync, not just when someone edits the UI. Rebuilt; `run-detail`
+  passes and only the documented `task-detail` drift remains at its recorded
+  99568 px. **Rebuild the SPA before believing any visual result** — and note
+  the failure mode cuts both ways: earlier today a stale bundle produced a
+  falsely REASSURING pass, here it produced a falsely alarming failure.
+
 - **2026-07-30**: **The task-status vocabulary had TEN hand-rolled copies; it now
   has one, and the mechanism is a compile error rather than a convention** (the
   duplicate sweep's payoff — third and largest finding after

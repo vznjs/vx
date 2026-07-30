@@ -838,6 +838,144 @@ describe('cloud() telemetry capability', () => {
   })
 })
 
+// A refused ingest must SAY so. `fetch` resolves for a 401/403/500 — only a
+// network error rejects — so a `post` that never checks `res.ok` discards the
+// run's telemetry in total silence: the dashboard stays empty and the user
+// gets no signal at all. `vx-cloud connect` was hardened against exactly this
+// (it refuses a tokenless connect), but the env rung — which IS the CI path —
+// never passes through `connect`.
+describe('a refused ingest is reported, not swallowed', () => {
+  async function pushAgainst(
+    status: number,
+    env: Record<string, string | undefined>,
+  ): Promise<{ warnings: string[]; requests: number }> {
+    let requests = 0
+    const srv = Bun.serve({
+      port: 0,
+      fetch() {
+        requests++
+        return new Response('{}', { status })
+      },
+    })
+    const saved: Record<string, string | undefined> = {}
+    for (const [k, v] of Object.entries({ VX_CLOUD_URL: `http://localhost:${srv.port}`, ...env })) {
+      saved[k] = process.env[k]
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+    const warnings: string[] = []
+    try {
+      const sink = (await cloud().telemetry!({
+        ...telemetryCtx(process.cwd()),
+        warn: (m: string) => warnings.push(m),
+      })) as TelemetrySink
+      expect(sink).toBeDefined()
+      sink.onRunSummary?.(fakeSummary())
+      await sink.flush?.()
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+      void srv.stop(true)
+    }
+    return { warnings, requests }
+  }
+
+  it('names the missing token on a tokenless 401 — the CI path', async () => {
+    const { warnings, requests } = await pushAgainst(401, { VX_CLOUD_TOKEN: undefined })
+    expect(requests).toBe(1)
+    expect(warnings).toHaveLength(1)
+    // The status, the concrete fix, and — the load-bearing half — that the run
+    // did NOT land. Without the last part a reader can mistake it for noise.
+    expect(warnings[0]).toContain('401')
+    expect(warnings[0]).toContain('VX_CLOUD_TOKEN')
+    expect(warnings[0]).toContain('NOT recorded')
+  })
+
+  it('distinguishes a REJECTED token from a missing one', async () => {
+    const { warnings } = await pushAgainst(403, { VX_CLOUD_TOKEN: 'vxc_stale' })
+    expect(warnings).toHaveLength(1)
+    // A token WAS sent, so telling the user to set one would send them the
+    // wrong way; the actionable cause is expiry/revocation/wrong workspace.
+    expect(warnings[0]).toContain('403')
+    expect(warnings[0]).not.toContain('set VX_CLOUD_TOKEN')
+    expect(warnings[0]).toContain('rejected this token')
+  })
+
+  it('reports a server error without inventing a cause for it', async () => {
+    const { warnings } = await pushAgainst(500, { VX_CLOUD_TOKEN: 'vxc_ok' })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('500')
+    expect(warnings[0]).not.toContain('token')
+  })
+
+  it('stays silent when the ingest is accepted', async () => {
+    const { warnings, requests } = await pushAgainst(200, { VX_CLOUD_TOKEN: 'vxc_ok' })
+    expect(requests).toBe(1)
+    expect(warnings).toEqual([])
+  })
+
+  it('warns ONCE however many times the same failure repeats', async () => {
+    // The per-task path fires per executed task; a 500-task run against a
+    // refusing platform must not print 500 identical lines. Driven through the
+    // real sink by flushing twice over a fresh instance is not possible (flush
+    // is once-only), so this drives `send` through repeated task pushes.
+    let requests = 0
+    const srv = Bun.serve({
+      port: 0,
+      fetch() {
+        requests++
+        return new Response('{}', { status: 401 })
+      },
+    })
+    const savedUrl = process.env['VX_CLOUD_URL']
+    const savedTok = process.env['VX_CLOUD_TOKEN']
+    process.env['VX_CLOUD_URL'] = `http://localhost:${srv.port}`
+    delete process.env['VX_CLOUD_TOKEN']
+    const warnings: string[] = []
+    try {
+      const sink = (await cloud({ logs: false }).telemetry!({
+        ...telemetryCtx(process.cwd()),
+        warn: (m: string) => warnings.push(m),
+      })) as TelemetrySink
+      sink.onRecord?.({
+        v: 2,
+        kind: 'run.start',
+        run: fakeSummary().run,
+        total: 3,
+        ts: 1,
+        startedAt: 1,
+      } as never)
+      for (let i = 0; i < 3; i++) {
+        sink.onRecord?.({
+          v: 2,
+          kind: 'task.end',
+          runId: 'r1',
+          ts: 2,
+          taskId: `p#t${i}`,
+          project: 'p',
+          task: `t${i}`,
+          status: 'success',
+          cacheSource: 'miss',
+          exitCode: 0,
+          durationMs: 1,
+        } as never)
+      }
+      // Let the fire-and-forget task pushes settle.
+      await Bun.sleep(250)
+    } finally {
+      if (savedUrl === undefined) delete process.env['VX_CLOUD_URL']
+      else process.env['VX_CLOUD_URL'] = savedUrl
+      if (savedTok !== undefined) process.env['VX_CLOUD_TOKEN'] = savedTok
+      void srv.stop(true)
+    }
+    // Three refusals reached the server, ONE line reached the user.
+    expect(requests).toBe(3)
+    expect(warnings).toHaveLength(1)
+  })
+})
+
 describe('cloud() end-to-end through defineWorkspace', () => {
   it('is accepted by the loader and a CLI run completes with the plugin declared', async () => {
     const root = await makeWorkspace()

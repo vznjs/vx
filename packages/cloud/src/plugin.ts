@@ -429,6 +429,8 @@ class CloudIngestSink implements TelemetrySink {
   readonly wants: ReadonlyArray<TelemetryRecord['kind']>
   private summary: RunSummaryRecord | undefined
   private uploaded = false
+  /** Messages already surfaced this run — see `send` for why. */
+  private readonly warned = new Set<string>()
   private readonly logs?: TaskLogBuffer
   private readonly connection?: SinkConnection
   private readonly warn: (message: string) => void
@@ -623,13 +625,23 @@ class CloudIngestSink implements TelemetrySink {
     }
   }
 
-  /** POST a body to a serve path; every error swallowed + warned (telemetry
-   *  never fails a run). */
+  /** POST a body to a serve path; every failure swallowed + warned (telemetry
+   *  never fails a run).
+   *
+   *  Deduped by MESSAGE, because the per-task path fires once per executed
+   *  task: against a platform that refuses every request, a 500-task run would
+   *  otherwise print 500 identical lines and bury the run's real output. A
+   *  genuinely different failure (another status, another surface) still gets
+   *  its own line — the set is bounded by the number of distinct
+   *  (label, status) pairs, which is a handful. */
   private async send(pathname: string, body: string, label: string): Promise<void> {
     try {
       await this.post(`${this.connection!.baseUrl}${pathname}`, body)
     } catch (err) {
-      this.warn(`[vx] ${label}: ${err instanceof Error ? err.message : String(err)}`)
+      const message = `[vx] ${label}: ${err instanceof Error ? err.message : String(err)}`
+      if (this.warned.has(message)) return
+      this.warned.add(message)
+      this.warn(message)
     }
   }
 
@@ -643,14 +655,36 @@ class CloudIngestSink implements TelemetrySink {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 5000)
     try {
-      await fetch(url, {
+      const res = await fetch(url, {
         method: 'POST',
         headers,
         body,
         signal: controller.signal,
       })
+      // A non-2xx does NOT reject `fetch`, so without this the run's telemetry
+      // is discarded in total silence: the POST "succeeds", `send`'s catch
+      // never fires, and the dashboard stays empty forever with no signal to
+      // the user. That is the shape `vx-cloud connect` was hardened against
+      // (it refuses a tokenless connect naming the Admin → Tokens fixit) — but
+      // the env rung, which IS the CI path, never passes through `connect`.
+      if (!res.ok) throw new Error(describeIngestFailure(res.status, token !== undefined))
     } finally {
       clearTimeout(timer)
     }
   }
+}
+
+/**
+ * What to tell the user about a refused ingest. An auth status is the common
+ * case and has a concrete fix, so it names one; everything else reports the
+ * status rather than guessing at a cause.
+ */
+function describeIngestFailure(status: number, hadToken: boolean): string {
+  if (status === 401 || status === 403) {
+    return hadToken
+      ? `${status} — the cloud rejected this token (expired, revoked, or scoped to another workspace); the run was NOT recorded`
+      : `${status} — no token was sent; set VX_CLOUD_TOKEN (mint one under Admin → Tokens). The run was NOT recorded`
+  }
+  if (status === 413) return `${status} — payload too large; the run was NOT recorded`
+  return `${status} — the run was NOT recorded`
 }
