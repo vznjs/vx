@@ -246,6 +246,97 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **The parity thread is CLOSED — all six defects resolved, every one
+  without a CACHE_VERSION bump — and the last one is a REVERSAL of my own recorded
+  design.** Three more waves on top of the four below. **`!!glob` INVERTS the input
+  set (#212).** `resolveFiles` strips ONE `!` and hands the remainder to
+  `new Bun.Glob()`, **which applies its OWN leading-`!` negation** — verified
+  directly, `new Bun.Glob('!vendor/**').match('src/b.ts')` is `true`. So
+  `['**/*', '!!vendor/**']` builds the exclude glob `Glob('!vendor/**')`, which
+  matches everything EXCEPT vendor, excludes all of it, and folds ONLY `vendor/**`:
+  the task's own source leaves the key and it reports `up-to-date` forever, from a
+  config ONE CHARACTER from a correct one. Neither neighbouring guard could catch it
+  and neither is wrong — `assertNotNegationOnly` sees the positive glob,
+  `hasParentSegment` strips one `!` before splitting — so it needed its own guard
+  rather than a widening of either. REFUSED rather than reinterpreted: negation in
+  vx is subtraction from what a positive glob matched, not gitignore's ordered
+  re-inclusion, so there is nothing for a second `!` to undo; the message names BOTH
+  one-character repairs, because picking wrong is silent (`!x` subtracts, `x`
+  includes, `!!x` folds only it). Both halves — `resolveWorkspaceFiles` carries its
+  own copy of the partition, so a one-sided fix passes the other half's tests while
+  leaving it live. **A gitignored file named LITERALLY in `cache.inputs.files` folds
+  nothing (#213).** Globs FILTER the set `git ls-files` reports and a filter can only
+  remove, so a path git never reports can never be filtered back IN however
+  explicitly named — and the run replays cached stdout, so it LOOKS like it
+  executed. **Turbo honours the declaration; vx REFUSES it, and the reason is not
+  cost:** honouring it would make the key depend on a change `git diff` and
+  `git ls-files --others` CANNOT SEE, so editing that input would re-key the task
+  while `--affected` selected nothing — the exact divergence #210 had closed two
+  hours earlier, reopened from the other side. The message names
+  `cache.inputs.tasks`, because for the common case (generated code) that is the
+  honest repair rather than "un-ignore it". **The third is the reversal, and it is
+  the entry worth reading (#214).** I had recorded a design to parse `NODE_OPTIONS`
+  and fold its code-injecting flags (`--require`/`--import`/`--loader`/
+  `--conditions`) into the key. The premise is TRUE — those change emitted bytes
+  under an unchanged key — and the fix is still WRONG for vx. Architecture principle
+  #1 is "explicit over magical" and this owner has rejected inference TWICE on
+  exactly that basis (`globalInputs`, auto-input tracing); a hidden key input derived
+  by PARSING AN ENV VAR is the same shape, vx guessing which part matters. Singling
+  it out is also inconsistent — `LC_ALL` changes `sort` collation, `CI`/`TERM`/
+  `FORCE_COLOR` change the stdout vx caches AND REPLAYS; the whole allowlist has the
+  property. And hashing the allowlist is impossible: `PATH`/`HOME`/`TERM` differ on
+  every machine, so a laptop and a CI runner could NEVER share a remote cache
+  entry — the entire point of a remote cache. The consistent answer already existed
+  (`cache.inputs.env`); what was missing was SAYING SO, since `docs/schema.md` spelled
+  out "NOT folded into the cache key" for `passThrough` one bullet below while the
+  essentials bullet said nothing, reading as an oversight rather than a decision.
+  Documented, and pinned in BOTH directions so neither half can be reversed silently
+  — dropping `NODE_OPTIONS` or `LC_ALL` from forwarding fails 1 each (a CI raising
+  the heap depends on it), forwarding everything fails 3 (without the boundary,
+  "not hashed" is a determinism disaster rather than a trade), and folding
+  `NODE_OPTIONS` into the key — the change this declined — fails 1. **Method, and
+  three of these are corrections to myself.** (1) **I mis-stated the core test count
+  in TWO merged PR bodies** (#213 "2510 pass", #214 "2513 pass") — those were the
+  RAN totals; the pass counts were 2489 and 2492, with 21 sandbox skips making up the
+  difference. `tail -4` cut off the pass line and I read the "Ran N" line as if it
+  were one. The material fact (0 fail) holds in both, but the numbers were stated
+  without being read. **Read the pass line, not the ran line.** (2) **A test of mine
+  was VACUOUS and reading caught it, not mutation:** it called `cache.key()` twice
+  with identical arguments and asserted equality — but `key()` takes `envValues` as a
+  parameter and never reads `process.env`, so it was equal whatever the essentials
+  did. Rewritten through `resolveInputs`, where the decision lives. (3) **A mutation
+  NEVER APPLIED on its first attempt** — the pattern missed the real signature, so
+  the "pass" proved nothing; caught by checking `git diff --stat` before reading the
+  result, which is exactly what that rule is for. **And one survivor that was fixed
+  rather than recorded:** making `isLiteralPath` return true for everything killed
+  nothing, because `.exists()` already filters (no file is named `src/**`). It IS
+  killable, by the one case where the gate is load-bearing rather than merely cheap —
+  a file legally named `a*.ts` that is gitignored while the glob `a*.ts` matches
+  other things; without the gate that working config is refused. **BOTH #209 lessons
+  applied deliberately, since a refusal breaks working builds.** Cost: the literal
+  guard adds one `Set.delete` per git file, **0.64 ms at 100k files, 1.3% of the glob
+  loop it already rides**, below noise at 15k — A/B'd against an **immutable pre-fix
+  `git worktree`**, never a stash or checkout, so no arm could be mutated underneath
+  the measurement. False positives: `Bun.file(dir).exists()` is FALSE for a
+  directory (checked, not assumed), so naming one never trips the guard; and THIS
+  REPO'S OWN `build.ui` declares the gitignored `packages/cloud/ui/dist/index.html`
+  as an OUTPUT — a guard judging outputs, or judging inputs against the RESOLVED set
+  rather than the git set, would refuse vx's own release build. Every refusal in the
+  thread ships with an explicit false-positive control test. Gates: fmt/lint 0 from
+  the ROOT, core **2492 pass / 21 skip / 0 fail** across three consecutive runs;
+  dogfooded on this repo (`vx lock --check` clean, the full 9-task build graph
+  plans). **One unexplained event, recorded not diagnosed:** a single `bun test`
+  invocation died with a Bun crash report (`bun.report/1.3.11/…`) rather than a test
+  failure. It did not reproduce in three subsequent full runs. Not claimed as
+  understood. **STILL OPEN from the thread:** `--affected` does not widen for a
+  `cache.inputs.workspaceFiles` target — BLOCKED BY ORDERING, since
+  `affectedProjects` runs during selection BEFORE scoped config loading and cannot
+  know which projects declare matching globs; settle the insertion point before
+  attempting. And the output resolvers have NO containment of their own (a test
+  demonstrates `../victim/**` really resolving and really deleting), which makes the
+  loader's `..` rejection **the ONLY guard** between `cleanOutputs` and files outside
+  a project rather than the defence-in-depth it reads as.
+
 - **2026-07-30**: **Four Turbo/Nx parity defects fixed WITHOUT a CACHE_VERSION bump,
   and the test wave found a stale-hit vector nobody had recorded.** The strategic
   move was re-asking the deferred backlog a different question — not "what does
