@@ -27,7 +27,7 @@ import {
 } from '../orchestrator/index.js'
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
-import { parseDecimalInt, parseSize } from '../util/index.js'
+import { MAX_TIMEOUT_MS, parseDecimalInt, parseSize } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 import { localBackend } from './backend.js'
 
@@ -200,6 +200,16 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       const v = a === '--timeout' ? before[++i] : a.slice('--timeout='.length)
       if (v === undefined) return { ...out, error: `--timeout requires a value` }
       const n = parseDecimalInt(v)
+      if (n !== null && n > MAX_TIMEOUT_MS) {
+        // Not "effectively no limit" — setTimeout reduces a delay past 2^31-1
+        // to 1 ms, so this would kill every task the moment it spawned.
+        return {
+          ...out,
+          error:
+            `--timeout ${n} exceeds the maximum timer delay (${MAX_TIMEOUT_MS} ms, ~24.8 days); ` +
+            `larger values are silently reduced to 1 ms. Omit --timeout for no limit.`,
+        }
+      }
       if (n === null || n <= 0) {
         return { ...out, error: `--timeout must be a positive integer (ms), got: ${v}` }
       }

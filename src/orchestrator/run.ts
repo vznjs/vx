@@ -19,7 +19,7 @@ import {
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
-import { ulid, UserError } from '../util/index.js'
+import { MAX_TIMEOUT_MS, ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
 import { resolveResourceCosts } from './resources.js'
 import { computeTaskHash } from './task-hash.js'
@@ -65,7 +65,7 @@ import type { RunOptions, RunSummary } from './options.js'
  * Parse the `VX_TASK_TIMEOUT` env var (ms) — the "global" run-level task
  * timeout default. A missing/empty/non-positive-integer value yields
  * `undefined` (ignored), so a typo never silently disables a task's own
- * `exec.timeout`.
+ * `exec.timeout`. A value past `MAX_TIMEOUT_MS` is clamped to it — see below.
  *
  * Exported for `tests/options-resolve.test.ts`, which pins every accepted
  * and ignored form of this rung; it has no other caller outside this file.
@@ -74,7 +74,13 @@ export function readTaskTimeoutEnv(): number | undefined {
   const raw = process.env['VX_TASK_TIMEOUT']
   if (raw === undefined || raw === '') return undefined
   const n = Number(raw)
-  return Number.isInteger(n) && n > 0 ? n : undefined
+  if (!Number.isInteger(n) || n <= 0) return undefined
+  // CLAMPED, not refused — unlike `exec.timeout` and `--timeout`, this rung's
+  // contract is already "unusable value → fall back", so it never throws. But
+  // falling back is wrong here: someone who typed a huge number wants a long
+  // timeout, and the largest expressible one IS long (~24.8 days). Handing it
+  // to `setTimeout` unbounded would mean 1 ms — killing every task instantly.
+  return Math.min(n, MAX_TIMEOUT_MS)
 }
 
 /**

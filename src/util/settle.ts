@@ -1,6 +1,8 @@
 // End-of-run settle bound. A plugin's flush/teardown is I/O a third party
 // wrote; it must not hold the run's exit hostage.
 
+import { MAX_TIMEOUT_MS } from './num.js'
+
 /** Default upper bound on one end-of-run flush/teardown await. */
 const DEFAULT_TIMEOUT_MS = 3000
 
@@ -10,7 +12,18 @@ const DEFAULT_TIMEOUT_MS = 3000
  */
 export function teardownTimeoutMs(): number {
   const raw = process.env['VX_TEARDOWN_TIMEOUT_MS']
-  if (raw !== undefined && /^[0-9]+$/.test(raw)) return Number(raw)
+  // Out-of-range falls back to the DEFAULT rather than clamping to
+  // MAX_TIMEOUT_MS, and the distinction matters. This value is a BOUND, not a
+  // duration: there is no "no limit" option here, because the whole reason the
+  // deadline exists is that a plugin's flush must not hold the run's exit
+  // hostage. Clamping would honour "wait ~24.8 days", which defeats it — the
+  // run would hang. Unbounded is worse still (the delay becomes 1 ms, so every
+  // flush times out and every buffered record is dropped). Falling back keeps
+  // the bound real in both directions.
+  if (raw !== undefined && /^[0-9]+$/.test(raw)) {
+    const n = Number(raw)
+    if (n <= MAX_TIMEOUT_MS) return n
+  }
   return DEFAULT_TIMEOUT_MS
 }
 

@@ -148,6 +148,15 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
   task that's ready on spawn (no `readyWhen`) becomes ready before the
   timer can fire, so the timeout is a no-op for it.
 
+**Upper bound.** `timeout` must be at most **2147483647 ms (~24.8 days)**,
+the largest delay a timer can hold. A larger value does _not_ mean "no
+limit" — the platform silently reduces it to **1 ms**, so the task would
+be killed the moment it spawns and reported `failed`. vx refuses it at
+load rather than let that happen. **Omit `timeout` entirely for no
+limit.** The same bound applies to `--timeout` and to the workspace-level
+`timeout`; the `VX_TASK_TIMEOUT` env rung is clamped to it instead of
+refused, since that rung never fails a run.
+
 A task with **no** `exec.timeout` falls back to a run-level default, if
 one is set. Precedence, highest first: **per-task `exec.timeout` →
 `--timeout <ms>` / `RunOptions.timeout` → `VX_TASK_TIMEOUT` env →
@@ -1150,6 +1159,7 @@ and surfaces `UserError` (clean output, no stack):
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`              | Only `!` globs — nothing to subtract from.         |
 | `cache.outputs.files: negation is not supported`                                    | Output globs are never split on `!`.               |
 | `cache.inputs.files: '!!' is not a double negation`                                 | `!!x` inverts the set — it folds only `x`.         |
+| `exec.timeout: <n> ms exceeds the maximum timer delay`                              | Past 2^31-1 ms a timer fires at once, not never.   |
 | `description must be a string`                                                      | Non-string description.                            |
 
 **Unknown fields are rejected**, not ignored, at every level that feeds

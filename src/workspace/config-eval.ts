@@ -32,6 +32,7 @@
 // in-process first load — which is why this needs no CACHE_VERSION bump.
 
 import path from 'node:path'
+import { MAX_TIMEOUT_MS } from '../util/index.js'
 
 const WORKER_SRC = `
 self.onmessage = async (e) => {
@@ -80,7 +81,15 @@ interface Pending {
  */
 function workerTimeoutMs(): number {
   const raw = process.env['VX_CONFIG_WORKER_TIMEOUT_MS']
-  if (raw !== undefined && /^[0-9]+$/.test(raw)) return Number(raw)
+  // Same kind of value as the teardown deadline, so the same treatment: a
+  // BOUND on a worker that may be wedged, with no "no limit" reading. Falls
+  // back rather than clamping, because honouring ~24.8 days would hang
+  // `vx watch` forever on a worker the OS killed — and unbounded makes it 1 ms,
+  // so EVERY config load times out instead. Both ends break the same feature.
+  if (raw !== undefined && /^[0-9]+$/.test(raw)) {
+    const n = Number(raw)
+    if (n <= MAX_TIMEOUT_MS) return n
+  }
   return 30_000
 }
 

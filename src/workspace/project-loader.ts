@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { parseSize, UserError, xxh3hex } from '../util/index.js'
+import { MAX_TIMEOUT_MS, parseSize, UserError, xxh3hex } from '../util/index.js'
 import { evaluateConfigFresh } from './config-eval.js'
 
 const WORKSPACE_CONFIG_FILENAMES = [
@@ -107,6 +107,7 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
     ) {
       throw new UserError(`${configPath}: \`timeout\` must be a positive integer (milliseconds)`)
     }
+    assertTimeoutInRange(config.timeout, `${configPath}: \`timeout\``)
   }
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) {
@@ -201,6 +202,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (typeof timeout !== 'number' || !Number.isInteger(timeout) || timeout <= 0) {
           throw new UserError(`${where}.exec.timeout must be a positive integer (milliseconds)`)
         }
+        assertTimeoutInRange(timeout, `${where}.exec.timeout`)
       }
       const retries = (exec as { retries?: unknown }).retries
       if (retries !== undefined) {
@@ -484,6 +486,27 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
  * `Bun.Glob.scan` follows `..` out of its cwd, so a `..` glob is a data-loss
  * vector (delete files outside the project / above the repo root).
  */
+/**
+ * A millisecond delay past `MAX_TIMEOUT_MS` does not mean "effectively never" —
+ * `setTimeout` silently reduces it to 1 ms, so the task is killed the instant it
+ * spawns and reported `failed`. That is the exact inverse of the declaration,
+ * and the only clue is a `TimeoutOverflowWarning` on stderr.
+ *
+ * Refused rather than clamped, because this is a value the user WROTE and reads
+ * back: silently substituting ~24.8 days for the 317 years they asked for would
+ * trade one surprise for a quieter one. Costs nothing — such a config never
+ * worked, it killed the task in milliseconds, so refusing reports a state that
+ * already existed.
+ */
+function assertTimeoutInRange(ms: number, where: string): void {
+  if (ms <= MAX_TIMEOUT_MS) return
+  throw new UserError(
+    `${where}: ${ms} ms exceeds the maximum timer delay (${MAX_TIMEOUT_MS} ms, ~24.8 days). ` +
+      `Timers larger than this do NOT mean "no limit" — the platform reduces them to 1 ms, so ` +
+      `the task would be killed the moment it starts. Omit \`timeout\` for no limit.`,
+  )
+}
+
 function hasParentSegment(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
   return g.split('/').some((seg) => seg === '..')

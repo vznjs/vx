@@ -173,6 +173,17 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
+    // Not a "selects nothing" case like its neighbours — the INVERSE. Past
+    // 2^31-1 ms `setTimeout` fires at 1 ms instead of never, so the task is
+    // killed as it spawns. Documented because the symptom (`failed` in a few
+    // ms) looks nothing like the cause (a timeout that reads as "no limit").
+    'exec.timeout: <n> ms exceeds the maximum timer delay',
+    () =>
+      validated({
+        tasks: { b: { exec: { command: 'x', timeout: 9_999_999_999_999 } } },
+      }),
+  ],
+  [
     // The third of the trio, and the one whose symptom is least guessable: the
     // other two select nothing, this one selects the INVERSE. A user greps this
     // string because their build started failing at load time on a config that

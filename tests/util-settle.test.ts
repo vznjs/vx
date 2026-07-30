@@ -29,6 +29,10 @@
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { settleWithin, teardownTimeoutMs } from '../src/util/settle.js'
+import { MAX_TIMEOUT_MS } from '../src/util/num.js'
+
+/** The documented fallback, restated here so a change to it fails loudly. */
+const DEFAULT_TEARDOWN_MS = 3000
 // Both production callers reach these through the module CONTRACT (see
 // tests/module-boundaries.test.ts), so the barrel re-export is part of the
 // surface under test, not an implementation detail.
@@ -334,11 +338,13 @@ describe('settleWithin — hostile budgets', () => {
     expect(Date.now() - started).toBeLessThan(1000)
   }, 10_000)
 
-  it('the last budget that behaves as written is 2^31 - 1', () => {
+  it('the last budget that behaves as written is 2^31 - 1, and it IS enforced', () => {
     // Boundary statement, not a wait: 2147483647 is honoured (~24 days) while
-    // 2147483648 collapses. Nothing in teardownTimeoutMs enforces this.
-    expect(2 ** 31 - 1).toBe(2147483647)
-    expect(timeoutFor('2147483648')).toBe(2147483648)
+    // 2147483648 collapses to 1ms at the timer. `teardownTimeoutMs` now refuses
+    // to hand out anything past the ceiling.
+    expect(MAX_TIMEOUT_MS).toBe(2147483647)
+    expect(timeoutFor('2147483647')).toBe(2147483647)
+    expect(timeoutFor('2147483648')).toBe(DEFAULT_TEARDOWN_MS)
   })
 })
 
@@ -454,35 +460,45 @@ describe('teardownTimeoutMs — rejects what Number() silently accepts', () => {
   })
 })
 
-describe('teardownTimeoutMs — the unbounded upper end', () => {
-  // FINDING: the regex has no length or magnitude bound and does not reuse
-  // parseDecimalInt (src/util/num.ts), the sibling in this same module whose
-  // whole purpose is refusing values that do not survive Number(). So a
-  // digit string past 2^53 is accepted and SILENTLY ROUNDS to a different
-  // number than the operator typed. Harmless only because the timer then
-  // clamps it to 1ms anyway — see the 2^31 case above, which is the defect
-  // that actually bites. Pinned as CURRENT behaviour.
-  it('accepts a value too large to survive Number() intact', () => {
+describe('teardownTimeoutMs — the upper end is bounded', () => {
+  // These three began as FINDINGs pinning an UNBOUNDED upper end, where a
+  // digit string past 2^53 silently rounded and 400 nines became Infinity.
+  // That was "harmless" only because the timer then clamped the result to 1ms
+  // — which is the defect, not the mitigation: every flush deadlined instantly
+  // and every buffered record was dropped.
+  //
+  // Out-of-range now falls back to the DEFAULT rather than clamping to
+  // MAX_TIMEOUT_MS, and the difference is the whole point. This value is a
+  // BOUND, not a duration: there is no "no limit" reading, because the deadline
+  // exists precisely so a plugin's flush cannot hold the run's exit hostage.
+  // Clamping would honour "wait ~24.8 days" and hang the run — trading an
+  // instant-timeout defect for a hang, which is worse.
+  it('a value too large to survive Number() intact falls back', () => {
     expect(Number('9007199254740993')).toBe(9007199254740992)
-    expect(timeoutFor('9007199254740993')).toBe(9007199254740992)
+    expect(timeoutFor('9007199254740993')).toBe(DEFAULT_TEARDOWN_MS)
   })
 
-  it('accepts an absurdly long digit string, overflowing to Infinity', () => {
-    expect(timeoutFor('9'.repeat(400))).toBe(Number.POSITIVE_INFINITY)
+  it('an absurdly long digit string falls back instead of overflowing to Infinity', () => {
+    expect(timeoutFor('9'.repeat(400))).toBe(DEFAULT_TEARDOWN_MS)
   })
 
-  // Whatever teardownTimeoutMs answers, feeding it straight back into
-  // settleWithin must never hang — this is the composed contract the two
-  // production callers actually rely on, and the list below spans its entire
-  // output range: 0, a normal value, a rounded past-2^53 value, one that
-  // overflows the timer, and Infinity.
-  it('never yields a budget that makes settleWithin hang', async () => {
-    for (const raw of ['0', '1', '9007199254740993', '9'.repeat(40), '9'.repeat(400)]) {
+  // The composed contract the two production callers rely on. Asserted as a
+  // PROPERTY of the whole output range rather than by waiting each budget out:
+  // every answer is a finite number within the timer's honoured range, which is
+  // what makes both failure modes — instant deadline and unbounded hang —
+  // unreachable. One real drive proves the composition still works.
+  it('never yields a budget that can hang OR fire instantly', async () => {
+    for (const raw of ['0', '1', '250', '2147483648', '9007199254740993', '9'.repeat(400)]) {
       const ms = timeoutFor(raw)
-      const started = Date.now()
-      expect(await settleWithin(never(), ms)).toBe(false)
-      expect(Date.now() - started).toBeLessThan(2000)
+      expect({
+        raw,
+        finite: Number.isFinite(ms),
+        inRange: ms >= 0 && ms <= MAX_TIMEOUT_MS,
+      }).toEqual({ raw, finite: true, inRange: true })
     }
+    const started = Date.now()
+    expect(await settleWithin(never(), timeoutFor('120'))).toBe(false)
+    expect(Date.now() - started).toBeLessThan(2000)
   }, 20_000)
 })
 
