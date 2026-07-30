@@ -140,6 +140,16 @@ as a change (input hashing sees it, so `--affected` must too).
 `vx-lock.json` is filtered out of the changed set — a `vx lock`
 re-write never marks every project affected.
 
+**A lockfile change selects everything.** The root lockfiles and
+`pnpm-workspace.yaml` are folded into the [workspace
+fingerprint](./caching.md), which is part of _every_ task's cache key —
+so a `bun install` / `pnpm update` invalidates the whole cache. Those
+files sit at the workspace root and belong to no project, so mapping
+changed paths to project directories would select nothing; `--affected`
+widens to every project instead, for the same reason it unions in
+untracked files. Only the ROOT copies count: a lockfile vendored inside
+a package is not hashed and selects just that package.
+
 **Nothing changed exits 0.** When the selection comes only from
 `--affected` / `[<ref>]` and resolves to zero projects, vx prints
 `nothing affected since <ref>` and exits 0 — a docs-only commit must not

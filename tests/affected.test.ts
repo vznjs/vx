@@ -4,6 +4,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { affectedProjects, defaultAffectedBase } from '../src/workspace/affected.js'
+import {
+  computeWorkspaceFingerprint,
+  WORKSPACE_FINGERPRINT_FILES,
+} from '../src/workspace/fingerprint.js'
 import type { ProjectMeta } from '../src/workspace/workspace.js'
 
 async function git(cwd: string, ...args: string[]): Promise<void> {
@@ -270,6 +274,159 @@ describe('affectedProjects', () => {
     await writeFile(path.join(root, 'packages/a/ignored/blob.bin'), 'junk')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
     expect([...out]).toEqual([])
+  })
+
+  describe('a workspace-fingerprint change re-keys every task, so it must select every project', () => {
+    // `computeWorkspaceFingerprint` folds the root lockfiles + workspace
+    // definition into EVERY task's cache key. Those files sit at the workspace
+    // root and belong to no project, so mapping changed paths to project
+    // directories selected NOTHING for a change that invalidates the entire
+    // cache — `vx run test --affected` after `pnpm update` exited 0 having run
+    // no tests. `docs/cli.md` states the invariant these two surfaces owe each
+    // other as a principle: "input hashing sees it, so `--affected` must too."
+
+    it('a lockfile edit selects every project', async () => {
+      await writeFile(path.join(root, 'bun.lock'), '{"lockfileVersion":1}')
+      await git(root, 'add', '.')
+      await git(root, 'commit', '-q', '-m', 'add lockfile')
+
+      await writeFile(path.join(root, 'bun.lock'), '{"lockfileVersion":1,"packages":{}}')
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+      expect([...out].sort()).toEqual(['a', 'b'])
+    })
+
+    it('the fingerprint moving and the selection widening are the SAME condition', async () => {
+      // The load-bearing assertion of this block, and the reason it drives the
+      // real hash rather than a hardcoded file list: the two surfaces are
+      // coupled by an invariant, not by a coincidence of two lists agreeing
+      // today. A future lockfile format taught to the fingerprint alone would
+      // fail here.
+      const before = await computeWorkspaceFingerprint(root)
+      await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n')
+      expect(await computeWorkspaceFingerprint(root)).not.toBe(before)
+
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+      expect([...out].sort()).toEqual(['a', 'b'])
+    })
+
+    it('EVERY file the fingerprint hashes widens selection', async () => {
+      // Driven off the exported constant rather than a copy, so adding an entry
+      // to the fingerprint cannot leave `--affected` behind. Each name is
+      // introduced as a NEW root file: absent → present genuinely moves the
+      // fingerprint (the hash skips missing files), and the untracked half of
+      // the diff is the path a fresh `bun install` actually takes.
+      expect(WORKSPACE_FINGERPRINT_FILES.length).toBeGreaterThan(0)
+      for (const name of WORKSPACE_FINGERPRINT_FILES) {
+        await writeFile(path.join(root, name), 'x')
+        const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+        expect({ name, selected: [...out].sort() }).toEqual({ name, selected: ['a', 'b'] })
+        await rm(path.join(root, name))
+      }
+    })
+
+    it('a DELETED lockfile widens too', async () => {
+      // Removing a lockfile changes the fingerprint exactly as editing one
+      // does — the hash skips files that are absent. `git diff` reports the
+      // deletion, and the widening keys off the path, not off the file still
+      // being there.
+      await writeFile(path.join(root, 'yarn.lock'), '# yarn lockfile v1\n')
+      await git(root, 'add', '.')
+      await git(root, 'commit', '-q', '-m', 'add yarn.lock')
+
+      await rm(path.join(root, 'yarn.lock'))
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+      expect([...out].sort()).toEqual(['a', 'b'])
+    })
+
+    it('an ordinary source change still selects only its own project', async () => {
+      // The control that stops "select everything, always" from passing this
+      // block. `--affected` exists to run less; a widening that fires on any
+      // change would be indistinguishable from deleting the flag.
+      await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+      expect([...out]).toEqual(['a'])
+    })
+
+    it('a lockfile INSIDE a project does not widen — only the root one is hashed', async () => {
+      // `computeWorkspaceFingerprint` joins each name to the workspace ROOT, so
+      // `packages/a/bun.lock` contributes nothing to any cache key. Matching on
+      // basename (or `endsWith`) would rebuild the whole workspace for a file
+      // vx never reads — a false positive that silently deletes the flag's
+      // value in any repo that vendors a lockfile under a package.
+      await writeFile(path.join(root, 'packages/a/bun.lock'), '{"lockfileVersion":1}')
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+      expect([...out]).toEqual(['a'])
+    })
+
+    it('a root file that is NOT part of the fingerprint does not widen', async () => {
+      // README.md sits beside the lockfiles and belongs to no project, so it
+      // must select nothing — the widening keys off the fingerprint list, not
+      // off "the path has no project".
+      await writeFile(path.join(root, 'README.md'), 'top-level edit')
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+      expect([...out]).toEqual([])
+    })
+
+    it('vx-lock.json still never widens, even though it sits at the root', async () => {
+      // vx's OWN lockfile is deliberately excluded from cache inputs, so
+      // re-running `vx lock` must not rebuild the workspace.
+      //
+      // The root is a project here ON PURPOSE. Without it the assertion is
+      // VACUOUS — vx-lock.json maps to no project directory anyway, so `[]`
+      // comes back whether or not any guard exists (mutation-verified: with
+      // only a/b in scope, deleting the exclusion filter still passed). With
+      // root in scope, deleting the filter yields ['root'] and this fails.
+      //
+      // What the filter, and ONLY the filter, enforces: adding 'vx-lock.json'
+      // to the widening set is inert, because the filter has already removed
+      // it from `changed`. That mutation survives and no test can kill it —
+      // recorded rather than papered over, so nobody adds a second guard here
+      // believing it does something. The exclusion lives in exactly one place.
+      const withRoot: ProjectMeta[] = [
+        ...projects,
+        { name: 'root', dir: root, configPath: null, packageJson: { name: 'root' } },
+      ]
+      await writeFile(path.join(root, 'vx-lock.json'), '{"v":1}')
+      await git(root, 'add', '.')
+      await git(root, 'commit', '-q', '-m', 'add vx lock')
+
+      await writeFile(path.join(root, 'vx-lock.json'), '{"v":2}')
+      const out = await affectedProjects({
+        workspaceRoot: root,
+        since: 'HEAD',
+        projects: withRoot,
+      })
+      expect([...out]).toEqual([])
+    })
+
+    it('widening returns every project, including ones with no changed files at all', async () => {
+      // b is untouched and its files are byte-identical, yet its cached
+      // artifacts are unreachable after the lockfile moves. Selecting only the
+      // "changed" projects would leave b's stale results in place.
+      await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
+      await writeFile(path.join(root, 'package-lock.json'), '{"lockfileVersion":3}')
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+      expect([...out].sort()).toEqual(['a', 'b'])
+    })
+
+    it('selects nothing when there are no projects to select', async () => {
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: [] })
+      expect([...out]).toEqual([])
+      await writeFile(path.join(root, 'bun.lock'), '{}')
+      expect([
+        ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: [] })),
+      ]).toEqual([])
+    })
+
+    it('widens on a COMMITTED lockfile change, not just a working-tree one', async () => {
+      // The CI shape: the merge base is behind, the lockfile bump is already
+      // committed, the working tree is clean.
+      await writeFile(path.join(root, 'npm-shrinkwrap.json'), '{"lockfileVersion":3}')
+      await git(root, 'add', '.')
+      await git(root, 'commit', '-q', '-m', 'bump deps')
+      const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD~1', projects })
+      expect([...out].sort()).toEqual(['a', 'b'])
+    })
   })
 
   it('handles many commits in the base..HEAD range without recursion limits', async () => {

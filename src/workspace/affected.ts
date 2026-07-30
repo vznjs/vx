@@ -12,6 +12,7 @@
 import path from 'node:path'
 import { UserError } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
+import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 import type { ProjectMeta } from './workspace.js'
 
 export interface AffectedArgs {
@@ -67,8 +68,30 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   // vx-lock.json (workspace-root metadata) is excluded like a gitignored
   // file: re-running `vx lock` must not mark every project affected.
   const changed = [...diffed, ...untracked].filter((s) => s !== LOCKFILE_NAME)
+
+  // A lockfile or workspace-definition change re-keys EVERY task, because the
+  // workspace fingerprint folds those files into every cache key. Mapping
+  // changed paths to project directories cannot see that — they sit at the
+  // root and belong to no project — so `--affected` selected ZERO projects for
+  // a change that invalidates the entire cache. `vx run test --affected` after
+  // a `pnpm update` exited 0 having run nothing, which is precisely the
+  // failure `docs/cli.md` warns against in the sentence it states as a
+  // principle: "input hashing sees it, so `--affected` must too."
+  //
+  // Selection is not hashed, so widening it here changes no cache key.
+  if (changed.some((p) => FINGERPRINT_SET.has(p))) {
+    return new Set(args.projects.map((p) => p.name))
+  }
+
   return projectsContaining(args.workspaceRoot, changed, args.projects)
 }
+
+/**
+ * The fingerprint files as workspace-root-relative paths. Read from the same
+ * constant the fingerprint itself walks, so a new lockfile format cannot be
+ * taught to one surface and not the other.
+ */
+const FINGERPRINT_SET: ReadonlySet<string> = new Set(WORKSPACE_FINGERPRINT_FILES)
 
 /** Run a NUL-separated path-listing git command from the workspace root. */
 async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]> {
