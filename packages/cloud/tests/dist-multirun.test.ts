@@ -374,6 +374,26 @@ describe('multi-run — a reaped agent cannot speak for work it no longer holds'
     expect(await s.sched.done).toEqual({ ok: true })
   })
 
+  it("ignores a reaped agent's start, so the timeline belongs to the real holder", async () => {
+    const { reg, a, b, s } = reassignFixture()
+    await s.sched.start()
+    reg.drop(a.handle)
+
+    // A's start would otherwise stamp the controller-clock start for a task B
+    // is about to run — skewing B's recorded duration — and consume the
+    // once-only emit, so the real holder's start would never fire at all.
+    reg.dispatch(a.handle, { t: 'agent:start', taskId: 'pkg#build', submissionId: 'sub-1' })
+    const starts = () =>
+      s.messages
+        .filter((m): m is Extract<ServerMessage, { t: 'event' }> => m.t === 'event')
+        .filter((m) => m.event.kind === 'task:start')
+    expect(starts()).toHaveLength(0)
+
+    // B's does.
+    reg.dispatch(b.handle, { t: 'agent:start', taskId: 'pkg#build', submissionId: 'sub-1' })
+    expect(starts()).toHaveLength(1)
+  })
+
   it("still accepts the holder's own done (the guard is a gate, not a wall)", async () => {
     // The control: no drop, no reassignment — the ordinary path must be
     // untouched, or the gate above would simply be breaking distribution.

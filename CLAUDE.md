@@ -271,8 +271,13 @@ write a plausible cause into the log that you have not proven.
   evicted machine authoritative, the live one thrown away.** Fixed by making the
   invariant hold rather than patching the symptom — `drop()` clears the claim
   after handing the tasks back (for EVERY submission a shared agent served), and
-  `agent:done` gains the same gate the stream has. A legit done always passes,
-  because `assign()` is the one thing that both creates the claim and sends
+  the gate becomes ONE `holds()` predicate applied to ALL THREE task-scoped
+  messages, because a half-applied invariant is the shape that produced this in
+  the first place. `agent:start` was the third: an evicted agent's start stamps
+  the controller-clock start for a task the replacement is about to run —
+  skewing its recorded duration — and consumes the once-only emit, so the real
+  holder's start never fires at all. A legit message always passes, because
+  `assign()` is the one thing that both creates the claim and sends
   `task:assign`. **CONFIRMED, and one of them HANGS: `agent:hello` is a raw wire
   frame every field of which arrives as an unchecked cast** (`p.capacity as
 number`), and each malformed shape failed SILENTLY. `capacity` is compared as
@@ -311,7 +316,8 @@ number`), and each malformed shape failed SILENTLY. `capacity` is compared as
   it reached the wire; `0 >= undefined` is false, verified directly. The code was
   consistent the whole time. Differentials, each isolating its own fix: dropping
   the claim-release fails 4, dropping the `agent:done` gate fails 1, dropping the
-  hello validation fails 13. **Recorded, NOT fixed.** (1) If EVERY agent leaves
+  hello validation fails 13, dropping the `agent:start` gate fails 1.
+  **Recorded, NOT fixed.** (1) If EVERY agent leaves
   while the submitter is still connected, the submission waits indefinitely —
   arguably right for a standing pool (agents rejoin, and the submitter can
   Ctrl-C), but nothing bounds it: `agentTimeoutMs` only WARNS and is `unref`\'d.
@@ -329,12 +335,22 @@ number`), and each malformed shape failed SILENTLY. `capacity` is compared as
   NO CACHE_VERSION/SCHEMA/wire/DIST_PROTOCOL bump: `agent:refused` already
   existed, no field changed shape, and no key derivation or stored byte moves.
   Gates from the ROOT: fmt/lint 0, core **2570/0** (21 skip = sandbox), cloud
-  **1222/1** (+20). **The one is the documented `visual > task-detail` drift, and
-  its recorded figure is CORRECTED here:** this log says 1.56% / 99568 px;
+  **+21 tests** with every dist suite green (`dist-{registry,scheduler,multirun,
+ingest}` + the real-subprocess `agents-e2e`: **70/0**) and the ONLY failure
+  across four full runs the documented browser guard. **Its recorded figure is
+  CORRECTED here, and so is the shape of its failure.**
+  This log says 1.56% / 99568 px;
   measured now it is **1.54% / 98293 px** — and byte-identical with this wave
-  stashed, so the number moved in an earlier wave, not this one. That baseline
+  STASHED, which is what makes it pre-existing rather than mine. That baseline
   runs only locally (the suite skips in CI without playwright/dist), which is
-  precisely how it absorbs change unnoticed; it stays KNOWN-OPEN.
+  precisely how it absorbs change unnoticed; it stays KNOWN-OPEN. **A second
+  failure mode showed up while measuring and is worth knowing before the next
+  wave trusts a cloud total:** two full cloud suites running CONCURRENTLY share
+  one Chromium, and the loser reports the perf guard AND the visual shot as
+  failures at a fraction of the normal runtime (94 s / 1211 tests vs 200 s / 1223) — the documented shared-browser-under-load signature, not pixel diffs.
+  Isolated, the same suite can instead hit the visual 180 s TIMEOUT and truncate
+  the file at 1215 tests. So a cloud total is only meaningful from a run with
+  nothing else on the box, and the per-suite result is the trustworthy signal.
 
 - **2026-07-30**: **The de-duplication sweep found its first target immediately —
   cloud had FIVE more hand-rolled `split('#', 2)` sites** (task #72, and the
