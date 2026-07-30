@@ -325,6 +325,48 @@ write a plausible cause into the log that you have not proven.
   drift guard and the filter matrix rather than a second copy of what exists.
   Gates from the ROOT: fmt/lint 0, core **2544/0** (+18; 21 skip = sandbox).
 
+- **2026-07-30**: **The reverted 404 rebuilt as a CI check — every `/v1` path the
+  dashboard calls is now proven to land on a route** (the honest half of the
+  wave above, which confirmed the hazard and then had its runtime fix refused by
+  two existing pins plus five browser suites). Nothing about the runtime moved:
+  the SPA fallthrough stays, because a REMOVED route must degrade to the app and
+  the analytics allowlist must not become a catch-all. What moved is WHEN the
+  miss is caught. `ui/src/api.ts`'s request call sites are extracted (54 route
+  shapes), each is asked of a real booted platform, and a 200 whose body is not
+  JSON — the catch-all — fails the suite. **The probe is DYNAMIC on purpose:**
+  calling `isAnalyticsSurface` directly would be cheaper and WRONG, because the
+  allowlist and the dispatcher are two different things and it is exactly that
+  split which produced all three bugs — only the real server knows. The
+  assertion is deliberately weak in the right direction (a 404 for a made-up id
+  is fine, a 400 is fine, 405 is fine; only the catch-all is not), so it cannot
+  flake on fixture data. **Clean result, which is the expected one for a guard:
+  no live unrouted call.** Four shapes reach the catch-all and all four are the
+  colocated routes that died with the SQLite catalog (`/v1/graph`,
+  `/v1/workspace/*`) — exempted BY NAME with the reason, and a second test
+  asserts they still fall through, so the exempt list cannot rot into a blanket
+  suppression that hides the next real miss. **Three extractor bugs of mine, each
+  caught by looking at the output rather than trusting it:** matching every
+  `/v1` string counted PROSE and `startsWith('/v1/')` prefix tests as calls
+  (phantom routes `/v1`, `/v1/admin`, `/v1/auth`), so it keys on the request
+  helpers; treating a trailing `${…}` as a query silently truncated
+  `/v1/compare/${runId}` to `/v1/compare`, so the rule is now "trailing `${…}`
+  NOT preceded by `/`"; and the probe substituted a UUID into `/v1/cache/ID`,
+  which the hex-only cache-wire regex correctly rejects — reporting the route as
+  unrouted when the TEST was wrong. The extractor THROWS below 40 shapes: a
+  regex that quietly matched nothing would pass the suite while checking zero
+  routes. Differential: injecting one `getJson('/v1/brand-new-surface')` into the
+  client — the exact historical shape — fails the guard and NAMES it.
+  **Bundled, and measured rather than assumed:** the new suite first shipped as
+  its own file and the full cloud run went to **10 fails** — all nine visual
+  shots plus the perf guard, the first slow and the rest at ~16 ms, which is the
+  shared browser dying under load, not nine pixel diffs. Confirmed by isolation
+  (9/1 at the documented 1.56% / 99568 px) and by `git diff` showing the client
+  byte-clean. Merging the two routing suites onto ONE platform boot took it back
+  to 1182/1. **A second ephemeral-pg + fake-S3 boot is a real cost in this
+  package, not tidiness** — worth knowing before adding the next platform suite.
+  ZERO `src/` change. Gates from the ROOT: fmt/lint 0, cloud **1182/1** (+3),
+  the 1 being the documented `visual > task-detail` drift.
+
 - **2026-07-30**: **A hostile audit of the platform's single HTTP host, whose one
   proposed fix was REFUTED BY THE CODEBASE — and the refutation is the entry**
   (`cli/dispatch.ts`, picked by the "load-bearing AND thin" rule: 563 lines

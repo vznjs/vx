@@ -8,19 +8,24 @@
 // These pin the routing RULES against a real booted platform.
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import { bootPlatform, type TestPlatform } from './helpers/platform.js'
 
+// ONE platform for both describes below. They are the same subject (routing)
+// and each boot costs a pg clone + a fake S3; the browser suites in this
+// package already fail under full-suite load, so a needless second platform is
+// a real cost rather than tidiness.
+let p: TestPlatform
+beforeAll(async () => {
+  p = await bootPlatform()
+})
+afterAll(async () => {
+  await p.stop()
+})
+
+const asCi = (): Record<string, string> => ({ authorization: `Bearer ${p.ciToken}` })
+
 describe('dispatch routing', () => {
-  let p: TestPlatform
-  beforeAll(async () => {
-    p = await bootPlatform()
-  })
-  afterAll(async () => {
-    await p.stop()
-  })
-
-  const asCi = () => ({ authorization: `Bearer ${p.ciToken}` })
-
   it('sends an unmatched /v1 path to the SPA catch-all — deliberately, at a cost', async () => {
     // Worth stating plainly, because it looks like a bug and is not.
     //
@@ -113,6 +118,138 @@ describe('dispatch routing', () => {
     for (const path of ['/v1/artifacts', '/mcp']) {
       const res = await fetch(`${p.origin}${path}`)
       expect({ path, ok: res.ok }).toEqual({ path, ok: false })
+    }
+  })
+})
+
+// --------------------------------------------------------------------------
+// Every `/v1` path the dashboard calls must land on a route.
+//
+// This is the honest version of a fix that was tried and REVERTED in the
+// dispatch audit. An unmatched `/v1/*` answers 200 with the SPA catch-all,
+// which is deliberate (a route REMOVED from the platform degrades to the app
+// instead of 500; the analytics allowlist must not become a catch-all) and
+// which five browser suites depend on — so it cannot become a runtime 404.
+//
+// But the cost is real: `/v1/notifications`, `/v1/why/:runId` and
+// `/v1/branch-failures` EACH shipped missing from the gate's allowlist, and the
+// fallthrough hid every one. The miss surfaced as a 200 whose body would not
+// parse, found late by a browser check rather than by the request failing.
+//
+// So the check moves to CI instead of the runtime: extract the paths the client
+// actually calls, ask a real platform for each, and fail when one lands on the
+// catch-all. A client call nothing routes now fails on the commit that adds it.
+//
+// The probe is DYNAMIC on purpose. Asking `isAnalyticsSurface` directly would
+// be cheaper and wrong: the allowlist and the dispatcher are two different
+// things, and it is exactly that split which produced all three bugs — a route
+// the allowlist claims but dispatch never handles (or the reverse) still breaks.
+// Only the real server knows.
+
+/**
+ * The `/v1` route shapes `ui/src/api.ts` issues requests for.
+ *
+ * Keyed on the REQUEST HELPERS rather than on every `/v1` string in the file:
+ * the module is full of prose (`a /v1/* analytics pathname`) and prefix tests
+ * (`pathname.startsWith('/v1/')`), and treating those as calls produced a
+ * dozen phantom routes on the first attempt.
+ */
+function clientRouteShapes(): string[] {
+  let src = readFileSync(new URL('../ui/src/api.ts', import.meta.url), 'utf8')
+  src = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  const call =
+    /(?:getJson|doGetJson|mutate|authPost|authFetch|fetch)\s*(?:<[^>]*>)?\s*\(\s*(?:`\$\{origin\(\)\}|[`'"])(\/v1\/[^`'"]*)/g
+  const shapes = new Set<string>()
+  for (const m of src.matchAll(call)) {
+    let p = m[1]!.split('?')[0]!
+    // A trailing `${…}` NOT preceded by `/` is a query suffix (`…/stats${q}`).
+    // Every other interpolation is a path segment — an earlier cut stripped
+    // both and silently turned `/v1/compare/${runId}` into `/v1/compare`.
+    p = p.replace(/(?<!\/)\$\{[^}]*\}$/, '')
+    p = p.replace(/\$\{[^}]*\}/g, 'ID').replace(/\/$/, '')
+    if (p !== '') shapes.add(p)
+  }
+  // Non-vacuity: the client calls ~54 shapes. A regex that quietly matched
+  // nothing would make this whole suite pass while checking zero routes — the
+  // failure mode that makes a guard worse than none.
+  if (shapes.size < 40) {
+    throw new Error(
+      `extracted only ${shapes.size} client route shapes from api.ts — the extractor is broken, ` +
+        'not the client. Fix THIS parser rather than lowering the bound.',
+    )
+  }
+  return [...shapes].sort()
+}
+
+/**
+ * Shapes that SHOULD reach the SPA catch-all, each for a stated reason. A new
+ * entry here is a deliberate decision; an unexplained one is the bug this file
+ * exists to catch.
+ */
+const EXPECTED_UNROUTED: ReadonlyMap<string, string> = new Map([
+  [
+    '/v1/graph',
+    'died with the SQLite catalog (the P4 platform fold). The client probes it to detect a colocated workspace and treats the absence as a missing capability; `server.test.ts` pins that it degrades to the app rather than 500.',
+  ],
+  ['/v1/workspace/projects', 'same colocated-catalog removal as /v1/graph.'],
+  ['/v1/workspace/projects/ID', 'same colocated-catalog removal as /v1/graph.'],
+  ['/v1/workspace/tasks', 'same colocated-catalog removal as /v1/graph.'],
+])
+
+/** A path segment that will actually match the route's own shape. */
+function concrete(shape: string): string {
+  // The cache wire is hex-only (`[0-9a-f]{16,64}`) so it can never shadow the
+  // named `/v1/cache/*` analytics routes — a UUID does NOT match it, and an
+  // earlier probe reported `/v1/cache/:hash` as unrouted for exactly that
+  // reason. The substitution has to fit the route, or the test measures itself.
+  if (shape.startsWith('/v1/cache/')) return shape.replace(/\/ID/g, '/0123456789abcdef')
+  return shape.replace(/\/ID/g, '/00000000-0000-7000-8000-000000000000')
+}
+
+describe('every /v1 path the dashboard calls is routed', () => {
+  it('none of them lands on the SPA catch-all', async () => {
+    const unrouted: { shape: string; body: string }[] = []
+    for (const shape of clientRouteShapes()) {
+      if (EXPECTED_UNROUTED.has(shape)) continue
+      const res = await fetch(`${p.origin}${concrete(shape)}`, { headers: asCi() })
+      const ct = res.headers.get('content-type') ?? ''
+      // Deliberately weak in the right direction: a 404 for an id that does not
+      // exist is fine, a 400 is fine, a 405 is fine, 200 JSON is fine. ONLY a
+      // 200 whose body is not JSON means the request fell past every route and
+      // the client would receive the app instead of an answer.
+      if (res.status === 200 && !ct.includes('application/json')) {
+        unrouted.push({ shape, body: (await res.text()).slice(0, 60) })
+      }
+    }
+    expect(unrouted).toEqual([])
+  })
+
+  it('the documented catch-all probes really do still fall through', async () => {
+    // The other direction, and it is what keeps the exempt list honest: if one
+    // of these ever starts resolving, the client is probing a capability that
+    // now exists and the entry should go — otherwise the list rots into a
+    // blanket suppression that hides the next real miss.
+    for (const shape of EXPECTED_UNROUTED.keys()) {
+      const res = await fetch(`${p.origin}${concrete(shape)}`, { headers: asCi() })
+      const ct = res.headers.get('content-type') ?? ''
+      expect({
+        shape,
+        caughtByCatchAll: res.status === 200 && !ct.includes('application/json'),
+      }).toEqual({ shape, caughtByCatchAll: true })
+    }
+  })
+
+  it('extracts the real call sites, not prose or prefix tests', async () => {
+    // The extractor's own control. `api.ts` contains `/v1/*` in comments and
+    // `startsWith('/v1/')` guards; an early cut counted those and reported
+    // phantom routes like `/v1` and `/v1/admin`. Bare prefixes must be absent
+    // and known real routes present.
+    const shapes = clientRouteShapes()
+    expect(shapes).not.toContain('/v1')
+    expect(shapes).not.toContain('/v1/admin')
+    expect(shapes).not.toContain('/v1/auth')
+    for (const real of ['/v1/notifications', '/v1/why/ID', '/v1/branch-failures']) {
+      expect({ real, found: shapes.includes(real) }).toEqual({ real, found: true })
     }
   })
 })
