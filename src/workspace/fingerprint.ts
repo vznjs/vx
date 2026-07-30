@@ -8,7 +8,11 @@ import { xxh3 } from '../util/index.js'
 // for projects that have that file present, which is fine: that's the
 // whole point of bumping CACHE_VERSION when the fingerprint surface
 // expands.
-const WORKSPACE_FINGERPRINT_FILES = [
+// Exported so `--affected` can consult the SAME list. A change to any of
+// these re-keys every task in the workspace, so selection has to widen to
+// match — two copies of this list would silently drift into a run that
+// rebuilds everything while selecting nothing.
+export const WORKSPACE_FINGERPRINT_FILES = [
   // Lockfiles
   'pnpm-lock.yaml',
   'package-lock.json',

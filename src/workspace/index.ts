@@ -3,7 +3,7 @@
 
 export { affectedProjects, defaultAffectedBase } from './affected.js'
 export { applyFilters, parseFilter } from './filter.js'
-export { computeWorkspaceFingerprint } from './fingerprint.js'
+export { computeWorkspaceFingerprint, WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 export { computeNestedProjectDirs } from './nested-dirs.js'
 export { buildPackageGraph, type PackageGraph } from './package-graph.js'
 export {
