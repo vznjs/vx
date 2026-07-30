@@ -246,6 +246,43 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **A THIRD copy of the lockfile list — the one the `--affected`
+  fix exported a shared constant to prevent, and then missed** (task #71).
+  `--affected`'s wave widened selection off `WORKSPACE_FINGERPRINT_FILES`
+  explicitly "because two copies would drift into precisely the state being
+  fixed"; `affected.ts` imports it, and `cli/watch.ts` was still carrying its own
+  hand-rolled seven-name literal. The failure mode is the silent one this whole
+  surface is made of: add a name to the shared constant and every task's cache
+  key folds it, `--affected` widens on it, and **`vx watch` never re-runs on
+  it** — the loop keeps printing that it is watching while ignoring the one edit
+  that invalidates the entire workspace. Now reads the shared Set.
+  **The pin is a SOURCE assertion, and I measured that it is not redundant
+  before writing it**: with the hand-rolled list restored, the existing
+  `workspace-root lockfile changes trigger a cycle` e2e still PASSES, because
+  both lists carry the same seven names today. It only starts failing once
+  someone adds a name — i.e. exactly when nobody is looking — so a behavioural
+  test cannot be the guard here and a no-hardcoded-literals check is. **The
+  other pins are the ignore filter**, hoisted to an exported
+  `isIgnoredWatchPath`: `node_modules` is a SEGMENT rule (nested copies count),
+  the suffix rules ANCHOR at the end, and the negative controls are the point —
+  `node_modules-shim.ts` and `a~b.ts` are real source that must still trigger.
+  Plus the `--report` / `--report-file` / `--verbosity` refusals, with the flag
+  NAME and the REASON asserted separately because pinning that prose verbatim
+  has already broken these tests once. Five mutations, each verified applied;
+  four killed (hand-rolled list 1, segment→substring 2, suffix→substring 1,
+  refusal dropped 3). **The fifth SURVIVED and the honest finding is that my
+  comment about it was wrong.** I wrote that the `--verbosity 0` boundary was
+  unguarded because reaching it needs a real run; then checked rather than
+  leaving the claim standing — `verbosity` DEFAULTS to 0, so tightening `> 0`
+  to `>= 0` rejects EVERY watch invocation and the cli.test.ts e2e block reds
+  with 7 failures. The boundary is covered, just elsewhere, and the comment now
+  says where and cites the measurement. **What this wave deliberately did NOT
+  add:** the debounce collapse, the swap-file ignore, the SIGINT/SIGTERM exits,
+  the lockfile cycle and the workspaceFiles→root-watcher switch are ALREADY
+  e2e-covered in cli.test.ts — checked before writing, so the wave adds the
+  drift guard and the filter matrix rather than a second copy of what exists.
+  Gates from the ROOT: fmt/lint 0, core **2544/0** (+18; 21 skip = sandbox).
+
 - **2026-07-30**: **`prepareRun`'s rules are pinned — 380 lines that THREE recorded
   defects route through, reached by tests only incidentally** (task #70; the
   "load-bearing AND thin" selection rule applied literally, where thin means
