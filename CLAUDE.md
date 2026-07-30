@@ -246,6 +246,56 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **Creating an organization was two autocommit writes, so a failure
+  between them leaves an org nobody can administer under a slug nobody can reuse**
+  (task #78; the platform auth/tenancy boundary — `auth/{rbac,routes,sessions,
+tokens}.ts`, the layer every authenticated request passes through). **CONFIRMED
+  by repro.** `POST /v1/admin/orgs` did a bare `INSERT INTO organizations`
+  followed by a bare `INSERT INTO org_memberships` — while BOTH its siblings use a
+  transaction (`register`'s bootstrap path creates the same two rows inside
+  `sql.begin`, and invite-accept wraps its claim). **The two halves compound, which
+  is why this is not cosmetic:** the org-list route filters by `principal.orgs`,
+  so an organization with no owner membership is INVISIBLE to a
+  non-instance-admin (`VX_CLOUD_OPEN_ORG_CREATE` is exactly the mode where a
+  non-admin creates orgs), and `organizations.slug` is globally UNIQUE, so the
+  retry answers **409 slug already taken** against a row the caller cannot see.
+  Reproduced end-to-end through the real route on ephemeral pg: `orphaned org
+  members: 0`, `creator sees orgs: 0`, retry → `duplicate key value violates
+  unique constraint "organizations_slug_key"`. **The injection I could build is
+  itself a documented residual, and that is stated rather than dressed up:** the
+  5s session memo serves a principal for a user deleted out of band, so the
+  request authenticates while `org_memberships.user_id`'s FK no longer resolves —
+  and no route deletes a user today, so that exact trigger needs a DBA. What makes
+  the fix worth having is the CLASS, not the trigger: any failure of the second
+  statement after the first committed produces the same orphan, and a connection
+  dropped between two autocommit statements is the ordinary one. **REFUTED by
+  reading every site, and the negative result is half the value:** the session
+  memo's stated invariant — "every route that mutates a principal clears it" —
+  HOLDS at all six mutation sites (profile rename, invite accept **conditional on
+  `status === 200`**, which is right because only that path lands a membership,
+  invite-created membership, member DELETE, member role UPDATE, org create);
+  password change deliberately does not clear (it rewrites `password_hash`, which
+  is not on the principal). CSRF covers every session mutation that changes state
+  (rename, password, invite-accept, and the whole `/v1/admin/*` surface at the one
+  `req.method !== 'GET'` gate) — logout is the conventional exemption and
+  login/register the recorded one, both bounded by `SameSite=Lax`, which is what
+  actually stops a cross-site POST carrying the cookie. Every `/v1/admin/*` item
+  id is `UUID_RE`-checked BEFORE it reaches Postgres, so a malformed id is a 404
+  and never a 500 from `invalid input syntax for type uuid`. `boolEnv` makes
+  `VX_CLOUD_OPEN_SIGNUP`/`_OPEN_ORG_CREATE` closed by default (`'1'`/`'true'`
+  only). And the token memo's null-caching is sound for the reason its comment
+  gives — a 256-bit server-minted secret can never be re-minted, so an unknown
+  bearer stays unknown. Differential: reverting ONLY the transaction fails
+  **exactly 1 of 40** — the atomicity pin — while the second new test (a duplicate
+  slug still 409s and the creator still holds `owner`) is a deliberate control
+  that must pass BOTH ways, because wrapping the inserts must not swallow the
+  unique violation into a 500. Verified separately that Bun's `sql.begin`
+  re-throws the original error with `.code` intact, which is what keeps
+  `isUniqueViolation` working through the transaction. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump — no DDL, no column, no key
+  derivation; only whether two existing writes commit together. Gates from the
+  ROOT: fmt/lint 0, core **2570/0** (21 skip = sandbox).
+
 - **2026-07-30**: **Two surfaces disagreed by 300x about the same task's noise, and
   the one that decides "regression or noise" was acting on two data points**
   (task #77; the stability/noise surface, picked the same way as the wave before

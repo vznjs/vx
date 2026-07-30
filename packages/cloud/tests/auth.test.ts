@@ -326,6 +326,74 @@ async function userId(db: DbClient): Promise<string> {
 }
 
 describe('security-review regressions', () => {
+  it('org create is atomic: a failed membership leaves no orphan and frees the slug', async () => {
+    const db = openDb(await (await ephemeralPg()).createDatabase())
+    const ctx = makeCtx(db)
+    const cookie = cookieOf(
+      await call(ctx, 'POST', '/v1/auth/register', {
+        body: { email: 'orphan@example.com', password: 'password1' },
+      }),
+    )
+    const uid = await userId(db)
+    // Warm the 5s session-principal memo, then delete the user out of band.
+    // That combination is what makes the SECOND insert fail while the first
+    // still succeeds: the memo serves the principal for the rest of the TTL
+    // (a documented accepted residual), so the request is authenticated while
+    // `org_memberships.user_id`'s FK no longer resolves.
+    expect((await call(ctx, 'GET', '/v1/admin/orgs', { cookie })).status).toBe(200)
+    await db.sql`DELETE FROM users WHERE id = ${uid}`
+
+    await expect(
+      call(ctx, 'POST', '/v1/admin/orgs', {
+        cookie,
+        csrf: true,
+        body: { slug: 'ghost', name: 'Ghost' },
+      }),
+    ).rejects.toThrow(/foreign key/i)
+
+    // Both halves matter, and neither is cosmetic. An organization with no
+    // owner membership is INVISIBLE to a non-instance-admin (the list route
+    // filters by `principal.orgs`), and its slug is globally unique — so
+    // without the transaction the caller is left with an org nobody can
+    // administer under a name nobody can reuse.
+    const orgs = await db.sql<{ slug: string }[]>`
+      SELECT slug FROM organizations WHERE slug = 'ghost'`
+    expect(orgs).toEqual([])
+    await db.close()
+  })
+
+  it('org create still 409s on a duplicate slug and grants the creator owner', async () => {
+    // The control for the test above: wrapping the two inserts must not swallow
+    // the unique violation into a 500, and must still land the membership.
+    const db = openDb(await (await ephemeralPg()).createDatabase())
+    const ctx = makeCtx(db)
+    const cookie = cookieOf(
+      await call(ctx, 'POST', '/v1/auth/register', {
+        body: { email: 'dup@example.com', password: 'password1' },
+      }),
+    )
+    const first = await call(ctx, 'POST', '/v1/admin/orgs', {
+      cookie,
+      csrf: true,
+      body: { slug: 'dup', name: 'Dup' },
+    })
+    expect(first.status).toBe(201)
+    const { orgId } = (await first.json()) as { orgId: string }
+    const second = await call(ctx, 'POST', '/v1/admin/orgs', {
+      cookie,
+      csrf: true,
+      body: { slug: 'dup', name: 'Dup Again' },
+    })
+    expect({ status: second.status, body: await second.json() }).toEqual({
+      status: 409,
+      body: { error: 'slug already taken' },
+    })
+    const roles = await db.sql<{ role: string }[]>`
+      SELECT role FROM org_memberships WHERE org_id = ${orgId}`
+    expect(roles.map((r) => r.role)).toEqual(['owner'])
+    await db.close()
+  })
+
   it('invite accept is atomically single-use under a concurrent-accept race', async () => {
     const db = openDb(await (await ephemeralPg()).createDatabase())
     const ctx = makeCtx(db)
