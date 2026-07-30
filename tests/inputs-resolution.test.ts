@@ -36,7 +36,7 @@ import {
   resolveOutputs,
   resolveWorkspaceOutputs,
 } from '../src/cache/inputs.js'
-import { loadProjectConfig } from '../src/workspace/project-loader.js'
+import { loadProjectConfig, validateProjectConfig } from '../src/workspace/project-loader.js'
 import type { CacheInputs } from '../src/config.js'
 
 // Every fixture git-inits a real repo; under full-suite load the default 5s
@@ -190,12 +190,18 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
     expect(await rels(['**/*', '!!vendor/**'])).toEqual([path.join('vendor', 'v.js')])
   })
 
-  it('FINDING: the loader ACCEPTS the inverting `!!` form', async () => {
-    // The guards that could have caught it both miss: `assertNotNegationOnly`
-    // sees the positive `**/*` and passes, and `hasParentSegment` strips one
-    // `!` before splitting so `'!!vendor/**'` has no `..` segment. Nothing
-    // downstream inspects the remainder. Pinned as CURRENT behaviour — flipping
-    // this to a rejection is the fix, and this test is what will announce it.
+  it('the loader REFUSES the inverting `!!` form', async () => {
+    // The two guards that could have caught it both miss on their own:
+    // `assertNotNegationOnly` sees the positive `**/*` and passes, and
+    // `hasParentSegment` strips one `!` before splitting so `'!!vendor/**'`
+    // shows no `..` segment. Neither is wrong — they answer different
+    // questions — which is why this needed its own guard rather than a
+    // widening of either.
+    //
+    // This test began as a FINDING pinning the loader ACCEPTING the form.
+    // Flipping it to assert the refusal is the intended end of that loop: the
+    // pin is what announced the fix, and it stays here so the acceptance
+    // cannot come back silently.
     const dir = path.join(root, 'cfgpkg')
     await mkdir(dir, { recursive: true })
     await writeFile(
@@ -203,8 +209,79 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
       'export default { tasks: { build: { exec: { command: "true" }, ' +
         'cache: { inputs: { files: ["**/*", "!!vendor/**"] }, outputs: { files: [] } } } } }',
     )
-    const cfg = await loadProjectConfig(path.join(dir, 'vx.config.mjs'))
-    expect(cfg.tasks?.build?.cache?.inputs.files).toEqual(['**/*', '!!vendor/**'])
+    await expect(loadProjectConfig(path.join(dir, 'vx.config.mjs'))).rejects.toThrow(
+      /'!!' is not a double negation/,
+    )
+  })
+
+  it('the refusal names both repairs, because the two differ by one character', () => {
+    // A reader hitting this wrote `!!x` meaning "definitely exclude x". The
+    // message has to say which of the two one-character neighbours they wanted,
+    // since the wrong pick is silent: `!x` subtracts it, `x` includes it, and
+    // `!!x` folds ONLY it.
+    let msg = ''
+    try {
+      validateProjectConfig(
+        {
+          tasks: {
+            build: {
+              exec: { command: 'true' },
+              cache: { inputs: { files: ['**/*', '!!vendor/**'] }, outputs: { files: [] } },
+            },
+          },
+        },
+        'cfg',
+      )
+    } catch (e) {
+      msg = (e as Error).message
+    }
+    expect(msg).toContain('INVERTS')
+    expect(msg).toContain('"!vendor/**"')
+    expect(msg).toContain('"vendor/**"')
+    expect(msg).toContain('cache.inputs.files')
+  })
+
+  it('the workspace half is refused too — a one-sided fix would leave it live', () => {
+    // `resolveWorkspaceFiles` carries its OWN copy of the `startsWith('!')`
+    // partition, so the defect exists twice. Pinned separately for exactly
+    // that reason: a fix applied to one half passes the other half's tests.
+    expect(() =>
+      validateProjectConfig(
+        {
+          tasks: {
+            build: {
+              exec: { command: 'true' },
+              cache: {
+                inputs: { files: [], workspaceFiles: ['**/*', '!!pkg/vendor/**'] },
+                outputs: { files: [] },
+              },
+            },
+          },
+        },
+        'cfg',
+      ),
+    ).toThrow(/'!!' is not a double negation/)
+  })
+
+  it('a single `!` and a plain positive are both still accepted', () => {
+    // The control. Both neighbours of `!!x` are legitimate and common, so a
+    // guard that caught them would break every config that subtracts anything.
+    expect(() =>
+      validateProjectConfig(
+        {
+          tasks: {
+            build: {
+              exec: { command: 'true' },
+              cache: {
+                inputs: { files: ['**/*', '!vendor/**'], workspaceFiles: ['a/**', '!a/b/**'] },
+                outputs: { files: ['dist/**'] },
+              },
+            },
+          },
+        },
+        'cfg',
+      ),
+    ).not.toThrow()
   })
 
   it('FINDING: `!!` inverts `workspaceFiles` the same way', async () => {
