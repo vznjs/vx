@@ -305,10 +305,23 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
     await page.waitForTimeout(200)
     await page.fill('[data-testid="workspace-delete-input"]', slug)
     await page.evaluate(`document.querySelector('[data-testid="workspace-delete-submit"]').click()`)
-    await page.waitForTimeout(2000)
+    // Poll for the fallback rather than sleeping a fixed 2s. This test failed
+    // once in a full-suite run reading the PRE-delete sidebar ("2 workspaces"),
+    // i.e. reporting "fell back to the wrong scope" when the truth would be
+    // "hadn't fallen back yet" — the delete is a round-trip plus a refetch plus
+    // a replace-navigation. STATED HONESTLY: that cause is consistent with the
+    // failure text but is NOT reproduced — the fixed-wait version passes 11/0
+    // isolated and under 6-way CPU contention, so this is a robustness change,
+    // not a verified fix. Polling is strictly better regardless: it cannot
+    // expire mid-flight, and it returns as soon as the state lands.
+    const deadline = Date.now() + 15_000
+    let sidebar = await contextText()
+    while (sidebar.includes('acme/beta') && Date.now() < deadline) {
+      await page.waitForTimeout(100)
+      sidebar = await contextText()
+    }
 
     // The context picker fell back to the surviving workspace…
-    const sidebar = await contextText()
     expect(sidebar).toContain('acme/alpha')
     expect(sidebar).not.toContain('acme/beta')
     // …the URL no longer names the deleted scope…
