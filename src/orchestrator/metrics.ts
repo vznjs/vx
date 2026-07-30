@@ -21,6 +21,7 @@ import { splitTaskId } from '../graph/index.js'
 import { clampInt } from '../util/index.js'
 import { classifyFailureMode, mixedOutcomeKeyCount } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
+import { isPassStatus, TASK_STATUSES } from './telemetry.js'
 
 // ---------------------------------------------------------------------------
 // Run listing + detail
@@ -1170,8 +1171,15 @@ const MAX_TREND_BUCKETS = 10_000
 /**
  * Cap on a caller-supplied day span. A huge span makes `WHERE created_at >=
  * <since>` degenerate to a full table scan; clamping to ~1 year keeps the
- * fetch bounded to the intended range. Mirrors `MAX_WINDOW_DAYS` in
- * packages/cloud/src/db/analytics.ts.
+ * fetch bounded to the intended range.
+ *
+ * The cloud analytics layer sets its own bound and the two are NOT tied. They
+ * happen to agree today, but this one guards a single developer's local
+ * SQLite `cache.db` while that one guards a range-partitioned Postgres taking
+ * 50-100M rows/day — the scale argument is different, so the platform is free
+ * to clamp tighter without this having to move. (An earlier comment here
+ * claimed the two "mirror" each other; nothing enforced it, and the claim was
+ * the sort a reader trusts.)
  */
 const MAX_WINDOW_DAYS = 366
 
@@ -1528,7 +1536,15 @@ export interface RegressionArgs {
   limit?: number
 }
 
-const PASS_STATUSES = "('success', 'cache-hit', 'cache-hit-remote')"
+// The SQL form of `isPassStatus`, DERIVED from the union rather than retyped.
+// A query cannot call a TS predicate, so this list has to exist as text — but
+// it does not have to be a second decision: filter the real status set through
+// the real predicate and a new member lands here automatically. The values are
+// compile-time literals from a closed union, so the interpolation is not a
+// parameterization hole.
+const PASS_STATUSES = `(${TASK_STATUSES.filter(isPassStatus)
+  .map((s) => `'${s}'`)
+  .join(', ')})`
 const BRANCH_CAP = 12
 
 export function getRegressions(db: Database, args: RegressionArgs = {}): RegressedTask[] {

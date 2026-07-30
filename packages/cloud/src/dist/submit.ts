@@ -19,6 +19,7 @@ import {
   deriveStableKeys,
   detectCi,
   findWorkspaceRoot,
+  isPassStatus,
   prepareRun,
   projectNode,
   projectOutcome,
@@ -51,8 +52,6 @@ const silentLogger: Logger = {
   taskStderr() {},
   taskComplete() {},
 }
-
-const OK_STATUSES = new Set(['success', 'cache-hit', 'cache-hit-remote'])
 
 export interface DistributedBackendOptions {
   /** http(s) origin of the serve hosting the session registry + store. */
@@ -401,7 +400,7 @@ async function materializeOutputs(args: {
     if (args.selfExecuted.has(id)) continue
     const outcome = byId.get(id)
     if (outcome === undefined || outcome.hash === undefined) continue
-    if (!OK_STATUSES.has(outcome.status)) continue
+    if (!isPassStatus(outcome.status)) continue
     const outputs = node.config.cache?.outputs
     const files = outputs?.files ?? []
     const workspaceFiles = outputs?.workspaceFiles ?? []

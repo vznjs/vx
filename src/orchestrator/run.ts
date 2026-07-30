@@ -29,7 +29,7 @@ import type { VxPlugin } from './plugin.js'
 import { subscribeEventSinks, teardownPlugins } from './plugin-host.js'
 import type { SubscribedEventSinks } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
-import { assembleRunSummary, deriveCacheSource } from './telemetry.js'
+import { assembleRunSummary, deriveCacheSource, isCacheHit, isPassStatus } from './telemetry.js'
 import type { RunContextRecord, TaskTelemetry } from './telemetry.js'
 import { defaultLogger, resolveOutputView } from './logger.js'
 import { detectColors } from './colors.js'
@@ -693,10 +693,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
     const list = [...outcomes.values()]
     const ok =
-      list.every(
-        (o) =>
-          o.status === 'success' || o.status === 'cache-hit' || o.status === 'cache-hit-remote',
-      ) &&
+      list.every((o) => isPassStatus(o.status)) &&
       // `--verify`: a provably-unsafe cache entry (non-deterministic outputs, a
       // re-run that failed, or a read of undeclared inputs) turns the run red so
       // CI catches it.
@@ -852,7 +849,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
         ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: o.wallclockStartNs } : {}),
         ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
-        cacheHit: o.status === 'cache-hit' || o.status === 'cache-hit-remote',
+        cacheHit: isCacheHit(o.status),
         ...(o.attempts !== undefined ? { attempts: o.attempts } : {}),
       })
       if (o.status === 'failed') failedCount++

@@ -30,8 +30,9 @@ export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
  * Map a task outcome status to its cache source. `success`/`failed` ran
  * (a miss as far as the cache read is concerned); the two cache-hit
  * statuses restored from local/remote; `skipped`/`aborted` never engaged
- * the cache. Pure function — the single place this mapping is decided, so
- * no consumer re-implements `status LIKE 'cache-hit%'`.
+ * the cache. Pure function — the single place this mapping is decided;
+ * `isCacheHit` below is derived from it rather than re-listing the two
+ * hit statuses, so there is one decision, not two that can disagree.
  */
 export function deriveCacheSource(status: TaskStatus): CacheSource {
   switch (status) {
@@ -46,6 +47,59 @@ export function deriveCacheSource(status: TaskStatus): CacheSource {
     case 'aborted':
       return 'none'
   }
+}
+
+/**
+ * Whether each status counts as a PASS. Written as a `Record<TaskStatus, …>`
+ * rather than a `new Set([...])` on purpose: a Record must name every member,
+ * so adding a status to the union is a COMPILE error HERE and the omission
+ * cannot ship. A Set of string literals has no such tripwire — it silently
+ * answers `false` for the new member, which is how ten hand-rolled copies of
+ * this vocabulary accumulated across core, cloud and the dashboard.
+ */
+const PASSES: Record<TaskStatus, boolean> = {
+  success: true,
+  'cache-hit': true,
+  'cache-hit-remote': true,
+  failed: false,
+  skipped: false,
+  aborted: false,
+}
+
+/**
+ * Every `TaskStatus`, at runtime. Read off `PASSES`'s keys, which the
+ * `Record<TaskStatus, …>` type guarantees is exactly the union — so this is
+ * derived, not a second list that can fall behind. Exported so a consumer that
+ * cannot import the type (a test asserting a copy of this vocabulary in
+ * another package agrees) can still enumerate the real set.
+ */
+export const TASK_STATUSES: readonly TaskStatus[] = Object.keys(PASSES) as TaskStatus[]
+
+const KNOWN_STATUSES: ReadonlySet<string> = new Set(TASK_STATUSES)
+
+/**
+ * Did the task pass? A cache hit counts — it produced the same result without
+ * spending the time, which is the whole point. `skipped` and `aborted` do NOT:
+ * neither finished on its own terms, so neither can vouch for anything.
+ *
+ * Takes `string`, not `TaskStatus`, because most callers hold a status that
+ * arrived over a wire or out of a database column. An unrecognised string
+ * reads as NOT passing — the safe direction, since the alternative is calling
+ * a run green on a status this build has never heard of.
+ */
+export function isPassStatus(status: string): boolean {
+  return PASSES[status as TaskStatus] === true
+}
+
+/**
+ * Did the task's result come out of the cache (either layer)? Derived from
+ * `deriveCacheSource` rather than re-listing the two hit statuses, so the two
+ * cannot disagree about what a hit is. Unknown strings read as not-a-hit.
+ */
+export function isCacheHit(status: string): boolean {
+  if (!KNOWN_STATUSES.has(status)) return false
+  const source = deriveCacheSource(status as TaskStatus)
+  return source === 'local' || source === 'remote'
 }
 
 /** Identifies which run a record belongs to + its captured context. Maps

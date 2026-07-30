@@ -19,6 +19,7 @@
 
 import {
   run,
+  isPassStatus,
   projectOutcome,
   type CachePolicy,
   type Logger,
@@ -383,7 +384,7 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
     // run() already drained its background uploads, so by the time this
     // `done` leaves the socket the artifact is in the store.
     send({ t: 'agent:done', taskId, submissionId, outcome })
-    status(`${OK.has(outcome.status) ? '✓' : '✗'} ${taskId} (${outcome.status})`)
+    status(`${isPassStatus(outcome.status) ? '✓' : '✗'} ${taskId} (${outcome.status})`)
     inFlight--
     if (drained && inFlight === 0) sayBye('shutdown')
     else if (inFlight === 0) armIdle()
@@ -410,5 +411,3 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
     },
   }
 }
-
-const OK = new Set(['success', 'cache-hit', 'cache-hit-remote'])

@@ -55,6 +55,36 @@ export const PREDICTED: Record<PredictedStatus, { label: string; icon: string; c
 }
 
 /**
+ * Which states came out of the cache. A `Record<VizState, …>` rather than an
+ * inline disjunction of the two hit literals at each call site: a Record must
+ * name every state, so adding one is a COMPILE error here and
+ * the omission cannot ship silently. Two views hand-rolled that comparison
+ * before this existed, and a missed member there is a wrong critical-path
+ * floor — a number nobody can tell is wrong by looking at it.
+ *
+ * The dashboard is a standalone browser bundle with no dependency on `@vzn/vx`,
+ * so it cannot import core's `isCacheHit`. This is the ONE deliberate second
+ * copy in the repo; `packages/cloud/tests/status-vocabulary.test.ts` asserts
+ * the two agree on every `TaskStatus` member.
+ */
+const CACHE_HIT: Record<VizState, boolean> = {
+  queued: false,
+  running: false,
+  success: false,
+  'cache-hit': true,
+  'cache-hit-remote': true,
+  failed: false,
+  skipped: false,
+  aborted: false,
+  group: false,
+}
+
+/** Did this status come out of the cache? Unknown strings read as no. */
+export function isCacheHit(status: string): boolean {
+  return CACHE_HIT[status as VizState] === true
+}
+
+/**
  * Normalize a raw outcome status (+ optional cacheHit flag) to a VizState.
  * Distinguishes local vs remote cache hits — the backend reports
  * `cache-hit-remote`, which the views previously collapsed to `cache-hit`.
