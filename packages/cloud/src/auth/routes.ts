@@ -495,15 +495,21 @@ async function adminRoute(req: Request, url: URL, ctx: AuthRoutesContext): Promi
       return json({ error: 'slug must match [a-z0-9-]{1,64}' }, 400)
     }
     const orgId = Bun.randomUUIDv7()
+    // One transaction, like the bootstrap path in `register` above: an
+    // organization with no owner membership is invisible to its creator (a
+    // non-instance-admin lists orgs by membership) and its slug is taken
+    // forever, so the two rows must land together or not at all.
     try {
-      await sql`INSERT INTO organizations (id, slug, name, created_at)
-                VALUES (${orgId}, ${slug}, ${name!}, ${now})`
+      await sql.begin(async (tx) => {
+        await tx`INSERT INTO organizations (id, slug, name, created_at)
+                 VALUES (${orgId}, ${slug}, ${name!}, ${now})`
+        await tx`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+                 VALUES (${orgId}, ${principal.userId}, ${'owner'}, ${now})`
+      })
     } catch (err) {
       if (isUniqueViolation(err)) return json({ error: 'slug already taken' }, 409)
       throw err
     }
-    await sql`INSERT INTO org_memberships (org_id, user_id, role, created_at)
-              VALUES (${orgId}, ${principal.userId}, ${'owner'}, ${now})`
     // The creator gained a membership — drop the memoized principals.
     resetSessionPrincipalCache()
     return json({ ok: true, orgId }, 201)
