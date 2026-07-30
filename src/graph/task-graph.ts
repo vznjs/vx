@@ -364,7 +364,130 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   }
 
   detectCycle(nodes)
+  detectOutputCollisions(nodes)
   return nodes
+}
+
+/** A glob with no wildcard — it names exactly one path. */
+function isLiteralGlob(g: string): boolean {
+  return g.search(/[*?[\]]/) === -1
+}
+
+/**
+ * True only when two output globs PROVABLY select an overlapping set.
+ *
+ * Deliberately conservative, because the caller REFUSES the run: a false
+ * positive breaks a build that works today, which is worse than the defect
+ * being caught. So the three cases are exactly the ones that can be decided
+ * without a general glob-intersection algorithm:
+ *
+ *   both literal    — equal paths
+ *   literal vs glob — ask the glob whether it matches the literal (exact)
+ *   both globs      — only identical strings; anything else is undecided
+ *                     here and deliberately allowed through
+ *
+ * The rejected alternative was comparing each glob's static prefix. It is
+ * cheaper and catches more, but it is UNSOUND for a refusal — measured:
+ * `dist/vx-*` and `dist/other.txt` share the prefix `dist` while matching
+ * disjoint sets, so a prefix check refuses a legitimate config. (vx's own
+ * `build.bun.*` tasks escape only because they declare distinct literals.)
+ */
+function outputsOverlap(a: string, b: string): boolean {
+  if (isLiteralGlob(a) && isLiteralGlob(b)) return a === b
+  if (isLiteralGlob(a)) return new Bun.Glob(b).match(a)
+  if (isLiteralGlob(b)) return new Bun.Glob(a).match(b)
+  return a === b
+}
+
+/**
+ * Refuse a graph in which two tasks declare overlapping outputs.
+ *
+ * vx cleans a task's declared outputs before it runs AND before a cache-hit
+ * restore, so that the tree ends byte-identical to the cached artifact. That
+ * makes output ownership STRICT — and two tasks claiming the same path
+ * silently destroy each other's work, in whichever order they happen to run,
+ * while the run reports success. It is data loss with a green summary.
+ *
+ * This is a hazard vx CREATED: Turbo restores additively and cannot hit it,
+ * which is why no Turbo test surfaces it and why the parity research had to
+ * reproduce it end to end.
+ *
+ * Scope follows the two namespaces' reach. `outputs.files` is
+ * project-relative, so only tasks in the SAME project can collide;
+ * `outputs.workspaceFiles` is anchored at the workspace root and ignores
+ * project boundaries by design, so ANY two tasks can. No cache key changes —
+ * this only refuses a graph that was already destroying files.
+ */
+function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
+  // INDEX FIRST, then compare — never all-pairs over the graph. A naive
+  // pairwise loop that filters by project INSIDE the loop is quadratic in the
+  // whole graph: measured 1.6 SECONDS at this project's stated target of 1000
+  // projects x 10 tasks, on every run, against a ~120ms warm run. (Same shape
+  // as the scheduler's priority closure, which took 8.5s on a 1090-package
+  // repo before it was rewritten.)
+  //
+  // Both namespaces have a much smaller natural domain:
+  //   files          — project-relative, so only same-project tasks can
+  //                    collide. Bucketing makes this O(sum of k^2) over
+  //                    per-project task counts, and k is single digits.
+  //   workspaceFiles — root-anchored and boundary-free, so any two tasks can
+  //                    collide — but only tasks that DECLARE it participate,
+  //                    and that set is nearly always empty.
+  const byProject = new Map<string, TaskNode[]>()
+  const wsDeclarers: TaskNode[] = []
+  for (const n of nodes.values()) {
+    const outs = n.config.cache?.outputs
+    if ((outs?.files?.length ?? 0) > 0) {
+      const bucket = byProject.get(n.projectName)
+      if (bucket) bucket.push(n)
+      else byProject.set(n.projectName, [n])
+    }
+    if ((outs?.workspaceFiles?.length ?? 0) > 0) wsDeclarers.push(n)
+  }
+
+  for (const bucket of byProject.values()) {
+    for (let i = 0; i < bucket.length; i++) {
+      for (let j = i + 1; j < bucket.length; j++) {
+        const a = bucket[i]!
+        const b = bucket[j]!
+        collide(a, b, a.config.cache?.outputs.files, b.config.cache?.outputs.files, 'files')
+      }
+    }
+  }
+  for (let i = 0; i < wsDeclarers.length; i++) {
+    for (let j = i + 1; j < wsDeclarers.length; j++) {
+      const a = wsDeclarers[i]!
+      const b = wsDeclarers[j]!
+      collide(
+        a,
+        b,
+        a.config.cache?.outputs.workspaceFiles,
+        b.config.cache?.outputs.workspaceFiles,
+        'workspaceFiles',
+      )
+    }
+  }
+}
+
+function collide(
+  a: TaskNode,
+  b: TaskNode,
+  aGlobs: readonly string[] | undefined,
+  bGlobs: readonly string[] | undefined,
+  field: 'files' | 'workspaceFiles',
+): void {
+  for (const ga of aGlobs ?? []) {
+    for (const gb of bGlobs ?? []) {
+      if (!outputsOverlap(ga, gb)) continue
+      throw new UserError(
+        `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
+          (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +
+          ` in cache.outputs.${field} — vx cleans a task's declared outputs before it runs and ` +
+          `before a cache-hit restore, so whichever of these runs second DELETES the other's ` +
+          `output and the run still reports success. Give each task its own output path.`,
+      )
+    }
+  }
 }
 
 function detectCycle(nodes: Map<string, TaskNode>): void {

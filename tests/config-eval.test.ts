@@ -374,9 +374,18 @@ describe('validation stays in the parent process', () => {
     expect(scrub(repeatErr.message, repeatFile)).toBe(scrub(firstErr.message, firstFile))
     expect(repeatErr.name).toBe(firstErr.name)
     expect(repeatErr.name).toBe('UserError')
-    expect(scrub(repeatErr.stack?.split('\n')[0] ?? '', repeatFile)).toBe(
-      scrub(firstErr.stack?.split('\n')[0] ?? '', firstFile),
-    )
+
+    // The `.stack` first line is deliberately NOT compared. It looks like a
+    // free third signal, but it pins the RUNTIME rather than vx: under memory
+    // pressure JSC hands back a truncated `"Error"` where it normally returns
+    // `"UserError: <message>"`, so the two paths disagree for a reason that
+    // has nothing to do with either of them. Reproduced by running this file
+    // against the memory suite — roughly one run in six, and it redded CI once
+    // before it was understood.
+    //
+    // Nothing is lost: `name` and `message` ARE vx's own data, and they carry
+    // the whole contract this test exists for — a malformed config reads the
+    // same on cycle 1 and cycle 9 of a watch session.
   })
 
   it('only rejects a typo whose value JSON drops on the FIRST load', async () => {
