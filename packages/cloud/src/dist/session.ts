@@ -11,7 +11,18 @@ export function deriveSession(env: NodeJS.ProcessEnv = process.env): string {
   const explicit = env['VX_AGENT_SESSION']
   if (explicit !== undefined && explicit !== '') return explicit
   const gh = env['GITHUB_RUN_ID']
-  if (gh !== undefined && gh !== '') return `gh-${gh}-${env['GITHUB_RUN_ATTEMPT'] ?? '1'}`
+  if (gh !== undefined && gh !== '') {
+    // The `!== ''` half is load-bearing and `??` alone does not provide it: an
+    // EMPTY GITHUB_RUN_ATTEMPT is not nullish, so it yields the session
+    // `gh-<id>-` where an UNSET one yields `gh-<id>-1`. The registry keys on
+    // {orgId, workspaceId, session}, so a submitter and its agents that see
+    // different values land in DIFFERENT sessions and never pair — the
+    // submitter falls back to its self-agent (local execution) while N paid
+    // agent jobs idle to their timeout. Every sibling below already guards
+    // both; this line was the one that did not.
+    const attempt = env['GITHUB_RUN_ATTEMPT']
+    return `gh-${gh}-${attempt !== undefined && attempt !== '' ? attempt : '1'}`
+  }
   const gl = env['CI_PIPELINE_ID']
   if (gl !== undefined && gl !== '') return `gl-${gl}`
   const bk = env['BUILDKITE_BUILD_ID']

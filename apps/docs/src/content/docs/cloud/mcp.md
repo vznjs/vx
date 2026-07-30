@@ -52,6 +52,14 @@ the argument is ignored; an explicitly-named unknown workspace returns an
 `isError` result, never another tenant's data, and every read is clamped
 to the token's org.
 
+**Arguments are honoured or refused, never quietly reinterpreted.** The
+bounds in the table above are enforced, not just advertised: a `limit` of
+the wrong type (`"10"`, `null`, an array) or a non-finite one, and a
+`bucket` outside its enum, all come back as `isError` results naming the
+argument. A limit that is a real number but out of range still clamps to
+the stated bounds — the refusal is for values with no honest reading, so
+an agent never receives a confident answer to a question it did not ask.
+
 **Errors and batching:** an unknown tool or missing required argument
 comes back as a JSON-RPC error / `isError` tool result with the message
 in the body. The endpoint accepts a single JSON-RPC message **or a

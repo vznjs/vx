@@ -591,30 +591,31 @@ describe('foreign keys', () => {
     expect(rows).toEqual([])
   })
 
-  it('FINDING: invites.used_by has no ON DELETE, so it blocks deleting that user', async () => {
-    // FINDING (latent, low) — packages/cloud/src/db/migrations/0003_credentials.ts:42
-    //   `used_by uuid REFERENCES users(id)` omits an ON DELETE action, so it
-    //   defaults to NO ACTION: deleting a user who ever accepted an invite
-    //   raises a foreign-key violation. The SIBLING column on the very same
-    //   table — `created_by` — is `ON DELETE SET NULL`, so the asymmetry looks
-    //   accidental rather than considered.
+  it('deleting a user who ACCEPTED an invite blanks the reference instead of failing', async () => {
+    // `used_by` was the one user-referencing FK with no ON DELETE action, so it
+    // defaulted to NO ACTION and a delete raised a foreign-key violation. Its
+    // SIBLING on the very same table (`created_by`) has always been ON DELETE
+    // SET NULL, which is what made the asymmetry look accidental.
     //
-    //   NOT reachable today: no route deletes a user (grep for `DELETE FROM
-    //   users` returns nothing; removing a member deletes the membership, not
-    //   the account). It becomes a real defect the moment an account-deletion
-    //   route is added — that route would fail for exactly the users who
-    //   onboarded via an invite, i.e. everyone after the first.
+    // Still not reachable from a route — nothing deletes a user — which is
+    // precisely why it was worth fixing before one exists: it would have failed
+    // for exactly the users who onboarded via an invite, i.e. most of an
+    // invite-only instance, and read as a data-integrity mystery.
     //
-    //   This test PINS CURRENT BEHAVIOUR. If the FK is later given ON DELETE
-    //   SET NULL, this assertion is what tells you to delete it.
+    // SET NULL rather than CASCADE: an invite row is an audit record of an
+    // onboarding that happened, so it outlives the account with the reference
+    // blanked. Migration 0009.
     const u = Bun.randomUUIDv7()
+    const inviteId = Bun.randomUUIDv7()
     await db.sql`INSERT INTO users (id, email, display_name, password_hash, created_at)
                  VALUES (${u}, ${`inv-${u.slice(0, 8)}@x.test`}, 'U', 'h', ${Date.now()})`
     await db.sql`INSERT INTO invites (id, token_hash, created_at, expires_at, used_by)
-                 VALUES (${Bun.randomUUIDv7()}, ${new Uint8Array(16).fill(3)},
+                 VALUES (${inviteId}, ${new Uint8Array(16).fill(3)},
                          ${Date.now()}, ${Date.now() + 1000}, ${u})`
-    const err = await errorFrom(() => db.sql`DELETE FROM users WHERE id = ${u}`)
-    expect(err.message).toMatch(/violates foreign key constraint "invites_used_by_fkey"/)
+    await db.sql`DELETE FROM users WHERE id = ${u}`
+    const [row] = await db.sql`SELECT used_by FROM invites WHERE id = ${inviteId}`
+    // The row SURVIVES with used_by blanked — not cascaded away, not blocking.
+    expect(row).toEqual({ used_by: null })
   })
 })
 
@@ -719,21 +720,24 @@ describe('deriveSession', () => {
     ).toBe('local')
   })
 
-  it('FINDING: an empty GITHUB_RUN_ATTEMPT is NOT guarded, unlike every sibling', () => {
-    // FINDING (latent, low) — packages/cloud/src/dist/session.ts:14
-    //   Every other variable in this function is checked `!== undefined &&
-    //   !== ''`. GITHUB_RUN_ATTEMPT alone is read with `?? '1'`, and nullish
-    //   coalescing does not treat '' as absent — so an empty value yields the
-    //   trailing-dash key `gh-7-` instead of `gh-7-1`.
+  it('an EMPTY GITHUB_RUN_ATTEMPT derives the same session as an unset one', () => {
+    // `?? '1'` does not treat '' as absent, so an empty value used to yield the
+    // trailing-dash key `gh-7-` where an unset one yields `gh-7-1`. Every other
+    // variable in this function already checked `!== undefined && !== ''`; this
+    // was the one that did not.
     //
-    //   Harmless only while both sides of the pairing see the SAME empty value.
-    //   It becomes a pairing failure the moment they differ — e.g. a submitter
-    //   running in the GitHub job (attempt exported) and a helper agent started
-    //   from a script that clears the environment: one derives `gh-7-1`, the
-    //   other `gh-7-`, and they never find each other.
-    //
-    //   PINS CURRENT BEHAVIOUR. If the guard is added, this becomes 'gh-7-1'.
-    expect(deriveSession({ GITHUB_RUN_ID: '7', GITHUB_RUN_ATTEMPT: '' })).toBe('gh-7-')
+    // The consequence is a PAIRING failure, not cosmetics: the registry keys on
+    // {orgId, workspaceId, session}, so a submitter running inside the GitHub
+    // job (attempt exported) and a helper agent started from a script that
+    // clears the environment derived DIFFERENT sessions and never found each
+    // other — the submitter silently falling back to its self-agent while the
+    // paid agent jobs idled to their timeout.
+    const unset = deriveSession({ GITHUB_RUN_ID: '7' })
+    expect(deriveSession({ GITHUB_RUN_ID: '7', GITHUB_RUN_ATTEMPT: '' })).toBe(unset)
+    expect(unset).toBe('gh-7-1')
+    // Control: a REAL attempt is still folded, so a re-run cannot collide with
+    // its own ghost — the reason the attempt is in the key at all.
+    expect(deriveSession({ GITHUB_RUN_ID: '7', GITHUB_RUN_ATTEMPT: '2' })).toBe('gh-7-2')
   })
 })
 
@@ -909,20 +913,22 @@ describe('password hashing', () => {
     expect(await verifyPassword('whatever the attacker typed', a)).toBe(false)
   })
 
-  it('FINDING: hashPassword THROWS on an empty password instead of degrading', async () => {
-    // FINDING (latent, low) — packages/cloud/src/auth/passwords.ts:5
-    //   `verifyPassword` is defensively wrapped ("a malformed stored hash must
-    //   read as wrong password, not a 500") but `hashPassword` is not: Bun
-    //   rejects an empty password with `TypeError: password must not be empty`,
-    //   which propagates out of the route.
+  it('hashPassword throws on an empty password, and that asymmetry is CORRECT', async () => {
+    // REFUTED as a defect, and recorded so it is not "fixed" later. The
+    // asymmetry with `verifyPassword` — which IS wrapped — looks accidental and
+    // is not, because the two take different KINDS of input.
     //
-    //   NOT reachable today — both call sites validate `password.length < 8`
-    //   BEFORE hashing (auth/routes.ts register + change-password). The guard
-    //   therefore lives in the callers, not at the boundary, so a third caller
-    //   added later inherits a 500 rather than a 400.
+    // `verifyPassword` reads a STORED hash: malformed data must read as "wrong
+    // password", never a 500, because the caller cannot have caused it and
+    // cannot fix it. `hashPassword` takes caller input that both call sites
+    // already reject at `length < 8` with a 400 before it is reached, so the
+    // throw is unreachable from a route — and swallowing it would be actively
+    // WRONG: the only way to "degrade" from a failed hash is to fabricate a
+    // credential. Throwing loudly is the correct end state for a boundary that
+    // cannot produce a safe fallback value.
     //
-    //   PINS CURRENT BEHAVIOUR. If hashPassword grows its own guard, this
-    //   assertion is what tells you to update it.
+    // What this test guards is the reachability claim, not the throw: it is a
+    // reminder that any THIRD call site must validate before hashing.
     expect((await errorFrom(() => hashPassword(''))).message).toMatch(/must not be empty/)
   })
 })

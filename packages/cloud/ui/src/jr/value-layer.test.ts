@@ -100,28 +100,36 @@ describe('aggregates over real rows', () => {
     expect(call('agg', { arr: rows, field: 'x' })).toBe(60)
   })
 
-  it('FINDING: one row MISSING the field turns the whole sum unknown', () => {
-    // Recorded, not endorsed. `n` is `Number(v)`, and `Number(undefined)` is
-    // NaN, so a single sparse row poisons the reduce and a populated tile
-    // renders '—'. It fails SAFE — hiding data rather than inventing it, the
-    // right direction — but it is still wrong: the honest answer for a sparse
-    // row is to skip it, the way `countWhere` skips a non-matching one.
-    //
-    // Reachable wherever a row shape is optional-by-design; the analytics
-    // reads return plenty of those. Contrast the `null` case directly below,
-    // which fails the OTHER way and is the more dangerous of the two.
+  it('a row missing the field is SKIPPED, not allowed to poison the total', () => {
+    // `n` is NaN for an absent value, so folding it meant one sparse row turned
+    // a populated tile into '—'. It failed SAFE — hiding data rather than
+    // inventing it — but the honest answer for a sparse row is to skip it, the
+    // way `countWhere` skips a non-matching one.
     const sparse = [{ x: 10 }, { other: 1 }, { x: 5 }]
-    expect(Number.isFinite(call('agg', { arr: sparse, op: 'sum', field: 'x' }) as number)).toBe(
-      false,
-    )
-    // `count` is field-independent, so it still answers honestly.
+    expect(call('agg', { arr: sparse, op: 'sum', field: 'x' })).toBe(15)
+    // `count` is field-independent, so it still counts every ROW.
     expect(call('agg', { arr: sparse, op: 'count', field: 'x' })).toBe(3)
+    // And the average is over the values that EXIST — dividing by rows.length
+    // would let the sparse row silently pull the mean toward zero (10, not 7.5).
+    expect(call('agg', { arr: sparse, op: 'avg', field: 'x' })).toBe(7.5)
   })
 
-  it('a JSON null field sums as zero rather than poisoning the total', () => {
-    // `Number(null)` is 0, so a nulled row is absorbed. Benign for a SUM —
-    // and precisely why the same coercion is NOT benign for a scalar, below.
-    expect(call('agg', { arr: [{ x: 10 }, { x: null }, { x: 5 }], op: 'sum', field: 'x' })).toBe(15)
+  it('a null field is skipped the same way, so the two absences agree', () => {
+    // These used to disagree: a MISSING field poisoned the sum to NaN while a
+    // `null` one was absorbed as 0 — two readings of the same absence, in
+    // opposite directions. Absorbing as 0 is the more dangerous of the two for
+    // an average, where it silently drags the mean down.
+    const nulled = [{ x: 10 }, { x: null }, { x: 5 }]
+    expect(call('agg', { arr: nulled, op: 'sum', field: 'x' })).toBe(15)
+    expect(call('agg', { arr: nulled, op: 'avg', field: 'x' })).toBe(7.5)
+  })
+
+  it('rows that ALL carry an unknown value sum to unknown, not to zero', () => {
+    // The distinction the whole layer rests on, applied one level in: NO rows
+    // is a real zero (nothing to sum), but a populated table whose every value
+    // is null has a genuinely unknown total and must not claim 0.
+    expect(call('agg', { arr: [], op: 'sum', field: 'x' })).toBe(0)
+    expect(Number.isFinite(call('agg', { arr: [{ x: null }, {}], op: 'sum', field: 'x' }) as number)).toBe(false)
   })
 
   it('max floors at 0 rather than answering -Infinity on an empty array', () => {
@@ -232,43 +240,44 @@ describe('tone helpers must not paint an unknown value', () => {
   })
 })
 
-describe('FINDING: a JSON null reads as a confident zero, not as unknown', () => {
+describe('a JSON null reads as UNKNOWN, exactly like undefined', () => {
   // The sharpest thing in this file, and the same class as the "Flaky tasks: 0"
-  // tile the F1 wave fixed — still open for one input shape.
+  // tile the F1 wave fixed — this was the one input shape it left open.
   //
-  // `n` is `Number(v)`, and `Number(null)` is **0** while `Number(undefined)`
-  // is NaN. So a field that arrives as JSON `null` is not treated as unknown:
-  // it is treated as a measured zero. The tile renders `0 B` / `<1ms` and the
-  // tone helpers PAINT it, rather than falling back to '—' and 'default'.
+  // `n` was `Number(v)`, and `Number(null)` is **0** while `Number(undefined)`
+  // is NaN. So a field arriving as JSON `null` was not treated as unknown: it
+  // was treated as a MEASURED zero. The tile rendered `0 B` / `<1ms` and the
+  // tone helpers PAINTED it, instead of falling back to '—' and 'default' —
+  // the two absent-ish shapes diverging on the same absence.
   //
-  // That is reachable, not theoretical. `null` is exactly what a SQL aggregate
-  // over zero rows returns, and CLAUDE.md's 2026-07-17 sweep records
-  // NULL-aggregate-into-non-null-number as a class the SERVER was audited for
-  // — the client's coercion then converts whatever slips through into a
-  // confident zero, which is the failure the server-side sweep existed to
-  // prevent.
-  //
-  // Pinned as CURRENT behaviour, deliberately not fixed here: `n` is shared by
-  // every helper in this module, so mapping null → NaN needs its own pass over
-  // the call sites rather than riding a test change.
-  it('formats null as a real value instead of the em dash', () => {
-    expect(call('fmtBytes', { b: null })).toBe('0 B')
-    expect(call('fmtDuration', { ms: null })).toBe('<1ms')
-    expect(call('fmtNumber', { n: null })).toBe('0')
+  // Reachable, not theoretical: `null` is exactly what a SQL aggregate over
+  // zero rows returns, and CLAUDE.md's 2026-07-17 sweep records
+  // NULL-aggregate-into-non-null-number as a class the SERVER was audited for.
+  // The client's coercion then converted whatever slipped through into a
+  // confident zero — the very failure that server-side sweep existed to stop.
+  it('formats null as the em dash, not a real value', () => {
+    expect(call('fmtBytes', { b: null })).toBe('—')
+    expect(call('fmtDuration', { ms: null })).toBe('—')
+    expect(call('fmtNumber', { n: null })).toBe('—')
   })
 
-  it('paints a tone for null instead of declining to judge', () => {
-    // `gt` sees a finite 0 and takes the `else` branch — the exact shape that
-    // rendered a broken tile green.
-    expect(call('gt', { v: null, n: 0, then: 'bad', else: 'good' })).toBe('good')
-    expect(call('lt', { v: null, n: 1, then: 'bad', else: 'good' })).toBe('bad')
+  it('declines to judge a null rather than painting a tone', () => {
+    // `gt` used to see a finite 0 and take the `else` branch — the exact shape
+    // that rendered a broken tile green.
+    expect(call('gt', { v: null, n: 0, then: 'bad', else: 'good' })).toBe('default')
+    expect(call('lt', { v: null, n: 1, then: 'bad', else: 'good' })).toBe('default')
   })
 
-  it('undefined, by contrast, IS treated as unknown', () => {
-    // The control that makes the finding legible: the two absent-ish shapes
-    // diverge, and only one of them is handled.
+  it('undefined behaves identically — the two absences no longer diverge', () => {
     expect(call('fmtBytes', { b: undefined })).toBe('—')
     expect(call('gt', { v: undefined, n: 0, then: 'bad', else: 'good' })).toBe('default')
+  })
+
+  it('a REAL zero is still a real zero — "—" is only for unknown', () => {
+    // The control that keeps the fix from becoming its own lie: a measured 0
+    // must render `0 B` and take the tone branch it earns.
+    expect(call('fmtBytes', { b: 0 })).toBe('0 B')
+    expect(call('gt', { v: 0, n: 0, then: 'bad', else: 'good' })).toBe('good')
   })
 })
 

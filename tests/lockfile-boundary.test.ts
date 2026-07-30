@@ -120,24 +120,17 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     await expect(readLockfile(root)).rejects.toThrow(/must be a JSON object/)
   })
 
-  it('FINDING: a top-level ARRAY misreports as a version error', async () => {
-    // `typeof [] === 'object'` and it is not null, so an array passes the
-    // shape guard and falls through to the VERSION check, which reads
-    // `[].version` as undefined and reports:
+  it('a top-level ARRAY is a SHAPE error, not a misreported version error', async () => {
+    // `typeof [] === 'object'` and it is not null, so an array used to pass the
+    // shape guard and fall through to the VERSION check, which read
+    // `[].version` as undefined and reported "unsupported version undefined".
     //
-    //   vx-lock.json has unsupported version undefined (this vx expects 1)
-    //
-    // The failure is safe — it is still a UserError naming the file and
-    // telling the reader to re-run `vx lock` — but the message misdirects: it
-    // sends someone hunting a version-compatibility problem when the file is
-    // simply not the right shape. Same root cause as the `projects` case
-    // below: `readLockfile` has no `Array.isArray` guard anywhere, while the
-    // loader one layer down has one explicitly.
-    //
-    // Pinned as current behaviour so the wrong message is visible rather than
-    // merely present.
+    // Safe — still a UserError naming the file — but it MISDIRECTS, sending a
+    // reader after a version-compatibility problem when the file is simply the
+    // wrong shape. This file is committed and hand-editable, so its messages
+    // are read while CI is red; a wrong one costs real time.
     await writeRaw('[]')
-    await expect(readLockfile(root)).rejects.toThrow(/unsupported version undefined/)
+    await expect(readLockfile(root)).rejects.toThrow(/must be a JSON object/)
   })
 
   it.each([
@@ -205,35 +198,28 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     expect((await readLockfile(root))?.projects).toEqual({})
   })
 
-  it('FINDING: a `projects` ARRAY passes the object guard', async () => {
-    // `typeof [] === 'object'` and it is not null, so an array slips through
-    // the `projects` check — `Object.entries` then yields entries keyed "0",
-    // "1", … and a lock shaped `projects: [ {...} ]` validates as a project
+  it('a `projects` ARRAY is refused rather than yielding a project named "0"', async () => {
+    // `typeof [] === 'object'` and it is not null, so an array used to slip
+    // through the `projects` check — `Object.entries` then yields entries keyed
+    // "0", "1", … and a lock shaped `projects: [ {...} ]` validated as a project
     // literally NAMED "0".
     //
-    // This is the same class the loader explicitly guards against one layer
-    // down: `validateProjectConfig` rejects an array `tasks` with a comment
-    // about "a task literally named 0". The `projects` guard here has no
-    // matching `Array.isArray` check.
+    // The loader explicitly guards this same class one layer down:
+    // `validateProjectConfig` rejects an array `tasks` with a comment about "a
+    // task literally named 0". The omission here was an inconsistency, not a
+    // considered difference.
     //
-    // Impact is low — nothing generates this shape, and a project named "0"
-    // simply never matches a real project, so the run fails later at
-    // `frozenProjectConfig` with a clear "no entry for X" message rather than
-    // running the wrong thing. Pinned as current behaviour, not endorsed: the
-    // consistent fix is an `Array.isArray` guard beside the existing one.
+    // The old degradation was at least honest — a bogus "0" entry cannot satisfy
+    // a real lookup, so a `--frozen` run failed later at `frozenProjectConfig`
+    // with "has no entry for X" — but it named the wrong thing: the file was
+    // malformed, not missing an entry. Refusing at the boundary says so.
     await writeRaw(
       JSON.stringify({
         version: LOCKFILE_VERSION,
         projects: [{ configPath: 'p', configHash: 'h', config: CONFIG }],
       }),
     )
-    const read = await readLockfile(root)
-    expect(Array.isArray(read?.projects)).toBe(true)
-    // …and the degradation is at least honest: the bogus "0" entry cannot
-    // satisfy a real project's lookup.
-    await expect(
-      frozenProjectConfig(read as Lockfile, { name: 'pkg', configPath: `${root}/p` }, root),
-    ).rejects.toThrow(/has no entry for "pkg"/)
+    await expect(readLockfile(root)).rejects.toThrow(/`projects` must be an object/)
   })
 })
 

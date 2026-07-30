@@ -168,6 +168,66 @@ function requireString(args: Record<string, unknown>, field: string, tool: strin
   return v
 }
 
+/**
+ * A `limit` an agent can trust: wrong SHAPE and non-finite are REFUSED,
+ * finite-but-out-of-range still clamps to the published schema bounds.
+ *
+ * The split matters. `"10"`, `null` or an array used to fall through to the
+ * default — answering a different question than the one asked, with nothing in
+ * the payload saying so. And a non-finite value has no honest reading at all:
+ * JSON has no Infinity literal but `{"limit":1e999}` parses to one, and every
+ * consumer here sends it somewhere that inverts it — `clampInt` to MIN (one
+ * row), `slice(-Infinity)` to the whole series. Failing small is defensible;
+ * failing small SILENTLY, on the value that means "the most", is not.
+ */
+function parseLimit(
+  args: Record<string, unknown>,
+  tool: string,
+  o: { min: number; max: number; fallback: number },
+): number
+function parseLimit(
+  args: Record<string, unknown>,
+  tool: string,
+  o: { min: number; max: number; fallback?: number },
+): number | undefined
+function parseLimit(
+  args: Record<string, unknown>,
+  tool: string,
+  { min, max, fallback }: { min: number; max: number; fallback?: number },
+): number | undefined {
+  const v = args['limit']
+  if (v === undefined) return fallback
+  if (typeof v !== 'number' || !Number.isFinite(v)) {
+    throw new Error(
+      `${tool}: limit must be a finite number between ${min} and ${max} (got ${JSON.stringify(v)})`,
+    )
+  }
+  return Math.min(max, Math.max(min, Math.floor(v)))
+}
+
+/**
+ * An enum arg is honoured or refused, never silently coerced. `bucket` used to
+ * be `args['bucket'] === 'day' ? 'day' : 'hour'`, so `'week'`, `'Day'` and `5`
+ * all became hourly — a caller asking for weekly granularity got a chart at a
+ * different resolution than the one it requested.
+ */
+function parseEnum<T extends string>(
+  args: Record<string, unknown>,
+  field: string,
+  tool: string,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  const v = args[field]
+  if (v === undefined) return fallback
+  if (typeof v !== 'string' || !allowed.includes(v as T)) {
+    throw new Error(
+      `${tool}: ${field} must be one of ${allowed.join(' | ')} (got ${JSON.stringify(v)})`,
+    )
+  }
+  return v as T
+}
+
 async function callTool(
   name: string,
   args: Record<string, unknown>,
@@ -179,7 +239,7 @@ async function callTool(
       return { workspaces: await a.workspacesForOrg(ctx.orgId) }
     case 'list_runs': {
       const workspace = await resolveWorkspace(ctx, args)
-      const limit = typeof args['limit'] === 'number' ? args['limit'] : 50
+      const limit = parseLimit(args, 'list_runs', { min: 1, max: 500, fallback: 50 })
       return { workspace, runs: await a.listInvocations(workspace, { limit }) }
     }
     case 'get_run': {
@@ -194,9 +254,13 @@ async function callTool(
     }
     case 'run_trends': {
       const workspace = await resolveWorkspace(ctx, args)
-      const bucket = args['bucket'] === 'day' ? 'day' : 'hour'
+      const bucket = parseEnum(args, 'bucket', 'run_trends', ['hour', 'day'] as const, 'hour')
       const points = await a.getRunTrends(workspace, { bucket })
-      const limit = typeof args['limit'] === 'number' ? args['limit'] : undefined
+      // `slice(-limit)` IS the documented "most recent N" — the series is
+      // ascending — but it inverts at the edges the clamp now removes:
+      // `limit: 0` sliced to `slice(0)` and returned EVERYTHING, and a negative
+      // one trimmed from the front instead. Clamped to ≥1, both are gone.
+      const limit = parseLimit(args, 'run_trends', { min: 1, max: 1000 })
       return {
         workspace,
         bucket,
