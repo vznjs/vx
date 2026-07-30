@@ -119,7 +119,6 @@ describe('LayeredCache', () => {
       entry: {
         taskId: 'pkg#build',
         command: 'echo produced',
-        exitCode: 0,
         durationMs: 5,
         stdout: 'compiling…',
       },
@@ -405,7 +404,7 @@ describe('LayeredCache', () => {
       hash: 'h-slow-put',
       projectDir,
       outputFiles: [outFile],
-      entry: { taskId: 'pkg#build', command: 'c', exitCode: 0, durationMs: 1, stdout: '' },
+      entry: { taskId: 'pkg#build', command: 'c', durationMs: 1, stdout: '' },
     })
     // Give the background job a beat to fire the request.
     await Bun.sleep(20)
@@ -447,7 +446,7 @@ describe('LayeredCache', () => {
         hash,
         projectDir,
         outputFiles: [outFile],
-        entry: { taskId: 'pkg#build', command: 'c', exitCode: 0, durationMs: 1, stdout: '' },
+        entry: { taskId: 'pkg#build', command: 'c', durationMs: 1, stdout: '' },
       })
     }
     await Bun.sleep(20)
@@ -488,7 +487,7 @@ describe('LayeredCache', () => {
         hash: 'h-packed',
         projectDir,
         outputFiles: [outFile],
-        entry: { taskId: 'pkg#build', command: 'c', exitCode: 0, durationMs: 1, stdout: '' },
+        entry: { taskId: 'pkg#build', command: 'c', durationMs: 1, stdout: '' },
       })
       // Deleting the outputs after save() must not affect the upload: the
       // bytes were already packed.

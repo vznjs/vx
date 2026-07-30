@@ -530,7 +530,6 @@ describe('Cache storage (v10)', () => {
       entry: {
         taskId: 'pkg#build',
         command: 'tsc',
-        exitCode: 0,
         durationMs: 42,
         stdout: 'compiling…\n',
       },
@@ -569,7 +568,6 @@ describe('Cache storage (v10)', () => {
       entry: {
         taskId: 'pkg#build',
         command: 'echo produced > dist/out.txt',
-        exitCode: 0,
         durationMs: 1,
         stdout: '',
       },
@@ -598,7 +596,6 @@ describe('Cache storage (v10)', () => {
       entry: {
         taskId: 'pkg#build',
         command: 'noop',
-        exitCode: 0,
         durationMs: 0,
         stdout: '',
       },
@@ -718,7 +715,6 @@ describe('Cache storage (v10)', () => {
       entry: {
         taskId: 'pkg#build',
         command: 'noop',
-        exitCode: 0,
         durationMs: 0,
         stdout: '',
       },
@@ -743,7 +739,6 @@ describe('Cache storage (v10)', () => {
       entry: {
         taskId: 'pkg#build',
         command: 'noop',
-        exitCode: 0,
         durationMs: 0,
         stdout: '',
       },
@@ -780,7 +775,6 @@ describe('Cache storage (v10)', () => {
         entry: {
           taskId: 'pkg#build',
           command: 'noop',
-          exitCode: 0,
           durationMs: 0,
           stdout: '',
         },
@@ -945,7 +939,6 @@ describe('Cache storage (v10)', () => {
           entry: {
             taskId: 'pkg#build',
             command: 'same',
-            exitCode: 0,
             durationMs: 1,
             stdout: '',
           },
@@ -983,7 +976,6 @@ describe('Cache storage (v10)', () => {
       entry: {
         taskId: 'pkg#build',
         command: 'first',
-        exitCode: 0,
         durationMs: 1,
         stdout: '',
       },
@@ -999,7 +991,6 @@ describe('Cache storage (v10)', () => {
       entry: {
         taskId: 'pkg#build',
         command: 'second',
-        exitCode: 0,
         durationMs: 2,
         stdout: 'replaced',
       },
@@ -1057,7 +1048,6 @@ describe('Cache storage (v10)', () => {
       entry: {
         taskId: 'pkg#build',
         command: 'noop',
-        exitCode: 0,
         durationMs: 0,
         stdout: '',
       },
@@ -1088,7 +1078,6 @@ describe('Cache storage (v10)', () => {
         entry: {
           taskId: 'pkg#build',
           command: 'oops',
-          exitCode: 0,
           durationMs: 1,
           stdout: '',
         },
@@ -1120,7 +1109,6 @@ describe('Cache storage (v10)', () => {
         entry: {
           taskId: 'pkg#build',
           command: 'atomic',
-          exitCode: 0,
           durationMs: 1,
           stdout: '',
         },
@@ -1135,6 +1123,74 @@ describe('Cache storage (v10)', () => {
     } finally {
       second.close()
     }
+  })
+
+  // "vx caches only successes" is the invariant that makes a cache hit safe to
+  // replay. It used to be enforced by every call site remembering to gate on
+  // `effectiveExitCode === 0`, while the contract advertised `entry.exitCode:
+  // number` and `writeArtifactAndIndex` hard-coded 0 over whatever arrived.
+  //
+  // That combination is the one shape that LAUNDERS a failure: cache a failing
+  // task's outputs, read the entry back as exit 0, and execute-task's
+  // classifier calls it `cache-hit` — a green run that restores a broken
+  // build's files over a good tree. Reproduced before the fix: `exitCode: 42`
+  // in, `0` out, verdict `cache-hit`, `dist/app.js` from the failed build
+  // listed as restorable.
+  describe('a failure cannot enter the cache', () => {
+    it('is unrepresentable in the save contract, not merely gated by callers', async () => {
+      const cache = new Cache(cacheDir)
+      try {
+        await cache.save({
+          hash: 'exitcode-refused',
+          projectDir,
+          outputFiles: [],
+          // The directive below IS the assertion: `oxlint --type-aware
+          // --type-check` reports an UNUSED @ts-expect-error (TS2578), so
+          // re-widening the type fails the gate here rather than silently
+          // reopening the laundering path. `bun test` is transpile-only and
+          // cannot see this — the lint gate can, which is why it lives here.
+          // @ts-expect-error `exitCode` is omitted from the save args on purpose.
+          entry: { taskId: 'pkg#build', command: 'x', exitCode: 42, durationMs: 1, stdout: '' },
+        })
+        // It still SAVED — the excess property is a type error, not a runtime
+        // one — so the row is real and pins what actually landed.
+        expect((await cache.get('exitcode-refused'))?.exitCode).toBe(0)
+      } finally {
+        cache.close()
+      }
+    })
+
+    it('the remote-hit path cannot express one either', async () => {
+      // `IngestMeta` never carried an exitCode, so `save` and `ingest` now
+      // agree. Without this the invariant would hold on one path and not the
+      // other, which is how the asymmetry went unnoticed for as long as it did.
+      const donor = new Cache(cacheDir)
+      let bytes: Uint8Array
+      try {
+        bytes = await donor.packArtifactBytes({
+          hash: 'ingest-symmetry',
+          projectDir,
+          outputFiles: [],
+          entry: { taskId: 'pkg#build', command: 'x', durationMs: 7, stdout: 'hi' },
+        })
+      } finally {
+        donor.close()
+      }
+      const cache = new Cache(path.join(workspaceRoot, 'cache-ingest'))
+      try {
+        await cache.ingest('ingest-symmetry', bytes, {
+          taskId: 'pkg#build',
+          command: 'x',
+          durationMs: 7,
+          // @ts-expect-error `IngestMeta` has no `exitCode` — same guarantee,
+          // reached from the other direction.
+          exitCode: 42,
+        })
+        expect((await cache.get('ingest-symmetry'))?.exitCode).toBe(0)
+      } finally {
+        cache.close()
+      }
+    })
   })
 })
 
@@ -1312,7 +1368,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       projectDir,
       outputFiles: [],
       inputComponents: components.map((c) => ({ entryHash: hash, ...c })),
-      entry: { taskId: 'pkg#build', command: 'build', exitCode: 0, durationMs: 1, stdout: '' },
+      entry: { taskId: 'pkg#build', command: 'build', durationMs: 1, stdout: '' },
     })
   }
 
@@ -1550,7 +1606,7 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
       hash,
       projectDir,
       outputFiles: [outFile],
-      entry: { taskId: 'pkg#build', command: 'b', exitCode: 0, durationMs: 1, stdout: '' },
+      entry: { taskId: 'pkg#build', command: 'b', durationMs: 1, stdout: '' },
     })
     return outFile
   }

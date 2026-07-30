@@ -365,7 +365,6 @@ describePerf('cache baseline: save + restore', () => {
           entry: {
             taskId: 'p#build',
             command: 'noop',
-            exitCode: 0,
             durationMs: 1,
             stdout: '',
           },
@@ -390,7 +389,6 @@ describePerf('cache baseline: save + restore', () => {
           entry: {
             taskId: 'p#build',
             command: 'noop',
-            exitCode: 0,
             durationMs: 1,
             stdout: 'hello\n',
           },
@@ -415,7 +413,6 @@ describePerf('cache baseline: save + restore', () => {
       entry: {
         taskId: 'p#build',
         command: 'noop',
-        exitCode: 0,
         durationMs: 1,
         stdout: 'hello from the build',
       },
@@ -456,7 +453,6 @@ describePerf('cache baseline: save + restore', () => {
       entry: {
         taskId: 'p#build',
         command: 'noop',
-        exitCode: 0,
         durationMs: 1,
         stdout: '',
       },
@@ -496,7 +492,6 @@ describePerf('cache baseline: save + restore', () => {
       entry: {
         taskId: 'p#build',
         command: 'noop',
-        exitCode: 0,
         durationMs: 1,
         stdout: '',
       },
@@ -546,7 +541,6 @@ describePerf('cache baseline: save + restore', () => {
       entry: {
         taskId: 'p#build',
         command: 'noop',
-        exitCode: 0,
         durationMs: 1,
         stdout: '',
       },

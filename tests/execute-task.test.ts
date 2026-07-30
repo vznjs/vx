@@ -502,7 +502,7 @@ describe('execute-task — restoreHit classification (entry shapes a run() canno
       hash,
       projectDir: b.dir,
       outputFiles: [],
-      entry: { taskId: 'proj#build', command: 'x', exitCode: 0, durationMs: 4321, stdout },
+      entry: { taskId: 'proj#build', command: 'x', durationMs: 4321, stdout },
     })
     const hit = await b.cache.get(hash)
     if (hit === null) throw new Error('fixture: seeded entry did not read back')
@@ -536,34 +536,20 @@ describe('execute-task — restoreHit classification (entry shapes a run() canno
   })
 
   it('an entry recording a non-zero exit restores as FAILED, never a green hit', async () => {
-    // FINDING (recorded, not fixed): this branch is unreachable through core's
-    // own cache. `CacheLayer.save` accepts `entry.exitCode` and execute-task
-    // passes `effectiveExitCode`, but `Cache.writeArtifactAndIndex`
-    // (src/cache/cache.ts:1774) hard-codes `0` into the `entries` row —
-    // "exitCode: we never cache failures" — and `IngestMeta`
-    // (src/cache/cache.ts:505) carries no exitCode at all, so the remote-hit
-    // path cannot set one either. The argument is therefore silently
-    // discarded, and every entry any core Cache returns has `exitCode: 0`.
+    // Defence in DEPTH now, where it used to be defence in theory. The save
+    // contract no longer accepts an `exitCode` (`Omit<CacheEntry, … |
+    // 'exitCode'>`) and `IngestMeta` never did, so neither path can write a
+    // non-zero one: "vx caches only successes" went from a rule every call site
+    // had to remember to a shape the type will not let you express.
     //
-    // Benign today (execute-task only saves under `effectiveExitCode === 0`),
-    // but it is a latent trap in two directions: a future change that starts
-    // caching failures would be dropped without a diagnostic, and this
-    // classifier — the only thing standing between a poisoned entry and a
-    // green run — would still never fire. It IS reachable from a third-party
-    // `CacheLayer`, which is the shape driven here. Correct behaviour would be
-    // either to persist the exitCode or to drop it from the `save` signature
-    // so the dead data flow stops implying a guarantee it does not make.
+    // The branch stays, and stays tested, because the column outlives this
+    // process — a hand-edited cache.db, or one written by a different vx build
+    // sharing the directory, can hold a non-zero value, and a third-party
+    // `CacheLayer` can return one directly, which is the shape driven here.
+    // Without the check such an entry reads as `cache-hit` and a broken build's
+    // outputs are restored over a good tree under a green run.
     const hit = await seedEntry('bbbbccccddddeeee', '')
-    expect(hit.exitCode).toBe(0) // pins the discard: 0 was saved as 0, but…
-
-    await b.cache.save({
-      hash: 'ccccddddeeeeffff',
-      projectDir: b.dir,
-      outputFiles: [],
-      entry: { taskId: 'proj#build', command: 'x', exitCode: 3, durationMs: 1, stdout: '' },
-    })
-    // …a non-zero exitCode is discarded exactly the same way.
-    expect((await b.cache.get('ccccddddeeeeffff'))?.exitCode).toBe(0)
+    expect(hit.exitCode).toBe(0)
 
     const o = await restoreHit({
       args: baseArgs(b, node(b, NO_OUTPUT_TASK), capturingLogger({ root: '', out: [], err: [] })),
@@ -622,7 +608,7 @@ describe('execute-task — preProbed reuse (the two-tier scheduler contract)', (
       hash: 'feedfacefeedface',
       projectDir: b.dir,
       outputFiles: [path.join(b.dir, 'out.txt')],
-      entry: { taskId: 'proj#build', command: 'x', exitCode: 0, durationMs: 999, stdout: 'HI' },
+      entry: { taskId: 'proj#build', command: 'x', durationMs: 999, stdout: 'HI' },
     })
     const hit = await b.cache.get('feedfacefeedface')
     await rm(path.join(b.dir, 'out.txt'), { force: true })

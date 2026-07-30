@@ -246,6 +246,70 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **Three surfaces that accepted a value and dropped it — including
+  one that LAUNDERS a failing build into a green run** (closing the rest of task
+  #68; the shape, not the subsystem, is what ties them together: each takes input
+  from a caller, discards it, and reports success, turning a wrong input into a
+  confident wrong answer instead of an error). **The sharp one is core's cache
+  contract.** `CacheLayer.save` advertised `entry.exitCode: number` while
+  `writeArtifactAndIndex` hard-coded `0` over whatever arrived — benign ONLY
+  because `execute-task` gates on `effectiveExitCode === 0`. Do what the type
+  invites and the failure is laundered: reproduced with `exitCode: 42` in, `0`
+  out, the hit classifying **`cache-hit`**, and a failed build's `dist/app.js`
+  listed as restorable over a good tree. **The field was REMOVED from the arg
+  type rather than honoured**, and that choice is the durable part: caching a
+  failure is never the right answer, so the invariant belongs in the SHAPE, not
+  in every call site remembering the gate — unrepresentable beats guarded.
+  `IngestMeta` never carried an `exitCode`, and that ASYMMETRY is exactly why
+  this survived: the invariant held on one write path by construction and on the
+  other by convention, so nothing looked wrong from either side. The read-side
+  check (`hit.exitCode !== 0 ? 'failed'`) **stays, and is now tested rather than
+  dead** — the column outlives the process (a hand-edited or foreign `cache.db`,
+  a third-party `CacheLayer`), and without it such a row restores under a green
+  run. **NO CACHE_VERSION/SCHEMA bump** — no key derivation, no artifact bytes,
+  and no stored value changes; only what the type will let you ask for.
+  **Cloud, two in `agent-loop.ts`.** (1) `agent:refused` recorded a reason and
+  waited for the serve to close — but **that close is not this side's to own**.
+  A serve that refuses and holds the socket leaves `done` pending, and with
+  `--idle-timeout 0` (how a STANDING pool agent is run) `armIdle` returns early
+  with no timer, so nothing was ever going to settle it. Measured: still pending
+  after 3 s with no timer armed anywhere, and `agentCmd` awaits `done`, so the
+  job sits until CI kills it. A refusal is terminal by definition — `onclose`
+  already treats it so and never reconnects — so it settles on the FRAME and
+  drops the socket itself. Note the default path was already correct-but-slow:
+  `sayBye('idle-timeout')` closes, `onclose` checks `refusedReason` FIRST, so the
+  reason was never laundered to `idle-timeout` — the defect was the wait, not the
+  verdict. (2) `JSON.parse('null')` SUCCEEDS, so the parse guard — which exists
+  precisely to make a malformed frame harmless — never fired, and `msg.t` threw a
+  TypeError straight out of `onmessage`: an uncaught exception with a stack trace
+  on the agent's stderr, from one untrusted frame, on the agent's only event
+  source. Probed against a real `Bun.serve` WebSocket: the throw is reported and
+  forces the process exit code to 1, though the loop carries on and an explicit
+  `process.exit(code)` (which `cli/bin.ts` does) overrides it — so the honest
+  severity is noise-that-reads-as-a-crash, not a killed agent. **Of every JSON
+  value only `null` does this** (`123`, `"str"`, `[]`, `true` all answer
+  `undefined` for `.t` and fall through), which is exactly how the hole survived
+  a guard that was already there. Same class as the still-open `readLockfile`
+  missing `Array.isArray`. **Differentials, each isolating ONE test:** removing
+  the null guard fails 1/26; removing the refusal settle fails 1/26 **by timing
+  out**, reproducing the hang directly. **A coupling I found and removed:** the
+  null test originally proved "a later frame still dispatches" using
+  `agent:refused`, so the refusal differential killed BOTH tests and could not
+  attribute a failure to one fix; it now uses `coord:drain`, which settles
+  through the close path, so the two differentials are independent. **The save
+  contract's pin is a `@ts-expect-error` whose UNUSED-directive error (TS2578)
+  IS the assertion** — verified to fire on re-widening. Worth remembering as a
+  technique: `bun test` is transpile-only and cannot see a type guarantee at all,
+  so a contract that must not re-widen has to be pinned where the LINT gate
+  looks. Gates from the ROOT: fmt/lint 0, core **2505/0** (21 skip = sandbox),
+  cloud **1160/1** (the documented `visual > task-detail` baseline drift). The
+  load-sensitive `priority computation scale` guard redded twice under
+  agent-parallel load (6371 ms against its 6000 ms bound) and passed 40/0
+  isolated plus clean on a third full run — the documented behaviour, not a
+  regression. `docs/caching.md` already claimed a cached non-zero exit was
+  "impossible by construction"; it now names the construction and says why the
+  read-side check remains.
+
 - **2026-07-30**: **The parity thread is CLOSED — all six defects resolved, every one
   without a CACHE_VERSION bump — and the last one is a REVERSAL of my own recorded
   design.** Three more waves on top of the four below. **`!!glob` INVERTS the input

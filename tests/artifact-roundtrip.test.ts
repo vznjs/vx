@@ -220,7 +220,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     await chmod(path.join(projectDir, 'dist/app.js'), 0o755)
     await cache.save({
       hash,
-      entry: { taskId: 'a#build', command: 'build', exitCode: 0, durationMs: 1, stdout: '' },
+      entry: { taskId: 'a#build', command: 'build', durationMs: 1, stdout: '' },
       projectDir,
       outputFiles: [path.join(projectDir, 'dist/app.js')],
     })
