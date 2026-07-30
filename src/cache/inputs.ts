@@ -168,11 +168,20 @@ async function resolveWorkspaceFiles(args: {
     gitFiles = runGitLsFiles(args.workspaceRoot).files
     args.gitFilesCache?.set(args.workspaceRoot, gitFiles)
   }
+  // Second call site of the literal-input guard. `resolveWorkspaceFiles`
+  // carries its own copy of the filter-over-git-set design, so the same
+  // silently-folds-nothing hazard exists here — and a fix applied only to the
+  // project half would pass that half's tests while leaving this one live.
+  const unmatchedLiterals = new Set(positive.filter(isLiteralPath))
   const candidates: string[] = []
   for (const rel of gitFiles) {
+    if (unmatchedLiterals.size > 0) unmatchedLiterals.delete(rel)
     if (!positiveGlobs.some((g) => g.match(rel))) continue
     if (excludeGlobs.some((g) => g.match(rel))) continue
     candidates.push(path.resolve(args.workspaceRoot, rel))
+  }
+  if (unmatchedLiterals.size > 0) {
+    await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.workspaceRoot, 'workspaceFiles')
   }
   // Same OID-trust shortcut as project files: a clean-per-status
   // tracked file necessarily exists on disk.
@@ -497,6 +506,51 @@ interface ResolveFilesArgs {
   gitFilesCache?: GitFilesCache
 }
 
+/** No glob metacharacter — the entry names one exact path. */
+function isLiteralPath(glob: string): boolean {
+  return !/[*?[\]{}]/.test(glob)
+}
+
+/**
+ * Refuse a literal `cache.inputs.files` entry that EXISTS ON DISK but is
+ * invisible to git — gitignored, or otherwise absent from
+ * `git ls-files --cached --others --exclude-standard`.
+ *
+ * Such an entry contributes nothing to the cache key, so the task stops
+ * tracking a file its own config names as an input. That is a stale hit, and a
+ * quiet one: the run replays cached stdout, so it even LOOKS like it executed.
+ *
+ * Turbo honours the declaration instead (an explicit `inputs` entry overrides
+ * gitignore). vx cannot afford to, and the reason is not cost: honouring it
+ * would make the cache key depend on a change that `git diff` and
+ * `git ls-files --others` CANNOT SEE, so editing that input would re-key the
+ * task while `--affected` selected nothing. `docs/cli.md` states the invariant
+ * those two surfaces owe each other as a principle — "input hashing sees it, so
+ * `--affected` must too" — and it was closed for lockfiles only recently.
+ * Honouring a gitignored input would reopen it from the other side.
+ *
+ * An entry that does NOT exist on disk stays silent: that is an ordinary stale
+ * declaration, and refusing it would break every config that lists an
+ * optional file.
+ */
+async function assertNoInvisibleLiteralInputs(
+  literals: ReadonlySet<string>,
+  base: string,
+  field: 'files' | 'workspaceFiles' = 'files',
+): Promise<void> {
+  for (const rel of literals) {
+    if (!(await Bun.file(path.resolve(base, rel)).exists())) continue
+    throw new UserError(
+      `cache.inputs.${field}: "${rel}" exists in ${base} but git does not report it, ` +
+        `so it contributes NOTHING to the cache key — input globs filter the files git ` +
+        `lists, and a filter cannot add one back. The task would keep reporting ` +
+        `up-to-date after that file changed. If it is generated, depend on the task ` +
+        `that produces it via cache.inputs.tasks; if it should be tracked, remove it ` +
+        `from .gitignore.`,
+    )
+  }
+}
+
 async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const positive: string[] = []
   const negative: string[] = []
@@ -537,9 +591,22 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
     // set() also clears the project's pending-changed bookkeeping.
     args.gitFilesCache?.set(args.projectDir, gitFiles)
   }
+  // A LITERAL entry — one with no glob metacharacter — names exactly one file,
+  // so "this matched nothing" is unambiguous. For a glob it is not: matching
+  // nothing is perfectly legitimate (`src/**/*.gen.ts` in a package with no
+  // generated code), which is why only literals are tracked here.
+  //
+  // The reason it has to be tracked at all: the user's globs FILTER the set git
+  // reports, and a filter can only remove. So naming a gitignored file by hand
+  // folds NOTHING — silently. The task then reports `up-to-date` while replaying
+  // an artifact built from an older version of a file the config explicitly
+  // claims as an input. See the refusal below for why this is not simply
+  // honoured instead.
+  const unmatchedLiterals = new Set(positive.filter(isLiteralPath))
   // First pass: glob-filter to candidate absolute paths (no I/O).
   const candidates: string[] = []
   for (const rel of gitFiles) {
+    if (unmatchedLiterals.size > 0) unmatchedLiterals.delete(rel)
     let matched = false
     for (const g of positiveGlobs) {
       if (g.match(rel)) {
@@ -550,6 +617,9 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
     if (!matched) continue
     if (excludeGlobs.some((g) => g.match(rel))) continue
     candidates.push(path.resolve(args.projectDir, rel))
+  }
+  if (unmatchedLiterals.size > 0) {
+    await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.projectDir, 'files')
   }
   // Second pass: parallel existence check — but ONLY for paths
   // without a trusted index OID. A clean-per-status tracked file

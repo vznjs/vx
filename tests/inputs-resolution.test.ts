@@ -1040,41 +1040,50 @@ describe('inputs.files can only ever narrow the git file set', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('FINDING: a gitignored file NAMED explicitly in inputs.files contributes nothing', async () => {
-    // FINDING — stale-hit class, reproduced end to end elsewhere, pinned here at
-    // the resolver where the mechanism lives.
+  it('REFUSES a gitignored file NAMED explicitly in inputs.files', async () => {
+    // The candidate set is `git ls-files` output and the user's globs are a
+    // FILTER over it. A filter can only remove, so a path git never reported can
+    // never be filtered back IN — no matter how explicitly it is named. That
+    // made `cache.inputs.files: ['generated.ts']` on a gitignored
+    // `generated.ts` resolve to zero files, silently: the task cached on its
+    // FIRST run and reported `up-to-date` forever while the file changed
+    // underneath it.
     //
-    // Mechanism: the candidate set is `git ls-files` output; the user's globs
-    // are applied as a FILTER over that set. A filter can only ever remove, so a
-    // path git never reported can never be filtered back IN — no matter how
-    // explicitly it is named. `cache.inputs.files: ['generated.ts']` on a
-    // gitignored `generated.ts` resolves to zero files, with no warning.
-    //
-    // Why it bites: committing generated code is unusual, but gitignoring it and
-    // regenerating it is not — and that is precisely the file a consumer wants
-    // in its key. The task caches on the FIRST run and then reports `up-to-date`
-    // forever while the generated file changes underneath it.
-    //
-    // Correct behaviour: a literal (wildcard-free) entry that names an existing
-    // file git does not report should either be included or raise, rather than
-    // being silently dropped.
+    // This test began as a FINDING pinning that silence. Flipping it to assert
+    // the refusal is the intended end of that loop.
     await write(path.join(root, '.gitignore'), 'generated.ts\n')
     await write(path.join(projectDir, 'generated.ts'), 'v1')
     await write(path.join(projectDir, 'src', 'a.ts'), 'a')
 
-    const named = await resolveInputs({
+    const err = await resolveInputs({
       projectDir,
       workspaceRoot: root,
       envSource: {},
       inputs: { files: ['generated.ts'] },
       ownOutputs: [],
       nestedProjectDirs: [],
-    })
-    expect(named.files).toEqual([])
-    expect(existsSync(path.join(projectDir, 'generated.ts'))).toBe(true)
+    }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err?.message).toContain('generated.ts')
+    expect(err?.message).toContain('contributes NOTHING to the cache key')
+    // The remedy has to be named, because the honest answer is not "un-ignore
+    // it" for the common case (generated code) — it is to depend on the task
+    // that produces it, which is how vx expresses that relationship.
+    expect(err?.message).toContain('cache.inputs.tasks')
+  })
 
-    // And it stays invisible under a broad glob, confirming the filter-only
-    // direction rather than something specific to literal entries.
+  it('a BROAD glob over the same tree stays silent — only literals are judged', async () => {
+    // The distinction the refusal rests on. A glob matching nothing is
+    // legitimate (`src/**/*.gen.ts` in a package with no generated code), so it
+    // must not raise; a literal names one exact file, so "matched nothing" is
+    // unambiguous. Without this control the refusal could be widened to globs
+    // and every optional-file config would start failing.
+    await write(path.join(root, '.gitignore'), 'generated.ts\n')
+    await write(path.join(projectDir, 'generated.ts'), 'v1')
+    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+
     const broad = await resolveInputs({
       projectDir,
       workspaceRoot: root,
@@ -1086,19 +1095,150 @@ describe('inputs.files can only ever narrow the git file set', () => {
     expect(broad.files.map((f) => path.relative(projectDir, f))).toEqual([path.join('src', 'a.ts')])
   })
 
-  it('the same blindness applies to workspaceFiles', async () => {
-    // Second resolver, same filter-over-git-set design, so the finding above is
-    // not confined to the project half. Pinned so a fix has to address both.
-    await write(path.join(root, '.gitignore'), 'shared-gen.ts\n')
-    await write(path.join(root, 'shared-gen.ts'), 'v1')
-    await write(path.join(root, 'tsconfig.json'), '{}')
+  it('a glob whose own text is ALSO a real filename is still treated as a glob', async () => {
+    // The one case where `isLiteralPath` is load-bearing rather than merely
+    // cheap, and the reason it exists as a gate at all.
+    //
+    // Everywhere else the `.exists()` check does the filtering by itself: no
+    // file is named `src/**`, so tracking every glob would be wasted work but
+    // never a false refusal. Here it would be a false refusal — `a*.ts` is a
+    // legal filename on this platform, the file is gitignored, and the glob
+    // legitimately matches `ab.ts`. Without the gate the raw pattern text sits
+    // in the unmatched set (nothing in the git list equals it verbatim),
+    // `exists()` says yes, and a working config is refused.
+    //
+    // Mutation-verified: making `isLiteralPath` return true for everything is
+    // killed by this test and by nothing else in the suite.
+    await write(path.join(root, '.gitignore'), 'a*.ts\n')
+    await write(path.join(projectDir, 'a*.ts'), 'literally named with a star')
+    await write(path.join(projectDir, 'ab.ts'), 'ordinary')
 
     const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
       envSource: {},
+      inputs: { files: ['a*.ts'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    // `ab.ts` is gitignored by the same pattern, so nothing resolves — but the
+    // point is that it RESOLVES rather than throwing.
+    expect(got.files).toEqual([])
+  })
+
+  it('a literal naming a file that does not exist stays silent', async () => {
+    // An ordinary stale declaration, not a stale hit — nothing on disk is being
+    // missed. Refusing it would break every config that lists an optional file,
+    // so the guard turns on EXISTENCE, not on absence from the git set.
+    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/a.ts', 'not-here.ts'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => path.relative(projectDir, f))).toEqual([path.join('src', 'a.ts')])
+  })
+
+  it('a literal that git DOES report resolves normally', async () => {
+    // The other control: the guard must not fire on the ordinary case of naming
+    // a tracked file by hand, which is common (`package.json`, `tsconfig.json`).
+    await write(path.join(projectDir, 'tsconfig.json'), '{}')
+    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['tsconfig.json'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => path.relative(projectDir, f))).toEqual(['tsconfig.json'])
+  })
+
+  it('a task naming its OWN declared output is not refused', async () => {
+    // `ownOutputs` are excluded deliberately — a task's output cannot be its own
+    // input without the key chasing itself. Those paths ARE in the git set, so
+    // they never reach the guard; pinned because a future version that checked
+    // the RESOLVED set instead of the git set would start refusing this, and it
+    // is a legitimate (if redundant) config.
+    await write(path.join(projectDir, 'dist', 'out.js'), 'built')
+    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/a.ts', 'dist/out.js'] },
+      ownOutputs: ['dist/**'],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => path.relative(projectDir, f))).toEqual([path.join('src', 'a.ts')])
+  })
+
+  it('the workspace half is refused too, and names its own field', async () => {
+    // Second resolver, same filter-over-git-set design, so the hazard is not
+    // confined to the project half — this was pinned as a FINDING precisely so
+    // a fix would have to address both. The message must name
+    // `workspaceFiles`, not `files`: a user staring at a config with both lists
+    // needs to know which one to look at.
+    await write(path.join(root, '.gitignore'), 'shared-gen.ts\n')
+    await write(path.join(root, 'shared-gen.ts'), 'v1')
+    await write(path.join(root, 'tsconfig.json'), '{}')
+
+    const err = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
       inputs: { files: [], workspaceFiles: ['shared-gen.ts', 'tsconfig.json'] },
       ownOutputs: [],
+      nestedProjectDirs: [],
+    }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err?.message).toContain('cache.inputs.workspaceFiles')
+    expect(err?.message).toContain('shared-gen.ts')
+  })
+
+  it('workspaceFiles literals that git DOES report resolve normally', async () => {
+    // The control for the workspace half — naming root files by hand is the
+    // whole point of the field (a shared tsconfig, a root package.json).
+    await write(path.join(root, 'tsconfig.json'), '{}')
+    await write(path.join(root, 'package.json'), '{}')
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: [], workspaceFiles: ['tsconfig.json', 'package.json'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.map((f) => path.relative(root, f)).sort()).toEqual([
+      'package.json',
+      'tsconfig.json',
+    ])
+  })
+
+  it('a declared workspace OUTPUT that is gitignored is not refused as an input', async () => {
+    // THIS REPO'S OWN SHAPE, and the false positive that would have hurt most:
+    // `build.ui` declares `outputs.workspaceFiles:
+    // ['packages/cloud/ui/dist/index.html']`, and `dist` is gitignored. A guard
+    // that judged output declarations — or that judged inputs against the
+    // RESOLVED set rather than the git set — would refuse this repo's own
+    // release build. Outputs are never routed through the input resolver, and
+    // this pins that they are not.
+    await write(path.join(root, '.gitignore'), 'dist\n')
+    await write(path.join(root, 'dist', 'built.js'), 'artifact')
+    await write(path.join(root, 'tsconfig.json'), '{}')
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: [], workspaceFiles: ['tsconfig.json'] },
+      ownOutputs: [],
+      ownWorkspaceOutputs: ['dist/built.js'],
       nestedProjectDirs: [],
     })
     expect(got.files.map((f) => path.relative(root, f))).toEqual(['tsconfig.json'])
