@@ -9,15 +9,15 @@
 // stdio. Streamable HTTP is a follow-up; the SDK supports both, dispatch
 // is identical, only the transport object changes.
 //
-// Tools exposed:
-//   runTasks(tasks: string[], cwd?: string)
-//   getCacheStats(scope?: 'all' | { project: string })
-//   getRunHistory({ project?, task?, limit? })
-//   explainCacheKey(taskId)
-//   whyDidThisRerun({ runId, taskId })
+// The tool list lives in `listMcpTools` (src/cli/mcp-rpc.ts) and is served
+// verbatim over `tools/list`; the implementations sit beside it so a future
+// WS-side inspector can reuse them without duplicating logic.
 //
-// The implementations live in `src/cli/mcp-rpc.ts` so a future WS-side
-// inspector can reuse them without duplicating logic.
+// It is deliberately NOT restated here. This comment used to carry a copy, and
+// the copy drifted into advertising `runTasks(tasks, cwd)` — a tool that does
+// not exist, and the only one in the list that would have MUTATED the machine.
+// A reader (or an agent reading the source) concluded `vx mcp` can execute
+// builds. Every tool this server exposes is READ-ONLY.
 
 import { UserError } from '../util/index.js'
 import { VERSION } from '../version.js'

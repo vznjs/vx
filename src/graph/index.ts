@@ -23,6 +23,7 @@ export {
   expandRequested,
   isGroupTask,
   markSurfacedDeps,
+  splitTaskId,
   type TaskNode,
   unresolvedRequests,
 } from './task-graph.js'

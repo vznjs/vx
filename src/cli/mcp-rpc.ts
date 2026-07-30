@@ -9,6 +9,7 @@
 // open across calls via `setMcpContext`.
 
 import { Cache } from '../cache/index.js'
+import { splitTaskId } from '../graph/index.js'
 import { LocalHistoryProvider, whyDidThisRerunQuery } from '../orchestrator/index.js'
 import { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from '../workspace/index.js'
 import { clampInt, UserError } from '../util/index.js'
@@ -155,12 +156,50 @@ async function getCacheStats(args: Record<string, unknown>): Promise<Record<stri
   }
 }
 
+/**
+ * The MCP boundary is an external API, so arguments are validated rather than
+ * coerced. Both of the coercions this replaces were invisible to the caller and
+ * inverted its intent.
+ *
+ * `clampInt` floors — the SDK does not enforce the declared `type: integer`,
+ * and a fractional LIMIT is a SQLite `datatype mismatch` rather than a clamp —
+ * but it also collapses a NON-FINITE value to the MINIMUM. So `limit: Infinity`,
+ * the natural way for an agent to ask for everything, returned exactly ONE row,
+ * and an agent could reasonably report that the workspace had run one task.
+ * Out-of-range still clamps, because the declared schema publishes the 1..500
+ * bounds; a value of the wrong SHAPE is an error, because nothing published
+ * says it would be silently replaced by the default.
+ */
+function parseLimit(raw: unknown): number {
+  if (raw === undefined) return 50
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    throw new UserError(
+      `getRunHistory: limit must be a finite number between 1 and 500 (got ${JSON.stringify(raw)})`,
+    )
+  }
+  return clampInt(raw, 1, 500)
+}
+
+/**
+ * A non-string filter was dropped silently, so a caller passing
+ * `{ project: ['a'] }` got the UNFILTERED history back and no indication that
+ * its filter had been ignored — the same class as the cache-stats scope that
+ * was accepted, ignored, and then echoed back as if honoured.
+ */
+function parseFilter(raw: unknown, name: string): string | undefined {
+  if (raw === undefined) return undefined
+  if (typeof raw !== 'string' || raw.length === 0) {
+    throw new UserError(
+      `getRunHistory: ${name} must be a non-empty string (got ${JSON.stringify(raw)})`,
+    )
+  }
+  return raw
+}
+
 async function getRunHistory(args: Record<string, unknown>): Promise<Record<string, unknown>> {
-  // clampInt floors: the SDK does not enforce the declared `type: integer`,
-  // and a fractional LIMIT is a SQLite `datatype mismatch`, not a clamp.
-  const limit = typeof args.limit === 'number' ? clampInt(args.limit, 1, 500) : 50
-  const projectFilter = typeof args.project === 'string' ? args.project : undefined
-  const taskFilter = typeof args.task === 'string' ? args.task : undefined
+  const limit = parseLimit(args.limit)
+  const projectFilter = parseFilter(args.project, 'project')
+  const taskFilter = parseFilter(args.task, 'task')
 
   const { cache } = await openCache()
   try {
@@ -220,7 +259,7 @@ async function explainCacheKey(args: Record<string, unknown>): Promise<Record<st
   if (typeof taskId !== 'string' || !taskId.includes('#')) {
     throw new UserError('explainCacheKey: taskId must be a "project#task" string')
   }
-  const [project, task] = taskId.split('#', 2) as [string, string]
+  const [project, task] = splitTaskId(taskId)
   const { cache } = await openCache()
   try {
     const db = cache.dbHandle()
