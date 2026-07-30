@@ -285,7 +285,19 @@ write a plausible cause into the log that you have not proven.
   structurally safer than production proves nothing); and **asserting the absence
   of one expected string cannot catch a leak that arrives mangled** — assert the
   exact set. ZERO `src/` change in this wave (`git diff packages/cloud/src`
-  empty); pins only, no CACHE_VERSION/SCHEMA/wire/migration bump.
+  empty); pins only, no CACHE_VERSION/SCHEMA/wire/migration bump. Gates from the
+  ROOT: fmt/lint 0, core **2570/0** (21 skip = sandbox), cloud **1232/2** — the
+  documented `visual > task-detail` drift at its recorded 1.54% / 98293 px, plus
+  **a NEW flake sighting recorded rather than written off**, since it is not the
+  `(unnamed)` boot-hook signature this log already documents: the named
+  `workspace context > deleting the selected workspace lands on a valid scope`
+  read the PRE-delete sidebar ("2 workspaces") after its fixed
+  `waitForTimeout(2000)`. It passes **11/0 isolated**, and this wave is
+  tests-only in two unrelated files, so it is not mine. Its wait is now a poll —
+  **but the cause is NOT claimed as proven**: I could not reproduce the failure,
+  the fixed-wait version passing 11/0 under 6-way CPU contention as well as
+  isolated. So that is a robustness change (a poll cannot expire mid-flight and
+  returns sooner), not a verified fix, and it is written that way at the site.
 
 - **2026-07-30**: **A log dropped for space and a task that printed nothing read
   IDENTICALLY — "No logs captured for this task", in the one case where a dev
