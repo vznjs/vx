@@ -719,7 +719,16 @@ export interface CacheLayer {
   restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
   save(args: {
     hash: string
-    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
+    /**
+     * `exitCode` is deliberately NOT accepted: vx caches only successes, so
+     * the stored value is pinned to 0 and there is nothing for a caller to
+     * decide. Accepting a number and discarding it invited the one shape that
+     * launders a failure into a success — cache a failing task's outputs, read
+     * the entry back as exit 0, and the hit classifies `cache-hit` while the
+     * broken build's files are restored over a good tree. Unrepresentable
+     * beats guarded.
+     */
+    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
     /**
@@ -1506,7 +1515,8 @@ export class Cache implements CacheLayer {
 
   async save(args: {
     hash: string
-    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
+    /** See `CacheLayer.save` — `exitCode` is not a caller's to supply. */
+    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
     workspaceOutputFiles?: string[]
@@ -1580,7 +1590,7 @@ export class Cache implements CacheLayer {
    */
   private async packArtifact(args: {
     hash: string
-    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles'>
+    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
     workspaceOutputFiles?: string[]
@@ -1771,7 +1781,12 @@ export class Cache implements CacheLayer {
         project,
         task,
         meta.command,
-        0, // exitCode: we never cache failures
+        // exitCode. Pinned, not supplied: vx caches only successes, and neither
+        // `save` nor `ingest` accepts one (see their arg types). The column
+        // stays because the READ side still defends against a non-zero value —
+        // a row from a foreign or hand-edited cache.db classifies the hit
+        // `failed` rather than laundering a broken build into a green run.
+        0,
         meta.durationMs,
         totalBytes,
         stdoutText,

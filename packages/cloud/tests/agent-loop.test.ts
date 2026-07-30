@@ -423,26 +423,41 @@ describe('agent loop — terminal classification', () => {
     expect(await loop.done).toEqual({ ok: false, reason: 'refused' })
   })
 
-  // FINDING (packages/cloud/src/dist/agent-loop.ts:266-268): `agent:refused`
-  // records the reason and returns — the loop then waits for the serve to
-  // close the socket, and nothing bounds that wait. Today's serve does close
-  // (dist/registry.ts:237), so this is not reachable against a current serve;
-  // against one that refuses without closing (a bug, an older/foreign
-  // implementation, or a half-open socket after the refusal) `done` NEVER
-  // settles and `vx-cloud agent` hangs indefinitely — the exact unbounded-wait
-  // class the reconnect budget exists to prevent everywhere else. Correct
-  // would be for the refusal handler to close the socket itself (it is
-  // terminal by definition, so the close is not the serve's to own).
-  // Pinned as CURRENT behaviour, not endorsed.
-  it('FINDING: a refusal the serve never follows with a close hangs the agent forever', async () => {
+  it('settles on the refusal FRAME, not on a close the serve may never send', async () => {
+    // A refusal is terminal by definition — `onclose` already treats it as such
+    // and never reconnects — so waiting for the serve to close is waiting on
+    // something this side cannot make happen. Today's serve does close
+    // (dist/registry.ts:237); one that refuses and holds the socket open (a
+    // bug, a foreign implementation, a proxy that keeps it half-open) used to
+    // leave `done` pending, and `agentCmd` awaits `done`.
+    //
+    // The sharp case is `--idle-timeout 0`, which is how a STANDING pool agent
+    // is run: `armIdle` returns early with no timer, so nothing else was ever
+    // going to settle it and the job sat until CI killed it. Measured before
+    // the fix: still pending after 3 s with no timer armed anywhere.
     const { factory, sockets } = fakeFactory()
+    // No idleTimeoutMs — the standing-agent shape, and the one with no backstop.
     const loop = runAgentLoop(baseOpts(factory))
     sockets[0]!.open()
     sockets[0]!.deliver({ t: 'agent:refused', reason: 'protocol mismatch: v1 vs v2' })
 
-    expect(sockets[0]!.closes).toBe(0)
-    expect(await settledWithin(loop, 200)).toBe('UNSETTLED')
-    loop.stop()
+    expect(await loop.done).toEqual({ ok: false, reason: 'refused' })
+    // And it drops the socket itself rather than leaking it for the life of the
+    // process — the close is not the serve's to own.
+    expect(sockets[0]!.closes).toBe(1)
+  })
+
+  it('a refusal the serve DOES close still settles exactly once, with the same reason', async () => {
+    // The control: `settle` is idempotent, so the frame-side settle plus the
+    // close it triggers plus the serve's own close must not fight. Without
+    // that, the fix above would trade a hang for a double-resolve.
+    const { factory, sockets } = fakeFactory()
+    const loop = runAgentLoop(baseOpts(factory))
+    sockets[0]!.open()
+    sockets[0]!.deliver({ t: 'agent:refused', reason: 'protocol mismatch: v1 vs v2' })
+    sockets[0]!.close()
+
+    expect(await loop.done).toEqual({ ok: false, reason: 'refused' })
   })
 
   it('a garbage or unknown frame is ignored — it can neither throw nor settle', async () => {
@@ -466,25 +481,32 @@ describe('agent loop — terminal classification', () => {
     loop.stop()
   })
 
-  // FINDING (packages/cloud/src/dist/agent-loop.ts:255-261): the `onmessage`
-  // handler guards the PARSE but not the parsed VALUE. `JSON.parse('null')`
-  // succeeds, so the try/catch does not fire and the very next line — the
-  // `msg.t` dispatch — throws `TypeError: null is not an object` out of the
-  // handler. On a real socket that is an uncaught error on the agent's only
-  // event source, from a single untrusted frame; the WS payload is a system
-  // boundary (the agent dials whatever `--url` names, possibly through a
-  // proxy), which is exactly why the parse is already guarded. Every other
-  // non-object shape (`123`, `"str"`, `[]`, `true`) is harmlessly ignored, so
-  // `null` is the lone hole. Correct would be widening the existing guard to
-  // the value — `if (msg === null || typeof msg !== 'object') return` — or
-  // moving the dispatch inside the try. Pinned as CURRENT behaviour.
-  it('FINDING: a literal `null` frame throws out of the message handler', () => {
+  it('a literal `null` frame is ignored like every other non-object', async () => {
+    // `null` was the lone hole in the parse guard, and the only JSON value with
+    // this property: parsing succeeds so the try/catch never fires, and the
+    // very next line — `msg.t` — throws `TypeError: null is not an object`
+    // straight out of the handler. `123`, `"str"`, `[]` and `true` all answer
+    // `undefined` for `.t` and fall through harmlessly, which is why the hole
+    // survived. On a real socket that throw is an UNCAUGHT error with a stack
+    // trace on the agent's stderr, from one untrusted frame — and the WS
+    // payload is a system boundary (the agent dials whatever `--url` names,
+    // possibly through a proxy), which is exactly why the parse was guarded in
+    // the first place.
     const { factory, sockets } = fakeFactory()
     const loop = runAgentLoop(baseOpts(factory))
     sockets[0]!.open()
 
-    expect(() => sockets[0]!.raw('null')).toThrow(TypeError)
-    loop.stop()
+    expect(() => sockets[0]!.raw('null')).not.toThrow()
+    // Ignored, not merely survived: no reply, no settle, and a real frame
+    // arriving afterwards is still dispatched.
+    expect(await settledWithin(loop, 60)).toBe('UNSETTLED')
+    expect(kinds(sockets[0]!)).toEqual(['agent:hello'])
+    // A real frame arriving afterwards is still dispatched. `coord:drain` on
+    // purpose rather than `agent:refused`: drain settles through the close
+    // path, so this test stays independent of the refusal fix beside it and a
+    // differential can attribute a failure to one or the other.
+    sockets[0]!.deliver({ t: 'coord:drain' })
+    expect(await loop.done).toEqual({ ok: true, reason: 'drained' })
   })
 })
 

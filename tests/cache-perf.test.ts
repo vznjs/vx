@@ -407,7 +407,6 @@ describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
       entry: {
         taskId: 'pkg#build',
         command: 'noop',
-        exitCode: 0,
         durationMs: 5,
         stdout: 'compiling…',
       },

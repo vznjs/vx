@@ -565,10 +565,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         ? { workspaceOutputFiles: wsOutputFiles, workspaceRoot: args.workspaceRoot }
         : {}),
       inputComponents: captured.map((c) => ({ entryHash: hash, ...c })),
+      // No `exitCode`: the save only runs under `effectiveExitCode === 0`, and
+      // the contract no longer accepts one — so the invariant is enforced by
+      // the type rather than by every call site remembering the gate.
       entry: {
         taskId: node.id,
         command: step.command,
-        exitCode: effectiveExitCode,
         durationMs: result.durationMs,
         stdout: result.stdout,
       },

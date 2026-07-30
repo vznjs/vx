@@ -252,12 +252,22 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
     }
 
     ws.onmessage = (ev) => {
-      let msg: DistServerMessage
+      let parsed: unknown
       try {
-        msg = JSON.parse(String(ev.data)) as DistServerMessage
+        parsed = JSON.parse(String(ev.data))
       } catch {
         return
       }
+      // A successful parse does NOT mean the frame is an object. `null` parses
+      // fine, slips past the `catch` above — which exists precisely to make a
+      // malformed frame harmless — and then `msg.t` throws a TypeError straight
+      // out of this handler. That surfaces as an UNCAUGHT exception with a
+      // stack trace on the agent's stderr, which reads as a crash even though
+      // the loop carries on. Of every JSON value only `null` does this; numbers,
+      // strings, arrays and booleans all answer `undefined` for `.t` and fall
+      // through to the no-op the guard intends.
+      if (typeof parsed !== 'object' || parsed === null) return
+      const msg = parsed as DistServerMessage
       if (msg.t === 'task:assign') {
         clearTimeout(idleTimer)
         inFlight++
@@ -266,6 +276,20 @@ export function runAgentLoop(opts: AgentLoopOptions): AgentLoopHandle {
       } else if (msg.t === 'agent:refused') {
         refusedReason = msg.reason
         status(`refused: ${msg.reason}`)
+        // A refusal is TERMINAL — `onclose` already treats it as such and never
+        // reconnects. But it only REACHES `onclose` if the serve closes the
+        // socket, and this side cannot make it: a serve that refuses and then
+        // holds the socket open leaves `done` pending. With `--idle-timeout 0`
+        // (how a standing pool agent is run) that is FOREVER, and `agentCmd`
+        // awaits `done`, so the job sits there until the CI timeout kills it.
+        // Settle on the frame instead of on a close this side doesn't control;
+        // `settle` is idempotent, so the close below resolving again is a no-op.
+        settle({ ok: false, reason: 'refused' })
+        try {
+          ws.close()
+        } catch {
+          // already closed
+        }
       } else if (msg.t === 'coord:drain') {
         drained = true
         if (inFlight === 0) sayBye('shutdown')

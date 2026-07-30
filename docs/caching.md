@@ -174,7 +174,13 @@ On a hit:
    exec time.
 
 The cached `exitCode` is preserved. A cached non-zero exit is
-impossible by construction — see [§ Cache write](#cache-write).
+impossible by construction — see [§ Cache write](#cache-write) — and
+"by construction" is literal: neither `save` nor `ingest` accepts an
+`exitCode` at all, so the stored value is pinned to `0` rather than
+supplied. The restore path still checks it, because the column outlives
+this process: a row from a hand-edited or foreign `cache.db` with a
+non-zero exit classifies the hit `failed` instead of restoring a broken
+build's outputs under a green run.
 
 ### Local restore tier (two-tier scheduler)
 
