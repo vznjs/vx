@@ -246,6 +246,63 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **`prepareRun`'s rules are pinned — 380 lines that THREE recorded
+  defects route through, reached by tests only incidentally** (task #70; the
+  "load-bearing AND thin" selection rule applied literally, where thin means
+  _reached as a fixture step or by a single assertion_ rather than _untested_).
+  It was touched by three suites — a setup step in local-shortcircuit, ONE
+  `hasRemoteLayer` assertion in orchestrator-remote, a timing guard in
+  prepare-perf — while owning rules whose violation is SILENT: a project that
+  quietly fails to load, a cache policy that means nothing because no remote
+  sits behind it, an empty-run reason both callers branch on. The three defects
+  are the argument: the `pkg#task` closure hole (unusable in EVERY scoped run),
+  the `hasRemoteLayer` identity test (a pass-through decorator unclamped the
+  remote axes), and `planRun` reading the unclamped policy. **The
+  scoped-loading fixpoint is the centre**: a `pkg#task` dep names a project the
+  PACKAGE graph cannot reach by design, so it must be pulled in, and the config
+  pulled in may declare cross edges of its own — pinned as follow-a-cross-dep,
+  follow-one-discovered-in-a-LATER-round, and pull the cross target's OWN
+  package closure (`considerWithDeps`, not `consider`). Alongside it the
+  deliberate Turbo-like semantic that an out-of-scope BROKEN config does not
+  fail a scoped run, `workspaceProjectCount` describing the WORKSPACE while
+  `nodes` describes the run, and boundary geometry covering config-bearing
+  projects the run never LOADS. **Nine mutations, each verified to have changed
+  the file before its result counted; all nine killed** — and the interesting
+  one is M6, which SURVIVED the first time. **A mutation surviving because the
+  assertion measures the wrong observable is a distinct failure mode from the
+  four already recorded**, and worth naming: seeding every project instead of
+  only the anchors changes which CONFIGS EVALUATE, not which nodes run, and
+  `expandRequested` resolves an anchored spec to the same one node either way —
+  so a test reading `nodes` passes with or without the optimisation. Rewritten
+  to assert through a BROKEN sibling, which is the only thing that makes config
+  evaluation observable, and it then killed the mutation. **Three of my own test
+  premises were wrong and the failures said so**, which is the cheap half:
+  `prepareRun` takes an EXPLICIT project scope — resolving cwd to "the project
+  containing it" is the CLI's job, so passing only `cwd` selects the whole
+  workspace — and `packages/*` does not discover `packages/app/inner`, so the
+  nested-boundary fixture needed a glob that reaches it. Both are now stated in
+  the file so the next reader does not re-derive them. **Bundled, and diagnosed
+  rather than written off: the `priority computation scale` guard was flaky BY
+  CONSTRUCTION on this machine.** It redded at 1577 ms against its 1500 ms bound
+  during a full-suite run with `src/` untouched, so it could not be the diff.
+  Measured directly: five identical calls in ONE process ran **862, 1655, 869,
+  186, 1681 ms** — a 9x spread from GC alone, against a comment calibrating
+  "~20-60 ms here". Both of the guard's stated premises are false on this box:
+  the spread is not single-digit, and min-of-THREE can plausibly miss the fast
+  sample. The bound is deliberately UNCHANGED — it still separates the ~186 ms
+  floor from the ~7 s quadratic implementation it guards — and what was fixed is
+  the robustness of the FLOOR ESTIMATE: sample until one lands under the bound,
+  capped at 8. Noise can only ADD time, so the fastest sample is the estimate
+  and a quadratic version cannot produce a fast one however lucky the machine
+  gets; the early exit keeps the healthy case at one or two iterations. Verified
+  BOTH directions rather than reasoned about: healthy 3/3 with early exit, and
+  with an unreachable bound it still fails, running all 8 in 2.4 s against a
+  120 s timeout. Calibration in the comment replaced with figures measured here
+  rather than carried over. ZERO `src/` change in this wave (`git diff --stat
+src/` empty), so nothing to bump. Gates from the ROOT: fmt/lint 0, core
+  **2526/0** (+21; 21 skip = sandbox) — including the full-suite run that used
+  to red.
+
 - **2026-07-30**: **Five more surfaces that answered confidently from a shape they
   did not expect — and one finding REFUTED, plus a false reachability claim
   CORRECTED in a test that made it** (closing task #68's tail; the same class as

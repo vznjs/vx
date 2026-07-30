@@ -375,16 +375,28 @@ describe('priority computation scale', () => {
     expect(outcomes.size).toBe(LAYERS * WIDTH)
     expect([...outcomes.values()].every((o) => o.status === 'success')).toBe(true)
 
-    // Perf pin: time ONLY the priority closure (min of 3 — pure CPU,
-    // so min de-noises scheduler-unrelated machine load). Calibration:
-    // bitset implementation ~20-60 ms here; the quadratic Set-DFS it
-    // replaced took ~7 s for this same call. CI slowness moves pure
-    // CPU by single-digit factors, not 20x, so 1500 ms separates
-    // cleanly without end-to-end promise noise (which caused the old
-    // wall-clock bound to flake at 1627 ms vs 1500 ms).
+    // Perf pin: time ONLY the priority closure. What is measured is a FLOOR —
+    // noise can only ADD time, so the fastest sample is the estimate, and a
+    // quadratic implementation cannot produce a fast sample however lucky the
+    // machine gets. That is what makes the bound meaningful rather than a
+    // wall-clock guess.
+    //
+    // It samples until one lands under the bound, capped. Min-of-3 was not
+    // enough: measured here, five identical calls in one process ran 862, 1655,
+    // 869, 186, 1681 ms — a 9x spread from GC alone, so three samples can
+    // plausibly miss the fast one, and this guard redded at 1577 ms during a
+    // full-suite run with `src/` untouched. Stopping early keeps the healthy
+    // case at one or two iterations and only pays the full cost when something
+    // actually looks slow.
+    //
+    // Calibration, measured on THIS machine rather than carried over: floor
+    // ~186 ms for the bitset reverse-topo version; the quadratic Set-DFS it
+    // replaced took ~7 s for this same call. 1500 ms sits between them with
+    // room on both sides, and is deliberately unchanged — the fix here is the
+    // robustness of the floor ESTIMATE, not a looser bound.
     const graph = nodes(...all)
     let best = Infinity
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 8 && best >= 1500; i++) {
       const t0 = performance.now()
       computeReverseDepCount(graph)
       best = Math.min(best, performance.now() - t0)
