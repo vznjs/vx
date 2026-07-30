@@ -319,10 +319,34 @@ The child process sees a deliberately limited env. From lowest to
 highest priority:
 
 1. **Essential allowlist** (hard-coded in `src/exec/env.ts`): `PATH`,
-   `HOME`, `SHELL`, `TMPDIR`, `LANG`, `TERM`, `COLORTERM`,
-   `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`, plus Windows
-   essentials like `SYSTEMROOT` / `USERPROFILE`. Without these,
-   typical CLI tools break.
+   `HOME`, `SHELL`, `TMPDIR`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`,
+   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`, plus
+   Windows essentials like `SYSTEMROOT` / `APPDATA`. Without these,
+   typical CLI tools break. **_NOT_ folded into the cache key** — the
+   same rule `passThrough` states below, and for the same reason.
+
+   Read that carefully if your build's _output_ depends on one of
+   them, because three can change what a task produces:
+   **`NODE_OPTIONS`** (`--require` / `--import` / `--loader` /
+   `--conditions` inject code or switch package-export resolution),
+   **`LC_ALL` / `LANG`** (collation — anything shelling out to `sort`
+   orders differently), and **`CI` / `FORCE_COLOR` / `TERM`** (stdout
+   bytes, and vx caches and replays stdout).
+
+   They are not hashed because hashing them would mean a laptop and a
+   CI runner could **never share a remote cache entry** — `PATH`,
+   `HOME` and `TERM` differ on every machine, which is the whole point
+   of a remote cache. vx does not guess which ones matter to your
+   build; if one does, say so explicitly:
+
+   ```ts
+   cache: { inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] } }
+   ```
+
+   That folds its value into the key. The two axes are orthogonal on
+   purpose: `cache.inputs.env` decides what the key _sees_,
+   `exec.env.passThrough` decides what the child _gets_.
+
 2. **`passThrough`** names → value taken from host `process.env` at
    spawn time. _NOT_ folded into the cache key — for secrets,
    regional values, CI flags that legitimately vary between machines.
