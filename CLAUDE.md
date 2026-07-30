@@ -246,6 +246,147 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **Four Turbo/Nx parity defects fixed WITHOUT a CACHE_VERSION bump,
+  and the test wave found a stale-hit vector nobody had recorded.** The strategic
+  move was re-asking the deferred backlog a different question — not "what does
+  this cost to fix" but **"does this actually need the bump we assumed?"** Three
+  of six did not, because **each was already selecting nothing or already
+  destroying files**, so turning it into a refusal reports a state that ALREADY
+  EXISTED: no working key moves, nothing cached today stops hitting. **(a+f, PR
+  #208)** a negation-only `cache.inputs.files` folds ZERO files and negation in
+  `cache.outputs.files` is a literal path matching nothing (so the files it meant
+  to spare are captured AND DELETED) — both refused at the loader. **(e, PR
+  #209)** two tasks declaring overlapping `outputs.files` destroy each other's
+  work while the run stays GREEN — a hazard vx CREATED with strict output
+  ownership (Turbo restores additively and cannot hit it, which is why no upstream
+  test surfaces it) — refused at graph build. **(c, PR #210)** `--affected`
+  selected ZERO projects for a lockfile change: the root lockfiles +
+  `pnpm-workspace.yaml` fold into EVERY key via the workspace fingerprint, but
+  they belong to no project, so `projectsContaining` mapped them to nothing and
+  `vx run test --affected` after a `pnpm update` exited 0 having run no tests —
+  the failure `docs/cli.md` states as a principle two lines above it ("input
+  hashing sees it, so `--affected` must too"). Widened off the **shared exported
+  constant** the fingerprint itself walks, because two copies would drift into
+  precisely the state being fixed; matching is on the ROOT-RELATIVE path, so a
+  lockfile vendored under a package still selects only that package (basename
+  matching would rebuild the workspace for a file vx never reads). Selection is
+  not hashed, so the widening changes no key. **TWO LESSONS FROM #209, both mine,
+  both cost real time.** (1) **I shipped an O(N²) check and only MEASUREMENT
+  caught it** — the first cut filtered by project INSIDE an all-pairs loop:
+  **1614 ms at 1000 projects × 10 tasks** against a ~120 ms warm run. The local
+  suite AND CI both stayed green because neither builds a graph that size.
+  Indexing by project first took it to 17 ms (~5 ms is the check), and there is
+  now a scale guard verified to catch a return to all-pairs. Same failure mode as
+  the scheduler's priority closure at 8.5 s. (2) **The obvious overlap test is
+  UNSOUND as a refusal** — comparing each glob's static prefix reports
+  `dist/vx-*` and `dist/other.txt` as colliding when they match disjoint sets,
+  and would refuse THIS REPO'S OWN `build.bun.*` release tasks. A refusal breaks
+  a working build, so only PROVABLE overlaps are refused and everything
+  undecidable is allowed through — pinned in both directions so the conservatism
+  is a decision, not an accident. **The test wave (core 2388 → 2478, cloud 1134 → 1159) found the sharpest defect of the day, and it was not on any list.**
+  **`!!glob` INVERTS the input set.** `resolveFiles` strips ONE `!` and hands the
+  remainder to `new Bun.Glob()` — **which applies its OWN leading-`!` negation**
+  (verified directly: `new Bun.Glob('!vendor/**').match('src/b.ts')` is `true`).
+  So `['**/*', '!!vendor/**']` builds the exclude glob `Glob('!vendor/**')`, which
+  matches everything EXCEPT vendor, excludes all of it, and folds ONLY
+  `vendor/**` — every source file drops out of the key, permanently. Neither
+  loader guard fires: `assertNotNegationOnly` sees the positive glob and
+  `hasParentSegment` strips one `!` before splitting. Present in the WORKSPACE
+  half as a separate copy, pinned separately so a one-sided fix cannot look
+  complete. **This does NOT contradict the 2026-07-26 entry recording `!!../x` as
+  harmless** — that entry was about deletion safety on the OUTPUTS side, where
+  nothing resolves so nothing is deleted; the same mechanism on the INPUTS side is
+  a stale hit, and "harmless" does not transfer. Both conclusions stand.
+  **Surfaces covered, chosen by measuring source size against its dedicated test
+  file:** `execute-task.ts` (**973 lines, ZERO tests** — the largest untested file
+  in core and the one EVERY task passes through; eight stale-hit defects in this
+  log route through it, and a wrong decision there does not throw, it replays a
+  stale artifact reporting `up-to-date` or deletes a build output). Its
+  load-bearing pins: the pre-exec wipe gates on WRITES not reads (so `--no-cache`
+  leaves the tree alone for a debugging user while `--force` still cleans — the
+  other cell from the one `orchestrator.test.ts` already had), cleaning runs
+  BETWEEN retry attempts (asserted by wiping and restoring from cache, so a failed
+  attempt's partial output reaches neither the next attempt nor the artifact),
+  abort-vs-timeout (both arrive as SIGTERM three lines apart and must classify
+  differently — a teardown signal is `aborted`, ONE attempt despite `retries: 3`,
+  never cached; a timeout is a real `failed` that DOES retry), and `preProbed`
+  reuse pinned in BOTH directions (a hit restores with ZERO `cache.get`; a miss
+  saves under the up-front hash VERBATIM, asserted via `output_files` rows under a
+  hash the fixture cannot itself derive). Plus `cache/inputs.ts` resolution and
+  the cloud `dist/agent-loop.ts`. **Seven findings pinned wrong-but-current.** The
+  two worth naming: **`CacheLayer.save({ entry: { exitCode } })` is SILENTLY
+  DISCARDED** — `cache.ts:1774` hard-codes `0` ("we never cache failures") and
+  `IngestMeta` carries no exit code at all, so EVERY entry core's cache returns
+  has `exitCode: 0`, which makes the `hit.exitCode !== 0 ? 'failed'` classifier
+  UNREACHABLE through core's own cache (it fires only for a third-party layer).
+  Benign today, latent in both directions: a future change that starts caching
+  failures would be dropped with no diagnostic, and the one guard between a
+  poisoned entry and a green run would still never fire — so the test asserts BOTH
+  halves, that `3` is stored as `0` AND that the classifier works when a layer
+  does supply one. And **the output resolvers have NO containment of their own** —
+  a test demonstrates `../victim/**` really resolving and really deleting, which
+  reframes the loader's `..` rejection from defence-in-depth into the ONLY thing
+  standing between `cleanOutputs` and files outside the project. Also: a literal
+  `null` frame throws out of the agent loop's message handler (`JSON.parse('null')`
+  SUCCEEDS, so the parse guard never fires — every other malformed shape is
+  harmlessly ignored, `null` is the lone hole), and a refusal the serve never
+  closes hangs an agent forever. **Method, and the transferable part is the
+  survivors.** 62 mutations applied across the three files, each verified to have
+  CHANGED THE FILE before its result was read. Several survivors were correctly
+  called **equivalent mutants** rather than covered with tests that would prove
+  nothing: dropping the empty-list early returns changes no behaviour (scanning
+  zero patterns already yields the empty set); dropping `!result.timedOut` from
+  the determinism gate CANNOT discriminate, because `runAttempt` already rewrites
+  a timed-out zero exit to `signalExitCode('SIGTERM')` which is always non-zero;
+  and two agent-loop guards are MUTUALLY REDUNDANT — neither observable alone,
+  but removing BOTH is killed. One agent corrected its own overclaiming comment
+  rather than leave a false guarantee. **Three near-misses.** (1) A
+  POSIX-separator assertion was **REFUSED BEFORE BEING WRITTEN** — it is the
+  identity on Linux and would pass with the normalization deleted; **third time
+  this repo has met that trap**, and the gap is recorded in-comment instead. Same
+  reasoning made the sort test use an injected unsorted memo, since git emits
+  sorted output and a real-spawn version would have passed either way. (2) One
+  mutation produced a **syntax error** (an orphaned `else`) — 0 pass / 1 error
+  proves nothing about test quality, so it was redone syntax-valid. **A fifth way
+  mutation testing lies, after the four recorded yesterday.** (3) A draft
+  assertion that `null` frames do not throw was **WRONG ABOUT THE CODE**, and its
+  failure is how that finding surfaced — split rather than weakened. **A vacuous
+  test of MINE, caught by mutation and not by reading it:** the `vx-lock.json`
+  assertion in the `--affected` wave passed with OR without either guard, because
+  with only two projects in scope that path maps to no project either way. Putting
+  the workspace ROOT in scope makes deleting the filter genuinely fail it. And a
+  related honest record: adding `vx-lock.json` to the widening set is **INERT**
+  (the exclusion filter strips it first), so that mutation survives and NO test
+  can kill it — written down so nobody adds a second guard believing it does
+  something. **Process finding, new:** two concurrent agents collided on a SHARED
+  SCRATCHPAD PATH, so one's mutation harness ran the other's script against a
+  different file — caught only because the mutation did not apply where expected,
+  which is exactly why "verify the mutation changed the file" is a rule. The
+  affected agent correctly did NOT revert the other's tree. **Use a private,
+  collision-proof scratchpad path per agent.** Three stop-hook prompts to commit
+  were DECLINED with evidence rather than obeyed: the untracked files were a live
+  agent's scratch probe (mtime one second old) and, later, a deliberately-broken
+  `agent-loop.ts` mid-mutation whose diff removed the drain-shutdown branch —
+  committing it would have landed a real bug on main. Gates: fmt/lint 0 from the
+  ROOT, core **2478/0** across two consecutive clean runs (21 skip = sandbox),
+  cloud **1159/1** on the documented pre-existing `visual > task-detail` drift at
+  1.56% / 99568 px. One core run DURING the wave failed `priority computation
+scale` at 6841 ms and was **diagnosed rather than filed as a flake**: it passes
+  3/3 isolated, passes under 4-way CPU load, has a 120 s timeout so it was not a
+  timeout, and is green in both post-agent runs — concurrent agent load. **NEXT,
+  designed and bump-free:** refuse `!!` at the loader (both halves); refuse a
+  LITERAL gitignored `inputs.files` entry that exists on disk, naming
+  `cache.inputs.tasks` as the fix — and the argument for refusing rather than
+  matching Turbo is NOT cost: honouring the declaration would make the key depend
+  on a change `git diff` CANNOT SEE, so `--affected` would then under-select,
+  recreating the exact divergence #210 just closed; and fold only the
+  CODE-INJECTING flags of `NODE_OPTIONS` (`--require`/`--import`/`--loader`/
+  `--conditions`) into the key rather than the whole string, because folding it
+  all splits a laptop from a CI runner over `--max-old-space-size` — output-
+  neutral memory tuning — gutting remote-cache hit rate to fix a rarer hazard,
+  while folding the whole ESSENTIAL_ENV allowlist would mean a laptop and a CI
+  runner can NEVER share a remote cache entry, which is the entire point of one.
+
 - **2026-07-29**: **The function that derives EVERY cache key had no direct test,
   and four more load-bearing surfaces were thin** (third wave of the 3x
   directive; core **2157 → 2388** across 104 → 110 files, +231). The selection
