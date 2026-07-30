@@ -19,6 +19,7 @@ import {
 import { formatDuration, formatSummarySection, type RunContext } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 import { appendTail, createTail, resetTail, tailText, type Tail } from '../util/index.js'
+import { isCacheHit } from './telemetry.js'
 
 export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
@@ -569,7 +570,7 @@ export function defaultLogger(
         refresh(true)
       }
       if (isGroupTask(node)) return
-      const isHit = outcome.status === 'cache-hit' || outcome.status === 'cache-hit-remote'
+      const isHit = isCacheHit(outcome.status)
       switch (view.mode) {
         case 'none':
           return

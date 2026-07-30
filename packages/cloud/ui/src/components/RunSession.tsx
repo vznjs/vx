@@ -22,7 +22,7 @@ import { cpuPct, formatBytes, formatDuration, formatTime } from '../format.ts'
 import { criticalPath, parallelism } from './critical-path.ts'
 import { Flamegraph as FlameView, flameEdgesOf } from './Flamegraph.tsx'
 import { RunGraph } from './RunGraph.tsx'
-import { STATUS, toVizState, type VizState } from './status.tsx'
+import { isCacheHit, STATUS, toVizState, type VizState } from './status.tsx'
 import { SegmentedToggle } from './ui.tsx'
 
 const fmtClock = (ms?: number): string => (ms === undefined ? '—' : formatTime(ms))
@@ -182,10 +182,7 @@ export function RunSession(props: { session: RunSessionState }) {
   // A cache HIT restores ahead of its deps (the two-tier scheduler's restore
   // tier), so it doesn't wait for them — exclude it from the dependency-timing
   // chain or the floor counts upstream runtime the hit never waited for.
-  const restoresAhead = (id: string): boolean => {
-    const state = s().statuses[id]?.state
-    return state === 'cache-hit' || state === 'cache-hit-remote'
-  }
+  const restoresAhead = (id: string): boolean => isCacheHit(s().statuses[id]?.state ?? '')
 
   // Longest-duration dependency chain (the wall-time floor) over COMPLETED
   // durations only. Deliberately NOT the live elapsed times: growing

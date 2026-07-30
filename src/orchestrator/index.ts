@@ -89,6 +89,9 @@ export {
   assembleRunSummary,
   createTelemetrySource,
   deriveCacheSource,
+  isCacheHit,
+  isPassStatus,
+  TASK_STATUSES,
   TELEMETRY_SCHEMA_VERSION,
 } from './telemetry.js'
 export type {

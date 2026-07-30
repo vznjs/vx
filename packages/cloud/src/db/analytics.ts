@@ -20,7 +20,7 @@ import type { SQL } from 'bun'
 // `splitTaskId` is core's — the graph splits a task id on the FIRST '#', and a
 // hand-rolled `split('#', 2)` here silently disagreed with it for any task name
 // containing one.
-import { diffOutputTrees, splitTaskId } from '@vzn/vx'
+import { diffOutputTrees, isPassStatus, splitTaskId, TASK_STATUSES } from '@vzn/vx'
 import type { OutputFingerprint, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 import {
   RUN_LOG_BUDGET_CHARS,
@@ -938,7 +938,11 @@ function parseRequestedTasks(raw: unknown): string[] {
 }
 
 // The pass statuses for regression state — a cache hit counts as a pass.
-const PASS_STATUSES = ['success', 'cache-hit', 'cache-hit-remote'] as const
+// DERIVED from core's union + predicate, not retyped: this is bound into a SQL
+// IN-list so it has to be data rather than a call, but filtering the real
+// status set through the real predicate means a new member cannot be missed
+// here the way a hand-written array would miss it.
+const PASS_STATUSES: string[] = TASK_STATUSES.filter(isPassStatus)
 const BRANCH_CAP = 12
 
 /**
@@ -3152,7 +3156,7 @@ export class Analytics {
     const passedRows = await this.sql<{ project: string; task: string }[]>`
       SELECT DISTINCT project, task FROM task_runs
       WHERE workspace_id = ${workspaceId}
-        AND status IN ${this.sql(PASS_STATUSES as unknown as string[])}`
+        AND status IN ${this.sql(PASS_STATUSES)}`
     const passedSet = new Set(passedRows.map((p) => `${p.project}#${p.task}`))
 
     const out: RegressedTask[] = []

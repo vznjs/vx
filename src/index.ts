@@ -128,10 +128,19 @@ export type {
 // (an OTel exporter, an HTTP sink, or any third-party consumer) reads. A sink implements TelemetrySink and is
 // returned from VxPlugin.telemetry(); it receives immutable records and holds
 // no run handle (observe-only by construction).
+// `isPassStatus` / `isCacheHit` are on the façade for the reason the sweep
+// that added them found: with only the raw `TaskStatus` union exported, every
+// consumer rolls its own Set of status literals — and a Set has no
+// compile-time tripwire when the union gains a member, so it silently answers
+// "no" for the new one. `TASK_STATUSES` is the union at runtime, for a
+// consumer that needs the list rather than the predicate.
 export {
   assembleRunSummary,
   TELEMETRY_SCHEMA_VERSION,
   deriveCacheSource,
+  isCacheHit,
+  isPassStatus,
+  TASK_STATUSES,
 } from './orchestrator/index.js'
 export type {
   CacheSource,

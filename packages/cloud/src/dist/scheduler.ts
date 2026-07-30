@@ -18,6 +18,8 @@ import {
   FULL_CACHE_POLICY,
   assembleRunSummary,
   deriveCacheSource,
+  isCacheHit,
+  isPassStatus,
   type CachePolicy,
   type OutcomeView,
   type RunContextRecord,
@@ -89,8 +91,6 @@ export interface DistSchedulerArgs {
    */
   recorder?: DistRunRecorder
 }
-
-const OK_STATUSES = new Set(['success', 'cache-hit', 'cache-hit-remote'])
 
 /**
  * The per-assignment run policy from a submission — the submitter's `--frozen` /
@@ -472,7 +472,7 @@ export class DistScheduler implements ActiveSubmission {
     const node = this.nodes.get(taskId)!
     const failedDep = node.deps.find((d) => {
       const o = this.outcomes.get(d)
-      return o !== undefined && !OK_STATUSES.has(o.status)
+      return o !== undefined && !isPassStatus(o.status)
     })
     if (node.view.isGroup) {
       // Groups are never assigned: a synthesized rolled-up outcome, no
@@ -509,7 +509,7 @@ export class DistScheduler implements ActiveSubmission {
       else if (o.status === 'skipped') skipped++
       else success++
       if (o.status === 'success') executed++
-      else if (o.status === 'cache-hit' || o.status === 'cache-hit-remote') agentHits++
+      else if (isCacheHit(o.status)) agentHits++
     }
     const ok = failed === 0
     const endedAt = Date.now()

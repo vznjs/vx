@@ -21,6 +21,7 @@ import { splitTaskId } from '../graph/index.js'
 import { clampInt } from '../util/index.js'
 import { classifyFailureMode, mixedOutcomeKeyCount } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
+import { isPassStatus, TASK_STATUSES } from './telemetry.js'
 
 // ---------------------------------------------------------------------------
 // Run listing + detail
@@ -1528,7 +1529,15 @@ export interface RegressionArgs {
   limit?: number
 }
 
-const PASS_STATUSES = "('success', 'cache-hit', 'cache-hit-remote')"
+// The SQL form of `isPassStatus`, DERIVED from the union rather than retyped.
+// A query cannot call a TS predicate, so this list has to exist as text — but
+// it does not have to be a second decision: filter the real status set through
+// the real predicate and a new member lands here automatically. The values are
+// compile-time literals from a closed union, so the interpolation is not a
+// parameterization hole.
+const PASS_STATUSES = `(${TASK_STATUSES.filter(isPassStatus)
+  .map((s) => `'${s}'`)
+  .join(', ')})`
 const BRANCH_CAP = 12
 
 export function getRegressions(db: Database, args: RegressionArgs = {}): RegressedTask[] {

@@ -34,7 +34,7 @@ import { Card as UiCard, EmptyState, LoadError, MetricCard, PinStarButton, Segme
 import { Flamegraph as FlamegraphPrimitive, flameEdgesOf } from '../components/Flamegraph.tsx'
 import { criticalPath } from '../components/critical-path.ts'
 import { RunGraph as RunGraphPrimitive, type RunGraphNode } from '../components/RunGraph.tsx'
-import { STATUS, toVizState, type VizState } from '../components/status.tsx'
+import { isCacheHit, STATUS, toVizState, type VizState } from '../components/status.tsx'
 import { IDENT_TASK_TEXT, cpuPct, formatDuration, identFor, identTextClass, paletteFor } from '../format.ts'
 import { type FormatHint, type Tone, axisFormatter, formatValue, toneText } from './hints.ts'
 import type { Recommendation } from './functions.ts'
@@ -412,7 +412,7 @@ export function RunViz(c: C<{ rows: readonly RunSummaryRow[]; selectKey?: string
     const durationOf = (id: string) => rowById().get(id)?.durationMs ?? 0
     const restoresAhead = (id: string) => {
       const r = rowById().get(id)
-      return r !== undefined && (r.cacheHit === true || r.status === 'cache-hit' || r.status === 'cache-hit-remote')
+      return r !== undefined && (r.cacheHit === true || isCacheHit(String(r.status ?? '')))
     }
     return criticalPath(ns, durationOf, restoresAhead)
   })

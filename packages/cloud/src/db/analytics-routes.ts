@@ -6,7 +6,7 @@
 // cache wire, agents, dist, streaming, the SPA) falls through to the serve's
 // remaining machine surfaces.
 
-import type { RunSummaryRecord } from '@vzn/vx'
+import { isCacheHit, type RunSummaryRecord } from '@vzn/vx'
 import { readTextBounded } from '../http-body.js'
 import { LOG_WIRE_VERSION, type TaskLogBundle } from '../task-log-capture.js'
 import {
@@ -515,7 +515,7 @@ async function this_logs(ctx: AnalyticsRouteCtx, runId: string, taskId: string):
   if (direct !== undefined) return json(logResponse(direct, runId, taskId, 'executed'))
   const run = await a.getRun(ws, runId)
   const row = run?.tasks.find((t) => `${t.project}#${t.task}` === taskId)
-  if (row?.hash && (row.cacheHit === true || row.status.startsWith('cache-hit'))) {
+  if (row?.hash && (row.cacheHit === true || isCacheHit(row.status))) {
     const producer = await a.logByHash(ws, row.hash)
     if (producer !== undefined) {
       return json({ ...logResponse(producer, runId, taskId, 'cache'), refRunId: producer.runId })

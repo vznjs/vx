@@ -325,6 +325,85 @@ write a plausible cause into the log that you have not proven.
   drift guard and the filter matrix rather than a second copy of what exists.
   Gates from the ROOT: fmt/lint 0, core **2544/0** (+18; 21 skip = sandbox).
 
+- **2026-07-30**: **The task-status vocabulary had TEN hand-rolled copies; it now
+  has one, and the mechanism is a compile error rather than a convention** (the
+  duplicate sweep's payoff — third and largest finding after
+  `WORKSPACE_FINGERPRINT_FILES` and `splitTaskId`, and the one the sweep was
+  worth doing for). **Not a live defect, and worth saying plainly: all ten
+  agreed.** The hazard is that `new Set(['success', 'cache-hit',
+'cache-hit-remote'])` has NO tripwire when `TaskStatus` gains a member — it
+  silently answers `false` for the new one, and the consequences are the silent
+  kind: a wrong success rate in `getRegressions`, a wrong critical-path floor in
+  the cockpit, a wrong "did the remote cache save me work" count in the
+  distributed scheduler. Numbers nobody can tell are wrong by looking at them.
+  **The fix is a `Record<TaskStatus, boolean>`, which the compiler REQUIRES to
+  name every member** — so `isPassStatus`/`isCacheHit` cannot ship an omission —
+  and `isCacheHit` is IMPLEMENTED over `deriveCacheSource` rather than re-listing
+  the two hit statuses, so there is one decision, not two. Both take `string`,
+  not `TaskStatus`, because nearly every caller holds a status off a wire or out
+  of a DB column; an unknown string reads as neither, the safe direction (the
+  alternative is calling a run green on a status this build has never heard of).
+  `TASK_STATUSES` is exported as the union at runtime, read off the Record's keys
+  so it is derived rather than a second list. Eight TS sites routed: core's run
+  verdict + `cacheHit` projection + the terminal logger; cloud's dist submitter,
+  scheduler (both sites), agent loop, and the serve's log route. **The SQL sites
+  were not merely exempted — two of the four were made DERIVED**
+  (`TASK_STATUSES.filter(isPassStatus)` builds core's `metrics.ts` fragment and
+  cloud's bound IN-list), leaving ONE unavoidable literal in `cache/cache.ts`,
+  which cannot reach the predicate at all: the boundary matrix is
+  `cache: ['util', 'config']`, so cache cannot import orchestrator. **The
+  docstring was already claiming the invariant it did not have** —
+  `deriveCacheSource` said it was "the single place this mapping is decided, so
+  no consumer re-implements `status LIKE 'cache-hit%'`" while
+  `analytics-routes.ts` did LITERALLY that, `status.startsWith('cache-hit')` —
+  the sharpest copy, because it answers a DIFFERENT question: any future status
+  merely NAMED `cache-hit-*` would count whether or not it restored anything.
+  **The dashboard is the one place a second copy is honest** and it is now
+  labelled as such: `packages/cloud/ui` declares no dependency on `@vzn/vx`, so
+  `status.tsx` carries its own `Record<VizState, boolean>`, and a cloud-side
+  guard asserts the two agree on every `TASK_STATUSES` member (iterating the REAL
+  union, so adding a status to core and forgetting the dashboard fails at once)
+  plus that the dashboard NAMES every core status — without which a table missing
+  `cache-hit-remote` entirely would still "agree" on every non-hit. **A rename was
+  the obvious move and is REFUSED, with the reason recorded so nobody re-tries
+  it:** `status.tsx` has no JSX, so `.ts` would let a plain-TS test import it —
+  but `uno.config.ts` states that UnoCSS's default pipeline scans `.tsx` and NOT
+  plain `.ts`, and that file holds the literal class strings for every status
+  colour. The rename would have silently dropped them from the built CSS — the
+  dynamic-class trap this log already records twice, reached from a new
+  direction. Widening `packages/cloud/tsconfig.json` to swallow UI files was
+  rejected for the same class of reason (it would break confusingly the day the
+  file imports a real component), so the guard reads the SOURCE, and its
+  extraction THROWS on a shape it cannot parse rather than passing vacuously.
+  **Four differentials, each isolating exactly ONE test:** the dashboard
+  disagreeing with core, a re-inlined enumeration (the guard reports file, line
+  and text), a retyped SQL list, and the Record downgraded to `Partial<Record>`.
+  The no-inline guard is a SAME-LINE co-occurrence rule, which is what makes it
+  precise: it catches `=== 'cache-hit' || === 'cache-hit-remote'` and
+  `new Set([...])` while deliberately NOT flagging the multi-line `Record`/
+  `switch` forms that are the shape being encouraged, nor `run.ts` counting local
+  and remote hits SEPARATELY on separate lines (a genuine distinction, not a copy).
+  Four files may inline it, each with its reason stated in the test, so a fifth is
+  a deliberate entry rather than a silent copy. **Two honesty notes, both mine.**
+  (1) **I wrote a vacuous assertion and deleted it rather than shipping it:**
+  `expect({ file, uses: true }).toEqual({ file, uses: true })` cannot fail, and
+  the property it pretended to check was already covered by core's repo-wide scan.
+  (2) **The visual-suite result was meaningless the first time and I nearly
+  recorded it as evidence.** That suite serves the BUILT SPA, and `ui/dist` was 40
+  minutes OLDER than my edits — so the reassuring "unchanged 99568 px" was the
+  old bundle. Rebuilt, re-ran, and only then was byte-identical drift evidence
+  that the UI routing is pixel-neutral. **A stale build artifact makes a passing
+  check prove nothing, the same way a differential with no failure side does.**
+  Also recurred and caught: `oxlint` run from INSIDE `packages/cloud` reports
+  phantom errors (its ignore patterns are root-relative) — the gate is the ROOT.
+  NO CACHE_VERSION/SCHEMA/wire/migration bump: no key derivation, no stored
+  bytes, no wire field, and the predicates answer identically to the code they
+  replaced. Gates from the ROOT: fmt/lint 0, core **2568/0** (+24; 21 skip =
+  sandbox) across two consecutive full runs — a third, earlier run reported 1
+  fail whose name I did not capture, so it is recorded rather than attributed —
+  cloud **1172/1** (+6), the 1 being the documented `visual > task-detail`
+  baseline drift at its recorded 1.56% / 99568 px.
+
 - **2026-07-30**: **`prepareRun`'s rules are pinned — 380 lines that THREE recorded
   defects route through, reached by tests only incidentally** (task #70; the
   "load-bearing AND thin" selection rule applied literally, where thin means
