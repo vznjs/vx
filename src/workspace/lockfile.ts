@@ -52,7 +52,14 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   } catch {
     throw new UserError(`${LOCKFILE_NAME} is not valid JSON — re-run \`vx lock\` or delete it`)
   }
-  if (typeof parsed !== 'object' || parsed === null) {
+  // `Array.isArray` is not redundant with the `typeof` check: `typeof [] ===
+  // 'object'` and `[] !== null`, so an array sails through and the NEXT check
+  // reports `unsupported version undefined` — a version diagnostic for what is
+  // actually a shape problem, sending the reader to re-run `vx lock` for a file
+  // that was never the right shape. `validateProjectConfig` one layer down
+  // already guards this explicitly, which is what makes the omission here an
+  // inconsistency rather than an oversight.
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new UserError(`${LOCKFILE_NAME} must be a JSON object — re-run \`vx lock\``)
   }
   const lock = parsed as { version?: unknown; projects?: unknown }
@@ -62,7 +69,11 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
         `(this vx expects ${LOCKFILE_VERSION}) — re-run \`vx lock\``,
     )
   }
-  if (typeof lock.projects !== 'object' || lock.projects === null) {
+  // Same trap, and this one is worse than a bad message: an ARRAY of entries is
+  // ACCEPTED, because `Object.entries` happily walks it — yielding a project
+  // literally named "0". `--frozen` then looks up real project names against a
+  // lock that declares none of them.
+  if (typeof lock.projects !== 'object' || lock.projects === null || Array.isArray(lock.projects)) {
     throw new UserError(`${LOCKFILE_NAME}: \`projects\` must be an object — re-run \`vx lock\``)
   }
   for (const [name, entry] of Object.entries(lock.projects)) {

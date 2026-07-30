@@ -9,7 +9,34 @@ import { type FormatHint, formatValue } from './hints.ts'
 
 type Args = Record<string, unknown>
 type Row = Record<string, unknown>
-const n = (v: unknown) => Number(v)
+/**
+ * SCALAR coercion: unknown ⇒ NaN, so the absence rule (`formatValue` renders
+ * every non-finite as `'—'`) can actually see it.
+ *
+ * `Number(null)` is **0**, not NaN — so a single value arriving as JSON `null`
+ * rendered a confident `0 B` / `0.00×` / `<1ms`, while the SAME unknown arriving
+ * as a missing field correctly rendered `—`. `null` is not an exotic input: it
+ * is exactly what a SQL aggregate over zero rows returns, which is the case the
+ * absence rule exists for. A real 0 still renders `0` — only unknown is NaN.
+ */
+const n = (v: unknown) => (v === null || v === undefined ? Number.NaN : Number(v))
+
+/**
+ * ROW coercion: `null` for a value this row cannot contribute.
+ *
+ * Deliberately NOT the same rule as `n`. A sparse row is a row, not an unknown
+ * total: folding `n` over rows meant one row missing the field poisoned the
+ * whole reduce to NaN (a populated tile rendering `—`), while one row holding
+ * `null` was absorbed as 0 (quietly dragging an average down). Both readings of
+ * the same absence, in opposite directions. Skipping is the honest third answer
+ * — the way `countWhere` skips a non-matching row — and it makes the two agree.
+ */
+function rowNum(row: Row, field: string): number | null {
+  const v = row[field]
+  if (v === null || v === undefined) return null
+  const x = Number(v)
+  return Number.isFinite(x) ? x : null
+}
 const arr = (v: unknown): Row[] => (Array.isArray(v) ? v : [])
 
 // --- Cache-entry heat (cold / stale / warm) ---------------------------------
@@ -59,10 +86,20 @@ function aggregate(a: Args): number {
   if (absent(a.arr)) return Number.NaN
   const rows = arr(a.arr)
   const field = String(a.field)
+  // `count` is field-independent, so it answers honestly for any row shape.
   if (a.op === 'count') return rows.length
-  if (a.op === 'max') return Math.max(0, ...rows.map((r) => n(r[field])))
-  if (a.op === 'avg') return rows.length ? rows.reduce((acc, r) => acc + n(r[field]), 0) / rows.length : 0
-  return rows.reduce((acc, r) => acc + n(r[field]), 0) // sum (default)
+  const values = rows.map((r) => rowNum(r, field)).filter((v): v is number => v !== null)
+  // NO rows is a real zero — nothing to sum. Rows that all carry an UNKNOWN
+  // value is a different statement, and the total is genuinely unknown: a
+  // populated table whose every value is null must not claim 0.
+  if (values.length === 0) return rows.length === 0 ? 0 : Number.NaN
+  // The 0 floor is deliberate and predates this: `Math.max()` with no arguments
+  // is -Infinity, which would render '—' and read as unknown for a real set.
+  if (a.op === 'max') return Math.max(0, ...values)
+  const sum = values.reduce((acc, v) => acc + v, 0)
+  // Averaged over the values that EXIST, not over the row count — dividing by
+  // rows.length would let a sparse row silently pull the mean toward zero.
+  return a.op === 'avg' ? sum / values.length : sum
 }
 
 export const FUNCTIONS: Record<string, (args: Args) => unknown> = {

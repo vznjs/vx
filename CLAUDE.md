@@ -246,6 +246,83 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **Five more surfaces that answered confidently from a shape they
+  did not expect — and one finding REFUTED, plus a false reachability claim
+  CORRECTED in a test that made it** (closing task #68's tail; the same class as
+  the wave before it, now swept across cloud, core and the UI). **The one with
+  teeth is a distributed PAIRING failure.** `deriveSession` read
+  `GITHUB_RUN_ATTEMPT` with `??` where every sibling in the same function guards
+  `!== undefined && !== ''` — and nullish coalescing does not treat `''` as
+  absent. Measured: unset → `gh-12345-1`, EMPTY → `gh-12345-`. The registry keys
+  on `{orgId, workspaceId, session}`, so a submitter running inside the GitHub
+  job (attempt exported) and a helper agent started from a script that clears the
+  environment derive DIFFERENT sessions and **never pair** — the submitter
+  silently falls back to its self-agent while N paid agent jobs idle to their
+  timeout. That is the same end state the ambient-mode fix in `vx-distributed-ci.
+yml` addressed from the other direction, reached by a one-character operator.
+  **`readLockfile` had NO `Array.isArray` anywhere**, while `validateProjectConfig`
+  one layer down has one explicitly — which is what makes it an inconsistency
+  rather than an oversight. `typeof [] === 'object'`, so a top-level array fell
+  through to the VERSION check and reported `unsupported version undefined` — a
+  version diagnostic for a shape problem, and this file is committed and
+  hand-editable, so its messages are read while CI is red. Worse, a `projects`
+  ARRAY was **accepted**: `Object.entries` walks it happily and yields a project
+  literally named `"0"`, so a `--frozen` run looked up real names against a lock
+  declaring none of them. **The cloud MCP surface got core's #217 treatment**: a
+  wrong-SHAPE `limit` silently became the default, and the unclamped
+  `slice(-limit)` inverted at both edges — `limit: 0` returned the WHOLE series
+  ("give me none" and "give me every" being the same request) and a negative one
+  trimmed from the front. `bucket` was `=== 'day' ? 'day' : 'hour'`, so `'week'`
+  and `'Day'` drew a chart at a resolution nobody asked for. **The UI fix is
+  finer than the finding, and the existing tests are why.** `n = Number(v)` maps
+  `null` → **0**, so a value arriving as JSON `null` rendered a confident `0 B`
+  while the SAME unknown arriving as a missing field rendered `—`; `null` is
+  exactly what a SQL aggregate over zero rows returns. But the blanket fix
+  (`null` → NaN everywhere) would have made the AGGREGATE case worse — the suite
+  already recorded, as its own FINDING, that one row MISSING the field poisons
+  the whole reduce to NaN. So scalar and row coercion are now **separate**:
+  scalars map unknown → NaN (the absence rule can finally see it), while row
+  folding SKIPS an unknown value the way `countWhere` skips a non-matching row —
+  which also fixes that recorded FINDING and makes the two absences agree, since
+  they previously failed in OPPOSITE directions (missing poisoned, null absorbed
+  as 0 and dragged averages down). Averages now divide by the values that EXIST;
+  no rows is still a real `0`, but rows whose values are ALL unknown answer
+  unknown rather than claiming zero. **Migration 0009** gives `invites.used_by`
+  the `ON DELETE SET NULL` both `created_by` siblings already had — latent (no
+  route deletes a user), fixed now precisely because it would surface the day
+  someone writes account deletion and only for the users who onboarded via
+  invite, i.e. most of an invite-only instance. **The REFUTED one is
+  `hashPassword`**, recorded so it is not "fixed" later: the asymmetry with the
+  wrapped `verifyPassword` is CORRECT, because the two take different kinds of
+  input. `verifyPassword` reads a STORED hash, where malformed data must read as
+  "wrong password" rather than a 500; `hashPassword` takes caller input that both
+  call sites already reject at `length < 8` with a 400, so the throw is
+  unreachable from a route — and swallowing it would be actively wrong, since the
+  only way to degrade from a failed hash is to FABRICATE A CREDENTIAL. **A test
+  made a false reachability claim and it is corrected in place:** `NaN and
+  Infinity cannot reach this surface at all` reasoned that `JSON.stringify`
+  emits `null` for both. True of a JS CLIENT, false of the JSON GRAMMAR — `1e999`
+  is legal JSON that PARSES to Infinity, so a raw body reaches the surface
+  non-finite, and both consumers inverted it in OPPOSITE directions (`clampInt`
+  to MIN = one row on `list_runs`; `slice(-Infinity)` = everything on
+  `run_trends`). **Reasoning from the serializer instead of the wire format is
+  the transferable mistake**; the replacement test sends the raw body text,
+  because building the value in JS would test a different shape and prove
+  nothing. Differentials, each isolating its own tests: lockfile guards 2/40,
+  session guard 1/36, UI scalar coercion 2 and UI aggregate skip a DIFFERENT 2
+  (deliberately independent, since they are separate rules in one function).
+  **Eight existing pins flipped** from recording the defect to asserting the fix,
+  each keeping a control (a real `0` still renders `0 B`; an in-range limit is
+  still honoured; both enum members still work; a real attempt is still folded so
+  a re-run cannot collide with its own ghost). NO CACHE_VERSION/SCHEMA/wire bump;
+  ONE additive migration. Gates from the ROOT: fmt/lint 0, core **2505/0** (21
+  skip = sandbox), cloud **1165/1** — and that 1 was READ rather than written
+  off, since the UI change touches what task-detail renders: **99568 px against
+  the recorded 99580 at the same 1.56%**, i.e. the documented baseline drift
+  unchanged, so nothing on that page arrives as `null`. Also recorded: the
+  load-sensitive core scale guard redded twice when two full suites ran
+  back-to-back and passed 0-fail on every isolated run.
+
 - **2026-07-30**: **Three surfaces that accepted a value and dropped it — including
   one that LAUNDERS a failing build into a green run** (closing the rest of task
   #68; the shape, not the subsystem, is what ties them together: each takes input

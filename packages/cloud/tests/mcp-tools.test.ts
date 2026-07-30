@@ -798,20 +798,18 @@ describe('list_runs — limit defaults and coercions', () => {
     expect(r.runs.map((x) => x.runId)).toEqual(['a-run-2', 'a-run-1'])
   })
 
-  it('SUSPECTED DEFECT: a STRING limit is silently ignored and the default applies', async () => {
+  it('a STRING limit is refused, not silently replaced by the default', async () => {
     // `typeof args['limit'] === 'number'` — and JSON-RPC arguments come from a
-    // model, which produces `"2"` about as readily as `2`. Nothing validates
-    // arguments against the advertised `inputSchema` (the MCP spec says a
-    // server SHOULD), so the request is neither refused nor corrected: the
-    // caller asked for 2 and receives the default page with no signal. On a
+    // MODEL, which produces `"2"` about as readily as `2`. Nothing validates
+    // arguments against the advertised `inputSchema` (the MCP spec says a server
+    // SHOULD), so the request used to be neither refused nor corrected: the
+    // caller asked for 2 and received the default page with no signal. On a
     // 600-run workspace that is 50 rows presented as the answer to "give me 2".
-    // Pinned as CURRENT behaviour; validating against inputSchema — or at least
-    // refusing a wrong-typed argument the way `requireString` does — is the fix.
-    const r = await tool<{ runs: unknown[] }>('list_runs', {
-      workspace: ws['alpha']!,
-      limit: '2',
-    })
-    expect(r.runs).toHaveLength(4)
+    const msg = await toolError('list_runs', { workspace: ws['alpha']!, limit: '2' })
+    expect(msg).toContain('limit')
+    // Control: a real number is still honoured exactly.
+    const r = await tool<{ runs: unknown[] }>('list_runs', { workspace: ws['alpha']!, limit: 2 })
+    expect(r.runs).toHaveLength(2)
   })
 
   it('a non-positive or fractional limit is clamped downstream, never an error', async () => {
@@ -825,20 +823,21 @@ describe('list_runs — limit defaults and coercions', () => {
     expect(await at(1e9)).toBe(4) // capped at 500, so the fixture is what limits
   })
 
-  it('NaN and Infinity cannot reach this surface at all', async () => {
-    // Worth stating because the sibling HTTP surface DOES have to handle them:
-    // `/v1/failures?limit=NaN` parses a string, so `numParam` sees NaN and
-    // falls back. JSON has no NaN/Infinity literal — `JSON.stringify` emits
-    // `null` — so over JSON-RPC they arrive as null, fail the `typeof ===
-    // 'number'` test, and take the default. There is no non-finite path here to
-    // guard, which is why `clampInt`'s `Number.isFinite` branch is unreachable
-    // from MCP.
+  it('a JS-produced NaN arrives as null and is refused as the wrong shape', async () => {
+    // CORRECTION to what this test used to claim. It asserted that non-finite
+    // values "cannot reach this surface at all", reasoning that
+    // `JSON.stringify` emits `null` for NaN and Infinity. That is true of a JS
+    // CLIENT and false of the JSON GRAMMAR: `1e999` is a perfectly legal JSON
+    // number that PARSES to Infinity, so a raw body reaches the surface with a
+    // non-finite value (proven in the sibling test below). Reasoning from the
+    // serializer instead of from the wire format is what made the claim wrong.
+    //
+    // What remains true is this half: a JS client's NaN serializes to null,
+    // which is now refused as a wrong SHAPE rather than silently defaulted.
     expect(JSON.stringify({ limit: Number.NaN })).toBe('{"limit":null}')
-    const r = await tool<{ runs: unknown[] }>('list_runs', {
-      workspace: ws['alpha']!,
-      limit: Number.NaN,
-    })
-    expect(r.runs).toHaveLength(4)
+    expect(await toolError('list_runs', { workspace: ws['alpha']!, limit: Number.NaN })).toContain(
+      'limit',
+    )
   })
 })
 
@@ -855,14 +854,17 @@ describe('run_trends — bucket coercion and slice direction', () => {
     expect(r.bucket).toBe('day')
   })
 
-  it('anything else silently becomes hourly', async () => {
+  it('anything else is refused rather than answered at another resolution', async () => {
     // `args['bucket'] === 'day' ? 'day' : 'hour'`. A model that writes 'DAY',
-    // 'daily' or 'week' gets a 24-hour window of hourly points and is told
-    // `bucket: "hour"` — the echo is honest, but nothing rejects the request,
-    // so a chart built from it silently covers 1/30th of the intended span.
+    // 'daily' or 'week' got a 24-hour window of hourly points and was told
+    // `bucket: "hour"` — the echo was honest, but nothing rejected the request,
+    // so a chart built from it silently covered 1/30th of the intended span.
     for (const bucket of ['DAY', 'Day', 'daily', 'week', 'month', 5, true, null]) {
-      const r = await tool<{ bucket: string }>('run_trends', { workspace: trendWs(), bucket })
-      expect(r.bucket).toBe('hour')
+      const msg = await toolError('run_trends', { workspace: trendWs(), bucket })
+      expect({ bucket: JSON.stringify(bucket), named: msg.includes('bucket') }).toEqual({
+        bucket: JSON.stringify(bucket),
+        named: true,
+      })
     }
   })
 
@@ -914,39 +916,93 @@ describe('run_trends — bucket coercion and slice direction', () => {
     expect(r.points).toHaveLength(25)
   })
 
-  it('a STRING limit is ignored, like list_runs', async () => {
-    const r = await tool<{ points: unknown[] }>('run_trends', {
-      workspace: trendWs(),
-      bucket: 'hour',
-      limit: '3',
-    })
-    expect(r.points).toHaveLength(25)
+  it('a STRING limit is refused, like list_runs', async () => {
+    expect(
+      await toolError('run_trends', { workspace: trendWs(), bucket: 'hour', limit: '3' }),
+    ).toContain('limit')
   })
 
-  it('FINDING: a negative limit returns the WHOLE series, not an empty one', async () => {
-    // `slice(-limit)` with limit = -3 is `slice(3)` — it DROPS the three oldest
-    // points and returns 22, which reads as a legitimate answer. Every other
-    // limit on the platform clamps to >= 1 (`clampInt`); this one is raw
-    // arithmetic on caller input, so the sign is load-bearing and unchecked.
-    // Same class as the 2026-07-26 CLI wave's `--max-size 0` (a non-positive
-    // value silently meaning something else entirely). Pinned as CURRENT
-    // behaviour; clamping to >= 1 would be the fix.
-    const r = await tool<{ points: unknown[] }>('run_trends', {
+  it('a non-positive limit clamps to 1 instead of returning the whole series', async () => {
+    // `slice(-limit)` is raw arithmetic on caller input, so the SIGN used to be
+    // load-bearing and unchecked. `limit: -3` became `slice(3)` — dropping the
+    // three OLDEST points and returning 22, which reads as a legitimate answer;
+    // `limit: 0` became `slice(-0)` → `slice(0)` → the whole series, so "give me
+    // no points" and "give me every point" were the same request. Same class as
+    // the CLI wave's `--max-size 0`, and as core MCP's `Infinity → one row`.
+    for (const limit of [-3, 0]) {
+      const r = await tool<{ points: unknown[] }>('run_trends', {
+        workspace: trendWs(),
+        bucket: 'hour',
+        limit,
+      })
+      expect({ limit, points: r.points.length }).toEqual({ limit, points: 1 })
+    }
+    // The control: an in-range limit is still honoured exactly, and the slice
+    // still takes the MOST RECENT n — the schema's documented meaning, and the
+    // reason the fix is a clamp rather than a rewrite of the slice.
+    const three = await tool<{ points: unknown[] }>('run_trends', {
       workspace: trendWs(),
       bucket: 'hour',
-      limit: -3,
+      limit: 3,
     })
-    expect(r.points).toHaveLength(22)
-    // `limit: 0` is the other unclamped edge and lands somewhere different
-    // again: `-0` is falsy-but-a-number, so it passes the `typeof` guard, and
-    // `slice(-0)` is `slice(0)` — the whole series. So "give me no points" and
-    // "give me every point" are the same request, silently.
-    const zero = await tool<{ points: unknown[] }>('run_trends', {
-      workspace: trendWs(),
-      bucket: 'hour',
-      limit: 0,
-    })
-    expect(zero.points).toHaveLength(25)
+    expect(three.points).toHaveLength(3)
+  })
+
+  it('a wrong-shape limit is refused rather than silently defaulted', async () => {
+    // `"3"`, `null` and an array used to fall through to "no limit" on
+    // run_trends and to 50 on list_runs — answering a different question than
+    // the one asked, with nothing in the payload saying so.
+    for (const limit of ['3', null, [3]]) {
+      for (const name of ['run_trends', 'list_runs']) {
+        const msg = await toolError(name, { workspace: trendWs(), limit })
+        expect({ name, limit: JSON.stringify(limit), named: msg.includes('limit') }).toEqual({
+          name,
+          limit: JSON.stringify(limit),
+          named: true,
+        })
+      }
+    }
+  })
+
+  it('an Infinity limit — reachable from real JSON — is refused, not inverted', async () => {
+    // JSON has no Infinity literal, but `1e999` PARSES to one, so this is a body
+    // a client can actually send. It has to go over the wire as raw text:
+    // `JSON.stringify(Infinity)` is `null`, so building it in JS would test a
+    // different (also refused) shape and prove nothing about this one.
+    //
+    // Both consumers inverted it, in opposite directions: `clampInt` sends a
+    // non-finite value to MIN, so list_runs answered ONE row; `slice(-Infinity)`
+    // is `slice(-Infinity)` → the whole array, so run_trends answered
+    // everything. The value that means "the most" gave the least on one tool.
+    for (const name of ['run_trends', 'list_runs']) {
+      const body = `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"${name}","arguments":{"workspace":"${trendWs()}","limit":1e999}}}`
+      const { url, init } = rpcInit(body, { bearer: orgToken })
+      const res = (await (await fetch(url, init)).json()) as RpcResponse
+      const result = res.result as unknown as ToolResult
+      expect({ name, isError: result.isError === true }).toEqual({ name, isError: true })
+      expect(result.content[0]!.text).toContain('finite')
+    }
+  })
+
+  it('an out-of-enum bucket is refused, not silently answered at another resolution', async () => {
+    // `args['bucket'] === 'day' ? 'day' : 'hour'` made `'week'`, `'Day'` and `5`
+    // all mean hourly. The response echoes the coerced bucket, so a careful
+    // caller COULD notice — but the schema declares an enum, and a chart drawn
+    // at a resolution nobody asked for is the wrong answer either way.
+    for (const bucket of ['week', 'Day', 5]) {
+      const msg = await toolError('run_trends', { workspace: trendWs(), bucket })
+      expect({ bucket: JSON.stringify(bucket), named: msg.includes('bucket') }).toEqual({
+        bucket: JSON.stringify(bucket),
+        named: true,
+      })
+    }
+    // Controls: both enum members still work, and omitting it still defaults.
+    for (const bucket of ['hour', 'day']) {
+      const r = await tool<{ bucket: string }>('run_trends', { workspace: trendWs(), bucket })
+      expect(r.bucket).toBe(bucket)
+    }
+    const dflt = await tool<{ bucket: string }>('run_trends', { workspace: trendWs() })
+    expect(dflt.bucket).toBe('hour')
   })
 })
 
