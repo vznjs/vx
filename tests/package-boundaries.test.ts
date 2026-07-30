@@ -100,6 +100,7 @@ describe('package boundaries', () => {
       'captureGitContext',
       'captureHostContext',
       'captureWorkspaceIdentity',
+      'clampInt',
       'cleanOutputs',
       'clientMessageToEnvelope',
       'compareRuns',

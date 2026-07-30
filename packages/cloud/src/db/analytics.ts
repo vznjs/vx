@@ -20,7 +20,7 @@ import type { SQL } from 'bun'
 // `splitTaskId` is core's — the graph splits a task id on the FIRST '#', and a
 // hand-rolled `split('#', 2)` here silently disagreed with it for any task name
 // containing one.
-import { diffOutputTrees, isPassStatus, splitTaskId, TASK_STATUSES } from '@vzn/vx'
+import { clampInt, diffOutputTrees, isPassStatus, splitTaskId, TASK_STATUSES } from '@vzn/vx'
 import type { OutputFingerprint, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 import {
   RUN_LOG_BUDGET_CHARS,
@@ -775,11 +775,6 @@ export interface HashProvenance {
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
-
-function clampInt(n: number, min: number, max: number): number {
-  if (!Number.isFinite(n)) return min
-  return Math.min(max, Math.max(min, Math.floor(n)))
-}
 
 /**
  * `AND <col> ILIKE %term%`, or nothing when the term is absent — the filter-box

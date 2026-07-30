@@ -9,7 +9,11 @@
 export { VERSION } from './version.js'
 
 // Clean error type — user-input failures print a message without a stack.
-export { UserError } from './util/index.js'
+// `clampInt` rides along for the same reason the status predicates do: without
+// it on the façade an integration package writes its own, and a bounds helper
+// whose floor is load-bearing (a fractional SQL LIMIT is a datatype mismatch,
+// not a smaller page) should have one implementation.
+export { clampInt, UserError } from './util/index.js'
 
 // Schema types and helpers (used by user vx.config files and presets).
 export type {

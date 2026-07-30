@@ -1171,8 +1171,15 @@ const MAX_TREND_BUCKETS = 10_000
 /**
  * Cap on a caller-supplied day span. A huge span makes `WHERE created_at >=
  * <since>` degenerate to a full table scan; clamping to ~1 year keeps the
- * fetch bounded to the intended range. Mirrors `MAX_WINDOW_DAYS` in
- * packages/cloud/src/db/analytics.ts.
+ * fetch bounded to the intended range.
+ *
+ * The cloud analytics layer sets its own bound and the two are NOT tied. They
+ * happen to agree today, but this one guards a single developer's local
+ * SQLite `cache.db` while that one guards a range-partitioned Postgres taking
+ * 50-100M rows/day — the scale argument is different, so the platform is free
+ * to clamp tighter without this having to move. (An earlier comment here
+ * claimed the two "mirror" each other; nothing enforced it, and the claim was
+ * the sort a reader trusts.)
  */
 const MAX_WINDOW_DAYS = 366
 

@@ -194,6 +194,30 @@ describe('the callers that used to hand-roll it', () => {
     expect({ file, uses: src.includes(`${fn}(`) }).toEqual({ file, uses: true })
   })
 
+  it('cloud analytics uses core clampInt rather than its own copy', async () => {
+    // The sweep's tail. Cloud carried a BYTE-IDENTICAL private `clampInt`,
+    // for the same reason it carried its own `splitTaskId`: the function was
+    // exported from `src/util/index.js` but not from the façade, so cloud
+    // could not import it. Lower stakes than the status vocabulary — the two
+    // bodies agreed and there is no silently-wrong-as-the-union-grows shape —
+    // but a bounds helper whose floor is load-bearing (a fractional SQL LIMIT
+    // is a datatype mismatch, not a smaller page) should have one definition.
+    const src = await read('packages/cloud/src/db/analytics.ts')
+    expect(src).toContain('clampInt')
+    expect(src).not.toContain('function clampInt(')
+  })
+
+  it('the window bound is NOT presented as a mirror it cannot enforce', async () => {
+    // Deliberately NOT deduplicated, which is the interesting half. The two
+    // `MAX_WINDOW_DAYS` guard different engines — a single dev's local SQLite
+    // vs a range-partitioned Postgres taking 50-100M rows/day — so the cloud
+    // side must stay free to clamp tighter. What was wrong was core CLAIMING
+    // the two mirror each other with nothing enforcing it; the same class as
+    // `deriveCacheSource` claiming nobody re-implements its mapping.
+    const src = await read('src/orchestrator/metrics.ts')
+    expect(src).not.toContain('Mirrors `MAX_WINDOW_DAYS`')
+  })
+
   it('the serve log route no longer prefix-matches the status', async () => {
     // `status.startsWith('cache-hit')` was the sharpest copy: it answers a
     // DIFFERENT question from the enumerated ones — any future status merely

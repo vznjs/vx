@@ -398,11 +398,38 @@ write a plausible cause into the log that you have not proven.
   phantom errors (its ignore patterns are root-relative) — the gate is the ROOT.
   NO CACHE_VERSION/SCHEMA/wire/migration bump: no key derivation, no stored
   bytes, no wire field, and the predicates answer identically to the code they
-  replaced. Gates from the ROOT: fmt/lint 0, core **2568/0** (+24; 21 skip =
-  sandbox) across two consecutive full runs — a third, earlier run reported 1
-  fail whose name I did not capture, so it is recorded rather than attributed —
+  replaced. **The sweep's tail rode along, and half of it is a REFUSAL to
+  deduplicate.** `clampInt` was defined twice with byte-identical bodies — cloud
+  could not import it because it sits on `src/util/index.js` and not the façade,
+  the #222 shape again — so it moved onto the façade and cloud's copy is gone.
+  `MAX_WINDOW_DAYS = 366` is ALSO twice and stays that way: the two guard
+  different engines (one dev's local SQLite `cache.db` vs a range-partitioned
+  Postgres taking 50-100M rows/day), so the platform must stay free to clamp
+  tighter. What was actually wrong there was core's comment CLAIMING the two
+  "mirror" each other with nothing enforcing it — the same class as the
+  `deriveCacheSource` docstring above, and now de-claimed rather than dutifully
+  deduplicated. **With this the constants sweep is closed**: `deriveCacheSource`,
+  `signalExitCode`, `shellQuote`, `HASH_RE`, `ALWAYS_IGNORE`, `SUBMITTER_LABEL`
+  and `DIST_PROTOCOL_VERSION` are single-definition, and the `EXECUTED_RUNS_SQL`
+  / `KEYED_RUNS_SQL` cloud mirrors were ALREADY guarded (failure-mode.test.ts
+  reads the cloud source against core's constant — the same shape #221 and #223
+  reached for independently). `formatBytes`/`formatDuration` stay duplicated
+  core-CLI vs UI on purpose: different media, and the UI cannot import core.
+  Gates from the ROOT: fmt/lint 0, core **2570/0** (+26; 21 skip = sandbox),
   cloud **1172/1** (+6), the 1 being the documented `visual > task-detail`
-  baseline drift at its recorded 1.56% / 99568 px.
+  baseline drift at its recorded 1.56% / 99568 px. **One CI event recorded and
+  NOT diagnosed, because I could not.** The first push's core job went red in
+  118 s with a log that contains ZERO `(fail)` lines, no test-run summary, and
+  no crash/OOM marker — `bun test`'s output simply stops mid-test-name and the
+  step exits 1. That is a killed process, not a failing assertion. It did not
+  reproduce: the exact gate (`CI=true bun src/bin.ts run ci --force`) exits 0
+  locally, and the full core suite is 0-fail across four runs. Neither
+  `rerun_failed_jobs` nor `workflow_dispatch` is permitted to this integration
+  (403 both), so the re-trigger was a real follow-up commit rather than an empty
+  one. **A plausible cause is not written here on purpose** — the same signature
+  is recorded once before (2026-07-30, a `bun.report` crash that never
+  reproduced), and guessing between OOM, a runner kill and log truncation would
+  put an unproven mechanism in the log.
 
 - **2026-07-30**: **`prepareRun`'s rules are pinned — 380 lines that THREE recorded
   defects route through, reached by tests only incidentally** (task #70; the
