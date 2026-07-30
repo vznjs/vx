@@ -246,6 +246,78 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **A log dropped for space and a task that printed nothing read
+  IDENTICALLY — "No logs captured for this task", in the one case where a dev
+  most needs the output** (task #79; `task-log-capture.ts`, 213 lines against 2
+  test files — the thinnest load-bearing cloud module by that measure, and it
+  owns product lens #5, "easy debug access"). **CONFIRMED by repro.** The per-run
+  4 MiB budget evicted by DELETING the entry, so the wire carried no trace of it
+  and `logFor` 404'd exactly as it does for a task that emitted nothing — the
+  dashboard renders the same "No logs captured" fallback for both. Reachable
+  whenever retained tails pass the budget: ≥32 tasks at a full 128 KiB tail, i.e.
+  a run that failed broadly, which is precisely when the logs matter. **The tell
+  was an inconsistency between the two sides of one budget, not the statistic:**
+  `Analytics.ingestLogs` ALREADY degrades an over-budget entry to empty content
+  with the remainder added to `truncated_head` (its `content.slice(len - runBudget)`
+  goes to `''` once the budget is spent) — the STORE reports running out, the
+  CAPTURER stayed silent. So the fix reuses the honest mechanism that already
+  exists rather than inventing one: an evicted task becomes a STUB (`content: ''`,
+  `truncatedHeadChars = charsFull`), which renders through the SAME
+  "… earlier output truncated (N KiB dropped)" banner the per-task head cap uses.
+  **NO wire, schema, UI or version change of any kind** — the entry shape is
+  untouched, `content.length === charsFull - truncatedHeadChars` still holds, and
+  `logFor` returns a zero-content row unchanged. Verified END-TO-END through the
+  real store on ephemeral pg, not just the unit: the stub round-trips as
+  `content 0 / charsFull 131072 / truncatedHeadChars 131072`, the newest failure
+  keeps real content, and a never-captured task STILL reads absent — which is
+  what makes the two distinguishable at all. **Two existing tests ENCODED the
+  defect** (asserting `entry(bundle, 'p#f0')` is `undefined`, i.e. "evicted means
+  gone") and are repinned to the stronger contract. Differential: 4 of 13 fail
+  without the fix — but stated honestly, **2 of those are those repins and only 2
+  are new rules**; the accounting-invariant test is a deliberate control that
+  passes BOTH ways, since a removed entry satisfies it vacuously. **REFUTED by
+  executed probe, so nobody re-audits:** the "failed tails are NEVER evicted by
+  successes" invariant HOLDS — 32 successes plus one failure evicts only
+  successes, and the failure both keeps its content and leads the bundle;
+  `append`'s two-stage head eviction never leaves a task over the cap at any
+  chunk shape tried (4096 / 256 / 64 / 8 / 1 chars); and the accounting invariant
+  survives BOTH caps composed. **A hypothesis of MINE that measurement killed:**
+  I predicted `Array.shift()` over a large chunk list made `append` quadratic.
+  Measured, it is ~0.12 µs per append FLAT regardless of how many chunks are
+  held — chunk=1 is 122 ms over 1M appends, chunk=8 is 19 ms over 131k, a ratio
+  that tracks appends alone, not appends x held. Cost is simply proportional to
+  chunk COUNT; shift is not the bottleneck, and nobody should optimise it.
+  **RECORDED, NOT FIXED (LOW).** (1) The per-task cap counts CHARS, so it does not
+  bound MEMORY: measured **9.1 MiB RSS for a 0.25 MiB declared tail** at 1-char
+  chunks (~36x), the per-string-object overhead of holding 131072 tiny strings —
+  so the header's "a log-spewing task can never OOM the capturer" overstates,
+  though it is bounded and degrades to pressure rather than to a wrong answer.
+  **My FIRST measurement of that was invalid and I caught it before recording
+  it:** I pushed the SAME string object on every append, which measures array
+  overhead and not payload; redone with distinct chunks. (2) When failures ALONE
+  exceed the budget the OLDEST failure is stubbed first — usually the root cause;
+  deliberate per the existing comment, and with stubs it now at least announces
+  itself, so flipping to newest-first is a separate judgment. **The cost I
+  introduced, measured rather than waved at:** ~190 JSON bytes per stub, so
+  ~1.9 MiB at the documented 10k-task scale target and 9.3 MiB at 50k against the
+  16 MiB `/v1/ingest/logs` cap; a run evicting past ~66k tasks would 413 the
+  batch — 6x the scale target, and it cannot touch the connected default, which
+  ships each task as it finishes (verified by reading, not assumed: `incremental
+= opts.connection !== undefined`, and the dist scheduler `takeEntry`s straight
+  after each `finish`, so neither path lets `retained` accumulate at all). The
+  dashboard guide gained the one sentence it was missing — it documented the caps
+  but never what a reader SEES when one bites, which is the whole finding. ZERO
+  core change (`git diff src/` empty), NO CACHE_VERSION/SCHEMA/wire/migration
+  bump. Gates from the ROOT: fmt/lint 0, core **2570/0** (21 skip = sandbox),
+  cloud **1231/1** with the 1 the documented `visual > task-detail` drift at its
+  recorded **1.54% / 98293 px**, docs build clean (167 pages). **The recorded
+  shared-browser hazard bit again and is worth restating:** the first full cloud
+  run reported 2 fails, both `(unnamed)` with `Target page, context or browser
+has been closed` at a boot hook, and only 1217 tests ran — a truncated,
+  contaminated total, not pixel diffs. Isolated, visual is 9/1 at the recorded
+  drift and the perf guard is 5/0. Only a run with nothing else on the box gives
+  a usable total.
+
 - **2026-07-30**: **Creating an organization was two autocommit writes, so a failure
   between them leaves an org nobody can administer under a slug nobody can reuse**
   (task #78; the platform auth/tenancy boundary — `auth/{rbac,routes,sessions,

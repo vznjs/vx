@@ -95,11 +95,11 @@ describe('TaskLogBuffer — run budget with failure priority', () => {
     buf.finish('p#fail', 'failed', 'miss')
 
     const bundle = buf.drain('r', 'ws')
-    // The failure is never evicted by successes.
-    expect(entry(bundle, 'p#fail')).toBeDefined()
-    // The oldest success (s0) is gone; a recent one survives.
-    expect(entry(bundle, 'p#s0')).toBeUndefined()
-    expect(entry(bundle, 'p#s39')).toBeDefined()
+    // The failure keeps its CONTENT — never evicted by successes.
+    expect(entry(bundle, 'p#fail')!.content.length).toBeGreaterThan(0)
+    // The oldest success (s0) lost its content; a recent one kept it.
+    expect(entry(bundle, 'p#s0')!.content).toBe('')
+    expect(entry(bundle, 'p#s39')!.content.length).toBeGreaterThan(0)
     // Total retained stays within budget.
     const total = bundle.tasks.reduce((n, t) => n + t.content.length, 0)
     expect(total).toBeLessThanOrEqual(RUN_LOG_BUDGET_CHARS)
@@ -116,8 +116,80 @@ describe('TaskLogBuffer — run budget with failure priority', () => {
     const total = bundle.tasks.reduce((n, t) => n + t.content.length, 0)
     expect(total).toBeLessThanOrEqual(RUN_LOG_BUDGET_CHARS)
     // Oldest failure evicted, newest kept — failures fall to newer failures only.
-    expect(entry(bundle, 'p#f0')).toBeUndefined()
-    expect(entry(bundle, 'p#f39')).toBeDefined()
+    expect(entry(bundle, 'p#f0')!.content).toBe('')
+    expect(entry(bundle, 'p#f39')!.content.length).toBeGreaterThan(0)
+  })
+
+  // The rule the two tests above used to encode wrongly: an evicted task was
+  // REMOVED from the bundle, which made a budget eviction indistinguishable
+  // from a task that printed nothing — the reader is told "no logs captured"
+  // in both cases, and the second is a lie exactly when a run failed hard
+  // enough to blow the budget.
+  it('an evicted task is DISTINGUISHABLE from one that printed nothing', () => {
+    const buf = new TaskLogBuffer()
+    const chunk = 'x'.repeat(TASK_LOG_TAIL_CHARS)
+    for (let i = 0; i < 40; i++) {
+      buf.append(`p#f${i}`, chunk)
+      buf.finish(`p#f${i}`, 'failed', 'miss')
+    }
+    // A failed task that genuinely emitted nothing.
+    buf.finish('p#quiet', 'failed', 'miss')
+
+    const bundle = buf.drain('r', 'ws')
+    const evicted = entry(bundle, 'p#f0')!
+    // Present, empty, and it SAYS how much it dropped — which is what renders
+    // the "earlier output truncated (N KiB dropped)" banner instead of the
+    // "No logs captured for this task." fallback.
+    expect({
+      content: evicted.content,
+      charsFull: evicted.charsFull,
+      truncatedHeadChars: evicted.truncatedHeadChars,
+    }).toEqual({
+      content: '',
+      charsFull: TASK_LOG_TAIL_CHARS,
+      truncatedHeadChars: TASK_LOG_TAIL_CHARS,
+    })
+    // The genuinely-silent task has no entry at all — the two cases differ.
+    expect(entry(bundle, 'p#quiet')).toBeUndefined()
+  })
+
+  it('every entry keeps content.length === charsFull - truncatedHeadChars', () => {
+    // The accounting invariant that makes the banner's number trustworthy —
+    // it must survive BOTH caps: per-task head trimming and budget eviction.
+    const buf = new TaskLogBuffer()
+    for (let i = 0; i < 40; i++) {
+      // 3x the tail cap each, so every task is head-trimmed AND most are
+      // then budget-evicted.
+      for (let k = 0; k < 3; k++) buf.append(`p#f${i}`, 'x'.repeat(TASK_LOG_TAIL_CHARS))
+      buf.finish(`p#f${i}`, 'failed', 'miss')
+    }
+    const bundle = buf.drain('r', 'ws')
+    for (const t of bundle.tasks) {
+      expect({ id: t.taskId, kept: t.content.length }).toEqual({
+        id: t.taskId,
+        kept: t.charsFull - t.truncatedHeadChars,
+      })
+      expect(t.charsFull).toBe(3 * TASK_LOG_TAIL_CHARS)
+    }
+  })
+
+  it('takeEntry ships an evicted task as a stub, not as nothing', () => {
+    // The incremental path takes entries one at a time; a task evicted before
+    // its push must still report that its output was dropped.
+    const buf = new TaskLogBuffer()
+    const chunk = 'x'.repeat(TASK_LOG_TAIL_CHARS)
+    for (let i = 0; i < 40; i++) {
+      buf.append(`p#s${i}`, chunk)
+      buf.finish(`p#s${i}`, 'success', 'miss')
+    }
+    const taken = buf.takeEntry('p#s0')
+    expect(taken).toBeDefined()
+    expect({ content: taken!.content, truncated: taken!.truncatedHeadChars }).toEqual({
+      content: '',
+      truncated: TASK_LOG_TAIL_CHARS,
+    })
+    // And taking it removes it, so a later drain does not re-ship it.
+    expect(entry(buf.drain('r', 'ws'), 'p#s0')).toBeUndefined()
   })
 })
 
