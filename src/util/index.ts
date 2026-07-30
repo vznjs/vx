@@ -3,7 +3,7 @@
 
 export { UserError } from './errors.js'
 export { xxh3, xxh3hex } from './hash.js'
-export { clampInt, parseDecimalInt } from './num.js'
+export { clampInt, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export { relPosix } from './paths.js'
 export { settleWithin, teardownTimeoutMs } from './settle.js'
 export { parseSize } from './size.js'

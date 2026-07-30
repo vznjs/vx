@@ -491,22 +491,39 @@ describe('the evaluation deadline', () => {
   //     as "did not answer within 999999999999ms" — a message that cannot be
   //     true and points nowhere near the cause.
   // A clamp (and treating 0 as "no deadline") belongs in workerTimeoutMs.
-  for (const [label, raw] of [
-    ['0', '0'],
-    ['a budget past setTimeout\u2019s 32-bit ceiling', '999999999999'],
-  ] as const) {
-    it(`deadlines instantly on ${label} — DEFECT, pinned`, async () => {
-      process.env[BUDGET_ENV] = raw
-      // A config that takes ~400ms makes the race one-sided: an honest budget
-      // would let it finish, so a pass here can only mean the deadline fired
-      // essentially immediately.
-      const file = await write('await Bun.sleep(400)\nexport default { tasks: { ok: {} } }\n')
-      const started = Date.now()
-      const outcome = await settleOrHang(evaluateConfigFresh(file), 5000)
-      expect(outcome).toBe(`REJECTED config worker did not answer within ${raw}ms`)
-      expect(Date.now() - started).toBeLessThan(300)
-    }, 15_000)
-  }
+  it('deadlines instantly on 0 \u2014 DEFECT, still pinned', async () => {
+    // STILL A DEFECT, and deliberately left as one: `0` is a SEPARATE mechanism
+    // from the 32-bit ceiling below, and its repair is a real design question
+    // rather than a clamp. Treating `0` as "no deadline" would match this
+    // project's other zero (`vx-cloud agent --idle-timeout 0` = never) \u2014 but it
+    // would also let a wedged worker hang `vx watch` forever, which is the
+    // exact failure this deadline was added to prevent. That tension needs
+    // settling before the behaviour moves; pinned meanwhile so it cannot drift.
+    process.env[BUDGET_ENV] = '0'
+    const file = await write('await Bun.sleep(400)\nexport default { tasks: { ok: {} } }\n')
+    const started = Date.now()
+    const outcome = await settleOrHang(evaluateConfigFresh(file), 5000)
+    expect(outcome).toBe('REJECTED config worker did not answer within 0ms')
+    expect(Date.now() - started).toBeLessThan(300)
+  }, 15_000)
+
+  it('a budget past the timer ceiling falls back instead of firing at 1ms', async () => {
+    // FIXED. Unbounded, `999999999999` overflowed the timer's 32-bit delay to
+    // 1ms and then reported "did not answer within 999999999999ms" \u2014 a message
+    // that cannot be true and points nowhere near the cause. Every repeat config
+    // load failed, which breaks `vx watch`, the only path that reaches this.
+    //
+    // It falls back to the 30s default rather than clamping to ~24.8 days: this
+    // is a BOUND on a worker that may be wedged, not a duration the caller is
+    // choosing, so honouring the huge value would hang the watch loop forever.
+    process.env[BUDGET_ENV] = '999999999999'
+    const file = await write('await Bun.sleep(400)\nexport default { tasks: { ok: {} } }\n')
+    const started = Date.now()
+    const outcome = await settleOrHang(evaluateConfigFresh(file), 5000)
+    // The ~400ms config now finishes, because the honest budget is 30s.
+    expect(String(outcome)).not.toContain('did not answer within')
+    expect(Date.now() - started).toBeGreaterThanOrEqual(300)
+  }, 15_000)
 
   it('poisons a LATER evaluation with a stale deadline — DEFECT, pinned', async () => {
     // DEFECT: `clearTimeout(timer)` sits after the `await` inside the try body,

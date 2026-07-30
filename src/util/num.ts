@@ -1,4 +1,16 @@
 /**
+ * The largest delay `setTimeout` actually honours: 2^31 - 1 ms (~24.8 days).
+ *
+ * A larger delay does NOT saturate and does NOT throw — it silently becomes
+ * **1 ms**, which is the exact INVERSE of what the caller asked for. A task
+ * declaring a 317-year timeout is SIGTERMed 4 ms after it spawns and reported
+ * `failed`, and the only clue is a `TimeoutOverflowWarning` on stderr that a CI
+ * log swallows. Every surface that accepts a millisecond delay bounds it
+ * against this, so "effectively no limit" can never mean "kill immediately".
+ */
+export const MAX_TIMEOUT_MS = 2 ** 31 - 1
+
+/**
  * Clamp to an INTEGER in `[min, max]`; a non-finite value collapses to `min`.
  *
  * The floor is load-bearing wherever the result reaches SQL: a fractional

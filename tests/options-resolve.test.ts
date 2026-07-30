@@ -38,6 +38,7 @@ import {
   requestToOptions,
   run,
 } from '../src/orchestrator/index.js'
+import { MAX_TIMEOUT_MS } from '../src/util/index.js'
 import { readTaskTimeoutEnv } from '../src/orchestrator/run.js'
 import { parseDecimalInt } from '../src/util/index.js'
 
@@ -225,11 +226,21 @@ describe('VX_TASK_TIMEOUT — the env rung parser', () => {
     expect(read('\n700\n')).toBe(700) // a trailing newline from `$(cat file)`
   })
 
-  it('CURRENT: accepts a value past MAX_SAFE_INTEGER, silently rounded', () => {
-    // The user typed …93; the run gets …92. `Number.isInteger` is true for
-    // both, so the guard lets it through. `parseDecimalInt` rejects this.
-    expect(read('9007199254740993')).toBe(9007199254740992)
-    expect(read('1e21')).toBe(1e21)
+  it('a value past the timer ceiling is CLAMPED, not passed through', () => {
+    // This rung is the OTHER kind of timeout, and the treatment differs on
+    // purpose. Omitting a task timeout means "no limit", so clamping a huge
+    // value to the largest expressible one (~24.8 days) is indistinguishable
+    // from what the user wanted \u2014 unlike the teardown and config-worker
+    // deadlines, where there is no "no limit" reading and out-of-range falls
+    // back to the default instead.
+    //
+    // What must never happen is the third option: passing it through, where the
+    // timer collapses it to 1ms and every task is killed as it spawns.
+    expect(read('9007199254740993')).toBe(MAX_TIMEOUT_MS)
+    expect(read('1e21')).toBe(MAX_TIMEOUT_MS)
+    expect(read('2147483647')).toBe(MAX_TIMEOUT_MS)
+    expect(read('2147483648')).toBe(MAX_TIMEOUT_MS)
+    expect(read('120000')).toBe(120_000)
   })
 
   it('the env rung and the --timeout flag disagree on the SAME input', () => {
