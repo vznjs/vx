@@ -21,6 +21,7 @@ import {
   listProjects,
   loadProjectConfig,
   loadWorkspace,
+  WORKSPACE_FINGERPRINT_FILES,
   type ProjectMeta,
 } from '../workspace/index.js'
 
@@ -30,6 +31,22 @@ const DEBOUNCE_MS = 150
 /** Paths whose changes never trigger a re-run. */
 const IGNORED_SEGMENTS = ['node_modules', '.git', '.vx']
 const IGNORED_SUFFIXES = ['.tsbuildinfo', '~']
+
+/**
+ * True for a path the ignore filter drops. Every project dir is watched
+ * RECURSIVELY, so without this a `bun install` would re-run the graph on every
+ * file it writes, and vx's own `.vx/cache` writes would trigger a cycle that
+ * writes to `.vx/cache` again.
+ *
+ * Segment-wise, not prefix-wise: `node_modules` is ignored wherever it appears
+ * in the path, not only at the root.
+ */
+export function isIgnoredWatchPath(rel: string): boolean {
+  const segments = rel.split(path.sep)
+  if (segments.some((s) => IGNORED_SEGMENTS.includes(s))) return true
+  if (IGNORED_SUFFIXES.some((suf) => rel.endsWith(suf))) return true
+  return false
+}
 
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
@@ -206,12 +223,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // Filter out events for paths we don't care about. We watch each
   // project's dir recursively, so a `node_modules` write under a
   // project would otherwise trigger every save during `bun install`.
-  const isIgnoredPath = (rel: string): boolean => {
-    const segments = rel.split(path.sep)
-    if (segments.some((s) => IGNORED_SEGMENTS.includes(s))) return true
-    if (IGNORED_SUFFIXES.some((suf) => rel.endsWith(suf))) return true
-    return false
-  }
+  const isIgnoredPath = isIgnoredWatchPath
 
   const watchers: fs.FSWatcher[] = []
 
@@ -304,14 +316,19 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   })
 }
 
+/**
+ * True for a root file that re-keys EVERY task, so a change to one must trigger
+ * a cycle even though it lives in no project dir.
+ *
+ * Reads the SHARED constant the fingerprint itself walks — this used to be a
+ * third hand-rolled copy of that list, which is precisely the drift the
+ * `--affected` wave exported the constant to prevent. A name added there but
+ * not here would re-key every task while `vx watch` silently never re-ran on
+ * it: the loop looks alive, and the one edit that invalidates the whole
+ * workspace is the one it ignores.
+ */
+const FINGERPRINT_FILES: ReadonlySet<string> = new Set(WORKSPACE_FINGERPRINT_FILES)
+
 function isWorkspaceFingerprintFile(name: string): boolean {
-  return (
-    name === 'pnpm-lock.yaml' ||
-    name === 'package-lock.json' ||
-    name === 'npm-shrinkwrap.json' ||
-    name === 'yarn.lock' ||
-    name === 'bun.lock' ||
-    name === 'bun.lockb' ||
-    name === 'pnpm-workspace.yaml'
-  )
+  return FINGERPRINT_FILES.has(name)
 }
