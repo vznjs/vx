@@ -103,6 +103,19 @@ over (in order):
     hashes costs zero file reads, zero per-file stats, zero SQLite
     lookups.
 
+    Your globs are a **filter over the set git reports**, so a filter
+    can only ever remove — a gitignored file can never be filtered back
+    in, however explicitly you name it. Naming one by hand is therefore
+    a **hard error** rather than a silent nothing: it would leave the
+    task ignoring a file its own config claims as an input, reporting
+    `up-to-date` while that file changed. Turbo lets an explicit entry
+    override gitignore; vx cannot, because the key would then depend on
+    a change `git diff` cannot see and `--affected` would stop selecting
+    the task. If the file is generated, depend on the task that produces
+    it via `cache.inputs.tasks`. A **glob** matching nothing stays
+    silent — that is legitimate — and so does a literal naming a file
+    that does not exist.
+
     An index OID is only trusted where git stores the worktree bytes
     **verbatim**, so three concurrent probes prune it:
     `git status --porcelain` drops paths whose working tree diverges;
