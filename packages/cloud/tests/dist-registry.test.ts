@@ -432,3 +432,129 @@ describe('AgentRegistry — stale-agent sweep (heartbeat liveness)', () => {
     expect(reg.availableCapacity('ws1', 'local').agents).toBe(1)
   })
 })
+
+describe('AgentRegistry — agent:hello is a wire boundary, not a trusted shape', () => {
+  // Every field of `agent:hello` reaches the registry as an unchecked cast
+  // (`p.capacity as number`), and each malformed shape used to fail SILENTLY
+  // rather than loudly — which is the whole reason they are refused at this one
+  // choke point instead of trusted. Each case below was measured before the
+  // guard existed; the comment states what it actually did.
+  it.each([
+    // `inFlightTotal(a) >= a.capacity` is the free-slot check, and `n >= NaN`
+    // is ALWAYS false — so a NaN capacity never reads as full and the agent
+    // absorbed EVERY ready task in one dispatch pass (measured 6 of 6).
+    ['capacity NaN', { capacity: Number.NaN }, 'capacity must be a positive integer'],
+    // Same coercion, reached by omitting the field entirely.
+    ['capacity missing', { capacity: undefined }, 'capacity must be a positive integer'],
+    // The mirror image: `0 >= null` is TRUE, so the agent read as permanently
+    // full — it registered as remote capacity an ambient submitter distributes
+    // toward, then took zero work.
+    ['capacity null', { capacity: null }, 'capacity must be a positive integer'],
+    ['capacity zero', { capacity: 0 }, 'capacity must be a positive integer'],
+    ['capacity negative', { capacity: -1 }, 'capacity must be a positive integer'],
+    ['capacity fractional', { capacity: 2.5 }, 'capacity must be a positive integer'],
+    ['capacity a string', { capacity: '4' }, 'capacity must be a positive integer'],
+    ['agentId empty', { agentId: '' }, 'agentId must be a non-empty string'],
+    ['agentId missing', { agentId: undefined }, 'agentId must be a non-empty string'],
+    ['workspaceId missing', { workspaceId: undefined }, 'workspaceId must be a non-empty string'],
+    ['session missing', { session: undefined }, 'session must be a non-empty string'],
+    ['commitSha missing', { commitSha: undefined }, 'commitSha must be a non-empty string'],
+  ])('refuses %s, naming the field', (_label, override, reason) => {
+    const reg = new AgentRegistry()
+    const socket = io()
+    const agent = reg.hello(hello(override as Partial<AgentHello>), socket)
+    expect(agent).toBeNull()
+    const refusal = socket.sent[0] as { t: string; reason: string }
+    expect({ t: refusal.t, names: refusal.reason.includes(reason) }).toEqual({
+      t: 'agent:refused',
+      names: true,
+    })
+    expect(socket.closed).toHaveLength(1)
+    // Refused means NOT registered — a malformed agent must not show up as
+    // pool capacity an ambient submitter would distribute toward.
+    expect(reg.availableCapacity('ws1', 'local').agents).toBe(0)
+  })
+
+  it('accepts the valid shapes it is meant to accept', () => {
+    // The control: the guard must not have narrowed a legitimate hello. A
+    // large capacity is legal (a big build box), and so is exactly 1.
+    const reg = new AgentRegistry()
+    expect(reg.hello(hello({ agentId: 'one', capacity: 1 }), io())).not.toBeNull()
+    expect(reg.hello(hello({ agentId: 'many', capacity: 64 }), io())).not.toBeNull()
+    expect(reg.availableCapacity('ws1', 'local')).toMatchObject({ agents: 2, capacity: 65 })
+  })
+
+  it('refuses a DUPLICATE agentId instead of silently replacing the live agent', () => {
+    // The sharpest of the set, because it HANGS the submission. `hello` did
+    // `state.agents.set(agentId, agent)`, so a second agent with the same id
+    // replaced the first: its socket was never closed and its in-flight tasks
+    // were never handed back, because `drop()` no-ops on the identity mismatch
+    // that replacement creates. The submission then waited on a task no agent
+    // held, forever. Refusal is terminal in `runAgentLoop`, so this can never
+    // ping-pong two agents evicting each other.
+    const reg = new AgentRegistry()
+    const sub = submission({ ready: ['pkg#t0'] })
+    reg.beginSubmission('ws1', 'local', sub)
+    const first = reg.hello(hello({ agentId: 'same' }), io()) as RegisteredAgent
+    const second = io()
+    expect(reg.hello(hello({ agentId: 'same' }), second)).toBeNull()
+    const refusal = second.sent[0] as { t: string; reason: string }
+    expect(refusal.t).toBe('agent:refused')
+    expect(refusal.reason).toContain('same')
+
+    // The live agent is untouched — still registered, still the map's entry, so
+    // its `drop` genuinely hands its work back rather than no-opping.
+    expect(reg.availableCapacity('ws1', 'local').agents).toBe(1)
+    sub.assign('pkg#t0', first)
+    reg.drop(first)
+    expect(sub.left).toEqual([{ id: 'same', inFlight: ['pkg#t0'] }])
+  })
+
+  it('frees the id once the holder disconnects, so a restart can reclaim it', () => {
+    // The duplicate refusal is about a LIVE collision only — an agent that
+    // reconnects after its socket closed must not be locked out of its own id.
+    const reg = new AgentRegistry()
+    const first = reg.hello(hello({ agentId: 'reused' }), io()) as RegisteredAgent
+    reg.drop(first)
+    expect(reg.hello(hello({ agentId: 'reused' }), io())).not.toBeNull()
+  })
+})
+
+describe('AgentRegistry — a dropped agent releases its holder claim', () => {
+  it('clears inFlight after handing the tasks back', () => {
+    // `inFlight` is the AUTHORITATIVE holder set: the scheduler gates a task's
+    // stdout/stderr and its terminal outcome on "does this agent hold it?".
+    // Handing the tasks back transfers that claim, so keeping it made the
+    // dropped agent a co-holder of work it no longer owned — see
+    // dist-multirun.test.ts for what that let a reaped agent do.
+    const reg = new AgentRegistry()
+    const sub = submission({ ready: ['pkg#t0', 'pkg#t1'] })
+    reg.beginSubmission('ws1', 'local', sub)
+    const agent = reg.hello(hello({ agentId: 'a1', capacity: 2 }), io()) as RegisteredAgent
+    sub.assign('pkg#t0', agent)
+    sub.assign('pkg#t1', agent)
+    expect([...(agent.inFlight.get(sub.submissionId) ?? [])]).toEqual(['pkg#t0', 'pkg#t1'])
+
+    reg.drop(agent)
+    // The hand-back still receives the full list (the copy is taken first)...
+    expect(sub.left).toEqual([{ id: 'a1', inFlight: ['pkg#t0', 'pkg#t1'] }])
+    // ...and the claim is gone.
+    expect(agent.inFlight.size).toBe(0)
+  })
+
+  it('releases claims for EVERY submission a shared agent served', () => {
+    const reg = new AgentRegistry()
+    const a = submission({ ready: ['pkg#a1'] })
+    const b = submission({ ready: ['pkg#b1'] })
+    reg.beginSubmission('ws1', 'local', a)
+    reg.beginSubmission('ws1', 'local', b)
+    const agent = reg.hello(hello({ agentId: 'shared', capacity: 4 }), io()) as RegisteredAgent
+    a.assign('pkg#a1', agent)
+    b.assign('pkg#b1', agent)
+
+    reg.drop(agent)
+    expect(a.left).toEqual([{ id: 'shared', inFlight: ['pkg#a1'] }])
+    expect(b.left).toEqual([{ id: 'shared', inFlight: ['pkg#b1'] }])
+    expect(agent.inFlight.size).toBe(0)
+  })
+})

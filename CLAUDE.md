@@ -246,6 +246,127 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **A reaped agent could still speak for work it no longer held —
+  garbling one task's log with two machines' output, and authoring the run's
+  verdict from a box the serve had already declared dead** (task #76; the
+  distributed submitter + scheduler, picked by measuring lines against
+  assertions in tests that DIRECTLY import each module: `dist/submit.ts` 507/15
+  and `dist/scheduler.ts` 678/25 were the two thinnest cloud modules over 250
+  lines, against `db/analytics` 3815/138 and `cli/mcp` 393/86).
+  **CONFIRMED by repro: `inFlight` is the holder set the scheduler gates on, and
+  `drop()` never released it.** The gate exists already — the 2026-07-18 wave
+  added it so a dropped agent's still-running detached `run()` could not
+  interleave a second machine's output into one task — but it reads
+  `agent.inFlight`, and its own comment describes the RECONNECT case (a fresh
+  `agentId`, so an empty map). The SAME agent object post-drop was the hole:
+  `onAgentLeave` hands the tasks back and the replacement claims them, while the
+  dropped agent keeps claiming them too, so BOTH pass. Reproduced through the
+  real registry + real scheduler: agent A is reaped, its task reassigned to B,
+  and A's chunk is relayed to the submitter's terminal and appended to the
+  stored `task_logs` tail alongside B's. **The sharper half is the verdict.**
+  `agent:done` had NO holder gate at all, so the reaped agent reported
+  `failed exit 7` for a task B was actively executing and that became the run's
+  result — and B's real success would then have been discarded by the
+  first-done-wins dedupe as the "stale" duplicate. **Exactly inverted: the
+  evicted machine authoritative, the live one thrown away.** Fixed by making the
+  invariant hold rather than patching the symptom — `drop()` clears the claim
+  after handing the tasks back (for EVERY submission a shared agent served), and
+  the gate becomes ONE `holds()` predicate applied to ALL THREE task-scoped
+  messages, because a half-applied invariant is the shape that produced this in
+  the first place. `agent:start` was the third: an evicted agent's start stamps
+  the controller-clock start for a task the replacement is about to run —
+  skewing its recorded duration — and consumes the once-only emit, so the real
+  holder's start never fires at all. A legit message always passes, because
+  `assign()` is the one thing that both creates the claim and sends
+  `task:assign`. **CONFIRMED, and one of them HANGS: `agent:hello` is a raw wire
+  frame every field of which arrives as an unchecked cast** (`p.capacity as
+number`), and each malformed shape failed SILENTLY. `capacity` is compared as
+  `inFlightTotal(a) >= a.capacity`, and `n >= NaN` is ALWAYS false — so a NaN or
+  missing capacity never reads as full and the agent absorbed **6 of 6** ready
+  tasks in one dispatch pass. `null` is the mirror image (`0 >= null` is TRUE):
+  it registers as remote capacity an ambient submitter distributes toward, then
+  takes zero work. And a **duplicate `agentId` silently REPLACES the live agent**
+  in the session map, so its socket is never closed and its in-flight tasks are
+  never handed back — `drop()` no-ops on the identity mismatch the replacement
+  itself created — leaving the submission waiting on a task no agent holds,
+  forever (reproduced: `readyDepth 0`, no result, ever). All refused at
+  `hello()`, the one choke point every caller goes through, through the existing
+  `agent:refused` shape — which `runAgentLoop` treats as TERMINAL, so this can
+  never ping-pong two agents evicting each other; and ids are random UUIDv7 per
+  connect, so the duplicate refusal cannot fire for a real agent.
+  **REFUTED by execution, so nobody re-audits:** the §6.3 correctness law is
+  already pinned in BOTH directions by `dist-hash-equality.test.ts` — the
+  conforming case AND the `excludeDependencies: 'all'` counterexample in
+  executable form; and the store prune cannot crash a submission, because
+  `ArtifactStore.has`/`storedDurationMs` each swallow to `false`/`undefined`, so
+  a down bucket degrades to "not warm" rather than rejecting `start()`.
+  **Two EXISTING fixtures were unfaithful and the gate is what exposed them** —
+  both had an agent report `agent:done` for a task it was never assigned, which
+  dispatch cannot produce. One cleared the holder's claim by hand and had a
+  DIFFERENT agent report the dep; it now goes through the real reassignment
+  (`assign()`, which is what makes an agent the executor). The other gave a
+  `SUBMITTER_LABEL` self-agent no `ownerSubmissionId`, so it was never ELIGIBLE
+  and the task was never actually dispatched — the run only "finished" because a
+  non-holder's done used to be accepted. It now owns its submission, and asserts
+  its own precondition (`assigned() === ['pkg#a']`) so it cannot go vacuous
+  again. **A test premise of MINE was wrong and the contradiction is what caught
+  it:** my capacity probe reported `undefined` behaving like `1` while `NaN`
+  absorbed everything, which cannot both be true of the same `>=`. The cause was
+  my own default parameter (`capacity: unknown = 1`) swallowing the value before
+  it reached the wire; `0 >= undefined` is false, verified directly. The code was
+  consistent the whole time. Differentials, each isolating its own fix: dropping
+  the claim-release fails 4, dropping the `agent:done` gate fails 1, dropping the
+  hello validation fails 13, dropping the `agent:start` gate fails 1.
+  **Recorded, NOT fixed.** (1) If EVERY agent leaves
+  while the submitter is still connected, the submission waits indefinitely —
+  arguably right for a standing pool (agents rejoin, and the submitter can
+  Ctrl-C), but nothing bounds it: `agentTimeoutMs` only WARNS and is `unref`\'d.
+  (2) One submitter socket that submits TWICE overwrites `ws.data.scheduler`, so
+  the FIRST submission\'s `onSubmitterGone` never fires — it holds its session pin
+  and its agents are never drained; needs a hand-written submitter. (3) **An
+  asymmetry read from the source but deliberately NOT claimed as reproduced:**
+  the serve prunes with the default `sub = \'shared\'` while an agent reads with
+  `resolveCacheScope(process.env)`. For a TRUSTED principal `readScopes` ignores
+  the sub entirely, so the two agree; for an UNTRUSTED one the sub IS the scope,
+  so a hash warm in `untrusted/shared` prunes as done while a `pr-42`-scoped
+  materialization misses it and leaves outputs unrestored. Reaching it needs an
+  untrusted token used OUTSIDE a PR at some point — I did not build that fixture,
+  so the mechanism is stated and the consequence is not asserted.
+  NO CACHE_VERSION/SCHEMA/wire/DIST_PROTOCOL bump: `agent:refused` already
+  existed, no field changed shape, and no key derivation or stored byte moves.
+  Gates from the ROOT: fmt/lint 0, core **2570/0** (21 skip = sandbox), cloud
+  **+21 tests** with every dist suite green (`dist-{registry,scheduler,multirun,
+ingest}` + the real-subprocess `agents-e2e`: **70/0**) and the ONLY failure
+  across four full runs the documented browser guard. **Its recorded figure is
+  CORRECTED here, and so is the shape of its failure.**
+  This log says 1.56% / 99568 px;
+  measured now it is **1.54% / 98293 px** — and byte-identical with this wave
+  STASHED, which is what makes it pre-existing rather than mine. That baseline
+  runs only locally (the suite skips in CI without playwright/dist), which is
+  precisely how it absorbs change unnoticed; it stays KNOWN-OPEN.
+  **A CI red on this PR is recorded with its ACTUAL error rather than filed as
+  the known flake, and the fixture is fixed to say more next time.** The
+  50-commit `affected` test redded a FOURTH time — but not the way the previous
+  three did: it failed in 886 ms against its 30 s budget, so it was an ASSERTION,
+  not the timeout the budget was raised for. Pulling the job log gives
+  `Expected: "51" / Received: ""` — `git rev-list --count HEAD` returned EMPTY
+  stdout, which is a different failure from a wrong count and from a missing
+  fixture (the fixture-present assertion above it passed, and the 50-commit loop
+  never threw). **The cause is NOT diagnosed and no plausible one is written
+  here** — the count step was the last one still using a bare `spawnSync`, so
+  unlike the suite's `git()` helper it discarded git's exit code and stderr and
+  could not say why stdout was empty. It now asserts all three in one object, so
+  occurrence #5 names itself. Worth noting alongside, NOT as the cause: all three
+  checks on that push sat `in_progress` for ~40 min with their logs 404'ing,
+  where the same three jobs on the parent commit finished in 90-120 s. **A second
+  failure mode showed up while measuring and is worth knowing before the next
+  wave trusts a cloud total:** two full cloud suites running CONCURRENTLY share
+  one Chromium, and the loser reports the perf guard AND the visual shot as
+  failures at a fraction of the normal runtime (94 s / 1211 tests vs 200 s / 1223) — the documented shared-browser-under-load signature, not pixel diffs.
+  Isolated, the same suite can instead hit the visual 180 s TIMEOUT and truncate
+  the file at 1215 tests. So a cloud total is only meaningful from a run with
+  nothing else on the box, and the per-suite result is the trustworthy signal.
+
 - **2026-07-30**: **The de-duplication sweep found its first target immediately —
   cloud had FIVE more hand-rolled `split('#', 2)` sites** (task #72, and the
   hypothesis came from a finding rather than speculation). The `vx watch` wave

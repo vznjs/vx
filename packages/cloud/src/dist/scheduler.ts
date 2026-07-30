@@ -311,25 +311,39 @@ export class DistScheduler implements ActiveSubmission {
     this.binding?.requestDispatch()
   }
 
+  /**
+   * Only the agent CURRENTLY assigned a task may speak for it. `assign()` is
+   * the one thing that both records this claim and sends `task:assign`, so a
+   * legit message always passes; what it refuses is an agent the serve has
+   * already evicted — a reaped box (30 s silent, its detached `run()` still
+   * going) whose task has been handed back and reassigned. `drop()` releases
+   * the claim precisely so this reads false for it. Applied to all three
+   * task-scoped messages, because a half-applied invariant is the shape that
+   * let a dropped agent keep co-authoring one task's stream and outcome.
+   */
+  private holds(agent: RegisteredAgent, taskId: string): boolean {
+    return agent.inFlight.get(this.submissionId)?.has(taskId) ?? false
+  }
+
   onAgentMessage(agent: RegisteredAgent, raw: unknown): void {
     const msg = raw as DistClientMessage
     if (msg.t === 'agent:start') {
       const node = this.nodes.get(msg.taskId)
       if (node === undefined || this.startedEmitted.has(msg.taskId)) return
+      // An evicted agent's start would otherwise stamp the controller-clock
+      // start for a task the replacement is about to run, skewing its recorded
+      // duration, and consume the once-only emit so the real holder's start
+      // never fires.
+      if (!this.holds(agent, msg.taskId)) return
       this.startedEmitted.add(msg.taskId)
       if (!this.startedAtByTask.has(msg.taskId)) this.startedAtByTask.set(msg.taskId, Date.now())
       this.event({ kind: 'task:start', task: node.view })
       return
     }
     if (msg.t === 'agent:stdout' || msg.t === 'agent:stderr') {
-      // Only the agent CURRENTLY assigned the task may stream it. A reassigned
-      // task's stale stream — from a dropped agent's still-running detached
-      // run(), now arriving on that machine's RECONNECTED socket (a different
-      // agent that never held the task) — must not garble the relay or the
-      // stored log with a second machine's interleaved output. The assign added
-      // the task to the holder's inFlight before the agent could stream, so a
-      // legit chunk always passes.
-      if (!(agent.inFlight.get(this.submissionId)?.has(msg.taskId) ?? false)) return
+      // A second machine's bytes must never interleave into one task's relay
+      // or its stored log — the garble this gate was originally added for.
+      if (!this.holds(agent, msg.taskId)) return
       if (this.args.recorder !== undefined) this.logs.append(msg.taskId, msg.chunk)
       if (msg.t === 'agent:stdout') {
         this.event({ kind: 'task:stdout', taskId: msg.taskId, chunk: msg.chunk })
@@ -339,6 +353,11 @@ export class DistScheduler implements ActiveSubmission {
       return
     }
     if (msg.t === 'agent:done') {
+      // Without this a reaped agent could report FIRST and make a machine the
+      // serve has declared dead the author of the run's verdict — while the
+      // live replacement's real result was then discarded by the
+      // `outcomes.has` dedupe below as the "stale" duplicate.
+      if (!this.holds(agent, msg.taskId)) return
       agent.inFlight.get(this.submissionId)?.delete(msg.taskId)
       this.executedBy.set(msg.taskId, agent.agentId)
       // A task reassigned after this agent's death may already be

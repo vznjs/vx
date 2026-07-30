@@ -229,15 +229,53 @@ export class AgentRegistry {
     io: { send(m: DistServerMessage): void; close(): void },
     orgId: string = DEFAULT_ORG,
   ): RegisteredAgent | null {
-    if (msg.protocol !== DIST_PROTOCOL_VERSION) {
-      io.send({
-        t: 'agent:refused',
-        reason: `protocol mismatch: agent speaks v${msg.protocol}, serve speaks v${DIST_PROTOCOL_VERSION}`,
-      })
+    const refuse = (reason: string): null => {
+      io.send({ t: 'agent:refused', reason })
       io.close()
       return null
     }
+    if (msg.protocol !== DIST_PROTOCOL_VERSION) {
+      return refuse(
+        `protocol mismatch: agent speaks v${msg.protocol}, serve speaks v${DIST_PROTOCOL_VERSION}`,
+      )
+    }
+    // `agent:hello` is a raw wire frame — every field reaches here as an
+    // unchecked cast, and each malformed shape fails SILENTLY rather than
+    // loudly, which is why they are refused here (the one boundary every
+    // caller goes through) instead of trusted:
+    //
+    //   - capacity is compared as `inFlightTotal(a) >= a.capacity`. A missing
+    //     field or any non-number reads as NaN, and `n >= NaN` is ALWAYS false,
+    //     so the agent never reads as full and absorbs every ready task in one
+    //     dispatch pass (measured: 6 of 6). `null` is the mirror image —
+    //     `0 >= null` is true — so it registers as remote capacity an ambient
+    //     submitter distributes toward, then takes zero work.
+    //   - a duplicate agentId silently REPLACES the live agent in the session
+    //     map, so its in-flight tasks are never handed back (`drop` no-ops on
+    //     the identity mismatch) and its socket is never closed: the submission
+    //     waits on a task no one holds, forever. Refusing is terminal in
+    //     `runAgentLoop`, so this can never ping-pong two agents evicting each
+    //     other; and ids are random UUIDv7 per connect, so it cannot fire for a
+    //     real agent.
+    for (const [field, value] of [
+      ['agentId', msg.agentId],
+      ['workspaceId', msg.workspaceId],
+      ['session', msg.session],
+      ['commitSha', msg.commitSha],
+    ] as const) {
+      if (typeof value !== 'string' || value === '') {
+        return refuse(`invalid agent:hello — ${field} must be a non-empty string`)
+      }
+    }
+    if (!Number.isInteger(msg.capacity) || msg.capacity < 1) {
+      return refuse(
+        `invalid agent:hello — capacity must be a positive integer (got ${String(msg.capacity)})`,
+      )
+    }
     const state = this.sessionFor(orgId, msg.workspaceId, msg.session)
+    if (state.agents.has(msg.agentId)) {
+      return refuse(`agent id ${msg.agentId} is already connected to ${state.key}`)
+    }
     const agent: RegisteredAgent = {
       agentId: msg.agentId,
       orgId,
@@ -276,6 +314,17 @@ export class AgentRegistry {
     for (const [subId, tasks] of agent.inFlight) {
       state.active.get(subId)?.onAgentLeave(agent, [...tasks])
     }
+    // `inFlight` is the AUTHORITATIVE holder set — the scheduler gates a task's
+    // stdout/stderr and its terminal outcome on "does this agent currently hold
+    // it?". Handing the tasks back above transfers that claim, so the dropped
+    // agent must release it, or it stays a co-holder of work it no longer owns.
+    // That is not hypothetical: a reaped agent (a 30 s-silent box whose detached
+    // run() is still going) kept passing the holder gate, so its output
+    // interleaved with the replacement's into one task's relay AND stored log —
+    // exactly the garble the gate was added to stop — and its `agent:done` could
+    // land FIRST, making a reaped machine's verdict the run's verdict while the
+    // live replacement's real result was discarded as a stale duplicate.
+    agent.inFlight.clear()
   }
 
   /**
