@@ -17,6 +17,7 @@ import type { Database } from 'bun:sqlite'
 // run count is answered BOTH here and by `Cache.stats` (what `vx info` and
 // `vx mcp` read), and a rule written twice is a rule that drifts.
 import { EXECUTED_RUNS_SQL, KEYED_RUNS_SQL } from '../cache/index.js'
+import { splitTaskId } from '../graph/index.js'
 import { clampInt } from '../util/index.js'
 import { classifyFailureMode, mixedOutcomeKeyCount } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
@@ -631,7 +632,7 @@ export interface TaskDetail {
 }
 
 export function getTaskDetail(db: Database, taskId: string): TaskDetail | null {
-  const [project, task] = taskId.split('#', 2) as [string, string]
+  const [project, task] = splitTaskId(taskId)
   const existsRow = db
     .query('SELECT 1 FROM runs WHERE project = ? AND task = ? LIMIT 1')
     .get(project, task) as { 1: number } | undefined
@@ -747,7 +748,7 @@ export interface CacheKeyExplanation {
 }
 
 export function explainCacheKey(db: Database, taskId: string): CacheKeyExplanation {
-  const [project, task] = taskId.split('#', 2) as [string, string]
+  const [project, task] = splitTaskId(taskId)
   const entry = db
     .query(
       `SELECT hash, command, exit_code AS exitCode, duration_ms AS durationMs,
@@ -779,7 +780,7 @@ export interface WhyDidThisRerun {
 }
 
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun {
-  const [project, task] = taskId.split('#', 2) as [string, string]
+  const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
       `SELECT hash, status, cache_hit AS cacheHit, started_at AS startedAt
@@ -886,7 +887,7 @@ function loadEntryInputs(db: Database, entryHash: string): Map<string, EntryInpu
  * has no row, `entries:[]` for the first run of a task.
  */
 export function cacheKeyDiff(db: Database, runId: string, taskId: string): CacheKeyDiff {
-  const [project, task] = taskId.split('#', 2) as [string, string]
+  const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
       'SELECT hash, started_at AS startedAt FROM runs WHERE run_id = ? AND project = ? AND task = ?',
@@ -1127,7 +1128,7 @@ export function compareRuns(db: Database, runId: string): CompareRuns {
     if (!b) tasksOnlyInA++
     if (!a) tasksOnlyInB++
     if (hashChanged || statusChanged) tasksChanged++
-    const [project, task] = key.split('#', 2) as [string, string]
+    const [project, task] = splitTaskId(key)
     return { taskId: key, project, task, a, b, hashChanged, durationDeltaMs, statusChanged }
   })
 

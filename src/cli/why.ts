@@ -6,6 +6,7 @@
 // no config evaluation, no re-hash.
 
 import { Cache } from '../cache/index.js'
+import { splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
   explainCacheKeyQuery as explainCacheKey,
@@ -84,7 +85,7 @@ function resolveTarget(cache: Cache, target: string): string {
 
 /** The latest recorded run of a task (run_id may be NULL on very old rows). */
 function latestRunId(cache: Cache, taskId: string): string | null {
-  const [project, task] = taskId.split('#', 2) as [string, string]
+  const [project, task] = splitTaskId(taskId)
   const row = cache
     .dbHandle()
     .query(

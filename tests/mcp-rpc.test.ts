@@ -317,25 +317,26 @@ describe('the tool listing and the dispatcher describe the same set', () => {
   // The assertion below encodes the WRONG-BUT-CURRENT state: the comment is a
   // strict superset, and `runTasks` is the extra. Deleting the stale line — the
   // fix — will fail this test; update the expectation and drop this note then.
-  it('the header comment lists one tool that is not implemented (FINDING)', () => {
-    const lines = MCP_SRC.split('\n')
-    const start = lines.findIndex((l) => l.startsWith('// Tools exposed:'))
-    expect(start).toBeGreaterThan(-1)
-    const documented: string[] = []
-    for (let i = start + 1; i < lines.length; i++) {
-      const m = /^\/\/\s{3}(\w+)\(/.exec(lines[i]!)
-      if (m === null) break
-      documented.push(m[1]!)
+  it('the header does not restate the tool list, so it cannot drift again', () => {
+    // This began as a FINDING: the header carried a hand-maintained copy of the
+    // tool list, and the copy had drifted into advertising
+    // `runTasks(tasks, cwd)` — a tool that does not exist, and the ONLY one in
+    // that list which would have mutated the machine. A reader, or an agent
+    // reading the source, concluded `vx mcp` can execute builds.
+    //
+    // The repair is not a corrected copy — a second copy drifts again. The
+    // list is gone, and this asserts it stays gone. A comment enumerating what
+    // a function returns is the "comment restating the code" the conventions
+    // already ban; here it also shipped a false capability claim.
+    expect(MCP_SRC).not.toContain('// Tools exposed:')
+    for (const name of listMcpTools().map((t) => t.name)) {
+      expect(MCP_SRC).not.toContain(`//   ${name}(`)
     }
-    // Non-vacuity: the block really was parsed.
-    expect(documented.length).toBeGreaterThanOrEqual(5)
-
-    const real = new Set(listMcpTools().map((t) => t.name))
-    const phantom = documented.filter((d) => !real.has(d))
-    expect(phantom).toEqual(['runTasks'])
-    // …and the reverse direction is clean, so nothing shipped undocumented.
-    const undocumented = [...real].filter((r) => !documented.includes(r))
-    expect(undocumented).toEqual([])
+    // The header must still point at where the truth lives, or removing the
+    // list just makes the surface undiscoverable.
+    expect(MCP_SRC).toContain('listMcpTools')
+    // And no tool named runTasks exists, which is the claim that misled.
+    expect(listMcpTools().map((t) => t.name)).not.toContain('runTasks')
   })
 })
 
@@ -542,26 +543,29 @@ describe('getRunHistory — filters narrow the data', () => {
     expect(none).toEqual({ runs: [], history: [] })
   })
 
-  it('a non-string filter is IGNORED rather than refused (FINDING)', async () => {
-    // FINDING — src/cli/mcp-rpc.ts:162-163.
+  it('a non-string filter is REFUSED rather than silently ignored', async () => {
+    // Was a FINDING: a model sending `{ project: 42 }` — or `["@t/alpha"]`, an
+    // easy mistake against a schema with no `required` — got the ENTIRE
+    // workspace back. The response carries no echo of the filter either, so
+    // nothing in the payload said the narrowing had not happened, and the agent
+    // then reasoned about every project's history believing it saw one.
     //
-    // `typeof args.project === 'string' ? … : undefined` means a model that
-    // sends `{ project: 42 }` (or `["@t/alpha"]`, an easy mistake against a
-    // schema with no `required`) gets the ENTIRE workspace back, silently.
-    // The response carries no echo of the filter either, so nothing in the
-    // payload says the narrowing did not happen — the agent then reasons about
-    // every project's history believing it is looking at one.
-    //
-    // The assertion encodes that wrong-but-current behaviour: it is identical
-    // to the unfiltered answer.
-    const all = (await call(MAIN.root, 'getRunHistory', { limit: 100 })) as History
-    for (const bad of [42, ['@t/alpha'], { name: '@t/alpha' }, true]) {
-      const got = (await call(MAIN.root, 'getRunHistory', {
-        project: bad,
-        limit: 100,
-      })) as History
-      expect(got.runs.length).toBe(all.runs.length)
+    // Refused, not coerced: MCP is an external API, which is exactly where this
+    // project's rule says to validate.
+    for (const bad of [42, ['@t/alpha'], { name: '@t/alpha' }, true, '']) {
+      await expect(call(MAIN.root, 'getRunHistory', { project: bad, limit: 100 })).rejects.toThrow(
+        /project must be a non-empty string/,
+      )
     }
+    // The control: a well-formed filter still narrows, so the guard did not
+    // simply break the feature.
+    const all = (await call(MAIN.root, 'getRunHistory', { limit: 100 })) as History
+    const one = (await call(MAIN.root, 'getRunHistory', {
+      project: '@t/alpha',
+      limit: 100,
+    })) as History
+    expect(one.runs.length).toBeGreaterThan(0)
+    expect(one.runs.length).toBeLessThan(all.runs.length)
   })
 
   it('the two halves disagree about skips on purpose, and neither invents data', async () => {
@@ -656,41 +660,43 @@ describe('getRunHistory — the limit is untrusted input', () => {
     expect(((await call(MAIN.root, 'getRunHistory', { limit: 7 })) as History).runs.length).toBe(7)
   })
 
-  it('a non-numeric limit falls back to the default of 50 (FINDING)', async () => {
-    // FINDING — src/cli/mcp-rpc.ts:161.
-    //
-    // `typeof args.limit === 'number' ? clampInt(...) : 50`. A model that sends
-    // `"10"` (JSON string) asked for ten rows and gets FIFTY, with nothing in
-    // the response saying so. It is neither the named error the boundary rule
-    // asks for nor a clamp of the stated intent — it silently answers a
-    // different question. Same for `null`, which is what a client emits for an
-    // unset optional field.
-    //
-    // Encoded as the current behaviour: identical to omitting the limit.
-    const dflt = (await call(MAIN.root, 'getRunHistory', {})) as History
+  it('a limit of the wrong SHAPE is refused, not answered with a different one', async () => {
+    // Was a FINDING: a model sending `"10"` asked for ten rows and got FIFTY,
+    // with nothing in the response saying so — neither the named error the
+    // boundary rule asks for nor a clamp of the stated intent, but a silent
+    // answer to a different question.
     for (const limit of ['10', '2', null, true, [2], { n: 2 }]) {
-      const got = (await call(MAIN.root, 'getRunHistory', { limit })) as History
-      expect(got.runs.length).toBe(dflt.runs.length)
+      await expect(call(MAIN.root, 'getRunHistory', { limit })).rejects.toThrow(
+        /limit must be a finite number between 1 and 500/,
+      )
     }
+    // Omitting it is still the documented default, and an in-range value is
+    // still honoured — the refusal is about SHAPE, not about being strict.
+    const dflt = (await call(MAIN.root, 'getRunHistory', {})) as History
+    expect(dflt.runs.length).toBeGreaterThan(0)
+    const two = (await call(MAIN.root, 'getRunHistory', { limit: 2 })) as History
+    expect(two.runs.length).toBeLessThanOrEqual(2)
   })
 
-  it('Infinity collapses to ONE row — the inverse of "give me everything" (FINDING)', async () => {
-    // FINDING — src/util/num.ts:8 as reached from mcp-rpc.ts:161.
+  it('Infinity is refused instead of collapsing to ONE row', async () => {
+    // The sharpest of the limit findings. `clampInt` sends any non-finite value
+    // to MIN, not MAX — and JSON has no Infinity literal, but `{"limit":1e999}`
+    // parses to one. So an agent reaching for "no limit" received a SINGLE row
+    // and could reasonably conclude the workspace had run exactly one task.
     //
-    // `clampInt` sends any non-finite value to MIN, not MAX. JSON has no
-    // Infinity literal, but `{"limit": 1e999}` parses to one, so an agent
-    // reaching for "no limit" receives a single row and may well conclude the
-    // workspace has run exactly one task. Fail-small is defensible; failing
-    // small SILENTLY on the value that means "the most" is the hazard.
+    // Fail-small is defensible; failing small SILENTLY on the value that means
+    // "the most" is not. Refused, because there is no page size that honestly
+    // represents either Infinity or NaN.
     expect(JSON.parse('{"limit":1e999}').limit).toBe(Number.POSITIVE_INFINITY)
-    const inf = (await call(MAIN.root, 'getRunHistory', {
-      limit: Number.POSITIVE_INFINITY,
-    })) as History
-    expect(inf.runs.length).toBe(1)
-    // NaN takes the same arm. There is no defensible page size for "not a
-    // number", so one row (never an error, never everything) is the contract.
-    const nan = (await call(MAIN.root, 'getRunHistory', { limit: Number.NaN })) as History
-    expect(nan.runs.length).toBe(1)
+    for (const limit of [Number.POSITIVE_INFINITY, Number.NaN, Number.NEGATIVE_INFINITY]) {
+      await expect(call(MAIN.root, 'getRunHistory', { limit })).rejects.toThrow(
+        /limit must be a finite number/,
+      )
+    }
+    // Out-of-range but FINITE still clamps, because the published schema states
+    // the 1..500 bounds — the refusal is for values with no honest reading.
+    const big = (await call(MAIN.root, 'getRunHistory', { limit: 100_000 })) as History
+    expect(big.runs.length).toBeGreaterThan(0)
   })
 })
 
@@ -791,14 +797,23 @@ describe('explainCacheKey', () => {
   // string. Task names contain no `#` today, which is why this is a latent
   // inconsistency rather than a live bug — but the echo makes it silent if it
   // ever becomes reachable.
-  it('silently drops everything after the second # while echoing the full id (FINDING)', async () => {
+  it('splits on the FIRST # so a #-containing task name survives', async () => {
+    // Was a FINDING: `taskId.split('#', 2)` discarded everything after the
+    // second segment while echoing the full id back, so `a#b#c` was answered
+    // with task `b`'s data under the label `a#b#c`.
+    //
+    // The divergence is what made it a correctness bug rather than cosmetics:
+    // `parseDependencySpec` — the surface that decides what actually RUNS — has
+    // always split on the first `#`, so the query layer and the graph disagreed
+    // about the identity of the same task. Both now use `splitTaskId`.
     const got = (await call(MAIN.root, 'explainCacheKey', {
       taskId: '@t/alpha#build#extra',
     })) as Explain
     expect(got.taskId).toBe('@t/alpha#build#extra')
-    // …but the data is @t/alpha#build's.
-    expect(got.task).toBe('build')
-    expect(got.latestEntry!.hash).toBe('a3')
+    // The task is `build#extra`, which is a different task from `build` — so
+    // this reports no entry rather than confidently answering with `build`'s.
+    expect(got.task).toBe('build#extra')
+    expect(got.latestEntry).toBeNull()
   })
 })
 
