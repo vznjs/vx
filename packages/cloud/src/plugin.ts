@@ -23,6 +23,7 @@
 
 import {
   LayeredCache,
+  parseDecimalInt,
   resolveCacheScope,
   UserError,
   type CacheContext,
@@ -323,8 +324,11 @@ function distributeOf(opts: CloudPluginOptions): number | undefined {
   }
   const raw = process.env['VX_CLOUD_DISTRIBUTE']
   if (raw === undefined || raw === '') return undefined
-  const n = Number(raw)
-  if (!Number.isInteger(n) || n < 1) {
+  // `parseDecimalInt`, not `Number`: this function already refuses `abc` and
+  // `-1`, so accepting `0x10` as 16 and `1e3` as 1000 taught the reader it
+  // validates when it half did.
+  const n = parseDecimalInt(raw)
+  if (n === null || n < 1) {
     throw new UserError(`invalid VX_CLOUD_DISTRIBUTE: ${raw} (expected a positive agent count)`)
   }
   return n

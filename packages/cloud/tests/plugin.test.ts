@@ -1055,6 +1055,63 @@ describe('the fork-PR token reaches the ingest', () => {
   })
 })
 
+// `Number()` is the wrong tool at an argument boundary: it accepts hex
+// (`0x10` → 16), exponents (`1e3` → 1000), a leading `+`, and surrounding
+// whitespace, so a typo becomes a DIFFERENT number rather than an error. Every
+// numeric knob cloud reads from the environment used it while also rejecting
+// `abc` and `-1` — half-strict, which teaches a reader it validates when it
+// only half does. Core's `parseDecimalInt` exists for exactly this and is now
+// on the façade.
+describe('VX_CLOUD_DISTRIBUTE is parsed strictly, not coerced', () => {
+  async function resolve(raw: string): Promise<string> {
+    const saved = process.env['VX_CLOUD_DISTRIBUTE']
+    const savedUrl = process.env['VX_CLOUD_URL']
+    process.env['VX_CLOUD_DISTRIBUTE'] = raw
+    delete process.env['VX_CLOUD_URL']
+    try {
+      await cloud().backend!(backendCtx(process.cwd()))
+      return 'accepted'
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e)
+      // A value that PARSES reaches the next rung and fails on the missing
+      // serve; a value that does not parse is refused by name.
+      return m.includes('invalid VX_CLOUD_DISTRIBUTE') ? 'refused' : 'accepted'
+    } finally {
+      if (saved === undefined) delete process.env['VX_CLOUD_DISTRIBUTE']
+      else process.env['VX_CLOUD_DISTRIBUTE'] = saved
+      if (savedUrl !== undefined) process.env['VX_CLOUD_URL'] = savedUrl
+    }
+  }
+
+  it.each([
+    ['hex', '0x10'],
+    ['an exponent', '1e3'],
+    ['surrounding whitespace', ' 2 '],
+    ['a leading plus', '+2'],
+    ['a fraction', '1.5'],
+    ['non-numeric junk', 'abc'],
+    ['zero', '0'],
+    ['a negative', '-1'],
+    ['past MAX_SAFE_INTEGER', '9007199254740993'],
+  ])('refuses %s', async (_label, raw) => {
+    expect({ raw, verdict: await resolve(raw) }).toEqual({ raw, verdict: 'refused' })
+  })
+
+  it.each([
+    ['a plain count', '2'],
+    ['a larger plain count', '48'],
+  ])('still accepts %s', async (_label, raw) => {
+    // The control: strictness must not refuse the values that always worked.
+    expect({ raw, verdict: await resolve(raw) }).toEqual({ raw, verdict: 'accepted' })
+  })
+
+  it('treats an empty value as unset, not as an error', async () => {
+    // `VX_CLOUD_DISTRIBUTE=""` is how a CI matrix expresses "not this job";
+    // it must decline the rung rather than fail the run.
+    expect(await resolve('')).toBe('accepted')
+  })
+})
+
 describe('cloud() end-to-end through defineWorkspace', () => {
   it('is accepted by the loader and a CLI run completes with the plugin declared', async () => {
     const root = await makeWorkspace()
