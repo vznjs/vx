@@ -173,6 +173,22 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
+    // The third of the trio, and the one whose symptom is least guessable: the
+    // other two select nothing, this one selects the INVERSE. A user greps this
+    // string because their build started failing at load time on a config that
+    // "worked" — the message has to be findable verbatim in the docs.
+    "cache.inputs.files: '!!' is not a double negation",
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            cache: { inputs: { files: ['**/*', '!!vendor/**'] }, outputs: { files: [] } },
+          },
+        },
+      }),
+  ],
+  [
     'cache.outputs.files: negation is not supported',
     () =>
       validated({

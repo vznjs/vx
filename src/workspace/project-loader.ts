@@ -389,6 +389,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `use cache.inputs.workspaceFiles for workspace-root-relative inputs)`,
           )
         }
+        assertNotDoubleNegated(g, `${where}.cache.inputs.files`)
       }
       // A list of ONLY negations selects nothing at all. `resolveFiles`
       // builds the file set from the POSITIVE globs and uses the `!` entries
@@ -499,6 +500,38 @@ function hasParentSegment(glob: string): boolean {
  * Refusing is free: such a config was ALREADY selecting nothing, so no
  * working task's key changes and no CACHE_VERSION bump is owed.
  */
+/**
+ * `!!x` INVERTS the input set instead of double-negating it.
+ *
+ * The resolver strips ONE `!` and hands the remainder to `new Bun.Glob()` —
+ * which applies its OWN leading-`!` negation. So `!!vendor/**` becomes the
+ * exclude glob `Glob('!vendor/**')`, and that matches every path EXCEPT
+ * vendor's. Everything else is therefore excluded and the task folds ONLY
+ * `vendor/**`: its own source drops out of the cache key entirely, which is a
+ * permanent stale hit.
+ *
+ * Neither neighbouring guard catches it — `assertNotNegationOnly` sees the
+ * positive glob and is satisfied, and `hasParentSegment` strips one `!` before
+ * splitting so `!!../x` shows no `..` segment.
+ *
+ * Refused rather than reinterpreted: `!!` has no coherent meaning here.
+ * Negation in vx is subtraction from what a positive glob matched, not
+ * gitignore's ordered re-inclusion, so there is nothing for a second `!` to
+ * undo. Costs nothing to refuse — such a config already folds the wrong set,
+ * so no working cache key changes.
+ */
+function assertNotDoubleNegated(glob: string, where: string): void {
+  if (!glob.startsWith('!!')) return
+  const inner = glob.slice(2)
+  throw new UserError(
+    `${where}: '!!' is not a double negation (got "${glob}") — it INVERTS the set. ` +
+      `One '!' is stripped and the remainder is compiled as a glob, which applies its own ` +
+      `leading-'!' negation, so this excludes everything EXCEPT ${JSON.stringify(inner)} and ` +
+      `the task folds only that. Use ${JSON.stringify(`!${inner}`)} to subtract it, or ` +
+      `${JSON.stringify(inner)} to include it.`,
+  )
+}
+
 function assertNotNegationOnly(globs: readonly string[], where: string): void {
   if (globs.length === 0) return
   if (globs.some((g) => !g.startsWith('!'))) return
@@ -542,6 +575,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
           `path beginning with '!' and matches nothing. List the outputs you DO produce.`,
       )
     }
+    if (negation) assertNotDoubleNegated(g, where)
   }
   if (negation) assertNotNegationOnly(v as string[], where)
 }
