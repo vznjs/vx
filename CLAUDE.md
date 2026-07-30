@@ -455,13 +455,26 @@ write a plausible cause into the log that you have not proven.
   is how a CI matrix says "not this job". NO CACHE_VERSION/SCHEMA/wire/migration
   bump. Gates from the ROOT: fmt/lint 0, core **2570/0** (21 skip = sandbox),
   cloud **1202/1**, the 1 being the documented `visual > task-detail` drift.
-  **Worth naming as a pattern, not three coincidences:** `splitTaskId`,
-  `clampInt` and now `parseDecimalInt` were each widened onto the façade under
-  duress, after a consumer had already shipped a weaker copy. The façade is
-  being discovered one defect at a time. A deliberate pass over
-  `src/util/index.ts` — 15 symbols, of which the façade re-exports 3 — asking
-  which an integration package legitimately needs, would beat waiting for the
-  fourth.
+  **A pattern I named and then DISPROVED within the hour — the correction is
+  the entry.** `splitTaskId`, `clampInt` and `parseDecimalInt` were each widened
+  onto the façade under duress, after a consumer had already shipped a weaker
+  copy, so I concluded the façade was being discovered one defect at a time and
+  proposed a deliberate pass over `src/util/index.ts` (15 symbols, façade
+  re-exports 3) to find the fourth before it bit. **Then I measured, and there
+  is no fourth.** Of the twelve unexported util symbols, exactly ONE has
+  anything resembling a consumer copy — `native-cache.ts`'s `xxh3Digest` — and
+  it is not one: it builds the `xxh3:<hex>` WIRE format, the server never
+  computes that digest (`artifact-store.ts` only format-validates and passes it
+  through), and the same function both produces and verifies it, so there is no
+  cross-package agreement to maintain. Exporting `xxh3hex` to save its one line
+  would COUPLE the wire digest to the cache-key hashing helper — two concerns
+  that merely share an algorithm and should stay free to differ. `parseSize`,
+  `relPosix`, `settleWithin`, `ulid`, `MAX_TIMEOUT_MS` and the tail helpers have
+  zero consumer need of any kind. **So the reactive approach was right and my
+  proposal was wrong:** widening on a demonstrated need is exactly the trigger
+  this repo wants, and a speculative pass would have re-created the surface it
+  deleted the CAS exports for. Recorded so nobody executes the plan the entry
+  above originally recommended.
 
 - **2026-07-30**: **A fork-PR run could never reach the dashboard — telemetry
   was the ONE rung that ignored the PR token** (second finding of the `cloud()`
