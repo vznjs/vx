@@ -20,6 +20,22 @@ export interface AffectedArgs {
   /** Git ref / commit / branch to compare against. Required. */
   since: string
   projects: readonly ProjectMeta[]
+  /**
+   * Which projects declare a `cache.inputs.workspaceFiles` glob matching one of
+   * these workspace-relative paths.
+   *
+   * A workspace-anchored glob is the documented escape hatch for shared files
+   * that belong to NO project, so mapping changed paths to project directories
+   * structurally cannot see it — the path resolves to no project and the run
+   * selects nothing for a change that re-keyed the task.
+   *
+   * Answering needs the RESOLVED configs, which selection runs before loading;
+   * that ordering is what left this open. It is resolved by asking only when
+   * the question can matter: this is called ONLY with paths that belong to no
+   * project, so a run whose every change is inside a project — the common case
+   * — never invokes it and pays nothing.
+   */
+  workspaceGlobOwners?: (orphanPaths: readonly string[]) => Promise<Iterable<string>>
 }
 
 /**
@@ -83,7 +99,30 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     return new Set(args.projects.map((p) => p.name))
   }
 
-  return projectsContaining(args.workspaceRoot, changed, args.projects)
+  const { owned, orphans } = projectsContaining(args.workspaceRoot, changed, args.projects)
+  if (orphans.length === 0 || args.workspaceGlobOwners === undefined) return owned
+  for (const name of await args.workspaceGlobOwners(orphans)) owned.add(name)
+  return owned
+}
+
+/**
+ * Does any `cache.inputs.workspaceFiles` entry in `globs` match `rel`?
+ *
+ * Mirrors `resolveWorkspaceFiles`' partition: a leading `!` is an EXCLUDE, and
+ * with no positive glob nothing matches. Paths are workspace-root-relative and
+ * POSIX-separated, which is the form both git enumeration and the glob
+ * resolver already speak.
+ */
+export function workspaceGlobsMatch(globs: readonly string[], rel: string): boolean {
+  const positive: Bun.Glob[] = []
+  const negative: Bun.Glob[] = []
+  for (const entry of globs) {
+    if (entry.startsWith('!')) negative.push(new Bun.Glob(entry.slice(1)))
+    else positive.push(new Bun.Glob(entry))
+  }
+  if (positive.length === 0) return false
+  if (!positive.some((g) => g.match(rel))) return false
+  return !negative.some((g) => g.match(rel))
 }
 
 /**
@@ -155,7 +194,7 @@ function projectsContaining(
   workspaceRoot: string,
   changedRelPaths: readonly string[],
   projects: readonly ProjectMeta[],
-): Set<string> {
+): { owned: Set<string>; orphans: string[] } {
   // Index projects by their (canonical) dir, then for each changed path walk
   // its ancestor dirs bottom-up until one is a project dir. The FIRST hit is
   // the DEEPEST containing project — so a nested project still wins over its
@@ -165,19 +204,25 @@ function projectsContaining(
   // pays for.
   const dirToName = new Map<string, string>()
   for (const p of projects) dirToName.set(p.dir, p.name)
-  const out = new Set<string>()
+  const owned = new Set<string>()
+  // Paths that belong to no project. Only these can reach a task through a
+  // workspace-anchored glob, so they are the exact set worth asking about.
+  const orphans: string[] = []
   for (const rel of changedRelPaths) {
     let dir = path.resolve(workspaceRoot, rel)
+    let hit = false
     for (;;) {
       const name = dirToName.get(dir)
       if (name !== undefined) {
-        out.add(name)
+        owned.add(name)
+        hit = true
         break
       }
       const parent = path.dirname(dir)
       if (parent === dir) break // reached the filesystem root
       dir = parent
     }
+    if (!hit) orphans.push(rel)
   }
-  return out
+  return { owned, orphans }
 }

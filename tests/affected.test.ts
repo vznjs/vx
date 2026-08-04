@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { affectedProjects, defaultAffectedBase } from '../src/workspace/affected.js'
+import {
+  affectedProjects,
+  defaultAffectedBase,
+  workspaceGlobsMatch,
+} from '../src/workspace/affected.js'
 import {
   computeWorkspaceFingerprint,
   WORKSPACE_FINGERPRINT_FILES,
@@ -520,5 +524,136 @@ describe('defaultAffectedBase', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+// --------------------------------------------------------------------------
+// workspaceFiles widening
+// --------------------------------------------------------------------------
+//
+// A workspace-root-anchored `cache.inputs.workspaceFiles` glob reaches files
+// that belong to NO project, so mapping changed paths to project dirs cannot
+// see them: the path resolves to nothing and `--affected` selects nothing for
+// a change that re-keyed the task. Answering needs the resolved configs, which
+// selection runs before loading — so the resolver is a callback, invoked ONLY
+// for paths that belong to no project. These pin that gate, because "the
+// common case pays nothing" is a claim a test should hold, not a comment.
+
+describe('workspaceGlobsMatch', () => {
+  it('matches a positive glob', () => {
+    expect(workspaceGlobsMatch(['shared/**'], 'shared/schema.txt')).toBe(true)
+    expect(workspaceGlobsMatch(['shared/**'], 'other/schema.txt')).toBe(false)
+  })
+
+  it('honours a leading `!` as an EXCLUDE, like resolveWorkspaceFiles', () => {
+    expect(workspaceGlobsMatch(['shared/**', '!shared/ignored/**'], 'shared/a.txt')).toBe(true)
+    expect(workspaceGlobsMatch(['shared/**', '!shared/ignored/**'], 'shared/ignored/a.txt')).toBe(
+      false,
+    )
+  })
+
+  it('matches nothing when there is no positive glob', () => {
+    // Mirrors the resolver: negation subtracts from what a positive glob
+    // matched, so a negation-only list selects the empty set.
+    expect(workspaceGlobsMatch(['!shared/**'], 'shared/a.txt')).toBe(false)
+    expect(workspaceGlobsMatch([], 'shared/a.txt')).toBe(false)
+  })
+})
+
+describe('affectedProjects workspaceFiles gate', () => {
+  let root: string
+  let projects: ProjectMeta[]
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-gate-'))
+    await mkdir(path.join(root, 'packages/a'), { recursive: true })
+    await mkdir(path.join(root, 'shared'), { recursive: true })
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a')
+    await writeFile(path.join(root, 'shared/schema.txt'), 'v1')
+    projects = [
+      {
+        name: 'a',
+        dir: path.join(root, 'packages/a'),
+        configPath: null,
+        packageJson: { name: 'a' },
+      },
+    ]
+    await git(root, 'init', '-q')
+    await git(root, 'config', 'user.email', 'test@vx.local')
+    await git(root, 'config', 'user.name', 'vx test')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'initial')
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('does NOT consult configs when every change is inside a project', async () => {
+    // The cost gate. Scoped config loading exists because evaluating configs
+    // is the dominant fixed cost of a small run; the widening must not put it
+    // back on the common path.
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'changed')
+    let calls = 0
+    const out = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD',
+      projects,
+      workspaceGlobOwners: async () => {
+        calls++
+        return []
+      },
+    })
+    expect([...out]).toEqual(['a'])
+    expect(calls).toBe(0)
+  })
+
+  it('consults configs with EXACTLY the paths that belong to no project', async () => {
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'changed')
+    await writeFile(path.join(root, 'shared/schema.txt'), 'v2')
+    const seen: string[][] = []
+    const out = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD',
+      projects,
+      workspaceGlobOwners: async (orphans) => {
+        seen.push([...orphans])
+        return []
+      },
+    })
+    // The in-project path is answered without asking; only the orphan is.
+    expect(seen).toEqual([['shared/schema.txt']])
+    expect([...out]).toEqual(['a'])
+  })
+
+  it('adds the projects the resolver names', async () => {
+    await writeFile(path.join(root, 'shared/schema.txt'), 'v2')
+    const out = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD',
+      projects,
+      workspaceGlobOwners: async () => ['a'],
+    })
+    expect([...out]).toEqual(['a'])
+  })
+
+  it('selects nothing when the resolver names nobody', async () => {
+    // The control: an orphan path alone must not widen. Otherwise every
+    // root-level README edit would rebuild the workspace.
+    await writeFile(path.join(root, 'shared/schema.txt'), 'v2')
+    const out = await affectedProjects({
+      workspaceRoot: root,
+      since: 'HEAD',
+      projects,
+      workspaceGlobOwners: async () => [],
+    })
+    expect([...out]).toEqual([])
+  })
+
+  it('omitting the resolver keeps the previous behaviour', async () => {
+    // Embedders calling affectedProjects directly are unaffected.
+    await writeFile(path.join(root, 'shared/schema.txt'), 'v2')
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out]).toEqual([])
   })
 })

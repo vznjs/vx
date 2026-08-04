@@ -12,6 +12,7 @@
 
 import {
   encodeForNDJSON,
+  parseDecimalInt,
   encodeForSSE,
   serverMessageToEnvelope,
   type Envelope,
@@ -231,6 +232,14 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
     // `agent:hello`.
     if (url.pathname === '/v1/agents') {
       if (srv.upgrade(req, { data: { role: 'agent', principal } })) return undefined
+      // Not an upgrade, so this is the capacity READ — and a read answers only
+      // read verbs. It used to answer POST/PUT/DELETE with the same JSON, which
+      // is sloppy rather than exploitable (no `Access-Control-Allow-Credentials`
+      // anywhere in src/, and SameSite=Lax blocks the cookie on a cross-site
+      // POST) but it teaches a caller that a mutation was accepted.
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        return jsonResponse({ error: 'method not allowed' }, { status: 405 })
+      }
       // A capacity read: how big is this {orgId, workspaceId, session} pool and
       // how many REMOTE helpers it holds — an ambient `vx run` / an autoscaler.
       return jsonResponse(
@@ -269,9 +278,14 @@ export async function startPlatformHttp(opts: PlatformHttpOptions): Promise<Plat
     // (which task/run produced a hash) is the gate's Postgres `task_runs` join.
     if (url.pathname === '/v1/artifacts') {
       return (async () => {
+        // `parseDecimalInt`, not `Number`: the bare coercion accepted `0x10`
+        // as 16 and `1e3` as 1000, the half-strict class swept out of the rest
+        // of cloud on 2026-07-30. Bounded by the 1..1000 clamp either way, so
+        // this was never a wrong answer — but a knob that refuses `abc` and
+        // accepts hex teaches the reader it validates when it only half does.
         const limitRaw = url.searchParams.get('limit')
-        const limitNum = limitRaw !== null ? Number(limitRaw) : NaN
-        const limit = Number.isInteger(limitNum) && limitNum > 0 ? Math.min(limitNum, 1000) : 200
+        const parsed = limitRaw !== null ? parseDecimalInt(limitRaw) : null
+        const limit = parsed !== null && parsed > 0 ? Math.min(parsed, 1000) : 200
         const entries = await artifacts.list(principal, req.headers.get('x-vx-cache-scope'), limit)
         let prov = new Map<string, { project: string; task: string; runId: string | null }>()
         const hashes = entries.map((e) => e.hash)
