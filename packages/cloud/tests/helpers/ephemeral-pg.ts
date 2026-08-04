@@ -22,6 +22,14 @@ const PG_USER = 'vx'
 const OWNER_PID_FILE = 'owner.pid'
 const TEMPLATE_DB = 'template_vx'
 
+/** A template database that has been seeded once; `clone` is a ~70ms copy. */
+export interface SeededTemplate<T> {
+  /** Whatever the seeder captured — credentials, ids, anything reusable. */
+  value: T
+  /** A fresh database cloned from the seeded template. Returns its URL. */
+  clone(): Promise<string>
+}
+
 export interface EphemeralPg {
   sockDir: string
   /** DATABASE_URL (libpq socket form) for `dbName` on this cluster. */
@@ -32,6 +40,17 @@ export interface EphemeralPg {
    * Returns its DATABASE_URL.
    */
   createDatabase(opts?: { empty?: boolean }): Promise<string>
+  /**
+   * A template cloned from the migrated one and then SEEDED once by `seed`,
+   * memoized under `name` for the process. Every later `clone()` inherits the
+   * seeded rows for the price of a `CREATE DATABASE … TEMPLATE`.
+   *
+   * This is what stops each suite constructing its own environment: expensive,
+   * IDENTICAL provisioning (an argon2 registration, token mints) is paid once
+   * and copied, instead of being replayed per suite. `template_vx` itself is
+   * left untouched, so suites that want a bare migrated database still get one.
+   */
+  seededTemplate<T>(name: string, seed: (dbUrl: string) => Promise<T>): Promise<SeededTemplate<T>>
 }
 
 function resolvePgBinDir(): string {
@@ -204,19 +223,66 @@ async function boot(): Promise<EphemeralPg> {
   // CREATE DATABASE is concurrently reading.
   let chain: Promise<unknown> = Promise.resolve()
   let seq = 0
-  const createDatabase = (opts?: { empty?: boolean }): Promise<string> => {
-    const name = `t_${++seq}`
-    const next = chain.then(async () => {
-      await admin.sql.unsafe(
-        opts?.empty ? `CREATE DATABASE ${name}` : `CREATE DATABASE ${name} TEMPLATE ${TEMPLATE_DB}`,
-      )
-      return urlFor(name)
-    })
+  const enqueue = <T>(job: () => Promise<T>): Promise<T> => {
+    const next = chain.then(job)
     chain = next.catch(() => undefined)
     return next
   }
 
-  return { sockDir, urlFor, createDatabase }
+  const cloneInto = (from: string): Promise<string> =>
+    enqueue(async () => {
+      const name = `t_${++seq}`
+      await admin.sql.unsafe(`CREATE DATABASE ${name} TEMPLATE ${from}`)
+      return urlFor(name)
+    })
+
+  const createDatabase = (opts?: { empty?: boolean }): Promise<string> => {
+    if (opts?.empty !== true) return cloneInto(TEMPLATE_DB)
+    return enqueue(async () => {
+      const name = `t_${++seq}`
+      await admin.sql.unsafe(`CREATE DATABASE ${name}`)
+      return urlFor(name)
+    })
+  }
+
+  const templates = new Map<string, Promise<SeededTemplate<unknown>>>()
+
+  const buildSeeded = async <T>(
+    name: string,
+    seed: (dbUrl: string) => Promise<T>,
+  ): Promise<SeededTemplate<T>> => {
+    const dbName = `template_${name}`
+    const url = await enqueue(async () => {
+      await admin.sql.unsafe(`CREATE DATABASE ${dbName} TEMPLATE ${TEMPLATE_DB}`)
+      return urlFor(dbName)
+    })
+    const value = await seed(url)
+    // The seeder may leave connections behind — a pool it abandoned, or a
+    // server whose close was raced. `CREATE DATABASE … TEMPLATE` refuses to
+    // copy a database anyone is connected to, so evict them by name rather
+    // than trusting every seeder to drain itself.
+    await enqueue(async () => {
+      await admin.sql.unsafe(
+        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+         WHERE datname = '${dbName}' AND pid <> pg_backend_pid()`,
+      )
+    })
+    return { value, clone: () => cloneInto(dbName) }
+  }
+
+  const seededTemplate = <T>(
+    name: string,
+    seed: (dbUrl: string) => Promise<T>,
+  ): Promise<SeededTemplate<T>> => {
+    let existing = templates.get(name)
+    if (existing === undefined) {
+      existing = buildSeeded(name, seed) as Promise<SeededTemplate<unknown>>
+      templates.set(name, existing)
+    }
+    return existing as Promise<SeededTemplate<T>>
+  }
+
+  return { sockDir, urlFor, createDatabase, seededTemplate }
 }
 
 let cluster: Promise<EphemeralPg> | null = null

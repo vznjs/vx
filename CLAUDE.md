@@ -246,6 +246,64 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-04**: **Every suite was re-deriving the same admin account from
+  scratch — the argon2 registration alone was half of a 697 ms platform boot**
+  (owner: "Don't run each test is seperate env what the heck. Optimize all the
+  things", the directive left open by the setup-generator wave). **Measured
+  before touching anything**, which is what kept the fix pointed at the real
+  cost: the CLUSTER was already shared (one per process, per-suite `CREATE
+DATABASE … TEMPLATE` clones), so the complaint's target was the PLATFORM —
+  ~15 suites each ran `bootPlatform`, and the breakdown is `createDatabase`
+  ~70 ms, `startServer` **116 ms** (re-running migrations the template already
+  had, because it booted `{ empty: true }`), `register` **300-440 ms**
+  (argon2id, deliberately slow), token mints ~12 ms. **`register` alone is more
+  than half the boot and produces a byte-identical result every time.** New
+  `seededTemplate(name, seed)` clones the migrated template, runs a seeder
+  against it ONCE, and hands out clones: **697 ms → 139 ms median / 101 ms min,
+  5x.** The seeder does the REAL HTTP register + REAL HTTP mints rather than
+  hand-rolled INSERTs, so what every suite gets is what the routes actually
+  produce and cannot drift from them. Isolation is untouched — each suite still
+  gets its own database, server, data dir and bucket; what they stop doing is
+  re-deriving the same account. `template_vx` is left alone, so `{ empty: true }`
+  callers (the migration-runner suites) still get a bare database. **Two
+  load-bearing details:** the secret is pinned across the seed boot and every
+  clone (a session cookie is `<id>.<hmac(secret, id)>`, so a cloned session row
+  only verifies under the secret it was minted with); and `seededTemplate`
+  evicts leftover backends BY DATNAME before cloning, because `CREATE DATABASE
+… TEMPLATE` refuses to copy a database anyone is connected to and the
+  platform's `stop()` deliberately races `db.close()` against a timer
+  (background `ensureIndexes` can outlive the test) — so the seeder cannot be
+  trusted to have drained itself. Verified beyond "the suite passes": the cloned
+  cookie and ci token are driven against `/v1/auth/me` and `/v1/runs` on all six
+  probe clones. Cloud **1233 pass**, fmt/lint 0 from the ROOT, ZERO `src/`
+  change. A side benefit worth naming: a cloned platform boots against a
+  database that already has schema AND rows — the production shape (a restart)
+  — where the old path only ever exercised boot-against-virgin-DB. **The
+  connection back to the wave before is the point:** a suite where every test
+  constructs its own environment is exactly what hid the setup-friction finding;
+  making the shared environment cheap is that same fix pointed at the clock.
+  **BUNDLED, and it corrects a figure this log has repeated for waves:** the
+  `visual > task-detail` guard is documented red at "1.54% / 98293 px"; measured
+  now it is **5.04% / 322603 px**, and byte-identical with the two helper files
+  reverted to HEAD, so it is NOT this change. Two things were wrong with the
+  recorded number. It was measured against a STALE `ui/dist` (which goes stale
+  on every branch sync), and rebuilding leaves 5.04% UNCHANGED — which is what
+  proves the drift real rather than a bundle artifact. And the drift is genuine
+  UI evolution the baseline never absorbed: baselines last refreshed 2026-07-26,
+  `ui/src` moved four times after that through 2026-07-30. Four shots refreshed,
+  **each capture READ before being blessed** (refreshing republishes it as a
+  docs screenshot): task-detail gained the flakiness-trend + stability cards,
+  insights the timeframe selector + started-failing-across-branches +
+  got-slower-with-cause + least-stable, run-detail the invocation header +
+  overlapping flamegraph with the critical-path ring, project the ranking panel
+  - duration trends. All four show MORE shipped surface than the images they
+    replace — **the published screenshots were five days behind the product.**
+    Visual is now 10/0, and a second run WITHOUT `VX_UPDATE_SNAPSHOTS` reproduces
+    it, so the baselines are stable and not merely self-consistent with the run
+    that wrote them. The standing hazard is unchanged: this suite SKIPS in CI (no
+    playwright, no dist), so it runs only locally, where a red it absorbs is a red
+    nobody reads.
+
 - **2026-07-30**: **OWNER: "I still never run it. It's too complex to setup…
   Look how easy it is to setup arcane" — and the test suite is WHY nobody
   noticed.** Simulated the first user instead of theorising, and the friction is
