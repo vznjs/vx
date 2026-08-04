@@ -246,6 +246,63 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-04**: **The recorded-not-fixed backlog, worked test-first** (owner:
+  "Add tests first to confirm then fix all"). Four items closed, each CONFIRMED
+  by an executed reproduction BEFORE any fix, and the rest triaged with reasons
+  so nobody re-opens them blind. (1) **`--affected` could not see a
+  `cache.inputs.workspaceFiles` change** — the one item this log had marked
+  BLOCKED BY ORDERING. `docs/cli.md` states the rule as a principle ("input
+  hashing sees it, so `--affected` must too") and a workspace-root-anchored glob
+  broke it: the glob is the documented escape hatch for shared files belonging to
+  NO project, so `projectsContaining` maps the path to nothing. Confirmed by the
+  PAIR that is the defect, since either half alone is consistent with correct
+  behaviour — `--all` re-runs (the key moved) while `--affected` prints "nothing
+  affected". **The ordering really was the hard part** (`affectedProjects` runs
+  during selection, before `prepareRun` loads a single config, and loading them
+  all there would restore the ~200 ms fixed cost scoped loading exists to
+  remove), and it is resolved by **asking only when the question can matter**:
+  only an ORPHAN path — one inside no project — can reach a task through a
+  workspace-anchored glob, so `projectsContaining` now returns the orphans
+  beside the owners and the resolver callback fires for those alone. A run whose
+  every change is in-project never invokes it. The resolver reads `vx-lock.json`
+  FIRST, so CI — where `--affected` matters most and the lock is committed —
+  answers with zero evaluation. **The cost gate is PINNED, not claimed in a
+  comment:** one test drives a counting resolver and requires ZERO calls when
+  every change is in-project, another requires it to be called with EXACTLY the
+  orphan paths. `workspaceGlobsMatch` mirrors `resolveWorkspaceFiles`' partition
+  (leading `!` excludes; a negation-only list matches nothing) so the two
+  surfaces cannot disagree about what a glob reaches. (2) **Output resolution
+  now contains itself.** `cleanOutputs` DELETES whatever `resolveOutputs`
+  returns and `Bun.Glob.scan` walks `..` out of its cwd, so the loader's
+  `..`/absolute rejection was the ONLY thing between a typo'd config and
+  deleting a sibling project's tree — it reads as defence-in-depth, it was a
+  single point of failure. **The confirming tests already existed**, written by
+  an earlier wave to make the guard's necessity concrete: they resolved
+  `../victim/**` to a real file and deleted it. Both now assert the opposite and
+  fail without the change. Lexical containment suffices because `Bun.Glob.scan`
+  does not follow symlinked directories (already pinned in the same file). A
+  third test is a deliberate control — a normal `dist/**` must still resolve —
+  because "resolve nothing" would satisfy both containment assertions while
+  breaking every real config. (3+4) **`/v1/agents` answered any verb** with its
+  capacity JSON (405 now for anything but GET/HEAD) and **`/v1/artifacts?limit=`
+  was the last `Number()` coercion in cloud** (`0x10` → 16, `1e3` → 1000);
+  neither is exploitable — no `Access-Control-Allow-Credentials` exists anywhere
+  in `src/` and `SameSite=Lax` blocks the cookie on a cross-site POST — and both
+  were bounded by clamps, so this is about a surface not teaching a caller that
+  a mutation was accepted or that a knob validates when it only half does.
+  **DELIBERATELY LEFT, with the reason, so the list stays honest:** the
+  all-agents-leave wait is arguably CORRECT for a standing pool (agents rejoin;
+  the submitter can Ctrl-C) and bounding it is a judgment call, not a bug fix;
+  the double-submit `onSubmitterGone` orphan needs a hand-written submitter to
+  reach and was never reproduced; the prune-vs-agent sub-scope asymmetry is
+  recorded as READ FROM SOURCE and explicitly NOT reproduced; the log cap
+  counting chars rather than memory is bounded and degrades to pressure, never a
+  wrong answer; and oldest-failure-stubbed-first is a documented deliberate
+  choice whose inversion is a separate decision. NO CACHE_VERSION bump anywhere
+  — selection is not hashed, and a config that could reach outside a project was
+  already refused by the loader, so no working configuration changes what it
+  resolves. Gates from the ROOT: fmt/lint 0, core **2582/0**, cloud **1255/0**.
+
 - **2026-08-04**: **The analytics router answered a 500 where a 400 belongs, and
   filtered on an empty string where every sibling ignored one** (task #81;
   `analytics-routes.ts`, 525 lines — the layer between untrusted query params and
