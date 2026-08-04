@@ -15,7 +15,11 @@ import {
   type TelemetrySink,
 } from '@vzn/vx'
 import { capFingerprintPayload, cloud } from '../src/plugin.js'
-import { ENVIRONMENTS_VERSION, writeEnvironmentsFile } from '../src/environments.js'
+import {
+  activeEnvironment,
+  ENVIRONMENTS_VERSION,
+  writeEnvironmentsFile,
+} from '../src/environments.js'
 
 // A minimal single-project workspace so a delegated `run()` has real work.
 async function makeWorkspace(): Promise<string> {
@@ -213,6 +217,67 @@ describe('cloud() cache capability', () => {
         },
       )
     } finally {
+      localCache.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('picks the remote cache back up after a down serve returns', async () => {
+    // A long-lived process (`vx watch`) consults this capability once per
+    // cycle. The /v1/meta probe is memoized per origin, and a negative answer
+    // used to be memoized FOREVER — so a session that started while the serve
+    // was down declined the remote cache for the rest of its life, even after
+    // the serve came back. Only the ENVIRONMENT rung probes; an explicit URL
+    // is trusted as-is and never reaches this code.
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-cloud-reprobe-'))
+    const localCache = new Cache(path.join(root, '.vx', 'cache'))
+    // Bind a port, note it, release it — so cycle 1 provably hits nothing.
+    const probeOnly = Bun.serve({ port: 0, fetch: () => new Response('x') })
+    const port = probeOnly.port!
+    await probeOnly.stop(true)
+
+    let serve: ReturnType<typeof Bun.serve> | undefined
+    try {
+      await withCleanConnEnv(
+        {
+          VX_CLOUD_CONFIG: path.join(root, 'environments.json'),
+          // Drive the negative TTL instead of waiting out the real 30s.
+          VX_CLOUD_META_PROBE_TTL_MS: '50',
+        },
+        async () => {
+          // Written INSIDE, because writeEnvironmentsFile targets
+          // `environmentsPath()` — i.e. whatever VX_CLOUD_CONFIG says right now.
+          writeEnvironmentsFile({
+            version: ENVIRONMENTS_VERSION,
+            active: 'e',
+            environments: { e: { url: `http://127.0.0.1:${port}`, token: 'vxc_t' } },
+          })
+          // The connection must RESOLVE, or cycle 1 would decline for the wrong
+          // reason and the test would pass without ever reaching the probe.
+          expect(activeEnvironment()?.url).toBe(`http://127.0.0.1:${port}`)
+
+          const plugin = cloud()
+          expect(await plugin.cache!(cacheCtx(localCache, root))).toBeUndefined()
+
+          let metaHits = 0
+          serve = Bun.serve({
+            port,
+            fetch: (req) => {
+              if (new URL(req.url).pathname !== '/v1/meta')
+                return new Response(null, { status: 404 })
+              metaHits++
+              return Response.json({ cacheWire: 2 })
+            },
+          })
+          await Bun.sleep(80)
+
+          expect(await plugin.cache!(cacheCtx(localCache, root))).toBeInstanceOf(LayeredCache)
+          // The negative answer really EXPIRED — it was re-probed, not replayed.
+          expect(metaHits).toBe(1)
+        },
+      )
+    } finally {
+      if (serve !== undefined) void serve.stop(true)
       localCache.close()
       await rm(root, { recursive: true, force: true })
     }
