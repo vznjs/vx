@@ -246,6 +246,45 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-04**: **A `vx watch` session that started while the serve was down
+  never picked the remote cache back up** — closing a LOW recorded-not-fixed item
+  from the 2026-07-30 `cloud()` audit, which recorded the mechanism but never
+  reproduced it. `serveAdvertisesCacheWire` memoized the `/v1/meta` capability
+  probe per origin **for the life of the process, including a `false`** — and a
+  `false` is usually "the serve was not up when we asked", which a long-lived
+  process outlives. The memo is now **ASYMMETRIC**, because the two answers age
+  differently: a serve that advertises `cacheWire` does not stop mid-session and
+  a stale `true` costs at most one failed request (LayeredCache degrades a remote
+  error to a miss and never fails a run), so `true` is still kept for the
+  process; `false` expires after 30 s — long enough that a watch loop with
+  sub-second cycles does not probe per cycle, short enough that a returning serve
+  is picked up. The entry is held for the TTL **while in flight**, so concurrent
+  callers in one run still share the single GET. Degradation-only in both
+  directions: this decides whether the remote cache is WIRED, never whether an
+  answer is correct. Differential: 1 fail without the fix, **44/0** with it, and
+  the pin asserts the probe was RE-ISSUED (`metaHits === 1`) rather than merely
+  that the second call succeeded. **Three mistakes of mine, two of which made a
+  probe VACUOUS, all caught by the failure side rather than by reading:** the
+  first repro set `VX_CLOUD_URL` and showed no defect — that is the EXPLICIT
+  rung, trusted as-is, which never probes, and only the ENVIRONMENT rung reaches
+  this code (the recorded note said exactly that and I ran past it); the second
+  used `VX_CLOUD_ENVIRONMENTS` when the variable is `VX_CLOUD_CONFIG`, so no
+  connection resolved and the capability declined for a completely different
+  reason — a repro that "reproduced" the defect while never reaching it; and
+  `writeEnvironmentsFile` takes ONE argument and writes to `environmentsPath()`,
+  so calling it as `(path, file)` BEFORE setting `VX_CLOUD_CONFIG` wrote to the
+  REAL user config path (caught and removed; the file's entire content was the
+  path string I passed, so nothing pre-existing was lost). That last one is why
+  the test writes the environments file INSIDE the clean-env block and asserts
+  `activeEnvironment()` resolves BEFORE its first assertion — `toBeUndefined()`
+  on cycle 1 cannot distinguish "probed and declined" from "there was no
+  connection at all", the same assert-the-exact-thing lesson the artifact-store
+  wave recorded. **The transferable rule: a probe that reaches the wrong code
+  path fails identically to one that reaches the right path and finds the bug** —
+  assert the precondition, not just the outcome. NO CACHE_VERSION/SCHEMA/wire
+  bump. Gates from the ROOT: fmt/lint 0, cloud **1235 pass / 0 fail** — the first
+  fully green cloud suite, since the visual baseline landed in the same wave.
+
 - **2026-08-04**: **Every suite was re-deriving the same admin account from
   scratch — the argon2 registration alone was half of a 697 ms platform boot**
   (owner: "Don't run each test is seperate env what the heck. Optimize all the
