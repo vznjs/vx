@@ -274,9 +274,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       })
     : await resolveCache(
         plugins,
-        localCache,
         { workspaceRoot, cacheDir, warn: (m) => log.status(m), localCache, policy },
-        log,
         () => localCache,
       )
   // Ask the LAYER, don't infer. Identity against `localCache` answers a
