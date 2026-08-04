@@ -46,7 +46,11 @@ export interface HostContext {
  * `dirty: null` when unavailable. Each field degrades to null
  * independently — telemetry never fails a run.
  */
-export function captureGitContext(workspaceRoot: string, dirty: boolean | null = null): GitContext {
+export function captureGitContext(
+  workspaceRoot: string,
+  dirty: boolean | null = null,
+  env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+): GitContext {
   let commitSha: string | null = null
   let branch: string | null = null
   try {
@@ -60,12 +64,41 @@ export function captureGitContext(workspaceRoot: string, dirty: boolean | null =
       const sha = lines[0]?.trim()
       const br = lines[1]?.trim()
       if (sha) commitSha = sha
-      if (br) branch = br
+      // `--abbrev-ref HEAD` answers the literal string `HEAD` when nothing is
+      // checked out. Recording that verbatim INVENTS a branch: every detached
+      // run shares a pseudo-branch "HEAD", which is how `actions/checkout`
+      // leaves a pull_request build. The trust boundary (`branch ===
+      // defaultBranch`) means it is at least never mistaken for trunk, but
+      // every PR collapses into one scope — so one PR's timings feed another's
+      // baseline, cross-branch regression detection counts them as a single
+      // branch, and the dashboard's branch column reads "HEAD".
+      if (br && br !== 'HEAD') branch = br
     }
   } catch {
     // git unavailable / non-repo: both fields stay null.
   }
+  // A detached CI checkout still knows the branch it came from; the provider
+  // says so even though git cannot. Same most-reliable-first ladder as
+  // `captureDefaultBranch`, and consulted only when git had no answer — an
+  // attached branch is ground truth for what this working tree IS, so a stale
+  // exported variable must never relabel it.
+  branch ??= ciBranch(env)
   return { commitSha, branch, dirty }
+}
+
+/**
+ * The branch a CI provider says this checkout came from, or null.
+ *
+ * On a GitHub pull_request `GITHUB_REF_NAME` is `<n>/merge` — the merge ref,
+ * not a branch anyone works on — so `GITHUB_HEAD_REF` (the contributor's
+ * actual branch, set only for pull_request events) has to win.
+ */
+function ciBranch(env: NodeJS.ProcessEnv | Record<string, string | undefined>): string | null {
+  for (const key of ['GITHUB_HEAD_REF', 'GITHUB_REF_NAME', 'CI_COMMIT_REF_NAME']) {
+    const v = env[key]
+    if (typeof v === 'string' && v.trim().length > 0) return v.trim()
+  }
+  return null
 }
 
 /**
