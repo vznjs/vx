@@ -326,6 +326,96 @@ describe('stale cache hits', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a workspace-anchored OUTPUT landing in the consumer project is not classified stable',
+    async () => {
+      // `cache.outputs.workspaceFiles` is root-anchored and deliberately
+      // boundary-IGNORING — it may write inside ANOTHER project's dir. So a
+      // consumer in that project, reading the same path with an ordinary
+      // PROJECT-RELATIVE `cache.inputs.files`, has a preliminary key until the
+      // producer runs.
+      //
+      // The stability gate missed exactly this pairing: `upstreamOutputProjects`
+      // holds the PRODUCER's project (`gen`), never the consumer's (`app`), and
+      // the workspace-reader clause does not fire because the consumer reads
+      // project-relative. Classified stable, its key was derived UP FRONT from
+      // the previous generation's bytes and reused verbatim by execute-task —
+      // and the `anyWorkspaceOutputs` mitigation only disables the restore
+      // tier, not probe reuse, which is the half that serves the stale bytes.
+      await write(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
+      )
+      await write(path.join(root, 'pkgs/gen/package.json'), JSON.stringify({ name: 'gen' }))
+      await write(
+        path.join(root, 'pkgs/app/package.json'),
+        JSON.stringify({ name: 'app', dependencies: { gen: '*' } }),
+      )
+      await write(
+        path.join(root, 'pkgs/gen/vx.config.mjs'),
+        [
+          'export default { tasks: { codegen: {',
+          '  exec: { command: "mkdir -p ../app/gen out && cat src/version.txt > ../app/gen/out.txt && cp src/version.txt out/marker.txt" },',
+          '  cache: {',
+          '    inputs: { files: ["src/**"] },',
+          '    outputs: { files: ["out/**"], workspaceFiles: ["pkgs/app/gen/**"] },',
+          '  },',
+          '} } }',
+          '',
+        ].join('\n'),
+      )
+      await write(
+        path.join(root, 'pkgs/app/vx.config.mjs'),
+        [
+          'export default { tasks: { build: {',
+          '  dependsOn: ["gen#codegen"],',
+          '  exec: { command: "cat gen/out.txt" },',
+          // `tasks: []` decouples the upstream key fold — the documented
+          // content-invalidation pattern. Without it the upstream's own input
+          // key cascades into this key and masks the defect, which is exactly
+          // how the 2026-07-19 stale hit had to be reproduced too.
+          '  cache: { inputs: { files: ["gen/**"], tasks: [] }, outputs: { files: ["dist/**"] } },',
+          '} } }',
+          '',
+        ].join('\n'),
+      )
+      // Seeded with a value no cycle uses, so every cycle's commit is real.
+      await write(path.join(root, 'pkgs/gen/src/version.txt'), 'v0')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 't@vx.local')
+      git(root, 'config', 'user.name', 'vx')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'initial')
+
+      // Assert the invariant at EVERY cycle rather than at a fixed index. The
+      // collision's position drifts between runs (observed at cycle 5, 6 and 9
+      // across otherwise identical sequences), so a test that checks one
+      // nominated cycle passes intermittently on the unfixed tree — measured
+      // 1 failure in 5. The invariant itself never drifts: whatever the task
+      // reports must equal what the producer actually left on disk.
+      const cycle = async (version: string): Promise<void> => {
+        await write(path.join(root, 'pkgs/gen/src/version.txt'), version)
+        git(root, 'add', '-A')
+        git(root, 'commit', '-qm', version)
+        const out = vx(root, 'run', 'build', '--all', '--output-logs', 'full')
+        const reported = out
+          .split('\n')
+          .map((l) => l.trim())
+          .find((l) => /^v[ABC]$/.test(l))
+        const disk = await readFile(path.join(root, 'pkgs/app/gen/out.txt'), 'utf8')
+        expect({ version, reported }).toEqual({ version, reported: disk })
+      }
+
+      // Three distinct generations, cycled. The producer rewrites the
+      // consumer's input every run, so the consumer must never replay an
+      // older generation's output.
+      for (const v of ['vA', 'vB', 'vC', 'vA', 'vB', 'vC', 'vA', 'vB', 'vC']) {
+        await cycle(v)
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('parseCheckAttrOutput', () => {

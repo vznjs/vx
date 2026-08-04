@@ -175,8 +175,17 @@ export function dependsOnSiblingOutputs(
   // unstable-irrelevant (caller filters on cacheEnabled).
   if (cache === undefined) return false
   if (upstreamOutputProjects.has(node.projectName)) return true
+  // A root-anchored output is boundary-IGNORING by design, so it can land
+  // inside THIS task's own project dir — where an ordinary project-relative
+  // input reads it. Neither other clause sees that: `upstreamOutputProjects`
+  // holds the PRODUCER's project, not this one, and the reader clause below
+  // requires this task to read workspace-anchored inputs, which it need not.
+  // That gap was a real stale hit (a producer writing `pkgs/app/gen/**` while
+  // `app` read `gen/**` project-relative), so the mere presence of a
+  // workspace-output producer upstream makes the key preliminary.
+  if (hasWsOutputUpstream) return true
   const readsWorkspaceFiles = (cache.inputs?.workspaceFiles?.length ?? 0) > 0
-  if (readsWorkspaceFiles && (upstreamOutputProjects.size > 0 || hasWsOutputUpstream)) return true
+  if (readsWorkspaceFiles && upstreamOutputProjects.size > 0) return true
   return false
 }
 
