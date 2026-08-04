@@ -246,6 +246,48 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-07-30**: **OWNER: "I still never run it. It's too complex to setup…
+  Look how easy it is to setup arcane" — and the test suite is WHY nobody
+  noticed.** Simulated the first user instead of theorising, and the friction is
+  exact: `vx-cloud server` refuses to boot listing **SEVEN mandatory env vars**;
+  the documented easy path is a ~60-line compose YAML you copy out of a docs
+  page by hand; and the last step is literally
+  `VX_CLOUD_SECRET: '${VX_CLOUD_SECRET:?set VX_CLOUD_SECRET}'` — the "now provide
+  a key" step the owner called stupid. Against Arcane's one `docker run`, that is
+  four manual steps before anything renders. **The root cause is a decision, not
+  a bug:** the 2026-07-11 platform pivot deliberately made config mandatory ("boot
+  REFUSES without full config… no tokenless mode") and §7.4 made S3 mandatory.
+  Right for a multi-tenant production platform; it also made the try-it path
+  impossible. **The diagnosis worth keeping is why it went unseen for a month:
+  every test boots its OWN ephemeral Postgres + fake S3, so the suite proves the
+  platform works by constructing exactly the environment a human cannot.** 1232
+  green cloud tests and a zero-user install path is not a contradiction — it is
+  the test infra hiding the gap. A suite that never walks the documented setup
+  cannot see that the setup is the product's front door. **Shipped: a setup
+  GENERATOR on the docs site** (owner's own suggestion, chosen over the three
+  options I proposed — all three were declined). `/cloud/setup/` emits a
+  COMPLETE `docker-compose.yml` with the secret already generated in the
+  browser via `crypto.getRandomValues` (static site, no backend, so it cannot
+  leave); "Try it locally" bundles Postgres + MinIO, "Production" drops them and
+  exposes the seven real fields; copy buttons for the file and the command.
+  Mounted through `Head.astro`'s existing guarded-`<script>` pattern (the same
+  slot that lazy-loads mermaid only on diagram pages), because Starlight 0.40
+  ships no `StarlightPage` and MDX is not configured — a plain markdown mount
+  point plus one script is the shape this repo already proves. **Verified in a
+  REAL browser, not by building:** generator mounts, secret is 64 hex chars, the
+  output contains NO `${…}` and NO `openssl` step, regenerate changes it,
+  production mode drops the bundled services, an edited field flows into the
+  YAML, zero console errors. **A probe bug of MINE caught by the failure side:**
+  my first browser check reported `generator mounted: false` — but `base` is
+  `/vx`, so my static server mapped `/vx/_astro/…` to `dist/vx/_astro/…` and I
+  was measuring a 404. The assertion `no placeholder left: true` PASSED
+  vacuously on the empty string, which is exactly the "assert the exact set, not
+  the absence of a string" lesson from the artifact-store wave, one wave later.
+  **STILL OPEN, owner-directed:** stop each test booting a separate environment
+  ("Don't run each test is seperate env what the heck. Optimize all the
+  things") — the per-suite ephemeral-pg clone is the thing to collapse, and it
+  is the same machinery that hid this finding.
+
 - **2026-07-30**: **A clean audit of the artifact store's trust scopes — ZERO
   defects — and the entry worth reading is that I got the MECHANISM wrong three
   times and the differential caught each one** (task #80; `artifact-store.ts`,

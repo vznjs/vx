@@ -77,6 +77,7 @@ export default defineConfig({
           label: 'vx Cloud',
           items: [
             { label: 'Overview', link: '/cloud/overview/' },
+            { label: 'Setup generator', link: '/cloud/setup/' },
             { label: 'Self-hosting', link: '/cloud/self-hosting/' },
             { label: 'Dashboard', link: '/cloud/dashboard/' },
             { label: 'Distributed CI', link: '/cloud/distributed-ci/' },
