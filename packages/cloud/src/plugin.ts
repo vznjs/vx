@@ -358,15 +358,32 @@ function buildCloudCache(
   })
 }
 
-// The /v1/meta capability probe, memoized per origin for the process — the
-// cache capability is consulted once per run, so one short-bounded GET is
-// the whole cost, and only when a connected environment exists at all.
-const metaProbeMemo = new Map<string, Promise<boolean>>()
+// The /v1/meta capability probe, memoized per origin — the cache capability is
+// consulted once per run, so one short-bounded GET is the whole cost, and only
+// when a connected environment exists at all.
+//
+// The memo is ASYMMETRIC, because the two answers age differently. A serve that
+// advertises `cacheWire` does not stop mid-session, and a stale `true` costs at
+// most one failed request (LayeredCache degrades a remote error to a miss and
+// never fails a run) — so it is kept for the process. A `false` is usually
+// "the serve was not up when we asked", which a LONG-LIVED process outlives: a
+// `vx watch` session started while the serve was down used to decline the
+// remote cache for the rest of its life, even after the serve came back.
+// Expiring the negative answer picks it back up; the TTL keeps a watch loop
+// whose cycles are sub-second from paying a probe per cycle.
+const NEGATIVE_PROBE_TTL_MS = 30_000
+interface MetaProbe {
+  probe: Promise<boolean>
+  /** Infinity once the probe resolves true. */
+  expiresAt: number
+}
+const metaProbeMemo = new Map<string, MetaProbe>()
 
 function serveAdvertisesCacheWire(url: string): Promise<boolean> {
   const origin = url.replace(/\/+$/, '')
+  const now = Date.now()
   const existing = metaProbeMemo.get(origin)
-  if (existing) return existing
+  if (existing !== undefined && existing.expiresAt > now) return existing.probe
   const probe = (async () => {
     // Clearable timer, not AbortSignal.timeout (same not-unref'd-timer
     // reason as the ingest sink).
@@ -384,8 +401,22 @@ function serveAdvertisesCacheWire(url: string): Promise<boolean> {
       clearTimeout(timer)
     }
   })()
-  metaProbeMemo.set(origin, probe)
+  // Held for the TTL while in flight, so concurrent callers in one run share
+  // the single GET; promoted to permanent only if the capability is there.
+  const entry: MetaProbe = { probe, expiresAt: now + negativeProbeTtlMs() }
+  metaProbeMemo.set(origin, entry)
+  void probe.then((advertised) => {
+    if (advertised) entry.expiresAt = Infinity
+  })
   return probe
+}
+
+/** Read per call so a test can drive the expiry instead of waiting it out. */
+function negativeProbeTtlMs(): number {
+  const raw = process.env['VX_CLOUD_META_PROBE_TTL_MS']
+  if (raw === undefined || raw === '') return NEGATIVE_PROBE_TTL_MS
+  // Digits-only by construction, so a non-negative check would be dead code.
+  return parseDecimalInt(raw) ?? NEGATIVE_PROBE_TTL_MS
 }
 
 function assertWellFormedUrl(value: string | undefined, field: string): void {
