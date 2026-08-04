@@ -246,6 +246,59 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-04**: **The one function that decides whether a plugin's last chance
+  to ship its records was missed said nothing when it was** (task #84;
+  `plugin-host.ts`, 166 lines against ONE suite — and `teardownPlugins`, the
+  function this repo already shipped once as documented API core never called
+  (2026-07-02), had **zero** tests of its own). **The target was picked by
+  measurement, and the FIRST measurement was wrong** — a lines-per-assertion
+  sweep keyed on direct module imports ranked `cli/migrate-{nx,turbo}.ts` at
+  "0 assertions", which is false: `tests/migrate.test.ts` is 31 tests / 118
+  expects driving the emitters through a REAL subprocess, so nothing imports
+  them by symbol. Re-keyed on exported symbols, `plugin-host.ts` is the
+  genuinely thinnest load-bearing seam left. **CONFIRMED by repro, and the tell
+  was the function disagreeing with itself.** `teardownPlugins` called
+  `await settleWithin(...)` and **DISCARDED the return value** — while
+  `settleWithin`'s own docstring says it returns false "when the deadline won —
+  **the caller decides whether a lost result is worth reporting**". So a flush
+  that REJECTS warned clearly (`flush failed: flush boom`) and a flush that
+  HANGS was completely silent, in the same function, three lines apart. And the
+  documented sibling disagrees too: `telemetry.ts`'s flush — bounded, per its
+  own comment, "for the same reason the `eventSink` sibling is bounded in
+  plugin-host.ts" — captures the verdict and warns **"buffered records lost"**.
+  A flush is a sink's LAST chance to ship what it buffered, so the timeout is
+  precisely the case worth reporting. Both flush and teardown now report,
+  naming the plugin and the bound. **CONFIRMED, second: a sink that throws was
+  re-entered forever.** The `catch {}` was bare — measured **202 invocations**
+  of a sink that threw on every single one, zero warnings, never disabled —
+  while the telemetry source `disabled.add(sink)`s on the FIRST throw and skips
+  it thereafter. Same seam, same reason, opposite behaviour; now matched (warn
+  once by name, disable for the run). The isolation the rule exists for is
+  untouched — a throwing sink still cannot break a run, and a healthy sibling
+  still gets every event (pinned). **MEASURED and deliberately LEFT:** the bound
+  is PER CALL and the phases sequential, so at the 3s default 1/2/3
+  simultaneously-hung plugins cost **3.0/6.0/9.0s**. Not changed to the
+  telemetry sibling's concurrent race, because a plugin's teardown may release
+  something a later one still holds and declaration order is the contract this
+  file keeps elsewhere — but with the fix each hung call now NAMES itself, so
+  the delay is attributable rather than mysterious; the composition is recorded
+  at the site with its measurement. **REFUTED by executed probe, so nobody
+  re-audits:** the lifecycle IS reached on a run that FAILED — the case whose
+  records you most want shipped — verified end-to-end through a real `run()` of
+  a task exiting 7 (`['flush','teardown']`, `ok:false`), and pinned so it stays
+  that way. **Bundled:** `resolveCache` took two parameters it never read
+  (`_localCache`, `_log`) that DUPLICATE what `ctx` already carries
+  (`ctx.localCache`, `ctx.warn`) — a signature that tells a caller those
+  arguments matter when the body cannot see them; dropped (not on the public
+  façade, one production caller). Differentials, each isolating its own fix:
+  reverting the timeout reporting fails exactly 2, reverting the disable fails
+  exactly 1, and the other 8 are deliberate controls that must pass BOTH ways —
+  the bound stays real, every flush still precedes every teardown, a hung
+  plugin does not cost its neighbour its teardown, and a hook-less plugin is
+  still silent. NO CACHE_VERSION/SCHEMA/wire/migration bump — this changes what
+  is SAID about a dropped result, never what is stored or derived. Gates from
+  the ROOT: fmt/lint 0, core **2593/0** (+11).
+
 - **2026-08-04**: **The recorded-not-fixed backlog, worked test-first** (owner:
   "Add tests first to confirm then fix all"). Four items closed, each CONFIRMED
   by an executed reproduction BEFORE any fix, and the rest triaged with reasons

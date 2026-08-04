@@ -5,11 +5,10 @@
 //
 // See docs/design/core-cloud-split-2026-06.md §5.1.
 
-import type { Cache, CacheLayer } from '../cache/index.js'
+import type { CacheLayer } from '../cache/index.js'
 import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import type { EventBus } from './events.js'
 import { wireForwarder } from './events.js'
-import type { Logger } from './logger.js'
 import type {
   BackendContext,
   CacheContext,
@@ -62,9 +61,7 @@ export async function resolveBackend(
  */
 export async function resolveCache(
   plugins: readonly VxPlugin[],
-  _localCache: Cache,
   ctx: CacheContext,
-  _log: Logger,
   fallback: () => CacheLayer,
 ): Promise<CacheLayer> {
   for (const plugin of plugins) {
@@ -109,13 +106,24 @@ export async function subscribeEventSinks(
     }
     if (sink === undefined) continue
     sinks.push({ pluginName: plugin.name, sink })
+    // A sink is disabled the first time it throws, matching the telemetry
+    // source's rule for the same reason: a sink that throws once is broken,
+    // and re-entering it for every remaining event of the run only reaches an
+    // identical throw. Swallowing silently keeps the isolation the run needs
+    // ("observability must never break a run") while leaving the operator with
+    // no way to learn their sink never ran — so say it once, by name.
+    let disabled = false
     disposers.push(
       bus.subscribe(
         wireForwarder((event) => {
+          if (disabled) return
           try {
             sink.onEvent(event)
-          } catch {
-            // observability is isolated — a sink fault can't break the run
+          } catch (err) {
+            disabled = true
+            ctx.warn(
+              `[vx] plugin '${plugin.name}' event sink threw; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+            )
           }
         }),
       ),
@@ -137,6 +145,14 @@ export async function subscribeEventSinks(
  * call is time-bounded by {@link teardownTimeoutMs}. Runs on the
  * normal completion path only; the finally-path disposers just
  * unsubscribe.
+ *
+ * The bound is PER CALL and the phases are sequential, so the worst case
+ * composes: measured at the 3s default, 1/2/3 simultaneously-hung plugins
+ * cost 3.0/6.0/9.0s. That is deliberate rather than overlooked — the
+ * telemetry sibling races its sinks concurrently, but a plugin's teardown
+ * may release something a later one still holds, and declaration order is
+ * the contract this file keeps elsewhere. Each hung call now names itself,
+ * so the delay is attributable instead of mysterious.
  */
 export async function teardownPlugins(
   plugins: readonly VxPlugin[],
@@ -145,8 +161,21 @@ export async function teardownPlugins(
 ): Promise<void> {
   for (const { pluginName, sink } of sinks) {
     if (sink.flush === undefined) continue
+    const ms = teardownTimeoutMs()
     try {
-      await settleWithin(Promise.resolve(sink.flush()), teardownTimeoutMs())
+      const settled = await settleWithin(Promise.resolve(sink.flush()), ms)
+      // `settleWithin` returns false when the deadline won, and its docstring
+      // leaves it to the caller to decide whether a lost result is worth
+      // reporting. It is: a flush is the sink's LAST chance to ship what it
+      // buffered, so a timeout means those records are gone. Dropping the
+      // verdict made this function speak for a rejecting flush and stay silent
+      // for a hanging one, and made it disagree with its documented sibling in
+      // telemetry.ts, which reports exactly this.
+      if (!settled) {
+        warn(
+          `[vx] plugin '${pluginName}' event sink flush timed out after ${ms}ms; buffered records lost`,
+        )
+      }
     } catch (err) {
       warn(
         `[vx] plugin '${pluginName}' event sink flush failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -155,8 +184,15 @@ export async function teardownPlugins(
   }
   for (const plugin of plugins) {
     if (plugin.teardown === undefined) continue
+    const ms = teardownTimeoutMs()
     try {
-      await settleWithin(Promise.resolve(plugin.teardown()), teardownTimeoutMs())
+      const settled = await settleWithin(Promise.resolve(plugin.teardown()), ms)
+      // Same rule as the flush above. A teardown that never settles has left
+      // whatever it owns un-released, and the run exits anyway — silence would
+      // present that as a clean shutdown.
+      if (!settled) {
+        warn(`[vx] plugin '${plugin.name}' teardown timed out after ${ms}ms; it did not complete`)
+      }
     } catch (err) {
       warn(
         `[vx] plugin '${plugin.name}' teardown failed: ${err instanceof Error ? err.message : String(err)}`,

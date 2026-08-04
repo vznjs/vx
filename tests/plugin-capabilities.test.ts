@@ -113,13 +113,11 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     try {
       const resolved = await resolveCache(
         plugins,
-        local,
         {
           ...baseCtx,
           localCache: local,
           policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
         },
-        makeSilentLogger(() => {}),
         () => {
           fallbackCalled = true
           return local
@@ -140,13 +138,11 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     try {
       const resolved = await resolveCache(
         [],
-        local,
         {
           ...baseCtx,
           localCache: local,
           policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
         },
-        makeSilentLogger(),
         () => {
           fallbackCalled = true
           return local
