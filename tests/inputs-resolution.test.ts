@@ -561,7 +561,7 @@ describe('the hard project boundary holds in both directions', () => {
 // rejections live entirely in the loader, and the tests below exist to make the
 // cost of removing them concrete.
 // ─────────────────────────────────────────────────────────────────────────
-describe('output resolution has no containment of its own — the loader guard is the guard', () => {
+describe('output resolution contains itself — the loader guard is now the SECOND layer', () => {
   let root: string
   let projectDir: string
   let victim: string
@@ -578,39 +578,50 @@ describe('output resolution has no containment of its own — the loader guard i
     await rm(root, { recursive: true, force: true })
   })
 
-  it('a `..` output glob really does escape the project and delete outside it', async () => {
-    // This is why `hasParentSegment` exists in the loader. `Bun.Glob.scan`
-    // happily walks `..` out of its cwd, and `cleanOutputs` deletes what comes
-    // back — so the loader rejection is the ONLY thing between a typo'd config
-    // and deleting a sibling project's source tree. Demonstrated here on a
-    // fixture-contained victim so the guard's necessity is a fact rather than a
-    // claim in a comment.
-    //
-    // (The loader rejection itself is asserted in tests/project-loader.test.ts;
-    // this is the other half — what it is protecting.)
+  it('a `..` output glob resolves to NOTHING and deletes nothing', async () => {
+    // FIXED 2026-08-04 — this previously asserted the OPPOSITE, as a
+    // demonstration that the loader's `hasParentSegment` rejection was the ONLY
+    // thing between a typo'd config and deleting a sibling project's source
+    // tree. `Bun.Glob.scan` still walks `..` out of its cwd; what changed is
+    // that `resolveOutputs` now drops anything outside the project before
+    // `cleanOutputs` can delete it. The loader rejection remains, and is now
+    // genuinely defence-in-depth rather than a single point of failure.
     const escaped = await resolveOutputs({
       projectDir,
       outputs: ['../victim/**'],
       nestedProjectDirs: [],
     })
-    expect(escaped).toEqual([path.join(victim, 'precious.txt')])
+    expect(escaped).toEqual([])
 
     await cleanOutputs({ projectDir, outputs: ['../victim/**'], nestedProjectDirs: [] })
-    expect(existsSync(path.join(victim, 'precious.txt'))).toBe(false)
+    expect(existsSync(path.join(victim, 'precious.txt'))).toBe(true)
   })
 
-  it('an ABSOLUTE output glob resolves outside the project too', async () => {
-    // Same story for the absolute form, and worse in scale: an absolute glob is
-    // bounded only by the filesystem. Deliberately resolve-only — running
-    // `cleanOutputs` on an absolute glob is the destructive act this guard
-    // prevents, and a test must not perform it.
+  it('an ABSOLUTE output glob resolves to NOTHING too', async () => {
+    // Same story for the absolute form, which is worse in scale — an absolute
+    // glob is bounded only by the filesystem. Also previously asserted the
+    // opposite; the containment filter drops it for the same reason.
     const escaped = await resolveOutputs({
       projectDir,
       outputs: [`${victim}/**`],
       nestedProjectDirs: [],
     })
-    expect(escaped).toEqual([path.join(victim, 'precious.txt')])
+    expect(escaped).toEqual([])
     expect(existsSync(path.join(victim, 'precious.txt'))).toBe(true)
+  })
+
+  it('a NORMAL output glob is unaffected — the filter is containment, not a ban', () => {
+    // The control. Without it, "resolve nothing" would satisfy every assertion
+    // above while breaking every real config.
+    return (async () => {
+      await write(path.join(projectDir, 'dist/app.js'), 'built')
+      const inside = await resolveOutputs({
+        projectDir,
+        outputs: ['dist/**'],
+        nestedProjectDirs: [],
+      })
+      expect(inside).toEqual([path.join(projectDir, 'dist/app.js')])
+    })()
   })
 
   it('a symlinked output dir resolves to NOTHING — Bun.Glob.scan does not follow it', async () => {

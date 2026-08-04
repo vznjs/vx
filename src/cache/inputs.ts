@@ -275,7 +275,27 @@ export async function resolveOutputs(args: {
   const excludeGlobs = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs).map(
     (p) => new Bun.Glob(p),
   )
-  return [...(await scanUnion(args.outputs, excludeGlobs, args.projectDir))].sort()
+  const scanned = [...(await scanUnion(args.outputs, excludeGlobs, args.projectDir))]
+  // Containment, enforced HERE and not only at the loader. `cleanOutputs`
+  // DELETES whatever this returns, and `Bun.Glob.scan` happily walks `..` out
+  // of its cwd — so until now the loader's `..`/absolute rejection was the ONLY
+  // thing between a typo'd config and deleting a sibling project's tree, which
+  // reads as defence-in-depth but was a single point of failure. The resolver
+  // that feeds the delete now refuses to name a path outside the project, so
+  // any future caller reaching it by another route (a programmatic embedder, a
+  // config source that skips the loader) is contained by construction.
+  //
+  // Lexical is sufficient: `Bun.Glob.scan` does not follow symlinked
+  // directories (pinned in tests/inputs-resolution.test.ts), so a scanned path
+  // cannot leave the project through a symlink without already being outside
+  // it lexically.
+  return scanned.filter((p) => isInside(args.projectDir, p)).sort()
+}
+
+/** Is `abs` the directory `dir` itself or something beneath it? */
+function isInside(dir: string, abs: string): boolean {
+  if (abs === dir) return true
+  return abs.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep)
 }
 
 /**
