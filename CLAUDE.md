@@ -246,6 +246,40 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-04**: **A config with a typo armed a 30-second timer that killed a
+  LATER watch cycle** (task #86; `config-eval.ts`, the next surface on the
+  lines-per-assertion ranking — the Worker seam built after the 2026-07-26
+  stale-config defect, where a wrong answer is vx running a command the user did
+  not write). **CONFIRMED by repro before reading the file's own notes:**
+  `clearTimeout(timer)` sat between the `await` and the `finally`, so a REJECTED
+  evaluation skipped it and left the deadline armed for its whole budget. When
+  that orphan fired it ran `rejectAll()` and `worker.terminate()` against
+  whatever worker was current BY THEN — an unrelated healthy round. Measured at a
+  500 ms budget: a later evaluation was killed **142 ms after it started**, with
+  the message `config worker did not answer within 500ms` — a budget nobody set
+  for it, for a config that was fine. The reachable shape is the one this module
+  exists for: fix a typo during `vx watch`, and the failed load leaves a timer
+  armed for the DEFAULT 30 s. **The defect was already RECORDED — and finding
+  that AFTER reproducing it independently is the useful part.** A prior wave had
+  pinned it as current behaviour (`poisons a LATER evaluation with a stale
+deadline — DEFECT, pinned`) and written the remedy in the test: "the fix is one
+  line — move `clearTimeout` into the `finally` — after which this test fails and
+  should be deleted." Done, and the pin flipped to its inverse (a rejected
+  evaluation must NOT poison a later one, asserted with the healthy round
+  deliberately still in flight when the stale timer would have fired). **The
+  cleanup is the measure of the fix:** the file carried a `drainArmedDeadline`
+  helper whose entire job was sleeping out orphaned timers so this suite could
+  not poison its own later cases "or another file's, since the suite shares one
+  process" — plus an `afterEach` draining after every error case. Both are gone;
+  a rejection now clears its own timer. One hoist was needed and the compiler
+  caught it: `timer` was declared inside the `try`, so the `finally` could not
+  see it. Differential: reverting the one-line move fails **6** — the new pin plus
+  five unrelated cases poisoned by leaked timers from earlier tests in the same
+  file, which is the cross-test contamination the removed workaround existed to
+  suppress, and a fair measure of the blast radius. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump — this changes when a timer is
+  cleared, never what is evaluated, stored or derived.
+
 - **2026-08-04**: **CACHE-CORRECTNESS: a workspace-anchored OUTPUT landing in a
   consumer's own project dir was classified STABLE — a real stale hit, and the
   entry worth reading is that I got the CAUSE wrong twice on the way** (task
