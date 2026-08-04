@@ -246,6 +246,79 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-04**: **The analytics router answered a 500 where a 400 belongs, and
+  filtered on an empty string where every sibling ignored one** (task #81;
+  `analytics-routes.ts`, 525 lines — the layer between untrusted query params and
+  the tenant-clamped SQL, and the one whose `isAnalyticsSurface`/dispatcher pair
+  has drifted three times). **Five CONFIRMED, and the tenant boundary REFUTED on
+  every axis.** (1) **A NUL byte was a 500 on 27 of 28 shapes.** `%00` is a
+  WELL-FORMED escape, so it decodes to a valid JS string and sails past the
+  malformed-escape guard the suite already had (`analytics-route-params.test.ts`
+  covers `%`/`%zz` → URIError → 400 — ONE STEP short); Postgres then refuses it in
+  `text` (SQLSTATE 22021, read off `errno` — `code` is the generic
+  `ERR_POSTGRES_SERVER_ERROR`). **The tell was not the statistic but that the
+  WRITE routes in the same file already answer 400 for exactly this input** via
+  `errResponse` — the read side was disagreeing with itself. Mapped at the ONE
+  choke point rather than per-param, because that covers query params, path
+  segments and any future param BY CONSTRUCTION, and a list of guarded params is
+  precisely this router's drift class. Not a wrong answer and NOT a DoS —
+  measured, a 60-request storm leaves the pool healthy; what it costs is the
+  operator's 5xx signal. (2) **An empty free-text param FILTERED instead of being
+  ignored.** `hash` and `search` guarded `!== ''`; `project`/`task`/`runId`/
+  `branch`/`tag*` guarded only `!== null`, so `curl ".../v1/runs?project=$PROJECT"`
+  with an unset variable answered a **confident empty list** for a workspace full
+  of runs while the same shape on `?hash=` was correctly ignored — a caller could
+  not know which rule a param followed. One `textParam` helper decides it once;
+  the string-side twin of the half-strict numeric knobs fixed 2026-07-30. (3)
+  **`/v1/hermeticity` was the only limit never reaching `clampInt`** — it ROUNDED
+  a fractional limit (2.7 → 3) where every sibling floors (→ 2), and read
+  `''`/`0`/`-1` as "default 50" where siblings read 1. **Its own test asserted
+  only HTTP STATUS, which is 200 either way, so it was structurally unable to
+  observe either divergence** — the same "assert the thing that differs" lesson as
+  the artifact-store wave. Also clamped INSIDE the method so a future non-HTTP
+  caller is bounded by the method rather than by whoever calls it. (4)
+  **`/v1/workspaces` ignored a workspace-scoped token's pin**, so a repo-scoped CI
+  token enumerated every sibling workspace's id/name/slug/run-count — intra-org,
+  never a tenant break, but every other read route honours the pin, so it was a
+  widening nobody chose. (5) **`/v1/runs` exposed `listRuns`' 100_000 ceiling,
+  200x its siblings** (measured 26 MB materialised per request). That ceiling
+  exists for `getRun`'s internal reuse (the 2026-07-13 truncation fix), not for a
+  client knob; capped for the ROUTE at 5000 — **chosen by READING the client**,
+  whose largest request is 2000 (the Runs project facet), so a naive 500 cap would
+  have broken a shipped surface. **RECORDED, NOT FIXED:** read routes answer any
+  verb — same class as the recorded `/v1/agents` note, and not exploitable (no
+  `Access-Control-Allow-Credentials` anywhere in `src/`, so the wildcard
+  allow-origin cannot expose a credentialed response; `SameSite=Lax` blocks the
+  cookie on a cross-site POST). **REFUTED by executed probe, so nobody
+  re-audits:** cross-org reads via `?ws=`/`?org=` (39 routes, both directions,
+  secrets planted in the other org); per-route SQL clamps reached with a FOREIGN
+  PATH ID under the caller's OWN valid workspace — the sharper test, since the
+  gate cannot 404 those; `logByHash`'s content-addressed fallback under a
+  deliberate cross-org hash collision; allowlist-vs-dispatcher drift (live sweep,
+  zero); and 406 numeric-coercion requests producing no 500 and no wrong answer.
+  **A guard I nearly broke, caught by writing the tests:** routing free-text params
+  through `textParam` changes their type from `string | null` to
+  `string | undefined`, which silently turns `if (project === null) → 400` into a
+  guard that NEVER FIRES and `if (project !== null && …)` into one that is
+  vacuously true — six such guards found and converted, which is why the
+  required-param pins exist. **The audit's own best correction, worth keeping:**
+  its first cross-tenant sweep returned a uniform 404 on all 39 routes, which
+  reads like 39 refusals but is ONE refusal in `dispatchAnalytics` before any
+  route body runs — the uniformity of the status codes is what gave it away, and
+  the verdict rests on the second probe that actually reaches the bodies. It also
+  predicted `LIMIT 2.7` would 500 (Postgres rounds instead — the finding survived
+  but INVERTED, a silently different row count rather than a loud error) and
+  predicted head-of-line blocking on the 26 MB response (measured 30 ms vs 25 ms
+  solo — it does not block, so the severity is lower than first framed).
+  Differential: **15 of 19 fail** without the fixes; the 4 constant passes are
+  deliberate controls (a genuine fault still 500s, the storm still leaves the pool
+  healthy, a REAL filter value still filters, the clamp is not "always 1"), and
+  the hermeticity + `/v1/runs` pins assert ROW COUNTS over seeded data because
+  status alone cannot discriminate either. One pre-existing test ENCODED finding
+  2 — named "SUSPECTED DEFECT", pinning the 200 — and is repinned. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump. Gates from the ROOT: fmt/lint 0, cloud
+  **1254 pass / 0 fail**, core **2570/0**.
+
 - **2026-08-04**: **A `vx watch` session that started while the serve was down
   never picked the remote cache back up** — closing a LOW recorded-not-fixed item
   from the 2026-07-30 `cloud()` audit, which recorded the mechanism but never

@@ -6,7 +6,7 @@
 // cache wire, agents, dist, streaming, the SPA) falls through to the serve's
 // remaining machine surfaces.
 
-import { isCacheHit, type RunSummaryRecord } from '@vzn/vx'
+import { clampInt, isCacheHit, type RunSummaryRecord } from '@vzn/vx'
 import { readTextBounded } from '../http-body.js'
 import { LOG_WIRE_VERSION, type TaskLogBundle } from '../task-log-capture.js'
 import {
@@ -29,6 +29,9 @@ const TASK_BODY_MAX_BYTES = 2 * 1024 * 1024
 // Wire version of the incremental per-task record (set by the cloud() sink).
 // Gated like /v1/ingest/logs + /v1/catalog so a client/serve skew fails loud.
 const TASK_WIRE_VERSION = 1
+/** Route-level ceiling for `/v1/runs` — see the call site for why it is not
+ *  `listRuns`' own 100_000. */
+const ROUTE_RUNS_MAX = 5000
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: CORS })
@@ -44,6 +47,30 @@ function errResponse(err: unknown): Response {
  *  limit. `readCapped` is a thin alias so callers read `null → 413`. */
 async function readCapped(req: Request, max: number): Promise<string | null> {
   return await readTextBounded(req, max)
+}
+
+/**
+ * SQLSTATE 22021 (`character_not_in_repertoire`) — bytes Postgres cannot store
+ * in `text`, i.e. a NUL the caller sent. Read off `errno`, which Bun's
+ * PostgresError carries as the SQLSTATE (`code` is the generic
+ * `ERR_POSTGRES_SERVER_ERROR`).
+ */
+function isUnrepresentableInput(err: unknown): boolean {
+  return String((err as { errno?: unknown } | null)?.errno) === '22021'
+}
+
+/**
+ * A free-text filter param. An EMPTY value means ABSENT, never "match the
+ * empty string": `curl ".../v1/runs?project=$PROJECT"` with an unset variable
+ * must not answer a confident empty list for a workspace full of runs.
+ *
+ * `hash` and `search` already decided it this way while `project`/`task`/
+ * `runId`/`branch`/`tag*` guarded only `!== null` — so a caller could not know
+ * which rule a given param followed. This is the string-side twin of the
+ * half-strict numeric knobs fixed on 2026-07-30.
+ */
+function textParam(v: string | null): string | undefined {
+  return v === null || v === '' ? undefined : v
 }
 
 function numParam(v: string | null): number | undefined {
@@ -100,6 +127,18 @@ export async function handleAnalyticsRequest(
     // URIError from decodeURIComponent — a client fault (400), not a 500.
     if (err instanceof URIError) return json({ ok: false, error: 'malformed request path' }, 400)
     if (err instanceof WorkspaceForbiddenError) return json({ ok: false, error: err.message }, 403)
+    // A NUL byte is a WELL-FORMED escape (`%00`) that decodes to a valid JS
+    // string, so it sails past the URIError guard above — and then Postgres
+    // refuses it in `text` (SQLSTATE 22021, character_not_in_repertoire). Those
+    // are the caller's bytes, not a server fault, and the WRITE routes in this
+    // same file already answer 400 for exactly this input (`errResponse`); the
+    // read side answering 500 was the file disagreeing with itself. Mapped at
+    // the one choke point rather than per-param, because that covers query
+    // params, path segments and any future param BY CONSTRUCTION — a list of
+    // guarded params is the drift this router has already had three times.
+    if (isUnrepresentableInput(err)) {
+      return json({ ok: false, error: 'malformed request parameter' }, 400)
+    }
     // Anything else uncaught on a read route is a genuine server fault; answer
     // a clean 500 (Bun would otherwise return a bare 500 with no body).
     return json({ ok: false, error: 'internal error' }, 500)
@@ -224,38 +263,55 @@ async function handleAnalyticsRequestInner(
 
   // ---- reads (session viewer+ or ci token; workspace-clamped) -------------
   if (p === '/v1/workspaces') {
-    return json({ workspaces: await a.workspacesForOrg(ctx.orgId) })
+    const all = await a.workspacesForOrg(ctx.orgId)
+    // A workspace-scoped token is PINNED to one workspace — every other read
+    // route honours that pin, so enumerating its siblings' ids/names/slugs and
+    // run counts here was a widening nobody chose. Intra-org, so never a
+    // tenant-boundary break; a session and an org-wide token still see all,
+    // which is what the dashboard's workspace switcher needs.
+    const pin = ctx.tokenWorkspaceId
+    return json({ workspaces: pin === undefined ? all : all.filter((w) => w.id === pin) })
   }
   if (p === '/v1/hermeticity') {
-    const limit = Math.min(numParam(q.get('limit')) ?? 50, 500)
-    return json(await a.hermeticity(ws, limit > 0 ? limit : 50))
+    // `clampInt`, like every sibling: the hand-rolled clamp this replaces
+    // ROUNDED a fractional limit (2.7 -> 3) where clampInt floors (-> 2), and
+    // read '' / 0 / -1 as "use the default 50" where clampInt reads them as 1.
+    // Same input, two answers, in one file.
+    return json(await a.hermeticity(ws, clampInt(numParam(q.get('limit')) ?? 50, 1, 500)))
   }
   if (p === '/v1/runs') {
     const args: ListRunsArgs = {}
     const limit = numParam(q.get('limit'))
-    if (limit !== undefined) args.limit = limit
-    const project = q.get('project')
-    if (project !== null) args.project = project
-    const task = q.get('task')
-    if (task !== null) args.task = task
-    const runId = q.get('runId')
-    if (runId !== null) args.runId = runId
-    const hash = q.get('hash')
-    if (hash !== null && hash !== '') args.hash = hash
+    // `listRuns` clamps at 100_000 because `getRun` REUSES it to fetch a whole
+    // run's tasks (the 2026-07-13 truncation fix). That ceiling is an internal
+    // requirement of getRun, not something a caller of "a page of run rows"
+    // should be able to ask for — unbounded, a single viewer materialises ~26
+    // MB server-side (measured). Capped for the ROUTE only, well above the
+    // largest request any shipped client makes (2000, the Runs project facet);
+    // getRun's internal call goes through the method and is untouched.
+    if (limit !== undefined) args.limit = clampInt(limit, 1, ROUTE_RUNS_MAX)
+    const project = textParam(q.get('project'))
+    if (project !== undefined) args.project = project
+    const task = textParam(q.get('task'))
+    if (task !== undefined) args.task = task
+    const runId = textParam(q.get('runId'))
+    if (runId !== undefined) args.runId = runId
+    const hash = textParam(q.get('hash'))
+    if (hash !== undefined) args.hash = hash
     return json({ runs: await a.listRuns(ws, args) })
   }
   if (p === '/v1/invocations') {
     const args: ListInvocationsArgs = {}
     const limit = numParam(q.get('limit'))
     if (limit !== undefined) args.limit = limit
-    const branch = q.get('branch')
-    if (branch !== null) args.branch = branch
+    const branch = textParam(q.get('branch'))
+    if (branch !== undefined) args.branch = branch
     const ci = q.get('ci')
     if (ci !== null) args.ci = ci === '1' || ci === 'true'
-    const tagKey = q.get('tagKey')
-    if (tagKey !== null) args.tagKey = tagKey
-    const tagValue = q.get('tagValue')
-    if (tagValue !== null) args.tagValue = tagValue
+    const tagKey = textParam(q.get('tagKey'))
+    if (tagKey !== undefined) args.tagKey = tagKey
+    const tagValue = textParam(q.get('tagValue'))
+    if (tagValue !== undefined) args.tagValue = tagValue
     return json({ invocations: await a.listInvocations(ws, args) })
   }
   {
@@ -309,16 +365,16 @@ async function handleAnalyticsRequestInner(
     const args: { limit?: number; search?: string; projects?: string[] } = {}
     const limit = numParam(q.get('limit'))
     if (limit !== undefined) args.limit = limit
-    const search = q.get('search')
-    if (search !== null && search !== '') args.search = search
+    const search = textParam(q.get('search'))
+    if (search !== undefined) args.search = search
     const project = q.getAll('project').filter((x) => x !== '')
     if (project.length > 0) args.projects = project
     const [projects, total] = await Promise.all([a.listProjects(ws, args), a.countProjects(ws)])
     return json({ projects, total })
   }
   if (p === '/v1/projects/rank') {
-    const project = q.get('project')
-    if (project === null) return json({ ok: false, error: 'project required' }, 400)
+    const project = textParam(q.get('project'))
+    if (project === undefined) return json({ ok: false, error: 'project required' }, 400)
     return json(await a.rankProject(ws, project, numParam(q.get('top')) ?? 8))
   }
   if (p === '/v1/trends/runs') {
@@ -331,13 +387,13 @@ async function handleAnalyticsRequestInner(
     if (from !== undefined) args.from = from
     const to = numParam(q.get('to'))
     if (to !== undefined) args.to = to
-    const project = q.get('project')
-    if (project !== null) args.project = project
+    const project = textParam(q.get('project'))
+    if (project !== undefined) args.project = project
     return json({ bucket, points: await a.getRunTrends(ws, args) })
   }
   if (p === '/v1/trends/tasks') {
-    const project = q.get('project')
-    if (project === null) return json({ ok: false, error: 'project required' }, 400)
+    const project = textParam(q.get('project'))
+    if (project === undefined) return json({ ok: false, error: 'project required' }, 400)
     const bucketRaw = q.get('bucket')
     const bucket = bucketRaw === 'hour' || bucketRaw === 'day' ? bucketRaw : 'day'
     const args: { bucket: 'hour' | 'day'; from?: number; to?: number; limit?: number } = { bucket }
@@ -366,9 +422,9 @@ async function handleAnalyticsRequestInner(
     const args: { limit?: number; project?: string; task?: string } = {}
     const limit = numParam(q.get('limit'))
     if (limit !== undefined) args.limit = limit
-    const project = q.get('project')
-    const task = q.get('task')
-    if (project !== null && project !== '' && task !== null && task !== '') {
+    const project = textParam(q.get('project'))
+    const task = textParam(q.get('task'))
+    if (project !== undefined && task !== undefined) {
       args.project = project
       args.task = task
     }
@@ -385,8 +441,8 @@ async function handleAnalyticsRequestInner(
     return json({ tasks: await a.getRegressions(ws, args) })
   }
   if (p === '/v1/branch-failures') {
-    const project = q.get('project')
-    if (project === null) return json({ ok: false, error: 'project required' }, 400)
+    const project = textParam(q.get('project'))
+    if (project === undefined) return json({ ok: false, error: 'project required' }, 400)
     const args: { sinceDays?: number; limit?: number } = {}
     const sinceDays = numParam(q.get('sinceDays'))
     if (sinceDays !== undefined) args.sinceDays = sinceDays
@@ -405,9 +461,9 @@ async function handleAnalyticsRequestInner(
     return json({ tasks: await a.getLeastStableTasks(ws, args) })
   }
   if (p === '/v1/stability') {
-    const project = q.get('project')
-    const task = q.get('task')
-    if (project === null || task === null) {
+    const project = textParam(q.get('project'))
+    const task = textParam(q.get('task'))
+    if (project === undefined || task === undefined) {
       return json({ ok: false, error: 'project and task required' }, 400)
     }
     const args: { sinceDays?: number; limit?: number } = {}
@@ -418,9 +474,9 @@ async function handleAnalyticsRequestInner(
     return json(await a.getTaskStability(ws, project, task, args))
   }
   if (p === '/v1/flake-trend') {
-    const project = q.get('project')
-    const task = q.get('task')
-    if (project === null || task === null) {
+    const project = textParam(q.get('project'))
+    const task = textParam(q.get('task'))
+    if (project === undefined || task === undefined) {
       return json({ ok: false, error: 'project and task required' }, 400)
     }
     const args: { sinceDays?: number } = {}
@@ -442,10 +498,10 @@ async function handleAnalyticsRequestInner(
     if (minRuns !== undefined) args.minRuns = minRuns
     const limit = numParam(q.get('limit'))
     if (limit !== undefined) args.limit = limit
-    const project = q.get('project')
-    if (project !== null) args.project = project
-    const task = q.get('task')
-    if (task !== null) args.task = task
+    const project = textParam(q.get('project'))
+    if (project !== undefined) args.project = project
+    const task = textParam(q.get('task'))
+    if (task !== undefined) args.task = task
     return json(await a.getPeriodComparison(ws, args))
   }
   if (p === '/v1/bottlenecks') {
@@ -462,12 +518,12 @@ async function handleAnalyticsRequestInner(
     const args: { project?: string; task?: string; search?: string; limit?: number } = {}
     const limit = numParam(q.get('limit'))
     if (limit !== undefined) args.limit = limit
-    const project = q.get('project')
-    if (project !== null) args.project = project
-    const task = q.get('task')
-    if (task !== null) args.task = task
-    const search = q.get('search')
-    if (search !== null && search !== '') args.search = search
+    const project = textParam(q.get('project'))
+    if (project !== undefined) args.project = project
+    const task = textParam(q.get('task'))
+    if (task !== undefined) args.task = task
+    const search = textParam(q.get('search'))
+    if (search !== undefined) args.search = search
     return json({ history: await a.getHistory(ws, args) })
   }
   {

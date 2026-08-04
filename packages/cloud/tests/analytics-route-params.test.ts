@@ -661,13 +661,15 @@ describe('routes that require a project / task', () => {
     expect((await get(`/v1/flake-trend?${filt()}&task=build`)).status).toBe(400)
   })
 
-  it('SUSPECTED DEFECT: an EMPTY project/task is accepted where a missing one is refused', async () => {
-    // These guards test `=== null`, so `?project=` (an unset shell variable
-    // interpolated into the URL) passes and the query runs against the empty
-    // string — answering 200 with a confident-looking empty result instead of
-    // the 400 the same caller gets for omitting the parameter entirely.
-    // /v1/flakiness gets this right (`project !== null && project !== ''`),
-    // which is what shows the others are an oversight rather than a convention.
+  it('an EMPTY project/task is refused exactly like a missing one', async () => {
+    // FIXED 2026-08-04 — this test previously recorded the opposite as a
+    // SUSPECTED DEFECT: the guards tested `=== null`, so `?project=` (an unset
+    // shell variable interpolated into a URL) passed and the query ran against
+    // the empty string, answering 200 with a confident-looking empty result
+    // where omitting the parameter entirely gives a 400. /v1/flakiness already
+    // got it right, which is what showed the rest were an oversight rather
+    // than a convention. Every free-text param now reads through `textParam`,
+    // so empty means ABSENT everywhere and these required-param guards fire.
     for (const p of [
       `/v1/stability?${filt()}&project=&task=`,
       `/v1/flake-trend?${filt()}&project=&task=`,
@@ -675,7 +677,7 @@ describe('routes that require a project / task', () => {
       `/v1/branch-failures?${filt()}&project=`,
       `/v1/projects/rank?${filt()}&project=`,
     ]) {
-      expect((await get(p)).status).toBe(200)
+      expect((await get(p)).status).toBe(400)
     }
   })
 

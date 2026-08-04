@@ -3646,6 +3646,11 @@ export class Analytics {
   // -------------------------------------------------------------------------
 
   async hermeticity(workspaceId: string, limit: number): Promise<HermeticityResult> {
+    // Clamped HERE, not only at the route: every sibling read bounds its own
+    // limit, so a non-HTTP caller (`analytics.hermeticity(ws, 1e9)`) is bounded
+    // by the method rather than by whoever happens to call it. Latent today —
+    // the route is the only caller — which is why it is cheap to close now.
+    limit = clampInt(limit, 1, 500)
     const totals = (
       await this.sql<{ keys: number; reports: number }[]>`
         SELECT count(DISTINCT hash)::int AS keys, count(*)::int AS reports
