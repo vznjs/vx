@@ -71,19 +71,6 @@ async function settleOrHang(p: Promise<unknown>, ceilingMs: number): Promise<str
   return await Promise.race([settle(p), Bun.sleep(ceilingMs).then(() => 'HUNG')])
 }
 
-/**
- * Wait out a deadline armed during this test.
- *
- * DEFECT (see the "poisons a later evaluation" test below): `clearTimeout` sits
- * after the `await` in the try body, so a call that REJECTS leaves its timer
- * armed; when that timer later fires it terminates whatever worker is current.
- * Draining inside the test that armed it keeps this file from poisoning its own
- * later cases — or another file's, since the suite shares one process.
- */
-async function drainArmedDeadline(budgetMs: number): Promise<void> {
-  await Bun.sleep(budgetMs + 80)
-}
-
 describe('evaluateConfigFresh: what crosses back', () => {
   it('returns the default export, JSON round-tripped', async () => {
     const file = await write(
@@ -233,19 +220,15 @@ describe('evaluateConfigFresh: import-closure freshness', () => {
 })
 
 describe('evaluateConfigFresh: errors cross the boundary', () => {
-  // Each case below rejects from inside the WORKER, which leaves this call's
-  // deadline armed (see drainArmedDeadline). A small budget keeps the drain
-  // cheap; it is still ~25x a real evaluation (~10ms), so it cannot fire
-  // first — and if it ever did, the assertions below name it rather than
-  // passing on the wrong reason.
+  // Each case below rejects from inside the WORKER. A rejection clears its own
+  // deadline in the `finally`, so nothing is left armed to drain — these used
+  // to need an afterEach that slept out the orphaned timer. The budget is still
+  // ~25x a real evaluation (~10ms), so it cannot fire first, and if it ever did
+  // the assertions below name it rather than passing for the wrong reason.
   const BUDGET = 250
 
   beforeEach(() => {
     process.env[BUDGET_ENV] = String(BUDGET)
-  })
-
-  afterEach(async () => {
-    await drainArmedDeadline(BUDGET)
   })
 
   it('rebuilds the thrown error with its name, message and the config in the stack', async () => {
@@ -457,9 +440,6 @@ describe('the evaluation deadline', () => {
     // Both name the budget of whichever call timed out FIRST — the sibling's
     // own 800ms budget never applied to it.
     for (const o of outcomes) expect(o).toBe('REJECTED config worker did not answer within 200ms')
-
-    // The sibling's own timer is still armed — it never reached clearTimeout.
-    await drainArmedDeadline(800)
   }, 15_000)
 
   const MALFORMED = ['abc', '', ' 250', '-5', '1e3', '25.0']
@@ -525,34 +505,26 @@ describe('the evaluation deadline', () => {
     expect(Date.now() - started).toBeGreaterThanOrEqual(300)
   }, 15_000)
 
-  it('poisons a LATER evaluation with a stale deadline — DEFECT, pinned', async () => {
-    // DEFECT: `clearTimeout(timer)` sits after the `await` inside the try body,
-    // so it is skipped whenever the evaluation REJECTS. The timer stays armed
-    // for its full budget and, when it fires, runs `rejectAll()` and
-    // `worker.terminate()` against whatever worker is current AT THAT MOMENT —
-    // which by then belongs to an unrelated, healthy round.
+  it('a REJECTED evaluation does not poison a later one', async () => {
+    // `clearTimeout` used to sit after the `await` inside the try body, so it
+    // was skipped whenever the evaluation REJECTED — leaving the timer armed
+    // for its whole budget. When that orphan fired it ran `rejectAll()` and
+    // terminated whatever worker was current AT THAT MOMENT, which by then
+    // belonged to an unrelated, healthy round.
     //
-    // Reachable in the shape that matters: fix a typo during `vx watch` and the
-    // failed load leaves a timer armed for the DEFAULT 30s; a cycle up to 30
-    // seconds later can then die with "config worker did not answer within
-    // 30000ms", naming a budget nobody set, for a config that was fine.
-    //
-    // The fix is one line — move `clearTimeout` into the `finally` — after
-    // which this test fails and should be deleted.
-    const brokenBudget = 250
-    process.env[BUDGET_ENV] = String(brokenBudget)
+    // The shape that matters: fix a typo during `vx watch` and the failed load
+    // left a timer armed for the DEFAULT 30s; a cycle up to 30 seconds later
+    // could die with "config worker did not answer within 30000ms" — naming a
+    // budget nobody set for it, for a config that was fine.
+    process.env[BUDGET_ENV] = '250'
     const broken = await write(`throw new Error('typo in preset')\n`)
     expect(await settleOrHang(evaluateConfigFresh(broken), 5000)).toBe('REJECTED typo in preset')
 
-    // A healthy config, with its own generous budget, still in flight when the
-    // previous round's orphaned timer fires.
-    process.env[BUDGET_ENV] = '900'
-    const slow = await write('await Bun.sleep(1500)\nexport default { tasks: { ok: {} } }\n')
-    expect(await settleOrHang(evaluateConfigFresh(slow), 5000)).toBe(
-      `REJECTED config worker did not answer within ${brokenBudget}ms`,
-    )
-
-    // ...and this one's timer is now orphaned in turn.
-    await drainArmedDeadline(900)
+    // A healthy config with a generous budget of its own, deliberately still in
+    // flight when the previous round's timer WOULD have fired (250ms). It must
+    // resolve on its own terms.
+    process.env[BUDGET_ENV] = '4000'
+    const slow = await write('await Bun.sleep(600)\nexport default { tasks: { ok: {} } }\n')
+    expect(await settleOrHang(evaluateConfigFresh(slow), 5000)).toBe('RESOLVED {"tasks":{"ok":{}}}')
   }, 15_000)
 })

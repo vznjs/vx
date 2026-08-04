@@ -167,6 +167,9 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
   const abs = path.resolve(configPath)
   const id = nextId++
   inFlight++
+  // Declared out here so the `finally` can clear it on EVERY exit, including a
+  // rejection. See the note at the clear itself.
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const w = acquireWorker()
     // A worker thread the OS kills — memory pressure on a loaded CI box, a
@@ -176,7 +179,6 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
     // run-level timeout. The budget is enormous next to the ~10 ms a real
     // evaluation costs, so it can only fire on a genuine wedge.
     const budget = workerTimeoutMs()
-    let timer: ReturnType<typeof setTimeout> | undefined
     const json = await new Promise<string | null>((resolve, reject) => {
       pending.set(id, { resolve, reject })
       timer = setTimeout(() => {
@@ -189,9 +191,15 @@ export async function evaluateConfigFresh(configPath: string): Promise<unknown> 
       timer.unref?.()
       w.postMessage({ id, path: abs })
     })
-    clearTimeout(timer)
     return json === null ? null : (JSON.parse(json) as unknown)
   } finally {
+    // In the `finally`, not after the await: a REJECTED evaluation — a config
+    // with a typo, the common case while editing — would otherwise skip the
+    // clear and leave its timer armed for the whole budget. When that orphan
+    // later fired it ran `rejectAll()` and terminated whatever worker was
+    // current by then, killing an unrelated healthy round with a timeout
+    // message naming a budget nobody set for it.
+    clearTimeout(timer)
     pending.delete(id)
     inFlight--
     if (inFlight === 0 && worker !== null) {
