@@ -246,6 +246,39 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-04**: **Every detached checkout recorded a branch literally named
+  `HEAD`, collapsing every PR into one scope** (task #87; `run-context.ts`, next
+  on the lines-per-assertion ranking — the capture that stamps every telemetry
+  record and feeds the trust boundary the 2026-07-14 wave built). **CONFIRMED by
+  execution:** `git rev-parse --abbrev-ref HEAD` answers the literal string
+  `HEAD` when nothing is checked out, and `captureGitContext` recorded it
+  verbatim — so a detached run is stamped with a branch that does not exist.
+  That is not exotic: it is how `actions/checkout` leaves a `pull_request`
+  build. **The trust boundary survives — the isolation does not.** `branch ===
+defaultBranch` means `"HEAD"` is never mistaken for trunk, so a branch
+  experiment still cannot pollute main's baseline (the property the owner asked
+  for). But every PR then shares ONE pseudo-branch, which breaks the other half
+  of that same design — "one PR can't see another's, exactly like the per-PR
+  untrusted sub-scope" — and collapses `getRegressions`' distinct-branch count
+  (a task failing across N PRs reads as one branch) and the dashboard's branch
+  column and where-first-noticed surface. Nothing downstream normalised the
+  literal (grepped: zero `=== 'HEAD'` outside the artifact store's HTTP verb).
+  Fixed in two parts: the literal is not a branch, so it reads `null` — the
+  honest answer every consumer already handles, since the trunk test requires
+  both sides non-null; and a CI-provided branch is consulted ONLY when git had
+  no answer (`GITHUB_HEAD_REF` → `GITHUB_REF_NAME` → `CI_COMMIT_REF_NAME`, the
+  same most-reliable-first ladder `captureDefaultBranch` already uses).
+  `GITHUB_HEAD_REF` has to win because on a pull_request `GITHUB_REF_NAME` is
+  `<n>/merge` — the merge ref, not a branch anyone works on. **An attached
+  branch always wins over the env**, pinned as a control: a checked-out branch
+  is ground truth for what the working tree IS, and a stale exported variable
+  must never relabel a local run. Differentials isolate each half: reverting the
+  literal guard fails 2 (without it the CI ladder never fires either), reverting
+  the ladder alone fails 1. Signature gained a trailing optional `env` param
+  defaulting to `process.env`, so the façade export stays source-compatible. NO
+  CACHE_VERSION/SCHEMA/wire bump — branch is analytics and scheduling-hint data,
+  never folded into a key.
+
 - **2026-08-04**: **A config with a typo armed a 30-second timer that killed a
   LATER watch cycle** (task #86; `config-eval.ts`, the next surface on the
   lines-per-assertion ranking — the Worker seam built after the 2026-07-26

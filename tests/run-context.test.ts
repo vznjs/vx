@@ -57,6 +57,73 @@ describe('captureGitContext', () => {
     expect(captureGitContext(dir, null).dirty).toBeNull()
   })
 
+  it('reports a DETACHED checkout as no branch, not a branch literally named HEAD', () => {
+    // `git rev-parse --abbrev-ref HEAD` answers the literal string `HEAD` when
+    // no branch is checked out. Recording that verbatim invents a branch: every
+    // detached run in a workspace shares the pseudo-branch "HEAD", which is how
+    // `actions/checkout` leaves a pull_request build.
+    //
+    // What that costs is the isolation the branch axis exists for. The trust
+    // boundary is `branch === defaultBranch`, so "HEAD" is at least never
+    // mistaken for trunk — but every PR collapses into ONE scope, so one PR's
+    // timings feed another's baseline; cross-branch regression detection counts
+    // them as a single branch; and the dashboard's branch column reads "HEAD".
+    //
+    // `null` is the honest answer and every consumer already handles it: the
+    // trunk test requires both sides non-null, so an unknown branch is scoped
+    // to nothing rather than to a shared fiction.
+    git(dir, ['init', '-q', '-b', 'main'])
+    git(dir, ['config', 'user.email', 'test@example.com'])
+    git(dir, ['config', 'user.name', 'Test'])
+    git(dir, ['commit', '-q', '--allow-empty', '-m', 'init'])
+    git(dir, ['checkout', '--detach', '-q', 'HEAD'])
+
+    const ctx = captureGitContext(dir)
+    expect(ctx.commitSha).toMatch(/^[0-9a-f]{40,64}$/)
+    expect(ctx.branch).toBeNull()
+  })
+
+  it('recovers the real branch from CI when the checkout is detached', () => {
+    // A detached CI checkout still knows which branch it came from — the
+    // provider says so. Preferring that over the git symbolic name is the same
+    // most-reliable-first ladder `captureDefaultBranch` already uses, and it is
+    // what keeps PR scopes distinct.
+    git(dir, ['init', '-q', '-b', 'main'])
+    git(dir, ['config', 'user.email', 'test@example.com'])
+    git(dir, ['config', 'user.name', 'Test'])
+    git(dir, ['commit', '-q', '--allow-empty', '-m', 'init'])
+    git(dir, ['checkout', '--detach', '-q', 'HEAD'])
+
+    // GitHub pull_request: GITHUB_REF_NAME is "<n>/merge", so the HEAD branch
+    // is the only one that names the contributor's actual branch.
+    expect(
+      captureGitContext(dir, null, {
+        GITHUB_HEAD_REF: 'feature/login',
+        GITHUB_REF_NAME: '42/merge',
+      }).branch,
+    ).toBe('feature/login')
+
+    // GitHub push: no HEAD ref, so the ref name IS the branch.
+    expect(
+      captureGitContext(dir, null, { GITHUB_HEAD_REF: '', GITHUB_REF_NAME: 'main' }).branch,
+    ).toBe('main')
+
+    // GitLab.
+    expect(captureGitContext(dir, null, { CI_COMMIT_REF_NAME: 'topic' }).branch).toBe('topic')
+  })
+
+  it('prefers the ATTACHED git branch over any CI variable', () => {
+    // A real checked-out branch is ground truth for what this working tree is.
+    // The CI vars exist to answer the case git cannot, not to override it —
+    // otherwise a stale exported var would relabel a local run.
+    git(dir, ['init', '-q', '-b', 'main'])
+    git(dir, ['config', 'user.email', 'test@example.com'])
+    git(dir, ['config', 'user.name', 'Test'])
+    git(dir, ['commit', '-q', '--allow-empty', '-m', 'init'])
+
+    expect(captureGitContext(dir, null, { GITHUB_HEAD_REF: 'something-else' }).branch).toBe('main')
+  })
+
   it('returns null commit/branch in a non-git directory without throwing', () => {
     const ctx = captureGitContext(dir)
     expect(ctx.commitSha).toBeNull()
