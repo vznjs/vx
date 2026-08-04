@@ -66,6 +66,26 @@ describe('dependsOnSiblingOutputs — restore-tier stability gate', () => {
     ).toBe(true)
   })
 
+  it('a PROJECT-RELATIVE reader with an outputs.workspaceFiles producer upstream → unstable', () => {
+    // The asymmetry that produced a real stale hit. A root-anchored output is
+    // boundary-IGNORING by design, so it can land inside THIS task's own
+    // project dir — where an ordinary project-relative `**` reads it. Neither
+    // of the other two clauses sees that: `upstreamOutputProjects` holds the
+    // PRODUCER's project, not this one, and the workspace-reader clause needs
+    // this task to read workspace-anchored inputs, which it does not.
+    //
+    // So `hasWsOutputUpstream` alone has to make the key preliminary,
+    // regardless of how this task reads. That is the conservative direction
+    // the gate's own contract demands ("when in doubt, unstable"), and it
+    // matches the graph-wide restore-tier disable that already exists for
+    // exactly this escape hatch.
+    expect(dependsOnSiblingOutputs(node('B', { files: ['**'] }), new Set(['A']), true)).toBe(true)
+    // Even with NO outputs.files producer anywhere upstream.
+    expect(dependsOnSiblingOutputs(node('B', { files: ['**'] }), new Set<string>(), true)).toBe(
+      true,
+    )
+  })
+
   it('a task with no output producers upstream at all → STABLE', () => {
     expect(dependsOnSiblingOutputs(node('B', { files: ['**'] }), new Set<string>(), false)).toBe(
       false,

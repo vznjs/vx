@@ -300,11 +300,18 @@ describe('local cache short-circuit', () => {
   )
 
   it(
-    'a graph declaring outputs.workspaceFiles disables the restore tier graph-wide',
+    'a workspace-output producer upstream takes its dependents out of BOTH tiers',
     async () => {
       // lib declares a WORKSPACE output (root-anchored, boundary-ignoring).
-      // No task may be restore-tier — but probe reuse still applies, so
-      // every stable task is still in preProbed (no double work).
+      //
+      // This test used to assert the opposite of its second half — that probe
+      // reuse "still applies, so every stable task is still in preProbed (no
+      // double work)". That was the defect, encoded: a root-anchored output can
+      // land inside a dependent's own project dir, so the dependent's key is
+      // preliminary; and `preProbed` is reused VERBATIM by execute-task, which
+      // makes probe reuse the half that actually serves the stale bytes. The
+      // graph-wide restore-tier disable covered the other half only.
+      // `tests/stale-hit.test.ts` drives the resulting wrong answer end to end.
       await addProject(fixture.root, 'wlib', {
         files: { 'src/a.txt': 'a' },
         config: `
@@ -338,10 +345,15 @@ describe('local cache short-circuit', () => {
       expect(cold.ok).toBe(true)
 
       const c = await classify(fixture, ['build'])
-      // Probe reuse still covers stable tasks (no double work) ...
-      expect(c.preProbedIds.has('wapp#build')).toBe(true)
-      // ... but the restore tier is empty graph-wide.
+      // The dependent is unstable, so it is in NEITHER tier: it probes lazily
+      // in execute-task, after its upstream has actually run.
+      expect(c.preProbedIds.has('wapp#build')).toBe(false)
       expect(c.restoreTier.size).toBe(0)
+      // The PRODUCER keeps its own short-circuit — it has no output producer
+      // upstream of itself, so its key was never preliminary. Without this the
+      // fix could have been "mark everything unstable", which would pass the
+      // assertion above while silently disabling the optimisation wholesale.
+      expect(c.preProbedIds.has('wlib#build')).toBe(true)
     },
     TIMEOUT,
   )

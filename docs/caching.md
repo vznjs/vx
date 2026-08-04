@@ -205,11 +205,18 @@ performs an up-front CLASSIFY (`orchestrator/local-shortcircuit.ts`):
 
 Stability gate (shared with remote prefetch via
 `stable-keys.ts:deriveStableKeys`): a task whose input globs could
-match a same-project upstream's declared `outputs.files` (or whose
-`inputs.workspaceFiles` overlap an upstream's
-`outputs.workspaceFiles`) has a _preliminary_ key and stays exec-tier
-/ dep-gated. A graph declaring any `outputs.workspaceFiles` disables
-the restore tier graph-wide (probe reuse still applies). The
+match a same-project upstream's declared `outputs.files`, or whose
+`inputs.workspaceFiles` could reach any upstream's outputs, has a
+_preliminary_ key and stays exec-tier / dep-gated. **Any**
+`outputs.workspaceFiles` producer upstream also makes a dependent's key
+preliminary, whatever that dependent reads: a root-anchored output is
+boundary-ignoring by design, so it can land inside the dependent's own
+project dir, where an ordinary project-relative glob reads it. Such a
+dependent is therefore in NEITHER tier — it is excluded from probe
+reuse as well as from the restore tier, because `execute-task` reuses a
+`preProbed` hash verbatim, so probe reuse is itself a stale-hit path
+when the key is preliminary. On top of that, a graph declaring any
+`outputs.workspaceFiles` disables the restore tier graph-wide. The
 short-circuit never runs under a `LayeredCache` (remote prefetch owns
 those runs — an up-front `get` there would put remote GETs on the
 critical path), never fires with local reads off, and never throws —

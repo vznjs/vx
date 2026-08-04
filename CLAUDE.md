@@ -246,6 +246,70 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-04**: **CACHE-CORRECTNESS: a workspace-anchored OUTPUT landing in a
+  consumer's own project dir was classified STABLE — a real stale hit, and the
+  entry worth reading is that I got the CAUSE wrong twice on the way** (task
+  #85; `stable-keys.ts`, picked by re-measuring lines-per-assertion after the
+  plugin-host wave — 209 lines deciding whether a key is provably independent of
+  any upstream's OUTPUTS, where a wrong answer is this tool's worst failure).
+  **CONFIRMED through the real CLI:** a producer declaring
+  `cache.outputs.workspaceFiles: ['pkgs/app/gen/**']` — root-anchored and
+  deliberately boundary-IGNORING, so it writes inside ANOTHER project's dir —
+  plus a consumer in `app` reading `gen/**` with an ordinary PROJECT-RELATIVE
+  `cache.inputs.files`. `dependsOnSiblingOutputs` misses that pairing on both
+  clauses: `upstreamOutputProjects` holds the PRODUCER's project (`gen`), never
+  the consumer's, and the workspace-reader clause needs the CONSUMER to read
+  workspace-anchored inputs, which it does not. Classified stable, its key is
+  derived UP FRONT from the previous generation's bytes, lands in `preProbed`,
+  and **execute-task reuses a preProbed hash VERBATIM** — so the run reported
+  `app#build ── restored-local` replaying `vA` while the producer had just
+  written `vB` to that exact file, under a green `2 success · 2 local`.
+  **The graph-wide `anyWorkspaceOutputs` mitigation does not cover it:** it
+  gates ONLY `restoreTier` (line 137) while `preProbed` is set regardless (line 136) — and probe reuse is the half that actually serves the stale bytes, the
+  same split the 2026-07-19 wave fixed from the workspaceFiles-INPUT side. Fixed
+  by making `hasWsOutputUpstream` alone preliminary, which subsumes the old
+  disjunct: a root-anchored output can land ANYWHERE, so how the consumer READS
+  is irrelevant. **A pre-existing test ENCODED the defect** — `local-shortcircuit`
+  asserted `preProbedIds.has('wapp#build')` with the comment "probe reuse still
+  applies, so every stable task is still in preProbed (no double work)" — and is
+  repinned to the opposite, with a control asserting the PRODUCER keeps its own
+  short-circuit so the fix cannot degenerate into "mark everything unstable".
+  **THE METHOD IS THE ENTRY — three corrections, each caught by measurement
+  rather than by reading.** (1) **My "clean" fixture was not clean.** I reported
+  a repro at cycle 3, then found I had run three cycles in that directory
+  already; from a genuinely cold cache the first stale hit is cycle 5. A
+  fixture's history is part of the fixture. (2) **My first e2e passed
+  vacuously** — three cycles, then four, both green on the UNFIXED tree, because
+  the save key trails its own content by one generation and the collision needs
+  five. A repro that passes pre-fix proves nothing, and I nearly shipped it
+  twice. (3) **I inferred the wrong CAUSE from a real measurement.** Same-size
+  inputs went stale intermittently while distinct-size inputs never did, so I
+  concluded the file-hash memo (same size + same millisecond) was the culprit —
+  a plausible story, and WRONG. A 60 ms gap between cycles did not stop it, and
+  the decisive check was applying the fix itself: **0/10 stale with it, 2/10
+  without** on the identical 10-cycle sequence. The size result was an artifact
+  of the harness stopping before the collision point, which DRIFTS between runs
+  (observed at cycles 5, 6 and 9 on otherwise identical sequences). **That drift
+  is also why the shipped e2e asserts the INVARIANT at every cycle rather than
+  at a nominated index** — the fixed-index version failed only 1 run in 5 on the
+  unfixed tree, and a pin that fails sometimes is not a pin; the invariant
+  version is 4/4 fail unfixed, 4/4 pass fixed. **NO CACHE_VERSION bump, argued:**
+  key DERIVATION is untouched — the fix changes only which tasks are eligible for
+  up-front probing, so an affected config's key moves to what a correct run
+  always derived (miss once, re-run, re-cache; self-healing, never a wrong hit),
+  and every other config is byte-identical. Cost is bounded and matches the
+  existing posture: a workspace-output producer upstream now takes its dependents
+  out of both tiers, which is the conservative direction the gate's own contract
+  demands and the same trade the graph-wide restore-tier disable already made for
+  this documented escape hatch. **REFUTED by executed probe, so nobody
+  re-audits:** `topoOrder` silently drops nodes in a cycle or with a dangling dep
+  (Kahn never dequeues them) — but both are structurally unreachable, since deps
+  are only pushed for RESOLVED children and `detectCycle` runs before this code;
+  and the upstream input-key fold (CACHE_VERSION v22) means the plain,
+  non-decoupled shape is safe on its own — reaching the defect requires
+  `cache.inputs.tasks: []`, the documented content-invalidation pattern, exactly
+  as the 2026-07-19 defect did.
+
 - **2026-08-04**: **The one function that decides whether a plugin's last chance
   to ship its records was missed said nothing when it was** (task #84;
   `plugin-host.ts`, 166 lines against ONE suite — and `teardownPlugins`, the
