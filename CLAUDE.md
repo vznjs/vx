@@ -308,7 +308,32 @@ undefined`, verified). **CONFIRMED, LOW:** `--name` or `--token` with the value
   exception and the reason `prToken` needs preserving. **RECORDED, NOT FIXED:**
   `connect` still has no `--pr-token` flag, so the fork-PR tier remains
   hand-editable only — a feature decision, not a defect, and now at least a
-  rotation no longer destroys it.
+  rotation no longer destroys it. Gates from the ROOT: fmt/lint 0, core **2641
+  / 0** with no skip line, docs site 168 pages clean, cloud **1273 / 0 across
+  its 53 non-browser suites** (+7, env-cli 17 → 24). **And the browser four
+  finally got a measurement that NARROWS the flake this log has called
+  un-root-caused four times.** The full 57-file cloud run was 1289 pass / 11
+  fail / 1300 ran in **1101.87 s** — the recorded signature. What is new is the
+  controlled pair, same box, same clean state (load 0.17, 14 GB free, ZERO
+  stray postgres, ZERO `/tmp/vx-*`), minutes apart: the same 30 browser tests
+  as **four files in ONE `bun test` process** are **12 pass / 6 fail in
+  624 s**, and as **one process per suite** are **30 pass / 0 fail in 88 s**
+  total (visual 10/0 36.5 s · ui-perf 5/0 19.8 s · workspace-context 11/0
+  26.8 s · ui-search 4/0 5.1 s). The only variable is process sharing — not
+  host debris, not the full suite's size, not pixels (every failure is a 30 s
+  `goto` timeout or a 120/180 s `beforeEach`/`afterEach` hook timeout). **That
+  localises it to per-process shared state, and the obvious suspect is the
+  process-wide `sharedBrowser` in `tests/helpers/playwright.ts`** — introduced
+  deliberately (2026-07-26) because three concurrent Chromiums killed each
+  other, so the fix is not to revert it but to give each suite its own context
+  lifecycle or its own process. Also worth knowing for anyone reconciling
+  counts: 1268 + 30 + 5 healthy = **1303**, against 1300 in the full run, so
+  the timed-out hooks additionally swallow **3 tests that never execute and are
+  never reported** — a shared-process failure under-reports its own blast
+  radius. NOT claimed as fixed or fully root-caused; it is one clean
+  controlled pair, and it is unreachable from this diff either way (nothing in
+  the browser suites imports `cli/env`; only `environments.test.ts` and
+  `plugin.test.ts` do, and both pass).
 
 - **2026-08-05**: **The connection DOCTOR told a correctly-configured fork PR its
   setup was broken, and told CI its healthy agent pool was empty** (`cli/status.ts`,
@@ -380,6 +405,12 @@ remote cache are OFF`, and its remediation said to mint a TRUSTED token and
   `packages/cloud/{src,tests,ui/src}` imports `cli/status`. That measurement is
   what forced the in-place correction to the entry below, which had called a
   single clean full run a confirmation that the flake was host debris.
+  **[NARROWED the same day by the entry above: "inside the FULL-suite process"
+  is too weak. Running just the FOUR browser files in one `bun test` process is
+  enough to break them — 12 pass / 6 fail in 624 s — while one process per
+  suite is 30/0 in 88 s on the same clean box minutes later. The variable is
+  process SHARING, not suite count and not host debris; the suspect is the
+  process-wide `sharedBrowser`.]**
 
 - **2026-08-05**: **The PR page told a dev "5 executed" for a run that executed 2 —
   and it overstated MOST on exactly the red runs someone opens it to read** (task
