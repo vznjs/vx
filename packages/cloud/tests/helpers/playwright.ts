@@ -8,6 +8,7 @@
 // the calling suite SKIPS (never fails) — a machine without a browser still
 // runs the rest of the suite.
 
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 
 /** The sliver of the playwright API the suites drive. */
@@ -56,15 +57,24 @@ export async function loadChromium(): Promise<PwChromium | undefined> {
 }
 
 /**
- * The browser binary. This container (and the CI image, when it carries one)
- * pre-installs Chromium outside the playwright package, so the driver needs an
- * explicit `executablePath`; `VX_CHROMIUM` overrides.
+ * The browser binary, or undefined to let playwright resolve its own.
+ *
+ * This container pre-installs Chromium OUTSIDE the playwright package, so the
+ * driver needs an explicit `executablePath`. A GitHub runner does not: there
+ * `playwright install` puts the browser where playwright already looks, and
+ * naming a path that does not exist is worse than naming none — `launch` would
+ * throw instead of falling back, turning "no browser here" from a clean skip
+ * into a failure. So the container default is used only when it is really
+ * there. `VX_CHROMIUM` overrides and is NOT existence-checked: an explicit
+ * request that is wrong should fail loudly rather than be silently ignored.
  */
 export function chromiumExecutablePath(): string | undefined {
-  return (
-    process.env['VX_CHROMIUM'] ?? process.env['PLAYWRIGHT_CHROMIUM'] ?? '/opt/pw-browsers/chromium'
-  )
+  const explicit = process.env['VX_CHROMIUM'] ?? process.env['PLAYWRIGHT_CHROMIUM']
+  if (explicit !== undefined && explicit !== '') return explicit
+  return existsSync(CONTAINER_CHROMIUM) ? CONTAINER_CHROMIUM : undefined
 }
+
+const CONTAINER_CHROMIUM = '/opt/pw-browsers/chromium'
 
 /** A launched browser — only what the suites actually call on it. */
 export interface PwBrowserHandle {

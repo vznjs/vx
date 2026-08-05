@@ -15,19 +15,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import { bootPlatform, type TestPlatform } from './helpers/platform.js'
-import { loadChromium, sharedBrowser } from './helpers/playwright.js'
+import { sharedBrowser } from './helpers/playwright.js'
+import { browserGate } from './helpers/browser-gate.js'
 
 const DIST = path.join(import.meta.dir, '..', 'ui', 'dist', 'index.html')
 const NOW = Date.UTC(2026, 6, 20, 12, 0, 0)
 
-const chromium = await loadChromium()
-const hasDist = await Bun.file(DIST).exists()
-const available = chromium !== null && hasDist
-if (!available) {
-  console.warn(
-    `[workspace-context] skipped — ${chromium === null ? 'playwright not resolvable' : 'ui/dist not built (vx run build.ui)'}`,
-  )
-}
+const { chromium, available } = await browserGate('workspace-context', DIST)
 
 interface Pg {
   goto(url: string): Promise<unknown>

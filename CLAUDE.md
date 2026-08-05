@@ -249,6 +249,57 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **A gate that never gated, and a measured refusal to arm the
+  cloud half** (the follow-on to the sandbox wave below, aimed at its recorded
+  38 cloud skips — and it ends in a NON-fix that is the more useful half).
+  **CONFIRMED by execution: `workspace-context.test.ts` gated on `chromium !==
+null` while `loadChromium` returns `undefined`** — `undefined !== null` is
+  true, so that clause never fired and the gate reduced to "is the dist built".
+  Its warning was wrong for the same reason: the `playwright not resolvable`
+  branch was unreachable, so it always blamed the dist. With a dist present and
+  no playwright it does not skip, it THROWS — probed directly:
+  `sharedBrowser(undefined)` gives `TypeError: undefined is not an object
+(evaluating 'chromium.launch')` out of `beforeAll`, i.e. **13 failures where a
+  skip was intended.** Latent only because CI has neither piece — and the very
+  change I was writing (build the dist in CI) would have made it live, so it was
+  a prerequisite, not a bonus. **Second defect, same shape:**
+  `chromiumExecutablePath()` returned `/opt/pw-browsers/chromium`
+  UNCONDITIONALLY. That path is a container symlink; on a GitHub runner
+  `playwright install` puts the browser where playwright already looks, and
+  naming a nonexistent path makes `launch` throw instead of falling back — again
+  turning "no browser here" from a clean skip into a failure. Now
+  existence-checked, with `VX_CHROMIUM` deliberately NOT checked (an explicit
+  request that is wrong should fail loudly). Four hand-rolled copies collapse
+  into `tests/helpers/browser-gate.ts`. **THE REFUSAL, and it is measured.** I
+  built the whole enablement — playwright + `ui/dist` in the cloud job, plus a
+  `VX_REQUIRE_BROWSER` twin of the sandbox gate — and then did not ship it. With
+  the browser present the three behavioural suites really do run (**1240 pass ·
+  12 skip · 1 fail**, the 12 being `visual` opted out), so the mechanism works —
+  but the browser suites are **not reliably green in this container**, and the
+  measurement history is the point. First I saw the perf guard's `beforeAll`
+  blow its 120s budget twice identically (1240/12/1 at 206.6s and 207.0s) and
+  wrote that up as reproducible-and-systematic, noting the same file alone
+  finishes in **22.0s**. **That write-up was wrong, and the box told me so.**
+  Both runs happened while the machine carried **126 stray `postgres` processes
+  and 2249 leftover `/tmp/vx-*` dirs** from my own repeated runs — cleaning them
+  freed **9 GB**. On a genuinely clean box the same tree is **1255 pass / 0 fail
+  in 138.2s**, matching the pre-change baseline exactly; a later run on an
+  equally clean box instead failed **six `visual` shots at 90s each**. Different
+  failure sets across runs of identical code is a flake, not a property, and I
+  have NOT root-caused it. So the conclusion survives while its stated reason
+  changes: do not arm a CI requirement on suites that are not dependably green,
+  and do not raise a budget to chase a number measured on a degraded host. The
+  requirement mechanism was REMOVED rather than left dormant — `VX_REQUIRE_BROWSER`
+  with nothing setting it is precisely the flag-nobody-flips this project
+  forbids. **Two method notes so the next attempt does not re-tread this:** the
+  trio run in isolation is NOT a proxy for CI (17 tests, 384-501s, 5 failures at
+  HEAD with no changes at all — worse than the full 1255-test suite at 154s), so
+  measure the configuration CI actually runs; and CLAUDE.md's own advice to
+  check `ls -d /tmp/vx-* | wc -l` before suspecting the diff is the rule I
+  ignored for two whole measurements. `visual` cannot ride along regardless,
+  because its baselines are environment-pinned. ZERO `src/` change, no CI
+  change, no CACHE_VERSION/SCHEMA/wire bump.
+
 - **2026-08-05**: **The 21 tests I had been reporting as "skipped" every wave
   cover the SECURITY boundary, and CI could delete them under a green check**
   (owner: "Why we have skipped tests? Figure out sth" — pushing back on a

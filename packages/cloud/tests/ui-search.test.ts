@@ -16,7 +16,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import { bootPlatform, type TestPlatform } from './helpers/platform.js'
-import { chromiumExecutablePath, loadChromium } from './helpers/playwright.js'
+import { chromiumExecutablePath } from './helpers/playwright.js'
+import { browserGate } from './helpers/browser-gate.js'
 
 const DIST = path.join(import.meta.dir, '..', 'ui', 'dist', 'index.html')
 
@@ -43,9 +44,7 @@ interface PwBrowser {
   close(): Promise<void>
 }
 
-const chromium = await loadChromium()
-const distBuilt = await Bun.file(DIST).exists()
-const available = chromium !== undefined && distBuilt
+const { chromium, available } = await browserGate('ui-search', DIST)
 
 /** Bigger than the 500-row page the dashboard asks for. */
 const PROJECTS = 600
