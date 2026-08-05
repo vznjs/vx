@@ -22,18 +22,6 @@ import { loadChromium, sharedBrowser } from './helpers/playwright.js'
 
 const TESTS_DIR = import.meta.dir
 
-/** The main browser process: the launcher path, not one of its `--type=` children. */
-function mainBrowserPid(): number | undefined {
-  const ps = Bun.spawnSync(['ps', '-eo', 'pid,args'])
-  for (const line of new TextDecoder().decode(ps.stdout).split('\n')) {
-    if (!line.includes('/pw-browsers/chromium ')) continue
-    if (line.includes('--type=')) continue
-    const pid = Number(line.trim().split(/\s+/)[0])
-    if (Number.isInteger(pid)) return pid
-  }
-  return undefined
-}
-
 const chromium = await loadChromium()
 
 describe.skipIf(chromium === undefined)('the shared browser survives its browser dying', () => {
@@ -43,13 +31,18 @@ describe.skipIf(chromium === undefined)('the shared browser survives its browser
     await (first as unknown as { newContext(o: object): Promise<unknown> }).newContext({})
     expect(first.isConnected?.()).toBe(true)
 
-    const pid = mainBrowserPid()
-    // The precondition, asserted so a broken fixture is loud rather than green:
-    // without a real process to kill this test cannot discriminate at all.
-    expect(pid).toBeDefined()
-
-    process.kill(pid!, 'SIGKILL')
-    // Wait for the driver to observe the death, bounded so a hang is a failure.
+    // The death is induced with `close()` rather than by SIGKILLing the browser
+    // process. The investigation used SIGKILL, but as a permanent pin that
+    // needs to LOCATE the process, and the lookup was container-specific: it
+    // matched this image's `/opt/pw-browsers/chromium`, while a GitHub runner
+    // installs under `~/.cache/ms-playwright/...`. The precondition assertion
+    // caught it as a CI failure rather than letting it pass vacuously — a fact
+    // measured on one box is a fact about that box.
+    //
+    // Nothing is lost: the observable the fix keys on is `isConnected()`, and
+    // a crash and a close produce the identical state — the memo cannot tell
+    // them apart, which is exactly why it must ask.
+    await first.close()
     for (let i = 0; i < 60 && first.isConnected?.() !== false; i++) await Bun.sleep(100)
     expect(first.isConnected?.()).toBe(false)
 

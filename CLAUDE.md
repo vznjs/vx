@@ -289,8 +289,22 @@ write a plausible cause into the log that you have not proven.
   tries BARE specifiers first, which Bun resolves independently of those
   variables, so the probe never removed playwright at all. The throw is
   exercised through the gate's own `distPath` parameter instead — the same
-  absence, the same branch, actually reachable. **Stated limit:** a workflow
-  change cannot be fully verified from here — the first CI run is the
+  absence, the same branch, actually reachable. **AND THE FIRST CI RUN CAUGHT A
+  SECOND ONE, which is the strongest argument for the precondition assertion
+  the wave below added.** The crash pin located the browser by matching
+  `/pw-browsers/chromium` in the process table — THIS CONTAINER's path, while a
+  GitHub runner installs under `~/.cache/ms-playwright/...`. So `mainBrowserPid()`
+  returned undefined and `expect(pid).toBeDefined()` fired: 1291 pass / 19 skip
+  / **1 fail**, the one being my own pin, with every required behavioural suite
+  green. A pin written for one box's process layout is a fact about that box —
+  the same rule this log records from the dev-socket fixture. Fixed by inducing
+  the death with `close()` instead of SIGKILL and deleting the pid lookup
+  entirely: the observable the fix keys on is `isConnected()`, and a crash and a
+  close produce the IDENTICAL state — the memo cannot tell them apart, which is
+  precisely why it must ask. Verified the portability cost nothing: reverting
+  the liveness check still fails exactly **1**, restore back to 4/0. **Stated
+  limit:** a workflow change cannot be fully verified from here — the first CI
+  run is the
   verification, and this log already warns that "the trio run in isolation is
   NOT a proxy for CI; measure the configuration CI actually runs", so the local
   check was the full cloud suite under `CI=true VX_REQUIRE_BROWSER=1`, which is
