@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import path from 'node:path'
-import { isIgnoredWatchPath, watchCmd } from '../src/cli/watch.js'
+import { isIgnoredWatchPath, makeWatchIgnore, watchCmd } from '../src/cli/watch.js'
 import { WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
 
 describe('the ignore filter', () => {
@@ -39,6 +39,50 @@ describe('the ignore filter', () => {
     ['a tilde mid-name', 'packages/a/src/a~b.ts'],
   ])('does NOT ignore %s', (_label, rel) => {
     expect(isIgnoredWatchPath(rel.split('/').join(path.sep))).toBe(false)
+  })
+})
+
+describe('the ignore filter follows the RESOLVED cache dir, not the .vx literal', () => {
+  // `cacheDir` is a shipped `defineWorkspace` field. Point it out of `.vx/` and
+  // the hard-coded segment list stops covering it, so vx's own cache writes land
+  // in a watched subtree and every cycle triggers the next one. Measured through
+  // the real loop before the fix: ONE edit kicked it, then 22 more cycles fired
+  // during 6 seconds of TOTAL silence (~3.7 re-runs/second, indefinitely). The
+  // default `.vx` cache settles at 0 in the same harness — that control is what
+  // makes this the cache dir rather than the loop.
+  const root = path.resolve(path.sep, 'ws')
+  const proj = path.join(root, 'packages', 'app')
+
+  it.each([
+    ['the cache dir itself', path.join(root, 'build', 'vxcache')],
+    ['a cache dir inside a project', path.join(proj, '.cache')],
+  ])('ignores writes under %s', (_label, cacheDir) => {
+    const ignore = makeWatchIgnore(cacheDir)
+    expect(ignore(root, path.relative(root, path.join(cacheDir, 'cache.db')))).toBe(true)
+    expect(ignore(root, path.relative(root, path.join(cacheDir, 'ab', 'cd.tar.zst')))).toBe(true)
+  })
+
+  it('still ignores the .vx default when no override is set', () => {
+    const ignore = makeWatchIgnore(path.join(root, '.vx', 'cache'))
+    expect(ignore(root, path.join('.vx', 'cache', 'cache.db'))).toBe(true)
+  })
+
+  it('does NOT ignore ordinary source — the filter is a containment check', () => {
+    // Control: the fix must not degenerate into "ignore the whole workspace".
+    // A sibling whose name merely EXTENDS the cache dir is real source.
+    const ignore = makeWatchIgnore(path.join(root, 'build', 'vxcache'))
+    expect(ignore(proj, path.join('src', 'index.ts'))).toBe(false)
+    expect(ignore(root, path.join('build', 'vxcache-notes.md'))).toBe(false)
+    expect(ignore(root, path.join('build', 'app.js'))).toBe(false)
+  })
+
+  it('resolves relative to the WATCHER, so a project-relative name cannot alias', () => {
+    // Each watcher reports names relative to its own dir. Resolving against the
+    // wrong base would make `build/vxcache/x` under a PROJECT match the ROOT's
+    // cache dir and silently drop real events.
+    const ignore = makeWatchIgnore(path.join(root, 'build', 'vxcache'))
+    expect(ignore(proj, path.join('build', 'vxcache', 'x'))).toBe(false)
+    expect(ignore(root, path.join('build', 'vxcache', 'x'))).toBe(true)
   })
 })
 

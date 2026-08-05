@@ -21,6 +21,8 @@ import {
   listProjects,
   loadProjectConfig,
   loadWorkspace,
+  loadWorkspaceConfig,
+  resolveCacheDir,
   WORKSPACE_FINGERPRINT_FILES,
   type ProjectMeta,
 } from '../workspace/index.js'
@@ -46,6 +48,27 @@ export function isIgnoredWatchPath(rel: string): boolean {
   if (segments.some((s) => IGNORED_SEGMENTS.includes(s))) return true
   if (IGNORED_SUFFIXES.some((suf) => rel.endsWith(suf))) return true
   return false
+}
+
+/**
+ * The ignore predicate a watcher applies, closed over the run's ACTUAL cache
+ * directory.
+ *
+ * `IGNORED_SEGMENTS` covers the `.vx/cache` default, but `cacheDir` is a
+ * shipped `defineWorkspace` field: point it anywhere else and vx's own cache
+ * writes land in a watched subtree, so every cycle triggers the next one.
+ * Measured on a relocated cache under a recursive root watcher: ONE edit kicked
+ * it and the loop then ran **22 more times during 6 seconds of total silence**
+ * (~3.7 re-runs/second, forever) where the default `.vx` cache settles at 0.
+ * A hard-coded literal cannot see a configured path — the resolved one can.
+ */
+export function makeWatchIgnore(cacheDir: string): (base: string, filename: string) => boolean {
+  const cacheAbs = path.resolve(cacheDir)
+  return (base, filename) => {
+    if (isIgnoredWatchPath(filename)) return true
+    const abs = path.resolve(base, filename)
+    return abs === cacheAbs || abs.startsWith(cacheAbs + path.sep)
+  }
 }
 
 export async function watchCmd(args: readonly string[]): Promise<number> {
@@ -131,6 +154,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     workspaceRoot,
     projects: scope,
     workspaceWide: await anyTaskUsesWorkspaceFiles(allProjects),
+    // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
+    cacheDir:
+      opts.cacheDir ?? resolveCacheDir(workspaceRoot, await loadWorkspaceConfig(workspaceRoot)),
   })
 }
 
@@ -170,10 +196,12 @@ interface WatchLoopArgs {
   workspaceRoot: string
   projects: readonly ProjectMeta[]
   workspaceWide: boolean
+  /** Absolute, already-resolved — the loop must never re-derive it. */
+  cacheDir: string
 }
 
 async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
-  const { opts, workspaceRoot, projects, workspaceWide } = args
+  const { opts, workspaceRoot, projects, workspaceWide, cacheDir } = args
 
   // Reentrancy guard — never two orchestrator runs in flight. While
   // one is running, any further events set `pending = true` and the
@@ -222,8 +250,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
 
   // Filter out events for paths we don't care about. We watch each
   // project's dir recursively, so a `node_modules` write under a
-  // project would otherwise trigger every save during `bun install`.
-  const isIgnoredPath = isIgnoredWatchPath
+  // project would otherwise trigger every save during `bun install` —
+  // and vx's own cache writes would trigger a cycle that writes again.
+  const isIgnoredPath = makeWatchIgnore(cacheDir)
 
   const watchers: fs.FSWatcher[] = []
 
@@ -239,7 +268,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         { recursive: true, persistent: true },
         (_event, filename) => {
           if (filename == null || typeof filename !== 'string') return
-          if (isIgnoredPath(filename)) return
+          if (isIgnoredPath(workspaceRoot, filename)) return
           trigger(`root ${filename}`)
         },
       )
@@ -257,7 +286,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         const w = fs.watch(proj.dir, { recursive: true, persistent: true }, (_event, filename) => {
           if (filename == null) return
           if (typeof filename !== 'string') return
-          if (isIgnoredPath(filename)) return
+          if (isIgnoredPath(proj.dir, filename)) return
           trigger(`${proj.name} ${filename}`)
         })
         watchers.push(w)

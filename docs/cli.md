@@ -910,6 +910,10 @@ Always ignored (no re-trigger):
 
 - `node_modules/`, `.git/`, `.vx/` anywhere in the path.
 - Files ending in `.tsbuildinfo` or `~` (editor swap files).
+- The run's **resolved cache directory**, wherever it is. `.vx/` covers the
+  default, but `defineWorkspace({ cacheDir })` and `--cache-dir` can put it
+  anywhere; watching it would let vx's own cache writes trigger the next
+  cycle, which writes again — a loop that never settles.
 
 Everything else triggers a cycle. We deliberately don't filter events
 against per-task `cache.inputs.files` — the cache hash is the source
