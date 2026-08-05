@@ -249,6 +249,50 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **`vx watch` re-ran itself forever — ~3.7 cycles/second, no
+  user edit — for anyone who relocated the cache dir** (task #93; `cli/watch.ts`,
+  the loop a dev leaves running all day, where a wrong answer is a missed re-run
+  that never announces itself). **CONFIRMED through the real loop, and the
+  CONTROL is what pins it to the cache dir rather than the loop.** With the
+  default `.vx/cache` the loop settles: one edit, 2 cycles, **0 more during 6
+  seconds of total silence**. With `defineWorkspace({ cacheDir: 'build/vxcache'
+})` — a shipped, documented field — the same edit kicked it and it then fired
+  **22 more cycles in those same 6 silent seconds** and never stopped: each cycle
+  writes `cache.db` (the `accessed_at` flush happens even on an all-hit run),
+  the write lands in a watched subtree, and that triggers the next cycle.
+  `IGNORED_SEGMENTS` hard-codes `'.vx'`, which covers the default and **cannot
+  see a configured path**. The filter now closes over the RESOLVED cache dir
+  (`makeWatchIgnore`, which also picks up `--cache-dir`), resolved per watcher
+  against ITS OWN base so a project-relative `build/vxcache/x` cannot alias the
+  root's cache dir and silently drop real events. **The source comment had
+  already conceded this and called it the user's problem** — "Users who relocate
+  the cache dir outside `.vx/` need their own filtering" — which is not
+  something a user can do: the filter is not configurable, and the failure is an
+  infinite loop, not a wrong answer. **THE METHOD IS THE ENTRY, because my first
+  probe was VACUOUS and said so out loud.** It reported 0 self-triggers in all
+  three shapes — a clean refutation — and the precondition control ("a real edit
+  DOES fire a cycle") ALSO reported 0, which is impossible if the loop was
+  running. Capturing the loop's own output showed why: `vx watch: not inside a
+project`. My probe ran from the workspace ROOT with no `--all`, so `watchCmd`
+  returned before installing a single watcher. Same class as the recorded
+  `VX_CLOUD_CONFIG` mistake: **a probe that reaches the wrong code path fails
+  identically to one that reaches the right path and finds nothing** — the only
+  thing separating the two is a precondition that fails when the harness is
+  broken. With `--all` the controls fire (2 cycles on a real edit) and the
+  runaway is immediate. **Also measured and left alone:** the self-trigger is
+  INTERMITTENT without a kick (0, 11, 0 across three idle runs) because nothing
+  writes until something first triggers a cycle — but any single edit provides
+  the kick, after which it is unconditional, so the honest framing is "one edit
+  and it never settles", not "it sometimes loops". Differential: neutralising the
+  containment check fails exactly the 3 cache-dir pins, while the two controls —
+  the `.vx` default still ignored, and ordinary source (including a sibling whose
+  name EXTENDS the cache dir) still triggering — pass BOTH ways, which is what
+  stops the fix degenerating into "ignore the whole workspace". NO
+  CACHE_VERSION/SCHEMA/wire bump — this changes which filesystem events wake the
+  loop, never a key, a stored byte, or what a cycle computes. Gates from the
+  ROOT: fmt/lint 0, core **2638 pass / 0 fail** (+5) with no skip line, cloud
+  **971/0** across its 44 non-browser suites.
+
 - **2026-08-05**: **The OS sandbox was unusable on any workspace reached through
   a SYMLINK, and its Linux detector dropped every denial strace split across two
   lines** (task #92; `exec/sandbox-runtime.ts`, 584 lines against 37 assertions
