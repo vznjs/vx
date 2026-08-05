@@ -99,31 +99,38 @@ export async function postGithubCheck(
   warn: (message: string) => void,
   opts: GithubSummaryOptions = {},
 ): Promise<void> {
-  const markdown = formatGithubSummary(summary, opts)
-  const body = JSON.stringify({
-    name: target.name,
-    head_sha: target.headSha,
-    status: 'completed',
-    conclusion: summary.exitOk ? 'success' : 'failure',
-    completed_at: new Date(summary.endedAt).toISOString(),
-    // The PR checks list's "Details" link — straight to the run's dashboard
-    // page when a connection resolved (DX-2).
-    ...(opts.dashboardUrl !== undefined ? { details_url: opts.dashboardUrl } : {}),
-    output: {
-      title: summary.exitOk
-        ? `passed — ${summary.taskCount} tasks, ${summary.hitCount} cache hits`
-        : `failed — ${summary.failedCount} of ${summary.taskCount} tasks`,
-      summary:
-        markdown.length > MAX_OUTPUT_CHARS
-          ? `${markdown.slice(0, MAX_OUTPUT_CHARS)}\n\n_… truncated._`
-          : markdown,
-    },
-  })
-  // Clearable timer (NOT AbortSignal.timeout — its internal timer is not
-  // unref'd and would keep the CLI alive after the POST resolved).
+  // Rendering happens inside the try. The docstring above promises "Never
+  // throws", but the markdown + JSON were built OUTSIDE it, so anything the
+  // formatter threw escaped a function whose entire contract is that
+  // observability cannot break a run. Nothing here validates its input — the
+  // record is internal and typed; this just makes the stated guarantee hold
+  // whatever a formatter does.
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)
   try {
+    const markdown = formatGithubSummary(summary, opts)
+    const body = JSON.stringify({
+      name: target.name,
+      head_sha: target.headSha,
+      status: 'completed',
+      conclusion: summary.exitOk ? 'success' : 'failure',
+      completed_at: new Date(summary.endedAt).toISOString(),
+      // The PR checks list's "Details" link — straight to the run's dashboard
+      // page when a connection resolved (DX-2).
+      ...(opts.dashboardUrl !== undefined ? { details_url: opts.dashboardUrl } : {}),
+      output: {
+        title: summary.exitOk
+          ? `passed — ${summary.taskCount} tasks, ${summary.hitCount} cache hits`
+          : `failed — ${summary.failedCount} of ${summary.taskCount} tasks`,
+        summary:
+          markdown.length > MAX_OUTPUT_CHARS
+            ? `${markdown.slice(0, MAX_OUTPUT_CHARS)}\n\n_… truncated._`
+            : markdown,
+      },
+    })
+    // Clearable timer (NOT AbortSignal.timeout — its internal timer is not
+    // unref'd and would keep the CLI alive after the POST resolved). Armed
+    // before the try so `finally` always clears it.
     const res = await fetch(`${target.apiUrl}/repos/${target.repo}/check-runs`, {
       method: 'POST',
       headers: {

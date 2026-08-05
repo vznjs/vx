@@ -249,6 +249,107 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **The PR page told a dev "5 executed" for a run that executed 2 —
+  and it overstated MOST on exactly the red runs someone opens it to read** (task
+  #95; `packages/cloud/src/github-summary.ts`, 218 lines against 40 assertions in a
+  single file, the thinnest never-audited cloud surface, and the one a dev reads at
+  the moment their build is red). **CONFIRMED by executed repro, MED-HIGH.** The
+  headline derived `executed = summary.taskCount - summary.hitCount`, and
+  `assembleRunSummary` sets `taskCount = tasks.length` — which INCLUDES skipped
+  tasks (`deriveCacheSource('skipped')` is `'none'`, so a skip is neither a hit nor
+  excluded). The default `--continue=deps-ok` **skips every dependent of a failed
+  task**, so the overstatement scales with how badly the run broke: measured on one
+  broken leaf with three dependents plus a hit and a success, the head claimed
+  **`5 executed` for the 2 that ran — 250% of truth** — while the terminal's tally
+  for that same run reported `successful=2 failed=1 skipped=3`. Two surfaces, one
+  run, contradicting each other. **The word `skipped` did not appear in the
+  headline at all**, which is precisely why nobody could reconcile it: the four
+  printed numbers looked like they summed (`hits + executed = tasks`) and did, by
+  absorbing the skips. Fixed by bucketing ONCE from the statuses (`headCounts`)
+  using the façade's `isCacheHit` rather than a local Set of literals, and by
+  NAMING skipped/aborted when non-zero — matching core's `tally.ts` rules, incl.
+  aborted joining no bucket and no total, which also makes the head agree with the
+  table below it that already dropped aborted rows. **The docs had it right and the
+  code did not.** `guides/ci.md`'s worked example printed `24 tasks · 8 cache hits
+· 15 executed` beside a `skipped` row — 8+15+1 = 24, the honest arithmetic — where
+  the shipped code would have rendered **16**. The doc author wrote the number they
+  expected; nothing checked that the code produced it. The example is now GENERATED
+  from the real formatter rather than hand-written, and states the invariant
+  (`cache hits + executed + skipped` is the task count). **CONFIRMED, LOW, and the
+  asymmetry is the spine of it: core's `run-report.ts` — the SAME concept, a
+  markdown run report for `$GITHUB_STEP_SUMMARY` — already carries `cell()` with
+  this exact failure documented verbatim** ("Task names are arbitrary TS object
+  keys and the loader accepts `|` and newlines, either of which silently breaks the
+  table on the consumer… a bare pipe adds a column, a newline splits the row"), and
+  the cloud twin had NO escaper. Reproduced: `pkg#a|b` rendered a **5-column row**
+  against a 4-column header (shifting Status/Duration/Cache one right), and a task
+  name containing a newline **split into two rows — a name can inject an entire
+  fabricated row claiming success**. Verified reachable rather than assumed:
+  `project-loader.ts` iterates `Object.entries(tasks)` with no charset check and
+  `workspace.ts` tests a package name only for truthiness, so **neither half of a
+  taskId is validated**; and the `--verify` markers render real output PATHS off
+  disk, where `|` is a legal byte. `cell()` is promoted to `escapeMarkdownCell` on
+  the core façade and both tables share it — the `splitTaskId`/`clampInt`/
+  `parseDecimalInt` precedent, widened on demonstrated need. **CONFIRMED, LOW:**
+  `fmtDuration` rounded the seconds remainder independently of the minutes, so
+  119_500 ms rendered **`1m 60s`** and 3_599_600 ms **`59m 60s`** — reachable for
+  any duration whose leftover rounds to a full minute. Rounds to whole seconds
+  first, then splits. **CONFIRMED, LOW (drift, not reachable in-process):** the
+  status switch's `default:` rendered any status it did not name as
+  **`❌ failed (exit undefined)`** — so a seventh `TaskStatus` would read as a
+  FAILURE on the PR page. This is an eleventh copy of the vocabulary the 2026-07-30
+  wave centralised, and the guard there deliberately permits the `switch` form, so
+  nothing caught it. **The first fix I wrote was WRONG in the other direction:**
+  removing `default` outright made an out-of-union status return `undefined`, which
+  then THREW inside the escaper — swapping a wrong row for a crashed summary on an
+  observability surface. The shipped form binds `const unknown: never = t.status`
+  in the default arm and still returns, so adding a member is a compile error while
+  an impossible one degrades to naming itself. **Bundled, because my own change
+  made it matter:** `postGithubCheck` built the markdown + JSON OUTSIDE its `try`
+  while its docstring promised "Never throws" — a guarantee it did not have. The
+  render moved inside; no runtime validation was added (the record is internal and
+  typed), the stated contract just holds now whatever a formatter does.
+  **Differentials, each isolating its own fix, every restore verified back to
+  baseline:** reverting the head to subtraction fails **3**, dropping the cell
+  escaping fails **3**, restoring the independent remainder fails **1**, restoring
+  the swallowing `default` fails **1** — and the three deliberate controls pass
+  BOTH ways (a clean run's headline stays short rather than growing an always-zero
+  bucket, an ordinary `@acme/ui#build` is not mangled by escaping, and the
+  sub-minute/exact-minute durations are undisturbed). **A HARNESS bug of mine that
+  compounded four mutations into the working tree, caught only because I check the
+  restore.** My differential script's `run()` ended with `cd /home/user/vx` while
+  the `cp` backup used a path relative to `packages/cloud` — so the backup was
+  never created, every restore silently failed, and M1/M3/M4 stacked on top of each
+  other. The tell was the final `restored:` line reading **22 pass / 5 fail against
+  a 27 / 0 baseline**: a restore that does not return to baseline is a broken
+  harness, not a result. Repaired by re-applying the three regions by hand (the
+  file was uncommitted, so `git checkout` would have discarded the whole wave), then
+  redone with absolute paths, a `test -s` on the backup, and a restore check after
+  EVERY mutation. **The transferable rule: assert the restore, not just the
+  mutation** — this log already records "a mutation must be verified to have
+  changed the file before its result means anything", and this is its mirror image.
+  Two smaller probe corrections, both caught by the failure side: my column oracle
+  counted the ESCAPED `\|` and reported 5 columns for a working fix, and my
+  row-injection assertion expected a weaker output than the code produces (it
+  escapes the injected pipes too), so it now asserts the property — one row, four
+  columns — rather than a literal. **The façade widening cost exactly one pin, and
+  I nearly missed it:** `package-boundaries.test.ts` snapshots the runtime export
+  set of `src/index.ts`, and my check for it ran `module-boundaries.test.ts` — the
+  wrong file, because I grepped for "façade" where the test says "public runtime
+  export set". It surfaced as the unexplained SECOND failure of a full-suite run
+  whose first was the documented `vx watch` load flake, and only became visible
+  once the flake cleared. **The watch flake is recorded rather than written off:**
+  it timed out at 45 s under full-suite load on a box carrying 15 stale
+  `/tmp/vx-*` dirs, passes **121 / 0 in 4.59 s isolated**, passes in the clean-box
+  full run, and cannot be reached by this diff at all — `run-report.ts` serves
+  only `--report=markdown`, which `vx watch` rejects at parse time. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump — this changes what a job-summary
+  string SAYS, never a key, a stored byte or a telemetry field. Gates from the
+  ROOT on a cleaned box: fmt/lint 0, core **2641 pass / 0 fail** with no skip line,
+  cloud **1289 / 0 across all 57 suites — browser suites included**, which is also
+  the third independent confirmation that the recorded browser "flake" is host
+  degradation rather than the suites.
+
 - **2026-08-05**: **The SigV4 canonical-query SORT was entirely unpinned, and the
   LIST path — the one request shape whose query the caller builds — had no test at
   all** (`blob/sigv4.ts`, 174 lines against 17 assertions; it signs every bucket

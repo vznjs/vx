@@ -168,15 +168,21 @@ see. GitHub renders it as markdown right on the job page:
 
 > ### vx run — `vx run ci --all`
 >
-> ❌ failed · **24** tasks · **1** failed · **8** cache hits · **15** executed · 21.4s
+> ❌ failed · **5** tasks · **1** failed · **2** cache hits · **2** executed · **1** skipped · 21.4s
 >
 > | Task | Status | Duration | Cache |
 > | --- | --- | ---: | --- |
 > | `@acme/web#build` | ❌ failed (exit 2) | 3.1s | miss |
 > | `@acme/web#test` | ✅ success | 4.2s | miss |
-> | `@acme/api#build` | ✅ success | <1ms | hit (remote) |
-> | `@acme/ui#build` | ✅ success | <1ms | hit (local) |
-> | `@acme/ui#lint` | ⏭ skipped | — | miss |
+> | `@acme/api#build` | 🟦 cache hit | 0ms | remote |
+> | `@acme/ui#build` | 🟦 cache hit | 0ms | local |
+> | `@acme/ui#lint` | ⚪ skipped | 0ms | — |
+
+Every task is in exactly one bucket: `cache hits + executed + skipped` is
+the task count. A **skipped** task is one whose dependency failed — under
+the default `--continue=deps-ok` a single broken leaf skips everything
+downstream — so it is counted and named, never folded into "executed".
+`skipped` and `aborted` appear only when non-zero.
 
 Two ways to get it:
 

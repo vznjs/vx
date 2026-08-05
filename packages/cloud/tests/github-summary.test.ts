@@ -257,3 +257,154 @@ describe('triage verdicts on failed rows', () => {
     expect(out).not.toContain('undefined')
   })
 })
+
+describe('the headline counts only work that happened', () => {
+  /** The shape `--continue=deps-ok` produces: a leaf breaks, dependents skip. */
+  const depsOkRedRun = () =>
+    summary([
+      { taskId: 'lib#build', status: 'failed', exitCode: 2 },
+      { taskId: 'app#build', status: 'skipped', cacheSource: 'none' },
+      { taskId: 'web#build', status: 'skipped', cacheSource: 'none' },
+      { taskId: 'docs#build', status: 'skipped', cacheSource: 'none' },
+      { taskId: 'utils#build', status: 'cache-hit', cacheSource: 'local' },
+      { taskId: 'core#build', status: 'success' },
+    ])
+
+  it('does not count a skipped task as executed', () => {
+    // `executed` used to be `taskCount - hitCount`, and taskCount is
+    // tasks.length — so all three skips were reported as executed work. That
+    // overstates most on a RED run, which is the one this summary exists for.
+    const md = formatGithubSummary(depsOkRedRun())
+    expect(md).toContain('**2** executed')
+    expect(md).toContain('**3** skipped')
+    expect(md).not.toContain('**5** executed')
+  })
+
+  it('agrees with the terminal about the same run', () => {
+    // The whole defect was two surfaces describing one run differently. The
+    // terminal's tally for this fixture is successful=2 failed=1 skipped=3.
+    const md = formatGithubSummary(depsOkRedRun())
+    const head = md.split('\n')[2]!
+    expect(head).toContain('**6** tasks')
+    expect(head).toContain('**1** failed')
+    expect(head).toContain('**1** cache hits')
+    expect(head).toContain('**2** executed')
+    expect(head).toContain('**3** skipped')
+  })
+
+  it('names skipped/aborted only when non-zero — a clean run keeps its short head', () => {
+    // Control: the fix must not append an always-zero bucket to every run.
+    const md = formatGithubSummary(summary([{ taskId: 'a#build' }, { taskId: 'b#test' }]))
+    expect(md).toContain('**2** executed')
+    expect(md).not.toContain('skipped')
+    expect(md).not.toContain('aborted')
+  })
+
+  it('excludes an aborted task from the total, matching the table that drops it', () => {
+    // An aborted task was killed by a teardown signal, so it is work that did
+    // not happen; core's tally puts it in no bucket and no total. The head used
+    // to count it while the table below already dropped its row.
+    const md = formatGithubSummary(
+      summary([
+        { taskId: 'a#build', status: 'success' },
+        { taskId: 'gone#x', status: 'aborted', cacheSource: 'none' },
+      ]),
+    )
+    expect(md).toContain('**1** tasks')
+    expect(md).toContain('**1** aborted')
+    expect(md).not.toContain('gone#x')
+  })
+})
+
+describe('table cells survive the names the loader actually accepts', () => {
+  /** Unescaped pipes only — a `\|` is a literal pipe inside one cell. */
+  const columns = (row: string) => row.replace(/\\\|/g, '').split('|').length - 2
+
+  it('a pipe in a task name does not shift the columns', () => {
+    // Neither half of a taskId is charset-validated: task names are arbitrary
+    // TS object keys and package names are checked only for truthiness.
+    const md = formatGithubSummary(summary([{ taskId: 'pkg#a|b', status: 'failed', exitCode: 7 }]))
+    const row = md.split('\n').find((l) => l.includes('pkg#a'))!
+    expect(columns(row)).toBe(4)
+    expect(row).toContain('❌ failed (exit 7)')
+  })
+
+  it('a newline in a task name cannot inject a second row', () => {
+    // A name carrying a whole fabricated row: unescaped, the newline ends the
+    // real row and the rest becomes a second one claiming success.
+    const md = formatGithubSummary(
+      summary([{ taskId: 'pkg#a\n| EVIL | ✅ success | 0ms | local' }]),
+    )
+    const rows = md.split('\n').filter((l) => l.startsWith('|') && !l.startsWith('| ---'))
+    // The header plus exactly one task row — the injected row does not exist.
+    expect(rows).toHaveLength(2)
+    expect(columns(rows[1]!)).toBe(4)
+    expect(rows[1]).toContain('pkg#a \\| EVIL')
+  })
+
+  it('a pipe in a --verify output path does not shift the columns', () => {
+    // These are real paths off disk, not config: `|` is a legal filename byte.
+    const md = formatGithubSummary(
+      summary([
+        {
+          taskId: 'web#bundle',
+          status: 'success',
+          verify: { kind: 'nondeterministic', changed: ['dist/a|b.js'] },
+        },
+      ]),
+    )
+    const row = md.split('\n').find((l) => l.includes('web#bundle'))!
+    expect(columns(row)).toBe(4)
+    expect(row).toContain('dist/a\\|b.js')
+  })
+
+  it('leaves an ordinary task name untouched', () => {
+    // Control: escaping must not mangle the overwhelmingly common case.
+    const md = formatGithubSummary(summary([{ taskId: '@acme/ui#build' }]))
+    expect(md).toContain('`@acme/ui#build`')
+    expect(md).not.toContain('\\')
+  })
+})
+
+describe('duration + status rendering', () => {
+  const durationOf = (ms: number) => {
+    const md = formatGithubSummary(summary([{ taskId: 'p#t', durationMs: ms }]))
+    return md
+      .split('\n')
+      .find((l) => l.includes('p#t'))!
+      .split('|')[3]!
+      .trim()
+  }
+
+  it('carries a rounded-up remainder into the minutes', () => {
+    // Rounding the remainder independently of the minutes produced `1m 60s`
+    // for any duration whose leftover seconds rounded to a full minute.
+    expect(durationOf(119_500)).toBe('2m 0s')
+    expect(durationOf(119_999)).toBe('2m 0s')
+    expect(durationOf(59_999)).toBe('1m 0s')
+    expect(durationOf(3_599_600)).toBe('60m 0s')
+  })
+
+  it('leaves the sub-minute and exact-minute cases alone', () => {
+    // Control: the carry must not disturb what already read correctly.
+    expect(durationOf(60_000)).toBe('1m 0s')
+    expect(durationOf(59_400)).toBe('59.4s')
+    expect(durationOf(1500)).toBe('1.5s')
+    expect(durationOf(999)).toBe('999ms')
+  })
+
+  it('a status outside the union names itself instead of reading as a failure', () => {
+    // Unreachable in-process (the record is core-built and typed) — the point
+    // is the direction: the old catch-all rendered a future TaskStatus as
+    // `❌ failed (exit undefined)`, i.e. a red row for a task that did not fail.
+    const md = formatGithubSummary(
+      summary([
+        { taskId: 'p#t', status: 'cache-hit-store' as never, exitCode: undefined as never },
+      ]),
+    )
+    const row = md.split('\n').find((l) => l.includes('p#t'))!
+    expect(row).toContain('cache-hit-store')
+    expect(row).not.toContain('❌')
+    expect(row).not.toContain('undefined')
+  })
+})

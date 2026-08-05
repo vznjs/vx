@@ -9,17 +9,63 @@
 // error is swallowed + warned, exactly like the ingest push.
 
 import { appendFile } from 'node:fs/promises'
-import type { RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
+import { escapeMarkdownCell, isCacheHit, type RunSummaryRecord, type TaskTelemetry } from '@vzn/vx'
 
 /** Cap the table so a pathological monorepo run can't blow GHA's ~1 MiB limit. */
 const MAX_ROWS = 100
 
 function fmtDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
-  const m = Math.floor(ms / 60_000)
-  const s = Math.round((ms % 60_000) / 1000)
-  return `${m}m ${s}s`
+  // Round to whole seconds FIRST, then split. Rounding the remainder
+  // independently of the minutes carries wrong: at 119_500ms the old form
+  // rendered `1m 60s`, and at 3_599_600ms `59m 60s` — a nonsense duration on
+  // the job page for any run whose remainder rounds up to a full minute.
+  const totalSec = Math.round(ms / 1000)
+  if (totalSec < 60) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
+}
+
+interface HeadCounts {
+  total: number
+  executed: number
+  hits: number
+  skipped: number
+  aborted: number
+  failed: number
+}
+
+/**
+ * Bucket the run ONCE from the task statuses.
+ *
+ * The headline used to derive `executed` as `taskCount - hitCount`, and
+ * `taskCount` is `tasks.length` — which INCLUDES skipped tasks. So every
+ * skipped task was counted as executed, and the default `--continue=deps-ok`
+ * skips every dependent of a failed task: the overstatement was largest on
+ * exactly the red runs someone opens this summary to read. Measured on one
+ * broken leaf with three dependents, the head claimed `5 executed` for the 2
+ * that ran, while the terminal for the same run reported `skipped=3`.
+ *
+ * Buckets match core's `tally.ts` — a hit is not an execution, and an aborted
+ * task joins no bucket and no total (it was killed by a teardown signal, so
+ * counting it as work is a claim about work that never happened). That also
+ * makes the head agree with the table below, which already drops aborted.
+ */
+function headCounts(tasks: readonly TaskTelemetry[]): HeadCounts {
+  const c: HeadCounts = { total: 0, executed: 0, hits: 0, skipped: 0, aborted: 0, failed: 0 }
+  for (const t of tasks) {
+    if (t.status === 'aborted') {
+      c.aborted++
+      continue
+    }
+    c.total++
+    if (t.status === 'failed') c.failed++
+    // `isCacheHit` rather than a local Set of status literals: a Set has no
+    // compile-time tripwire when the union gains a member.
+    if (isCacheHit(t.status)) c.hits++
+    else if (t.status === 'skipped') c.skipped++
+    else c.executed++
+  }
+  return c
 }
 
 /** The `--verify` verdict marker appended to a task's status cell. A
@@ -59,6 +105,12 @@ function statusCell(t: TaskTelemetry, opts: GithubSummaryOptions = {}): string {
       ? ` ⚠️ flaky (${t.attempts} attempts)`
       : ''
   const verify = verifyMarker(t)
+  // The old catch-all rendered any status this switch did not name as
+  // `❌ failed (exit undefined)` — so a seventh `TaskStatus` would have read
+  // as a FAILURE on the PR page. The `never` binding makes adding one a
+  // compile error here (the tripwire a bare `default` swallowed), while the
+  // arm still returns a value: this is an observability surface, so an
+  // impossible status must degrade to naming itself, not crash the summary.
   switch (t.status) {
     case 'success':
       return `✅ success${flaky}${verify}`
@@ -69,11 +121,16 @@ function statusCell(t: TaskTelemetry, opts: GithubSummaryOptions = {}): string {
       return '⚪ skipped'
     case 'aborted':
       return '⏹ aborted'
-    default:
+    case 'failed':
       return `❌ failed (exit ${t.exitCode})${triageMarker(t, opts)}`
+    default: {
+      const unknown: never = t.status
+      return `⚪ ${String(unknown)}`
+    }
   }
 }
 
+/** Exhaustive over `CacheSource` for the same reason as `statusCell`. */
 function cacheCell(t: TaskTelemetry): string {
   switch (t.cacheSource) {
     case 'local':
@@ -82,8 +139,12 @@ function cacheCell(t: TaskTelemetry): string {
       return 'remote'
     case 'miss':
       return 'miss'
-    default:
+    case 'none':
       return '—'
+    default: {
+      const unknown: never = t.cacheSource
+      return String(unknown)
+    }
   }
 }
 
@@ -165,16 +226,25 @@ export function formatGithubSummary(
   opts: GithubSummaryOptions = {},
 ): string {
   const verdict = summary.exitOk ? '✅ passed' : '❌ failed'
-  const hits = summary.hitCount
-  const executed = summary.taskCount - hits
+  const c = headCounts(summary.tasks)
   const dashboardLine =
     opts.dashboardUrl !== undefined
       ? `\n▸ [Open this run in the vx dashboard](${opts.dashboardUrl})\n`
       : ''
+  // Skipped and aborted are named only when non-zero — a green run's headline
+  // stays as short as it was — but they are never folded into another bucket:
+  // the whole defect was a count that absorbed tasks which did not run.
+  const stats = [
+    `**${c.total}** tasks`,
+    `**${c.failed}** failed`,
+    `**${c.hits}** cache hits`,
+    `**${c.executed}** executed`,
+  ]
+  if (c.skipped > 0) stats.push(`**${c.skipped}** skipped`)
+  if (c.aborted > 0) stats.push(`**${c.aborted}** aborted`)
   const head =
-    `### vx run — \`${summary.run.command}\`\n\n` +
-    `${verdict} · **${summary.taskCount}** tasks · **${summary.failedCount}** failed · ` +
-    `**${hits}** cache hits · **${executed}** executed · ` +
+    `### vx run — \`${escapeMarkdownCell(summary.run.command)}\`\n\n` +
+    `${verdict} · ${stats.join(' · ')} · ` +
     `${fmtDuration(summary.totalDurationMs)}\n` +
     dashboardLine +
     hermeticityLine(summary.tasks)
@@ -191,9 +261,15 @@ export function formatGithubSummary(
     '',
     '| Task | Status | Duration | Cache |',
     '| --- | --- | ---: | --- |',
+    // Every cell is escaped. Task names are arbitrary TS object keys and the
+    // loader charset-validates neither half of a taskId, and a `--verify`
+    // marker carries real output PATHS — a `|` in any of them adds a column
+    // (shifting Status/Duration/Cache one right) and a newline splits the row
+    // in two, so a name could inject an entire fabricated row.
     ...shown.map(
       (t) =>
-        `| \`${t.taskId}\` | ${statusCell(t, opts)} | ${fmtDuration(t.durationMs)} | ${cacheCell(t)} |`,
+        `| \`${escapeMarkdownCell(t.taskId)}\` | ${escapeMarkdownCell(statusCell(t, opts))} | ` +
+        `${fmtDuration(t.durationMs)} | ${cacheCell(t)} |`,
     ),
   ].join('\n')
 

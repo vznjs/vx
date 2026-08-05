@@ -141,8 +141,12 @@ export type {
 // compile-time tripwire when the union gains a member, so it silently answers
 // "no" for the new one. `TASK_STATUSES` is the union at runtime, for a
 // consumer that needs the list rather than the predicate.
+// `escapeMarkdownCell` is on the façade for the same demonstrated need: a
+// plugin that renders a run as a markdown table takes the same unvalidated
+// task names core does, and the cloud job summary shipped without the escape.
 export {
   assembleRunSummary,
+  escapeMarkdownCell,
   TELEMETRY_SCHEMA_VERSION,
   deriveCacheSource,
   isCacheHit,

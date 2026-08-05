@@ -32,7 +32,7 @@ export { createVxSurface } from './devframe-surface.js'
 export { createWireRenderer } from './wire-render.js'
 export { optionsToRequest, requestToOptions } from './protocol.js'
 export type { ClientMessage, RunBackend, RunRequest, RunResult, ServerMessage } from './protocol.js'
-export { formatRunReportMarkdown } from './run-report.js'
+export { escapeMarkdownCell, formatRunReportMarkdown } from './run-report.js'
 export {
   clientMessageToEnvelope,
   decodeEnvelope,
