@@ -249,6 +249,47 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **The SigV4 canonical-query SORT was entirely unpinned, and the
+  LIST path — the one request shape whose query the caller builds — had no test at
+  all** (`blob/sigv4.ts`, 174 lines against 17 assertions; it signs every bucket
+  request, and unlike a wrong signature, a self-consistent wrong canonicalization
+  works against our own code and only fails against real S3). **NO DEFECT FOUND —
+  this wave is pins plus refutations, and the pins are what make it worth having.**
+  The 8 existing tests are 4 AWS-docs KATs plus encoding rules: strong on the
+  signing algorithm, silent on parameter ordering, because **every published
+  vector has at most one query param in a position where sorting is a no-op.**
+  Measured, not assumed: deleting the `.sort()` from `canonicalQuery` failed
+  **exactly 0** of the old tests and fails **exactly 1** of the new ones (a
+  paginated-LIST self-KAT). Escaping the path separator fails 8, of which the new
+  cache-key pin is the one that names the failure in a reader's terms. **REFUTED
+  by executed probe, and this is the half that stops a re-audit.** (1) S3's
+  continuation token is opaque base64, so it carries `+`, `/` and `=` — and JS
+  applies form-urlencoded semantics in a query string, where **a literal `+`
+  parses back as a SPACE** (probed: `?tok=a+b` → `['tok','a b']`). Since the
+  signer re-derives its canonical query from `url.searchParams`, a raw `+` would
+  canonicalize to `%20` while S3 signed `%2B` — and the failure would be invisible
+  until a bucket grew large enough to paginate, with page 1 fine and every page
+  after it 403. It cannot happen: `S3Backend.list` AWS-encodes each side BEFORE
+  building the URL, so the wire form round-trips verbatim. That pre-encoding is
+  load-bearing and was unpinned; it is now pinned with the reason written at the
+  site. (2) `canonicalUri` THROWS `URIError` on a bare `%` in a path segment
+  (it decodes before re-encoding). Unreachable — every call site pre-encodes, and
+  keys are server-derived from UUID/hex/sanitized segments — and deliberately NOT
+  guarded, per the trust-internal-code rule: crashing on an ambiguous path beats
+  silently signing a different object. (3) `URL.host` carries a non-default port
+  and omits a default one, matching what fetch sends, so the signed `host` is
+  correct in both. **A correction to my own measurement, in the same wave.** I
+  ranked the UI's `trendOf` as UNTESTED by grepping for the symbol name; it is
+  thoroughly covered in `window.test.ts` through `foldTaskTrendPoints` — the
+  sentinel drop, the all-sentinel honest empty, all four F6 lucky-bucket cases and
+  the measured-band comparison. That is the **same false-positive class this log
+  already records for the `INF` ranking entries** (a module driven through a
+  wrapper reports zero assertions), and I had applied the corrected symbol-aware
+  method to core and cloud before reaching for the naive grep on the UI. The
+  sentinel-vs-trend hazard is closed and pinned; nobody should re-open it. NO
+  CACHE_VERSION/SCHEMA/wire bump — tests only, `git diff src/` empty in both
+  packages.
+
 - **2026-08-05**: **`vx why --run` with the value omitted answered `unknown flag:
 --run` — and the audit's REFUTATIONS are the larger half** (`cli/why.ts`, 183
   lines against 23 assertions, the thinnest never-audited core surface; it answers
