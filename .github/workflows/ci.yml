@@ -129,6 +129,26 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # The dashboard's BEHAVIOUR (routing, workspace scoping, the server-side
+      # search round-trip) is asserted by driving the real SPA in a real
+      # Chromium. Those suites used to skip here for want of a browser — and a
+      # skip is a silent pass, so dashboard regressions could only ever be
+      # caught by someone running the suite locally.
+      #
+      # playwright is deliberately NOT a repo dependency (it pulls browser
+      # downloads into every `bun install`), so it is installed globally here;
+      # /usr/local/lib/node_modules is already one of the gate's resolution
+      # roots. `--with-deps` brings the shared libraries headless Chromium needs
+      # on a bare runner.
+      - name: Install playwright + chromium
+        run: |
+          npm install -g playwright
+          npx playwright install --with-deps chromium
+
+      # The browser suites serve the BUILT SPA, not the source.
+      - name: Build the dashboard
+        run: bun src/bin.ts run build.ui
+
       - name: bun test (packages/cloud)
         # --timeout 30000: the pg-backed suites boot a real Postgres cluster in
         # their first beforeAll; on a contended runner that boot can exceed
@@ -136,4 +156,17 @@ jobs:
         # signal") and cascading failures into every pg suite. The CLI flag is
         # the mechanism that verifiably raises the HOOK timeout (bunfig's
         # [test] timeout is not honored for hooks on current Bun).
+        #
+        # VX_REQUIRE_BROWSER turns an absent browser into a FAILURE instead of
+        # a skip, for the same reason VX_REQUIRE_SANDBOX exists in the job
+        # above: the two steps before this one provision playwright and the
+        # dist, so unavailable here means the provisioning broke — and a
+        # `describe.skipIf` would delete the suites under a green check.
+        #
+        # It applies only to the suites declared `'required'`. `visual`
+        # (pixel-exact baselines captured in a container) and `ui-perf`
+        # (wall-clock fps) are host-pinned and skip in CI by design, each
+        # saying so in its own gate call rather than being quietly absent.
+        env:
+          VX_REQUIRE_BROWSER: '1'
         run: cd packages/cloud && bun test --timeout 30000

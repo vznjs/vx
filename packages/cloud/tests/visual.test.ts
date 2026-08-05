@@ -91,7 +91,13 @@ interface PwBrowser {
 // different font set renders different text pixels), so a GitHub runner would
 // diff against container-captured images and fail every shot. It needs a
 // containerized capture or pinned fonts first — a decision, not a workflow line.
-const { chromium, available } = await browserGate('visual', DIST)
+const { chromium, available } = await browserGate('visual', DIST, {
+  // Pixel-exact baselines, captured in this container. A GitHub runner has a
+  // different font set, so identical UI renders different text pixels and the
+  // diff would fail for a reason that is not a regression. Arming this needs a
+  // containerized capture or pinned fonts first — a decision, not a workflow line.
+  hostPinned: 'baselines are pixel-exact and environment-pinned',
+})
 
 // ── seed ─────────────────────────────────────────────────────────────────
 

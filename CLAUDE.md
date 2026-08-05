@@ -249,6 +249,76 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **The dashboard's BEHAVIOUR is finally asserted in CI — the wave
+  below voided the stated reason it could not be** (`browser-gate.ts` +
+  `ci.yml`). The 2026-08-05 enablement wave BUILT this and deliberately did not
+  ship it, recording why: "do not arm a CI requirement on suites that are not
+  dependably green", and it removed `VX_REQUIRE_BROWSER` outright rather than
+  leave a flag nobody flips. **That premise is now false** (the flake was a memo
+  with no liveness check; the four suites go 30/0 in one process), so the switch
+  is back and CI flips it. The cloud job installs playwright globally
+  (`/usr/local/lib/node_modules` is already one of the gate's resolution roots
+  — playwright stays out of `bun install`, which is why it was never a dep) and
+  builds `ui/dist`, then runs with `VX_REQUIRE_BROWSER=1`: an absent browser is
+  a **FAILURE**, exactly like `VX_REQUIRE_SANDBOX`, and for the identical
+  reason — **a skip is a silent PASS**, and coverage an unrelated
+  infrastructure change can delete under a green check is not coverage.
+  **The scope is deliberately TWO of four, and the two held back say why in
+  their own gate call rather than being quietly absent** — the drift class this
+  repo keeps closing. `visual` compares PIXEL-EXACT baselines captured in this
+  container, and a runner's different font set renders different text pixels,
+  so it would fail for a reason that is not a regression (arming it needs a
+  containerized capture or pinned fonts — a decision, not a workflow line);
+  `ui-perf` asserts WALL-CLOCK frame rate (`avgFps >= 40`, zero >200 ms long
+  tasks), and a shared runner measures the runner — the same class this repo
+  already de-flaked twice locally (the scale guard, the ratio guards), so
+  arming it needs a measured baseline from real runners first. Both are
+  `hostPinned` and skip when `CI` is truthy; **they are NOT made opt-in**,
+  because they would then run nowhere — this log already records `visual` as a
+  guard that "runs only locally, where a red it absorbs is a red nobody reads",
+  and opt-in would make that worse. `CiPolicy` is a REQUIRED third argument, so
+  a future browser suite has to make the call deliberately instead of
+  inheriting a default. **Every branch probed, not assumed:** required+missing+
+  switch THROWS naming the missing piece, required+present runs,
+  hostPinned+missing+switch skips (host-pinned is never required),
+  required+missing WITHOUT the switch still skips (the local posture is
+  unchanged), hostPinned in CI skips, required in CI runs. **A vacuous test of
+  mine, caught by reading the output:** I first tried to simulate "no
+  playwright" with `NODE_PATH=/nonexistent VX_PLAYWRIGHT_ROOT=/nonexistent` and
+  got 4 pass / 0 fail both with and without the switch — because `loadChromium`
+  tries BARE specifiers first, which Bun resolves independently of those
+  variables, so the probe never removed playwright at all. The throw is
+  exercised through the gate's own `distPath` parameter instead — the same
+  absence, the same branch, actually reachable. **AND THE FIRST CI RUN CAUGHT A
+  SECOND ONE, which is the strongest argument for the precondition assertion
+  the wave below added.** The crash pin located the browser by matching
+  `/pw-browsers/chromium` in the process table — THIS CONTAINER's path, while a
+  GitHub runner installs under `~/.cache/ms-playwright/...`. So `mainBrowserPid()`
+  returned undefined and `expect(pid).toBeDefined()` fired: 1291 pass / 19 skip
+  / **1 fail**, the one being my own pin, with every required behavioural suite
+  green. A pin written for one box's process layout is a fact about that box —
+  the same rule this log records from the dev-socket fixture. Fixed by inducing
+  the death with `close()` instead of SIGKILL and deleting the pid lookup
+  entirely: the observable the fix keys on is `isConnected()`, and a crash and a
+  close produce the IDENTICAL state — the memo cannot tell them apart, which is
+  precisely why it must ask. Verified the portability cost nothing: reverting
+  the liveness check still fails exactly **1**, restore back to 4/0. **Stated
+  limit:** a workflow change cannot be fully verified from here — the first CI
+  run is the
+  verification, and this log already warns that "the trio run in isolation is
+  NOT a proxy for CI; measure the configuration CI actually runs", so the local
+  check was the full cloud suite under `CI=true VX_REQUIRE_BROWSER=1`, which is
+  that configuration minus the runner: **1292 pass / 19 skip / 0 fail across 58
+  files in 71.64 s**, with both host-pinned suites announcing their skip and
+  its reason. The counts reconcile exactly — `visual` registers 12 tests and
+  `ui-perf` 7 (the 19), of which 10 and 5 pass when they run, so
+  **1292 + 15 = 1307**, the all-suites total. CI therefore loses precisely the
+  15 host-pinned assertions and nothing else, and GAINS the 15 behavioural ones
+  (`ui-search` 4 + `workspace-context` 11) that previously ran nowhere but a
+  developer's laptop. Gates from the ROOT: fmt/lint 0. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump — CI configuration and a test gate;
+  `git diff src/` empty in both packages.
+
 - **2026-08-05**: **The browser flake this log called un-root-caused FOUR times is
   root-caused and fixed: `sharedBrowser` memoized a launch promise with no
   liveness check, so ONE browser death was permanent for the whole `bun test`

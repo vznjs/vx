@@ -21,7 +21,7 @@ import { browserGate } from './helpers/browser-gate.js'
 const DIST = path.join(import.meta.dir, '..', 'ui', 'dist', 'index.html')
 const NOW = Date.UTC(2026, 6, 20, 12, 0, 0)
 
-const { chromium, available } = await browserGate('workspace-context', DIST)
+const { chromium, available } = await browserGate('workspace-context', DIST, 'required')
 
 interface Pg {
   goto(url: string): Promise<unknown>
