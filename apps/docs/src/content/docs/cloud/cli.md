@@ -34,7 +34,7 @@ vx-cloud env ls | use <name> | rm <name>
 vx-cloud status
 vx-cloud disconnect
 vx-cloud agent --url <serve> [--token T] [--capacity N] [--session S] [--idle-timeout MS] [--label L]
-vx-cloud dev
+vx-cloud dev [--port N]
 ```
 
 ## `vx-cloud server` — the self-hosted platform
@@ -313,8 +313,18 @@ Foreground devtools hub that ingests forwarded NDJSON events from a local
 optional `devframe` package.
 
 ```
-vx-cloud dev                     # bind a kernel-assigned local socket
+vx-cloud dev                     # devtools on a kernel-assigned port
+vx-cloud dev --port 9999         # pin the devtools port
 ```
+
+Runs forward over a **fixed per-workspace socket**, `.vx/dev.sock` — so at
+most one hub per workspace. A second `vx-cloud dev` in the same workspace is
+refused naming that path, rather than taking it over: rebinding the path
+would silently redirect every forwarded run to the newcomer while the first
+hub kept reporting that it was listening. A socket left behind by a hub that
+crashed is reclaimed automatically.
+
+`--port` is the devtools HTTP port; omit it for a kernel-assigned one.
 
 Optional and dev-time only. Production observability is the telemetry-plugin
 path: declare `otel()` from `@vzn/vx-otel` in `vx.workspace.ts` and set

@@ -249,6 +249,114 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **A second `vx dev` SILENTLY stole the first one's socket, and
+  then stopping the first left BOTH dark** (task #94; `packages/cloud/src/cli/
+dev.ts`, 206 lines against 6 assertions — ratio **34.3**, the thinnest
+  load-bearing cloud module by a wide margin after re-measuring both packages
+  post-watch-wave; next were `blob/sigv4.ts` 10.2 and `dist/submit.ts` 10.0,
+  and the four `INF` entries are the documented real-subprocess false positive,
+  not untested code). **CONFIRMED by executed repro, and the second half is
+  sharper than the first.** `startDevHub` unlinked whatever sat at
+  `.vx/dev.sock` and bound its own — so a second `vx dev` in the same workspace
+  REBINDS the path. Measured on raw listeners: after the second bind a client's
+  write lands entirely on the second hub (**A=0, B=1**) while the first keeps
+  printing `listening for runs at …` forever. Then the first hub's `stop()`
+  unlinks the socket the **second** now owns — after which every connect is
+  refused and **both** hubs are dark, both still claiming to listen, with no
+  error anywhere. Two terminals in one repo is all it takes. **And there is NO
+  kernel backstop — I assumed there was one and measured instead of asserting
+  it:** `Bun.listen({ unix })` silently replaces an already-bound socket with
+  **no `unlink` and no EADDRINUSE** (probed: a no-unlink double bind still
+  gives A=0, B=1), so the old `unlink` call was not even what caused the steal
+  — Bun does it regardless — and this check is now the ONLY thing standing
+  between two hubs. Residual, stated because it is real: two hubs racing inside
+  the check→listen window can still both bind and the loser goes dark; that
+  needs two `vx dev` processes started within microseconds, and is strictly
+  narrower than the unconditional steal it replaces. **The fix is the
+  rule the read side already applies:** `connectDevForwarder` treats a present
+  file as proof of nothing and a successful connect as proof of a hub — the
+  listening side now asks the same question (`claimSocket`: connect-probe →
+  refuse if live, naming the path so a dev knows WHICH terminal to Ctrl-C →
+  unlink only if refused, which is exactly the crashed-hub case the old
+  unconditional unlink existed for). One concept, two sides. It also matches the
+  sibling policy `vx-cloud serve` settled 2026-06-28 — _a busy address is a
+  clean refusal, never a silent move_ — which `dev.ts` had been doing the
+  opposite of. The claim runs BEFORE `bootDevframeServer` so a refusal cannot
+  orphan an HTTP listener. **CONFIRMED, second: the last surviving `Number()`
+  knob in cloud.** `--port 0x10` bound port **16**, `1e3` → **1000**, `" 8080 "`
+  → 8080, `+80` → 80, and `''` → **0** (a legal port — so an unset shell
+  variable silently asked for an ephemeral one). The 2026-07-30 wave named
+  "FOUR hand-rolled copies of parse-a-positive-integer" and converted all four;
+  this is the **fifth it missed** — the same drift class as the
+  `splitTaskId` / `WORKSPACE_FINGERPRINT_FILES` / `clampInt` misses, where the
+  centralisation lands and one call site survives because the copies happen to
+  agree on the inputs anyone tries. Routed through `parseDecimalInt`, which
+  being digits-only also makes a `< 0` arm unreachable, so there isn't one; `0`
+  stays valid because the hub deliberately has no stable-address requirement.
+  **METHOD — my first probe was vacuous AGAIN, and only a CONTRADICTION caught
+  it.** It drove `connectDevForwarder(root)` against a bare `mkdtemp` dir, where
+  `findWorkspaceRoot` does not resolve, so the forwarder returned `null` and the
+  probe reported "no hub reachable" for _both_ hubs — which reads as a clean
+  refutation. The raw-socket probe, which touches no `findWorkspaceRoot`, showed
+  `CONNECTED` and `A=0 B=1`. Two waves running, the same class: **a probe that
+  reaches the wrong code path fails identically to one that reaches the right
+  path and finds nothing**, and what separated them was running a second probe
+  that could not share the mistake — not re-reading the first. **And a THIRD
+  probe mistake, caught by CI and corrected in place here rather than left
+  standing.** To build the stale-socket fixture I measured that
+  `listener.stop()` leaves the socket FILE on disk and unconnectable, and
+  recorded that as the crashed-hub shape. **Measured here, and NOT portable:**
+  the runner deleted it, so the fixture's own precondition failed in 0.79 ms —
+  the one assertion I put there specifically to make a broken fixture loud, doing
+  its job. A graceful `stop()` was never a faithful stand-in for a crash anyway;
+  the fixture now SIGKILLs a subprocess that bound the socket, which cannot
+  unlink by construction on any platform, and self-verifies that the leftover is
+  present AND unreachable. That also upgraded the test from fixture-dependent to
+  a real control: it now kills the degenerate "refuse whenever a file exists"
+  mutation, which the `stop()`-based version could not. **The transferable rule:
+  a fact measured on one box is a fact about that box until a second one agrees**
+  — and a fixture built on a platform-dependent side effect fails as loudly as a
+  broken claim, which is why the precondition assertion belongs there.
+  **Differentials, each isolating its own fix:**
+  neutralising the liveness check fails exactly **1** — the live-hub refusal —
+  and refusing on ANY present file (the degenerate "never bind when a file
+  exists") fails exactly the OTHER **1**, the stale-reclaim control; reverting
+  `parsePort` to
+  `Number()` fails exactly **5** (hex, exponent, whitespace, leading `+`,
+  empty), and the other five rejections plus all three accepts pass both ways.
+  **RECORDED, NOT FIXED:** the per-connection line buffer has no cap, so a local
+  process writing bytes with no newline grows it without bound — unreachable in
+  normal operation (`wireForwarder` emits one newline-terminated line per event,
+  so the buffer holds at most one event) and this is a foreground dev tool
+  listening inside the user's own workspace, so bounding it is a decision rather
+  than a bug fix. **Docs corrected in place:** `cloud/cli.md` described the verb
+  as _"bind a kernel-assigned local socket"_ — wrong on the load-bearing word.
+  The socket is a FIXED per-workspace path (which is precisely why two hubs
+  collide); the kernel-assigned thing is the devtools HTTP port, whose `--port`
+  flag was undocumented entirely. Both fixed, plus the one-hub-per-workspace
+  rule stated. NO CACHE_VERSION/SCHEMA/wire/migration bump — this changes which
+  process owns a dev socket and which `--port` strings are accepted, never a key
+  or a stored byte. Gates from the ROOT: fmt/lint 0, core **2638 pass / 0 fail**
+  with no skip line (ZERO core `src/` change — `git diff src/` empty), cloud
+  **986 / 0** across its 44 non-browser suites (+15, the dev suite 3 → 18).
+  **BUNDLED, and it is the closest anyone here has come to root-causing the
+  browser flake this log has documented three times as un-root-caused.** The
+  first cloud run of this wave produced FIVE `visual` failures — and the tell was
+  that they were **90-second TIMEOUTS, not pixel diffs**. The box was carrying
+  **126 stray `postgres` processes and 65 leftover `/tmp/vx-*` dirs** from my own
+  earlier runs — the same 126 the 2026-08-05 browser entry recorded, which is
+  either a coincidence or the reap ceiling. Killed them, cleared the dirs, and
+  ran `visual` ALONE: **10 pass / 0 fail in 41.7 s**, against a recorded
+  384-501 s for the browser trio on a loaded box. So on this evidence the flake
+  is host degradation from accumulated test debris, not the suites and not
+  pixels. **Stated with its limit, because one clean/dirty pair is not proof:**
+  the earlier entry records a run that failed six `visual` shots on a box it
+  called clean, so this is strong evidence rather than a closed root cause — and
+  it does not touch the CI question, where every runner is fresh. The
+  operational rule it does support is already written down and I ignored it
+  twice today: **check `pgrep -x postgres` and `ls -d /tmp/vx-* | wc -l` before
+  believing any browser-suite result.**
+
 - **2026-08-05**: **`vx watch` re-ran itself forever — ~3.7 cycles/second, no
   user edit — for anyone who relocated the cache dir** (task #93; `cli/watch.ts`,
   the loop a dev leaves running all day, where a wrong answer is a missed re-run
