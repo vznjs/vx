@@ -95,10 +95,18 @@ function fmtDuration(ms: number): string {
  * object keys and the loader accepts `|` and newlines, either of which
  * silently breaks the table on the consumer (`>> $GITHUB_STEP_SUMMARY`):
  * a bare pipe adds a column, a newline splits the row.
+ *
+ * Exported because this file is not the only markdown table describing a run:
+ * the cloud plugin's GitHub job summary renders the same data from the same
+ * unvalidated names and shipped WITHOUT this escape, so a `|` in a task name
+ * or a `--verify` output path shifted its columns. One definition, so the two
+ * cannot disagree about what a cell may contain.
  */
-function cell(value: string): string {
+export function escapeMarkdownCell(value: string): string {
   return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
 }
+
+const cell = escapeMarkdownCell
 
 /**
  * Render the finished run as a markdown report. A header line of totals
