@@ -47,7 +47,13 @@ interface PwBrowser {
   newContext(opts: Record<string, unknown>): Promise<PwContext>
   close(): Promise<void>
 }
-const { chromium, available } = await browserGate('ui-perf', DIST)
+const { chromium, available } = await browserGate('ui-perf', DIST, {
+  // Asserts wall-clock frame rate (>=40fps) and long-task budgets. A shared CI
+  // runner measures the runner, not the dashboard — the same class this repo
+  // already had to de-flake twice locally (the scale guard, the ratio guards).
+  // Arming it needs a measured baseline from real runners first.
+  hostPinned: 'asserts wall-clock fps on a shared runner',
+})
 
 const PROJECTS = 12
 const TASKS = ['build', 'test', 'lint'] as const

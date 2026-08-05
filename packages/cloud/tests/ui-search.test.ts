@@ -45,7 +45,7 @@ interface PwBrowser {
   close(): Promise<void>
 }
 
-const { chromium, available } = await browserGate('ui-search', DIST)
+const { chromium, available } = await browserGate('ui-search', DIST, 'required')
 
 /** Bigger than the 500-row page the dashboard asks for. */
 const PROJECTS = 600
