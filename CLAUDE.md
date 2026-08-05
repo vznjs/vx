@@ -249,6 +249,44 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **The task-detail "Cache key" card told EVERY platform user to
+  re-run a task they had already run, forever** (`db/analytics.ts`
+  `explainCacheKey` + `views/taskDetail.json`; found by per-METHOD assertion
+  ranking across the cloud analytics layer, where it was the ONLY method with
+  zero test files mentioning it — module-level ranking is too coarse for one
+  huge class, a well-tested neighbour hides a thin method). **CONFIRMED by
+  executed repro through the real platform, MED.** `explainCacheKey` is a stub:
+  it ignores the workspace, runs no query, and returns `latestEntry: null`
+  UNCONDITIONALLY. The card read that null as "not yet" and rendered
+  **"No cached entry yet — run this task once to populate its cache key"**.
+  Measured: ingest a real run (`ingest: 200`, `runs recorded: 1`), then
+  `GET /v1/explain/app%23build` → `latestEntry: null` → the card still says run
+  it once. **Following that instruction can never work** — the platform's
+  schema holds run/task history, cache-ENTRY inventory lives in a workspace's
+  local `cache.db` this serve never opens, so there is no query and no future
+  push that fills it. A confident, actionable, impossible instruction. **The
+  note lied about its own function too:** it claimed this surface "returns
+  persisted entry metadata", which it has never done. **The fix is the
+  convention this repo already established and did not apply here** —
+  `cacheEntry.json` splits on `capsCacheMissing` (`caps.known &&
+!caps.hasCacheDb`) and says "Cache-entry details are not available on this
+  serve", naming where the data lives. The card now does the same. **The
+  control is what keeps it honest:** the run-it-once hint is CORRECT on a
+  colocated serve, where an entry genuinely can appear, so it is nested under
+  `capsCacheMissing === false` and survives — the pin asserts BOTH arms, which
+  stops the fix degenerating into "never explain an absent entry". Differential:
+  reverting only the card split fails exactly **1**, restore byte-identical at
+  27/0. **A probe of mine went stale mid-wave and is recorded rather than
+  quietly re-read:** my repro hard-codes the OLD inference (`latestEntry ===
+null` ⇒ run-it-once) and does not evaluate `capsCacheMissing`, so its final
+  line still prints the old text after the fix — it describes the probe's model,
+  not the card. The card is pinned instead through the REAL view JSON and the
+  REAL `visibleUnder` evaluator, which is what actually decides. Same family as
+  the recorded "check the probe is exercising a configuration the code
+  supports", inverted: a probe can also outlive the behaviour it modelled. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump — one server note and which of two
+  empty states a card shows.
+
 - **2026-08-05**: **The dashboard's BEHAVIOUR is finally asserted in CI — the wave
   below voided the stated reason it could not be** (`browser-gate.ts` +
   `ci.yml`). The 2026-08-05 enablement wave BUILT this and deliberately did not

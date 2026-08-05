@@ -529,4 +529,38 @@ describe('task debug never claims "no artifact" on a serve that holds no invento
     expect(titlesFor(true)).toEqual(['Cache-entry details are not available on this serve'])
     expect(titlesFor(false)).toEqual(['No cache entry with this hash'])
   })
+
+  it('the Cache key card does not tell a platform user to re-run a task they already ran', () => {
+    // `explainCacheKey` returns `latestEntry: null` UNCONDITIONALLY — the
+    // platform has no entries table, so there is no query and no future push
+    // that fills it. The card read that null as "not yet" and rendered
+    // "run this task once to populate its cache key" for EVERY task, including
+    // ones with hundreds of recorded runs; following it can never work.
+    // Confirmed against a real platform: ingest a run, then GET /v1/explain →
+    // latestEntry null, card → the run-it-once hint.
+    const cardEmpties = elements(TASK_DETAIL as Node).filter(
+      (e) =>
+        e.n['type'] === 'Empty' &&
+        String(JSON.stringify(e.gates)).includes('capsCacheMissing') &&
+        String(JSON.stringify((e.n['props'] as Node)['title'])).match(/cache|entry/i) !== null,
+    )
+    const titlesFor = (capsCacheMissing: boolean) =>
+      cardEmpties
+        .filter((e) =>
+          visibleUnder(e.gates, {
+            capsCacheMissing,
+            cacheKeyStatus: 'ok',
+            cacheKey: { latestEntry: null },
+          }),
+        )
+        .map((e) => String((e.n['props'] as Node)['title']))
+
+    // Where inventory can never exist: say so, and point at where it lives.
+    expect(titlesFor(true)).toContain('Cache-entry details are not available on this serve')
+    expect(titlesFor(true)).not.toContain('No cached entry yet')
+    // On a colocated serve an entry genuinely CAN appear, so the original hint
+    // is accurate there and must survive — this is the control that stops the
+    // fix degenerating into "never explain an absent entry".
+    expect(titlesFor(false)).toContain('No cached entry yet')
+  })
 })

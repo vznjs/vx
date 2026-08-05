@@ -734,60 +734,70 @@
         },
         "children": [
           {
-            "type": "Facts",
-            "props": {
-              "entry": {
-                "$state": "/cacheKey/latestEntry"
-              },
-              "commandKey": "command",
-              "fields": [
-                {
-                  "label": "hash",
-                  "key": "hash",
-                  "kind": "shorthash16"
-                },
-                {
-                  "label": "exit",
-                  "key": "exitCode"
-                },
-                {
-                  "label": "duration",
-                  "key": "durationMs",
-                  "kind": "duration"
-                },
-                {
-                  "label": "size",
-                  "key": "sizeBytes",
-                  "kind": "bytes"
-                },
-                {
-                  "label": "created",
-                  "key": "createdAt",
-                  "kind": "relativeTime"
-                }
-              ]
-            }
-          },
-          {
             "type": "Empty",
             "props": {
-              "title": "No cached entry yet",
-              "hint": "run this task once to populate its cache key"
+              "title": "Cache-entry details are not available on this serve",
+              "hint": "Entry inventory (hash, size, timings) lives in the workspace's local cache.db \u2014 run `vx why <task>` in the repo, or start vx-cloud serve inside it. The artifact itself may still be in this serve's store: see Artifacts."
             },
             "visible": {
-              "$state": "/cacheKey/latestEntry",
-              "eq": null
+              "$state": "/capsCacheMissing",
+              "eq": true
             }
           },
           {
-            "type": "Text",
-            "props": {
-              "text": {
-                "$state": "/cacheKey/note"
+            "type": "Stack",
+            "visible": {
+              "$state": "/capsCacheMissing",
+              "eq": false
+            },
+            "children": [
+              {
+                "type": "Facts",
+                "props": {
+                  "entry": {
+                    "$state": "/cacheKey/latestEntry"
+                  },
+                  "commandKey": "command",
+                  "fields": [
+                    {
+                      "label": "hash",
+                      "key": "hash",
+                      "kind": "shorthash16"
+                    },
+                    {
+                      "label": "exit",
+                      "key": "exitCode"
+                    },
+                    {
+                      "label": "duration",
+                      "key": "durationMs",
+                      "kind": "duration"
+                    },
+                    {
+                      "label": "size",
+                      "key": "sizeBytes",
+                      "kind": "bytes"
+                    },
+                    {
+                      "label": "created",
+                      "key": "createdAt",
+                      "kind": "relativeTime"
+                    }
+                  ]
+                }
               },
-              "tone": "faint",
-              "class": "mt-3"
-            }
+              {
+                "type": "Empty",
+                "props": {
+                  "title": "No cached entry yet",
+                  "hint": "run this task once to populate its cache key"
+                },
+                "visible": {
+                  "$state": "/cacheKey/latestEntry",
+                  "eq": null
+                }
+              }
+            ]
           }
         ]
       },
