@@ -249,6 +249,73 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **The flakiness surface called a task flaky for being SLOW,
+  and the badge it rendered refuted itself in its own sentence** (task #91;
+  `orchestrator/metrics.ts`, 2049 lines at the thinnest lines-per-assertion
+  ratio left in core — the read layer `vx mcp` hands to AI agents and the
+  dashboard reads through its cloud twin). **CONFIRMED by executed repro.**
+  `getFlakiestTasks` admitted a task on `durationTailRatio > 2` ALONE, so ten
+  successes at `[100ms ×9, 260ms]` — zero failures, zero retries, zero
+  mixed-outcome keys — were listed as flaky. **The tell was the surface
+  contradicting itself, not the statistic.** Driving the real UI function,
+  `FUNCTIONS.flakyText(...)` rendered **"Flaky — inferred from a 0% failure
+  rate over 10 runs."** — a sentence that states its own refutation. It also
+  contradicted the rule the sibling field's OWN doc already spells out
+  (`mixedOutcomeKeys`: "Failures that each sit on their own key are legitimate
+  breaks … and do NOT flag a task as flaky"), and duplicated
+  `getLeastStableTasks` + `/v1/stability/least`, which measure spread PER CACHE
+  KEY and are the surface that owns the question — a wide spread across
+  DIFFERENT keys is different inputs, not nondeterminism. And the code
+  disagreed with its own doc: the field said ">3 flags wide tail" while both
+  implementations filtered at `> 2`. **The cloud twin was identical**
+  (`analytics.ts`, live behind `/v1/flakiness` — the dashboard's Insights card
+  AND the task-detail badge). Flakiness is now nondeterminism in the OUTCOME
+  only: `flakyConfirmed` (a within-run retry) or `mixedOutcomeKeys > 0` (one key
+  that both failed and succeeded). The ratio is still REPORTED and still breaks
+  ties in the ranking — it is context, not evidence, and both field docs now say
+  so. **Fixed ONCE, not twice:** the rule became a named, structurally-typed
+  `hasFlakeSignal` on the core façade and cloud IMPORTS it — the two back the
+  same badge off different engines, so a second copy is the drift class this
+  repo keeps closing (the `splitTaskId`/`clampInt`/`parseDecimalInt` shape, this
+  time caught before the copies could disagree rather than after). **The honest bound, measured rather
+  than assumed:** `computeRecommendations` returned `[]` for such a row, so
+  this never suggested a bogus `exec.retries` — the damage was a false LABEL on
+  a healthy task, not a bad config. **Bundled, because narrowing the filter
+  made a second lie reachable-in-principle and the first one impossible:** the
+  badge's inferred branch cited the FAILURE RATE as its evidence, which
+  describes a rule the server does not apply (failures on distinct keys have a
+  non-zero rate and are never listed). It now names the real evidence — the
+  keys that both failed and succeeded — and `flakyText` had NO test at all
+  before this. **CONFIRMED, LOW:** `getHitRateSplit` was the last window reader
+  with no `clampInt`, so `days` of 0/-1/-365 put `since` in the FUTURE and it
+  answered a confident `total: 0, hitRate: 0.00` against a workspace with runs
+  — the shape a caller is least able to tell from a genuinely cold cache. No
+  live caller passes a hostile value; clamped to match every sibling
+  (`getRunHeatmap`, `periodStats`). **REFUTED by execution, so nobody
+  re-audits:** `getRunTrends`' un-COALESCE'd `SUM(duration_ms)` cannot return
+  NULL — the column is `INTEGER NOT NULL` and `GROUP BY` guarantees at least
+  one row per group, so there is no empty-aggregate path. Differentials, each
+  isolating exactly ONE test: reverting the core filter fails 1, reverting the
+  cloud filter fails 1, reverting the clamp fails 1, removing the badge's
+  mixed-key branch fails 1 — and the tail-ratio control (a task that IS flaky
+  still reports its spread) is deliberate and passes BOTH ways. **A fixture
+  mistake of mine, caught by the failure side:** the control first seeded only
+  two successes, where `pickPercentile` makes p50 == p99, so `durationTailRatio`
+  was 1 and the "still reports the tail" assertion failed for a reason that had
+  nothing to do with the claim — a control needs enough samples for the thing
+  it controls for to be observable. NO CACHE_VERSION/SCHEMA/wire/migration bump
+  — read-side classification only; nothing stored or derived moves. Gates from
+  the ROOT: fmt/lint 0, core **2625 pass / 0 fail** with NO skip line (the 21
+  sandbox tests ran, per the wave below), UI **253/0**, cloud **1246 pass / 10
+  fail** where all 10 are the documented browser suites — and the 10 were
+  DIAGNOSED rather than filed: `ui/dist` was 13 hours older than the change, so
+  the visual suite was serving a bundle that could not contain it, and with a
+  REBUILT dist the visual suite is **10/0 isolated** (task-detail included, so
+  the new badge sentence drifts no baseline) and ui-perf **5/0 isolated**. The
+  browser trio run together reproduced the recorded signature exactly — 17
+  tests / 502.7s / 5 fail, against the previous wave's measured 17 / 384-501s /
+  5 fail AT HEAD WITH NO CHANGES. Still un-root-caused; still not this.
+
 - **2026-08-05**: **A gate that never gated, and a measured refusal to arm the
   cloud half** (the follow-on to the sandbox wave below, aimed at its recorded
   38 cloud skips — and it ends in a NON-fix that is the more useful half).

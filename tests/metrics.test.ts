@@ -489,6 +489,32 @@ describe('getCacheStatsSql', () => {
 })
 
 describe('getHitRateSplit', () => {
+  it('clamps a zero or negative window instead of reporting a confident nothing', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      cache.recordRuns([
+        mkRun({
+          hash: 'h1',
+          project: 'pkg',
+          task: 'a',
+          status: 'cache-hit',
+          startedAt: now - 1000,
+        }),
+        mkRun({ hash: 'h2', project: 'pkg', task: 'b', status: 'success', startedAt: now - 2000 }),
+      ])
+      const db = cache.dbHandle()
+      // Unclamped, these put `since` in the future and answered total 0 /
+      // hitRate 0 — indistinguishable from a cache that has never hit.
+      for (const days of [0, -1, -365]) {
+        expect({ days, total: getHitRateSplit(db, days).total }).toEqual({ days, total: 2 })
+      }
+      // Control: a real window is unchanged, and a huge one still clamps to
+      // the ceiling rather than scanning to the epoch.
+      expect(getHitRateSplit(db, 1).total).toBe(2)
+      expect(getHitRateSplit(db, 1e9).total).toBe(2)
+    })
+  })
+
   it('counts local vs remote hits and computes shares', () => {
     withCache((cache) => {
       const now = Date.now()
@@ -1093,6 +1119,66 @@ describe('getFlakiestTasks', () => {
       expect(flaky.find((f) => f.id === 'rare#t')?.flakyConfirmed).toBe(true)
     })
   })
+
+  it('does NOT call a task flaky on a wide duration tail alone', () => {
+    withCache((cache) => {
+      const now = Date.now()
+      // Every run SUCCEEDED, on its own key, first attempt. The only thing
+      // unusual is the spread: p50 100ms, p99 260ms — a ratio of 2.6.
+      const durs = [100, 100, 100, 100, 100, 100, 100, 100, 100, 260]
+      cache.recordRuns(
+        durs.map((d, i) =>
+          mkRun({
+            hash: `k${String(i)}`,
+            project: 'steady',
+            task: 'build',
+            status: 'success',
+            durationMs: d,
+            startedAt: now - (20 - i) * 1000,
+          }),
+        ),
+      )
+      const flaky = getFlakiestTasks(cache.dbHandle())
+      // It used to be listed, and task detail rendered the self-refuting
+      // "Flaky — inferred from a 0% failure rate over 10 runs."
+      expect(flaky.find((f) => f.id === 'steady#build')).toBeUndefined()
+    })
+  })
+
+  it('still reports the duration tail as context on a task that IS flaky', () => {
+    // Control: dropping the tail from the FILTER must not drop it from the
+    // ROW — it still ranks and still informs, it just cannot convict alone.
+    withCache((cache) => {
+      const now = Date.now()
+      // Enough successes for a real spread (p50 100ms, p99 900ms), plus the
+      // same-key failure/success pair that makes it genuinely flaky.
+      const durs = [100, 100, 100, 100, 100, 100, 100, 100, 100, 900]
+      cache.recordRuns([
+        ...durs.map((d, i) =>
+          mkRun({
+            hash: `m${String(i)}`,
+            project: 'w',
+            task: 't',
+            status: 'success',
+            durationMs: d,
+            startedAt: now - (30 - i) * 1000,
+          }),
+        ),
+        mkRun({
+          hash: 'm0',
+          project: 'w',
+          task: 't',
+          status: 'failed',
+          exitCode: 1,
+          durationMs: 100,
+          startedAt: now - 4000,
+        }),
+      ])
+      const row = getFlakiestTasks(cache.dbHandle()).find((f) => f.id === 'w#t')
+      expect(row?.mixedOutcomeKeys).toBe(1)
+      expect(row?.durationTailRatio).toBeGreaterThan(2)
+    })
+  })
 })
 
 describe('getBottlenecks', () => {
@@ -1435,6 +1521,11 @@ describe('metrics schema drift guard', () => {
         getParallelismHistory: () => metrics.getParallelismHistory(db),
         getStorageGrowth: () => metrics.getStorageGrowth(db),
         getPrunableEntries: () => metrics.getPrunableEntries(db),
+        // Not a query — a pure classification predicate — but the coverage pin
+        // below is deliberately over the whole export surface, so it gets an
+        // entry rather than an exemption.
+        hasFlakeSignal: () =>
+          metrics.hasFlakeSignal({ flakyConfirmed: false, mixedOutcomeKeys: 0 }),
       }
 
       // Coverage pin: a NEW exported query must be added to `calls` above
