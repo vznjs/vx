@@ -157,3 +157,94 @@ describe('awsUriEncode — the canonical encoding rule', () => {
     expect(awsUriEncode('a+b')).toBe('a%2Bb')
   })
 })
+
+// The LIST path is the only request shape whose query string is built by the
+// caller and carries a value it does not control: S3's continuation token is
+// opaque base64, so it contains `+`, `/` and `=`. That is exactly where the
+// wire form and the canonical form can drift apart — and the drift is only
+// reachable on a bucket large enough to paginate, i.e. production and never a
+// fixture. Page 1 would work and every page after it would 403.
+describe('the LIST query survives a base64 continuation token', () => {
+  // Mirrors `S3Backend.list`: each side AWS-encoded BEFORE the URL is built.
+  const listUrl = (token?: string): URL => {
+    const params: [string, string][] = [
+      ['list-type', '2'],
+      ['prefix', 'org/1-2/ws/_org/trusted/'],
+    ]
+    if (token !== undefined) params.push(['continuation-token', token])
+    const query = params.map(([k, v]) => `${awsUriEncode(k)}=${awsUriEncode(v)}`).join('&')
+    return new URL(`http://s3.local/bkt/?${query}`)
+  }
+
+  it('round-trips +, / and = through the URL back to the canonical form', () => {
+    // The signer re-derives the canonical query from `url.searchParams`, so a
+    // value only signs correctly if parsing the wire form returns it verbatim.
+    const token = 'a+b/c=d=='
+    const parsed = [...listUrl(token).searchParams]
+    expect(parsed).toEqual([
+      ['list-type', '2'],
+      ['prefix', 'org/1-2/ws/_org/trusted/'],
+      ['continuation-token', token],
+    ])
+  })
+
+  it('the caller’s pre-encoding is load-bearing: a raw + would parse as a SPACE', () => {
+    // Why `list` encodes each side itself rather than handing raw values to
+    // URLSearchParams: in a query string JS applies form-urlencoded semantics,
+    // where `+` means space — but AWS/RFC3986 treat it as a literal. A raw `+`
+    // would canonicalize to %20 while S3 signed %2B, and the LIST would 403.
+    expect([...new URL('http://h/b/?tok=a+b').searchParams][0]).toEqual(['tok', 'a b'])
+    // Pre-encoded, the same byte survives.
+    expect([...new URL(`http://h/b/?tok=${awsUriEncode('a+b')}`).searchParams][0]).toEqual([
+      'tok',
+      'a+b',
+    ])
+  })
+
+  it('signs a paginated LIST to a pinned signature (self-KAT)', () => {
+    // Computed once against this implementation. AWS publishes no LIST vector,
+    // so this is the only thing that makes ANY canonicalization change — the
+    // param sort, the per-side encoding, the path form — fail here rather than
+    // in production on page 2 of a large bucket.
+    const signed = signRequest({
+      method: 'GET',
+      url: listUrl('a+b/c=d'),
+      ...AWS_DOC_CREDS,
+      date: AWS_DOC_DATE,
+    })
+    expect(signed.authorization).toBe(
+      'AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request,' +
+        'SignedHeaders=host;x-amz-content-sha256;x-amz-date,' +
+        'Signature=3addcbdb049766054c3cfc2d6bbaf80f8cc81225e8e6faea61e18ba1b4f13810',
+    )
+    // A token differing only by +-vs-space must sign differently — the two are
+    // distinct bytes to S3, and collapsing them anywhere would 403 the page.
+    const withSpace = signRequest({
+      method: 'GET',
+      url: listUrl('a b/c=d'),
+      ...AWS_DOC_CREDS,
+      date: AWS_DOC_DATE,
+    })
+    expect(withSpace.authorization).not.toBe(signed.authorization)
+  })
+})
+
+describe('presigned GET of a real cache-artifact key', () => {
+  it('keeps the scope separators literal and the wire URL byte-equal to the canonical one', () => {
+    // The tenant-partitioned layout from the artifact store. `/` must stay a
+    // separator (an escaped %2F would address a completely different object),
+    // and the returned URL must be the string that was signed.
+    const key = '/bkt/org/8a1f/ws/_org/untrusted/pr-42/0123abcd.tar.zst'
+    const signed = presignUrl({
+      method: 'GET',
+      url: new URL(`http://s3.local${key}`),
+      expiresSeconds: 300,
+      ...AWS_DOC_CREDS,
+      date: AWS_DOC_DATE,
+    })
+    expect(new URL(signed).pathname).toBe(key)
+    expect(signed.split('?')[0]).toBe(`http://s3.local${key}`)
+    expect(signed).toContain('X-Amz-Expires=300')
+    expect(signed).toContain(`X-Amz-SignedHeaders=host`)
+  })
+})
