@@ -2053,7 +2053,15 @@ export class Analytics {
       project,
       task,
       latestEntry: null,
-      note: 'cache key components (files / env / runtime / upstream) require live config evaluation; this surface returns persisted entry metadata',
+      // `latestEntry` is ALWAYS null here, and saying so is the point. The
+      // platform's schema holds run/task history; cache-ENTRY inventory (hash,
+      // size, timings) lives in a workspace's local cache.db, which this serve
+      // never opens — so there is no query to run and no future push that
+      // populates it. The previous note claimed this surface "returns
+      // persisted entry metadata", which it never has: the card below it read
+      // that null as "not yet" and told every dev to run the task once more,
+      // advice that cannot work no matter how many times it is followed.
+      note: 'cache-entry inventory is not recorded by the platform — it lives in the workspace local cache.db; key components (files / env / runtime / upstream) additionally require live config evaluation',
     }
   }
 
