@@ -26,16 +26,27 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
   const out: WhyArgs = { format: 'pretty' }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
-    const rv = a === '--run' ? args[++i] : a.startsWith('--run=') ? a.slice(6) : undefined
-    if (rv !== undefined) {
-      if (rv === '') return { ...out, error: 'invalid --run: empty' }
+    // Match on the flag NAME first. Reading the value into the same
+    // `undefined` that means "not this flag" conflated the two: a trailing
+    // `--run` (value omitted) consumed a non-existent argv slot, fell through,
+    // and was reported as `unknown flag: --run` — false, since `--run` is very
+    // much known, and silent about the real mistake. The `=` spelling of the
+    // same mistake already said `invalid --run: empty`, so one omitted value
+    // got two different diagnoses depending on how it was typed.
+    if (a === '--run' || a.startsWith('--run=')) {
+      const rv = a === '--run' ? args[++i] : a.slice(6)
+      if (rv === undefined || rv === '') return { ...out, error: 'invalid --run: empty' }
       out.runId = rv
       continue
     }
-    const fv = a === '--format' ? args[++i] : a.startsWith('--format=') ? a.slice(9) : undefined
-    if (fv !== undefined) {
+    if (a === '--format' || a.startsWith('--format=')) {
+      const fv = a === '--format' ? args[++i] : a.slice(9)
       if (fv !== 'pretty' && fv !== 'json') {
-        return { ...out, error: `invalid --format: ${fv} (expected pretty | json)` }
+        // An omitted value reads as empty, not as the literal word "undefined".
+        return {
+          ...out,
+          error: `invalid --format: ${fv ?? ''} (expected pretty | json)`,
+        }
       }
       out.format = fv
       continue

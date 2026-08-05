@@ -249,6 +249,38 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **`vx why --run` with the value omitted answered `unknown flag:
+--run` — and the audit's REFUTATIONS are the larger half** (`cli/why.ts`, 183
+  lines against 23 assertions, the thinnest never-audited core surface; it answers
+  "why did this task re-run?", the class that has produced the most real findings
+  here — a confident sentence citing the wrong evidence). **CONFIRMED by executed
+  probe, LOW.** `parseWhyArgs` read each flag's value into the same `undefined`
+  that means "not this flag", so a TRAILING `--run` consumed a non-existent argv
+  slot, fell through to the catch-all, and was reported as **`unknown flag:
+--run`** — false, since `--run` is very much known, and silent about the actual
+  mistake. The `=` spelling of the SAME mistake already said `invalid --run:
+empty`, so one omitted value got two different diagnoses depending on how it was
+  typed, one of them wrong. Fixed by matching on the flag NAME first; `--format`
+  with no value also stopped rendering the literal word `undefined`. Differential:
+  **exactly 2 fail** without it, while the prefix control (`--runner`,
+  `--formatting` must still be unknown flags — the fix must not swallow anything
+  merely sharing letters) passes BOTH ways. **REFUTED by reading the queries, and
+  this is what stops the next audit re-treading it.** (1) `whyDidThisRerun` and
+  `cacheKeyDiff` are called SEPARATELY by `whyCmd` and each pick their own
+  "previous run" — if they disagreed, the printed `previous` line and the `what
+changed` table would describe different comparisons in one confident answer. They
+  do not: both use the identical `started_at < ? AND KEYED_RUNS_SQL ORDER BY
+started_at DESC LIMIT 1`. (2) The re-push duplicate-row hazard that forced the
+  `run_id <>` fix on cloud's twins (2026-07-25/27) is **structurally unreachable in
+  core**: `runId` is a fresh UUIDv7 per run and one task id yields one row per run,
+  so no second row of the same run exists to be mistaken for the previous one, and
+  the strict `<` excludes the subject regardless. (3) `why.thisRun!`'s non-null
+  assertion is sound — `found: true` is only returned on the branch that sets it.
+  (4) The `latestRunId` NULL fallback ("recorded runs carry no run id") cannot
+  misfire on a task with SOME run ids, because `run_id` has been written since v11
+  and NULL rows are therefore strictly older than the `started_at DESC` pick. NO
+  CACHE_VERSION/SCHEMA/wire bump — one CLI diagnostic string.
+
 - **2026-08-05**: **A second `vx dev` SILENTLY stole the first one's socket, and
   then stopping the first left BOTH dark** (task #94; `packages/cloud/src/cli/
 dev.ts`, 206 lines against 6 assertions — ratio **34.3**, the thinnest
