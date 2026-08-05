@@ -14,6 +14,7 @@ import {
   findWorkspaceRoot,
   loadWorkspaceConfig,
 } from '@vzn/vx'
+import { deriveSession } from '../dist/session.js'
 import { activeEnvironment, environmentsPath } from '../environments.js'
 
 const PROBE_TIMEOUT_MS = 2000
@@ -44,23 +45,39 @@ const firstEnv = (...keys: string[]): string | undefined => {
 interface ResolvedStatusConnection {
   url: string
   token?: string
+  /**
+   * The UNTRUSTED fork-PR token. A fork job holds ONLY this one — repo secrets
+   * are not exposed to forks, which is the whole reason it exists — so a
+   * doctor that reads only `token` reports `NONE` for a CORRECTLY configured
+   * fork PR, and then tells the user to mint a trusted token they cannot
+   * receive. Every capability rung resolves `token ?? prToken`; so does this.
+   */
+  prToken?: string
   source: string
 }
 
+/** Which env var supplied the URL, so the doctor names the one to look at. */
+const URL_VARS = [
+  'VX_CLOUD_URL',
+  'VX_SERVICE_URL',
+  'VX_CLOUD_INGEST_URL',
+  'VX_CLOUD_INSIGHTS_URL',
+] as const
+
 /** Mirror of the plugin's connection ladder (explicit env > active environment). */
 function resolveStatusConnection(): ResolvedStatusConnection | undefined {
-  const explicitUrl = firstEnv(
-    'VX_CLOUD_URL',
-    'VX_SERVICE_URL',
-    'VX_CLOUD_INGEST_URL',
-    'VX_CLOUD_INSIGHTS_URL',
-  )
-  if (explicitUrl !== undefined) {
+  const urlVar = URL_VARS.find((k) => firstEnv(k) !== undefined)
+  if (urlVar !== undefined) {
     const token = firstEnv('VX_CLOUD_TOKEN', 'VX_CLOUD_INGEST_TOKEN')
+    const prToken = firstEnv('VX_CLOUD_PR_TOKEN')
     return {
-      url: explicitUrl.replace(/\/+$/, ''),
-      source: 'env (VX_CLOUD_URL)',
+      url: firstEnv(urlVar)!.replace(/\/+$/, ''),
+      // Naming the variable that actually won: reporting `VX_CLOUD_URL` for a
+      // URL that came from `VX_SERVICE_URL` sends a reader to look at a
+      // variable they never set.
+      source: `env (${urlVar})`,
       ...(token !== undefined ? { token } : {}),
+      ...(prToken !== undefined ? { prToken } : {}),
     }
   }
   const env = activeEnvironment()
@@ -69,10 +86,14 @@ function resolveStatusConnection(): ResolvedStatusConnection | undefined {
       url: env.url.replace(/\/+$/, ''),
       source: 'active environment',
       ...(env.token !== undefined ? { token: env.token } : {}),
+      ...(env.prToken !== undefined ? { prToken: env.prToken } : {}),
     }
   }
   return undefined
 }
+
+/** The bearer a run will actually present — the rung rule, not a guess. */
+const bearerOf = (c: ResolvedStatusConnection): string | undefined => c.token ?? c.prToken
 
 /** Does the cwd workspace's vx.workspace.ts declare the cloud() plugin? */
 async function workspaceDeclaresCloud(root: string): Promise<boolean | undefined> {
@@ -99,7 +120,18 @@ export async function statusCmd(args: readonly string[]): Promise<number> {
     row('file', environmentsPath())
   } else {
     row('connection', `${conn.url}  (${conn.source})`)
-    row('token', conn.token !== undefined ? 'present' : 'NONE')
+    // Which tier the run presents is which token is set — say so, since a fork
+    // PR presenting only the PR token is CORRECT, not a missing trusted token.
+    row(
+      'token',
+      conn.token !== undefined
+        ? conn.prToken !== undefined
+          ? 'present (trusted; a PR token is also set and only used as a fallback)'
+          : 'present (trusted)'
+        : conn.prToken !== undefined
+          ? 'present (PR token — untrusted cache scope, the fork-PR setup)'
+          : 'NONE',
+    )
   }
 
   // -- server probes -----------------------------------------------------------
@@ -128,17 +160,22 @@ export async function statusCmd(args: readonly string[]): Promise<number> {
       }
       row('server', `ok${name !== '' ? ` (${name})` : ''}`)
 
-      // Authenticated probe — names the silent-401 mode precisely.
-      if (conn.token !== undefined) {
+      // Authenticated probe — names the silent-rejection mode precisely.
+      const bearer = bearerOf(conn)
+      if (bearer !== undefined) {
         const probe = await fetchWithTimeout(`${conn.url}/v1/runs?limit=1`, {
-          authorization: `Bearer ${conn.token}`,
+          authorization: `Bearer ${bearer}`,
         })
+        // 403 is a rejection too: the bearer authenticated but may not read
+        // here (wrong scope / wrong workspace), and the consequence is the
+        // same silent no-op this row exists to surface. Only 401 was named,
+        // so a scoped-wrong token reported `ok`.
         row(
           'auth probe',
           probe === undefined
             ? 'unreachable'
-            : probe.status === 401
-              ? 'TOKEN REJECTED (401) — pushes are silently dropped; mint a new token'
+            : probe.status === 401 || probe.status === 403
+              ? `TOKEN REJECTED (${probe.status}) — pushes are silently dropped; mint a new token`
               : 'ok',
         )
       } else if (auth === 'account') {
@@ -192,11 +229,19 @@ export async function statusCmd(args: readonly string[]): Promise<number> {
     conn !== undefined &&
     root !== undefined
   ) {
-    const session = firstEnv('VX_AGENT_SESSION') ?? 'local'
+    // The SHARED derivation, not a local copy. The hand-rolled version here was
+    // `VX_AGENT_SESSION ?? 'local'` — missing the GitHub / GitLab / Buildkite
+    // rungs — so in CI, which is the only place a pool exists, the doctor
+    // probed session `local` while the agents had registered under
+    // `gh-<runId>-<attempt>` and it reported `0 remote agents` for a healthy
+    // pool. The registry keys on the session, so asking the wrong one is a
+    // confident wrong answer, not an approximation.
+    const session = deriveSession()
     const ws = captureWorkspaceIdentity(root).id
+    const bearer = bearerOf(conn)
     const res = await fetchWithTimeout(
       `${conn.url}/v1/agents?ws=${encodeURIComponent(ws)}&session=${encodeURIComponent(session)}`,
-      conn.token !== undefined ? { authorization: `Bearer ${conn.token}` } : undefined,
+      bearer !== undefined ? { authorization: `Bearer ${bearer}` } : undefined,
     )
     if (res !== undefined && res.ok) {
       try {

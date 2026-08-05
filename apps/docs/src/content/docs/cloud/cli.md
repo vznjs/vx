@@ -230,16 +230,31 @@ URL/token, so existing setups keep working.)
 ## `vx-cloud status` — connection doctor
 
 One read-only screen that surfaces the failure modes the never-fail
-clients hide by design. It prints: the resolved connection (explicit
-`VX_CLOUD_URL` env vs the active environment) and whether a token is
-present; server reachability + identity (`/health` + `/v1/meta`); an
-**authenticated probe** that names a rejected token (`TOKEN REJECTED
-(401)`) or a missing one on an account platform (where every push would
-401 silently) instead of leaving the dashboard mysteriously empty;
-whether the cwd workspace's `vx.workspace.ts` declares `cloud()` (a set
-`VX_CLOUD_DISTRIBUTE` is flagged **IGNORED** when it doesn't — the env
-var is read by the plugin, not by core); and, when distribution is
-enabled, the session's remote-agent count from `/v1/agents`.
+clients hide by design. It prints: the resolved connection — naming the
+env var that actually supplied the URL (`VX_CLOUD_URL`, `VX_SERVICE_URL`,
+…) or the active environment — and **which token** is configured; server
+reachability + identity (`/health` + `/v1/meta`); an **authenticated
+probe** that names a rejected token (`TOKEN REJECTED (401)` / `(403)` —
+a bearer that authenticates but may not read here fails just as silently)
+or a missing one on an account platform, instead of leaving the dashboard
+mysteriously empty; whether the cwd workspace's `vx.workspace.ts`
+declares `cloud()` (a set `VX_CLOUD_DISTRIBUTE` is flagged **IGNORED**
+when it doesn't — the env var is read by the plugin, not by core); and,
+when distribution is enabled, the session's remote-agent count from
+`/v1/agents`.
+
+The token row reflects the tier, because which token you present *is* the
+tier. A fork-PR job holds only `VX_CLOUD_PR_TOKEN` — repo secrets are not
+exposed to forks, which is why that token exists — so it is reported as
+`present (PR token — untrusted cache scope, the fork-PR setup)`, not as a
+missing trusted token, and the probe presents it. The bearer follows the
+same `token ?? prToken` rule every capability rung uses.
+
+The agent-pool probe asks for the **derived** session
+(`VX_AGENT_SESSION` → `gh-<runId>-<attempt>` → `gl-<pipelineId>` →
+`bk-<buildId>` → `local`) — the same ladder the agents and submitter use.
+The registry keys on it, so the count is for the session your agents
+actually registered under.
 
 ```
 $ vx-cloud status
