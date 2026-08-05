@@ -3,7 +3,7 @@
   "projects": {
     "@vzn/vx": {
       "configPath": "vx.config.ts",
-      "configHash": "5529f99bcd12f7d4",
+      "configHash": "f7948439f13ee3e5",
       "config": {
         "tasks": {
           "ci": {
@@ -32,7 +32,12 @@
           "test": {
             "description": "bun test against the tests/ tree",
             "exec": {
-              "command": "bun test --preload ./tests/setup.ts ./tests/"
+              "command": "bun test --preload ./tests/setup.ts ./tests/",
+              "env": {
+                "passThrough": [
+                  "VX_REQUIRE_SANDBOX"
+                ]
+              }
             },
             "dependsOn": [
               "install"
@@ -43,6 +48,9 @@
                   "src/**",
                   "tests/**",
                   "package.json"
+                ],
+                "env": [
+                  "VX_REQUIRE_SANDBOX"
                 ]
               },
               "outputs": {

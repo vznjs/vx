@@ -144,7 +144,10 @@ tsconfig.json / package.json / bun.lock / .oxlintrc.json / .oxfmtrc.json
 - **Commit messages:** imperative present; first line < 72 chars; body
   explains _why_. No co-author lines.
 - **Tests must pass.** 250+ tests today. Use `bun test` locally, or
-  `bun src/bin.ts run test` to drive it through vx itself.
+  `bun src/bin.ts run test` to drive it through vx itself. The 21 OS-sandbox
+  tests skip without `bwrap`/`socat`/`strace`; set `VX_REQUIRE_SANDBOX=1`
+  (CI does) to make an unavailable sandbox a FAILURE instead — a skip
+  reports green, and those tests cover the isolation boundary.
 - **Format must be clean.** Rewrite via vx: `bun src/bin.ts run
 lint.oxfmt.fix`; the check-only gate is `lint.oxfmt` (part of `lint`).
 - **Lint+typecheck must be clean.** Run via vx: `bun src/bin.ts run lint`
@@ -245,6 +248,72 @@ the honesty rules — report what failed, correct yourself in place, and never
 write a plausible cause into the log that you have not proven.
 
 ## Decision log
+
+- **2026-08-05**: **The 21 tests I had been reporting as "skipped" every wave
+  cover the SECURITY boundary, and CI could delete them under a green check**
+  (owner: "Why we have skipped tests? Figure out sth" — pushing back on a
+  blind spot I had named in a dozen consecutive gate reports and never chased).
+  **The answer to "why" is boring; what it was HIDING is not.** The skips are
+  `tests/sandbox-runtime.test.ts` (19) plus `verify.test.ts`'s
+  input-completeness block (2), both gated on `probeSandbox()`, and this
+  container simply lacks `bwrap` + `socat`. I installed them and **all 21 pass**
+  (19/19 and 37/37 with the block live) — so there was no hidden failure, and
+  every other skip vector in the repo is an honest opt-out (`VX_PERF=0`,
+  `hardwareConcurrency < 2`, and two `describe.skipIf`s on DECLARED deps).
+  **The finding is the mechanism, and it is the comment-claims-a-guarantee
+  class for the third wave running.** `sandbox-runtime.test.ts` said "We assert
+  availability rather than skipping … Local dev hosts without the deps fail
+  loudly so it's obvious that this suite needs them" — the code `console.warn`s
+  and `describe.skipIf`s, so nothing is asserted and nothing fails loudly; in a
+  2600-test run that warning scrolls past. **CONFIRMED by executed repro that
+  CI cannot catch this itself.** `probeSandbox` has FOUR failure paths
+  (unsupported platform, SRT's `checkDependencies`, the bwrap exec probe, the
+  SRT import) and the workflow hard-fails on exactly ONE — the raw
+  `bwrap … /bin/true` line in "Diagnose sandbox availability". Ran both suites
+  with **socat off PATH and bwrap intact**, so that guard still exits 0:
+  **`35 pass · 21 skip · 0 fail`, exit 0** — the OS-isolation coverage and the
+  `--verify=inputs` proof gone, CI green. Fixed with `VX_REQUIRE_SANDBOX`
+  (CI sets it): unavailable becomes a module-scope THROW naming the reason,
+  which fails the file; unset still skips, because requiring the deps
+  everywhere makes the suite unrunnable on a platform SRT does not support and
+  an unrunnable suite gets ignored rather than fixed. The two gates became ONE
+  `tests/helpers/sandbox-gate.ts` — they were two copies of a rule whose
+  comments had ALREADY drifted into claiming different contracts, which is the
+  drift class this repo keeps closing. **The hole in my OWN fix, caught before
+  shipping and closed:** the `test` task is CACHEABLE, so `passThrough` alone
+  would let a green artifact from a run that SKIPPED the 21 restore into a run
+  that was supposed to require them — `passThrough` forwards a value, it does
+  not fold it. Added `cache.inputs.env: ['VX_REQUIRE_SANDBOX']` beside it and
+  MEASURED the split rather than assuming it: unset `90949c97` / `=1`
+  `4bab5c59` / `=0` `67d6bf15`, and `=1` stable across invocations. Mechanism
+  verified before use in both directions — a module-scope throw really does
+  fail a bun test file (probed standalone: `0 pass · 1 fail`, exit 1) — and the
+  gate is differentially pinned three ways: deps present + required → **56/0**,
+  socat hidden + unset → **35 pass / 21 skip / 0 fail**, socat hidden +
+  required → **0 pass / 2 fail** naming `socat not installed`. NO
+  CACHE_VERSION/SCHEMA/wire bump; the `test` task's key moves once by
+  construction (it gained an input), which is self-healing. **The transferable
+  rule: a skip is a silent PASS.** A `describe.skipIf` on a dependency CI is
+  supposed to provide is coverage that can be deleted by an unrelated
+  infrastructure change, and the only thing standing between that and a green
+  merge is a `console.warn` nobody reads. Gate it on an env var the CI sets, or
+  accept that it is optional. **RECORDED WITH NUMBERS, NOT FIXED — and the
+  cloud half is BIGGER than the core one.** Reading this PR's own CI run rather
+  than trusting its green check: the core job is `2622 pass / 0 fail` with no
+  skip line (the 21 really ran on the runner), while the **cloud job is `1225
+pass · 38 skip · 0 fail`** — `workspace-context` 13, `visual` 12, `ui-perf` 7,
+  `ui-search` 6. That includes the visual suite guarding the docs screenshots,
+  whose absence in CI this log ALREADY blames for the shipped screenshots
+  running five days behind the product. So the same class, one job over, at
+  nearly double the size. It is not fixed here because the two halves have
+  different blockers: `ui-perf`/`ui-search`/`workspace-context` are behavioural
+  and need only playwright + a built `ui/dist` in the cloud job, but `visual`
+  compares PIXELS against baselines this log documents as environment-pinned
+  ("a different font set renders different text pixels"), so enabling it on a
+  GitHub runner would fail against baselines captured in a container — that
+  needs a containerized capture or pinned fonts first, which is a decision, not
+  a workflow line. An unused `VX_REQUIRE_BROWSER` switch was deliberately NOT
+  added: a flag nobody flips is the half-finished work this project forbids.
 
 - **2026-08-04**: **A clean audit of the live status region — no reachable
   defect, one comment that claimed a guarantee the code does not have, and TWO
