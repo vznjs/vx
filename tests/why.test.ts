@@ -169,4 +169,27 @@ describe('parseWhyArgs', () => {
     expect(parseWhyArgs(['--run=']).error).toContain('invalid --run')
     expect(parseWhyArgs(['a', 'b']).error).toContain('unexpected argument')
   })
+
+  it.each([
+    ['--run', 'invalid --run'],
+    ['--format', 'invalid --format'],
+  ])('names %s when its value is omitted, instead of calling it unknown', (flag, expected) => {
+    // A trailing flag used to consume a non-existent argv slot, fall through
+    // to the catch-all, and be reported as `unknown flag: --run` — false, and
+    // silent about the real mistake. The `=` spelling of the SAME mistake
+    // already said `invalid --run: empty`, so one omitted value got two
+    // different diagnoses depending on how it was typed.
+    const err = parseWhyArgs(['app#build', flag]).error
+    expect({ flag, err }).toEqual({ flag, err: expect.stringContaining(expected) })
+    expect(err).not.toContain('unknown flag')
+    // And never the literal word "undefined" — an omitted value is empty.
+    expect(err).not.toContain('undefined')
+  })
+
+  it('still rejects a genuinely unknown flag that merely shares a prefix', () => {
+    // Control: the fix matches on the flag NAME, so it must not swallow
+    // anything that happens to start with the same letters.
+    expect(parseWhyArgs(['--runner']).error).toContain('unknown flag: --runner')
+    expect(parseWhyArgs(['--formatting']).error).toContain('unknown flag: --formatting')
+  })
 })
