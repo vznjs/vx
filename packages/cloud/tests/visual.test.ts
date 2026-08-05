@@ -27,7 +27,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
 import { bootPlatform, type TestPlatform } from './helpers/platform.js'
-import { loadChromium, sharedBrowser } from './helpers/playwright.js'
+import { sharedBrowser } from './helpers/playwright.js'
+import { browserGate } from './helpers/browser-gate.js'
 import { decodePng, diffPixels } from './helpers/png.js'
 
 const DIST = path.join(import.meta.dir, '..', 'ui', 'dist', 'index.html')
@@ -85,9 +86,12 @@ interface PwBrowser {
   close(): Promise<void>
 }
 
-const chromium = await loadChromium()
-const distBuilt = await Bun.file(DIST).exists()
-const available = chromium !== undefined && distBuilt
+// Note for whoever enables these suites in CI: this one cannot simply come
+// along. Its baselines are pinned to the environment that captured them (a
+// different font set renders different text pixels), so a GitHub runner would
+// diff against container-captured images and fail every shot. It needs a
+// containerized capture or pinned fonts first — a decision, not a workflow line.
+const { chromium, available } = await browserGate('visual', DIST)
 
 // ── seed ─────────────────────────────────────────────────────────────────
 
