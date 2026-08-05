@@ -246,6 +246,44 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-04**: **A clean audit of the live status region — no reachable
+  defect, one comment that claimed a guarantee the code does not have, and TWO
+  vacuous pins of my own caught by mutation** (task #88; `status-line.ts`, 318
+  lines at ratio 3.0 — the erase/redraw cycle every `vx run` writes through,
+  where a wrong answer corrupts a terminal rather than a build). **The one
+  finding is a false claim, not a bug.** `regionRows`' comment said that when
+  the terminal width is unknown "the region is not drawn at all, so 'no
+  wrapping' is the consistent answer" — probed, and the region IS drawn: at
+  `columns === undefined` a 200-char line erases ONE row, the same under-erase
+  the 2026-07-27 width fix removed, while a known width of 80 correctly moves up 3. But the behaviour is already PINNED as deliberate by a prior wave, and it
+  is the right trade: with no width there is nothing to compute wrapping from,
+  and guessing is worse — `ESC[J` clears to end of SCREEN, so over-erasing
+  destroys output ABOVE the region instead of leaving junk below it. Reachable
+  only on a TTY whose winsize ioctl fails (a non-TTY disables the region
+  outright), and the shared test helper supplies no `columns`, so all 31 of its
+  cases ride this path. So the comment was corrected to name a RESIDUAL with its
+  reason rather than a guarantee — the `deriveCacheSource`/`MAX_WINDOW_DAYS`
+  class — and no behaviour changed. **The transferable part is my own two
+  pins.** (1) An "empty write does not change the mid-line state" test asserted
+  from MID-LINE, where `''.endsWith('\n')` is false either way — dropping the
+  `chunk.length > 0` guard changed nothing and the mutation survived. It only
+  discriminates from AT line start, which is the one state an empty write could
+  wrongly clear; rewritten that way it kills the mutation. (2) A "clearStatus
+  cancels the pending trailing draw" test could not kill the removal of
+  `cancelTrailing()` either, because the timer callback ALSO refuses once `dead`
+  is set — two mechanisms, only one load-bearing. Renamed to pin the OUTCOME
+  ("nothing paints after clearStatus") with the redundancy stated, rather than
+  claiming a mechanism the test cannot see. Same lesson as the artifact-store
+  wave, reached from the other direction: **a surviving mutation means the TEST
+  is wrong at least as often as the claim** — and a pin written for a mechanism
+  you have not isolated is worse than no pin, because it reads as coverage.
+  Also verified sound and NOT changed: `paintIdParts(hueSource, projectText, …)`
+  taking the project name twice is correct (hue derived from the name it
+  displays), and the writer's mid-line deferral repaints on the next
+  newline-terminated write rather than dropping the pending state. ZERO `src/`
+  behaviour change; comments and pins only. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump.
+
 - **2026-08-04**: **Every detached checkout recorded a branch literally named
   `HEAD`, collapsing every PR into one scope** (task #87; `run-context.ts`, next
   on the lines-per-assertion ranking — the capture that stamps every telemetry

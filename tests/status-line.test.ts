@@ -631,14 +631,69 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
   })
 
   it('unknown width (no TTY columns) keeps the logical-line erase', () => {
-    // The region is only ever drawn on a TTY, so "no width" has no wrapping
-    // to account for — and every other test in this file relies on it.
+    // A deliberate residual, not a guarantee: with no width there is nothing
+    // to compute wrapping FROM, so a wrapped line under-erases exactly as it
+    // did before regionRows existed. Guessing a width is worse — `ESC[J`
+    // clears to end of SCREEN, so over-erasing destroys output ABOVE the
+    // region rather than leaving junk below it. Only reachable on a TTY whose
+    // winsize ioctl fails; a non-TTY disables the region outright. Every other
+    // test in this file relies on this fallback.
     const s = tty()
     expect(s.columns).toBeUndefined()
     const w = createOutputWriter(s, { forceFloorMs: 0 })
     w.setRegion(['a'.repeat(500), 'b'], { force: true })
     w.setRegion(['n1'], { force: true })
     expect(s.chunks.at(-1)).toBe('\r\x1b[1A\x1b[Jn1')
+  })
+
+  it('nothing paints after clearStatus, even with a trailing draw pending', async () => {
+    // The force floor coalesces a burst into ONE trailing draw at expiry, and
+    // that timer outlives the call that armed it. A draw landing after
+    // clearStatus would repaint the region BELOW the final summary, where
+    // nothing will ever erase it again.
+    //
+    // Two things stop that and only one is load-bearing: clearStatus cancels
+    // the timer, AND the callback refuses once `dead` is set. Removing the
+    // cancel alone kills nothing — verified by mutation — so this pins the
+    // OUTCOME rather than either mechanism, and the cancel stands as
+    // defence-in-depth.
+    const s = tty()
+    const w = createOutputWriter(s, { forceFloorMs: 40 })
+    w.setRegion(['first'], { force: true })
+    w.setRegion(['second'], { force: true })
+    w.clearStatus()
+    const afterClear = s.chunks.length
+    await Bun.sleep(90)
+    expect(s.chunks.length).toBe(afterClear)
+    expect(s.text()).not.toContain('second')
+  })
+
+  it('holds the redraw while output sits mid-line, then paints on the next full line', () => {
+    // Focused streaming can end a chunk without a newline. Redrawing there
+    // would wipe the partial line the task just wrote, so the writer waits for
+    // column 0 — and must not simply DROP the pending state either.
+    const s = tty()
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.write('partial')
+    w.setRegion(['pending'], { force: true })
+    expect(s.text()).not.toContain('pending')
+    w.write(' done\n')
+    expect(s.text()).toContain('pending')
+  })
+
+  it('an empty write does not clear the at-line-start state', () => {
+    // `atLineStart` tracks the last NON-empty chunk: a zero-length write moves
+    // no cursor, so treating it as a line ending would redraw over a partial
+    // line — the exact case the guard above exists for.
+    const s = tty()
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    // Start AT line start — that is the only state an empty write could
+    // wrongly clear. Asserting from mid-line proves nothing, because
+    // `''.endsWith('\n')` is false either way.
+    w.write('line\n')
+    w.write('')
+    w.setRegion(['pending'], { force: true })
+    expect(s.text()).toContain('pending')
   })
 
   it('a region that fits is byte-identical to the width-unaware erase', () => {
