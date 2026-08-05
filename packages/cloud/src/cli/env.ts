@@ -106,15 +106,22 @@ export function parseConnectArgs(args: readonly string[]): ConnectArgs {
       out.force = true
       continue
     }
-    const nv = a === '--name' ? args[++i] : a.startsWith('--name=') ? a.slice(7) : undefined
-    if (nv !== undefined) {
-      if (nv === '') return { ...out, error: 'invalid --name: empty' }
+    // Match on the flag NAME first. Reading the value into the same `undefined`
+    // that means "not this flag" conflated the two: a TRAILING `--name` (value
+    // omitted) consumed a non-existent argv slot, fell through, and reported
+    // `unknown flag: --name` — false, since `--name` is very much known, and
+    // silent about the real mistake. The `=` spelling of the same mistake
+    // already said `invalid --name: empty`, so one omitted value got two
+    // different diagnoses depending on how it was typed, one of them wrong.
+    if (a === '--name' || a.startsWith('--name=')) {
+      const nv = a === '--name' ? args[++i] : a.slice('--name='.length)
+      if (nv === undefined || nv === '') return { ...out, error: 'invalid --name: empty' }
       out.name = nv
       continue
     }
-    const tv = a === '--token' ? args[++i] : a.startsWith('--token=') ? a.slice(8) : undefined
-    if (tv !== undefined) {
-      if (tv === '') return { ...out, error: 'invalid --token: empty' }
+    if (a === '--token' || a.startsWith('--token=')) {
+      const tv = a === '--token' ? args[++i] : a.slice('--token='.length)
+      if (tv === undefined || tv === '') return { ...out, error: 'invalid --token: empty' }
       out.token = tv
       continue
     }
@@ -182,8 +189,14 @@ export async function connectCmd(args: readonly string[]): Promise<number> {
     const probe = await fetchWithTimeout(`${base}/v1/runs?limit=1`, CONNECT_TIMEOUT_MS, {
       authorization: `Bearer ${parsed.token}`,
     })
-    if (probe === undefined || probe.status === 401) {
-      throw new UserError(`connect: token rejected by ${base} (401)`)
+    // 403 is a rejection too: the token authenticated but may not read here
+    // (wrong scope / wrong workspace), and the machine clients are never-fail,
+    // so persisting it produces exactly the silently-empty dashboard this
+    // handshake exists to prevent. Only 401 was checked, so a wrong-scope token
+    // was accepted and written to the file with exit 0.
+    if (probe === undefined || probe.status === 401 || probe.status === 403) {
+      const how = probe === undefined ? 'unreachable' : String(probe.status)
+      throw new UserError(`connect: token rejected by ${base} (${how})`)
     }
   }
 
@@ -199,7 +212,20 @@ export async function connectCmd(args: readonly string[]): Promise<number> {
       `connect: environment "${name}" already points at ${existing.url} — pass --force to repoint it at ${base}`,
     )
   }
+  // Re-connecting UPDATES what you asked for and keeps what you did not.
+  // Building the entry from scratch silently destroyed every field the flags
+  // did not repeat: rotating a token with `connect <same-url> --token new`
+  // dropped `distribute` (ambient distribution silently off) and `prToken`
+  // (the fork-PR token, which has NO flag at all — hand-editing the file was
+  // the only way to set it, and the only way to get it back).
+  //
+  // Credentials are deliberately NOT carried across a `--force` repoint: they
+  // belong to the server that issued them, and the handshake above only probes
+  // a token passed on THIS invocation, so carrying one would persist a
+  // credential this URL never validated.
+  const carried = existing !== undefined && existing.url === base ? existing : undefined
   const entry: EnvironmentEntry = {
+    ...carried,
     url: base,
     ...(parsed.token !== undefined ? { token: parsed.token } : {}),
     ...(parsed.distribute !== undefined ? { distribute: parsed.distribute } : {}),

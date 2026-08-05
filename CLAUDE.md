@@ -249,6 +249,92 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **Rotating a token silently turned OFF ambient distribution and
+  dropped the fork-PR token — and two of this wave's three findings are sweep
+  misses from my OWN two PRs earlier the same day** (`cli/env.ts`, 340 lines
+  against 64 assertions — the connection front door: `vx-cloud connect` /
+  `env ls|use|rm` / `disconnect`, where a wrong answer means a workspace is
+  silently not connected). **CONFIRMED by executed repro through the real CLI,
+  MED, and it is the one with teeth.** `connectCmd` REBUILT the persisted entry
+  from the flags of THIS invocation, so every field the flags did not repeat was
+  destroyed. Measured on a real environments file: before
+  `{url, token:'vxc_a', distribute:4, prToken:'vxc_pr'}`, and after
+  `vx-cloud connect <same-url> --token vxc_b` the entry was
+  `{url, token:'vxc_b'}` — **ambient distribution silently off** (the `distribute`
+  rung reads the field, so the next `vx run` quietly stops fanning out and nothing
+  says so) and **the fork-PR token gone**. That second half is the sharp one:
+  `prToken` has **NO FLAG AT ALL** — it is a validated `EnvironmentEntry` field the
+  plugin reads and the only way to set it is hand-editing `environments.json`, so a
+  routine token rotation destroyed a value the CLI cannot restore. Fixed by merging
+  over the existing entry when the URL matches (`...carried`), and the CONTROL is
+  what keeps the fix honest: credentials are deliberately **not** carried across a
+  `--force` repoint to a DIFFERENT url — a token belongs to the server that issued
+  it, and the handshake only verifies a token passed on this invocation — pinned by
+  a two-server test that passes BOTH ways. **CONFIRMED, LOW-MED:** a token the
+  server FORBIDS (403) was treated as a successful handshake and PERSISTED. The
+  probe checked `401` alone, so a token that authenticated but may not read here
+  (wrong scope, wrong workspace) sailed through — and since every machine client is
+  never-fail, that persists exactly the silently-empty dashboard the handshake
+  exists to prevent. Now `401 || 403` refuses and writes nothing (`persisted:
+undefined`, verified). **CONFIRMED, LOW:** `--name` or `--token` with the value
+  OMITTED answered `unknown flag: --name` — false, since `--name` is very much
+  known, and silent about the actual mistake; the `=` spelling of the same mistake
+  already said `invalid --name: empty`. Fixed by matching on the flag NAME first,
+  with `--names`/`--tokenize` pinned as prefix controls so the fix cannot swallow
+  anything merely sharing letters. **REFUTED by executed probe, so nobody
+  re-audits:** `VX_CLOUD_ENV` is consistent between `envLs` and
+  `activeEnvironment` — an override naming a non-existent environment stars nothing
+  in the listing and resolves to nothing for the plugin, rather than one surface
+  claiming an active environment the other cannot find. **THE ENTRY IS THE SWEEP
+  MISS, and it is mine twice over.** Finding A is byte-for-byte the defect I fixed
+  in `vx why --run` hours earlier (the argv parser reading a flag's value into the
+  same `undefined` that means "not this flag"), and finding D is byte-for-byte the
+  401-only auth check I fixed in `status.ts` in the wave immediately before this
+  one. Neither wave swept its siblings. **The transferable rule: when a wave fixes a
+  CLASS rather than a line, grep the class in the same wave** — this log already
+  records the same shape for `splitTaskId` / `WORKSPACE_FINGERPRINT_FILES` /
+  `clampInt` / `parseDecimalInt`, where a centralisation lands and one call site
+  survives because the copies agree on the inputs anyone tries. Here there was no
+  centralisation to hide behind: the copies were simply not looked for.
+  **Differentials, each isolating its own fix, every restore verified back to a
+  24/0 baseline:** reverting the flag-name-first match fails **2**, rebuilding the
+  entry from flags fails **1**, and restoring the 401-only check fails **1** — while
+  the `--force`-repoint control and the prefix controls pass BOTH ways. Suite 17 →
+  **24** tests / 64 → 82 assertions. NO CACHE_VERSION/SCHEMA/wire/migration bump —
+  this changes which flag strings are accepted, which handshake outcomes persist,
+  and which fields survive a re-connect; never a key or a stored byte. Docs
+  corrected in the same wave (`cloud/cli.md`): the handshake paragraph now names
+  403 beside 401, and the re-connect merge rule is stated with its `--force`
+  exception and the reason `prToken` needs preserving. **RECORDED, NOT FIXED:**
+  `connect` still has no `--pr-token` flag, so the fork-PR tier remains
+  hand-editable only — a feature decision, not a defect, and now at least a
+  rotation no longer destroys it. Gates from the ROOT: fmt/lint 0, core **2641
+  / 0** with no skip line, docs site 168 pages clean, cloud **1273 / 0 across
+  its 53 non-browser suites** (+7, env-cli 17 → 24). **And the browser four
+  finally got a measurement that NARROWS the flake this log has called
+  un-root-caused four times.** The full 57-file cloud run was 1289 pass / 11
+  fail / 1300 ran in **1101.87 s** — the recorded signature. What is new is the
+  controlled pair, same box, same clean state (load 0.17, 14 GB free, ZERO
+  stray postgres, ZERO `/tmp/vx-*`), minutes apart: the same 30 browser tests
+  as **four files in ONE `bun test` process** are **12 pass / 6 fail in
+  624 s**, and as **one process per suite** are **30 pass / 0 fail in 88 s**
+  total (visual 10/0 36.5 s · ui-perf 5/0 19.8 s · workspace-context 11/0
+  26.8 s · ui-search 4/0 5.1 s). The only variable is process sharing — not
+  host debris, not the full suite's size, not pixels (every failure is a 30 s
+  `goto` timeout or a 120/180 s `beforeEach`/`afterEach` hook timeout). **That
+  localises it to per-process shared state, and the obvious suspect is the
+  process-wide `sharedBrowser` in `tests/helpers/playwright.ts`** — introduced
+  deliberately (2026-07-26) because three concurrent Chromiums killed each
+  other, so the fix is not to revert it but to give each suite its own context
+  lifecycle or its own process. Also worth knowing for anyone reconciling
+  counts: 1268 + 30 + 5 healthy = **1303**, against 1300 in the full run, so
+  the timed-out hooks additionally swallow **3 tests that never execute and are
+  never reported** — a shared-process failure under-reports its own blast
+  radius. NOT claimed as fixed or fully root-caused; it is one clean
+  controlled pair, and it is unreachable from this diff either way (nothing in
+  the browser suites imports `cli/env`; only `environments.test.ts` and
+  `plugin.test.ts` do, and both pass).
+
 - **2026-08-05**: **The connection DOCTOR told a correctly-configured fork PR its
   setup was broken, and told CI its healthy agent pool was empty** (`cli/status.ts`,
   216 lines against 14 assertions — the thinnest never-audited cloud surface once
@@ -319,6 +405,12 @@ remote cache are OFF`, and its remediation said to mint a TRUSTED token and
   `packages/cloud/{src,tests,ui/src}` imports `cli/status`. That measurement is
   what forced the in-place correction to the entry below, which had called a
   single clean full run a confirmation that the flake was host debris.
+  **[NARROWED the same day by the entry above: "inside the FULL-suite process"
+  is too weak. Running just the FOUR browser files in one `bun test` process is
+  enough to break them — 12 pass / 6 fail in 624 s — while one process per
+  suite is 30/0 in 88 s on the same clean box minutes later. The variable is
+  process SHARING, not suite count and not host debris; the suspect is the
+  process-wide `sharedBrowser`.]**
 
 - **2026-08-05**: **The PR page told a dev "5 executed" for a run that executed 2 —
   and it overstated MOST on exactly the red runs someone opens it to read** (task
