@@ -16,7 +16,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import { bootPlatform, type TestPlatform } from './helpers/platform.js'
-import { chromiumExecutablePath } from './helpers/playwright.js'
+import { sharedBrowser } from './helpers/playwright.js'
 import { browserGate } from './helpers/browser-gate.js'
 
 const DIST = path.join(import.meta.dir, '..', 'ui', 'dist', 'index.html')
@@ -38,6 +38,7 @@ interface PwPage {
 interface PwContext {
   addCookies(cookies: Record<string, unknown>[]): Promise<void>
   newPage(): Promise<PwPage>
+  close(): Promise<void>
 }
 interface PwBrowser {
   newContext(opts: Record<string, unknown>): Promise<PwContext>
@@ -138,6 +139,7 @@ async function waitForText(
 describe.skipIf(!available)('filter box searches the whole workspace', () => {
   let platform: TestPlatform
   let browser: PwBrowser
+  let ctx: PwContext | undefined
   let page: PwPage
   const errors: string[] = []
 
@@ -153,12 +155,12 @@ describe.skipIf(!available)('filter box searches the whole workspace', () => {
     })
     if (!res.ok) throw new Error(`seed ingest ${res.status}: ${await res.text()}`)
 
-    browser = (await chromium!.launch({
-      headless: true,
-      executablePath: chromiumExecutablePath(),
-      args: ['--disable-dev-shm-usage'],
-    })) as unknown as PwBrowser
-    const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+    // The SHARED browser, like every other browser suite. Launching a private
+    // one put TWO Chromiums in the process the moment this suite ran beside
+    // them — exactly the contention `sharedBrowser` was introduced to remove
+    // four hours before this file was written.
+    browser = (await sharedBrowser(chromium!)) as unknown as PwBrowser
+    ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } })
     await ctx.addCookies([
       {
         name: 'vx_session',
@@ -176,7 +178,9 @@ describe.skipIf(!available)('filter box searches the whole workspace', () => {
   }, 180_000)
 
   afterAll(async () => {
-    await browser?.close()
+    // The CONTEXT, never the browser — closing the shared browser would kill
+    // every suite scheduled after this one in the same process.
+    await ctx?.close().catch(() => {})
     await platform?.stop()
   }, 120_000)
 

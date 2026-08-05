@@ -249,6 +249,63 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **The browser flake this log called un-root-caused FOUR times is
+  root-caused and fixed: `sharedBrowser` memoized a launch promise with no
+  liveness check, so ONE browser death was permanent for the whole `bun test`
+  process** (`tests/helpers/playwright.ts` + `tests/ui-search.test.ts`).
+  **CONFIRMED by a deterministic probe, and then by the causal differential.**
+  SIGKILL the browser mid-process and re-request it: `isConnected()` goes
+  false, `sharedBrowser` returns **the SAME handle**, and the next suite's
+  first `newContext` dies in **2 ms** with `Target page, context or browser has
+  been closed` — verbatim the string the 2026-07-26 commit cited as the symptom
+  it was introduced to remove. So a crash that should cost ONE suite instead
+  cost every suite scheduled after it, which is exactly why the browser suites
+  are clean one-process-per-suite and rot when they share a process. Liveness
+  was observable the entire time; nothing asked. **Second defect, contributing:
+  `ui-search` launched a PRIVATE Chromium** — and it was written **four hours
+  AFTER** `sharedBrowser` landed to stop precisely that, so two browsers shared
+  the process whenever it ran beside the others. Not a sweep miss of an
+  existing call site: a NEW one written after the convention, which is worse,
+  and the same class this log recorded hours earlier. It now takes the shared
+  browser and closes its CONTEXT (closing the browser would kill every later
+  suite — with the liveness check that is now recoverable rather than fatal,
+  which is the defence-in-depth the two fixes give each other). **THE CAUSAL
+  RESULT, same four files, same one process, same box:** **12 pass / 6 fail in
+  624 s → 30 pass / 0 fail in 70.08 s.** Green AND **8.9× faster** — faster
+  even than one-process-per-suite (88 s), because there is now one browser
+  launch instead of two plus a corpse driving every later suite into its
+  timeout. **Differentials, each isolating its own fix, every restore verified
+  back to a 4/0 baseline:** reverting the liveness check fails **1**,
+  reintroducing the private launch fails **1**, closing the shared browser
+  instead of the context fails **1** — while the control ("a live browser is
+  still memoized, not relaunched per call") passes BOTH ways, because without
+  it the liveness check could degenerate into launch-every-time and restore the
+  very contention the shared browser exists to prevent. **METHOD — three of my
+  own probes were wrong first, and each was caught by checking rather than
+  reading.** (1) The first kill probe was **VACUOUS**: `b1.process()` is not
+  exposed on the handle, so the browser was never killed and the probe cheerfully
+  printed "next suite RECOVERED in 142 ms" — a clean-looking REFUTATION of a
+  real defect. Only reading the intermediate lines (`browser pid: (not
+exposed)`) caught it; the fix was to find the pid via `ps` (main process =
+  the launcher path, no `--type=` child, `comm` is **`chrome`** not `chromium`).
+  (2) A baseline run I started **omitted `--timeout`**, so bun's 5 s default
+  fired instead of the 120 s budget the original observation used, and the file
+  order differed — not comparable, so it was discarded rather than reported.
+  (3) The new source-scanning guard **flagged ITSELF**, because its own comment
+  contained the literal it greps for; skipped by name, the same self-match class
+  as `pgrep -f` matching the shell that runs it (which also bit twice today —
+  once reporting a phantom `bun test` and once a phantom browser). **The
+  transferable rule: a memo of a resource that can DIE must check liveness** —
+  this log already records the same shape for the cache's negative-TTL memo and
+  the `serveAdvertisesCacheWire` cached `false`; a browser handle is the same
+  bug with a process behind it. **CORRECTS the two entries below IN PLACE:**
+  "un-root-caused", "the trigger is something about running the browser suites
+  inside the full-suite process", and the suspicion that it was host debris are
+  all superseded — the trigger is a cached dead handle, it needs no host
+  degradation and no full suite, and four files in one process reproduce it.
+  Gates from the ROOT: fmt/lint 0. NO CACHE_VERSION/SCHEMA/wire/migration bump
+  — test infrastructure only; `git diff src/` empty in both packages.
+
 - **2026-08-05**: **Rotating a token silently turned OFF ambient distribution and
   dropped the fork-PR token — and two of this wave's three findings are sweep
   misses from my OWN two PRs earlier the same day** (`cli/env.ts`, 340 lines
@@ -410,7 +467,9 @@ remote cache are OFF`, and its remediation said to mint a TRUSTED token and
   enough to break them — 12 pass / 6 fail in 624 s — while one process per
   suite is 30/0 in 88 s on the same clean box minutes later. The variable is
   process SHARING, not suite count and not host debris; the suspect is the
-  process-wide `sharedBrowser`.]**
+  process-wide `sharedBrowser`. **ROOT-CAUSED AND FIXED the same day — see the
+  top entry: the memo had no liveness check, so one browser death was permanent
+  for the process. Same four files in one process are now 30/0 in 70 s.**]**
 
 - **2026-08-05**: **The PR page told a dev "5 executed" for a run that executed 2 —
   and it overstated MOST on exactly the red runs someone opens it to read** (task
