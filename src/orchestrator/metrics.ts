@@ -348,7 +348,12 @@ export interface HitRateSplit {
  * local restore; `cache-hit-remote` was pulled over the network.
  */
 export function getHitRateSplit(db: Database, days = 1): HitRateSplit {
-  const since = Date.now() - days * 24 * 60 * 60 * 1000
+  // Clamped like every sibling window (getRunHeatmap, periodStats). Unclamped,
+  // a 0 or negative `days` put `since` in the FUTURE, so the query matched
+  // nothing and the split reported a confident `total: 0, hitRate: 0` for a
+  // workspace full of runs — the shape a caller is least able to tell from a
+  // genuinely cold cache.
+  const since = Date.now() - clampInt(days, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
   const r = db
     .query(
       `SELECT COUNT(*) AS total,
@@ -1413,10 +1418,35 @@ export interface FlakyTask {
    * and do NOT flag a task as flaky.
    */
   mixedOutcomeKeys: number
-  /** p99 / p50 ratio for successful non-hit runs; >3 flags wide tail. */
+  /**
+   * p99 / p50 ratio for successful non-hit runs — reported as CONTEXT beside a
+   * real flake signal, never as one on its own. A wide spread on runs that all
+   * SUCCEEDED is variance in the machine, not nondeterminism in the outcome;
+   * `getLeastStableTasks` owns that question and measures it per cache key.
+   */
   durationTailRatio: number | undefined
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
+}
+
+/**
+ * Flakiness is nondeterminism in the OUTCOME: a within-run retry, or one cache
+ * key that both failed and succeeded.
+ *
+ * A wide `durationTailRatio` used to qualify a task on its own, which listed
+ * tasks that had never once gone red — task detail then rendered "Flaky —
+ * inferred from a 0% failure rate", a sentence that refutes itself. It also
+ * contradicted the rule `mixedOutcomeKeys`' own doc already states, and
+ * duplicated `getLeastStableTasks`, which measures spread PER CACHE KEY and is
+ * the surface that owns the question. The ratio is still reported, and still
+ * breaks ties in the ranking — it is context, not evidence.
+ *
+ * Structurally typed and exported because the cloud analytics twin backs the
+ * SAME dashboard badge off Postgres and must not derive its own answer — two
+ * copies of a classification rule are how they drift.
+ */
+export function hasFlakeSignal(r: { flakyConfirmed: boolean; mixedOutcomeKeys: number }): boolean {
+  return r.flakyConfirmed || r.mixedOutcomeKeys > 0
 }
 
 export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
@@ -1471,16 +1501,11 @@ export function getFlakiestTasks(db: Database, limit = 25): FlakyTask[] {
         p99DurationMs: p99,
       } satisfies FlakyTask
     })
-    .filter(
-      (r) =>
-        r.flakyConfirmed ||
-        r.mixedOutcomeKeys > 0 ||
-        (r.durationTailRatio !== undefined && r.durationTailRatio > 2),
-    )
+    .filter(hasFlakeSignal)
     .sort((a, b) => {
       // Confirmed-flaky tasks (a real within-run retry) outrank the same-key
-      // inferred ones, which outrank wide-tail-only rows; within each tier,
-      // failure rate dominates and the duration tail breaks ties.
+      // inferred ones; within each tier, failure rate dominates and the
+      // duration tail breaks ties.
       const score = (r: FlakyTask) =>
         (r.flakyConfirmed ? 100 : 0) +
         (r.mixedOutcomeKeys > 0 ? 50 : 0) +

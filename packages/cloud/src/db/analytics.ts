@@ -20,7 +20,16 @@ import type { SQL } from 'bun'
 // `splitTaskId` is core's — the graph splits a task id on the FIRST '#', and a
 // hand-rolled `split('#', 2)` here silently disagreed with it for any task name
 // containing one.
-import { clampInt, diffOutputTrees, isPassStatus, splitTaskId, TASK_STATUSES } from '@vzn/vx'
+// `hasFlakeSignal` is imported, not re-derived: this backs the SAME dashboard
+// badge core's copy does, and two copies of a classification rule drift.
+import {
+  clampInt,
+  diffOutputTrees,
+  hasFlakeSignal,
+  isPassStatus,
+  splitTaskId,
+  TASK_STATUSES,
+} from '@vzn/vx'
 import type { OutputFingerprint, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 import {
   RUN_LOG_BUDGET_CHARS,
@@ -528,6 +537,12 @@ export interface FlakyTask {
    * (the regressions surface owns those) and do NOT flag a task as flaky.
    */
   mixedOutcomeKeys: number
+  /**
+   * p99 / p50 ratio for successful non-hit runs — reported as CONTEXT beside a
+   * real flake signal, never as one on its own. A wide spread on runs that all
+   * SUCCEEDED is variance in the machine, not nondeterminism in the outcome;
+   * `getLeastStableTasks` owns that question and measures it per cache key.
+   */
   durationTailRatio: number | undefined
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
@@ -2805,23 +2820,16 @@ export class Analytics {
         p99DurationMs: p99,
       }
     })
-    const flaky = out
-      .filter(
-        (r) =>
-          r.flakyConfirmed ||
-          r.mixedOutcomeKeys > 0 ||
-          (r.durationTailRatio !== undefined && r.durationTailRatio > 2),
-      )
-      .sort((a, b) => {
-        // Confirmed (within-run retry) outranks same-key inferred, which
-        // outranks wide-tail-only; failure rate then tail break ties.
-        const score = (r: FlakyTask): number =>
-          (r.flakyConfirmed ? 100 : 0) +
-          (r.mixedOutcomeKeys > 0 ? 50 : 0) +
-          r.failureRate * 10 +
-          (r.durationTailRatio ?? 1)
-        return score(b) - score(a)
-      })
+    const flaky = out.filter(hasFlakeSignal).sort((a, b) => {
+      // Confirmed (within-run retry) outranks same-key inferred; failure
+      // rate then the duration tail break ties.
+      const score = (r: FlakyTask): number =>
+        (r.flakyConfirmed ? 100 : 0) +
+        (r.mixedOutcomeKeys > 0 ? 50 : 0) +
+        r.failureRate * 10 +
+        (r.durationTailRatio ?? 1)
+      return score(b) - score(a)
+    })
     // The page AND how many there are. The candidate scan has no LIMIT (the
     // GROUP BY covers the workspace), so this length is the real count — and
     // it is free, computed before the slice. Without it the headline metric

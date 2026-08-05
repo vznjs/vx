@@ -138,6 +138,31 @@ describe('suggestedRetriesFor', () => {
   })
 })
 
+describe('flakyText', () => {
+  const text = (flaky: unknown): string => String(FUNCTIONS.flakyText!({ flaky }))
+
+  it('names within-run retries for a CONFIRMED flake', () => {
+    const s = text({ flakyConfirmed: true, withinRunRetries: 2, maxAttempts: 3, runs: 9 })
+    expect(s).toContain('CONFIRMED by within-run retries in 2 run(s)')
+    expect(s).toContain('worst: 3 attempts')
+  })
+
+  // The badge used to say "inferred from a N% failure rate", which describes a
+  // rule the server does not apply: failures that each sit on their own cache
+  // key are legitimate breaks and never reach this badge. Name the real
+  // evidence — the keys that both failed and succeeded.
+  it('names the mixed-outcome cache keys for an INFERRED flake, not the failure rate', () => {
+    const s = text({ flakyConfirmed: false, mixedOutcomeKeys: 2, failureRate: 0.3, runs: 10 })
+    expect(s).toContain('2 cache key(s) that both failed and succeeded')
+    expect(s).not.toContain('inferred from a')
+  })
+
+  it('is empty when the task is not flaky at all', () => {
+    expect(text(null)).toBe('')
+    expect(text(undefined)).toBe('')
+  })
+})
+
 describe('withFlakyFix', () => {
   it('confirmed rows get exec.retries: N, inferred rows get an empty cell', () => {
     const rows = withFlakyFix({

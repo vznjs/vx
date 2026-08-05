@@ -144,6 +144,9 @@ describe('package boundaries', () => {
       'getStorageGrowth',
       'getTaskDetail',
       'getTopTimeBurners',
+      // The flakiness classification rule, shared so the cloud analytics twin
+      // cannot derive its own answer for the same dashboard badge.
+      'hasFlakeSignal',
       'isCacheHit',
       'isEnvelope',
       'isGroupTask',

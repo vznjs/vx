@@ -2223,6 +2223,32 @@ describe('scale: a workspace larger than one page', () => {
     expect((await analytics.getFlakiestTasks(ws, { limit: 5 })).tasks).toHaveLength(5)
   }, 60_000)
 
+  // A wide duration tail used to qualify a task on its own, so a task that had
+  // never once gone red was listed — and task detail rendered the self-refuting
+  // "Flaky — inferred from a 0% failure rate over N runs". Spread on runs that
+  // all SUCCEEDED is variance in the machine; `getLeastStableTasks` owns it.
+  it('does NOT call a task flaky on a wide duration tail alone', async () => {
+    const { org, ws: tw } = await newOrgWs(db, 'tail-only')
+    const now = Date.now()
+    const durs = [100, 100, 100, 100, 100, 100, 100, 100, 100, 900]
+    for (const [i, d] of durs.entries()) {
+      await insertTR(db, tw, org, {
+        runId: `steady-${String(i)}`,
+        project: 'steady',
+        task: 'build',
+        hash: `k${String(i)}`,
+        duration: d,
+        startedAt: now - (30 - i) * 1000,
+      })
+    }
+    const { tasks } = await analytics.getFlakiestTasks(tw)
+    expect(tasks.find((t) => t.id === 'steady#build')).toBeUndefined()
+    // Control: the point lookup agrees — it is not merely ranked off the page.
+    expect(
+      (await analytics.getFlakiestTasks(tw, { project: 'steady', task: 'build' })).tasks,
+    ).toEqual([])
+  }, 60_000)
+
   it('resolves projects past the page limit, and ranks against ALL of them', async () => {
     const { org, ws } = await newOrgWs(db, 'scale')
     const now = Date.now()

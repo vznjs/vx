@@ -264,7 +264,17 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
       const worst = f.maxAttempts !== undefined ? ` (worst: ${String(f.maxAttempts)} attempts)` : ''
       return `Flaky — CONFIRMED by within-run retries in ${String(f.withinRunRetries)} run(s)${worst}. Consider exec.retries.`
     }
-    return `Flaky — inferred from a ${formatPercent(n(f.failureRate), 0)} failure rate over ${String(f.runs)} runs.`
+    // Name the evidence the server actually inferred from. The failure RATE is
+    // not it: failures that each sit on their own cache key are legitimate
+    // breaks and never reach this badge, so citing the rate described a rule
+    // the server does not apply.
+    const keys = n(f.mixedOutcomeKeys)
+    if (keys > 0) {
+      return `Flaky — INFERRED from ${String(keys)} cache key(s) that both failed and succeeded across ${String(f.runs)} runs (identical inputs, different outcomes).`
+    }
+    // Unreachable against a current serve (it lists neither signal), so state
+    // the rate as a plain fact rather than as an inference basis.
+    return `Flaky — ${formatPercent(n(f.failureRate), 0)} failure rate over ${String(f.runs)} runs.`
   },
 
   // Annotate flaky rows for the Insights table with a copy-able suggested fix:

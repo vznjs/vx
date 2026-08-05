@@ -247,6 +247,7 @@ export {
   getStorageGrowth,
   getTaskDetail,
   getTopTimeBurners,
+  hasFlakeSignal,
   listCacheEntries,
   listInvocations,
   listProjects,
