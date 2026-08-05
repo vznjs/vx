@@ -303,8 +303,15 @@ exposed)`) caught it; the fix was to find the pid via `ps` (main process =
   inside the full-suite process", and the suspicion that it was host debris are
   all superseded — the trigger is a cached dead handle, it needs no host
   degradation and no full suite, and four files in one process reproduce it.
-  Gates from the ROOT: fmt/lint 0. NO CACHE_VERSION/SCHEMA/wire/migration bump
-  — test infrastructure only; `git diff src/` empty in both packages.
+  **THE WHOLE CLOUD SUITE IS GREEN FOR THE FIRST TIME, and the arithmetic
+  confirms the swallowed-tests claim exactly:** 1289 pass / 11 fail / **1300
+  ran** in 1101.87 s → **1307 pass / 0 fail / 1307 ran in 112.32 s**. That is
+  **9.8× faster**, and 1300 + the **3** tests the timed-out hooks were
+  swallowing + the **4** new pins = 1307 to the test — so the "a shared-process
+  failure under-reports its own blast radius" note below is now measured from
+  both sides rather than inferred. Gates from the ROOT: fmt/lint 0, core
+  **2641 / 0** with no skip line. NO CACHE_VERSION/SCHEMA/wire/migration bump —
+  test infrastructure only; `git diff src/` empty in both packages.
 
 - **2026-08-05**: **Rotating a token silently turned OFF ambient distribution and
   dropped the fork-PR token — and two of this wave's three findings are sweep
