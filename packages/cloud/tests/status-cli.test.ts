@@ -11,7 +11,12 @@ import path from 'node:path'
 
 const BIN = path.join(import.meta.dir, '..', 'src', 'cli', 'bin.ts')
 
-function startStubServe(opts: { auth?: string; token?: string } = {}) {
+function startStubServe(
+  opts: { auth?: string; token?: string; runsStatus?: number; poolSession?: string } = {},
+) {
+  // Records the session the doctor actually ASKED for: the registry keys on it,
+  // so probing the wrong one is a wrong answer, not an approximation.
+  const seen: { session?: string } = {}
   const server = Bun.serve({
     port: 0,
     fetch(req) {
@@ -21,6 +26,9 @@ function startStubServe(opts: { auth?: string; token?: string } = {}) {
         return Response.json({ v: 1, name: 'stub', vx: '0.0.0', auth: opts.auth ?? 'open' })
       }
       if (url.pathname === '/v1/runs') {
+        if (opts.runsStatus !== undefined) {
+          return Response.json({ error: 'nope' }, { status: opts.runsStatus })
+        }
         if (
           opts.token !== undefined &&
           req.headers.get('authorization') !== `Bearer ${opts.token}`
@@ -30,13 +38,18 @@ function startStubServe(opts: { auth?: string; token?: string } = {}) {
         return Response.json({ runs: [] })
       }
       if (url.pathname === '/v1/agents') {
-        return Response.json({ agents: 3, remoteAgents: 2, capacity: 8, ready: 0 })
+        seen.session = url.searchParams.get('session') ?? ''
+        // The pool exists under ONE session key; asking a different one finds
+        // nothing, exactly as the real registry behaves.
+        const n = opts.poolSession === undefined || opts.poolSession === seen.session ? 2 : 0
+        return Response.json({ agents: n, remoteAgents: n, capacity: 8, ready: 0 })
       }
       return new Response('not found', { status: 404 })
     },
   })
   return {
     origin: `http://localhost:${server.port}`,
+    seen,
     stop: async () => {
       await server.stop(true)
     },
@@ -164,6 +177,121 @@ describe('vx-cloud status', () => {
       await seedEnv('http://localhost:1')
       const r = await status({ VX_CLOUD_URL: server.origin })
       expect(r.out).toContain(`${server.origin}  (env (VX_CLOUD_URL))`)
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('names the env var that actually supplied the URL', async () => {
+    // Reporting VX_CLOUD_URL for a URL that came from VX_SERVICE_URL sends the
+    // reader to a variable they never set.
+    const server = startStubServe()
+    try {
+      await seedEnv('http://localhost:1')
+      const r = await status({ VX_SERVICE_URL: server.origin })
+      expect(r.out).toContain(`${server.origin}  (env (VX_SERVICE_URL))`)
+    } finally {
+      await server.stop()
+    }
+  })
+})
+
+describe('the fork-PR token is a configured token, not a missing one', () => {
+  // A fork job holds ONLY VX_CLOUD_PR_TOKEN — repo secrets are not exposed to
+  // forks, which is the whole reason it exists. Reading only `token` reported
+  // `NONE` for a CORRECT setup and told the user to mint a trusted token they
+  // cannot receive: the anti-pattern the trust scopes exist to prevent.
+  it('reports a PR-token-only connection as configured, and presents it', async () => {
+    // The stub accepts ONLY the PR token, so `ok` proves it was presented.
+    const server = startStubServe({ auth: 'account', token: 'vxc_pr' })
+    try {
+      await seedEnv('http://localhost:1')
+      const r = await status({ VX_CLOUD_URL: server.origin, VX_CLOUD_PR_TOKEN: 'vxc_pr' })
+      expect(r.out).toContain('PR token — untrusted cache scope')
+      expect(r.out).toContain('auth probe    ok')
+      expect(r.out).not.toContain('NO TOKEN on an account platform')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('reads a prToken off the active environment too', async () => {
+    const server = startStubServe({ auth: 'account', token: 'vxc_pr' })
+    try {
+      await seedEnv(server.origin, { prToken: 'vxc_pr' })
+      const r = await status()
+      expect(r.out).toContain('PR token — untrusted cache scope')
+      expect(r.out).toContain('auth probe    ok')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('still labels a trusted token trusted, and still warns when neither is set', async () => {
+    // Controls: the fix must not relabel the ordinary token, nor silence the
+    // genuine no-token warning it was introduced to preserve.
+    const server = startStubServe({ auth: 'account', token: 'vxc_good' })
+    try {
+      await seedEnv(server.origin, { token: 'vxc_good' })
+      const trusted = await status()
+      expect(trusted.out).toContain('present (trusted)')
+      expect(trusted.out).not.toContain('PR token')
+
+      await seedEnv(server.origin)
+      const none = await status()
+      expect(none.out).toContain('token         NONE')
+      expect(none.out).toContain('NO TOKEN on an account platform')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('treats a 403 as a rejection, not as ok', async () => {
+    // The bearer authenticated but may not read here — same silent no-op this
+    // row exists to surface. Only 401 was named, so a wrong-scope token read ok.
+    const server = startStubServe({ auth: 'account', runsStatus: 403 })
+    try {
+      await seedEnv(server.origin, { token: 'vxc_scoped' })
+      const r = await status()
+      expect(r.out).toContain('TOKEN REJECTED (403)')
+    } finally {
+      await server.stop()
+    }
+  })
+})
+
+describe('the agent-pool probe asks for the session the agents registered under', () => {
+  it('derives the CI session, not a bare local', async () => {
+    // `VX_AGENT_SESSION ?? 'local'` missed the GitHub/GitLab/Buildkite rungs, so
+    // in CI — the only place a pool exists — the doctor probed `local` and
+    // reported 0 agents for a healthy pool.
+    const server = startStubServe({ poolSession: 'gh-12345-2' })
+    try {
+      await seedEnv(server.origin)
+      const ws = await makeWorkspace()
+      const r = await status(
+        { VX_CLOUD_DISTRIBUTE: '4', GITHUB_RUN_ID: '12345', GITHUB_RUN_ATTEMPT: '2' },
+        ws,
+      )
+      expect(server.seen.session).toBe('gh-12345-2')
+      expect(r.out).toContain('2 remote agents (session gh-12345-2)')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('an explicit VX_AGENT_SESSION still wins over the CI derivation', async () => {
+    // Control: the shared ladder's first rung must keep beating the rest.
+    const server = startStubServe({ poolSession: 'mine' })
+    try {
+      await seedEnv(server.origin)
+      const ws = await makeWorkspace()
+      const r = await status(
+        { VX_CLOUD_DISTRIBUTE: '4', GITHUB_RUN_ID: '12345', VX_AGENT_SESSION: 'mine' },
+        ws,
+      )
+      expect(server.seen.session).toBe('mine')
+      expect(r.out).toContain('(session mine)')
     } finally {
       await server.stop()
     }

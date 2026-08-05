@@ -249,6 +249,77 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **The connection DOCTOR told a correctly-configured fork PR its
+  setup was broken, and told CI its healthy agent pool was empty** (`cli/status.ts`,
+  216 lines against 14 assertions — the thinnest never-audited cloud surface once
+  the four `INF` entries are recognised as the documented subprocess false positive
+  (`status-cli`/`env-cli`/the server-driven router suites). A doctor is the purest
+  case of this repo's highest-yield class: its ONLY product is a diagnosis, so a
+  wrong one is not a degraded answer, it is the whole failure). **CONFIRMED by
+  executed repro through the real CLI, MED-HIGH.** `resolveStatusConnection`
+  claims in its own comment to be a "Mirror of the plugin's connection ladder" and
+  is not: the plugin reads `VX_CLOUD_PR_TOKEN` / `env.prToken` on BOTH rungs and
+  every capability resolves `token ?? prToken` (the 2026-07-30 fork-PR fix), while
+  the doctor read neither. **A fork job holds ONLY the PR token** — repo secrets
+  are not exposed to forks, which is the entire reason it exists, and the option's
+  own docstring says to present it "instead of `token`" — so the doctor reported
+  `token NONE` plus the loud `NO TOKEN on an account platform — run ingest +
+remote cache are OFF`, and its remediation said to mint a TRUSTED token and
+  connect with it: not merely a wrong diagnosis but a prescription for the exact
+  anti-pattern the trust scopes exist to prevent. It also never probed, so the PR
+  token went unvalidated. **CONFIRMED, MED, and it is the drift class again:**
+  the agent-pool probe hand-rolled `firstEnv('VX_AGENT_SESSION') ?? 'local'`
+  beside the EXPORTED four-rung `deriveSession` (`VX_AGENT_SESSION` → `gh-<id>-<attempt>` → `gl-<id>` → `bk-<id>` → `local`). The registry keys on the
+  session, so in CI — the only place a pool exists — the doctor asked for
+  `session=local` while the agents had registered under `gh-12345-2`. Measured
+  with a stub that echoes the session it was asked for: **`0 remote agents
+(session local)` for a pool of 4**. Now imports the shared function; the second
+  copy is gone. **CONFIRMED, LOW ×2:** the connection row hard-coded
+  `env (VX_CLOUD_URL)`, so a URL taken from `VX_SERVICE_URL` sent the reader to a
+  variable they never set; and the auth probe treated ONLY 401 as rejection, so a
+  **403** — a bearer that authenticates but may not read here — rendered
+  `auth probe ok`, though the module's own header calls a rejected token silent-mode 3. **REFUTED by executed probe, and this is what stops the next audit
+  re-treading it:** the header's "nothing persisted" claim HOLDS — I suspected
+  `captureWorkspaceIdentity` would write `.vx/workspace-id`, and a before/after
+  glob of the whole workspace showed **zero files created**; and reading
+  `activeEnvironment()` for the distribute rung even when an explicit env URL won
+  the connection ladder is FAITHFUL, not a bug — `plugin.ts` does exactly the same
+  (its ambient rung reads the environment unconditionally, and the read is
+  documented-memoized, so the doctor's two calls cost nothing). **A probe mistake
+  of mine, caught by the fix appearing not to work.** My first fork-PR repro set
+  `VX_CLOUD_PR_TOKEN` as an env var while the connection came from the
+  environments FILE rung — a combination the plugin does not support either (that
+  rung reads `env.prToken` only), so the fix correctly changed nothing and I
+  briefly read a faithful result as a failure. Re-probed on the two shapes a fork
+  PR actually uses — the env rung (the CI path) and a file-borne `prToken` — both
+  now report and present it. **The transferable rule: when a fix appears not to
+  work, check that the probe is exercising a configuration the code is supposed to
+  support** — the same family as the recorded `VX_CLOUD_CONFIG` and
+  `findWorkspaceRoot` vacuous-probe mistakes. **Differentials, each isolating its
+  own fix, every restore verified back to baseline (the harness discipline the
+  wave below had to learn the hard way):** dropping the PR token fails **2**,
+  restoring the hand-rolled session fails **1**, hard-coding the URL label fails
+  **1**, dropping the 403 arm fails **1** — while three deliberate controls pass
+  BOTH ways (a trusted token is still labelled trusted, a genuinely tokenless
+  account platform still gets the warning, and an explicit `VX_AGENT_SESSION`
+  still beats the CI rungs). **RECORDED, NOT FIXED:** `prToken` is a validated
+  `EnvironmentEntry` field the plugin reads, but `vx-cloud connect` has NO
+  `--pr-token` flag — it can only be set by hand-editing `environments.json`. The
+  primary fork-PR path is the env var and works; adding the flag is a feature
+  decision, not a defect in the doctor. NO CACHE_VERSION/SCHEMA/wire/migration
+  bump — this changes what a diagnostic prints and which session it asks about,
+  never a key or a stored byte. Gates from the ROOT: fmt/lint 0, core
+  **2641 / 0** with no skip line, cloud **1263 / 0 across its 53 non-browser
+  suites** (+7, status 7 → 14). **The browser four are reported separately and
+  honestly:** the full cloud run timed out 10 of them, on a box measured clean
+  BEFORE the run (load 0.39, 11.8 GB free, no stray postgres, no `/tmp/vx-*`),
+  yet each passes in isolation minutes later — visual **10/0 in 46.5 s**,
+  ui-perf 5/0, workspace-context 11/0, ui-search 4/0, **30/0 in total**. They
+  are unreachable from this diff by construction: nothing under
+  `packages/cloud/{src,tests,ui/src}` imports `cli/status`. That measurement is
+  what forced the in-place correction to the entry below, which had called a
+  single clean full run a confirmation that the flake was host debris.
+
 - **2026-08-05**: **The PR page told a dev "5 executed" for a run that executed 2 —
   and it overstated MOST on exactly the red runs someone opens it to read** (task
   #95; `packages/cloud/src/github-summary.ts`, 218 lines against 40 assertions in a
@@ -346,9 +417,19 @@ write a plausible cause into the log that you have not proven.
   CACHE_VERSION/SCHEMA/wire/migration bump — this changes what a job-summary
   string SAYS, never a key, a stored byte or a telemetry field. Gates from the
   ROOT on a cleaned box: fmt/lint 0, core **2641 pass / 0 fail** with no skip line,
-  cloud **1289 / 0 across all 57 suites — browser suites included**, which is also
-  the third independent confirmation that the recorded browser "flake" is host
-  degradation rather than the suites.
+  cloud **1289 / 0 across all 57 suites — browser suites included**.
+  **[CORRECTED the same day: I wrote here that this was "the third independent
+  confirmation that the recorded browser flake is host degradation rather than
+  the suites." That claim is too strong and is withdrawn.** The very next wave
+  ran the full cloud suite on a genuinely clean box — load 0.39, 11.8 GB free,
+  27 GB disk, ZERO stray postgres and ZERO `/tmp/vx-*` — and still took **1066 s
+  with 10 browser TIMEOUTS** (exact 90 s/120 s per-test limits, not pixel diffs),
+  while all four browser suites pass in isolation minutes later on the same box
+  (visual **10/0 in 46.5 s**, ui-perf 5/0, workspace-context 11/0, ui-search
+  4/0). So accumulated host debris makes it WORSE but is not the cause; the
+  trigger is something about running the browser suites inside the full-suite
+  process, and it stays **un-root-caused**. A clean full run passing is evidence,
+  not confirmation — one green sample cannot establish a negative.]\*\*
 
 - **2026-08-05**: **The SigV4 canonical-query SORT was entirely unpinned, and the
   LIST path — the one request shape whose query the caller builds — had no test at
