@@ -103,10 +103,18 @@ export function createOutputWriter(
    * Both triggers are ordinary: the summary section is a fixed 62 visible
    * columns (narrower terminal ⇒ every bar row wraps), and a task id is
    * deliberately never truncated (long id ⇒ the worker row wraps at any
-   * width). Width is read per draw so a mid-run resize is handled; when
-   * it's unknown the region is not drawn at all, so "no wrapping" is the
-   * consistent answer. Width must be VISIBLE width — these lines carry
-   * ANSI, which occupies no column.
+   * width). Width is read per draw so a mid-run resize is handled. Width
+   * must be VISIBLE width — these lines carry ANSI, which occupies no
+   * column.
+   *
+   * Unknown width falls back to the logical count, which is a KNOWN
+   * residual rather than a guarantee: a wrapped line then under-erases
+   * exactly as it did before this function existed. It is deliberate,
+   * because the alternatives are worse — guessing a width over-erases on a
+   * wider terminal, and `ESC[J` clears to end of SCREEN, so over-erasing
+   * destroys output above the region instead of merely leaving junk below
+   * it. Reachable only on a TTY whose winsize ioctl fails, since a non-TTY
+   * disables the region outright.
    */
   const regionRows = (lines: readonly string[]): number => {
     const cols = stream.columns
