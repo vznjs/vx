@@ -249,6 +249,67 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **Rotating a token silently turned OFF ambient distribution and
+  dropped the fork-PR token — and two of this wave's three findings are sweep
+  misses from my OWN two PRs earlier the same day** (`cli/env.ts`, 340 lines
+  against 64 assertions — the connection front door: `vx-cloud connect` /
+  `env ls|use|rm` / `disconnect`, where a wrong answer means a workspace is
+  silently not connected). **CONFIRMED by executed repro through the real CLI,
+  MED, and it is the one with teeth.** `connectCmd` REBUILT the persisted entry
+  from the flags of THIS invocation, so every field the flags did not repeat was
+  destroyed. Measured on a real environments file: before
+  `{url, token:'vxc_a', distribute:4, prToken:'vxc_pr'}`, and after
+  `vx-cloud connect <same-url> --token vxc_b` the entry was
+  `{url, token:'vxc_b'}` — **ambient distribution silently off** (the `distribute`
+  rung reads the field, so the next `vx run` quietly stops fanning out and nothing
+  says so) and **the fork-PR token gone**. That second half is the sharp one:
+  `prToken` has **NO FLAG AT ALL** — it is a validated `EnvironmentEntry` field the
+  plugin reads and the only way to set it is hand-editing `environments.json`, so a
+  routine token rotation destroyed a value the CLI cannot restore. Fixed by merging
+  over the existing entry when the URL matches (`...carried`), and the CONTROL is
+  what keeps the fix honest: credentials are deliberately **not** carried across a
+  `--force` repoint to a DIFFERENT url — a token belongs to the server that issued
+  it, and the handshake only verifies a token passed on this invocation — pinned by
+  a two-server test that passes BOTH ways. **CONFIRMED, LOW-MED:** a token the
+  server FORBIDS (403) was treated as a successful handshake and PERSISTED. The
+  probe checked `401` alone, so a token that authenticated but may not read here
+  (wrong scope, wrong workspace) sailed through — and since every machine client is
+  never-fail, that persists exactly the silently-empty dashboard the handshake
+  exists to prevent. Now `401 || 403` refuses and writes nothing (`persisted:
+undefined`, verified). **CONFIRMED, LOW:** `--name` or `--token` with the value
+  OMITTED answered `unknown flag: --name` — false, since `--name` is very much
+  known, and silent about the actual mistake; the `=` spelling of the same mistake
+  already said `invalid --name: empty`. Fixed by matching on the flag NAME first,
+  with `--names`/`--tokenize` pinned as prefix controls so the fix cannot swallow
+  anything merely sharing letters. **REFUTED by executed probe, so nobody
+  re-audits:** `VX_CLOUD_ENV` is consistent between `envLs` and
+  `activeEnvironment` — an override naming a non-existent environment stars nothing
+  in the listing and resolves to nothing for the plugin, rather than one surface
+  claiming an active environment the other cannot find. **THE ENTRY IS THE SWEEP
+  MISS, and it is mine twice over.** Finding A is byte-for-byte the defect I fixed
+  in `vx why --run` hours earlier (the argv parser reading a flag's value into the
+  same `undefined` that means "not this flag"), and finding D is byte-for-byte the
+  401-only auth check I fixed in `status.ts` in the wave immediately before this
+  one. Neither wave swept its siblings. **The transferable rule: when a wave fixes a
+  CLASS rather than a line, grep the class in the same wave** — this log already
+  records the same shape for `splitTaskId` / `WORKSPACE_FINGERPRINT_FILES` /
+  `clampInt` / `parseDecimalInt`, where a centralisation lands and one call site
+  survives because the copies agree on the inputs anyone tries. Here there was no
+  centralisation to hide behind: the copies were simply not looked for.
+  **Differentials, each isolating its own fix, every restore verified back to a
+  24/0 baseline:** reverting the flag-name-first match fails **2**, rebuilding the
+  entry from flags fails **1**, and restoring the 401-only check fails **1** — while
+  the `--force`-repoint control and the prefix controls pass BOTH ways. Suite 17 →
+  **24** tests / 64 → 82 assertions. NO CACHE_VERSION/SCHEMA/wire/migration bump —
+  this changes which flag strings are accepted, which handshake outcomes persist,
+  and which fields survive a re-connect; never a key or a stored byte. Docs
+  corrected in the same wave (`cloud/cli.md`): the handshake paragraph now names
+  403 beside 401, and the re-connect merge rule is stated with its `--force`
+  exception and the reason `prToken` needs preserving. **RECORDED, NOT FIXED:**
+  `connect` still has no `--pr-token` flag, so the fork-PR tier remains
+  hand-editable only — a feature decision, not a defect, and now at least a
+  rotation no longer destroys it.
+
 - **2026-08-05**: **The connection DOCTOR told a correctly-configured fork PR its
   setup was broken, and told CI its healthy agent pool was empty** (`cli/status.ts`,
   216 lines against 14 assertions — the thinnest never-audited cloud surface once

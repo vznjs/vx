@@ -340,3 +340,96 @@ describe('vx-cloud env ls', () => {
     expect(res.stdout).toContain('no environments')
   })
 })
+
+describe('connect updates what you asked for and keeps what you did not', () => {
+  it('preserves distribute and prToken when rotating a token', async () => {
+    // Building the entry from scratch silently destroyed every field the flags
+    // did not repeat. `prToken` is the sharp one: it has NO flag, so hand-
+    // editing the file was both the only way to set it and the only way to get
+    // it back — and the fork-PR path depends on it.
+    const server = startStubServe({ name: 'prod' })
+    try {
+      expect(
+        (await cli(['connect', server.origin, '--name', 'p', '--token', 'vxc_a', '--distribute=4']))
+          .code,
+      ).toBe(0)
+      const seeded = await readCfg()
+      seeded.environments['p']!.prToken = 'vxc_pr'
+      await seedCfg(seeded)
+
+      expect((await cli(['connect', server.origin, '--name', 'p', '--token', 'vxc_b'])).code).toBe(
+        0,
+      )
+      const after = (await readCfg()).environments['p']!
+      expect(after.token).toBe('vxc_b')
+      expect(after.distribute).toBe(4)
+      expect(after.prToken).toBe('vxc_pr')
+    } finally {
+      await server.stop()
+    }
+  })
+
+  it('does NOT carry credentials across a --force repoint', async () => {
+    // Control, and the reason the carry is conditional: a token belongs to the
+    // server that issued it, and the handshake only probes a token passed on
+    // THIS invocation — carrying one would persist a credential the new URL
+    // never validated.
+    const a = startStubServe({ name: 'a' })
+    const b = startStubServe({ name: 'b' })
+    try {
+      await cli(['connect', a.origin, '--name', 'x', '--token', 'vxc_a'])
+      expect((await cli(['connect', b.origin, '--name', 'x', '--force'])).code).toBe(0)
+      const after = (await readCfg()).environments['x']!
+      expect(after.url).toBe(b.origin)
+      expect(after.token).toBeUndefined()
+    } finally {
+      await a.stop()
+      await b.stop()
+    }
+  })
+})
+
+describe('connect refuses a token the server will not honour', () => {
+  it('treats a 403 as a rejection and persists nothing', async () => {
+    // The machine clients are never-fail, so writing a token the server refuses
+    // produces exactly the silently-empty dashboard this handshake prevents.
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const u = new URL(req.url)
+        if (u.pathname === '/health') return new Response('ok')
+        if (u.pathname === '/v1/meta') return Response.json({ v: 1, name: 's', auth: 'open' })
+        if (u.pathname === '/v1/runs') return Response.json({ e: 'forbidden' }, { status: 403 })
+        return new Response('nf', { status: 404 })
+      },
+    })
+    try {
+      const res = await cli(['connect', `http://localhost:${server.port}`, '--token', 'vxc_scoped'])
+      expect(res.code).toBe(1)
+      expect(res.stderr).toContain('token rejected')
+      expect(res.stderr).toContain('403')
+      // Nothing persisted: the handshake's whole contract.
+      await expect(readCfg()).rejects.toThrow()
+    } finally {
+      await server.stop(true)
+    }
+  })
+})
+
+describe('parseConnectArgs names the flag when its value is omitted', () => {
+  it.each([
+    ['--name', 'invalid --name: empty'],
+    ['--token', 'invalid --token: empty'],
+  ])('a trailing %s reports %s, not "unknown flag"', async (flag, expected) => {
+    const res = await cli(['connect', 'http://localhost:1', flag])
+    expect(res.stderr).toContain(expected)
+    expect(res.stderr).not.toContain('unknown flag')
+  })
+
+  it.each(['--names', '--tokenize'])('%s is still an unknown flag', async (flag) => {
+    // Control: matching on the name must not swallow anything that merely
+    // shares a prefix.
+    const res = await cli(['connect', 'http://localhost:1', flag])
+    expect(res.stderr).toContain(`unknown flag: ${flag}`)
+  })
+})

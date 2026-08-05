@@ -187,8 +187,23 @@ vx-cloud disconnect                                       # clear the active poi
 `connect` is a handshake: it probes `/health`, reads the server's identity
 from `/v1/meta` (the default `--name`), errors if the server requires a
 token and none was given, verifies a given token with one authenticated
-request — and only then persists. `VX_CLOUD_ENV=<name>` overrides the
-active pointer per-shell without touching the file.
+request — and only then persists. A token the server **rejects** (401) or
+**forbids** (403 — it authenticated but may not read here: wrong scope,
+wrong workspace) fails the connect and writes nothing; the machine clients
+are never-fail, so persisting such a token would produce exactly the
+silently-empty dashboard this handshake exists to prevent.
+`VX_CLOUD_ENV=<name>` overrides the active pointer per-shell without
+touching the file.
+
+**Re-connecting updates what you specify and keeps what you don't.**
+Connecting again to the same URL merges over the existing entry, so
+rotating a token (`vx-cloud connect <same-url> --token <new>`) preserves
+that environment's `distribute` setting and its `prToken` — the latter has
+no flag at all and is set by editing `environments.json`, so rebuilding
+the entry from the flags alone would silently drop it. Credentials are
+deliberately **not** carried across a `--force` repoint to a different
+URL: a token belongs to the server that issued it, and the handshake only
+verifies a token passed on that invocation.
 
 **One connection drives everything.** `cloud()` resolves a SINGLE
 connection and feeds all three capabilities from it — analytics ingest, the
