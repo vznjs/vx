@@ -12,7 +12,7 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { probeSandbox, resolveSandboxConfig } from '../src/exec/sandbox-runtime.js'
+import { deniedCalls, probeSandbox, resolveSandboxConfig } from '../src/exec/sandbox-runtime.js'
 import { run, type Logger, type RunOptions } from '../src/orchestrator/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
@@ -246,6 +246,88 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       })
       expect(r.ok).toBe(true)
       expect(await readFile(path.join(projDir, 'out.txt'), 'utf8')).toBe('shared')
+    },
+    TIMEOUT,
+  )
+
+  // ─── Symlinked workspace root ───────────────────────────────────
+  //
+  // `resolveSandboxConfig` canonicalizes the USER's paths, but the
+  // orchestrator-supplied baselines (resolved inputs, output prefixes, the
+  // workspace-root deny anchor) used to arrive raw — so a root reached
+  // through a symlink expressed HALF its policy in real paths and half in
+  // link paths, bwrap died mounting the link path inside its new root
+  // (`Can't mount tmpfs on /newroot/<link>`) and EVERY sandboxed task
+  // failed, whatever the config. Both directions are pinned: a permitted
+  // read must still work, and the boundary must still bite.
+
+  it(
+    'an explicitly allowed read works through a symlinked workspace root',
+    async () => {
+      const link = path.join(path.dirname(fixture.root), `${path.basename(fixture.root)}-link`)
+      await symlink(fixture.root, link, 'dir')
+      try {
+        await writeFile(path.join(fixture.root, 'shared.txt'), 'shared')
+        const projDir = await addProject(fixture.root, 'reader', {
+          files: { 'src/x.txt': 'hi' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'cat ../../shared.txt > out.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                  sandbox: { allowRead: ['../../shared.txt'] },
+                },
+              },
+            }
+          `,
+        })
+        const r = await run({ cwd: link, tasks: ['build'], log: collectingLogger(fixture) })
+        expect(r.outcomes[0]?.status).toBe('success')
+        expect(await readFile(path.join(projDir, 'out.txt'), 'utf8')).toBe('shared')
+      } finally {
+        await rm(link, { force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'still denies an undeclared read through a symlinked workspace root',
+    async () => {
+      // Control: canonicalizing the baselines must not degenerate into
+      // "allow everything" — the boundary still bites, and the violation is
+      // NAMED rather than surfacing as a raw bwrap mount error.
+      const link = path.join(path.dirname(fixture.root), `${path.basename(fixture.root)}-link2`)
+      await symlink(fixture.root, link, 'dir')
+      try {
+        await addProject(fixture.root, 'secret', {
+          files: { 'token.txt': 'shh' },
+          config: `export default { tasks: {} }`,
+        })
+        await addProject(fixture.root, 'reader', {
+          files: { 'src/x.txt': 'hi' },
+          config: `
+            export default {
+              tasks: {
+                leak: {
+                  exec: { command: 'cat ../secret/token.txt > out.txt' },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                  sandbox: {},
+                },
+              },
+            }
+          `,
+        })
+        const r = await run({ cwd: link, tasks: ['leak'], log: collectingLogger(fixture) })
+        expect(r.ok).toBe(false)
+        // The bwrap mount failure named an internal `/newroot/…` path and left
+        // ZERO violations; a real denial names the file the task reached for.
+        const lines = (r.outcomes[0]?.sandboxViolationLines ?? []).join('\n')
+        expect(lines).toContain('token.txt')
+      } finally {
+        await rm(link, { force: true })
+      }
     },
     TIMEOUT,
   )
@@ -573,6 +655,87 @@ describe('resolveSandboxConfig', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+// Deterministic pin for the Linux detector's trace parsing. The end-to-end
+// suite only produces split lines when strace HAPPENS to interleave, so the
+// shapes are pinned here against a synthetic trace instead.
+describe('deniedCalls (strace trace parsing)', () => {
+  it('sees a denial strace SPLIT across unfinished/resumed lines', () => {
+    // Captured shape from a real `strace -f -e trace=openat` run: a denial
+    // whose result never appears next to its path. A single-line regex drops
+    // it, so a task forking concurrent children reading undeclared files
+    // reported an INCOMPLETE violation list — and `--verify=inputs` reads an
+    // incomplete list as `proven-complete`.
+    const trace = [
+      '1001 openat(AT_FDCWD, "/ws/secret-a", O_RDONLY) = -1 ENOENT (No such file or directory)',
+      '1002 openat(AT_FDCWD, "/ws/secret-b", O_RDONLY <unfinished ...>',
+      '1003 openat(AT_FDCWD, "/ws/secret-c", O_RDONLY <unfinished ...>',
+      '1002 <... openat resumed>)              = -1 ENOENT (No such file or directory)',
+      '1003 <... openat resumed>)              = -1 EACCES (Permission denied)',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace)).toEqual([
+      { syscall: 'openat', rawPath: '/ws/secret-a', errno: 'ENOENT' },
+      { syscall: 'openat', rawPath: '/ws/secret-b', errno: 'ENOENT' },
+      { syscall: 'openat', rawPath: '/ws/secret-c', errno: 'EACCES' },
+    ])
+  })
+
+  it('does NOT report a split call that resumed successfully', () => {
+    // Control: pairing must not turn every interrupted syscall into a
+    // violation — only the ones whose result is a denial.
+    const trace = [
+      '1001 openat(AT_FDCWD, "/ws/fine", O_RDONLY <unfinished ...>',
+      '1001 <... openat resumed>)              = 3',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace)).toEqual([])
+  })
+
+  it('never double-counts: a resume retires its pending entry', () => {
+    // A second resume for the same pid has nothing pending, so a stray
+    // resumed line cannot re-emit the previous path.
+    const trace = [
+      '1001 openat(AT_FDCWD, "/ws/x", O_RDONLY <unfinished ...>',
+      '1001 <... openat resumed>)              = -1 ENOENT (No such file or directory)',
+      '1001 <... openat resumed>)              = -1 ENOENT (No such file or directory)',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace)).toEqual([{ syscall: 'openat', rawPath: '/ws/x', errno: 'ENOENT' }])
+  })
+
+  it('drops an unfinished call that never resumes (killed mid-syscall)', () => {
+    const trace = [
+      '1001 openat(AT_FDCWD, "/ws/y", O_RDONLY <unfinished ...>',
+      '1001 +++ killed by SIGKILL +++',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace)).toEqual([])
+  })
+
+  it('reads the other traced syscalls in both layouts', () => {
+    const trace = [
+      '1001 access("/ws/a", R_OK)              = -1 EACCES (Permission denied)',
+      '1002 statx(AT_FDCWD, "/ws/b", AT_STATX_SYNC_AS_STAT, STATX_ALL <unfinished ...>',
+      '1002 <... statx resumed>, 0x7ffd)       = -1 EPERM (Operation not permitted)',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace)).toEqual([
+      { syscall: 'access', rawPath: '/ws/a', errno: 'EACCES' },
+      { syscall: 'statx', rawPath: '/ws/b', errno: 'EPERM' },
+    ])
+  })
+
+  it('ignores successful and untraced lines', () => {
+    const trace = [
+      '1001 openat(AT_FDCWD, "/lib/libc.so.6", O_RDONLY|O_CLOEXEC) = 3',
+      '1001 execve("/bin/sh", ["sh"], 0x7ffd)  = 0',
+      '1001 +++ exited with 0 +++',
+      '',
+    ].join('\n')
+    expect(deniedCalls(trace)).toEqual([])
   })
 })
 

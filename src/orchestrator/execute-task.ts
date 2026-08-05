@@ -388,11 +388,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     violations = []
     const res = useSandbox ? await runSandboxedTask() : await runUnsandboxedTask()
-    // Fail-on-violation. macOS's structured violation store lets us turn a
-    // passing exit code into a failure when the task tripped the boundary;
-    // Linux relies on the child failing naturally on ENOENT (violations is
-    // always 0 there, but the task is already exit != 0 if it needed the
-    // missing file). Violations surface via `TaskOutcome.sandboxViolationLines`.
+    // Fail-on-violation, on BOTH platforms: macOS reads SRT's structured
+    // violation store, Linux parses the strace log the sandboxed spawn
+    // writes. (This comment used to claim Linux violations are "always 0"
+    // and that enforcement there rests on the child failing naturally — true
+    // before the strace pass shipped, false since, and the branch below is
+    // live on Linux.) Violations surface via `TaskOutcome.sandboxViolationLines`.
     let code = res.exitCode
     // A USER-declared sandbox fails the task on any violation (that's its
     // fail-on-violation contract). A sandbox forced on ONLY by `--verify=inputs`

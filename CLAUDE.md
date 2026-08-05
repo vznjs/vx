@@ -249,6 +249,66 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-05**: **The OS sandbox was unusable on any workspace reached through
+  a SYMLINK, and its Linux detector dropped every denial strace split across two
+  lines** (task #92; `exec/sandbox-runtime.ts`, 584 lines against 37 assertions
+  — the thinnest load-bearing ratio left in core, and the one whose suite was
+  silently SKIPPING until the wave below made it run. New enforcement is where
+  the bugs are, and the ratio said where to look). **CONFIRMED, and the CONTROL
+  is what makes it a finding rather than a guess.** A workspace root behind a
+  symlink runs fine with NO sandbox (`success`), and with one — bare `sandbox:
+{}` or an explicit `allowRead`, it made no difference — every task died with
+  `bwrap: Can't mount tmpfs on /newroot/<link>: No such file or directory`, an
+  error naming an internal path the user cannot act on. So `sandbox: {}` AND
+  `--verify=inputs` were simply broken there, and a symlinked root is ordinary
+  (`/home/x` on a mounted volume, macOS `/tmp` → `/private/tmp`, a checkout
+  reached through a convenience link). **The module already contained the fix
+  and applied it to the wrong half:** `toRealPath` exists precisely because "the
+  sandbox policy matches on canonical paths… without this, `allowWrite:
+['/tmp']` silently never matches on macOS" — and `resolveSandboxConfig`
+  canonicalizes the USER's paths while the orchestrator-supplied baselines
+  (resolved inputs, output prefixes, the workspace-root deny anchor) arrived
+  RAW. Half the policy in real paths, half in link paths. Canonicalized at one
+  choke point (`canonicalBaselines`), after which the same fixture goes
+  **success** with an explicit allowRead and **correctly fails naming
+  `token.txt`** without one — the boundary bites AND the violation is reported,
+  instead of a mount error with zero violations. **CONFIRMED, second, and this
+  one is the security half.** Under `-f`, strace splits an interrupted syscall
+  across `openat(… <unfinished ...>` and `<... openat resumed>) = -1 ENOENT`,
+  and `STRACE_RE` demanded the path and the result on ONE line — so every split
+  denial was invisible. Measured on a captured trace: the regex saw **4** denied
+  paths where the truth was **5**. Driven end-to-end through the real `run()`, a
+  task forking five concurrent readers of undeclared files reported only four of
+  them. The consequence is precisely what the detector exists to prevent: an
+  incomplete violation list, which `--verify=inputs` reads as
+  **`proven-complete`**. Fixed by pairing unfinished/resumed by pid (a process
+  has at most one syscall in flight, so the pid is a sufficient key); the
+  concurrent e2e is now 5/5 across six consecutive runs where it was
+  intermittently 4/5. **A comment claiming a guarantee the code does not have,
+  for the fourth wave running** — `execute-task.ts` said Linux "relies on the
+  child failing naturally on ENOENT (violations is always 0 there)". True before
+  the strace pass shipped, false since: the fail-on-violation branch is LIVE on
+  Linux, and my repro measured 5 violations on it. The module header and
+  `docs/modules/sandbox-runtime.md` carried the same stale claim, the doc still
+  promising strace detection as "a follow-up" years after it landed; all three
+  corrected. `resetSandbox` also now clears `straceAvailableCache`, which
+  survived a reset while its sibling did not. **Differentials, each isolating
+  its own fix:** reverting the baseline canonicalization fails exactly the 2
+  symlink e2e; reverting the unfinished/resumed pairing fails exactly the 3
+  split-shape pins; and dropping the denial gate on a resumed line fails exactly
+  the 1 control that says an interrupted syscall which SUCCEEDED is not a
+  violation. `deniedCalls` is exported for that pinning — the same reasoning
+  that exported `readBodyBounded`/`zstdContentSize`: a synthetic trace pins the
+  split shapes deterministically, where an end-to-end run only produces them
+  when strace happens to interleave, and a flaky pin is not a pin. **A probe of
+  mine that hung and what it taught:** driving `runSandboxed` directly from a
+  bare script never exits — `initSandbox` starts proxy servers that hold the
+  event loop — so the sandbox is only testable through the suite that owns its
+  lifecycle, which is why every pin here goes through the real `run()`. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump — this changes which paths the
+  sandbox policy is expressed in and which denials are reported, never a key or
+  a stored byte. Gates from the ROOT: fmt/lint 0, core **2633 pass / 0 fail** (+8) with no skip line, cloud **971/0** across its 44 non-browser suites (the browser four are the documented un-root-caused flake and this wave touches no UI).
+
 - **2026-08-05**: **The flakiness surface called a task flaky for being SLOW,
   and the badge it rendered refuted itself in its own sentence** (task #91;
   `orchestrator/metrics.ts`, 2049 lines at the thinnest lines-per-assertion
