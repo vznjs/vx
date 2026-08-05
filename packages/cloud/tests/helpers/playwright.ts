@@ -80,6 +80,8 @@ const CONTAINER_CHROMIUM = '/opt/pw-browsers/chromium'
 export interface PwBrowserHandle {
   newContext(opts: Record<string, unknown>): Promise<unknown>
   close(): Promise<void>
+  /** False once the browser process is gone (crash, OOM, an explicit close). */
+  isConnected?(): boolean
 }
 
 let shared: Promise<PwBrowserHandle> | undefined
@@ -95,10 +97,31 @@ let shared: Promise<PwBrowserHandle> | undefined
  * cookies, own storage), which is all these suites need; the browser process
  * itself is safe to share and is by far the expensive part.
  *
- * Deliberately never closed by a suite: teardown is process exit. A suite that
- * closed it would break every later one, which is exactly the bug being fixed.
+ * Suites close their CONTEXT, never the browser; teardown is process exit.
+ *
+ * The memo is LIVENESS-CHECKED, and that is load-bearing rather than
+ * defensive. Memoizing the launch promise alone made one browser death
+ * permanent for the whole `bun test` process: every later suite got the corpse
+ * back and its first `newContext` threw `Target page, context or browser has
+ * been closed` — reproduced deterministically by SIGKILLing the browser
+ * mid-process, after which `isConnected()` is false, `sharedBrowser` returns
+ * the SAME handle, and the next suite fails in 2ms. A crash that should cost
+ * one suite instead cost every suite after it, which is why the browser suites
+ * are clean one-process-per-suite and rot when they share a process.
+ *
+ * `isConnected` is optional on the interface only because it is the sliver of
+ * playwright's API we declare ourselves; the real Browser always has it, and a
+ * handle without one is treated as alive (no worse than before).
  */
 export async function sharedBrowser(chromium: PwChromium): Promise<PwBrowserHandle> {
+  const existing = shared
+  if (existing !== undefined) {
+    const handle = await existing.catch(() => undefined)
+    // A dead (or never-launched) browser must not be served again: drop it and
+    // relaunch, so a crash costs the suite that hit it and nothing after.
+    if (handle !== undefined && (handle.isConnected?.() ?? true)) return handle
+    shared = undefined
+  }
   shared ??= chromium.launch({
     headless: true,
     executablePath: chromiumExecutablePath(),
