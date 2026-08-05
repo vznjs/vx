@@ -294,9 +294,16 @@ write a plausible cause into the log that you have not proven.
   verification, and this log already warns that "the trio run in isolation is
   NOT a proxy for CI; measure the configuration CI actually runs", so the local
   check was the full cloud suite under `CI=true VX_REQUIRE_BROWSER=1`, which is
-  that configuration minus the runner. NO CACHE_VERSION/SCHEMA/wire/migration
-  bump — CI configuration and a test gate; `git diff src/` empty in both
-  packages.
+  that configuration minus the runner: **1292 pass / 19 skip / 0 fail across 58
+  files in 71.64 s**, with both host-pinned suites announcing their skip and
+  its reason. The counts reconcile exactly — `visual` registers 12 tests and
+  `ui-perf` 7 (the 19), of which 10 and 5 pass when they run, so
+  **1292 + 15 = 1307**, the all-suites total. CI therefore loses precisely the
+  15 host-pinned assertions and nothing else, and GAINS the 15 behavioural ones
+  (`ui-search` 4 + `workspace-context` 11) that previously ran nowhere but a
+  developer's laptop. Gates from the ROOT: fmt/lint 0. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump — CI configuration and a test gate;
+  `git diff src/` empty in both packages.
 
 - **2026-08-05**: **The browser flake this log called un-root-caused FOUR times is
   root-caused and fixed: `sharedBrowser` memoized a launch promise with no
