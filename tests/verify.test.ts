@@ -10,7 +10,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { RemoteCacheLayer } from '../src/cache/index.js'
-import { probeSandbox } from '../src/exec/index.js'
 import type { Logger, RunSummaryRecord, TelemetrySink } from '../src/orchestrator/index.js'
 import { optionsToRequest, requestToOptions, run } from '../src/orchestrator/index.js'
 import type { TaskOutcome } from '../src/graph/index.js'
@@ -20,6 +19,7 @@ import {
   undeclaredInputPaths,
 } from '../src/orchestrator/verify.js'
 import { xxh3hex } from '../src/util/index.js'
+import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const TIMEOUT = 20_000
 
@@ -947,14 +947,12 @@ describe('formatVerifySection (pure)', () => {
   })
 })
 
-// Phase 2 (input-completeness) needs the OS sandbox. It's installed in CI's
-// "Install sandbox runtime deps" step, so these run there; a dev host without
-// bwrap/strace skips cleanly (mirrors tests/sandbox-runtime.test.ts).
-const sandbox = await probeSandbox()
-if (!sandbox.available) {
-  // eslint-disable-next-line no-console
-  console.warn(`[verify inputs tests] skipping — sandbox unavailable: ${sandbox.reason}`)
-}
+// Phase 2 (input-completeness) needs the OS sandbox. CI installs it and sets
+// VX_REQUIRE_SANDBOX, so an unavailable runtime FAILS this file there rather
+// than deleting the proof's coverage under a green check; a dev host without
+// bwrap/strace still skips. Same gate as tests/sandbox-runtime.test.ts, shared
+// so the two cannot drift about what the rule is.
+const sandboxOk = await sandboxAvailable('verify inputs tests')
 
 /** A cacheable task that reads `readCmd` (a node -e body) and writes out.txt. */
 const inputProject = (readExpr: string, inputs = "['src/**','package.json']") =>
@@ -969,7 +967,7 @@ const inputProject = (readExpr: string, inputs = "['src/**','package.json']") =>
 
 const INPUTS = { determinism: false, inputs: true, fingerprint: false, allow: new Set<string>() }
 
-describe.skipIf(!sandbox.available)('vx run --verify=inputs (input-completeness)', () => {
+describe.skipIf(!sandboxOk)('vx run --verify=inputs (input-completeness)', () => {
   beforeEach(async () => {
     fixture = await makeWorkspace()
   })

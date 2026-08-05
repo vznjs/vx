@@ -1,10 +1,11 @@
 // Sandbox-runtime integration tests.
 //
 // These tests are gated on SRT's runtime deps (bwrap on Linux,
-// sandbox-exec on macOS). CI installs bubblewrap + socat + strace and
-// disables AppArmor's unprivileged-userns restriction so the suite
-// runs end-to-end. Local dev hosts without those deps still skip
-// cleanly via probeSandbox.
+// sandbox-exec on macOS). CI installs bubblewrap + socat + strace,
+// disables AppArmor's unprivileged-userns restriction, and sets
+// VX_REQUIRE_SANDBOX — so an unavailable runtime FAILS there rather than
+// skipping, because a skipped suite reports green and this one covers
+// the isolation boundary. A local host without the deps still skips.
 
 import { existsSync, realpathSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
@@ -13,6 +14,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { probeSandbox, resolveSandboxConfig } from '../src/exec/sandbox-runtime.js'
 import { run, type Logger, type RunOptions } from '../src/orchestrator/index.js'
+import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const TIMEOUT = 60_000
 
@@ -79,19 +81,9 @@ async function addProject(
   return dir
 }
 
-const availability = await probeSandbox()
+const available = await sandboxAvailable('sandbox-runtime tests')
 
-// We assert availability rather than skipping. CI installs bwrap +
-// socat + strace + disables the AppArmor userns restriction in the
-// "Install sandbox runtime deps" step, so probeSandbox MUST return
-// available there. Local dev hosts without the deps fail loudly so
-// it's obvious that this suite needs them.
-if (!availability.available) {
-  // eslint-disable-next-line no-console
-  console.warn(`[sandbox-runtime tests] skipping — runtime not available: ${availability.reason}`)
-}
-
-describe.skipIf(!availability.available)(`sandbox-runtime`, () => {
+describe.skipIf(!available)(`sandbox-runtime`, () => {
   let fixture: Fixture
 
   beforeEach(async () => {

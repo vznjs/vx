@@ -34,10 +34,22 @@ export default defineProject({
       // --preload wires a global cwd-restore guard (tests/setup.ts) so a
       // chdir'ing suite can never leak its cwd into the next file — Bun shares
       // one process across files and does NOT restore cwd at the boundary.
-      exec: { command: 'bun test --preload ./tests/setup.ts ./tests/' },
+      exec: {
+        command: 'bun test --preload ./tests/setup.ts ./tests/',
+        // The child env is isolated, so the sandbox gate's switch has to be
+        // forwarded explicitly (see tests/helpers/sandbox-gate.ts).
+        env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+      },
       dependsOn: ['install'],
       cache: {
-        inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+        inputs: {
+          files: ['src/**', 'tests/**', 'package.json'],
+          // Folded into the KEY as well, which passThrough alone does not do.
+          // Without it a green artifact from a run that SKIPPED the 21 sandbox
+          // tests restores into a run that was supposed to require them — the
+          // hole in the fix, not a nicety.
+          env: ['VX_REQUIRE_SANDBOX'],
+        },
         outputs: { files: [] },
       },
     },
