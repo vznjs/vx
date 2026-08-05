@@ -17,8 +17,11 @@
 //   monitor in real time; violations carry the offending command +
 //   syscall line, so we get structured detection.
 //   Linux  — bwrap denies the read at the kernel boundary; the child
-//   sees ENOENT (or EPERM for some operations). SRT doesn't surface
-//   structured events for Linux, so detection is enforcement-only.
+//   sees ENOENT (or EPERM for some operations). SRT surfaces no
+//   structured events there, so we wrap the spawn in strace and parse
+//   the trace ourselves (`deniedCalls`) — detection is NOT
+//   enforcement-only on Linux, and the fail-on-violation branch in
+//   execute-task is live on both platforms.
 
 import path from 'node:path'
 import os from 'node:os'
@@ -157,6 +160,7 @@ export async function resetSandbox(): Promise<void> {
   const { SandboxManager } = await loadSrt()
   await SandboxManager.reset()
   availabilityCache = undefined
+  straceAvailableCache = undefined
 }
 
 export interface SandboxedRunArgs {
@@ -232,6 +236,32 @@ function toRealPath(p: string): string {
 }
 
 /**
+ * Canonical form of every path the sandbox policy is expressed in.
+ *
+ * `resolveSandboxConfig` already canonicalizes the USER's paths; the
+ * orchestrator-supplied baselines (resolved inputs, output prefixes, the
+ * workspace-root deny anchor) arrived raw, so a workspace reached through a
+ * symlink expressed HALF its policy in real paths and half in link paths.
+ * bwrap then died mounting the link path inside its new root
+ * (`Can't mount tmpfs on /newroot/<link>`) and EVERY sandboxed task failed —
+ * whatever the config, with an error naming an internal path the user has no
+ * way to act on. Canonicalizing here is what makes the two halves agree.
+ */
+function canonicalBaselines(args: SandboxedRunArgs): {
+  allowRead: string[]
+  allowWrite: string[]
+  denyRead: string[]
+  cwd: string
+} {
+  return {
+    allowRead: args.baseAllowRead.map(toRealPath),
+    allowWrite: args.baseAllowWrite.map(toRealPath),
+    denyRead: args.baseDenyRead.map(toRealPath),
+    cwd: toRealPath(args.cwd),
+  }
+}
+
+/**
  * Convert a user-facing `SandboxConfig` (paths may be relative / tilde)
  * into a `ResolvedSandboxConfig` (all paths absolute + canonical) for a
  * given project. Relative paths resolve against `projectDir`; tilde
@@ -295,7 +325,8 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   const tag = xxh3hex(`${args.cwd}|${userCommand}|${process.hrtime.bigint()}`).slice(0, 16)
   const taggedCommand = `: 'vx-${tag}'; ${userCommand}`
 
-  const customConfig = buildCustomConfig(args)
+  const baselines = canonicalBaselines(args)
+  const customConfig = buildCustomConfig(args, baselines)
   const wrapped = await SandboxManager.wrapWithSandbox(taggedCommand, undefined, customConfig)
 
   // Linux: SRT's SandboxViolationStore is macOS-only, so structured
@@ -365,7 +396,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // allowed. Best-effort — if parsing fails we surface no Linux
   // violations rather than fail the whole task.
   const linuxViolations: SandboxViolation[] = straceLog
-    ? await parseStraceViolations(straceLog, args).catch(() => [])
+    ? await parseStraceViolations(straceLog, args, baselines).catch(() => [])
     : []
   if (straceLog) await unlink(straceLog).catch(() => undefined)
 
@@ -425,15 +456,81 @@ async function wantsStraceDetection(): Promise<boolean> {
  *   <pid> access("<path>", <mode>) = -1 EACCES (...)
  *   <pid> statx(AT_FDCWD, "<path>", <flags>, <mask>, ...) = -1 ENOENT (...)
  *
+ * …but ONLY when the syscall completes without another traced process
+ * interleaving. Under `-f` strace splits an interrupted call across two
+ * lines and the result never appears next to the path:
+ *   <pid> openat(AT_FDCWD, "<path>", <flags> <unfinished ...>
+ *   <pid> <... openat resumed>)             = -1 ENOENT (...)
+ * A single-line regex silently drops every one of those, so a task that
+ * forks concurrent children reading undeclared files reported an
+ * INCOMPLETE violation list — which for `--verify=inputs` reads as
+ * `proven-complete`. We pair them by pid instead (a process has at most
+ * one syscall in flight, so the pid is a sufficient key).
+ *
  * We capture the first quoted-string argument as the path. paths that
  * are relative resolve against the task's cwd (set by Bun.spawn).
  */
-const STRACE_RE =
-  /^\d+\s+(openat|access|statx|newfstatat)\([^"]*"([^"]+)"[^)]*\)\s*=\s*-1\s+(ENOENT|EACCES|EPERM)/gm
+const SYSCALLS = 'openat|access|statx|newfstatat'
+const STRACE_DONE_RE = new RegExp(
+  `^(\\d+)\\s+(${SYSCALLS})\\([^"]*"([^"]+)"[^)]*\\)\\s*=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
+)
+const STRACE_UNFINISHED_RE = new RegExp(`^(\\d+)\\s+(${SYSCALLS})\\([^"]*"([^"]+)"[^)]*<unfinished`)
+const STRACE_RESUMED_RE = new RegExp(
+  `^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>.*?=\\s*-1\\s+(ENOENT|EACCES|EPERM)`,
+)
+/** A resumed call that SUCCEEDED — clears the pending entry, emits nothing. */
+const STRACE_RESUMED_OK_RE = new RegExp(`^(\\d+)\\s+<\\.\\.\\. (${SYSCALLS}) resumed>`)
+
+/** One denied syscall, however strace chose to lay it out. */
+export interface DeniedCall {
+  syscall: string
+  rawPath: string
+  errno: string
+}
+
+/**
+ * Walk the trace, pairing `<unfinished ...>` with its `<... resumed>` line.
+ *
+ * Exported for testing: this is the security-relevant half of the Linux
+ * detector, and a synthetic trace pins the split-line shapes deterministically
+ * where an end-to-end run only produces them when strace happens to interleave.
+ */
+export function deniedCalls(text: string): DeniedCall[] {
+  const pending = new Map<string, { syscall: string; rawPath: string }>()
+  const out: DeniedCall[] = []
+  for (const line of text.split('\n')) {
+    const done = STRACE_DONE_RE.exec(line)
+    if (done?.[2] !== undefined && done[3] !== undefined && done[4] !== undefined) {
+      out.push({ syscall: done[2], rawPath: done[3], errno: done[4] })
+      continue
+    }
+    const unfinished = STRACE_UNFINISHED_RE.exec(line)
+    if (
+      unfinished?.[1] !== undefined &&
+      unfinished[2] !== undefined &&
+      unfinished[3] !== undefined
+    ) {
+      pending.set(unfinished[1], { syscall: unfinished[2], rawPath: unfinished[3] })
+      continue
+    }
+    const resumedOk = STRACE_RESUMED_OK_RE.exec(line)
+    if (resumedOk?.[1] === undefined) continue
+    const held = pending.get(resumedOk[1])
+    pending.delete(resumedOk[1])
+    const resumed = STRACE_RESUMED_RE.exec(line)
+    // Only a resume that carries a DENIAL is a violation; a successful
+    // resume just retires the pending entry.
+    if (held !== undefined && resumed?.[3] !== undefined) {
+      out.push({ syscall: held.syscall, rawPath: held.rawPath, errno: resumed[3] })
+    }
+  }
+  return out
+}
 
 async function parseStraceViolations(
   logPath: string,
   args: SandboxedRunArgs,
+  baselines: { allowRead: readonly string[]; denyRead: readonly string[]; cwd: string },
 ): Promise<SandboxViolation[]> {
   const text = await Bun.file(logPath).text()
   if (text.length === 0) return []
@@ -441,18 +538,18 @@ async function parseStraceViolations(
   // Treat every baseAllow + sandbox.allowRead path as "this was
   // explicitly permitted; any -ENOENT here is the user's own missing
   // file, not a sandbox-induced denial". Same for absolute denyRead
-  // checks below.
+  // checks below. Canonical on BOTH sides — the policy is expressed in
+  // real paths (see `canonicalBaselines`), so comparing a link-path here
+  // would report an explicitly-allowed read as a violation.
   const allowAbs = new Set<string>(
-    [...args.baseAllowRead, ...args.config.allowRead].map((p) => absolutize(p)),
+    [...baselines.allowRead, ...args.config.allowRead].map((p) => toRealPath(absolutize(p))),
   )
-  const denyAnchors = args.baseDenyRead.map((p) => absolutize(p))
+  const denyAnchors = baselines.denyRead.map((p) => toRealPath(absolutize(p)))
 
   const seen = new Set<string>()
   const out: SandboxViolation[] = []
-  for (const m of text.matchAll(STRACE_RE)) {
-    const [, syscall, rawPath, errno] = m
-    if (!rawPath) continue
-    const abs = absolutize(rawPath, args.cwd)
+  for (const { syscall, rawPath, errno } of deniedCalls(text)) {
+    const abs = toRealPath(absolutize(rawPath, baselines.cwd))
     // Only report paths under the workspace-root deny anchor — system
     // libs / /proc / /sys / etc. probes are not interesting violations.
     if (!denyAnchors.some((root) => abs === root || abs.startsWith(root + path.sep))) continue
@@ -526,11 +623,16 @@ function filterIgnored(
  */
 function buildCustomConfig(
   args: SandboxedRunArgs,
+  baselines: {
+    allowRead: readonly string[]
+    allowWrite: readonly string[]
+    denyRead: readonly string[]
+  },
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const c = args.config
-  const allowRead = unique([...args.baseAllowRead, ...c.allowRead])
-  const denyRead = unique([...args.baseDenyRead])
-  const allowWrite = unique([...args.baseAllowWrite, ...c.allowWrite])
+  const allowRead = unique([...baselines.allowRead, ...c.allowRead])
+  const denyRead = unique([...baselines.denyRead])
+  const allowWrite = unique([...baselines.allowWrite, ...c.allowWrite])
 
   const custom: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] = {
     filesystem: {

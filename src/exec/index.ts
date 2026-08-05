@@ -10,10 +10,12 @@ export {
   type CaptureConfig,
 } from './runner.js'
 export {
+  deniedCalls,
   initSandbox,
   probeSandbox,
   resetSandbox,
   resolveSandboxConfig,
   runSandboxed,
+  type DeniedCall,
   type SandboxViolation,
 } from './sandbox-runtime.js'
