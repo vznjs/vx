@@ -297,7 +297,23 @@ write a plausible cause into the log that you have not proven.
   supposed to provide is coverage that can be deleted by an unrelated
   infrastructure change, and the only thing standing between that and a green
   merge is a `console.warn` nobody reads. Gate it on an env var the CI sets, or
-  accept that it is optional.
+  accept that it is optional. **RECORDED WITH NUMBERS, NOT FIXED — and the
+  cloud half is BIGGER than the core one.** Reading this PR's own CI run rather
+  than trusting its green check: the core job is `2622 pass / 0 fail` with no
+  skip line (the 21 really ran on the runner), while the **cloud job is `1225
+pass · 38 skip · 0 fail`** — `workspace-context` 13, `visual` 12, `ui-perf` 7,
+  `ui-search` 6. That includes the visual suite guarding the docs screenshots,
+  whose absence in CI this log ALREADY blames for the shipped screenshots
+  running five days behind the product. So the same class, one job over, at
+  nearly double the size. It is not fixed here because the two halves have
+  different blockers: `ui-perf`/`ui-search`/`workspace-context` are behavioural
+  and need only playwright + a built `ui/dist` in the cloud job, but `visual`
+  compares PIXELS against baselines this log documents as environment-pinned
+  ("a different font set renders different text pixels"), so enabling it on a
+  GitHub runner would fail against baselines captured in a container — that
+  needs a containerized capture or pinned fonts first, which is a decision, not
+  a workflow line. An unused `VX_REQUIRE_BROWSER` switch was deliberately NOT
+  added: a flag nobody flips is the half-finished work this project forbids.
 
 - **2026-08-04**: **A clean audit of the live status region — no reachable
   defect, one comment that claimed a guarantee the code does not have, and TWO
