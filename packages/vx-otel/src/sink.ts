@@ -101,7 +101,9 @@ export class OtelSink implements TelemetrySink {
         this.traceId = genId(16)
         this.rootSpanId = genId(8)
         this.run = record.run
-        this.rootStartNano = nanos(record.ts)
+        // The run's OWN canonical start, not when this record was projected —
+        // it is what the summary reports and what a receiver stores.
+        this.rootStartNano = nanos(record.startedAt)
         return
       case 'task.start':
         this.taskSpanId.set(record.taskId, genId(8))
@@ -141,14 +143,24 @@ export class OtelSink implements TelemetrySink {
     this.uploaded = true
     // Finalize the root span now that the run is over (run.end set the end).
     if (this.run !== undefined && this.traceId) {
+      // Prefer the summary's own start/end: they are the run's canonical
+      // timing, and a receiver rebuilding the invocation header must agree
+      // with the native ingest path to the millisecond.
+      const start = this.summary !== undefined ? nanos(this.summary.startedAt) : this.rootStartNano
+      const end =
+        this.summary !== undefined
+          ? nanos(this.summary.endedAt)
+          : this.rootEndNano !== '0'
+            ? this.rootEndNano
+            : this.rootStartNano
       this.spans.unshift({
         traceId: this.traceId,
         spanId: this.rootSpanId,
         name: 'vx.run',
         kind: SPAN_KIND_INTERNAL,
-        startTimeUnixNano: this.rootStartNano,
-        endTimeUnixNano: this.rootEndNano !== '0' ? this.rootEndNano : this.rootStartNano,
-        attributes: runSpanAttributes(this.run),
+        startTimeUnixNano: start,
+        endTimeUnixNano: end,
+        attributes: runSpanAttributes(this.run, this.summary),
         status: { code: STATUS_UNSET },
       })
     }

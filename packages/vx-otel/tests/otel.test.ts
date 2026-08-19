@@ -436,3 +436,196 @@ describe('otel() plugin', () => {
     expect(sink!.name).toBe('vzn/otel')
   })
 })
+
+// --- losslessness -------------------------------------------------------
+//
+// A trace is only useful as THE export if every telemetry field survives it.
+// These are the tripwires: adding a field to `RunContextRecord` forces it into
+// the typed fixture, which fails the key pin, which forces someone to decide
+// how it maps — instead of the field quietly never arriving.
+
+const FULL_TASK: Required<Omit<TaskTelemetry, 'verify'>> & Pick<TaskTelemetry, 'verify'> = {
+  taskId: 'app#build',
+  project: 'app',
+  task: 'build',
+  status: 'success',
+  cacheSource: 'miss',
+  exitCode: 0,
+  durationMs: 1234,
+  hash: 'deadbeefdeadbeef',
+  cpuMs: 900,
+  peakRssBytes: 123456789,
+  attempts: 2,
+  verify: { kind: 'proven-deterministic' },
+  outputFp: {
+    tree: 'feedfacefeedface',
+    fileCount: 3,
+    files: [
+      ['dist/a.js', 'aaaa'],
+      ['dist/b.js', 'bbbb'],
+    ],
+    truncated: true,
+  },
+  // Past Number.MAX_SAFE_INTEGER — routing this through a JS number rounds it.
+  wallclockStartNs: '9007199254740993',
+  wallclockEndNs: '9007199254742000',
+}
+
+describe('OTLP losslessness', () => {
+  it('pins the RunContextRecord field set the run span must carry', () => {
+    // A new field here fails until it is mapped below.
+    expect(Object.keys(RUN).sort()).toEqual([
+      'arch',
+      'branch',
+      'cachePolicy',
+      'ci',
+      'ciProvider',
+      'command',
+      'commitSha',
+      'concurrency',
+      'defaultBranch',
+      'dirty',
+      'flow',
+      'host',
+      'os',
+      'requestedTasks',
+      'runId',
+      'tags',
+      'vxVersion',
+      'workspaceId',
+      'workspaceName',
+    ])
+  })
+
+  it('carries every run-context field on the root span', () => {
+    const a = attrMap(runSpanAttributes(RUN) as never)
+    expect(a['cicd.pipeline.run.id']).toBe('run-1')
+    expect(a['vx.workspace.id']).toBe('ws-test')
+    expect(a['vx.workspace.name']).toBe('fixture-ws')
+    expect(a['vx.default_branch']).toBe('main')
+    expect(a['vx.command']).toBe('vx run build')
+    expect(a['vx.requested_tasks']).toBe('build')
+    expect(a['vx.cache_policy']).toBe('lR,lW,rR,rW')
+    expect(a['vx.concurrency']).toBe('4')
+    expect(a['vx.flow']).toBe('focused')
+    expect(a['vcs.ref.head.revision']).toBe('abc123')
+    expect(a['vcs.ref.head.name']).toBe('main')
+    expect(a['vx.dirty']).toBe(false)
+    expect(a['vx.ci']).toBe(true)
+    expect(a['vx.ci.provider']).toBe('github')
+    expect(a['vx.host']).toBe('ci-box')
+    expect(a['vx.os']).toBe('linux')
+    expect(a['vx.arch']).toBe('x64')
+    expect(a['vx.version']).toBe('1.2.3')
+    expect(a['vx.tag.env']).toBe('prod')
+    // The schema version a reader must check before trusting any of the above.
+    expect(a['vx.telemetry.schema']).toBe('2')
+  })
+
+  it('carries the run tallies when the summary is known', () => {
+    const summary: RunSummaryRecord = {
+      v: 2,
+      run: RUN,
+      startedAt: 1_700_000_000_000,
+      endedAt: 1_700_000_009_000,
+      totalDurationMs: 9000,
+      taskCount: 7,
+      failedCount: 1,
+      hitCount: 3,
+      hitLocalCount: 2,
+      hitRemoteCount: 1,
+      exitOk: false,
+      tasks: [],
+    }
+    const a = attrMap(runSpanAttributes(RUN, summary) as never)
+    expect(a['vx.run.started_at']).toBe('1700000000000')
+    expect(a['vx.run.ended_at']).toBe('1700000009000')
+    expect(a['vx.run.duration_ms']).toBe('9000')
+    expect(a['vx.run.task_count']).toBe('7')
+    expect(a['vx.run.failed_count']).toBe('1')
+    expect(a['vx.run.hit_count']).toBe('3')
+    expect(a['vx.run.hit_local_count']).toBe('2')
+    expect(a['vx.run.hit_remote_count']).toBe('1')
+    expect(a['vx.run.exit_ok']).toBe(false)
+  })
+
+  it('omits the tallies when no summary was assembled', () => {
+    const a = attrMap(runSpanAttributes(RUN) as never)
+    expect(a['vx.run.task_count']).toBeUndefined()
+    expect(a['vx.run.exit_ok']).toBeUndefined()
+  })
+
+  it('carries every task field on the task span', () => {
+    const a = attrMap(taskSpanAttributes(FULL_TASK) as never)
+    expect(a['cicd.pipeline.task.name']).toBe('app#build')
+    expect(a['cicd.pipeline.task.run.result']).toBe('success')
+    expect(a['vx.task.project']).toBe('app')
+    expect(a['vx.task.task']).toBe('build')
+    expect(a['vx.cache.source']).toBe('miss')
+    expect(a['vx.task.exit_code']).toBe('0')
+    expect(a['vx.task.duration_ms']).toBe('1234')
+    expect(a['vx.task.hash']).toBe('deadbeefdeadbeef')
+    expect(a['vx.cpu_ms']).toBe('900')
+    expect(a['vx.peak_rss_bytes']).toBe('123456789')
+    expect(a['vx.task.attempts']).toBe('2')
+    expect(a['vx.task.verify']).toBe('proven-deterministic')
+  })
+
+  it('preserves wallclock nanoseconds past the float-safe range', () => {
+    const a = attrMap(taskSpanAttributes(FULL_TASK) as never)
+    // The whole point of the int64-as-string path: 9007199254740993 is the
+    // first integer a JS number cannot represent, and a receiver derives a
+    // dedup key from it.
+    expect(a['vx.task.wallclock_start_ns']).toBe('9007199254740993')
+    expect(a['vx.task.wallclock_end_ns']).toBe('9007199254742000')
+  })
+
+  it('carries the output fingerprint, file map included', () => {
+    const a = attrMap(taskSpanAttributes(FULL_TASK) as never)
+    expect(a['vx.task.output_fp.tree']).toBe('feedfacefeedface')
+    expect(a['vx.task.output_fp.file_count']).toBe('3')
+    expect(a['vx.task.output_fp.truncated']).toBe(true)
+    expect(JSON.parse(String(a['vx.task.output_fp.files']))).toEqual([
+      ['dist/a.js', 'aaaa'],
+      ['dist/b.js', 'bbbb'],
+    ])
+  })
+
+  it('emits a fingerprint with no file map as an empty array, not a hole', () => {
+    const a = attrMap(
+      taskSpanAttributes({
+        ...FULL_TASK,
+        outputFp: { tree: 'aaaa', fileCount: 0 },
+      }) as never,
+    )
+    // Detection keys on `tree`; the map is allowed to be absent, but the
+    // attribute must still parse rather than reading as malformed.
+    expect(a['vx.task.output_fp.files']).toBe('[]')
+    expect(a['vx.task.output_fp.truncated']).toBe(false)
+  })
+
+  it('omits every optional task attribute when the field is absent', () => {
+    const a = attrMap(
+      taskSpanAttributes({
+        taskId: 'app#lint',
+        project: 'app',
+        task: 'lint',
+        status: 'cache-hit',
+        cacheSource: 'local',
+        exitCode: 0,
+        durationMs: 4,
+      }) as never,
+    )
+    for (const key of [
+      'vx.task.hash',
+      'vx.cpu_ms',
+      'vx.peak_rss_bytes',
+      'vx.task.attempts',
+      'vx.task.verify',
+      'vx.task.wallclock_start_ns',
+      'vx.task.output_fp.tree',
+    ]) {
+      expect(a[key]).toBeUndefined()
+    }
+  })
+})

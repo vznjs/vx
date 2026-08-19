@@ -14,10 +14,13 @@ export { OtelSink, type OtelSinkConfig, type PostFn } from './sink.js'
 export {
   buildMetricsRequest,
   buildTraceRequest,
+  encodeFingerprintFiles,
   resourceAttributes,
   runSpanAttributes,
+  SEMCONV,
   taskSpanAttributes,
   taskStatusCode,
+  VX_ATTR,
   type KeyValue,
   type OtlpSpan,
 } from './otlp.js'
