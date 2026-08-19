@@ -6,13 +6,20 @@
 // of SDK-version drift. Maps a vx run to:
 //   - a TRACE: one root `vx.run` span + one child `vx.task` span per task,
 //     with CI/CD + VCS semantic-convention attributes;
-//   - METRICS: task/run counters + a run-duration gauge.
+//   - METRICS: task/run counters + a run-duration gauge;
+//   - LOGS: one record per executed task carrying its captured output tail.
 //
 // References: OpenTelemetry CI/CD + VCS semantic conventions; OTLP/JSON
 // protobuf-JSON mapping (int64 fields are decimal STRINGS).
 
 import { TELEMETRY_SCHEMA_VERSION } from '@vzn/vx'
-import type { OutputFingerprint, RunContextRecord, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
+import type {
+  OutputFingerprint,
+  RunContextRecord,
+  RunSummaryRecord,
+  TaskLogEntry,
+  TaskTelemetry,
+} from '@vzn/vx'
 
 // --- OTLP value + attribute primitives ---------------------------------
 
@@ -343,6 +350,80 @@ export function buildMetricsRequest(
             ],
           },
         ],
+      },
+    ],
+  }
+}
+
+// --- logs ---------------------------------------------------------------
+
+// OTLP severity numbers: 9 INFO, 17 ERROR.
+export const SEVERITY_INFO = 9
+export const SEVERITY_ERROR = 17
+
+export interface OtlpLogRecord {
+  timeUnixNano: string
+  observedTimeUnixNano: string
+  severityNumber: number
+  severityText: string
+  body: { stringValue: string }
+  attributes: KeyValue[]
+  traceId?: string
+  spanId?: string
+}
+
+/**
+ * One log record per EXECUTED task, carrying its captured output tail.
+ *
+ * Per task, not per chunk. A chunk-level stream is the conventional shape for
+ * application logs, but a build task's output arrives as thousands of tiny
+ * writes and the thing anyone reads is the tail — so a record per chunk would
+ * multiply the payload by orders of magnitude to deliver the same bytes, and
+ * force every receiver to reassemble them in order before it could show
+ * anything. The capture buffer already bounds and orders the tail; this ships
+ * what it drained.
+ *
+ * `traceId`/`spanId` link each record to its task span, so a viewer opens the
+ * output from the span rather than by correlating ids by hand. The truncation
+ * counters ride along because a capped tail that reads as complete is worse
+ * than one that says what it lost.
+ */
+export function buildLogsRequest(args: {
+  serviceName: string
+  vxVersion: string
+  runId: string
+  entries: readonly TaskLogEntry[]
+  timeUnixNano: string
+  traceId?: string
+  spanIdFor?: (taskId: string) => string | undefined
+}): unknown {
+  const logRecords: OtlpLogRecord[] = args.entries.map((e) => {
+    const failed = e.status === 'failed'
+    const attrs: KeyValue[] = [
+      strAttr(SEMCONV.pipelineRunId, args.runId),
+      strAttr(SEMCONV.taskName, e.taskId),
+      strAttr(VX_ATTR.logStatus, e.status),
+      intAttr(VX_ATTR.logCharsFull, e.charsFull),
+      intAttr(VX_ATTR.logTruncatedHead, e.truncatedHeadChars),
+    ]
+    if (e.hash !== undefined) attrs.push(strAttr(VX_ATTR.taskHash, e.hash))
+    const spanId = args.spanIdFor?.(e.taskId)
+    return {
+      timeUnixNano: args.timeUnixNano,
+      observedTimeUnixNano: args.timeUnixNano,
+      severityNumber: failed ? SEVERITY_ERROR : SEVERITY_INFO,
+      severityText: failed ? 'ERROR' : 'INFO',
+      body: { stringValue: e.content },
+      attributes: attrs,
+      ...(args.traceId ? { traceId: args.traceId } : {}),
+      ...(spanId ? { spanId } : {}),
+    }
+  })
+  return {
+    resourceLogs: [
+      {
+        resource: { attributes: resourceAttributes(args.serviceName, args.vxVersion) },
+        scopeLogs: [{ scope: { name: 'vx', version: args.vxVersion }, logRecords }],
       },
     ],
   }

@@ -268,9 +268,11 @@ function mkConfig(over: Partial<ConstructorParameters<typeof OtelSink>[0]> = {})
   const cfg = {
     tracesUrl: 'http://c/v1/traces',
     metricsUrl: 'http://c/v1/metrics',
+    logsUrl: 'http://c/v1/logs',
     serviceName: 'vx',
     headers: {},
     metricsEnabled: true,
+    logsEnabled: true,
     timeoutMs: 1000,
     post,
     ...over,
@@ -297,7 +299,14 @@ function summaryFor(run: RunContextRecord, tasks: TaskTelemetry[]): RunSummaryRe
 
 describe('OtelSink end-to-end', () => {
   function driveOneTask(sink: OtelSink): void {
-    sink.onRecord({ v: 1, kind: 'run.start', run: RUN, total: 1, ts: 1000 } as TelemetryRecord)
+    sink.onRecord({
+      v: 1,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
     sink.onRecord({
       v: 1,
       kind: 'task.start',
@@ -401,9 +410,14 @@ describe('OtelSink end-to-end', () => {
     expect(calls.length).toBe(after)
   })
 
-  it('only requests the trace+metric kinds (not task.log)', () => {
+  it('requests task.log only when the logs signal is on', () => {
+    // Repinned: the sink used to refuse log chunks unconditionally, because it
+    // had nowhere to send them. It now ships them over the OTel Logs signal,
+    // so the refusal is conditional — and `logsEnabled: false` must still cost
+    // a run nothing, since core checks `wants` before projecting a chunk.
+    expect(new OtelSink(mkConfig({ logsEnabled: false }).cfg).wants).not.toContain('task.log')
     const sink = new OtelSink(mkConfig().cfg)
-    expect(sink.wants).not.toContain('task.log')
+    expect(sink.wants).toContain('task.log')
     expect(sink.wants).toContain('task.end')
   })
 })
@@ -627,5 +641,191 @@ describe('OTLP losslessness', () => {
     ]) {
       expect(a[key]).toBeUndefined()
     }
+  })
+})
+
+// --- the logs signal ----------------------------------------------------
+
+describe('OtelSink logs', () => {
+  function driveLogged(sink: OtelSink, over: Partial<TaskTelemetry> = {}): TaskTelemetry {
+    sink.onRecord({
+      v: 2,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 2,
+      kind: 'task.start',
+      runId: RUN.runId,
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      ts: 1010,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 2,
+      kind: 'task.log',
+      runId: RUN.runId,
+      taskId: 'a#build',
+      stream: 'stdout',
+      chunk: 'compiling...\n',
+      ts: 1020,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 2,
+      kind: 'task.log',
+      runId: RUN.runId,
+      taskId: 'a#build',
+      stream: 'stderr',
+      chunk: 'boom\n',
+      ts: 1030,
+    } as TelemetryRecord)
+    const t: TaskTelemetry = {
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      status: 'failed',
+      cacheSource: 'miss',
+      exitCode: 1,
+      durationMs: 40,
+      hash: 'h1',
+      ...over,
+    }
+    sink.onRecord({ v: 2, kind: 'task.end', runId: RUN.runId, ts: 1050, ...t } as TelemetryRecord)
+    sink.onRecord({ v: 2, kind: 'run.end', runId: RUN.runId, ts: 1100 } as TelemetryRecord)
+    sink.onRunSummary(summaryFor(RUN, [t]))
+    return t
+  }
+
+  function logRecords(body: unknown) {
+    return (
+      body as {
+        resourceLogs: {
+          scopeLogs: {
+            logRecords: {
+              body: { stringValue: string }
+              severityNumber: number
+              severityText: string
+              traceId?: string
+              spanId?: string
+              attributes: { key: string; value: Record<string, unknown> }[]
+            }[]
+          }[]
+        }[]
+      }
+    ).resourceLogs[0]!.scopeLogs[0]!.logRecords
+  }
+
+  it('ships an executed task tail as a log record linked to its span', async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    driveLogged(sink)
+    await sink.flush()
+
+    const logs = calls.find((c) => c.url === 'http://c/v1/logs')
+    expect(logs).toBeDefined()
+    const records = logRecords(logs!.body)
+    expect(records).toHaveLength(1)
+    const r = records[0]!
+    // Merged streams in arrival order — what a terminal actually showed.
+    expect(r.body.stringValue).toBe('compiling...\nboom\n')
+    expect(r.severityText).toBe('ERROR')
+
+    // The link is the point: a viewer opens the output from the task span.
+    const spans = (
+      calls.find((c) => c.url.endsWith('/v1/traces'))!.body as {
+        resourceSpans: { scopeSpans: { spans: { name: string; spanId: string }[] }[] }[]
+      }
+    ).resourceSpans[0]!.scopeSpans[0]!.spans
+    const taskSpan = spans.find((sp) => sp.name === 'vx.task')!
+    expect(r.spanId).toBe(taskSpan.spanId)
+    expect(r.traceId).toBeDefined()
+
+    const a = attrMap(r.attributes as never)
+    expect(a['cicd.pipeline.task.name']).toBe('a#build')
+    expect(a['cicd.pipeline.run.id']).toBe(RUN.runId)
+    expect(a['vx.task.hash']).toBe('h1')
+    expect(a['vx.log.status']).toBe('failed')
+    expect(a['vx.log.chars_full']).toBe('18')
+    expect(a['vx.log.truncated_head']).toBe('0')
+  })
+
+  it('never ships a cache hit tail — those bytes belong to the run that executed', async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    driveLogged(sink, { status: 'cache-hit', cacheSource: 'local', exitCode: 0 })
+    await sink.flush()
+    expect(calls.find((c) => c.url === 'http://c/v1/logs')).toBeUndefined()
+  })
+
+  it('posts no logs body when a run captured nothing', async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 2,
+      kind: 'run.start',
+      run: RUN,
+      total: 0,
+      ts: 1,
+      startedAt: 1,
+    } as TelemetryRecord)
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    expect(calls.some((c) => c.url === 'http://c/v1/logs')).toBe(false)
+  })
+
+  it('declines task.log entirely when logs are off, so core never projects one', () => {
+    const off = new OtelSink(mkConfig({ logsEnabled: false }).cfg)
+    expect(off.wants).not.toContain('task.log')
+    const on = new OtelSink(mkConfig().cfg)
+    expect(on.wants).toContain('task.log')
+  })
+
+  it('ships no logs body when the signal is off', async () => {
+    const { cfg, calls } = mkConfig({ logsEnabled: false })
+    const sink = new OtelSink(cfg)
+    driveLogged(sink)
+    await sink.flush()
+    expect(calls.some((c) => c.url === 'http://c/v1/logs')).toBe(false)
+    // ...but traces still ship, so turning logs off costs no other signal.
+    expect(calls.some((c) => c.url.endsWith('/v1/traces'))).toBe(true)
+  })
+})
+
+describe('resolveOtelConfig — logs', () => {
+  it('derives a logs URL from the base endpoint and enables the signal', () => {
+    const cfg = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' })!
+    expect(cfg.logsUrl).toBe('http://c/v1/logs')
+    expect(cfg.logsEnabled).toBe(true)
+  })
+
+  it('honours the standard OTEL_LOGS_EXPORTER=none opt-out', () => {
+    const cfg = resolveOtelConfig(
+      {},
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c', OTEL_LOGS_EXPORTER: 'none' },
+    )!
+    expect(cfg.logsEnabled).toBe(false)
+    // The URL is still resolved — only the signal is off, so flipping the
+    // option back on needs no endpoint change.
+    expect(cfg.logsUrl).toBe('http://c/v1/logs')
+  })
+
+  it('lets an explicit option override the env opt-out', () => {
+    const cfg = resolveOtelConfig(
+      { logs: true },
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c', OTEL_LOGS_EXPORTER: 'none' },
+    )!
+    expect(cfg.logsEnabled).toBe(true)
+  })
+
+  it('prefers an explicit logs endpoint over the derived one', () => {
+    const cfg = resolveOtelConfig(
+      { logsEndpoint: 'http://other/logs' },
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' },
+    )!
+    expect(cfg.logsUrl).toBe('http://other/logs')
   })
 })

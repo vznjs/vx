@@ -7,11 +7,12 @@
 //
 // Zero-config via the standard OTel env vars (OTEL_EXPORTER_OTLP_ENDPOINT,
 // OTEL_SERVICE_NAME, OTEL_EXPORTER_OTLP_HEADERS). Maps a run to OTLP traces +
-// metrics over HTTP/JSON — no OpenTelemetry SDK dependency.
+// metrics + per-task logs over HTTP/JSON — no OpenTelemetry SDK dependency.
 
 export { otel, parseOtlpHeaders, resolveOtelConfig, type OtelPluginOptions } from './plugin.js'
 export { OtelSink, type OtelSinkConfig, type PostFn } from './sink.js'
 export {
+  buildLogsRequest,
   buildMetricsRequest,
   buildTraceRequest,
   encodeFingerprintFiles,
@@ -22,5 +23,6 @@ export {
   taskStatusCode,
   VX_ATTR,
   type KeyValue,
+  type OtlpLogRecord,
   type OtlpSpan,
 } from './otlp.js'

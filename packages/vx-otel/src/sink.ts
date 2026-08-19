@@ -5,6 +5,7 @@
 // a down collector can never affect a run.
 
 import { randomBytes } from 'node:crypto'
+import { TaskLogBuffer } from '@vzn/vx'
 import type {
   RunContextRecord,
   RunSummaryRecord,
@@ -13,6 +14,7 @@ import type {
   TelemetrySink,
 } from '@vzn/vx'
 import {
+  buildLogsRequest,
   buildMetricsRequest,
   buildTraceRequest,
   type OtlpSpan,
@@ -30,9 +32,11 @@ export type PostFn = (url: string, body: string, headers: Record<string, string>
 export interface OtelSinkConfig {
   tracesUrl: string
   metricsUrl: string
+  logsUrl: string
   serviceName: string
   headers: Record<string, string>
   metricsEnabled: boolean
+  logsEnabled: boolean
   timeoutMs: number
   post?: PostFn
   warn?: (message: string) => void
@@ -62,13 +66,12 @@ function nanos(ms: number): string {
 
 export class OtelSink implements TelemetrySink {
   readonly name = 'vzn/otel'
-  // Traces + metrics only by default — never the large log chunks.
-  readonly wants: ReadonlyArray<TelemetryRecord['kind']> = [
-    'run.start',
-    'task.start',
-    'task.end',
-    'run.end',
-  ]
+  /**
+   * Which record kinds this sink takes. `task.log` is included ONLY when the
+   * logs signal is on: core checks this before it projects a chunk at all, so
+   * a logs-off exporter costs a run exactly nothing on the output path.
+   */
+  readonly wants: ReadonlyArray<TelemetryRecord['kind']>
 
   private readonly cfg: Required<Omit<OtelSinkConfig, 'warn'>> & { warn?: (m: string) => void }
   private traceId = ''
@@ -81,18 +84,27 @@ export class OtelSink implements TelemetrySink {
   private readonly taskStartNano = new Map<string, string>()
   private summary: RunSummaryRecord | undefined
   private uploaded = false
+  // Core's own bounded capture buffer — the same one the cloud sink uses, so
+  // both agree on which task's output survives a chatty run.
+  private readonly logs = new TaskLogBuffer()
+  private runId = ''
 
   constructor(config: OtelSinkConfig) {
     this.cfg = {
       tracesUrl: config.tracesUrl,
       metricsUrl: config.metricsUrl,
+      logsUrl: config.logsUrl,
       serviceName: config.serviceName,
       headers: config.headers,
       metricsEnabled: config.metricsEnabled,
+      logsEnabled: config.logsEnabled,
       timeoutMs: config.timeoutMs,
       post: config.post ?? defaultPost,
       ...(config.warn ? { warn: config.warn } : {}),
     }
+    this.wants = config.logsEnabled
+      ? ['run.start', 'task.start', 'task.log', 'task.end', 'run.end']
+      : ['run.start', 'task.start', 'task.end', 'run.end']
   }
 
   onRecord(record: TelemetryRecord): void {
@@ -101,6 +113,7 @@ export class OtelSink implements TelemetrySink {
         this.traceId = genId(16)
         this.rootSpanId = genId(8)
         this.run = record.run
+        this.runId = record.run.runId
         // The run's OWN canonical start, not when this record was projected —
         // it is what the summary reports and what a receiver stores.
         this.rootStartNano = nanos(record.startedAt)
@@ -108,6 +121,9 @@ export class OtelSink implements TelemetrySink {
       case 'task.start':
         this.taskSpanId.set(record.taskId, genId(8))
         this.taskStartNano.set(record.taskId, nanos(record.ts))
+        return
+      case 'task.log':
+        this.logs.append(record.taskId, record.chunk)
         return
       case 'task.end': {
         const spanId = this.taskSpanId.get(record.taskId) ?? genId(8)
@@ -125,12 +141,16 @@ export class OtelSink implements TelemetrySink {
           attributes: taskSpanAttributes(t),
           status: { code: taskStatusCode(t) },
         })
+        // Decides retention: a cache hit's bytes belong to the run that
+        // executed them, so only an executed success/failure keeps a tail.
+        if (this.cfg.logsEnabled) {
+          this.logs.finish(record.taskId, record.status, record.cacheSource, record.hash)
+        }
         return
       }
       case 'run.end':
         this.rootEndNano = nanos(record.ts)
         return
-      // task.log is excluded via `wants`; never reaches here.
     }
   }
 
@@ -165,7 +185,7 @@ export class OtelSink implements TelemetrySink {
       })
     }
     const vxVersion = this.run?.vxVersion ?? '0.0.0'
-    await Promise.all([this.shipTraces(vxVersion), this.shipMetrics()])
+    await Promise.all([this.shipTraces(vxVersion), this.shipMetrics(), this.shipLogs(vxVersion)])
   }
 
   private async shipTraces(vxVersion: string): Promise<void> {
@@ -180,6 +200,25 @@ export class OtelSink implements TelemetrySink {
       buildMetricsRequest(this.cfg.serviceName, this.summary, nanos(this.summary.endedAt)),
     )
     await this.send(this.cfg.metricsUrl, body)
+  }
+
+  private async shipLogs(vxVersion: string): Promise<void> {
+    if (!this.cfg.logsEnabled) return
+    const workspaceId = this.run?.workspaceId ?? ''
+    const bundle = this.logs.drain(this.runId, workspaceId)
+    if (bundle.tasks.length === 0) return
+    const body = JSON.stringify(
+      buildLogsRequest({
+        serviceName: this.cfg.serviceName,
+        vxVersion,
+        runId: this.runId,
+        entries: bundle.tasks,
+        timeUnixNano: nanos(this.summary?.endedAt ?? Date.now()),
+        ...(this.traceId ? { traceId: this.traceId } : {}),
+        spanIdFor: (taskId) => this.taskSpanId.get(taskId),
+      }),
+    )
+    await this.send(this.cfg.logsUrl, body)
   }
 
   private async send(url: string, body: string): Promise<void> {
