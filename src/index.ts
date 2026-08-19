@@ -153,10 +153,23 @@ export {
   isPassStatus,
   TASK_STATUSES,
 } from './orchestrator/index.js'
+// `TaskLogBuffer` is on the façade on the same demonstrated need: EVERY
+// telemetry sink that ships build output has to bound it, and the retention
+// rules (per-task tail, per-run budget, failures never evicted by successes,
+// a hit's bytes belong to the run that executed) are a decision, not an
+// implementation detail. Two sinks rolling their own is how they fork.
+export {
+  LOG_WIRE_VERSION,
+  RUN_LOG_BUDGET_CHARS,
+  TASK_LOG_TAIL_CHARS,
+  TaskLogBuffer,
+} from './orchestrator/index.js'
 export type {
   CacheSource,
   RunContextRecord,
   RunSummaryRecord,
+  TaskLogBundle,
+  TaskLogEntry,
   TaskTelemetry,
   TelemetryContext,
   TelemetryRecord,

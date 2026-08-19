@@ -115,6 +115,8 @@ describe('analytics route allowlist — parse sanity', () => {
       '/v1/ingest',
       '/v1/ingest/logs',
       '/v1/ingest/task',
+      '/v1/otlp/v1/logs',
+      '/v1/otlp/v1/traces',
     ])
   })
 })

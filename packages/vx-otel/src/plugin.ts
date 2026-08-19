@@ -18,12 +18,21 @@ export interface OtelPluginOptions {
   tracesEndpoint?: string
   /** Full metrics URL override. Falls back to `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, else `<endpoint>/v1/metrics`. */
   metricsEndpoint?: string
+  /** Full logs URL override. Falls back to `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, else `<endpoint>/v1/logs`. */
+  logsEndpoint?: string
   /** Service name. Falls back to `OTEL_SERVICE_NAME`, else `'vx'`. */
   serviceName?: string
   /** Extra OTLP headers, merged over `OTEL_EXPORTER_OTLP_HEADERS`. */
   headers?: Record<string, string>
   /** Emit run/task metrics in addition to traces. Default: true. */
   metrics?: boolean
+  /**
+   * Ship each executed task's captured output tail as an OTel log record.
+   * Default: true — an endpoint is configured, so the intent is to export;
+   * the same default the cloud sink applies once a connection resolves.
+   * Set false (or `OTEL_LOGS_EXPORTER=none`) to export traces + metrics only.
+   */
+  logs?: boolean
   /** Per-request timeout (ms). Default: 15000. */
   timeoutMs?: number
   /** Test seam — inject the POST transport. Defaults to fetch. */
@@ -66,14 +75,26 @@ export function resolveOtelConfig(
     opts.metricsEndpoint ??
     env['OTEL_EXPORTER_OTLP_METRICS_ENDPOINT'] ??
     (base ? joinSignal(base, 'metrics') : undefined)
+  const logsUrl =
+    opts.logsEndpoint ??
+    env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT'] ??
+    (base ? joinSignal(base, 'logs') : undefined)
   if (tracesUrl === undefined) return undefined
+  // `OTEL_LOGS_EXPORTER=none` is the standard SDK opt-out; honour it so a
+  // pipeline already configured that way does not start receiving build logs
+  // just because it upgraded vx.
+  const logsEnabled =
+    opts.logs ??
+    (env['OTEL_LOGS_EXPORTER']?.trim().toLowerCase() !== 'none' && logsUrl !== undefined)
 
   return {
     tracesUrl,
     metricsUrl: metricsUrl ?? tracesUrl,
+    logsUrl: logsUrl ?? tracesUrl,
     serviceName: opts.serviceName ?? env['OTEL_SERVICE_NAME'] ?? 'vx',
     headers: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...opts.headers },
     metricsEnabled: opts.metrics ?? true,
+    logsEnabled,
     timeoutMs: opts.timeoutMs ?? 15_000,
     ...(opts.post ? { post: opts.post } : {}),
     ...(warn ? { warn } : {}),
@@ -83,8 +104,9 @@ export function resolveOtelConfig(
 /**
  * The OpenTelemetry exporter plugin. Declared in vx.workspace.ts via
  * `defineWorkspace({ plugins: [otel()] })`. Contributes a telemetry sink that
- * maps each run to OTLP traces (a `vx.run` root span + `vx.task` children) and
- * metrics, over OTLP/HTTP JSON. Declines when no OTLP endpoint is set.
+ * maps each run to OTLP traces (a `vx.run` root span + `vx.task` children),
+ * metrics, and one log record per executed task, over OTLP/HTTP JSON.
+ * Declines when no OTLP endpoint is set.
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   return {

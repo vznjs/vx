@@ -162,7 +162,7 @@ describe('OTLP builders', () => {
     }
     const mb = attrMap(taskSpanAttributes(bad))
     expect(mb['vx.task.verify']).toBe('nondeterministic')
-    expect(mb['vx.task.verify.changed']).toBe('dist/a.js,dist/a.js.map')
+    expect(mb['vx.task.verify.changed']).toBe('["dist/a.js","dist/a.js.map"]')
     expect(taskStatusCode(bad)).toBe(2)
     // A proven task: verdict attribute, no changed paths, span UNSET.
     const good: TaskTelemetry = { ...base, verify: { kind: 'proven-deterministic' } }
@@ -192,7 +192,7 @@ describe('OTLP builders', () => {
     }
     const ml = attrMap(taskSpanAttributes(leaky))
     expect(ml['vx.task.verify']).toBe('undeclared-inputs')
-    expect(ml['vx.task.verify.undeclared']).toBe('pkg/a/secret.txt,pkg/b/x.env')
+    expect(ml['vx.task.verify.undeclared']).toBe('["pkg/a/secret.txt","pkg/b/x.env"]')
     expect(taskStatusCode(leaky)).toBe(2)
     // proven-complete: verdict attr, no path attrs, span UNSET.
     const complete: TaskTelemetry = { ...base, verify: { kind: 'proven-complete' } }
@@ -268,9 +268,11 @@ function mkConfig(over: Partial<ConstructorParameters<typeof OtelSink>[0]> = {})
   const cfg = {
     tracesUrl: 'http://c/v1/traces',
     metricsUrl: 'http://c/v1/metrics',
+    logsUrl: 'http://c/v1/logs',
     serviceName: 'vx',
     headers: {},
     metricsEnabled: true,
+    logsEnabled: true,
     timeoutMs: 1000,
     post,
     ...over,
@@ -297,7 +299,14 @@ function summaryFor(run: RunContextRecord, tasks: TaskTelemetry[]): RunSummaryRe
 
 describe('OtelSink end-to-end', () => {
   function driveOneTask(sink: OtelSink): void {
-    sink.onRecord({ v: 1, kind: 'run.start', run: RUN, total: 1, ts: 1000 } as TelemetryRecord)
+    sink.onRecord({
+      v: 1,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
     sink.onRecord({
       v: 1,
       kind: 'task.start',
@@ -401,9 +410,14 @@ describe('OtelSink end-to-end', () => {
     expect(calls.length).toBe(after)
   })
 
-  it('only requests the trace+metric kinds (not task.log)', () => {
+  it('requests task.log only when the logs signal is on', () => {
+    // Repinned: the sink used to refuse log chunks unconditionally, because it
+    // had nowhere to send them. It now ships them over the OTel Logs signal,
+    // so the refusal is conditional — and `logsEnabled: false` must still cost
+    // a run nothing, since core checks `wants` before projecting a chunk.
+    expect(new OtelSink(mkConfig({ logsEnabled: false }).cfg).wants).not.toContain('task.log')
     const sink = new OtelSink(mkConfig().cfg)
-    expect(sink.wants).not.toContain('task.log')
+    expect(sink.wants).toContain('task.log')
     expect(sink.wants).toContain('task.end')
   })
 })
@@ -434,5 +448,384 @@ describe('otel() plugin', () => {
     }) as TelemetrySink | undefined
     expect(sink).toBeDefined()
     expect(sink!.name).toBe('vzn/otel')
+  })
+})
+
+// --- losslessness -------------------------------------------------------
+//
+// A trace is only useful as THE export if every telemetry field survives it.
+// These are the tripwires: adding a field to `RunContextRecord` forces it into
+// the typed fixture, which fails the key pin, which forces someone to decide
+// how it maps — instead of the field quietly never arriving.
+
+const FULL_TASK: Required<Omit<TaskTelemetry, 'verify'>> & Pick<TaskTelemetry, 'verify'> = {
+  taskId: 'app#build',
+  project: 'app',
+  task: 'build',
+  status: 'success',
+  cacheSource: 'miss',
+  exitCode: 0,
+  durationMs: 1234,
+  hash: 'deadbeefdeadbeef',
+  cpuMs: 900,
+  peakRssBytes: 123456789,
+  attempts: 2,
+  verify: { kind: 'proven-deterministic' },
+  outputFp: {
+    tree: 'feedfacefeedface',
+    fileCount: 3,
+    files: [
+      ['dist/a.js', 'aaaa'],
+      ['dist/b.js', 'bbbb'],
+    ],
+    truncated: true,
+  },
+  // Past Number.MAX_SAFE_INTEGER — routing this through a JS number rounds it.
+  wallclockStartNs: '9007199254740993',
+  wallclockEndNs: '9007199254742000',
+}
+
+describe('OTLP losslessness', () => {
+  it('pins the RunContextRecord field set the run span must carry', () => {
+    // A new field here fails until it is mapped below.
+    expect(Object.keys(RUN).sort()).toEqual([
+      'arch',
+      'branch',
+      'cachePolicy',
+      'ci',
+      'ciProvider',
+      'command',
+      'commitSha',
+      'concurrency',
+      'defaultBranch',
+      'dirty',
+      'flow',
+      'host',
+      'os',
+      'requestedTasks',
+      'runId',
+      'tags',
+      'vxVersion',
+      'workspaceId',
+      'workspaceName',
+    ])
+  })
+
+  it('carries every run-context field on the root span', () => {
+    const a = attrMap(runSpanAttributes(RUN) as never)
+    expect(a['cicd.pipeline.run.id']).toBe('run-1')
+    expect(a['vx.workspace.id']).toBe('ws-test')
+    expect(a['vx.workspace.name']).toBe('fixture-ws')
+    expect(a['vx.default_branch']).toBe('main')
+    expect(a['vx.command']).toBe('vx run build')
+    expect(a['vx.requested_tasks']).toBe('build')
+    expect(a['vx.cache_policy']).toBe('lR,lW,rR,rW')
+    expect(a['vx.concurrency']).toBe('4')
+    expect(a['vx.flow']).toBe('focused')
+    expect(a['vcs.ref.head.revision']).toBe('abc123')
+    expect(a['vcs.ref.head.name']).toBe('main')
+    expect(a['vx.dirty']).toBe(false)
+    expect(a['vx.ci']).toBe(true)
+    expect(a['vx.ci.provider']).toBe('github')
+    expect(a['vx.host']).toBe('ci-box')
+    expect(a['vx.os']).toBe('linux')
+    expect(a['vx.arch']).toBe('x64')
+    expect(a['vx.version']).toBe('1.2.3')
+    expect(a['vx.tag.env']).toBe('prod')
+    // The schema version a reader must check before trusting any of the above.
+    expect(a['vx.telemetry.schema']).toBe('2')
+  })
+
+  it('carries the run tallies when the summary is known', () => {
+    const summary: RunSummaryRecord = {
+      v: 2,
+      run: RUN,
+      startedAt: 1_700_000_000_000,
+      endedAt: 1_700_000_009_000,
+      totalDurationMs: 9000,
+      taskCount: 7,
+      failedCount: 1,
+      hitCount: 3,
+      hitLocalCount: 2,
+      hitRemoteCount: 1,
+      exitOk: false,
+      tasks: [],
+    }
+    const a = attrMap(runSpanAttributes(RUN, summary) as never)
+    expect(a['vx.run.started_at']).toBe('1700000000000')
+    expect(a['vx.run.ended_at']).toBe('1700000009000')
+    expect(a['vx.run.duration_ms']).toBe('9000')
+    expect(a['vx.run.task_count']).toBe('7')
+    expect(a['vx.run.failed_count']).toBe('1')
+    expect(a['vx.run.hit_count']).toBe('3')
+    expect(a['vx.run.hit_local_count']).toBe('2')
+    expect(a['vx.run.hit_remote_count']).toBe('1')
+    expect(a['vx.run.exit_ok']).toBe(false)
+  })
+
+  it('omits the tallies when no summary was assembled', () => {
+    const a = attrMap(runSpanAttributes(RUN) as never)
+    expect(a['vx.run.task_count']).toBeUndefined()
+    expect(a['vx.run.exit_ok']).toBeUndefined()
+  })
+
+  it('carries every task field on the task span', () => {
+    const a = attrMap(taskSpanAttributes(FULL_TASK) as never)
+    expect(a['cicd.pipeline.task.name']).toBe('app#build')
+    expect(a['cicd.pipeline.task.run.result']).toBe('success')
+    expect(a['vx.task.project']).toBe('app')
+    expect(a['vx.task.task']).toBe('build')
+    expect(a['vx.cache.source']).toBe('miss')
+    expect(a['vx.task.exit_code']).toBe('0')
+    expect(a['vx.task.duration_ms']).toBe('1234')
+    expect(a['vx.task.hash']).toBe('deadbeefdeadbeef')
+    expect(a['vx.cpu_ms']).toBe('900')
+    expect(a['vx.peak_rss_bytes']).toBe('123456789')
+    expect(a['vx.task.attempts']).toBe('2')
+    expect(a['vx.task.verify']).toBe('proven-deterministic')
+  })
+
+  it('preserves wallclock nanoseconds past the float-safe range', () => {
+    const a = attrMap(taskSpanAttributes(FULL_TASK) as never)
+    // The whole point of the int64-as-string path: 9007199254740993 is the
+    // first integer a JS number cannot represent, and a receiver derives a
+    // dedup key from it.
+    expect(a['vx.task.wallclock_start_ns']).toBe('9007199254740993')
+    expect(a['vx.task.wallclock_end_ns']).toBe('9007199254742000')
+  })
+
+  it('carries the output fingerprint, file map included', () => {
+    const a = attrMap(taskSpanAttributes(FULL_TASK) as never)
+    expect(a['vx.task.output_fp.tree']).toBe('feedfacefeedface')
+    expect(a['vx.task.output_fp.file_count']).toBe('3')
+    expect(a['vx.task.output_fp.truncated']).toBe(true)
+    expect(JSON.parse(String(a['vx.task.output_fp.files']))).toEqual([
+      ['dist/a.js', 'aaaa'],
+      ['dist/b.js', 'bbbb'],
+    ])
+  })
+
+  it('emits a fingerprint with no file map as an empty array, not a hole', () => {
+    const a = attrMap(
+      taskSpanAttributes({
+        ...FULL_TASK,
+        outputFp: { tree: 'aaaa', fileCount: 0 },
+      }) as never,
+    )
+    // Detection keys on `tree`; the map is allowed to be absent, but the
+    // attribute must still parse rather than reading as malformed.
+    expect(a['vx.task.output_fp.files']).toBe('[]')
+    expect(a['vx.task.output_fp.truncated']).toBe(false)
+  })
+
+  it('omits every optional task attribute when the field is absent', () => {
+    const a = attrMap(
+      taskSpanAttributes({
+        taskId: 'app#lint',
+        project: 'app',
+        task: 'lint',
+        status: 'cache-hit',
+        cacheSource: 'local',
+        exitCode: 0,
+        durationMs: 4,
+      }) as never,
+    )
+    for (const key of [
+      'vx.task.hash',
+      'vx.cpu_ms',
+      'vx.peak_rss_bytes',
+      'vx.task.attempts',
+      'vx.task.verify',
+      'vx.task.wallclock_start_ns',
+      'vx.task.output_fp.tree',
+    ]) {
+      expect(a[key]).toBeUndefined()
+    }
+  })
+})
+
+// --- the logs signal ----------------------------------------------------
+
+describe('OtelSink logs', () => {
+  function driveLogged(sink: OtelSink, over: Partial<TaskTelemetry> = {}): TaskTelemetry {
+    sink.onRecord({
+      v: 2,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 2,
+      kind: 'task.start',
+      runId: RUN.runId,
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      ts: 1010,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 2,
+      kind: 'task.log',
+      runId: RUN.runId,
+      taskId: 'a#build',
+      stream: 'stdout',
+      chunk: 'compiling...\n',
+      ts: 1020,
+    } as TelemetryRecord)
+    sink.onRecord({
+      v: 2,
+      kind: 'task.log',
+      runId: RUN.runId,
+      taskId: 'a#build',
+      stream: 'stderr',
+      chunk: 'boom\n',
+      ts: 1030,
+    } as TelemetryRecord)
+    const t: TaskTelemetry = {
+      taskId: 'a#build',
+      project: 'a',
+      task: 'build',
+      status: 'failed',
+      cacheSource: 'miss',
+      exitCode: 1,
+      durationMs: 40,
+      hash: 'h1',
+      ...over,
+    }
+    sink.onRecord({ v: 2, kind: 'task.end', runId: RUN.runId, ts: 1050, ...t } as TelemetryRecord)
+    sink.onRecord({ v: 2, kind: 'run.end', runId: RUN.runId, ts: 1100 } as TelemetryRecord)
+    sink.onRunSummary(summaryFor(RUN, [t]))
+    return t
+  }
+
+  function logRecords(body: unknown) {
+    return (
+      body as {
+        resourceLogs: {
+          scopeLogs: {
+            logRecords: {
+              body: { stringValue: string }
+              severityNumber: number
+              severityText: string
+              traceId?: string
+              spanId?: string
+              attributes: { key: string; value: Record<string, unknown> }[]
+            }[]
+          }[]
+        }[]
+      }
+    ).resourceLogs[0]!.scopeLogs[0]!.logRecords
+  }
+
+  it('ships an executed task tail as a log record linked to its span', async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    driveLogged(sink)
+    await sink.flush()
+
+    const logs = calls.find((c) => c.url === 'http://c/v1/logs')
+    expect(logs).toBeDefined()
+    const records = logRecords(logs!.body)
+    expect(records).toHaveLength(1)
+    const r = records[0]!
+    // Merged streams in arrival order — what a terminal actually showed.
+    expect(r.body.stringValue).toBe('compiling...\nboom\n')
+    expect(r.severityText).toBe('ERROR')
+
+    // The link is the point: a viewer opens the output from the task span.
+    const spans = (
+      calls.find((c) => c.url.endsWith('/v1/traces'))!.body as {
+        resourceSpans: { scopeSpans: { spans: { name: string; spanId: string }[] }[] }[]
+      }
+    ).resourceSpans[0]!.scopeSpans[0]!.spans
+    const taskSpan = spans.find((sp) => sp.name === 'vx.task')!
+    expect(r.spanId).toBe(taskSpan.spanId)
+    expect(r.traceId).toBeDefined()
+
+    const a = attrMap(r.attributes as never)
+    expect(a['cicd.pipeline.task.name']).toBe('a#build')
+    expect(a['cicd.pipeline.run.id']).toBe(RUN.runId)
+    expect(a['vx.task.hash']).toBe('h1')
+    expect(a['vx.log.status']).toBe('failed')
+    expect(a['vx.log.chars_full']).toBe('18')
+    expect(a['vx.log.truncated_head']).toBe('0')
+  })
+
+  it('never ships a cache hit tail — those bytes belong to the run that executed', async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    driveLogged(sink, { status: 'cache-hit', cacheSource: 'local', exitCode: 0 })
+    await sink.flush()
+    expect(calls.find((c) => c.url === 'http://c/v1/logs')).toBeUndefined()
+  })
+
+  it('posts no logs body when a run captured nothing', async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 2,
+      kind: 'run.start',
+      run: RUN,
+      total: 0,
+      ts: 1,
+      startedAt: 1,
+    } as TelemetryRecord)
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    expect(calls.some((c) => c.url === 'http://c/v1/logs')).toBe(false)
+  })
+
+  it('declines task.log entirely when logs are off, so core never projects one', () => {
+    const off = new OtelSink(mkConfig({ logsEnabled: false }).cfg)
+    expect(off.wants).not.toContain('task.log')
+    const on = new OtelSink(mkConfig().cfg)
+    expect(on.wants).toContain('task.log')
+  })
+
+  it('ships no logs body when the signal is off', async () => {
+    const { cfg, calls } = mkConfig({ logsEnabled: false })
+    const sink = new OtelSink(cfg)
+    driveLogged(sink)
+    await sink.flush()
+    expect(calls.some((c) => c.url === 'http://c/v1/logs')).toBe(false)
+    // ...but traces still ship, so turning logs off costs no other signal.
+    expect(calls.some((c) => c.url.endsWith('/v1/traces'))).toBe(true)
+  })
+})
+
+describe('resolveOtelConfig — logs', () => {
+  it('derives a logs URL from the base endpoint and enables the signal', () => {
+    const cfg = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' })!
+    expect(cfg.logsUrl).toBe('http://c/v1/logs')
+    expect(cfg.logsEnabled).toBe(true)
+  })
+
+  it('honours the standard OTEL_LOGS_EXPORTER=none opt-out', () => {
+    const cfg = resolveOtelConfig(
+      {},
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c', OTEL_LOGS_EXPORTER: 'none' },
+    )!
+    expect(cfg.logsEnabled).toBe(false)
+    // The URL is still resolved — only the signal is off, so flipping the
+    // option back on needs no endpoint change.
+    expect(cfg.logsUrl).toBe('http://c/v1/logs')
+  })
+
+  it('lets an explicit option override the env opt-out', () => {
+    const cfg = resolveOtelConfig(
+      { logs: true },
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c', OTEL_LOGS_EXPORTER: 'none' },
+    )!
+    expect(cfg.logsEnabled).toBe(true)
+  })
+
+  it('prefers an explicit logs endpoint over the derived one', () => {
+    const cfg = resolveOtelConfig(
+      { logsEndpoint: 'http://other/logs' },
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c' },
+    )!
+    expect(cfg.logsUrl).toBe('http://other/logs')
   })
 })

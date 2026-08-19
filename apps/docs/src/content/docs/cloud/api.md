@@ -189,6 +189,33 @@ The workspace is routed from the pushing token's org + the body's
 client workspace id (auto-provisioned on first push); a
 workspace-scoped token is refused a foreign workspace (403).
 
+### OTLP ingest
+
+The same history, over the standard OpenTelemetry wire — so a workspace
+already exporting to a collector can feed the dashboard with no
+vx-specific client, and anyone can write their own receiver against the
+same payloads.
+
+| Route | Cap | Body |
+| --- | --- | --- |
+| `POST /v1/otlp/v1/traces` | 32 MiB | An OTLP/HTTP JSON `ExportTraceServiceRequest` carrying a `vx.run` root span + `vx.task` children. |
+| `POST /v1/otlp/v1/logs` | 16 MiB | An OTLP/HTTP JSON `ExportLogsServiceRequest` of per-task output records. |
+
+Point [`@vzn/vx-otel`](/vx/guides/otel-bridge/) (or a collector) at
+`<serve>/v1/otlp` with the token as an OTLP header. Payloads decode into
+the *same* records the native endpoints take and go through the *same*
+ingest, so both wires share one store, one set of read queries, and one
+idempotency rule — which also covers a retried OTLP batch, since OTLP
+exporters retry and carry no dedup semantics of their own.
+
+The `vx.run` root span is required: it is both the invocation header and
+the marker that the run is over, so a payload without one is a 400
+rather than a half-stored run. Run tallies are recomputed from the task
+spans that actually arrived, so a batch a collector partially dropped
+yields a header consistent with the rows it stored. `vx.telemetry.schema`
+must match the serve's contract version, or the push is a 400 naming
+both.
+
 ## Cache wire — machine token only
 
 `HEAD/GET/PUT /v1/cache/:hash` (hex hash) and `POST /v1/cache/batch`
