@@ -249,6 +249,111 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-19**: **OTel became a REAL wire in both directions — the exporter
+  ships everything, and vx cloud accepts OTLP as an ingest path** (owner: "Is it
+  possible for us to use otel in vx core and all its features from standard?
+  Ideally vx cloud would just receive otel as well and build data from that. And
+  this would allow other to do analytics as well" → "I want our otel plugin to
+  send all possible things and our cloud plugin could just use it to revive data
+  as well"). **The design question was answered first, and the answer shaped the
+  build: OTLP became the EXPORT + a RECEIVER, not core's internal contract.**
+  Making OTLP the contract would hardcode a vendor spec into core — the exact
+  coupling the 2026-07-04 provider-neutral directive removed — and the two
+  audiences differ (a tracing backend wants spans; cloud wants a lossless,
+  idempotent, atomic per-run record). One shape serving both means the lossy one
+  wins. So `TelemetryRecord` stays core's contract, `@vzn/vx-otel` stays the only
+  place OTel is named, and cloud grew a receiver. **The measured gap was real,
+  not theoretical:** diffing what cloud's ingest writes against what the mapper
+  emitted, the exporter was dropping `workspaceId`/`workspaceName` (the
+  multi-workspace routing key — a backend could describe a run but not say which
+  workspace it belonged to), `defaultBranch` (the trunk-vs-branch trust axis),
+  `outputFp` (the ENTIRE cross-machine hermeticity signal — a `--verify=fingerprint`
+  divergence was invisible), the wallclock offsets, every run tally, and
+  `rerun-failed`'s own `exitCode` (a receiver knew the re-run failed but not with
+  what). Task logs had nowhere to go but a vx-specific endpoint — the half a dev
+  opens when a build goes red. **Four load-bearing encoding decisions, each with
+  a reason that is not aesthetic.** (1) Nanosecond offsets ride as OTLP int64
+  STRINGS: `9007199254740993` is the first integer a JS number cannot hold, and a
+  receiver derives a task's dedup key from it. (2) Run start/end ALSO ride as
+  millisecond attributes even though the span carries times, because the span's
+  are unix-nanos (epoch-ms × 1e6 is past `MAX_SAFE_INTEGER`) and those two values
+  are a storage PARTITION key — losing precision there is a row in the wrong
+  partition, not a rounding error. (3) Verify path lists became JSON arrays
+  rather than comma-joined: a comma is a legal byte in a filename and these are
+  the actionable half of a verdict, so a split path names a file that does not
+  exist — pinned by a round-trip over `dist/b,with-comma.js`. `vx.requested_tasks`
+  deliberately STAYS comma-joined (read by humans in a trace viewer far more
+  often than parsed; a comma in a task name is pathological) and that is written
+  down as a **stated limit, not a guarantee**. (4) The fingerprint's per-file map
+  is the one attribute allowed not to survive — it is the largest and a limiting
+  collector truncates it first — which is tolerable BY DESIGN because detection
+  keys on the fixed-width `tree` digest, so it costs a diff its detail and never
+  its verdict. **Logs are one record per TASK, not per chunk:** a build writes
+  output in thousands of tiny pieces and the thing anyone reads is the tail, so a
+  record each would multiply the payload to deliver the same bytes and force every
+  receiver to reassemble them in order before showing anything. Records link to
+  their task span by trace+span id. **On by default once an endpoint is
+  configured** (the cloud sink's own convention), with the standard
+  `OTEL_LOGS_EXPORTER=none` honoured so a pipeline already configured that way
+  does not start receiving build logs because it upgraded vx; with the signal off
+  the sink stops declaring `task.log` in `wants`, so core never projects a chunk
+  and the run pays **nothing** — the zero-cost gate the telemetry source was built
+  around. **`TaskLogBuffer` MOVED INTO CORE** rather than reimplemented: the otel
+  sink needs the identical bounds and the identical retention rules (a hit's bytes
+  belong to the run that executed them; a failed tail is never evicted to keep a
+  success), and a second copy of those rules is how two sinks come to disagree
+  about which task's output survived — the drift class this log keeps closing.
+  Cloud keeps one import path via a re-export shim, so no call site moved; its
+  suite for the buffer moved to core with it. **The receiver
+  (`packages/cloud/src/db/otlp-ingest.ts`) decodes into the SAME
+  `RunSummaryRecord`/`TaskLogBundle` the native endpoints take and calls the SAME
+  `Analytics.ingest*`** — so there is ONE store, ONE set of read queries, no
+  second schema, and the existing `(started_at, run_id, project, task)`
+  idempotency covers a **retried OTLP batch for free**, which matters because
+  OTLP exporters retry and carry no dedup semantics of their own (verified
+  end-to-end: a replayed POST answers `stored: false`). Tallies are RECOMPUTED
+  from the task spans that arrived via core's `assembleRunSummary` — the same
+  function the native path uses — so a complete trace and a native push produce
+  byte-identical records, and a batch a collector partially dropped yields a
+  header consistent with the rows it stored instead of a count that outruns them
+  (pinned by deleting a span and asserting the count follows). The `vx.run` root
+  span is REQUIRED: OTLP has no run boundary, and the root is the span that ends
+  last, so its arrival is what says the run is over — a payload without one is a
+  400 rather than a half-stored run. **The decoder duplicates the attribute keys
+  DELIBERATELY**, because cloud takes no runtime dependency on the exporter and a
+  wire only one package can write is not much of a public wire — the whole point
+  is that a third party can build their own analytics off the same payloads. The
+  copy is safe because it is **differentially guarded**: `otlp-ingest.test.ts`
+  drives the REAL `OtelSink` and asserts the decode reproduces the record that
+  went in. **Mutation-verified rather than assumed:** renaming `vx.task.hash` in
+  the ENCODER fails exactly **2** of its 12 tests, restore back to 12/0; and
+  dropping `defaultBranch` from the encoder fails exactly 1 of vx-otel's 34,
+  restore to 34/0. A completeness pin on the `RunContextRecord` field set means a
+  NEW telemetry field fails until someone decides how it maps, rather than
+  quietly never arriving. **One existing test REPINNED, honestly:** the sink used
+  to assert `wants` never contains `task.log` — true when it had nowhere to send
+  them; it now asserts the refusal is CONDITIONAL, with the logs-off arm still
+  pinned so the zero-cost property cannot regress. **DELIBERATELY NOT DONE, with
+  reasons, so nobody re-treads it:** `/v1/ingest` is NOT replaced — the native
+  path has an atomic per-run transaction, per-task incremental rows (what makes
+  run detail fill in live), and the catalog push, and OTLP models none of the
+  three; the catalog is a config snapshot, not an observation, and does not
+  belong in OTel's data model at all. Both are documented as the default with the
+  OTLP caveats stated (collector attribute limits, no run boundary) rather than
+  papered over. **NO CACHE_VERSION / SCHEMA / migration / wire bump** —
+  `TELEMETRY_SCHEMA_VERSION` stays 2 (no contract field was added; the exporter
+  was simply not carrying fields that already existed), and the receiver only
+  writes existing columns. Docs shipped in the same wave per the standing rule:
+  the OTel guide gains the full attribute inventory, the logs signal, a
+  "Send it to vx Cloud" section and a "Build your own analytics" section naming
+  the receiver as a worked example; `cloud/api.md` gains the two routes with the
+  root-span/recompute/schema-gate semantics. Gates from the ROOT: fmt/lint 0,
+  core **2631 / 0** (23 skip = sandbox), cloud **1280 / 0** across its 58 suites
+  (38 skip = the browser suites, which need playwright + a built `ui/dist` this
+  container lacks — they are CI-required per the 2026-08-05 wave), vx-otel
+  **43 / 0**, docs site 168 pages with a zero-broken-link crawl over both edited
+  pages.
+
 - **2026-08-05**: **The task-detail "Cache key" card told EVERY platform user to
   re-run a task they had already run, forever** (`db/analytics.ts`
   `explainCacheKey` + `views/taskDetail.json`; found by per-METHOD assertion

@@ -212,6 +212,7 @@ export class OtelSink implements TelemetrySink {
         serviceName: this.cfg.serviceName,
         vxVersion,
         runId: this.runId,
+        workspaceId,
         entries: bundle.tasks,
         timeUnixNano: nanos(this.summary?.endedAt ?? Date.now()),
         ...(this.traceId ? { traceId: this.traceId } : {}),

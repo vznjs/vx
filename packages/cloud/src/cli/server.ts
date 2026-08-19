@@ -50,7 +50,9 @@ export function isAnalyticsSurface(pathname: string, method: string): boolean {
     pathname === '/v1/ingest' ||
     pathname === '/v1/ingest/task' ||
     pathname === '/v1/ingest/logs' ||
-    pathname === '/v1/catalog'
+    pathname === '/v1/catalog' ||
+    pathname === '/v1/otlp/v1/traces' ||
+    pathname === '/v1/otlp/v1/logs'
   ) {
     return method === 'POST'
   }

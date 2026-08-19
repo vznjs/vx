@@ -8,6 +8,7 @@ import path from 'node:path'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type { RunSummaryRecord } from '@vzn/vx'
+import { buildTraceRequest, runSpanAttributes, taskSpanAttributes } from '@vzn/vx-otel'
 import { resolveServerConfig, startServer, type PlatformServer } from '../src/cli/server.js'
 import { openDb } from '../src/db/client.js'
 import { CONCURRENT_INDEXES } from '../src/db/indexes.js'
@@ -805,6 +806,60 @@ describe('platform e2e (real pg + fake S3)', () => {
     const body = (await read.json()) as { content: string; source: string }
     expect(body.content).toBe('build output tail')
     expect(body.source).toBe('executed')
+  })
+
+  it('ingests the same run over the OTLP wire and reads it back', async () => {
+    // The standard wire, end to end through the real server: encode with the
+    // real exporter, POST it to the receiver, read the run back through the
+    // ordinary analytics routes. Proves both wires land in ONE store.
+    const sum = summary('r-otlp', 'ws-e2e')
+    const body = buildTraceRequest('vx', sum.run.vxVersion, [
+      {
+        traceId: '0'.repeat(32),
+        spanId: '1'.repeat(16),
+        name: 'vx.run',
+        kind: 1,
+        startTimeUnixNano: String(sum.startedAt * 1_000_000),
+        endTimeUnixNano: String(sum.endedAt * 1_000_000),
+        attributes: runSpanAttributes(sum.run, sum),
+        status: { code: 0 },
+      },
+      ...sum.tasks.map((t) => ({
+        traceId: '0'.repeat(32),
+        spanId: '2'.repeat(16),
+        parentSpanId: '1'.repeat(16),
+        name: 'vx.task',
+        kind: 1,
+        startTimeUnixNano: String(sum.startedAt * 1_000_000),
+        endTimeUnixNano: String(sum.endedAt * 1_000_000),
+        attributes: taskSpanAttributes(t),
+        status: { code: 0 },
+      })),
+    ])
+
+    // Machine surface: a browser session is refused exactly like /v1/ingest.
+    expect((await call('POST', '/v1/otlp/v1/traces', { cookie, body })).status).toBe(403)
+
+    const pushed = await call('POST', '/v1/otlp/v1/traces', { bearer: ciToken, body })
+    expect(pushed.status).toBe(200)
+    expect(((await pushed.json()) as { stored: boolean }).stored).toBe(true)
+
+    const runs = await call('GET', '/v1/runs', { cookie })
+    const { runs: rows } = (await runs.json()) as { runs: { runId: string }[] }
+    expect(rows.some((r) => r.runId === 'r-otlp')).toBe(true)
+
+    // OTLP exporters retry and carry no dedup semantics; the store's own
+    // idempotency has to cover a replayed batch.
+    const again = await call('POST', '/v1/otlp/v1/traces', { bearer: ciToken, body })
+    expect(again.status).toBe(200)
+    expect(((await again.json()) as { stored: boolean }).stored).toBe(false)
+
+    // A non-vx payload is a clean 400, never a half-stored run.
+    const junk = await call('POST', '/v1/otlp/v1/traces', {
+      bearer: ciToken,
+      body: { resourceSpans: [{ scopeSpans: [{ spans: [{ name: 'http.request' }] }] }] },
+    })
+    expect(junk.status).toBe(400)
   })
 
   it('the serve-era /version handshake is gone', async () => {

@@ -122,6 +122,7 @@ export const VX_ATTR = {
   taskVerify: 'vx.task.verify',
   taskVerifyChanged: 'vx.task.verify.changed',
   taskVerifyUndeclared: 'vx.task.verify.undeclared',
+  taskVerifyExitCode: 'vx.task.verify.exit_code',
   wallclockStartNs: 'vx.task.wallclock_start_ns',
   wallclockEndNs: 'vx.task.wallclock_end_ns',
   fpTree: 'vx.task.output_fp.tree',
@@ -213,6 +214,20 @@ export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRec
   return attrs
 }
 
+/**
+ * Encode a list of output/input PATHS as JSON, not a joined string.
+ *
+ * A comma is a legal byte in a filename, and these lists are the actionable
+ * half of a verify verdict — a path silently split in two names a file that
+ * does not exist. `vx.requested_tasks` stays comma-joined by contrast: those
+ * are config keys read by humans in a trace viewer far more often than they
+ * are parsed, and a comma in one is pathological rather than merely rare.
+ * That is a stated limit, not a guarantee.
+ */
+export function encodePathList(paths: readonly string[]): string {
+  return JSON.stringify(paths)
+}
+
 /** Encode an output fingerprint's per-file map. JSON rather than a flat string
  *  because the keys are arbitrary output paths — a separator would need
  *  escaping, and this half is already allowed to be dropped (see below). */
@@ -259,12 +274,17 @@ export function taskSpanAttributes(t: TaskTelemetry): KeyValue[] {
   if (t.verify !== undefined) {
     attrs.push(strAttr(VX_ATTR.taskVerify, t.verify.kind))
     if (t.verify.kind === 'nondeterministic' || t.verify.kind === 'allowed-nondeterministic') {
-      attrs.push(strAttr(VX_ATTR.taskVerifyChanged, t.verify.changed.join(',')))
+      attrs.push(strAttr(VX_ATTR.taskVerifyChanged, encodePathList(t.verify.changed)))
     }
     // Phase 2 (--verify=inputs): the undeclared workspace reads, same shape
     // as .changed — the actionable list a trace viewer needs.
     if (t.verify.kind === 'undeclared-inputs') {
-      attrs.push(strAttr(VX_ATTR.taskVerifyUndeclared, t.verify.paths.join(',')))
+      attrs.push(strAttr(VX_ATTR.taskVerifyUndeclared, encodePathList(t.verify.paths)))
+    }
+    // The verdict's own payload — without it a receiver knows the re-run
+    // failed but not with what, which is the only actionable part.
+    if (t.verify.kind === 'rerun-failed') {
+      attrs.push(intAttr(VX_ATTR.taskVerifyExitCode, t.verify.exitCode))
     }
   }
   // Output fingerprint (--verify=fingerprint and friends): the cross-machine
@@ -392,6 +412,8 @@ export function buildLogsRequest(args: {
   serviceName: string
   vxVersion: string
   runId: string
+  /** The run's workspace — a receiver has no other way to route the record. */
+  workspaceId: string
   entries: readonly TaskLogEntry[]
   timeUnixNano: string
   traceId?: string
@@ -401,6 +423,7 @@ export function buildLogsRequest(args: {
     const failed = e.status === 'failed'
     const attrs: KeyValue[] = [
       strAttr(SEMCONV.pipelineRunId, args.runId),
+      strAttr(VX_ATTR.workspaceId, args.workspaceId),
       strAttr(SEMCONV.taskName, e.taskId),
       strAttr(VX_ATTR.logStatus, e.status),
       intAttr(VX_ATTR.logCharsFull, e.charsFull),

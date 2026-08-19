@@ -8,6 +8,7 @@
 
 import { clampInt, isCacheHit, type RunSummaryRecord } from '@vzn/vx'
 import { readTextBounded } from '../http-body.js'
+import { decodeLogsRequest, decodeTraceRequest } from './otlp-ingest.js'
 import { LOG_WIRE_VERSION, type TaskLogBundle } from '../task-log-capture.js'
 import {
   WorkspaceForbiddenError,
@@ -256,6 +257,58 @@ async function handleAnalyticsRequestInner(
         push,
       })
       return json({ ok: true, workspaceId: res.workspaceId })
+    } catch (err) {
+      return errResponse(err)
+    }
+  }
+
+  // ---- OTLP receiver (ci token only) --------------------------------------
+  //
+  // The same runs, over the standard wire. `@vzn/vx-otel` can point straight
+  // here (OTEL_EXPORTER_OTLP_ENDPOINT=<serve>/v1/otlp), or a collector can fan
+  // out to this alongside a tracing backend. Decoded into the SAME records the
+  // native endpoints take and handed to the SAME ingest, so there is one store
+  // and one set of read queries behind both wires — and the dedup that makes
+  // the native path idempotent covers a retried OTLP batch for free, which
+  // matters because OTLP exporters retry and carry no dedup semantics of
+  // their own.
+  if (p === '/v1/otlp/v1/traces' && req.method === 'POST') {
+    if (!ctx.isToken) return json({ ok: false, error: 'ci token required' }, 403)
+    const raw = await readCapped(req, INGEST_BODY_MAX_BYTES)
+    if (raw === null) return json({ ok: false, error: 'trace too large' }, 413)
+    try {
+      const decoded = decodeTraceRequest(JSON.parse(raw))
+      if (!decoded.ok) return json({ ok: false, error: decoded.error }, 400)
+      const res = await a.ingest({
+        orgId: ctx.orgId,
+        tokenWorkspaceId: ctx.tokenWorkspaceId,
+        summary: decoded.value,
+        tokenId: ctx.tokenId,
+      })
+      return json({ ok: true, stored: res.stored })
+    } catch (err) {
+      return errResponse(err)
+    }
+  }
+  if (p === '/v1/otlp/v1/logs' && req.method === 'POST') {
+    if (!ctx.isToken) return json({ ok: false, error: 'ci token required' }, 403)
+    const raw = await readCapped(req, LOG_BODY_MAX_BYTES)
+    if (raw === null) return json({ ok: false, error: 'logs too large' }, 413)
+    try {
+      const decoded = decodeLogsRequest(JSON.parse(raw))
+      if (!decoded.ok) return json({ ok: false, error: decoded.error }, 400)
+      // A batching collector may carry several runs in one payload; each
+      // routes on its own workspace, exactly as a native push would.
+      let stored = 0
+      for (const bundle of decoded.value) {
+        const res = await a.ingestLogs({
+          orgId: ctx.orgId,
+          tokenWorkspaceId: ctx.tokenWorkspaceId,
+          bundle,
+        })
+        stored += res.stored
+      }
+      return json({ ok: true, stored })
     } catch (err) {
       return errResponse(err)
     }

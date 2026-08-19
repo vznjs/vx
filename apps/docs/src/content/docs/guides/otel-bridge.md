@@ -1,12 +1,19 @@
 ---
 title: OpenTelemetry traces & metrics
-description: Export every vx run as OTLP traces + metrics with the @vzn/vx-otel plugin. Declare otel() in vx.workspace.ts; it speaks OTLP/HTTP JSON directly with no OpenTelemetry SDK dependency.
+description: Export every vx run as OTLP traces, metrics and logs with the @vzn/vx-otel plugin. Declare otel() in vx.workspace.ts; it speaks OTLP/HTTP JSON directly with no OpenTelemetry SDK dependency.
 ---
 
-`@vzn/vx-otel` turns every `vx run` into **OTLP traces + metrics** —
-one trace per run, one span per task, plus run/task counters. It speaks
-the OTLP/HTTP JSON wire protocol **directly**, so there's no
+`@vzn/vx-otel` turns every `vx run` into **OTLP traces, metrics and
+logs** — one trace per run, one span per task, run/task counters, and
+each executed task's captured output as a log record linked to its span.
+It speaks the OTLP/HTTP JSON wire protocol **directly**, so there's no
 OpenTelemetry SDK dependency and nothing to keep version-matched.
+
+The export is **lossless**: every field of vx's telemetry contract rides
+the wire, so a backend reading the trace can rebuild the whole run. That
+is what makes OTLP a real integration surface rather than a summary —
+including for [vx Cloud itself](#send-it-to-vx-cloud), which accepts
+OTLP as an ingest wire.
 
 It's a plugin, built on vx's observe-only [`telemetry`
 capability](/vx/guides/plugins/): it can never change, slow, or fail a
@@ -52,9 +59,11 @@ Every knob has a standard-OTel env-var fallback; explicit options win.
 | `endpoint`       | `OTEL_EXPORTER_OTLP_ENDPOINT`         | — (declines if unset)      |
 | `tracesEndpoint` | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`  | `<endpoint>/v1/traces`     |
 | `metricsEndpoint`| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | `<endpoint>/v1/metrics`    |
+| `logsEndpoint`   | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`    | `<endpoint>/v1/logs`       |
 | `serviceName`    | `OTEL_SERVICE_NAME`                   | `vx`                       |
 | `headers`        | `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,…`)| `{}`                       |
 | `metrics`        | —                                     | `true`                     |
+| `logs`           | `OTEL_LOGS_EXPORTER=none` disables    | `true`                     |
 | `timeoutMs`      | —                                     | `15000`                    |
 
 ```ts
@@ -74,14 +83,43 @@ it maps cleanly onto Grafana / Tempo / Honeycomb / Datadog / Jaeger:
 - a root **`vx.run`** span — `cicd.pipeline.run.id`,
   `vcs.ref.head.revision`, `vcs.ref.head.name`, the CI provider,
   host/os/arch, vx version, and each `--tag k=v` as `vx.tag.<k>`;
+  The root span also carries the workspace identity
+  (`vx.workspace.id` / `vx.workspace.name`), the repository's default
+  branch (`vx.default_branch`), the run tallies (`vx.run.task_count`,
+  `vx.run.failed_count`, `vx.run.hit_local_count`,
+  `vx.run.hit_remote_count`, `vx.run.exit_ok`) and
+  `vx.telemetry.schema`, the contract version a reader should check
+  before trusting the rest;
 - a child **`vx.task`** span per task — `cicd.pipeline.task.name`,
   `cicd.pipeline.task.run.result`, `vx.cache.source`
-  (`miss`/`local`/`remote`), `vx.task.hash`, duration, CPU ms, peak RSS.
-  A failed task sets the span status to `ERROR`.
+  (`miss`/`local`/`remote`), `vx.task.hash`, duration, CPU ms, peak RSS,
+  retry count (`vx.task.attempts`), the [`--verify`](/vx/cli/) verdict
+  (`vx.task.verify`, plus the diverging paths) and the output
+  fingerprint (`vx.task.output_fp.*`). A failed task sets the span
+  status to `ERROR` — and so does a task that exited 0 but whose verify
+  verdict proved its cache entry unsound.
 
 **Metrics per run** (when `metrics` is on): `vx.tasks.total`,
 `vx.tasks.failed`, `vx.tasks.cache_hits{source=local|remote}`, and the
 `vx.run.duration_ms` gauge.
+
+**A log record per executed task** (when `logs` is on): the task's
+captured output, linked to its `vx.task` span by trace and span id, so
+you open the log from the span. One record per task rather than per
+chunk — a build writes its output in thousands of tiny pieces, and the
+thing anyone reads is the tail.
+
+Capture is bounded exactly as the cloud sink bounds it: a per-task tail
+cap, a per-run budget, and failed tails are never dropped to keep a
+successful one. A cache hit ships no record — those bytes belong to the
+run that executed the task, and you find them by its cache key. Every
+truncation reports itself (`vx.log.chars_full`,
+`vx.log.truncated_head`), so a capped tail never reads as a complete
+one.
+
+Set `logs: false` (or the standard `OTEL_LOGS_EXPORTER=none`) to export
+traces and metrics only; vx then stops capturing output for export
+entirely, so the run pays nothing.
 
 ## Backend pointers
 
@@ -104,6 +142,43 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 
 `OTEL_EXPORTER_OTLP_HEADERS` takes a comma-separated `key=val,key2=val2`
 list; anything you pass in the `headers` option is merged over it.
+
+## Send it to vx Cloud
+
+[vx Cloud](/vx/cloud/overview/) accepts OTLP as an ingest wire, so the
+same export that feeds your tracing backend can populate the dashboard —
+no vx-specific client needed:
+
+```sh
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://cloud.example.com/v1/otlp
+export OTEL_EXPORTER_OTLP_HEADERS="authorization=Bearer vxc_…"
+```
+
+It decodes into the same records the native `/v1/ingest` endpoints take
+and lands in the same store, so both wires give you the same dashboard.
+Point a collector at both if you want traces in Grafana **and** history
+in vx Cloud.
+
+Two things worth knowing before you switch a CI pipeline over. A
+collector sitting in the middle may apply attribute limits — the output
+fingerprint's per-file map is the largest attribute and the first to be
+truncated, which costs a cross-machine diff its detail but never its
+verdict. And OTLP has no notion of a "run" boundary: the root `vx.run`
+span is what says the run is over, so a payload without one is refused
+rather than stored half-formed. The native endpoints have neither
+caveat, which is why they remain the default.
+
+## Build your own analytics
+
+The attributes above are the whole contract — nothing about them is
+private to vx Cloud. A receiver reads the `vx.run` span for the
+invocation header and each `vx.task` span for a task result, checks
+`vx.telemetry.schema`, and has everything vx knows about the run.
+
+vx Cloud's own receiver is one file
+(`packages/cloud/src/db/otlp-ingest.ts`) and is a worked example: it
+decodes OTLP back into the canonical records and hands them to the
+ordinary ingest.
 
 ## What this gives you
 

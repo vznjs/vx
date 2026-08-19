@@ -162,7 +162,7 @@ describe('OTLP builders', () => {
     }
     const mb = attrMap(taskSpanAttributes(bad))
     expect(mb['vx.task.verify']).toBe('nondeterministic')
-    expect(mb['vx.task.verify.changed']).toBe('dist/a.js,dist/a.js.map')
+    expect(mb['vx.task.verify.changed']).toBe('["dist/a.js","dist/a.js.map"]')
     expect(taskStatusCode(bad)).toBe(2)
     // A proven task: verdict attribute, no changed paths, span UNSET.
     const good: TaskTelemetry = { ...base, verify: { kind: 'proven-deterministic' } }
@@ -192,7 +192,7 @@ describe('OTLP builders', () => {
     }
     const ml = attrMap(taskSpanAttributes(leaky))
     expect(ml['vx.task.verify']).toBe('undeclared-inputs')
-    expect(ml['vx.task.verify.undeclared']).toBe('pkg/a/secret.txt,pkg/b/x.env')
+    expect(ml['vx.task.verify.undeclared']).toBe('["pkg/a/secret.txt","pkg/b/x.env"]')
     expect(taskStatusCode(leaky)).toBe(2)
     // proven-complete: verdict attr, no path attrs, span UNSET.
     const complete: TaskTelemetry = { ...base, verify: { kind: 'proven-complete' } }
