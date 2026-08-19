@@ -104,7 +104,19 @@ jobs:
   cloud:
     name: vx-cloud tests (postgres)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 25, not 15. This job's install chain is long before a single test runs:
+    # apt-get postgres, bun install, npm playwright, `--with-deps` apt fonts,
+    # the chromium download, and the SPA build. At 15 there was no headroom for
+    # a slow apt mirror, and on 2026-08-19 that cancelled a run outright —
+    # `fonts-freefont-ttf` (5.6 MB) alone took 7m49s from
+    # azure.archive.ubuntu.com and the budget expired mid-download, before any
+    # test body executed.
+    #
+    # Raising it is right HERE for the reason it is usually wrong: this failure
+    # mode is running LONG, which more time genuinely fixes. A job that HANGS
+    # is still caught — 25 is well under the point where a wedged suite would
+    # sit unnoticed, and the suite itself is ~2 minutes.
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
