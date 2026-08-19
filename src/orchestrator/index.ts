@@ -85,6 +85,15 @@ export {
 } from './plugin.js'
 export { resolveBackend, resolveCache, subscribeEventSinks } from './plugin-host.js'
 export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
+// The bounded log-capture buffer every telemetry sink shares — see the
+// module header for why one implementation, not one per sink.
+export {
+  LOG_WIRE_VERSION,
+  RUN_LOG_BUDGET_CHARS,
+  TASK_LOG_TAIL_CHARS,
+  TaskLogBuffer,
+} from './task-log-buffer.js'
+export type { TaskLogBundle, TaskLogEntry } from './task-log-buffer.js'
 export {
   assembleRunSummary,
   createTelemetrySource,

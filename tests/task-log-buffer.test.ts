@@ -8,7 +8,7 @@ import {
   RUN_LOG_BUDGET_CHARS,
   TASK_LOG_TAIL_CHARS,
   TaskLogBuffer,
-} from '../src/task-log-capture.js'
+} from '../src/orchestrator/task-log-buffer.js'
 
 function entry(bundle: ReturnType<TaskLogBuffer['drain']>, taskId: string) {
   return bundle.tasks.find((t) => t.taskId === taskId)
