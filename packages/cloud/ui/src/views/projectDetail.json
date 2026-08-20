@@ -16,7 +16,7 @@
       "backHref": "/projects",
       "backLabel": "projects",
       "dotColor": {
-        "$computed": "palette",
+        "$computed": "ident",
         "args": {
           "key": {
             "$state": "/params/name"

@@ -1032,8 +1032,8 @@
                 {
                   "name": "parallelism",
                   "yKey": "factor",
-                  "strokeClass": "stroke-chart-3",
-                  "areaClass": "fill-chart-3/10"
+                  "strokeClass": "stroke-info",
+                  "areaClass": "fill-info/10"
                 }
               ]
             }

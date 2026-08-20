@@ -109,16 +109,20 @@ export function formatDateTime(t: number): string {
   })
 }
 
-/** Stable hash → chart-palette token for category coloring. */
-export function paletteFor(key: string): string {
-  let h = 5381
-  for (let i = 0; i < key.length; i++) h = ((h * 33) ^ key.charCodeAt(i)) >>> 0
-  return `chart-${(h % 8) + 1}`
-}
-
-/** Stable hash → identity token for a PROJECT name (`ident-0..5`, the cool
- *  set — deliberately outside the status palette so an id can never read as
- *  an outcome). Same hash shape as `paletteFor` so hues are stable. */
+/**
+ * Stable hash → identity token for a PROJECT name (`ident-0..5`, the cool set
+ * — deliberately outside the status palette so an id can never read as an
+ * outcome).
+ *
+ * This is the ONLY categorical colour function in the dashboard. It replaced a
+ * `paletteFor` that hashed onto `chart-1..8`, and that ramp was deleted with
+ * it: measured against the real token table, SEVEN of its eight steps were
+ * byte-identical to another token and FIVE to a semantic one — `chart-3` IS
+ * `--success` and `chart-4` IS `--warn` — so 25.4% of project names (measured
+ * over 504 generated names) rendered their identity dot in a verdict colour.
+ * A category is an identity, a status, or the sole series; there is no third
+ * ramp for a name to land on.
+ */
 export function identFor(name: string): string {
   let h = 5381
   for (let i = 0; i < name.length; i++) h = ((h * 33) ^ name.charCodeAt(i)) >>> 0

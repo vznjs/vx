@@ -249,6 +249,162 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-20**: **Bun 1.4.0 made `Glob.scan` follow symlinked directories, and
+  `vx run` started DELETING files outside the project — caught by this repo's own
+  tripwire, in CI, on a PR that touched no core code** (`cache/inputs.ts`).
+  **CONFIRMED by executed repro on the two binaries side by side, HIGH.** The
+  resolver's containment was lexical, and said in its own comment exactly why
+  that was enough: _"Lexical is sufficient: `Bun.Glob.scan` does not follow
+  symlinked directories (pinned in tests/inputs-resolution.test.ts), so a
+  scanned path cannot leave the project through a symlink without already being
+  outside it lexically."_ The pin it cites was written as a deliberate
+  tripwire on a DEPENDENCY, and its comment predicted this verbatim — _"if Bun
+  ever adds symlink following … `cleanOutputs` starts deleting through the link
+  and no vx guard fires. This test is the tripwire."_ **It fired.** With
+  `dist -> ../victim`, `Bun.Glob('dist/**').scanSync()` returns `[]` on 1.3.11
+  and **`['dist/precious.txt']` on 1.4.0**; driven end to end through the real
+  `resolveOutputs`/`cleanOutputs`, a plain `outputs.files: ['dist/**']` resolved
+  a path that is lexically inside the project while the file it names is not,
+  and **the file outside the project was DELETED**. Reach is ordinary, not
+  exotic: `cleanOutputs` runs before every cache-miss exec AND before every
+  cache-hit restore, and a `dist` symlinked to a shared build dir is a normal
+  layout. **The fix is the containment the comment's own reasoning implies:**
+  resolve the DIRECTORY chain and require the realpath to stay under the
+  project's realpath. Directories and not files, deliberately — `rm` on a
+  symlinked FILE unlinks the link and never its target — and per directory, so
+  a `dist/**` of ten thousand files in one directory costs exactly one syscall.
+  An unresolvable directory (broken link, or a race with the task that produced
+  it) is REFUSED: when the caller deletes, unresolvable means leave it alone.
+  **Swept as a CLASS in the same wave, which is where the second finding was:**
+  `resolveWorkspaceOutputs` had **no containment at all** — not even lexical —
+  while its project twin had some, so `cleanWorkspaceOutputs` could delete
+  outside the WORKSPACE. Those globs deliberately ignore PROJECT boundaries;
+  that is the documented escape hatch, and escaping the workspace was never
+  part of it. **THE DIFFERENTIAL IS THE ENTRY, because it says what local
+  gates can and cannot see:** with the fix reverted, this container's Bun
+  **1.3.11 runs 49 / 0 — completely blind to the class** — while 1.4.0 fails
+  **2** (both containment pins) and goes 50 / 0 restored, byte-identical. The
+  full core suite is green on BOTH (2656 / 0 on 1.4.0, no skip line). So the
+  local gate could never have caught this, and `bun-version: latest` in CI is
+  what did — an argument for keeping it rather than pinning, since pinning
+  would have hidden the class until a user hit it. **A control of mine was
+  wrong and measuring said so:** the first version asserted that a symlinked
+  FILE inside a real output dir gets cleaned. It does not, on either version —
+  `onlyFiles: true` never yields one (measured: `dist/**` scans to
+  `['dist/app.js']` alone on 1.3.11 AND 1.4.0), so vx never targets such a link
+  and its target is safe by construction rather than by this guard. The control
+  now asserts what actually holds — the real sibling IS resolved and cleaned,
+  so the fix cannot degenerate into refusing a genuine output directory.
+  **Cost measured rather than asserted, and the first cut was the wrong shape:**
+  10k files in 20 dirs cost MORE added time than 5k files in 200, which cannot
+  be a per-directory probe — it was `path.dirname` called twice per path, string
+  work dominating the syscalls. Computing it once takes the overhead to
+  **+3.0 ms at 5000 outputs and +4.7 ms at 10000**, against a glob scan that
+  already costs 18-31 ms for the same trees. NO CACHE_VERSION/SCHEMA/wire bump:
+  key derivation is untouched, and the fix RESTORES 1.3.11's semantics on
+  1.4.0 for a configuration that on 1.4.0 was capturing files it should not
+  while deleting files it must not.
+
+- **2026-08-20**: **A project called `utils` got a GREEN identity dot and one called
+  `frontend` got an AMBER one — the categorical ramp WAS the status palette**
+  (`ui/src/format.ts` + six call sites; surfaced by the design pass, which
+  asked what each colour is allowed to mean and produced a checkable claim).
+  **CONFIRMED by measurement against the real token table, MED.** `paletteFor`
+  hashed a name onto `chart-1..8`, and reading `uno.config.ts` rather than
+  eyeballing it: **SEVEN of the eight steps are byte-identical to another
+  token and FIVE to a semantic one** — `chart-3` IS `--success` (74 222 128),
+  `chart-4` IS `--warn` (250 204 21), chart-1 = accent, chart-2 = info/
+  cache-local, chart-7 = cache-remote; only chart-6 is unique. So an IDENTITY
+  dot rendered as a VERDICT. Measured through the real shipped function over
+  504 generated project names: **25.4% land on success-green or warn-amber**
+  (128/504, matching the structural 2-of-8); on a hand-picked set of 21
+  realistic names it was 11. **This is a sweep miss of THIS repo's own
+  2026-07-25 wave**, which introduced `ident-0..5` for exactly this reason —
+  its entry says the audit "found the old `paletteFor` chart hues COLLIDE with
+  warn/success — an identity dot could render in exactly the warn yellow" —
+  repointed `tasks.json`'s dots, and stopped. Six surfaces kept hashing a
+  project name onto the ramp: the Projects table's dots AND its Total-time bar,
+  the Cache page's per-project RankList (bar + dots) AND its "Storage by
+  project" treemap (implicitly, via `colorFrom ?? labelKey`), the project
+  detail page's title dot, and — the second miss inside the same file the wave
+  edited — `tasks.json`'s Total-time bar. **Fixed by deleting the mechanism,
+  not just the call sites**: `paletteFor` is gone, `'palette'` is out of the
+  `DotMap` union, `colorOf`'s FALL-THROUGH is now `identFor` (so an unmapped
+  dot is an identity, never a verdict), and `--chart-1..8` is retired from the
+  tokens, the theme and the safelist — a ramp nobody can hash onto is the only
+  version of this fix that cannot be missed a third time. `FILL_CLASS` moved
+  chart→ident (the treemap's tiles are identities), and `charts.tsx`'s
+  `?? 'fill-chart-1'` fallback — a class that would no longer generate any CSS
+  — went with it. **The one chart series still on the ramp went too:**
+  `insights.json`'s parallelism factor was `stroke-chart-3`, i.e. a neutral
+  efficiency ratio painted in the success green; every other series in the repo
+  already used a semantic token (accent for the primary line, cache-local for
+  hits, danger for failures, warn for flakiness), so this was the outlier, not
+  the convention. **TWO guards, because a source guard cannot see the hazard
+  that actually bites here.** `identity-colors.test.ts` reads the source (the
+  `status-vocabulary.test.ts` precedent — the cloud tsconfig sets no `jsx`, and
+  renaming the UI files to `.ts` would silently drop their literal classes from
+  the UnoCSS scan): no view declares a retired map, no producer survives, every
+  hue is safelisted for `fill-`/`bg-`/`text-`, and the series vocabulary is a
+  CLOSED list so a new chart has to make the call deliberately. But a token
+  present in the literal map and ABSENT from the built CSS renders as **no
+  colour at all**, silently — which no source read can catch — so
+  `ui-identity-colors.test.ts` drives the REAL dashboard in REAL Chromium
+  (`required`, so it runs in CI) and reads `getComputedStyle().backgroundColor`
+  off the rendered dots, refusing both a verdict RGB and a transparent one. Its
+  seed is discriminating BY CONSTRUCTION: `utils` and `frontend` are there
+  precisely because the retired ramp put them on `--success` and `--warn`.
+  **Differentials, each isolating its own half, every restore verified back to
+  the 10/0 baseline:** reverting everything fails **7**, the four views alone
+  fail **4**, `uno.config.ts` alone fails **2**, `format.ts` alone fails **1**;
+  the browser pin finds **0** identity dots on the old code (they were all
+  `bg-chart-*`) against ≥5 after. Three assertions pass BOTH ways and are
+  deliberate controls — identity-is-distinct-from-verdict (the property that
+  makes identity the right target at all), defines-every-hue, and
+  still-colours-identities, without which "no ramp" could have been achieved by
+  deleting colour entirely. **A defect of mine, caught by reading the output:**
+  the first draft of the source guard contained two blocks that computed
+  nothing and asserted `[]` against an empty array — vacuous coverage that
+  reads as a guard. Rewritten before running. A second: the chart-series
+  assertion originally only checked that a token RESOLVES, which passes both
+  ways; it now checks a closed vocabulary, which is what makes it kill the
+  mutation. **THE VISUAL SUITE CANNOT SEE MOST OF THIS, and the reason is a
+  finding in its own right.** Two shots fail — `insights` 7.09%, `project`
+  1.84% — and they fail **IDENTICALLY at HEAD with this change fully reverted
+  and `dist` rebuilt**, so the drift is not mine. Cause, measured rather than
+  guessed: `visual.test.ts` pins `const NOW = Date.UTC(2026, 6, 20)` and
+  freezes the BROWSER clock there, but every windowed analytics read uses the
+  SERVER's `Date.now()` (`getPeriodComparison`, `getCacheStatsSql`,
+  `getRunHeatmap`, `getStorageGrowth` — four of them with no injection point at
+  all). Today is 2026-08-20, **31.2 days** past the fixture, so "this 7 days"
+  contains zero seeded rows and the project page renders `AVG EXEC <1ms · RUNS
+0 · CACHE HIT RATE 0%` where the baseline shows `717ms · 21 · 37%`. **So the
+  suite has a built-in ~7-day expiry**: refresh the baselines and they go red
+  again next week, forever — and since the baselines ARE the docs screenshots,
+  refreshing TODAY would publish an empty dashboard as the product's marketing
+  images. **Deliberately NOT refreshed**, and recorded as the next cycle. The
+  measured consequence for this wave, stated plainly rather than glossed: my
+  change alters **zero** pixels on the `insights` shot (453984 differing both
+  before and after — the parallelism card renders no line in a fixture whose
+  window is empty), so **the chart-3 fix has no visual coverage at all**; on
+  `project` it alters ~218 pixels, and reading that crop confirms the intended
+  change — `checkout`'s title dot goes from ORANGE (`chart-6`) to CYAN (the
+  identity set). The cache page's treemap and RankList are gated off entirely
+  on a platform serve (`capsCacheMissing`), and there are no `projects`/`tasks`
+  list shots, which is why the browser pin was worth writing. **RECORDED, NOT
+  FIXED:** `--info` and `--cache-local` are byte-identical (56 189 248), so a
+  blue line is ambiguous between "informational" and "cache" — the two never
+  share a chart and neither implies a verdict, so it is a softer instance of
+  the same family; changing a token value moves the baselines and is a design
+  call, not a bug fix. NO CACHE_VERSION/SCHEMA/wire/migration bump — this
+  changes which CSS class a browser paints, never a key or a stored byte; **`git
+diff src/` is empty** (zero core change). Docs shipped in the same wave:
+  `cloud/dashboard.md` gains a "Reading the colours" section stating the three
+  vocabularies and why identity sits outside the status palette. Gates from the
+  ROOT: fmt/lint 0 (the lint gate verified live by planting a TS2322 in the new
+  test), core **2654 / 0** with no skip line, UI **254 / 0**, cloud **1320 /
+  2** across 60 files with zero skips — the 2 being the dated visual baselines
+  above — docs site builds clean.
 - **2026-08-19**: **OTel became a REAL wire in both directions — the exporter
   ships everything, and vx cloud accepts OTLP as an ingest path** (owner: "Is it
   possible for us to use otel in vx core and all its features from standard?
