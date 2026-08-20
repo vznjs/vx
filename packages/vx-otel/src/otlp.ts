@@ -111,6 +111,7 @@ export const VX_ATTR = {
   runExitOk: 'vx.run.exit_ok',
   // task
   taskProject: 'vx.task.project',
+  taskRunStartedAt: 'vx.task.run_started_at',
   taskTask: 'vx.task.task',
   cacheSource: 'vx.cache.source',
   taskExitCode: 'vx.task.exit_code',
@@ -235,6 +236,14 @@ export function encodeFingerprintFiles(files: OutputFingerprint['files']): strin
   return JSON.stringify(files ?? [])
 }
 
+/** What a task span needs to identify its run without its root span. */
+export interface TaskSpanRunContext {
+  runId: string
+  workspaceId: string
+  /** The run's canonical start (epoch ms) — the storage key's base. */
+  startedAt: number
+}
+
 /**
  * Attributes for a child `vx.task` span — every `TaskTelemetry` field.
  *
@@ -249,10 +258,21 @@ export function encodeFingerprintFiles(files: OutputFingerprint['files']): strin
  * tolerable BY DESIGN: divergence DETECTION keys on `tree`, which is a fixed
  * 16 chars, so a dropped file map costs a diff its detail, never its verdict.
  */
-export function taskSpanAttributes(t: TaskTelemetry): KeyValue[] {
+export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): KeyValue[] {
   const attrs: KeyValue[] = [
     strAttr(SEMCONV.taskName, t.taskId),
     strAttr(SEMCONV.taskRunResult, t.status),
+    // Which run, which workspace, and when that run began. Required, not
+    // optional: OTLP is re-batched in transit, so a task span can arrive in a
+    // payload its root span is not in, and a span that can only be read
+    // alongside its parent is a span a collector can silently strand. These
+    // three make it attributable on its own — and `run_started_at` is what
+    // lets a receiver derive the SAME storage key it would have derived from
+    // the complete trace, so the two arrival orders converge instead of
+    // duplicating.
+    strAttr(SEMCONV.pipelineRunId, run.runId),
+    strAttr(VX_ATTR.workspaceId, run.workspaceId),
+    intAttr(VX_ATTR.taskRunStartedAt, run.startedAt),
     strAttr(VX_ATTR.taskProject, t.project),
     strAttr(VX_ATTR.taskTask, t.task),
     strAttr(VX_ATTR.cacheSource, t.cacheSource),

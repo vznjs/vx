@@ -159,14 +159,20 @@ and lands in the same store, so both wires give you the same dashboard.
 Point a collector at both if you want traces in Grafana **and** history
 in vx Cloud.
 
-Two things worth knowing before you switch a CI pipeline over. A
-collector sitting in the middle may apply attribute limits — the output
-fingerprint's per-file map is the largest attribute and the first to be
-truncated, which costs a cross-machine diff its detail but never its
-verdict. And OTLP has no notion of a "run" boundary: the root `vx.run`
-span is what says the run is over, so a payload without one is refused
-rather than stored half-formed. The native endpoints have neither
-caveat, which is why they remain the default.
+A collector in the middle is expected, not merely tolerated. It batches
+across producers and re-batches by size and time, so one export can
+carry several runs and one run can be split across exports. Both are
+handled: spans are grouped by trace, so batched runs never borrow each
+other's tasks, and a task span names its own run, workspace and run
+start, so a task that arrives ahead of its header is stored anyway and
+converges on the same row when the header lands.
+
+The one thing a collector can still cost you is attribute limits. The
+output fingerprint's per-file map is the largest attribute and the first
+to be truncated — which costs a cross-machine diff its detail, never its
+verdict, because detection keys on the fixed-width tree digest. The
+native endpoints have no such exposure, which is why they remain the
+default.
 
 ## Build your own analytics
 

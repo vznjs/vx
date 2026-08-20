@@ -12,7 +12,7 @@ import type { RunContextRecord, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 import { OtelSink } from '@vzn/vx-otel'
 import { decodeLogsRequest, decodeTraceRequest } from '../src/db/otlp-ingest.js'
 
-const RUN: RunContextRecord = {
+const BASE_RUN: RunContextRecord = {
   runId: '019e3255-9a99-7000-8000-000000000001',
   vxVersion: '1.2.3',
   command: 'vx run build test',
@@ -83,10 +83,10 @@ const TASKS: TaskTelemetry[] = [
   },
 ]
 
-function summaryOf(tasks: TaskTelemetry[]): RunSummaryRecord {
+function summaryOf(tasks: TaskTelemetry[], run: RunContextRecord = BASE_RUN): RunSummaryRecord {
   return {
     v: 2,
-    run: RUN,
+    run,
     startedAt: 1_700_000_000_000,
     endedAt: 1_700_000_003_400,
     totalDurationMs: 3400,
@@ -104,7 +104,9 @@ function summaryOf(tasks: TaskTelemetry[]): RunSummaryRecord {
 async function exportRun(args: {
   tasks: TaskTelemetry[]
   logs?: { taskId: string; chunk: string }[]
+  run?: RunContextRecord
 }): Promise<{ traces?: unknown; logs?: unknown }> {
+  const RUN = args.run ?? BASE_RUN
   const posted: { url: string; body: unknown }[] = []
   const sink = new OtelSink({
     tracesUrl: 'http://c/v1/traces',
@@ -119,7 +121,7 @@ async function exportRun(args: {
       posted.push({ url, body: JSON.parse(body) })
     },
   })
-  const summary = summaryOf(args.tasks)
+  const summary = summaryOf(args.tasks, RUN)
   sink.onRecord({
     v: 2,
     kind: 'run.start',
@@ -167,20 +169,22 @@ describe('OTLP receiver — round trip against the real exporter', () => {
     const decoded = decodeTraceRequest(traces)
     expect(decoded.ok).toBe(true)
     if (!decoded.ok) return
+    expect(decoded.value.runs).toHaveLength(1)
+    expect(decoded.value.stranded).toEqual([])
     // Task ORDER is not a wire guarantee (spans batch); compare on the record
     // with tasks sorted the same way on both sides.
     const byId = (r: RunSummaryRecord) => ({
       ...r,
       tasks: [...r.tasks].sort((a, b) => a.taskId.localeCompare(b.taskId)),
     })
-    expect(byId(decoded.value)).toEqual(byId(summaryOf(TASKS)))
+    expect(byId(decoded.value.runs[0]!)).toEqual(byId(summaryOf(TASKS)))
   })
 
   it('preserves a path containing a comma through the verify verdict', async () => {
     const { traces } = await exportRun({ tasks: TASKS })
     const decoded = decodeTraceRequest(traces)
     if (!decoded.ok) throw new Error(decoded.error)
-    const build = decoded.value.tasks.find((t) => t.taskId === 'app#build')!
+    const build = decoded.value.runs[0]!.tasks.find((t) => t.taskId === 'app#build')!
     // A joined string would have split this into two files that do not exist.
     expect(build.verify).toEqual({
       kind: 'nondeterministic',
@@ -199,8 +203,8 @@ describe('OTLP receiver — round trip against the real exporter', () => {
     })
     const decoded = decodeTraceRequest(traces)
     if (!decoded.ok) throw new Error(decoded.error)
-    expect(decoded.value.tasks[0]!.wallclockStartNs).toBe(big)
-    expect(decoded.value.tasks[0]!.wallclockEndNs).toBe(big)
+    expect(decoded.value.runs[0]!.tasks[0]!.wallclockStartNs).toBe(big)
+    expect(decoded.value.runs[0]!.tasks[0]!.wallclockEndNs).toBe(big)
   })
 
   it('rebuilds log bundles routed by run and workspace', async () => {
@@ -216,8 +220,8 @@ describe('OTLP receiver — round trip against the real exporter', () => {
     if (!decoded.ok) return
     expect(decoded.value).toHaveLength(1)
     const bundle = decoded.value[0]!
-    expect(bundle.runId).toBe(RUN.runId)
-    expect(bundle.workspaceId).toBe(RUN.workspaceId)
+    expect(bundle.runId).toBe(BASE_RUN.runId)
+    expect(bundle.workspaceId).toBe(BASE_RUN.workspaceId)
     const test = bundle.tasks.find((t) => t.taskId === 'app#test')!
     expect(test.content).toBe('FAIL\n')
     expect(test.status).toBe('failed')
@@ -287,8 +291,8 @@ describe('OTLP receiver — refusals and degradation', () => {
     )
     const decoded = decodeTraceRequest(t)
     if (!decoded.ok) throw new Error(decoded.error)
-    expect(decoded.value.taskCount).toBe(TASKS.length - 1)
-    expect(decoded.value.tasks).toHaveLength(TASKS.length - 1)
+    expect(decoded.value.runs[0]!.taskCount).toBe(TASKS.length - 1)
+    expect(decoded.value.runs[0]!.tasks).toHaveLength(TASKS.length - 1)
   })
 
   it('drops a task whose status this build does not recognise', () => {
@@ -324,7 +328,7 @@ describe('OTLP receiver — refusals and degradation', () => {
     const r = decodeTraceRequest(body)
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.value.tasks).toEqual([])
+    expect(r.value.runs[0]!.tasks).toEqual([])
   })
 
   it('refuses a logs payload carrying no vx records', () => {
@@ -344,6 +348,135 @@ describe('OTLP receiver — refusals and degradation', () => {
       ]),
     )
     expect(r.ok).toBe(true)
-    if (r.ok) expect(r.value.startedAt).toBe(1700000000000)
+    if (r.ok) expect(r.value.runs[0]!.startedAt).toBe(1700000000000)
+  })
+})
+
+// --- what a collector does to a payload ---------------------------------
+//
+// The exporter sends one complete run per POST. A collector in between does
+// not: it batches across producers and re-batches by size and time. These
+// pin the two shapes that produces, both driven through the REAL exporter.
+
+const OTHER_RUN: RunContextRecord = {
+  ...BASE_RUN,
+  runId: '019e3255-9a99-7000-8000-000000000002',
+  workspaceId: 'ffff0000ffff0000',
+  workspaceName: 'other',
+}
+
+const OTHER_TASKS: TaskTelemetry[] = [
+  {
+    taskId: 'other#build',
+    project: 'other',
+    task: 'build',
+    status: 'success',
+    cacheSource: 'miss',
+    exitCode: 0,
+    durationMs: 5,
+    hash: '9999888877776666',
+  },
+]
+
+type TraceBody = { resourceSpans: { scopeSpans: { spans: unknown[] }[] }[] }
+
+function spansOfBody(body: unknown): unknown[] {
+  return (body as TraceBody).resourceSpans[0]!.scopeSpans[0]!.spans
+}
+
+function bodyWithSpans(template: unknown, spans: unknown[]): unknown {
+  const t = structuredClone(template) as TraceBody
+  t.resourceSpans[0]!.scopeSpans[0]!.spans = spans
+  return t
+}
+
+describe('OTLP receiver — collector batching', () => {
+  it('keeps two batched runs apart instead of merging them', async () => {
+    const a = await exportRun({ tasks: TASKS })
+    const b = await exportRun({ tasks: OTHER_TASKS, run: OTHER_RUN })
+    // What a shared collector sends: both producers in ONE export.
+    const merged = bodyWithSpans(a.traces, [...spansOfBody(a.traces), ...spansOfBody(b.traces)])
+
+    const decoded = decodeTraceRequest(merged)
+    expect(decoded.ok).toBe(true)
+    if (!decoded.ok) return
+
+    expect(decoded.value.runs).toHaveLength(2)
+    const byRun = new Map(decoded.value.runs.map((r) => [r.run.runId, r]))
+    const first = byRun.get(BASE_RUN.runId)!
+    const second = byRun.get(OTHER_RUN.runId)!
+
+    // Neither run borrows the other's tasks — reading a batch as one run is
+    // how a workspace acquires tasks it never executed.
+    expect(first.taskCount).toBe(TASKS.length)
+    expect(first.tasks.map((t) => t.taskId).sort()).toEqual(TASKS.map((t) => t.taskId).sort())
+    expect(second.taskCount).toBe(OTHER_TASKS.length)
+    expect(second.tasks.map((t) => t.taskId)).toEqual(['other#build'])
+
+    // ...and each still names its own workspace, so each routes on its own.
+    expect(first.run.workspaceId).toBe(BASE_RUN.workspaceId)
+    expect(second.run.workspaceId).toBe(OTHER_RUN.workspaceId)
+    expect(decoded.value.stranded).toEqual([])
+  })
+
+  it('strands the task spans of a split batch rather than refusing them', async () => {
+    const { traces } = await exportRun({ tasks: TASKS })
+    const spans = spansOfBody(traces) as { name: string }[]
+    const rootOnly = bodyWithSpans(
+      traces,
+      spans.filter((sp) => sp.name === 'vx.run'),
+    )
+    const tasksOnly = bodyWithSpans(
+      traces,
+      spans.filter((sp) => sp.name === 'vx.task'),
+    )
+
+    // The header half still decodes as a run — with the tasks that arrived.
+    const head = decodeTraceRequest(rootOnly)
+    if (!head.ok) throw new Error(head.error)
+    expect(head.value.runs).toHaveLength(1)
+    expect(head.value.runs[0]!.taskCount).toBe(0)
+
+    // The task half used to be a 400 — those tasks were simply lost. They now
+    // strand, carrying the run they belong to, and go through the incremental
+    // ingest instead.
+    const tail = decodeTraceRequest(tasksOnly)
+    expect(tail.ok).toBe(true)
+    if (!tail.ok) return
+    expect(tail.value.runs).toEqual([])
+    expect(tail.value.stranded).toHaveLength(TASKS.length)
+    for (const rec of tail.value.stranded) {
+      expect(rec.runId).toBe(BASE_RUN.runId)
+      expect(rec.workspaceId).toBe(BASE_RUN.workspaceId)
+      // The storage key's base — the same value the complete trace carries, so
+      // the two arrival orders converge on one row instead of two.
+      expect(rec.runStartedAt).toBe(summaryOf(TASKS).startedAt)
+    }
+  })
+
+  it('still refuses a payload with no vx spans at all', () => {
+    const r = decodeTraceRequest({
+      resourceSpans: [{ scopeSpans: [{ spans: [{ name: 'http.request', traceId: 'aa' }] }] }],
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('no vx.run span')
+  })
+
+  it('reads a single-run payload the same whether or not spans carry a trace id', async () => {
+    // A producer that omits traceId degrades to one group — which is still
+    // correct for the one-run-per-POST shape the exporter itself sends.
+    const { traces } = await exportRun({ tasks: TASKS })
+    const spans = spansOfBody(traces) as Record<string, unknown>[]
+    const untraced = bodyWithSpans(
+      traces,
+      spans.map((sp) => {
+        const { traceId: _drop, ...rest } = sp
+        return rest
+      }),
+    )
+    const r = decodeTraceRequest(untraced)
+    if (!r.ok) throw new Error(r.error)
+    expect(r.value.runs).toHaveLength(1)
+    expect(r.value.runs[0]!.taskCount).toBe(TASKS.length)
   })
 })

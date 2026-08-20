@@ -524,6 +524,105 @@ diff src/` is empty** (zero core change). Docs shipped in the same wave:
   test), core **2654 / 0** with no skip line, UI **254 / 0**, cloud **1320 /
   2** across 60 files with zero skips — the 2 being the dated visual baselines
   above — docs site builds clean.
+- **2026-08-19**: **The OTLP receiver read a batched export as ONE run — a
+  collector, which is the configuration the docs advertise, silently merged
+  runs and moved one workspace's tasks into another** (the standing
+  audit-the-code-a-wave-just-landed rule, applied to the receiver merged
+  minutes earlier in #259; this repo's own history says new code is where the
+  bugs are, and that held again). **THREE defects, all CONFIRMED by executed
+  probe before any fix, all invisible to the wave's own tests because those
+  drove the exporter directly — which always emits exactly one complete run
+  per POST.** A collector does not: batching across producers is the entire
+  point of one, and re-batching by size and time is the other. **(1) HIGH —
+  batched runs merged.** `decodeTraceRequest` flattened every `resourceSpans`
+  entry, took the FIRST `vx.run` span as the header, and attributed EVERY
+  `vx.task` span in the payload to it. Measured on two runs built by the real
+  exporter: `run-A` in `workspace-A` came back carrying **3 tasks** — its own
+  plus both of `run-B`'s — while `run-B` in `workspace-B` **vanished entirely**.
+  So one run's history gains work it never did, another disappears, and with an
+  org-wide CI token (the ordinary one) the contamination crosses WORKSPACES.
+  Not a tenant break — `routeWorkspace` still clamps to the token's org — but a
+  data-integrity break the dashboard surfaces directly, since workspace A's
+  project list simply grows projects from B. **(2) MED — a split run lost its
+  tasks.** With the root span and the task spans in different exports:
+  root-only stored a header claiming **`taskCount: 0`** (a confident, wrong,
+  empty run in the dashboard) and tasks-only was **refused 400**, so those
+  tasks were gone for good — and a retrying collector would re-send the same
+  400 forever. **(3) The root cause of (2), and the more interesting finding:
+  task spans were not self-describing.** They carried no run id, no workspace
+  id and no run start, so a task span separated from its root was
+  **unattributable in principle** — there was no fix available at the receiver
+  alone. **The fixes are one idea applied twice: a span must mean something on
+  its own.** The trace id is the run boundary (the exporter mints one per run),
+  so `spansOf` now keeps it and `groupByTrace` splits a payload into one group
+  per run, each routing on its OWN workspace; a producer that omits trace ids
+  degenerates to one group, which is still correct for the single-run payload
+  the exporter sends directly (pinned). And the task span gained
+  `cicd.pipeline.run.id`, `vx.workspace.id` and `vx.task.run_started_at` — the
+  third is the load-bearing one, because `insertTaskRun` derives its
+  `(started_at, run_id, project, task)` key as `runStartedAt + wallclockOffset`,
+  so without the run's true start a stranded task computes a DIFFERENT key and
+  the two arrival orders would store the task twice instead of converging. With
+  it, a rootless group goes through the existing incremental `ingestTask` path
+  — **the answer the native wire already gives to a task that arrives before
+  its header** — and `ON CONFLICT DO NOTHING` makes the header's own copy a
+  no-op. `TaskSpanRunContext` is a REQUIRED parameter, not optional: a span that
+  can only be read beside its parent is a span a collector can strand, and an
+  optional argument is how one call site ships without it. **Differentials, each
+  isolating its own fix, every restore verified back to baseline:** collapsing
+  `groupByTrace` to a single group fails exactly **1** of the receiver's 16 AND
+  the batched server e2e; dropping `vx.task.run_started_at` from the ENCODER
+  fails exactly **1**; stranding nothing fails exactly **2** (the unit pin and
+  the split-batch e2e). The controls are deliberate and pass BOTH ways — a
+  single-run payload still decodes identically, a payload with no vx spans at
+  all is still a 400, and a trace-id-less payload still reads as one run.
+  **Proven through the REAL server, not just the decoder:** a batched export
+  provisions two workspaces and each ends with exactly its own run and exactly
+  its own project (`['alpha']` / `['beta']`); and a split run POSTed
+  tasks-first-then-header ends up whole, with one row per task rather than two.
+  **The response shape changed, honestly:** `{ok, stored: boolean}` became
+  `{ok, runs, stored, tasks}` — with batching, a boolean cannot say what
+  happened, and the replay case now reads `stored: 0` instead of `false`. The
+  native `/v1/ingest` boolean is untouched (my first edit changed BOTH, because
+  the two assertions were byte-identical and Python's `replace` is
+  all-occurrences; caught by the native test failing, which is the test doing
+  its job). `TASK_WIRE_VERSION` moved from a private const in
+  `analytics-routes.ts` to `analytics.ts` beside the `TaskIngestRecord` it
+  versions, so the decoder can build one without a cycle. **Docs corrected in
+  the same wave, because this wave made two shipped sentences FALSE:** both the
+  OTel guide and `cloud/api.md` claimed "a payload without a root span is
+  refused rather than stored half-formed" — true when written, wrong now, and
+  the sort of stale guarantee this log keeps closing. Both now state the real
+  contract (grouped by trace, rootless groups stranded not refused, 400 only
+  when neither a root nor an attributable task span is present) and reframe a
+  collector as expected rather than merely tolerated. NO
+  CACHE_VERSION/SCHEMA/migration bump and `TELEMETRY_SCHEMA_VERSION` stays 2 —
+  three additive span attributes and a receiver that writes existing columns
+  through existing methods. Gates from the ROOT: fmt/lint 0, cloud **1286 / 0**
+  across 58 suites (+6; 38 skip = the browser suites this container cannot
+  run), vx-otel **44 / 0**, docs 168 pages with a zero-broken-link crawl over
+  both edited pages, core **2631 / 0** with `git diff src/` EMPTY. **Recorded
+  rather than diagnosed:** one core test failed once mid-wave and did not
+  reproduce on a re-run; I did not capture its name before re-running, which is
+  a gap in my own method — the load-bearing fact is that this diff contains
+  zero core changes, so it was not reachable from here either way.
+
+  **A method finding worth more than either fix, from driving this PR's CI:** a
+  red core job's log stopped mid-word with no bun-test summary and no vx footer,
+  and I read that as a killed process — the signature this log already records
+  once, at 2026-07-30, as "a killed process, not a failing assertion". Then the
+  GREEN run's log ended the same way — mid-word at `(pass) parseCach`, no
+  summary, no footer, `conclusion: success`, both tails stopping around ~3200
+  lines. So the truncation is what the logs API hands back for this job at all
+  and says NOTHING about how a run ended; "the red job printed no summary" was
+  never evidence, and the red was fully explained by a deterministic test
+  failure whose `(fail)` line simply sat past the truncation point. **That puts
+  the 2026-07-30 entry's stated evidence in doubt** — "a log that contains ZERO
+  `(fail)` lines … no test-run summary" is precisely what a truncated tail
+  produces. Not asserted wrong (that run cannot be re-examined), but flagged,
+  and the transferable rule is the one I violated: **before concluding anything
+  from where a CI log ends, check where a PASSING run's log ends.**
+
 - **2026-08-19**: **OTel became a REAL wire in both directions — the exporter
   ships everything, and vx cloud accepts OTLP as an ingest path** (owner: "Is it
   possible for us to use otel in vx core and all its features from standard?

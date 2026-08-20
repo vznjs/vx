@@ -208,13 +208,22 @@ ingest, so both wires share one store, one set of read queries, and one
 idempotency rule — which also covers a retried OTLP batch, since OTLP
 exporters retry and carry no dedup semantics of their own.
 
-The `vx.run` root span is required: it is both the invocation header and
-the marker that the run is over, so a payload without one is a 400
-rather than a half-stored run. Run tallies are recomputed from the task
-spans that actually arrived, so a batch a collector partially dropped
-yields a header consistent with the rows it stored. `vx.telemetry.schema`
-must match the serve's contract version, or the push is a 400 naming
-both.
+One export is **not** one run. Spans are grouped by trace id — the
+exporter mints one per run — and each group routes on its own workspace,
+so a collector batching several producers into one POST never lands one
+run's tasks against another. The response counts what arrived:
+`{ ok, runs, stored, tasks }`, where `stored` is the runs newly written
+(a replayed batch answers `0`) and `tasks` the stranded task rows.
+
+A group's `vx.run` root span is the invocation header and the marker
+that the run is over; its tallies are recomputed from the task spans that
+actually arrived, so a partially dropped batch yields a header consistent
+with the rows it stored. A group with **no** root span is not refused —
+a collector may split a run across exports — its task spans are stored
+through the per-task path instead, keyed identically, so the header
+converges on them when its own POST lands. A payload with neither a root
+span nor an attributable task span is a 400. `vx.telemetry.schema` must
+match the serve's contract version, or the push is a 400 naming both.
 
 ## Cache wire — machine token only
 
