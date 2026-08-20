@@ -249,6 +249,65 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-20**: **A dev searching a 1000-project workspace for `web_app` was
+  also shown `webXapp`, and a bare `%` returned everything — `_` and `%` were
+  live wildcards on the ONLY surface that can find anything past one page**
+  (`db/analytics.ts` `searchFilter` + core `metrics.ts`'s `--tag` filter).
+  **CONFIRMED by executed repro against real Postgres and real SQLite, LOW-MED.**
+  `searchFilter` built `` `%${term}%` `` and handed it to ILIKE, so the term was
+  never taken literally: measured on a seeded workspace, searching `web_app`
+  returned `["webXapp","web_app"]` and searching `%` returned every project.
+  Both scans were affected — the project scan AND the `project || '#' || task`
+  pair scan behind the Tasks box. The failure is over-matching only (a wildcard
+  can never narrow), so what you searched for IS in the results — which caps the
+  severity and is exactly why it survives review: the answer looks right until
+  you read it. Underscores are ordinary in package names, so this is routine,
+  not exotic. **The sweep found the same class in CORE**, which is what makes it
+  a class rather than a line: `listInvocations`' tag filter does `tags LIKE ?`
+  over the serialized JSON with the user's `--tag` value interpolated raw —
+  measured, `env=prod_us` also returned a run tagged `prodXus`, and `env=%`
+  returned every tagged run. That reaches `vx mcp`'s `list_runs`, so an AI agent
+  filtering by tag was being handed rows that do not match the filter it asked
+  for. **ONE escaper, on the façade** (`escapeLikePattern`, the
+  `clampInt`/`parseDecimalInt`/`splitTaskId`/`escapeMarkdownCell` precedent, now
+  five times): two copies of "which characters are metacharacters" is how the
+  dashboard and `vx mcp` come to answer the same search differently, and there is
+  no third answer to drift toward — LIKE has exactly two metacharacters plus the
+  escape. **`ESCAPE '\'` is mandatory, not decorative, and the reason is
+  dialect-specific:** Postgres defaults the LIKE escape to backslash, but
+  **SQLite has NO default at all**, so an undeclared `\%` there matches a literal
+  backslash followed by anything — the bug relocated rather than removed. Both
+  call sites declare it. **A CORRECTION to my own expectation, caught by the
+  failure side:** my first core pin asserted `env=%` would match a run tagged
+  `100%`. It does not — `jsonPairFragment` emits the full `"k":"v"` pair
+  INCLUDING both quotes, so the tag filter is exact-VALUE (positioned anywhere
+  in the blob), not a substring search on the value. The pin now asserts what
+  actually holds: `%` matches only a run tagged exactly `%`, and `100%` is
+  correctly not a match either. **REFUTED by measurement, so nobody re-treads
+  it:** I suspected an unbounded search term was a CPU vector — `textParam` has
+  no length cap, and a `%_`-alternating pattern is the classic LIKE-backtracking
+  shape. Measured on the real query: an **801-character** `'%_'.repeat(400)`
+  pattern ran in **1.0 ms**. The haystacks are short identifiers, so there is
+  nothing to backtrack over; a length cap would be guarding a hazard that does
+  not exist. **Differential: neutralising the escaper alone** — leaving both call
+  sites and both `ESCAPE` clauses in place, so the escape itself is what is
+  isolated — **fails exactly 5** (core: the tag pin + the escaper unit; cloud:
+  underscore, percent, and the pair scan, which is a SECOND call site that could
+  have been fixed on its own and drifted). Restore byte-identical. **Three
+  deliberate controls pass BOTH ways**, and without them "no false positives"
+  would be satisfied by matching nothing at all: an ordinary term is still
+  byte-identical through the escaper, a plain `app` search still matches
+  `webXapp` and `web_app` by substring, and the escaper never introduces a
+  wildcard of its own (the callers own the surrounding `%…%`). The façade
+  widening cost exactly one pin, as it has every previous time — the
+  `package-boundaries` export snapshot, which is the guard working. NO
+  CACHE*VERSION/SCHEMA/wire/migration bump: this changes which rows a filter
+  matches, never a key or a stored byte. Docs shipped in the same wave —
+  `cloud/api.md`'s two `search` rows now state that the term is taken LITERALLY
+  and that `%`/`*` are not wildcards. Gates from the ROOT: fmt/lint 0, core
+  **2660 / 0** with no skip line, cloud **1332 / 0 across 60 files with zero
+  skips**, docs site builds clean.
+
 - **2026-08-20**: **Freezing the server clock exposed an unspecified ordering that
   decides which workspace the whole dashboard opens onto** (`db/analytics.ts`
   `resolveReadWorkspace` + `workspacesForOrg`, plus the two sibling fixtures; the

@@ -18,7 +18,7 @@ import type { Database } from 'bun:sqlite'
 // `vx mcp` read), and a rule written twice is a rule that drifts.
 import { EXECUTED_RUNS_SQL, KEYED_RUNS_SQL } from '../cache/index.js'
 import { splitTaskId } from '../graph/index.js'
-import { clampInt } from '../util/index.js'
+import { clampInt, escapeLikePattern } from '../util/index.js'
 import { classifyFailureMode, mixedOutcomeKeyCount } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
 import { isPassStatus, TASK_STATUSES } from './telemetry.js'
@@ -257,8 +257,13 @@ export function listInvocations(
   if (opts.tagKey !== undefined && opts.tagValue !== undefined) {
     // The tags column is a JSON object {"k":"v"}; a LIKE over the serialized
     // pair is adequate at this table's scale (see the design doc).
-    where.push('tags LIKE ?')
-    params.push(`%${jsonPairFragment(opts.tagKey, opts.tagValue)}%`)
+    //
+    // ESCAPE is mandatory, not decorative: SQLite's LIKE has NO default escape
+    // character, and the key/value are the user's (`--tag env=prod_us`). Raw,
+    // the `_` was a wildcard — measured: `env=prod_us` also matched a run
+    // tagged `prodXus`, and `env=%` matched every tagged run.
+    where.push("tags LIKE ? ESCAPE '\\'")
+    params.push(`%${escapeLikePattern(jsonPairFragment(opts.tagKey, opts.tagValue))}%`)
   }
   const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
   const rows = db

@@ -240,6 +240,42 @@ describe('listInvocations', () => {
       expect(byTagDev.map((r) => r.runId)).toEqual(['r-main'])
     })
   })
+
+  it('treats LIKE metacharacters in a tag value as literals', () => {
+    // The tag pair rides a `tags LIKE ?` over the serialized JSON, so a `_`
+    // in the user's value was a WILDCARD: measured before the escape,
+    // `env=prod_us` also returned the run tagged `prodXus`, and `env=%`
+    // returned every tagged run. Underscores are ordinary in tag values.
+    withCache((cache) => {
+      const seed = (runId: string, env: string, at: number) =>
+        cache.recordRunBundle({
+          runs: [mkRun({ hash: 'h-' + runId, project: 'pkg', task: 'build', runId })],
+          invocation: mkInvocation({ runId, startedAt: at, tags: JSON.stringify({ env }) }),
+        })
+      seed('r-literal', 'prod_us', 1000)
+      seed('r-decoy', 'prodXus', 2000)
+      seed('r-pct', '100%', 3000)
+      seed('r-bare', '%', 4000)
+
+      const underscore = listInvocations(cache.dbHandle(), {
+        tagKey: 'env',
+        tagValue: 'prod_us',
+      })
+      expect(underscore.map((r) => r.runId)).toEqual(['r-literal'])
+
+      // A bare `%` used to match EVERY tagged run. It is a literal now — and
+      // the pair fragment carries both quotes (`"env":"%"`), so the filter is
+      // exact-value, not substring: the run tagged `100%` is correctly NOT a
+      // match either.
+      const pct = listInvocations(cache.dbHandle(), { tagKey: 'env', tagValue: '%' })
+      expect(pct.map((r) => r.runId)).toEqual(['r-bare'])
+
+      // The control: escaping must not stop an ordinary value from matching,
+      // or "no false positives" would be satisfied by matching nothing.
+      const decoy = listInvocations(cache.dbHandle(), { tagKey: 'env', tagValue: 'prodXus' })
+      expect(decoy.map((r) => r.runId)).toEqual(['r-decoy'])
+    })
+  })
 })
 
 describe('getInvocation', () => {

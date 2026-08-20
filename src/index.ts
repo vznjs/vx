@@ -16,7 +16,11 @@ export { VERSION } from './version.js'
 // page) should have one implementation — and so should the ONE strict integer
 // parser, whose entire purpose is that `Number()` silently accepts `0x10` and
 // `1e3` at a boundary where a typo must be an error, not a different number.
-export { clampInt, parseDecimalInt, UserError } from './util/index.js'
+// `escapeLikePattern` joins them on the same demonstrated need: the tag filter
+// here and the dashboard's search box both interpolated a user's term into a
+// LIKE pattern, so `_` was a wildcard on BOTH — one rule, one implementation,
+// or the two surfaces answer the same search differently.
+export { clampInt, escapeLikePattern, parseDecimalInt, UserError } from './util/index.js'
 
 // Schema types and helpers (used by user vx.config files and presets).
 export type {

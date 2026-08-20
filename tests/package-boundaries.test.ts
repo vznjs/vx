@@ -126,6 +126,7 @@ describe('package boundaries', () => {
       'encodeForWS',
       'envelopeToClientMessage',
       'envelopeToServerMessage',
+      'escapeLikePattern',
       'escapeMarkdownCell',
       'expandRequested',
       'explainCacheKeyQuery',

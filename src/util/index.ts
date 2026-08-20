@@ -7,6 +7,7 @@ export { clampInt, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export { relPosix } from './paths.js'
 export { settleWithin, teardownTimeoutMs } from './settle.js'
 export { parseSize } from './size.js'
+export { escapeLikePattern } from './sql.js'
 export {
   appendTail,
   createTail,

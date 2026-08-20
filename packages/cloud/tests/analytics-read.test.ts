@@ -2735,3 +2735,56 @@ describe('an exact last-seen tie resolves the same way every time', () => {
     ])
   })
 })
+
+describe('the search box treats LIKE metacharacters as literals', () => {
+  // `searchFilter` builds `%<term>%` for an ILIKE, so `%` and `_` in the term
+  // were WILDCARDS and the box stopped meaning what the dev typed. Measured
+  // before the escape: `web_app` also returned `webXapp`, and a bare `%`
+  // returned the whole workspace. Underscores are ordinary in package names,
+  // so this is routine rather than exotic — and this is the ONLY way to find
+  // anything in a workspace larger than one page.
+  let w: { org: string; ws: string }
+
+  beforeAll(async () => {
+    w = await newOrgWs(db, 'searchmeta')
+    const now = Date.now()
+    let n = 0
+    for (const project of ['web_app', 'webXapp', 'pct%proj', 'plain']) {
+      const runId = `SM${n++}`
+      await insertINV(db, w.ws, w.org, { runId, startedAt: now - HOUR })
+      await insertTR(db, w.ws, w.org, {
+        runId,
+        project,
+        task: 'build',
+        duration: 100,
+        startedAt: now - HOUR,
+        hash: `sm-${runId}`,
+      })
+    }
+  })
+
+  const names = async (search: string) =>
+    (await analytics.listProjects(w.ws, { search, limit: 50 })).map((r) => r.project).sort()
+
+  it('an underscore matches an underscore, not any character', async () => {
+    expect(await names('web_app')).toEqual(['web_app'])
+  })
+
+  it('a bare percent matches a literal percent, not everything', async () => {
+    expect(await names('%')).toEqual(['pct%proj'])
+  })
+
+  it('the pair scan escapes the same way', async () => {
+    // getHistory searches `project || '#' || task`, a second call site that
+    // could have been fixed on its own and drifted.
+    const rows = await analytics.getHistory(w.ws, { search: 'web_app#build', limit: 50 })
+    expect(rows.map((r) => `${r.project}#${r.task}`)).toEqual(['web_app#build'])
+  })
+
+  it('an ordinary term still matches by substring', async () => {
+    // The control: without it, "no false positives" is satisfied by matching
+    // nothing at all, which would break the feature while passing the tests.
+    expect(await names('app')).toEqual(['webXapp', 'web_app'])
+    expect(await names('plain')).toEqual(['plain'])
+  })
+})

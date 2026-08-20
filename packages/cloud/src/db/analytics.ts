@@ -25,6 +25,7 @@ import type { SQL } from 'bun'
 import {
   clampInt,
   diffOutputTrees,
+  escapeLikePattern,
   hasFlakeSignal,
   isPassStatus,
   splitTaskId,
@@ -800,10 +801,16 @@ export interface HashProvenance {
  */
 function searchFilter(sql: SQL, term: string | undefined, over: 'project' | 'pair') {
   if (term === undefined || term === '') return sql``
-  const pattern = `%${term}%`
+  // The term is the user's, and `%`/`_` are ILIKE metacharacters — raw, the
+  // box stopped meaning what they typed: measured, searching `web_app` also
+  // returned `webXapp`, and a bare `%` returned the whole workspace. `_` is
+  // ordinary in package names, so this is routine rather than exotic. Shares
+  // core's escaper (façade) with the `--tag` filter, which had the same bug —
+  // two surfaces must not answer one search differently.
+  const pattern = `%${escapeLikePattern(term)}%`
   return over === 'pair'
-    ? sql`AND (project || '#' || task) ILIKE ${pattern}`
-    : sql`AND project ILIKE ${pattern}`
+    ? sql`AND (project || '#' || task) ILIKE ${pattern} ESCAPE '\\'`
+    : sql`AND project ILIKE ${pattern} ESCAPE '\\'`
 }
 
 /**
