@@ -93,7 +93,7 @@
                   "dots": [
                     {
                       "field": "project",
-                      "map": "palette"
+                      "map": "ident"
                     }
                   ]
                 },

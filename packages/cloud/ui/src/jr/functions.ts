@@ -4,7 +4,7 @@
 // $computed nests. This keeps state RAW and all formatting / aggregation
 // declarative — referenced by name from the JSON, no per-page code.
 
-import { formatBytes, formatCount, formatDate, formatDuration, formatPercent, formatRelativeTime, formatSignedDuration, paletteFor } from '../format.ts'
+import { formatBytes, formatCount, formatDate, formatDuration, formatPercent, formatRelativeTime, formatSignedDuration, identFor } from '../format.ts'
 import { type FormatHint, formatValue } from './hints.ts'
 
 type Args = Record<string, unknown>
@@ -148,8 +148,10 @@ export const FUNCTIONS: Record<string, (args: Args) => unknown> = {
   gt: (a) => (Number.isFinite(n(a.v)) ? (n(a.v) > n(a.n) ? a.then : (a.else ?? 'default')) : 'default'),
   lt: (a) => (Number.isFinite(n(a.v)) ? (n(a.v) < n(a.n) ? a.then : (a.else ?? 'default')) : 'default'),
 
-  // chart-palette token for a category key
-  palette: (a) => paletteFor(String(a.key)),
+  // Identity token for a project name — the ONE categorical colour function.
+  // (Was `palette`, which hashed onto a ramp whose steps ARE `--success` and
+  // `--warn`; see identFor's docstring.)
+  ident: (a) => identFor(String(a.key)),
 
   // count rows where a field equals a value (e.g. status === 'success')
   countWhere: (a) => (absent(a.arr) ? Number.NaN : arr(a.arr).filter((r) => r[String(a.field)] === a.eq).length),

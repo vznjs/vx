@@ -11,21 +11,19 @@ export default defineConfig({
   transformers: [transformerVariantGroup()],
   // UnoCSS's default pipeline scans .tsx (and .html etc.) but NOT plain .ts or
   // .json. Everything that carries literal class strings outside .tsx must be
-  // listed here: the pure-JSON views (chart stroke-/fill- tokens) and
+  // listed here: the pure-JSON views (series stroke-/fill- tokens) and
   // src/jr/hints.ts (the tone-token → class map).
   content: { filesystem: ['src/views/**/*.json', 'src/jr/hints.ts'] },
-  // Chart palette classes are computed from project names at runtime via
-  // `paletteFor()` — UnoCSS's static analyzer can't see them, so we list
-  // them explicitly.
   safelist: [
-    ...['1', '2', '3', '4', '5', '6', '7', '8'].flatMap((n) => [
-      `bg-chart-${n}`,
-      `stroke-chart-${n}`,
-      `fill-chart-${n}`,
+    // Identity classes are computed from project names at runtime via
+    // `identFor()` and applied from literal maps in files UnoCSS doesn't scan
+    // (format.ts) — the static analyzer can't see them, so list them.
+    // `fill-` is the Treemap's tiles (SVG <rect>).
+    ...['0', '1', '2', '3', '4', '5'].flatMap((n) => [
+      `text-ident-${n}`,
+      `bg-ident-${n}`,
+      `fill-ident-${n}`,
     ]),
-    // Identity classes are applied from literal maps in .ts files UnoCSS
-    // doesn't scan (format.ts) — safelist keeps them generated.
-    ...['0', '1', '2', '3', '4', '5'].flatMap((n) => [`text-ident-${n}`, `bg-ident-${n}`]),
     'text-ident-task',
     'bg-ident-task',
     // Semantic dot/bar colors referenced by catalog components via tone tokens.
@@ -69,14 +67,6 @@ export default defineConfig({
       'cache-local': rgb('--cache-local'),
       'cache-remote': rgb('--cache-remote'),
       // Chart palette (8-step categorical, colorblind-friendlier)
-      'chart-1': rgb('--chart-1'),
-      'chart-2': rgb('--chart-2'),
-      'chart-3': rgb('--chart-3'),
-      'chart-4': rgb('--chart-4'),
-      'chart-5': rgb('--chart-5'),
-      'chart-6': rgb('--chart-6'),
-      'chart-7': rgb('--chart-7'),
-      'chart-8': rgb('--chart-8'),
       'ident-0': rgb('--ident-0'),
       'ident-1': rgb('--ident-1'),
       'ident-2': rgb('--ident-2'),
@@ -125,15 +115,6 @@ export default defineConfig({
 
           --cache-local: 56 189 248;
           --cache-remote: 129 140 248;
-
-          --chart-1: 167 139 250;
-          --chart-2: 56 189 248;
-          --chart-3: 74 222 128;
-          --chart-4: 250 204 21;
-          --chart-5: 244 114 182;
-          --chart-6: 251 146 60;
-          --chart-7: 129 140 248;
-          --chart-8: 45 212 191;
 
           /* Identity hues (the astryx ident set): cool violet->teal for
              PROJECT names (stable hash), fixed pink for TASK names —

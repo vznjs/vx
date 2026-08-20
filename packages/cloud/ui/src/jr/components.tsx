@@ -35,7 +35,7 @@ import { Flamegraph as FlamegraphPrimitive, flameEdgesOf } from '../components/F
 import { criticalPath } from '../components/critical-path.ts'
 import { RunGraph as RunGraphPrimitive, type RunGraphNode } from '../components/RunGraph.tsx'
 import { isCacheHit, STATUS, toVizState, type VizState } from '../components/status.tsx'
-import { IDENT_TASK_TEXT, cpuPct, formatDuration, identFor, identTextClass, paletteFor } from '../format.ts'
+import { IDENT_TASK_TEXT, cpuPct, formatDuration, identFor, identTextClass } from '../format.ts'
 import { type FormatHint, type Tone, axisFormatter, formatValue, toneText } from './hints.ts'
 import type { Recommendation } from './functions.ts'
 
@@ -67,7 +67,7 @@ function interpolateRaw(tpl: string, row: Row): string {
   return tpl.replace(/\{(\w+)\}/g, (_m, f) => String(row[f] ?? ''))
 }
 
-type DotMap = 'palette' | 'ident' | 'ci' | 'heat' | 'failureMode' | 'delta' | 'keyChanged' | 'triage'
+type DotMap = 'ident' | 'ci' | 'heat' | 'failureMode' | 'delta' | 'keyChanged' | 'triage'
 function colorOf(map: DotMap, v: unknown): string {
   if (map === 'failureMode') return v === 'stable' ? 'success' : v === 'flaky-recoverable' ? 'warn' : 'danger'
   // Status colors are ONLY for status: running locally / a cold cache entry
@@ -82,15 +82,15 @@ function colorOf(map: DotMap, v: unknown): string {
   // Failure triage: a NEW failure is probably yours (red); flaky is a known
   // hazard (amber); pre-existing is inherited — informational, not blame.
   if (map === 'triage') return v === 'new-failure' ? 'danger' : v === 'flaky' ? 'warn' : 'accent'
-  return paletteFor(String(v))
+  // Fall-through is IDENTITY, not a hashed categorical ramp: the ramp this
+  // replaced put 25.4% of project names on `--success` or `--warn`.
+  return identFor(String(v))
 }
 
 // Token → LITERAL class maps. UnoCSS's static extractor only sees literal
 // strings in scanned files — `bg-${x}` interpolations silently drop from the
 // build the moment a token leaves the safelist (the house gotcha).
 const DOT_BG: Record<string, string> = {
-  'chart-1': 'bg-chart-1', 'chart-2': 'bg-chart-2', 'chart-3': 'bg-chart-3', 'chart-4': 'bg-chart-4',
-  'chart-5': 'bg-chart-5', 'chart-6': 'bg-chart-6', 'chart-7': 'bg-chart-7', 'chart-8': 'bg-chart-8',
   success: 'bg-success', warn: 'bg-warn', danger: 'bg-danger', accent: 'bg-accent',
   'accent-2': 'bg-accent-2', 'cache-local': 'bg-cache-local', 'cache-remote': 'bg-cache-remote',
   info: 'bg-info', faint: 'bg-fg-3',
@@ -99,8 +99,8 @@ const DOT_BG: Record<string, string> = {
   'ident-task': 'bg-ident-task',
 }
 const FILL_CLASS: Record<string, string> = {
-  'chart-1': 'fill-chart-1', 'chart-2': 'fill-chart-2', 'chart-3': 'fill-chart-3', 'chart-4': 'fill-chart-4',
-  'chart-5': 'fill-chart-5', 'chart-6': 'fill-chart-6', 'chart-7': 'fill-chart-7', 'chart-8': 'fill-chart-8',
+  'ident-0': 'fill-ident-0', 'ident-1': 'fill-ident-1', 'ident-2': 'fill-ident-2',
+  'ident-3': 'fill-ident-3', 'ident-4': 'fill-ident-4', 'ident-5': 'fill-ident-5',
 }
 const barBg = (token: string): string => DOT_BG[token] ?? 'bg-accent'
 
@@ -334,7 +334,7 @@ export function Treemap(c: C<{ rows: Row[]; labelKey: string; valueKey: string; 
   const data = () =>
     (c.props.rows ?? [])
       .filter((r) => Number(r[c.props.valueKey]) > 0)
-      .map((r) => ({ label: String(r[c.props.labelKey]), value: Number(r[c.props.valueKey]), colorClass: FILL_CLASS[paletteFor(String(r[c.props.colorFrom ?? c.props.labelKey]))] ?? 'fill-chart-1' }))
+      .map((r) => ({ label: String(r[c.props.labelKey]), value: Number(r[c.props.valueKey]), colorClass: FILL_CLASS[identFor(String(r[c.props.colorFrom ?? c.props.labelKey]))] ?? 'fill-ident-0' }))
   return (
     <DataGate status={c.props.status} skeleton={<ChartSkeleton height={c.props.height} />}>
       <Show when={data().length > 0} fallback={<EmptyState title="No cached output yet" />}>
@@ -520,7 +520,7 @@ export interface Column {
   baseTone?: Tone
   tone?: ToneRule
   color?: string // static bar color token
-  colorFrom?: string // bar color via paletteFor(row[colorFrom]) (hashed hue)
+  colorFrom?: string // bar color via identFor(row[colorFrom]) (stable identity hue)
   colorKey?: string // bar color = row[colorKey] used LITERALLY (a semantic token)
   dots?: Array<{ field: string; map: DotMap }>
   projectKey?: string
@@ -681,7 +681,7 @@ function renderField(col: Column, row: Row, max: number) {
       const color = col.colorKey
         ? String(row[col.colorKey])
         : col.colorFrom
-          ? paletteFor(String(row[col.colorFrom]))
+          ? identFor(String(row[col.colorFrom]))
           : (col.color ?? 'accent')
       return (
         <div class="flex items-center gap-2 justify-end">
@@ -935,7 +935,7 @@ export function RankList(
     metaFormat?: FormatHint
     dots?: Array<{ field: string; map: DotMap }>
     barFrom?: string // value field → fraction (max computed internally)
-    colorFrom?: string // bar color via paletteFor(item[colorFrom])
+    colorFrom?: string // bar color via identFor(item[colorFrom])
     rowHref?: string
     rowTaskRef?: { projectKey?: string; taskKey?: string }
     subKey?: string
@@ -983,7 +983,7 @@ export function RankList(
                   </Show>
                 </div>
                 <Show when={c.props.barFrom}>
-                  <HBar fraction={Number(it[c.props.barFrom!]) / max()} colorClass={barBg(c.props.colorFrom ? paletteFor(String(it[c.props.colorFrom])) : 'accent')} />
+                  <HBar fraction={Number(it[c.props.barFrom!]) / max()} colorClass={barBg(c.props.colorFrom ? identFor(String(it[c.props.colorFrom])) : 'accent')} />
                 </Show>
               </button>
             )

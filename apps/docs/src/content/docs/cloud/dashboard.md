@@ -157,6 +157,25 @@ rather than quietly showing you different data than the link intended.
 Switching workspaces updates the address bar immediately, so it is
 shareable the moment you switch.
 
+## Reading the colours
+
+The dashboard uses three colour vocabularies and never mixes them, so a
+colour always means one thing:
+
+- **Status** — green success, amber warning, red failure. Reserved for
+  verdicts about a run, a task or a metric. If something is green it
+  passed; if it is red it failed.
+- **Cache** — sky blue for a local hit, indigo for a remote one. Where a
+  result came from, not whether it is good.
+- **Identity** — a stable hue per project (cool violet through teal) and
+  a fixed pink for tasks. A project keeps the same hue everywhere it
+  appears: the dot beside its name, its bar in a ranking, its tile in
+  the storage treemap.
+
+The identity hues are deliberately drawn from outside the status palette,
+so an identifier can never be misread as an outcome — a project called
+`utils` does not get a green dot that looks like a pass.
+
 ## What you see
 
 The surfaces auto-refresh on a short interval so new runs and metrics

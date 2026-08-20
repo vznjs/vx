@@ -251,7 +251,7 @@
                   "dots": [
                     {
                       "field": "project",
-                      "map": "palette"
+                      "map": "ident"
                     }
                   ],
                   "emptyTitle": "No data"

@@ -5,7 +5,7 @@
 // Conventions:
 //  - Charts assume the parent provides padding; they don't add their own.
 //  - All numeric inputs are nullable-safe via the caller (no NaN propagates).
-//  - Strokes use semantic / chart-palette CSS variables so theming Just Works.
+//  - Strokes use semantic / identity CSS variables so theming Just Works.
 
 import { For, Show, createMemo, createSignal, onCleanup } from 'solid-js'
 
@@ -373,7 +373,7 @@ export function Treemap(props: {
           label: r.label,
           value: r.value,
           // Treemap renders SVG <rect>; callers must pass `fill-…` classes.
-          colorClass: r.colorClass ?? 'fill-chart-1',
+          colorClass: r.colorClass ?? 'fill-ident-0',
           idx: r.idx,
         })
         cursor += len
