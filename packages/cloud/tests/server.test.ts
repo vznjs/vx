@@ -832,7 +832,11 @@ describe('platform e2e (real pg + fake S3)', () => {
         kind: 1,
         startTimeUnixNano: String(sum.startedAt * 1_000_000),
         endTimeUnixNano: String(sum.endedAt * 1_000_000),
-        attributes: taskSpanAttributes(t),
+        attributes: taskSpanAttributes(t, {
+          runId: sum.run.runId,
+          workspaceId: sum.run.workspaceId,
+          startedAt: sum.startedAt,
+        }),
         status: { code: 0 },
       })),
     ])
@@ -842,7 +846,8 @@ describe('platform e2e (real pg + fake S3)', () => {
 
     const pushed = await call('POST', '/v1/otlp/v1/traces', { bearer: ciToken, body })
     expect(pushed.status).toBe(200)
-    expect(((await pushed.json()) as { stored: boolean }).stored).toBe(true)
+    // A count, not a flag: one export can carry several runs.
+    expect(await pushed.json()).toMatchObject({ ok: true, runs: 1, stored: 1 })
 
     const runs = await call('GET', '/v1/runs', { cookie })
     const { runs: rows } = (await runs.json()) as { runs: { runId: string }[] }
@@ -852,7 +857,7 @@ describe('platform e2e (real pg + fake S3)', () => {
     // idempotency has to cover a replayed batch.
     const again = await call('POST', '/v1/otlp/v1/traces', { bearer: ciToken, body })
     expect(again.status).toBe(200)
-    expect(((await again.json()) as { stored: boolean }).stored).toBe(false)
+    expect(await again.json()).toMatchObject({ runs: 1, stored: 0 })
 
     // A non-vx payload is a clean 400, never a half-stored run.
     const junk = await call('POST', '/v1/otlp/v1/traces', {
@@ -860,6 +865,137 @@ describe('platform e2e (real pg + fake S3)', () => {
       body: { resourceSpans: [{ scopeSpans: [{ spans: [{ name: 'http.request' }] }] }] },
     })
     expect(junk.status).toBe(400)
+  })
+
+  it('routes each run of a batched OTLP export to its own workspace', async () => {
+    // What a shared collector sends: two producers in ONE export. Read as a
+    // single run, the second workspace's tasks would land in the first.
+    const mk = (runId: string, ws: string, project: string) => {
+      const base = summary(runId, ws)
+      // Distinct workspace NAMES so the assertions below can tell the two
+      // provisioned workspaces apart; the fixture names them all alike.
+      const sum = { ...base, run: { ...base.run, workspaceName: ws } }
+      const trace = runId.padEnd(32, '0')
+      return [
+        {
+          traceId: trace,
+          spanId: runId.padEnd(16, '0'),
+          name: 'vx.run',
+          kind: 1,
+          startTimeUnixNano: String(sum.startedAt * 1_000_000),
+          endTimeUnixNano: String(sum.endedAt * 1_000_000),
+          attributes: runSpanAttributes(sum.run, sum),
+          status: { code: 0 },
+        },
+        ...sum.tasks.map((t) => ({
+          traceId: trace,
+          spanId: project.padEnd(16, '0'),
+          parentSpanId: runId.padEnd(16, '0'),
+          name: 'vx.task',
+          kind: 1,
+          startTimeUnixNano: String(sum.startedAt * 1_000_000),
+          endTimeUnixNano: String(sum.endedAt * 1_000_000),
+          attributes: taskSpanAttributes(
+            { ...t, taskId: `${project}#build`, project },
+            { runId, workspaceId: ws, startedAt: sum.startedAt },
+          ),
+          status: { code: 0 },
+        })),
+      ]
+    }
+    const body = buildTraceRequest('vx', '0.0.0', [
+      ...mk('r-batch-1', 'ws-batch-a', 'alpha'),
+      ...mk('r-batch-2', 'ws-batch-b', 'beta'),
+    ])
+
+    const res = await call('POST', '/v1/otlp/v1/traces', { bearer: ciToken, body })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, runs: 2, stored: 2 })
+
+    // Both runs exist, and each landed in its OWN workspace.
+    const wsRes = await call('GET', '/v1/workspaces', { cookie })
+    const { workspaces } = (await wsRes.json()) as { workspaces: { id: string; name: string }[] }
+    const a = workspaces.find((w) => w.name === 'ws-batch-a')!
+    const b = workspaces.find((w) => w.name === 'ws-batch-b')!
+    expect(a).toBeDefined()
+    expect(b).toBeDefined()
+
+    const runsIn = async (wsId: string) => {
+      const r = await call('GET', `/v1/runs?ws=${wsId}`, { cookie })
+      return ((await r.json()) as { runs: { runId: string }[] }).runs.map((x) => x.runId)
+    }
+    expect(await runsIn(a.id)).toContain('r-batch-1')
+    expect(await runsIn(a.id)).not.toContain('r-batch-2')
+    expect(await runsIn(b.id)).toContain('r-batch-2')
+
+    // ...and neither borrowed the other's task.
+    const projectsIn = async (wsId: string) => {
+      const r = await call('GET', `/v1/projects?ws=${wsId}`, { cookie })
+      return ((await r.json()) as { projects: { project: string }[] }).projects.map(
+        (x) => x.project,
+      )
+    }
+    expect(await projectsIn(a.id)).toEqual(['alpha'])
+    expect(await projectsIn(b.id)).toEqual(['beta'])
+  })
+
+  it('loses nothing when a collector splits a run across two exports', async () => {
+    // A collector re-batches by size and time, so a run's root span and its
+    // task spans can land in different POSTs — and the task half used to be
+    // refused outright, losing those tasks for good.
+    const sum = summary('r-split', 'ws-e2e')
+    const trace = 'cafe'.repeat(8)
+    const root = {
+      traceId: trace,
+      spanId: '1'.repeat(16),
+      name: 'vx.run',
+      kind: 1,
+      startTimeUnixNano: String(sum.startedAt * 1_000_000),
+      endTimeUnixNano: String(sum.endedAt * 1_000_000),
+      attributes: runSpanAttributes(sum.run, sum),
+      status: { code: 0 },
+    }
+    const taskSpans = sum.tasks.map((t) => ({
+      traceId: trace,
+      spanId: '2'.repeat(16),
+      parentSpanId: '1'.repeat(16),
+      name: 'vx.task',
+      kind: 1,
+      startTimeUnixNano: String(sum.startedAt * 1_000_000),
+      endTimeUnixNano: String(sum.endedAt * 1_000_000),
+      attributes: taskSpanAttributes(t, {
+        runId: sum.run.runId,
+        workspaceId: sum.run.workspaceId,
+        startedAt: sum.startedAt,
+      }),
+      status: { code: 0 },
+    }))
+
+    // Tasks arrive FIRST, with no header to hang them on.
+    const tail = await call('POST', '/v1/otlp/v1/traces', {
+      bearer: ciToken,
+      body: buildTraceRequest('vx', '0.0.0', taskSpans),
+    })
+    expect(tail.status).toBe(200)
+    expect(await tail.json()).toMatchObject({ runs: 0, tasks: sum.tasks.length })
+
+    // ...then the header.
+    const head = await call('POST', '/v1/otlp/v1/traces', {
+      bearer: ciToken,
+      body: buildTraceRequest('vx', '0.0.0', [root]),
+    })
+    expect(head.status).toBe(200)
+
+    // The run is whole: the tasks stored ahead of their header are the ones
+    // the run detail shows, and the shared dedup key kept them to one row each
+    // rather than doubling when the header's own copy arrived.
+    const detail = await call('GET', '/v1/runs/r-split', { cookie })
+    expect(detail.status).toBe(200)
+    const { tasks } = (await detail.json()) as { tasks: { project: string; task: string }[] }
+    expect(tasks).toHaveLength(sum.tasks.length)
+    expect(tasks.map((t) => `${t.project}#${t.task}`)).toEqual(
+      sum.tasks.map((t) => `${t.project}#${t.task}`),
+    )
   })
 
   it('the serve-era /version handshake is gone', async () => {

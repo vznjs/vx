@@ -17,6 +17,7 @@
 // in production.
 
 import { assembleRunSummary, deriveCacheSource, LOG_WIRE_VERSION } from '@vzn/vx'
+import { TASK_WIRE_VERSION, type TaskIngestRecord } from './analytics.js'
 import type {
   OutputFingerprint,
   RunContextRecord,
@@ -60,6 +61,7 @@ const A = {
   runDurationMs: 'vx.run.duration_ms',
   runExitOk: 'vx.run.exit_ok',
   taskProject: 'vx.task.project',
+  taskRunStartedAt: 'vx.task.run_started_at',
   taskTask: 'vx.task.task',
   taskExitCode: 'vx.task.exit_code',
   taskDurationMs: 'vx.task.duration_ms',
@@ -142,6 +144,8 @@ function bool(a: Attrs, key: string): boolean | undefined {
 
 interface RawSpan {
   name: string
+  /** The run this span belongs to. Load-bearing — see `groupByTrace`. */
+  traceId: string
   attrs: Attrs
 }
 
@@ -158,11 +162,39 @@ function spansOf(body: unknown): RawSpan[] {
       for (const sp of spans) {
         const s = sp as Record<string, unknown>
         if (typeof s['name'] !== 'string') continue
-        out.push({ name: s['name'], attrs: attrsOf(s['attributes']) })
+        out.push({
+          name: s['name'],
+          traceId: typeof s['traceId'] === 'string' ? s['traceId'] : '',
+          attrs: attrsOf(s['attributes']),
+        })
       }
     }
   }
   return out
+}
+
+/**
+ * Split a payload into one group per RUN.
+ *
+ * A single export can carry many runs: batching across producers is what a
+ * collector is for, and one agent exporting two concurrent runs does it too.
+ * The trace id is the run boundary — the exporter mints one per run — so
+ * grouping on it is what keeps a batch from being read as a single run whose
+ * tasks are borrowed from its neighbours. Spans with no trace id at all
+ * degrade to one group, which is the pre-grouping behaviour and still correct
+ * for the single-run payload the exporter sends directly.
+ */
+function groupByTrace(spans: readonly RawSpan[]): RawSpan[][] {
+  const groups = new Map<string, RawSpan[]>()
+  for (const s of spans) {
+    let g = groups.get(s.traceId)
+    if (g === undefined) {
+      g = []
+      groups.set(s.traceId, g)
+    }
+    g.push(s)
+  }
+  return [...groups.values()]
 }
 
 /** Statuses a span may legally claim. An unknown one drops the task rather
@@ -286,6 +318,21 @@ function decodeTask(a: Attrs): TaskTelemetry | undefined {
   return t
 }
 
+/** The run a task span names for itself. Absent on a span from a producer
+ *  older than self-describing task spans — such a span is only readable
+ *  alongside its root. */
+function taskRunRef(
+  a: Attrs,
+): { runId: string; workspaceId: string; runStartedAt: number } | undefined {
+  const runId = str(a, A.runId)
+  const workspaceId = str(a, A.workspaceId)
+  const runStartedAt = num(a, A.taskRunStartedAt)
+  if (runId === undefined || workspaceId === undefined || runStartedAt === undefined) {
+    return undefined
+  }
+  return { runId, workspaceId, runStartedAt }
+}
+
 function decodeRunContext(a: Attrs): RunContextRecord | undefined {
   const runId = str(a, A.runId)
   const workspaceId = str(a, A.workspaceId)
@@ -321,59 +368,105 @@ function decodeRunContext(a: Attrs): RunContextRecord | undefined {
 
 export type DecodeResult<T> = { ok: true; value: T } | { ok: false; error: string }
 
+/** What one trace export yields. */
+export interface DecodedTrace {
+  /** One per run whose root span arrived — a complete invocation. */
+  runs: RunSummaryRecord[]
+  /**
+   * Tasks whose root span was NOT in this payload. Not an error and not
+   * dropped: a collector re-batches by size and time, so a run's spans can be
+   * split across exports, and refusing the batch would lose them for good.
+   * They go through the incremental per-task ingest instead — the same answer
+   * the native wire already gives to a task that arrives before its run
+   * header — and the header lands when its root does.
+   */
+  stranded: TaskIngestRecord[]
+}
+
 /**
- * Rebuild a run summary from an OTLP trace export.
+ * Rebuild runs from an OTLP trace export.
  *
- * The `vx.run` root span is the run header AND the completeness marker: OTLP
- * batches and may split a run across POSTs, and the root is the span that ends
- * last, so its arrival is what says the run is over. A payload without one is
- * refused rather than stored half-formed.
+ * Spans are grouped by TRACE first, because one export is not one run: a
+ * collector batches across producers, and a single agent can export two
+ * concurrent runs. Reading a batch as one run is how one run's tasks — and,
+ * with an org-wide token, another workspace's tasks — end up recorded against
+ * a run that never executed them.
  *
- * The tallies are RECOMPUTED from the task spans that actually arrived rather
- * than read off the header, via core's `assembleRunSummary` - the same
- * function the native path uses, so a complete trace and a native push produce
- * byte-identical records, and an incomplete one produces a header consistent
- * with the rows it stored instead of a count that outruns them.
+ * Within a group the `vx.run` root span is the invocation header AND the
+ * completeness marker: it is the span that ends last, so its arrival is what
+ * says the run is over. A group without one is not refused — its tasks are
+ * stranded, see above.
+ *
+ * A complete group's tallies are RECOMPUTED from its task spans via core's
+ * `assembleRunSummary` — the same function the native path uses — so a full
+ * trace and a native push produce byte-identical records, and a partial one
+ * produces a header consistent with the rows it stored.
  */
-export function decodeTraceRequest(body: unknown): DecodeResult<RunSummaryRecord> {
+export function decodeTraceRequest(body: unknown): DecodeResult<DecodedTrace> {
   const spans = spansOf(body)
   if (spans.length === 0) return { ok: false, error: 'no spans in payload' }
-  const root = spans.find((s) => s.name === RUN_SPAN)
-  if (root === undefined) {
+
+  const runs: RunSummaryRecord[] = []
+  const stranded: TaskIngestRecord[] = []
+  let sawRoot = false
+
+  for (const group of groupByTrace(spans)) {
+    const root = group.find((sp) => sp.name === RUN_SPAN)
+    const taskSpans = group.filter((sp) => sp.name === TASK_SPAN)
+
+    if (root === undefined) {
+      for (const sp of taskSpans) {
+        const ref = taskRunRef(sp.attrs)
+        const t = decodeTask(sp.attrs)
+        if (ref === undefined || t === undefined) continue
+        stranded.push({
+          v: TASK_WIRE_VERSION,
+          runId: ref.runId,
+          workspaceId: ref.workspaceId,
+          runStartedAt: ref.runStartedAt,
+          task: t,
+        })
+      }
+      continue
+    }
+
+    sawRoot = true
+    const schema = num(root.attrs, A.schema)
+    if (schema === undefined) {
+      return { ok: false, error: `missing ${A.schema}: not a vx trace` }
+    }
+    if (schema !== OTLP_TELEMETRY_SCHEMA) {
+      const got = String(schema)
+      const want = String(OTLP_TELEMETRY_SCHEMA)
+      return { ok: false, error: `telemetry schema mismatch: trace v${got}, serve v${want}` }
+    }
+    const run = decodeRunContext(root.attrs)
+    if (run === undefined) {
+      return { ok: false, error: `${RUN_SPAN} span is missing a run id or workspace id` }
+    }
+    const tasks: TaskTelemetry[] = []
+    for (const sp of taskSpans) {
+      const t = decodeTask(sp.attrs)
+      if (t !== undefined) tasks.push(t)
+    }
+    const startedAt = num(root.attrs, A.runStartedAt) ?? 0
+    const endedAt = num(root.attrs, A.runEndedAt) ?? startedAt
+    runs.push(
+      assembleRunSummary(run, tasks, {
+        startedAt,
+        endedAt,
+        totalDurationMs: num(root.attrs, A.runDurationMs) ?? Math.max(0, endedAt - startedAt),
+        // Absent only when the run died before its summary was assembled; then
+        // the tasks that arrived are the only evidence there is.
+        exitOk: bool(root.attrs, A.runExitOk) ?? tasks.every((t) => t.status !== 'failed'),
+      }),
+    )
+  }
+
+  if (!sawRoot && stranded.length === 0) {
     return { ok: false, error: `no ${RUN_SPAN} span: a partial or non-vx trace` }
   }
-  const schema = num(root.attrs, A.schema)
-  if (schema === undefined) {
-    return { ok: false, error: `missing ${A.schema}: not a vx trace` }
-  }
-  if (schema !== OTLP_TELEMETRY_SCHEMA) {
-    const got = String(schema)
-    const want = String(OTLP_TELEMETRY_SCHEMA)
-    return { ok: false, error: `telemetry schema mismatch: trace v${got}, serve v${want}` }
-  }
-  const run = decodeRunContext(root.attrs)
-  if (run === undefined) {
-    return { ok: false, error: `${RUN_SPAN} span is missing a run id or workspace id` }
-  }
-  const tasks: TaskTelemetry[] = []
-  for (const s of spans) {
-    if (s.name !== TASK_SPAN) continue
-    const t = decodeTask(s.attrs)
-    if (t !== undefined) tasks.push(t)
-  }
-  const startedAt = num(root.attrs, A.runStartedAt) ?? 0
-  const endedAt = num(root.attrs, A.runEndedAt) ?? startedAt
-  return {
-    ok: true,
-    value: assembleRunSummary(run, tasks, {
-      startedAt,
-      endedAt,
-      totalDurationMs: num(root.attrs, A.runDurationMs) ?? Math.max(0, endedAt - startedAt),
-      // Absent only when the run died before its summary was assembled; then
-      // the tasks that arrived are the only evidence there is.
-      exitOk: bool(root.attrs, A.runExitOk) ?? tasks.every((t) => t.status !== 'failed'),
-    }),
-  }
+  return { ok: true, value: { runs, stranded } }
 }
 
 /**

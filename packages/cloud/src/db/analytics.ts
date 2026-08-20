@@ -210,6 +210,9 @@ export interface InvocationDetail {
 /** The per-task incremental ingest wire (`POST /v1/ingest/task`): one task's
  *  result + optional log tail, shipped the moment it finishes. `runStartedAt`
  *  anchors the started_at derivation so it matches the end-of-run batch. */
+/** Wire version of the `TaskIngestRecord` body below. */
+export const TASK_WIRE_VERSION = 1
+
 export interface TaskIngestRecord {
   v: number
   runId: string

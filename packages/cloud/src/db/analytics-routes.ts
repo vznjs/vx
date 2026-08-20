@@ -11,6 +11,7 @@ import { readTextBounded } from '../http-body.js'
 import { decodeLogsRequest, decodeTraceRequest } from './otlp-ingest.js'
 import { LOG_WIRE_VERSION, type TaskLogBundle } from '../task-log-capture.js'
 import {
+  TASK_WIRE_VERSION,
   WorkspaceForbiddenError,
   type Analytics,
   type CatalogPush,
@@ -29,7 +30,6 @@ const CATALOG_BODY_MAX_BYTES = 8 * 1024 * 1024
 const TASK_BODY_MAX_BYTES = 2 * 1024 * 1024
 // Wire version of the incremental per-task record (set by the cloud() sink).
 // Gated like /v1/ingest/logs + /v1/catalog so a client/serve skew fails loud.
-const TASK_WIRE_VERSION = 1
 /** Route-level ceiling for `/v1/runs` — see the call site for why it is not
  *  `listRuns`' own 100_000. */
 const ROUTE_RUNS_MAX = 5000
@@ -279,13 +279,32 @@ async function handleAnalyticsRequestInner(
     try {
       const decoded = decodeTraceRequest(JSON.parse(raw))
       if (!decoded.ok) return json({ ok: false, error: decoded.error }, 400)
-      const res = await a.ingest({
-        orgId: ctx.orgId,
-        tokenWorkspaceId: ctx.tokenWorkspaceId,
-        summary: decoded.value,
-        tokenId: ctx.tokenId,
-      })
-      return json({ ok: true, stored: res.stored })
+      // One export is not one run — a collector batches across producers, so
+      // each decoded run routes on its OWN workspace, exactly as a native push
+      // would.
+      let stored = 0
+      for (const summary of decoded.value.runs) {
+        const res = await a.ingest({
+          orgId: ctx.orgId,
+          tokenWorkspaceId: ctx.tokenWorkspaceId,
+          summary,
+          tokenId: ctx.tokenId,
+        })
+        if (res.stored) stored++
+      }
+      // Tasks whose root span landed in a different batch. Stored through the
+      // incremental path so a re-batched run loses nothing; the header arrives
+      // with its root and the shared dedup key makes the two converge.
+      let tasks = 0
+      for (const record of decoded.value.stranded) {
+        const res = await a.ingestTask({
+          orgId: ctx.orgId,
+          tokenWorkspaceId: ctx.tokenWorkspaceId,
+          record,
+        })
+        if (res.stored) tasks++
+      }
+      return json({ ok: true, runs: decoded.value.runs.length, stored, tasks })
     } catch (err) {
       return errResponse(err)
     }

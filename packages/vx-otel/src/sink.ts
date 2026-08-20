@@ -88,6 +88,7 @@ export class OtelSink implements TelemetrySink {
   // both agree on which task's output survives a chatty run.
   private readonly logs = new TaskLogBuffer()
   private runId = ''
+  private runStartedAt = 0
 
   constructor(config: OtelSinkConfig) {
     this.cfg = {
@@ -117,6 +118,7 @@ export class OtelSink implements TelemetrySink {
         // The run's OWN canonical start, not when this record was projected —
         // it is what the summary reports and what a receiver stores.
         this.rootStartNano = nanos(record.startedAt)
+        this.runStartedAt = record.startedAt
         return
       case 'task.start':
         this.taskSpanId.set(record.taskId, genId(8))
@@ -138,7 +140,11 @@ export class OtelSink implements TelemetrySink {
           kind: SPAN_KIND_INTERNAL,
           startTimeUnixNano: startNano,
           endTimeUnixNano: nanos(record.ts),
-          attributes: taskSpanAttributes(t),
+          attributes: taskSpanAttributes(t, {
+            runId: this.runId,
+            workspaceId: this.run?.workspaceId ?? '',
+            startedAt: this.runStartedAt,
+          }),
           status: { code: taskStatusCode(t) },
         })
         // Decides retention: a cache hit's bytes belong to the run that

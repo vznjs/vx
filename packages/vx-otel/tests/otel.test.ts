@@ -43,6 +43,9 @@ const RUN: RunContextRecord = {
   tags: { env: 'prod' },
 }
 
+/** Run context every task span carries so it is readable on its own. */
+const TASK_RUN = { runId: 'run-1', workspaceId: 'ws-test', startedAt: 1_700_000_000_000 }
+
 function attrMap(
   attrs: { key: string; value: Record<string, unknown> }[],
 ): Record<string, unknown> {
@@ -133,7 +136,7 @@ describe('OTLP builders', () => {
       cpuMs: 30,
       peakRssBytes: 2048,
     }
-    const m = attrMap(taskSpanAttributes(t))
+    const m = attrMap(taskSpanAttributes(t, TASK_RUN))
     expect(m['cicd.pipeline.task.name']).toBe('a#build')
     expect(m['cicd.pipeline.task.run.result']).toBe('failed')
     expect(m['vx.cache.source']).toBe('miss')
@@ -160,18 +163,18 @@ describe('OTLP builders', () => {
       ...base,
       verify: { kind: 'nondeterministic', changed: ['dist/a.js', 'dist/a.js.map'] },
     }
-    const mb = attrMap(taskSpanAttributes(bad))
+    const mb = attrMap(taskSpanAttributes(bad, TASK_RUN))
     expect(mb['vx.task.verify']).toBe('nondeterministic')
     expect(mb['vx.task.verify.changed']).toBe('["dist/a.js","dist/a.js.map"]')
     expect(taskStatusCode(bad)).toBe(2)
     // A proven task: verdict attribute, no changed paths, span UNSET.
     const good: TaskTelemetry = { ...base, verify: { kind: 'proven-deterministic' } }
-    const mg = attrMap(taskSpanAttributes(good))
+    const mg = attrMap(taskSpanAttributes(good, TASK_RUN))
     expect(mg['vx.task.verify']).toBe('proven-deterministic')
     expect(mg['vx.task.verify.changed']).toBeUndefined()
     expect(taskStatusCode(good)).toBe(0)
     // No --verify → no verdict attribute at all.
-    expect(attrMap(taskSpanAttributes(base))['vx.task.verify']).toBeUndefined()
+    expect(attrMap(taskSpanAttributes(base, TASK_RUN))['vx.task.verify']).toBeUndefined()
   })
 
   it('surfaces the Phase-2 (inputs) verdicts: undeclared-inputs is ERROR with paths', () => {
@@ -190,13 +193,13 @@ describe('OTLP builders', () => {
       ...base,
       verify: { kind: 'undeclared-inputs', paths: ['pkg/a/secret.txt', 'pkg/b/x.env'] },
     }
-    const ml = attrMap(taskSpanAttributes(leaky))
+    const ml = attrMap(taskSpanAttributes(leaky, TASK_RUN))
     expect(ml['vx.task.verify']).toBe('undeclared-inputs')
     expect(ml['vx.task.verify.undeclared']).toBe('["pkg/a/secret.txt","pkg/b/x.env"]')
     expect(taskStatusCode(leaky)).toBe(2)
     // proven-complete: verdict attr, no path attrs, span UNSET.
     const complete: TaskTelemetry = { ...base, verify: { kind: 'proven-complete' } }
-    const mc = attrMap(taskSpanAttributes(complete))
+    const mc = attrMap(taskSpanAttributes(complete, TASK_RUN))
     expect(mc['vx.task.verify']).toBe('proven-complete')
     expect(mc['vx.task.verify.undeclared']).toBeUndefined()
     expect(taskStatusCode(complete)).toBe(0)
@@ -213,7 +216,7 @@ describe('OTLP builders', () => {
       durationMs: 50,
       attempts: 3,
     }
-    expect(attrMap(taskSpanAttributes(t))['vx.task.attempts']).toBe('3')
+    expect(attrMap(taskSpanAttributes(t, TASK_RUN))['vx.task.attempts']).toBe('3')
   })
 
   it('buildTraceRequest nests resource → scope → spans', () => {
@@ -570,7 +573,7 @@ describe('OTLP losslessness', () => {
   })
 
   it('carries every task field on the task span', () => {
-    const a = attrMap(taskSpanAttributes(FULL_TASK) as never)
+    const a = attrMap(taskSpanAttributes(FULL_TASK, TASK_RUN) as never)
     expect(a['cicd.pipeline.task.name']).toBe('app#build')
     expect(a['cicd.pipeline.task.run.result']).toBe('success')
     expect(a['vx.task.project']).toBe('app')
@@ -585,8 +588,21 @@ describe('OTLP losslessness', () => {
     expect(a['vx.task.verify']).toBe('proven-deterministic')
   })
 
+  it('makes a task span readable without its root span', () => {
+    // OTLP is re-batched in transit, so a task span can arrive in a payload
+    // its root span is not in. Without these it is unattributable and a
+    // collector can strand it silently.
+    const a = attrMap(taskSpanAttributes(FULL_TASK, TASK_RUN) as never)
+    expect(a['cicd.pipeline.run.id']).toBe('run-1')
+    expect(a['vx.workspace.id']).toBe('ws-test')
+    // The storage key's base: a receiver must derive the same key from a
+    // stranded task span that it would from the complete trace, or the two
+    // arrival orders store the task twice instead of converging.
+    expect(a['vx.task.run_started_at']).toBe('1700000000000')
+  })
+
   it('preserves wallclock nanoseconds past the float-safe range', () => {
-    const a = attrMap(taskSpanAttributes(FULL_TASK) as never)
+    const a = attrMap(taskSpanAttributes(FULL_TASK, TASK_RUN) as never)
     // The whole point of the int64-as-string path: 9007199254740993 is the
     // first integer a JS number cannot represent, and a receiver derives a
     // dedup key from it.
@@ -595,7 +611,7 @@ describe('OTLP losslessness', () => {
   })
 
   it('carries the output fingerprint, file map included', () => {
-    const a = attrMap(taskSpanAttributes(FULL_TASK) as never)
+    const a = attrMap(taskSpanAttributes(FULL_TASK, TASK_RUN) as never)
     expect(a['vx.task.output_fp.tree']).toBe('feedfacefeedface')
     expect(a['vx.task.output_fp.file_count']).toBe('3')
     expect(a['vx.task.output_fp.truncated']).toBe(true)
@@ -607,10 +623,13 @@ describe('OTLP losslessness', () => {
 
   it('emits a fingerprint with no file map as an empty array, not a hole', () => {
     const a = attrMap(
-      taskSpanAttributes({
-        ...FULL_TASK,
-        outputFp: { tree: 'aaaa', fileCount: 0 },
-      }) as never,
+      taskSpanAttributes(
+        {
+          ...FULL_TASK,
+          outputFp: { tree: 'aaaa', fileCount: 0 },
+        },
+        TASK_RUN,
+      ) as never,
     )
     // Detection keys on `tree`; the map is allowed to be absent, but the
     // attribute must still parse rather than reading as malformed.
@@ -620,15 +639,18 @@ describe('OTLP losslessness', () => {
 
   it('omits every optional task attribute when the field is absent', () => {
     const a = attrMap(
-      taskSpanAttributes({
-        taskId: 'app#lint',
-        project: 'app',
-        task: 'lint',
-        status: 'cache-hit',
-        cacheSource: 'local',
-        exitCode: 0,
-        durationMs: 4,
-      }) as never,
+      taskSpanAttributes(
+        {
+          taskId: 'app#lint',
+          project: 'app',
+          task: 'lint',
+          status: 'cache-hit',
+          cacheSource: 'local',
+          exitCode: 0,
+          durationMs: 4,
+        },
+        TASK_RUN,
+      ) as never,
     )
     for (const key of [
       'vx.task.hash',
