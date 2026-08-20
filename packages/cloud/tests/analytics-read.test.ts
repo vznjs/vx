@@ -2673,3 +2673,65 @@ describe('the reads take their window from the instance clock', () => {
     expect(stats.runCountLast24h).toBe(0)
   })
 })
+
+describe('an exact last-seen tie resolves the same way every time', () => {
+  // `resolveReadWorkspace` (no `?ws=`) decides which workspace the whole dashboard opens
+  // onto, and `workspacesForOrg` orders the switcher. Both rank by MAX(repos
+  // .last_seen_at), which `routeWorkspace` stamps from the clock — so two
+  // workspaces ingesting in the same millisecond tie, and before the `slug`
+  // secondary key the winner was left to whatever row Postgres reached first.
+  //
+  // Measured before the fix: the tie is real and the pick was STABLE across 12
+  // executions (seq scan, insertion order) — so this is an unspecified
+  // ordering rather than an observed flap, and the guard is that a plan change
+  // can never turn it into one.
+  const TIE = Date.UTC(2021, 3, 4, 5, 6, 7)
+  let org: string
+  const ids: Record<string, string> = {}
+
+  beforeAll(async () => {
+    org = Bun.randomUUIDv7()
+    await db.sql`INSERT INTO organizations (id, slug, name, created_at)
+                 VALUES (${org}, ${'o-tie-' + org.slice(0, 8)}, ${'tie'}, ${TIE})`
+    // Deliberately inserted in the order that made the OLD query answer
+    // 'w-zulu', so a passing test cannot be insertion order agreeing by luck.
+    for (const slug of ['w-zulu', 'w-alpha']) {
+      const ws = Bun.randomUUIDv7()
+      ids[slug] = ws
+      await db.sql`INSERT INTO workspaces (id, org_id, slug, name, created_at)
+                   VALUES (${ws}, ${org}, ${slug}, ${slug}, ${TIE})`
+      await db.sql`INSERT INTO repos
+                     (id, org_id, workspace_id, client_workspace_id, remote_url,
+                      first_seen_at, last_seen_at)
+                   VALUES (${Bun.randomUUIDv7()}, ${org}, ${ws}, ${'c-' + slug},
+                           ${null}, ${TIE}, ${TIE})`
+    }
+  })
+
+  it('picks the lowest slug, not whichever row the plan reached first', async () => {
+    for (let i = 0; i < 5; i++) {
+      expect(await analytics.resolveReadWorkspace(org)).toBe(ids['w-alpha']!)
+    }
+  })
+
+  it("the default IS the switcher's first row", async () => {
+    // The invariant the shared secondary key buys: one answer, not two
+    // independently-ordered ones that can disagree under a tie.
+    const list = await analytics.workspacesForOrg(org)
+    expect(list.map((w) => w.slug)).toEqual(['w-alpha', 'w-zulu'])
+    const chosen = await analytics.resolveReadWorkspace(org)
+    expect(chosen).toBe(list[0]!.id)
+  })
+
+  it('a genuinely later last-seen still wins over the slug order', async () => {
+    // The control: the tie-break must never outrank real recency, or the
+    // "most recently active workspace" rule is quietly replaced by alphabetical.
+    await db.sql`UPDATE repos SET last_seen_at = ${TIE + 1000}
+                 WHERE workspace_id = ${ids['w-zulu']!}`
+    expect(await analytics.resolveReadWorkspace(org)).toBe(ids['w-zulu']!)
+    expect((await analytics.workspacesForOrg(org)).map((w) => w.slug)).toEqual([
+      'w-zulu',
+      'w-alpha',
+    ])
+  })
+})

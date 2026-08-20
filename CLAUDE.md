@@ -249,6 +249,64 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-20**: **Freezing the server clock exposed an unspecified ordering that
+  decides which workspace the whole dashboard opens onto** (`db/analytics.ts`
+  `resolveReadWorkspace` + `workspacesForOrg`, plus the two sibling fixtures; the
+  CLASS SWEEP the clock-seam wave owed itself — this repo's most-repeated lesson
+  is "when a wave fixes a CLASS rather than a line, grep the class in the same
+  wave", and the entry below fixed one fixture). **The sweep's first half is a
+  clean NEGATIVE, recorded so nobody re-treads it:** core `metrics.ts` has 12
+  wall-clock windowed reads, but `tests/metrics.test.ts` seeds RELATIVE to now
+  (`Date.now() - 1000`) for every windowed assertion and uses `startedAt: 1000`
+  (1970) only for id-addressed reads that have no window — so core is immune BY
+  CONSTRUCTION, not by luck. **The second half found two surviving call sites:**
+  `workspace-lifecycle` and `workspace-context` pin the IDENTICAL fixture epoch
+  (`Date.UTC(2026, 6, 20, 12, 0, 0)`) and froze neither clock. Both pass today
+  only because of WHAT THEY ASSERT — run ids and workspace names, never a
+  windowed read — and `workspace-context` drives the Runs page, which renders
+  the windowed CI-health strip directly beside the rows it does assert. One
+  added assertion there silently acquires the same ~7-day shelf life the wave
+  below had just removed. Immunity-by-assertion is not immunity, so both now
+  take the seam. **AND PINNING THE CLOCK IMMEDIATELY BROKE A TEST, which is the
+  finding.** `workspace-context` asserts "most-recently-active wins when nothing
+  is pinned" — with a single frozen INSTANT that claim has no answer:
+  `routeWorkspace` stamps `repos.last_seen_at` from the clock, so both
+  workspaces landed on the same millisecond and the assertion flipped
+  `acme/beta` → `acme/alpha`. **Traced rather than guessed:**
+  `resolveReadWorkspace`'s no-`?ws=` arm is `ORDER BY seen DESC LIMIT 1` over
+  `MAX(repos.last_seen_at)` with **no tie-break**, and its sibling
+  `workspacesForOrg` — the switcher's order — is `ORDER BY last_seen DESC`, also
+  none. **The obvious claim is REFUTED by measurement, and that matters:** a
+  probe against real Postgres confirmed the tie is real (both rows byte-identical
+  `1784548800000`) and then found the pick **STABLE across 12 executions** — seq
+  scan, insertion order. So this is an UNSPECIFIED ordering, not an observed
+  flap, and it is written up that way rather than as a live bug. It is still
+  fixed, on the precedent this log already set twice (the `getRegressions`
+  `run_id DESC` tiebreaker, the `DISTINCT ON … started_at ASC` earliest-copy
+  convention): a plan change is all it takes to turn "stable by accident" into a
+  default workspace that flaps between page loads. **`slug` is the secondary key
+  because `workspaces UNIQUE(org_id, slug)` makes it a TOTAL order within an
+  org**, and both queries take the SAME one — which buys a real invariant: the
+  default workspace IS the switcher's first row, rather than two independently
+  ordered answers that can disagree. **The fixture fix is the more faithful
+  half:** `workspace-context`'s clock is pinned but STEPS to each ingest's own
+  timestamp (`clockMs = at`), so "most recently active" is decided by when the
+  work happened — a frozen instant makes the test assert something unanswerable,
+  and it previously passed only because real-clock ingest order happened to
+  agree. **Differential:** reverting BOTH tie-breaks fails exactly **2** of the
+  3 new pins, restore back to 91/0 — and the third is a deliberate CONTROL that
+  passes BOTH ways (a genuinely later `last_seen_at` must still outrank the slug
+  order, or "most recently active" is quietly replaced by alphabetical). The tie
+  fixture inserts `w-zulu` BEFORE `w-alpha` on purpose, so a passing test cannot
+  be insertion order agreeing by luck. **A type error of mine that `bun test`
+  cannot see:** the invariant pin compared a `string` receiver against a
+  `string | null`, which transpile-only testing sails past — the lint gate
+  caught it (TS2769), the standing reason `bun test` passing is not the gate. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump — this adds a secondary sort key to
+  two read queries and changes which instant two fixtures call "now"; no key, no
+  stored byte. Gates from the ROOT: fmt/lint 0, core **2656 / 0** with `git diff
+src/` EMPTY, cloud **1328 / 0 across 60 files with zero skips**.
+
 - **2026-08-20**: **The dashboard's pixel baselines — which ARE the docs
   screenshots — had a built-in ~7-day EXPIRY, so the published dashboard was
   quietly emptying out** (`db/analytics.ts` + `visual.test.ts`; the finding the

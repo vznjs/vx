@@ -1586,11 +1586,16 @@ export class Analytics {
         SELECT id FROM workspaces WHERE id = ${wsParam} AND org_id = ${orgId}`
       return rows.length > 0 ? wsParam : null
     }
+    // `slug` breaks the tie: two workspaces ingesting in the same millisecond
+    // otherwise leave the pick to whatever plan Postgres chooses, and this row
+    // decides which workspace the whole dashboard opens onto. Same secondary
+    // key as `workspacesForOrg`, so the default is always the switcher's first
+    // row rather than a second, independently-ordered answer.
     const rows = await this.sql<{ id: string }[]>`
       SELECT w.id AS id,
              COALESCE((SELECT MAX(last_seen_at) FROM repos WHERE workspace_id = w.id), w.created_at) AS seen
       FROM workspaces w WHERE w.org_id = ${orgId}
-      ORDER BY seen DESC LIMIT 1`
+      ORDER BY seen DESC, w.slug ASC LIMIT 1`
     return rows[0]?.id ?? null
   }
 
@@ -1617,7 +1622,7 @@ export class Analytics {
              COALESCE((SELECT MAX(last_seen_at) FROM repos WHERE workspace_id = w.id), w.created_at) AS last_seen,
              (SELECT count(*)::int FROM invocations WHERE workspace_id = w.id) AS run_count
       FROM workspaces w WHERE w.org_id = ${orgId}
-      ORDER BY last_seen DESC`
+      ORDER BY last_seen DESC, w.slug ASC`
     return rows.map((r) => ({
       id: r.id,
       name: r.name,

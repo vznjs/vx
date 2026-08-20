@@ -13,6 +13,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { openDb, type DbClient } from '../src/db/client.js'
 import { bootPlatform, type TestPlatform } from './helpers/platform.js'
 
+// Seeded at a pinned epoch, so the platform clock is pinned to the same
+// instant. Nothing here asserts a windowed read today — but the Runs page
+// these suites drive renders windowed analytics beside the rows they do
+// assert, so leaving the server on the real clock would give any future
+// assertion there a silent ~7-day shelf life (see visual.test.ts).
 const NOW = Date.UTC(2026, 6, 20, 12, 0, 0)
 
 function summary(wsId: string, wsName: string, runId: string, project: string) {
@@ -119,7 +124,7 @@ describe('workspace lifecycle (rename + delete over the real wire)', () => {
   }
 
   beforeAll(async () => {
-    p = await bootPlatform({ bucket: 'ws-lifecycle' })
+    p = await bootPlatform({ bucket: 'ws-lifecycle', clock: () => NOW })
     db = openDb(p.dbUrl)
     await push('/v1/ingest', summary('client-doomed', 'doomed-repo', 'run-doomed', 'checkout'))
     await push('/v1/ingest/logs', logBundle('client-doomed', 'run-doomed', 'checkout'))
