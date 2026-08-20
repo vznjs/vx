@@ -20,7 +20,7 @@
 
 import path from 'node:path'
 import { existsSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { realpath, rm } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import { UserError } from '../util/index.js'
 
@@ -278,18 +278,58 @@ export async function resolveOutputs(args: {
   const scanned = [...(await scanUnion(args.outputs, excludeGlobs, args.projectDir))]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
   // DELETES whatever this returns, and `Bun.Glob.scan` happily walks `..` out
-  // of its cwd — so until now the loader's `..`/absolute rejection was the ONLY
-  // thing between a typo'd config and deleting a sibling project's tree, which
-  // reads as defence-in-depth but was a single point of failure. The resolver
-  // that feeds the delete now refuses to name a path outside the project, so
-  // any future caller reaching it by another route (a programmatic embedder, a
-  // config source that skips the loader) is contained by construction.
-  //
-  // Lexical is sufficient: `Bun.Glob.scan` does not follow symlinked
-  // directories (pinned in tests/inputs-resolution.test.ts), so a scanned path
-  // cannot leave the project through a symlink without already being outside
-  // it lexically.
-  return scanned.filter((p) => isInside(args.projectDir, p)).sort()
+  // of its cwd — so the loader's `..`/absolute rejection alone was a single
+  // point of failure. The resolver that feeds the delete refuses to name a path
+  // outside the project, so any future caller reaching it by another route (a
+  // programmatic embedder, a config source that skips the loader) is contained
+  // by construction.
+  return (await containedIn(args.projectDir, scanned)).sort()
+}
+
+/**
+ * Keep only the paths that are REALLY inside `root` — lexically, and after
+ * resolving symlinks.
+ *
+ * Lexical alone was sufficient only while `Bun.Glob.scan` refused to descend
+ * into symlinked directories, which this repo pinned as a deliberate tripwire
+ * on a DEPENDENCY's behaviour. **Bun 1.4.0 tripped it**: with `dist ->
+ * ../victim` the scan now yields `dist/precious.txt`, a path that is lexically
+ * inside the project while the file it names is not — and the caller rm()s
+ * whatever this returns. Measured on 1.4.0 before this guard: a plain
+ * `outputs.files: ['dist/**']` deleted a file outside the project.
+ *
+ * DIRECTORIES are what matter, not files: `rm` on a symlinked FILE unlinks the
+ * link and never its target, so a link sitting inside a real output directory
+ * is harmless. Resolving per directory also keeps this cheap — one syscall per
+ * distinct output directory rather than per output file, concurrently, and a
+ * `dist/**` of ten thousand files in one directory costs exactly one.
+ *
+ * A path whose directory will not resolve (a broken link, or a race with the
+ * task that produced it) is REFUSED. When the caller deletes, unresolvable
+ * means leave it alone.
+ */
+async function containedIn(root: string, paths: readonly string[]): Promise<string[]> {
+  // One `path.dirname` per path, kept alongside — computing it again in the
+  // final filter measured as the DOMINANT added cost on a wide output tree
+  // (string work, not syscalls: 10k files in 20 dirs cost more than 5k files
+  // in 200, which is the wrong shape for a per-directory probe).
+  const lexical: string[] = []
+  const lexDirs: string[] = []
+  for (const p of paths) {
+    if (!isInside(root, p)) continue
+    lexical.push(p)
+    lexDirs.push(path.dirname(p))
+  }
+  if (lexical.length === 0) return []
+  const realRoot = await realpath(root).catch(() => root)
+  const uniqueDirs = [...new Set(lexDirs)]
+  const resolved = await Promise.all(uniqueDirs.map((d) => realpath(d).catch(() => null)))
+  const contained = new Set<string>()
+  for (const [i, dir] of uniqueDirs.entries()) {
+    const real = resolved[i]
+    if (real !== null && real !== undefined && isInside(realRoot, real)) contained.add(dir)
+  }
+  return lexical.filter((_p, i) => contained.has(lexDirs[i]!))
 }
 
 /** Is `abs` the directory `dir` itself or something beneath it? */
@@ -337,7 +377,12 @@ export async function resolveWorkspaceOutputs(args: {
   outputs: string[]
 }): Promise<string[]> {
   if (args.outputs.length === 0) return []
-  return [...(await scanUnion(args.outputs, [], args.workspaceRoot))].sort()
+  const scanned = [...(await scanUnion(args.outputs, [], args.workspaceRoot))]
+  // Same containment as the project twin, anchored one level out. These globs
+  // deliberately ignore PROJECT boundaries — that is the escape hatch — but
+  // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
+  // deletes what this returns.
+  return (await containedIn(args.workspaceRoot, scanned)).sort()
 }
 
 /**

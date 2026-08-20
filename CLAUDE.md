@@ -249,6 +249,62 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-20**: **Bun 1.4.0 made `Glob.scan` follow symlinked directories, and
+  `vx run` started DELETING files outside the project — caught by this repo's own
+  tripwire, in CI, on a PR that touched no core code** (`cache/inputs.ts`).
+  **CONFIRMED by executed repro on the two binaries side by side, HIGH.** The
+  resolver's containment was lexical, and said in its own comment exactly why
+  that was enough: _"Lexical is sufficient: `Bun.Glob.scan` does not follow
+  symlinked directories (pinned in tests/inputs-resolution.test.ts), so a
+  scanned path cannot leave the project through a symlink without already being
+  outside it lexically."_ The pin it cites was written as a deliberate
+  tripwire on a DEPENDENCY, and its comment predicted this verbatim — _"if Bun
+  ever adds symlink following … `cleanOutputs` starts deleting through the link
+  and no vx guard fires. This test is the tripwire."_ **It fired.** With
+  `dist -> ../victim`, `Bun.Glob('dist/**').scanSync()` returns `[]` on 1.3.11
+  and **`['dist/precious.txt']` on 1.4.0**; driven end to end through the real
+  `resolveOutputs`/`cleanOutputs`, a plain `outputs.files: ['dist/**']` resolved
+  a path that is lexically inside the project while the file it names is not,
+  and **the file outside the project was DELETED**. Reach is ordinary, not
+  exotic: `cleanOutputs` runs before every cache-miss exec AND before every
+  cache-hit restore, and a `dist` symlinked to a shared build dir is a normal
+  layout. **The fix is the containment the comment's own reasoning implies:**
+  resolve the DIRECTORY chain and require the realpath to stay under the
+  project's realpath. Directories and not files, deliberately — `rm` on a
+  symlinked FILE unlinks the link and never its target — and per directory, so
+  a `dist/**` of ten thousand files in one directory costs exactly one syscall.
+  An unresolvable directory (broken link, or a race with the task that produced
+  it) is REFUSED: when the caller deletes, unresolvable means leave it alone.
+  **Swept as a CLASS in the same wave, which is where the second finding was:**
+  `resolveWorkspaceOutputs` had **no containment at all** — not even lexical —
+  while its project twin had some, so `cleanWorkspaceOutputs` could delete
+  outside the WORKSPACE. Those globs deliberately ignore PROJECT boundaries;
+  that is the documented escape hatch, and escaping the workspace was never
+  part of it. **THE DIFFERENTIAL IS THE ENTRY, because it says what local
+  gates can and cannot see:** with the fix reverted, this container's Bun
+  **1.3.11 runs 49 / 0 — completely blind to the class** — while 1.4.0 fails
+  **2** (both containment pins) and goes 50 / 0 restored, byte-identical. The
+  full core suite is green on BOTH (2656 / 0 on 1.4.0, no skip line). So the
+  local gate could never have caught this, and `bun-version: latest` in CI is
+  what did — an argument for keeping it rather than pinning, since pinning
+  would have hidden the class until a user hit it. **A control of mine was
+  wrong and measuring said so:** the first version asserted that a symlinked
+  FILE inside a real output dir gets cleaned. It does not, on either version —
+  `onlyFiles: true` never yields one (measured: `dist/**` scans to
+  `['dist/app.js']` alone on 1.3.11 AND 1.4.0), so vx never targets such a link
+  and its target is safe by construction rather than by this guard. The control
+  now asserts what actually holds — the real sibling IS resolved and cleaned,
+  so the fix cannot degenerate into refusing a genuine output directory.
+  **Cost measured rather than asserted, and the first cut was the wrong shape:**
+  10k files in 20 dirs cost MORE added time than 5k files in 200, which cannot
+  be a per-directory probe — it was `path.dirname` called twice per path, string
+  work dominating the syscalls. Computing it once takes the overhead to
+  **+3.0 ms at 5000 outputs and +4.7 ms at 10000**, against a glob scan that
+  already costs 18-31 ms for the same trees. NO CACHE_VERSION/SCHEMA/wire bump:
+  key derivation is untouched, and the fix RESTORES 1.3.11's semantics on
+  1.4.0 for a configuration that on 1.4.0 was capturing files it should not
+  while deleting files it must not.
+
 - **2026-08-20**: **A project called `utils` got a GREEN identity dot and one called
   `frontend` got an AMBER one — the categorical ramp WAS the status palette**
   (`ui/src/format.ts` + six call sites; surfaced by the design pass, which

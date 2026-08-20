@@ -624,16 +624,22 @@ describe('output resolution contains itself — the loader guard is now the SECO
     })()
   })
 
-  it('a symlinked output dir resolves to NOTHING — Bun.Glob.scan does not follow it', async () => {
+  it('a symlinked output dir resolves to NOTHING — vx resolves the real path', async () => {
     // `dist -> ../victim` is the escape the loader cannot see: the glob is a
     // blameless `dist/**` with no `..` and no leading `/`, and the traversal
-    // happens on disk. What saves us is that `Bun.Glob.scan` does not descend
-    // into symlinked directories — not any check vx performs.
+    // happens on disk.
     //
-    // So this pins a property of a DEPENDENCY, and that is the point: if Bun
-    // ever adds symlink following (or someone adds a `followSymlinks` option
-    // for a good reason), `cleanOutputs` starts deleting through the link and
-    // no vx guard fires. This test is the tripwire.
+    // This used to pin a property of a DEPENDENCY — `Bun.Glob.scan` refusing to
+    // descend into symlinked directories — with a comment naming itself the
+    // tripwire for the day that changed. **It changed.** Bun 1.4.0 follows the
+    // link: measured on the two binaries side by side, `dist/**` scans to `[]`
+    // on 1.3.11 and to `dist/precious.txt` on 1.4.0, and with only the lexical
+    // containment filter `cleanOutputs` DELETED the file outside the project —
+    // exactly the data loss the old comment predicted, and CI (which installs
+    // `bun-version: latest`) is what caught it.
+    //
+    // So the guard is vx's own now: containment resolves the directory chain,
+    // which is true on every Bun. These assertions hold on both versions.
     await symlink(victim, path.join(projectDir, 'dist'))
 
     expect(
@@ -654,6 +660,33 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // The link itself survives too: `onlyFiles: true` never yields it, so
     // there is nothing for `rm` to target.
     expect(existsSync(path.join(projectDir, 'dist'))).toBe(true)
+  })
+
+  it('a REAL output dir holding a symlinked file is still cleaned — containment is per directory', async () => {
+    // The control that keeps the fix from over-refusing: containment resolves
+    // DIRECTORIES, so a link sitting inside a genuine output dir must not take
+    // the whole dir out of the resolved set.
+    //
+    // The first draft of this test asserted the link itself gets cleaned. That
+    // premise was WRONG and measuring said so: `onlyFiles: true` never yields a
+    // symlinked file — checked on 1.3.11 AND 1.4.0, both scan `dist/**` to
+    // `['dist/app.js']` alone. So vx never targets such a link, on any version,
+    // and its target is safe by construction rather than by this guard.
+    await write(path.join(projectDir, 'dist/app.js'), 'built')
+    await symlink(path.join(victim, 'precious.txt'), path.join(projectDir, 'dist/linked.txt'))
+
+    const resolved = await resolveOutputs({
+      projectDir,
+      outputs: ['dist/**'],
+      nestedProjectDirs: [],
+    })
+    // The real file is resolved (the fix does not refuse a real dir); the link
+    // is not yielded at all.
+    expect(resolved).toEqual([path.join(projectDir, 'dist/app.js')])
+
+    await cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
+    expect(existsSync(path.join(projectDir, 'dist/app.js'))).toBe(false)
+    expect(await readFile(path.join(victim, 'precious.txt'), 'utf8')).toBe('precious')
   })
 
   it('FINDING: a negation in outputs.files is a silent no-op', async () => {
@@ -718,6 +751,30 @@ describe('output resolution contains itself — the loader guard is now the SECO
     })
     expect(removed).toEqual(['generated/schema.ts'])
     expect(existsSync(path.join(root, 'generated', 'schema.ts'))).toBe(false)
+  })
+
+  it('a symlinked WORKSPACE output dir resolves to nothing — the escape hatch stops at the root', async () => {
+    // The class sweep. `outputs.workspaceFiles` deliberately ignores PROJECT
+    // boundaries — that IS the escape hatch — but escaping the WORKSPACE was
+    // never part of it, and this twin had no containment at all while its
+    // project sibling did. On a Bun that follows symlinked directories (1.4.0),
+    // `generated -> <outside>` would have made `cleanWorkspaceOutputs` delete
+    // outside the workspace entirely.
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-ws-victim-'))
+    try {
+      await write(path.join(outside, 'precious.txt'), 'precious')
+      await symlink(outside, path.join(root, 'linked-gen'))
+
+      expect(
+        await resolveWorkspaceOutputs({ workspaceRoot: root, outputs: ['linked-gen/**'] }),
+      ).toEqual([])
+      expect(
+        await cleanWorkspaceOutputs({ workspaceRoot: root, outputs: ['linked-gen/**'] }),
+      ).toEqual([])
+      expect(await readFile(path.join(outside, 'precious.txt'), 'utf8')).toBe('precious')
+    } finally {
+      await rm(outside, { recursive: true, force: true })
+    }
   })
 
   it('an empty output list resolves and cleans nothing at all', async () => {
