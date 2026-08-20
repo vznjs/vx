@@ -10,10 +10,18 @@
 // the docs screenshots in the same commit. Docs can no longer silently rot.
 //
 // Determinism is the whole game: the seed is anchored to a FIXED epoch (never
-// Date.now()), the browser clock is frozen to that same instant (so "2h ago"
-// renders identically forever), and animations/transitions are disabled before
-// the shutter. What remains is anti-aliasing jitter, which `MAX_DIFF_RATIO`
-// absorbs.
+// Date.now()), BOTH clocks are frozen to that same instant — the browser's (so
+// "2h ago" renders identically forever) and the SERVER's, via `bootPlatform`'s
+// `clock` seam — and animations/transitions are disabled before the shutter.
+// What remains is anti-aliasing jitter, which `MAX_DIFF_RATIO` absorbs.
+//
+// Freezing only the browser is what this suite did until 2026-08-20, and it
+// gave the baselines a ~7-day EXPIRY: every windowed analytics read used the
+// server's real clock, so "this 7 days" walked off the seeded data. Measured at
+// 31 days of drift, the project page rendered `AVG EXEC <1ms · RUNS 0 · CACHE
+// HIT RATE 0%` against a baseline of `717ms · 21 · 37%` — and since these
+// baselines ARE the docs screenshots, refreshing them then would have published
+// an empty dashboard as the product's marketing images.
 //
 // Skips (never fails) when the moving parts aren't present — playwright must be
 // resolvable and the single-file SPA must be built (`vx run build.ui`; dist/ is
@@ -344,7 +352,16 @@ describe.skipIf(!available)('visual snapshots (docs screenshots)', () => {
   const errors: string[] = []
 
   beforeAll(async () => {
-    platform = await bootPlatform({ bucket: 'visual-snapshots', uiHtmlPath: DIST })
+    // The SERVER's clock is frozen to the same instant as the browser's.
+    // Freezing only the browser left every windowed analytics read on the real
+    // clock, so "this 7 days" walked off the seeded data and the baselines
+    // expired about a week after each refresh — measured at 31 days of drift,
+    // the project page rendered `RUNS 0 · CACHE HIT RATE 0%`.
+    platform = await bootPlatform({
+      bucket: 'visual-snapshots',
+      uiHtmlPath: DIST,
+      clock: () => NOW,
+    })
     for (const body of seedSummaries()) {
       const res = await fetch(`${platform.origin}/v1/ingest`, {
         method: 'POST',

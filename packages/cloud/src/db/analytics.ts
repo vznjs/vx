@@ -1108,7 +1108,22 @@ export interface DurationHintScope {
 }
 
 export class Analytics {
-  constructor(private readonly sql: SQL) {}
+  /**
+   * `clock` exists so a deterministic fixture can freeze the WINDOW every
+   * read computes.
+   *
+   * The dashboard's pixel baselines double as the docs screenshots, and the
+   * suite that captures them froze only the BROWSER clock while every windowed
+   * read here used the real one — so "this 7 days" walked off the seeded data
+   * and the baselines expired about a week after each refresh, permanently.
+   *
+   * It is a CONSTRUCTION-time seam and deliberately not a request parameter:
+   * a caller can never move the server's idea of now, only whoever boots it.
+   */
+  constructor(
+    private readonly sql: SQL,
+    private readonly clock: () => number = () => Date.now(),
+  ) {}
 
   private readonly hintCache = new Map<string, { hints: Map<string, number>; expiresAt: number }>()
 
@@ -1223,7 +1238,7 @@ export class Analytics {
     tokenId?: string | undefined
     now?: number
   }): Promise<{ stored: boolean; workspaceId: string }> {
-    const now = args.now ?? Date.now()
+    const now = args.now ?? this.clock()
     const r = args.summary.run
     const clientWorkspaceId =
       typeof r.workspaceId === 'string' && r.workspaceId !== '' ? r.workspaceId : 'default'
@@ -1384,7 +1399,7 @@ export class Analytics {
     record: TaskIngestRecord
     now?: number
   }): Promise<{ stored: boolean; workspaceId: string }> {
-    const now = args.now ?? Date.now()
+    const now = args.now ?? this.clock()
     const rec = args.record
     if (rec.task.status === 'aborted') {
       // Still route the workspace so a workspace-scoped token's clamp is honored
@@ -1463,7 +1478,7 @@ export class Analytics {
     bundle: TaskLogBundle
     now?: number
   }): Promise<{ stored: number; workspaceId: string }> {
-    const now = args.now ?? Date.now()
+    const now = args.now ?? this.clock()
     const workspaceId = await this.routeWorkspace({
       orgId: args.orgId,
       tokenWorkspaceId: args.tokenWorkspaceId,
@@ -1524,7 +1539,7 @@ export class Analytics {
     push: CatalogPush
     now?: number
   }): Promise<{ workspaceId: string }> {
-    const now = args.now ?? Date.now()
+    const now = args.now ?? this.clock()
     const workspaceId = await this.routeWorkspace({
       orgId: args.orgId,
       tokenWorkspaceId: args.tokenWorkspaceId,
@@ -1739,7 +1754,7 @@ export class Analytics {
     // default 1 = 24h keeps every caller that omits it byte-identical. Field
     // names keep the `Last24h` suffix as an internal wire label — the value
     // reflects the requested window and the UI relabels it.
-    const since = Date.now() - clampInt(windowDays, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
+    const since = this.clock() - clampInt(windowDays, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
     const runs = (
       await this.sql<{ total: number; hit_local: number; hit_remote: number }[]>`
         SELECT count(*)::int AS total,
@@ -1763,7 +1778,7 @@ export class Analytics {
   }
 
   async getHitRateSplit(workspaceId: string, days = 1): Promise<HitRateSplit> {
-    const since = Date.now() - days * 24 * 60 * 60 * 1000
+    const since = this.clock() - days * 24 * 60 * 60 * 1000
     const r = (
       await this.sql<{ total: number; hit_local: number; hit_remote: number }[]>`
         SELECT count(*)::int AS total,
@@ -1996,9 +2011,9 @@ export class Analytics {
     const bucketMs = 24 * 60 * 60 * 1000
     // Bound the fill loop: a hostile `?days=1e9` would otherwise push ~1e9
     // zero-points and freeze the server.
-    const since = Date.now() - clampInt(days, 1, MAX_WINDOW_DAYS) * bucketMs
+    const since = this.clock() - clampInt(days, 1, MAX_WINDOW_DAYS) * bucketMs
     const start = Math.floor(since / bucketMs) * bucketMs
-    const end = Math.floor(Date.now() / bucketMs) * bucketMs
+    const end = Math.floor(this.clock() / bucketMs) * bucketMs
     const out: StoragePoint[] = []
     for (let t = start; t <= end; t += bucketMs) out.push({ t, bytesAdded: 0, entriesAdded: 0 })
     return out
@@ -2016,7 +2031,7 @@ export class Analytics {
   }
 
   async getCacheSavings(workspaceId: string): Promise<CacheSavings> {
-    const since = Date.now() - 24 * 60 * 60 * 1000
+    const since = this.clock() - 24 * 60 * 60 * 1000
     // One set-based query instead of two per-hit-row correlated subqueries.
     // `uncached` = the avg uncached-success duration per (project, task); each
     // cache-hit row joins to its task's baseline (the inner join is the old
@@ -2649,7 +2664,7 @@ export class Analytics {
     // hundreds-of-millions-iteration server freeze (bounds the loop, the array
     // allocation, AND the SQL range). Legitimate ranges (24h hourly / 30d
     // daily) are far under the cap, so results are unchanged.
-    const now = Date.now()
+    const now = this.clock()
     const to = Math.min(args.to ?? now, now)
     const defaultRangeMs = bucket === 'hour' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000
     const minFrom = to - (MAX_TREND_BUCKETS - 1) * bucketMs
@@ -2702,7 +2717,7 @@ export class Analytics {
   async getRunHeatmap(workspaceId: string, days = 30): Promise<HeatmapCell[]> {
     // Clamp the span so a hostile `?days=1e9` can't turn the bounded fetch into
     // a full scan of every partition.
-    const since = Date.now() - clampInt(days, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
+    const since = this.clock() - clampInt(days, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
     // Bucket in SQL (≤168 rows out) instead of streaming every row into JS — at
     // the platform's target scale (50-100M task_runs/day) the raw fetch would be
     // tens of millions of rows over the wire. Bucketed in UTC: Postgres
@@ -2864,7 +2879,7 @@ export class Analytics {
   ): Promise<FlakeTrend> {
     const dayMs = 86_400_000
     const sinceDays = clampInt(args.sinceDays ?? 90, 1, MAX_WINDOW_DAYS)
-    const since = Date.now() - sinceDays * dayMs
+    const since = this.clock() - sinceDays * dayMs
     const rows = await this.sql<
       {
         t: string
@@ -2946,7 +2961,7 @@ export class Analytics {
     workspaceId: string,
     args: { sinceDays?: number; minRuns?: number } = {},
   ): Promise<Map<string, number>> {
-    const since = Date.now() - clampInt(args.sinceDays ?? 90, 1, MAX_WINDOW_DAYS) * 86_400_000
+    const since = this.clock() - clampInt(args.sinceDays ?? 90, 1, MAX_WINDOW_DAYS) * 86_400_000
     // The SAME minimum-evidence bar `getLeastStableTasks` applies, and it has to
     // be the same one: that surface REPORTS a task as unstable, this one SUPPRESSES
     // regression verdicts for it, and it made no sense for the second to act on
@@ -2996,7 +3011,7 @@ export class Analytics {
   ): Promise<
     { id: string; project: string; task: string; cv: number; samples: number; p50Ms: number }[]
   > {
-    const since = Date.now() - clampInt(args.sinceDays ?? 30, 1, MAX_WINDOW_DAYS) * 86_400_000
+    const since = this.clock() - clampInt(args.sinceDays ?? 30, 1, MAX_WINDOW_DAYS) * 86_400_000
     const limit = clampInt(args.limit ?? 8, 1, 100)
     const minRuns = clampInt(args.minRuns ?? 3, 2, 1000)
     const rows = await this.sql<
@@ -3039,7 +3054,7 @@ export class Analytics {
     task: string,
     args: { sinceDays?: number; limit?: number } = {},
   ): Promise<TaskStability> {
-    const since = Date.now() - clampInt(args.sinceDays ?? 90, 1, MAX_WINDOW_DAYS) * 86_400_000
+    const since = this.clock() - clampInt(args.sinceDays ?? 90, 1, MAX_WINDOW_DAYS) * 86_400_000
     const limit = clampInt(args.limit ?? 20, 1, 200)
     // `limit` bounds the RENDERED per-key table, and only that. It used to sit
     // inside the per-key aggregation, so every summary field below — cvMedian,
@@ -3139,7 +3154,7 @@ export class Analytics {
     const sinceDays = clampInt(args.sinceDays ?? 7, 1, MAX_WINDOW_DAYS)
     const minBranches = Math.max(1, args.minBranches ?? 2)
     const limit = clampInt(args.limit ?? 25, 1, 200)
-    const since = Date.now() - sinceDays * 86_400_000
+    const since = this.clock() - sinceDays * 86_400_000
 
     const latest = await this.sql<
       { project: string; task: string; branch: string; status: string }[]
@@ -3258,7 +3273,7 @@ export class Analytics {
     project: string,
     args: { sinceDays?: number; limit?: number } = {},
   ): Promise<ProjectBranchFailure[]> {
-    const since = Date.now() - clampInt(args.sinceDays ?? 14, 1, MAX_WINDOW_DAYS) * 86_400_000
+    const since = this.clock() - clampInt(args.sinceDays ?? 14, 1, MAX_WINDOW_DAYS) * 86_400_000
     const limit = clampInt(args.limit ?? 25, 1, 200)
     const rows = await this.sql<
       {
@@ -3354,7 +3369,7 @@ export class Analytics {
   ): Promise<ProjectTaskTrendPoint[]> {
     const bucket: TrendBucket = args.bucket ?? 'day'
     const bucketMs = bucket === 'hour' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000
-    const now = Date.now()
+    const now = this.clock()
     const to = Math.min(args.to ?? now, now)
     const defaultRangeMs = bucket === 'hour' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000
     const minFrom = to - (MAX_TREND_BUCKETS - 1) * bucketMs
@@ -3430,7 +3445,7 @@ export class Analytics {
     const scope: { project?: string; task?: string } = {}
     if (args.project !== undefined) scope.project = args.project
     if (args.task !== undefined) scope.task = args.task
-    const to = args.endMs ?? Date.now()
+    const to = args.endMs ?? this.clock()
     const win = windowDays * 86_400_000
     const curFrom = to - win
     const prevTo = curFrom
@@ -3568,7 +3583,7 @@ export class Analytics {
     // partition. Same degenerate-window class as getRegressions. The default
     // (14) and any legitimate dashboard window are far under the cap.
     lookbackDays = clampInt(lookbackDays, 1, MAX_WINDOW_DAYS)
-    const since = Date.now() - lookbackDays * 24 * 60 * 60 * 1000
+    const since = this.clock() - lookbackDays * 24 * 60 * 60 * 1000
     const rows = await this.sql<
       {
         project: string
@@ -3748,7 +3763,7 @@ export class Analytics {
     // trunk memo entry and leak its timings into main's hint (git branch names
     // cannot contain a tab, so a branch value can never forge the `trunk` key).
     const memoKey = isTrunk ? `${workspaceId}\ttrunk` : `${workspaceId}\tbranch\t${branch}`
-    const now = Date.now()
+    const now = this.clock()
     const cached = this.hintCache.get(memoKey)
     if (cached !== undefined && cached.expiresAt > now) return cached.hints
 

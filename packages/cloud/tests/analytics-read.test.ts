@@ -2622,3 +2622,54 @@ describe('task ids split on the FIRST #', () => {
     expect(await analytics.getTaskDetail(w.ws, 'app#b')).toBeNull()
   })
 })
+
+describe('the reads take their window from the instance clock', () => {
+  // The seam that stops the pixel baselines expiring. `visual.test.ts` seeds
+  // rows around a FIXED epoch and freezes the browser clock there; before this
+  // existed, every windowed read here still used the real one, so "this 7 days"
+  // walked off the seeded data about a week after each baseline refresh — and
+  // those baselines ARE the docs screenshots, so the published dashboard
+  // gradually emptied out (measured at 31 days of drift: `RUNS 0 · CACHE HIT
+  // RATE 0%` where the truth was `21 · 37%`).
+  //
+  // The visual suite is host-pinned and skips in CI, so it cannot protect its
+  // own seam. This runs in CI.
+  const EPOCH = Date.UTC(2020, 0, 15, 12, 0, 0)
+  let w: { org: string; ws: string }
+
+  beforeAll(async () => {
+    w = await newOrgWs(db, 'clock')
+    await insertINV(db, w.ws, w.org, { runId: 'CR1', startedAt: EPOCH - HOUR })
+    await insertTR(db, w.ws, w.org, {
+      runId: 'CR1',
+      project: 'app',
+      task: 'build',
+      duration: 500,
+      startedAt: EPOCH - HOUR,
+      hash: 'ck1',
+    })
+  })
+
+  it('sees rows a frozen clock puts inside the window', async () => {
+    const frozen = new Analytics(db.sql, () => EPOCH)
+    const stats = await frozen.getCacheStatsSql(w.ws, 1)
+    expect(stats.runCountLast24h).toBe(1)
+  })
+
+  it('sees nothing once the window has walked past them', async () => {
+    // The failure the fixture was living with, made explicit: the SAME rows,
+    // read with a clock a year on, are simply outside "the last 24 hours".
+    const later = new Analytics(db.sql, () => EPOCH + 365 * 24 * HOUR)
+    const stats = await later.getCacheStatsSql(w.ws, 1)
+    expect(stats.runCountLast24h).toBe(0)
+  })
+
+  it('defaults to the real clock when none is injected', async () => {
+    // The control: the seam must not change what a production Analytics does.
+    // These rows are years old, so a real-clock 24h window excludes them —
+    // which is also what the default arm proves it is using.
+    const real = new Analytics(db.sql)
+    const stats = await real.getCacheStatsSql(w.ws, 1)
+    expect(stats.runCountLast24h).toBe(0)
+  })
+})
