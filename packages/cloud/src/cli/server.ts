@@ -310,6 +310,13 @@ export async function startServer(opts: {
   config: ServerConfig
   uiHtmlPath?: string
   log?: (message: string) => void
+  /**
+   * Freeze what the analytics reads consider "now". An in-process seam for
+   * deterministic fixtures — deliberately NOT on `ServerConfig`, which is
+   * resolved from env: no operator (and no request) can move the server's
+   * clock, only an embedder that constructs it.
+   */
+  clock?: () => number
 }): Promise<PlatformServer> {
   const log = opts.log ?? ((m: string): void => void process.stderr.write(`[vx-cloud] ${m}\n`))
   const { config } = opts
@@ -387,7 +394,7 @@ export async function startServer(opts: {
   }, PARTITION_TICK_MS)
   partitionTick.unref()
 
-  const analytics = new Analytics(db.sql)
+  const analytics = new Analytics(db.sql, opts.clock)
 
   const users = await db.sql<{ c: number }[]>`SELECT count(*)::int AS c FROM users`
   if (users[0]!.c === 0) {

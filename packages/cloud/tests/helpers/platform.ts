@@ -63,7 +63,7 @@ interface StartedServer {
 
 async function startAgainst(
   dbUrl: string,
-  opts: { bucket: string; uiHtmlPath?: string },
+  opts: { bucket: string; uiHtmlPath?: string; clock?: () => number },
 ): Promise<StartedServer> {
   const s3 = startFakeS3({ bucket: opts.bucket })
   const dataDir = await mkdtemp(path.join(tmpdir(), 'vx-platform-test-'))
@@ -85,6 +85,7 @@ async function startAgainst(
     // Serve the SPA only when a caller asks (browser e2e / the perf guard) —
     // API-surface suites leave it off so `startServer` doesn't touch the dist.
     ...(opts.uiHtmlPath !== undefined ? { uiHtmlPath: opts.uiHtmlPath } : {}),
+    ...(opts.clock !== undefined ? { clock: opts.clock } : {}),
   })
   return { server, s3, dataDir }
 }
@@ -142,7 +143,16 @@ async function provision(dbUrl: string): Promise<Provisioned> {
 }
 
 export async function bootPlatform(
-  opts: { bucket?: string; uiHtmlPath?: string } = {},
+  opts: {
+    bucket?: string
+    uiHtmlPath?: string
+    /**
+     * Freeze what the analytics reads consider "now". A fixture that seeds
+     * rows around a fixed epoch needs the SERVER on that epoch too, or every
+     * windowed read walks off the data as real time passes.
+     */
+    clock?: () => number
+  } = {},
 ): Promise<TestPlatform> {
   const bucket = opts.bucket ?? 'vx-artifacts'
   const pg = await ephemeralPg()
@@ -157,6 +167,7 @@ export async function bootPlatform(
   const started = await startAgainst(dbUrl, {
     bucket,
     ...(opts.uiHtmlPath !== undefined ? { uiHtmlPath: opts.uiHtmlPath } : {}),
+    ...(opts.clock !== undefined ? { clock: opts.clock } : {}),
   })
 
   return {

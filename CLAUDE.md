@@ -249,6 +249,125 @@ write a plausible cause into the log that you have not proven.
 
 ## Decision log
 
+- **2026-08-20**: **Freezing the server clock exposed an unspecified ordering that
+  decides which workspace the whole dashboard opens onto** (`db/analytics.ts`
+  `resolveReadWorkspace` + `workspacesForOrg`, plus the two sibling fixtures; the
+  CLASS SWEEP the clock-seam wave owed itself — this repo's most-repeated lesson
+  is "when a wave fixes a CLASS rather than a line, grep the class in the same
+  wave", and the entry below fixed one fixture). **The sweep's first half is a
+  clean NEGATIVE, recorded so nobody re-treads it:** core `metrics.ts` has 12
+  wall-clock windowed reads, but `tests/metrics.test.ts` seeds RELATIVE to now
+  (`Date.now() - 1000`) for every windowed assertion and uses `startedAt: 1000`
+  (1970) only for id-addressed reads that have no window — so core is immune BY
+  CONSTRUCTION, not by luck. **The second half found two surviving call sites:**
+  `workspace-lifecycle` and `workspace-context` pin the IDENTICAL fixture epoch
+  (`Date.UTC(2026, 6, 20, 12, 0, 0)`) and froze neither clock. Both pass today
+  only because of WHAT THEY ASSERT — run ids and workspace names, never a
+  windowed read — and `workspace-context` drives the Runs page, which renders
+  the windowed CI-health strip directly beside the rows it does assert. One
+  added assertion there silently acquires the same ~7-day shelf life the wave
+  below had just removed. Immunity-by-assertion is not immunity, so both now
+  take the seam. **AND PINNING THE CLOCK IMMEDIATELY BROKE A TEST, which is the
+  finding.** `workspace-context` asserts "most-recently-active wins when nothing
+  is pinned" — with a single frozen INSTANT that claim has no answer:
+  `routeWorkspace` stamps `repos.last_seen_at` from the clock, so both
+  workspaces landed on the same millisecond and the assertion flipped
+  `acme/beta` → `acme/alpha`. **Traced rather than guessed:**
+  `resolveReadWorkspace`'s no-`?ws=` arm is `ORDER BY seen DESC LIMIT 1` over
+  `MAX(repos.last_seen_at)` with **no tie-break**, and its sibling
+  `workspacesForOrg` — the switcher's order — is `ORDER BY last_seen DESC`, also
+  none. **The obvious claim is REFUTED by measurement, and that matters:** a
+  probe against real Postgres confirmed the tie is real (both rows byte-identical
+  `1784548800000`) and then found the pick **STABLE across 12 executions** — seq
+  scan, insertion order. So this is an UNSPECIFIED ordering, not an observed
+  flap, and it is written up that way rather than as a live bug. It is still
+  fixed, on the precedent this log already set twice (the `getRegressions`
+  `run_id DESC` tiebreaker, the `DISTINCT ON … started_at ASC` earliest-copy
+  convention): a plan change is all it takes to turn "stable by accident" into a
+  default workspace that flaps between page loads. **`slug` is the secondary key
+  because `workspaces UNIQUE(org_id, slug)` makes it a TOTAL order within an
+  org**, and both queries take the SAME one — which buys a real invariant: the
+  default workspace IS the switcher's first row, rather than two independently
+  ordered answers that can disagree. **The fixture fix is the more faithful
+  half:** `workspace-context`'s clock is pinned but STEPS to each ingest's own
+  timestamp (`clockMs = at`), so "most recently active" is decided by when the
+  work happened — a frozen instant makes the test assert something unanswerable,
+  and it previously passed only because real-clock ingest order happened to
+  agree. **Differential:** reverting BOTH tie-breaks fails exactly **2** of the
+  3 new pins, restore back to 91/0 — and the third is a deliberate CONTROL that
+  passes BOTH ways (a genuinely later `last_seen_at` must still outrank the slug
+  order, or "most recently active" is quietly replaced by alphabetical). The tie
+  fixture inserts `w-zulu` BEFORE `w-alpha` on purpose, so a passing test cannot
+  be insertion order agreeing by luck. **A type error of mine that `bun test`
+  cannot see:** the invariant pin compared a `string` receiver against a
+  `string | null`, which transpile-only testing sails past — the lint gate
+  caught it (TS2769), the standing reason `bun test` passing is not the gate. NO
+  CACHE_VERSION/SCHEMA/wire/migration bump — this adds a secondary sort key to
+  two read queries and changes which instant two fixtures call "now"; no key, no
+  stored byte. Gates from the ROOT: fmt/lint 0, core **2656 / 0** with `git diff
+src/` EMPTY, cloud **1328 / 0 across 60 files with zero skips**.
+
+- **2026-08-20**: **The dashboard's pixel baselines — which ARE the docs
+  screenshots — had a built-in ~7-day EXPIRY, so the published dashboard was
+  quietly emptying out** (`db/analytics.ts` + `visual.test.ts`; the finding the
+  identity-colour wave recorded rather than papered over, now closed).
+  **CONFIRMED by measurement, MED.** `visual.test.ts` pins `const NOW =
+Date.UTC(2026, 6, 20)` and freezes the BROWSER clock there — but every
+  windowed analytics read used the SERVER's real `Date.now()`, at **twenty-one**
+  sites. So "this 7 days" walks off the seeded data as real time passes:
+  measured at **31.2 days** of drift, the project page rendered `AVG EXEC <1ms ·
+RUNS 0 · CACHE HIT RATE 0%` against a baseline of `717ms · 21 · 37%`, and the
+  Runs CI-health strip published a red **`CACHE HIT RATE (24H) 0%`** where the
+  truth is **56%**. **The trap is that refreshing is the WRONG move**: it
+  re-freezes today's staleness, goes red again next week, and — because these
+  files are the images `cloud/dashboard.md` embeds — publishes an empty
+  dashboard as the product's marketing screenshots. The previous wave declined
+  to refresh for exactly that reason and recorded it; this closes it properly.
+  **The fix is one seam, not seventeen call sites:** `Analytics` takes an
+  optional `clock` and every read asks `this.clock()`. It is CONSTRUCTION-time
+  and deliberately NOT on `ServerConfig` — that is resolved from env, and a
+  `VX_CLOUD_NOW` would put a clock override in production reach; as an argument
+  to `startServer` only an embedder that boots the process can move it, never an
+  operator and never a request. `bootPlatform({ clock })` threads it, and the
+  visual fixture freezes the server on the SAME instant as the browser.
+  **The refresh direction is the proof it was a defect and not cosmetics:**
+  with both clocks frozen the previously-failing `insights` and `project` shots
+  PASS against their existing baselines (0.17% / 0.07%), while three others move
+  — and every one moves toward MORE content: `runs` restores the real 24h cache
+  hit rate, `cache` repopulates the hit-split table, `task-detail` (10.66%)
+  regains an entire period-comparison tile row (`1.05s +48ms · 8% +7.7pp · 13 +6
+vs prior 7d · 15% +15.4pp`) that drift had collapsed. Each capture was READ
+  before being blessed, per the standing rule that a refresh republishes a docs
+  screenshot. **The docs captions corroborate it independently, which is the
+  check that costs nothing and settles the argument:** `cloud/dashboard.md`
+  describes the task-detail shot as showing "flaky badge, **trend tiles**, a
+  one-click debug card" and `cloud/remote-caching.md` describes the cache shot
+  as showing "hit rate, local vs remote hits, time saved, and the **hit-source
+  split**" — and those are precisely the two regions drift had emptied. The
+  published images had stopped showing what their own alt text promised.
+  **Only the three that changed CONTENT are committed:** the update
+  flag rewrites all ten, and `palette` moved **0.00%** of sampled pixels (pure
+  encoder/anti-alias noise, byte-different, visually identical) while
+  insights/project moved under the 0.5% tolerance — reverting those three keeps
+  the diff honest and the suite still green, verified by re-running without the
+  update flag. **Differentials:** removing the frozen server clock fails **5**
+  of 10 shots; with it, **10 / 0 twice**, the second run without
+  `VX_UPDATE_SNAPSHOTS` so the baselines are stable rather than merely
+  self-consistent with the run that wrote them. **And the seam gets a pin that
+  runs in CI, because the suite protecting it does not:** `visual` is
+  host-pinned and skips on a runner, so `analytics-read.test.ts` gains a
+  clock block — a frozen clock sees rows inside its window, a clock a year on
+  sees none, and an un-injected `Analytics` still uses the real one (the control
+  that the seam changes nothing in production). Mutation-verified: making
+  `getCacheStatsSql` ignore the instance clock fails exactly **1** of its 88,
+  restored byte-identical; the other two assertions pass BOTH ways and are
+  controls by construction, which is stated rather than dressed up as coverage.
+  NO CACHE_VERSION/SCHEMA/wire/migration bump — an optional constructor argument
+  whose default is the previous behaviour; **`git diff src/` is empty** (zero
+  core change). Docs shipped in the same wave: the screenshots README states
+  that BOTH clocks are frozen and why, with the measured drift, where a
+  maintainer refreshing baselines will actually read it.
+
 - **2026-08-20**: **Bun 1.4.0 made `Glob.scan` follow symlinked directories, and
   `vx run` started DELETING files outside the project — caught by this repo's own
   tripwire, in CI, on a PR that touched no core code** (`cache/inputs.ts`).

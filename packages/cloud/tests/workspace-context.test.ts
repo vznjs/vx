@@ -19,6 +19,11 @@ import { sharedBrowser } from './helpers/playwright.js'
 import { browserGate } from './helpers/browser-gate.js'
 
 const DIST = path.join(import.meta.dir, '..', 'ui', 'dist', 'index.html')
+// Seeded at a pinned epoch, and the platform clock is driven from the same
+// timeline (see `clockMs`). Nothing here asserts a windowed read today — but
+// the Runs page this suite drives renders windowed analytics beside the rows
+// it does assert, so leaving the server on the real clock would give any
+// future assertion there a silent ~7-day shelf life (see visual.test.ts).
 const NOW = Date.UTC(2026, 6, 20, 12, 0, 0)
 
 const { chromium, available } = await browserGate('workspace-context', DIST, 'required')
@@ -94,6 +99,15 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
   }
   const errors: string[] = []
 
+  /**
+   * The platform clock steps to each ingest's own time, so "most recently
+   * active" is decided by WHEN THE WORK HAPPENED. Pinning it to one frozen
+   * instant instead stamps every workspace's `repos.last_seen_at` identically
+   * and the claim has no answer — measured: both rows land on the same
+   * millisecond and the default falls to whatever row Postgres reaches first.
+   */
+  let clockMs = NOW
+
   const ingest = async (
     wsId: string,
     wsName: string,
@@ -101,6 +115,7 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
     project: string,
     at: number,
   ) => {
+    clockMs = at
     const r = await fetch(`${platform.origin}/v1/ingest`, {
       method: 'POST',
       headers: {
@@ -150,7 +165,7 @@ describe.skipIf(!available)('workspace context (multi-workspace dashboard)', () 
     (await page.evaluate(`document.body.innerText`)) as string
 
   beforeAll(async () => {
-    platform = await bootPlatform({ bucket: 'ws-context', uiHtmlPath: DIST })
+    platform = await bootPlatform({ bucket: 'ws-context', uiHtmlPath: DIST, clock: () => clockMs })
     browser = (await sharedBrowser(chromium!)) as never
     ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } })
     await ctx.addCookies([
