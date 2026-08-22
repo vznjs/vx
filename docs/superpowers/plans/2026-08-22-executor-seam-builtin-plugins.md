@@ -1432,6 +1432,8 @@ In-source comments that the new capability makes FALSE (standing rule: a comment
 - `src/orchestrator/plugin.ts`, the `Plugin.setup` comment and `installPlugins`'s "No setup → a capability-only plugin (backend / cache / eventSink)" comments: enumerate `backend / cache / executor / eventSink`.
 - `src/orchestrator/plugin-host.ts`: the `safe()` docstring's load-bearing list `(backend/cache/setup)` → `(backend/cache/executor/setup)`; the header's "falls back to today's exact default" → `the built-in plugins (builtin-plugins.ts) are the default — there is no fallback outside the plugin list`.
 - `docs/schema.md`, end of the `plugins` bullet: "Plugins observe and route; they never change how a task executes." → `Plugins observe, route and execute; they never change what a task is.`
+- `src/orchestrator/run.ts`: the two `if (prepared.plugins.length > 0)` gates (around the `installPlugins`/`subscribeEventSinks` block and the `teardownPlugins` call) are now always-true — `prepared.plugins` always ends with the built-ins. Remove the two `if`s (keep the bodies; the loops inside skip plugins without `setup`/`eventSink`/`teardown`, so a no-user-plugin run still subscribes nothing). Rewrite the comment above the install block so it no longer says "With no plugin, both are no-ops" but `With only the built-ins declared both loops skip every entry — a no-user-plugin run subscribes nothing.` Run `bun test tests/plugin-e2e.test.ts tests/telemetry-lifecycle.test.ts tests/plugin-teardown.test.ts` after; expected PASS.
+- `docs/modules/plugin-host.md` and `docs/architecture.md`: one sentence — `backend` is resolved by the CLI layer (`src/cli/run.ts`) from the DECLARED plugins before `run()` starts; every other capability is resolved inside `prepareRun`/`run()` from the effective list (`prepared.plugins`, declared + built-ins).
 
 `CLAUDE.md`:
 
@@ -1474,7 +1476,7 @@ Expected: `lint.oxlint`, `lint.oxfmt`, `test` all `success`; exit 0. If `lint.ox
 - [ ] **Step 7: Commit + push**
 
 ```bash
-git add src/index.ts tests/package-boundaries.test.ts tests/module-boundaries.test.ts docs/modules/executor.md docs/modules/builtin-plugins.md docs/modules/plugin.md docs/modules/plugin-host.md docs/modules/execute-task.md docs/modules/README.md docs/architecture.md CLAUDE.md
+git add src/index.ts src/exec/index.ts src/orchestrator/plugin.ts src/orchestrator/plugin-host.ts src/orchestrator/run.ts docs/schema.md tests/package-boundaries.test.ts tests/module-boundaries.test.ts docs/modules/executor.md docs/modules/builtin-plugins.md docs/modules/plugin.md docs/modules/plugin-host.md docs/modules/execute-task.md docs/modules/README.md docs/architecture.md CLAUDE.md
 git commit -m "Export the executor seam and built-in plugins; document the wave"
 git push origin main
 ```
