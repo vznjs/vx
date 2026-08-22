@@ -19,6 +19,7 @@
 // onCacheLookup returning { skip: true } — but not in v1.
 
 import type { Cache, CacheLayer, CachePolicy } from '../cache/index.js'
+import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { UserError } from '../util/index.js'
 import type { EventBus, RunStartInfo, WireEvent } from './events.js'
@@ -44,10 +45,15 @@ export interface VxPlugin {
   // --- BEHAVIOR capabilities (change WHAT/HOW work runs — opt-in) -----------
 
   /**
-   * Contribute a run backend. Returns a RunBackend (run(request) → result),
-   * or undefined to decline (core then tries the next plugin, else the
-   * fallback). Consulted ONCE per run, before scheduling. At most one
-   * plugin's backend is used (first non-undefined, in declaration order).
+   * Contribute a run backend — WHOLE-RUN delegation. Kept for plugins that
+   * schedule server-side (`@vzn/vx-cloud`); new plugins should contribute
+   * `executor` instead, which keeps the scheduler — and therefore every
+   * telemetry sink — in this process. When a backend is contributed the run
+   * delegates as a unit and executors are never consulted.
+   * Returns a RunBackend (run(request) → result), or undefined to decline
+   * (core then tries the next plugin, else the fallback). Consulted ONCE
+   * per run, before scheduling. At most one plugin's backend is used
+   * (first non-undefined, in declaration order).
    */
   backend?(ctx: BackendContext): RunBackend | undefined | Promise<RunBackend | undefined>
 
@@ -58,6 +64,17 @@ export interface VxPlugin {
    * Turbo-wire LayeredCache; else the bare local Cache.
    */
   cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
+
+  /**
+   * Contribute a task executor — WHERE one task's command runs. Consulted
+   * ONCE per run; every contributed executor is kept, in declaration order,
+   * and per task the first whose `accepts()` passes executes it. The
+   * built-in `vx/local-executor` is appended last unless declared
+   * explicitly, so a plugin that declines (returns undefined) or whose
+   * executor declines a task falls through to the local spawn. Persistent
+   * tasks never reach an executor (local by construction).
+   */
+  executor?(ctx: ExecutorContext): TaskExecutor | undefined | Promise<TaskExecutor | undefined>
 
   // --- OBSERVE-ONLY capability (cannot change behavior — by construction) ---
 
@@ -125,6 +142,11 @@ export interface CacheContext extends BaseContext {
   readonly localCache: Cache
   /** The run's cache policy (the 4 read/write axes). */
   readonly policy: CachePolicy
+}
+
+export interface ExecutorContext extends BaseContext {
+  /** The run's worker count — an executor that paces itself reads it here. */
+  readonly concurrency: number
 }
 
 export interface PluginContext {

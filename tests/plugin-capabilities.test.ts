@@ -19,6 +19,7 @@ import {
 } from '../src/orchestrator/index.js'
 import { busLogger } from '../src/orchestrator/events.js'
 import { Cache } from '../src/cache/index.js'
+import { loadWorkspaceConfig } from '../src/workspace/index.js'
 
 async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => void }> {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'vx-plugin-cap-'))
@@ -313,6 +314,39 @@ describe('plugin capabilities — end-to-end', () => {
           handleSignals: false,
         }),
       ).rejects.toThrow(/org\/bad-cache/)
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+// --- executor capability ----------------------------------------------
+
+describe('executor capability — config validation', () => {
+  it('accepts a plugin that contributes only `executor`', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        `export default { plugins: [{ name: 'org/exec', executor() { return undefined } }] }`,
+      )
+      const cfg = await loadWorkspaceConfig(workspaceRoot)
+      expect(cfg?.plugins?.length).toBe(1)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('rejects a non-function `executor`', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        `export default { plugins: [{ name: 'org/exec', executor: 42 }] }`,
+      )
+      await expect(loadWorkspaceConfig(workspaceRoot)).rejects.toThrow(
+        /plugins\[0\]\.executor.*function/,
+      )
     } finally {
       cleanup()
     }

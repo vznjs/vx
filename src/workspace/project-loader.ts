@@ -122,6 +122,7 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
         setup?: unknown
         backend?: unknown
         cache?: unknown
+        executor?: unknown
         telemetry?: unknown
         eventSink?: unknown
         teardown?: unknown
@@ -129,30 +130,25 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
       if (typeof plug.name !== 'string' || plug.name.length === 0) {
         throw new UserError(`${configPath}: \`plugins[${i}].name\` must be a non-empty string`)
       }
-      for (const cap of [
+      const caps = [
         'setup',
         'backend',
         'cache',
+        'executor',
         'telemetry',
         'eventSink',
         'teardown',
-      ] as const) {
+      ] as const
+      for (const cap of caps) {
         if (plug[cap] !== undefined && typeof plug[cap] !== 'function') {
           throw new UserError(`${configPath}: \`plugins[${i}].${cap}\` must be a function`)
         }
       }
       // A plugin must contribute at least one capability or lifecycle hook
       // — an empty `{ name }` object is a no-op authoring mistake.
-      if (
-        plug.setup === undefined &&
-        plug.backend === undefined &&
-        plug.cache === undefined &&
-        plug.telemetry === undefined &&
-        plug.eventSink === undefined &&
-        plug.teardown === undefined
-      ) {
+      if (caps.every((cap) => plug[cap] === undefined)) {
         throw new UserError(
-          `${configPath}: \`plugins[${i}]\` must contribute at least one of setup/backend/cache/telemetry/eventSink`,
+          `${configPath}: \`plugins[${i}]\` must contribute at least one of ${caps.join('/')}`,
         )
       }
     }
