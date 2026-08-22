@@ -414,6 +414,12 @@ time every single time.
 
 ### Open items (recorded, NOT fixed)
 
+- `vx run --verify=inputs` on macOS reports a false `undeclared-inputs` for
+  the project's own ancestor directories and prints raw sandbox-exec log lines
+  instead of paths. Needs a call on whether directory traversal is an input.
+- **CI is `ubuntu-latest` only.** Three macOS-only defects reached main
+  unseen (tar format, symlinked-base containment, `close()` on an unlinked
+  DB). A darwin job — even a subset — is the structural fix.
 - `vx-cloud connect` has no `--pr-token` flag; the fork-PR tier is
   hand-editable in `environments.json` only. Feature decision, not a defect.
 - Read routes (`/v1/agents`, the analytics reads) answer ANY verb. Not
@@ -441,6 +447,76 @@ time every single time.
   baseline.
 
 ### Recent entries (2026-08)
+
+- **2026-08-22 — vx was BROKEN ON macOS: every cache save failed, turning a
+  task that succeeded into a failed run.** Found by running the gate after a
+  docs commit — `[vx] internal error: save: tar exited 1: Can't use format gnu:
+No such format 'gnu'`. `packArtifact` hardcodes `--format=gnu`, GNU tar's
+  spelling; bsdtar — the macOS default — calls the same format `gnutar` and
+  REFUSES `gnu`. Shipped in the v25 artifact wave, whose own comment names
+  "BSD tar, the macOS default" as the reason it avoids PAX — so macOS was
+  reasoned about and never RUN. **CI is `ubuntu-latest` only**, which is why
+  three independent macOS defects have accumulated unseen. **Blast radius
+  measured, not estimated: 2445 pass / 211 fail at HEAD → 2654 / 2 with the
+  fix** (`bun test ./tests/`, same box, back to back). Not merely "no
+  caching": `save` THROWS, so `vx run lint` exits 1 with both tools reporting
+  success — the exact failure mode the v25 comment warned about for ustar,
+  reintroduced by the fix for it, one platform over. **The fix is a probe, not
+  a platform check:** `resolveTarFormat()` reads `tar --version` ONCE per
+  process, lazily (a warm all-hit run never packs, so it pays nothing), maps
+  bsdtar/libarchive → `gnutar` and everything else → `gnu`, and keeps `gnu`
+  when the probe is unreadable. Probing beats `process.platform === 'darwin'`
+  because a mac with GNU tar on PATH is then DETECTED rather than assumed.
+  **Format choice measured through the real reader** over a fixture with a
+  140-byte path component and a >100-byte path: `gnutar` round-trips both with
+  modes intact and no PAX junk; `ustar` silently DROPS the long-component
+  entry (bsdtar exits 0 — GNU tar exits 2, which is what v25 recorded); `pax`
+  produces headers `parseTarHeaders` cannot parse at all (0 entries). So the
+  two formats are the same bytes and only the flag spelling differs.
+  **A SECOND macOS defect, found because the first one was masking it:**
+  `extractOutputs`' symlinked-parent containment memoized the UN-resolved path
+  when `realpath(base)` failed — and the base often does not exist yet, since
+  the workspace-outputs anchor is created lazily (the code comment two lines
+  below says so). Once the first entry's `mkdir` created it, a real ancestor
+  (`/private/tmp/...`) was compared against a symlinked base (`/tmp/...`) and
+  EVERY entry was refused with a bogus `TarSecurityError` — and `restoreOutputs`
+  THROWS rather than degrading, so a cache hit failed the run. macOS makes this
+  the DEFAULT shape (`/tmp` → `/private/tmp`); the pin builds the symlink
+  explicitly so it discriminates on Linux too. **My first version of that pin
+  was NOT discriminating and passing it proved nothing** — with only a file
+  entry, nothing below the base exists when the gate runs, so the comparison
+  never happens. It needed the DIRECTORY entry a real `tar -cf` always emits;
+  with it, reverting the fix fails exactly 1. **A THIRD, bundled because the
+  guard was asymmetric:** `close()` wraps the retention prune in try/catch
+  ("best-effort; never block closing the handle") and left `flushAccessed()`
+  beside it bare — so a throw there ALSO skipped `db.close()`, leaking the
+  handle. Reachable when the cache dir is removed under a live handle: macOS
+  answers `SQLITE_IOERR_VNODE` where Linux writes on. Pinned honestly as a
+  test that is a real guard on macOS and a control on Linux. **Differentials,
+  each isolating its own fix, every restore verified back to baseline:**
+  hardcoding `gnu` fails 5 of 5 artifact-roundtrip; reverting the base
+  resolution fails exactly 1; removing the close guard fails exactly 1. The
+  format-mapping unit tests and the "resolves to a name the LOCAL tar accepts"
+  probe run everywhere — that last one is the pin that would have caught the
+  original bug on whichever host got it wrong, rather than only on the
+  author's. **A process mistake of mine:** I ran `git checkout src/cache/cache.ts`
+  to undo a mutation and reverted the WHOLE file including the real fix —
+  caught only because I check the restore against a known baseline (95/0).
+  NO CACHE_VERSION/SCHEMA/wire bump: on macOS nothing was ever stored, so
+  there are no wrong bytes to invalidate, and on Linux the resolved flag,
+  the resolved base and the guarded close are all byte-identical to before.
+  **RECORDED, NOT FIXED — a fourth macOS defect, reproduced and diagnosed:**
+  `vx run --verify=inputs` reports a FALSE `undeclared-inputs` on macOS for
+  reads of the project's own ancestor DIRECTORIES (`.../packages`,
+  `.../packages/a`), failing the run on a task whose inputs are complete —
+  and it prints the RAW sandbox-exec violation lines (`node(54734) deny(1)
+file-read-data /…`) where the Linux strace parser extracts clean paths, so
+  the remediation says "add them to cache.inputs.files" about a string nobody
+  can add. Unreachable from this diff (it is the sandbox layer) and invisible
+  in full-suite runs, where the sandbox probe fails under load and the whole
+  block SKIPS — it only fails in isolation, which is its own finding. Fixing
+  it is a semantics call about whether directory traversal counts as an input,
+  so it gets its own wave rather than a hunch inside a fix wave.
 
 - **2026-08-20 — workspace pick had no tie-break.** `resolveReadWorkspace`
   (default workspace) and `workspacesForOrg` (the switcher) both ordered by

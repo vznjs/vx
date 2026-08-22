@@ -1199,6 +1199,46 @@ describe('Cache storage (v10)', () => {
 // We don't currently expose a public knob to change CACHE_VERSION /
 // SCHEMA_VERSION mid-test, so we simulate by writing a bad sentinel
 // directly to schema_meta via a second handle.
+describe('Cache.close() is best-effort', () => {
+  let dir: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-close-'))
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('survives the cache dir being removed under a live handle', async () => {
+    // The retention prune in close() was already guarded with "best-effort;
+    // never block closing the handle" while its sibling flushAccessed() was
+    // not — so a throw there skipped `db.close()` too, leaking the handle AND
+    // failing a run whose work was already recorded. `accessed_at` is LRU
+    // bookkeeping, never correctness.
+    //
+    // Honest limit: only macOS makes this reachable today (SQLITE_IOERR_VNODE
+    // on a write to an unlinked file); Linux writes on happily, so there this
+    // is a control that passes either way.
+    const cacheDir = path.join(dir, 'cache')
+    const cache = new Cache(cacheDir)
+    const outFile = path.join(dir, 'out.txt')
+    await writeFile(outFile, 'produced')
+    await cache.save({
+      hash: 'h-close',
+      projectDir: dir,
+      outputFiles: [outFile],
+      entry: { taskId: 'pkg#build', command: 'c', durationMs: 1, stdout: '' },
+    })
+    expect(await cache.get('h-close')).not.toBeNull()
+
+    await rm(cacheDir, { recursive: true, force: true })
+    expect(() => {
+      cache.close()
+    }).not.toThrow()
+  })
+})
+
 describe('Cache schema/version recovery', () => {
   let workspaceRoot: string
   let cacheDir: string

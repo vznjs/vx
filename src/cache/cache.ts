@@ -36,7 +36,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import { FsCASBackend } from './cas-backend.js'
-import { extractOutputs, parseTarHeaders, readTarText } from './tar.js'
+import { extractOutputs, parseTarHeaders, readTarText, resolveTarFormat } from './tar.js'
 
 // v17: artifact carries only logs + outputs (stdout + outputs/<rel>).
 // Local and remote layers transport the SAME tar.zst bytes — no
@@ -1634,7 +1634,7 @@ export class Cache implements CacheLayer {
       if (wsOutputFiles.length > 0) topLevel.unshift('workspace-outputs')
       if (args.outputFiles.length > 0) topLevel.unshift('outputs')
 
-      // `--format=gnu` — like ustar it emits no PAX extended-header
+      // GNU tar format — like ustar it emits no PAX extended-header
       // records (BSD tar, the macOS default, emits one PER ENTRY for
       // xattrs / mtime-nanos, which would show up as junk
       // `PaxHeaders/<name>` entries in restored trees), but unlike ustar
@@ -1643,8 +1643,13 @@ export class Cache implements CacheLayer {
       // ("file name is too long (cannot be split)", exit 2) when a single
       // component exceeds 100 bytes — turning a build that succeeded into
       // a failed run. GNU carries long names in an `L` record instead,
-      // which the reader has always understood.
-      const proc = Bun.spawn(['tar', '--format=gnu', '-cf', '-', '-C', stage, ...topLevel], {
+      // which the reader has always understood. `resolveTarFormat`
+      // spells the flag the way the LOCAL tar accepts it: GNU tar says
+      // `gnu`, bsdtar (the macOS default) says `gnutar` and refuses
+      // `gnu` — which failed EVERY save on macOS, turning a task that
+      // succeeded into a failed run.
+      const format = await resolveTarFormat()
+      const proc = Bun.spawn(['tar', `--format=${format}`, '-cf', '-', '-C', stage, ...topLevel], {
         stdout: 'pipe',
         stderr: 'pipe',
         // COPYFILE_DISABLE blocks Apple's copyfile() from attaching
@@ -1995,7 +2000,18 @@ export class Cache implements CacheLayer {
     } catch {
       // Retention is best-effort; never block closing the handle.
     }
-    this.flushAccessed()
+    try {
+      this.flushAccessed()
+    } catch {
+      // Same contract as the retention prune above, which was already
+      // guarded while this sibling was not: `accessed_at` is LRU
+      // bookkeeping, never correctness, and the run's results are
+      // already recorded by the time we get here. Letting it throw also
+      // SKIPPED `db.close()` below, leaking the handle. Reachable when
+      // the cache dir is removed under a live handle (a concurrent
+      // `rm -rf .vx/cache`): macOS answers SQLITE_IOERR_VNODE on a
+      // write to an unlinked file where Linux happily writes on.
+    }
     this.db.close()
   }
 

@@ -10,7 +10,7 @@
 // `outputs//etc/passwd` to write outside the project dir.
 
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -98,6 +98,57 @@ describe('tar extractOutputs — path-traversal defense', () => {
   afterEach(async () => {
     await rm(dest, { recursive: true, force: true })
     await rm(scratch, { recursive: true, force: true })
+  })
+
+  it('a lazily-created base UNDER a symlinked ancestor is not a false escape', async () => {
+    // The containment gate resolves the base and each existing ancestor and
+    // requires the ancestor to stay inside. But the workspace-outputs anchor
+    // is created lazily by the first entry, so at gate time `realpath(base)`
+    // FAILS — and falling back to the un-resolved path compared a real
+    // ancestor against a symlinked base and refused every entry. macOS makes
+    // this the DEFAULT shape (`/tmp` is a symlink to `/private/tmp`), which
+    // is why it is built explicitly here rather than left to the platform.
+    const real = path.join(scratch, 'real')
+    const link = path.join(scratch, 'link')
+    await mkdir(real, { recursive: true })
+    await symlink(real, link)
+
+    const wsDest = path.join(link, 'ws-out') // deliberately NOT created
+    const body = new TextEncoder().encode('generated')
+    // The directory entry is load-bearing: it is what makes `gen/` EXIST by
+    // the time the file entry's gate runs, which is the only state in which
+    // the base's own resolution is compared against a real ancestor. A real
+    // `tar -cf` always emits these; a fixture without one cannot see the bug.
+    const tar = concatTar([
+      makeHeader({ name: 'workspace-outputs/gen/', size: 0, typeFlag: '5' }),
+      makeHeader({ name: 'workspace-outputs/gen/root.txt', size: body.length, typeFlag: '0' }),
+      makeDataBlock(body),
+      EOF_BLOCKS,
+    ])
+
+    await extractOutputs(tar, dest, wsDest)
+    expect(await Bun.file(path.join(real, 'ws-out', 'gen', 'root.txt')).text()).toBe('generated')
+  })
+
+  it('still refuses an entry that escapes through a REAL symlinked parent', async () => {
+    // Control for the fix above: resolving the base must not stop the gate
+    // catching a symlinked directory INSIDE the tree pointing back out.
+    const outside = path.join(scratch, 'outside')
+    await mkdir(outside, { recursive: true })
+    await mkdir(path.join(dest, 'ws'), { recursive: true })
+    await symlink(outside, path.join(dest, 'ws', 'dist'))
+
+    const body = new TextEncoder().encode('pwned')
+    const tar = concatTar([
+      makeHeader({ name: 'workspace-outputs/dist/x.txt', size: body.length, typeFlag: '0' }),
+      makeDataBlock(body),
+      EOF_BLOCKS,
+    ])
+
+    await expect(extractOutputs(tar, dest, path.join(dest, 'ws'))).rejects.toThrow(
+      /symlinked parent/i,
+    )
+    expect(existsSync(path.join(outside, 'x.txt'))).toBe(false)
   })
 
   it('rejects entry with `..` segment (outputs/../escape.txt)', async () => {

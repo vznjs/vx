@@ -305,7 +305,28 @@ export async function extractOutputs(
     const key = path.resolve(base)
     let r = realBaseCache.get(key)
     if (r === undefined) {
-      r = await realpath(key).catch(() => key)
+      // The base often does NOT exist yet — the workspace-outputs anchor is
+      // created lazily by the first entry. Falling back to the un-resolved
+      // path there would compare a real ancestor (`/private/tmp/...`, once
+      // mkdir has created it) against a symlinked base (`/tmp/...`) and
+      // refuse EVERY entry with a bogus security error. So resolve the
+      // deepest EXISTING ancestor and re-append the rest: the answer is the
+      // same before and after the base is created, which is what makes the
+      // memo safe.
+      r = await realpath(key).catch(async () => {
+        let probe = path.dirname(key)
+        const tail: string[] = [path.basename(key)]
+        while (probe !== path.dirname(probe)) {
+          const real = await realpath(probe).then(
+            (v) => v,
+            () => null,
+          )
+          if (real !== null) return path.join(real, ...tail.reverse())
+          tail.push(path.basename(probe))
+          probe = path.dirname(probe)
+        }
+        return key
+      })
       realBaseCache.set(key, r)
     }
     return r
@@ -411,4 +432,49 @@ export async function extractOutputs(
       }
     }),
   )
+}
+
+/**
+ * The `--format` name for the GNU tar format, spelled the way the
+ * LOCAL `tar` accepts it.
+ *
+ * GNU tar calls the format `gnu`; bsdtar — the macOS default — calls
+ * the same format `gnutar` and REFUSES `gnu` outright ("Can't use
+ * format gnu: No such format 'gnu'", exit 1). Both write the identical
+ * on-disk bytes, including the `L` long-name record the reader above
+ * already understands, so this is purely how the flag is spelled.
+ * Measured against bsdtar 3.5.3: `gnutar` round-trips a 140-byte path
+ * component and a >100-byte path through `extractOutputs` with modes
+ * intact and no PAX junk; `ustar` silently DROPS the long-component
+ * entry; `pax` produces headers this reader cannot parse at all.
+ */
+export function tarFormatFromVersion(version: string): 'gnu' | 'gnutar' {
+  return /bsdtar|libarchive/i.test(version) ? 'gnutar' : 'gnu'
+}
+
+let tarFormatMemo: Promise<'gnu' | 'gnutar'> | undefined
+
+/**
+ * Probe `tar --version` ONCE per process, lazily. A run that never
+ * packs — every warm all-hit run — pays nothing, and a host with GNU
+ * tar installed as `tar` is DETECTED rather than assumed from
+ * `process.platform`. An unreadable probe keeps the GNU spelling; the
+ * pack that follows surfaces the real error itself rather than having
+ * this guess at one.
+ */
+export function resolveTarFormat(): Promise<'gnu' | 'gnutar'> {
+  tarFormatMemo ??= (async () => {
+    try {
+      const proc = Bun.spawn(['tar', '--version'], { stdout: 'pipe', stderr: 'pipe' })
+      const [out] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ])
+      await proc.exited
+      return tarFormatFromVersion(out)
+    } catch {
+      return 'gnu'
+    }
+  })()
+  return tarFormatMemo
 }
