@@ -910,8 +910,8 @@ interface WorkspaceConfig {
   (see the Cloud section of the docs). A plugin
   that declines every capability (e.g. `otel()` with no OTLP
   endpoint configured) costs nothing — a run with no active plugin
-  is byte-identical to one with none declared. Plugins observe and
-  route; they never change how a task executes.
+  is byte-identical to one with none declared. Plugins observe, route
+  and execute; they never change what a task is.
 - **`predictive`** — **experimental, unbenchmarked.** When `true` and
   `cache.db` has prior runs, the scheduler picks the next ready task
   by expected remaining critical-path duration (history p50s)

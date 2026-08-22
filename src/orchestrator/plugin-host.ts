@@ -1,7 +1,8 @@
 // Plugin consultation for the run-level extension points (backend / cache / executor / eventSink).
-// Each function asks the declared plugins in order and falls back to
-// today's exact default, so a workspace with no capability plugin is
-// byte-identical to before the inversion.
+// Each function asks the plugins in order; the built-in plugins
+// (builtin-plugins.ts) are the default — there is no fallback outside the
+// plugin list — so a workspace with no user plugin is byte-identical to
+// before the inversion.
 //
 // See docs/design/core-cloud-split-2026-06.md §5.1.
 
@@ -23,7 +24,7 @@ import type { RunBackend } from './protocol.js'
 /**
  * Run a capability factory with crash isolation. A throw becomes a clean
  * `UserError` naming the plugin + hook for the load-bearing capabilities
- * (`backend`/`cache`/`setup`) — a broken backend or cache must abort with
+ * (`backend`/`cache`/`executor`/`setup`) — a broken backend or cache must abort with
  * a clear message, never silently degrade. For `eventSink` the caller
  * logs-and-skips instead (observability must never break a run).
  */

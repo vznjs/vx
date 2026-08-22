@@ -58,7 +58,9 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
 4. **Cache + fingerprint** — `new Cache(resolveCacheDir(root,
 workspaceConfig))`, then the layer resolution (an injected
    `RunOptions.remoteCache` composed into a `LayeredCache` wins; else
-   a plugin's `cache` capability; else the bare local cache),
+   the first `cache` capability in the effective plugin list — declared
+   plugins, then the built-ins via `withBuiltins`, so `vx/local-cache`
+   is the last word and there is no fallback outside the list),
    `computeWorkspaceFingerprint`.
 5. **Build the task graph** — `buildTaskGraph(...)` with optional
    `excludeDependencies` filter.

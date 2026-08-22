@@ -50,8 +50,9 @@ delimiters.
 - Sandboxed tasks (opt-in, per task) fail on violation.
 
 **Deliberately simple.** No daemon (and still faster cold than
-daemon-warm competitors). No plugins, no executor protocol — shell is
-the API. Eight contract modules with a dependency matrix enforced in
+daemon-warm competitors). Plugins change where a command runs, never
+what it is — shell is the API. Eight contract modules with a dependency
+matrix enforced in
 CI. ~600 tests.
 
 ## Adopt it in two minutes

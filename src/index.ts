@@ -127,9 +127,28 @@ export type {
   EventSink,
   BackendContext,
   CacheContext,
+  ExecutorContext,
   EventSinkContext,
   PluginSetupContext,
 } from './orchestrator/index.js'
+// Core's own behaviour as plugins — include them explicitly to set their
+// precedence, wrap them, or leave them out of `defineWorkspace({ plugins })`
+// to get them appended last.
+export {
+  builtinPlugins,
+  localCachePlugin,
+  localExecutorPlugin,
+  withBuiltins,
+} from './orchestrator/index.js'
+// The per-task execution contract a plugin's `executor` capability returns.
+export { localExecutor, selectExecutor } from './exec/index.js'
+export type {
+  ExecuteRequest,
+  ExecuteResult,
+  ExecuteSandbox,
+  ResolvedSandboxConfig,
+  TaskExecutor,
+} from './exec/index.js'
 
 // Telemetry — THE canonical, versioned data-export contract every exporter
 // (an OTel exporter, an HTTP sink, or any third-party consumer) reads. A sink implements TelemetrySink and is

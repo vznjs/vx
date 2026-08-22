@@ -99,6 +99,7 @@ describe('package boundaries', () => {
       'WIRE_PROTOCOL_VERSION',
       'assembleRunSummary',
       'buildTaskGraph',
+      'builtinPlugins',
       'cacheKeyDiff',
       'captureDefaultBranch',
       'captureGitContext',
@@ -166,6 +167,9 @@ describe('package boundaries', () => {
       'loadProjectConfig',
       'loadWorkspace',
       'loadWorkspaceConfig',
+      'localCachePlugin',
+      'localExecutor',
+      'localExecutorPlugin',
       'makeError',
       'makeNotification',
       'makeRequest',
@@ -186,11 +190,13 @@ describe('package boundaries', () => {
       'resolveOutputView',
       'resolveOutputs',
       'run',
+      'selectExecutor',
       'serverMessageToEnvelope',
       'splitTaskId',
       'toWireEvent',
       'whyDidThisRerunQuery',
       'wireForwarder',
+      'withBuiltins',
     ]
     expect(actual).toEqual(expected)
   })

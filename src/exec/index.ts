@@ -17,6 +17,7 @@ export {
   resolveSandboxConfig,
   runSandboxed,
   type DeniedCall,
+  type ResolvedSandboxConfig,
   type SandboxViolation,
 } from './sandbox-runtime.js'
 export {

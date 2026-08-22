@@ -81,7 +81,8 @@ src/
     remote-prefetch.ts  # background remote GETs (LayeredCache runs only)
     events.ts           # run event bus + serializable WireEvent contract
     plugin.ts           # VxPlugin interface + installPlugins
-    plugin-host.ts      # eventSink wiring + end-of-run teardown/flush
+    plugin-host.ts      # capability consultation (executor/cache/backend) + eventSink wiring + teardown
+    builtin-plugins.ts   # core's executor + cache as plugins (withBuiltins)
     telemetry.ts        # canonical telemetry contract (SCHEMA_VERSION, records)
     telemetry-host.ts   # sink consultation (zero sinks = zero cost)
     protocol.ts / wire.ts # delegation wire contract + JSON-RPC envelope
@@ -108,7 +109,7 @@ src/
     index.ts cache.ts layered-cache.ts inputs.ts tar.ts
     cas-backend.ts / digest.ts # pluggable CAS seam (internal, artifact-store roadmap)
   exec/                 # per-task execution primitives
-    index.ts runner.ts env.ts sandbox-runtime.ts
+    index.ts runner.ts env.ts sandbox-runtime.ts executor.ts
   util/                 # tiny shared helpers
     index.ts paths.ts hash.ts ulid.ts errors.ts
 packages/
@@ -186,7 +187,8 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 2. **One command per task.** `exec: ExecConfig` is a single command;
    chain in shell (`&&`) or split into tasks via `dependsOn.self`.
 3. **Shell is the API.** Commands are strings. No JS-function tasks,
-   no executor plugin protocol.
+   no executor plugin protocol. A plugin may change WHERE the command
+   runs (the `executor` capability), never what it is.
 4. **Resolved-config hashing.** The cache key sees the post-evaluation
    config object, so imports and computed values participate.
 5. **Cascade through deps.** Upstream cache changes invalidate
@@ -447,6 +449,34 @@ time every single time.
   baseline.
 
 ### Recent entries (2026-08)
+
+- **2026-08-23 — core's execution and cache became built-in plugins; a
+  per-task `executor` capability landed.** Owner decision: core must not be
+  specific to vx-cloud OR REAPI — every scenario reachable by plugins, core
+  as slim as possible. The one wrong-grained seam was `backend` (whole-run
+  delegation: it moved the scheduler server-side and dragged cache restore,
+  logging and telemetry with it). `executor` is per task: `execute-task`
+  builds one fully-resolved `ExecuteRequest` per attempt and
+  `selectExecutor` hands it to the first contributed executor that accepts;
+  `vx/local-executor` (= the old `runCommand`/`runSandboxed` call) and
+  `vx/local-cache` are ordinary plugins appended by `withBuiltins` unless
+  declared — so there is NO hidden fallback and "a plugin can replace any
+  part" is pinned rather than promised (`resolveCache` with no provider now
+  THROWS, named). `backend` is untouched: `@vzn/vx-cloud` compiles and runs
+  with zero edits, and the COMPAT pin proves a backend-contributing plugin
+  delegates the whole run with executors never consulted. Persistent tasks
+  never reach an executor (local by construction). Differential: forcing
+  the local executor fails exactly the two e2e pins that observe a plugin
+  executor. A Task 6 finding worth keeping: `TaskOutcome.restored` is
+  false when the on-disk outputs already match the artifact, so the e2e
+  pin asserts `status: 'cache-hit'`, not `restored`. No CACHE_VERSION/SCHEMA
+  bump — requests, keys and artifacts are byte-identical. Design:
+  `docs/design/plugin-executor-reapi-2026-08.md`; plan:
+  `docs/superpowers/plans/2026-08-22-executor-seam-builtin-plugins.md`.
+  NOT in this wave (follow-up plans): `ExecuteRequest.inputs` (the
+  enumerated input set for input-shipping executors), `exec.remote`
+  placement, executor capacity in the scheduler, the `'cache'`/`'deferred'`
+  output kinds, the REAPI plugin.
 
 - **2026-08-22 — vx was BROKEN ON macOS: every cache save failed, turning a
   task that succeeded into a failed run.** Found by running the gate after a

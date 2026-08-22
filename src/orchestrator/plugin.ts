@@ -27,16 +27,18 @@ import type { RunBackend, RunRequest } from './protocol.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 
 /**
- * A vx plugin. Contributes any subset of three RUN-LEVEL infrastructure
- * capabilities — where work routes (backend), which cache is used (cache),
- * who observes the run (eventSink). It NEVER changes how a task executes
- * (Architecture principle #3: shell is the API). Registered explicitly in
- * vx.workspace.ts via defineWorkspace({ plugins: [...] }). No auto-discovery.
+ * A vx plugin. Contributes any subset of the run-level capabilities —
+ * where work runs (executor / backend), which cache is used (cache), who
+ * observes the run (telemetry). It never changes WHAT a task is (the
+ * command string — principle #3), only where and how that command is
+ * executed. Registered explicitly in vx.workspace.ts via
+ * defineWorkspace({ plugins: [...] }). No auto-discovery.
  *
  * The old observe-only `Plugin` (`{ name, setup(ctx) }`) is a subset of
  * this shape: a plugin with only `setup` installs and runs exactly as
- * before via `installPlugins`. The new capabilities are consulted by
- * `plugin-host.ts`, each falling back to today's default.
+ * before via `installPlugins`. The capabilities are consulted by
+ * `plugin-host.ts`; core's own behaviour is the built-in plugins
+ * (builtin-plugins.ts), not a fallback outside the list.
  */
 export interface VxPlugin {
   /** Stable identifier, convention `'org/name'`. Used in errors + precedence logs. */
@@ -60,8 +62,10 @@ export interface VxPlugin {
   /**
    * Contribute a cache layer. Returns a CacheLayer wrapping (or replacing)
    * the local Cache, or undefined to decline. Consulted ONCE per prepareRun.
-   * Precedence: first non-undefined plugin cache wins; else core's env-var
-   * Turbo-wire LayeredCache; else the bare local Cache.
+   * Precedence: first non-undefined plugin cache wins, in declaration
+   * order; the built-in `vx/local-cache` (appended last by `withBuiltins`)
+   * hands back the bare local Cache, so there is no fallback outside the
+   * plugin list.
    */
   cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
 
@@ -192,7 +196,7 @@ export interface Plugin {
    * be installed synchronously inside setup() so no events are missed.
    *
    * OPTIONAL: a capability-only plugin (one that contributes
-   * `backend`/`cache`/`eventSink` but no `setup`) is simply skipped by
+   * `backend`/`cache`/`executor`/`eventSink` but no `setup`) is simply skipped by
    * `installPlugins` — its capabilities are consulted by `plugin-host.ts`.
    */
   setup?(ctx: PluginContext): void | Promise<void>
@@ -218,7 +222,7 @@ export interface InstallPluginsArgs {
  * plugin's setup() throws (the run cannot start with a broken plugin).
  *
  * A plugin without a `setup` is a capability-only plugin (backend / cache
- * / eventSink) — skipped here; those capabilities are consulted by
+ * / executor / eventSink) — skipped here; those capabilities are consulted by
  * `plugin-host.ts`.
  */
 export async function installPlugins(args: InstallPluginsArgs): Promise<() => void> {
@@ -231,7 +235,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
       throw new UserError('plugin missing `name` field')
     }
-    // No setup → a capability-only plugin (backend / cache / eventSink),
+    // No setup → a capability-only plugin (backend / cache / executor / eventSink),
     // consulted by plugin-host.ts; skip the hook install. A setup that's
     // present but not callable is a real authoring error — reject it.
     if (plugin.setup === undefined) continue

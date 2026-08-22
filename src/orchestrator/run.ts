@@ -194,31 +194,28 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // each plugin's `eventSink` capability onto the bus via wireForwarder.
   // Both fail-fast on a setup() throw with a clean UserError naming the
   // plugin; eventSink init failures are isolated (observability never
-  // breaks a run). With no plugin, both are no-ops.
+  // breaks a run). With only the built-ins declared both loops skip every
+  // entry — a no-user-plugin run subscribes nothing.
   let disposePlugins: (() => void) | undefined
   let eventSinks: SubscribedEventSinks | undefined
   let telemetry: TelemetryHandle | undefined
-  if (prepared.plugins.length > 0) {
-    const plugins = prepared.plugins
-    const pluginCtx = {
+  try {
+    disposePlugins = await installPlugins({
+      plugins: prepared.plugins as never,
+      bus,
+      workspaceRoot: prepared.workspaceRoot,
+      cacheDir: prepared.cacheDir,
+      warn: (m) => log.status(m),
+    })
+    eventSinks = await subscribeEventSinks(prepared.plugins, bus, {
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
       warn: (m: string) => log.status(m),
-    }
-    try {
-      disposePlugins = await installPlugins({
-        plugins: prepared.plugins as never,
-        bus,
-        workspaceRoot: prepared.workspaceRoot,
-        cacheDir: prepared.cacheDir,
-        warn: (m) => log.status(m),
-      })
-      eventSinks = await subscribeEventSinks(plugins, bus, pluginCtx)
-    } catch (err) {
-      disposePlugins?.()
-      prepared.cache.close()
-      throw err
-    }
+    })
+  } catch (err) {
+    disposePlugins?.()
+    prepared.cache.close()
+    throw err
   }
   const {
     workspaceRoot,
@@ -922,9 +919,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Crash-isolated + time-bounded inside teardownPlugins, so a faulty
     // plugin can neither fail nor hang the run. Normal completion path
     // only — the finally below just unsubscribes.
-    if (prepared.plugins.length > 0) {
-      await teardownPlugins(prepared.plugins, eventSinks?.sinks ?? [], (m) => log.status(m))
-    }
+    await teardownPlugins(prepared.plugins, eventSinks?.sinks ?? [], (m) => log.status(m))
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their

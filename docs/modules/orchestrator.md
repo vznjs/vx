@@ -48,8 +48,9 @@ export interface RunSummary {
    `busLogger` — it never calls the logger directly.
 2. **`prepareRun(options, log)`** — shared setup: discovery, scoped
    config loading (lock-backed under `--frozen`), package + task
-   graph, cache open (local policy slice; plugin `cache` capability
-   or env-var remote wrap), bulk git populate, hash memo, optional
+   graph, cache open (local policy slice; first plugin `cache`
+   capability, the built-in `vx/local-cache` last; an injected
+   `RunOptions.remoteCache` wrap wins), bulk git populate, hash memo, optional
    predictive priorities. **Caller owns `cache.close()`.**
 3. **Empty-case handling.** `no-tasks-declared` / `empty-graph` →
    log, close cache, return NOT-ok.
@@ -154,5 +155,6 @@ To extend, you typically replace something downstream and leave this
 module alone: a different scheduler consumes the same `runGraph`
 signature; a different cache layering is a plugin `cache` capability;
 telemetry is a plugin `telemetry` sink; a different execution venue
-is a plugin `backend`. Touch `run.ts` itself only for new run-level
+is a plugin `executor` (per task) or `backend` (whole run). Touch
+`run.ts` itself only for new run-level
 lifecycle steps.

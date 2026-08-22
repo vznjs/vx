@@ -88,7 +88,11 @@ caches.
    - Build isolated env (`<projectDir>/node_modules/.bin` PATH
      prepend).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.
-   - `runCommand({...})` — Bun.spawn shell. Forward args quoted.
+   - The attempt builds an `ExecuteRequest` (command, env, capture,
+     timeout, sandbox baselines) and hands it to
+     `selectExecutor(args.executors, req)` — the first executor that
+     accepts. With no plugin executor that is `vx/local-executor`, i.e.
+     `runCommand` / `runSandboxed` exactly as before.
    - Up to `1 + (exec.retries ?? args.retries ?? 0)` attempts: a failed
      attempt (timeouts included, `aborted` NOT — a teardown breaks out
      immediately) re-cleans declared outputs and re-executes, with one
@@ -158,6 +162,7 @@ extensions:
 - **Conditional output capture.** Compress / dedupe before save.
   Hook between `resolveOutputs` and `cache.save`.
 - **Pre-spawn hooks.** Run a setup script (e.g. cgroup/limits
-  application) before each `runCommand`. Add to `ExecuteArgs`.
+  application) before each spawn: contribute an `executor` that wraps
+  `localExecutor()` — no change to this module.
 - **Different cache layer.** Already abstracted via `CacheLayer` —
   the caller decides which.

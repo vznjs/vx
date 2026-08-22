@@ -28,10 +28,9 @@ upstream repo so future revisions can be diffed against reality.
 - **`@vzn/vx`** — TypeScript-native config, opt-in caching, Turbo-shape
   cache key with two extensions (project package.json folded in;
   resolved-config hash captures TS imports). Bun-only. Smallest CLI
-  surface; deliberately no daemon, no executor plugins, no
-  JS-function tasks (run-level plugins — backend / cache / telemetry —
-  exist, but never change how a task executes). Strict output
-  ownership.
+  surface; deliberately no daemon, no JS-function tasks (plugins —
+  executor / backend / cache / telemetry — change WHERE a command
+  runs, never what it is). Strict output ownership.
 
 ## Quick CLI flag map
 
