@@ -57,21 +57,23 @@ export async function resolveBackend(
 
 /**
  * Resolve the cache layer. First plugin returning a non-undefined `cache`
- * wins; otherwise the caller's `fallback` (the plain local cache — core
- * ships no wire client; a remote layer comes from a plugin or from
- * `RunOptions.remoteCache`). A broken cache factory aborts.
+ * wins. There is no fallback parameter: the built-in `vx/local-cache`
+ * plugin (appended by `withBuiltins`) is the default, so an empty result
+ * means the workspace removed every cache provider — an authoring error
+ * worth naming, never a silent cacheless run.
  */
 export async function resolveCache(
   plugins: readonly VxPlugin[],
   ctx: CacheContext,
-  fallback: () => CacheLayer,
 ): Promise<CacheLayer> {
   for (const plugin of plugins) {
     if (plugin.cache === undefined) continue
     const cache = await safe(plugin, 'cache', () => plugin.cache!(ctx))
     if (cache !== undefined) return cache
   }
-  return fallback()
+  throw new UserError(
+    `no plugin contributed a cache layer (declared: ${plugins.map((p) => p.name).join(', ') || 'none'}); include vx/local-cache or a plugin with a \`cache\` capability`,
+  )
 }
 
 /**

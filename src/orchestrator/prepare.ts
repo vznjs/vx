@@ -40,6 +40,7 @@ import {
   type TaskNode,
   unresolvedRequests,
 } from '../graph/index.js'
+import { withBuiltins } from './builtin-plugins.js'
 import { resolveCache } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
@@ -51,6 +52,8 @@ import { computePredictedPriorities } from './predict.js'
 export interface PreparedRun {
   workspaceRoot: string
   workspaceConfig: WorkspaceConfig | null
+  /** Effective plugin list: declared plugins, then the built-ins not declared. */
+  plugins: readonly VxPlugin[]
   cacheDir: string
   cache: CacheLayer
   /**
@@ -266,17 +269,19 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // cache is a plugin concern (native-cache-wire-2026-07). Injection
   // winning prevents double-wrapping when the workspace also declares a
   // cache plugin.
-  const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
+  const plugins = withBuiltins(workspaceConfig?.plugins as readonly VxPlugin[] | undefined)
   const cache = options.remoteCache
     ? new LayeredCache(localCache, options.remoteCache, {
         policy,
         onRemoteError: (err) => log.status(`[vx] remote cache: ${err.message}`),
       })
-    : await resolveCache(
-        plugins,
-        { workspaceRoot, cacheDir, warn: (m) => log.status(m), localCache, policy },
-        () => localCache,
-      )
+    : await resolveCache(plugins, {
+        workspaceRoot,
+        cacheDir,
+        warn: (m) => log.status(m),
+        localCache,
+        policy,
+      })
   // Ask the LAYER, don't infer. Identity against `localCache` answers a
   // DIFFERENT question — "did the plugin hand back something other than the
   // handle I passed in?" — which an ordinary pass-through decorator (a
@@ -313,6 +318,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     return {
       workspaceRoot,
       workspaceConfig,
+      plugins,
       cacheDir,
       cache,
       localCache,
@@ -361,6 +367,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   return {
     workspaceRoot,
     workspaceConfig,
+    plugins,
     cacheDir,
     cache,
     localCache,

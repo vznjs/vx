@@ -14,6 +14,7 @@ import {
   resolveCache,
   resolveExecutors,
   subscribeEventSinks,
+  withBuiltins,
   createEventBus,
   type RunBackend,
   type VxPlugin,
@@ -107,51 +108,58 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     ).rejects.toThrow(/org\/broken-be/)
   })
 
-  it('resolveCache: plugin cache wins over the fallback', async () => {
+  it('resolveCache: first contributing plugin wins, in declaration order', async () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
-    const pluginCache = local // local Cache implements CacheLayer
-    const plugins: VxPlugin[] = [{ name: 'org/cache', cache: () => pluginCache }]
-    let fallbackCalled = false
+    const other = new Cache(mkdtempSync(path.join(tmpdir(), 'vx-cache-host2-')), {
+      read: true,
+      write: true,
+    })
+    const plugins: VxPlugin[] = [
+      { name: 'org/none', cache: () => undefined },
+      { name: 'org/cache', cache: () => other },
+      { name: 'org/late', cache: () => local },
+    ]
     try {
-      const resolved = await resolveCache(
-        plugins,
-        {
+      const resolved = await resolveCache(plugins, {
+        ...baseCtx,
+        localCache: local,
+        policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
+      })
+      expect(resolved).toBe(other)
+    } finally {
+      local.close()
+      other.close()
+      rmSync(cacheDir, { recursive: true, force: true })
+    }
+  })
+
+  it('resolveCache: with no contributing plugin there is NO hidden fallback', async () => {
+    const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
+    const local = new Cache(cacheDir, { read: true, write: true })
+    try {
+      await expect(
+        resolveCache([{ name: 'org/none', cache: () => undefined }], {
           ...baseCtx,
           localCache: local,
           policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
-        },
-        () => {
-          fallbackCalled = true
-          return local
-        },
-      )
-      expect(resolved).toBe(pluginCache)
-      expect(fallbackCalled).toBe(false)
+        }),
+      ).rejects.toThrow(/no plugin contributed a cache layer/)
     } finally {
       local.close()
       rmSync(cacheDir, { recursive: true, force: true })
     }
   })
 
-  it('resolveCache: no cache plugin uses the fallback', async () => {
+  it('resolveCache: the built-in list resolves to the local cache handle', async () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
-    let fallbackCalled = false
     try {
-      const resolved = await resolveCache(
-        [],
-        {
-          ...baseCtx,
-          localCache: local,
-          policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
-        },
-        () => {
-          fallbackCalled = true
-          return local
-        },
-      )
-      expect(fallbackCalled).toBe(true)
+      const resolved = await resolveCache(withBuiltins([]), {
+        ...baseCtx,
+        localCache: local,
+        policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
+      })
       expect(resolved).toBe(local)
     } finally {
       local.close()
