@@ -1426,6 +1426,13 @@ and add to Invariants: `- Core's own executor and cache are the built-in plugins
 
 `docs/architecture.md` "The plugin capability seam" table — add the `executor` row above `backend`: `| \`executor\` | behavior | returns a \`TaskExecutor\` or declines. Consulted once per run; ALL kept in declaration order; per task the first whose \`accepts()\` passes runs it; the built-in \`vx/local-executor\` is last |`and change the`backend`row's fallback text to`... kept for server-side schedulers (\`@vzn/vx-cloud\`); when contributed, executors are not consulted`. Replace the sentence `No auto-discovery, no executor protocol: a plugin changes run-level infrastructure, never how a task executes`with`No auto-discovery. A plugin changes WHERE a task's command executes (\`executor\`), never WHAT it is — the command string is the task (principle #3).`
 
+In-source comments that the new capability makes FALSE (standing rule: a comment claiming a guarantee the code does not have is a defect) — fix each:
+
+- `src/orchestrator/plugin.ts`, the `VxPlugin` doc comment: "Contributes any subset of three RUN-LEVEL infrastructure capabilities … It NEVER changes how a task executes" → `Contributes any subset of the run-level capabilities — where work runs (executor / backend), which cache is used (cache), who observes the run (telemetry). It never changes WHAT a task is (the command string — principle #3), only where and how that command is executed.`
+- `src/orchestrator/plugin.ts`, the `Plugin.setup` comment and `installPlugins`'s "No setup → a capability-only plugin (backend / cache / eventSink)" comments: enumerate `backend / cache / executor / eventSink`.
+- `src/orchestrator/plugin-host.ts` header (if Task 3 did not already): the capability list includes `executor`.
+- `docs/schema.md`, end of the `plugins` bullet: "Plugins observe and route; they never change how a task executes." → `Plugins observe, route and execute; they never change what a task is.`
+
 `CLAUDE.md`:
 
 - In "Repository layout", add `executor.ts` to the `exec/` line (`index.ts runner.ts env.ts sandbox-runtime.ts executor.ts`) and a line `builtin-plugins.ts   # core's executor + cache as plugins (withBuiltins)` under `orchestrator/` after `plugin-host.ts`.
