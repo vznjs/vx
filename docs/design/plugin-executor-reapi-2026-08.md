@@ -1,0 +1,363 @@
+# Per-task executor seam + `@vzn/vx-reapi` (2026-08)
+
+Owner decision, 2026-08-22: vx-cloud is too complex to set up and work with.
+Core becomes the thing anyone can build a "vx cloud" on top of, through
+plugins alone; the Bazel Remote Execution API (REAPI) is the first such
+plugin, so NativeLink / BuildBuddy / Buildbarn / bazel-remote work out of the
+box. vx-cloud is NOT deleted by this design — it coexists, and its
+distributed-execution half is retired later on evidence.
+
+## 1. The problem, precisely
+
+Core already has three plugin capabilities: `cache` (where artifacts live),
+`backend` (where work runs), `telemetry` (where run records go). Two are the
+right grain. One is not.
+
+`backend` delegates a **whole run**. vx-cloud implemented it by moving the
+**scheduler** to its server (`DistScheduler`) — chosen so a standing agent
+pool could dispatch fairly across many concurrent submitters. That one choice
+forced every run-level concern to be re-implemented server-side: cache
+restore, output materialisation, task logging, the run record, and
+telemetry. The local `otel()` sink is blind to a distributed run; the
+"distributed runs ingest no summary" gap was patched three times because it
+is structural. ~19k lines and seven mandatory env vars follow from it.
+
+REAPI shows the alternative grain: the client owns the DAG and scheduler; the
+server executes **one action at a time** and does fair queuing at the action
+level, with no knowledge of any client's graph. Telemetry (Bazel's BEP) is
+emitted client-side and therefore sees every action, local or remote. Six
+independent REAPI servers exist because the server is dumb.
+
+## 2. Goals / non-goals
+
+Goals:
+
+- A plugin can contribute where ONE task's command executes, with the
+  scheduler, cache, retries, timeouts, logger and telemetry unchanged above it.
+- A distributed run is telemetrically indistinguishable from a local one.
+- `@vzn/vx-reapi` provides remote cache + remote execution against any REAPI
+  server with one endpoint + headers of configuration.
+- A community "vx cloud" (same-checkout agents over any transport, their own
+  store, their own analytics) is buildable on the same seams, with no core
+  change.
+
+Non-goals:
+
+- A shared-service / sidecar abstraction across remote actions (breaks the
+  one-action-one-sandbox contract that makes REAPI servers interchangeable).
+- Auto-inferring inputs so non-hermetic tasks can run remotely. `--verify=inputs`
+  proves declared inputs; it does not guess them. (Standing non-goal.)
+- Deleting vx-cloud in this design. See §10.
+
+## 3. The plugin contract after this design
+
+```
+VxPlugin
+  cache(ctx)     → CacheLayer     where artifacts live            (existing, unchanged)
+  executor(ctx)  → TaskExecutor   where ONE task's command runs   (NEW)
+  telemetry(ctx) → TelemetrySink  where run/task records go       (existing, unchanged)
+  backend(ctx)   → RunBackend     whole-run delegation            (DEPRECATED the day executor lands)
+  setup / teardown                                                (existing)
+```
+
+| Plugin                            | cache       | executor     | telemetry   |
+| --------------------------------- | ----------- | ------------ | ----------- |
+| `vx-reapi`                        | ✓           | ✓            | —           |
+| `vx-otel`                         | —           | —            | ✓           |
+| `vx-github` (summary + check run) | —           | —            | ✓           |
+| vx-cloud today                    | native wire | `backend`    | ✓           |
+| a community cloud                 | their store | their agents | their DB/UI |
+| core default                      | local dir   | local spawn  | none        |
+
+Precedence: first non-declining plugin wins `cache` and `executor` (the
+existing rule for `cache`/`backend`); all `telemetry` sinks are additive.
+If any plugin contributes a `backend`, the run delegates as today and
+`executor` is not consulted — this is what lets vx-cloud's dist path keep
+working unchanged during coexistence.
+
+## 4. The `executor` seam
+
+```ts
+interface TaskExecutor {
+  execute(req: ExecuteRequest, signal: AbortSignal): Promise<ExecuteResult>
+  /** Optional: flush/close at end of run. Errors logged, never thrown. */
+  close?(): Promise<void>
+}
+
+interface ExecuteRequest {
+  // identity — for same-checkout transports
+  readonly task: { projectDir: string; name: string; id: string }
+  readonly commit: string | null // from run-context
+  readonly workspaceRoot: string
+  // the command — for input-shipping transports and the local default
+  readonly command: string // run as `sh -c`
+  readonly cwd: string // absolute; project dir
+  readonly env: Readonly<Record<string, string>>
+  readonly inputs: readonly InputFile[] // the set task-hash already enumerates
+  readonly outputs: readonly string[] // the declared output globs
+  readonly timeoutMs?: number
+  readonly onStdout?: (chunk: string) => void
+  readonly onStderr?: (chunk: string) => void
+}
+
+interface InputFile {
+  readonly path: string // workspace-relative, POSIX
+  readonly kind: 'file' | 'symlink'
+  readonly executable: boolean
+  readonly digest?: string // core's xxh3 when already known; optional
+}
+
+interface ExecuteResult {
+  readonly exitCode: number
+  readonly stdout: string
+  readonly stderr: string
+  /** Where the outputs are.
+   *  'disk'     = in place under cwd (local default, or a remote executor that downloaded).
+   *  'deferred' = referenced but not materialised (download policy 'none'/'toplevel');
+   *               `materialize()` fetches.
+   *  'cache'    = the executor saved the artifact to the run's remote CacheLayer under
+   *               this task's key (same-checkout agents: the §6.3 induction law); core
+   *               restores it through the ordinary hit path and skips its own save. */
+  readonly outputs:
+    | { kind: 'disk' }
+    | { kind: 'deferred'; materialize(): Promise<void> }
+    | { kind: 'cache' }
+  readonly resourceUsage?: { cpuTimeMs: number; maxRssBytes: number }
+  readonly where: 'local' | string // executor-reported label; rides telemetry
+}
+```
+
+Core changes required by the seam:
+
+- `exec/runner.ts`'s spawn becomes the default `TaskExecutor` (`localExecutor`).
+  Persistent tasks (`readyWhen`), SIGINT forwarding, `liveChildren`, and
+  `resourceUsage` stay in it — they are local-only concerns by the placement
+  rule (§5).
+- `orchestrator/task-hash.ts` returns the enumerated input set it already
+  walks instead of discarding it. No second walk; no extra reads.
+- `execute-task.ts` calls `executor.execute` where it spawned. Probe → execute
+  → save is unchanged; save of a `deferred` output set is skipped locally and
+  the remote cache entry is the executor's own (it already lives in the CAS).
+- `TaskOutcome` gains `where` so `otel()`/telemetry can attribute a task to a
+  worker.
+
+## 5. Placement rule
+
+A task runs on the local executor — no flag needed — when:
+
+1. it is persistent (`readyWhen` or foreground), or
+2. anything in its dependency closure is persistent (a remote worker cannot
+   reach `localhost` on the submitter), or
+3. `exec.remote === false` (author-declared: touches the network, a local
+   daemon, Docker, …).
+
+`exec.remote` is `true | false | 'only'`, default `true`. `'only'` is the
+inverse pin (§7.4): the task exists to produce a remote input tree and is a
+no-op on the local executor. Everything else is remote-eligible when a
+plugin contributes an `executor`.
+The rule is decided once per task at plan time and shown in `--dry`/`--graph`.
+
+Patterns this implies, documented rather than abstracted away:
+
+- **Server is a vx task, tests depend on it:** the whole cluster is local;
+  the server's upstream build may still be remote with outputs downloaded.
+- **Server is the test's own business** (`'pnpm start & wait-on … && playwright test'`):
+  one hermetic action; remote-eligible; N shards = N boots, on N workers.
+  Expensive boot → move the expensive part upstream into a cached action.
+- **Server is external infra:** `exec.remote: false`, or accept non-hermetic
+  remote execution via the plugin's platform/worker-pool configuration.
+
+## 6. Core inventory: add / keep / delete
+
+| Core item                                                                          | Verdict                                                                       |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `executor` capability + `localExecutor`                                            | **Add**                                                                       |
+| `exec.remote` schema field + placement rule                                        | **Add**                                                                       |
+| `--download=all\|toplevel\|none` run option                                        | **Add** (phase 3; phase 1–2 behave as `all`)                                  |
+| `cache` capability, `LayeredCache`, prefetch, shortcircuit, stable-keys            | **Keep** — generic second-tier machinery; REAPI plugs in                      |
+| `telemetry` capability and its record types, `TaskLogBuffer`, fingerprints         | **Keep** — the analytics seam a community cloud builds on                     |
+| `run-context.ts` (git/CI/host/PR scope)                                            | **Keep** — provider-neutral context every ctx receives                        |
+| `events.ts` bus + `WireEvent` (logger, MCP, metrics consume it)                    | **Keep**                                                                      |
+| `backend` capability, `protocol.ts`, `wire.ts`, `wire-render.ts`, `cli/backend.ts` | **Deprecate** at phase 2; **delete** when cloud's dist half retires (phase 4) |
+| `eventSink` (deprecated)                                                           | **Delete** at phase 2 (cloud no longer uses it)                               |
+| `devframe-surface.ts`                                                              | **Delete** if no core consumer remains (verify in the plan)                   |
+| `metrics.ts`, `history`/`predict`, `vx mcp`                                        | **Keep** — local SQLite insights                                              |
+
+## 7. `@vzn/vx-reapi`
+
+Config: `reapi({ endpoint, instanceName?, headers?, digest?: 'sha256' | 'blake3', platform?: Record<string,string> })`.
+One plugin, two capabilities.
+
+### 7.1 Mapping
+
+| vx                                                            | REAPI                                                                                        |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| task command, cwd, env                                        | `Command{arguments:['sh','-c',cmd], working_directory:<project dir>, environment_variables}` |
+| `inputs` (declared files + workspaceFiles + upstream outputs) | `Directory` Merkle tree rooted at the workspace root                                         |
+| `outputs` globs                                               | `output_paths` = the top-level dirs/files the globs imply; filter on download                |
+| `exec.timeout`                                                | `Action.timeout`                                                                             |
+| cache entry                                                   | `ActionResult` (outputs as a `Tree` in the CAS + `stdout_digest`)                            |
+| remote cache                                                  | `ActionCache` + `ContentAddressableStorage` (same server, `Execute` simply unused)           |
+| remote execution                                              | `Execute` → `Operation` stream → `WaitExecution` on disconnect                               |
+| `exec.retries`, scheduler, telemetry                          | client-side, unchanged                                                                       |
+| persistent tasks                                              | never remote (placement rule)                                                                |
+
+### 7.2 Transfer model
+
+- Every blob is content-addressed; `FindMissingBlobs` before upload. Upload
+  is proportional to the **diff**, never to the number of affected tasks: 200
+  changed files upload 200 blobs whether 3 or 300 tasks consume them. The
+  same file in 50 input trees is one blob.
+- Upstream outputs are referenced by `Tree` digest; they were uploaded by the
+  worker that produced them and never transit the submitter. A 50-task chain
+  runs worker→CAS→worker.
+- Digests: SHA-256 (default) or BLAKE3 where the server advertises it.
+  Git-blob-OID shortcutting does not transfer (different hash). Per-file
+  digests are cached in the plugin's own SQLite table keyed by
+  `(path, size, mtime_ns)` — Bazel's digest cache. First run on a fresh
+  checkout hashes declared inputs once.
+- The first run against an EMPTY CAS uploads the declared source inputs in
+  full. Documented, not hidden.
+
+### 7.3 Remote cache (phase 1 — no core change)
+
+`cache(ctx)` returns a `CacheLayer` that stores today's artifact tar as one
+CAS blob and an `ActionResult` under a synthetic action digest derived from
+the vx cache key (the Gradle/sccache convention for AC reuse). This ships a
+working remote cache on any REAPI server through the existing `LayeredCache`
+seam and retires the gRPC-on-Bun risk on real traffic before any core change.
+
+Phase 3 unifies the shapes: the local cache becomes CAS + AC
+(`cas-backend.ts`/`digest.ts` were written anticipating this), so a
+remotely-executed task's `Tree` and a cached entry are the same thing and
+nothing is re-tarred.
+
+### 7.4 `node_modules`
+
+REAPI has no per-worker setup hook by design (workers are stateless). The
+install step is an **explicit vx task** (decision: explicit over magical):
+
+```ts
+// root vx.config.ts
+install: {
+  exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },   // see below
+  cache: { inputs: { files: ['package.json', 'pnpm-lock.yaml', 'packages/*/package.json'] },
+           outputs: ['node_modules/**', 'packages/*/node_modules/**'] },
+}
+build: { dependsOn: ['//#install', '^build'], … }
+```
+
+- The action is cached in the AC, so it runs **once per lockfile change,
+  ever**, across all workers and developers — "before computing, not every
+  run".
+- It runs **on a worker**, so platform binaries (esbuild, swc, sharp) are
+  built for the worker's platform. Shipping a laptop's `node_modules` would be
+  wrong across platforms; this is why "install as action" beats "upload".
+- `exec.remote: 'only'`: the task exists only
+  to produce a remote input tree; locally it is a no-op and `node_modules`
+  is never cleaned or restored on the developer's disk.
+- **pnpm slicing** (plugin-side optimisation, no behaviour change): pnpm's
+  lockfile lists each importer's transitive closure, and
+  `packages/foo/node_modules/*` are symlinks into `.pnpm/<pkg>@<ver>`. A
+  task's input references only its package's slice of the install output —
+  a new `Directory` over existing blobs, zero upload, typically 5–20% of the
+  store.
+- Remaining cost: materialising the slice's hard-links per action (~1–3 s for
+  tens of thousands of files on NativeLink's filesystem store; lazily on a
+  FUSE worker). Documented as the price of hermetic remote execution.
+
+### 7.5 Hermeticity
+
+A task reading an undeclared file fails on a worker with "no such file" —
+loud. The silent class is optional-file fallbacks (a missing `tsconfig` →
+defaults). `--verify=inputs` (sandbox-proven input completeness) is the gate
+the docs recommend before marking a task remote-eligible; a future
+`vx verify --remote` could run it over the remote-eligible set.
+
+## 8. Analytics
+
+Unchanged by construction: the scheduler is local, so every task outcome —
+including ones executed on a worker — reaches the bus, every `telemetry`
+sink, `otel()`, `vx-github`, and vx-cloud's own telemetry rung. `TaskOutcome.where`
+attributes the worker. REAPI has no analytics concept and needs none of
+this; a community cloud builds its analytics on exactly this seam.
+
+## 9. Phases
+
+Each phase is its own implementation plan; phase 1 is written first and
+nothing in it depends on a later phase.
+
+1. **Remote cache via REAPI** — `vx-reapi` `cache` capability only. Zero core
+   change. Spike deliverable: gRPC client on Bun (`@grpc/grpc-js` or
+   Connect-ES over `node:http2`) against a local NativeLink and bazel-remote,
+   including the `Execute` server-stream even though phase 1 does not use it.
+2. **`executor` seam** — core: `TaskExecutor`, `localExecutor`, `task-hash`
+   returns inputs, placement rule + `exec.remote`, `TaskOutcome.where`;
+   `backend`/`eventSink` deprecated. Plugin: `Execute`, Merkle tree builder,
+   digest cache, `install` docs, pnpm slicing. Outputs always downloaded.
+3. **Download policy + CAS-shaped local cache** — `--download`, `deferred`
+   outputs, local cache as CAS + AC; `isOutputsCurrent` gains the per-output
+   content hash it has wanted.
+4. **Port vx-cloud's dist to `executor`; delete whole-run delegation.**
+   Cloud's executor puts ONE assignment on the server's per-task queue; an
+   agent runs it exactly as today (scoped `vx run` with the dep closure,
+   artifact saved to the native cache under the full-run key by induction)
+   and reports exit code + stdout; the executor returns `outputs: {kind:'cache'}`
+   and the submitter restores through its ordinary hit path. This deletes
+   `DistScheduler`, `dist-recorder`, the run submission/session plumbing and
+   the `backend` rung; the server keeps the agent registry, heartbeats, and a
+   per-task queue with max-min fairness across submitters (the REAPI-server
+   shape), with LPT ordering applied to the queue instead of a run scheduler.
+   Telemetry blindness disappears because the scheduler never left. Then
+   delete core's `backend` + protocol/wire, and salvage `github-summary`/
+   `github-check` into `@vzn/vx-github`. If the port is not worth doing, the
+   fallback is deleting cloud's dist half outright; the analytics half (OTLP
+   receiver + Postgres + dashboard) remains a telemetry plugin either way.
+
+## 10. Coexistence with vx-cloud
+
+During phases 1–3 vx-cloud is untouched and keeps compiling against every
+core change (it is part of the gate). Its dist path works through `backend`;
+its telemetry rung sees REAPI-executed runs in full — the dashboard shows
+them with no cloud server involvement in execution. Costs of coexistence:
+~19k lines + the Postgres/S3 CI job stay in the gate; ~500 lines of
+delegation stay in core; cloud's own dist runs stay locally
+telemetry-blind (structural). These are the evidence for phase 4.
+
+## 11. Risks and mandated spikes
+
+| Risk                                              | Mitigation                                                                                                 |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| gRPC/HTTP-2 client on Bun                         | Phase-1 spike before any core change; both `@grpc/grpc-js` and Connect-ES tried                            |
+| No live stdout from REAPI by default              | Use `stdout_stream_name` over ByteStream where the server supports it; else log on completion (documented) |
+| Output globs → `output_paths`                     | Top-level-dir mapping + client-side filter; a glob that escapes the project dir is refused at plan time    |
+| Non-hermetic tasks run remotely                   | Placement rule + `--verify=inputs` as the documented gate; failures are loud                               |
+| Digest cost on fresh checkouts                    | mtime/size digest cache; measured before/after on the bench workspace                                      |
+| Two cache keys (xxh3 local, action digest remote) | Accepted in phases 1–2; unified in phase 3                                                                 |
+
+## 12. Testing
+
+- Seam: a fake `TaskExecutor` in tests proves scheduler/cache/telemetry/logger
+  are executor-agnostic — a run with every task executed by the fake produces
+  byte-identical telemetry records to the local run (the §8 claim, pinned).
+- Placement: `--dry` shows `local`/`remote` per task; the three rules each
+  get a differential test.
+- Plugin: a REAPI server in CI (bazel-remote is a single static binary; NativeLink
+  has an official image). Round-trip a cache entry; execute an action with an
+  upstream `Tree` input; verify `FindMissingBlobs` uploads exactly the diff on a
+  second run (assert the exact blob set, not "fewer").
+- Hermeticity: a task with an undeclared input fails remotely and passes
+  locally — the control that proves the worker sandbox is real.
+- `install`: the action digest is stable across two checkouts of the same
+  lockfile and changes on a lockfile edit.
+
+## 13. Decisions recorded
+
+- Scheduler never leaves the `vx run` process. (Bazel grain.)
+- `executor` is per task; `backend` is deprecated, not removed, until phase 4.
+- Install is an explicit task with `remote: 'only'`; the plugin contributes
+  only slicing.
+- Continuous tasks and their dependents are local by rule, never by flag.
+- No shared-service abstraction across remote actions.
+- vx-cloud coexists; its dist half is ported to `executor` (or retired) in
+  phase 4, its analytics half is a telemetry plugin.
