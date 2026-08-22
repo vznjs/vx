@@ -1430,7 +1430,7 @@ In-source comments that the new capability makes FALSE (standing rule: a comment
 
 - `src/orchestrator/plugin.ts`, the `VxPlugin` doc comment: "Contributes any subset of three RUN-LEVEL infrastructure capabilities … It NEVER changes how a task executes" → `Contributes any subset of the run-level capabilities — where work runs (executor / backend), which cache is used (cache), who observes the run (telemetry). It never changes WHAT a task is (the command string — principle #3), only where and how that command is executed.`
 - `src/orchestrator/plugin.ts`, the `Plugin.setup` comment and `installPlugins`'s "No setup → a capability-only plugin (backend / cache / eventSink)" comments: enumerate `backend / cache / executor / eventSink`.
-- `src/orchestrator/plugin-host.ts` header (if Task 3 did not already): the capability list includes `executor`.
+- `src/orchestrator/plugin-host.ts`: the `safe()` docstring's load-bearing list `(backend/cache/setup)` → `(backend/cache/executor/setup)`; the header's "falls back to today's exact default" → `the built-in plugins (builtin-plugins.ts) are the default — there is no fallback outside the plugin list`.
 - `docs/schema.md`, end of the `plugins` bullet: "Plugins observe and route; they never change how a task executes." → `Plugins observe, route and execute; they never change what a task is.`
 
 `CLAUDE.md`:
