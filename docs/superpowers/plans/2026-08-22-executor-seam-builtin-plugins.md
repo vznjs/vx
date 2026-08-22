@@ -278,7 +278,7 @@ export {
 - [ ] **Step 5: Run the tests**
 
 Run: `bun test tests/executor.test.ts`
-Expected: PASS (8 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 6: Lint + commit**
 
@@ -1285,8 +1285,16 @@ export {
 } from './orchestrator/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.
 export { localExecutor, selectExecutor } from './exec/index.js'
-export type { ExecuteRequest, ExecuteResult, ExecuteSandbox, TaskExecutor } from './exec/index.js'
+export type {
+  ExecuteRequest,
+  ExecuteResult,
+  ExecuteSandbox,
+  ResolvedSandboxConfig,
+  TaskExecutor,
+} from './exec/index.js'
 ```
+
+`ResolvedSandboxConfig` is exported by `src/exec/sandbox-runtime.ts` but not by `src/exec/index.ts`; add `type ResolvedSandboxConfig,` to the `./sandbox-runtime.js` export block in `src/exec/index.ts` so a plugin author can type `ExecuteSandbox.config` by name (type-only — the runtime pin is unaffected).
 
 `src/index.ts` importing `./exec/index.js` is a NEW edge for the boundary matrix: add `'exec'` to the `index:` row of `ALLOWED` in `tests/module-boundaries.test.ts` (`index: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'exec', 'orchestrator']`).
 
