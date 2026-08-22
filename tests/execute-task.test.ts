@@ -22,6 +22,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache, type CacheEntry } from '../src/cache/index.js'
+import { localExecutor } from '../src/exec/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
@@ -139,6 +140,7 @@ function baseArgs(b: Bench, n: TaskNode, log: Logger) {
     workspaceFingerprint: 'fixture-fingerprint',
     cache: b.cache,
     log,
+    executors: [localExecutor()],
     nestedProjectDirs: [] as string[],
     runStartHrTimeNs: process.hrtime.bigint(),
   }

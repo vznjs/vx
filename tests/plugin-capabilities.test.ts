@@ -388,3 +388,165 @@ describe('executor capability — config validation', () => {
     }
   })
 })
+
+describe('executor capability — end-to-end via run()', () => {
+  async function runHello(workspaceRoot: string) {
+    return await run({
+      cwd: workspaceRoot,
+      projects: ['pkg-a'],
+      tasks: ['hello'],
+      log: makeSilentLogger(),
+      handleSignals: false,
+    })
+  }
+
+  it('a declared executor runs the task and the local executor is not used', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        `globalThis.__vxExec = []
+         export default {
+           plugins: [{
+             name: 'org/exec',
+             executor() {
+               return {
+                 name: 'fake',
+                 async execute(req) {
+                   globalThis.__vxExec.push(req.taskId + ':' + req.command)
+                   req.onStdout('from-fake\\n')
+                   return { exitCode: 0, durationMs: 1, stdout: 'from-fake\\n', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }],
+         }`,
+      )
+      await gitInit(workspaceRoot)
+      const summary = await runHello(workspaceRoot)
+      expect(summary.ok).toBe(true)
+      const seen = (globalThis as unknown as { __vxExec: string[] }).__vxExec
+      expect(seen).toEqual(['pkg-a#hello:echo hi'])
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('an executor that declines a task falls through to the built-in local executor', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        `globalThis.__vxDeclined = []
+         export default {
+           plugins: [{
+             name: 'org/picky',
+             executor() {
+               return {
+                 name: 'picky',
+                 accepts(req) { globalThis.__vxDeclined.push(req.taskId); return false },
+                 async execute() { throw new Error('must not run') },
+               }
+             },
+           }],
+         }`,
+      )
+      await gitInit(workspaceRoot)
+      const summary = await runHello(workspaceRoot)
+      expect(summary.ok).toBe(true)
+      expect(summary.outcomes.map((o) => [o.node.id, o.exitCode])).toEqual([['pkg-a#hello', 0]])
+      expect((globalThis as unknown as { __vxDeclined: string[] }).__vxDeclined).toEqual([
+        'pkg-a#hello',
+      ])
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('a cacheable task executed by a plugin executor is saved and replayed as a hit', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: { hello: {
+           exec: { command: 'echo hi > out.txt' },
+           cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
+         } } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        `globalThis.__vxCalls = 0
+         import { writeFileSync } from 'node:fs'
+         import { join } from 'node:path'
+         export default {
+           plugins: [{
+             name: 'org/exec',
+             executor() {
+               return {
+                 name: 'fake',
+                 async execute(req) {
+                   globalThis.__vxCalls++
+                   writeFileSync(join(req.cwd, 'out.txt'), 'made-by-fake\\n')
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }],
+         }`,
+      )
+      await gitInit(workspaceRoot)
+      const first = await runHello(workspaceRoot)
+      expect(first.ok).toBe(true)
+      expect(first.outcomes[0]?.status).toBe('success')
+      const second = await runHello(workspaceRoot)
+      expect(second.ok).toBe(true)
+      // `restored` is "bytes materialized this run" — false on a hit whose
+      // on-disk outputs already match the snapshot — so the hit is pinned
+      // by status, and the executor call count below proves it replayed.
+      expect(second.outcomes[0]?.status).toBe('cache-hit')
+      expect((globalThis as unknown as { __vxCalls: number }).__vxCalls).toBe(1)
+      expect(await Bun.file(path.join(workspaceRoot, 'pkg-a/out.txt')).text()).toBe(
+        'made-by-fake\n',
+      )
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('COMPAT: a plugin that contributes `backend` delegates the whole run and no executor is consulted', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        `globalThis.__vxBackendRan = false
+         globalThis.__vxExecutorAsked = false
+         export default {
+           plugins: [{
+             name: 'org/cloud-like',
+             backend() { return { async run() { globalThis.__vxBackendRan = true; return { ok: true, outcomes: [] } } } },
+             executor() { globalThis.__vxExecutorAsked = true; return undefined },
+           }],
+         }`,
+      )
+      await gitInit(workspaceRoot)
+      // `backend` is consulted by the CLI layer (src/cli/run.ts), not by
+      // run() — so this pin goes through the real dispatcher, which reads
+      // process.cwd() (same pattern as tests/cli.test.ts).
+      const { run: cliRun } = await import('../src/cli/index.js')
+      const origCwd = process.cwd()
+      process.chdir(workspaceRoot)
+      let code: number
+      try {
+        code = await cliRun(['run', 'hello', '--filter', 'pkg-a'])
+      } finally {
+        process.chdir(origCwd)
+      }
+      expect(code).toBe(0)
+      const g = globalThis as unknown as { __vxBackendRan: boolean; __vxExecutorAsked: boolean }
+      expect(g.__vxBackendRan).toBe(true)
+      expect(g.__vxExecutorAsked).toBe(false)
+    } finally {
+      cleanup()
+    }
+  })
+})

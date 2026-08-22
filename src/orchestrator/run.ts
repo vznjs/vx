@@ -12,6 +12,7 @@ import {
 } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec/index.js'
+import type { TaskExecutor } from '../exec/index.js'
 import {
   isGroupTask,
   markSurfacedDeps,
@@ -25,8 +26,7 @@ import { resolveResourceCosts } from './resources.js'
 import { computeTaskHash } from './task-hash.js'
 import { busLogger, createEventBus, terminalSubscriber } from './events.js'
 import { installPlugins } from './plugin.js'
-import type { VxPlugin } from './plugin.js'
-import { subscribeEventSinks, teardownPlugins } from './plugin-host.js'
+import { resolveExecutors, subscribeEventSinks, teardownPlugins } from './plugin-host.js'
 import type { SubscribedEventSinks } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, deriveCacheSource, isCacheHit, isPassStatus } from './telemetry.js'
@@ -198,8 +198,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   let disposePlugins: (() => void) | undefined
   let eventSinks: SubscribedEventSinks | undefined
   let telemetry: TelemetryHandle | undefined
-  if (prepared.workspaceConfig?.plugins && prepared.workspaceConfig.plugins.length > 0) {
-    const plugins = prepared.workspaceConfig.plugins as readonly VxPlugin[]
+  if (prepared.plugins.length > 0) {
+    const plugins = prepared.plugins
     const pluginCtx = {
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
@@ -207,7 +207,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     }
     try {
       disposePlugins = await installPlugins({
-        plugins: prepared.workspaceConfig.plugins as never,
+        plugins: prepared.plugins as never,
         bus,
         workspaceRoot: prepared.workspaceRoot,
         cacheDir: prepared.cacheDir,
@@ -236,6 +236,24 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     options.concurrency ??
     workspaceConfig?.concurrency ??
     Math.max(1, navigator.hardwareConcurrency)
+
+  // Resolved ONCE per run. Declared executors first, the built-in local
+  // executor last — see builtin-plugins.ts. A broken factory aborts here,
+  // before any task starts.
+  let executors: readonly TaskExecutor[]
+  try {
+    executors = await resolveExecutors(prepared.plugins, {
+      workspaceRoot: prepared.workspaceRoot,
+      cacheDir: prepared.cacheDir,
+      warn: (m: string) => log.status(m),
+      concurrency,
+    })
+  } catch (err) {
+    disposePlugins?.()
+    eventSinks?.dispose()
+    prepared.cache.close()
+    throw err
+  }
 
   // Run-level default task timeout (ms), applied to any task WITHOUT its own
   // `exec.timeout`. Precedence, highest first: `--timeout`/RunOptions.timeout
@@ -354,8 +372,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
     // The canonical run-context record — the same git/CI/host data the
     // invocation header uses, shaped as the telemetry export contract.
-    // Built + consulted ONLY when plugins are declared (an explicit opt-in),
-    // and BEFORE run:start is emitted so a sink catches the whole stream.
+    // Built + consulted ONLY when a plugin CONTRIBUTES `telemetry` (the
+    // built-ins never do), and BEFORE run:start is emitted so a sink
+    // catches the whole stream.
     // subscribeTelemetry returns undefined when no sink is contributed (no
     // telemetry plugin, or all declined — e.g. otel() with no OTLP endpoint),
     // so a plain run does ZERO extra work: no record allocation, no bus
@@ -366,9 +385,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // consult, so paying for the record (2 git spawns + a `.vx/workspace-id`
     // write on a remote-less repo) buys nothing. A plugin that has the hook
     // but declines still pays — its answer is only knowable by asking.
-    const hasTelemetryPlugin =
-      prepared.workspaceConfig?.plugins?.some((p) => (p as VxPlugin).telemetry !== undefined) ===
-      true
+    const hasTelemetryPlugin = prepared.plugins.some((p) => p.telemetry !== undefined)
     if (hasTelemetryPlugin || options.telemetrySinks !== undefined) {
       // Workspace identity (telemetry v2): one git spawn, paid only when a
       // telemetry consumer can exist — a plain run never reaches here.
@@ -395,7 +412,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         tags: options.tags ?? {},
       }
       telemetry = await subscribeTelemetry(
-        (prepared.workspaceConfig?.plugins ?? []) as readonly VxPlugin[],
+        prepared.plugins,
         bus,
         { workspaceRoot, cacheDir, warn: (m: string) => log.status(m) },
         runContextRecord,
@@ -538,6 +555,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         ...(taskTimeoutDefault !== undefined ? { timeout: taskTimeoutDefault } : {}),
         ...(options.verify !== undefined ? { verify: options.verify } : {}),
         log,
+        executors,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         runStartHrTimeNs,
         persistentRegistry,
@@ -904,12 +922,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Crash-isolated + time-bounded inside teardownPlugins, so a faulty
     // plugin can neither fail nor hang the run. Normal completion path
     // only — the finally below just unsubscribes.
-    if (prepared.workspaceConfig?.plugins && prepared.workspaceConfig.plugins.length > 0) {
-      await teardownPlugins(
-        prepared.workspaceConfig.plugins as readonly VxPlugin[],
-        eventSinks?.sinks ?? [],
-        (m) => log.status(m),
-      )
+    if (prepared.plugins.length > 0) {
+      await teardownPlugins(prepared.plugins, eventSinks?.sinks ?? [], (m) => log.status(m))
     }
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would

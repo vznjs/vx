@@ -16,14 +16,16 @@ import {
 } from '../cache/index.js'
 import {
   buildIsolatedEnv,
-  runCommand,
   runPersistent,
-  runSandboxed,
   resolveSandboxConfig,
+  selectExecutor,
   shellQuote,
   signalExitCode,
   type CaptureConfig,
+  type ExecuteRequest,
+  type ExecuteResult,
   type SandboxViolation,
+  type TaskExecutor,
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome, type VerifyVerdict } from '../graph/index.js'
 import {
@@ -52,6 +54,8 @@ export interface ExecuteArgs {
   cachePolicy?: CachePolicy
   forwardArgs?: readonly string[] | undefined
   log: Logger
+  /** Resolved executor list (plugins' + built-in local last); per attempt the first that accepts runs the task. */
+  executors: readonly TaskExecutor[]
   nestedProjectDirs: string[]
   /** Anchor for hrtime spans across all tasks in this run. */
   runStartHrTimeNs: bigint
@@ -158,6 +162,9 @@ function executeGroupTask(args: ExecuteArgs): TaskOutcome {
  * Never reads or writes the cache — the project loader rejects
  * `cache + persistent` at config-load time, so by the time we get
  * here, `cache` is guaranteed undefined.
+ *
+ * Never routed through an executor: a persistent task is local by
+ * construction (its port lives on this machine).
  */
 async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const { node, log } = args
@@ -356,7 +363,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // an explicit `retries: 0`.
   const maxAttempts = 1 + (step.retries ?? args.retries ?? 0)
   let attempt = 0
-  let result: Awaited<ReturnType<typeof runCommand>>
+  let result: ExecuteResult
   let effectiveExitCode: number
 
   // One task attempt: clean the declared outputs (before EVERY attempt — so a
@@ -367,7 +374,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // streamed notice). Shared by the retry loop AND the `--verify` re-run so
   // the two can never drift on the spawn/clean/classify path.
   async function runAttempt(): Promise<{
-    result: Awaited<ReturnType<typeof runCommand>>
+    result: ExecuteResult
     exitCode: number
   }> {
     if (willWrite && outputs.length > 0) {
@@ -387,7 +394,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
     }
     violations = []
-    const res = useSandbox ? await runSandboxedTask() : await runUnsandboxedTask()
+    const req = await buildRequest()
+    const res = await selectExecutor(args.executors, req).execute(req)
+    violations = [...res.violations]
     // Fail-on-violation, on BOTH platforms: macOS reads SRT's structured
     // violation store, Linux parses the strace log the sandboxed spawn
     // writes. (This comment used to claim Linux violations are "always 0"
@@ -448,21 +457,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
   }
 
-  async function runUnsandboxedTask(): ReturnType<typeof runCommand> {
-    return runCommand({
+  async function buildRequest(): Promise<ExecuteRequest> {
+    const base: ExecuteRequest = {
+      taskId: node.id,
       command: step.command,
+      forwardArgs: effectiveForwardArgs,
       cwd: node.projectDir,
       env,
-      forwardArgs: effectiveForwardArgs,
+      capture,
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),
-      capture,
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
-    })
-  }
-
-  async function runSandboxedTask(): ReturnType<typeof runCommand> {
+    }
+    if (!useSandbox) return base
     // Baseline allowRead = resolved cache.inputs.files (absolute paths)
     // Baseline allowWrite = static prefix of every cache.outputs.files glob
     // Baseline denyRead = the workspace root, so any read outside the
@@ -499,27 +507,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     await prepareOutputsForBind(args.workspaceRoot, wsOutputs)
     // Output paths are read+write — a task that declares `dist/**` as
     // output expects to read what it just wrote (e.g. `touch dist/x`
-    // stats the file; `tsc --incremental` re-reads .tsbuildinfo). This
-    // isn't magic — the user already declared these paths; we're just
-    // honoring the natural read-write symmetry of an output directory.
-    const sandboxResult = await runSandboxed({
-      command: step.command,
-      cwd: node.projectDir,
-      env,
-      forwardArgs: effectiveForwardArgs,
-      onStdout: (chunk) => log.taskStdout(node, chunk),
-      onStderr: (chunk) => log.taskStderr(node, chunk),
-      capture,
-      ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
-      ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
-      baseAllowRead: [...resolved.files, ...baseAllowWrite],
-      baseAllowWrite,
-      baseDenyRead: [args.workspaceRoot],
-      config: resolveSandboxConfig(cfg.sandbox ?? {}, node.projectDir),
-    })
-    violations = sandboxResult.violations
-    const { violations: _v, ...runResult } = sandboxResult
-    return runResult
+    // stats the file; `tsc --incremental` re-reads .tsbuildinfo).
+    return {
+      ...base,
+      sandbox: {
+        baseAllowRead: [...resolved.files, ...baseAllowWrite],
+        baseAllowWrite,
+        baseDenyRead: [args.workspaceRoot],
+        config: resolveSandboxConfig(cfg.sandbox ?? {}, node.projectDir),
+      },
+    }
   }
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs
