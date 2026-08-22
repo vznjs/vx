@@ -75,6 +75,7 @@ export {
   type CacheContext,
   type EventSink,
   type EventSinkContext,
+  type ExecutorContext,
   type InstallPluginsArgs,
   type Plugin,
   type PluginContext,
@@ -83,7 +84,12 @@ export {
   type PluginSetupContext,
   type VxPlugin,
 } from './plugin.js'
-export { resolveBackend, resolveCache, subscribeEventSinks } from './plugin-host.js'
+export {
+  resolveBackend,
+  resolveCache,
+  resolveExecutors,
+  subscribeEventSinks,
+} from './plugin-host.js'
 export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 // The bounded log-capture buffer every telemetry sink shares — see the
 // module header for why one implementation, not one per sink.

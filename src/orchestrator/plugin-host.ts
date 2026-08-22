@@ -1,11 +1,12 @@
-// Plugin consultation for the three run-level extension points
-// (backend / cache / eventSink). Each function asks the declared plugins
-// in order and falls back to today's exact default, so a workspace with
-// no capability plugin is byte-identical to before the inversion.
+// Plugin consultation for the run-level extension points (backend / cache / executor / eventSink).
+// Each function asks the declared plugins in order and falls back to
+// today's exact default, so a workspace with no capability plugin is
+// byte-identical to before the inversion.
 //
 // See docs/design/core-cloud-split-2026-06.md §5.1.
 
 import type { CacheLayer } from '../cache/index.js'
+import type { TaskExecutor } from '../exec/index.js'
 import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import type { EventBus } from './events.js'
 import { wireForwarder } from './events.js'
@@ -14,6 +15,7 @@ import type {
   CacheContext,
   EventSink,
   EventSinkContext,
+  ExecutorContext,
   VxPlugin,
 } from './plugin.js'
 import type { RunBackend } from './protocol.js'
@@ -70,6 +72,26 @@ export async function resolveCache(
     if (cache !== undefined) return cache
   }
   return fallback()
+}
+
+/**
+ * Collect every plugin's `executor`, in declaration order. Unlike `backend`
+ * and `cache` this is a LIST: per task, `selectExecutor` takes the first
+ * that accepts. With the built-ins appended (`withBuiltins`) the local
+ * executor is always last, so the list is never empty. A broken factory
+ * aborts — an executor is load-bearing, not observational.
+ */
+export async function resolveExecutors(
+  plugins: readonly VxPlugin[],
+  ctx: ExecutorContext,
+): Promise<TaskExecutor[]> {
+  const executors: TaskExecutor[] = []
+  for (const plugin of plugins) {
+    if (plugin.executor === undefined) continue
+    const executor = await safe(plugin, 'executor', () => plugin.executor!(ctx))
+    if (executor !== undefined) executors.push(executor)
+  }
+  return executors
 }
 
 export interface SubscribedEventSinks {

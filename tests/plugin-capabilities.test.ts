@@ -12,11 +12,13 @@ import { run } from '../src/index.js'
 import {
   resolveBackend,
   resolveCache,
+  resolveExecutors,
   subscribeEventSinks,
   createEventBus,
   type RunBackend,
   type VxPlugin,
 } from '../src/orchestrator/index.js'
+import type { TaskExecutor } from '../src/exec/index.js'
 import { busLogger } from '../src/orchestrator/events.js'
 import { Cache } from '../src/cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
@@ -218,6 +220,32 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     subscribed?.dispose()
     expect(subscribed?.sinks).toHaveLength(0)
     expect(warnings.some((w) => w.includes('org/bad-factory'))).toBe(true)
+  })
+
+  it('resolveExecutors: keeps every contributed executor in declaration order', async () => {
+    const a: TaskExecutor = { name: 'a', execute: () => Promise.reject(new Error('unused')) }
+    const b: TaskExecutor = { name: 'b', execute: () => Promise.reject(new Error('unused')) }
+    const plugins: VxPlugin[] = [
+      { name: 'org/a', executor: () => a },
+      { name: 'org/none', executor: () => undefined },
+      { name: 'org/b', executor: async () => b },
+    ]
+    const resolved = await resolveExecutors(plugins, { ...baseCtx, concurrency: 4 })
+    expect(resolved).toEqual([a, b])
+  })
+
+  it('resolveExecutors: a throwing executor factory aborts with a named UserError', async () => {
+    const plugins: VxPlugin[] = [
+      {
+        name: 'org/broken-exec',
+        executor: () => {
+          throw new Error('exec boom')
+        },
+      },
+    ]
+    await expect(resolveExecutors(plugins, { ...baseCtx, concurrency: 1 })).rejects.toThrow(
+      /org\/broken-exec.*exec boom/,
+    )
   })
 })
 
