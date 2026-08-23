@@ -365,7 +365,7 @@ telemetry-blind (structural). These are the evidence for phase 4.
 
 | Risk                                              | Mitigation                                                                                                 |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| gRPC/HTTP-2 client on Bun                         | Phase-1 spike before any core change; both `@grpc/grpc-js` and Connect-ES tried                            |
+| gRPC/HTTP-2 client on Bun                         | **REALIZED — see §14. The spike found a hard blocker; phase 1 is not buildable as designed.**              |
 | No live stdout from REAPI by default              | Use `stdout_stream_name` over ByteStream where the server supports it; else log on completion (documented) |
 | Output globs → `output_paths`                     | Top-level-dir mapping + client-side filter; a glob that escapes the project dir is refused at plan time    |
 | Non-hermetic tasks run remotely                   | Placement rule + `--verify=inputs` as the documented gate; failures are loud                               |
@@ -398,3 +398,95 @@ telemetry-blind (structural). These are the evidence for phase 4.
 - No shared-service abstraction across remote actions.
 - vx-cloud coexists; its dist half is ported to `executor` (or retired) in
   phase 4, its analytics half is a telemetry plugin.
+
+## 14. Spike result (2026-08-23): gRPC on Bun is BLOCKED on multi-message streams
+
+The phase-1 spike §9/§11 mandated ran against a real `bazel-remote`
+(`buchgr/bazel-remote-cache`, gRPC on a container port). It returned a **hard
+no** on the critical path, before any core change was made — which is exactly
+what the spike existed to do.
+
+### What works on Bun
+
+- `@grpc/proto-loader` parses the full REAPI proto set in **28 ms** and
+  constructs `ActionCache`, `ContentAddressableStorage`, `Capabilities` and
+  `Execution` clients.
+- **Unary calls** — `GetCapabilities`, `FindMissingBlobs`, `BatchUpdateBlobs`,
+  `BatchReadBlobs`, `UpdateActionResult`, `GetActionResult`. Round-tripped
+  real bytes and verified them identical.
+- **Server-streaming** — `ByteStream.Read` returned a 2 MB blob in 32 chunks,
+  bytes identical.
+- **Single-message client-streaming** — `ByteStream.Write` with the whole blob
+  in ONE message works (verified at 2 MB and 3 MB).
+- A cache MISS surfaces as gRPC code **5 NOT_FOUND**, which is the clean
+  signal the `degrade-to-miss` contract needs.
+- An oversized unary call is **refused cleanly**, not truncated:
+  `BatchUpdateBlobs` with 12 MB → code 8, `received message larger than max
+(12582997 vs. 4194304)`.
+
+### What does NOT work
+
+**A client-streaming call carrying more than ONE message hangs forever.**
+Two messages is enough to trigger it. This blocks chunked `ByteStream.Write`,
+which is the only way to upload a blob past the server's max message size —
+i.e. the only way to store a real vx artifact.
+
+The finding is isolated, not guessed:
+
+| Arm                                                     | Result                      |
+| ------------------------------------------------------- | --------------------------- |
+| Bun 1.3.14 + grpc-js, 1 message                         | works                       |
+| Bun 1.3.14 + grpc-js, ≥2 messages                       | **hangs**                   |
+| Bun **1.4.0** (what CI runs) + grpc-js, ≥2 messages     | **hangs**                   |
+| Node 24.14.1 + grpc-js, ≥2 messages                     | works                       |
+| Bun + **hand-rolled framing over `node:http2`**, ≥2 msg | **hangs**                   |
+| Node + the same hand-rolled transport, 3 messages       | works — 3 145 728 committed |
+
+So it is **not** grpc-js (the hand-rolled transport hangs too), **not** the
+backpressure handling (a version with no `drain` pump hangs identically),
+**not** the server (Node succeeds against the same container), and **not** a
+1.3.14 regression (1.4.0 fails the same way). It is **Bun's `node:http2`
+client failing to deliver multiple DATA frames on one request stream.**
+
+A related observable divergence, which is the likely mechanism: on a
+`Http2Stream`, `write()` returns `false` under Node (real HTTP/2 flow control,
+callbacks deferred until flush) but fires its callbacks **eagerly** on Bun.
+That is a concrete, reportable difference.
+
+### Two false passes worth recording
+
+1. "2 MB ByteStream write succeeded" was **wrong** — that run had already
+   uploaded the identical blob via `BatchUpdateBlobs`, so the server
+   short-circuited an already-present blob. Re-tested with a blob the server
+   had never seen, it hangs. _Assert the precondition, not just the outcome._
+2. Port 9092 was already bound by an unrelated local service, so the first
+   container "started" and the probe would have talked to something else. The
+   spike moved to 19092 and asserted the container was actually up.
+
+Also worth knowing: bazel-remote **rewrites `stdout_raw` into a CAS blob** and
+returns `stdout_digest` instead. Verified it genuinely stores the blob
+(precondition: absent from CAS; after: present and byte-identical). A portable
+client must therefore accept **either** form on read. vx's cached entry
+carries stdout, so this is directly load-bearing.
+
+### What this means for phase 1
+
+Phase 1 is **not shippable as designed** while this holds. Options, none free:
+
+1. **Report upstream and wait.** Correct, but blocks the whole REAPI arc on
+   someone else's release.
+2. **Cap blobs at one message.** Everything except large-artifact upload works
+   today. But a remote cache that silently refuses artifacts over ~4 MB is a
+   half-finished implementation, which this project does not ship.
+3. **Raise the server's max message size** and use single-message writes. Some
+   REAPI servers allow it — but it is server-dependent, so "any REAPI server
+   works" stops being true, which was the entire point of choosing REAPI.
+4. **A non-gRPC transport** (bazel-remote's HTTP/1.1 REST API). Works today,
+   but it is bazel-remote-specific and abandons REAPI portability.
+
+The call is the owner's because it trades away a stated goal either way.
+Recommendation: **(1) + (2) staged** — report the Bun defect with the minimal
+reproduction above, and build the plugin's unary surface (AC + CAS +
+`FindMissingBlobs` + batch blobs) now, since every part of it is verified
+working and none of it has to change when streaming unblocks. Ship it only
+once large blobs work, rather than shipping a size-capped cache.

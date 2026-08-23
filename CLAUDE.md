@@ -412,6 +412,56 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-23 (fourth wave) — the mandated gRPC-on-Bun spike came back a HARD
+  NO: Bun's `node:http2` cannot send a multi-message client stream, which
+  blocks REAPI phase 1.** Ran against a real `bazel-remote` container, exactly
+  as the design's §9/§11 required "before any core change" — and it earned its
+  keep by killing the critical path before a line of plugin code was written.
+  **Works on Bun:** proto-loader parses the full REAPI set in 28 ms and builds
+  all four service clients; every UNARY call (`GetCapabilities`,
+  `FindMissingBlobs`, `BatchUpdateBlobs`, `BatchReadBlobs`,
+  `UpdateActionResult`, `GetActionResult`) round-trips real bytes verified
+  identical; SERVER-streaming `ByteStream.Read` returns a 2 MB blob in 32
+  chunks intact; a MISS is gRPC code 5 NOT*FOUND (the degrade-to-miss signal);
+  an oversized unary call is REFUSED cleanly (code 8, `larger than max
+12582997 vs 4194304`), not truncated. **Does not work:** a client-streaming
+  call with MORE THAN ONE message hangs forever — two messages is enough. That
+  is chunked `ByteStream.Write`, the only way to upload a blob past the
+  server's max message size, i.e. the only way to store a real vx artifact.
+  **Isolated, not guessed** — five arms: Bun 1.3.14 + grpc-js 1 message works
+  / ≥2 hangs; **Bun 1.4.0 (what CI runs) hangs the same**, so not a 1.3.14
+  regression; Node 24.14.1 + grpc-js works; Bun + a HAND-ROLLED gRPC framing
+  over raw `node:http2` (no grpc-js at all) ALSO hangs; Node + that same
+  hand-rolled transport commits 3 145 728 bytes. So it is not grpc-js, not my
+  backpressure code (a no-`drain` version hangs identically), not the server
+  (Node succeeds against the same container), not the Bun version. It is
+  **Bun's `node:http2` failing to deliver multiple DATA frames on one request
+  stream.** Likely mechanism, and a concrete upstream report: `Http2Stream.write()`
+  returns `false` under Node (real flow control, callbacks deferred) but fires
+  its callbacks EAGERLY on Bun. **TWO FALSE PASSES, both caught by the standing
+  rules, both worth keeping:** (a) "2 MB ByteStream write succeeded" was wrong —
+  that run had already uploaded the IDENTICAL blob via `BatchUpdateBlobs`, so
+  the server short-circuited an already-present blob; re-run with a blob the
+  server had never seen, it hangs. \_Assert the precondition, not just the
+  outcome.* (b) port 9092 was already bound by an unrelated local service, so
+  the first container "started" and the probe would have talked to something
+  else entirely — the spike moved to 19092 and asserted the container was
+  actually up. **A third finding, unrelated to the blocker but load-bearing for
+  phase 1:** bazel-remote REWRITES `stdout_raw` into a CAS blob and returns
+  `stdout_digest` instead. Verified it genuinely stores the blob (precondition:
+  absent from CAS; after: present, byte-identical) rather than returning a
+  dangling reference — so a portable client must accept EITHER form on read,
+  and vx's cached entry carries stdout, so this is directly in the path.
+  **Phase 1 is NOT shippable as designed.** Options and a recommendation are in
+  `docs/design/plugin-executor-reapi-2026-08.md` §14; the call is the owner's
+  because every option trades away a stated goal (portability, or "no
+  half-finished implementations", or time). My recommendation: report the Bun
+  defect with the minimal reproduction, and build only the UNARY surface now —
+  all of it is verified working and none of it changes when streaming
+  unblocks — rather than shipping a cache that silently refuses artifacts over
+  ~4 MB. Nothing was committed to `packages/vx-reapi/src` on the strength of a
+  transport that does not work.
+
 - **2026-08-23 (third wave) — vx cloud REMOVED IN FULL, and core's whole-run
   `backend` seam with it.** Owner directive, mid-session: "Remove vx cloud in
   full. We now focus on modular architecture plugins and reapi." Two scoping
