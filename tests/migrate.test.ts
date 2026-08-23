@@ -198,6 +198,31 @@ describe('vx migrate (turbo)', () => {
     TIMEOUT,
   )
 
+  it('emits vx.workspace.ts declaring the local plugins when none exists', async () => {
+    expect(result.out).toContain('vx.workspace.ts')
+    const ws = await Bun.file(path.join(root, 'vx.workspace.ts')).text()
+    expect(ws).toContain("import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'")
+    expect(ws).toContain("import { localCachePlugin } from '@vzn/vx/plugins/local-cache'")
+    expect(ws).toContain('plugins: [localExecutorPlugin(), localCachePlugin()]')
+  })
+
+  it('does not emit vx.workspace.ts when one already exists', async () => {
+    const other = await makeTurboWorkspace()
+    try {
+      await writeFile(
+        path.join(other, 'vx.workspace.mjs'),
+        'export default { plugins: [] } // MARKER\n',
+      )
+      const r = await vx(other, ['migrate'])
+      expect(r.code).toBe(0)
+      expect(r.out).not.toContain('vx.workspace.ts')
+      expect(await Bun.file(path.join(other, 'vx.workspace.ts')).exists()).toBe(false)
+      expect(await Bun.file(path.join(other, 'vx.workspace.mjs')).text()).toContain('MARKER')
+    } finally {
+      await rm(other, { recursive: true, force: true })
+    }
+  })
+
   it('writes a vx-preset.ts with the three global arrays', async () => {
     const preset = await Bun.file(path.join(root, 'vx-preset.ts')).text()
     expect(preset).toContain("export const globalInputs = ['tsconfig.base.json']")

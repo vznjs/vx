@@ -60,19 +60,26 @@ VxPlugin
   setup / teardown                                                (existing)
 ```
 
-| Plugin                            | cache       | executor     | telemetry   |
-| --------------------------------- | ----------- | ------------ | ----------- |
-| `vx-reapi`                        | ✓           | ✓            | —           |
-| `vx-otel`                         | —           | —            | ✓           |
-| `vx-github` (summary + check run) | —           | —            | ✓           |
-| vx-cloud today                    | native wire | `backend`    | ✓           |
-| a community cloud                 | their store | their agents | their DB/UI |
-| core default                      | local dir   | local spawn  | none        |
+| Plugin                            | cache                | executor                | telemetry   |
+| --------------------------------- | -------------------- | ----------------------- | ----------- |
+| `vx-reapi`                        | ✓                    | ✓                       | —           |
+| `vx-otel`                         | —                    | —                       | ✓           |
+| `vx-github` (summary + check run) | —                    | —                       | ✓           |
+| vx-cloud today                    | native wire          | `backend`               | ✓           |
+| a community cloud                 | their store          | their agents            | their DB/UI |
+| declared by every workspace       | `localCachePlugin()` | `localExecutorPlugin()` | —           |
 
-Precedence: first non-declining plugin wins `cache` and `executor` (the
-existing rule for `cache`/`backend`); all `telemetry` sinks are additive.
-If any plugin contributes a `backend`, the run delegates as today and
-`executor` is not consulted — this is what lets vx-cloud's dist path keep
+**No defaults.** Core applies no plugin on its own; `localExecutorPlugin()`
+(`@vzn/vx/plugins/local-executor`) and `localCachePlugin()`
+(`@vzn/vx/plugins/local-cache`) live under `src/plugins/`, import core only
+via `'@vzn/vx'`, and are declared like any other — a workspace that declares
+none fails before any task runs. **Lists, not winners:** every `executor` is
+kept in declaration order and per task the first whose `accepts()` passes
+runs it; every `cache` layer is kept and chained (lookup walks, save reaches
+all, the first owns the run index; a layer wrapping the local handle
+subsumes the bare local one); `telemetry` sinks are additive. `backend`
+stays single-winner and, when contributed, delegates the whole run
+(executors are not consulted) — this is what lets vx-cloud's dist path keep
 working unchanged during coexistence.
 
 ## 4. The `executor` seam

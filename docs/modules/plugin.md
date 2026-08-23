@@ -12,7 +12,7 @@ behavior lives in the plugin package (vite-style), not in core.
 | Capability       | Consulted by        | Contract                                                                                     |
 | ---------------- | ------------------- | -------------------------------------------------------------------------------------------- |
 | `executor(ctx)`  | `plugin-host.ts`    | return a `TaskExecutor` or decline; ALL kept in order, first accepting runs                  |
-| `cache(ctx)`     | run setup           | return a `CacheLayer` or decline; first wins; built-in `vx/local-cache` last                 |
+| `cache(ctx)`     | run setup           | return a `CacheLayer` or decline; ALL kept in order and chained (see chained-cache.md)       |
 | `backend(ctx)`   | `cli/run.ts`        | whole-run delegation (server-side scheduling); when contributed, executors are not consulted |
 | `telemetry(ctx)` | `telemetry-host.ts` | return sink(s) or decline                                                                    |
 | `eventSink(ctx)` | `plugin-host.ts`    | raw `WireEvent` consumer                                                                     |
@@ -28,5 +28,6 @@ behavior lives in the plugin package (vite-style), not in core.
   everything else is crash-isolated (observability never breaks a run).
 - `teardown()` and `EventSink.flush()` ARE invoked at end-of-run (since
   2026-07) — plugins may rely on them to drain buffers.
-- Core's own executor and cache are the built-in plugins (see
-  builtin-plugins.md); there is no fallback outside the plugin list.
+- **No defaults.** Core's own executor and cache are plugins under
+  `src/plugins/` (see plugins.md), declared like any other; a workspace
+  that declares no executor or no cache fails before any task runs.

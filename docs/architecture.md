@@ -129,24 +129,26 @@ Core is extended in-process, per run, through `VxPlugin`
 changes WHERE a task's command executes (`executor`), never WHAT it is —
 the command string is the task (principle #3). Five capabilities:
 
-| Capability  | Kind                      | Contract                                                                                                                                                                                                               |
-| ----------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `executor`  | behavior                  | returns a `TaskExecutor` or declines. Consulted once per run; ALL kept in declaration order; per task the first whose `accepts()` passes runs it; the built-in `vx/local-executor` is last                             |
-| `backend`   | behavior                  | returns a `RunBackend` (`run(RunRequest) → RunResult`) or declines. Consulted once per run; first non-undefined wins; kept for server-side schedulers (`@vzn/vx-cloud`); when contributed, executors are not consulted |
-| `cache`     | behavior                  | returns a `CacheLayer` wrapping/replacing the local `Cache`, or declines. First wins; the built-in `vx/local-cache` is last (core ships no wire client)                                                                |
-| `telemetry` | observe-only              | returns `TelemetrySink`(s) or declines. ALL plugins' sinks are additive; a sink receives immutable records and holds no run handle                                                                                     |
-| `eventSink` | observe-only (deprecated) | raw `WireEvent` consumer via `wireForwarder`; kept for back-compat, `telemetry` is canonical                                                                                                                           |
+| Capability  | Kind                      | Contract                                                                                                                                                                                                                     |
+| ----------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `executor`  | behavior                  | returns a `TaskExecutor` or declines. Consulted once per run; ALL kept in declaration order; per task the first whose `accepts()` passes runs it; nothing is appended — `localExecutorPlugin()` is declared like any other   |
+| `backend`   | behavior                  | returns a `RunBackend` (`run(RunRequest) → RunResult`) or declines. Consulted once per run; first non-undefined wins; kept for server-side schedulers (`@vzn/vx-cloud`); when contributed, executors are not consulted       |
+| `cache`     | behavior                  | returns a `CacheLayer` or declines. ALL kept in declaration order and CHAINED (lookup walks, save reaches all, the first owns the run index); a layer wrapping the local handle subsumes the bare `localCachePlugin()` layer |
+| `telemetry` | observe-only              | returns `TelemetrySink`(s) or declines. ALL plugins' sinks are additive; a sink receives immutable records and holds no run handle                                                                                           |
+| `eventSink` | observe-only (deprecated) | raw `WireEvent` consumer via `wireForwarder`; kept for back-compat, `telemetry` is canonical                                                                                                                                 |
 
 Plus optional `setup` (fail-fast with a clean `UserError` naming the
 plugin) and `teardown`. Consultation lives in `plugin-host.ts`
 (executor/cache/backend/eventSink) and `telemetry-host.ts` (telemetry).
 `backend` is resolved by the CLI layer (`src/cli/run.ts`) from the
 DECLARED plugins before `run()` starts; every other capability is
-resolved inside `prepareRun`/`run()` from the effective list
-(`prepared.plugins`, declared + built-ins — see
-`docs/modules/builtin-plugins.md`). The hard invariant: **a workspace
-with no plugins — or whose plugins all decline — is byte-identical to
-pre-plugin vx.** `subscribeTelemetry` returns `undefined` when zero
+resolved inside `prepareRun`/`run()` from the declared list
+(`prepared.plugins`). **No defaults:** core applies no plugin on its own —
+its executor and cache are plugins under `src/plugins/` (see
+`docs/modules/plugins.md`), declared like any other; a workspace that
+declares none fails before any task runs, naming the fix. The hard
+invariant for observe-only plugins: **a workspace whose telemetry plugins
+all decline is byte-identical to one with none declared.** `subscribeTelemetry` returns `undefined` when zero
 sinks are contributed, so no bus subscriber is added and no summary
 records are built.
 

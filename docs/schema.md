@@ -861,13 +861,15 @@ default.
 
 ```ts
 import { defineWorkspace } from '@vzn/vx'
+import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
+import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
 import { otel } from '@vzn/vx-otel'
 
 export default defineWorkspace({
   concurrency: 8,
   cacheDir: 'build/.vx-cache',
   timeout: 600_000,
-  plugins: [otel()],
+  plugins: [otel(), localExecutorPlugin(), localCachePlugin()],
 })
 ```
 
@@ -898,7 +900,15 @@ interface WorkspaceConfig {
   root; absolute paths are used as-is. `vx run`, `vx cache prune`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`).
-- **`plugins`** — the run-level extension points. Each entry is a
+- **`plugins`** — the run-level extension points. **Required in
+  practice:** core applies nothing by default, so a workspace must declare
+  an executor and a cache provider — `localExecutorPlugin()` from
+  `@vzn/vx/plugins/local-executor` and `localCachePlugin()` from
+  `@vzn/vx/plugins/local-cache` for core's own (`vx migrate` emits them);
+  a workspace without either fails before any task runs, naming the fix.
+  Declaration order is precedence: every `executor` is consulted in order
+  per task (first to accept runs it); every `cache` layer is chained
+  (lookup walks, save reaches all). Each entry is a
   `VxPlugin` object contributing any subset of `backend` (where the
   run executes), `cache` (which cache layer is used), `executor`
   (`executor(ctx)` — return a `TaskExecutor` (where one task's command

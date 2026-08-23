@@ -48,8 +48,8 @@ export interface RunSummary {
    `busLogger` — it never calls the logger directly.
 2. **`prepareRun(options, log)`** — shared setup: discovery, scoped
    config loading (lock-backed under `--frozen`), package + task
-   graph, cache open (local policy slice; first plugin `cache`
-   capability, the built-in `vx/local-cache` last; an injected
+   graph, cache open (local policy slice; the declared `cache`
+   layers chained in order; an injected
    `RunOptions.remoteCache` wrap wins), bulk git populate, hash memo, optional
    predictive priorities. **Caller owns `cache.close()`.**
 3. **Empty-case handling.** `no-tasks-declared` / `empty-graph` →

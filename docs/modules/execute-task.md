@@ -91,7 +91,7 @@ caches.
    - The attempt builds an `ExecuteRequest` (command, env, capture,
      timeout, sandbox baselines) and hands it to
      `selectExecutor(args.executors, req)` — the first executor that
-     accepts. With no plugin executor that is `vx/local-executor`, i.e.
+     accepts. With only `localExecutorPlugin()` declared that is
      `runCommand` / `runSandboxed` exactly as before.
    - Up to `1 + (exec.retries ?? args.retries ?? 0)` attempts: a failed
      attempt (timeouts included, `aborted` NOT — a teardown breaks out
@@ -163,6 +163,6 @@ extensions:
   Hook between `resolveOutputs` and `cache.save`.
 - **Pre-spawn hooks.** Run a setup script (e.g. cgroup/limits
   application) before each spawn: contribute an `executor` that wraps
-  `localExecutor()` — no change to this module.
+  `localExecutor()` from `@vzn/vx/plugins/local-executor` — no change to this module.
 - **Different cache layer.** Already abstracted via `CacheLayer` —
   the caller decides which.

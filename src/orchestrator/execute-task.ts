@@ -54,7 +54,7 @@ export interface ExecuteArgs {
   cachePolicy?: CachePolicy
   forwardArgs?: readonly string[] | undefined
   log: Logger
-  /** Resolved executor list (plugins' + built-in local last); per attempt the first that accepts runs the task. */
+  /** The declared executors, in order; per attempt the first that accepts runs the task. */
   executors: readonly TaskExecutor[]
   nestedProjectDirs: string[]
   /** Anchor for hrtime spans across all tasks in this run. */

@@ -125,6 +125,20 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   for (const f of plan.extraFiles) {
     files.push({ relPath: f.relPath, abs: path.join(root, f.relPath), contents: f.contents })
   }
+  // A migrated workspace must declare its executor and cache — nothing is
+  // applied by default. Emit the workspace file unless the repo already has
+  // one in any supported extension.
+  const hasWorkspaceFile = (
+    await Promise.all(
+      ['vx.workspace.ts', 'vx.workspace.mjs', 'vx.workspace.js'].map((n) =>
+        Bun.file(path.join(root, n)).exists(),
+      ),
+    )
+  ).some(Boolean)
+  if (!hasWorkspaceFile) {
+    const abs = path.join(root, 'vx.workspace.ts')
+    files.push({ relPath: relPosix(root, abs), abs, contents: WORKSPACE_FILE })
+  }
 
   if (!parsed.dry && !parsed.force) {
     const conflicts = new Set<string>()
@@ -182,6 +196,15 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
 }
 
 // ─── TS emission ──────────────────────────────────────────────────────
+
+const WORKSPACE_FILE = `import { defineWorkspace } from '@vzn/vx'
+import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
+import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
+
+// Nothing runs that is not declared here. Put a remote executor or cache
+// plugin BEFORE the local one to prefer it.
+export default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })
+`
 
 const IDENT = /^[A-Za-z_$][\w$]*$/
 

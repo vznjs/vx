@@ -72,11 +72,11 @@ export interface VxPlugin {
   /**
    * Contribute a task executor — WHERE one task's command runs. Consulted
    * ONCE per run; every contributed executor is kept, in declaration order,
-   * and per task the first whose `accepts()` passes executes it. The
-   * built-in `vx/local-executor` is appended last unless declared
-   * explicitly, so a plugin that declines (returns undefined) or whose
-   * executor declines a task falls through to the local spawn. Persistent
-   * tasks never reach an executor (local by construction).
+   * and per task the first whose `accepts()` passes executes it. Nothing is
+   * appended: a workspace declares `localExecutorPlugin()` (from
+   * `@vzn/vx/plugins/local-executor`) like any other, and a run with no
+   * executor at all fails before any task runs. Persistent tasks never
+   * reach an executor (local by construction).
    */
   executor?(ctx: ExecutorContext): TaskExecutor | undefined | Promise<TaskExecutor | undefined>
 

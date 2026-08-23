@@ -194,8 +194,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // each plugin's `eventSink` capability onto the bus via wireForwarder.
   // Both fail-fast on a setup() throw with a clean UserError naming the
   // plugin; eventSink init failures are isolated (observability never
-  // breaks a run). With only the built-ins declared both loops skip every
-  // entry — a no-user-plugin run subscribes nothing.
+  // breaks a run). A plugin without `setup`/`eventSink` (the local executor
+  // and cache) is skipped by both loops — they subscribe nothing.
   let disposePlugins: (() => void) | undefined
   let eventSinks: SubscribedEventSinks | undefined
   let telemetry: TelemetryHandle | undefined
@@ -369,8 +369,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
     // The canonical run-context record — the same git/CI/host data the
     // invocation header uses, shaped as the telemetry export contract.
-    // Built + consulted ONLY when a plugin CONTRIBUTES `telemetry` (the
-    // built-ins never do), and BEFORE run:start is emitted so a sink
+    // Built + consulted ONLY when a plugin CONTRIBUTES `telemetry`, and
+    // BEFORE run:start is emitted so a sink
     // catches the whole stream.
     // subscribeTelemetry returns undefined when no sink is contributed (no
     // telemetry plugin, or all declined — e.g. otel() with no OTLP endpoint),

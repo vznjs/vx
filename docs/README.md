@@ -92,6 +92,18 @@ export default defineProject({
 })
 ```
 
+Declare what runs it — core applies nothing by default (`vx migrate`
+emits this file):
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
+import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
+
+export default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })
+```
+
 Run things:
 
 ```bash

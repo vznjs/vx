@@ -7,7 +7,7 @@ resolves everything about one attempt — command, cwd, env, capture,
 timeout, sandbox baselines — into an `ExecuteRequest`; a `TaskExecutor`
 runs it and returns an `ExecuteResult` (exit code, streams, rusage,
 sandbox violations). Core's own executor, `localExecutor`, is the same
-`runCommand` / `runSandboxed` call the orchestrator used to make directly.
+`runCommand` / `runSandboxed` call the orchestrator used to make directly — it lives in `src/plugins/local-executor/` (see plugins.md).
 
 ## Public surface
 
@@ -16,10 +16,9 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
   `capture`, `timeoutMs?`, `onStdout`, `onStderr`, `liveChildren?`,
   `sandbox?: ExecuteSandbox`
 - `ExecuteResult extends RunResult { violations }`
-- `localExecutor()` — accepts every request.
 - `selectExecutor(executors, req)` — first executor, in order, whose
   `accepts` is absent or returns true; throws naming the task when all
-  decline (unreachable while `vx/local-executor` is in the list).
+  decline (the message says to declare `localExecutorPlugin()` after the one that declined).
 
 ## Rules
 
@@ -45,4 +44,4 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 ## Replacing this module
 
 Contribute `executor(ctx)` from a plugin; to wrap the local behaviour,
-delegate to `localExecutor()` inside your own executor.
+delegate to `localExecutor()` (`@vzn/vx/plugins/local-executor`) inside your own executor.

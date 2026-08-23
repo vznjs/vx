@@ -9,15 +9,17 @@ serializable `WireEvent` stream.
 
 `backend` is resolved by the CLI layer (`src/cli/run.ts`) from the
 DECLARED plugins before `run()` starts; every other capability is resolved
-inside `prepareRun`/`run()` from the effective list (`prepared.plugins`,
-declared + built-ins).
+inside `prepareRun`/`run()` from the declared list (`prepared.plugins`).
+Nothing is appended — no executor or no cache is a named error
+(`MISSING_PLUGIN_HINT`).
 
 ## Public surface
 
 - `resolveExecutors(plugins, ctx)` → `TaskExecutor[]` (ordered; a
-  throwing factory aborts).
-- `resolveCache(plugins, ctx)` → `CacheLayer` (first wins; throws when
-  none — the built-in is the default).
+  throwing factory aborts; an empty result is a named error).
+- `resolveCache(plugins, ctx)` → `CacheLayer` (one layer as is; two or
+  more chained in order — `ChainedCache`; a layer wrapping the local
+  handle subsumes the bare local layer; none is a named error).
 - `resolveBackend(plugins, ctx, fallback)` → `RunBackend` (first wins;
   the caller's fallback otherwise).
 - `subscribeEventSinks(plugins, bus, ctx)` → `SubscribedEventSinks`
