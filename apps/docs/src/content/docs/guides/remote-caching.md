@@ -66,6 +66,31 @@ vx remote cache with one endpoint of configuration — six mature server
 implementations, none of them written by us, because the REAPI server is
 deliberately dumb.
 
+```ts
+// vx.workspace.ts — reapi BEFORE localCachePlugin so a remote hit wins.
+import { reapi } from '@vzn/vx-reapi'
+
+export default defineWorkspace({
+  plugins: [reapi({ endpoint: 'cache.example.com:443' }), localExecutorPlugin(), localCachePlugin()],
+})
+```
+
+Configure it inline, or from `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE`. With no
+endpoint the plugin **declines** and costs nothing, so it is safe to leave
+declared everywhere — the same contract every vx plugin follows.
+
+**How a vx key becomes a REAPI entry.** A CAS digest is the sha256 of the
+content, so it cannot be known before the bytes exist and `has(key)` could
+never answer. The ActionCache supplies the indirection: a synthetic action
+digest, `sha256("vx-reapi-v1\0" + key)`, addresses an ActionResult whose one
+output file points at the artifact blob. The version prefix keeps vx keys out
+of the address space of real Bazel actions on a shared server, and makes a
+future change to the mapping miss cleanly instead of misreading.
+
+**It requires Bun ≥ 1.4**, and says so rather than misbehaving if it is not.
+Bun's HTTP/2 client hangs on chunked uploads above a version-dependent size;
+the plugin chunks at 128 KB and refuses to start on a Bun where that is unsafe.
+
 ## Bring your own backend
 
 Because the wire is a plugin, you can back the shared cache with

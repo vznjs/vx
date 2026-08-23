@@ -325,9 +325,12 @@ Each phase is its own implementation plan; phase 1 is written first and
 nothing in it depends on a later phase.
 
 1. **Remote cache via REAPI** — `vx-reapi` `cache` capability only. Zero core
-   change. Spike deliverable: gRPC client on Bun (`@grpc/grpc-js` or
-   Connect-ES over `node:http2`) against a local NativeLink and bazel-remote,
-   including the `Execute` server-stream even though phase 1 does not use it.
+   change. **SHIPPED 2026-08-23.** `ReapiClient` (Capabilities, CAS,
+   ActionCache, ByteStream) + `ReapiRemoteCache` filling core's
+   `RemoteCacheLayer` seam, composed through `LayeredCache` by the `reapi()`
+   plugin; declines with no endpoint. Round-trip verified against a live
+   bazel-remote, including a 1 MB artifact spanning 8 ByteStream messages.
+   The spike this phase existed to de-risk is §14.
 2. **`executor` seam** — core: `TaskExecutor`, `localExecutor`, `task-hash`
    returns inputs, placement rule + `exec.remote`, `TaskOutcome.where`;
    `backend`/`eventSink` deprecated. Plugin: `Execute`, Merkle tree builder,

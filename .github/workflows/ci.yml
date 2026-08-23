@@ -100,3 +100,46 @@ jobs:
         env:
           VX_REQUIRE_SANDBOX: '1'
         run: bun src/bin.ts run ci --report-file="$GITHUB_STEP_SUMMARY"
+
+  # The `ci` job above is scoped to ./tests (core). Workspace-member tests ran
+  # only inside the removed cloud job, so `packages/*/tests/` has been
+  # unguarded since — this job is what makes a plugin's suite gate a push.
+  #
+  # bazel-remote is a real REAPI server (a single static binary, hence a cheap
+  # service container). VX_REQUIRE_REAPI turns an absent endpoint into a
+  # FAILURE rather than a skip, for the same reason VX_REQUIRE_SANDBOX exists:
+  # the round-trip suite is the only thing proving the wire works, and a skip
+  # reports green.
+  packages:
+    name: plugin packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      bazel-remote:
+        image: buchgr/bazel-remote-cache:latest
+        ports:
+          - 19092:9092
+        env:
+          BAZEL_REMOTE_DIR: /data
+          BAZEL_REMOTE_MAX_SIZE: 1
+          BAZEL_REMOTE_GRPC_ADDRESS: 0.0.0.0:9092
+          BAZEL_REMOTE_HTTP_ADDRESS: 0.0.0.0:8080
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: bun test (packages/vx-otel)
+        run: cd packages/vx-otel && bun test
+
+      - name: bun test (packages/vx-reapi)
+        env:
+          VX_REAPI_TEST_ENDPOINT: 127.0.0.1:19092
+          VX_REQUIRE_REAPI: '1'
+        run: cd packages/vx-reapi && bun test

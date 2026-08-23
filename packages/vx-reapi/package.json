@@ -1,7 +1,7 @@
 {
   "name": "@vzn/vx-reapi",
   "version": "0.0.0",
-  "description": "Bazel Remote Execution API plugin for vx — remote cache (ActionCache + CAS) and remote execution against NativeLink, BuildBuddy, Buildbarn or bazel-remote.",
+  "description": "Bazel Remote Execution API plugin for vx — remote cache (ActionCache + CAS) against NativeLink, BuildBuddy, Buildbarn or bazel-remote.",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -17,7 +17,7 @@
     "README.md"
   ],
   "engines": {
-    "bun": ">=1.3"
+    "bun": ">=1.4"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.12.0",

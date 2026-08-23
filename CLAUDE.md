@@ -405,12 +405,67 @@ time every single time.
 - Task-log caps count CHARS, not memory (~36× overhead at 1-char chunks);
   when failures alone exceed the run budget the OLDEST failure is stubbed
   first (usually the root cause).
+- **The macOS sandbox suites are load-flaky as a CLASS.** Two different tests
+  failed in two consecutive full-suite runs on Bun 1.4.0 —
+  `sandbox-runtime` "still denies an undeclared read through a symlinked
+  workspace root" (zero `sandboxViolationLines` where a denial should name
+  `token.txt`) and `verify` "proves a task whose declared inputs are
+  complete" — and BOTH pass in isolation, 3/3 on re-run. Same family as the
+  recorded `--verify=inputs`-on-macOS defect: sandbox-exec behaviour under
+  concurrent load. Invisible in CI (ubuntu-only), which is the same blind spot
+  the darwin-job item covers. Worth root-causing rather than retrying, because
+  the symptom is a violation-reporting path reporting NO violations — which is
+  indistinguishable from "the sandbox allowed it".
 - The GHA job-summary plugin and the PR check-run integration went with the
   cloud removal (2026-08-23). Core's `--report=markdown` / `--report-file`
   still produce the table; the automatic-on-every-run plugin and the Checks
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-23 (fifth wave) — `@vzn/vx-reapi` phase 1 SHIPPED: a remote cache
+  on any Bazel REAPI server, at 128 KB chunks by owner decision.** Owner call
+  after the spike: use 128 KB, not the 64 KB I had argued for. 128 KB works on
+  Bun 1.4.0 and HANGS on 1.3.x, and `package.json` declared `bun >= 1.3` — so
+  the decision was taken WITH a version gate rather than argued against:
+  `engines.bun` is now `>=1.4` and `assertBunSupportsChunking()` throws a named
+  error at client construction on anything older. The failure being guarded is
+  a HANG, which gives a user nothing to act on, so a startup refusal is
+  strictly better than the alternative. **The mapping, and why the ActionCache
+  is needed at all:** a CAS digest is the sha256 of the CONTENT, so it cannot
+  be derived from a vx key before the bytes exist — `has(key)` could never
+  answer. The AC supplies the indirection: a SYNTHETIC action digest
+  `sha256("vx-reapi-v1\0" + key)` addresses an ActionResult whose one output
+  file points at the artifact blob in CAS (the Gradle/sccache convention for
+  reusing an AC as a key/value store). The `vx-reapi-v1` prefix does two jobs —
+  it keeps vx keys out of the address space of real Bazel action digests on a
+  shared server, and it makes a future mapping change MISS cleanly rather than
+  read bytes written under different rules. `durationMs` rides `stdout_raw`,
+  and the read path accepts `stdout_digest` too because bazel-remote
+  normalises inline stdout into CAS (spike finding, §14). **Zero core change:**
+  the plugin fills the existing `RemoteCacheLayer` seam (`has`/`get`/`put`) and
+  composes through core's `LayeredCache`, so read-through, hydrate-on-hit,
+  background upload drain and degrade-to-miss are all core's, unmodified.
+  Declines with no endpoint, so it is safe to leave declared. **Verified
+  against a LIVE bazel-remote, not a mock:** 16 tests green including a 1 MB
+  artifact spanning 8 ByteStream messages restored byte-identical, an unknown
+  key as a MISS not an error, a re-put skipping the upload via
+  `FindMissingBlobs` while still refreshing the entry, and — the one worth
+  keeping — an AC entry pointing at an evicted blob reading as a MISS rather
+  than crashing, since the two stores prune independently and a dangling entry
+  is an ordinary state. **Differential on the load-bearing constant:** setting
+  `CHUNK_BYTES` to 512 KB FAILS the multi-chunk round-trip; restoring 128 KB
+  returns 16/16. The constant is proven, not asserted. **Gating, per "a skip is
+  a silent PASS":** the round-trip suite skips without
+  `VX_REAPI_TEST_ENDPOINT`, but `VX_REQUIRE_REAPI=1` turns an absent endpoint
+  into a FAILURE — verified in both directions. **A gap this wave closed
+  incidentally: `packages/*/tests/` ran NOWHERE in CI.** The root `test` task
+  is anchored to `./tests/`, and the only job that ran package suites was the
+  cloud one, deleted earlier today — so `vx-otel`'s 44 tests had been unguarded
+  since. A new `packages` CI job runs both plugin suites, with bazel-remote as
+  a service container so the REAPI round-trip gates a push. Docs landed in the
+  same wave (package README + the remote-caching guide), per the standing rule.
+  NOT shipped: remote EXECUTION (the `executor` capability) — phase 2.
 
 - **2026-08-23 (fourth wave) — the mandated gRPC-on-Bun spike: a real Bun
   defect, a one-constant workaround, and a wrong conclusion I had to correct
