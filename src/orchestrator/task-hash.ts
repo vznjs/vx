@@ -1,8 +1,14 @@
 import path from 'node:path'
 import type { TaskConfig, CacheConfig } from '../config.js'
-import { type CacheLayer, resolveInputs, type GitFilesCache } from '../cache/index.js'
+import {
+  type CacheKeyInput,
+  type CacheLayer,
+  resolveInputs,
+  type GitFilesCache,
+} from '../cache/index.js'
+import type { InputFile, TaskInputs } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
-import { xxh3hex } from '../util/index.js'
+import { relPosix, xxh3hex } from '../util/index.js'
 import { filterUpstreamHashes } from './upstream.js'
 
 /**
@@ -83,6 +89,51 @@ export interface ComputeHashArgs {
  * `computeGroupHash` is exported for that purpose.
  */
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
+  return await args.cache.key(await resolveKeyInput(args))
+}
+
+/**
+ * The key AND the structured input set behind it, for the executor seam.
+ * Miss path only: it re-runs the (memoized) resolution `computeTaskHash`
+ * did for the probe and retains the VALUES the key folded — env, runtime
+ * output, per-file digests — which `captureInto` deliberately reduces to
+ * digests because its rows are persisted. Per-file digests come from the
+ * same sources as the fold: the index-OID map for clean tracked files,
+ * else `hashFile`'s stat memo (already warm after `key()`).
+ */
+export async function describeTaskInputs(
+  args: ComputeHashArgs,
+): Promise<{ hash: string; inputs: TaskInputs }> {
+  const input = await resolveKeyInput(args)
+  const hash = await args.cache.key(input)
+  const sorted = [...input.inputFiles].sort()
+  const digests = await Promise.all(
+    sorted.map((f) => input.fileHashes?.get(f) ?? args.cache.hashFile(f)),
+  )
+  const files: InputFile[] = sorted.map((f, i) => ({
+    path: relPosix(input.workspaceRoot, f),
+    digest: digests[i]!,
+  }))
+  const upstreamHashes = [...input.upstreamHashes].sort()
+  return {
+    hash,
+    inputs: {
+      files,
+      env: input.envValues.map(([name, value]) => ({ name, value })),
+      runtime: (input.runtimeValues ?? []).map(([command, output]) => ({ command, output })),
+      workspaceRuntime: (input.workspaceRuntimeValues ?? []).map(([command, output]) => ({
+        command,
+        output,
+      })),
+      upstream: upstreamHashes.map((h) => ({ taskId: input.upstreamIds?.get(h) ?? h, hash: h })),
+      packageJsonDigest: input.projectPackageJsonHash,
+      configDigest: input.taskConfigHash,
+      workspaceFingerprint: input.workspaceFingerprint,
+    },
+  }
+}
+
+async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
   const cfg = args.node.config
   const cacheCfg: CacheConfig | undefined = cfg.cache
   const outputs = cacheCfg?.outputs.files ?? []
@@ -136,7 +187,7 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
 
   const effectiveForwardArgs = args.node.requested ? (args.forwardArgs ?? []) : []
 
-  return await args.cache.key({
+  return {
     taskId: args.node.id,
     taskConfigHash,
     projectPackageJsonHash,
@@ -151,7 +202,7 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
     forwardArgs: effectiveForwardArgs,
     ...(fileHashes !== undefined ? { fileHashes } : {}),
     ...(args.captureInto !== undefined ? { captureInto: args.captureInto } : {}),
-  })
+  }
 }
 
 /**

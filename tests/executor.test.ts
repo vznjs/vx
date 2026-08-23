@@ -5,6 +5,7 @@ import { localExecutor } from '../src/plugins/local-executor/index.js'
 function req(over: Partial<ExecuteRequest> = {}): ExecuteRequest {
   return {
     taskId: 'pkg-a#hello',
+    workspaceRoot: process.cwd(),
     command: 'echo hi',
     forwardArgs: [],
     cwd: process.cwd(),

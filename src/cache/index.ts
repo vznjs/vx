@@ -5,6 +5,7 @@
 export {
   Cache,
   type CacheEntry,
+  type CacheKeyInput,
   type CacheLayer,
   type CachePolicy,
   EXECUTED_RUNS_SQL,

@@ -493,8 +493,16 @@ time every single time.
   CACHE_VERSION/SCHEMA bump — requests, keys and artifacts are byte-identical. Design:
   `docs/design/plugin-executor-reapi-2026-08.md`; plan:
   `docs/superpowers/plans/2026-08-22-executor-seam-builtin-plugins.md`.
-  NOT in this wave (follow-up plans): `ExecuteRequest.inputs` (the
-  enumerated input set for input-shipping executors), `exec.remote`
+  **`ExecuteRequest.inputs` SHIPPED the same day** — and inputs are NOT
+  only files: `TaskInputs` carries every kind the key folds, WITH values
+  (files + git-blob digests, declared env values, runtime/workspaceRuntime
+  command output, upstream task ids + keys, package.json/config digests,
+  the workspace fingerprint), built by `describeTaskInputs` from the SAME
+  resolution as the key (miss path only; the hit path pays nothing; the
+  Tier-3 `entry_inputs` capture now rides this one fold instead of a
+  post-exec second one). Never persisted — env/runtime values may be
+  secrets. Pinned e2e by a spy executor asserting every field; differential:
+  dropping `env` fails it. NOT in this wave (follow-up plans): `exec.remote`
   placement, executor capacity in the scheduler, the `'cache'`/`'deferred'`
   output kinds, the REAPI plugin.
 

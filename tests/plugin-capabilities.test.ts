@@ -20,7 +20,7 @@ import {
   type RunBackend,
   type VxPlugin,
 } from '../src/orchestrator/index.js'
-import type { TaskExecutor } from '../src/exec/index.js'
+import type { TaskExecutor, TaskInputs } from '../src/exec/index.js'
 import { busLogger } from '../src/orchestrator/events.js'
 import { Cache, ChainedCache } from '../src/cache/index.js'
 import { localCachePlugin } from '../src/plugins/local-cache/index.js'
@@ -613,6 +613,102 @@ describe('executor capability — end-to-end via run()', () => {
     } finally {
       cleanup()
       rmSync(second, { recursive: true, force: true })
+    }
+  })
+
+  it('a plugin executor receives the structured input set the cache key folds', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(path.join(workspaceRoot, 'pkg-a/src.txt'), 'source\n')
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           codegen: {
+             exec: { command: 'echo gen > gen.txt' },
+             cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['gen.txt'] } },
+           },
+           hello: {
+             exec: { command: 'echo hi > out.txt' },
+             dependsOn: ['codegen'],
+             cache: {
+               inputs: { files: ['src.txt'], env: ['VX_TEST_INPUT'], runtime: ['echo tool-1.2'], tasks: ['codegen'] },
+               outputs: { files: ['out.txt'] },
+             },
+           },
+         } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/inputs-spy',
+             executor() {
+               return {
+                 name: 'spy',
+                 accepts(req) { return req.taskId === 'pkg-a#hello' },
+                 async execute(req) {
+                   globalThis.__vxInputs = req.inputs
+                   globalThis.__vxRoot = req.workspaceRoot
+                   await Bun.write(req.cwd + '/out.txt', 'by-spy\\n')
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      process.env['VX_TEST_INPUT'] = 'secret-value'
+      let summary
+      try {
+        summary = await runHello(workspaceRoot)
+      } finally {
+        delete process.env['VX_TEST_INPUT']
+      }
+      expect(summary.ok).toBe(true)
+      const g = globalThis as unknown as { __vxInputs: TaskInputs; __vxRoot: string }
+      expect(g.__vxRoot).toBe(workspaceRoot)
+      const inputs = g.__vxInputs
+      expect(inputs.files.map((f) => f.path)).toEqual(['pkg-a/src.txt'])
+      expect(inputs.files[0]!.digest).toMatch(/^[0-9a-f]{40}$/)
+      expect(inputs.env).toEqual([{ name: 'VX_TEST_INPUT', value: 'secret-value' }])
+      expect(inputs.runtime).toEqual([{ command: 'echo tool-1.2', output: 'tool-1.2' }])
+      expect(inputs.workspaceRuntime).toEqual([])
+      const codegen = summary.outcomes.find((o) => o.node.id === 'pkg-a#codegen')
+      expect(inputs.upstream).toEqual([{ taskId: 'pkg-a#codegen', hash: codegen!.hash! }])
+      expect(inputs.packageJsonDigest).toMatch(/^[0-9a-f]+$/)
+      expect(inputs.configDigest).toMatch(/^[0-9a-f]+$/)
+      expect(inputs.workspaceFingerprint.length).toBeGreaterThan(0)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('a task with no `cache` ships no inputs', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/inputs-spy',
+             executor() {
+               return {
+                 name: 'spy',
+                 async execute(req) {
+                   globalThis.__vxNoInputs = req.inputs
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      expect((await runHello(workspaceRoot)).ok).toBe(true)
+      expect((globalThis as unknown as { __vxNoInputs: unknown }).__vxNoInputs).toBeUndefined()
+    } finally {
+      cleanup()
     }
   })
 

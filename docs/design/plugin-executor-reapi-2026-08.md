@@ -93,26 +93,43 @@ interface TaskExecutor {
 
 interface ExecuteRequest {
   // identity — for same-checkout transports
-  readonly task: { projectDir: string; name: string; id: string }
-  readonly commit: string | null // from run-context
+  readonly taskId: string
   readonly workspaceRoot: string
   // the command — for input-shipping transports and the local default
   readonly command: string // run as `sh -c`
   readonly cwd: string // absolute; project dir
-  readonly env: Readonly<Record<string, string>>
-  readonly inputs: readonly InputFile[] // the set task-hash already enumerates
-  readonly outputs: readonly string[] // the declared output globs
+  readonly env: NodeJS.ProcessEnv
+  readonly forwardArgs: readonly string[]
   readonly timeoutMs?: number
-  readonly onStdout?: (chunk: string) => void
-  readonly onStderr?: (chunk: string) => void
+  readonly onStdout: (chunk: string) => void
+  readonly onStderr: (chunk: string) => void
+  /** Everything the cache key folds, WITH values — miss path of a cacheable task only. SHIPPED. */
+  readonly inputs?: TaskInputs
+}
+
+// Inputs are NOT only files. The key folds nine component kinds and a
+// remote executor needs each for a different reason:
+interface TaskInputs {
+  readonly files: readonly InputFile[] // declared files + workspaceFiles: the bytes that ship
+  readonly env: ReadonlyArray<{ name: string; value: string }> // declared env, resolved: set on the worker
+  readonly runtime: ReadonlyArray<{ command: string; output: string }> // toolchain expectation → REAPI platform property / assert on worker
+  readonly workspaceRuntime: ReadonlyArray<{ command: string; output: string }>
+  readonly upstream: ReadonlyArray<{ taskId: string; hash: string }> // dependency artifacts, by key, via the cache layer
+  readonly packageJsonDigest: string // the project manifest is folded even when no glob lists it
+  readonly configDigest: string // identity only
+  readonly workspaceFingerprint: string // identity; the files behind it are ambient (see below)
 }
 
 interface InputFile {
   readonly path: string // workspace-relative, POSIX
-  readonly kind: 'file' | 'symlink'
-  readonly executable: boolean
-  readonly digest?: string // core's xxh3 when already known; optional
+  readonly digest: string // git blob OID of the WORKTREE bytes — the digest the key folds
 }
+
+// What the key does NOT mention, because it treats them as environment:
+// tsconfig.json, .npmrc, root manifests, the lockfile, node_modules. A
+// same-checkout agent has them; an input-shipping executor must get them
+// from the worker image or an install action (§7.4). `--verify=inputs`
+// exposes the gap per task.
 
 interface ExecuteResult {
   readonly exitCode: number
@@ -140,8 +157,9 @@ Core changes required by the seam:
   Persistent tasks (`readyWhen`), SIGINT forwarding, `liveChildren`, and
   `resourceUsage` stay in it — they are local-only concerns by the placement
   rule (§5).
-- `orchestrator/task-hash.ts` returns the enumerated input set it already
-  walks instead of discarding it. No second walk; no extra reads.
+- `orchestrator/task-hash.ts` exposes `describeTaskInputs`: the same
+  resolution as the key, returning the structured set with values (SHIPPED
+  2026-08-23). Miss path only; the hit path pays nothing.
 - `execute-task.ts` calls `executor.execute` where it spawned. Probe → execute
   → save is unchanged; save of a `deferred` output set is skipped locally and
   the remote cache entry is the executor's own (it already lives in the CAS).

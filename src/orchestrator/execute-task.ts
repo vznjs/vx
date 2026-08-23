@@ -26,6 +26,7 @@ import {
   type ExecuteResult,
   type SandboxViolation,
   type TaskExecutor,
+  type TaskInputs,
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome, type VerifyVerdict } from '../graph/index.js'
 import {
@@ -40,6 +41,7 @@ import type { Logger } from './logger.js'
 import {
   computeGroupHash,
   computeTaskHash,
+  describeTaskInputs,
   type HashCache,
   type TaskInputComponent,
 } from './task-hash.js'
@@ -345,6 +347,29 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const env = taskEnv(node, step)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
+  // Miss path: describe the input set ONCE — the executor gets the values
+  // (what a remote worker must reproduce) and the save below reuses the
+  // captured digest rows for the Tier-3 `entry_inputs` fingerprint, so the
+  // fold runs once here instead of once after the subprocess. The HashCache
+  // memos + gitFilesCache OID map make this a fold + array pushes, no I/O.
+  // A non-cacheable task folds nothing and ships no inputs.
+  const captured: TaskInputComponent[] = []
+  const described = cfgCacheable
+    ? await describeTaskInputs({
+        node,
+        upstream,
+        workspaceRoot: args.workspaceRoot,
+        workspaceFingerprint: args.workspaceFingerprint,
+        cache,
+        forwardArgs: args.forwardArgs,
+        nestedProjectDirs: args.nestedProjectDirs,
+        captureInto: captured,
+        ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+        ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
+      })
+    : undefined
+  const inputs: TaskInputs | undefined = described?.inputs
+
   // Sandbox is opt-in per task via `sandbox: {}` (or `sandbox: {...}`)
   // in the task config. No CLI flag, no workspace inheritance — the
   // task config is the single source of truth. EXCEPTION: `--verify=inputs`
@@ -460,6 +485,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   async function buildRequest(): Promise<ExecuteRequest> {
     const base: ExecuteRequest = {
       taskId: node.id,
+      workspaceRoot: args.workspaceRoot,
       command: step.command,
       forwardArgs: effectiveForwardArgs,
       cwd: node.projectDir,
@@ -469,6 +495,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       onStderr: (chunk) => log.taskStderr(node, chunk),
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
+      ...(inputs !== undefined ? { inputs } : {}),
     }
     if (!useSandbox) return base
     // Baseline allowRead = resolved cache.inputs.files (absolute paths)
@@ -535,26 +562,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       workspaceRoot: args.workspaceRoot,
       outputs: wsOutputs,
     })
-    // Tier-3 input fingerprint: capture the cache-key components for
-    // THIS entry, persisted with the entry inside `cache.save`'s
-    // transaction. Miss path only — the warm/hit path never reaches
-    // here, so it allocates no array and pushes nothing. The HashCache
-    // memos + gitFilesCache OID map make this second `computeTaskHash`
-    // a fold + array pushes (no re-stat / re-hash I/O), negligible next
-    // to the subprocess this task just ran.
-    const captured: TaskInputComponent[] = []
-    await computeTaskHash({
-      node,
-      upstream,
-      workspaceRoot: args.workspaceRoot,
-      workspaceFingerprint: args.workspaceFingerprint,
-      cache,
-      forwardArgs: args.forwardArgs,
-      nestedProjectDirs: args.nestedProjectDirs,
-      captureInto: captured,
-      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-      ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-    })
+    // Tier-3 input fingerprint: the digest rows captured by the pre-exec
+    // describe above, persisted with the entry inside `cache.save`'s
+    // transaction. Miss path only — the warm/hit path never reaches here.
     await cache.save({
       hash,
       projectDir: node.projectDir,

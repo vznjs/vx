@@ -25,5 +25,7 @@ export {
   type ExecuteRequest,
   type ExecuteResult,
   type ExecuteSandbox,
+  type InputFile,
   type TaskExecutor,
+  type TaskInputs,
 } from './executor.js'
