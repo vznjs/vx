@@ -5,6 +5,7 @@ import {
   type CacheLayer,
   resolveInputs,
   type GitFilesCache,
+  WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
@@ -115,6 +116,22 @@ export async function describeTaskInputs(
     digest: digests[i]!,
   }))
   const upstreamHashes = [...input.upstreamHashes].sort()
+  // Output lists come from the local index — one SELECT for every upstream
+  // entry. An upstream with no entry (non-cacheable) contributes an empty list.
+  const rows = args.cache.loadOutputFilesBatch(upstreamHashes)
+  const projectDirOf = new Map(args.upstream.map((o) => [o.node.id, o.node.projectDir]))
+  const upstream = upstreamHashes.map((h) => {
+    const taskId = input.upstreamIds?.get(h) ?? h
+    const dir = projectDirOf.get(taskId)
+    const outputs = (rows.get(h) ?? []).map((r) =>
+      r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
+        ? r.path.slice(WORKSPACE_OUTPUT_PREFIX.length)
+        : dir === undefined
+          ? r.path
+          : relPosix(input.workspaceRoot, path.join(dir, r.path)),
+    )
+    return { taskId, hash: h, outputs }
+  })
   return {
     hash,
     inputs: {
@@ -125,7 +142,7 @@ export async function describeTaskInputs(
         command,
         output,
       })),
-      upstream: upstreamHashes.map((h) => ({ taskId: input.upstreamIds?.get(h) ?? h, hash: h })),
+      upstream,
       packageJsonDigest: input.projectPackageJsonHash,
       configDigest: input.taskConfigHash,
       workspaceFingerprint: input.workspaceFingerprint,
@@ -229,17 +246,21 @@ function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
 }
 
 /**
- * Project the config for hashing: `exec.resources` is a pure scheduling
- * hint with zero effect on outputs, so it's stripped — tuning a
- * reservation never busts a cache. A config that declares none takes the
- * fast path and stringifies byte-identically to before the field existed
+ * Project the config for hashing: `exec.resources` and `exec.remote` are
+ * pure PLACEMENT hints with zero effect on outputs, so they're stripped —
+ * tuning a reservation, or pinning a task to this machine, never busts a
+ * cache. `remote` in particular must not: the whole contract of a remote
+ * executor is that the same command over the same inputs produces the same
+ * outputs, so a key that moved when placement changed would split a laptop
+ * from a worker pool over nothing. A config that declares neither takes the
+ * fast path and stringifies byte-identically to before the fields existed
  * (why this needs no CACHE_VERSION bump). `timeout`/`retries` stay folded
  * — their keys are distinct by design (see the decision log); stripping
  * them retroactively would bump CACHE_VERSION.
  */
 function hashableConfig(cfg: TaskConfig): unknown {
-  if (cfg.exec?.resources === undefined) return cfg
-  const { resources: _resources, ...execRest } = cfg.exec
+  if (cfg.exec?.resources === undefined && cfg.exec?.remote === undefined) return cfg
+  const { resources: _resources, remote: _remote, ...execRest } = cfg.exec
   return { ...cfg, exec: execRest }
 }
 

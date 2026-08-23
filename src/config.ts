@@ -217,6 +217,13 @@ export interface SandboxNetworkConfig {
 export interface ExecConfig {
   /** Shell command to run, from the project's directory. */
   command: string
+  /**
+   * `false` pins the task to this machine: it is never offered to a remote
+   * executor (it talks to a local daemon, the network, Docker, …). Default
+   * `true`. Tasks that are persistent, or depend on one, are pinned
+   * regardless — a worker cannot reach a port on the submitter.
+   */
+  remote?: boolean
   /** Environment exposed to the child process. */
   env?: ExecEnv
   /**

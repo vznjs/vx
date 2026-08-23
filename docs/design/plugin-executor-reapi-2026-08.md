@@ -182,6 +182,18 @@ no-op on the local executor. Everything else is remote-eligible when a
 plugin contributes an `executor`.
 The rule is decided once per task at plan time and shown in `--dry`/`--graph`.
 
+**SHIPPED 2026-08-23, with one deliberate omission.** `exec.remote` is
+`boolean` today: rules 1–3 above are implemented (`pinnedLocalSet` in
+`run.ts` walks the dependency closure), placement is decided once per task
+before scheduling, and `--dry` names the placed executor per task whenever
+the workspace declares more than one. `'only'` is NOT implemented and is
+deliberately deferred to the plugin wave that gives it a purpose: it has
+real local BEHAVIOUR (skip the task, never clean or restore its outputs
+here), and shipping that with no input-shipping executor in existence would
+give a user who declares it a silently skipped task. Widening the type is
+additive when phase 2's plugin lands. `TaskOutcome.where` (§4) is likewise
+not shipped — telemetry still attributes every task to the local host.
+
 Patterns this implies, documented rather than abstracted away:
 
 - **Server is a vx task, tests depend on it:** the whole cluster is local;
@@ -197,7 +209,7 @@ Patterns this implies, documented rather than abstracted away:
 | Core item                                                                          | Verdict                                                                       |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `executor` capability + `localExecutor`                                            | **Add**                                                                       |
-| `exec.remote` schema field + placement rule                                        | **Add**                                                                       |
+| `exec.remote` schema field + placement rule                                        | **Add** — SHIPPED 2026-08-23 as `boolean` (`'only'` deferred, see §5)         |
 | `--download=all\|toplevel\|none` run option                                        | **Add** (phase 3; phase 1–2 behave as `all`)                                  |
 | `cache` capability, `LayeredCache`, prefetch, shortcircuit, stable-keys            | **Keep** — generic second-tier machinery; REAPI plugs in                      |
 | `telemetry` capability and its record types, `TaskLogBuffer`, fingerprints         | **Keep** — the analytics seam a community cloud builds on                     |

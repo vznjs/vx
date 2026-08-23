@@ -45,6 +45,21 @@ Status symbols:
 `description` (when set on the task config) renders on a second
 indented line under the cache-status row.
 
+**Placement** renders as a trailing `@<executor-name>` on tasks the plan
+placed on an executor — and ONLY when the workspace declared more than one,
+since with a single executor every line would carry the same label:
+
+```
+  ▶  @vzn/vx#test          cache miss — would exec   68595e49  ~4.2s  @vx/reapi
+  ▶  @vzn/vx#docker        cache miss — would exec   1a0c33fe         @local
+```
+
+It is the executor's NAME, not a `local`/`remote` word: the summary line
+already spends both of those on the cache tier ("2 cache hits (1 local, 1
+remote)"), and the name is what a reader can act on. See
+[`schema.md` § `remote`](../schema.md#remote-optional) for what pins a task
+locally.
+
 ## `formatPlanJson`
 
 JSON-friendly object:

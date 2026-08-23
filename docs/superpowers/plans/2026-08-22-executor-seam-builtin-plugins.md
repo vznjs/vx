@@ -1500,7 +1500,10 @@ Then confirm the REAL CI conclusion (not just the local gate):
 
 1. `ExecuteRequest.inputs` + `task`/`commit` identity (task-hash returns the enumerated input set).
 2. Placement rule (`exec.remote: true|false|'only'`, depends-on-persistent) + `--dry` display.
+   **DONE 2026-08-23**, except `'only'` — deferred to the plugin wave that
+   gives it a purpose (design doc §5; decision log).
 3. Executor capacity in the scheduler (remote tasks must not consume local worker slots).
+   **DONE 2026-08-23** (`ScheduleOptions.poolOf`).
 4. `ExecuteResult.outputs` discriminator (`disk`/`cache`/`deferred`) + `--download`.
 5. `@vzn/vx-reapi` phase 1 (remote cache over AC/CAS; the gRPC-on-Bun spike).
 6. Port vx-cloud's dist to `executor`; retire `backend`.

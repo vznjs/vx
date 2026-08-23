@@ -38,7 +38,8 @@ lines.
 `localExecutorPlugin()` → `vx/local-executor`. In-process spawn: the same
 `runCommand` / `runSandboxed` call the orchestrator used to make directly,
 behind the `TaskExecutor` contract (`docs/modules/executor.md`). Accepts
-every task. `localExecutor()` is exported too, for plugins that wrap local
+every task, and declares neither `remote` nor `capacity` — its tasks run on
+the local worker pool and honour `exec.resources`. `localExecutor()` is exported too, for plugins that wrap local
 execution (set up cgroups, then delegate).
 
 ## `local-cache` — `@vzn/vx/plugins/local-cache`

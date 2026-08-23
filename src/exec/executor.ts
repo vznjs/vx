@@ -47,8 +47,18 @@ export interface TaskInputs {
   readonly runtime: ReadonlyArray<{ readonly command: string; readonly output: string }>
   /** `cache.inputs.workspaceRuntime`, same shape. */
   readonly workspaceRuntime: ReadonlyArray<{ readonly command: string; readonly output: string }>
-  /** Dependencies whose cache keys are folded — their artifacts are reachable through the run's cache layer. */
-  readonly upstream: ReadonlyArray<{ readonly taskId: string; readonly hash: string }>
+  /**
+   * Dependencies whose cache keys are folded. `outputs` lists each one's
+   * declared output files (workspace-relative POSIX, as stored with its cache
+   * entry) — restored on disk before this task runs, so an input-shipping
+   * executor can include them in the input root. Empty when the upstream's
+   * entry is not in the local index (a non-cacheable dependency).
+   */
+  readonly upstream: ReadonlyArray<{
+    readonly taskId: string
+    readonly hash: string
+    readonly outputs: readonly string[]
+  }>
   /** Digest of the project's own `package.json` (folded even when no glob lists it). */
   readonly packageJsonDigest: string
   /** Digest of the resolved task config. */
@@ -63,6 +73,11 @@ export interface ExecuteRequest {
   readonly workspaceRoot: string
   /** Present for cacheable tasks (the miss path); absent when the task declares no `cache`. */
   readonly inputs?: TaskInputs
+  /** The declared output globs — project-relative `files`, root-relative `workspaceFiles`. */
+  readonly outputs: {
+    readonly files: readonly string[]
+    readonly workspaceFiles: readonly string[]
+  }
   readonly command: string
   /** Appended to `command`, shell-quoted, by the executor (forwarded CLI args). */
   readonly forwardArgs: readonly string[]
@@ -82,27 +97,53 @@ export interface ExecuteResult extends RunResult {
   readonly violations: readonly SandboxViolation[]
 }
 
+/** What an executor sees when a task is PLACED — once per task, before scheduling. */
+export interface TaskPlacement {
+  readonly taskId: string
+  readonly projectName: string
+  readonly projectDir: string
+  readonly command: string
+  /**
+   * Must run on this machine: the task is persistent, depends (transitively)
+   * on a persistent task, or declares `exec.remote: false`. A `remote`
+   * executor is never offered such a task.
+   */
+  readonly pinnedLocal: boolean
+  /** Declares `cache` — the only tasks whose input set is described, and so the only ones that can ship. */
+  readonly cacheable: boolean
+}
+
 export interface TaskExecutor {
   /** Shown in errors; `'local'` for core's own. */
   readonly name: string
-  /** Per-request opt-out. Absent = accepts everything. */
-  accepts?(req: ExecuteRequest): boolean
+  /** Runs the command somewhere else. Never offered a `pinnedLocal` task. */
+  readonly remote?: boolean
+  /**
+   * How many tasks this executor runs at once. Its tasks then occupy a pool
+   * of this size instead of the local worker slots, so a remote pool is not
+   * throttled by the local CPU count. Absent = the local pool.
+   */
+  readonly capacity?: number
+  /** Per-task opt-out at placement time. Absent = accepts every task it is offered. */
+  accepts?(task: TaskPlacement): boolean
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 
 /**
- * First executor, in declaration order, that does not decline the request.
- * The local executor accepts everything, so with it declared this cannot
- * throw; the throw is the guard for a workspace whose executors all decline.
+ * Place one task: the first executor, in declaration order, that may take
+ * it — a `remote` executor is skipped for a `pinnedLocal` task, then
+ * `accepts()` decides. Decided once per task before scheduling. The local
+ * executor accepts everything, so with it declared this cannot throw.
  */
 export function selectExecutor(
   executors: readonly TaskExecutor[],
-  req: ExecuteRequest,
+  task: TaskPlacement,
 ): TaskExecutor {
   for (const executor of executors) {
-    if (executor.accepts === undefined || executor.accepts(req)) return executor
+    if (task.pinnedLocal && executor.remote === true) continue
+    if (executor.accepts === undefined || executor.accepts(task)) return executor
   }
   throw new Error(
-    `no executor accepted ${req.taskId} (declared: ${executors.map((e) => e.name).join(', ')}). Declare localExecutorPlugin() after the executor that declined to run such tasks locally.`,
+    `no executor accepted ${task.taskId} (declared: ${executors.map((e) => e.name).join(', ')}). Declare localExecutorPlugin() after the executor that declined to run such tasks locally.`,
   )
 }

@@ -44,6 +44,8 @@ export interface ScheduleOptions {
   priorities?: ReadonlyMap<string, number>
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */
   restoreTier?: ReadonlySet<string>
+  /** Pool for tasks placed on an executor with its own capacity; undefined = the local pool. */
+  poolOf?: (id: string) => { name: string; capacity: number } | undefined
 }
 
 export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number>
@@ -64,12 +66,24 @@ whole run (the old scan-everything-per-completion tick was O(N²)):
 3. `tick()` fills free worker slots by draining **execReady FIRST** —
    cache misses own the pool; restores only backfill idle capacity
    (or run when they're the only ready work, unblocking a dependent).
-4. **Failed upstream** → an exec-tier node is marked `skipped`
+4. **Pooled nodes are admitted against their own pool.** When `poolOf`
+   returns a pool for a node (its executor declared a `capacity` — see
+   `executor.md`), it occupies one of that pool's slots instead of a
+   local worker slot and reserves ZERO local resources: work running on
+   another machine spends none of this one's CPU or RAM. Restore-tier
+   nodes are always local (a restore is a tar extract on this disk). With
+   no `poolOf` passed the admission gate is the byte-identical legacy
+   `active < concurrency` check — including its O(1) early-out. With pools
+   (or with `resourceCosts`) a saturated tick instead SCANS the ready
+   queue, parking what does not fit and repushing it with its original
+   seq; that is the same cost the resource-admission path already pays and
+   is the price of a per-task admission predicate.
+5. **Failed upstream** → an exec-tier node is marked `skipped`
    synchronously (no `execute` call). Restore-tier nodes **bypass**
    this check — their key is dep-success-independent (pure-input
    transitive hashing), so a valid cached output reports `cache-hit`
    even when a dep failed.
-5. When every node has an outcome and nothing is active, resolve.
+6. When every node has an outcome and nothing is active, resolve.
 
 Priority within a queue: highest transitive-reverse-dependent count
 first (`computeReverseDepCount` — an exact bitset closure swept in

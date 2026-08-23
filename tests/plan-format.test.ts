@@ -198,3 +198,41 @@ describe('formatGraphDot', () => {
     expect(out).toContain('fillcolor="#f5d0fe"')
   })
 })
+
+describe('placement in the plan', () => {
+  // `exec.remote` is otherwise invisible: nothing in a run's output tells a
+  // user which executor a task landed on, so a mis-declared pin reads exactly
+  // like a correct one. `--dry` is where that becomes checkable.
+  const placed = (id: string, executor?: string): PlannedTask => ({
+    ...task(id, 'miss', 'abcdef1234'),
+    ...(executor !== undefined ? { executor } : {}),
+  })
+
+  it('text shows the executor NAME, not a local/remote word', () => {
+    // The summary line spends "local" and "remote" on the CACHE tier
+    // ("2 cache hits (1 local, 1 remote)"). Reusing those words for
+    // placement would make a line ambiguous between two vocabularies.
+    const out = formatPlanText({ tasks: [placed('a#build', 'vx/reapi')] })
+    expect(out).toContain('@vx/reapi')
+    expect(out).not.toMatch(/\bremote\b(?!.*cache)/)
+  })
+
+  it('text omits the label entirely when the task carries no placement', () => {
+    // The single-executor case: every line would say the same thing, so
+    // `planRun` attaches nothing and the output is byte-identical to before
+    // placement existed.
+    const out = formatPlanText({ tasks: [placed('a#build')] })
+    expect(out).not.toContain('@')
+  })
+
+  it('json carries the executor as a field, omitted when absent', () => {
+    const withIt = JSON.parse(formatPlanJson({ tasks: [placed('a#build', 'vx/reapi')] })) as {
+      tasks: Array<Record<string, unknown>>
+    }
+    expect(withIt.tasks[0]!['executor']).toBe('vx/reapi')
+    const without = JSON.parse(formatPlanJson({ tasks: [placed('a#build')] })) as {
+      tasks: Array<Record<string, unknown>>
+    }
+    expect(without.tasks[0]).not.toHaveProperty('executor')
+  })
+})

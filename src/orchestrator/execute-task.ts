@@ -18,7 +18,6 @@ import {
   buildIsolatedEnv,
   runPersistent,
   resolveSandboxConfig,
-  selectExecutor,
   shellQuote,
   signalExitCode,
   type CaptureConfig,
@@ -56,8 +55,8 @@ export interface ExecuteArgs {
   cachePolicy?: CachePolicy
   forwardArgs?: readonly string[] | undefined
   log: Logger
-  /** The declared executors, in order; per attempt the first that accepts runs the task. */
-  executors: readonly TaskExecutor[]
+  /** The executor this task was PLACED on (run.ts, before scheduling). */
+  executor: TaskExecutor
   nestedProjectDirs: string[]
   /** Anchor for hrtime spans across all tasks in this run. */
   runStartHrTimeNs: bigint
@@ -420,7 +419,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     violations = []
     const req = await buildRequest()
-    const res = await selectExecutor(args.executors, req).execute(req)
+    const res = await args.executor.execute(req)
     violations = [...res.violations]
     // Fail-on-violation, on BOTH platforms: macOS reads SRT's structured
     // violation store, Linux parses the strace log the sandboxed spawn
@@ -496,6 +495,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
+      outputs: { files: outputs, workspaceFiles: wsOutputs },
     }
     if (!useSandbox) return base
     // Baseline allowRead = resolved cache.inputs.files (absolute paths)

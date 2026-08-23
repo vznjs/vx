@@ -142,7 +142,7 @@ function baseArgs(b: Bench, n: TaskNode, log: Logger) {
     workspaceFingerprint: 'fixture-fingerprint',
     cache: b.cache,
     log,
-    executors: [localExecutor()],
+    executor: localExecutor(),
     nestedProjectDirs: [] as string[],
     runStartHrTimeNs: process.hrtime.bigint(),
   }

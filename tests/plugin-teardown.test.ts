@@ -259,7 +259,18 @@ describe('the lifecycle is reached on a run that FAILED', () => {
     for (const c of [
       ['init', '-q'],
       ['add', '-A'],
-      ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'i'],
+      [
+        '-c',
+        'user.email=t@t',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '-q',
+        '-m',
+        'i',
+      ],
     ]) {
       await Bun.spawn(['git', ...c], { cwd: root }).exited
     }

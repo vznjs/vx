@@ -178,6 +178,35 @@ describe('computeTaskHash — what the config contributes', () => {
     expect(eight).toBe(two)
   })
 
+  it('STABILITY: exec.remote does NOT move the key', async () => {
+    // Placement, not content. `exec.remote: false` says "run this task on
+    // this machine" — it never reaches the task's output, and the whole
+    // contract of a remote executor is that the same command over the same
+    // inputs produces the same bytes wherever it runs. A key that moved when
+    // placement changed would split a laptop from a worker pool over nothing
+    // and gut the remote hit rate, which is the same argument that strips
+    // `exec.resources` one test up.
+    const plain = await key({ node: node({}, { exec: { command: 'build' } }) })
+    const pinned = await key({ node: node({}, { exec: { command: 'build', remote: false } }) })
+    const shipped = await key({ node: node({}, { exec: { command: 'build', remote: true } }) })
+    expect(pinned).toBe(plain)
+    expect(shipped).toBe(plain)
+  })
+
+  it('STABILITY: stripping remote leaves the REST of exec folded', async () => {
+    // The control for the strip: `hashableConfig` rebuilds `exec` without
+    // `remote`, so a bug that dropped a sibling field with it would make two
+    // genuinely different tasks share a key. This fails if the strip is too
+    // wide.
+    const a = await key({
+      node: node({}, { exec: { command: 'build', remote: false, timeout: 5_000 } }),
+    })
+    const b = await key({
+      node: node({}, { exec: { command: 'build', remote: false, timeout: 9_000 } }),
+    })
+    expect(b).not.toBe(a)
+  })
+
   it('SENSITIVITY: exec.timeout DOES move the key — distinct by design', async () => {
     // The anti-drift pin for the neighbouring decision. `timeout` and
     // `retries` sit right beside `resources` in the same object and are NOT

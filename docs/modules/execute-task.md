@@ -89,9 +89,10 @@ caches.
      prepend).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.
    - The attempt builds an `ExecuteRequest` (command, env, capture,
-     timeout, sandbox baselines) and hands it to
-     `selectExecutor(args.executors, req)` — the first executor that
-     accepts. With only `localExecutorPlugin()` declared that is
+     declared outputs, timeout, sandbox baselines) and hands it to
+     `args.executor` — the executor this task was PLACED on by `run.ts`
+     before scheduling, so every attempt of a task runs in the same
+     place. With only `localExecutorPlugin()` declared that is
      `runCommand` / `runSandboxed` exactly as before.
    - Up to `1 + (exec.retries ?? args.retries ?? 0)` attempts: a failed
      attempt (timeouts included, `aborted` NOT — a teardown breaks out

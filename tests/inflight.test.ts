@@ -47,7 +47,7 @@ async function makeWorkspace(opts?: { withDep?: boolean }): Promise<string> {
     ].join('\n'),
   )
   spawnSync('git', ['add', '-A'], { cwd: root })
-  spawnSync('git', ['commit', '-qm', 'init'], { cwd: root })
+  spawnSync('git', ['-c', 'commit.gpgsign=false', 'commit', '-qm', 'init'], { cwd: root })
   return root
 }
 

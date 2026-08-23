@@ -410,6 +410,29 @@ The colors / framing modules:
 - Failure of a task doesn't pause the scheduler — independent
   siblings continue running and starting.
 
+### Executor pools
+
+`concurrency` counts LOCAL worker slots. An executor that runs its tasks
+somewhere else declares its own `capacity`, and the tasks placed on it are
+admitted against that number instead — so a 64-wide worker pool is not
+throttled by a 10-core laptop, and a `--concurrency 1` run still keeps the
+pool full.
+
+- **Placement is decided once per task, before scheduling.** `run()` asks
+  the declared executors, in order, which one takes each task (see
+  [`schema.md` § `remote`](./schema.md#remote-optional) for what pins a
+  task here); the scheduler then knows which pool every task will occupy.
+- **A pooled task reserves no local resources.** `exec.resources` is a
+  budget for THIS machine's CPU and RAM; a task running elsewhere spends
+  neither, so it is admitted with a zero cost and can never park behind a
+  local reservation.
+- **Restore-tier tasks are always local** — a cache restore is a tar
+  extract on this disk, so it takes a local slot regardless of where the
+  task would have executed.
+- **No pooled executor declared = the legacy path.** With every task on
+  the local pool the admission gate is byte-identical to before pools
+  existed.
+
 ## Cache control flags
 
 `--no-cache` turns all four cache axes off: every task runs, nothing
@@ -439,7 +462,12 @@ The two flags differ only in output format:
 - `--dry[=text|json]` → text (default) or JSON list of predicted
   outcomes per task: `hit-local`, `hit-remote`, `miss`, `no-cache`,
   `group`. Formatter: `cli/plan-format.ts:formatPlanText` /
-  `formatPlanJson`.
+  `formatPlanJson`. When the workspace declares more than one executor,
+  each line also names the executor the task would be PLACED on — the only
+  surface that makes `exec.remote` checkable before the run. Resolving the
+  executors is a plugin-factory call, the same class the cache capability
+  already makes at plan time; a plugin that throws costs the label, never
+  the plan.
 - `--graph[=<path>]` → Graphviz DOT, colored by predicted status.
   Pipe to `dot` for SVG/PNG render. Formatter:
   `formatGraphDot`.

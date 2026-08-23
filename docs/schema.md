@@ -251,6 +251,38 @@ test: {
   from the cache key — it's a scheduling hint with zero effect on
   outputs, so tuning a reservation re-uses every existing entry.
 
+#### `remote` (optional)
+
+```ts
+remote?: boolean // default true
+```
+
+**Placement.** `false` pins the task to the machine that started the run:
+it is never offered to an executor that declared itself `remote`. Use it
+for a task that talks to something only this machine has — a local
+daemon, a Docker socket, a device, a VPN-only host.
+
+```ts
+'docker:build': {
+  exec: { command: 'docker build -t app .', remote: false },
+}
+```
+
+- **Only meaningful with a remote executor declared.** A workspace whose
+  only executor is `localExecutorPlugin()` already runs everything here,
+  so the field changes nothing.
+- **Pinned by inference too.** A `persistent` task, and anything that
+  depends on one (transitively), is pinned regardless of what it
+  declares — a worker cannot reach a port served on the submitter.
+- **Placement is decided once per task**, before scheduling, so the
+  scheduler knows which pool a task will occupy (see
+  [execution.md](execution.md#executor-pools)).
+- **Never busts a cache:** `remote` is stripped from the cache key, the
+  same as `resources`. The contract of a remote executor is that the same
+  command over the same inputs produces the same outputs, so a key that
+  moved with placement would split a laptop from a worker pool over
+  nothing.
+
 #### `persistent` (optional)
 
 ```ts

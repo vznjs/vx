@@ -206,6 +206,10 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
           throw new UserError(`${where}.exec.retries must be a non-negative integer`)
         }
       }
+      const remote = (exec as { remote?: unknown }).remote
+      if (remote !== undefined && typeof remote !== 'boolean') {
+        throw new UserError(`${where}.exec.remote must be a boolean (or omitted)`)
+      }
       const resources = (exec as { resources?: unknown }).resources
       if (resources !== undefined) {
         validateResources(resources, `${where}.exec.resources`)
@@ -451,7 +455,15 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
 // serves a stale artifact — the same reasoning `exec.resources` and
 // `sandbox` already encode. A new field must be added here deliberately.
 const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'cache', 'sandbox'])
-const EXEC_FIELDS = new Set(['command', 'env', 'timeout', 'retries', 'resources', 'persistent'])
+const EXEC_FIELDS = new Set([
+  'command',
+  'env',
+  'timeout',
+  'retries',
+  'resources',
+  'persistent',
+  'remote',
+])
 const CACHE_FIELDS = new Set(['inputs', 'outputs'])
 const CACHE_INPUT_FIELDS = new Set([
   'files',

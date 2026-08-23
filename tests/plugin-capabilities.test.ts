@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { CORE_INDEX, localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
-import { run } from '../src/index.js'
+import { planRun, run } from '../src/index.js'
 import {
   resolveBackend,
   resolveCache,
@@ -44,7 +44,19 @@ async function gitInit(dir: string): Promise<void> {
   await Bun.spawn(['git', 'init', '-q'], { cwd: dir }).exited
   await Bun.spawn(['git', 'add', '-A'], { cwd: dir }).exited
   await Bun.spawn(
-    ['git', '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'init'],
+    [
+      'git',
+      '-c',
+      'user.email=t@t',
+      '-c',
+      'user.name=t',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-q',
+      '-m',
+      'init',
+    ],
     { cwd: dir },
   ).exited
 }
@@ -456,7 +468,7 @@ describe('executor capability — end-to-end via run()', () => {
              executor() {
                return {
                  name: 'picky',
-                 accepts(req) { globalThis.__vxDeclined.push(req.taskId); return false },
+                 accepts(task) { globalThis.__vxDeclined.push(task.taskId); return false },
                  async execute() { throw new Error('must not run') },
                }
              },
@@ -645,7 +657,7 @@ describe('executor capability — end-to-end via run()', () => {
              executor() {
                return {
                  name: 'spy',
-                 accepts(req) { return req.taskId === 'pkg-a#hello' },
+                 accepts(task) { return task.taskId === 'pkg-a#hello' },
                  async execute(req) {
                    globalThis.__vxInputs = req.inputs
                    globalThis.__vxRoot = req.workspaceRoot
@@ -675,7 +687,9 @@ describe('executor capability — end-to-end via run()', () => {
       expect(inputs.runtime).toEqual([{ command: 'echo tool-1.2', output: 'tool-1.2' }])
       expect(inputs.workspaceRuntime).toEqual([])
       const codegen = summary.outcomes.find((o) => o.node.id === 'pkg-a#codegen')
-      expect(inputs.upstream).toEqual([{ taskId: 'pkg-a#codegen', hash: codegen!.hash! }])
+      expect(inputs.upstream).toEqual([
+        { taskId: 'pkg-a#codegen', hash: codegen!.hash!, outputs: ['pkg-a/gen.txt'] },
+      ])
       expect(inputs.packageJsonDigest).toMatch(/^[0-9a-f]+$/)
       expect(inputs.configDigest).toMatch(/^[0-9a-f]+$/)
       expect(inputs.workspaceFingerprint.length).toBeGreaterThan(0)
@@ -707,6 +721,169 @@ describe('executor capability — end-to-end via run()', () => {
       await gitInit(workspaceRoot)
       expect((await runHello(workspaceRoot)).ok).toBe(true)
       expect((globalThis as unknown as { __vxNoInputs: unknown }).__vxNoInputs).toBeUndefined()
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('placement: exec.remote:false and depends-on-persistent tasks never reach a remote executor', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           serve: { exec: { command: 'sleep 30', persistent: {} } },
+           e2e: { exec: { command: 'echo e2e' }, dependsOn: ['serve'] },
+           docker: { exec: { command: 'echo docker', remote: false } },
+           hello: { exec: { command: 'echo hi' } },
+         } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/remote',
+             executor() {
+               return {
+                 name: 'remote-spy',
+                 remote: true,
+                 accepts(task) { (globalThis.__vxOffered ??= []).push(task.taskId + ':' + task.pinnedLocal); return true },
+                 async execute(req) {
+                   (globalThis.__vxRemoteRan ??= []).push(req.taskId)
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello', 'e2e', 'docker'],
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      const g = globalThis as unknown as { __vxOffered: string[]; __vxRemoteRan: string[] }
+      expect(g.__vxOffered.sort()).toEqual(['pkg-a#hello:false'])
+      expect(g.__vxRemoteRan).toEqual(['pkg-a#hello'])
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('capacity: a pooled executor runs more tasks at once than the local worker count', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      const tasks = Array.from(
+        { length: 6 },
+        (_, i) => `t${i}: { exec: { command: 'echo ${i}' } }`,
+      ).join(',')
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: { ${tasks} } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/pool',
+             executor() {
+               return {
+                 name: 'pool',
+                 remote: true,
+                 capacity: 6,
+                 async execute(req) {
+                   globalThis.__vxInflight = (globalThis.__vxInflight ?? 0) + 1
+                   globalThis.__vxPeak = Math.max(globalThis.__vxPeak ?? 0, globalThis.__vxInflight)
+                   await new Promise((r) => setTimeout(r, 150))
+                   globalThis.__vxInflight--
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['t0', 't1', 't2', 't3', 't4', 't5'],
+        concurrency: 1,
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect((globalThis as unknown as { __vxPeak: number }).__vxPeak).toBe(6)
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('placement: --dry names the executor each task would land on', async () => {
+    // `exec.remote` is otherwise invisible — nothing in a run's output says
+    // where a task went, so a mis-declared pin reads exactly like a correct
+    // one. This is the surface that makes it checkable BEFORE the run.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           hello: { exec: { command: 'echo hi' } },
+           docker: { exec: { command: 'echo docker', remote: false } },
+         } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/remote',
+             executor() {
+               return {
+                 name: 'spy-remote',
+                 remote: true,
+                 async execute() { throw new Error('plan mode must not execute') },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const plan = await planRun({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello', 'docker'],
+        log: makeSilentLogger(),
+      })
+      const byId = new Map(plan.tasks.map((t) => [t.node.id, t.executor]))
+      expect(byId.get('pkg-a#hello')).toBe('spy-remote')
+      expect(byId.get('pkg-a#docker')).toBe('local')
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('placement: --dry says nothing when the workspace declares one executor', async () => {
+    // The control. With no choice to show, the label is noise, so every
+    // plan line stays byte-identical to before placement existed.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
+      )
+      await writeLocalWorkspace(workspaceRoot)
+      await gitInit(workspaceRoot)
+      const plan = await planRun({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log: makeSilentLogger(),
+      })
+      expect(plan.tasks.every((t) => t.executor === undefined)).toBe(true)
     } finally {
       cleanup()
     }

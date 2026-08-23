@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { selectExecutor, type ExecuteRequest, type TaskExecutor } from '../src/exec/index.js'
+import {
+  selectExecutor,
+  type ExecuteRequest,
+  type TaskExecutor,
+  type TaskPlacement,
+} from '../src/exec/index.js'
 import { localExecutor } from '../src/plugins/local-executor/index.js'
 
 function req(over: Partial<ExecuteRequest> = {}): ExecuteRequest {
@@ -13,6 +18,19 @@ function req(over: Partial<ExecuteRequest> = {}): ExecuteRequest {
     capture: { stdout: true, stderr: true },
     onStdout: () => undefined,
     onStderr: () => undefined,
+    outputs: { files: [], workspaceFiles: [] },
+    ...over,
+  }
+}
+
+function placement(over: Partial<TaskPlacement> = {}): TaskPlacement {
+  return {
+    taskId: 'pkg-a#hello',
+    projectName: 'pkg-a',
+    projectDir: process.cwd(),
+    command: 'echo hi',
+    pinnedLocal: false,
+    cacheable: true,
     ...over,
   }
 }
@@ -60,11 +78,21 @@ describe('selectExecutor', () => {
   }
 
   it('picks the first executor in order whose accepts() is absent or true', () => {
-    expect(selectExecutor([declining, accepting], req())).toBe(accepting)
-    expect(selectExecutor([accepting, declining], req())).toBe(accepting)
+    expect(selectExecutor([declining, accepting], placement())).toBe(accepting)
+    expect(selectExecutor([accepting, declining], placement())).toBe(accepting)
   })
 
-  it('passes the request to accepts()', () => {
+  it('never offers a pinned-local task to a remote executor, even one that accepts everything', () => {
+    const remote: TaskExecutor = {
+      name: 'r',
+      remote: true,
+      execute: () => Promise.reject(new Error('unused')),
+    }
+    expect(selectExecutor([remote, accepting], placement({ pinnedLocal: true }))).toBe(accepting)
+    expect(selectExecutor([remote, accepting], placement({ pinnedLocal: false }))).toBe(remote)
+  })
+
+  it('passes the placement to accepts()', () => {
     const seen: string[] = []
     const spy: TaskExecutor = {
       name: 's',
@@ -74,11 +102,13 @@ describe('selectExecutor', () => {
       },
       execute: () => Promise.reject(new Error('unused')),
     }
-    selectExecutor([spy, accepting], req({ taskId: 'x#y' }))
+    selectExecutor([spy, accepting], placement({ taskId: 'x#y' }))
     expect(seen).toEqual(['x#y'])
   })
 
   it('throws when every executor declines', () => {
-    expect(() => selectExecutor([declining], req())).toThrow(/no executor accepted pkg-a#hello/)
+    expect(() => selectExecutor([declining], placement())).toThrow(
+      /no executor accepted pkg-a#hello/,
+    )
   })
 })

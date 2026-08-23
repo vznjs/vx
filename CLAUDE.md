@@ -355,8 +355,9 @@ time every single time.
   `\0` part delimiters, git blob OIDs for tracked-clean files (zero reads),
   PURE-INPUT transitive hashing (upstream INPUT keys, never output content —
   early cutoff was reverted in v22), plus the project's `package.json` bytes
-  and the workspace fingerprint. `exec.resources` is STRIPPED (tuning a
-  reservation never busts a cache); `timeout`/`retries` are deliberately NOT.
+  and the workspace fingerprint. `exec.resources` and `exec.remote` are
+  STRIPPED — both are pure PLACEMENT (tuning a reservation, or pinning a task
+  to this machine, never busts a cache); `timeout`/`retries` are deliberately NOT.
   `description` IS folded, deliberately.
 - **Cache correctness is the worst failure class.** A wrong answer here is not
   a degraded answer — it replays stale bytes under a green run. Eight-plus
@@ -456,6 +457,74 @@ time every single time.
   baseline.
 
 ### Recent entries (2026-08)
+
+- **2026-08-23 (second wave) — placement and executor pools shipped, and the
+  new `exec.remote` field was BUSTING THE CACHE KEY.** Continuation of the
+  same day's executor-seam wave, working follow-ups 2 and 3 from
+  `docs/superpowers/plans/2026-08-22-executor-seam-builtin-plugins.md`.
+  **Placement** is decided ONCE per task, before scheduling (`placeTasks` in
+  `run.ts`): `selectExecutor` now takes a `TaskPlacement`, not an
+  `ExecuteRequest`, because the scheduler has to know a task's pool before
+  the first attempt exists. A task is `pinnedLocal` when it is persistent,
+  transitively depends on a persistent one (a worker cannot reach a port on
+  the submitter), or declares `exec.remote: false`; a `remote: true`
+  executor is never offered such a task, and only then does `accepts()`
+  decide. **Pools:** an executor declaring `capacity` gets its own admission
+  counter — its tasks occupy that pool instead of local worker slots and
+  reserve ZERO local resources (work on another machine spends none of this
+  machine's CPU/RAM), so `--concurrency 1` still keeps a 6-wide pool full
+  (pinned). With no pooled executor the gate is the byte-identical legacy
+  `active < concurrency` check, including the O(1) early-out. Restore-tier
+  work stays local by construction — a restore is a tar extract on this
+  disk. **The defect I found auditing the wave: `exec.remote` was FOLDED
+  INTO THE CACHE KEY.** Repro before fix — two configs differing only in
+  `remote` hashed differently (`cd3a01e2…` vs `724a7833…`). It is placement,
+  not content: the entire contract of a remote executor is that the same
+  command over the same inputs yields the same bytes, so a key that moved
+  with placement would split a laptop from a worker pool over nothing and
+  gut the remote hit rate — the identical argument that strips
+  `exec.resources`. `hashableConfig` now strips both. NO CACHE_VERSION bump:
+  a config declaring neither field takes the unchanged fast path and
+  stringifies byte-identically, and `remote` had never shipped, so no stored
+  key was ever derived from it. Differential: of the 2 new
+  `task-hash-derive` pins, exactly 1 fails without the strip; the other is a
+  CONTROL (with `remote` declared on both sides, a differing sibling
+  `timeout` must still move the key) that passes both ways — the guard
+  against a strip that is too wide. **`--dry` now
+  names the placed executor per task**, because `exec.remote` was otherwise
+  INVISIBLE: nothing in a run's output says where a task went, so a
+  mis-declared pin reads exactly like a correct one. It renders as
+  `@<executor-name>`, NOT a `local`/`remote` word — that output already
+  spends both on the cache tier ("2 cache hits (1 local, 1 remote)") and a
+  second vocabulary on the same line would be ambiguous. Attached only when
+  the workspace declares more than one executor (with one, every line says
+  the same thing); resolving the executors at plan time is the same
+  plugin-factory call `prepareRun` already makes for the cache capability, and
+  a throwing factory costs the label, never the plan. **A landmine removed on
+  the way:** `run.ts` was passing `executors[executors.length - 1]` as the
+  executor for any task without a placement (groups, persistents). Harmless
+  today — both dispatch before `args.executor` is read — but with
+  `[localExecutorPlugin(), reapi()]` that fallback is the REMOTE one, so a
+  refactor routing a persistent task through the exec path would have shipped
+  a localhost server to a worker. It is now an `UNPLACED_EXECUTOR` that
+  THROWS. **`TaskInputs.upstream` gained each dependency's declared
+  `outputs`** (workspace-relative, from the local index in one batched
+  SELECT; empty for a non-cacheable upstream) and `ExecuteRequest` gained the
+  task's own declared output globs — what an input-shipping executor needs to
+  build the input root and to know what to bring back. **NOT shipped, and
+  deliberately:** `exec.remote: 'only'` (the design's inverse pin) — it has
+  real local behaviour (skip the task, never clean or restore its outputs
+  here) and with no input-shipping executor in existence a user who declared
+  it would get a silently skipped task; widening the type is additive when
+  the REAPI plugin lands. `TaskOutcome.where` likewise waits for an executor
+  that can report a worker. Both recorded in the design doc §5 rather than
+  left as a gap between design and code. Gate: `bun src/bin.ts run lint`
+  green from the root; full suite green. One pre-existing load flake
+  (`cli.test.ts` "root-subdir change re-runs" times out at 45 s under full-suite
+  load, passes in 0.4 s in isolation) — present in the baseline run too, not
+  from this diff. The `@vzn/vx-reapi` scaffold and its `bun.lock` entry stay
+  UNCOMMITTED: that is phase 1 of the design and lands with its own gRPC
+  spike, not bundled here.
 
 - **2026-08-23 — core's execution and cache became plugins a workspace
   DECLARES; a per-task `executor` capability landed; declared cache layers

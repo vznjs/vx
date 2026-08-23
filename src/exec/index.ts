@@ -28,4 +28,5 @@ export {
   type InputFile,
   type TaskExecutor,
   type TaskInputs,
+  type TaskPlacement,
 } from './executor.js'

@@ -36,7 +36,7 @@ describe('captureGitContext', () => {
     git(dir, ['config', 'user.name', 'Test'])
     await writeFile(path.join(dir, 'a.txt'), 'one')
     git(dir, ['add', '.'])
-    git(dir, ['commit', '-q', '-m', 'init'])
+    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'init'])
 
     const ctx = captureGitContext(dir)
     expect(ctx.commitSha).toMatch(/^[0-9a-f]{40,64}$/)
@@ -75,7 +75,7 @@ describe('captureGitContext', () => {
     git(dir, ['init', '-q', '-b', 'main'])
     git(dir, ['config', 'user.email', 'test@example.com'])
     git(dir, ['config', 'user.name', 'Test'])
-    git(dir, ['commit', '-q', '--allow-empty', '-m', 'init'])
+    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
     git(dir, ['checkout', '--detach', '-q', 'HEAD'])
 
     const ctx = captureGitContext(dir)
@@ -91,7 +91,7 @@ describe('captureGitContext', () => {
     git(dir, ['init', '-q', '-b', 'main'])
     git(dir, ['config', 'user.email', 'test@example.com'])
     git(dir, ['config', 'user.name', 'Test'])
-    git(dir, ['commit', '-q', '--allow-empty', '-m', 'init'])
+    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
     git(dir, ['checkout', '--detach', '-q', 'HEAD'])
 
     // GitHub pull_request: GITHUB_REF_NAME is "<n>/merge", so the HEAD branch
@@ -119,7 +119,7 @@ describe('captureGitContext', () => {
     git(dir, ['init', '-q', '-b', 'main'])
     git(dir, ['config', 'user.email', 'test@example.com'])
     git(dir, ['config', 'user.name', 'Test'])
-    git(dir, ['commit', '-q', '--allow-empty', '-m', 'init'])
+    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
 
     expect(captureGitContext(dir, null, { GITHUB_HEAD_REF: 'something-else' }).branch).toBe('main')
   })

@@ -34,7 +34,7 @@ describe('workspace root is a subdirectory of the git repo', () => {
     await writeFile(path.join(ws, 'pkg-b', 'in.txt'), 'b')
     await writeFile(path.join(repo, 'toplevel.txt'), 'root') // outside the workspace
     await git(repo, ['add', '-A'])
-    await git(repo, ['commit', '-q', '-m', 'init'])
+    await git(repo, ['-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'init'])
   })
 
   afterEach(async () => {

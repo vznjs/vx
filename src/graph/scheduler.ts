@@ -204,6 +204,14 @@ export interface ScheduleOptions {
    */
   restoreTier?: ReadonlySet<string>
   /**
+   * Pool assignment for tasks placed on an executor with its own capacity
+   * (a remote pool). Such a task occupies one of the pool's `capacity` slots
+   * instead of a local worker slot and reserves no local resources, so a
+   * remote pool is never throttled by the local CPU count. Undefined (or
+   * a `undefined` result) = the local pool.
+   */
+  poolOf?: (id: string) => { name: string; capacity: number } | undefined
+  /**
    * Resolved per-task resource reservations (`exec.resources`, resolved
    * by the orchestrator against the run's budgets). An absent id means
    * zero cost; undefined/empty means no task opted in — the scheduler
@@ -469,8 +477,32 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // is a cheap tar extract, not the task's real work — it reserves ZERO
   // regardless of what the config declares, so it never holds budget
   // against a real executor (and never parks).
+  const poolOf = options.poolOf
+  const poolActive = new Map<string, number>()
+  // A pooled task is admitted against ITS pool's capacity, a local one
+  // against `concurrency`; pooled tasks reserve no local resources.
+  const hasRoom = (id: string): boolean => {
+    const pool = poolOf?.(id)
+    if (pool === undefined) return active < concurrency
+    return (poolActive.get(pool.name) ?? 0) < pool.capacity
+  }
+  const admit = (id: string): (() => void) => {
+    const pool = poolOf?.(id)
+    if (pool === undefined) {
+      active++
+      return () => {
+        active--
+      }
+    }
+    poolActive.set(pool.name, (poolActive.get(pool.name) ?? 0) + 1)
+    return () => {
+      poolActive.set(pool.name, (poolActive.get(pool.name) ?? 1) - 1)
+    }
+  }
   const costOf = (id: string): ResourceCost =>
-    options.restoreTier?.has(id) ? ZERO_COST : (costs?.get(id) ?? ZERO_COST)
+    options.restoreTier?.has(id) || poolOf?.(id) !== undefined
+      ? ZERO_COST
+      : (costs?.get(id) ?? ZERO_COST)
 
   // Zero never blocks; a within-budget cost needs headroom (with an
   // exact-fill epsilon); an over-budget cost can never have headroom, so
@@ -578,16 +610,20 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // task returns without a fit check (finishing it is free); restore
       // tasks cost zero by construction, so they never park.
       const takeFitting = (): string | undefined => {
+        // No pools declared (the common case): a full local pool admits
+        // nothing, so do not scan — this is the legacy O(1) gate.
+        if (poolOf === undefined && active >= concurrency) return undefined
         while (execReady.size > 0) {
           const seq = execReady.peekSeq()
           const id = execReady.pop() as string
-          if (!resourcesActive || willSkip(id) || fits(id)) return id
+          if (willSkip(id) || ((!resourcesActive || fits(id)) && hasRoom(id))) return id
           parked.push([id, seq])
         }
-        return restoreReady.pop()
+        // Restore-tier tasks are local work (a cache restore on this disk).
+        return active < concurrency ? restoreReady.pop() : undefined
       }
 
-      while (active < concurrency) {
+      for (;;) {
         const id = takeFitting()
         if (id === undefined) break // nothing ready is admissible right now
         const node = nodes.get(id) as TaskNode
@@ -607,7 +643,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           continue
         }
 
-        active++
+        const leave = admit(id)
         // Reserve on dispatch; capture the cost so the release in the
         // completion callbacks is symmetric even if the maps change.
         const cost = costOf(id)
@@ -629,7 +665,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // wedging the solo-clamp gate.
         execute(node, upstream).then(
           (outcome) => {
-            active--
+            leave()
             release(cost)
             finishOne(id, outcome)
             tick()
@@ -642,7 +678,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               exitCode: 1,
               durationMs: 0,
             }
-            active--
+            leave()
             release(cost)
             finishOne(id, outcome)
             // Surface the error live; the outcome itself doesn't

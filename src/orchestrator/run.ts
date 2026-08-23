@@ -12,7 +12,7 @@ import {
 } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec/index.js'
-import type { TaskExecutor } from '../exec/index.js'
+import { selectExecutor, type TaskExecutor } from '../exec/index.js'
 import {
   isGroupTask,
   markSurfacedDeps,
@@ -31,7 +31,7 @@ import type { SubscribedEventSinks } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, deriveCacheSource, isCacheHit, isPassStatus } from './telemetry.js'
 import type { RunContextRecord, TaskTelemetry } from './telemetry.js'
-import { defaultLogger, resolveOutputView } from './logger.js'
+import { defaultLogger, resolveOutputView, type Logger } from './logger.js'
 import { detectColors } from './colors.js'
 import { formatPersistentList } from './framed-output.js'
 import { LocalHistoryProvider } from './history.js'
@@ -251,6 +251,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     prepared.cache.close()
     throw err
   }
+  // Placement: decided ONCE per task, before scheduling, so the scheduler
+  // can admit a remote-pooled task against its pool instead of a local
+  // worker slot. Group tasks run nothing; persistent tasks never reach an
+  // executor (local by construction) — both stay off the map.
+  const placements = placeTasks(nodes, executors)
 
   // Run-level default task timeout (ms), applied to any task WITHOUT its own
   // `exec.timeout`. Precedence, highest first: `--timeout`/RunOptions.timeout
@@ -552,7 +557,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         ...(taskTimeoutDefault !== undefined ? { timeout: taskTimeoutDefault } : {}),
         ...(options.verify !== undefined ? { verify: options.verify } : {}),
         log,
-        executors,
+        executor: placements.get(node.id) ?? UNPLACED_EXECUTOR,
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         runStartHrTimeNs,
         persistentRegistry,
@@ -635,6 +640,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const outcomes = await runGraph({
       nodes,
       concurrency,
+      ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(resourceCosts.size > 0 ? { resourceCosts, cpuBudget: concurrency, memBudget } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
       onStart: (node) => {
@@ -1019,8 +1025,117 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // inspection command, so the history read's cost is fine here even
       // though it stays OFF the default run path.
       history: new LocalHistoryProvider(prepared.localCache.dbHandle()),
+      // Placement, by the same rules the run applies. Only worth showing
+      // when there is a choice to show — with one declared executor every
+      // line would carry the same label. Resolving the executors here is
+      // the same plugin-factory call `prepareRun` already makes for the
+      // cache capability, so plan mode gains no new class of side effect.
+      ...(await planExecutorOf(prepared, log)),
     })
   } finally {
     prepared.cache.close()
+  }
+}
+
+/**
+ * A task is pinned to this machine when it is persistent, transitively
+ * depends on a persistent task (a worker cannot reach a port on the
+ * submitter), or declares `exec.remote: false`.
+ */
+function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
+  const pinned = new Set<string>()
+  const memo = new Map<string, boolean>()
+  const visit = (id: string): boolean => {
+    const known = memo.get(id)
+    if (known !== undefined) return known
+    const node = nodes.get(id)
+    if (node === undefined) return false
+    memo.set(id, false) // cycle guard; the graph builder already rejects cycles
+    const result =
+      node.config.exec?.persistent !== undefined ||
+      node.config.exec?.remote === false ||
+      node.deps.some((d) => visit(d))
+    memo.set(id, result)
+    if (result) pinned.add(id)
+    return result
+  }
+  for (const id of nodes.keys()) visit(id)
+  return pinned
+}
+
+function placeTasks(
+  nodes: Map<string, TaskNode>,
+  executors: readonly TaskExecutor[],
+): Map<string, TaskExecutor> {
+  const pinned = pinnedLocalSet(nodes)
+  const placements = new Map<string, TaskExecutor>()
+  for (const node of nodes.values()) {
+    if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue
+    placements.set(
+      node.id,
+      selectExecutor(executors, {
+        taskId: node.id,
+        projectName: node.projectName,
+        projectDir: node.projectDir,
+        command: node.config.exec!.command,
+        pinnedLocal: pinned.has(node.id),
+        cacheable: node.config.cache !== undefined,
+      }),
+    )
+  }
+  return placements
+}
+
+/**
+ * `executorOf` for `planRun`, or nothing. Declining plugins, a single
+ * executor, or a resolution error all yield nothing: `--dry` is an
+ * inspection command and must not fail over a label.
+ */
+async function planExecutorOf(
+  prepared: Awaited<ReturnType<typeof prepareRun>>,
+  log: Logger,
+): Promise<{ executorOf?: (id: string) => string | undefined }> {
+  let executors: readonly TaskExecutor[]
+  try {
+    executors = await resolveExecutors(prepared.plugins, {
+      workspaceRoot: prepared.workspaceRoot,
+      cacheDir: prepared.cacheDir,
+      warn: (m: string) => log.status(m),
+      concurrency: Math.max(1, navigator.hardwareConcurrency),
+    })
+  } catch {
+    return {}
+  }
+  if (executors.length < 2) return {}
+  const placements = placeTasks(prepared.nodes, executors)
+  return { executorOf: (id) => placements.get(id)?.name }
+}
+
+/**
+ * Stands in for the executor of a task that was never placed — a group task
+ * (runs nothing) or a persistent one (`executePersistentTask` owns it and
+ * never reads this field). It THROWS rather than silently picking some
+ * executor from the list, so a refactor that routes such a task through the
+ * exec path fails loudly instead of shipping a localhost server to a worker.
+ */
+const UNPLACED_EXECUTOR: TaskExecutor = {
+  name: 'unplaced',
+  execute: (req) => {
+    throw new Error(`internal error: ${req.taskId} reached an executor without being placed`)
+  },
+}
+
+function hasPooledExecutor(executors: readonly TaskExecutor[]): boolean {
+  return executors.some((e) => e.capacity !== undefined)
+}
+
+function poolOfPlacement(
+  placements: ReadonlyMap<string, TaskExecutor>,
+): (id: string) => { name: string; capacity: number } | undefined {
+  return (id) => {
+    const executor = placements.get(id)
+    return executor?.capacity === undefined
+      ? undefined
+      : { name: executor.name, capacity: executor.capacity }
   }
 }

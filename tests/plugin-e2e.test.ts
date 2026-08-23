@@ -27,7 +27,19 @@ async function gitInit(dir: string): Promise<void> {
   await Bun.spawn(['git', 'init', '-q'], { cwd: dir }).exited
   await Bun.spawn(['git', 'add', '-A'], { cwd: dir }).exited
   await Bun.spawn(
-    ['git', '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'init'],
+    [
+      'git',
+      '-c',
+      'user.email=t@t',
+      '-c',
+      'user.name=t',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-q',
+      '-m',
+      'init',
+    ],
     { cwd: dir },
   ).exited
 }

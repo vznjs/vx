@@ -34,8 +34,13 @@ export function formatPlanText(plan: RunPlan): string {
     const shortHash = t.hash ? t.hash.slice(0, 8) : ''
     const executes = t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache'
     const eta = executes && t.p50Ms !== undefined ? `  ~${formatDuration(t.p50Ms)}` : ''
+    // Placement, by EXECUTOR NAME rather than a local/remote word: the
+    // summary line below already spends "local" and "remote" on the cache
+    // tier, and a task placed on a named executor is what the reader can
+    // act on. Present only when the workspace declared a choice.
+    const where = t.executor !== undefined ? `  @${t.executor}` : ''
     lines.push(
-      `  ${sym}  ${t.node.id.padEnd(idWidth)}  ${desc.padEnd(tagWidth)}  ${shortHash}${eta}`,
+      `  ${sym}  ${t.node.id.padEnd(idWidth)}  ${desc.padEnd(tagWidth)}  ${shortHash}${eta}${where}`,
     )
     // Optional one-line description from the task config, indented
     // under the id so the eye picks up the task → blurb mapping.
@@ -87,6 +92,7 @@ export function formatPlanJson(plan: RunPlan): string {
           cacheStatus: t.cacheStatus,
           deps: t.deps,
           ...(t.p50Ms !== undefined ? { p50Ms: t.p50Ms } : {}),
+          ...(t.executor !== undefined ? { executor: t.executor } : {}),
           ...(t.node.config.description !== undefined
             ? { description: t.node.config.description }
             : {}),

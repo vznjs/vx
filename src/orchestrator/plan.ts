@@ -36,6 +36,13 @@ export interface PlannedTask {
    * every real task so a would-run task can show what it usually costs.
    */
   p50Ms?: number
+  /**
+   * Name of the executor this task would be PLACED on. Attached only when
+   * the workspace declares more than one executor — with a single one every
+   * line would carry the same label and say nothing. Absent for group tasks
+   * and persistent tasks, which never reach an executor.
+   */
+  executor?: string
 }
 
 /**
@@ -78,6 +85,8 @@ export interface PlanArgs {
   /** When provided, per-task p50s are attached and `RunPlan.predicted` is
    *  computed. Failing open: a history error yields a plan without them. */
   history?: HistoryProvider
+  /** Placement lookup (`run.ts`), passed only when >1 executor is declared. */
+  executorOf?: (id: string) => string | undefined
 }
 
 /**
@@ -141,11 +150,13 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
     const o = outcomes.get(id)
     const node = args.nodes.get(id)
     if (!o || !node) continue
+    const executor = args.executorOf?.(id)
     tasks.push({
       node,
       hash: o.hash ?? '',
       cacheStatus: cacheStatusById.get(id) ?? 'no-cache',
       deps: node.deps,
+      ...(executor !== undefined ? { executor } : {}),
     })
   }
 
