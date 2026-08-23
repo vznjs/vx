@@ -251,3 +251,112 @@ describe.if(run)("the node_modules chain: remote:'only' install feeds remote bui
     }
   }, 180_000)
 })
+
+describe.if(run)('chaining robustness (audit fixes)', () => {
+  const endpoint = ENDPOINT as string
+  const n3 = `${process.pid}-${Bun.nanoseconds()}`
+
+  const req3 = (root: string, over: Partial<ExecuteRequest>): ExecuteRequest =>
+    ({
+      taskId: 'pkg#t',
+      workspaceRoot: root,
+      cwd: path.join(root, 'pkg'),
+      command: 'true',
+      forwardArgs: [],
+      env: {},
+      capture: { stdout: true, stderr: true },
+      onStdout: () => undefined,
+      onStderr: () => undefined,
+      outputs: { files: [], workspaceFiles: [] },
+      inputs: {
+        files: [],
+        env: [],
+        runtime: [],
+        workspaceRuntime: [],
+        upstream: [],
+        packageJsonDigest: 'p',
+        configDigest: 'c',
+        workspaceFingerprint: 'w',
+      },
+      ...over,
+    }) as unknown as ExecuteRequest
+
+  it('refresh (--force) bypasses the execution record and re-executes', async () => {
+    const { execDigestFor } = await import('../src/cache.js')
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-refresh-'))
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      await mkdir(path.join(root, 'pkg'), { recursive: true })
+      const executor = reapiExecutor(client, { warn: () => undefined })
+      const key = `refresh-${n3}`
+      await executor.execute(req3(root, { command: 'echo one', cacheKey: key, remoteOnly: true }))
+      expect(await client.getActionResult(execDigestFor(key))).not.toBeNull()
+      // Without refresh: served from the record, zero Execute calls (control).
+      let calls = 0
+      const orig = client.execute.bind(client)
+      client.execute = ((...a: Parameters<typeof orig>) => {
+        calls++
+        return orig(...a)
+      }) as typeof client.execute
+      await executor.execute(req3(root, { command: 'echo two', cacheKey: key, remoteOnly: true }))
+      expect(calls).toBe(0)
+      // With refresh: the record must NOT satisfy it — a private cache that
+      // ignores --force is still a cache.
+      await executor.execute(
+        req3(root, { command: 'echo three', cacheKey: key, remoteOnly: true, refresh: true }),
+      )
+      expect(calls).toBe(1)
+    } finally {
+      client.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
+
+  it('an execution record with evicted blobs demotes to local outputs instead of a worker error', async () => {
+    const { execDigestFor, digestOf } = await import('../src/cache.js')
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-evict-'))
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      await mkdir(path.join(root, 'pkg', 'gen'), { recursive: true })
+      // The upstream's outputs ARE on local disk (it ran locally)…
+      await writeFile(path.join(root, 'pkg', 'gen', 'data.txt'), 'local-truth\n')
+      // …but a stale record exists whose blob was never uploaded (an
+      // eviction, compressed into one step: a digest of content the CAS has
+      // never seen).
+      const key = `evicted-${n3}`
+      const phantom = digestOf(new TextEncoder().encode(`never-uploaded-${n3}`))
+      await client.updateActionResult(execDigestFor(key), {
+        exit_code: 0,
+        output_files: [{ path: 'pkg/gen/data.txt', digest: phantom, is_executable: false }],
+      })
+      const warns: string[] = []
+      const executor = reapiExecutor(client, { warn: (m) => warns.push(m) })
+      let stdout = ''
+      const res = await executor.execute(
+        req3(root, {
+          command: 'cat gen/data.txt',
+          cacheKey: `dep-${n3}`,
+          onStdout: (c: string) => (stdout += c),
+          inputs: {
+            files: [],
+            env: [],
+            runtime: [],
+            workspaceRuntime: [],
+            upstream: [{ taskId: 'pkg#up', hash: key, outputs: ['pkg/gen/data.txt'] }],
+            packageJsonDigest: 'p',
+            configDigest: 'c',
+            workspaceFingerprint: 'w',
+          },
+        }),
+      )
+      expect(res.exitCode).toBe(0)
+      expect(stdout.trim()).toBe('local-truth') // the fallback carried the day
+      expect(warns.some((w) => w.includes('evicted blob'))).toBe(true)
+    } finally {
+      client.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
+})

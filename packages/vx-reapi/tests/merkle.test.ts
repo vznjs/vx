@@ -150,3 +150,38 @@ describe('symlinked inputs', () => {
     }
   })
 })
+
+describe('graft shadowing', () => {
+  it('reports a disk-built directory replaced by a same-named graft', async () => {
+    // The graft wins by design (it is the upstream's authoritative output) —
+    // but a task that DECLARED input files under that path has just lost
+    // them silently, so the tree must say so and the caller must warn.
+    const { sha256: h } = await import('../src/merkle.js')
+    const tree = await buildInputTree({
+      workspaceRoot: root,
+      paths: ['pkg/src/a.ts'],
+      treeGrafts: [
+        {
+          path: 'pkg/src', // collides with the disk-built pkg/src
+          root: { files: [], directories: [], symlinks: [] },
+          children: [],
+        },
+      ],
+    })
+    expect(tree.shadowed).toEqual(['pkg/src'])
+    // and a non-colliding graft reports nothing (the control)
+    const clean = await buildInputTree({
+      workspaceRoot: root,
+      paths: ['pkg/src/a.ts'],
+      treeGrafts: [
+        {
+          path: 'pkg/node_modules',
+          root: { files: [], directories: [], symlinks: [] },
+          children: [],
+        },
+      ],
+    })
+    expect(clean.shadowed).toEqual([])
+    void h
+  })
+})

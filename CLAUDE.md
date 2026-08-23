@@ -423,6 +423,48 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-23 (tenth wave) — hostile audit of the day-old chaining code:
+  three findings CONFIRMED and fixed, one NEW bug found by a failing probe,
+  one hang REFUTED as ours.** Per the standing rule that new code is where
+  the bugs are. **(1) `--force` was silently ignored by the executor's
+  private record** — the exec-AC check is a cache read no policy reached, so
+  `vx run --force` could not force a remote-only install to re-run. Fixed
+  with `ExecuteRequest.refresh` (set when cacheable reads are
+  policy-disabled); the executor skips its record under it. Pinned live with
+  a spy on `client.execute`: control (no refresh) 0 calls, refresh 1 call —
+  a private cache that ignores `--force` is still a cache. **(2) An
+  execution record can OUTLIVE its blobs** — AC and CAS evict independently,
+  and a graft referencing an evicted blob fails on the WORKER with a
+  missing-input error nobody can act on. Fixed: one `FindMissingBlobs` over
+  the record's whole reference set before grafting; any gap demotes that
+  upstream to the local-disk path with a warning. Pinned live by writing a
+  record pointing at a digest the CAS has never seen, with the real file on
+  local disk: the dependent runs, reads `local-truth`, and the warn fires.
+  **(3) A graft silently SHADOWED a same-named disk-built directory** — the
+  graft should win (it is the upstream's authoritative output), but a task
+  that declared input files under that path lost them with no signal.
+  `InputTree.shadowed` now reports it and the executor warns, pinned with a
+  non-colliding control. **(4) — found because fix (1)'s probe FAILED:** an
+  action whose input tree does not contain its `working_directory` dies on
+  the worker with ENOENT — an error byte-identical to the distroless
+  missing-`/bin/sh` failure from the previous wave, which is what it was
+  first mistaken for. The refresh probe had ZERO input files, so the tree
+  was empty and `pkg/` did not exist to chdir into; REAPI requires the
+  working directory to exist in the input root and that is the CLIENT's
+  job. Fixed with `buildInputTree({ ensureDirs })`, always passed the
+  working directory — any task whose key is runtime-only (no file inputs)
+  was affected, not just probes. **(REFUTED as ours):** the full 7-file
+  package suite in ONE bun process against the qemu-emulated local
+  NativeLink hung indefinitely with zero output; every file passes alone
+  and in pairs (80/0 total). That is the Bun #39796 inbound-stall class
+  compounded by an emulation-slowed server, not a product defect — CI runs
+  the same suite one-process on native amd64 and stays green. Recorded so
+  the next local full-suite hang is not re-diagnosed from scratch: run the
+  package files individually on arm64 Macs. Core suite green after the
+  `refresh` threading. Two false-alarm hours saved for the future: the
+  worker ENOENT message names the COMMAND (`/bin/sh`), never the missing
+  working directory — upstream might take a docs PR for that.
+
 - **2026-08-23 (ninth wave) — the node_modules problem SOLVED: `exec.remote:
 'only'` shipped with worker→CAS→worker output chaining, proven through a
   real `vx run` against a live NativeLink worker.** Owner: "solve the issue

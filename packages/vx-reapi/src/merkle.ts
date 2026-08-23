@@ -26,6 +26,14 @@ export interface InputTree {
   blobs: Blob[]
   /** File count, for logging/metrics. */
   fileCount: number
+  /**
+   * Paths where a grafted subtree SHADOWED a disk-built directory of the
+   * same name. The graft wins (it is the upstream's authoritative output;
+   * the disk copy at best a stale materialisation) — but any DECLARED input
+   * files under that path are silently absent from the tree, so the caller
+   * should surface these.
+   */
+  shadowed: string[]
 }
 
 export function sha256(data: Uint8Array): Digest {
@@ -129,6 +137,14 @@ export async function buildInputTree(args: {
   paths: readonly string[]
   digests?: DigestCache
   readFile?: (abs: string) => Promise<Uint8Array>
+  /**
+   * Directories that must EXIST in the tree even when nothing puts a file
+   * inside them. REAPI requires an action's `working_directory` to exist in
+   * the input root; a task with no file inputs (runtime-only keys, or a pure
+   * generator) otherwise ships an empty tree and dies on the worker with an
+   * ENOENT that reads exactly like a missing shell.
+   */
+  ensureDirs?: readonly string[]
   /** Files referenced by digest — upstream outputs already in the CAS. */
   fileGrafts?: readonly FileGraft[]
   /** Directories grafted from upstream output Trees, re-canonicalised. */
@@ -212,8 +228,23 @@ export async function buildInputTree(args: {
     node.files.set(leaf, { name: leaf, digest: graft.digest, is_executable: graft.isExecutable })
     fileCount++
   }
+  for (const dir of args.ensureDirs ?? []) {
+    if (dir === '') continue
+    let node = root
+    for (const seg of dir.split('/')) {
+      let next = node.dirs.get(seg)
+      if (next === undefined) {
+        next = emptyDir()
+        node.dirs.set(seg, next)
+      }
+      node = next
+    }
+  }
+
+  const shadowed: string[] = []
   for (const graft of args.treeGrafts ?? []) {
     const { node, leaf } = insertAt(graft.path)
+    if (node.dirs.has(leaf)) shadowed.push(graft.path)
     const canonical = canonicaliseTree(graft)
     for (const b of canonical.blobs) {
       if (!seen.has(b.digest.hash)) {
@@ -225,7 +256,7 @@ export async function buildInputTree(args: {
   }
 
   const rootDigest = serialise(root, blobs, seen)
-  return { root: rootDigest, blobs, fileCount }
+  return { root: rootDigest, blobs, fileCount, shadowed }
 }
 
 /**

@@ -390,7 +390,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // nothing at all: the outputs sit in the CAS for dependents to graft,
       // and this machine's disk was never going to see them. This is the
       // repeat-run path for `install` — once per lockfile change, ever.
-      if (req.remoteOnly === true && req.cacheKey !== undefined) {
+      if (req.remoteOnly === true && req.cacheKey !== undefined && req.refresh !== true) {
         const prior = await client.getActionResult(execDigestFor(req.cacheKey))
         if (prior !== null) {
           return {
@@ -402,6 +402,8 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           }
         }
       }
+
+      const workingDirectory = toPosix(path.relative(req.workspaceRoot, req.cwd))
 
       // Upstream outputs reach this action's input root one of two ways.
       // PREFERRED: by REFERENCE — the upstream executed remotely and left an
@@ -418,6 +420,25 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           localUpstreamPaths.push(...up.outputs)
           continue
         }
+        // A record can OUTLIVE its blobs: the AC and the CAS evict on
+        // independent schedules, and a graft referencing an evicted blob
+        // fails on the WORKER with a missing-input error nobody can act on.
+        // Verify the whole reference set in one round trip; any gap demotes
+        // this upstream to the local-disk path (present whenever the
+        // upstream ran or restored locally) with a warning, instead of
+        // shipping an action that cannot execute.
+        const referenced = [
+          ...(record.output_files ?? []).map((f) => f.digest),
+          ...(record.output_directories ?? []).map((d) => d.tree_digest),
+        ]
+        const gone = await client.findMissingBlobs(referenced)
+        if (gone.length > 0) {
+          warn(
+            `vx/reapi: upstream ${up.taskId} execution record references ${gone.length} evicted blob(s) — using local outputs`,
+          )
+          localUpstreamPaths.push(...up.outputs)
+          continue
+        }
         for (const f of record.output_files ?? []) {
           fileGrafts.push({
             path: f.path, // recorded workspace-relative — see the record write below
@@ -428,9 +449,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         for (const d of record.output_directories ?? []) {
           const treeBlob = await client.readBlob(d.tree_digest)
           if (treeBlob === null) {
+            // Raced an eviction between the completeness check and this read.
             warn(
               `vx/reapi: upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS`,
             )
+            localUpstreamPaths.push(...up.outputs)
             continue
           }
           const decodedTree = decodeTree(treeBlob)
@@ -444,11 +467,18 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         workspaceRoot: req.workspaceRoot,
         paths: inputPaths,
         digests,
+        // The working directory must exist in the input root (REAPI
+        // requirement) even for a task with no file inputs at all.
+        ensureDirs: [workingDirectory],
         fileGrafts,
         treeGrafts,
       })
+      for (const shadowedPath of tree.shadowed) {
+        warn(
+          `vx/reapi: ${req.taskId} declares input files under ${shadowedPath}, which an upstream graft replaces — those files are NOT in the input tree`,
+        )
+      }
 
-      const workingDirectory = toPosix(path.relative(req.workspaceRoot, req.cwd))
       const platformProps = Object.entries(opts.platform ?? {}).map(([name, value]) => ({
         name,
         value,

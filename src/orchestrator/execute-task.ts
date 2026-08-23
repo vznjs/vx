@@ -531,6 +531,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(inputs !== undefined ? { inputs } : {}),
       ...(cfgCacheable ? { cacheKey: hash } : {}),
       ...(remoteOnly ? { remoteOnly: true } : {}),
+      // `--force`/`--no-cache` reach a remote executor's private record
+      // through this flag — the policy gates above only cover vx's OWN cache.
+      ...(cfgCacheable && !(policy.localRead || policy.remoteRead) ? { refresh: true } : {}),
       outputs: { files: outputs, workspaceFiles: wsOutputs },
     }
     if (!useSandbox) return base

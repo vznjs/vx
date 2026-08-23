@@ -81,6 +81,13 @@ export interface ExecuteRequest {
    */
   readonly cacheKey?: string
   /**
+   * Cache READS are disabled for this run (`--force` / `--no-cache`). An
+   * executor that keeps its OWN remote record of executions must not serve
+   * this request from it — the user asked for re-execution, and a private
+   * cache that ignores the flag is still a cache.
+   */
+  readonly refresh?: boolean
+  /**
    * `exec.remote: 'only'`: the task produces a REMOTE input tree. The
    * executor should not materialise outputs onto this machine's disk, and
    * may satisfy the request from its own remote record of a previous
