@@ -10,7 +10,7 @@
 // upload it is meant to avoid.
 
 import { createHash } from 'node:crypto'
-import { stat } from 'node:fs/promises'
+import { lstat, readlink, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { Digest, Directory, DirectoryNode, FileNode, SymlinkNode } from './wire.js'
 
@@ -59,9 +59,10 @@ export class DigestCache {
 interface DirNode {
   files: Map<string, FileNode>
   dirs: Map<string, DirNode>
+  symlinks: Map<string, SymlinkNode>
 }
 
-const emptyDir = (): DirNode => ({ files: new Map(), dirs: new Map() })
+const emptyDir = (): DirNode => ({ files: new Map(), dirs: new Map(), symlinks: new Map() })
 
 /**
  * Build the input root from workspace-relative paths. `executableFor` decides
@@ -86,7 +87,26 @@ export async function buildInputTree(args: {
   // regardless of the caller's ordering.
   for (const rel of [...args.paths].sort()) {
     const abs = path.join(args.workspaceRoot, rel)
-    const st = await stat(abs)
+    // lstat, not stat: a symlinked input must be REPRESENTED as a symlink.
+    // Following it would upload the target's bytes under the link's path —
+    // a tree that lies about its own shape, and a worker that materialises a
+    // copy where the task expects a link.
+    const st = await lstat(abs)
+    if (st.isSymbolicLink()) {
+      const target = await readlink(abs)
+      const parts = rel.split('/')
+      let node = root
+      for (const seg of parts.slice(0, -1)) {
+        let next = node.dirs.get(seg)
+        if (next === undefined) {
+          next = emptyDir()
+          node.dirs.set(seg, next)
+        }
+        node = next
+      }
+      node.symlinks.set(parts[parts.length - 1]!, { name: parts[parts.length - 1]!, target })
+      continue
+    }
     if (!st.isFile()) continue
     const data = await read(abs)
     const digest = await digests.digestOf(abs, data)
@@ -131,7 +151,8 @@ function serialise(node: DirNode, blobs: Blob[], seen: Set<string>): Digest {
     directories.push({ name, digest: serialise(node.dirs.get(name)!, blobs, seen) })
   }
   const files = [...node.files.keys()].sort().map((n) => node.files.get(n)!)
-  const dir: Directory = { files, directories, symlinks: [] }
+  const symlinks = [...node.symlinks.keys()].sort().map((n) => node.symlinks.get(n)!)
+  const dir: Directory = { files, directories, symlinks }
   const data = encodeDirectory(dir)
   const digest = sha256(data)
   if (!seen.has(digest.hash)) {
@@ -175,6 +196,16 @@ function lenField(field: number, payload: Uint8Array): Uint8Array {
 // an empty file would address differently from the server's view of it.
 function strField(field: number, value: string): Uint8Array {
   return value === '' ? EMPTY : lenField(field, new TextEncoder().encode(value))
+}
+
+/**
+ * A REPEATED string element. Unlike a singular field, every element of a
+ * repeated field is emitted even when it is the empty string — and REAPI
+ * gives `output_paths: [""]` a meaning (the entire working directory), so
+ * dropping it would silently discard the action's outputs.
+ */
+function repStrField(field: number, value: string): Uint8Array {
+  return lenField(field, new TextEncoder().encode(value))
 }
 
 function boolField(field: number, value: boolean): Uint8Array {
@@ -305,21 +336,43 @@ export interface NodeProperties {
   mtimeMs?: number
 }
 
+export const OUTPUT_DIRECTORY_FORMAT = {
+  TREE_ONLY: 0,
+  DIRECTORY_ONLY: 1,
+  TREE_AND_DIRECTORY: 2,
+} as const
+
 export interface CommandSpec {
   arguments: readonly string[]
   environmentVariables: ReadonlyArray<{ name: string; value: string }>
   outputPaths: readonly string[]
   workingDirectory: string
   platform: ReadonlyArray<{ name: string; value: string }>
+  /**
+   * DEPRECATED-in-v2.1 fields, still SET for v2.0 servers: a v2.1+ server
+   * reads `output_paths` and ignores these; a v2.0 server does the inverse
+   * (`output_paths` is an unknown field to it). Setting both is how one
+   * Command works against either generation. The digest stays consistent
+   * because both sides hash the bytes the CLIENT produced.
+   */
+  legacyOutputFiles?: readonly string[]
+  legacyOutputDirectories?: readonly string[]
+  /** `output_node_properties` — names of NodeProperties the client wants back. */
+  outputNodeProperties?: readonly string[]
+  /** `output_directory_format` — request Tree blobs, root digests, or both. */
+  outputDirectoryFormat?: number
 }
 
 /**
- * `Command { arguments = 1, environment_variables = 2, output_paths = 7,
- *            platform = 5, working_directory = 6 }`
+ * `Command { arguments = 1, environment_variables = 2, output_files = 3,
+ *            output_directories = 4, platform = 5, working_directory = 6,
+ *            output_paths = 7, output_node_properties = 8,
+ *            output_directory_format = 9 }`
  *
- * Env vars and output paths MUST be sorted by name/path per the spec —
- * otherwise two identical commands hash differently and never share a cache
- * entry across machines.
+ * Env vars and every output list MUST be sorted per the spec — otherwise two
+ * identical commands hash differently and never share a cache entry across
+ * machines. Fields are emitted in FIELD-NUMBER ORDER because the digest is
+ * over these bytes and canonical encoders write ascending field numbers.
  */
 export function encodeCommand(c: CommandSpec): Uint8Array {
   const env = [...c.environmentVariables].sort((a, b) =>
@@ -327,8 +380,10 @@ export function encodeCommand(c: CommandSpec): Uint8Array {
   )
   const platform = [...c.platform].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   return concat([
-    ...c.arguments.map((a) => strField(1, a)),
+    ...c.arguments.map((a) => repStrField(1, a)),
     ...env.map((e) => lenField(2, concat([strField(1, e.name), strField(2, e.value)]))),
+    ...[...(c.legacyOutputFiles ?? [])].sort().map((p) => repStrField(3, p)),
+    ...[...(c.legacyOutputDirectories ?? [])].sort().map((p) => repStrField(4, p)),
     ...(platform.length > 0
       ? [
           lenField(
@@ -340,7 +395,11 @@ export function encodeCommand(c: CommandSpec): Uint8Array {
         ]
       : []),
     ...(c.workingDirectory === '' ? [] : [strField(6, c.workingDirectory)]),
-    ...[...c.outputPaths].sort().map((p) => strField(7, p)),
+    ...[...c.outputPaths].sort().map((p) => repStrField(7, p)),
+    ...[...(c.outputNodeProperties ?? [])].sort().map((n) => repStrField(8, n)),
+    ...(c.outputDirectoryFormat === undefined || c.outputDirectoryFormat === 0
+      ? []
+      : [intField(9, c.outputDirectoryFormat)]),
   ])
 }
 

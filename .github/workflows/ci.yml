@@ -138,8 +138,32 @@ jobs:
       - name: bun test (packages/vx-otel)
         run: cd packages/vx-otel && bun test
 
+      # NativeLink gives the EXECUTION half a real scheduler + worker. Its
+      # official image is distroless — no /bin/sh — so a worker inside it
+      # cannot run any REAPI Command that starts with a shell (every vx task
+      # does). Rehost the same static musl binary on busybox, which has one.
+      - name: Start NativeLink (execution)
+        run: |
+          docker create --name nl-x ghcr.io/tracemachina/nativelink:v0.6.0 /x
+          docker cp -L nl-x:/bin/nativelink packages/vx-reapi/tests/helpers/nativelink-bin
+          docker rm nl-x
+          cd packages/vx-reapi/tests/helpers
+          printf 'FROM busybox:musl\nCOPY nativelink-bin /usr/local/bin/nativelink\nENTRYPOINT ["/usr/local/bin/nativelink"]\n' > Dockerfile.nl
+          docker build -q -f Dockerfile.nl -t vx-nativelink-sh .
+          docker run -d --name vx-nl -p 51051:50051 \
+            -v "$PWD/nativelink-exec.json5:/config.json5" vx-nativelink-sh /config.json5
+          sleep 5
+          docker ps --filter name=vx-nl --format '{{.Status}}' | grep -q Up
+
+      # --timeout 90000: Bun 1.4.0's node:http2 client can stall inbound
+      # frames for ~28s under load (oven-sh/bun#39796, open); the suite
+      # recovers, so the budget just has to outlive the stall. BOTH require
+      # flags are set: a skip is a silent pass, and these suites are the only
+      # proof the cache wire and the execution wire work.
       - name: bun test (packages/vx-reapi)
         env:
           VX_REAPI_TEST_ENDPOINT: 127.0.0.1:19092
           VX_REQUIRE_REAPI: '1'
-        run: cd packages/vx-reapi && bun test
+          VX_REAPI_EXEC_ENDPOINT: 127.0.0.1:51051
+          VX_REQUIRE_REAPI_EXEC: '1'
+        run: cd packages/vx-reapi && bun test --timeout 90000

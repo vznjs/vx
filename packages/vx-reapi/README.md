@@ -108,10 +108,11 @@ All **14 RPCs** across the five services, not a working subset:
 
 Protocol features in use, not just reachable:
 
-- **Digest negotiation** — picks the strongest function the server advertises
-  and this runtime can compute (BLAKE3 → SHA512 → SHA384 → SHA256), and
-  refuses a function the server did not advertise rather than uploading blobs
-  it will reject.
+- **Digest negotiation** — SHA256 by default (the universal baseline; the
+  Merkle encoders must hash with the SAME function as every upload, so
+  auto-upgrading would mix functions inside one action). Another function is
+  an explicit `negotiate({ digestFunction: 'SHA512' })`, and one the server
+  did not advertise is refused rather than uploading blobs it will reject.
 - **zstd compression** — `compressed-blobs/zstd/…` resource names on
   ByteStream and `compressor: ZSTD` on batch updates, enabled only when
   `supported_compressors` says so.
@@ -152,3 +153,14 @@ plugin **decline the executor with a warning** rather than submit work that
 will never be answered. Only cacheable tasks are eligible — a task with no
 `cache` block has no described inputs, so a worker would run it against an
 empty input root.
+
+Verified end-to-end against a live NativeLink scheduler + worker: input tree
+uploaded, QUEUED → EXECUTING → COMPLETED streamed, stdout returned inline,
+declared outputs materialised byte-correct, and the worker attributed. Every
+hand-rolled encoder AND decoder is pinned byte-for-byte against protobufjs
+over the same vendored protos — the decoder tests exist because a wrong field
+number parses garbage without ever erroring (`tests/encoding.test.ts`).
+
+One environmental note for NativeLink specifically: its official image is
+distroless, so a worker inside it has no `/bin/sh` and cannot run any vx task.
+`tests/helpers/nativelink.md` has the three-command busybox rehost.

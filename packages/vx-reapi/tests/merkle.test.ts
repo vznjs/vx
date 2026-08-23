@@ -113,3 +113,40 @@ describe('DigestCache', () => {
     expect(reads).toBe(8)
   })
 })
+
+describe('symlinked inputs', () => {
+  it('represents a symlink as a SymlinkNode, never as the target bytes', async () => {
+    // Following the link would upload the target's bytes under the link's
+    // path — a tree that lies about its own shape, and a worker that
+    // materialises a copy where the task expects a link.
+    const { symlink } = await import('node:fs/promises')
+    await symlink('src/a.ts', path.join(root, 'pkg', 'alias.ts'))
+    try {
+      const tree = await buildInputTree({
+        workspaceRoot: root,
+        paths: ['pkg/alias.ts', 'pkg/src/a.ts'],
+      })
+      // one real file, one symlink: the link contributes NO content blob
+      expect(tree.fileCount).toBe(1)
+      const dirBlobs = tree.blobs.map((b) => new TextDecoder().decode(b.data))
+      expect(dirBlobs.some((t) => t.includes('alias.ts') && t.includes('src/a.ts'))).toBe(true)
+    } finally {
+      await rm(path.join(root, 'pkg', 'alias.ts'), { force: true })
+    }
+  })
+
+  it('a symlink changes the root digest vs the same tree without it', async () => {
+    const { symlink } = await import('node:fs/promises')
+    const bare = await buildInputTree({ workspaceRoot: root, paths: ['pkg/src/a.ts'] })
+    await symlink('b.ts', path.join(root, 'pkg', 'src', 'link.ts'))
+    try {
+      const linked = await buildInputTree({
+        workspaceRoot: root,
+        paths: ['pkg/src/a.ts', 'pkg/src/link.ts'],
+      })
+      expect(linked.root.hash).not.toBe(bare.root.hash)
+    } finally {
+      await rm(path.join(root, 'pkg', 'src', 'link.ts'), { force: true })
+    }
+  })
+})

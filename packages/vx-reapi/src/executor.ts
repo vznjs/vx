@@ -24,20 +24,29 @@ import {
 } from './merkle.js'
 import type { ActionResult, Digest, Directory, Operation, ReapiClient } from './wire.js'
 
-/** REAPI's ExecuteResponse arrives packed in an Any; decode just what we read. */
-function decodeExecuteResponse(op: Operation): { result?: ActionResult; message?: string } {
+export interface DecodedExecuteResponse {
+  result?: ActionResult
+  message?: string
+  cachedResult?: boolean
+  status?: { code: number; message: string }
+  /** name → log blob; fetched and surfaced when the action FAILS. */
+  serverLogs: Array<{ name: string; digest: Digest; humanReadable: boolean }>
+}
+
+/** REAPI's ExecuteResponse arrives packed in an Any; hand-decoded (proto-loader
+ *  exposes no decoder for an arbitrary packed type). */
+function decodeExecuteResponse(op: Operation): DecodedExecuteResponse {
   const value = op.response?.value
-  if (value === undefined || value.length === 0) return {}
+  if (value === undefined || value.length === 0) return { serverLogs: [] }
   return decodeExecuteResponseBytes(value)
 }
 
 /**
- * Hand-decoded because the response rides an `Any` and proto-loader gives no
- * decoder for an arbitrary packed type. Only the fields vx acts on are read:
- * `result` (field 1) and `message` (field 3).
+ * `ExecuteResponse { result = 1, cached_result = 2, status = 3,
+ *                    server_logs = 4 (map<string, LogFile>), message = 5 }`
  */
-function decodeExecuteResponseBytes(buf: Uint8Array): { result?: ActionResult; message?: string } {
-  const out: { result?: ActionResult; message?: string } = {}
+export function decodeExecuteResponseBytes(buf: Uint8Array): DecodedExecuteResponse {
+  const out: DecodedExecuteResponse = { serverLogs: [] }
   let i = 0
   while (i < buf.length) {
     const [key, k] = readVarint(buf, i)
@@ -50,15 +59,81 @@ function decodeExecuteResponseBytes(buf: Uint8Array): { result?: ActionResult; m
       const slice = buf.subarray(i, i + len)
       i += len
       if (field === 1) out.result = decodeActionResult(slice)
-      else if (field === 3) out.message = new TextDecoder().decode(slice)
+      else if (field === 3) out.status = decodeRpcStatus(slice)
+      else if (field === 4) {
+        const entry = decodeLogEntry(slice)
+        if (entry !== undefined) out.serverLogs.push(entry)
+      } else if (field === 5) out.message = new TextDecoder().decode(slice)
     } else if (wire === 0) {
-      const [, v] = readVarint(buf, i)
-      i = v
+      const [v, n] = readVarint(buf, i)
+      i = n
+      if (field === 2) out.cachedResult = v === 1
     } else if (wire === 5) i += 4
     else if (wire === 1) i += 8
     else break
   }
   return out
+}
+
+/** `google.rpc.Status { code = 1, message = 2 }` */
+function decodeRpcStatus(buf: Uint8Array): { code: number; message: string } {
+  const st = { code: 0, message: '' }
+  let i = 0
+  while (i < buf.length) {
+    const [key, k] = readVarint(buf, i)
+    i = k
+    const field = key >>> 3
+    const wire = key & 7
+    if (wire === 0) {
+      const [v, n] = readVarint(buf, i)
+      i = n
+      if (field === 1) st.code = v
+    } else if (wire === 2) {
+      const [len, l] = readVarint(buf, i)
+      i = l
+      if (field === 2) st.message = new TextDecoder().decode(buf.subarray(i, i + len))
+      i += len
+    } else break
+  }
+  return st
+}
+
+/** One `server_logs` map entry: `{ key = 1 (string), value = 2 (LogFile{digest=1, human_readable=2}) }` */
+function decodeLogEntry(
+  buf: Uint8Array,
+): { name: string; digest: Digest; humanReadable: boolean } | undefined {
+  let name = ''
+  let digest: Digest | undefined
+  let humanReadable = false
+  let i = 0
+  while (i < buf.length) {
+    const [key, k] = readVarint(buf, i)
+    i = k
+    if ((key & 7) !== 2) break
+    const [len, l] = readVarint(buf, i)
+    i = l
+    const slice = buf.subarray(i, i + len)
+    i += len
+    if (key >>> 3 === 1) name = new TextDecoder().decode(slice)
+    else if (key >>> 3 === 2) {
+      let j = 0
+      while (j < slice.length) {
+        const [k2, j2] = readVarint(slice, j)
+        j = j2
+        if ((k2 & 7) === 2) {
+          const [len2, j3] = readVarint(slice, j)
+          j = j3
+          if (k2 >>> 3 === 1) digest = decodeDigest(slice.subarray(j, j + len2))
+          j += len2
+        } else if ((k2 & 7) === 0) {
+          const [v, j3] = readVarint(slice, j)
+          j = j3
+          if (k2 >>> 3 === 2) humanReadable = v === 1
+        } else break
+      }
+    }
+  }
+  return digest === undefined ? undefined : { name, digest, humanReadable }
 }
 
 function decodeActionResult(buf: Uint8Array): ActionResult {
@@ -78,12 +153,18 @@ function decodeActionResult(buf: Uint8Array): ActionResult {
       i = l
       const slice = buf.subarray(i, i + len)
       i += len
-      if (field === 1) (res.output_files ??= []).push(decodeOutputFile(slice))
-      else if (field === 2) (res.output_directories ??= []).push(decodeOutputDirectory(slice))
-      else if (field === 5) res.stdout_digest = decodeDigest(slice)
-      else if (field === 7) res.stderr_digest = decodeDigest(slice)
-      else if (field === 3) res.stdout_raw = slice
-      else if (field === 6) res.stderr_raw = slice
+      // Field numbers TRANSCRIBED FROM THE PROTO, not from memory — the
+      // first version of this decoder guessed them and read output_files
+      // (2) as output_directories, stdout_raw (5) as a digest, and so on:
+      // a decoder that parses garbage without ever erroring.
+      if (field === 2) (res.output_files ??= []).push(decodeOutputFile(slice))
+      else if (field === 3) (res.output_directories ??= []).push(decodeOutputDirectory(slice))
+      else if (field === 5) res.stdout_raw = slice
+      else if (field === 6) res.stdout_digest = decodeDigest(slice)
+      else if (field === 7) res.stderr_raw = slice
+      else if (field === 8) res.stderr_digest = decodeDigest(slice)
+      else if (field === 9) res.execution_metadata = decodeExecutedActionMetadata(slice)
+      else if (field === 12) (res.output_symlinks ??= []).push(decodeOutputSymlink(slice))
     } else if (wire === 5) i += 4
     else if (wire === 1) i += 8
     else break
@@ -91,12 +172,20 @@ function decodeActionResult(buf: Uint8Array): ActionResult {
   return res
 }
 
+/** `OutputFile { path = 1, digest = 2, is_executable = 4, contents = 5 }` —
+ *  `contents` is populated when the request named the file in
+ *  `inline_output_files`, sparing a CAS fetch. */
 function decodeOutputFile(buf: Uint8Array): {
   path: string
   digest: Digest
   is_executable?: boolean
+  contents?: Uint8Array
 } {
-  const out = { path: '', digest: { hash: '', size_bytes: 0 }, is_executable: false }
+  const out: { path: string; digest: Digest; is_executable: boolean; contents?: Uint8Array } = {
+    path: '',
+    digest: { hash: '', size_bytes: 0 },
+    is_executable: false,
+  }
   let i = 0
   while (i < buf.length) {
     const [key, k] = readVarint(buf, i)
@@ -110,6 +199,7 @@ function decodeOutputFile(buf: Uint8Array): {
       i += len
       if (field === 1) out.path = new TextDecoder().decode(slice)
       else if (field === 2) out.digest = decodeDigest(slice)
+      else if (field === 5 && len > 0) out.contents = slice
     } else if (wire === 0) {
       const [v, n] = readVarint(buf, i)
       i = n
@@ -119,20 +209,95 @@ function decodeOutputFile(buf: Uint8Array): {
   return out
 }
 
+/** `OutputSymlink { path = 1, target = 2 }` */
+function decodeOutputSymlink(buf: Uint8Array): { path: string; target: string } {
+  const out = { path: '', target: '' }
+  let i = 0
+  while (i < buf.length) {
+    const [key, k] = readVarint(buf, i)
+    i = k
+    if ((key & 7) !== 2) break
+    const [len, l] = readVarint(buf, i)
+    i = l
+    const slice = buf.subarray(i, i + len)
+    i += len
+    if (key >>> 3 === 1) out.path = new TextDecoder().decode(slice)
+    else if (key >>> 3 === 2) out.target = new TextDecoder().decode(slice)
+  }
+  return out
+}
+
+/**
+ * `ExecutedActionMetadata { worker = 1, queued_timestamp = 2,
+ *   worker_start = 3, worker_completed = 4, input_fetch_start = 5,
+ *   input_fetch_completed = 6, execution_start = 7, execution_completed = 8 }`
+ * Timestamps decode to epoch seconds — enough for phase attribution.
+ */
+function decodeExecutedActionMetadata(
+  buf: Uint8Array,
+): NonNullable<ActionResult['execution_metadata']> {
+  const meta: NonNullable<ActionResult['execution_metadata']> = {}
+  let i = 0
+  while (i < buf.length) {
+    const [key, k] = readVarint(buf, i)
+    i = k
+    const field = key >>> 3
+    const wire = key & 7
+    if (wire === 2) {
+      const [len, l] = readVarint(buf, i)
+      i = l
+      const slice = buf.subarray(i, i + len)
+      i += len
+      if (field === 1) meta.worker = new TextDecoder().decode(slice)
+      else if (field === 7) meta.execution_start_timestamp = decodeTimestamp(slice)
+      else if (field === 8) meta.execution_completed_timestamp = decodeTimestamp(slice)
+    } else if (wire === 0) {
+      const [, n] = readVarint(buf, i)
+      i = n
+    } else break
+  }
+  return meta
+}
+
+/** `google.protobuf.Timestamp { seconds = 1, nanos = 2 }` */
+function decodeTimestamp(buf: Uint8Array): { seconds?: string; nanos?: number } {
+  const ts: { seconds?: string; nanos?: number } = {}
+  let i = 0
+  while (i < buf.length) {
+    const [key, k] = readVarint(buf, i)
+    i = k
+    if ((key & 7) !== 0) break
+    const [v, n] = readVarint(buf, i)
+    i = n
+    if (key >>> 3 === 1) ts.seconds = String(v)
+    else if (key >>> 3 === 2) ts.nanos = v
+  }
+  return ts
+}
+
+/** `OutputDirectory { path = 1, tree_digest = 3, is_topologically_sorted = 4,
+ *                      root_directory_digest = 5 }` — field 2 is RESERVED,
+ *  which is exactly the trap a from-memory decoder falls into. */
 function decodeOutputDirectory(buf: Uint8Array): { path: string; tree_digest: Digest } {
   const out = { path: '', tree_digest: { hash: '', size_bytes: 0 } }
   let i = 0
   while (i < buf.length) {
     const [key, k] = readVarint(buf, i)
     i = k
+    const field = key >>> 3
     const wire = key & 7
+    if (wire === 0) {
+      const [, n] = readVarint(buf, i)
+      i = n
+      continue
+    }
     if (wire !== 2) break
     const [len, l] = readVarint(buf, i)
     i = l
     const slice = buf.subarray(i, i + len)
     i += len
-    if (key >>> 3 === 1) out.path = new TextDecoder().decode(slice)
-    else if (key >>> 3 === 2) out.tree_digest = decodeDigest(slice)
+    if (field === 1) out.path = new TextDecoder().decode(slice)
+    else if (field === 3) out.tree_digest = decodeDigest(slice)
   }
   return out
 }
@@ -198,6 +363,11 @@ export function acceptsTask(task: TaskPlacement): boolean {
 export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = {}): TaskExecutor {
   const digests = new DigestCache()
   const warn = opts.warn ?? (() => undefined)
+  // One Capabilities round trip per executor, not per task — the answer
+  // cannot change mid-run, and a 400-task graph would otherwise ask 400 times.
+  let capsPromise: ReturnType<ReapiClient['capabilities']> | undefined
+  const capabilitiesOnce = (): ReturnType<ReapiClient['capabilities']> =>
+    (capsPromise ??= client.capabilities())
   return {
     name: 'vx/reapi',
     remote: true,
@@ -230,13 +400,19 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         name,
         value,
       }))
+      const outputs = outputPathSets(req, workingDirectory)
       const command = {
         // `sh -c` matches vx's contract exactly: shell IS the API, so the
         // worker must interpret the string the same way the local executor's
         // spawn does.
         arguments: ['/bin/sh', '-c', fullCommand(req)],
         environmentVariables: req.inputs.env.map((e) => ({ name: e.name, value: e.value })),
-        outputPaths: outputPathsFor(req, workingDirectory),
+        outputPaths: outputs.outputPaths,
+        // Both generations of the field are set: a v2.1+ server reads
+        // output_paths and ignores the legacy pair; a v2.0 server does the
+        // inverse. One Command works against either.
+        legacyOutputFiles: outputs.legacyFiles,
+        legacyOutputDirectories: outputs.legacyDirectories,
         workingDirectory,
         platform: platformProps,
       }
@@ -253,7 +429,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       })
       const actionDigest = sha256(actionBytes)
 
-      const caps = await client.capabilities()
+      const caps = await capabilitiesOnce()
       const upload: Blob[] = [
         ...tree.blobs,
         { digest: commandDigest, data: commandBytes },
@@ -273,12 +449,26 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           `vx/reapi: execution failed for ${req.taskId}: ${op.error.message ?? `code ${op.error.code}`}`,
         )
       }
-      const { result, message } = decodeExecuteResponse(op)
-      if (result === undefined) {
+      const decoded = decodeExecuteResponse(op)
+      const { result } = decoded
+      // A non-OK ExecuteResponse.status means the EXECUTION failed (not the
+      // command): surface the server's message and its logs, which are the
+      // only diagnostics that exist for a worker-side failure.
+      if (decoded.status !== undefined && decoded.status.code !== 0) {
+        const logs = await fetchServerLogs(client, decoded.serverLogs)
         throw new Error(
-          `vx/reapi: ${req.taskId} returned no ActionResult${message === undefined ? '' : `: ${message}`}`,
+          `vx/reapi: ${req.taskId} execution failed: ${decoded.status.message || `code ${decoded.status.code}`}` +
+            (decoded.message === undefined ? '' : ` — ${decoded.message}`) +
+            logs,
         )
       }
+      if (result === undefined) {
+        throw new Error(
+          `vx/reapi: ${req.taskId} returned no ActionResult${decoded.message === undefined ? '' : `: ${decoded.message}`}`,
+        )
+      }
+      const worker = result.execution_metadata?.worker
+      if (worker !== undefined && worker !== '') warn(`vx/reapi: ${req.taskId} ran on ${worker}`)
 
       const [stdout, stderr] = await Promise.all([
         this_readStream(client, result.stdout_raw, result.stdout_digest),
@@ -298,6 +488,25 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       }
     },
   }
+}
+
+/**
+ * Server logs are the only diagnostics a worker-side failure produces; fetch
+ * the human-readable ones (bounded) and fold them into the thrown error.
+ */
+async function fetchServerLogs(
+  client: ReapiClient,
+  logs: ReadonlyArray<{ name: string; digest: Digest; humanReadable: boolean }>,
+): Promise<string> {
+  const readable = logs.filter((l) => l.humanReadable && l.digest.size_bytes <= 64 * 1024)
+  if (readable.length === 0) return ''
+  const parts: string[] = []
+  for (const log of readable) {
+    const bytes = await client.readBlob(log.digest).catch(() => null)
+    if (bytes !== null)
+      parts.push(`\n--- server log ${log.name} ---\n${new TextDecoder().decode(bytes)}`)
+  }
+  return parts.join('')
 }
 
 /** stdout/stderr arrive inline OR as a CAS digest; servers choose. */
@@ -322,15 +531,54 @@ function fullCommand(req: ExecuteRequest): string {
 }
 
 /**
- * REAPI `output_paths` are relative to the WORKING DIRECTORY. vx's `files` are
- * project-relative (so already working-directory-relative) while
- * `workspaceFiles` are workspace-root-relative and must be re-based.
+ * vx declares output GLOBS; REAPI `output_paths` are LITERAL paths. The
+ * mapping the design doc prescribes: each glob contributes the deepest
+ * literal prefix above its first wildcard (`dist/**` → `dist`,
+ * `build/out-*.js` → `build`), a wildcard-free glob is itself the path, and
+ * a glob whose FIRST segment already has the wildcard collapses to `''` —
+ * which REAPI defines as "the entire working directory". Passing the raw
+ * glob instead would name a file literally called `dist/**`, and the action
+ * would return no outputs with no error anywhere.
  */
-function outputPathsFor(req: ExecuteRequest, workingDirectory: string): string[] {
-  const rebased = req.outputs.workspaceFiles.map((p) =>
-    workingDirectory === '' ? p : toPosix(path.relative(workingDirectory, p)),
-  )
-  return [...req.outputs.files, ...rebased]
+export function globToOutputPath(glob: string): string {
+  const segments = glob.split('/')
+  const literal: string[] = []
+  for (const seg of segments) {
+    if (/[*?[\]{]/.test(seg)) break
+    literal.push(seg)
+  }
+  if (literal.length === segments.length) return glob // no wildcard: a literal path
+  return literal.join('/')
+}
+
+export interface OutputPathSets {
+  /** v2.1+ `output_paths` — deduped, sorted. */
+  outputPaths: string[]
+  /** v2.0 legacy split: wildcard-free globs are files, prefix-derived are directories. */
+  legacyFiles: string[]
+  legacyDirectories: string[]
+}
+
+export function outputPathSets(req: ExecuteRequest, workingDirectory: string): OutputPathSets {
+  const rebase = (p: string): string =>
+    workingDirectory === '' ? p : toPosix(path.relative(workingDirectory, p))
+  const globs = [...req.outputs.files, ...req.outputs.workspaceFiles.map(rebase)]
+  const paths = new Set<string>()
+  const files = new Set<string>()
+  const dirs = new Set<string>()
+  for (const glob of globs) {
+    const literal = globToOutputPath(glob)
+    paths.add(literal)
+    // The legacy split has to GUESS what a path is; a wildcard-free glob was
+    // declared as a file, a prefix cut at a wildcard is necessarily a dir.
+    if (literal === glob) files.add(literal)
+    else dirs.add(literal)
+  }
+  return {
+    outputPaths: [...paths].sort(),
+    legacyFiles: [...files].sort(),
+    legacyDirectories: [...dirs].sort(),
+  }
 }
 
 /**
@@ -355,9 +603,11 @@ async function materialiseOutputs(
     const abs = path.join(req.cwd, f.path)
     await mkdir(path.dirname(abs), { recursive: true })
     const bytes =
-      f.digest.size_bytes === 0
-        ? new Uint8Array()
-        : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
+      f.contents !== undefined
+        ? f.contents // inlined by the server (`inline_output_files`): zero fetches
+        : f.digest.size_bytes === 0
+          ? new Uint8Array()
+          : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
     if (bytes === null) {
       warn(`vx/reapi: output ${f.path} missing from CAS (${f.digest.hash.slice(0, 12)})`)
       continue

@@ -1,0 +1,127 @@
+// The remote-execution round trip against a REAL scheduler + worker.
+//
+// Needs an execution-capable server; bazel-remote is cache-only, so this is a
+// SECOND endpoint. Locally (NativeLink's image is distroless, so a worker in
+// it has no /bin/sh — rehost the same static binary on busybox first):
+//
+//   see packages/vx-reapi/tests/helpers/nativelink.md for the three commands
+//
+// Gated exactly like the cache suite: skips without the endpoint,
+// VX_REQUIRE_REAPI_EXEC=1 turns an absent endpoint into a FAILURE so CI can
+// never silently drop the only proof that remote execution works.
+
+import { describe, expect, it } from 'bun:test'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import type { ExecuteRequest } from '@vzn/vx'
+import { ReapiClient } from '../src/wire.js'
+import { reapiExecutor } from '../src/executor.js'
+
+const ENDPOINT = Bun.env['VX_REAPI_EXEC_ENDPOINT']
+if (Bun.env['VX_REQUIRE_REAPI_EXEC'] === '1' && (ENDPOINT === undefined || ENDPOINT === '')) {
+  throw new Error(
+    'VX_REQUIRE_REAPI_EXEC=1 but VX_REAPI_EXEC_ENDPOINT is unset — the execution suite would have silently skipped.',
+  )
+}
+const run = ENDPOINT !== undefined && ENDPOINT !== ''
+
+describe.if(run)('remote execution against a live scheduler + worker', () => {
+  const endpoint = ENDPOINT as string
+
+  async function fixture(): Promise<{ root: string; cleanup: () => Promise<void> }> {
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-exec-e2e-'))
+    await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+    await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'hello from the submitter\n')
+    return { root, cleanup: () => rm(root, { recursive: true, force: true }) }
+  }
+
+  const request = (root: string, over: Partial<ExecuteRequest> = {}): ExecuteRequest =>
+    ({
+      taskId: 'pkg#gen',
+      workspaceRoot: root,
+      cwd: path.join(root, 'pkg'),
+      command: 'tr a-z A-Z < src/in.txt > out.txt && echo transformed',
+      forwardArgs: [],
+      env: {},
+      capture: { stdout: true, stderr: true },
+      onStdout: () => undefined,
+      onStderr: () => undefined,
+      outputs: { files: ['out.txt'], workspaceFiles: [] },
+      inputs: {
+        files: [{ path: 'pkg/src/in.txt', digest: 'git-oid-unused' }],
+        env: [],
+        runtime: [],
+        workspaceRuntime: [],
+        upstream: [],
+        packageJsonDigest: 'x',
+        configDigest: 'y',
+        workspaceFingerprint: 'z',
+      },
+      ...over,
+    }) as unknown as ExecuteRequest
+
+  it('executes on the worker and materialises the declared output, byte-correct', async () => {
+    const { root, cleanup } = await fixture()
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      const caps = await client.capabilities()
+      expect(caps.execEnabled).toBe(true) // precondition, not an assumption
+      let stdout = ''
+      const executor = reapiExecutor(client, { warn: () => undefined })
+      const res = await executor.execute(
+        request(root, { onStdout: (c: string) => (stdout += c) } as Partial<ExecuteRequest>),
+      )
+      expect(res.exitCode).toBe(0)
+      expect(stdout).toContain('transformed')
+      const produced = await readFile(path.join(root, 'pkg', 'out.txt'), 'utf8')
+      expect(produced.trim()).toBe('HELLO FROM THE SUBMITTER')
+    } finally {
+      client.close()
+      await cleanup()
+    }
+  }, 120_000)
+
+  it('a failing command returns its exit code instead of throwing', async () => {
+    // A non-zero exit is the TASK failing, which core handles; only an
+    // execution-machinery failure may throw. Conflating them would turn every
+    // red test remotely into an internal error.
+    const { root, cleanup } = await fixture()
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      const executor = reapiExecutor(client, { warn: () => undefined })
+      const res = await executor.execute(
+        request(root, {
+          command: 'echo boom >&2 && exit 7',
+          outputs: { files: [], workspaceFiles: [] },
+        }),
+      )
+      expect(res.exitCode).toBe(7)
+      expect(res.stderr).toContain('boom')
+    } finally {
+      client.close()
+      await cleanup()
+    }
+  }, 120_000)
+
+  it('the same action twice: the second run needs no re-upload of unchanged inputs', async () => {
+    // Upload minimality across executions — the FindMissingBlobs property,
+    // observed at the CAS rather than asserted from code.
+    const { root, cleanup } = await fixture()
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      const executor = reapiExecutor(client, { warn: () => undefined })
+      await executor.execute(request(root))
+      const { buildInputTree } = await import('../src/merkle.js')
+      const tree = await buildInputTree({ workspaceRoot: root, paths: ['pkg/src/in.txt'] })
+      const missing = await client.findMissingBlobs(tree.blobs.map((b) => b.digest))
+      expect(missing.length).toBe(0)
+    } finally {
+      client.close()
+      await cleanup()
+    }
+  }, 120_000)
+})

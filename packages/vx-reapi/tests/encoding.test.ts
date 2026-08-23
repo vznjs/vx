@@ -41,6 +41,7 @@ await root.load('build/bazel/remote/execution/v2/remote_execution.proto')
 // encoder, not just ours.
 const camel = (o: unknown): unknown => {
   if (Array.isArray(o)) return o.map(camel)
+  if (o instanceof Uint8Array) return o // bytes fields pass through untouched
   if (o === null || typeof o !== 'object') return o
   return Object.fromEntries(
     Object.entries(o as Record<string, unknown>)
@@ -213,5 +214,139 @@ describe('proto3 default omission — the empty blob', () => {
       symlinks: [],
     }
     expect(hex(encodeDirectory(dir))).toBe(hex(refNonEmpty('Directory', dir)))
+  })
+})
+
+describe('encodeCommand v2.0/v2.1 compat fields', () => {
+  it('legacy output_files/output_directories + node properties + format match protobufjs', () => {
+    const cmd = {
+      arguments: ['/bin/sh', '-c', 'make'],
+      environmentVariables: [],
+      outputPaths: ['dist', 'out.txt'],
+      workingDirectory: 'pkg',
+      platform: [],
+      legacyOutputFiles: ['out.txt'],
+      legacyOutputDirectories: ['dist'],
+      outputNodeProperties: ['mtime'],
+      outputDirectoryFormat: 2, // TREE_AND_DIRECTORY
+    }
+    const expected = refNonEmpty('Command', {
+      arguments: cmd.arguments,
+      output_files: cmd.legacyOutputFiles,
+      output_directories: cmd.legacyOutputDirectories,
+      working_directory: cmd.workingDirectory,
+      output_paths: cmd.outputPaths,
+      output_node_properties: cmd.outputNodeProperties,
+      output_directory_format: cmd.outputDirectoryFormat,
+    })
+    expect(hex(encodeCommand(cmd))).toBe(hex(expected))
+  })
+
+  it('a repeated EMPTY string survives — output_paths [""] means the whole workdir', () => {
+    // Singular proto3 fields omit the empty string; repeated elements do NOT.
+    // REAPI assigns [""] a meaning, so dropping it would silently discard the
+    // action's outputs with no error anywhere.
+    const cmd = {
+      arguments: ['true'],
+      environmentVariables: [],
+      outputPaths: [''],
+      workingDirectory: '',
+      platform: [],
+    }
+    const expected = refNonEmpty('Command', { arguments: ['true'], output_paths: [''] })
+    expect(hex(encodeCommand(cmd))).toBe(hex(expected))
+    expect(hex(encodeCommand(cmd))).toContain('3a00') // field 7, length 0
+  })
+
+  it('a Directory with an input SYMLINK matches protobufjs', () => {
+    const dir: Directory = {
+      files: [],
+      directories: [],
+      symlinks: [{ name: 'node_modules', target: '../.store/node_modules' }],
+    }
+    expect(hex(encodeDirectory(dir))).toBe(hex(refNonEmpty('Directory', dir)))
+  })
+})
+
+describe('DECODER round-trip — protobufjs encodes, we decode', () => {
+  // The mirror image of the encoder tests, and the one that catches the
+  // deadliest class: a hand decoder with a wrong field number parses garbage
+  // WITHOUT ERRORING. The first decodeActionResult read output_files (2) as
+  // output_directories and stdout_raw (5) as a digest — found only against a
+  // live NativeLink. This pins every field against the schema.
+  it('a full ExecuteResponse survives', async () => {
+    const { decodeExecuteResponseBytes } = await import('../src/executor.js')
+    const outDigest = sha256(new TextEncoder().encode('artifact'))
+    const stdoutDigest = sha256(new TextEncoder().encode('transformed\n'))
+    const treeDigest = sha256(new TextEncoder().encode('tree'))
+    const encoded = refNonEmpty('ExecuteResponse', {
+      result: {
+        output_files: [
+          {
+            path: 'out.txt',
+            digest: outDigest,
+            is_executable: true,
+            contents: new TextEncoder().encode('artifact'),
+          },
+        ],
+        output_directories: [{ path: 'dist', tree_digest: treeDigest }],
+        output_symlinks: [{ path: 'link', target: '../t' }],
+        exit_code: 3,
+        stdout_digest: stdoutDigest,
+        stderr_raw: new TextEncoder().encode('boom'),
+        execution_metadata: { worker: 'worker-7' },
+      },
+      cached_result: true,
+      status: { code: 0, message: '' },
+      message: 'note',
+    })
+    const d = decodeExecuteResponseBytes(new Uint8Array(encoded))
+    expect(d.message).toBe('note')
+    expect(d.cachedResult).toBe(true)
+    expect(d.result?.exit_code).toBe(3)
+    expect(d.result?.output_files?.[0]?.path).toBe('out.txt')
+    expect(d.result?.output_files?.[0]?.digest.hash).toBe(outDigest.hash)
+    expect(d.result?.output_files?.[0]?.is_executable).toBe(true)
+    expect(
+      new TextDecoder().decode(d.result?.output_files?.[0]?.contents ?? new Uint8Array()),
+    ).toBe('artifact')
+    expect(d.result?.output_directories?.[0]?.path).toBe('dist')
+    expect(d.result?.output_directories?.[0]?.tree_digest.hash).toBe(treeDigest.hash)
+    expect(d.result?.output_symlinks?.[0]?.target).toBe('../t')
+    expect(d.result?.stdout_digest?.hash).toBe(stdoutDigest.hash)
+    expect(new TextDecoder().decode(d.result?.stderr_raw ?? new Uint8Array())).toBe('boom')
+    expect(d.result?.execution_metadata?.worker).toBe('worker-7')
+  })
+
+  it('a failed execution with server logs survives', async () => {
+    const { decodeExecuteResponseBytes } = await import('../src/executor.js')
+    const logDigest = sha256(new TextEncoder().encode('worker log text'))
+    const encoded = refNonEmpty('ExecuteResponse', {
+      status: { code: 8, message: 'worker exploded' },
+      server_logs: { 'worker.log': { digest: logDigest, human_readable: true } },
+    })
+    const d = decodeExecuteResponseBytes(new Uint8Array(encoded))
+    expect(d.status).toEqual({ code: 8, message: 'worker exploded' })
+    expect(d.serverLogs).toEqual([{ name: 'worker.log', digest: logDigest, humanReadable: true }])
+  })
+
+  it('a Tree blob decodes back to its directories', () => {
+    const inner: Directory = {
+      files: [{ name: 'x', digest: sha256(new Uint8Array([9])), is_executable: false }],
+      directories: [],
+      symlinks: [],
+    }
+    const rootDir: Directory = {
+      files: [],
+      directories: [{ name: 'sub', digest: sha256(encodeDirectory(inner)) }],
+      symlinks: [{ name: 'ln', target: 'sub/x' }],
+    }
+    const treeBytes = refNonEmpty('Tree', { root: rootDir, children: [inner] })
+    const { decodeTree } = require('../src/merkle.js') as typeof import('../src/merkle.js')
+    const tree = decodeTree(new Uint8Array(treeBytes))
+    expect(tree.root?.directories[0]?.name).toBe('sub')
+    expect(tree.root?.symlinks[0]?.target).toBe('sub/x')
+    expect(tree.children.length).toBe(1)
+    expect(tree.children[0]?.files[0]?.name).toBe('x')
   })
 })

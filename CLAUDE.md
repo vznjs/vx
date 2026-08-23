@@ -423,6 +423,70 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-23 (eighth wave) — remote execution PROVEN LIVE, and the "14/14"
+  claim made honest: the previous wave's decoders were parsing garbage.**
+  Owner: implement every REAPI feature. The review found the deepest bug of
+  the arc: **my hand-rolled `ActionResult` decoder used field numbers written
+  from MEMORY, and almost every one was wrong** — `output_files` (field 2)
+  read as output_directories, `stdout_raw` (5) read as a digest,
+  `OutputDirectory.tree_digest` read from field 2, which the proto RESERVES.
+  A protobuf decoder with wrong field numbers does not error; it decodes
+  garbage with full confidence. Invisible to every prior test because nothing
+  ever DECODED a server-produced ActionResult — found only when a real
+  NativeLink returned a perfect result and vx saw a phantom output tree and
+  empty stdout. Fix: every decoder field transcribed from the proto, and a
+  DECODER round-trip suite (protobufjs encodes from the same vendored protos,
+  ours decodes, field-by-field compare) so the class cannot recur — the
+  mirror image of the encoder pins, which existed precisely because of this
+  class in the other direction. Also caught there: the test harness itself
+  mangling `bytes` fields (camel() recursed into Uint8Array), i.e. a
+  reference that lies. **THE ROUND TRIP:** a vx task executed on a real
+  NativeLink v0.6.0 scheduler + worker — input tree uploaded, QUEUED →
+  EXECUTING → COMPLETED streamed, stdout inline, `out.txt` materialised
+  byte-correct, worker id attributed. Two environmental findings on the way:
+  the `latest` NativeLink tag does not exist (`v0.6.0` does — the earlier
+  wave's "image did not resolve" was a TAG problem), and **NativeLink's image
+  is distroless: no `/bin/sh`, so a worker inside it cannot run ANY vx task**
+  (first execution attempt failed with `Could not execute ["/bin/sh", …]`
+  after 4 scheduler retries — the error path, stage streaming and re-attach
+  all worked on their first real exercise). Fix: rehost the same static musl
+  binary on busybox; recipe in `tests/helpers/nativelink.md`, wired into CI
+  with `VX_REQUIRE_REAPI_EXEC=1` so the only proof of execution cannot
+  silently skip. **New protocol surface this wave:** input-tree SYMLINKS
+  (lstat + SymlinkNode — following a link uploads the target's bytes under
+  the link's path, a tree that lies about its shape); legacy
+  `output_files`/`output_directories` set ALONGSIDE `output_paths` (a v2.0
+  server reads the pair, v2.1+ reads the paths — one Command works against
+  either generation); `output_node_properties` + `output_directory_format`;
+  glob→literal output-path mapping (`dist/**` → `dist`, first-segment
+  wildcard → `''` = the whole workdir — passing the raw glob named a file
+  literally called `dist/**` and returned no outputs with no error);
+  `OutputFile.contents` (inline_output_files spares the fetch);
+  `ExecuteResponse.server_logs` fetched and folded into worker-failure
+  errors; full `ExecutedActionMetadata` (worker + phase timestamps); rpc
+  Status decode; retry with backoff on UNAVAILABLE/RESOURCE_EXHAUSTED (every
+  unary REAPI call is idempotent by construction); ByteStream write RESUME
+  from `QueryWriteStatus.committed_size` (identity only — a zstd frame cannot
+  resume mid-stream, so compressed restarts under a fresh UUID); `Execute`
+  re-attach through `WaitExecution` on a dropped stream; batch reads
+  partitioned to the server budget with per-response `compressor` handling;
+  `acceptable_compressors` declared. **A repeated-field encoding trap fixed
+  before it shipped:** proto3 omits DEFAULTS on singular fields only —
+  repeated elements always encode, and `output_paths: [""]` has a meaning, so
+  the strField helper that (correctly) drops empty singular strings would
+  have silently discarded whole-workdir outputs; `repStrField` + a byte pin.
+  **Digest negotiation default CORRECTED to SHA256** before it bit: the
+  auto-pick-strongest default could choose a function the Merkle encoders do
+  not hash with, mixing functions inside one action; another function is now
+  an explicit caller opt-in. **75 package tests / 0 fail against BOTH live
+  servers** (bazel-remote for cache, NativeLink for execution). Bun #39796
+  (the ~28 s under-load inbound stall, open upstream) is real in this suite —
+  it looked like a fresh hang at a 30 s test timeout and passes clean at
+  90 s, so the CI step runs `--timeout 90000` with a comment naming the
+  issue. Follow-up NOT in this wave: `exec.remote: 'only'` still waits on
+  the input-shipping install-task recipe, and `SplitBlob`/`SpliceBlob` are
+  implemented but unexercised e2e (bazel-remote advertises split=false).
+
 - **2026-08-23 (seventh wave) — `@vzn/vx-reapi` is now a COMPLETE REAPI
   implementation: 14/14 RPCs, remote execution included.** Owner: "we need
   100% compatibility and use all the protocol features possible." **All five

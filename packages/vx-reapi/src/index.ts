@@ -15,7 +15,14 @@ import { reapiExecutor } from './executor.js'
 import { ReapiClient, type ReapiOptions } from './wire.js'
 
 export { actionDigestFor, digestOf, ReapiRemoteCache } from './cache.js'
-export { acceptsTask, reapiExecutor, type ReapiExecutorOptions } from './executor.js'
+export {
+  acceptsTask,
+  globToOutputPath,
+  outputPathSets,
+  reapiExecutor,
+  type OutputPathSets,
+  type ReapiExecutorOptions,
+} from './executor.js'
 export {
   buildInputTree,
   canDigest,
@@ -30,6 +37,7 @@ export {
   encodeDigest,
   encodeDirectory,
   encodeNodeProperties,
+  OUTPUT_DIRECTORY_FORMAT,
   sha256,
   type Blob,
   type DigestFunctionName,
@@ -104,6 +112,9 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       const conn = connection(options)
       if (!wanted || conn === undefined) return undefined
       executorClient = new ReapiClient(conn)
+      // Negotiate once: turns zstd transfer compression on when the server
+      // advertises it. The digest function stays SHA256 (see wire.negotiate).
+      await executorClient.negotiate()
       // A cache-only deployment (bazel-remote) advertises no execution
       // capability. Offering it work would hang the run on a server that will
       // never answer, so DECLINE loudly and let the local executor take over.

@@ -174,20 +174,41 @@ function loadServices(target: string, creds: grpc.ChannelCredentials): ServiceCl
   }
 }
 
-/** Promisified unary call. Rejects with the gRPC error (`err.code` is the status). */
-function unary<T>(
+/** Transient statuses a retry can heal: UNAVAILABLE, and RESOURCE_EXHAUSTED
+ *  when the server is shedding load. NOT_FOUND/INVALID_ARGUMENT never heal. */
+function isRetryable(code: number | undefined): boolean {
+  return code === grpc.status.UNAVAILABLE || code === grpc.status.RESOURCE_EXHAUSTED
+}
+
+const RETRY_DELAYS_MS = [100, 400, 1600]
+
+/**
+ * Promisified unary call with bounded retry on transient failure. Every
+ * unary REAPI call is idempotent by construction (CAS writes are
+ * content-addressed, AC updates are last-writer-wins on an immutable key),
+ * so retrying cannot double-apply anything.
+ */
+async function unary<T>(
   client: grpc.Client,
   method: string,
   req: unknown,
   meta: grpc.Metadata,
 ): Promise<T> {
-  return new Promise((resolve, reject) => {
-    ;(client as unknown as Record<string, Function>)[method]!(
-      req,
-      meta,
-      (err: grpc.ServiceError | null, res: T) => (err ? reject(err) : resolve(res)),
-    )
-  })
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await new Promise<T>((resolve, reject) => {
+        ;(client as unknown as Record<string, Function>)[method]!(
+          req,
+          meta,
+          (err: grpc.ServiceError | null, res: T) => (err ? reject(err) : resolve(res)),
+        )
+      })
+    } catch (err) {
+      const delay = RETRY_DELAYS_MS[attempt]
+      if (delay === undefined || !isRetryable((err as grpc.ServiceError).code)) throw err
+      await Bun.sleep(delay)
+    }
+  }
 }
 
 const NOT_FOUND = grpc.status.NOT_FOUND
@@ -348,11 +369,14 @@ export class ReapiClient {
         throw new Error(`@vzn/vx-reapi: this runtime cannot compute ${wanted}`)
       this.digestFunction = wanted
     } else {
-      // Prefer the strongest advertised function this runtime can compute;
-      // SHA256 is the universal baseline and the fallback.
-      const ranked: DigestFunctionName[] = ['BLAKE3', 'SHA512', 'SHA384', 'SHA256']
-      this.digestFunction =
-        ranked.find((f) => caps.digestFunctions.includes(f) && canDigest(f)) ?? 'SHA256'
+      // Default stays SHA256 even when the server advertises stronger
+      // functions: the Merkle/action encoders digest with the SAME function
+      // as every blob upload, and auto-upgrading here while a caller still
+      // hashes trees with sha256 would mix functions inside one action —
+      // which servers reject at best and mis-address at worst. Opting into
+      // another function is `negotiate({ digestFunction: 'SHA512' })`, a
+      // caller-level decision made where the tree hashing can follow it.
+      this.digestFunction = 'SHA256'
     }
     this.compression =
       prefer?.compression !== false &&
@@ -438,16 +462,56 @@ export class ReapiClient {
     }
   }
 
-  /** Fetch many small blobs in one round trip. Missing entries are omitted. */
-  async batchReadBlobs(digests: readonly Digest[]): Promise<Map<string, Uint8Array>> {
+  /**
+   * Fetch many small blobs, partitioned to the server's batch budget so one
+   * call can never exceed the message cap. Missing entries are omitted. When
+   * compression was negotiated the request declares ZSTD acceptable and each
+   * response is decompressed per its OWN `compressor` field — a server is
+   * free to answer some entries compressed and others not.
+   */
+  async batchReadBlobs(
+    digests: readonly Digest[],
+    maxBatchBytes = 0,
+  ): Promise<Map<string, Uint8Array>> {
     const out = new Map<string, Uint8Array>()
     if (digests.length === 0) return out
-    const res = await unary<{
-      responses?: Array<{ digest: Digest; data?: Uint8Array; status?: { code?: number } }>
-    }>(this.svc.cas, 'batchReadBlobs', { instance_name: this.instance, digests }, this.meta())
-    for (const r of res.responses ?? []) {
-      if ((r.status?.code ?? 0) === 0 && r.data !== undefined) out.set(r.digest.hash, r.data)
+    const budget = maxBatchBytes > 0 ? maxBatchBytes : 4 * 1024 * 1024 - 64 * 1024
+    let group: Digest[] = []
+    let grouped = 0
+    const flush = async (): Promise<void> => {
+      if (group.length === 0) return
+      const res = await unary<{
+        responses?: Array<{
+          digest: Digest
+          data?: Uint8Array
+          compressor?: string | number
+          status?: { code?: number }
+        }>
+      }>(
+        this.svc.cas,
+        'batchReadBlobs',
+        {
+          instance_name: this.instance,
+          digests: group,
+          ...(this.compression ? { acceptable_compressors: ['ZSTD'] } : {}),
+          ...(this.digestFunction === 'SHA256' ? {} : { digest_function: this.digestFunction }),
+        },
+        this.meta(),
+      )
+      for (const r of res.responses ?? []) {
+        if ((r.status?.code ?? 0) !== 0 || r.data === undefined) continue
+        const zstd = r.compressor === 'ZSTD' || r.compressor === 1
+        out.set(r.digest.hash, zstd ? new Uint8Array(Bun.zstdDecompressSync(r.data)) : r.data)
+      }
+      group = []
+      grouped = 0
     }
+    for (const d of digests) {
+      if (grouped + d.size_bytes > budget && group.length > 0) await flush()
+      group.push(d)
+      grouped += d.size_bytes
+    }
+    await flush()
     return out
   }
 
@@ -524,26 +588,56 @@ export class ReapiClient {
   }
 
   /**
-   * Upload a blob via ByteStream, chunked at CHUNK_BYTES. Resolves once the
-   * server commits the full length; a short commit is an error rather than a
-   * silent partial upload.
+   * Upload a blob via ByteStream, chunked at `chunkBytes`, RESUMING an
+   * interrupted identity upload from the server's committed offset
+   * (`QueryWriteStatus`) instead of restarting. A compressed upload restarts
+   * under a fresh resource name — compressed write offsets count compressed
+   * bytes, and mid-stream resumption of a zstd frame is not a thing a server
+   * can honour.
    */
-  writeBlob(digest: Digest, body: Uint8Array): Promise<void> {
+  async writeBlob(digest: Digest, body: Uint8Array): Promise<void> {
     // REAPI carries compression in the RESOURCE NAME:
     //   uploads/{uuid}/compressed-blobs/{compressor}/{hash}/{uncompressed_size}
     // The digest and size stay those of the UNCOMPRESSED bytes — the server
     // decompresses and verifies against them — so only the wire payload
     // changes. vx artifacts are already-compressed tarballs, but source input
     // trees are not, and those are the bulk of a remote-execution upload.
-    const wire = this.compression ? Bun.zstdCompressSync(body) : body
-    const segment = this.compression
-      ? `compressed-blobs/zstd/${digest.hash}/${digest.size_bytes}`
-      : `blobs/${digest.hash}/${digest.size_bytes}`
-    const resource = `${this.instance ? `${this.instance}/` : ''}uploads/${crypto.randomUUID()}/${segment}`
-    return this.writeResource(resource, wire, digest)
+    for (let attempt = 0; ; attempt++) {
+      const wire = this.compression ? Bun.zstdCompressSync(body) : body
+      const segment = this.compression
+        ? `compressed-blobs/zstd/${digest.hash}/${digest.size_bytes}`
+        : `blobs/${digest.hash}/${digest.size_bytes}`
+      const resource = `${this.instance ? `${this.instance}/` : ''}uploads/${crypto.randomUUID()}/${segment}`
+      try {
+        await this.writeResource(resource, wire, digest, 0)
+        return
+      } catch (err) {
+        const delay = RETRY_DELAYS_MS[attempt]
+        if (delay === undefined || !isRetryable((err as grpc.ServiceError).code)) throw err
+        if (!this.compression) {
+          // Identity path: ask how far the server got and resume there.
+          const status = await this.queryWriteStatus(resource).catch(() => null)
+          if (status?.complete === true) return
+          if (status !== null && status.committedSize > 0 && status.committedSize < wire.length) {
+            try {
+              await this.writeResource(resource, wire, digest, status.committedSize)
+              return
+            } catch {
+              // fall through to a fresh attempt
+            }
+          }
+        }
+        await Bun.sleep(delay)
+      }
+    }
   }
 
-  private writeResource(resource: string, body: Uint8Array, digest: Digest): Promise<void> {
+  private writeResource(
+    resource: string,
+    body: Uint8Array,
+    digest: Digest,
+    startOffset: number,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const stream = (this.svc.bs as unknown as Record<string, Function>)['write']!(
         this.meta(),
@@ -564,15 +658,17 @@ export class ReapiClient {
       ) as { write(m: unknown): boolean; end(): void; on(e: string, f: (x: unknown) => void): void }
       stream.on('error', reject)
       // Empty blobs still need one message so the server sees finish_write.
-      let offset = 0
+      let offset = startOffset
+      let first = true
       do {
         const end = Math.min(offset + this.chunkBytes, body.length)
         stream.write({
-          resource_name: offset === 0 ? resource : '',
+          resource_name: first ? resource : '',
           write_offset: offset,
           finish_write: end === body.length,
           data: body.subarray(offset, end),
         })
+        first = false
         offset = end
       } while (offset < body.length)
       stream.end()
@@ -611,41 +707,58 @@ export class ReapiClient {
 
   /**
    * `Execute` — a SERVER-STREAMING call yielding `Operation`s until one is
-   * `done`. Resolves with the terminal operation.
+   * `done`. Resolves with the terminal operation. If the stream drops
+   * mid-flight with a transient status, the call RE-ATTACHES to the same
+   * operation through `WaitExecution` instead of re-running the action —
+   * that is exactly what the RPC exists for.
    *
    * `skip_cache_lookup` is TRUE by design: vx has already decided this is a
    * miss (it owns the cache key and consulted its own layers), so letting the
    * server re-check its ActionCache would be a second, differently-keyed
    * cache deciding whether the user's task runs.
    */
-  execute(
+  async execute(
     actionDigest: Digest,
     opts: ExecuteOptions = {},
     signal?: AbortSignal,
   ): Promise<Operation> {
-    return this.operationStream(
-      'execute',
-      {
-        instance_name: this.instance,
-        action_digest: actionDigest,
-        skip_cache_lookup: opts.skipCacheLookup ?? true,
-        // Ask the server to INLINE stdout/stderr in the ActionResult. Without
-        // this every finished action costs two extra CAS round trips just to
-        // read what it printed.
-        inline_stdout: opts.inlineStdout ?? true,
-        inline_stderr: opts.inlineStderr ?? true,
-        ...(opts.inlineOutputFiles === undefined
-          ? {}
-          : { inline_output_files: opts.inlineOutputFiles }),
-        ...(opts.priority === undefined ? {} : { execution_policy: { priority: opts.priority } }),
-        ...(opts.resultsCachePriority === undefined
-          ? {}
-          : { results_cache_policy: { priority: opts.resultsCachePriority } }),
-        ...(this.digestFunction === 'SHA256' ? {} : { digest_function: this.digestFunction }),
-      },
-      signal,
-      opts.onStage,
-    )
+    const req = {
+      instance_name: this.instance,
+      action_digest: actionDigest,
+      skip_cache_lookup: opts.skipCacheLookup ?? true,
+      // Ask the server to INLINE stdout/stderr in the ActionResult. Without
+      // this every finished action costs two extra CAS round trips just to
+      // read what it printed.
+      inline_stdout: opts.inlineStdout ?? true,
+      inline_stderr: opts.inlineStderr ?? true,
+      ...(opts.inlineOutputFiles === undefined
+        ? {}
+        : { inline_output_files: opts.inlineOutputFiles }),
+      ...(opts.priority === undefined ? {} : { execution_policy: { priority: opts.priority } }),
+      ...(opts.resultsCachePriority === undefined
+        ? {}
+        : { results_cache_policy: { priority: opts.resultsCachePriority } }),
+      ...(this.digestFunction === 'SHA256' ? {} : { digest_function: this.digestFunction }),
+    }
+    let operationName = ''
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return operationName === ''
+          ? await this.operationStream('execute', req, signal, opts.onStage, (n) => {
+              operationName = n
+            })
+          : await this.operationStream(
+              'waitExecution',
+              { name: operationName },
+              signal,
+              opts.onStage,
+            )
+      } catch (err) {
+        const delay = RETRY_DELAYS_MS[attempt]
+        if (delay === undefined || !isRetryable((err as grpc.ServiceError).code)) throw err
+        await Bun.sleep(delay)
+      }
+    }
   }
 
   /** Re-attach to an in-flight operation after a disconnect. */
@@ -662,6 +775,7 @@ export class ReapiClient {
     req: unknown,
     signal?: AbortSignal,
     onStage?: (stage: string) => void,
+    onName?: (name: string) => void,
   ): Promise<Operation> {
     return new Promise((resolve, reject) => {
       const stream = (this.svc.exec as unknown as Record<string, Function>)[method]!(
@@ -676,6 +790,7 @@ export class ReapiClient {
       signal?.addEventListener('abort', onAbort, { once: true })
       stream.on('data', (op: Operation) => {
         last = op
+        if (op.name !== '' && op.name !== undefined && onName !== undefined) onName(op.name)
         // ExecuteOperationMetadata carries the action's STAGE
         // (QUEUED / EXECUTING / COMPLETED). Surfacing it is the difference
         // between "vx is hung" and "the action is queued behind 40 others".
@@ -847,7 +962,12 @@ export interface ExecuteResponse {
 /** The subset of REAPI's ActionResult a cache entry uses. */
 export interface ActionResult {
   exit_code?: number
-  output_files?: Array<{ path: string; digest: Digest; is_executable?: boolean }>
+  output_files?: Array<{
+    path: string
+    digest: Digest
+    is_executable?: boolean
+    contents?: Uint8Array
+  }>
   output_directories?: Array<{ path: string; tree_digest: Digest }>
   output_symlinks?: Array<{ path: string; target: string }>
   /** Servers MAY normalise inline stdout/stderr into CAS and return digests instead. */
