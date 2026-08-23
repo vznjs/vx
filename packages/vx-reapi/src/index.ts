@@ -19,6 +19,7 @@ export {
   CHUNK_BYTES,
   MIN_BUN,
   ReapiClient,
+  SAFE_CHUNK_BYTES,
   type ActionResult,
   type Digest,
   type ReapiOptions,

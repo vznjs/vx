@@ -423,6 +423,44 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-23 (sixth wave) — the Bun http2 limit is PEER-DEPENDENT, not a
+  number; `chunkBytes` became a real escape hatch.** Owner asked to check
+  Bun's issues and code for the actual limit. The tracker has the mechanism
+  and it is largely FIXED: **#26915** (closed 2026-03-01, "client ignores
+  `initialWindowSize` and never sends `WINDOW_UPDATE` — streams stall at
+  65 535") and **#30342** (closed 2026-07-24, the same class from the SEND
+  side, reported through `@grpc/grpc-js`: a body over 65 535 hangs when "the
+  peer sends a connection-level `WINDOW_UPDATE` followed by a `SETTINGS` frame
+  that increases `SETTINGS_INITIAL_WINDOW_SIZE`"). Maintainer's root cause:
+  `handleSettingsFrame()` gated the per-stream window update on the
+  CONNECTION-level `remoteWindowSize`, so the per-stream update was skipped and
+  queued DATA hung forever; **fixed by #31584** (merged 2026-06-18) by applying
+  the RFC 7540 §6.9.2 delta to every stream. **That fix is why 1.4.0's ceiling
+  ROSE (~64 KB → ~216 KB) instead of the hang vanishing** — which explains the
+  version-dependence measured in the previous wave. **The decisive new
+  finding:** holding the client shape constant and changing ONLY the peer, the
+  identical "4 MB in 256 KB writes" pattern HANGS against bazel-remote (Go
+  gRPC, BDP window growth) and COMPLETES against a `node:http2` server at both
+  64 KB and 256 KB initial windows. So the ceiling is a property of the peer's
+  flow-control behaviour, and **there is no server-independent safe size above
+  65 535** — the RFC default initial window every peer must honour with no
+  `WINDOW_UPDATE` at all. 128 KB is MEASURED safe against bazel-remote and
+  stays the shipped default per the owner's call; it is UNVERIFIED against
+  NativeLink (Rust/tonic), BuildBuddy and Buildbarn. Shipped
+  `reapi({ chunkBytes })` + `SAFE_CHUNK_BYTES = 65535` so a deployment that
+  wedges can drop without waiting for a release, validated at construction (a
+  bad chunk size does not error at the wire — it makes a malformed or infinite
+  write loop), and exercised END-TO-END against the real server at both values
+  rather than left as a field nobody proved routes anywhere. **Exact 1.4.0
+  boundary, binary-searched: 220 928 bytes works / 221 056 hangs**, and the
+  hang is PERMANENT — re-verified over a 120-second budget specifically
+  because Bun **#39796** (OPEN) describes a ~28 s inbound-frame stall on 1.4.0
+  that recovers, and my original probes used a 25 s timeout. That could have
+  made a recoverable stall look like a hang; it did not, but the check was
+  owed. NativeLink could not be tested — `ghcr.io/tracemachina/nativelink` did
+  not resolve — so the multi-server claim is honestly scoped to the two peers
+  actually measured.
+
 - **2026-08-23 (fifth wave) — `@vzn/vx-reapi` phase 1 SHIPPED: a remote cache
   on any Bazel REAPI server, at 128 KB chunks by owner decision.** Owner call
   after the spike: use 128 KB, not the 64 KB I had argued for. 128 KB works on

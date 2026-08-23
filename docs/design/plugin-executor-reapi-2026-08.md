@@ -402,13 +402,14 @@ telemetry-blind (structural). These are the evidence for phase 4.
 - vx-cloud coexists; its dist half is ported to `executor` (or retired) in
   phase 4, its analytics half is a telemetry plugin.
 
-## 14. Spike result (2026-08-23): gRPC works on Bun — chunk ByteStream at 64 KB
+## 14. Spike result (2026-08-23): gRPC works on Bun; the chunk limit is PEER-dependent
 
 The phase-1 spike §9/§11 mandated ran against a real `bazel-remote`
 (`buchgr/bazel-remote-cache`, gRPC on a container port). **Outcome: the risk
 is retired. `@grpc/grpc-js` works on Bun with no new dependency, no custom
 transport, no proxy and no external binary — provided each ByteStream message
-carries at most 64 KB.**
+stays under a size the PEER's flow-control behaviour determines. This package
+ships 128 KB (owner decision), measured safe against bazel-remote.**
 
 > **Correction (same day).** The first version of this section concluded
 > "phase 1 is not shippable as designed" and listed four unpalatable options.
@@ -421,14 +422,13 @@ carries at most 64 KB.**
 ### The defect, characterised precisely
 
 **Bun's `node:http2` client hangs when a request carries MORE THAN ONE
-message and any single message exceeds ~64 KB** — the HTTP/2 default stream
-flow-control window (65535). It appears not to process the `WINDOW_UPDATE`
-needed to continue sending. A lone message of any size is fine (the stream
-ends immediately and Bun flushes it), which is why the first probes looked
+message and any single message exceeds a threshold set by the PEER's
+flow-control behaviour.** A lone message of any size is fine (the stream ends
+immediately and Bun flushes it), which is why the first probes looked
 inconsistent.
 
-Measured boundary — the variable is the **per-message size**, not the total
-and not the message count:
+Measured boundary against bazel-remote — the variable is the **per-message
+size**, not the total and not the message count:
 
 | chunk  | total  | messages | Bun                              |
 | ------ | ------ | -------- | -------------------------------- |
@@ -441,6 +441,10 @@ and not the message count:
 | 512 KB | 1 MB   | 2        | hangs                            |
 | 3 MB   | 3 MB   | 1        | works (single-message exception) |
 
+On Bun **1.4.0** the same search puts the boundary at **220 928 bytes works /
+221 056 hangs**, and the hang is PERMANENT — verified over a 120-second budget,
+so it is not the transient ~28 s stall of the still-open Bun #39796.
+
 Ruled out along the way, each by an executed probe rather than reasoning:
 **not** grpc-js (a hand-rolled gRPC framing over raw `node:http2` hangs
 identically); **not** the backpressure handling (a version with no `drain`
@@ -448,11 +452,48 @@ pump hangs the same); **not** multiple `write()` calls (concatenating every
 frame into ONE `write()` hangs too); **not** `Uint8Array.subarray` byteOffset
 handling (copying each chunk changes nothing); **not** the server (Node 24
 succeeds against the same container at every chunk size); **not** the Bun
-version — 1.3.14 and 1.4.0 both exhibit it, at different thresholds (see the
-table above).
+version — 1.3.14 and 1.4.0 both exhibit it, at different thresholds.
 
-Worth reporting upstream with that table — it is a tight reproduction — but
-vx is not blocked waiting for it.
+### Upstream: mostly fixed already, and the mechanism is named
+
+- **#26915** (closed 2026-03-01) — "client ignores `initialWindowSize` and
+  never sends `WINDOW_UPDATE` — streams stall at 65 535 bytes".
+- **#30342** (closed 2026-07-24) — the same class from the SEND side, reported
+  through `@grpc/grpc-js`: a request body over 65 535 bytes hangs when "the
+  peer sends a connection-level `WINDOW_UPDATE` followed by a `SETTINGS` frame
+  that increases `SETTINGS_INITIAL_WINDOW_SIZE`". Maintainer's root cause:
+  `handleSettingsFrame()` gated the per-stream window update on the
+  CONNECTION-level `remoteWindowSize`, so the per-stream update was skipped and
+  queued DATA hung forever. **Fixed by #31584** (merged 2026-06-18) — record
+  the previous `initialWindowSize`, compute the delta, apply it to every stream
+  per RFC 7540 §6.9.2.
+
+That fix ships in 1.4.0, which is exactly why the ceiling ROSE (~64 KB →
+~216 KB) instead of the hang disappearing. What remains is a residual stall in
+the same area. (Separately, **#39796** is OPEN: a ~28 s inbound-frame stall on
+1.4.0 that 1.3.14 does not have. Different symptom — ours never recovers.)
+
+### The limit is a property of the PEER, not a number
+
+Proven by holding the client shape constant and changing only the server. The
+identical "4 MB in 256 KB writes" pattern:
+
+| peer                                            | result         |
+| ----------------------------------------------- | -------------- |
+| bazel-remote (Go gRPC, BDP window growth)       | **hangs**      |
+| `node:http2` server, `initialWindowSize` 64 KB  | completes 4 MB |
+| `node:http2` server, `initialWindowSize` 256 KB | completes 4 MB |
+
+Go's gRPC server grows its window dynamically (BDP estimation: `WINDOW_UPDATE`
+then a `SETTINGS` raise) — the exact sequence #30342 describes. A Node http2
+server does not, and Bun is fine against it.
+
+**So there is no server-independent safe size above 65 535** — the RFC default
+initial window, which every peer must honour with no `WINDOW_UPDATE` at all.
+128 KB is MEASURED safe against bazel-remote and is what ships; it is
+UNVERIFIED against NativeLink (Rust/tonic), BuildBuddy and Buildbarn. The
+`reapi({ chunkBytes })` option exists so a deployment that hits this can drop
+to 65 535 without waiting for a release.
 
 ### What works on Bun today
 
@@ -470,9 +511,11 @@ vx is not blocked waiting for it.
   `BatchUpdateBlobs` with 12 MB → code 8, `received message larger than max
 (12582997 vs. 4194304)`.
 
-So phase 1 builds as designed. `CHUNK_BYTES = 64 * 1024` is the one
-constraint, it belongs in the ByteStream writer with a comment pointing here,
-and it needs a test that would fail if someone "optimises" it upward.
+So phase 1 builds as designed. The chunk size is the one constraint: it lives
+in the ByteStream writer with a comment pointing here, is overridable per
+deployment via `reapi({ chunkBytes })`, and carries a test that fails if
+someone raises the default — because exceeding the limit does not error, it
+HANGS.
 
 ### Two false passes worth recording
 

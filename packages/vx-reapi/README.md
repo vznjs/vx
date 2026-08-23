@@ -49,16 +49,34 @@ Servers may normalise an inline `stdout_raw` into a CAS blob and hand back a
 
 ## Bun and chunk size
 
-`CHUNK_BYTES` is **128 KB and is not a throughput knob.** Bun's `node:http2`
-client _hangs_ — it does not error — when a request carries more than one
-message and any single message exceeds a threshold near the HTTP/2 stream
-flow-control window. That threshold is a Bun implementation detail, not a
-protocol constant, and it moved between releases: ~64 KB on Bun 1.3.x, between
-192 and 256 KB on 1.4.0.
+`chunkBytes` defaults to **128 KB and is not a throughput knob.** Bun's
+`node:http2` client _hangs_ — it does not error — when a request carries more
+than one message and any single message exceeds a ceiling that **the server's
+flow-control behaviour decides**. Go's gRPC servers grow their window
+dynamically (a `WINDOW_UPDATE` then a `SETTINGS` raise) and Bun mishandles the
+tail of that sequence; a `node:http2` server, which does not do it, accepts
+4 MB writes happily.
 
-This package therefore requires **Bun ≥ 1.4** and refuses to start on anything
-older with a named error, because the alternative is a wedged upload with
-nothing for a user to act on. The full probe matrix is in
+See Bun [#30342](https://github.com/oven-sh/bun/issues/30342) and
+[#26915](https://github.com/oven-sh/bun/issues/26915), largely fixed by
+[#31584](https://github.com/oven-sh/bun/pull/31584) — which is why the ceiling
+_rose_ from ~64 KB on Bun 1.3.x to ~216 KB on 1.4.0 rather than the hang going
+away. Hence **Bun >= 1.4** is required, and the plugin refuses to start on
+anything older with a named error: the alternative is a wedged upload with
+nothing for a user to act on.
+
+**If uploads wedge against your server**, drop to the one size with no
+peer-dependence — 65535, the RFC 7540 default initial window every peer must
+honour with no `WINDOW_UPDATE` at all:
+
+```ts
+import { reapi, SAFE_CHUNK_BYTES } from '@vzn/vx-reapi'
+
+reapi({ endpoint: '…', chunkBytes: SAFE_CHUNK_BYTES })
+```
+
+128 KB is measured safe against bazel-remote; it is **unverified** against
+NativeLink, BuildBuddy and Buildbarn. The full probe matrix is in
 `docs/design/plugin-executor-reapi-2026-08.md` §14.
 
 ## Tests

@@ -8,22 +8,36 @@ import * as protoLoader from '@grpc/proto-loader'
 import path from 'node:path'
 
 /**
- * Bytes per ByteStream message.
+ * Default bytes per ByteStream message.
  *
- * NOT a tuning knob. Bun's `node:http2` client HANGS — it does not error —
+ * NOT a throughput knob. Bun's `node:http2` client HANGS — it does not error —
  * when a request carries more than one message and any single message exceeds
- * a threshold near the HTTP/2 stream flow-control window. The threshold is a
- * Bun implementation detail, not a protocol constant, and it MOVED between
- * releases: ~64 KB on Bun 1.3.x, between 192 and 256 KB on 1.4.0.
+ * a threshold that the PEER's flow-control behaviour decides. Go's gRPC server
+ * grows its window dynamically (a `WINDOW_UPDATE` then a `SETTINGS` raise) and
+ * Bun mishandles the tail of that sequence; a `node:http2` server, which does
+ * not do it, accepts 4 MB writes happily. See Bun #30342 / #26915, largely
+ * fixed by #31584 — which is why the ceiling ROSE from ~64 KB on 1.3.x to
+ * ~216 KB on 1.4.0 rather than the hang disappearing.
  *
- * 128 KB is therefore safe on 1.4.0 and NOT safe on 1.3.x, which is why this
- * package requires Bun >= 1.4 and `assertBunSupportsChunking()` refuses to
- * start on anything older rather than hanging mid-upload.
+ * 128 KB is MEASURED safe against bazel-remote on Bun >= 1.4 and is the
+ * shipped default. It is NOT safe on Bun 1.3.x — hence `MIN_BUN` and
+ * `assertBunSupportsChunking()`.
  *
- * Measurements and the full probe matrix:
- * `docs/design/plugin-executor-reapi-2026-08.md` §14.
+ * `SAFE_CHUNK_BYTES` (65535, the RFC 7540 default initial window every peer
+ * must honour with no WINDOW_UPDATE at all) is the value with no
+ * peer-dependence. A deployment whose server is not bazel-remote and which
+ * sees uploads wedge should pass `chunkBytes: SAFE_CHUNK_BYTES`.
+ *
+ * Full probe matrix: `docs/design/plugin-executor-reapi-2026-08.md` §14.
  */
 export const CHUNK_BYTES = 128 * 1024
+
+/**
+ * The largest message needing no `WINDOW_UPDATE` from any conformant peer, so
+ * the one size with no peer-dependence. The escape hatch when a server's
+ * flow-control behaviour trips the Bun defect above.
+ */
+export const SAFE_CHUNK_BYTES = 65535
 
 /** The oldest Bun whose http2 client survives a CHUNK_BYTES-sized message. */
 export const MIN_BUN = [1, 4, 0] as const
@@ -119,12 +133,19 @@ export interface ReapiOptions {
   headers?: Record<string, string>
   /** TLS. Default: infer from an `https://`/`grpcs://` endpoint, else insecure. */
   tls?: boolean
+  /**
+   * Bytes per ByteStream message. Defaults to `CHUNK_BYTES` (128 KB). Drop to
+   * `SAFE_CHUNK_BYTES` if uploads wedge against your server — the ceiling is
+   * peer-dependent, see the note on `CHUNK_BYTES`.
+   */
+  chunkBytes?: number
 }
 
 export class ReapiClient {
   private readonly svc: ServiceClients
   private readonly instance: string
   private readonly headers: Record<string, string>
+  private readonly chunkBytes: number
 
   constructor(opts: ReapiOptions) {
     assertBunSupportsChunking()
@@ -136,6 +157,12 @@ export class ReapiClient {
     )
     this.instance = opts.instanceName ?? ''
     this.headers = opts.headers ?? {}
+    this.chunkBytes = opts.chunkBytes ?? CHUNK_BYTES
+    if (!Number.isInteger(this.chunkBytes) || this.chunkBytes < 1) {
+      throw new Error(
+        `@vzn/vx-reapi: chunkBytes must be a positive integer (got ${this.chunkBytes})`,
+      )
+    }
   }
 
   private meta(): grpc.Metadata {
@@ -216,7 +243,7 @@ export class ReapiClient {
       // Empty blobs still need one message so the server sees finish_write.
       let offset = 0
       do {
-        const end = Math.min(offset + CHUNK_BYTES, body.length)
+        const end = Math.min(offset + this.chunkBytes, body.length)
         stream.write({
           resource_name: offset === 0 ? resource : '',
           write_offset: offset,

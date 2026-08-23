@@ -125,3 +125,32 @@ describe.if(run)('REAPI round-trip against a live server', () => {
     }
   })
 })
+
+describe.if(run)('chunkBytes is a real escape hatch, not just an option', () => {
+  const endpoint = ENDPOINT as string
+
+  // The ceiling that forces this option to exist is peer-dependent (Bun
+  // #30342 / #31584 — Go gRPC grows its window and Bun mishandles the tail).
+  // So the escape hatch has to be exercised against a real server, or it is
+  // just a field nobody has proven routes anywhere.
+  it.each([
+    ['default 128 KB', undefined],
+    ['SAFE_CHUNK_BYTES', 65535],
+  ])('round-trips a multi-chunk artifact at %s', async (_label, chunkBytes) => {
+    const cache = new ReapiRemoteCache({
+      endpoint,
+      ...(chunkBytes === undefined ? {} : { chunkBytes }),
+    })
+    try {
+      const key = `vx-chunk-${nonce()}`
+      const body = new Uint8Array(512 * 1024)
+      crypto.getRandomValues(body)
+      await cache.put(key, body, { durationMs: 7 })
+      const got = await cache.get(key)
+      expect(got).not.toBeNull()
+      expect(Buffer.compare(Buffer.from(got!.body), Buffer.from(body))).toBe(0)
+    } finally {
+      cache.close()
+    }
+  })
+})

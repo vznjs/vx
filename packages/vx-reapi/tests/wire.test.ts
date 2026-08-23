@@ -2,7 +2,13 @@
 // reapi-e2e.test.ts and is gated on a real endpoint.
 
 import { describe, expect, it } from 'bun:test'
-import { assertBunSupportsChunking, CHUNK_BYTES, MIN_BUN } from '../src/wire.js'
+import {
+  assertBunSupportsChunking,
+  CHUNK_BYTES,
+  MIN_BUN,
+  ReapiClient,
+  SAFE_CHUNK_BYTES,
+} from '../src/wire.js'
 import { actionDigestFor, digestOf } from '../src/cache.js'
 
 describe('CHUNK_BYTES', () => {
@@ -84,5 +90,39 @@ describe('digestOf', () => {
     expect(digestOf(new TextEncoder().encode('aaaa')).hash).not.toBe(
       digestOf(new TextEncoder().encode('aaab')).hash,
     )
+  })
+})
+
+describe('SAFE_CHUNK_BYTES', () => {
+  it('is the RFC 7540 default initial window', () => {
+    // The one size needing no WINDOW_UPDATE from any conformant peer, and so
+    // the only value with no peer-dependence. The escape hatch when a server's
+    // flow-control behaviour trips the Bun defect.
+    expect(SAFE_CHUNK_BYTES).toBe(65535)
+  })
+
+  it('is below the default, so the escape hatch actually escapes', () => {
+    expect(SAFE_CHUNK_BYTES).toBeLessThan(CHUNK_BYTES)
+  })
+})
+
+describe('chunkBytes option', () => {
+  it('rejects a non-positive or fractional size rather than wedging later', () => {
+    // A bad chunk size does not error at the wire — it produces a malformed
+    // or infinite write loop. Validate at construction where it is nameable.
+    for (const bad of [0, -1, 1.5, Number.NaN]) {
+      expect(() => new ReapiClient({ endpoint: '127.0.0.1:1', chunkBytes: bad })).toThrow(
+        /chunkBytes must be a positive integer/,
+      )
+    }
+  })
+
+  it('accepts SAFE_CHUNK_BYTES and the default', () => {
+    // False-positive control: the validator must not reject the two values
+    // the docs tell people to use.
+    for (const ok of [SAFE_CHUNK_BYTES, CHUNK_BYTES]) {
+      const client = new ReapiClient({ endpoint: '127.0.0.1:1', chunkBytes: ok })
+      client.close()
+    }
   })
 })
