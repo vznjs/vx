@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -27,6 +28,7 @@ async function makeWorkspace(opts?: { withDep?: boolean }): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'demo', version: '1.0.0' }),
   )
+  await writeLocalWorkspace(root)
   await writeFile(path.join(root, 'input.txt'), 'in')
   await writeFile(
     path.join(root, 'vx.config.mjs'),

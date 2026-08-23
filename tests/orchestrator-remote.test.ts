@@ -11,6 +11,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, spyOn } from 'bun:test'
+import { writeLocalWorkspace, localWorkspaceSource } from './helpers/local-workspace.js'
 import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { planRun, prepareRun, run } from '../src/orchestrator/index.js'
@@ -58,6 +59,7 @@ async function makeWorkspace(): Promise<Fixture> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
   initGitRepo(root)
   return { root, log: [], err: [] }
@@ -840,18 +842,14 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
         // injection-wins precedence is only proven if this never fires.
         await writeFile(
           path.join(fixture.root, 'vx.workspace.mjs'),
-          `
-            export default {
-              plugins: [
-                {
-                  name: 'test/poison-cache',
-                  cache: () => {
-                    throw new Error('plugin cache must not be consulted when remoteCache is injected')
-                  },
-                },
-              ],
-            }
-          `,
+          localWorkspaceSource([
+            `{
+              name: 'test/poison-cache',
+              cache: () => {
+                throw new Error('plugin cache must not be consulted when remoteCache is injected')
+              },
+            }`,
+          ]),
         )
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
@@ -884,24 +882,20 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
 
 describe('cache layer: hasRemote is the remote-layer signal', () => {
   /** A pass-through decorator with NO remote — e.g. a metrics wrapper. */
-  const PASSTHROUGH_PLUGIN = `
-    export default {
-      plugins: [
-        {
-          name: 'test/passthrough',
-          cache(ctx) {
-            const inner = ctx.localCache
-            return new Proxy(inner, {
-              get(t, p, r) {
-                const v = Reflect.get(t, p, r)
-                return typeof v === 'function' ? v.bind(t) : v
-              },
-            })
+  const PASSTHROUGH_PLUGIN = localWorkspaceSource([
+    `{
+      name: 'test/passthrough',
+      cache(ctx) {
+        const inner = ctx.localCache
+        return new Proxy(inner, {
+          get(t, p, r) {
+            const v = Reflect.get(t, p, r)
+            return typeof v === 'function' ? v.bind(t) : v
           },
-        },
-      ],
-    }
-  `
+        })
+      },
+    }`,
+  ])
 
   it('a bare local Cache reports no remote; a LayeredCache reports one', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-hasremote-'))
@@ -1003,16 +997,9 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
         })
         await writeFile(
           path.join(fixture.root, 'vx.workspace.mjs'),
-          `
-            import { LayeredCache } from ${JSON.stringify(cacheModuleSpecifier)}
-            const alwaysMiss = {
-              async has() { return false },
-              async get() { return null },
-              async put() {},
-            }
-            export default {
-              plugins: [
-                {
+          localWorkspaceSource(
+            [
+              `                {
                   name: 'test/thirdparty',
                   cache(ctx) {
                     const inner = new LayeredCache(ctx.localCache, alwaysMiss, {
@@ -1051,10 +1038,17 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
                       close: () => inner.close(),
                     }
                   },
-                },
-              ],
+                }`,
+            ],
+            `
+            import { LayeredCache } from ${JSON.stringify(cacheModuleSpecifier)}
+            const alwaysMiss = {
+              async has() { return false },
+              async get() { return null },
+              async put() {},
             }
-          `,
+            `,
+          ),
         )
         g['__vxPrefetched'] = false
         g['__vxDrained'] = false

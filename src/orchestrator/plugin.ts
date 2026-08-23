@@ -37,8 +37,9 @@ import type { TelemetryContext, TelemetrySink } from './telemetry.js'
  * The old observe-only `Plugin` (`{ name, setup(ctx) }`) is a subset of
  * this shape: a plugin with only `setup` installs and runs exactly as
  * before via `installPlugins`. The capabilities are consulted by
- * `plugin-host.ts`; core's own behaviour is the built-in plugins
- * (builtin-plugins.ts), not a fallback outside the list.
+ * `plugin-host.ts`; core's own executor and cache are plugins too
+ * (src/plugins/), declared by the workspace — there is no fallback
+ * outside the list.
  */
 export interface VxPlugin {
   /** Stable identifier, convention `'org/name'`. Used in errors + precedence logs. */
@@ -63,9 +64,8 @@ export interface VxPlugin {
    * Contribute a cache layer. Returns a CacheLayer wrapping (or replacing)
    * the local Cache, or undefined to decline. Consulted ONCE per prepareRun.
    * Precedence: first non-undefined plugin cache wins, in declaration
-   * order; the built-in `vx/local-cache` (appended last by `withBuiltins`)
-   * hands back the bare local Cache, so there is no fallback outside the
-   * plugin list.
+   * order. `@vzn/vx/plugins/local-cache` hands back the bare local Cache;
+   * a list with no provider fails the run before any task starts.
    */
   cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
 

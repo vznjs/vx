@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { parseWhyArgs } from '../src/cli/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -38,6 +39,7 @@ async function makeWorkspace(): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
+  await writeLocalWorkspace(root)
   const appDir = path.join(root, 'packages', 'app')
   await mkdir(path.join(appDir, 'src'), { recursive: true })
   await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: 'app' }))

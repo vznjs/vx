@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { run } from '../src/index.js'
 
 async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => void }> {
@@ -38,17 +39,20 @@ describe('Plugin API — end-to-end via run()', () => {
       // The captured-events array is a module-level box the plugin pushes to.
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `globalThis.__vxPluginEvents = []
-         export default {
-           plugins: [{
+        localWorkspaceSource(
+          [
+            `{
              name: 'org/test',
              setup(ctx) {
                ctx.on('onRunStart', () => globalThis.__vxPluginEvents.push('run:start'))
                ctx.on('onTaskComplete', (n) => globalThis.__vxPluginEvents.push('done:' + n.id))
                ctx.on('onRunEnd', () => globalThis.__vxPluginEvents.push('run:end'))
              },
-           }],
-         }`,
+           }`,
+          ],
+          `globalThis.__vxPluginEvents = []
+`,
+        ),
       )
       await gitInit(workspaceRoot)
       const log = makeSilentLogger()
@@ -74,9 +78,9 @@ describe('Plugin API — end-to-end via run()', () => {
     try {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `globalThis.__vxLifecycle = { teardown: 0, flush: 0 }
-         export default {
-           plugins: [{
+        localWorkspaceSource(
+          [
+            `{
              name: 'org/lifecycle',
              eventSink() {
                return {
@@ -85,8 +89,11 @@ describe('Plugin API — end-to-end via run()', () => {
                }
              },
              async teardown() { globalThis.__vxLifecycle.teardown++ },
-           }],
-         }`,
+           }`,
+          ],
+          `globalThis.__vxLifecycle = { teardown: 0, flush: 0 }
+`,
+        ),
       )
       await gitInit(workspaceRoot)
       const summary = await run({
@@ -112,17 +119,20 @@ describe('Plugin API — end-to-end via run()', () => {
     try {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `globalThis.__vxTeardownCalls = 0
-         export default {
-           plugins: [{
+        localWorkspaceSource(
+          [
+            `{
              name: 'org/bad-teardown',
              setup() {},
              teardown() {
                globalThis.__vxTeardownCalls++
                throw new Error('teardown boom')
              },
-           }],
-         }`,
+           }`,
+          ],
+          `globalThis.__vxTeardownCalls = 0
+`,
+        ),
       )
       await gitInit(workspaceRoot)
       const statusLines: string[] = []
@@ -149,12 +159,12 @@ describe('Plugin API — end-to-end via run()', () => {
     try {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `export default {
-           plugins: [{
+        localWorkspaceSource([
+          `{
              name: 'org/bad',
              setup() { throw new Error('boom') },
-           }],
-         }`,
+           }`,
+        ]),
       )
       await gitInit(workspaceRoot)
       const log = makeSilentLogger()

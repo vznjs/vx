@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 setDefaultTimeout(30_000)
 
@@ -63,6 +64,7 @@ describe('running from inside a workspace member', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
     )
+    await writeLocalWorkspace(root)
     await writeFile(path.join(root, '.gitignore'), 'node_modules\n.vx\nout\nran.log\n')
 
     await writeFile(path.join(b, 'package.json'), JSON.stringify({ name: 'b', version: '1.0.0' }))

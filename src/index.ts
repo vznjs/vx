@@ -131,17 +131,10 @@ export type {
   EventSinkContext,
   PluginSetupContext,
 } from './orchestrator/index.js'
-// Core's own behaviour as plugins — include them explicitly to set their
-// precedence, wrap them, or leave them out of `defineWorkspace({ plugins })`
-// to get them appended last.
-export {
-  builtinPlugins,
-  localCachePlugin,
-  localExecutorPlugin,
-  withBuiltins,
-} from './orchestrator/index.js'
+// Process primitives — what an executor plugin builds on. `@vzn/vx/plugins/local-executor`
+// is the reference implementation and imports exactly these.
+export { runCommand, runSandboxed } from './exec/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.
-export { localExecutor, selectExecutor } from './exec/index.js'
 export type {
   ExecuteRequest,
   ExecuteResult,

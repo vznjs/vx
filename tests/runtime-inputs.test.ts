@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 setDefaultTimeout(30_000)
 
@@ -26,6 +27,7 @@ async function makeWorkspace(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-runtime-e2e-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
   git(root, 'init', '-q')
   git(root, 'config', 'user.email', 't@vx.local')

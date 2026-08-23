@@ -14,6 +14,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { Cache, type RemoteCacheLayer } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun } from '../src/orchestrator/index.js'
@@ -37,6 +38,7 @@ beforeEach(async () => {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
   )
+  await writeLocalWorkspace(root)
   // Input enumeration is git-backed, so discovery needs a real repo.
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
 })
@@ -385,7 +387,9 @@ describe('hasRemoteLayer asks the layer instead of comparing handles', () => {
       await pkg('app', cfg(task('build')))
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
-        `export default { plugins: [{ name: 'passthrough', cache: (ctx) => new Proxy(ctx.localCache, {}) }] }`,
+        localWorkspaceSource([
+          `{ name: 'passthrough', cache: (ctx) => new Proxy(ctx.localCache, {}) }`,
+        ]),
       )
       const p = await prepare()
       // The plugin DID return a different handle…
@@ -405,12 +409,14 @@ describe('hasRemoteLayer asks the layer instead of comparing handles', () => {
       await pkg('app', cfg(task('build')))
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
-        `export default { plugins: [{ name: 'declares', cache: (ctx) => {
+        localWorkspaceSource([
+          `{ name: 'declares', cache: (ctx) => {
          const l = Object.create(Object.getPrototypeOf(ctx.localCache))
          Object.assign(l, ctx.localCache)
          l.hasRemote = true
          return l
-       } }] }`,
+       } }`,
+        ]),
       )
       const p = await prepare()
       expect(p.hasRemoteLayer).toBe(true)

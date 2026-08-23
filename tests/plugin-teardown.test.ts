@@ -22,6 +22,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { subscribeEventSinks, teardownPlugins } from '../src/orchestrator/plugin-host.js'
 import { busLogger, createEventBus } from '../src/orchestrator/events.js'
 import type { EventSink, VxPlugin } from '../src/orchestrator/plugin.js'
@@ -274,12 +275,17 @@ describe('the lifecycle is reached on a run that FAILED', () => {
   it('a failing task still flushes sinks and tears plugins down', async () => {
     await Bun.write(
       path.join(root, 'vx.workspace.mjs'),
-      `globalThis.__vxLifecycle = []
-       export default { plugins: [{
+      localWorkspaceSource(
+        [
+          `{
          name: 'org/probe',
          eventSink() { return { onEvent(){}, flush() { globalThis.__vxLifecycle.push('flush') } } },
          teardown() { globalThis.__vxLifecycle.push('teardown') },
-       }] }`,
+       }`,
+        ],
+        `globalThis.__vxLifecycle = []
+`,
+      ),
     )
     const silent = {
       runStart: () => undefined,

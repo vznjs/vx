@@ -12,6 +12,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile, utimes, stat } from 'node:fs/p
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import {
   GitFilesCache,
   autocrlfConverts,
@@ -77,6 +78,7 @@ describe('stale cache hits', () => {
       // a SOURCE_DATE_EPOCH generator — could hand back the previous run's
       // digest for genuinely different bytes.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
       await write(
         path.join(root, 'vx.config.mjs'),
         `export default {
@@ -124,6 +126,7 @@ describe('stale cache hits', () => {
       // hash — a documented pattern (docs/schema.md), and what makes the
       // defect observable rather than masked by the upstream cascade.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
       await write(
         path.join(root, 'vx.config.mjs'),
         `export default {
@@ -178,6 +181,7 @@ describe('stale cache hits', () => {
       // sparse-checkout path was absent would then be replayed once the path
       // was materialised, because no key ever moved.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
       await write(
         path.join(root, 'vx.config.mjs'),
         `export default {
@@ -221,6 +225,7 @@ describe('stale cache hits', () => {
       // (which compares after filtering) calls a CRLF worktree file clean and
       // it keeps its OID — the CRLF and LF states then fold the SAME key.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
       await write(
         path.join(root, 'vx.config.mjs'),
         `export default {
@@ -262,6 +267,7 @@ describe('stale cache hits', () => {
       // converts every auto-detected text file, so no attribute names it and
       // an attributes-only gate would miss this entirely.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
       await write(
         path.join(root, 'vx.config.mjs'),
         `export default {
@@ -347,6 +353,7 @@ describe('stale cache hits', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
       )
+      await writeLocalWorkspace(root)
       await write(path.join(root, 'pkgs/gen/package.json'), JSON.stringify({ name: 'gen' }))
       await write(
         path.join(root, 'pkgs/app/package.json'),

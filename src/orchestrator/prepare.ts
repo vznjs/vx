@@ -40,7 +40,6 @@ import {
   type TaskNode,
   unresolvedRequests,
 } from '../graph/index.js'
-import { withBuiltins } from './builtin-plugins.js'
 import { resolveCache } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
@@ -52,7 +51,7 @@ import { computePredictedPriorities } from './predict.js'
 export interface PreparedRun {
   workspaceRoot: string
   workspaceConfig: WorkspaceConfig | null
-  /** Effective plugin list: declared plugins, then the built-ins not declared. */
+  /** The workspace's declared plugins, in declaration order. Nothing is added. */
   plugins: readonly VxPlugin[]
   cacheDir: string
   cache: CacheLayer
@@ -269,7 +268,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // cache is a plugin concern (native-cache-wire-2026-07). Injection
   // winning prevents double-wrapping when the workspace also declares a
   // cache plugin.
-  const plugins = withBuiltins(workspaceConfig?.plugins as readonly VxPlugin[] | undefined)
+  const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
   const cache = options.remoteCache
     ? new LayeredCache(localCache, options.remoteCache, {
         policy,

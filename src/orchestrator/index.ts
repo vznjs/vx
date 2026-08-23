@@ -90,14 +90,7 @@ export {
   resolveExecutors,
   subscribeEventSinks,
 } from './plugin-host.js'
-export {
-  builtinPlugins,
-  LOCAL_CACHE_PLUGIN,
-  LOCAL_EXECUTOR_PLUGIN,
-  localCachePlugin,
-  localExecutorPlugin,
-  withBuiltins,
-} from './builtin-plugins.js'
+export { MISSING_PLUGIN_HINT } from './missing-plugin.js'
 export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 // The bounded log-capture buffer every telemetry sink shares — see the
 // module header for why one implementation, not one per sink.

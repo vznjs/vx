@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import {
   formatBytes,
   parseDuration,
@@ -120,6 +121,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       path.join(workspaceRoot, 'package.json'),
       JSON.stringify({ name: 'root', private: true }),
     )
+    await writeLocalWorkspace(workspaceRoot)
     const pkgDir = path.join(workspaceRoot, 'packages', 'one')
     await mkdir(pkgDir, { recursive: true })
     await writeFile(
@@ -628,6 +630,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       path.join(workspaceRoot, 'package.json'),
       JSON.stringify({ name: 'root', private: true }),
     )
+    await writeLocalWorkspace(workspaceRoot)
     const pkgDir = path.join(workspaceRoot, 'packages', 'one')
     await mkdir(pkgDir, { recursive: true })
     await mkdir(path.join(pkgDir, 'src'), { recursive: true })

@@ -7,6 +7,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { optionsToRequest, requestToOptions, run } from '../src/orchestrator/index.js'
@@ -188,6 +189,7 @@ async function makeWorkspace(): Promise<Fixture> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
   const git = (...args: string[]) => {
     const p = Bun.spawnSync({

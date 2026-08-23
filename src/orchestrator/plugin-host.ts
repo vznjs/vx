@@ -1,8 +1,8 @@
 // Plugin consultation for the run-level extension points (backend / cache / executor / eventSink).
-// Each function asks the plugins in order; the built-in plugins
-// (builtin-plugins.ts) are the default — there is no fallback outside the
-// plugin list — so a workspace with no user plugin is byte-identical to
-// before the inversion.
+// Each function asks the plugins in order. Nothing is applied by default:
+// core's own executor and cache are plugins under src/plugins/ that a
+// workspace declares like any other, so a list with no provider for a
+// load-bearing capability fails fast with MISSING_PLUGIN_HINT.
 //
 // See docs/design/core-cloud-split-2026-06.md §5.1.
 
@@ -11,6 +11,7 @@ import type { TaskExecutor } from '../exec/index.js'
 import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import type { EventBus } from './events.js'
 import { wireForwarder } from './events.js'
+import { MISSING_PLUGIN_HINT } from './missing-plugin.js'
 import type {
   BackendContext,
   CacheContext,
@@ -58,10 +59,9 @@ export async function resolveBackend(
 
 /**
  * Resolve the cache layer. First plugin returning a non-undefined `cache`
- * wins. There is no fallback parameter: the built-in `vx/local-cache`
- * plugin (appended by `withBuiltins`) is the default, so an empty result
- * means the workspace removed every cache provider — an authoring error
- * worth naming, never a silent cacheless run.
+ * wins. There is no fallback: an empty result means the workspace declared
+ * no cache provider — an authoring error worth naming, never a silent
+ * cacheless run.
  */
 export async function resolveCache(
   plugins: readonly VxPlugin[],
@@ -72,17 +72,18 @@ export async function resolveCache(
     const cache = await safe(plugin, 'cache', () => plugin.cache!(ctx))
     if (cache !== undefined) return cache
   }
+  const declined = plugins.filter((p) => p.cache !== undefined).map((p) => `${p.name} declined`)
   throw new UserError(
-    `no plugin contributed a cache layer (declared: ${plugins.map((p) => p.name).join(', ') || 'none'}); include vx/local-cache or a plugin with a \`cache\` capability`,
+    `no cache plugin declared${declined.length > 0 ? ` (${declined.join(', ')})` : ''}. ${MISSING_PLUGIN_HINT}`,
   )
 }
 
 /**
  * Collect every plugin's `executor`, in declaration order. Unlike `backend`
  * and `cache` this is a LIST: per task, `selectExecutor` takes the first
- * that accepts. With the built-ins appended (`withBuiltins`) the local
- * executor is always last, so the list is never empty. A broken factory
- * aborts — an executor is load-bearing, not observational.
+ * that accepts. An empty list is the same authoring error as a missing
+ * cache provider and fails the same way. A broken factory aborts — an
+ * executor is load-bearing, not observational.
  */
 export async function resolveExecutors(
   plugins: readonly VxPlugin[],
@@ -93,6 +94,14 @@ export async function resolveExecutors(
     if (plugin.executor === undefined) continue
     const executor = await safe(plugin, 'executor', () => plugin.executor!(ctx))
     if (executor !== undefined) executors.push(executor)
+  }
+  if (executors.length === 0) {
+    const declined = plugins
+      .filter((p) => p.executor !== undefined)
+      .map((p) => `${p.name} declined`)
+    throw new UserError(
+      `no executor plugin declared${declined.length > 0 ? ` (${declined.join(', ')})` : ''}. ${MISSING_PLUGIN_HINT}`,
+    )
   }
   return executors
 }

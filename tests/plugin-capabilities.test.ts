@@ -1,20 +1,21 @@
-// The three run-level plugin capabilities (backend / cache / eventSink),
+// The run-level plugin capabilities (backend / cache / executor / eventSink),
 // inverted from core's hardcoded hooks in Phase 1 of
 // docs/design/core-cloud-split-2026-06.md. Each test declares a VxPlugin
-// in vx.workspace.mjs and asserts the seam is consulted, with the
-// fallbacks preserving today's behavior when no plugin contributes.
+// in vx.workspace.mjs and asserts the seam is consulted. Nothing is applied
+// by default: every e2e fixture declares the local executor + cache plugins
+// AFTER its own, and the NO DEFAULTS pin below is what a bare workspace sees.
 
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { run } from '../src/index.js'
 import {
   resolveBackend,
   resolveCache,
   resolveExecutors,
   subscribeEventSinks,
-  withBuiltins,
   createEventBus,
   type RunBackend,
   type VxPlugin,
@@ -22,6 +23,7 @@ import {
 import type { TaskExecutor } from '../src/exec/index.js'
 import { busLogger } from '../src/orchestrator/events.js'
 import { Cache } from '../src/cache/index.js'
+import { localCachePlugin } from '../src/plugins/local-cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
 
 async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => void }> {
@@ -144,18 +146,18 @@ describe('plugin-host — capability consultation + fallbacks', () => {
           localCache: local,
           policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
         }),
-      ).rejects.toThrow(/no plugin contributed a cache layer/)
+      ).rejects.toThrow(/no cache plugin declared \(org\/none declined\)/)
     } finally {
       local.close()
       rmSync(cacheDir, { recursive: true, force: true })
     }
   })
 
-  it('resolveCache: the built-in list resolves to the local cache handle', async () => {
+  it('resolveCache: the declared local-cache plugin resolves to the local cache handle', async () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
     try {
-      const resolved = await resolveCache(withBuiltins([]), {
+      const resolved = await resolveCache([localCachePlugin()], {
         ...baseCtx,
         localCache: local,
         policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
@@ -267,16 +269,19 @@ describe('plugin capabilities — end-to-end', () => {
       // wrapper conceptually) and records that it was consulted.
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `globalThis.__vxCachePluginConsulted = false
-         export default {
-           plugins: [{
+        localWorkspaceSource(
+          [
+            `{
              name: 'org/cache',
              cache(ctx) {
                globalThis.__vxCachePluginConsulted = true
                return ctx.localCache
              },
-           }],
-         }`,
+           }`,
+          ],
+          `globalThis.__vxCachePluginConsulted = false
+`,
+        ),
       )
       await gitInit(workspaceRoot)
       const summary = await run({
@@ -300,15 +305,18 @@ describe('plugin capabilities — end-to-end', () => {
     try {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `globalThis.__vxSinkEvents = []
-         export default {
-           plugins: [{
+        localWorkspaceSource(
+          [
+            `{
              name: 'org/sink',
              eventSink() {
                return { onEvent: (e) => globalThis.__vxSinkEvents.push(e.kind) }
              },
-           }],
-         }`,
+           }`,
+          ],
+          `globalThis.__vxSinkEvents = []
+`,
+        ),
       )
       await gitInit(workspaceRoot)
       const summary = await run({
@@ -333,12 +341,12 @@ describe('plugin capabilities — end-to-end', () => {
     try {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `export default {
-           plugins: [{
+        localWorkspaceSource([
+          `{
              name: 'org/bad-cache',
              cache() { throw new Error('cache boom') },
-           }],
-         }`,
+           }`,
+        ]),
       )
       await gitInit(workspaceRoot)
       await expect(
@@ -405,9 +413,9 @@ describe('executor capability — end-to-end via run()', () => {
     try {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `globalThis.__vxExec = []
-         export default {
-           plugins: [{
+        localWorkspaceSource(
+          [
+            `{
              name: 'org/exec',
              executor() {
                return {
@@ -419,8 +427,11 @@ describe('executor capability — end-to-end via run()', () => {
                  },
                }
              },
-           }],
-         }`,
+           }`,
+          ],
+          `globalThis.__vxExec = []
+`,
+        ),
       )
       await gitInit(workspaceRoot)
       const summary = await runHello(workspaceRoot)
@@ -432,14 +443,14 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
-  it('an executor that declines a task falls through to the built-in local executor', async () => {
+  it('an executor that declines a task falls through to the local executor declared after it', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `globalThis.__vxDeclined = []
-         export default {
-           plugins: [{
+        localWorkspaceSource(
+          [
+            `{
              name: 'org/picky',
              executor() {
                return {
@@ -448,8 +459,11 @@ describe('executor capability — end-to-end via run()', () => {
                  async execute() { throw new Error('must not run') },
                }
              },
-           }],
-         }`,
+           }`,
+          ],
+          `globalThis.__vxDeclined = []
+`,
+        ),
       )
       await gitInit(workspaceRoot)
       const summary = await runHello(workspaceRoot)
@@ -475,11 +489,9 @@ describe('executor capability — end-to-end via run()', () => {
       )
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `globalThis.__vxCalls = 0
-         import { writeFileSync } from 'node:fs'
-         import { join } from 'node:path'
-         export default {
-           plugins: [{
+        localWorkspaceSource(
+          [
+            `{
              name: 'org/exec',
              executor() {
                return {
@@ -491,8 +503,13 @@ describe('executor capability — end-to-end via run()', () => {
                  },
                }
              },
-           }],
-         }`,
+           }`,
+          ],
+          `globalThis.__vxCalls = 0
+         import { writeFileSync } from 'node:fs'
+         import { join } from 'node:path'
+`,
+        ),
       )
       await gitInit(workspaceRoot)
       const first = await runHello(workspaceRoot)
@@ -518,15 +535,18 @@ describe('executor capability — end-to-end via run()', () => {
     try {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `globalThis.__vxBackendRan = false
-         globalThis.__vxExecutorAsked = false
-         export default {
-           plugins: [{
+        localWorkspaceSource(
+          [
+            `{
              name: 'org/cloud-like',
              backend() { return { async run() { globalThis.__vxBackendRan = true; return { ok: true, outcomes: [] } } } },
              executor() { globalThis.__vxExecutorAsked = true; return undefined },
-           }],
-         }`,
+           }`,
+          ],
+          `globalThis.__vxBackendRan = false
+         globalThis.__vxExecutorAsked = false
+`,
+        ),
       )
       await gitInit(workspaceRoot)
       // `backend` is consulted by the CLI layer (src/cli/run.ts), not by
@@ -545,6 +565,32 @@ describe('executor capability — end-to-end via run()', () => {
       const g = globalThis as unknown as { __vxBackendRan: boolean; __vxExecutorAsked: boolean }
       expect(g.__vxBackendRan).toBe(true)
       expect(g.__vxExecutorAsked).toBe(false)
+    } finally {
+      cleanup()
+    }
+  })
+
+  // `prepareRun` resolves the cache before `run()` resolves executors, so
+  // the cache message is the one a bare workspace sees; both carry the hint.
+  it('NO DEFAULTS: a workspace with no plugins fails before any task runs and names the fix', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await gitInit(workspaceRoot)
+      await expect(runHello(workspaceRoot)).rejects.toThrow(
+        /no cache plugin declared[\s\S]*localExecutorPlugin\(\), localCachePlugin\(\)/,
+      )
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('CONTROL: the same workspace with the local plugins declared runs', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await writeLocalWorkspace(workspaceRoot)
+      await gitInit(workspaceRoot)
+      const summary = await runHello(workspaceRoot)
+      expect(summary.ok).toBe(true)
     } finally {
       cleanup()
     }

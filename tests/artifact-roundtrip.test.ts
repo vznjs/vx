@@ -13,6 +13,7 @@ import { chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/pro
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { Cache } from '../src/cache/cache.js'
 
 const TIMEOUT = 60_000
@@ -105,6 +106,7 @@ describe('artifact round-trip', () => {
         path.join(root, 'package.json'),
         '{"name":"@acme/app","version":"1.0.0","private":true}',
       )
+      await writeLocalWorkspace(root)
       await write(
         path.join(root, 'vx.config.mjs'),
         `export default {
@@ -173,6 +175,7 @@ describe('artifact round-trip', () => {
       // be split)", exit 2) — and `packArtifact` runs AFTER the task already
       // succeeded, so the failure was reported as a failed build.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
       await write(
         path.join(root, 'vx.config.mjs'),
         `export default {

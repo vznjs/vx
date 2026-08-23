@@ -14,7 +14,10 @@ import { describe, expect, it } from 'bun:test'
 
 const SRC = path.join(import.meta.dir, '..', 'src')
 
-/** Module of a src-relative file path. Root files are their own modules. */
+/**
+ * Module of a src-relative file path. Root files are their own modules;
+ * every `src/plugins/<name>/` directory is the one `plugins` module.
+ */
 function moduleOf(rel: string): string {
   const seg = rel.split('/')
   if (seg.length > 1) return seg[0]!
@@ -30,6 +33,11 @@ const ALLOWED: Record<string, readonly string[]> = {
   cache: ['util', 'config'],
   exec: ['util', 'config'],
   orchestrator: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'exec'],
+  // Core-provided plugins reach core only through the bare '@vzn/vx'
+  // specifier (see package-boundaries Rule 4); no relative edge is legal,
+  // and no module — index.ts included — may import them (that would be a
+  // cycle, and would make them core).
+  plugins: [],
   cli: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'orchestrator'],
   index: ['util', 'config', 'version', 'workspace', 'graph', 'cache', 'exec', 'orchestrator'],
   bin: ['util', 'cli'],
@@ -96,6 +104,25 @@ describe('module boundaries', () => {
     expect(
       violations.map((v) => `${v.from} → ${v.specifier} (${v.fromModule} → ${v.toModule})`),
     ).toEqual([])
+  })
+
+  it('every relative import inside src/plugins/<name>/ stays inside that directory', async () => {
+    const pluginsDir = path.join(SRC, 'plugins')
+    const glob = new Bun.Glob('*/**/*.ts')
+    const seen: string[] = []
+    const escapes: string[] = []
+    for await (const rel of glob.scan({ cwd: pluginsDir })) {
+      const norm = rel.split(path.sep).join('/')
+      const dir = path.join(pluginsDir, norm.split('/')[0]!)
+      seen.push(norm.split('/')[0]!)
+      const text = await Bun.file(path.join(pluginsDir, rel)).text()
+      for (const m of text.matchAll(/^(?:import|export)[^'"]*from\s+['"](\.\.?\/[^'"]+)['"]/gm)) {
+        const resolved = path.resolve(path.dirname(path.join(pluginsDir, rel)), m[1]!)
+        if (!resolved.startsWith(dir + path.sep)) escapes.push(`${norm} → ${m[1]!}`)
+      }
+    }
+    expect(new Set(seen)).toEqual(new Set(['local-cache', 'local-executor']))
+    expect(escapes).toEqual([])
   })
 
   it('contracted modules are imported only via their index', async () => {

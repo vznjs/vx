@@ -21,7 +21,6 @@ export {
   type SandboxViolation,
 } from './sandbox-runtime.js'
 export {
-  localExecutor,
   selectExecutor,
   type ExecuteRequest,
   type ExecuteResult,

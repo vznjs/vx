@@ -1,10 +1,12 @@
 import { defineWorkspace } from '@vzn/vx'
+import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
+import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
 import { otel } from '@vzn/vx-otel'
 import { cloud } from '@vzn/vx-cloud/plugin'
 
-// vx is a CORE that never changes its own behavior; every external integration
-// is an opt-in plugin declared here. Both plugins are observe/route-only and
-// DECLINE when unconfigured, so this is zero-overhead by default:
+// Nothing runs that is not declared here — including core's own executor
+// and cache. Order is precedence: cloud() (when configured) delegates the
+// run or layers its remote cache ahead of the local one; otel() observes.
 //
 //   otel()   — export each run as OpenTelemetry traces + metrics. Activates
 //              when OTEL_EXPORTER_OTLP_ENDPOINT is set.
@@ -14,5 +16,5 @@ import { cloud } from '@vzn/vx-cloud/plugin'
 //              vx-cloud is independent: it ingests these pushes into its own
 //              store — it never reads this workspace's cache.db.
 export default defineWorkspace({
-  plugins: [otel(), cloud()],
+  plugins: [otel(), cloud(), localExecutorPlugin(), localCachePlugin()],
 })

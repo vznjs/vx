@@ -12,6 +12,7 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { deniedCalls, probeSandbox, resolveSandboxConfig } from '../src/exec/sandbox-runtime.js'
 import { run, type Logger, type RunOptions } from '../src/orchestrator/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
@@ -45,6 +46,7 @@ async function makeWorkspace(): Promise<Fixture> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
   // vx requires git for input enumeration.
   const run = (...args: string[]): void => {

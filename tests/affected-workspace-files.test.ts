@@ -19,6 +19,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -75,6 +76,7 @@ beforeEach(async () => {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
   )
+  await writeLocalWorkspace(root)
   await write(path.join(root, 'shared/schema.txt'), 'v1')
   await write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
   await write(path.join(root, 'pkgs/app/src/index.ts'), 'export const x = 1')

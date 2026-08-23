@@ -5,6 +5,7 @@
 // output; explicit --output-logs always overrides.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { detectFlow, run as cliRun } from '../src/cli/index.js'
 import { defaultLogger, resolveOutputView } from '../src/orchestrator/logger.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
@@ -728,6 +729,7 @@ describe('flow e2e against a real fixture workspace', () => {
       path.join(workspaceRoot, 'package.json'),
       JSON.stringify({ name: 'root', private: true }),
     )
+    await writeLocalWorkspace(workspaceRoot)
     const pkgDir = path.join(workspaceRoot, 'packages', 'one')
     await mkdir(pkgDir, { recursive: true })
     await writeFile(

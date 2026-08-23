@@ -28,6 +28,7 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { Database } from 'bun:sqlite'
 import { type CacheLayer, type CachePolicy, GitFilesCache } from '../src/cache/index.js'
 import type { TaskNode } from '../src/graph/index.js'
@@ -492,6 +493,7 @@ async function makeWorkspace(): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
   // vx requires git — input enumeration asks `git ls-files`.
   gitInit(root)

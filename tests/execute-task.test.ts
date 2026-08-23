@@ -21,8 +21,9 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { Cache, type CacheEntry } from '../src/cache/index.js'
-import { localExecutor } from '../src/exec/index.js'
+import { localExecutor } from '../src/plugins/local-executor/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
@@ -75,6 +76,7 @@ async function makeWorkspace(): Promise<Fixture> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
   initGit(root)
   return { root, out: [], err: [] }

@@ -3,6 +3,11 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import {
+  LOCAL_CACHE_PLUGIN_PATH,
+  LOCAL_EXECUTOR_PLUGIN_PATH,
+  writeLocalWorkspace,
+} from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 
@@ -67,6 +72,7 @@ async function makeWorkspace(): Promise<Fixture> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
   // vx requires git (it asks `git ls-files` for the input file set).
   // Init a quiet repo so the orchestrator can enumerate fixture files.
@@ -2029,7 +2035,10 @@ describe('orchestrator e2e', () => {
     async () => {
       await writeFile(
         path.join(fixture.root, 'vx.workspace.mjs'),
-        "export default { cacheDir: 'build/.vx-cache' }",
+        `import { localExecutorPlugin } from ${JSON.stringify(LOCAL_EXECUTOR_PLUGIN_PATH)}
+import { localCachePlugin } from ${JSON.stringify(LOCAL_CACHE_PLUGIN_PATH)}
+export default { cacheDir: 'build/.vx-cache', plugins: [localExecutorPlugin(), localCachePlugin()] }
+`,
       )
       await addProject(fixture.root, 'app-x', {
         files: { 'src/index.txt': 'hello' },

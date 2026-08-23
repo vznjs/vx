@@ -15,6 +15,7 @@
 // functional pin (the graph is correct at scale, not merely fast).
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -50,6 +51,7 @@ async function generateWorkspace(root: string, count: number): Promise<void> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'scale-root', private: true }),
   )
+  await writeLocalWorkspace(root)
 
   // Write projects in parallel batches (keeps the FS pipeline busy without
   // opening 6000 fds at once).

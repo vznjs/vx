@@ -16,6 +16,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { Cache } from '../src/cache/cache.js'
 import { GitFilesCache, populateGitFilesCache, resolveInputs } from '../src/cache/inputs.js'
 import { parseTarHeaders } from '../src/cache/tar.js'
@@ -387,6 +388,7 @@ async function makeWorkspace(): Promise<Fixture> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
+  await writeLocalWorkspace(root)
   initGitRepo(root)
   return { root, log: [] }
 }

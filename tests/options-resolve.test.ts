@@ -31,6 +31,11 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import {
+  LOCAL_CACHE_PLUGIN_PATH,
+  LOCAL_EXECUTOR_PLUGIN_PATH,
+  writeLocalWorkspace,
+} from './helpers/local-workspace.js'
 import type { Logger, RunOptions, TelemetrySink } from '../src/orchestrator/index.js'
 import {
   createEventBus,
@@ -75,6 +80,7 @@ async function makeWorkspace(): Promise<Fixture> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
   const git = (...args: string[]) => {
     const p = Bun.spawnSync({
@@ -102,8 +108,15 @@ async function addProject(root: string, name: string, config: string): Promise<s
   return dir
 }
 
-async function setWorkspace(root: string, config: string): Promise<void> {
-  await writeFile(path.join(root, 'vx.workspace.mjs'), config)
+/** Rewrite the workspace file with `fields` (object-literal body) plus the local plugins. */
+async function setWorkspace(root: string, fields: string): Promise<void> {
+  await writeFile(
+    path.join(root, 'vx.workspace.mjs'),
+    `import { localExecutorPlugin } from ${JSON.stringify(LOCAL_EXECUTOR_PLUGIN_PATH)}
+import { localCachePlugin } from ${JSON.stringify(LOCAL_CACHE_PLUGIN_PATH)}
+export default { ${fields}, plugins: [localExecutorPlugin(), localCachePlugin()] }
+`,
+  )
 }
 
 function lineCount(file: string): number {
@@ -409,7 +422,7 @@ describe('concurrency ladder — options > workspace > hardwareConcurrency', () 
       const config = `export default { tasks: { run: { exec: { command: ${JSON.stringify(SPAN_CMD)} } } } }`
       const a = await addProject(fixture.root, 'a', config)
       const b = await addProject(fixture.root, 'b', config)
-      await setWorkspace(fixture.root, 'export default { concurrency: 1 }')
+      await setWorkspace(fixture.root, 'concurrency: 1')
 
       const serial = await run({
         cwd: fixture.root,
@@ -478,7 +491,7 @@ describe('concurrency ladder — options > workspace > hardwareConcurrency', () 
       }`
       const a = await addProject(fixture.root, 'a', config)
       const b = await addProject(fixture.root, 'b', config)
-      await setWorkspace(fixture.root, 'export default { concurrency: 2 }')
+      await setWorkspace(fixture.root, 'concurrency: 2')
 
       const serial = await run({
         cwd: fixture.root,

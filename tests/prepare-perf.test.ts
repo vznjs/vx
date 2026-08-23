@@ -2,6 +2,7 @@
 // config loading + the git-files cache plumbed into PreparedRun.
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -12,6 +13,7 @@ async function makeWorkspace(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-prepare-perf-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
   // vx requires git for input enumeration.
   const run = (...args: string[]): void => {

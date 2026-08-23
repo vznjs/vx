@@ -9,6 +9,11 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import {
+  LOCAL_CACHE_PLUGIN_PATH,
+  LOCAL_EXECUTOR_PLUGIN_PATH,
+  writeLocalWorkspace,
+} from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run, optionsToRequest, requestToOptions } from '../src/orchestrator/index.js'
 import { parseRunArgs } from '../src/cli/index.js'
@@ -42,6 +47,7 @@ async function makeWorkspace(): Promise<Fixture> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
   const git = (...args: string[]) => {
     const p = Bun.spawnSync({
@@ -69,8 +75,15 @@ async function addProject(root: string, name: string, config: string): Promise<s
   return dir
 }
 
-async function setWorkspace(root: string, config: string): Promise<void> {
-  await writeFile(path.join(root, 'vx.workspace.mjs'), config)
+/** Rewrite the workspace file with `fields` (object-literal body) plus the local plugins. */
+async function setWorkspace(root: string, fields: string): Promise<void> {
+  await writeFile(
+    path.join(root, 'vx.workspace.mjs'),
+    `import { localExecutorPlugin } from ${JSON.stringify(LOCAL_EXECUTOR_PLUGIN_PATH)}
+import { localCachePlugin } from ${JSON.stringify(LOCAL_CACHE_PLUGIN_PATH)}
+export default { ${fields}, plugins: [localExecutorPlugin(), localCachePlugin()] }
+`,
+  )
 }
 
 /** A task that sleeps well past any timeout under test, so a kill is the only
@@ -92,7 +105,7 @@ describe('task timeout — precedence', () => {
     'workspace `timeout` bounds a task with no exec.timeout',
     async () => {
       await addProject(fixture.root, 'a', SLEEPER('a'))
-      await setWorkspace(fixture.root, 'export default { timeout: 250 }')
+      await setWorkspace(fixture.root, 'timeout: 250')
       const r = await run({
         cwd: fixture.root,
         tasks: ['run'],
@@ -111,7 +124,7 @@ describe('task timeout — precedence', () => {
     async () => {
       await addProject(fixture.root, 'a', SLEEPER('a'))
       // Workspace alone would allow the sleep for 30s; the env's 250ms wins.
-      await setWorkspace(fixture.root, 'export default { timeout: 30000 }')
+      await setWorkspace(fixture.root, 'timeout: 30000')
       process.env['VX_TASK_TIMEOUT'] = '250'
       const r = await run({
         cwd: fixture.root,
@@ -151,7 +164,7 @@ describe('task timeout — precedence', () => {
         'a',
         `export default { tasks: { run: { exec: { command: 'sleep 30', timeout: 250 } } } }`,
       )
-      await setWorkspace(fixture.root, 'export default { timeout: 30000 }')
+      await setWorkspace(fixture.root, 'timeout: 30000')
       process.env['VX_TASK_TIMEOUT'] = '30000'
       const r = await run({
         cwd: fixture.root,
@@ -193,7 +206,7 @@ describe('task timeout — precedence', () => {
     'a malformed VX_TASK_TIMEOUT is ignored and falls through to workspace',
     async () => {
       await addProject(fixture.root, 'a', SLEEPER('a'))
-      await setWorkspace(fixture.root, 'export default { timeout: 250 }')
+      await setWorkspace(fixture.root, 'timeout: 250')
       process.env['VX_TASK_TIMEOUT'] = 'not-a-number'
       const r = await run({
         cwd: fixture.root,
@@ -315,16 +328,16 @@ describe('workspace timeout — loader validation', () => {
   })
 
   it('accepts a positive-integer timeout', async () => {
-    await setWorkspace(root, 'export default { timeout: 5000 }')
+    await setWorkspace(root, 'timeout: 5000')
     const cfg = await loadWorkspaceConfig(root)
     expect(cfg?.timeout).toBe(5000)
   })
   it('rejects a non-positive / non-integer timeout', async () => {
-    await setWorkspace(root, 'export default { timeout: 0 }')
+    await setWorkspace(root, 'timeout: 0')
     await expect(loadWorkspaceConfig(root)).rejects.toThrow('timeout')
-    await setWorkspace(root, 'export default { timeout: 1.5 }')
+    await setWorkspace(root, 'timeout: 1.5')
     await expect(loadWorkspaceConfig(root)).rejects.toThrow('timeout')
-    await setWorkspace(root, 'export default { timeout: "nope" }')
+    await setWorkspace(root, 'timeout: "nope"')
     await expect(loadWorkspaceConfig(root)).rejects.toThrow('timeout')
   })
 })

@@ -13,6 +13,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const TIMEOUT = 60_000
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -32,6 +33,7 @@ async function makeWorkspace(): Promise<Fixture> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }, null, 2),
   )
+  await writeLocalWorkspace(root)
   await mkdir(path.join(root, 'packages'), { recursive: true })
 
   const shimDir = path.join(root, '.gitshim')

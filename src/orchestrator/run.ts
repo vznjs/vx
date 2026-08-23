@@ -234,9 +234,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     workspaceConfig?.concurrency ??
     Math.max(1, navigator.hardwareConcurrency)
 
-  // Resolved ONCE per run. Declared executors first, the built-in local
-  // executor last — see builtin-plugins.ts. A broken factory aborts here,
-  // before any task starts.
+  // Resolved ONCE per run, in declaration order. A broken factory — or a
+  // workspace that declared no executor — aborts here, before any task
+  // starts.
   let executors: readonly TaskExecutor[]
   try {
     executors = await resolveExecutors(prepared.plugins, {

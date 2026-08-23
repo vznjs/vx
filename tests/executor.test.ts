@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import {
-  localExecutor,
-  selectExecutor,
-  type ExecuteRequest,
-  type TaskExecutor,
-} from '../src/exec/index.js'
+import { selectExecutor, type ExecuteRequest, type TaskExecutor } from '../src/exec/index.js'
+import { localExecutor } from '../src/plugins/local-executor/index.js'
 
 function req(over: Partial<ExecuteRequest> = {}): ExecuteRequest {
   return {

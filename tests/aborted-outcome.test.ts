@@ -22,6 +22,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -84,6 +85,7 @@ describe('a task killed by a shutdown signal', () => {
       // IDENTICAL across both runs. Whatever b caches in run 1 is keyed
       // exactly as a healthy run would key it.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
       await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
       await write(path.join(root, '.gitignore'), 'dist/\n.vx/\nkill.flag\n')
 
@@ -152,6 +154,7 @@ describe('a task killed by a shutdown signal', () => {
     'is named in the summary and the markdown report when the run reaches them',
     async () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
       await write(path.join(root, '.gitignore'), '.vx/\n')
       await write(
         path.join(root, 'vx.config.mjs'),
@@ -185,6 +188,7 @@ describe('a task killed by a shutdown signal', () => {
     'leaves a run with nothing aborted byte-identical — no section, no report column',
     async () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
       await write(path.join(root, '.gitignore'), '.vx/\n')
       await write(
         path.join(root, 'vx.config.mjs'),

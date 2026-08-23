@@ -24,6 +24,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
 import { configEvalWorkerCount } from '../src/workspace/config-eval.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
@@ -87,6 +88,7 @@ describe('config import closure freshness', () => {
     'a re-run in the same process does not serve a cache hit for a changed preset',
     async () => {
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+      await writeLocalWorkspace(root)
       await mkdir(path.join(root, 'src'), { recursive: true })
       await writeFile(path.join(root, 'src', 'in.txt'), 'in')
       await writeFile(
@@ -272,6 +274,7 @@ describe('a typo in a cache-key field', () => {
     'is refused by the real CLI instead of hashing as if it were absent',
     async () => {
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+      await writeLocalWorkspace(root)
       await mkdir(path.join(root, 'pkg'), { recursive: true })
       await writeFile(path.join(root, 'shared.txt'), 'CONTENT-V1')
       await writeFile(

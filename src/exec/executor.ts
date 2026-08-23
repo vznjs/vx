@@ -1,23 +1,18 @@
 // The per-task execution contract. `execute-task.ts` decides WHAT to run
 // (command, env, sandbox baselines, capture) and hands a fully-resolved
-// request here; an executor decides WHERE/HOW the process runs. Core's own
-// behaviour is `localExecutor` — the same `runCommand` / `runSandboxed`
-// calls the orchestrator used to make directly — registered as the
-// built-in `vx/local-executor` plugin so a workspace can put another
-// executor ahead of it. Persistent tasks (`exec.persistent`) never reach an
-// executor: they are local by construction (a worker cannot hand the
-// submitter a listening port) and stay on `runPersistent`.
+// request here; an executor decides WHERE/HOW the process runs. Core ships
+// no executor of its own: `@vzn/vx/plugins/local-executor` is the
+// in-process spawn, declared in vx.workspace.ts like any other. Persistent
+// tasks (`exec.persistent`) never reach an executor: they are local by
+// construction (a worker cannot hand the submitter a listening port) and
+// stay on `runPersistent`.
 //
 // Lives in `exec/` (not `orchestrator/`) so the contract depends only on
 // process primitives — the module-boundary matrix forbids `exec` → `cache`,
 // which is why sandbox baselines arrive pre-resolved on the request.
 
-import { runCommand, type CaptureConfig, type RunResult } from './runner.js'
-import {
-  runSandboxed,
-  type ResolvedSandboxConfig,
-  type SandboxViolation,
-} from './sandbox-runtime.js'
+import type { CaptureConfig, RunResult } from './runner.js'
+import type { ResolvedSandboxConfig, SandboxViolation } from './sandbox-runtime.js'
 
 /** Sandbox baselines + the user's resolved sandbox block, when the task is sandboxed. */
 export interface ExecuteSandbox {
@@ -57,42 +52,10 @@ export interface TaskExecutor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 
-/** Core's executor: spawn in-process exactly as before the seam existed. */
-export function localExecutor(): TaskExecutor {
-  return {
-    name: 'local',
-    async execute(req) {
-      const common = {
-        command: req.command,
-        cwd: req.cwd,
-        env: req.env,
-        forwardArgs: req.forwardArgs,
-        onStdout: req.onStdout,
-        onStderr: req.onStderr,
-        capture: req.capture,
-        ...(req.liveChildren !== undefined ? { liveChildren: req.liveChildren } : {}),
-        ...(req.timeoutMs !== undefined ? { timeoutMs: req.timeoutMs } : {}),
-      }
-      if (req.sandbox === undefined) {
-        const res = await runCommand(common)
-        return { ...res, violations: [] }
-      }
-      return await runSandboxed({
-        ...common,
-        baseAllowRead: req.sandbox.baseAllowRead,
-        baseAllowWrite: req.sandbox.baseAllowWrite,
-        baseDenyRead: req.sandbox.baseDenyRead,
-        config: req.sandbox.config,
-      })
-    },
-  }
-}
-
 /**
  * First executor, in declaration order, that does not decline the request.
- * The built-in local executor accepts everything, so with it registered
- * this cannot throw; the throw is the guard for a workspace that replaced
- * the built-ins with executors that all decline.
+ * The local executor accepts everything, so with it declared this cannot
+ * throw; the throw is the guard for a workspace whose executors all decline.
  */
 export function selectExecutor(
   executors: readonly TaskExecutor[],
@@ -101,5 +64,7 @@ export function selectExecutor(
   for (const executor of executors) {
     if (executor.accepts === undefined || executor.accepts(req)) return executor
   }
-  throw new Error(`no executor accepted ${req.taskId} (${executors.map((e) => e.name).join(', ')})`)
+  throw new Error(
+    `no executor accepted ${req.taskId} (declared: ${executors.map((e) => e.name).join(', ')}). Declare localExecutorPlugin() after the executor that declined to run such tasks locally.`,
+  )
 }

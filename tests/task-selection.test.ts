@@ -11,6 +11,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { resolveRunOptions, parseRunArgs } from '../src/cli/index.js'
@@ -62,6 +63,7 @@ describe('task selection', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-select-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+    await writeLocalWorkspace(root)
     await mkdir(path.join(root, 'packages'), { recursive: true })
     git('init', '-q')
     git('config', 'user.email', 't@t')

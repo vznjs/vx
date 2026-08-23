@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { run } from '../src/index.js'
 import { busLogger, createEventBus } from '../src/orchestrator/events.js'
@@ -404,9 +405,9 @@ describe('telemetry — end-to-end through run()', () => {
       )
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `globalThis.__vxTel = { kinds: [], summary: null, summaryV: null }
-         export default {
-           plugins: [{
+        localWorkspaceSource(
+          [
+            `{
              name: 'org/tel',
              telemetry() {
                return {
@@ -414,8 +415,11 @@ describe('telemetry — end-to-end through run()', () => {
                  onRunSummary: (s) => { globalThis.__vxTel.summary = s; globalThis.__vxTel.summaryV = s.v },
                }
              },
-           }],
-         }`,
+           }`,
+          ],
+          `globalThis.__vxTel = { kinds: [], summary: null, summaryV: null }
+`,
+        ),
       )
       await gitInit(workspaceRoot)
       const summary = await run({
@@ -461,8 +465,10 @@ describe('telemetry — end-to-end through run()', () => {
         path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
         `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
       )
-      // Deliberately NO vx.workspace.* — zero plugins; the option is the
-      // only telemetry source (how the serve records delegated runs).
+      // Deliberately no telemetry plugin — only the local executor + cache;
+      // the option is the only telemetry source (how the serve records
+      // delegated runs).
+      await writeLocalWorkspace(workspaceRoot)
       await gitInit(workspaceRoot)
       let got: RunSummaryRecord | null = null
       const summary = await run({

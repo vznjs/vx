@@ -7,6 +7,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
+import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import {
   createTelemetrySource,
   subscribeTelemetry,
@@ -142,6 +143,7 @@ describe('telemetry flush is time-bounded', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', workspaces: ['pkg-a'] }),
     )
+    await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
       path.join(root, 'pkg-a/vx.config.mjs'),
@@ -149,8 +151,10 @@ describe('telemetry flush is time-bounded', () => {
     )
     await Bun.write(
       path.join(root, 'vx.workspace.mjs'),
-      `export default { plugins: [{ name: 'org/hang',
-         telemetry() { return { flush() { return new Promise(() => {}) } } } }] }`,
+      localWorkspaceSource([
+        `{ name: 'org/hang',
+         telemetry() { return { flush() { return new Promise(() => {}) } } } }`,
+      ]),
     )
     await gitInit(root)
     const summary = await run({
@@ -185,6 +189,7 @@ describe('the telemetry task set matches what the terminal reports', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', workspaces: ['pkg-a'] }),
     )
+    await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
       path.join(root, 'pkg-a/vx.config.mjs'),
@@ -221,6 +226,7 @@ describe('the telemetry task set matches what the terminal reports', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', workspaces: ['pkg-a'] }),
     )
+    await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
       path.join(root, 'pkg-a/vx.config.mjs'),
@@ -295,6 +301,7 @@ describe('a malformed telemetry() return is rejected at the boundary', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', workspaces: ['pkg-a'] }),
     )
+    await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
       path.join(root, 'pkg-a/vx.config.mjs'),
@@ -302,7 +309,7 @@ describe('a malformed telemetry() return is rejected at the boundary', () => {
     )
     await Bun.write(
       path.join(root, 'vx.workspace.mjs'),
-      `export default { plugins: [{ name: 'org/bad', telemetry() { return null } }] }`,
+      localWorkspaceSource([`{ name: 'org/bad', telemetry() { return null } }`]),
     )
     await gitInit(root)
     const summary = await run({
@@ -323,6 +330,7 @@ describe('the zero-cost gate keys on the telemetry capability', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', workspaces: ['pkg-a'] }),
     )
+    await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
       path.join(root, 'pkg-a/vx.config.mjs'),
@@ -349,12 +357,12 @@ describe('the zero-cost gate keys on the telemetry capability', () => {
 
   it('a backend-only plugin pays nothing', async () => {
     const root = await runWith(
-      `export default { plugins: [{ name: 'org/be', backend() { return undefined } }] }`,
+      localWorkspaceSource([`{ name: 'org/be', backend() { return undefined } }`]),
     )
     expect(idFile(root)).toBe(false)
   }, 30_000)
 
-  it('no plugins at all pays nothing', async () => {
+  it('no plugin beyond the local executor + cache pays nothing', async () => {
     expect(idFile(await runWith(null))).toBe(false)
   }, 30_000)
 
@@ -362,7 +370,7 @@ describe('the zero-cost gate keys on the telemetry capability', () => {
     // Declining is only knowable by asking, so this cost is irreducible —
     // the gate is about plugins with no telemetry hook at all.
     const root = await runWith(
-      `export default { plugins: [{ name: 'org/tel', telemetry() { return undefined } }] }`,
+      localWorkspaceSource([`{ name: 'org/tel', telemetry() { return undefined } }`]),
     )
     expect(idFile(root)).toBe(true)
   }, 30_000)
