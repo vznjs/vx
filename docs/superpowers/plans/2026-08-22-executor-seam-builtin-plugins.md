@@ -2365,3 +2365,243 @@ git push origin main
 ```
 
 Then confirm the REAL CI conclusion: `curl -s "https://api.github.com/repos/vznjs/vx/actions/runs?branch=main&per_page=1" | python3 -c "import sys,json; r=json.load(sys.stdin)['workflow_runs'][0]; print(r['head_sha'][:7], r['status'], r['conclusion'])"` — wait for `completed success`. CI runs `vx run ci` through the repo's own `vx.workspace.ts`, so a green CI is the end-to-end proof of the declared-only model on Linux.
+
+---
+
+# Revision 2 (2026-08-23): plugins live in `src/plugins/`, fully isolated; no bundle helpers
+
+Owner instructions, overriding the Addendum where they conflict:
+
+- **`src/plugins/<name>/index.ts`** is the home of every core-provided plugin.
+  Each directory is a complete plugin that imports core ONLY through the bare
+  public specifier `'@vzn/vx'` (resolved inside this repo by the
+  `node_modules/@vzn/vx -> ../..` self-link, exactly as `packages/*` do) and
+  never reaches relatively outside its own directory — so it can be moved
+  into its own package later with zero edits. `src/index.ts` does NOT
+  re-export them (that would be a cycle and would make them core); users
+  import them from **subpath exports**: `@vzn/vx/plugins/local-executor`,
+  `@vzn/vx/plugins/local-cache`.
+- **No bundle helpers.** There is no `localPlugins()`, no `builtinPlugins()`,
+  no `withBuiltins()`. Users compose the array themselves, always.
+- **No per-task pauses** for the remaining tasks; everything is verified once
+  at the end by the parent.
+
+Everything in Tasks 8–10 stands except the items below.
+
+## Overrides for Task 8
+
+**Files (replaces the Task 8 file list):**
+
+- Delete: `src/orchestrator/builtin-plugins.ts`, `tests/builtin-plugins.test.ts` (`git rm`)
+- Create: `src/plugins/local-executor/index.ts`, `src/plugins/local-cache/index.ts`, `src/orchestrator/missing-plugin.ts`, `tests/helpers/local-workspace.ts`, `tests/local-plugins.test.ts`
+- Modify: `package.json` (`exports`), `src/index.ts`, `src/orchestrator/index.ts`, `src/orchestrator/plugin-host.ts`, `src/orchestrator/prepare.ts`, `src/exec/executor.ts`, `src/exec/index.ts`, `vx.workspace.ts`, `tests/module-boundaries.test.ts`, `tests/package-boundaries.test.ts`, `tests/plugin-capabilities.test.ts`, `tests/executor.test.ts`, `tests/execute-task.test.ts`, and the 38 fixture files.
+
+**`localExecutor` moves out of core.** `src/exec/executor.ts` keeps ONLY the contract (`TaskExecutor`, `ExecuteRequest`, `ExecuteResult`, `ExecuteSandbox`) and `selectExecutor`; delete `localExecutor` from it and from `src/exec/index.ts`. The process primitives it needs become public API — add to `src/index.ts`:
+
+```ts
+// Process primitives — what an executor plugin builds on. `@vzn/vx/plugins/local-executor`
+// is the reference implementation and imports exactly these.
+export { runCommand, runSandboxed } from './exec/index.js'
+```
+
+(`runCommand`/`runSandboxed` are already on the exec contract.) Remove `localExecutor` and `selectExecutor` from the façade (`selectExecutor` is core-internal; tests import it from `../src/exec/index.js`). The façade pin therefore changes by: `+runCommand +runSandboxed −builtinPlugins −localCachePlugin −localExecutor −localExecutorPlugin −selectExecutor −withBuiltins`. Confirm the pin's failure diff lists EXACTLY that set.
+
+**`src/plugins/local-executor/index.ts`:**
+
+```ts
+// Core's executor as a plugin: spawn the task's command in-process, exactly
+// the `runCommand` / `runSandboxed` call the orchestrator used to make
+// directly. Imports core only through the public `@vzn/vx` surface so this
+// directory can become its own package unchanged.
+
+import { runCommand, runSandboxed, type TaskExecutor, type VxPlugin } from '@vzn/vx'
+
+export const LOCAL_EXECUTOR_PLUGIN = 'vx/local-executor'
+
+/** The executor itself — for tests and for plugins that wrap local execution. */
+export function localExecutor(): TaskExecutor {
+  return {
+    name: 'local',
+    async execute(req) {
+      const common = {
+        command: req.command,
+        cwd: req.cwd,
+        env: req.env,
+        forwardArgs: req.forwardArgs,
+        onStdout: req.onStdout,
+        onStderr: req.onStderr,
+        capture: req.capture,
+        ...(req.liveChildren !== undefined ? { liveChildren: req.liveChildren } : {}),
+        ...(req.timeoutMs !== undefined ? { timeoutMs: req.timeoutMs } : {}),
+      }
+      if (req.sandbox === undefined) {
+        const res = await runCommand(common)
+        return { ...res, violations: [] }
+      }
+      return await runSandboxed({
+        ...common,
+        baseAllowRead: req.sandbox.baseAllowRead,
+        baseAllowWrite: req.sandbox.baseAllowWrite,
+        baseDenyRead: req.sandbox.baseDenyRead,
+        config: req.sandbox.config,
+      })
+    },
+  }
+}
+
+/** Declare in vx.workspace.ts: `plugins: [localExecutorPlugin(), …]`. Accepts every task. */
+export function localExecutorPlugin(): VxPlugin {
+  return { name: LOCAL_EXECUTOR_PLUGIN, executor: () => localExecutor() }
+}
+```
+
+**`src/plugins/local-cache/index.ts`:**
+
+```ts
+// Core's cache as a plugin: the `.vx/cache` handle the host opened (the run
+// index + the local artifact store). Declared like any other cache layer;
+// put a remote layer BEFORE it to look there first.
+
+import type { VxPlugin } from '@vzn/vx'
+
+export const LOCAL_CACHE_PLUGIN = 'vx/local-cache'
+
+export function localCachePlugin(): VxPlugin {
+  return { name: LOCAL_CACHE_PLUGIN, cache: (ctx) => ctx.localCache }
+}
+```
+
+**`package.json` `exports`** becomes:
+
+```json
+"exports": {
+  ".": { "types": "./src/index.ts", "import": "./src/index.ts" },
+  "./plugins/local-executor": { "types": "./src/plugins/local-executor/index.ts", "import": "./src/plugins/local-executor/index.ts" },
+  "./plugins/local-cache": { "types": "./src/plugins/local-cache/index.ts", "import": "./src/plugins/local-cache/index.ts" }
+}
+```
+
+**`src/orchestrator/missing-plugin.ts`** (replaces the `MISSING_PLUGIN_HINT` in the deleted `local-plugins.ts`):
+
+```ts
+/** Shown by every "no <capability> plugin declared" error. */
+export const MISSING_PLUGIN_HINT = `vx runs nothing it was not told to. Declare the plugins in vx.workspace.ts:
+
+  import { defineWorkspace } from '@vzn/vx'
+  import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
+  import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
+  export default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })
+
+Put a remote executor or cache plugin BEFORE the local one to prefer it.`
+```
+
+Export it from `src/orchestrator/index.ts` (NOT from the façade). `plugin-host.ts` imports it from `./missing-plugin.js`.
+
+**`tests/local-plugins.test.ts`** (replaces the Addendum's version): import `localExecutorPlugin`, `LOCAL_EXECUTOR_PLUGIN`, `localExecutor` from `'../src/plugins/local-executor/index.js'`, `localCachePlugin`, `LOCAL_CACHE_PLUGIN` from `'../src/plugins/local-cache/index.js'`, and `MISSING_PLUGIN_HINT`, `resolveCache`, `resolveExecutors` from `'../src/orchestrator/index.js'`. Tests:
+
+```ts
+it('each plugin is named under vx/ and contributes exactly one capability', () => {
+  const e = localExecutorPlugin()
+  const c = localCachePlugin()
+  expect(e.name).toBe(LOCAL_EXECUTOR_PLUGIN)
+  expect(typeof e.executor).toBe('function')
+  expect(e.cache).toBeUndefined()
+  expect(c.name).toBe(LOCAL_CACHE_PLUGIN)
+  expect(typeof c.cache).toBe('function')
+  expect(c.executor).toBeUndefined()
+})
+
+it('the hint shows the exact lines to add, with the subpath imports', () => {
+  expect(MISSING_PLUGIN_HINT).toContain("from '@vzn/vx/plugins/local-executor'")
+  expect(MISSING_PLUGIN_HINT).toContain("from '@vzn/vx/plugins/local-cache'")
+  expect(MISSING_PLUGIN_HINT).toContain('plugins: [localExecutorPlugin(), localCachePlugin()]')
+})
+
+it('the local executor plugin resolves to the local executor; the cache plugin hands back the host handle', async () => {
+  const ctx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
+  const list = await resolveExecutors([localExecutorPlugin()], { ...ctx, concurrency: 1 })
+  expect(list.map((x) => x.name)).toEqual(['local'])
+  const marker = { hasRemote: false } as never
+  const layer = await localCachePlugin().cache!({
+    ...ctx,
+    localCache: marker,
+    policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
+  })
+  expect(layer).toBe(marker)
+})
+```
+
+plus the Addendum's two `resolveExecutors`/`resolveCache` "fails fast and names the fix" tests unchanged (they use only host functions), with the "control" test using `[localExecutorPlugin()]` instead of `localPlugins()`.
+
+**`tests/executor.test.ts`:** import `localExecutor` from `'../src/plugins/local-executor/index.js'` (the `selectExecutor` import stays on `'../src/exec/index.js'`). **`tests/execute-task.test.ts`:** same import change for `localExecutor`.
+
+**`tests/helpers/local-workspace.ts`** — replace `CORE_INDEX` usage for the plugins with the two plugin paths:
+
+```ts
+import path from 'node:path'
+
+const here = import.meta.dir
+/** Absolute paths — fixtures live in a tmp dir where `@vzn/vx` does not resolve. */
+export const CORE_INDEX = path.resolve(here, '../../src/index.ts')
+export const LOCAL_EXECUTOR_PLUGIN_PATH = path.resolve(
+  here,
+  '../../src/plugins/local-executor/index.ts',
+)
+export const LOCAL_CACHE_PLUGIN_PATH = path.resolve(here, '../../src/plugins/local-cache/index.ts')
+
+/** Source for a `vx.workspace.mjs`: the test's own plugins (JS expressions) FIRST, then the local ones. */
+export function localWorkspaceSource(extra: readonly string[] = [], prelude = ''): string {
+  return `${prelude}
+import { localExecutorPlugin } from ${JSON.stringify(LOCAL_EXECUTOR_PLUGIN_PATH)}
+import { localCachePlugin } from ${JSON.stringify(LOCAL_CACHE_PLUGIN_PATH)}
+export default { plugins: [${[...extra, 'localExecutorPlugin()', 'localCachePlugin()'].join(', ')}] }
+`
+}
+
+export async function writeLocalWorkspace(root: string): Promise<void> {
+  await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource())
+}
+```
+
+(A plugin file imported by absolute path still resolves its own `'@vzn/vx'` import relative to ITS location inside the repo, and Bun keys modules by realpath, so it is the same `src/index.ts` instance the test imports.)
+
+**This repo's `vx.workspace.ts`:**
+
+```ts
+import { defineWorkspace } from '@vzn/vx'
+import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
+import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
+import { otel } from '@vzn/vx-otel'
+import { cloud } from '@vzn/vx-cloud/plugin'
+
+// Nothing runs that is not declared here — including core's own executor
+// and cache. Order is precedence: cloud() (when configured) delegates the
+// run or layers its remote cache ahead of the local one; otel() observes.
+export default defineWorkspace({
+  plugins: [otel(), cloud(), localExecutorPlugin(), localCachePlugin()],
+})
+```
+
+**Boundary tests — the isolation pins** (add to Task 8, run them before committing):
+
+- `tests/module-boundaries.test.ts`: the module classifier maps `src/plugins/<name>/…` to module `plugins`. Add `plugins: []` to `ALLOWED` (no relative cross-module import is legal from a plugin) and add `'plugins'` to nothing else — `src/index.ts` must not import it. Then add one test: every relative import inside `src/plugins/<name>/` resolves to a path INSIDE `src/plugins/<name>/` (read each file, collect `from '\.\.?/…'` specifiers, `path.resolve` them, assert `startsWith(dir)`).
+- `tests/package-boundaries.test.ts`: read Rule 2's implementation first. If it forbids the bare `'@vzn/vx'` specifier anywhere under `src/**`, EXEMPT `src/plugins/**` for `'@vzn/vx'` only (a sibling `@vzn/vx-*` import stays forbidden) and add a positive test: every `src/plugins/<name>/index.ts` imports from `'@vzn/vx'` and from nothing else non-relative. This is the pin that a plugin is package-shaped.
+
+**Task 8 commit paths** — add `package.json src/plugins/local-executor/index.ts src/plugins/local-cache/index.ts src/orchestrator/missing-plugin.ts src/exec/index.ts tests/module-boundaries.test.ts tests/execute-task.test.ts`; drop `src/orchestrator/local-plugins.ts`/`tests/local-plugins.test.ts` renames (they are a `git rm` + a new file now). Commit subject stays; add to the body: "The local executor and cache live in src/plugins/<name>, import core only via '@vzn/vx', and are published as subpath exports — each can be lifted into its own package unchanged."
+
+## Overrides for Task 9
+
+- `tests/chained-cache.test.ts`: unchanged. The e2e pin in `tests/plugin-capabilities.test.ts` keeps using `localWorkspaceSource` (now emitting the two plugin imports) and `CORE_INDEX` for `Cache`.
+
+## Overrides for Task 10
+
+- `WORKSPACE_FILE` in `src/cli/migrate.ts` emits the four-line form from `MISSING_PLUGIN_HINT` (import `defineWorkspace` from `'@vzn/vx'`, the two plugins from their subpaths). `tests/migrate.test.ts` asserts the two subpath import lines.
+- Docs: `docs/modules/local-plugins.md` becomes `docs/modules/plugins.md` — one page for `src/plugins/`: the isolation contract (bare `@vzn/vx` only, no relative reach outside the directory, subpath export, pinned by the two boundary tests), then a section per plugin. `docs/modules/README.md` gets a "Plugins (`src/plugins/`)" table. `docs/schema.md`, `docs/README.md`, `docs/architecture.md` and the design doc §3 show the subpath imports. `CLAUDE.md`: the layout tree gains
+
+```
+  plugins/              # core-provided plugins, each isolated: imports core ONLY via '@vzn/vx',
+    local-executor/     # published as @vzn/vx/plugins/local-executor — liftable into a package unchanged
+    local-cache/        # published as @vzn/vx/plugins/local-cache
+```
+
+and Architecture principle 7 reads: `**No defaults.** Core applies no plugin on its own — even its executor and cache are plugins under src/plugins/, declared in vx.workspace.ts like any third-party one; a workspace that declares none fails before any task runs, naming the fix.`
