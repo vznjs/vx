@@ -441,8 +441,15 @@ time every single time.
   multiple `write()` calls (concatenating every frame into ONE write hangs
   too); not `subarray` byteOffset handling (copying each chunk changes
   nothing); not the server (Node 24 succeeds against the same container at
-  every chunk size); not the Bun version (1.3.14 and 1.4.0 — what CI runs —
-  behave identically). Worth an upstream report; vx is not blocked on it.
+  every chunk size); and not a version regression — 1.3.14 and 1.4.0 both
+  exhibit it. **Upgrading Bun does NOT fix it, it MOVES the threshold:** on
+  1.3.14 the safe ceiling is ~64 KB, on 1.4.0 it is between 192 and 256 KB.
+  That is precisely why the constant stays at 64 KB rather than "the largest
+  that works today" — the safe value is not something a future Bun is obliged
+  to preserve, and exceeding it does not error, it HANGS. Worth an upstream
+  report; vx is not blocked on it. (Local Bun was upgraded 1.3.14 → 1.4.0 in
+  this wave so the dev runtime matches CI's `bun-version: latest`; the whole
+  suite is green on it.)
   **Also verified working on Bun:** proto-loader parses the full REAPI set in
   28 ms and builds all four service clients; every unary call round-trips
   bytes verified identical; server-streaming `ByteStream.Read` returns 2 MB in

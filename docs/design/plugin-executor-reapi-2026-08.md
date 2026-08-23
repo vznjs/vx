@@ -445,7 +445,8 @@ pump hangs the same); **not** multiple `write()` calls (concatenating every
 frame into ONE `write()` hangs too); **not** `Uint8Array.subarray` byteOffset
 handling (copying each chunk changes nothing); **not** the server (Node 24
 succeeds against the same container at every chunk size); **not** the Bun
-version (1.3.14 and 1.4.0 (what CI runs) behave identically).
+version — 1.3.14 and 1.4.0 both exhibit it, at different thresholds (see the
+table above).
 
 Worth reporting upstream with that table — it is a tight reproduction — but
 vx is not blocked waiting for it.
