@@ -457,10 +457,14 @@ time every single time.
   package suite in ONE bun process against the qemu-emulated local
   NativeLink hung indefinitely with zero output; every file passes alone
   and in pairs (80/0 total). That is the Bun #39796 inbound-stall class
-  compounded by an emulation-slowed server, not a product defect — CI runs
-  the same suite one-process on native amd64 and stays green. Recorded so
-  the next local full-suite hang is not re-diagnosed from scratch: run the
-  package files individually on arm64 Macs. Core suite green after the
+  compounded by accumulated gRPC sessions in one process, not a product
+  defect. **CORRECTION (same day, next CI run):** my claim that "CI runs the
+  same suite one-process on native amd64 and stays green" was DISPROVEN
+  within the hour — this wave's added live tests raised the per-process load
+  enough that the multi-chunk cache round-trip timed out at 90 s on the
+  runner too. The CI step now runs ONE BUN PROCESS PER TEST FILE, the shape
+  the evidence supports (every file green solo on both native amd64 and
+  emulated arm64); same for local runs on arm64 Macs. Core suite green after the
   `refresh` threading. Two false-alarm hours saved for the future: the
   worker ENOENT message names the COMMAND (`/bin/sh`), never the missing
   working directory — upstream might take a docs PR for that.
