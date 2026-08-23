@@ -1504,3 +1504,864 @@ Then confirm the REAL CI conclusion (not just the local gate):
 4. `ExecuteResult.outputs` discriminator (`disk`/`cache`/`deferred`) + `--download`.
 5. `@vzn/vx-reapi` phase 1 (remote cache over AC/CAS; the gRPC-on-Bun spike).
 6. Port vx-cloud's dist to `executor`; retire `backend`.
+
+---
+
+# Addendum (2026-08-23): no defaults, chained caches
+
+Owner decisions after Tasks 1–7 landed locally (commits `1763926`…`31d1802`, unpushed):
+
+1. **No defaults.** Nothing is appended. A workspace declares EVERY plugin it
+   uses, including the local ones: `plugins: [localExecutorPlugin(), localCachePlugin()]`.
+   A workspace with no executor or no cache provider FAILS FAST with a message
+   that shows the exact lines to add. `withBuiltins` is deleted.
+2. **Executors:** every contributed executor is kept in declaration order; per
+   task the first whose `accepts()` passes runs it (what Tasks 3/6 built).
+3. **Caches:** every contributed cache layer is kept in declaration order and
+   CHAINED by core — lookup walks the layers until a hit, save writes to all.
+   `[remote(), localCachePlugin()]` just works without the remote plugin
+   wrapping the local handle itself.
+
+The wave is not pushed until Tasks 8–10 are green. Invariants from the top of
+this plan still hold, with one deliberate exception: a workspace that declares
+no plugins no longer runs — that is the decision, and the error names the fix.
+
+## File structure (addendum)
+
+| File                                                                                                                                                                                                                                                                              | Responsibility                                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/orchestrator/local-plugins.ts` (rename from `builtin-plugins.ts`)                                                                                                                                                                                                            | `localExecutorPlugin()`, `localCachePlugin()`, `localPlugins()`; the shared `MISSING_PLUGIN_HINT`. No `withBuiltins`.                        |
+| `src/orchestrator/plugin-host.ts` (modify)                                                                                                                                                                                                                                        | `resolveExecutors` throws on an empty list; `resolveCache` collects ALL layers, dedupes a bare local handle another layer wraps, chains ≥ 2. |
+| `src/cache/chained-cache.ts` (create)                                                                                                                                                                                                                                             | `ChainedCache implements CacheLayer` over an ordered list.                                                                                   |
+| `src/cache/layered-cache.ts` (modify)                                                                                                                                                                                                                                             | `local` becomes `public readonly` so core can see which handle a layer wraps (cloud's layer exposes it with zero cloud edits).               |
+| `src/cache/cache.ts` (modify)                                                                                                                                                                                                                                                     | `CacheLayer.local?: Cache` optional member.                                                                                                  |
+| `src/exec/executor.ts` (modify)                                                                                                                                                                                                                                                   | `selectExecutor`'s all-declined error carries the hint.                                                                                      |
+| `src/orchestrator/prepare.ts` (modify)                                                                                                                                                                                                                                            | `prepared.plugins` = declared only.                                                                                                          |
+| `src/cli/migrate.ts` (modify)                                                                                                                                                                                                                                                     | Emits `vx.workspace.ts` with the local plugins when none exists.                                                                             |
+| `vx.workspace.ts` (modify)                                                                                                                                                                                                                                                        | This repo declares `localExecutorPlugin(), localCachePlugin()`.                                                                              |
+| `tests/helpers/local-workspace.ts` (create)                                                                                                                                                                                                                                       | Fixture helper: writes a `vx.workspace.mjs` declaring the local plugins (import by absolute path to `src/index.ts`).                         |
+| 38 test files (modify)                                                                                                                                                                                                                                                            | Every fixture that runs tasks declares the local plugins via the helper.                                                                     |
+| `tests/local-plugins.test.ts` (rename from `builtin-plugins.test.ts`), `tests/chained-cache.test.ts` (create), `tests/plugin-capabilities.test.ts`, `tests/migrate.test.ts`, `tests/package-boundaries.test.ts` (modify)                                                          | Pins.                                                                                                                                        |
+| `docs/modules/local-plugins.md` (rename), `docs/modules/chained-cache.md` (create), `docs/schema.md`, `docs/architecture.md`, `docs/README.md`, `docs/modules/{plugin,plugin-host,layered-cache,README}.md`, `docs/design/plugin-executor-reapi-2026-08.md`, `CLAUDE.md` (modify) | Docs in the same wave.                                                                                                                       |
+
+---
+
+### Task 8: No defaults — declared plugins only, named errors, fixtures declare the local plugins
+
+**Files:**
+
+- Rename: `src/orchestrator/builtin-plugins.ts` → `src/orchestrator/local-plugins.ts`
+- Modify: `src/orchestrator/index.ts`, `src/index.ts`, `src/orchestrator/plugin-host.ts`, `src/orchestrator/prepare.ts`, `src/exec/executor.ts`, `vx.workspace.ts`
+- Create: `tests/helpers/local-workspace.ts`
+- Rename: `tests/builtin-plugins.test.ts` → `tests/local-plugins.test.ts`
+- Modify: `tests/plugin-capabilities.test.ts`, `tests/executor.test.ts`, `tests/package-boundaries.test.ts`, and the 38 fixture files listed in Step 5
+
+- [ ] **Step 1: Write the failing tests (`tests/local-plugins.test.ts`)**
+
+Replace the file's contents with:
+
+```ts
+import { describe, expect, it } from 'bun:test'
+import {
+  localCachePlugin,
+  localExecutorPlugin,
+  localPlugins,
+  MISSING_PLUGIN_HINT,
+  resolveCache,
+  resolveExecutors,
+} from '../src/orchestrator/index.js'
+import { Cache } from '../src/cache/index.js'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+
+const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
+const policy = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
+
+describe('local plugins', () => {
+  it('localPlugins() is exactly [executor, cache], named under vx/', () => {
+    expect(localPlugins().map((p) => p.name)).toEqual(['vx/local-executor', 'vx/local-cache'])
+    expect(typeof localExecutorPlugin().executor).toBe('function')
+    expect(typeof localCachePlugin().cache).toBe('function')
+  })
+
+  it('the hint shows the exact lines to add', () => {
+    expect(MISSING_PLUGIN_HINT).toContain(
+      "import { defineWorkspace, localExecutorPlugin, localCachePlugin } from '@vzn/vx'",
+    )
+    expect(MISSING_PLUGIN_HINT).toContain('plugins: [localExecutorPlugin(), localCachePlugin()]')
+  })
+
+  it('resolveExecutors with NO executor plugin fails fast and names the fix', async () => {
+    await expect(resolveExecutors([], { ...baseCtx, concurrency: 1 })).rejects.toThrow(
+      /no executor plugin declared[\s\S]*localExecutorPlugin\(\)/,
+    )
+    await expect(
+      resolveExecutors([{ name: 'org/none', executor: () => undefined }], {
+        ...baseCtx,
+        concurrency: 1,
+      }),
+    ).rejects.toThrow(/no executor plugin declared[\s\S]*org\/none declined/)
+  })
+
+  it('resolveExecutors with the local plugin declared resolves to the local executor (control)', async () => {
+    const list = await resolveExecutors(localPlugins(), { ...baseCtx, concurrency: 1 })
+    expect(list.map((e) => e.name)).toEqual(['local'])
+  })
+
+  it('resolveCache with NO cache plugin fails fast and names the fix', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'vx-local-plugins-'))
+    const local = new Cache(dir, { read: true, write: true })
+    try {
+      await expect(resolveCache([], { ...baseCtx, localCache: local, policy })).rejects.toThrow(
+        /no cache plugin declared[\s\S]*localCachePlugin\(\)/,
+      )
+    } finally {
+      local.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+```
+
+Delete `tests/builtin-plugins.test.ts` (`git mv tests/builtin-plugins.test.ts tests/local-plugins.test.ts` first, then overwrite).
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `bun test tests/local-plugins.test.ts`
+Expected: FAIL — `localPlugins` / `MISSING_PLUGIN_HINT` not exported.
+
+- [ ] **Step 3: Implement `src/orchestrator/local-plugins.ts`**
+
+`git mv src/orchestrator/builtin-plugins.ts src/orchestrator/local-plugins.ts`, then replace its contents with:
+
+```ts
+// Core's own execution and cache, as plugins a workspace DECLARES. Nothing
+// is appended by default: a run with no executor plugin or no cache plugin
+// fails fast with MISSING_PLUGIN_HINT. This is what makes "a plugin can
+// replace any part" provable — there is no path that does not go through
+// the declared list — and it is the owner's explicit-over-magical rule
+// applied to core itself.
+
+import { localExecutor } from '../exec/index.js'
+import type { VxPlugin } from './plugin.js'
+
+export const LOCAL_EXECUTOR_PLUGIN = 'vx/local-executor'
+export const LOCAL_CACHE_PLUGIN = 'vx/local-cache'
+
+/** Shown by every "no <capability> plugin declared" error. */
+export const MISSING_PLUGIN_HINT = `vx runs nothing it was not told to. Declare the plugins in vx.workspace.ts:
+
+  import { defineWorkspace, localExecutorPlugin, localCachePlugin } from '@vzn/vx'
+  export default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })
+
+Put a remote executor or cache plugin BEFORE the local one to prefer it.`
+
+/** In-process spawn — `runCommand` / `runSandboxed`. Accepts every task. */
+export function localExecutorPlugin(): VxPlugin {
+  return { name: LOCAL_EXECUTOR_PLUGIN, executor: () => localExecutor() }
+}
+
+/** The `.vx/cache` handle core opened (the run index + local artifact store). */
+export function localCachePlugin(): VxPlugin {
+  return { name: LOCAL_CACHE_PLUGIN, cache: (ctx) => ctx.localCache }
+}
+
+/** Both local plugins, in the order a plain workspace declares them. */
+export function localPlugins(): VxPlugin[] {
+  return [localExecutorPlugin(), localCachePlugin()]
+}
+```
+
+In `src/orchestrator/index.ts` replace the `./builtin-plugins.js` export block with:
+
+```ts
+export {
+  LOCAL_CACHE_PLUGIN,
+  LOCAL_EXECUTOR_PLUGIN,
+  localCachePlugin,
+  localExecutorPlugin,
+  localPlugins,
+  MISSING_PLUGIN_HINT,
+} from './local-plugins.js'
+```
+
+In `src/index.ts` replace the built-ins export block with:
+
+```ts
+// Core's own execution and cache, as plugins a workspace DECLARES — nothing
+// is applied by default; see MISSING_PLUGIN_HINT for the lines to add.
+export {
+  localCachePlugin,
+  localExecutorPlugin,
+  localPlugins,
+  MISSING_PLUGIN_HINT,
+} from './orchestrator/index.js'
+```
+
+Update `tests/package-boundaries.test.ts`'s pin: remove `builtinPlugins`, `withBuiltins`; add `localPlugins`, `MISSING_PLUGIN_HINT` in sorted position. Run `bun test tests/package-boundaries.test.ts` — the failure diff must list EXACTLY those four changes.
+
+- [ ] **Step 4: The host errors**
+
+In `src/orchestrator/plugin-host.ts`:
+
+```ts
+import { MISSING_PLUGIN_HINT } from './local-plugins.js'
+```
+
+`resolveExecutors` — after the loop, before `return executors`:
+
+```ts
+if (executors.length === 0) {
+  const declined = plugins.filter((p) => p.executor !== undefined).map((p) => `${p.name} declined`)
+  throw new UserError(
+    `no executor plugin declared${declined.length > 0 ? ` (${declined.join(', ')})` : ''}. ${MISSING_PLUGIN_HINT}`,
+  )
+}
+```
+
+`resolveCache` — replace the throw with:
+
+```ts
+const declined = plugins.filter((p) => p.cache !== undefined).map((p) => `${p.name} declined`)
+throw new UserError(
+  `no cache plugin declared${declined.length > 0 ? ` (${declined.join(', ')})` : ''}. ${MISSING_PLUGIN_HINT}`,
+)
+```
+
+(Task 9 rewrites `resolveCache` again for chaining; this step only changes the message.)
+
+In `src/orchestrator/prepare.ts`: remove the `withBuiltins` import; `const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]`. The `PreparedRun.plugins` doc comment becomes `/** The workspace's declared plugins, in declaration order. Nothing is added. */`.
+
+In `src/exec/executor.ts`, `selectExecutor`'s throw becomes:
+
+```ts
+throw new Error(
+  `no executor accepted ${req.taskId} (declared: ${executors.map((e) => e.name).join(', ')}). Declare localExecutorPlugin() after the executor that declined to run such tasks locally.`,
+)
+```
+
+and update `tests/executor.test.ts`'s `throws when every executor declines` regex to `/no executor accepted pkg-a#hello/` (unchanged) — it still matches.
+
+In `src/orchestrator/run.ts` there is nothing to change: it already reads `prepared.plugins`.
+
+- [ ] **Step 5: Fixture helper + the sweep**
+
+Create `tests/helpers/local-workspace.ts`:
+
+```ts
+import path from 'node:path'
+
+/**
+ * Fixtures live in a tmp dir with no node_modules, so `@vzn/vx` does not
+ * resolve there; import core by ABSOLUTE path instead. Bun keys its module
+ * registry by resolved path, so the plugin objects come from the same
+ * `src/index.ts` instance the test itself imports.
+ */
+export const CORE_INDEX = path.resolve(import.meta.dir, '../../src/index.ts')
+
+/** Source for a `vx.workspace.mjs` declaring the local plugins plus `extra` (JS expressions). */
+export function localWorkspaceSource(extra: readonly string[] = [], prelude = ''): string {
+  return `${prelude}
+import { localExecutorPlugin, localCachePlugin } from ${JSON.stringify(CORE_INDEX)}
+export default { plugins: [${[...extra, 'localExecutorPlugin()', 'localCachePlugin()'].join(', ')}] }
+`
+}
+
+/** Write the plain local `vx.workspace.mjs` into `root`. */
+export async function writeLocalWorkspace(root: string): Promise<void> {
+  await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource())
+}
+```
+
+Then, for EACH of these 38 files, make the fixture declare the local plugins:
+
+```
+tests/cli-arg-hygiene.test.ts tests/cli-picker.test.ts tests/cli.test.ts tests/config-staleness.test.ts
+tests/execute-task.test.ts tests/local-shortcircuit.test.ts tests/mcp.test.ts tests/migrate.test.ts
+tests/output-flow.test.ts tests/persistent-ready-timeout.test.ts tests/plan-format.test.ts
+tests/persistent.test.ts tests/plan-predict.test.ts tests/retries.test.ts tests/resources.test.ts
+tests/run-record-completeness.test.ts tests/sandbox-runtime.test.ts tests/show-info.test.ts
+tests/scoped-config-loading.test.ts tests/signal-handling.test.ts tests/task-selection.test.ts
+tests/upgrade.test.ts tests/util-size.test.ts tests/watch-rules.test.ts tests/why.test.ts
+tests/verify.test.ts tests/workspace-files.test.ts
+```
+
+plus the 11 that already write a `vx.workspace.mjs` (find them with `grep -lE "\brun\(\{|runCmd\(|from '../src/cli" tests/*.test.ts | xargs grep -l "vx.workspace"`):
+
+- A fixture with NO workspace file: call `await writeLocalWorkspace(workspaceRoot)` right after the fixture's `package.json` is written (before any `git add`, so the file is committed in fixtures that commit).
+- A fixture that already writes a `vx.workspace.mjs` with its own plugins: rewrite it through `localWorkspaceSource(['{ name: ..., ... }'], prelude)` so the local plugins come AFTER the test's own plugin (the test's plugin keeps precedence). Where the test asserts a fallback to the local executor (`an executor that declines a task falls through …`), the local plugin being declared is now the reason it works — keep the test, it is the control.
+- A test that exercises the CLI through `process.chdir` works the same way — the workspace file is read from the fixture root.
+- Files in the list that turn out NOT to execute tasks (the grep is approximate — `util-size`, `upgrade`, `plan-format`, `show-info` may only parse): leave them untouched and say so in the report.
+
+Add to `tests/plugin-capabilities.test.ts` (the e2e describe):
+
+```ts
+it('NO DEFAULTS: a workspace with no plugins fails before any task runs and names the fix', async () => {
+  const { workspaceRoot, cleanup } = await writeFixture()
+  try {
+    await gitInit(workspaceRoot)
+    await expect(runHello(workspaceRoot)).rejects.toThrow(
+      /no cache plugin declared[\s\S]*localExecutorPlugin\(\), localCachePlugin\(\)/,
+    )
+  } finally {
+    cleanup()
+  }
+})
+
+it('CONTROL: the same workspace with the local plugins declared runs', async () => {
+  const { workspaceRoot, cleanup } = await writeFixture()
+  try {
+    await writeLocalWorkspace(workspaceRoot)
+    await gitInit(workspaceRoot)
+    const summary = await runHello(workspaceRoot)
+    expect(summary.ok).toBe(true)
+  } finally {
+    cleanup()
+  }
+})
+```
+
+(`prepareRun` resolves the cache before `run()` resolves executors, so the cache message is the one a bare workspace sees; both messages carry the same hint.)
+
+This repo's `vx.workspace.ts`:
+
+```ts
+import { defineWorkspace, localExecutorPlugin, localCachePlugin } from '@vzn/vx'
+import { otel } from '@vzn/vx-otel'
+import { cloud } from '@vzn/vx-cloud/plugin'
+
+// Nothing runs that is not declared here — including core's own executor
+// and cache. Order is precedence: cloud() (when configured) delegates the
+// run or layers its remote cache ahead of the local one; otel() observes.
+export default defineWorkspace({
+  plugins: [otel(), cloud(), localExecutorPlugin(), localCachePlugin()],
+})
+```
+
+- [ ] **Step 6: Run everything, lint, commit**
+
+Run: `bun test` from the root, then `bun src/bin.ts run lint`.
+Expected: core suites green (`packages/cloud` suites need Postgres and fail with `pg_config` not found on a box without it — compare the failing NAMES against a `git stash`-free baseline: they must be the same 65 as before this task); lint `success`.
+
+Then the gate that matters: `bun src/bin.ts run ci` — note it now runs THROUGH this repo's updated `vx.workspace.ts`, so a green gate is itself the proof the declared-only model works end to end. Expected: exit 0.
+
+```bash
+git add src/orchestrator/local-plugins.ts src/orchestrator/index.ts src/index.ts src/orchestrator/plugin-host.ts src/orchestrator/prepare.ts src/exec/executor.ts vx.workspace.ts tests/helpers/local-workspace.ts tests/local-plugins.test.ts tests/plugin-capabilities.test.ts tests/executor.test.ts tests/package-boundaries.test.ts <the swept test files>
+git rm --cached src/orchestrator/builtin-plugins.ts tests/builtin-plugins.test.ts 2>/dev/null || true
+git commit -m "Declare the local executor and cache; nothing is applied by default
+
+Owner decision: no defaults. A workspace declares every plugin it uses,
+including vx/local-executor and vx/local-cache; a run with no executor or
+no cache provider fails before any task runs, and the error shows the two
+lines to add. withBuiltins is gone — there is no path around the declared
+list, which is what makes 'a plugin can replace any part' a fact."
+```
+
+---
+
+### Task 9: Chained caches
+
+**Files:**
+
+- Create: `src/cache/chained-cache.ts`
+- Modify: `src/cache/cache.ts` (`CacheLayer.local?`), `src/cache/layered-cache.ts` (`local` public), `src/cache/index.ts`, `src/orchestrator/plugin-host.ts` (`resolveCache`)
+- Test: `tests/chained-cache.test.ts`, `tests/plugin-capabilities.test.ts`
+
+- [ ] **Step 1: Write the failing tests**
+
+```ts
+// tests/chained-cache.test.ts
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { describe, expect, it } from 'bun:test'
+import { Cache, ChainedCache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import { resolveCache, type VxPlugin } from '../src/orchestrator/index.js'
+
+function tmpCache(tag: string): { cache: Cache; dir: string } {
+  const dir = mkdtempSync(path.join(tmpdir(), `vx-chained-${tag}-`))
+  return { cache: new Cache(dir, { read: true, write: true }), dir }
+}
+
+async function saveEntry(cache: Cache, hash: string, projectDir: string): Promise<void> {
+  await Bun.write(path.join(projectDir, 'out.txt'), `out-${hash}\n`)
+  await cache.save({
+    hash,
+    taskId: 'p#t',
+    command: 'echo',
+    exitCode: 0,
+    durationMs: 1,
+    stdout: '',
+    projectDir,
+    outputFiles: ['out.txt'],
+  })
+}
+```
+
+Before writing the rest, read `SaveArgs` in `src/cache/cache.ts` (`grep -n "export interface SaveArgs" -A20 src/cache/cache.ts`) and make `saveEntry` pass exactly its required fields — the shape above is the intent, not a guarantee. Then continue the file:
+
+```ts
+describe('ChainedCache', () => {
+  it('get walks the layers in order and the first hit wins', async () => {
+    const a = tmpCache('a')
+    const b = tmpCache('b')
+    const proj = mkdtempSync(path.join(tmpdir(), 'vx-chained-proj-'))
+    try {
+      await saveEntry(b.cache, 'h1', proj)
+      const chained = new ChainedCache([a.cache, b.cache])
+      const hit = await chained.get('h1')
+      expect(hit?.hash).toBe('h1')
+      expect(await chained.has('h1')).not.toBeNull()
+      expect(await a.cache.get('h1')).toBeNull()
+    } finally {
+      a.cache.close()
+      b.cache.close()
+      for (const d of [a.dir, b.dir, proj]) rmSync(d, { recursive: true, force: true })
+    }
+  })
+
+  it('save writes to every layer', async () => {
+    const a = tmpCache('a')
+    const b = tmpCache('b')
+    const proj = mkdtempSync(path.join(tmpdir(), 'vx-chained-proj-'))
+    try {
+      const chained = new ChainedCache([a.cache, b.cache])
+      await saveEntry(chained as unknown as Cache, 'h2', proj)
+      expect((await a.cache.get('h2'))?.hash).toBe('h2')
+      expect((await b.cache.get('h2'))?.hash).toBe('h2')
+    } finally {
+      a.cache.close()
+      b.cache.close()
+      for (const d of [a.dir, b.dir, proj]) rmSync(d, { recursive: true, force: true })
+    }
+  })
+
+  it('restoreOutputs restores from the layer that had the hit', async () => {
+    const a = tmpCache('a')
+    const b = tmpCache('b')
+    const proj = mkdtempSync(path.join(tmpdir(), 'vx-chained-proj-'))
+    try {
+      await saveEntry(b.cache, 'h3', proj)
+      rmSync(path.join(proj, 'out.txt'))
+      const chained = new ChainedCache([a.cache, b.cache])
+      expect(await chained.get('h3')).not.toBeNull()
+      await chained.restoreOutputs('h3', proj)
+      expect(await Bun.file(path.join(proj, 'out.txt')).text()).toBe('out-h3\n')
+    } finally {
+      a.cache.close()
+      b.cache.close()
+      for (const d of [a.dir, b.dir, proj]) rmSync(d, { recursive: true, force: true })
+    }
+  })
+
+  it('the FIRST layer owns the run index: recordRun reaches only it', () => {
+    const a = tmpCache('a')
+    const b = tmpCache('b')
+    try {
+      const chained = new ChainedCache([a.cache, b.cache])
+      chained.recordRun({
+        runId: 'r1',
+        taskId: 'p#t',
+        status: 'success',
+        durationMs: 1,
+        startedAt: new Date().toISOString(),
+      } as never)
+      expect(a.cache.stats().runs ?? a.cache.stats()).toBeDefined()
+    } finally {
+      a.cache.close()
+      b.cache.close()
+      for (const d of [a.dir, b.dir]) rmSync(d, { recursive: true, force: true })
+    }
+  })
+
+  it('hasRemote is true when any layer has a remote', () => {
+    const a = tmpCache('a')
+    const remote: RemoteCacheLayer = {
+      has: async () => false,
+      get: async () => null,
+      put: async () => undefined,
+    }
+    try {
+      expect(new ChainedCache([a.cache, new LayeredCache(a.cache, remote)]).hasRemote).toBe(true)
+      expect(new ChainedCache([a.cache, a.cache]).hasRemote).toBe(false)
+    } finally {
+      a.cache.close()
+      rmSync(a.dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('resolveCache — chaining', () => {
+  const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
+  const policy = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
+
+  it('one contributing plugin → that layer, unwrapped', async () => {
+    const a = tmpCache('a')
+    try {
+      const plugins: VxPlugin[] = [{ name: 'org/one', cache: () => a.cache }]
+      const resolved = await resolveCache(plugins, { ...baseCtx, localCache: a.cache, policy })
+      expect(resolved).toBe(a.cache)
+    } finally {
+      a.cache.close()
+      rmSync(a.dir, { recursive: true, force: true })
+    }
+  })
+
+  it('two contributing plugins → a ChainedCache in declaration order', async () => {
+    const a = tmpCache('a')
+    const b = tmpCache('b')
+    try {
+      const plugins: VxPlugin[] = [
+        { name: 'org/first', cache: () => b.cache },
+        { name: 'org/second', cache: () => a.cache },
+      ]
+      const resolved = await resolveCache(plugins, { ...baseCtx, localCache: a.cache, policy })
+      expect(resolved).toBeInstanceOf(ChainedCache)
+      expect((resolved as ChainedCache).layers).toEqual([b.cache, a.cache])
+    } finally {
+      a.cache.close()
+      b.cache.close()
+      for (const d of [a.dir, b.dir]) rmSync(d, { recursive: true, force: true })
+    }
+  })
+
+  it('a layer that WRAPS the local handle subsumes the bare local layer (cloud + localCachePlugin)', async () => {
+    const a = tmpCache('a')
+    const remote: RemoteCacheLayer = {
+      has: async () => false,
+      get: async () => null,
+      put: async () => undefined,
+    }
+    const layered = new LayeredCache(a.cache, remote)
+    try {
+      const plugins: VxPlugin[] = [
+        { name: 'org/cloud-like', cache: () => layered },
+        { name: 'vx/local-cache', cache: (ctx) => ctx.localCache },
+      ]
+      const resolved = await resolveCache(plugins, { ...baseCtx, localCache: a.cache, policy })
+      expect(resolved).toBe(layered)
+    } finally {
+      a.cache.close()
+      rmSync(a.dir, { recursive: true, force: true })
+    }
+  })
+})
+```
+
+Add to `tests/plugin-capabilities.test.ts`'s e2e describe an end-to-end pin:
+
+```ts
+it('two declared cache plugins: a run saves into BOTH stores', async () => {
+  const { workspaceRoot, cleanup } = await writeFixture()
+  const second = mkdtempSync(path.join(tmpdir(), 'vx-second-cache-'))
+  try {
+    await Bun.write(
+      path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+      `export default { tasks: { hello: {
+           exec: { command: 'echo hi > out.txt' },
+           cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
+         } } }`,
+    )
+    await Bun.write(
+      path.join(workspaceRoot, 'vx.workspace.mjs'),
+      localWorkspaceSource(
+        [
+          `{ name: 'org/second', cache: () => new Cache(${JSON.stringify(second)}, { read: true, write: true }) }`,
+        ],
+        `import { Cache } from ${JSON.stringify(CORE_INDEX)}`,
+      ),
+    )
+    await gitInit(workspaceRoot)
+    const summary = await runHello(workspaceRoot)
+    expect(summary.ok).toBe(true)
+    const hash = summary.outcomes[0]?.hash
+    expect(typeof hash).toBe('string')
+    const secondCache = new Cache(second, { read: true, write: true })
+    const localCache = new Cache(path.join(workspaceRoot, '.vx/cache'), { read: true, write: true })
+    try {
+      expect((await secondCache.get(hash!))?.hash).toBe(hash)
+      expect((await localCache.get(hash!))?.hash).toBe(hash)
+    } finally {
+      secondCache.close()
+      localCache.close()
+    }
+  } finally {
+    cleanup()
+    rmSync(second, { recursive: true, force: true })
+  }
+})
+```
+
+(`Cache` is already exported from the façade; `CORE_INDEX`/`localWorkspaceSource` come from `tests/helpers/local-workspace.ts`.)
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `bun test tests/chained-cache.test.ts`
+Expected: FAIL — `ChainedCache` not exported.
+
+- [ ] **Step 3: Implement**
+
+`src/cache/cache.ts` — add to `CacheLayer` (first member, with this comment):
+
+```ts
+  /**
+   * The local handle this layer wraps, when it wraps one (`LayeredCache`).
+   * `resolveCache` uses it to drop a bare local layer another declared layer
+   * already contains, so `[cloud(), localCachePlugin()]` does not write the
+   * local store twice.
+   */
+  readonly local?: Cache
+```
+
+`src/cache/layered-cache.ts` — the constructor's `private readonly local: Cache` becomes `readonly local: Cache` (public). Nothing else changes.
+
+`src/cache/chained-cache.ts`:
+
+```ts
+// Several declared cache layers, consulted in declaration order. Lookup
+// walks the layers until one answers; a save reaches every layer; the FIRST
+// layer owns the run index (history, stats, prune) so a run is recorded
+// once. Restore goes to the layer that produced the hit — remembered per
+// hash — because an entry's artifact lives wherever it was found.
+
+import type { Cache, CacheLayer } from './cache.js'
+
+export class ChainedCache implements CacheLayer {
+  readonly hasRemote: boolean
+  private readonly hitLayer = new Map<string, CacheLayer>()
+
+  constructor(readonly layers: readonly CacheLayer[]) {
+    if (layers.length < 2) throw new Error('ChainedCache needs at least two layers')
+    this.hasRemote = layers.some((l) => l.hasRemote === true)
+  }
+
+  get local(): Cache | undefined {
+    return this.layers[0]!.local
+  }
+
+  private owner(hash: string): CacheLayer {
+    return this.hitLayer.get(hash) ?? this.layers[0]!
+  }
+
+  key(input: Parameters<CacheLayer['key']>[0]): Promise<string> {
+    return this.layers[0]!.key(input)
+  }
+
+  async get(hash: string, ctx?: Parameters<CacheLayer['get']>[1]) {
+    for (const layer of this.layers) {
+      const entry = await layer.get(hash, ctx)
+      if (entry !== null) {
+        this.hitLayer.set(hash, layer)
+        return entry
+      }
+    }
+    return null
+  }
+
+  async has(hash: string) {
+    for (const layer of this.layers) {
+      const where = await layer.has(hash)
+      if (where !== null) {
+        this.hitLayer.set(hash, layer)
+        return where
+      }
+    }
+    return null
+  }
+
+  async prefetch(hash: string, ctx?: Parameters<CacheLayer['prefetch']>[1]): Promise<boolean> {
+    for (const layer of this.layers) {
+      if (await layer.prefetch(hash, ctx)) {
+        this.hitLayer.set(hash, layer)
+        return true
+      }
+    }
+    return false
+  }
+
+  async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
+    let out: Set<string> | null = null
+    for (const layer of this.layers) {
+      if (layer.remoteHasMany === undefined) continue
+      const found = await layer.remoteHasMany(hashes)
+      if (found === null) continue
+      out ??= new Set()
+      for (const h of found) out.add(h)
+    }
+    return out
+  }
+
+  markRemoteAbsent(hashes: Iterable<string>): void {
+    const list = [...hashes]
+    for (const layer of this.layers) layer.markRemoteAbsent?.(list)
+  }
+
+  async drainUploads(): Promise<void> {
+    await Promise.all(this.layers.map((l) => l.drainUploads?.()))
+  }
+
+  loadOutputFilesBatch(hashes: readonly string[]) {
+    const out = new Map<string, ReturnType<CacheLayer['loadOutputFilesBatch']> extends Map<string, infer R> ? R : never>()
+    for (const layer of this.layers) {
+      for (const [h, rows] of layer.loadOutputFilesBatch(hashes)) {
+        if (!out.has(h)) out.set(h, rows)
+      }
+    }
+    return out
+  }
+```
+
+Then implement EVERY remaining member of `CacheLayer` (the compiler lists them — run `bun src/bin.ts run lint.oxlint` and read the `TS2420` diagnostic) with these rules, writing each one out explicitly:
+
+- `outputsPath(hash)`, `restoreOutputs(hash, …)` → `this.owner(hash)`.
+- `hashFile`, `ingest`, `isOutputsCurrent`, `recordRun`, `recordRuns`, `recordRunBundle`, `stats`, `prune` → `this.layers[0]`.
+- `save(args)` → `for (const layer of this.layers) await layer.save(args)`.
+- `close()` → every layer, each in its own `try { … } finally { … }` chain so one throwing close cannot skip the rest.
+
+Replace the `ReturnType<…> extends Map<…>` type gymnastics in `loadOutputFilesBatch` with the real row type once you see its name in `cache.ts` (`OutputFileRow`) — import it and write `new Map<string, OutputFileRow[]>()`.
+
+`src/cache/index.ts` — add `export { ChainedCache } from './chained-cache.js'`.
+
+`src/orchestrator/plugin-host.ts` — `resolveCache` becomes:
+
+```ts
+/**
+ * Collect every plugin's `cache` layer in declaration order. One layer is
+ * used as is; two or more are chained (lookup walks them, save reaches all;
+ * see ChainedCache). A bare local layer that another declared layer already
+ * wraps (`layer.local === ctx.localCache`) is dropped, so a remote plugin
+ * that layers over the local handle composes with `localCachePlugin()`
+ * instead of writing the local store twice. No layer at all is a named error.
+ */
+export async function resolveCache(
+  plugins: readonly VxPlugin[],
+  ctx: CacheContext,
+): Promise<CacheLayer> {
+  const layers: CacheLayer[] = []
+  for (const plugin of plugins) {
+    if (plugin.cache === undefined) continue
+    const layer = await safe(plugin, 'cache', () => plugin.cache!(ctx))
+    if (layer !== undefined) layers.push(layer)
+  }
+  if (layers.length === 0) {
+    const declined = plugins.filter((p) => p.cache !== undefined).map((p) => `${p.name} declined`)
+    throw new UserError(
+      `no cache plugin declared${declined.length > 0 ? ` (${declined.join(', ')})` : ''}. ${MISSING_PLUGIN_HINT}`,
+    )
+  }
+  const wrapsLocal = layers.some((l) => l !== ctx.localCache && l.local === ctx.localCache)
+  const distinct = wrapsLocal ? layers.filter((l) => l !== ctx.localCache) : layers
+  return distinct.length === 1 ? distinct[0]! : new ChainedCache(distinct)
+}
+```
+
+with `import { ChainedCache, type CacheLayer } from '../cache/index.js'`.
+
+- [ ] **Step 4: Run, lint, commit**
+
+Run: `bun test tests/chained-cache.test.ts tests/plugin-capabilities.test.ts tests/layered-cache.test.ts tests/local-shortcircuit.test.ts tests/orchestrator.test.ts && bun src/bin.ts run lint`
+Expected: PASS / success. The chained e2e pin must FAIL if `save` is changed to write only `layers[0]` (do this mutation, run the pin, restore, run again — record both in the commit body).
+
+```bash
+git add src/cache/chained-cache.ts src/cache/cache.ts src/cache/layered-cache.ts src/cache/index.ts src/orchestrator/plugin-host.ts tests/chained-cache.test.ts tests/plugin-capabilities.test.ts
+git commit -m "Chain every declared cache layer in declaration order
+
+Lookup walks the layers until a hit, save reaches all, the first layer
+owns the run index, restore goes to the layer that answered. A layer that
+wraps the local handle subsumes the bare local layer, so cloud() composes
+with localCachePlugin() without a cloud edit."
+```
+
+---
+
+### Task 10: `vx migrate` emits the workspace file; docs; design-doc correction; gate; push
+
+**Files:**
+
+- Modify: `src/cli/migrate.ts`, `tests/migrate.test.ts`
+- Rename: `docs/modules/builtin-plugins.md` → `docs/modules/local-plugins.md`; create `docs/modules/chained-cache.md`
+- Modify: `docs/schema.md`, `docs/architecture.md`, `docs/README.md`, `docs/modules/{plugin,plugin-host,layered-cache,README,executor}.md`, `docs/design/plugin-executor-reapi-2026-08.md`, `CLAUDE.md`
+
+- [ ] **Step 1: Failing test for migrate**
+
+In `tests/migrate.test.ts` add (inside the turbo-migration describe, using that file's existing fixture helper for a turbo.json workspace):
+
+```ts
+it('emits vx.workspace.ts declaring the local plugins when none exists', async () => {
+  // <use the file's existing fixture + run helper; then:>
+  const ws = await Bun.file(path.join(root, 'vx.workspace.ts')).text()
+  expect(ws).toContain(
+    "import { defineWorkspace, localExecutorPlugin, localCachePlugin } from '@vzn/vx'",
+  )
+  expect(ws).toContain('plugins: [localExecutorPlugin(), localCachePlugin()]')
+})
+
+it('does not emit vx.workspace.ts when one already exists', async () => {
+  // <write root/vx.workspace.ts with a marker before migrating; then:>
+  expect(await Bun.file(path.join(root, 'vx.workspace.ts')).text()).toContain('MARKER')
+})
+```
+
+Read `tests/migrate.test.ts` first and use its actual helpers for the fixture and the `migrate` invocation; the two assertions above are the contract.
+
+- [ ] **Step 2: Implement in `src/cli/migrate.ts`**
+
+After the `for (const f of plan.extraFiles)` loop that builds `files`, add:
+
+```ts
+// A migrated workspace must declare its executor and cache — nothing is
+// applied by default. Emit the two-line workspace file unless the repo
+// already has one in any supported extension.
+const hasWorkspaceFile = (
+  await Promise.all(
+    ['vx.workspace.ts', 'vx.workspace.mjs', 'vx.workspace.js'].map((n) =>
+      Bun.file(path.join(root, n)).exists(),
+    ),
+  )
+).some(Boolean)
+if (!hasWorkspaceFile) {
+  const abs = path.join(root, 'vx.workspace.ts')
+  files.push({ relPath: relPosix(root, abs), abs, contents: WORKSPACE_FILE })
+}
+```
+
+with, at module level:
+
+```ts
+const WORKSPACE_FILE = `import { defineWorkspace, localExecutorPlugin, localCachePlugin } from '@vzn/vx'
+
+// Nothing runs that is not declared here. Put a remote executor or cache
+// plugin BEFORE the local one to prefer it.
+export default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })
+`
+```
+
+The existing `--dry` printing and the conflict stat loop cover the new entry.
+
+- [ ] **Step 3: Docs**
+
+- `git mv docs/modules/builtin-plugins.md docs/modules/local-plugins.md`; rewrite: purpose = "core's executor + cache as plugins a workspace DECLARES; nothing by default"; surface = `localExecutorPlugin`, `localCachePlugin`, `localPlugins`, `MISSING_PLUGIN_HINT`; the `vx.workspace.ts` example; invariants = "no executor/cache plugin ⇒ named error before any task runs (pinned in `tests/local-plugins.test.ts` and the NO DEFAULTS e2e)".
+- `docs/modules/chained-cache.md`: the five rules from the module header + "the first layer owns the run index" + the subsume rule; tests = `tests/chained-cache.test.ts`.
+- `docs/modules/plugin.md` table: `cache(ctx)` → "return a `CacheLayer` or decline; ALL kept in order and chained"; `executor(ctx)` unchanged; add the sentence "Core applies NOTHING by default — `localExecutorPlugin()` / `localCachePlugin()` are declared like any other plugin."
+- `docs/modules/plugin-host.md`: `resolveCache` → chain semantics + the no-layer error; `resolveExecutors` → the no-executor error.
+- `docs/modules/layered-cache.md`: `local` is public, and why.
+- `docs/modules/README.md`: rows for `local-plugins.md`, `chained-cache.md` (drop `builtin-plugins.md`).
+- `docs/schema.md` `plugins` bullet: "REQUIRED in practice: a workspace must declare an executor plugin and a cache plugin (`localExecutorPlugin()`, `localCachePlugin()` for core's own); declaration order is precedence; multiple `cache` layers are chained; multiple `executor`s are consulted in order per task."
+- `docs/architecture.md` capability table: `cache` row → chained; add under the seam: "**No defaults.** Core contributes nothing on its own; the local executor and cache are plugins the workspace declares."
+- `docs/README.md` (the quick start / first-run section — find it with `grep -n "vx run" docs/README.md | head`): add the `vx.workspace.ts` two-liner as the FIRST step; note `vx migrate` emits it. Check `apps/docs/src/content/docs/` for a copy of the same page (`grep -l "vx.workspace" apps/docs/src/content/docs/*.md*`) and whether it is generated from `docs/` (look for a sync script in `apps/docs/package.json` or `apps/docs/vx.config.ts`); if generated, leave it; if hand-written, apply the same edit to `overview.md` / `add-to-existing-repo.md`.
+- `docs/design/plugin-executor-reapi-2026-08.md` §3: replace the "Precedence:" paragraph with: "**No defaults.** Core applies no plugin on its own; `localExecutorPlugin()` and `localCachePlugin()` are declared like any other. **Lists, not winners:** every `executor` is kept in declaration order and per task the first whose `accepts()` passes runs it; every `cache` layer is kept and chained (lookup walks, save reaches all, the first owns the run index); `telemetry` sinks are additive. `backend` stays single-winner and, when contributed, delegates the whole run (executors are not consulted)." Update the table's `core default` row to `declared: localCachePlugin()` / `declared: localExecutorPlugin()` / `—`.
+- `CLAUDE.md`: in Architecture principles add `7. **No defaults.** Core applies no plugin on its own — the local executor and cache are declared in vx.workspace.ts like any other; a workspace that declares none fails before any task runs, naming the fix.` Update the 2026-08-23 decision-log entry IN PLACE (not a new entry): replace its `withBuiltins` sentences with the no-defaults rule + the chained-cache rule + the subsume rule, and add: "Cost measured, not estimated: 38 test fixtures and this repo's own `vx.workspace.ts` had to declare the local plugins; `vx migrate` now emits the file. `tests/helpers/local-workspace.ts` is the one place fixtures get it." Update the repository-layout tree (`local-plugins.ts`, `chained-cache.ts`).
+
+- [ ] **Step 4: Gate, commit, push, confirm CI**
+
+Run: `bun src/bin.ts run ci` (exit 0 required; run `lint.oxfmt.fix` then the FULL gate again if markdown drifts).
+
+```bash
+git add src/cli/migrate.ts tests/migrate.test.ts docs/modules/local-plugins.md docs/modules/chained-cache.md docs/modules/plugin.md docs/modules/plugin-host.md docs/modules/layered-cache.md docs/modules/README.md docs/modules/executor.md docs/schema.md docs/architecture.md docs/README.md docs/design/plugin-executor-reapi-2026-08.md CLAUDE.md
+git rm --cached docs/modules/builtin-plugins.md 2>/dev/null || true
+git commit -m "Emit the workspace file from vx migrate; document no-defaults and chained caches"
+git push origin main
+```
+
+Then confirm the REAL CI conclusion: `curl -s "https://api.github.com/repos/vznjs/vx/actions/runs?branch=main&per_page=1" | python3 -c "import sys,json; r=json.load(sys.stdin)['workflow_runs'][0]; print(r['head_sha'][:7], r['status'], r['conclusion'])"` — wait for `completed success`. CI runs `vx run ci` through the repo's own `vx.workspace.ts`, so a green CI is the end-to-end proof of the declared-only model on Linux.
