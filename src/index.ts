@@ -140,6 +140,7 @@ export type {
   ExecuteSandbox,
   ResolvedSandboxConfig,
   TaskExecutor,
+  TaskPlacement,
 } from './exec/index.js'
 
 // Telemetry — THE canonical, versioned data-export contract every exporter

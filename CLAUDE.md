@@ -423,6 +423,59 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-23 (seventh wave) — `@vzn/vx-reapi` is now a COMPLETE REAPI
+  implementation: 14/14 RPCs, remote execution included.** Owner: "we need
+  100% compatibility and use all the protocol features possible." **All five
+  services**: Execution (`Execute`, `WaitExecution`), ActionCache,
+  CAS (`FindMissingBlobs`, `BatchUpdateBlobs`, `BatchReadBlobs`, `GetTree`,
+  `SplitBlob`, `SpliceBlob`), Capabilities, ByteStream (`Read`, `Write`,
+  `QueryWriteStatus`). **Features actually used, not merely reachable:**
+  digest negotiation (strongest advertised function this runtime can compute,
+  BLAKE3→SHA512→SHA384→SHA256, refusing one the server never advertised
+  rather than uploading blobs it will reject); zstd compression via
+  `compressed-blobs/zstd/…` resource names and `compressor: ZSTD` on batch
+  updates, gated on `supported_compressors`; `RequestMetadata` in the
+  well-known binary header (how a server groups an action's CAS/AC calls into
+  one build in its UI — omitting it makes vx invisible in every REAPI
+  dashboard); inline stdout/stderr on `ExecuteRequest`, sparing two CAS round
+  trips per action; `ExecuteOperationMetadata` stage decoding so QUEUED is
+  distinguishable from hung; `ExecutionPolicy`/`ResultsCachePolicy` priority,
+  `Action.salt`, and `Action.platform` (v2.2) alongside `Command.platform` for
+  older servers; `NodeProperties` (`unix_mode`, `mtime`); output symlinks.
+  **THREE real bugs the work surfaced, each caught by a test rather than
+  reasoning:** (1) **`OutputDirectory.tree_digest` addresses an encoded `Tree`
+  PROTO BLOB, not a Directory root for the `GetTree` RPC** — my first
+  implementation called `GetTree` on it, which is a straight interop bug;
+  fixed by fetching and decoding the Tree (root + children, children indexed
+  by their own Directory digest). (2) **The encoders emitted proto3 DEFAULT
+  values.** Canonical proto3 omits them and so does Bazel, so writing an
+  explicit zero changes the serialised bytes and therefore the DIGEST — most
+  visibly for the EMPTY BLOB, whose `size_bytes` is 0, meaning any tree
+  containing an empty file would address differently from the server's view of
+  it. Caught by comparing every encoder byte-for-byte against protobufjs over
+  the SAME vendored protos. (3) **Each client opened FIVE HTTP/2 connections**,
+  one per service stub — five times the sockets and flow-control state, and a
+  server that sees five clients where there is one. Fixed with grpc-js
+  `channelOverride`; this was also what made the e2e suite cascade into
+  timeouts after ~20 clients, and the file now runs in 311 ms. **A harness
+  trap worth recording:** the first byte-comparison test looked like an
+  encoder bug but was the REFERENCE silently dropping fields — protobufjs
+  addresses fields by camelCase JS names while this package uses proto-loader
+  with `keepCase: true`. The harness now guards itself (a reference encoding
+  that comes back empty throws). **Verified against a live bazel-remote: 50
+  tests, 0 fail**, including compression round-trip, batch RPCs,
+  QueryWriteStatus, upload minimality, and negotiation refusing an
+  unadvertised digest function. Remote execution is OFF by default
+  (`execute: true` or `VX_REAPI_EXECUTE=1`) — it changes where a user's build
+  runs, which a plugin should not switch on merely by being configured for
+  caching — and the plugin DECLINES the executor with a warning against a
+  cache-only server (bazel-remote advertises `exec_enabled: false`) rather
+  than submitting work that will never be answered. **Not yet verified: an
+  actual remote EXECUTION round trip.** bazel-remote is cache-only and the
+  NativeLink image did not resolve, so `Execute`/`WaitExecution` are
+  implemented and unit-tested but have never run against a real executor —
+  stated plainly rather than implied by "14/14".
+
 - **2026-08-23 (sixth wave) — the Bun http2 limit is PEER-DEPENDENT, not a
   number; `chunkBytes` became a real escape hatch.** Owner asked to check
   Bun's issues and code for the actual limit. The tracker has the mechanism

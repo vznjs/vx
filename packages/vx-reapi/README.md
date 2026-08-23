@@ -94,7 +94,61 @@ VX_REAPI_TEST_ENDPOINT=127.0.0.1:19092 bun test
 Without an endpoint those tests skip; CI sets `VX_REQUIRE_REAPI=1`, which turns
 an absent endpoint into a failure so the suite cannot silently vanish.
 
-## Not yet
+## Protocol coverage
 
-Remote **execution** (the `executor` capability). Phase 1 is the cache only —
-see the design doc for the phased plan.
+All **14 RPCs** across the five services, not a working subset:
+
+| Service                     | RPCs                                                                                           |
+| --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `Execution`                 | `Execute`, `WaitExecution`                                                                     |
+| `ActionCache`               | `GetActionResult`, `UpdateActionResult`                                                        |
+| `ContentAddressableStorage` | `FindMissingBlobs`, `BatchUpdateBlobs`, `BatchReadBlobs`, `GetTree`, `SplitBlob`, `SpliceBlob` |
+| `Capabilities`              | `GetCapabilities`                                                                              |
+| `ByteStream`                | `Read`, `Write`, `QueryWriteStatus`                                                            |
+
+Protocol features in use, not just reachable:
+
+- **Digest negotiation** — picks the strongest function the server advertises
+  and this runtime can compute (BLAKE3 → SHA512 → SHA384 → SHA256), and
+  refuses a function the server did not advertise rather than uploading blobs
+  it will reject.
+- **zstd compression** — `compressed-blobs/zstd/…` resource names on
+  ByteStream and `compressor: ZSTD` on batch updates, enabled only when
+  `supported_compressors` says so.
+- **`RequestMetadata`** in the well-known binary header (tool name/version,
+  action id, correlated invocations id) — how a server groups an action's
+  dozens of CAS/AC calls into one build in its UI.
+- **Inline stdout/stderr** on `ExecuteRequest`, sparing two CAS round trips
+  per finished action.
+- **Execution stages** — `QUEUED` / `EXECUTING` / `COMPLETED` decoded from
+  `ExecuteOperationMetadata`, so a queued action is distinguishable from a
+  hung one.
+- **`ExecutionPolicy.priority`**, **`ResultsCachePolicy.priority`**,
+  **`Action.salt`**, and **`Action.platform`** (v2.2) alongside
+  `Command.platform` for older servers.
+- **`NodeProperties`** — `unix_mode` and `mtime` on tree nodes.
+- **Output directories** via the `Tree` blob an `OutputDirectory.tree_digest`
+  addresses, plus **output symlinks**.
+- **Upload minimality** — `FindMissingBlobs` first, then batched blobs while
+  they fit the server's budget and ByteStream beyond it.
+
+## Remote execution
+
+Off by default. Remote execution changes where a user's build runs, which is
+not something a plugin should switch on merely by being configured for
+caching:
+
+```ts
+reapi({
+  endpoint: 'grpc.example.com:443',
+  execute: true,
+  platform: { 'container-image': 'docker://alpine:3.20', OSFamily: 'Linux' },
+  capacity: 64, // concurrent remote tasks; becomes the scheduler's pool
+})
+```
+
+A cache-only server (bazel-remote advertises `exec_enabled: false`) makes the
+plugin **decline the executor with a warning** rather than submit work that
+will never be answered. Only cacheable tasks are eligible — a task with no
+`cache` block has no described inputs, so a worker would run it against an
+empty input root.

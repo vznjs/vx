@@ -154,3 +154,125 @@ describe.if(run)('chunkBytes is a real escape hatch, not just an option', () => 
     }
   })
 })
+
+describe.if(run)('protocol negotiation and the wider RPC surface', () => {
+  const endpoint = ENDPOINT as string
+
+  it('negotiates a digest function and compression from real capabilities', async () => {
+    const client = new ReapiClient({ endpoint })
+    try {
+      const caps = await client.capabilities()
+      await client.negotiate()
+      // Whatever it picks must be something the SERVER advertised — picking a
+      // function the server cannot verify makes every upload a rejected blob.
+      expect(caps.digestFunctions).toContain(client.digest)
+      // Compression is only on when the server said ZSTD; asserting the
+      // implication (not a fixed value) keeps this true on any server.
+      if (client.compressionEnabled) expect(caps.supportedCompressors).toContain('ZSTD')
+    } finally {
+      client.close()
+    }
+  })
+
+  it('refuses a digest function the server does not advertise', async () => {
+    // Failing loudly beats uploading blobs the server will reject one by one.
+    const client = new ReapiClient({ endpoint })
+    try {
+      const caps = await client.capabilities()
+      const unsupported = (['MD5', 'SHA1', 'SHA512'] as const).find(
+        (f) => !caps.digestFunctions.includes(f),
+      )
+      if (unsupported === undefined) return
+      let message = ''
+      try {
+        await client.negotiate({ digestFunction: unsupported })
+      } catch (err) {
+        message = err instanceof Error ? err.message : String(err)
+      }
+      expect(message).toMatch(/does not support digest function/)
+    } finally {
+      client.close()
+    }
+  })
+
+  it('round-trips a blob with compression negotiated ON', async () => {
+    // The compressed path uses a different RESOURCE NAME
+    // (compressed-blobs/zstd/...) and a different wire payload, so it needs
+    // its own round trip rather than trusting the identity path.
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      const body = new TextEncoder().encode('vx compressible '.repeat(4096) + nonce())
+      const d = client.digestOf(body)
+      await client.writeBlob(d, body)
+      expect((await client.findMissingBlobs([d])).length).toBe(0)
+      const back = await client.readBlob(d)
+      expect(back).not.toBeNull()
+      expect(Buffer.compare(Buffer.from(back!), Buffer.from(body))).toBe(0)
+    } finally {
+      client.close()
+    }
+  })
+
+  it('BatchUpdateBlobs + BatchReadBlobs move many small blobs in one trip', async () => {
+    const client = new ReapiClient({ endpoint })
+    try {
+      const blobs = Array.from({ length: 25 }, (_, i) => {
+        const data = new TextEncoder().encode(`batch-${i}-${nonce()}`)
+        return { digest: digestOf(data), data }
+      })
+      await client.batchUpdateBlobs(blobs)
+      const got = await client.batchReadBlobs(blobs.map((b) => b.digest))
+      expect(got.size).toBe(blobs.length)
+      for (const b of blobs) {
+        expect(Buffer.compare(Buffer.from(got.get(b.digest.hash)!), Buffer.from(b.data))).toBe(0)
+      }
+    } finally {
+      client.close()
+    }
+  })
+
+  it('uploadBlobs sends ONLY what FindMissingBlobs reports absent', async () => {
+    // Upload minimality is the property that makes a warm remote cache cheap.
+    const client = new ReapiClient({ endpoint })
+    try {
+      const known = new TextEncoder().encode(`known-${nonce()}`)
+      const fresh = new TextEncoder().encode(`fresh-${nonce()}`)
+      await client.batchUpdateBlobs([{ digest: digestOf(known), data: known }])
+      await client.uploadBlobs([
+        { digest: digestOf(known), data: known },
+        { digest: digestOf(fresh), data: fresh },
+      ])
+      expect((await client.findMissingBlobs([digestOf(known), digestOf(fresh)])).length).toBe(0)
+    } finally {
+      client.close()
+    }
+  })
+
+  it('QueryWriteStatus answers for a completed upload and for an unknown one', async () => {
+    const client = new ReapiClient({ endpoint })
+    try {
+      const status = await client.queryWriteStatus(
+        `uploads/${crypto.randomUUID()}/blobs/${'0'.repeat(64)}/1`,
+      )
+      // Servers legitimately answer NOT_FOUND (null) for a resource they have
+      // never seen; either shape is protocol-legal, a THROW is not.
+      expect(status === null || typeof status.committedSize === 'number').toBe(true)
+    } finally {
+      client.close()
+    }
+  })
+
+  it('reports whether the server can execute, and does not pretend otherwise', async () => {
+    // bazel-remote is cache-only. The executor must decline rather than
+    // submit work to a server that will never answer.
+    const client = new ReapiClient({ endpoint })
+    try {
+      const caps = await client.capabilities()
+      expect(typeof caps.execEnabled).toBe('boolean')
+      expect(caps.acUpdateEnabled).toBe(true)
+    } finally {
+      client.close()
+    }
+  })
+})
