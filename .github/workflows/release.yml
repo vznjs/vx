@@ -2,9 +2,9 @@ name: Release assets
 
 # Triggered when a maintainer publishes a release in the GitHub UI
 # (or via `gh release create`). Runs `vx run build` (which fans out
-# to one task per target with per-binary caching), then attaches all
-# EIGHT binaries (vx-<target> for the curl installer + `vx upgrade`,
-# vx-cloud-<target> for a no-npm serve/agent download) to the release.
+# to one task per target with per-binary caching), then attaches the
+# four vx-<target> binaries (for the curl installer + `vx upgrade`)
+# to the release.
 # The maintainer writes the body manually.
 
 on:
@@ -36,7 +36,7 @@ jobs:
           VERSION="${VERSION#v}"
           bun -e 'const p = await Bun.file("package.json").json(); p.version = process.argv[1]; await Bun.write("package.json", JSON.stringify(p, null, 2) + "\n")' "$VERSION"
 
-      # Dogfood: `build` fans out to `build.bun.<target>` + `build.cloud.<target>`
+      # Dogfood: `build` fans out to `build.bun.<target>`
       # (8 compiles). Each sub-task is individually cached, so re-running this
       # workflow on the same commit is essentially free. --concurrency 2: eight
       # concurrent `--compile --minify --bytecode` builds OOM a 7 GB runner

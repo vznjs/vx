@@ -1,6 +1,6 @@
 ---
 title: Core is provider-neutral
-description: vx core is only a task runner. A dashboard, remote cache, distributed execution, and telemetry export are plugins — declared in vx.workspace.ts, first-party or your own. Core depends on none of them, and the first-party cloud plugin is just one implementation you can replace.
+description: vx core is only a task runner. Where a task runs, which cache backs it, and where run data goes are all plugins — declared in vx.workspace.ts, first-party or your own. Core applies none of them by default and depends on none of them.
 ---
 
 vx core is **only a task runner**. It discovers projects, builds the task
@@ -9,22 +9,26 @@ the result. That's the whole product. A plain `vx run` opens no socket,
 calls no service, and needs no account — it works fully offline, forever.
 
 Everything beyond that — a **dashboard**, a **shared/remote cache**,
-**distributed execution**, **telemetry export** — is a **plugin**. Core
-defines the extension seams; plugins fill them. The first-party cloud
-plugin is one implementation, but it is **not privileged**: core never
-imports it, never names it, and never needs it. You can delete it, ignore
-it, or replace it with your own — core behaves identically.
+**remote execution**, **telemetry export** — is a **plugin**. Core
+defines the extension seams; plugins fill them, and **no plugin is
+privileged**: core never names one and never needs one. Core's OWN
+execution and cache are plugins too (`@vzn/vx/plugins/local-executor`,
+`@vzn/vx/plugins/local-cache`), declared by your workspace exactly like a
+third-party one — which is how "a plugin can replace any part" is pinned
+rather than promised.
 
 ## The seams
 
 A plugin is a small object in `vx.workspace.ts` that contributes any of
-three capabilities. Each is independent, opt-in, and has a built-in
-default, so declaring nothing costs nothing.
+three capabilities. Each is independent and opt-in. **Nothing is applied
+by default** — a workspace declares every plugin it uses, including the
+local executor and cache; one that declares neither fails before any task
+runs, naming the exact lines to add.
 
 ```mermaid
 flowchart LR
   core["vx core<br/>task runner · fully offline"]
-  core -. backend .-> b(["route execution"])
+  core -. executor .-> b(["where one task's command runs"])
   core -. cache .-> c(["shared / remote cache"])
   core -. telemetry .-> t(["export run data"])
   b --> p["plugins in vx.workspace.ts<br/>first-party OR your own"]
@@ -32,35 +36,34 @@ flowchart LR
   t --> p
 ```
 
-| Seam        | What a plugin swaps                              | Default if no plugin        |
-| ----------- | ------------------------------------------------ | --------------------------- |
-| `backend`   | *where* tasks run — local, remote, or distributed | in-process                  |
-| `cache`     | *which* cache is used — your server, S3, Redis   | local cache only            |
-| `telemetry` | *where* run data goes — OTel, Slack, your DB      | nothing exported            |
+| Seam        | What a plugin swaps                                | Declared by                          |
+| ----------- | -------------------------------------------------- | ------------------------------------ |
+| `executor`  | *where* ONE task's command runs — local or a worker | `localExecutorPlugin()`, or your own |
+| `cache`     | *which* cache is used — your server, S3, a CAS     | `localCachePlugin()`, or your own    |
+| `telemetry` | *where* run data goes — OTel, Slack, your DB        | nothing unless declared              |
 
-None of these can change *how* a task's command runs — shell is the API.
+None of these can change *what* a task's command is — shell is the API. An
+`executor` changes WHERE the command runs, never the command itself.
 `telemetry` is observe-only by construction (a sink holds no run handle),
 so it can never change, slow, or fail a run.
 
 See [Writing a vx plugin](/vx/guides/plugins/) for the full contract and
 runnable examples.
 
-## The first-party cloud plugin is just a plugin
+## The first-party plugins are just plugins
 
-The first-party cloud is one package that implements all three seams
-against a deployed self-hosted platform. Declaring it is one line in
-`vx.workspace.ts`, and with no connection configured it **declines every
-seam** and adds zero overhead — so it's safe to leave declared everywhere.
-Point it at a deployment and the same one connection lights up the remote
-cache, analytics ingest, and distributed execution. It's a normal plugin —
-nothing more. The setup lives in its own section:
-[the Cloud platform overview](../../cloud/overview/).
+`@vzn/vx-reapi` fills `cache` (and, in time, `executor`) against any
+server speaking Bazel's Remote Execution API — NativeLink, BuildBuddy,
+Buildbarn, bazel-remote. `@vzn/vx-otel` fills `telemetry` against any OTLP
+endpoint. Both decline when unconfigured and cost nothing, so they are
+safe to leave declared everywhere. Neither is privileged: they use the
+same seams your own package would.
 
 ## Build your own
 
 Because the seams are the only contract, a third-party package is a
-**first-class equal** to the first-party cloud plugin. To back the cache
-with your own infrastructure, no cloud involved, implement core's three-call
+**first-class equal** to any first-party one. To back the cache
+with your own infrastructure, implement core's three-call
 `RemoteCacheLayer` seam (`has`/`get`/`put` — throw on failure, and
 `LayeredCache` degrades every throw to a cache miss):
 
@@ -101,18 +104,18 @@ function acmeCache(): VxPlugin {
 export default defineWorkspace({ plugins: [acmeCache()] })
 ```
 
-The same pattern gives you a custom `backend` (route to your own executor)
-or `telemetry` sink (ship to your own analytics). Everything a plugin
-needs — `VxPlugin`, `CacheLayer`, `RemoteCacheLayer`, `LayeredCache`,
-`TelemetrySink`, `RunBackend`, the run/graph types — is exported from the
-single `@vzn/vx` entry point.
+The same pattern gives you a custom `executor` (run a task's command on
+your own worker) or `telemetry` sink (ship to your own analytics).
+Everything a plugin needs — `VxPlugin`, `CacheLayer`, `RemoteCacheLayer`,
+`LayeredCache`, `TelemetrySink`, `TaskExecutor`, the run/graph types — is
+exported from the single `@vzn/vx` entry point.
 
 ## Bring your own remote cache
 
 The remote-cache **wire is a plugin concern** — core ships no HTTP cache
-client at all. The first-party cloud plugin speaks its own vx-native
-`/v1/cache` wire; a **Turborepo-compatible** cache server (ducktors, Vercel
-hosted, …) is the same recipe with Turbo's shapes inside the class:
+client at all. `@vzn/vx-reapi` speaks Bazel's CAS; a
+**Turborepo-compatible** cache server (ducktors, Vercel hosted, …) is the
+same recipe with Turbo's shapes inside the class:
 
 ```ts
 import { LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
@@ -174,25 +177,24 @@ the plugin consult).
 ## The boundary is enforced
 
 This isn't a convention you have to trust — it's checked in CI. Core
-**never** imports any service/cloud package; that direction is asserted by
+**never** imports a sibling package; that direction is asserted by
 `tests/package-boundaries.test.ts` and the public API surface is
 snapshot-pinned. Concretely, vx core:
 
-- has **no** dependency on any first-party service/cloud package (or any
-  `@vzn/vx-*` package);
-- reads **no** cloud-provider environment variable and no remote-cache env
+- has **no** dependency on any `@vzn/vx-*` package;
+- reads **no** provider environment variable and no remote-cache env
   at all — the remote cache reaches core only through the `cache`
   capability or `RunOptions.remoteCache`;
 - ships **no** server, dashboard, or account logic;
-- runs every task the same whether zero plugins or ten are declared.
+- runs every task the same whichever plugins are declared.
 
 So the dependency arrow only ever points **one way**: plugins depend on
-`@vzn/vx`; `@vzn/vx` depends on nobody. That's what keeps the cloud
-optional and makes "bring your own" a real, supported path.
+`@vzn/vx`; `@vzn/vx` depends on nobody. Even core's own executor and cache
+obey it — they import core through the public `@vzn/vx` specifier, which is
+what makes "bring your own" a real, supported path.
 
 ## See also
 
 - [Writing a vx plugin](/vx/guides/plugins/) — the capability contract + Sentry/Slack/metrics/cache examples.
 - [Remote caching](/vx/guides/remote-caching/) — the `RemoteCacheLayer` seam and artifact integrity.
-- [Distributed CI execution](../../cloud/distributed-ci/) — the `backend` seam at scale.
 - [OpenTelemetry traces & metrics](/vx/guides/otel-bridge/) — a `telemetry` plugin in the wild.

@@ -37,10 +37,6 @@ vx version
 vx --version
 ```
 
-Typing `vx serve` / `dev` / `coordinator` / `worker` prints a redirect:
-those commands live in a separate service package, not core — core has no
-service CLI. See the Cloud section of the docs for that binary.
-
 Multiple positional tasks run in one orchestrator invocation with a
 shared task graph: `vx run build lint test` fans out all three across
 the resolved project scope. Anchored entries (`pkg#task`) target a
@@ -407,8 +403,7 @@ roughly **1× execution plus a hash pass** over just-written, page-cached
 output bytes, so a per-platform CI matrix can afford it on every
 scheduled run. A connected analytics service persists fingerprints keyed
 by `(cache key, os, arch)` and diffs them at read time, naming the exact
-task, key, platforms, and diverging output files — the first-party one
-surfaces this on its dashboard (see the Cloud section of the docs).
+task, key, platforms, and diverging output files.
 
 The per-platform CI recipe — the same matrix that builds your release
 binaries, with a shared cache + analytics service connected so each
@@ -419,7 +414,7 @@ strategy:
   matrix:
     os: [ubuntu-latest, macos-latest]
 steps:
-  # connect a shared cache + analytics service here (see the Cloud section)
+  # connect a shared remote cache here (a `cache` plugin)
   - run: vx run --all --force --verify=fingerprint
 ```
 
@@ -1344,11 +1339,9 @@ see plain text.
 ## Remote cache (plugin-driven)
 
 Core ships **no remote-cache wire client** — the remote cache is a
-plugin concern (`docs/design/native-cache-wire-2026-07.md`). A `cache`
-plugin composes core's `LayeredCache` over a wire client; the
-first-party option is a self-hosted platform whose plugin routes the
-cache to its `/v1/cache` store automatically, with the trust tier
-derived from the token you present (see the Cloud section of the docs).
+plugin concern. A `cache` plugin composes core's `LayeredCache` over a
+wire client; `@vzn/vx-reapi` provides one for any Bazel REAPI server
+(ActionCache + CAS).
 
 Reads try local first, then remote (hydrating local on remote hit),
 with a background prefetch pass overlapping remote GETs with
@@ -1382,8 +1375,8 @@ sqlite3 .vx/cache/cache.db "
 ```
 
 The schema is documented in
-[`caching.md` § SQLite tables](./caching.md#sqlite-tables). For a
-browsable view, connect a dashboard — see the Cloud section of the docs.
+[`caching.md` § SQLite tables](./caching.md#sqlite-tables). `vx mcp`
+exposes the same queries to an AI agent.
 
 ## What's still missing vs Turbo
 

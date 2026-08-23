@@ -36,19 +36,13 @@ import {
   LOCAL_EXECUTOR_PLUGIN_PATH,
   writeLocalWorkspace,
 } from './helpers/local-workspace.js'
-import type { Logger, RunOptions, TelemetrySink } from '../src/orchestrator/index.js'
-import {
-  createEventBus,
-  optionsToRequest,
-  requestToOptions,
-  run,
-} from '../src/orchestrator/index.js'
+import type { Logger } from '../src/orchestrator/index.js'
+import { run } from '../src/orchestrator/index.js'
 import { MAX_TIMEOUT_MS } from '../src/util/index.js'
 import { readTaskTimeoutEnv } from '../src/orchestrator/run.js'
 import { parseDecimalInt } from '../src/util/index.js'
 
 const TIMEOUT = 20_000
-const MiB = 1024 * 1024
 const GiB = 1024 ** 3
 
 /** Long enough that spawn jitter can never fake an overlap or a serialization. */
@@ -639,99 +633,4 @@ describe('run-level knobs are never folded into a cache key', () => {
     },
     TIMEOUT,
   )
-})
-
-// --------------------------------------------------------------------------
-// the wire boundary — where an "absent vs 0" mistake is invisible
-// --------------------------------------------------------------------------
-
-describe('RunOptions ⇄ RunRequest — the serialization boundary', () => {
-  it('a run-level `retries: 0` SURVIVES the round trip', () => {
-    // The mappers gate on `!== undefined`. A truthiness gate (`if (o.retries)`)
-    // would drop the 0 here, and a delegated run would silently fall back to
-    // whatever default the executing side resolves — the run-level analogue of
-    // the `exec.retries: 0` subtlety, one layer out.
-    const req = optionsToRequest({ cwd: '/w', tasks: ['build'], retries: 0 })
-    expect(req.retries).toBe(0)
-    expect(requestToOptions(req).retries).toBe(0)
-  })
-
-  it('`concurrency: 0` is REFUSED at the wire rather than hanging the run', () => {
-    // This began life as a recorded-not-endorsed pin: the CLI rejects
-    // `--concurrency 0` and the workspace loader rejects a non-positive
-    // `concurrency`, but the wire did neither — and the scheduler's dispatch
-    // loop is `while (active < concurrency)`, which never fires at 0, so
-    // `outcomes.size === nodes.size` is never reached and the run's promise
-    // NEVER RESOLVES. Reproduced twice out of band: a one-task workspace
-    // driven through `requestToOptions({concurrency: 0})` had to be killed at
-    // an 8s timeout, and on a serve the submission slot would hang with it.
-    //
-    // `requestToOptions` now refuses it, because a request is untrusted input
-    // and that mapper is the one choke point every executing side goes
-    // through. `optionsToRequest` still transmits faithfully — it maps
-    // already-validated local options, and making the outbound half lossy
-    // would hide a caller's mistake rather than report it.
-    const req = optionsToRequest({ cwd: '/w', tasks: ['build'], concurrency: 0 })
-    expect(req.concurrency).toBe(0)
-    expect(() => requestToOptions(req)).toThrow(/invalid concurrency/)
-  })
-
-  it('host-side fields never reach the request, which stays JSON-serializable', () => {
-    // `log`, `bus`, `inflight`, `telemetrySinks` and `remoteCache` are live
-    // objects the submitting process owns; the executing side rebuilds its
-    // own. Projecting one would either travel as a useless `{}` (functions
-    // vanish through JSON) or throw on a cycle — both worse than the current
-    // "the executing side adds what it needs".
-    const sink: TelemetrySink = { onRunSummary() {} }
-    const opts: RunOptions = {
-      cwd: '/w',
-      tasks: ['build'],
-      concurrency: 2,
-      retries: 1,
-      timeout: 5000,
-      memory: 512 * MiB,
-      log: { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} },
-      bus: createEventBus(),
-      inflight: new Map(),
-      telemetrySinks: [sink],
-      handleSignals: false,
-    }
-    const req = optionsToRequest(opts) as unknown as Record<string, unknown>
-    for (const hostOnly of [
-      'log',
-      'bus',
-      'inflight',
-      'telemetrySinks',
-      'remoteCache',
-      'handleSignals',
-    ]) {
-      expect(Object.hasOwn(req, hostOnly)).toBe(false)
-    }
-    expect(() => JSON.stringify(req)).not.toThrow()
-    // And the knobs that DO belong on the wire survive the JSON hop intact.
-    const hopped = JSON.parse(JSON.stringify(req)) as Record<string, unknown>
-    expect(hopped['concurrency']).toBe(2)
-    expect(hopped['retries']).toBe(1)
-    expect(hopped['timeout']).toBe(5000)
-    expect(hopped['memory']).toBe(512 * MiB)
-  })
-
-  it('`verify.fingerprint` degrades to false when an older client omits it', () => {
-    // `RunRequest.verify.fingerprint` is additive-optional so an old submitter
-    // interoperates with a new executor. `RunOptions.verify.fingerprint` is
-    // required, so the rebuild must supply the safe default rather than
-    // `undefined` — an undefined here would read as falsy today but violates
-    // the declared type and would surface the first time it is compared.
-    const rebuilt = requestToOptions({
-      cwd: '/w',
-      tasks: ['build'],
-      verify: { determinism: true, inputs: false, allow: ['a#b'] },
-    })
-    expect(rebuilt.verify).toEqual({
-      determinism: true,
-      inputs: false,
-      fingerprint: false,
-      allow: new Set(['a#b']),
-    })
-  })
 })

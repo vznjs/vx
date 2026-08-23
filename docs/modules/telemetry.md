@@ -3,7 +3,7 @@
 ## Purpose
 
 THE versioned, serializable contract every telemetry consumer speaks
-(`TELEMETRY_SCHEMA_VERSION = 1`). Exporters (otel, cloud ingest) receive
+(`TELEMETRY_SCHEMA_VERSION = 1`). Exporters (otel, a custom sink) receive
 these records instead of re-deriving facts from the rendering-oriented
 `WireEvent` stream — `cacheSource` is derived once, git/CI/host context
 is pre-folded, bigint wallclock spans are decimal strings.
@@ -13,8 +13,8 @@ is pre-folded, bigint wallclock spans are decimal strings.
 - `TelemetryRecord` — per-event union: `run.start` / `task.start` /
   `task.log` / `task.end` / `run.end`.
 - `RunSummaryRecord` — one per run: `RunContextRecord` + totals +
-  per-task `TaskTelemetry[]`. What the cloud plugin POSTs to
-  `/v1/ingest`.
+  per-task `TaskTelemetry[]`. What every telemetry sink receives at
+  end of run.
 - `deriveCacheSource(status)` — `'local' | 'remote' | 'miss' | null`.
 - `createTelemetrySource(bus, sinks, ctx)` — projects the bus once and
   fans out to sinks.

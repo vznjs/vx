@@ -71,10 +71,6 @@ history in CLAUDE.md's decision log; raw numbers in
     export shape every sink reads (OTel via `@vzn/vx-otel`, a self-hosted
     dashboard, custom sinks) — observe-only by construction,
     crash-isolated, and provably zero-overhead when no sink is active.
-11. **Client/server environments.** The first-party cloud plugin's
-    `connect` / `env` verbs give docker-context-style named servers with
-    bearer auth; every developer's and CI's runs aggregate in one
-    dashboard. See the Cloud section of the docs.
 
 > **Note:** an earlier design folded the upstream's _output content
 > identity_ into downstream keys ("early cutoff", v21). It was

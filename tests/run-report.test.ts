@@ -21,7 +21,7 @@
 import { describe, expect, it } from 'bun:test'
 import { formatRunReportMarkdown } from '../src/orchestrator/run-report.js'
 import type { OutcomeView } from '../src/orchestrator/events.js'
-import type { RunResult } from '../src/orchestrator/protocol.js'
+import type { RunResult } from '../src/orchestrator/run-report.js'
 
 function view(over: Partial<OutcomeView> & { taskId: string }): OutcomeView {
   return {

@@ -77,15 +77,12 @@ public, every wire is JSON-RPC 2.0. These need **no** additional service:
   event lands in Grafana / Honeycomb / Datadog / Tempo natively, no
   bridge package.
 
-For the things that need a server — a shared cache, distributed CI, a
-dashboard, and MCP over HTTP — there's an **optional self-hosted platform**
-your workspaces connect to:
-
-- **[The Cloud platform](../cloud/overview/)** — an independent CI platform
-  (accounts, orgs, RBAC) deployed with `docker compose`, backed by
-  Postgres + S3: a dashboard, a trust-scoped shared remote cache,
-  distributed execution across an agent pool, MCP over HTTP, and a
-  JSON-RPC wire protocol.
+Everything that needs a server — a shared cache, remote execution, a
+dashboard — is a **plugin**, never core. `@vzn/vx-reapi` speaks Bazel's
+Remote Execution API, so NativeLink, BuildBuddy, Buildbarn and
+bazel-remote work as a remote cache (and, in time, a remote executor)
+out of the box; `@vzn/vx-otel` exports every run to any OTLP backend.
+See [Extensibility](../guides/extensibility/).
 
 ## What vx is *not*
 

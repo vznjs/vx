@@ -23,7 +23,6 @@ import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { UserError } from '../util/index.js'
 import type { EventBus, RunStartInfo, WireEvent } from './events.js'
-import type { RunBackend, RunRequest } from './protocol.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 
 /**
@@ -46,19 +45,6 @@ export interface VxPlugin {
   readonly name: string
 
   // --- BEHAVIOR capabilities (change WHAT/HOW work runs — opt-in) -----------
-
-  /**
-   * Contribute a run backend — WHOLE-RUN delegation. Kept for plugins that
-   * schedule server-side (`@vzn/vx-cloud`); new plugins should contribute
-   * `executor` instead, which keeps the scheduler — and therefore every
-   * telemetry sink — in this process. When a backend is contributed the run
-   * delegates as a unit and executors are never consulted.
-   * Returns a RunBackend (run(request) → result), or undefined to decline
-   * (core then tries the next plugin, else the fallback). Consulted ONCE
-   * per run, before scheduling. At most one plugin's backend is used
-   * (first non-undefined, in declaration order).
-   */
-  backend?(ctx: BackendContext): RunBackend | undefined | Promise<RunBackend | undefined>
 
   /**
    * Contribute a cache layer. Returns a CacheLayer wrapping (or replacing)
@@ -135,11 +121,6 @@ interface BaseContext {
 
 export interface PluginSetupContext extends BaseContext {}
 export interface EventSinkContext extends BaseContext {}
-
-export interface BackendContext extends BaseContext {
-  /** The resolved RunRequest about to be executed — cwd, tasks, policy, flow. */
-  readonly request: RunRequest
-}
 
 export interface CacheContext extends BaseContext {
   /** The local Cache handle the plugin may wrap (LayeredCache(local, remote)). */

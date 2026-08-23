@@ -9,8 +9,18 @@
 // logger shares that stream, so redirecting it captures the whole run log
 // too. `--report-file` is the sink that carries the property end to end.
 
-import type { RunResult } from './protocol.js'
 import type { OutcomeView } from './events.js'
+
+/**
+ * One finished run, reduced to what a report needs. Used to live in
+ * `protocol.ts` as the return type of the whole-run `backend` seam; that
+ * seam is gone (a run always executes in-process — see
+ * `docs/modules/executor.md`), so the shape lives with its only consumer.
+ */
+export interface RunResult {
+  ok: boolean
+  outcomes: OutcomeView[]
+}
 import { tallyViews, type Tally } from './tally.js'
 
 /**

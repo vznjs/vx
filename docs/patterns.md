@@ -112,9 +112,9 @@ Turbo/Nx vocabulary: `src/workspace/project-loader.ts:142`.
 The remote cache is **plugin-driven** (owner directive 2026-07-10;
 `design/native-cache-wire-2026-07.md`): core keeps the seams
 (`LayeredCache` + the `RemoteCacheLayer` interface + the `cache`
-plugin capability), and the first-party cloud plugin ships the vx-native
-`/v1/cache/:hash` wire (streaming PUT, `x-vx-digest` structural
-integrity, trust scopes). Turbo `/v8/artifacts` compatibility was
+plugin capability), and a plugin ships the wire — `@vzn/vx-reapi` speaks
+Bazel's ActionCache + CAS, so any REAPI server works as a remote cache.
+Turbo `/v8/artifacts` compatibility was
 dropped from core — a Turbo-wire cache is a third-party plugin story;
 the recipe lives in the extensibility guide.
 

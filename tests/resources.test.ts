@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { optionsToRequest, requestToOptions, run } from '../src/orchestrator/index.js'
+import { run } from '../src/orchestrator/index.js'
 import { formatSummarySection, type SummaryStats } from '../src/orchestrator/summary.js'
 import { resolveCpu, resolveMem, resolveResourceCosts } from '../src/orchestrator/resources.js'
 import { parseRunArgs } from '../src/cli/index.js'
@@ -101,18 +101,7 @@ describe('--memory parsing', () => {
   })
 })
 
-describe('--memory wire round-trip', () => {
-  it('threads RunOptions.memory through the request mappers', () => {
-    const req = optionsToRequest({ cwd: '/x', tasks: ['run'], memory: 8 * GiB })
-    expect(req.memory).toBe(8 * GiB)
-    expect(requestToOptions(req).memory).toBe(8 * GiB)
-  })
-  it('omits memory when unset', () => {
-    const req = optionsToRequest({ cwd: '/x', tasks: ['run'] })
-    expect(req.memory).toBeUndefined()
-    expect(requestToOptions(req).memory).toBeUndefined()
-  })
-})
+describe('--memory wire round-trip', () => {})
 
 describe('footer budget line', () => {
   const stats: SummaryStats = {

@@ -1,22 +1,16 @@
 #!/usr/bin/env bun
 // Assemble the publishable npm tree from the compiled standalone binaries
-// (`dist/vx-<target>` + `dist/vx-cloud-<target>`, produced by `vx run build`).
+// (`dist/vx-<target>`, produced by `vx run build`).
 //
 // Emits, under <out> (default dist/npm):
-//   @vzn/vx-<target>/        — one per platform: the raw `vx` binary + os/cpu manifest
-//   vx/                      — the primary @vzn/vx package: library source
-//                              (exports ./src/index.ts) PLUS a Node launcher +
-//                              the 4 platform packages as optionalDependencies.
-//   @vzn/vx-cloud-<target>/  — one per platform: the raw `vx-cloud` binary + manifest
-//   vx-cloud/                — the @vzn/vx-cloud package: the cloud() plugin +
-//                              service source (exports . / ./plugin) PLUS a Node
-//                              launcher + its 4 platform binaries.
+//   @vzn/vx-<target>/  — one per platform: the raw `vx` binary + os/cpu manifest
+//   vx/                — the primary @vzn/vx package: library source
+//                        (exports ./src/index.ts) PLUS a Node launcher +
+//                        the 4 platform packages as optionalDependencies.
 //
-// Both CLIs install the same way: npm installs only the platform package
-// matching the user's os/cpu, and the launcher execs its binary — so
-// `npm i -g @vzn/vx` / `@vzn/vx-cloud` gives the command with NO Bun and no
-// install-time download. The @vzn/vx-cloud plugin (`@vzn/vx-cloud/plugin`) stays
-// importable source, evaluated inside the vx runtime.
+// npm installs only the platform package matching the user's os/cpu, and the
+// launcher execs its binary — so `npm i -g @vzn/vx` gives the command with NO
+// Bun and no install-time download.
 //
 // Publishing is done by the workflow (`npm publish` in each emitted dir); this
 // script only builds the tree.
@@ -74,11 +68,9 @@ function allOptional(mainName: string, version: string): Record<string, string> 
 }
 
 /**
- * Emit the per-platform binary packages for one CLI family. Each is
- * `<mainName>-<target>` carrying the raw binary (named `<base>`) + an os/cpu
- * manifest, copied from `dist/<distPrefix>-<target>`. Shared by @vzn/vx and
- * @vzn/vx-cloud — the only differences are the name, the binary filename, and
- * which dist binaries to copy.
+ * Emit the per-platform binary packages. Each is `<mainName>-<target>`
+ * carrying the raw binary (named `<base>`) + an os/cpu manifest, copied from
+ * `dist/<distPrefix>-<target>`.
  */
 async function emitPlatformPackages(args: {
   mainName: string
@@ -171,14 +163,7 @@ async function main(): Promise<void> {
     keywords: ['monorepo', 'task-runner', 'build', 'cache', 'bun', 'turborepo', 'nx'],
   })
 
-  await buildCloudPackage(version, outDir, targets)
-
-  const names = [
-    ...targets.map((t) => `@vzn/vx-${t.target}`),
-    '@vzn/vx',
-    ...targets.map((t) => `@vzn/vx-cloud-${t.target}`),
-    '@vzn/vx-cloud',
-  ]
+  const names = [...targets.map((t) => `@vzn/vx-${t.target}`), '@vzn/vx']
   process.stdout.write(
     `built npm tree at ${out} (version ${version}):\n` +
       names.map((n) => `  ${n}`).join('\n') +
@@ -188,87 +173,9 @@ async function main(): Promise<void> {
   )
 }
 
-/** The emitted directory basename for a package name (the main pkgs drop the scope). */
+/** The emitted directory basename for a package name (the main pkg drops the scope). */
 function dirFor(name: string): string {
-  if (name === '@vzn/vx') return 'vx'
-  if (name === '@vzn/vx-cloud') return 'vx-cloud'
-  return name
-}
-
-/**
- * Emit `@vzn/vx-cloud` the SAME no-Bun way as `@vzn/vx`: per-platform
- * `@vzn/vx-cloud-<target>` binary packages (the compiled `vx-cloud` CLI, with
- * core + the dashboard embedded) plus a launcher package. The `cloud()` plugin
- * stays importable source (`@vzn/vx-cloud/plugin`, evaluated inside the vx
- * runtime), so the package ships `src` + `ui/dist` alongside the launcher, and
- * keeps `@vzn/vx` as a dep for the plugin path + the Bun source fallback.
- */
-async function buildCloudPackage(
-  version: string,
-  outDir: string,
-  targets: readonly Target[],
-): Promise<void> {
-  const CLOUD = join(ROOT, 'packages', 'cloud')
-  // The dashboard SPA dist is a build artifact (not committed). The binary
-  // embeds it at compile time; the shipped source needs it for the Bun source
-  // fallback. Build it if `vx run build` (build.ui) didn't already.
-  if (!(await Bun.file(join(CLOUD, 'ui', 'dist', 'index.html')).exists())) {
-    const spa = Bun.spawnSync({
-      cmd: ['bun', 'run', 'build'],
-      cwd: join(CLOUD, 'ui'),
-      stdout: 'inherit',
-      stderr: 'inherit',
-    })
-    if (spa.exitCode !== 0) throw new Error('vx-cloud dashboard SPA build failed')
-  }
-
-  await emitPlatformPackages({
-    mainName: '@vzn/vx-cloud',
-    base: 'vx-cloud',
-    distPrefix: 'vx-cloud',
-    targets,
-    version,
-    outDir,
-  })
-
-  const dir = join(outDir, 'vx-cloud')
-  await mkdir(dir, { recursive: true })
-  await cp(join(CLOUD, 'src'), join(dir, 'src'), { recursive: true })
-  await cp(join(CLOUD, 'ui', 'dist'), join(dir, 'ui', 'dist'), { recursive: true })
-  await cp(join(ROOT, 'scripts', 'npm-launcher.mjs'), join(dir, 'launcher.mjs'))
-  await cp(join(ROOT, 'LICENSE'), join(dir, 'LICENSE'))
-  await Bun.write(
-    join(dir, 'README.md'),
-    `# @vzn/vx-cloud\n\nThe [vx](${REPOSITORY}) orchestrator service (\`vx-cloud serve\` / \`agent\` / \`connect\`) and the first-party \`cloud()\` plugin.\n\n\`\`\`sh\nnpm i -g @vzn/vx-cloud   # the vx-cloud CLI — a standalone binary, no Bun needed\n\`\`\`\n\nOr just the plugin, in your \`vx.workspace.ts\`:\n\n\`\`\`ts\nimport { defineWorkspace } from '@vzn/vx'\nimport { cloud } from '@vzn/vx-cloud/plugin'\nexport default defineWorkspace({ plugins: [cloud()] })\n\`\`\`\n\nLike \`@vzn/vx\`, the \`vx-cloud\` CLI ships as a prebuilt standalone binary per\nplatform (with the dashboard embedded) — **no Bun required** to run it. The\n\`cloud()\` plugin is TypeScript source, evaluated inside the vx runtime. See the\n[docs](${REPOSITORY}) for self-hosting + distributed CI.\n`,
-  )
-  await writeJson(join(dir, 'package.json'), {
-    name: '@vzn/vx-cloud',
-    version,
-    description:
-      'The vx-cloud orchestrator service (serve, agents, distribution) + the cloud() plugin.',
-    type: 'module',
-    exports: {
-      '.': { types: './src/index.ts', import: './src/index.ts' },
-      './plugin': { types: './src/plugin.ts', import: './src/plugin.ts' },
-    },
-    types: './src/index.ts',
-    // The CLI — a Node launcher execing the matching platform binary (no Bun).
-    bin: { 'vx-cloud': './launcher.mjs' },
-    // The launcher's Bun source-fallback entry (the shipped src bin).
-    vxSourceEntry: 'src/cli/bin.ts',
-    engines: { node: '>=18' },
-    optionalDependencies: allOptional('@vzn/vx-cloud', version),
-    // Pin core to the same version — the plugin source + the Bun source fallback
-    // resolve the bare `import '@vzn/vx'` from node_modules (the binary bundles
-    // its own copy and doesn't need this).
-    dependencies: { '@vzn/vx': version },
-    files: ['src', 'ui/dist', 'launcher.mjs', 'README.md', 'LICENSE'],
-    repository: REPOSITORY,
-    homepage: `${REPOSITORY}#readme`,
-    bugs: `${REPOSITORY}/issues`,
-    license: 'MIT',
-    keywords: ['vx', 'monorepo', 'ci', 'distributed', 'remote-cache', 'dashboard', 'bun'],
-  })
+  return name === '@vzn/vx' ? 'vx' : name
 }
 
 await main()

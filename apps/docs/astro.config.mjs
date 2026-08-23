@@ -74,21 +74,6 @@ export default defineConfig({
           ],
         },
         {
-          label: 'vx Cloud',
-          items: [
-            { label: 'Overview', link: '/cloud/overview/' },
-            { label: 'Setup generator', link: '/cloud/setup/' },
-            { label: 'Self-hosting', link: '/cloud/self-hosting/' },
-            { label: 'Dashboard', link: '/cloud/dashboard/' },
-            { label: 'Distributed CI', link: '/cloud/distributed-ci/' },
-            { label: 'Remote caching', link: '/cloud/remote-caching/' },
-            { label: 'MCP over HTTP', link: '/cloud/mcp/' },
-            { label: 'vx-cloud CLI', link: '/cloud/cli/' },
-            { label: 'Wire protocol', link: '/cloud/wire-protocol/' },
-            { label: 'HTTP API reference', link: '/cloud/api/' },
-          ],
-        },
-        {
           label: 'Migrate to vx',
           items: [
             { label: 'From Turborepo', link: '/migrate/from-turborepo/' },

@@ -97,13 +97,13 @@ const platform = [
     icon: 'wire',
     tone: 'var(--phosphor)',
     title: 'Provider-neutral core',
-    body: 'Core is only a task runner — fully offline, no account, no service. A dashboard, remote cache, distributed execution and telemetry export are plugins you declare in vx.workspace.ts, first-party or your own. Core depends on none of them.',
+    body: 'Core is only a task runner — fully offline, no account, no service. Where a task runs, which cache backs it, and where run data goes are plugins you declare in vx.workspace.ts. Core applies none by default: even its own executor and cache are plugins, so "replace any part" is pinned, not promised.',
   },
   {
     icon: 'cloud',
     tone: 'var(--plasma)',
-    title: 'Cloud, self-hosted',
-    body: 'An optional self-hosted CI platform: a dashboard, a trust-scoped shared remote cache, distributed CI across an agent pool, and MCP over HTTP — one docker compose stack backed by Postgres + S3, with accounts and RBAC. Your workspaces connect to it; core never depends on it.',
+    title: 'Bazel-compatible remote cache',
+    body: '@vzn/vx-reapi speaks the Bazel Remote Execution API, so NativeLink, BuildBuddy, Buildbarn and bazel-remote all work as a shared cache with one endpoint of configuration — six mature server implementations, none of which we had to write.',
   },
 ]
 
@@ -454,7 +454,7 @@ const footCols = {
                       : f.icon === 'wire'
                         ? href('guides/extensibility/')
                         : f.icon === 'cloud'
-                          ? href('cloud/overview/')
+                          ? href('guides/remote-caching/')
                           : href('guides/predictive-scheduling/')
                 }
               >

@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
-import { Cache, EXECUTED_RUNS_SQL, KEYED_RUNS_SQL, type RunRecord } from '../src/cache/index.js'
+import { Cache, KEYED_RUNS_SQL, type RunRecord } from '../src/cache/index.js'
 import { classifyFailureMode, mixedOutcomeKeyCount } from '../src/orchestrator/failure-mode.js'
 import { getFlakiestTasks, getHistory, LocalHistoryProvider } from '../src/orchestrator/index.js'
 
@@ -662,62 +662,5 @@ describe('metrics.getHistory and LocalHistoryProvider agree', () => {
       // And the unwindowed key scan agrees with the all-time surface.
       expect(mixedOutcomeKeyCount(db, 'pkg', 'test')).toBe(1)
     })
-  })
-})
-
-// ---------------------------------------------------------------------------
-// The cloud copy of the rule (Postgres) must not drift from core's
-// ---------------------------------------------------------------------------
-
-describe('cloud analytics mirrors the rule', () => {
-  // `packages/cloud/src/db/analytics.ts` re-implements this rule over Postgres
-  // `task_runs` — it cannot import the SQLite version. That duplication is the
-  // fork risk, so these read the cloud source and assert the load-bearing
-  // fragments are still there. Whitespace is normalised; wording is not
-  // asserted, only the predicates that decide a verdict.
-  let cloudSrc: string
-  async function source(): Promise<string> {
-    cloudSrc ??= (
-      await Bun.file(
-        path.join(import.meta.dir, '..', 'packages', 'cloud', 'src', 'db', 'analytics.ts'),
-      ).text()
-    ).replace(/\s+/g, ' ')
-    return cloudSrc
-  }
-
-  it('keeps the keyed and executed predicates byte-identical to core', async () => {
-    const src = await source()
-    // If either literal changes on one side only, the two stores start
-    // disagreeing about which rows are even eligible for a verdict.
-    expect(src).toContain(`const KEYED_TASK_RUNS_SQL = "${KEYED_RUNS_SQL}"`)
-    expect(src).toContain(`const EXECUTED_TASK_RUNS_SQL = "${EXECUTED_RUNS_SQL}"`)
-  })
-
-  it('keeps all three pass predicates on the mixed-key scan', async () => {
-    const src = await source()
-    const scan = src.slice(src.indexOf('private async mixedOutcomeKeyCounts'))
-    expect(scan.length).toBeGreaterThan(0)
-    // The failure side.
-    expect(scan).toContain("SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 0")
-    // All three ways a run can count as a pass — dropping any one of them
-    // hides a whole population of flakes (notably every cache-served green).
-    expect(scan).toContain("status = 'success'")
-    expect(scan).toContain("status LIKE 'cache-hit%'")
-    expect(scan).toContain('cache_hit = true')
-    // And the keyless guard, so `''` rows cannot group into a phantom flake.
-    expect(scan).toContain("hash != ''")
-  })
-
-  it('keeps the same nondeterminism signal and severity split', async () => {
-    const src = await source()
-    const fn = src.slice(src.indexOf('function historyRowFrom'))
-    // Same OR of the two signals ...
-    expect(fn).toContain('mixedOutcomeKeys > 0')
-    expect(fn).toContain('retried || 0) > 0')
-    // ... and the same boundary. A threshold changed on one side only makes
-    // the same task read `recoverable` in the dashboard and `fatal` in `vx info`.
-    expect(fn).toContain('failures < total / 5')
-    expect(fn).toContain("'flaky-recoverable'")
-    expect(fn).toContain("'flaky-fatal'")
   })
 })

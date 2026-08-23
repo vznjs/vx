@@ -11,9 +11,9 @@ OpenTelemetry SDK dependency and nothing to keep version-matched.
 
 The export is **lossless**: every field of vx's telemetry contract rides
 the wire, so a backend reading the trace can rebuild the whole run. That
-is what makes OTLP a real integration surface rather than a summary —
-including for [vx Cloud itself](#send-it-to-vx-cloud), which accepts
-OTLP as an ingest wire.
+is what makes OTLP a real integration surface rather than a summary: a
+receiver can rebuild every run record vx has, and
+[build its own analytics](#build-your-own-analytics) on them.
 
 It's a plugin, built on vx's observe-only [`telemetry`
 capability](/vx/guides/plugins/): it can never change, slow, or fail a
@@ -109,9 +109,8 @@ you open the log from the span. One record per task rather than per
 chunk — a build writes its output in thousands of tiny pieces, and the
 thing anyone reads is the tail.
 
-Capture is bounded exactly as the cloud sink bounds it: a per-task tail
-cap, a per-run budget, and failed tails are never dropped to keep a
-successful one. A cache hit ships no record — those bytes belong to the
+Capture is bounded: a per-task tail cap, a per-run budget, and failed
+tails are never dropped to keep a successful one. A cache hit ships no record — those bytes belong to the
 run that executed the task, and you find them by its cache key. Every
 truncation reports itself (`vx.log.chars_full`,
 `vx.log.truncated_head`), so a capped tail never reads as a complete
@@ -143,22 +142,6 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 `OTEL_EXPORTER_OTLP_HEADERS` takes a comma-separated `key=val,key2=val2`
 list; anything you pass in the `headers` option is merged over it.
 
-## Send it to vx Cloud
-
-[vx Cloud](/vx/cloud/overview/) accepts OTLP as an ingest wire, so the
-same export that feeds your tracing backend can populate the dashboard —
-no vx-specific client needed:
-
-```sh
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://cloud.example.com/v1/otlp
-export OTEL_EXPORTER_OTLP_HEADERS="authorization=Bearer vxc_…"
-```
-
-It decodes into the same records the native `/v1/ingest` endpoints take
-and lands in the same store, so both wires give you the same dashboard.
-Point a collector at both if you want traces in Grafana **and** history
-in vx Cloud.
-
 A collector in the middle is expected, not merely tolerated. It batches
 across producers and re-batches by size and time, so one export can
 carry several runs and one run can be split across exports. Both are
@@ -170,21 +153,16 @@ converges on the same row when the header lands.
 The one thing a collector can still cost you is attribute limits. The
 output fingerprint's per-file map is the largest attribute and the first
 to be truncated — which costs a cross-machine diff its detail, never its
-verdict, because detection keys on the fixed-width tree digest. The
-native endpoints have no such exposure, which is why they remain the
-default.
+verdict, because detection keys on the fixed-width tree digest.
 
 ## Build your own analytics
 
 The attributes above are the whole contract — nothing about them is
-private to vx Cloud. A receiver reads the `vx.run` span for the
-invocation header and each `vx.task` span for a task result, checks
-`vx.telemetry.schema`, and has everything vx knows about the run.
-
-vx Cloud's own receiver is one file
-(`packages/cloud/src/db/otlp-ingest.ts`) and is a worked example: it
-decodes OTLP back into the canonical records and hands them to the
-ordinary ingest.
+private. A receiver reads the `vx.run` span for the invocation header and
+each `vx.task` span for a task result, checks `vx.telemetry.schema`, and
+has everything vx knows about the run. Decode them back into the canonical
+`RunSummaryRecord` / `TaskTelemetry` shapes and you have vx's own
+analytics input, from any OTLP collector.
 
 ## What this gives you
 

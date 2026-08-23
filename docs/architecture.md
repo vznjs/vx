@@ -11,13 +11,11 @@ packages integrate with core exclusively through its public API
 (`src/index.ts`, imported as the bare `@vzn/vx` specifier — enforced
 by `tests/package-boundaries.test.ts`):
 
-| Package             | What                                                                                                                                                                    |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.` (root)          | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                              |
-| `packages/cloud`    | An out-of-process **service package** — a self-hosted platform (server, client verbs, and the first-party cloud plugin). Details live in the Cloud section of the docs. |
-| `packages/vx-otel`  | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps                                                                              |
-| `packages/cloud/ui` | `@vzn/vx-ui` — the dashboard SPA embedded into the platform binary (Vite + Solid + UnoCSS)                                                                              |
-| `apps/docs`         | Astro Starlight docs site; imports `docs/**` at build time                                                                                                              |
+| Package            | What                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| `.` (root)         | `@vzn/vx` — the core runner. Everything below in this doc.                                 |
+| `packages/vx-otel` | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps |
+| `apps/docs`        | Astro Starlight docs site; imports `docs/**` at build time                                 |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the ~80-symbol public API and the plugin
@@ -40,7 +38,7 @@ migration history live in
 | `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                        |
 | `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `RemoteCache`, `CachePolicy`, input/output resolution, `CASBackend`/`Digest`. `tar.ts` stays internal |
 | `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                              |
-| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, wire protocol, metrics queries                                      |
+| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                     |
 | `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                           |
 
 Root files outside the module set: `bin.ts` (shebang entry),
@@ -58,7 +56,7 @@ layers:
 | Run composition        | `run.ts`, `prepare.ts`, `options.ts`, `plan.ts`, `execute-task.ts`, `task-hash.ts`, `upstream.ts`, `run-context.ts`, `run-artifacts.ts`, `run-report.ts` |
 | Cache acceleration     | `remote-cache-setup.ts`, `remote-prefetch.ts`, `stable-keys.ts`, `local-shortcircuit.ts`                                                                 |
 | Plugin + telemetry     | `plugin.ts`, `plugin-host.ts`, `telemetry.ts`, `telemetry-host.ts`                                                                                       |
-| Events + wire          | `events.ts`, `wire.ts`, `wire-render.ts`, `protocol.ts`, `run-state.ts`, `devframe-surface.ts`                                                           |
+| Events                 | `events.ts`, `run-state.ts`, `devframe-surface.ts`                                                                                                       |
 | Presentation + queries | `logger.ts`, `framed-output.ts`, `status-line.ts`, `summary.ts`, `tally.ts`, `colors.ts`, `metrics.ts`, `history.ts`, `predict.ts`                       |
 
 ```mermaid
@@ -132,17 +130,14 @@ the command string is the task (principle #3). Five capabilities:
 | Capability  | Kind                      | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ----------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `executor`  | behavior                  | returns a `TaskExecutor` or declines. Consulted once per run; ALL kept in declaration order; each task is PLACED once before scheduling on the first that may take it (a `remote` executor is skipped for a task pinned local by `exec.remote: false` or a persistent dependency, then `accepts()` decides), and an executor with a `capacity` gets its own scheduler pool; nothing is appended — `localExecutorPlugin()` is declared like any other |
-| `backend`   | behavior                  | returns a `RunBackend` (`run(RunRequest) → RunResult`) or declines. Consulted once per run; first non-undefined wins; kept for server-side schedulers (`@vzn/vx-cloud`); when contributed, executors are not consulted                                                                                                                                                                                                                               |
 | `cache`     | behavior                  | returns a `CacheLayer` or declines. ALL kept in declaration order and CHAINED (lookup walks, save reaches all, the first owns the run index); a layer wrapping the local handle subsumes the bare `localCachePlugin()` layer                                                                                                                                                                                                                         |
 | `telemetry` | observe-only              | returns `TelemetrySink`(s) or declines. ALL plugins' sinks are additive; a sink receives immutable records and holds no run handle                                                                                                                                                                                                                                                                                                                   |
 | `eventSink` | observe-only (deprecated) | raw `WireEvent` consumer via `wireForwarder`; kept for back-compat, `telemetry` is canonical                                                                                                                                                                                                                                                                                                                                                         |
 
 Plus optional `setup` (fail-fast with a clean `UserError` naming the
 plugin) and `teardown`. Consultation lives in `plugin-host.ts`
-(executor/cache/backend/eventSink) and `telemetry-host.ts` (telemetry).
-`backend` is resolved by the CLI layer (`src/cli/run.ts`) from the
-DECLARED plugins before `run()` starts; every other capability is
-resolved inside `prepareRun`/`run()` from the declared list
+(executor/cache/eventSink) and `telemetry-host.ts` (telemetry). Every
+capability is resolved inside `prepareRun`/`run()` from the declared list
 (`prepared.plugins`). **No defaults:** core applies no plugin on its own —
 its executor and cache are plugins under `src/plugins/` (see
 `docs/modules/plugins.md`), declared like any other; a workspace that
@@ -152,8 +147,9 @@ all decline is byte-identical to one with none declared.** `subscribeTelemetry` 
 sinks are contributed, so no bus subscriber is added and no summary
 records are built.
 
-The repo's own `vx.workspace.ts` declares `otel()` + `cloud()`; both
-decline without their env/config, so a plain run stays zero-overhead.
+The repo's own `vx.workspace.ts` declares `otel()` alongside the local
+executor and cache; `otel()` declines without its env, so a plain run stays
+zero-overhead.
 
 ## The telemetry contract
 
@@ -192,23 +188,6 @@ events into the serializable `WireEvent` form (ids + decimal-string
 ns instead of live node refs and bigints) for anything crossing a
 process or socket.
 
-## The backend / protocol layer
-
-`orchestrator/protocol.ts` is the client↔service wire contract:
-`RunRequest` (the serializable subset of `RunOptions`) in,
-`WireEvent` stream + `RunResult` out, with the
-`optionsToRequest`/`requestToOptions` mappers. `RunBackend` is the
-currency of the `backend` plugin capability. Core ships exactly one
-backend — `cli/backend.ts:localBackend()`, pure in-process. Distributed
-execution across an agent pool on a deployed platform is contributed by
-the first-party cloud plugin, never core (run delegation was removed with
-the platform pivot; see the Cloud section of the docs). A relayed run
-renders identically to a local one because `wire-render.ts` rebuilds
-node-shaped objects from the `WireEvent` stream and drives a normal
-`Logger`. `wire.ts` adds the JSON-RPC 2.0 envelope (`vx:events` /
-`vx:state` / `vx:rpc` / `vx:submit` channels) a service speaks over
-WS/SSE/NDJSON.
-
 ### The cache cluster (`src/cache/`)
 
 The cache is not a single file. It is composed:
@@ -221,10 +200,9 @@ The cache is not a single file. It is composed:
 - **`layered-cache.ts`** — composes local + a remote layer behind the
   same `CacheLayer` interface, and declares **`RemoteCacheLayer`** —
   the three-call seam (`has`/`get`/`put`) a remote wire client must
-  implement. Core ships NO wire client: the first-party cloud plugin
-  provides the native `/v1/cache` client via the `cache` plugin
-  capability, and any third-party wire (Turbo, S3-direct) plugs in the
-  same way (`design/native-cache-wire-2026-07.md`). Read-through (local,
+  implement. Core ships NO wire client: a plugin provides one via the
+  `cache` capability — `@vzn/vx-reapi` (Bazel AC/CAS), a Turbo wire, an
+  S3-direct wire all plug in the same way. Read-through (local,
   then remote with hydrate-into-local; `prefetch` + an in-flight map
   guarantee at most one remote GET per key); write-through (local
   sync; the remote upload is a fire-and-forget background task drained
@@ -301,9 +279,7 @@ never branches on layering.
    after the binary name to the cli module's `run`.
 2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`,
    `cache`, `lock`, `migrate`, `upgrade`, `show`, `info` (+ `stats`
-   alias), `mcp`, `help`, `version`. `serve` / `dev` / `coordinator` /
-   `worker` answer with a redirect to the service package's binary (see
-   the Cloud section of the docs).
+   alias), `mcp`, `help`, `version`.
 3. **`cli/run.ts:parseRunArgs`** parses the argv into a `RunArgs`
    object (including the 4-axis cache policy from `--cache` /
    `--no-cache` / `--force`). Surfaces parse errors as `RunArgs.error`
@@ -318,13 +294,11 @@ never branches on layering.
    - No positionals + TTY → interactive picker → emits a single
      `pkg#task`.
 
-   Then it maps the options to a `RunRequest` and resolves the
-   backend: a plugin's `backend` capability wins, else the in-process
-   `localBackend()`. `--dry` / `--graph` short-circuit into `planRun`
-   instead.
+   Then it calls `run()` directly — a run always executes in THIS
+   process. `--dry` / `--graph` short-circuit into `planRun` instead.
 
-5. **`orchestrator/run.ts:run()`** is called with `RunOptions`
-   (in-process, or server-side for a delegated run). From here:
+5. **`orchestrator/run.ts:run()`** is called with `RunOptions`.
+   From here:
    1. `prepareRun` (shared with `planRun`): workspace discovery →
       **scoped** config loading (only in-scope projects + their
       transitive dep closure evaluate; `--frozen` loads from
@@ -358,7 +332,7 @@ restoreTier })` runs the DAG two-tier. Each ready node invokes
       summary), so Ctrl-C reaps them.
    8. Summary + optional artifacts: `--summarize` (per-run JSON),
       `--profile` (Chrome-trace JSON), `--report=markdown` (CLI-side,
-      after the backend returns).
+      after `run()` returns).
    9. `cache.recordRunBundle({ runs, invocation })` — every real
       task's row plus one invocation header row, in one transaction.
       Group and `aborted` tasks are skipped.
@@ -509,7 +483,7 @@ functions; those are the seam. Internal helpers can change.
 | `exec/env.ts`                 | Adjust isolation policy (broader allowlist, OS-specific essentials)                |
 | `cache/inputs.ts`             | fspy-style auto-input inference (LD_PRELOAD / Detours / unotify)                   |
 | `orchestrator/logger.ts`      | Plain-text logger, JSON-line logger, observability emitter                         |
-| `cli/backend.ts`              | Route runs elsewhere (a plugin `backend` does this without a fork)                 |
+| `exec/executor.ts`            | Route a task's command elsewhere (a plugin `executor` does this without a fork)    |
 
 ## Remote-cache subsystem (detail)
 
@@ -596,10 +570,9 @@ https://ui.perfetto.dev). See
 CI scripts that want live numbers can `sqlite3 cache.db` directly, or
 use the query layer (`orchestrator/metrics.ts`, exported from
 `@vzn/vx`). In **core** there is no HTTP layer and no UI — the cache
-file is the API. The dashboard, `/v1/*` HTTP surface, and live-run
-view live in the out-of-process service package, fed by the first-party
-cloud plugin's telemetry push (the service never reads a workspace
-`cache.db`). See the Cloud section of the docs.
+file is the API. Anything that wants a dashboard or an HTTP surface
+builds it on the `telemetry` capability, out of process; core never
+grows a server.
 
 ## Design principles
 

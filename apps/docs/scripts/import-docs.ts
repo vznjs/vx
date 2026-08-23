@@ -47,7 +47,7 @@ function outRelFor(srcRel: string): string {
 // ---- collect sources & build the link map ----
 
 const sources: string[] = []
-for (const pattern of ['*.md', 'modules/*.md', 'design/*.md']) {
+for (const pattern of ['*.md', 'modules/*.md', 'design/*.md', 'design/archive/*.md']) {
   for (const f of new Glob(pattern).scanSync({ cwd: DOCS_DIR })) {
     sources.push(f.split(path.sep).join('/'))
   }

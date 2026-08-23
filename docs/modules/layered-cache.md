@@ -7,7 +7,7 @@ for remote caching (`docs/design/native-cache-wire-2026-07.md`) — and
 exposes the same `CacheLayer` interface. The orchestrator doesn't know
 which layer it's talking to, and core ships **no wire client**: the
 remote layer comes from a plugin's `cache` capability (e.g. the
-first-party cloud plugin's native `/v1/cache` client) or from an embedder
+`@vzn/vx-reapi` CAS client) or from an embedder
 via `RunOptions.remoteCache`.
 
 - **Read-through**: try local; on miss, fetch from remote, ingest into
@@ -88,7 +88,7 @@ local concerns.
 
 - No wire knowledge — URLs, headers, integrity digests, redirects,
   timeouts all live inside the `RemoteCacheLayer` implementation
-  (e.g. the first-party cloud plugin's native-cache client).
+  (e.g. `@vzn/vx-reapi`'s CAS client).
 - No write-batching or retry on transient errors. Fire-and-forget.
 
 ## Tests

@@ -116,12 +116,11 @@ explains why.
 | `turbo run build --affected`      | `vx run build --affected`       |
 | `turbo run build --dry`           | `vx run build --dry`            |
 | `turbo run build -- --flag`       | `vx run build -- --flag`        |
-| `TURBO_TOKEN` / remote cache      | a remote-cache plugin connection (see the Cloud section) |
+| `TURBO_TOKEN` / remote cache      | a remote-cache plugin connection                         |
 
-The remote cache is plugin-driven: the first-party option is a self-hosted
-platform that wires it automatically (see the
-[Cloud section](../../cloud/overview/)), or bring a Turbo-wire server
-through a small cache plugin (see
+The remote cache is plugin-driven: `@vzn/vx-reapi` connects any Bazel
+REAPI server (NativeLink, BuildBuddy, Buildbarn, bazel-remote), or bring a
+Turbo-wire server through a small cache plugin (see
 [Core is provider-neutral](../../guides/extensibility/)). See
 [Remote caching](../../guides/remote-caching/).
 

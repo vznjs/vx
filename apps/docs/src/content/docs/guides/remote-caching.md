@@ -1,6 +1,6 @@
 ---
 title: Remote caching
-description: A local cache makes your own runs instant with zero setup. To share results across machines, a remote-cache plugin fills core's RemoteCacheLayer seam — the first-party shared cache is vx Cloud, and any other backend plugs in the same way.
+description: A local cache makes your own runs instant with zero setup. To share results across machines, a remote-cache plugin fills core's RemoteCacheLayer seam — @vzn/vx-reapi speaks Bazel's ActionCache + CAS, and any other backend plugs in the same way.
 ---
 
 A local cache makes *your* repeat runs instant, and it needs **no setup** —
@@ -59,12 +59,12 @@ task drained at end of run — failures are logged but never fail the build.
 
 ## The first-party shared cache
 
-The first-party remote cache is a self-hosted platform documented in its
-own section. Connect a deployment and every `vx run` layers its shared
-artifact store on top of the local cache automatically — the cache is
-trust-scoped, so a fork PR can warm off `main` without being able to poison
-a trusted build. See [Remote caching](../../cloud/remote-caching/) and the
-[platform overview](../../cloud/overview/).
+`@vzn/vx-reapi` fills the seam with Bazel's Remote Execution API: an
+`ActionCache` entry per task key, artifacts in the `ContentAddressableStorage`.
+That means NativeLink, BuildBuddy, Buildbarn and bazel-remote all work as a
+vx remote cache with one endpoint of configuration — six mature server
+implementations, none of them written by us, because the REAPI server is
+deliberately dumb.
 
 ## Bring your own backend
 

@@ -11,9 +11,7 @@ terminal and a task succeeding or failing. Read it alongside
  ┌─ CLI dispatch (src/bin.ts → src/cli/index.ts → src/cli/run.ts)
  │    1. bin.ts spawns; forwards process.argv to cli.run().
  │    2. cli/index.ts dispatches by subcommand (run / watch / cache /
- │       lock / migrate / upgrade / show / info / mcp / help / version;
- │       serve / dev / coordinator / worker redirect to the service
- │       package — see the Cloud section of the docs).
+ │       lock / migrate / upgrade / show / info / mcp / help / version).
  │    3. cli/run.ts:parseRunArgs(argv) → RunArgs (validated; resolves
  │       the 4-axis cache policy from --cache / --no-cache / --force).
  │    4. cli/run.ts:runCmd resolves the project scope:

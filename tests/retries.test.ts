@@ -10,7 +10,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger, RunSummaryRecord, TelemetrySink } from '../src/orchestrator/index.js'
-import { run, optionsToRequest, requestToOptions } from '../src/orchestrator/index.js'
+import { run } from '../src/orchestrator/index.js'
 import { parseRunArgs } from '../src/cli/index.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
 
@@ -386,11 +386,4 @@ describe('--retry — CLI parser', () => {
   })
 })
 
-describe('retries — wire mapping', () => {
-  it('round-trips through RunRequest', () => {
-    const req = optionsToRequest({ cwd: '/w', tasks: ['build'], retries: 2 })
-    expect(req.retries).toBe(2)
-    expect(requestToOptions(req).retries).toBe(2)
-    expect(optionsToRequest({ cwd: '/w', tasks: ['build'] }).retries).toBeUndefined()
-  })
-})
+describe('retries — wire mapping', () => {})

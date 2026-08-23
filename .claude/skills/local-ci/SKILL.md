@@ -6,7 +6,7 @@ description: Run the same checks CI runs, in the same order. Use before every pu
 # Run local CI
 
 Reproduces the GitHub Actions workflow `.github/workflows/ci.yml`
-locally. CI has TWO jobs; run both. Fail fast.
+locally. Fail fast.
 
 **Run the underlying commands directly, NOT the cached `vx run ci`
 gate.** A CI runner has no vx cache; locally, `lint.oxlint` /
@@ -15,15 +15,11 @@ gate.** A CI runner has no vx cache; locally, `lint.oxlint` /
 lesson). The raw commands are cache-proof.
 
 ```sh
-# job 1: lint · format · test (what `vx run ci` fans out to)
+# lint · format · test (what `vx run ci` fans out to)
 bun install --frozen-lockfile && \
 bunx oxfmt --check . && \
 bunx oxlint --type-aware --type-check && \
 bun test ./tests/
-
-# job 2: vx-cloud tests (real ephemeral Postgres + fake S3)
-rm -rf /tmp/vx-test-pg-*   # stale ephemeral-pg dirs fill the disk
-(cd packages/cloud && bun test --timeout 30000)
 ```
 
 ## What each step covers
@@ -40,22 +36,15 @@ rm -rf /tmp/vx-test-pg-*   # stale ephemeral-pg dirs fill the disk
   used by the UI package's own build.
 - **`bun test ./tests/`** — the core suite. The `./` anchor keeps the
   scan out of `packages/*/tests/`.
-- **cloud `bun test`** — the platform suite. Boots its own ephemeral
-  Postgres cluster per process; ALWAYS `rm -rf /tmp/vx-test-pg-*`
-  first or leftover clusters exhaust the disk.
 
 ## Known load-dependent flakes (verify in isolation before blaming your change)
 
 - `tests/cache-baseline.test.ts` perf guards and the `vx watch` e2e in
   `tests/cli.test.ts` can fail under concurrent machine load; both
   pass in isolation on a healthy tree.
-- The pg-boot `beforeAll` (initdb + pg_ctl) can exceed a short hook
-  timeout on a contended runner — `--timeout 30000` is why it's on the
-  cloud command.
-- `too many clients already` under the full 37-file cloud suite was
-  fixed by raising the ephemeral cluster's `max_connections` to 400
-  (2026-07-17); if it recurs as the suite grows, raise it again — the
-  cluster runs `fsync=off`, so headroom is nearly free.
+- The sandbox suites skip without `bwrap`/`socat`/`strace`; CI sets
+  `VX_REQUIRE_SANDBOX=1` so an unavailable sandbox FAILS there instead
+  of silently passing.
 
 ## If any step fails
 

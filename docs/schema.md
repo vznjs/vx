@@ -947,9 +947,8 @@ interface WorkspaceConfig {
   runs) or decline), `telemetry` (observe-only data export — the
   canonical path for OTel, a self-hosted dashboard, or custom sinks),
   the deprecated `eventSink`, plus optional `setup`/`teardown`.
-  First-party plugins include `otel()` from `@vzn/vx-otel`; the
-  first-party cloud plugin is declared the same way
-  (see the Cloud section of the docs). A plugin
+  First-party plugins include `otel()` from `@vzn/vx-otel` and
+  `@vzn/vx-reapi`. A plugin
   that declines every capability (e.g. `otel()` with no OTLP
   endpoint configured) costs nothing — a run with no active plugin
   is byte-identical to one with none declared. Plugins observe, route

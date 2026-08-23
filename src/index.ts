@@ -125,7 +125,6 @@ export type { ProjectMeta } from './workspace/index.js'
 export type {
   VxPlugin,
   EventSink,
-  BackendContext,
   CacheContext,
   ExecutorContext,
   EventSinkContext,
@@ -188,22 +187,9 @@ export type {
   TelemetrySink,
 } from './orchestrator/index.js'
 
-// The submitter wire contract + backend interface (the `backend`
-// capability's currency) and the serializable event projection.
-export {
-  optionsToRequest,
-  requestToOptions,
-  projectNode,
-  projectOutcome,
-  createWireRenderer,
-} from './orchestrator/index.js'
-export type {
-  RunBackend,
-  RunRequest,
-  RunResult,
-  ClientMessage,
-  ServerMessage,
-} from './orchestrator/index.js'
+// The serializable event projection.
+export { projectNode, projectOutcome } from './orchestrator/index.js'
+export type { RunResult } from './orchestrator/index.js'
 
 // Event bus + wire form — adapters (otel-bridge, custom subscribers) ride this.
 export {
@@ -219,36 +205,6 @@ export type {
   WireEvent,
   TaskView,
   OutcomeView,
-} from './orchestrator/index.js'
-
-// The JSON-RPC 2.0 wire envelope — an out-of-process serve/agent speaks this framing.
-export {
-  clientMessageToEnvelope,
-  decodeEnvelope,
-  encodeForNDJSON,
-  encodeForSSE,
-  encodeForWS,
-  ENVELOPE_ERRORS,
-  envelopeToClientMessage,
-  envelopeToServerMessage,
-  isEnvelope,
-  isNotification,
-  isRequest,
-  makeError,
-  makeNotification,
-  makeRequest,
-  makeResponse,
-  serverMessageToEnvelope,
-  WIRE_CHANNELS,
-  WIRE_PROTOCOL_VERSION,
-} from './orchestrator/index.js'
-export type {
-  Envelope,
-  ErrorResponse,
-  Notification,
-  WireRequest,
-  WireResponse,
-  WireChannel,
 } from './orchestrator/index.js'
 
 // Metrics / analytics query layer over cache.db — a service plugin's HTTP

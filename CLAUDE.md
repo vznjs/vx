@@ -33,8 +33,7 @@ Configs:
 Bun workspaces monorepo: the root `"."` member is core `@vzn/vx`
 (load-bearing — without it the root vx.config.ts stops being a
 project); `packages/*` are the integration packages; `apps/docs` is
-the docs site; `packages/cloud/ui` is a nested member (explicit root
-`workspaces` entry). Core `src/` is eight modules — each directory's
+the docs site. Core `src/` is eight modules — each directory's
 `index.ts` is its contract; cross-module imports go through it only
 (enforced by `tests/module-boundaries.test.ts`) — plus four root
 files. Core never imports a sibling `@vzn/vx-*`; packages import core
@@ -116,31 +115,17 @@ src/
   util/                 # tiny shared helpers
     index.ts paths.ts hash.ts ulid.ts errors.ts
 packages/
-  cloud/                # @vzn/vx-cloud — the self-hosted CI platform + its plugin
-    src/
-      plugin.ts         # cloud() plugin: telemetry/backend/cache capabilities
-      environments.ts   # per-user environments.json (connect targets)
-      artifact-store.ts # trust-scoped cache artifacts over a BlobBackend
-      native-cache.ts   # the vx-native /v1/cache wire client
-      protocol-dist.ts  # dist:*/agent:*/coord:* distribution messages (v2)
-      task-log-capture.ts / github-{summary,check}.ts / http-body.ts
-      auth/             # sessions, tokens, RBAC, CSRF
-      db/               # Bun.sql client, migrations, partitions, analytics
-      blob/             # BlobBackend seam: local dir + S3 (hand-rolled SigV4)
-      dist/             # agent registry, multi-run scheduler, submit, agent loop
-      cli/              # vx-cloud dispatcher: server, dispatch (the HTTP host),
-                        # agent, connect/env/status, dev, mcp, ui-asset/server
-    ui/                 # the dashboard SPA (Solid + UnoCSS + json-render views)
-    deploy/             # Dockerfile context + docker-compose stack
   vx-otel/              # @vzn/vx-otel — otel() telemetry plugin (OTLP JSON, no SDK)
+  vx-reapi/             # @vzn/vx-reapi — Bazel Remote Execution API plugin
+                        # (remote cache over ActionCache + CAS; remote execution later)
 apps/docs/              # Astro Starlight docs site (imports docs/)
 bench/                  # synthetic-workspace generator + benchmark runner
 docs/                   # source of truth: architecture, caching, cli, execution,
                         # schema, flows, optimizations, comparison, modules/<name>.md,
-                        # design/ (proposals, the consulting review, and
+                        # design/ (proposals + archive/ for superseded ones, and
                         # decision-log-archive.md — the full history)
 .claude/agents/         # subagent definitions
-vx.workspace.ts         # declares otel() + cloud() plugins (both decline unconfigured)
+vx.workspace.ts         # declares otel() + the local executor and cache plugins
 tsconfig.json / package.json / bun.lock / .oxlintrc.json / .oxfmtrc.json
 ```
 
@@ -203,32 +188,14 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
    `vx.workspace.ts` like any third-party one; a workspace that declares
    none fails before any task runs, naming the fix. Users compose always.
 
-## Dashboard product lens (owner directive, 2026-07-10)
-
-**The UI is built from a SINGLE DEV's perspective** — not an
-org/manager analytics console. Every surface answers one of the dev's
-own questions, in their flow order:
-
-1. **See it run** — spawn/watch live runs (the Runs landing).
-2. **Dig into the projects they own** — project drill-ins with their
-   tasks and history.
-3. **Task analysis: did MY performance improve or decrease?** — per
-   task/project over-time trend, not just workspace-wide aggregates.
-4. **Identify flaky tests** — confirmed/inferred flakiness with the
-   concrete fix.
-5. **Easy debug access** — from any failure, ONE click to the run's
-   logs and the task's artifacts.
-
-When adding a dashboard feature, ask "which of these five does it
-serve, and how many clicks from the dev's entry point?" — a feature
-serving none of them is probably org-analytics scope creep.
-
 ## Never stop — run cycles (standing owner directive, 2026-07-27)
 
 **"Continue on cycles, never stop."** Work is CONTINUOUS, not request-driven.
 There is no state in which this project is "done" and waiting for input; a
-finished wave is the start of the next one, and **vx cloud is the named
-default subject** when nothing more urgent is open.
+finished wave is the start of the next one, and **the plugin architecture
+and `@vzn/vx-reapi` are the named default subject** when nothing more urgent
+is open (owner, 2026-08-23, replacing vx cloud — which was removed in full
+that day).
 
 The cycle that has repeatedly worked here, in order:
 
@@ -246,15 +213,14 @@ The cycle that has repeatedly worked here, in order:
 5. **Land** it, then pick the next surface. Do not ask what to do next; say
    what you are doing next.
 
-**For vx cloud specifically**, rotate across: the analytics read queries (they
-answer questions about a dev's work and have repeatedly answered them wrongly
-— skew, fabricated verdicts, N+1 shapes), the dashboard's client-side
-derivations (`ui/src/jr/{data,functions}.ts` — computations that can lie to
-the dev without any server bug), the platform/auth/tenancy boundary, the
-distributed-execution path, and the five product-lens questions above (a
-surface serving none of them is scope creep; a lens question with no surface
-is the gap to close). Cloud features are not done until their docs land in the
-same wave — that is the 2026-07-16 directive and it still stands.
+**For the plugin/REAPI arc specifically**, rotate across: the three seams
+themselves (`executor`, `cache`, `telemetry` — a seam that only core's own
+plugin can satisfy is not a seam), the cache-key derivation and the
+stale-hit class it guards, `@vzn/vx-reapi`'s wire (digests, the Merkle
+input tree, `FindMissingBlobs` upload minimality), the scheduler's
+admission and placement, and the docs that describe all of it. A feature is
+not done until its docs land in the same wave — that is the 2026-07-16
+directive, and it survived the cloud removal.
 
 **Standing quality bar for every cycle:** repro-mandated findings, no
 half-finished work behind flags, measurement before optimisation claims, and
@@ -299,8 +265,8 @@ time every single time.
   under a green check is not coverage. Gate it on an env var CI sets
   (`VX_REQUIRE_SANDBOX`, `VX_REQUIRE_BROWSER`) so unavailable = FAILURE in CI.
 - **`bun test` passing is NOT the gate.** It is transpile-only and cannot see
-  a type error. Run `bun src/bin.ts run ci` from the ROOT (oxlint inside
-  `packages/cloud` reports phantom errors — ignore patterns are root-relative;
+  a type error. Run `bun src/bin.ts run ci` from the ROOT (oxlint inside a
+  package reports phantom errors — ignore patterns are root-relative;
   per-file `oxfmt --check <file>` gives FALSE passes — only dir mode applies
   the config). Never pipe a gate command through `tail` — it masks the exit
   code. Re-run the full gate AFTER the last edit, CLAUDE.md included.
@@ -329,14 +295,11 @@ time every single time.
   class (four waves running). De-claim it or implement it.
 - **A refusal breaks a working build**, so refuse only what is PROVABLE, and
   ship a false-positive control test with every refusal.
-- **Stale build artifacts make a passing check prove nothing.** Rebuild
-  `packages/cloud/ui/dist` before believing any visual/browser result — a
-  branch sync rewrites the UI source, so dist goes stale on every sync.
 - **Scratchpad hygiene.** Use the session scratchpad dir, never a bare `/tmp`
   path (a stale sibling-session file once overwrote live work), and never let
   a `cd` persist across a compound command whose later steps use relative
   paths.
-- **Cloud features are not done until their docs land in the same wave.**
+- **A feature is not done until its docs land in the same wave.**
 - **Correct entries IN PLACE.** An entry that turns out wrong gets corrected,
   never quietly dropped. Never write a plausible cause you have not proven.
 
@@ -344,8 +307,7 @@ time every single time.
 
 - **Versions** (verify in source before quoting): `CACHE_VERSION`
   `vx-cache-v26`, core `SCHEMA_VERSION` `v24`, `TELEMETRY_SCHEMA_VERSION` 2,
-  `DIST_PROTOCOL_VERSION` 2, `/v1/meta cacheWire` 2, `TASK_WIRE_VERSION` 1,
-  `ENVIRONMENTS_VERSION` 1, cloud migrations through `0009`.
+  `LOG_WIRE_VERSION` 1.
 - **When to bump `CACHE_VERSION`:** only when STORED BYTES are wrong under an
   UNCHANGED key (v25/v26 both were). A key-derivation fix whose old key was
   already WRONG is self-healing — it misses once, re-runs, re-caches, and can
@@ -372,8 +334,8 @@ time every single time.
   `workspace_id` (three documented exemptions, guarded by a test).
 - **Observability must never break a run.** Telemetry sinks are crash-isolated
   and deadline-bounded; a throwing sink is disabled for the run; a remote
-  cache error degrades to a MISS; the cloud plugin is never-fail but must
-  WARN (a silently discarded ingest shipped once).
+  cache error degrades to a MISS; a never-fail plugin must still WARN (a
+  silently discarded ingest shipped once).
 - **Zero-cost gates:** no telemetry plugin ⇒ no bus subscriber, no summary
   built, no git spawn. `wants` gates `task.log` projection. A declined plugin
   costs nothing. Guard these with tests when touching the host.
@@ -385,7 +347,7 @@ time every single time.
 - **Flakiness = nondeterminism in the OUTCOME only** — a within-run retry
   (`flakyConfirmed`) or one cache key that both failed and succeeded
   (`mixedOutcomeKeys`). Duration spread is context, never evidence. One
-  shared `hasFlakeSignal` on the core façade; cloud imports it.
+  shared `hasFlakeSignal` on the core façade.
 - **Colour vocabularies are three, and they do not mix:** status (verdict),
   identity (`--ident-*`, projects hued / tasks pink — outside the status
   palette so an id can never read as a verdict), and chart series (a closed
@@ -415,7 +377,7 @@ time every single time.
   DSL. vx is the portable execution+cache+pool LAYER you run INSIDE any CI
   provider. (Run TRIGGERS reverse a standing non-goal — owner decision only.)
 - **Turbo remote-cache wire in core** — dropped 2026-07-10; core ships the
-  seams, `@vzn/vx-cloud` ships the native wire, Turbo interop is a
+  seams, `@vzn/vx-reapi` ships the Bazel AC/CAS wire, Turbo interop is a
   third-party plugin recipe.
 - **Speculative façade widening** — measured 2026-07-30: there is no fourth
   util symbol worth exporting. Widen on demonstrated need only.
@@ -430,10 +392,6 @@ time every single time.
 - **CI is `ubuntu-latest` only.** Three macOS-only defects reached main
   unseen (tar format, symlinked-base containment, `close()` on an unlinked
   DB). A darwin job — even a subset — is the structural fix.
-- `vx-cloud connect` has no `--pr-token` flag; the fork-PR tier is
-  hand-editable in `environments.json` only. Feature decision, not a defect.
-- Read routes (`/v1/agents`, the analytics reads) answer ANY verb. Not
-  exploitable (no `Allow-Credentials`; `SameSite=Lax`), just sloppy.
 - `--info` and `--cache-local` are byte-identical tokens (56 189 248), so a
   blue line is ambiguous between "informational" and "cache". Changing a token
   value moves the visual baselines — a design call.
@@ -447,16 +405,75 @@ time every single time.
 - Task-log caps count CHARS, not memory (~36× overhead at 1-char chunks);
   when failures alone exceed the run budget the OLDEST failure is stubbed
   first (usually the root cause).
-- Distributed: all-agents-leave waits indefinitely; a submitter socket that
-  submits TWICE orphans the first submission; the prune-vs-agent sub-scope
-  asymmetry for an untrusted token used outside a PR (read from source, NOT
-  reproduced).
-- The `visual` and `ui-perf` browser suites are host-pinned and skip in CI
-  (pixel baselines are font-set dependent; wall-clock FPS measures the
-  runner). Arming them needs a containerised capture / measured runner
-  baseline.
+- The GHA job-summary plugin and the PR check-run integration went with the
+  cloud removal (2026-08-23). Core's `--report=markdown` / `--report-file`
+  still produce the table; the automatic-on-every-run plugin and the Checks
+  API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-23 (third wave) — vx cloud REMOVED IN FULL, and core's whole-run
+  `backend` seam with it.** Owner directive, mid-session: "Remove vx cloud in
+  full. We now focus on modular architecture plugins and reapi." Two scoping
+  calls were the owner's, not mine: `backend` goes too (it was cloud's only
+  consumer, and the design doc §6 already scheduled its deletion for the day
+  cloud's dist half retired), and the cloud design docs MOVE to
+  `docs/design/archive/` rather than being deleted — they are the record of
+  what was explored and why. **What went:** `packages/cloud` (204 files,
+  ~48k lines of TS — server, auth/RBAC, Postgres analytics, S3 blob backend,
+  the dashboard SPA, the distributed-execution controller and agent loop, the
+  `cloud()` plugin), core's `protocol.ts` / `wire.ts` / `wire-render.ts` /
+  `cli/backend.ts`, the `backend` capability + `BackendContext` +
+  `resolveBackend`, and 21 façade exports (the JSON-RPC envelope, the
+  `RunRequest`/`RunResult` mappers, `createWireRenderer`). Net
+  **+4,830 / −75,835 across 309 files.** **What core is now:** three seams —
+  `executor` (where ONE task's command runs), `cache`, `telemetry` — none
+  applied by default, and a run ALWAYS executes in the `vx run` process.
+  `cli/run.ts` calls `run()` directly where it used to resolve a backend.
+  That property is the whole argument: `backend` moved the SCHEDULER
+  server-side, which is what forced cache restore, output materialisation,
+  task logging and telemetry to be re-implemented there and made a
+  distributed run permanently telemetry-blind. **Salvage, not deletion, for
+  one type:** `RunResult` moved to `run-report.ts`, its only remaining
+  consumer, so `--report=markdown` still works. **Tests:** 4 wire-only suites
+  deleted (`protocol-map`, `wire`, `wire-render`, `wire-roundtrip`); 10 more
+  had seam-only cases surgically removed and their core coverage kept; the
+  `options-resolve` serialization-boundary block went with the mappers it
+  tested. Two CROSS-PACKAGE tripwires in core (`status-vocabulary`,
+  `failure-mode`) read cloud SOURCE to prove one definition stayed one
+  definition — their cloud halves are gone, their core halves kept, and the
+  reason each pin exists is preserved in its comment. **A real casualty,
+  recorded not hidden:** the GHA job-summary telemetry plugin and the PR
+  Checks-API integration lived in `packages/cloud`. Core's
+  `--report=markdown` / `--report-file` still produce the table (the manual
+  `$GITHUB_STEP_SUMMARY` recipe is intact), but the automatic-on-every-run
+  plugin and the check run need `@vzn/vx-github`. Both `guides/ci.md`
+  sections now say exactly that rather than describing a feature that no
+  longer exists. **Also removed:** the `docker.yml` and
+  `vx-distributed-ci.yml` workflows, the `cloud` CI job (which had been RED
+  since `9fb3390` — see below), the `build.cloud.*` and `build.ui` tasks, the
+  `vx-cloud` half of `build-npm.ts` and `npm.yml` (10 published packages → 5),
+  the `packages/cloud/ui` workspace member, and the `vx-cloud` bin link in
+  `link-self.ts`. `build.bun.*` had a stale `dependsOn: ['build.ui']` — core
+  has not embedded the SPA since the split, verified by grep before cutting.
+  **Found on the way in, and it is a process finding:** `vx-cloud tests
+(postgres)` had been red on main since `9fb3390`, two commits before my
+  own, because the no-defaults wave (`c0d85d5`) swept core's 38 test fixtures
+  to declare `localExecutorPlugin()`/`localCachePlugin()` and never touched
+  `packages/cloud/tests/`. 21 failures, all `MISSING_PLUGIN_HINT` from
+  `resolveCache`. It stayed invisible because the LOCAL gate
+  (`bun src/bin.ts run ci`) does not run the cloud suite — it needs Postgres —
+  so a green local gate and a red main were fully compatible. The standing
+  rule already says "confirm the REAL CI conclusion after pushing"; this is
+  the second time it has been the thing that mattered. Moot now, but the
+  lesson is not: **a gate that cannot run locally will go red unnoticed.**
+  **Verification:** `bun src/bin.ts run lint` green from the root (oxlint
+  type-aware + oxfmt), full suite green, the docs site builds and a grep over
+  `apps/docs/dist/` finds ZERO remaining `/vx/cloud/` links (the landing
+  page's cloud feature card became the REAPI remote-cache card). `bun install`
+  reproduces cleanly with the workspace member gone. No CACHE_VERSION or
+  SCHEMA bump: nothing about key derivation, stored bytes or the telemetry
+  record shape changed.
 
 - **2026-08-23 (second wave) — placement and executor pools shipped, and the
   new `exec.remote` field was BUSTING THE CACHE KEY.** Continuation of the
@@ -909,61 +926,46 @@ advertisement (`vx-cloud connect` is the only wiring). Early cutoff. Helm.
 
 ## Active workstreams (prioritized)
 
-**OWNER DIRECTIVE 2026-07-16 — document EVERY vx Cloud feature:
-EXECUTED 2026-07-17** (`a4a5051` + `50dbe57`; see the decision-log
-entry). The audit→write→verify program ran to completion: full feature
-inventory, all 8 cloud pages audited, a new `cloud/api.md` HTTP API
-reference, every identified gap filled, astro build clean + a
-zero-broken-links crawl over `dist/`. Keep the standard alive: a new
-cloud feature is not DONE until its docs land in the same wave.
+**OWNER DIRECTIVE 2026-08-23 — vx cloud is REMOVED IN FULL.** The
+self-hosted platform (`packages/cloud`, ~48k lines), core's whole-run
+`backend` capability and everything that existed only to serve it
+(`protocol.ts`, `wire.ts`, `wire-render.ts`, `cli/backend.ts`, the
+JSON-RPC envelope, the `RunRequest`/`RunResult` mappers) are gone. The
+focus is now **modular plugin architecture + `@vzn/vx-reapi`**. Superseded
+design docs live in `docs/design/archive/`; the code is in git history.
 
-The trusted-GET S3 HEAD-skip (backlog (b)) SHIPPED same day —
-completed from the stashed WIP, adversarially verified sound (see the
-decision-log entry).
+Core's contract is now exactly three seams — `executor` (where ONE task's
+command runs), `cache` (where artifacts live), `telemetry` (where run
+records go) — none of them applied by default. A run always executes in
+the `vx run` process; the scheduler never leaves. That is the property
+the removed `backend` seam destroyed and the reason it went.
 
-Near-term roadmap = the "road to best-CI" ranked table in
-`docs/design/ci-platform-2026-07.md` (owner: "Make vx the best CI env
-ever… compete with GitHub Actions and Nx Cloud"; the wedge is the
-portable execution+cache+pool LAYER inside any CI provider — triggers/
-hosted-runners/secrets/DSL/marketplace are permanent non-goals). The
-longer-horizon core gaps stay sourced from `docs/comparison.md`.
+The near-term roadmap is `docs/design/plugin-executor-reapi-2026-08.md`:
 
-1. ~~Per-task logs + artifacts in the dashboard~~ — **SHIPPED**
-   2026-07-04 (task-logs-2026-07; the dashboard TaskLogs panel).
-2. ~~PR/commit summary + checks~~ — **SHIPPED** (the GHA
-   `$GITHUB_STEP_SUMMARY` table 2026-07-04; the real check run via the
-   Checks API 2026-07-10 — client-side glue, no serve needed: pass
-   `GITHUB_TOKEN` to the step + `checks: write`).
-3. ~~Task-level retries~~ — **SHIPPED** 2026-07-04 (`exec.retries` +
-   `--retry`; `TaskOutcome.attempts` is the flaky-detection feed).
-4. ~~Flaky detection → surface + suggestions~~ — **SHIPPED** across
-   2026-07-05..25: the Insights flaky card (retry-confirmed ranked above
-   inferred, Retried column), the task-detail flaky badge + the
-   Recommendations `exec.retries` snippet, key-scoped `mixedOutcomeKeys`,
-   and the Flakiness-trend card (first-seen/direction). "Auto-APPLY"
-   deliberately stayed a copy-pasteable suggestion — vx never edits a
-   user's config.
-5. ~~Duration-aware dispatch ordering~~ — **SHIPPED** 2026-07-04
-   (LPT; serve-computed `durationHints` from ingest history).
-6. ~~Run-level policy to REMOTE agents~~ — **SHIPPED** 2026-07-18. The
-   submitter's `--frozen`/`--timeout`/`--retry` now ride every `task:assign`
-   as an optional `policy` sub-object (filled by the controller from the
-   submission's `RunRequest`, applied per-assignment by the agent), so a
-   standalone agent honors THIS run's flags instead of live-evaluating with
-   no defaults. Cache stays full-by-design (the artifact transport; each
-   agent's own local cache stays on). Additive-optional → clean degradation
-   both directions (old agent ignores it = today's live-eval; new agent +
-   old serve = its own defaults), so NO DIST_PROTOCOL bump (the
-   branch/defaultBranch/context precedent).
-7. Core backlog (from `docs/comparison.md`): CLEARED. Blob offload
-   (pre-signed URLs): the CLIENT half ships in the native wire —
-   `NativeCacheClient` follows one auth-dropping 307/302 on GET; the
-   serve-side blob backend (S3/R2) behind that redirect is designed
-   (`docs/design/native-cache-wire-2026-07.md` §offload) — build when a
-   deployment actually needs it. (The Turbo `--preflight` client from
-   `presigned-artifacts-2026-07.md` was deleted with the Turbo wire.)
-   (`--continue=<mode>`, `--cache-dir`, and `dependsOn` wildcards are
-   SHIPPED.)
+1. **`@vzn/vx-reapi` phase 1 — remote cache over AC/CAS.** The `cache`
+   capability only, zero core change. Doubles as the mandated
+   gRPC-on-Bun spike (`@grpc/grpc-js` vs Connect-ES over `node:http2`)
+   against a local bazel-remote and NativeLink. The scaffold (protos +
+   manifest) is already in `packages/vx-reapi`.
+2. **`@vzn/vx-reapi` phase 2 — remote execution.** `Execute` →
+   `Operation` stream, the Merkle input tree built from
+   `ExecuteRequest.inputs`, an `(path, size, mtime_ns)` digest cache,
+   pnpm slicing, and the `install`-as-an-action recipe.
+3. **`exec.remote: 'only'`** — the inverse pin. Deliberately deferred
+   until phase 2 gives it a purpose (a schema field whose only effect is
+   "silently skip locally" is a footgun without a remote executor).
+4. **`ExecuteResult.outputs` discriminator** (`disk`/`cache`/`deferred`)
+   - `--download=all|toplevel|none`, and `TaskOutcome.where` so telemetry
+     can attribute a task to a worker.
+5. **`@vzn/vx-github`** — salvage the GHA job summary + the Checks API
+   PR check run, which went with the cloud package. A telemetry plugin
+   needing only `GITHUB_TOKEN` + `checks: write`; no server. Core's
+   `--report=markdown` / `--report-file` still cover the manual path.
+6. **A darwin CI job.** Three macOS-only defects reached main unseen
+   (tar format, symlinked-base containment, `close()` on an unlinked DB).
+   `ubuntu-latest`-only is the structural cause.
+
+Longer-horizon core gaps stay sourced from `docs/comparison.md`.
 
 **Owner-REJECTED non-goals (do NOT re-propose):**
 
@@ -976,9 +978,13 @@ longer-horizon core gaps stay sourced from `docs/comparison.md`.
 - **Auto-input inference (fspy/strace filesystem tracing)** (owner
   2026-07-05: "no auto input"). vx's explicit-inputs contract is a
   correctness principle (Architecture principle #1: "Explicit over
-  magical"), not a gap; traced inputs aren't derivable before execution
-  (why vite-task has no remote cache). Declared `cache.inputs.files` +
-  `runtime`/`workspaceFiles` stay the only input surface.
+  magical"), not a gap; traced inputs aren't derivable before execution.
+  Declared `cache.inputs.files` + `runtime`/`workspaceFiles` stay the only
+  input surface.
+- **Rebuilding a first-party platform** — the dashboard, accounts, RBAC,
+  Postgres analytics and distributed-execution controller were removed on
+  2026-08-23 by owner decision. Anything wanting them builds on the
+  `telemetry` and `executor` seams, out of process.
 
 ## Operating directive (to you, Claude)
 
@@ -991,7 +997,7 @@ You own this project. The owner has delegated full maintenance. Each turn:
 4. Never end a turn with "what next?" — say what you are doing next.
 
 **Run cycles continuously** — see "Never stop — run cycles" above for the
-audit → fix → verify → record → land loop and the vx-cloud rotation. A landed
+audit → fix → verify → record → land loop and the plugin/REAPI rotation. A landed
 commit is the start of the next cycle, never a stopping point.
 
 When uncertain about a non-trivial architectural call, use the **architect**

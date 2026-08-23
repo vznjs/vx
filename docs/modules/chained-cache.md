@@ -21,9 +21,9 @@ When more than one plugin contributes a `cache` layer, `resolveCache`
 
 A layer exposes `local` when it wraps the host's local handle
 (`LayeredCache.local`). `resolveCache` drops a bare local layer that another
-declared layer already wraps, so `[cloud(), localCachePlugin()]` resolves to
-cloud's layered cache alone instead of writing the local store twice — with
-no edit to the cloud plugin.
+declared layer already wraps, so `[remote(), localCachePlugin()]` resolves to
+the remote plugin's layered cache alone instead of writing the local store
+twice — with no edit to the remote plugin.
 
 ## Tests
 

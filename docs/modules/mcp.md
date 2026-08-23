@@ -9,7 +9,5 @@ envelope the wire protocol commits to).
 
 ## Invariants
 
-- stdio transport for `vx mcp`; the self-hosted platform ships a
-  counterpart — an HTTP `POST /mcp` endpoint behind its account/token gate,
-  org/workspace-clamped (see the Cloud section of the docs).
+- stdio transport for `vx mcp`.
 - Reports the real `VERSION`; read-only against cache.db.

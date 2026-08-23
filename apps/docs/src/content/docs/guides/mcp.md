@@ -71,13 +71,6 @@ too — one handler, two transports.
 
 ## MCP over HTTP — the platform
 
-`vx mcp` (stdio) is per-workspace and process-private. The optional
-self-hosted platform also exposes MCP over HTTP at `POST /mcp` — a
-team-wide, org/workspace-clamped surface backed by Postgres, so an AI agent
-reads the same analytics the dashboard shows across a whole org. That path
-lives in its own section: see
-[MCP over HTTP](../../cloud/mcp/).
-
 ## What's coming
 
 - `runTasks` — agents trigger a `vx run` directly (driver surface).

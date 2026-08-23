@@ -140,8 +140,12 @@ the versioned `TelemetryRecord` / `RunSummaryRecord` contract). Core
 depends on none of them; the arrow only ever points plugin → core.
 First-party plugins ship the OpenTelemetry exporter
 ([`@vzn/vx-otel`](https://www.npmjs.com/package/@vzn/vx-otel), OTLP
-traces + metrics with zero OTel-SDK deps) and **vx Cloud** (below) —
-and the same seams are open to anyone.
+traces + metrics with zero OTel-SDK deps) and the Bazel Remote Execution
+API client (`@vzn/vx-reapi` — remote cache over ActionCache + CAS against
+NativeLink, BuildBuddy, Buildbarn or bazel-remote). Core applies **no
+plugin by default** — even its own executor and cache are plugins your
+workspace declares, which is what makes "replace any part" real rather
+than promised. The same seams are open to anyone.
 
 ## How it compares
 
@@ -155,16 +159,14 @@ and the same seams are open to anyone.
 | Per-task sandbox          | **Yes** — kernel-level, opt-in                                        | No                             | No               |
 | Provable cache safety     | **Yes** — `--verify` (determinism) + `--verify=inputs` (completeness) | No                             | No               |
 | MCP server for AI agents  | **Yes** — `vx mcp` (stdio, reads your local cache)                    | No                             | No               |
-| Plugin API                | **Yes** — backend / cache / telemetry seams                           | No                             | Yes (TS-tied)    |
+| Plugin API                | **Yes** — executor / cache / telemetry seams                          | No                             | Yes (TS-tied)    |
 | Predictive scheduling     | **Yes** (opt-in: `predictive: true`)                                  | No                             | No               |
 | OTel CI/CD spans          | **Yes** — `otel()` plugin, zero OTel-SDK deps                         | No                             | Paid             |
-| Self-hosted platform²     | **Yes** — dashboard, distributed CI, remote cache; Docker compose     | Vercel-only cache              | Paid (Nx Cloud)  |
 | Install                   | **Single binary** — npm or 1 curl line, no Node/Bun needed            | npm + Node                     | npm + Node       |
 
 ¹ Wall-clock, direct binaries, same machine and workspace — full
 methodology and more scenarios in
-[`docs/benchmarks.md`](docs/benchmarks.md). ² Optional, self-hosted,
-OSS — see [vx Cloud](#vx-cloud).
+[`docs/benchmarks.md`](docs/benchmarks.md).
 
 ## Switching from another runner
 
@@ -214,50 +216,6 @@ Differences to know:
 
 Side-by-side feature matrix + every known gap: [`docs/comparison.md`](./docs/comparison.md).
 
-## vx Cloud
-
-An **optional, self-hosted CI platform** — the first-party service you
-run yourself. It is a fully independent app (accounts, roles,
-organizations, teams, multiple workspaces), with **Postgres** as the
-system of record and an **S3-compatible bucket** for artifacts; the
-controller keeps zero artifact bytes at rest. Core `vx` never depends
-on it — it connects to a deployment through the plugin seams above.
-
-What a connected platform adds:
-
-- **Dashboard.** Runs, flamegraphs, a live run cockpit with the task
-  DAG, per-task logs + artifacts, cache-key diffs ("why did this
-  re-run?"), and flaky-task detection with the concrete fix.
-- **Remote cache.** The vx-native `/v1/cache` wire, tenant-partitioned
-  per org/workspace, with **trusted / untrusted tiers derived from the
-  token** — a fork-PR artifact can never feed a trusted build — and an
-  always-on integrity digest the client verifies.
-- **Distributed CI (DTE).** Agents form a session-keyed pool; a
-  `vx run` fans tasks out across same-commit agents, outputs propagate
-  through the shared artifact store, and a standing pool multiplexes
-  concurrent runs with fair scheduling.
-- **MCP over the platform.** `POST /mcp` (Postgres-backed, behind the
-  token) exposes the analytics as typed tools for AI agents — alongside
-  the core `vx mcp` stdio server that reads your local cache.
-
-Deploy the stack (app + Postgres + object storage) with Docker
-Compose, then connect any workspace with one URL and a minted token:
-
-```sh
-# Deploy — open the URL, register the first admin, mint a CI token under Admin → Tokens:
-VX_CLOUD_SECRET=$(openssl rand -hex 32) \
-  docker compose -f packages/cloud/deploy/docker-compose.yml up
-
-# Connect a workspace (remote cache + analytics + distribution):
-vx-cloud connect https://ci.acme.dev --token vxc_…
-# …or set VX_CLOUD_URL + VX_CLOUD_TOKEN in the environment.
-```
-
-Install the platform CLI with `npm i -g @vzn/vx-cloud` (a standalone
-binary, or the `ghcr.io/vznjs/vx-cloud` image). Full setup, RBAC,
-distributed CI, and the wire protocol live in the **vx Cloud** section
-of the [documentation site](https://vznjs.github.io/vx/).
-
 ## Architecture (one paragraph)
 
 `bin.ts → cli/index.ts` dispatches subcommands.
@@ -290,32 +248,32 @@ Full technical docs live under [`docs/`](./docs/) and on the
 - [`docs/cli.md`](./docs/cli.md) — every flag
 - [`docs/comparison.md`](./docs/comparison.md) — Turbo / Nx / vite-task feature matrix
 - [`docs/modules/`](./docs/modules/) — one reference page per source module
-- The **vx Cloud** section of the [docs site](https://vznjs.github.io/vx/) — deploy, RBAC, dashboard, distributed CI, wire protocol
 
-The full design record (including the platform-pivot notes) lives
-under [`docs/design/`](./docs/design/).
+The full design record lives under [`docs/design/`](./docs/design/);
+[`docs/design/archive/`](./docs/design/archive/) keeps the superseded
+proposals, including the removed self-hosted platform.
 
 ## Status
 
 **Pre-alpha.** The schema is settling; we bump `CACHE_VERSION` rather
-than maintain back-compat. **1,600+ tests (core + packages); CI green
-on every commit**; the project dogfoods itself (`vx run ci`).
-Published on npm: [`@vzn/vx`](https://www.npmjs.com/package/@vzn/vx)
-(a prebuilt standalone binary) and `@vzn/vx-cloud`.
+than maintain back-compat. **2,600+ tests; CI green on every commit**;
+the project dogfoods itself (`vx run ci`). Published on npm:
+[`@vzn/vx`](https://www.npmjs.com/package/@vzn/vx) (a prebuilt standalone
+binary).
 
 Production readiness for the **core task runner**: the semantics are
 solid; it is dogfooded continuously. The main operational rough edge
 is Windows (unsupported).
 
-| Surface                                        | Maturity                       | Notes                                                             |
-| ---------------------------------------------- | ------------------------------ | ----------------------------------------------------------------- |
-| Core task runner + caching                     | **production-ready**           | dogfooded continuously; 1,200+ core tests, all green              |
-| `vx run --verify` (provable cache correctness) | **shippable**                  | determinism + input-completeness proofs; CI-gate recipe in docs   |
-| `vx mcp`                                       | **shippable**                  | live cache.db tools over stdio                                    |
-| Plugin API (backend / cache / telemetry)       | **shippable**                  | crash-isolated; the cloud + OTel plugins are ordinary plugins     |
-| Predictive scheduling                          | **shippable as opt-in**        | gated on `predictive: true` + observed data                       |
-| OTel export (`@vzn/vx-otel`)                   | **shippable**                  | declare `otel()` in `vx.workspace.ts`; OTLP traces + metrics      |
-| vx Cloud platform (self-hosted)                | **shippable for self-hosting** | accounts/RBAC/orgs on Postgres, S3 artifacts, dashboard, DTE, MCP |
+| Surface                                        | Maturity                | Notes                                                            |
+| ---------------------------------------------- | ----------------------- | ---------------------------------------------------------------- |
+| Core task runner + caching                     | **production-ready**    | dogfooded continuously; 2,600+ tests, all green                  |
+| `vx run --verify` (provable cache correctness) | **shippable**           | determinism + input-completeness proofs; CI-gate recipe in docs  |
+| `vx mcp`                                       | **shippable**           | live cache.db tools over stdio                                   |
+| Plugin API (executor / cache / telemetry)      | **shippable**           | crash-isolated; core's own executor + cache are ordinary plugins |
+| Predictive scheduling                          | **shippable as opt-in** | gated on `predictive: true` + observed data                      |
+| OTel export (`@vzn/vx-otel`)                   | **shippable**           | declare `otel()` in `vx.workspace.ts`; OTLP traces + metrics     |
+| REAPI remote cache (`@vzn/vx-reapi`)           | **in progress**         | Bazel ActionCache + CAS; NativeLink / BuildBuddy / Buildbarn     |
 
 ## Development
 

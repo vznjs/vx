@@ -12,7 +12,6 @@ import {
   type RunEvent,
   type WireEvent,
 } from '../src/orchestrator/events.js'
-import { createWireRenderer } from '../src/orchestrator/wire-render.js'
 
 function mkNode(partial: {
   id: string
@@ -295,19 +294,6 @@ describe('toWireEvent', () => {
 })
 
 describe('wireForwarder — completions without a start', () => {
-  it('synthesizes the task:start a skipped task never emitted', () => {
-    // The scheduler finishes a skip WITHOUT calling onStart, so the
-    // completion arrives with no preceding start — and createWireRenderer
-    // resolves a completion's node from that start. Dropping it silently
-    // lost the task while the forwarded footer still counted it.
-    const node = mkNode({ id: 'a#dependent', command: 'x', requested: true })
-    const sent: WireEvent[] = []
-    const forward = wireForwarder((e) => sent.push(e))
-    forward({ kind: 'task:complete', node, outcome: mkOutcome(node, { status: 'skipped' }) })
-    expect(sent.map((e) => e.kind)).toEqual(['task:start', 'task:complete'])
-    expect(sent[0]).toEqual({ kind: 'task:start', task: projectNode(node) })
-  })
-
   it('does not duplicate a start the task really emitted', () => {
     const node = mkNode({ id: 'a#build', command: 'x' })
     const sent: WireEvent[] = []
@@ -324,43 +310,4 @@ describe('wireForwarder — completions without a start', () => {
     forward({ kind: 'task:complete', node: group, outcome: mkOutcome(group) })
     expect(sent).toEqual([])
   })
-
-  it('the wire renderer reproduces every task the local renderer saw', () => {
-    const failed = mkNode({ id: 'a#base', command: 'x' })
-    const skipped = mkNode({ id: 'a#dependent', command: 'y' })
-    const local: string[] = []
-    const wire: string[] = []
-    const bus = createEventBus()
-    bus.subscribe(
-      terminalSubscriber({
-        ...silentSink(),
-        taskComplete: (n, o) => local.push(`${n.id}=${o.status}`),
-      }),
-    )
-    const render = createWireRenderer({
-      ...silentSink(),
-      taskComplete: (n, o) => wire.push(`${n.id}=${o.status}`),
-    })
-    bus.subscribe(wireForwarder(render))
-
-    const log = busLogger(bus)
-    log.taskStart?.(failed)
-    log.taskComplete(failed, mkOutcome(failed, { status: 'failed', exitCode: 5 }))
-    log.taskComplete(skipped, mkOutcome(skipped, { status: 'skipped' }))
-
-    expect(local).toEqual(['a#base=failed', 'a#dependent=skipped'])
-    expect(wire).toEqual(local)
-  })
 })
-
-function silentSink(): Logger {
-  return {
-    status: () => undefined,
-    taskStdout: () => undefined,
-    taskStderr: () => undefined,
-    taskComplete: () => undefined,
-    runStart: () => undefined,
-    taskStart: () => undefined,
-    runEnd: () => undefined,
-  }
-}

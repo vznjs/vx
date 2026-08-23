@@ -1,13 +1,5 @@
 node_modules
 dist
-# packages/cloud/ui/dist (the single-file dashboard) is a BUILD ARTIFACT, never
-# committed. The vx-cloud build produces it: `vx run build.ui` locally, and the
-# npm package + Docker image build the SPA before packaging/compiling. ui-asset.ts
-# embeds whatever is on disk at compile time; from source a serve degrades to an
-# API-only server (loadUiHtmlPath returns null) until the SPA is built.
-# packages/cloud/src/dist is SOURCE (the distributed-execution module —
-# registry/scheduler/agent-loop/submit), not build output.
-!packages/cloud/src/dist/
 *.tsbuildinfo
 coverage
 .DS_Store
@@ -25,6 +17,3 @@ coverage
 *.heapsnapshot
 # bun build --compile intermediate (transient, written in cwd)
 *.bun-build
-
-# local docs screenshot generator (regenerate via the ui-perf boot+seed pattern)
-packages/cloud/scripts/shoot-docs.ts

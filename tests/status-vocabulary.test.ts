@@ -129,10 +129,6 @@ describe('the tripwire that makes one definition stay one definition', () => {
       'src/cache/cache.ts',
       '`RunRecord.status` is a deliberate SUBSET of TaskStatus (no `aborted`, which is never recorded), plus SQL text — and `cache` cannot import `orchestrator` under the module boundary matrix, so it cannot reach the predicate at all.',
     ],
-    [
-      'packages/cloud/src/db/analytics.ts',
-      'SQL text, and the same latest-state filter as metrics.ts. Its PASS list is derived from the union.',
-    ],
   ])
 
   it('no consumer re-inlines the enumeration', async () => {
@@ -142,7 +138,7 @@ describe('the tripwire that makes one definition stay one definition', () => {
     // a `Record`/`switch` spread over lines is the shape being encouraged, and
     // `run.ts` still counts local and remote hits SEPARATELY on separate lines,
     // which is a genuine distinction rather than a copy of this predicate.
-    const roots = ['src', 'packages/cloud/src', 'packages/cloud/ui/src']
+    const roots = ['src']
     const offenders: { file: string; line: number; text: string }[] = []
     for (const root of roots) {
       const glob = new Bun.Glob('**/*.{ts,tsx}')
@@ -163,18 +159,17 @@ describe('the tripwire that makes one definition stay one definition', () => {
 
   it('the SQL pass-lists are built from the predicate, not retyped', async () => {
     // A query cannot call a TS predicate, so the pass set has to exist as text
-    // in two places. It does NOT have to be two decisions: both filter the real
-    // union through the real predicate, so a new member lands in the SQL
-    // automatically. Pinned in both packages because a fix that centralises a
-    // list to stop drift can itself miss a call site — which is how this whole
-    // sweep started.
-    for (const file of ['src/orchestrator/metrics.ts', 'packages/cloud/src/db/analytics.ts']) {
-      const src = await read(file)
-      expect({ file, derived: src.includes('TASK_STATUSES.filter(isPassStatus)') }).toEqual({
-        file,
-        derived: true,
-      })
-    }
+    // in the SQL. It does NOT have to be a second decision: the query filters
+    // the real union through the real predicate, so a new member lands in the
+    // SQL automatically. (This used to be pinned in two packages; the cloud
+    // half went with the 2026-08-23 removal, and the reason the pin exists —
+    // a centralisation that misses a call site — is unchanged.)
+    const file = 'src/orchestrator/metrics.ts'
+    const src = await read(file)
+    expect({ file, derived: src.includes('TASK_STATUSES.filter(isPassStatus)') }).toEqual({
+      file,
+      derived: true,
+    })
   })
 })
 
@@ -183,10 +178,6 @@ describe('the callers that used to hand-roll it', () => {
   // can be driven cheaply, and otherwise assert the file reaches for the shared
   // predicate — which is what actually changed.
   it.each([
-    ['the distributed submitter', 'packages/cloud/src/dist/submit.ts', 'isPassStatus'],
-    ['the distributed scheduler', 'packages/cloud/src/dist/scheduler.ts', 'isPassStatus'],
-    ['the agent loop', 'packages/cloud/src/dist/agent-loop.ts', 'isPassStatus'],
-    ['the serve log route', 'packages/cloud/src/db/analytics-routes.ts', 'isCacheHit'],
     ['the run verdict', 'src/orchestrator/run.ts', 'isPassStatus'],
     ['the terminal logger', 'src/orchestrator/logger.ts', 'isCacheHit'],
   ])('%s uses the shared predicate', async (_label, file, fn) => {
@@ -194,37 +185,13 @@ describe('the callers that used to hand-roll it', () => {
     expect({ file, uses: src.includes(`${fn}(`) }).toEqual({ file, uses: true })
   })
 
-  it('cloud analytics uses core clampInt rather than its own copy', async () => {
-    // The sweep's tail. Cloud carried a BYTE-IDENTICAL private `clampInt`,
-    // for the same reason it carried its own `splitTaskId`: the function was
-    // exported from `src/util/index.js` but not from the façade, so cloud
-    // could not import it. Lower stakes than the status vocabulary — the two
-    // bodies agreed and there is no silently-wrong-as-the-union-grows shape —
-    // but a bounds helper whose floor is load-bearing (a fractional SQL LIMIT
-    // is a datatype mismatch, not a smaller page) should have one definition.
-    const src = await read('packages/cloud/src/db/analytics.ts')
-    expect(src).toContain('clampInt')
-    expect(src).not.toContain('function clampInt(')
-  })
-
   it('the window bound is NOT presented as a mirror it cannot enforce', async () => {
-    // Deliberately NOT deduplicated, which is the interesting half. The two
-    // `MAX_WINDOW_DAYS` guard different engines — a single dev's local SQLite
-    // vs a range-partitioned Postgres taking 50-100M rows/day — so the cloud
-    // side must stay free to clamp tighter. What was wrong was core CLAIMING
-    // the two mirror each other with nothing enforcing it; the same class as
-    // `deriveCacheSource` claiming nobody re-implements its mapping.
+    // The comment this guards against claimed core's `MAX_WINDOW_DAYS`
+    // mirrored a second one in another package, with nothing enforcing it.
+    // That package is gone; the rule it encodes is not — a comment claiming a
+    // guarantee the code does not have is its own defect class.
     const src = await read('src/orchestrator/metrics.ts')
     expect(src).not.toContain('Mirrors `MAX_WINDOW_DAYS`')
-  })
-
-  it('the serve log route no longer prefix-matches the status', async () => {
-    // `status.startsWith('cache-hit')` was the sharpest copy: it answers a
-    // DIFFERENT question from the enumerated ones — any future status merely
-    // NAMED `cache-hit-*` would count, whether or not it restored anything.
-    // `deriveCacheSource`'s docstring already claimed nobody did this.
-    const src = await read('packages/cloud/src/db/analytics-routes.ts')
-    expect(src).not.toContain("startsWith('cache-hit')")
   })
 })
 

@@ -11,12 +11,5 @@
     "typescript/await-thenable": "off",
     "import/no-cycle": "error"
   },
-  "ignorePatterns": [
-    "node_modules",
-    "apps",
-    "dist",
-    "!packages/cloud/src/dist",
-    "packages/cloud/ui",
-    "packages/cloud/ui-astryx"
-  ]
+  "ignorePatterns": ["node_modules", "apps", "dist"]
 }

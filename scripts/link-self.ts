@@ -2,7 +2,7 @@
 // workspace members. Bun's workspace resolver cannot satisfy a member's
 // `"@vzn/vx": "workspace:*"` dependency against the ROOT package — the `.`
 // member is the install root, not a named package node_modules can symlink.
-// So packages/cloud imports the bare specifier `'@vzn/vx'` and relies on a
+// So a package imports the bare specifier `'@vzn/vx'` and relies on a
 // plain symlink `node_modules/@vzn/vx -> <root>`; the root's `exports` map
 // then resolves `'@vzn/vx'` to `./src/index.ts`. This runs as the root's
 // postinstall so a fresh `bun install` (including `--frozen-lockfile` in CI)
@@ -16,7 +16,6 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
-  chmodSync,
 } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -36,7 +35,7 @@ if (existsSync(link) || isSymlink(link)) {
 symlinkSync(path.relative(scopeDir, root), link, 'dir')
 
 // Link the sibling workspace packages (packages/*) into node_modules/@vzn/<name>
-// so a bare `import { cloud } from '@vzn/vx-cloud'` (e.g. in vx.workspace.ts, or
+// so a bare `import { otel } from '@vzn/vx-otel'` (e.g. in vx.workspace.ts, or
 // from one package to another) resolves through each package's own exports map.
 // Bun only auto-links a member that some package.json DEPENDS on; these are
 // integration packages nothing declares as a dep, so we link them here — same
@@ -59,21 +58,6 @@ if (existsSync(pkgsDir)) {
     )
   }
 }
-
-// Expose the `vx-cloud` bin on node_modules/.bin so `bunx vx-cloud` (and a
-// PATH that includes node_modules/.bin) launch the service CLI in-repo. Bun
-// does not auto-link a workspace member's bin to the root .bin under the
-// self-link layout above, so we create it here — same postinstall, same
-// idempotent re-create on a frozen install.
-const binDir = path.join(root, 'node_modules', '.bin')
-const binLink = path.join(binDir, 'vx-cloud')
-const binTarget = path.join(root, 'packages', 'cloud', 'src', 'cli', 'bin.ts')
-mkdirSync(binDir, { recursive: true })
-chmodSync(binTarget, 0o755) // the shebang makes it directly executable via the symlink
-if (existsSync(binLink) || isSymlink(binLink)) {
-  rmSync(binLink, { force: true })
-}
-symlinkSync(path.relative(binDir, binTarget), binLink, 'file')
 
 function isSymlink(p: string): boolean {
   try {

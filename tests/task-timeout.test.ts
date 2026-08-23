@@ -15,7 +15,7 @@ import {
   writeLocalWorkspace,
 } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { run, optionsToRequest, requestToOptions } from '../src/orchestrator/index.js'
+import { run } from '../src/orchestrator/index.js'
 import { parseRunArgs } from '../src/cli/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 
@@ -304,18 +304,7 @@ describe('task timeout — --timeout parsing', () => {
   })
 })
 
-describe('task timeout — wire round-trip', () => {
-  it('threads RunOptions.timeout through the request mappers', () => {
-    const req = optionsToRequest({ cwd: '/x', tasks: ['run'], timeout: 1234 })
-    expect(req.timeout).toBe(1234)
-    expect(requestToOptions(req).timeout).toBe(1234)
-  })
-  it('omits timeout when unset', () => {
-    const req = optionsToRequest({ cwd: '/x', tasks: ['run'] })
-    expect(req.timeout).toBeUndefined()
-    expect(requestToOptions(req).timeout).toBeUndefined()
-  })
-})
+describe('task timeout — wire round-trip', () => {})
 
 describe('workspace timeout — loader validation', () => {
   let root: string

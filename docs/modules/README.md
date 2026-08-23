@@ -72,8 +72,6 @@ The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 | [`remote-prefetch.md`](./remote-prefetch.md)       | `src/orchestrator/remote-prefetch.ts` — background remote GETs (LayeredCache only).      |
 | [`metrics.md`](./metrics.md)                       | `src/orchestrator/metrics.ts` — analytics SQL layer behind `/v1/*` + `vx mcp`.           |
 | [`history-predict.md`](./history-predict.md)       | `src/orchestrator/{history,predict}.ts` — opt-in predictive scheduling (experimental).   |
-| [`protocol.md`](./protocol.md)                     | `src/orchestrator/{protocol,wire}.ts` — delegation wire contract + mappers.              |
-| [`wire-render.md`](./wire-render.md)               | `src/orchestrator/wire-render.ts` — WireEvent → Logger (delegated-run rendering).        |
 | [`run-state.md`](./run-state.md)                   | `src/orchestrator/run-state.ts` — reduced run aggregate for live surfaces.               |
 | [`run-report.md`](./run-report.md)                 | `src/orchestrator/run-report.ts` — `--report=markdown` table.                            |
 | [`devframe-surface.md`](./devframe-surface.md)     | `src/orchestrator/devframe-surface.ts` — devframe channel/state definition.              |

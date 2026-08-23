@@ -12,9 +12,9 @@ setup you can copy, plus the lockfile workflow and when to reach for it.
 
 1. **Install vx** (a single binary) and your workspace dependencies.
 2. **Connect a shared cache** so this run reuses what previous runs and
-   teammates already built. Sharing is a plugin — the first-party option
-   is a self-hosted platform (see the [Cloud section](../../cloud/overview/)),
-   and any other backend plugs in the same way (see
+   teammates already built. Sharing is a plugin — `@vzn/vx-reapi` connects
+   any Bazel REAPI server (NativeLink, BuildBuddy, Buildbarn,
+   bazel-remote), and any other backend plugs in the same way (see
    [Remote caching](../remote-caching/)). (No server? The local cache still
    makes warm runs instant; a shared cache is only needed to reuse work
    *across* machines.)
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     # Connecting a shared cache is optional — the local cache already makes
     # warm runs fast. To reuse artifacts across machines, add the shared
-    # cache's connection secrets here (see the Cloud section).
+    # cache plugin's connection secrets here.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,10 +69,9 @@ Notes:
   byte-stable CI.
 - **Shared cache** — connect a remote-cache backend to reuse artifacts
   built on other branches and machines (unchanged packages restore instead
-  of executing). The first-party option is a self-hosted platform with a
-  trust-scoped cache and fork-PR tokens; its CI wiring lives in the
-  [Cloud section](../../cloud/remote-caching/). Any other backend plugs in
-  through a cache plugin — see [Remote caching](../remote-caching/) and
+  of executing). `@vzn/vx-reapi` connects any Bazel REAPI server; any other
+  backend plugs in through a cache plugin — see
+  [Remote caching](../remote-caching/) and
   [Core is provider-neutral](../extensibility/).
 
 ## Without `--affected`
@@ -191,51 +190,19 @@ Two ways to get it:
   Use `--report-file`, not `--report=markdown >> …`: the report is
   machine-clean but stdout is shared with vx's own run output, so a
   redirect puts the whole log in the summary above the table.
-- **Automatic.** The first-party CI telemetry plugin appends the summary on
-  every `vx run` inside Actions (and adds PR checks, below) with **no
-  server connected** — the summary is formatted locally from the
-  `$GITHUB_STEP_SUMMARY` file Actions provides, with no extra workflow step.
-  See the [Cloud section](../../cloud/overview/).
+The automatic variant — a telemetry plugin that appended the summary on
+every `vx run` inside Actions with no extra workflow step — shipped in the
+removed cloud package. `@vzn/vx-github` will carry it; until then
+`--report-file` is the supported path and needs no plugin at all.
 
 ## PR checks (GitHub Checks API)
 
-The job summary lives on the *job* page; to surface the same result in the
-**PR's checks list** — a named check with a pass/fail conclusion and the
-per-task table as its detail — declare the first-party CI plugin and hand
-the workflow token to the vx step:
-
-```yaml
-permissions:
-  checks: write
-
-steps:
-  - run: vx run ci
-    env:
-      GITHUB_TOKEN: ${{ github.token }}
-```
-
-Passing the token **is** the opt-in (Actions never exposes it to a step by
-itself). After the run, vx creates one completed check run on the commit —
-for `pull_request` events it attaches to the PR's *head* SHA (read from the
-event payload), so the check shows on the PR rather than the synthetic merge
-commit. Conclusion mirrors the run: green when every task passed, red
-otherwise, with the same failures-first table as the job summary.
-
-Knobs: `VX_GITHUB_CHECK=0` disables it; `VX_GITHUB_CHECK_NAME` overrides the
-check's name (default: the run's command). A missing `checks: write`
-permission warns and never fails the run — like every vx telemetry surface,
-it is observe-only.
-
-**Failure triage on the PR.** When the run is also connected to a vx Cloud
-platform (`VX_CLOUD_URL` + `VX_CLOUD_TOKEN`), a red run asks the platform
-*"is this failure mine?"* and annotates each failed row in the check and job
-summary with its verdict: **🎲 flaky** (the same cache key passed in other
-runs — nondeterminism, not this change), **📌 already broken on the default
-branch** (inherited), or **🆕 new failure** (first failure of this key,
-noting when this run changed the task's inputs). So the PR page answers the
-revert-retry-or-file-a-flake question without opening the dashboard. Purely
-additive and never-fail: without a connection — or if the triage fetch
-errors — the rows render exactly as before.
+A `vx run` result as a real check run on the PR — with per-task
+annotations and failure triage (**🎲 flaky** / **📌 already broken on the
+default branch** / **🆕 new failure**) — shipped as part of the removed
+cloud package. It is planned as `@vzn/vx-github`, a telemetry plugin
+needing only `GITHUB_TOKEN` and `checks: write`. Until it lands, the job
+summary above is the PR-visible surface.
 
 ## Proving cache correctness: `vx run --verify`
 
@@ -281,21 +248,19 @@ platform to write wins and the other restores wrong bytes forever.
 
 `--verify=fingerprint` closes that gap: it fingerprints each executed
 task's output tree (~1× execution plus a hash pass — no re-run) and
-ships the fingerprint with the run's telemetry. A connected analytics
-service pairs fingerprints for the same cache key across platforms and
-names exactly which output files diverge — the first-party one surfaces
-this on its dashboard's Insights **Hermeticity** card (see the
-[Cloud section](../../cloud/overview/)). Run it on the same per-platform
-matrix that builds your release binaries, with a shared cache connected so
-each platform reports:
+ships the fingerprint with the run's telemetry. A telemetry sink that
+pairs fingerprints for the same cache key across platforms names exactly
+which output files diverge. Run it on the same per-platform matrix that
+builds your release binaries, with a shared cache connected so each
+platform reports:
 
 ```yaml
 strategy:
   matrix:
     os: [ubuntu-latest, macos-latest]
 steps:
-  # Connect a shared cache + analytics service here (see the Cloud section)
-  # so the fingerprints from every platform land in one place.
+  # Connect a shared cache + telemetry sink here so the fingerprints
+  # from every platform land in one place.
   - run: vx run --all --force --verify=fingerprint
 ```
 

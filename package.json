@@ -36,8 +36,7 @@
   "workspaces": [
     ".",
     "apps/*",
-    "packages/*",
-    "packages/cloud/ui"
+    "packages/*"
   ],
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "^0.0.56"

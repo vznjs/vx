@@ -13,14 +13,12 @@ import type { EventBus } from './events.js'
 import { wireForwarder } from './events.js'
 import { MISSING_PLUGIN_HINT } from './missing-plugin.js'
 import type {
-  BackendContext,
   CacheContext,
   EventSink,
   EventSinkContext,
   ExecutorContext,
   VxPlugin,
 } from './plugin.js'
-import type { RunBackend } from './protocol.js'
 
 /**
  * Run a capability factory with crash isolation. A throw becomes a clean
@@ -37,24 +35,6 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
       `plugin '${plugin.name}' failed in ${hook}: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
-}
-
-/**
- * Resolve the run backend. First plugin returning a non-undefined
- * `backend` wins (declaration order); otherwise the caller's `fallback`
- * (today's local/serve env-probe). A broken backend factory aborts.
- */
-export async function resolveBackend(
-  plugins: readonly VxPlugin[],
-  ctx: BackendContext,
-  fallback: () => Promise<RunBackend>,
-): Promise<RunBackend> {
-  for (const plugin of plugins) {
-    if (plugin.backend === undefined) continue
-    const backend = await safe(plugin, 'backend', () => plugin.backend!(ctx))
-    if (backend !== undefined) return backend
-  }
-  return await fallback()
 }
 
 /**

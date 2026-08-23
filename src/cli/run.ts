@@ -10,29 +10,25 @@ import {
   listProjects,
   loadProjectConfig,
   loadWorkspace,
-  loadWorkspaceConfig,
   parseFilter,
   readLockfile,
-  resolveCacheDir,
   workspaceGlobsMatch,
   type ProjectMeta,
 } from '../workspace/index.js'
 import {
   planRun,
   formatRunReportMarkdown,
-  optionsToRequest,
-  resolveBackend as resolvePluginBackend,
+  projectOutcome,
+  run as runOrchestrator,
   type OutcomeView,
   type RunOptions,
   type RunResult,
-  type VxPlugin,
 } from '../orchestrator/index.js'
 import type { ProjectConfig } from '../config.js'
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { MAX_TIMEOUT_MS, parseDecimalInt, parseSize } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
-import { localBackend } from './backend.js'
 
 export interface RunArgs {
   /** Failure propagation (`--continue[=never|deps-ok|always]`). */
@@ -588,25 +584,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return 0
   }
 
-  // Resolve where this run executes. A plugin's `backend` capability wins
-  // first (e.g. a backend plugin routes to a local-or-hosted service);
-  // otherwise core's default is pure in-process. Core names no service —
-  // delegation is entirely a plugin concern.
-  const request = optionsToRequest(opts)
-  const root = await findWorkspaceRoot(cwd)
-  const workspaceConfig = await loadWorkspaceConfig(root)
-  const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
-  const backend = await resolvePluginBackend(
-    plugins,
-    {
-      workspaceRoot: root,
-      cacheDir: resolveCacheDir(root, workspaceConfig),
-      warn: (m) => process.stderr.write(`${m}\n`),
-      request,
-    },
-    () => Promise.resolve(localBackend()),
-  )
-  const result = await backend.run(request)
+  // A run executes in THIS process, always. Where an individual task's
+  // command runs is the `executor` capability's business (per task, with
+  // the scheduler, cache, retries and telemetry unchanged above it); there
+  // is no whole-run delegation seam to consult.
+  const summary = await runOrchestrator(opts)
+  const result: RunResult = { ok: summary.ok, outcomes: summary.outcomes.map(projectOutcome) }
   if (parsed.verbosity > 0) printSummary(result)
   // Report generation is post-run, gated on the flags — zero cost when
   // both are absent. Rendered once, however many sinks asked for it.

@@ -117,9 +117,9 @@ vx cache prune --older-than 7d --max-size 5gb
 ```
 
 Remote caching is plugin-driven: a `cache` plugin fills core's
-`RemoteCacheLayer` seam. The first-party option is a self-hosted platform
-(see the Cloud section of the docs); any other backend implements the same
-seam in a plugin.
+`RemoteCacheLayer` seam. `@vzn/vx-reapi` speaks Bazel's ActionCache + CAS,
+so NativeLink / BuildBuddy / Buildbarn / bazel-remote all work; any other
+store implements the same seam in a plugin.
 
 ## Feature map
 

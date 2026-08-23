@@ -1,21 +1,15 @@
 name: npm publish
 
-# Publishes two families, BOTH as no-Bun standalone binaries:
-#   - `@vzn/vx` — the CLI: library source PLUS a Node launcher that execs a
-#     prebuilt standalone binary shipped per-platform (@vzn/vx-<os>-<cpu>) as
-#     an optionalDependency. No Bun, no download.
-#   - `@vzn/vx-cloud` — the orchestrator service + `cloud()` plugin: the same
-#     launcher model (@vzn/vx-cloud-<os>-<cpu> platform binaries, dashboard
-#     embedded), plus the plugin as importable source; depends on `@vzn/vx`
-#     at the same version.
+# Publishes `@vzn/vx` as a no-Bun standalone binary: library source PLUS a
+# Node launcher that execs a prebuilt standalone binary shipped per-platform
+# (@vzn/vx-<os>-<cpu>) as an optionalDependency. No Bun, no download.
 #
 # Auth is npm **Trusted Publishing (OIDC)** — no NPM_TOKEN secret (a scope-wide
 # NPM_TOKEN, if set, is used instead — see the Publish step). The job requests
 # an OIDC token (`id-token: write`) and npm (>= 11.5.1) exchanges it for a
 # short-lived, package-scoped credential + provenance. Configure a Trusted
-# Publisher on npmjs.com for EACH of the TEN package names (@vzn/vx, the four
-# @vzn/vx-<target>, @vzn/vx-cloud, and the four @vzn/vx-cloud-<target>),
-# linking this repo + this workflow.
+# Publisher on npmjs.com for EACH of the FIVE package names (@vzn/vx and the
+# four @vzn/vx-<target>), linking this repo + this workflow.
 #
 # - release published   → publish the release version
 # - workflow_dispatch   → publish, or dry-run, a chosen version manually
@@ -123,9 +117,9 @@ jobs:
         run: |
           bun -e 'const p = await Bun.file("package.json").json(); p.version = process.argv[1]; await Bun.write("package.json", JSON.stringify(p, null, 2) + "\n")' "${{ steps.version.outputs.version }}"
 
-      # Cross-compile all EIGHT standalone binaries (4 vx + 4 vx-cloud, fanned
-      # out + cached by vx). --concurrency 2: eight concurrent
-      # `--compile --minify --bytecode` builds OOM a 7 GB runner.
+      # Cross-compile the four standalone binaries (fanned out + cached by
+      # vx). --concurrency 2: concurrent `--compile --minify --bytecode`
+      # builds OOM a 7 GB runner.
       - name: Build binaries
         run: bun src/bin.ts run build --concurrency 2
 
@@ -146,11 +140,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -e
-          # Order matters: each family's platform binaries first (so the main
-          # package's optionalDependencies resolve on the registry), then the
-          # main package. @vzn/vx-cloud last — it depends on @vzn/vx.
+          # Order matters: the platform binaries first (so the main package's
+          # optionalDependencies resolve on the registry), then the main
+          # package.
           #
-          # Idempotent: a 10-package sequential publish can fail partway (a
+          # Idempotent: a 5-package sequential publish can fail partway (a
           # transient registry error, or an earlier abort), and npm 403s on
           # republishing an existing version. So skip any package already on
           # the registry at this version — a re-run then completes the set
@@ -160,12 +154,7 @@ jobs:
             dist/npm/@vzn/vx-linux-arm64 \
             dist/npm/@vzn/vx-darwin-x64 \
             dist/npm/@vzn/vx-darwin-arm64 \
-            dist/npm/vx \
-            dist/npm/@vzn/vx-cloud-linux-x64 \
-            dist/npm/@vzn/vx-cloud-linux-arm64 \
-            dist/npm/@vzn/vx-cloud-darwin-x64 \
-            dist/npm/@vzn/vx-cloud-darwin-arm64 \
-            dist/npm/vx-cloud; do
+            dist/npm/vx; do
             name="$(node -p "require('$(pwd)/$pkg/package.json').name")"
             echo "::group::npm publish $name@$VERSION ($pkg)"
             if npm view "$name@$VERSION" version >/dev/null 2>&1; then

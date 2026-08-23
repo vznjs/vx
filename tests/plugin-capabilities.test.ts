@@ -12,12 +12,10 @@ import { describe, expect, it } from 'bun:test'
 import { CORE_INDEX, localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { planRun, run } from '../src/index.js'
 import {
-  resolveBackend,
   resolveCache,
   resolveExecutors,
   subscribeEventSinks,
   createEventBus,
-  type RunBackend,
   type VxPlugin,
 } from '../src/orchestrator/index.js'
 import type { TaskExecutor, TaskInputs } from '../src/exec/index.js'
@@ -78,49 +76,6 @@ function makeSilentLogger(status?: (line: string) => void) {
 
 describe('plugin-host — capability consultation + fallbacks', () => {
   const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
-
-  it('resolveBackend: first plugin backend wins over the fallback', async () => {
-    const pluginBackend: RunBackend = { run: async () => ({ ok: true, outcomes: [] }) }
-    const fallbackBackend: RunBackend = { run: async () => ({ ok: false, outcomes: [] }) }
-    const plugins: VxPlugin[] = [{ name: 'org/be', backend: () => pluginBackend }]
-    const resolved = await resolveBackend(
-      plugins,
-      { ...baseCtx, request: { tasks: [], cwd: '/ws' } },
-      async () => fallbackBackend,
-    )
-    expect(resolved).toBe(pluginBackend)
-  })
-
-  it('resolveBackend: no backend plugin falls back', async () => {
-    const fallbackBackend: RunBackend = { run: async () => ({ ok: true, outcomes: [] }) }
-    let fallbackCalled = false
-    const resolved = await resolveBackend(
-      [],
-      { ...baseCtx, request: { tasks: [], cwd: '/ws' } },
-      async () => {
-        fallbackCalled = true
-        return fallbackBackend
-      },
-    )
-    expect(fallbackCalled).toBe(true)
-    expect(resolved).toBe(fallbackBackend)
-  })
-
-  it('resolveBackend: a throwing backend factory aborts with a named UserError', async () => {
-    const plugins: VxPlugin[] = [
-      {
-        name: 'org/broken-be',
-        backend: () => {
-          throw new Error('be boom')
-        },
-      },
-    ]
-    await expect(
-      resolveBackend(plugins, { ...baseCtx, request: { tasks: [], cwd: '/ws' } }, async () => ({
-        run: async () => ({ ok: true, outcomes: [] }),
-      })),
-    ).rejects.toThrow(/org\/broken-be/)
-  })
 
   it('resolveCache: every contributing plugin is kept, chained in declaration order', async () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
@@ -538,46 +493,6 @@ describe('executor capability — end-to-end via run()', () => {
       expect(await Bun.file(path.join(workspaceRoot, 'pkg-a/out.txt')).text()).toBe(
         'made-by-fake\n',
       )
-    } finally {
-      cleanup()
-    }
-  })
-
-  it('COMPAT: a plugin that contributes `backend` delegates the whole run and no executor is consulted', async () => {
-    const { workspaceRoot, cleanup } = await writeFixture()
-    try {
-      await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
-        localWorkspaceSource(
-          [
-            `{
-             name: 'org/cloud-like',
-             backend() { return { async run() { globalThis.__vxBackendRan = true; return { ok: true, outcomes: [] } } } },
-             executor() { globalThis.__vxExecutorAsked = true; return undefined },
-           }`,
-          ],
-          `globalThis.__vxBackendRan = false
-         globalThis.__vxExecutorAsked = false
-`,
-        ),
-      )
-      await gitInit(workspaceRoot)
-      // `backend` is consulted by the CLI layer (src/cli/run.ts), not by
-      // run() — so this pin goes through the real dispatcher, which reads
-      // process.cwd() (same pattern as tests/cli.test.ts).
-      const { run: cliRun } = await import('../src/cli/index.js')
-      const origCwd = process.cwd()
-      process.chdir(workspaceRoot)
-      let code: number
-      try {
-        code = await cliRun(['run', 'hello', '--filter', 'pkg-a'])
-      } finally {
-        process.chdir(origCwd)
-      }
-      expect(code).toBe(0)
-      const g = globalThis as unknown as { __vxBackendRan: boolean; __vxExecutorAsked: boolean }
-      expect(g.__vxBackendRan).toBe(true)
-      expect(g.__vxExecutorAsked).toBe(false)
     } finally {
       cleanup()
     }
