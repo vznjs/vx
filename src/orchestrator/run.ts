@@ -557,7 +557,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         ...(taskTimeoutDefault !== undefined ? { timeout: taskTimeoutDefault } : {}),
         ...(options.verify !== undefined ? { verify: options.verify } : {}),
         log,
-        executor: placements.get(node.id) ?? UNPLACED_EXECUTOR,
+        executor: placements.executors.get(node.id) ?? UNPLACED_EXECUTOR,
+        ...(placements.remoteOnlyNoop.has(node.id) ? { remoteOnlyNoop: true } : {}),
+        ...(placements.remoteOnly.has(node.id) ? { remoteOnly: true } : {}),
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
         runStartHrTimeNs,
         persistentRegistry,
@@ -1063,25 +1065,44 @@ function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
   return pinned
 }
 
-function placeTasks(
-  nodes: Map<string, TaskNode>,
-  executors: readonly TaskExecutor[],
-): Map<string, TaskExecutor> {
+interface Placements {
+  executors: Map<string, TaskExecutor>
+  /**
+   * `exec.remote: 'only'` tasks that no REMOTE executor took — a NO-OP on
+   * this machine: never executed, declared outputs never cleaned or
+   * restored. The task exists to produce a remote input tree; without a
+   * remote pool, dependents use the machine's ambient state exactly as they
+   * did before the field existed.
+   */
+  remoteOnlyNoop: Set<string>
+  /** `'only'` tasks a remote executor DID take — executed remotely, outputs stay remote. */
+  remoteOnly: Set<string>
+}
+
+function placeTasks(nodes: Map<string, TaskNode>, executors: readonly TaskExecutor[]): Placements {
   const pinned = pinnedLocalSet(nodes)
-  const placements = new Map<string, TaskExecutor>()
+  const placements: Placements = {
+    executors: new Map(),
+    remoteOnlyNoop: new Set(),
+    remoteOnly: new Set(),
+  }
   for (const node of nodes.values()) {
     if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue
-    placements.set(
-      node.id,
-      selectExecutor(executors, {
-        taskId: node.id,
-        projectName: node.projectName,
-        projectDir: node.projectDir,
-        command: node.config.exec!.command,
-        pinnedLocal: pinned.has(node.id),
-        cacheable: node.config.cache !== undefined,
-      }),
-    )
+    const executor = selectExecutor(executors, {
+      taskId: node.id,
+      projectName: node.projectName,
+      projectDir: node.projectDir,
+      command: node.config.exec!.command,
+      pinnedLocal: pinned.has(node.id),
+      cacheable: node.config.cache !== undefined,
+    })
+    placements.executors.set(node.id, executor)
+    if (node.config.exec?.remote === 'only') {
+      // A pinned 'only' task (it transitively depends on a persistent one)
+      // lands here too: pinning wins, so it noops rather than shipping.
+      if (executor.remote === true) placements.remoteOnly.add(node.id)
+      else placements.remoteOnlyNoop.add(node.id)
+    }
   }
   return placements
 }
@@ -1108,7 +1129,10 @@ async function planExecutorOf(
   }
   if (executors.length < 2) return {}
   const placements = placeTasks(prepared.nodes, executors)
-  return { executorOf: (id) => placements.get(id)?.name }
+  return {
+    executorOf: (id) =>
+      placements.remoteOnlyNoop.has(id) ? 'noop' : placements.executors.get(id)?.name,
+  }
 }
 
 /**
@@ -1130,10 +1154,10 @@ function hasPooledExecutor(executors: readonly TaskExecutor[]): boolean {
 }
 
 function poolOfPlacement(
-  placements: ReadonlyMap<string, TaskExecutor>,
+  placements: Placements,
 ): (id: string) => { name: string; capacity: number } | undefined {
   return (id) => {
-    const executor = placements.get(id)
+    const executor = placements.executors.get(id)
     return executor?.capacity === undefined
       ? undefined
       : { name: executor.name, capacity: executor.capacity }

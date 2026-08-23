@@ -423,6 +423,59 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-23 (ninth wave) — the node_modules problem SOLVED: `exec.remote:
+'only'` shipped with worker→CAS→worker output chaining, proven through a
+  real `vx run` against a live NativeLink worker.** Owner: "solve the issue
+  with tasks needing node modules." The issue: REAPI workers are stateless
+  and vx deliberately treats `node_modules` as ambient environment, not a
+  cache input — so a remote task cannot see its packages, and folding them
+  into the key was rejected long ago for good reason. The designed answer
+  (§7.4, install-as-action) needed the two pieces deferred earlier today,
+  now both shipped. **CORE — `remote: 'only'`:** placement classifies an
+  'only' task three ways — a REMOTE executor takes it (executed remotely,
+  `remoteOnly` rides the ExecuteRequest, and this machine's disk is
+  untouched: no output clean, no vx probe/restore/save); NO remote executor
+  → a local NO-OP (succeeds without executing, hash still computed so
+  dependents fold it, and the dev's own node_modules is never cleaned —
+  the pin's command is a loud `exit 1` + tombstone precisely so the test
+  cannot pass by the task accidentally running); pinned-by-persistent-dep
+  'only' → pinning wins, noop. Key derivation: 'only' is stripped like every
+  other `remote` value — pinned with a control. `ExecuteRequest` gained
+  `cacheKey` (an executor keeping remote records needs a stable address)
+  and `remoteOnly`. Differential: deleting the noop path fails exactly the
+  new pin; restore 2/0. **PLUGIN — the chaining:** every successful remote
+  execution is recorded under a SECOND AC namespace,
+  `sha256("vx-reapi-exec-v1\0" + key)`, an ActionResult listing outputs
+  file-by-file with paths REBASED workspace-relative (the raw result's are
+  working-directory-relative — recorded rebased so a dependent in any
+  project grafts them at the right place). A dependent's input tree then
+  takes each upstream one of two ways: by REFERENCE when a record exists
+  (file grafts by digest; whole directories as Tree grafts, the Tree's
+  directory graph RE-CANONICALISED bottom-up under our encoder because its
+  internal digests were computed by the WORKER's encoder and reusing them
+  under re-encoded parents would dangle), else from local disk (the
+  upstream ran locally — core restored it here). Repeat remote-only
+  executions short-circuit off the record: the e2e SPIES `client.execute`
+  and asserts ZERO calls, rather than inferring from timing. **PROOF, live
+  against NativeLink:** wire-level — install produced node_modules on the
+  worker only (submitter disk asserted CLEAN), the dependent build grafted
+  and read `lib-content` in a separate action, its own output materialised
+  locally; product-level (`tests/vx-run-e2e.test.ts`) — a real `run()` with
+  `reapi({execute: true})` declared in the fixture workspace: first run
+  green with `node_modules` absent locally and `out.txt` carrying the
+  worker-produced content, second run `cache-hit` on build with install
+  re-nooping off its record. Fixture lesson re-learned: workspace discovery
+  needs the member declared (`pnpm-workspace.yaml`) — "No projects declare
+  task(s)" is the symptom. Suites: core green, package green vs both live
+  servers, lint/format clean. Docs in the same wave: schema.md 'only'
+  section with the recipe, the README's install-as-action section, design
+  doc §5 corrected to SHIPPED IN FULL. **Honest scope:** the recipe is
+  proven with a synthetic install (mkdir + echo); a REAL `pnpm install` on a
+  worker additionally needs pnpm ON the worker image and network egress —
+  worker-image concerns, not vx's, but the doc should gain a worked example
+  once someone runs one. pnpm SLICING (§7.4's per-package narrowing) remains
+  future optimisation, not correctness.
+
 - **2026-08-23 (eighth wave) — remote execution PROVEN LIVE, and the "14/14"
   claim made honest: the previous wave's decoders were parsing garbage.**
   Owner: implement every REAPI feature. The review found the deepest bug of

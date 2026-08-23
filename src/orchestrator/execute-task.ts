@@ -57,6 +57,19 @@ export interface ExecuteArgs {
   log: Logger
   /** The executor this task was PLACED on (run.ts, before scheduling). */
   executor: TaskExecutor
+  /**
+   * `exec.remote: 'only'` with no remote executor to take it: succeed
+   * WITHOUT executing, cleaning, restoring or saving anything on this
+   * machine. The hash is still computed — dependents fold it.
+   */
+  remoteOnlyNoop?: boolean
+  /**
+   * `exec.remote: 'only'` placed on a remote executor: execute remotely,
+   * but this machine's disk is untouched — no output clean, no vx cache
+   * probe/restore/save. The task's outputs live in the REMOTE store and
+   * reach dependents' input trees by reference (the executor's job).
+   */
+  remoteOnly?: boolean
   nestedProjectDirs: string[]
   /** Anchor for hrtime spans across all tasks in this run. */
   runStartHrTimeNs: bigint
@@ -252,8 +265,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // on. Output management (clean before exec) keys off writes — so
   // `--no-cache` (all off) leaves the user's tree alone, while `--force`
   // (reads off, writes on) still wipes + repopulates a clean snapshot.
-  const willRead = cfgCacheable && (policy.localRead || policy.remoteRead)
-  const willWrite = cfgCacheable && (policy.localWrite || policy.remoteWrite)
+  // A remote-only task never touches this machine's disk: no probe/restore
+  // (restoring node_modules onto a dev machine is exactly what the field
+  // exists to prevent), no output clean, no local artifact save. Its result
+  // lives in the remote executor's own store.
+  const remoteOnly = args.remoteOnly === true
+  const willRead = !remoteOnly && cfgCacheable && (policy.localRead || policy.remoteRead)
+  const willWrite = !remoteOnly && cfgCacheable && (policy.localWrite || policy.remoteWrite)
 
   // Retain only what is read back. `cache.save` below is the single consumer
   // of `result.stdout`, and it runs only when this task will WRITE an entry;
@@ -314,6 +332,22 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
           ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
         })
+
+  // The local no-op half of `exec.remote: 'only'`: no remote executor took
+  // the task, so it succeeds without running. The hash was still computed —
+  // dependents fold it — and the machine's ambient state (node_modules as
+  // installed by the dev) serves dependents exactly as before the field.
+  if (args.remoteOnlyNoop === true) {
+    return {
+      node,
+      status: 'success',
+      exitCode: 0,
+      durationMs: 0,
+      hash,
+      wallclockStartNs: taskStartNs,
+      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+    }
+  }
 
   const cleanArgs = {
     projectDir: node.projectDir,
@@ -495,6 +529,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
+      ...(cfgCacheable ? { cacheKey: hash } : {}),
+      ...(remoteOnly ? { remoteOnly: true } : {}),
       outputs: { files: outputs, workspaceFiles: wsOutputs },
     }
     if (!useSandbox) return base

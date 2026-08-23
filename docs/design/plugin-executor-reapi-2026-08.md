@@ -182,8 +182,10 @@ no-op on the local executor. Everything else is remote-eligible when a
 plugin contributes an `executor`.
 The rule is decided once per task at plan time and shown in `--dry`/`--graph`.
 
-**SHIPPED 2026-08-23, with one deliberate omission.** `exec.remote` is
-`boolean` today: rules 1–3 above are implemented (`pinnedLocalSet` in
+**SHIPPED IN FULL — `'only'` landed later the same day** with the
+worker→CAS→worker chaining that gives it a purpose (see §7.4). The original
+note stands below as the record of the staging. `exec.remote` was
+`boolean` first: rules 1–3 above are implemented (`pinnedLocalSet` in
 `run.ts` walks the dependency closure), placement is decided once per task
 before scheduling, and `--dry` names the placed executor per task whenever
 the workspace declares more than one. `'only'` is NOT implemented and is

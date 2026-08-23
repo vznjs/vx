@@ -254,7 +254,7 @@ test: {
 #### `remote` (optional)
 
 ```ts
-remote?: boolean // default true
+remote?: boolean | 'only' // default true
 ```
 
 **Placement.** `false` pins the task to the machine that started the run:
@@ -277,11 +277,34 @@ daemon, a Docker socket, a device, a VPN-only host.
 - **Placement is decided once per task**, before scheduling, so the
   scheduler knows which pool a task will occupy (see
   [execution.md](execution.md#executor-pools)).
+- **`'only'` is the inverse pin — the install-as-action recipe.** The task
+  exists to produce a REMOTE input tree (canonically `pnpm install` feeding
+  remote workers) and is a NO-OP on this machine: never executed locally,
+  its declared outputs never cleaned or restored on this disk. With a remote
+  executor declared it runs on a worker, its outputs stay in the remote
+  store, and dependents' input trees reference them there — the bytes flow
+  worker→store→worker without ever transiting the submitter. With no remote
+  executor it succeeds without running and dependents use the machine's
+  ambient state (the dev's own `node_modules`), exactly as before the field
+  existed. An `'only'` task must declare `cache` — its inputs are what a
+  worker reproduces and its key is the address of its remote record.
+
+  ```ts
+  install: {
+    exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },
+    cache: {
+      inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
+      outputs: { files: ['node_modules/**'] },
+    },
+  },
+  build: { dependsOn: ['install'], /* … */ },
+  ```
+
 - **Never busts a cache:** `remote` is stripped from the cache key, the
-  same as `resources`. The contract of a remote executor is that the same
-  command over the same inputs produces the same outputs, so a key that
-  moved with placement would split a laptop from a worker pool over
-  nothing.
+  same as `resources` — `'only'` included. The contract of a remote executor
+  is that the same command over the same inputs produces the same outputs,
+  so a key that moved with placement would split a laptop from a worker pool
+  over nothing.
 
 #### `persistent` (optional)
 

@@ -125,3 +125,129 @@ describe.if(run)('remote execution against a live scheduler + worker', () => {
     }
   }, 120_000)
 })
+
+describe.if(run)("the node_modules chain: remote:'only' install feeds remote builds", () => {
+  const endpoint = ENDPOINT as string
+  const nonce2 = `${process.pid}-${Bun.nanoseconds()}`
+
+  const request = (root: string, over: Partial<ExecuteRequest>): ExecuteRequest =>
+    ({
+      taskId: 'pkg#task',
+      workspaceRoot: root,
+      cwd: path.join(root, 'pkg'),
+      command: 'true',
+      forwardArgs: [],
+      env: {},
+      capture: { stdout: true, stderr: true },
+      onStdout: () => undefined,
+      onStderr: () => undefined,
+      outputs: { files: [], workspaceFiles: [] },
+      ...over,
+    }) as unknown as ExecuteRequest
+
+  it('outputs flow worker→CAS→worker without ever landing on this disk', async () => {
+    const { execDigestFor } = await import('../src/cache.js')
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-nm-'))
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+      await writeFile(path.join(root, 'pkg', 'src', 'app.js'), 'require("liba")\n')
+      const executor = reapiExecutor(client, { warn: () => undefined })
+      const keyA = `install-${nonce2}`
+
+      // A: the install stand-in — remote-only, produces node_modules REMOTELY.
+      const resA = await executor.execute(
+        request(root, {
+          taskId: 'pkg#install',
+          command: 'mkdir -p node_modules/liba && echo lib-content > node_modules/liba/index.js',
+          outputs: { files: ['node_modules/**'], workspaceFiles: [] },
+          cacheKey: keyA,
+          remoteOnly: true,
+          inputs: {
+            files: [],
+            env: [],
+            runtime: [],
+            workspaceRuntime: [],
+            upstream: [],
+            packageJsonDigest: 'p',
+            configDigest: 'c',
+            workspaceFingerprint: 'w',
+          },
+        } as Partial<ExecuteRequest>),
+      )
+      expect(resA.exitCode).toBe(0)
+      // THE point of remote:'only' — the submitter's disk never sees them:
+      const { exists } = await import('node:fs/promises').then((m) => ({
+        exists: (p: string) =>
+          m.access(p).then(
+            () => true,
+            () => false,
+          ),
+      }))
+      expect(await exists(path.join(root, 'pkg', 'node_modules'))).toBe(false)
+      // …but the execution record is addressable by the vx key:
+      const record = await client.getActionResult(execDigestFor(keyA))
+      expect(record).not.toBeNull()
+
+      // B: a dependent build — its input tree grafts A's outputs BY REFERENCE.
+      let stdout = ''
+      const resB = await executor.execute(
+        request(root, {
+          taskId: 'pkg#build',
+          command: 'cat node_modules/liba/index.js > used.txt && cat used.txt',
+          outputs: { files: ['used.txt'], workspaceFiles: [] },
+          cacheKey: `build-${nonce2}`,
+          onStdout: (c: string) => (stdout += c),
+          inputs: {
+            files: [{ path: 'pkg/src/app.js', digest: 'oid' }],
+            env: [],
+            runtime: [],
+            workspaceRuntime: [],
+            upstream: [{ taskId: 'pkg#install', hash: keyA, outputs: [] }],
+            packageJsonDigest: 'p',
+            configDigest: 'c',
+            workspaceFingerprint: 'w',
+          },
+        } as Partial<ExecuteRequest>),
+      )
+      expect(resB.exitCode).toBe(0)
+      expect(stdout.trim()).toBe('lib-content')
+      // B is a NORMAL task: its declared output materialises locally.
+      expect(await readFile(path.join(root, 'pkg', 'used.txt'), 'utf8')).toContain('lib-content')
+
+      // A again, same key: satisfied from the execution record — Execute is
+      // never called. Spied on the client method, not inferred from timing.
+      let executeCalls = 0
+      const origExecute = client.execute.bind(client)
+      client.execute = ((...a: Parameters<typeof origExecute>) => {
+        executeCalls++
+        return origExecute(...a)
+      }) as typeof client.execute
+      const resA2 = await executor.execute(
+        request(root, {
+          taskId: 'pkg#install',
+          command: 'echo must-not-run',
+          outputs: { files: ['node_modules/**'], workspaceFiles: [] },
+          cacheKey: keyA,
+          remoteOnly: true,
+          inputs: {
+            files: [],
+            env: [],
+            runtime: [],
+            workspaceRuntime: [],
+            upstream: [],
+            packageJsonDigest: 'p',
+            configDigest: 'c',
+            workspaceFingerprint: 'w',
+          },
+        } as Partial<ExecuteRequest>),
+      )
+      expect(resA2.exitCode).toBe(0)
+      expect(executeCalls).toBe(0)
+    } finally {
+      client.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
+})

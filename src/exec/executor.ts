@@ -73,6 +73,20 @@ export interface ExecuteRequest {
   readonly workspaceRoot: string
   /** Present for cacheable tasks (the miss path); absent when the task declares no `cache`. */
   readonly inputs?: TaskInputs
+  /**
+   * The task's cache key (present when the task is cacheable). An executor
+   * that keeps its own remote record of executions — so a dependent's input
+   * tree can reference this task's outputs without the bytes ever landing on
+   * this machine — needs a stable address, and the key is that address.
+   */
+  readonly cacheKey?: string
+  /**
+   * `exec.remote: 'only'`: the task produces a REMOTE input tree. The
+   * executor should not materialise outputs onto this machine's disk, and
+   * may satisfy the request from its own remote record of a previous
+   * execution under the same key.
+   */
+  readonly remoteOnly?: boolean
   /** The declared output globs — project-relative `files`, root-relative `workspaceFiles`. */
   readonly outputs: {
     readonly files: readonly string[]

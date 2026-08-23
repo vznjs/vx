@@ -222,8 +222,15 @@ export interface ExecConfig {
    * executor (it talks to a local daemon, the network, Docker, …). Default
    * `true`. Tasks that are persistent, or depend on one, are pinned
    * regardless — a worker cannot reach a port on the submitter.
+   *
+   * `'only'` is the inverse pin: the task exists to produce a REMOTE input
+   * tree (the canonical case is `pnpm install` feeding remote workers) and is
+   * a NO-OP on this machine — never executed locally, its declared outputs
+   * never cleaned or restored on this disk. With no remote executor declared
+   * the task succeeds without running and dependents use whatever ambient
+   * state the machine has, exactly as they did before the field existed.
    */
-  remote?: boolean
+  remote?: boolean | 'only'
   /** Environment exposed to the child process. */
   env?: ExecEnv
   /**

@@ -60,9 +60,64 @@ interface DirNode {
   files: Map<string, FileNode>
   dirs: Map<string, DirNode>
   symlinks: Map<string, SymlinkNode>
+  /** Pre-digested subtrees grafted by reference — no bytes on this machine. */
+  rawDirs: Map<string, Digest>
 }
 
-const emptyDir = (): DirNode => ({ files: new Map(), dirs: new Map(), symlinks: new Map() })
+const emptyDir = (): DirNode => ({
+  files: new Map(),
+  dirs: new Map(),
+  symlinks: new Map(),
+  rawDirs: new Map(),
+})
+
+/** A file grafted into the tree by DIGEST — its bytes are already in the CAS. */
+export interface FileGraft {
+  /** Workspace-relative POSIX path. */
+  path: string
+  digest: Digest
+  isExecutable: boolean
+}
+
+/** A whole directory grafted from a decoded REAPI `Tree`. */
+export interface TreeGraft {
+  /** Workspace-relative POSIX path the subtree lands at. */
+  path: string
+  root: Directory
+  children: Directory[]
+}
+
+/**
+ * Re-canonicalise a Tree's directory graph bottom-up under OUR encoder.
+ * The Tree's internal `DirectoryNode.digest` values were computed by the
+ * WORKER's encoder; if its byte layout differs from ours in any way, reusing
+ * them while re-encoding parents would produce parents that reference child
+ * digests no blob matches. Rebuilding every digest from the leaves up makes
+ * the graph self-consistent regardless of who produced it — file digests are
+ * untouched (content-addressed, already in the CAS).
+ */
+export function canonicaliseTree(graft: TreeGraft): { root: Digest; blobs: Blob[] } {
+  const byOldDigest = new Map<string, Directory>()
+  for (const child of graft.children) {
+    byOldDigest.set(sha256(encodeDirectory(child)).hash, child)
+  }
+  const blobs: Blob[] = []
+  const rebuild = (dir: Directory): Digest => {
+    const directories: DirectoryNode[] = dir.directories.map((d) => {
+      const child = byOldDigest.get(d.digest.hash)
+      // A child we cannot resolve keeps its original digest — the blob may
+      // exist server-side under the worker's encoding even if we cannot
+      // re-derive it. Better a possibly-dangling reference than a wrong one.
+      return child === undefined ? d : { name: d.name, digest: rebuild(child) }
+    })
+    const canonical: Directory = { files: dir.files, directories, symlinks: dir.symlinks }
+    const data = encodeDirectory(canonical)
+    const digest = sha256(data)
+    blobs.push({ digest, data })
+    return digest
+  }
+  return { root: rebuild(graft.root), blobs }
+}
 
 /**
  * Build the input root from workspace-relative paths. `executableFor` decides
@@ -74,6 +129,10 @@ export async function buildInputTree(args: {
   paths: readonly string[]
   digests?: DigestCache
   readFile?: (abs: string) => Promise<Uint8Array>
+  /** Files referenced by digest — upstream outputs already in the CAS. */
+  fileGrafts?: readonly FileGraft[]
+  /** Directories grafted from upstream output Trees, re-canonicalised. */
+  treeGrafts?: readonly TreeGraft[]
 }): Promise<InputTree> {
   const digests = args.digests ?? new DigestCache()
   const read =
@@ -134,6 +193,37 @@ export async function buildInputTree(args: {
     fileCount++
   }
 
+  const insertAt = (rel: string): { node: DirNode; leaf: string } => {
+    const parts = rel.split('/')
+    let node = root
+    for (const seg of parts.slice(0, -1)) {
+      let next = node.dirs.get(seg)
+      if (next === undefined) {
+        next = emptyDir()
+        node.dirs.set(seg, next)
+      }
+      node = next
+    }
+    return { node, leaf: parts[parts.length - 1]! }
+  }
+
+  for (const graft of args.fileGrafts ?? []) {
+    const { node, leaf } = insertAt(graft.path)
+    node.files.set(leaf, { name: leaf, digest: graft.digest, is_executable: graft.isExecutable })
+    fileCount++
+  }
+  for (const graft of args.treeGrafts ?? []) {
+    const { node, leaf } = insertAt(graft.path)
+    const canonical = canonicaliseTree(graft)
+    for (const b of canonical.blobs) {
+      if (!seen.has(b.digest.hash)) {
+        seen.add(b.digest.hash)
+        blobs.push(b)
+      }
+    }
+    node.rawDirs.set(leaf, canonical.root)
+  }
+
   const rootDigest = serialise(root, blobs, seen)
   return { root: rootDigest, blobs, fileCount }
 }
@@ -147,8 +237,16 @@ export async function buildInputTree(args: {
  */
 function serialise(node: DirNode, blobs: Blob[], seen: Set<string>): Digest {
   const directories: DirectoryNode[] = []
-  for (const name of [...node.dirs.keys()].sort()) {
-    directories.push({ name, digest: serialise(node.dirs.get(name)!, blobs, seen) })
+  const dirNames = [...new Set([...node.dirs.keys(), ...node.rawDirs.keys()])].sort()
+  for (const name of dirNames) {
+    const sub = node.dirs.get(name)
+    directories.push({
+      name,
+      // A grafted subtree wins over a disk-built one of the same name: the
+      // graft is the upstream's AUTHORITATIVE output, the disk copy at best
+      // a stale materialisation of it.
+      digest: node.rawDirs.get(name) ?? serialise(sub!, blobs, seen),
+    })
   }
   const files = [...node.files.keys()].sort().map((n) => node.files.get(n)!)
   const symlinks = [...node.symlinks.keys()].sort().map((n) => node.symlinks.get(n)!)

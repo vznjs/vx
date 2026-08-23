@@ -189,8 +189,13 @@ describe('computeTaskHash — what the config contributes', () => {
     const plain = await key({ node: node({}, { exec: { command: 'build' } }) })
     const pinned = await key({ node: node({}, { exec: { command: 'build', remote: false } }) })
     const shipped = await key({ node: node({}, { exec: { command: 'build', remote: true } }) })
+    const only = await key({ node: node({}, { exec: { command: 'build', remote: 'only' } }) })
     expect(pinned).toBe(plain)
     expect(shipped).toBe(plain)
+    // 'only' too: whether install ran on a worker or nooped locally is
+    // placement, and a key that moved with it would fork the cache between
+    // a laptop and its own CI.
+    expect(only).toBe(plain)
   })
 
   it('STABILITY: stripping remote leaves the REST of exec folded', async () => {

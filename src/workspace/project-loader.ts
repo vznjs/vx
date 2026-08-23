@@ -207,8 +207,8 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         }
       }
       const remote = (exec as { remote?: unknown }).remote
-      if (remote !== undefined && typeof remote !== 'boolean') {
-        throw new UserError(`${where}.exec.remote must be a boolean (or omitted)`)
+      if (remote !== undefined && typeof remote !== 'boolean' && remote !== 'only') {
+        throw new UserError(`${where}.exec.remote must be a boolean or 'only' (or omitted)`)
       }
       const resources = (exec as { resources?: unknown }).resources
       if (resources !== undefined) {

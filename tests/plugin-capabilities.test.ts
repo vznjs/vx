@@ -804,6 +804,118 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  it("remote:'only' with NO remote executor is a local NO-OP: never runs, never cleans", async () => {
+    // The install-as-action contract's local half. The command is a loud
+    // failure (`exit 1` + a tombstone write) so this test cannot pass by the
+    // task running and happening to succeed; and a pre-existing file inside
+    // the DECLARED OUTPUT dir must survive, because cleaning node_modules on
+    // a dev machine is exactly what the field forbids.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           install: {
+             exec: { command: 'echo ran > tombstone.txt && exit 1', remote: 'only' },
+             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+           },
+           build: {
+             exec: { command: 'cat deps/ambient.txt > out.txt' },
+             dependsOn: ['install'],
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+           },
+         } }`,
+      )
+      await Bun.write(path.join(workspaceRoot, 'pkg-a/src/x.txt'), 'x')
+      // the machine's AMBIENT state — what a dev's own pnpm install left
+      await Bun.write(path.join(workspaceRoot, 'pkg-a/deps/ambient.txt'), 'ambient-deps')
+      await writeLocalWorkspace(workspaceRoot)
+      await gitInit(workspaceRoot)
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['build'],
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      const install = summary.outcomes.find((o) => o.node.id === 'pkg-a#install')
+      expect(install?.status).toBe('success')
+      expect(install?.hash).toBeDefined() // dependents folded a real key
+      // never executed…
+      expect(await Bun.file(path.join(workspaceRoot, 'pkg-a/tombstone.txt')).exists()).toBe(false)
+      // …never cleaned the declared outputs…
+      expect(await Bun.file(path.join(workspaceRoot, 'pkg-a/deps/ambient.txt')).text()).toBe(
+        'ambient-deps',
+      )
+      // …and the dependent consumed the ambient state, as before the field.
+      expect(await Bun.file(path.join(workspaceRoot, 'pkg-a/out.txt')).text()).toBe('ambient-deps')
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("remote:'only' WITH a remote executor ships there, flagged, and stays off this disk", async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           install: {
+             exec: { command: 'echo remote-made > deps/lib.txt', remote: 'only' },
+             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+           },
+         } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/remote',
+             executor() {
+               return {
+                 name: 'remote-spy',
+                 remote: true,
+                 async execute(req) {
+                   globalThis.__vxRemoteOnlyReq = {
+                     remoteOnly: req.remoteOnly, cacheKey: req.cacheKey, taskId: req.taskId,
+                   }
+                   // deliberately does NOT write deps/lib.txt: a remote-only
+                   // task's outputs stay remote, and core must not expect them
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['install'],
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      const seen = (globalThis as Record<string, unknown>)['__vxRemoteOnlyReq'] as {
+        remoteOnly?: boolean
+        cacheKey?: string
+        taskId: string
+      }
+      expect(seen.taskId).toBe('pkg-a#install')
+      expect(seen.remoteOnly).toBe(true)
+      expect(seen.cacheKey).toMatch(/^[0-9a-f]+$/)
+      // no local artifact was saved for it: a SECOND run must reach the
+      // executor again (its own remote record is what dedupes, not vx's cache)
+      const outcome = summary.outcomes.find((o) => o.node.id === 'pkg-a#install')
+      expect(outcome?.status).toBe('success')
+      expect(await Bun.file(path.join(workspaceRoot, 'pkg-a/deps/lib.txt')).exists()).toBe(false)
+    } finally {
+      cleanup()
+    }
+  })
+
   it('NO DEFAULTS: a workspace with no plugins fails before any task runs and names the fix', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {

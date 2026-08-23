@@ -164,3 +164,46 @@ number parses garbage without ever erroring (`tests/encoding.test.ts`).
 One environmental note for NativeLink specifically: its official image is
 distroless, so a worker inside it has no `/bin/sh` and cannot run any vx task.
 `tests/helpers/nativelink.md` has the three-command busybox rehost.
+
+## node_modules: install as an action
+
+REAPI workers are stateless, and vx deliberately treats `node_modules` as
+ambient environment rather than a cache input — so a remote task cannot see
+the packages a build needs. The answer is the design doc's §7.4 recipe,
+`exec.remote: 'only'`:
+
+```ts
+install: {
+  exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },
+  cache: {
+    inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
+    outputs: { files: ['node_modules/**'] },
+  },
+},
+build: {
+  dependsOn: ['install'],
+  exec: { command: 'tsc -p .' },
+  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+},
+```
+
+What actually happens, all verified live against a NativeLink scheduler +
+worker (`tests/vx-run-e2e.test.ts`):
+
+- `install` executes **on a worker** — so platform binaries build for the
+  worker's platform, not the laptop's — and runs once per lockfile change,
+  ever: repeats are satisfied from an execution record the plugin keeps under
+  the task's vx cache key.
+- Its outputs **never land on the submitter's disk**: not materialised, not
+  restored, and the local `node_modules` a dev installed is never cleaned.
+- A dependent task's input tree grafts the install outputs **by reference**
+  (per-file digests from the execution record; whole directories as
+  re-canonicalised REAPI `Tree`s), so the bytes flow worker→CAS→worker and
+  never transit the submitter.
+- With **no remote executor declared**, `install` is a local no-op and
+  dependents use whatever the machine has ambient — a laptop run behaves
+  exactly as it did before the field existed.
+
+The execution record lives under `sha256("vx-reapi-exec-v1\0" + key)` — a
+second AC namespace beside the artifact mapping, listing outputs file-by-file
+with workspace-relative paths.

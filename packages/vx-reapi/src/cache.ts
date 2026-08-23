@@ -25,6 +25,19 @@ export function actionDigestFor(vxKey: string): Digest {
   return { hash: createHash('sha256').update(payload).digest('hex'), size_bytes: payload.length }
 }
 
+/**
+ * The EXECUTION record's address for a vx key — distinct from the artifact
+ * mapping above. Where `actionDigestFor` points at one tarred artifact blob
+ * (the vx cache entry), this points at an ActionResult listing the task's
+ * outputs FILE BY FILE with workspace-relative paths: what a dependent's
+ * input tree grafts by reference, so upstream outputs flow worker→CAS→worker
+ * without ever landing on the submitter's disk.
+ */
+export function execDigestFor(vxKey: string): Digest {
+  const payload = Buffer.from(`vx-reapi-exec-v1\0${vxKey}`, 'utf8')
+  return { hash: createHash('sha256').update(payload).digest('hex'), size_bytes: payload.length }
+}
+
 export function digestOf(body: Uint8Array): Digest {
   return { hash: createHash('sha256').update(body).digest('hex'), size_bytes: body.length }
 }

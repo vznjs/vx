@@ -21,7 +21,10 @@ import {
   encodeDirectory,
   sha256,
   type Blob,
+  type FileGraft,
+  type TreeGraft,
 } from './merkle.js'
+import { execDigestFor } from './cache.js'
 import type { ActionResult, Digest, Directory, Operation, ReapiClient } from './wire.js'
 
 export interface DecodedExecuteResponse {
@@ -383,16 +386,66 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         )
       }
 
-      const inputPaths = [
-        ...req.inputs.files.map((f) => f.path),
-        // Upstream outputs are on disk already (core restored them before
-        // this task ran) and are inputs to this action on the worker.
-        ...req.inputs.upstream.flatMap((u) => u.outputs),
-      ]
+      // A remote-only task whose key already has an execution record needs
+      // nothing at all: the outputs sit in the CAS for dependents to graft,
+      // and this machine's disk was never going to see them. This is the
+      // repeat-run path for `install` — once per lockfile change, ever.
+      if (req.remoteOnly === true && req.cacheKey !== undefined) {
+        const prior = await client.getActionResult(execDigestFor(req.cacheKey))
+        if (prior !== null) {
+          return {
+            exitCode: 0,
+            durationMs: Math.round((Bun.nanoseconds() - started) / 1e6),
+            stdout: '',
+            stderr: '',
+            violations: [],
+          }
+        }
+      }
+
+      // Upstream outputs reach this action's input root one of two ways.
+      // PREFERRED: by REFERENCE — the upstream executed remotely and left an
+      // execution record (per-file digests, workspace-relative paths) under
+      // its vx key, so its bytes flow worker→CAS→worker and never transit
+      // this machine. FALLBACK: from local disk (the upstream ran locally, so
+      // core restored its outputs here before this task started).
+      const fileGrafts: FileGraft[] = []
+      const treeGrafts: TreeGraft[] = []
+      const localUpstreamPaths: string[] = []
+      for (const up of req.inputs.upstream) {
+        const record = await client.getActionResult(execDigestFor(up.hash))
+        if (record === null) {
+          localUpstreamPaths.push(...up.outputs)
+          continue
+        }
+        for (const f of record.output_files ?? []) {
+          fileGrafts.push({
+            path: f.path, // recorded workspace-relative — see the record write below
+            digest: f.digest,
+            isExecutable: f.is_executable === true,
+          })
+        }
+        for (const d of record.output_directories ?? []) {
+          const treeBlob = await client.readBlob(d.tree_digest)
+          if (treeBlob === null) {
+            warn(
+              `vx/reapi: upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS`,
+            )
+            continue
+          }
+          const decodedTree = decodeTree(treeBlob)
+          if (decodedTree.root === undefined) continue
+          treeGrafts.push({ path: d.path, root: decodedTree.root, children: decodedTree.children })
+        }
+      }
+
+      const inputPaths = [...req.inputs.files.map((f) => f.path), ...localUpstreamPaths]
       const tree = await buildInputTree({
         workspaceRoot: req.workspaceRoot,
         paths: inputPaths,
         digests,
+        fileGrafts,
+        treeGrafts,
       })
 
       const workingDirectory = toPosix(path.relative(req.workspaceRoot, req.cwd))
@@ -477,7 +530,39 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       if (req.capture.stdout !== false && stdout.length > 0) req.onStdout(stdout)
       if (req.capture.stderr !== false && stderr.length > 0) req.onStderr(stderr)
 
-      await materialiseOutputs(client, req, result, warn)
+      // Record the execution under the task's vx key, output paths rewritten
+      // WORKSPACE-relative (the raw result's are working-directory-relative)
+      // so a dependent in ANY project can graft them at the right place.
+      // Written for every successful remote execution, not just remote-only
+      // tasks: it is what lets a 50-task chain flow worker→CAS→worker.
+      if (req.cacheKey !== undefined && (result.exit_code ?? 0) === 0) {
+        const rebase = (rel: string): string =>
+          workingDirectory === '' ? rel : `${workingDirectory}/${rel}`
+        await client
+          .updateActionResult(execDigestFor(req.cacheKey), {
+            exit_code: 0,
+            output_files: (result.output_files ?? []).map((f) => ({
+              path: rebase(f.path),
+              digest: f.digest,
+              is_executable: f.is_executable === true,
+            })),
+            output_directories: (result.output_directories ?? []).map((d) => ({
+              path: rebase(d.path),
+              tree_digest: d.tree_digest,
+            })),
+            output_symlinks: (result.output_symlinks ?? []).map((sl) => ({
+              path: rebase(sl.path),
+              target: sl.target,
+            })),
+          })
+          .catch((err: Error) =>
+            warn(`vx/reapi: could not record execution for ${req.taskId}: ${err.message}`),
+          )
+      }
+
+      // A remote-only task's outputs stay remote — materialising node_modules
+      // onto the submitter's disk is precisely what `remote: 'only'` forbids.
+      if (req.remoteOnly !== true) await materialiseOutputs(client, req, result, warn)
 
       return {
         exitCode: result.exit_code ?? 0,
