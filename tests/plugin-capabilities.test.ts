@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
+import { CORE_INDEX, localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { run } from '../src/index.js'
 import {
   resolveBackend,
@@ -22,7 +22,7 @@ import {
 } from '../src/orchestrator/index.js'
 import type { TaskExecutor } from '../src/exec/index.js'
 import { busLogger } from '../src/orchestrator/events.js'
-import { Cache } from '../src/cache/index.js'
+import { Cache, ChainedCache } from '../src/cache/index.js'
 import { localCachePlugin } from '../src/plugins/local-cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
 
@@ -110,7 +110,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     ).rejects.toThrow(/org\/broken-be/)
   })
 
-  it('resolveCache: first contributing plugin wins, in declaration order', async () => {
+  it('resolveCache: every contributing plugin is kept, chained in declaration order', async () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
     const other = new Cache(mkdtempSync(path.join(tmpdir(), 'vx-cache-host2-')), {
@@ -128,7 +128,8 @@ describe('plugin-host — capability consultation + fallbacks', () => {
         localCache: local,
         policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
       })
-      expect(resolved).toBe(other)
+      expect(resolved).toBeInstanceOf(ChainedCache)
+      expect((resolved as ChainedCache).layers).toEqual([other, local])
     } finally {
       local.close()
       other.close()
@@ -572,6 +573,49 @@ describe('executor capability — end-to-end via run()', () => {
 
   // `prepareRun` resolves the cache before `run()` resolves executors, so
   // the cache message is the one a bare workspace sees; both carry the hint.
+  it('two declared cache plugins: a run saves into BOTH stores', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    const second = mkdtempSync(path.join(tmpdir(), 'vx-second-cache-'))
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: { hello: {
+           exec: { command: 'echo hi > out.txt' },
+           cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
+         } } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource(
+          [
+            `{ name: 'org/second', cache: () => new Cache(${JSON.stringify(second)}, { read: true, write: true }) }`,
+          ],
+          `import { Cache } from ${JSON.stringify(CORE_INDEX)}`,
+        ),
+      )
+      await gitInit(workspaceRoot)
+      const summary = await runHello(workspaceRoot)
+      expect(summary.ok).toBe(true)
+      const hash = summary.outcomes[0]?.hash
+      expect(typeof hash).toBe('string')
+      const secondCache = new Cache(second, { read: true, write: true })
+      const localCache = new Cache(path.join(workspaceRoot, '.vx/cache'), {
+        read: true,
+        write: true,
+      })
+      try {
+        expect((await secondCache.get(hash!))?.hash).toBe(hash)
+        expect((await localCache.get(hash!))?.hash).toBe(hash)
+      } finally {
+        secondCache.close()
+        localCache.close()
+      }
+    } finally {
+      cleanup()
+      rmSync(second, { recursive: true, force: true })
+    }
+  })
+
   it('NO DEFAULTS: a workspace with no plugins fails before any task runs and names the fix', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {

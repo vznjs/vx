@@ -6,7 +6,7 @@
 //
 // See docs/design/core-cloud-split-2026-06.md §5.1.
 
-import type { CacheLayer } from '../cache/index.js'
+import { ChainedCache, type CacheLayer } from '../cache/index.js'
 import type { TaskExecutor } from '../exec/index.js'
 import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import type { EventBus } from './events.js'
@@ -58,24 +58,32 @@ export async function resolveBackend(
 }
 
 /**
- * Resolve the cache layer. First plugin returning a non-undefined `cache`
- * wins. There is no fallback: an empty result means the workspace declared
- * no cache provider — an authoring error worth naming, never a silent
- * cacheless run.
+ * Collect every plugin's `cache` layer in declaration order. One layer is
+ * used as is; two or more are chained (lookup walks them, save reaches all;
+ * see ChainedCache). A bare local layer that another declared layer already
+ * wraps (`layer.local === ctx.localCache`) is dropped, so a remote plugin
+ * that layers over the local handle composes with `localCachePlugin()`
+ * instead of writing the local store twice. No layer at all is a named error.
  */
 export async function resolveCache(
   plugins: readonly VxPlugin[],
   ctx: CacheContext,
 ): Promise<CacheLayer> {
+  const layers: CacheLayer[] = []
   for (const plugin of plugins) {
     if (plugin.cache === undefined) continue
-    const cache = await safe(plugin, 'cache', () => plugin.cache!(ctx))
-    if (cache !== undefined) return cache
+    const layer = await safe(plugin, 'cache', () => plugin.cache!(ctx))
+    if (layer !== undefined) layers.push(layer)
   }
-  const declined = plugins.filter((p) => p.cache !== undefined).map((p) => `${p.name} declined`)
-  throw new UserError(
-    `no cache plugin declared${declined.length > 0 ? ` (${declined.join(', ')})` : ''}. ${MISSING_PLUGIN_HINT}`,
-  )
+  if (layers.length === 0) {
+    const declined = plugins.filter((p) => p.cache !== undefined).map((p) => `${p.name} declined`)
+    throw new UserError(
+      `no cache plugin declared${declined.length > 0 ? ` (${declined.join(', ')})` : ''}. ${MISSING_PLUGIN_HINT}`,
+    )
+  }
+  const wrapsLocal = layers.some((l) => l !== ctx.localCache && l.local === ctx.localCache)
+  const distinct = wrapsLocal ? layers.filter((l) => l !== ctx.localCache) : layers
+  return distinct.length === 1 ? distinct[0]! : new ChainedCache(distinct)
 }
 
 /**

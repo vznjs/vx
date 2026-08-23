@@ -627,6 +627,13 @@ async function zstdDecompressBounded(
 
 export interface CacheLayer {
   /**
+   * The local handle this layer wraps, when it wraps one (`LayeredCache`).
+   * `resolveCache` uses it to drop a bare local layer another declared layer
+   * already contains, so `[cloud(), localCachePlugin()]` does not write the
+   * local store twice.
+   */
+  readonly local?: Cache | undefined
+  /**
    * `true` iff a REMOTE cache sits behind this layer. THE answer to "can
    * the remote axes of the cache policy do anything on this run?" — the
    * orchestrator clamps `remoteRead`/`remoteWrite` off when it is absent,

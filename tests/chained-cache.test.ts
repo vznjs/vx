@@ -1,0 +1,141 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { describe, expect, it } from 'bun:test'
+import { Cache, ChainedCache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import { resolveCache, type VxPlugin } from '../src/orchestrator/index.js'
+
+function tmpCache(tag: string): { cache: Cache; dir: string } {
+  const dir = mkdtempSync(path.join(tmpdir(), `vx-chained-${tag}-`))
+  return { cache: new Cache(dir, { read: true, write: true }), dir }
+}
+
+async function saveEntry(cache: Cache | ChainedCache, hash: string, projectDir: string) {
+  await Bun.write(path.join(projectDir, 'out.txt'), `out-${hash}\n`)
+  await cache.save({
+    hash,
+    entry: { taskId: 'p#t', command: 'echo', durationMs: 1, stdout: '' },
+    projectDir,
+    outputFiles: [path.join(projectDir, 'out.txt')],
+  })
+}
+
+function withTwo(fn: (a: Cache, b: Cache, proj: string) => Promise<void>): () => Promise<void> {
+  return async () => {
+    const a = tmpCache('a')
+    const b = tmpCache('b')
+    const proj = mkdtempSync(path.join(tmpdir(), 'vx-chained-proj-'))
+    try {
+      await fn(a.cache, b.cache, proj)
+    } finally {
+      a.cache.close()
+      b.cache.close()
+      for (const d of [a.dir, b.dir, proj]) rmSync(d, { recursive: true, force: true })
+    }
+  }
+}
+
+const noRemote: RemoteCacheLayer = {
+  has: async () => false,
+  get: async () => null,
+  put: async () => undefined,
+}
+
+describe('ChainedCache', () => {
+  it(
+    'get walks the layers in order and the first hit wins',
+    withTwo(async (a, b, proj) => {
+      await saveEntry(b, 'h1', proj)
+      const chained = new ChainedCache([a, b])
+      expect((await chained.get('h1'))?.hash).toBe('h1')
+      expect(await chained.has('h1')).toBe('local')
+      expect(await a.get('h1')).toBeNull()
+      expect(await chained.get('missing')).toBeNull()
+    }),
+  )
+
+  it(
+    'save writes to every layer',
+    withTwo(async (a, b, proj) => {
+      await saveEntry(new ChainedCache([a, b]), 'h2', proj)
+      expect((await a.get('h2'))?.hash).toBe('h2')
+      expect((await b.get('h2'))?.hash).toBe('h2')
+    }),
+  )
+
+  it(
+    'restoreOutputs restores from the layer that had the hit',
+    withTwo(async (a, b, proj) => {
+      await saveEntry(b, 'h3', proj)
+      rmSync(path.join(proj, 'out.txt'))
+      const chained = new ChainedCache([a, b])
+      expect(await chained.get('h3')).not.toBeNull()
+      await chained.restoreOutputs('h3', proj)
+      expect(await Bun.file(path.join(proj, 'out.txt')).text()).toBe('out-h3\n')
+    }),
+  )
+
+  it(
+    'the FIRST layer owns the run index: recordRun reaches only it',
+    withTwo(async (a, b) => {
+      const now = Date.now()
+      new ChainedCache([a, b]).recordRun({
+        project: 'p',
+        task: 't',
+        status: 'success',
+        exitCode: 0,
+        durationMs: 1,
+        startedAt: now,
+        endedAt: now + 1,
+      })
+      expect(a.stats().runCountLast24h).toBe(1)
+      expect(b.stats().runCountLast24h).toBe(0)
+    }),
+  )
+
+  it(
+    'hasRemote is true when any layer has a remote; close closes every layer',
+    withTwo(async (a, b) => {
+      expect(new ChainedCache([a, new LayeredCache(b, noRemote)]).hasRemote).toBe(true)
+      expect(new ChainedCache([a, b]).hasRemote).toBe(false)
+    }),
+  )
+})
+
+describe('resolveCache — chaining', () => {
+  const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
+  const policy = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
+
+  it(
+    'one contributing plugin → that layer, unwrapped',
+    withTwo(async (a) => {
+      const plugins: VxPlugin[] = [{ name: 'org/one', cache: () => a }]
+      expect(await resolveCache(plugins, { ...baseCtx, localCache: a, policy })).toBe(a)
+    }),
+  )
+
+  it(
+    'two contributing plugins → a ChainedCache in declaration order',
+    withTwo(async (a, b) => {
+      const plugins: VxPlugin[] = [
+        { name: 'org/first', cache: () => b },
+        { name: 'org/second', cache: () => a },
+      ]
+      const resolved = await resolveCache(plugins, { ...baseCtx, localCache: a, policy })
+      expect(resolved).toBeInstanceOf(ChainedCache)
+      expect((resolved as ChainedCache).layers).toEqual([b, a])
+    }),
+  )
+
+  it(
+    'a layer that WRAPS the local handle subsumes the bare local layer (cloud + localCachePlugin)',
+    withTwo(async (a) => {
+      const layered = new LayeredCache(a, noRemote)
+      const plugins: VxPlugin[] = [
+        { name: 'org/cloud-like', cache: () => layered },
+        { name: 'vx/local-cache', cache: (ctx) => ctx.localCache },
+      ]
+      expect(await resolveCache(plugins, { ...baseCtx, localCache: a, policy })).toBe(layered)
+    }),
+  )
+})

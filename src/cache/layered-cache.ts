@@ -122,7 +122,7 @@ export class LayeredCache implements CacheLayer {
   private readonly policy: CachePolicy
 
   constructor(
-    private readonly local: Cache,
+    readonly local: Cache,
     private readonly remote: RemoteCacheLayer,
     private readonly options: LayeredCacheOptions = {},
   ) {

@@ -28,3 +28,4 @@ export {
   resolveWorkspaceOutputs,
 } from './inputs.js'
 export { LayeredCache, type RemoteCacheLayer } from './layered-cache.js'
+export { ChainedCache } from './chained-cache.js'
