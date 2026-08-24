@@ -405,4 +405,75 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
       await rm(root, { recursive: true, force: true })
     }
   }, 180_000)
+
+  it('a first-segment wildcard maps to the whole-working-directory capture', async () => {
+    // REAPI has no glob wire: `*.js` cannot be sent as-is, and sending
+    // NOTHING would silently lose the outputs. globToOutputPath maps it to
+    // '' — the spec sanctions that spelling only for the deprecated
+    // output_directories field ("the entire working directory tree,
+    // including inputs"), so this pins that a real worker honors it on the
+    // v2.1 output_paths field too. Whole-tree capture is also the closest
+    // parity with a LOCAL run, where everything the command writes stays
+    // on disk: the undeclared sibling comes back alongside the declared
+    // match, and the cache stays narrow because save re-globs the declared
+    // patterns from disk afterwards.
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-exec-e2e-'))
+    await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+    await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'seed\n')
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      const executor = reapiExecutor(client, { warn: () => undefined })
+      const res = await executor.execute(
+        req3(root, {
+          command: 'echo AA > a.js && echo BB > b.txt',
+          outputs: { files: ['*.js'], workspaceFiles: [] },
+          inputs: {
+            files: [{ path: 'pkg/src/in.txt', digest: 'x' }],
+            env: [],
+            runtime: [],
+            workspaceRuntime: [],
+            upstream: [],
+            packageJsonDigest: 'p',
+            configDigest: 'c',
+            workspaceFingerprint: 'w',
+          },
+        } as Partial<ExecuteRequest>),
+      )
+      expect(res.exitCode).toBe(0)
+      expect((await readFile(path.join(root, 'pkg', 'a.js'), 'utf8')).trim()).toBe('AA')
+      expect((await readFile(path.join(root, 'pkg', 'b.txt'), 'utf8')).trim()).toBe('BB')
+      expect((await readFile(path.join(root, 'pkg', 'src', 'in.txt'), 'utf8')).trim()).toBe('seed')
+    } finally {
+      client.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
+
+  it('a workspace-file output outside the project dir round-trips via a ../ path', async () => {
+    // vx sets working_directory to the project dir inside the workspace
+    // input root, so outputs.workspaceFiles rebase to '../…' — a shape the
+    // spec neither sanctions nor forbids. This pins that a real worker
+    // captures it and that materialisation resolves it back to the
+    // workspace root (path.join(cwd, '../shared/gen.txt')).
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-exec-e2e-'))
+    await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+    await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'seed\n')
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      const executor = reapiExecutor(client, { warn: () => undefined })
+      const res = await executor.execute(
+        req3(root, {
+          command: 'mkdir -p ../shared && echo WS > ../shared/gen.txt',
+          outputs: { files: [], workspaceFiles: ['shared/gen.txt'] },
+        }),
+      )
+      expect(res.exitCode).toBe(0)
+      expect((await readFile(path.join(root, 'shared', 'gen.txt'), 'utf8')).trim()).toBe('WS')
+    } finally {
+      client.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
 })

@@ -107,6 +107,22 @@ One coherence rule to know: when an upstream's outputs ARE on your disk
 truth, and the remote record is only used for outputs that exist nowhere
 locally.
 
+## How output globs travel
+
+REAPI has no glob wire — a `Command` lists literal paths, and the worker
+captures what exists there after the run. vx maps each declared glob to its
+literal prefix (`dist/**` → `dist`, captured as a directory tree), and
+`outputs.workspaceFiles` travel as `../…` paths relative to the project's
+working directory — both proven live against NativeLink. One edge to know: a
+glob whose **first** segment is a wildcard (`*.tsbuildinfo`) maps to the
+whole working directory — the only spelling that can't lose the match — so
+everything the command wrote comes back, which is also what a local run
+leaves on disk. The cache stays narrow either way: saving re-applies your
+declared globs on the materialised files. The whole-directory spelling is a
+spec gray area (sanctioned only for the deprecated field), so a stricter
+third-party worker may reject it — prefer globs with a literal first segment
+(`dist/**`) where you can.
+
 ## The worker image
 
 Two requirements, both learned against real servers:

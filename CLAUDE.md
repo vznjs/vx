@@ -441,6 +441,34 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (twentieth wave) — the glob→output_paths audit: both
+  hypotheses REFUTED by live probe, and the two load-bearing behaviors are
+  now pinned e2e.** Target: `globToOutputPath`/`outputPathSets`, the wire
+  mapping deciding what a REAPI worker captures — untested against reality
+  since the decoder wave. Hypothesis A (a first-segment wildcard maps to
+  `''`, which the spec sanctions only for the DEPRECATED
+  output_directories field — a v2.1 server might reject it or the capture
+  might be pathological): REFUTED on NativeLink — `''` on `output_paths`
+  is honored as whole-working-directory capture, undeclared siblings and
+  inputs included. Judged CORRECT-BY-NECESSITY, not a defect: REAPI has no
+  glob wire, `''` is the only spelling that cannot lose the match, whole-
+  tree materialisation is exactly what a LOCAL run leaves on disk (parity,
+  not pollution), and the cache stays narrow because save re-globs the
+  declared patterns from disk. Residual costs recorded: input files are
+  rewritten byte-identical (mtime churn → next run's git index re-stat),
+  and a stricter third-party worker may reject the gray-area spelling —
+  documented in the remote-execution guide with "prefer a literal first
+  segment". Hypothesis B (`outputs.workspaceFiles` rebase to `../…` paths
+  a worker might refuse, silently dropping workspace outputs): REFUTED —
+  the parent-relative path round-trips and materialisation resolves it to
+  the workspace root. Both behaviors pinned in `exec-e2e.test.ts` (9/0
+  live). Probe-harness slip worth the line: the pins were first appended
+  into a DIFFERENT describe than the helper they called (`request` vs
+  `req3`) and failed in 13 ms with a ReferenceError — a fail that fast is
+  a harness fail, read the error name before the hypothesis. Canary #4
+  banked from the chained-cache push: 20/0/0; cumulative n=80, reporting
+  loss 3.75%, non-enforcement still unobserved.
+
 - **2026-08-24 (nineteenth wave) — ChainedCache audit: the headline
   hypothesis refuted, two real defects confirmed by failing pins.** Audit
   target chosen by the new-code rule: the 2026-08-23 chained-cache wave.
