@@ -276,3 +276,41 @@ describe.if(run)('protocol negotiation and the wider RPC surface', () => {
     }
   })
 })
+
+describe.if(run)('SpliceBlob — the half of the chunking pair bazel-remote advertises', () => {
+  const endpoint = ENDPOINT as string
+
+  it('assembles a blob server-side from chunks the client uploaded separately', async () => {
+    // The decision log carried Split/Splice as "unexercised e2e — blocked on
+    // a server advertising them". Half wrong: bazel-remote advertises
+    // splice_blob_support=true, so the assembly direction is provable
+    // against the same server CI already runs. (Split stays gated on a
+    // server that advertises it; the capability check below keeps this
+    // honest if a different server is wired in.)
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      const caps = await client.capabilities()
+      if (!caps.spliceBlobSupport) return // capability-gated, not assumed
+      const a = new TextEncoder().encode(`chunk-a-${nonce()}`)
+      const b = new TextEncoder().encode(`chunk-b-${nonce()}`)
+      const whole = new Uint8Array([...a, ...b])
+      const wholeDigest = digestOf(whole)
+      await client.batchUpdateBlobs([
+        { digest: digestOf(a), data: a },
+        { digest: digestOf(b), data: b },
+      ])
+      // The whole blob was NEVER uploaded — precondition, not assumption.
+      expect((await client.findMissingBlobs([wholeDigest])).length).toBe(1)
+      const assembled = await client.spliceBlob([digestOf(a), digestOf(b)], wholeDigest)
+      expect(assembled.hash).toBe(wholeDigest.hash)
+      // …and now it exists, byte-identical, without the client sending it.
+      expect((await client.findMissingBlobs([wholeDigest])).length).toBe(0)
+      const back = await client.readBlob(wholeDigest)
+      expect(back).not.toBeNull()
+      expect(Buffer.compare(Buffer.from(back!), Buffer.from(whole))).toBe(0)
+    } finally {
+      client.close()
+    }
+  })
+})

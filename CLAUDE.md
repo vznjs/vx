@@ -441,6 +441,24 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (eighteenth wave) — SpliceBlob proven live; the "blocked"
+  label was half wrong and is corrected.** The log carried Split/Splice as
+  "unexercised e2e — blocked on a server advertising them". Re-reading the
+  original capabilities dump: bazel-remote advertises
+  `splice_blob_support=true` — only SPLIT is absent. The assembly direction
+  was therefore testable all along against the server CI already runs, and
+  now is: chunks uploaded separately, the WHOLE blob asserted absent from
+  CAS (precondition, not assumption), `SpliceBlob` assembles it
+  server-side, presence + byte-identical readback verified. The e2e is
+  capability-gated (`caps.spliceBlobSupport`) so it stays honest if a
+  different server is wired in; `SplitBlob` remains genuinely blocked and
+  keeps its label. The lesson is the mirror of the stale `isOutputsCurrent`
+  item: a blocked-list overstating its blocks hides work exactly like an
+  open-list overstating its defects hides fixes — re-read the EVIDENCE
+  behind a label before trusting the label, including labels you wrote
+  yourself the same day. Canary #3 also banked: 20/0/0; cumulative n=60,
+  reporting-loss 5%, non-enforcement still unobserved.
+
 - **2026-08-24 (seventeenth wave) — history/predict audited: ALL CLEAN, and
   one false alarm worth its lesson.** The surface feeding `--dry` ETAs and
   predictive scheduling, least-recently audited survivor of the old
