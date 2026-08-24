@@ -464,6 +464,26 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (twenty-ninth wave) — the Checks API check-run ships:
+  roadmap item 5 complete.** The second half of `@vzn/vx-github`: with
+  `GITHUB_TOKEN` + `GITHUB_REPOSITORY` + `GITHUB_SHA` present, `flush()`
+  also POSTs one COMPLETED check-run on the built commit — conclusion
+  from `exitOk`, output.summary = the same job-summary markdown, clamped
+  to the API's 65 535-char cap with a visible truncation tell. Failure
+  posture per the invariant: a non-2xx POST warns (403 names the missing
+  `checks: write` permission) and never throws; activation without the
+  env silently skips by default, warns under explicit `checks: true`,
+  and `checks: false` opts out. Transport is an injected `fetchFn` (the
+  otel `post` seam pattern), so all five pins run offline — payload
+  shape, clamp, one-POST flush through the injected transport, the
+  never-throw 403 path, and both activation modes. Hazard caught while
+  wiring: the EXISTING summary tests would have POSTed to the real API
+  when run ON an Actions runner (the env is ambient there — the recorded
+  GITHUB\_\* leakage class); every summary-only fixture now pins
+  `checks: false`. Also banked canaries #9–11 (20/0/0, 18/2/0, 18/2/0):
+  cumulative n=220, reporting loss 5.0%, non-enforcement still ZERO —
+  0/220 puts the upper 95% bound near 1.3%.
+
 - **2026-08-24 (twenty-eighth wave) — CAS downloads were UNVERIFIED;
   confirmed with a lying stub server, fixed with negotiated-function
   re-hashing.** The zstd/compressed-blobs audit found the sharp edge one

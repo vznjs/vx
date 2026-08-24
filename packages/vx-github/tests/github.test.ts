@@ -111,6 +111,7 @@ describe('github() activation', () => {
     const writes: Array<[string, string]> = []
     const sink = github({
       summaryFile: '/tmp/sumfile.md',
+      checks: false,
       append: async (f, md) => void writes.push([f, md]),
     }).telemetry!(ctx) as GithubSummarySink
     expect(sink).toBeInstanceOf(GithubSummarySink)
@@ -126,6 +127,7 @@ describe('github() activation', () => {
     const writes: string[] = []
     const sink = github({
       summaryFile: '/tmp/sumfile.md',
+      checks: false,
       append: async (_f, md) => void writes.push(md),
     }).telemetry!(ctx) as GithubSummarySink
     await sink.flush!()
@@ -155,7 +157,7 @@ describe('vx run with github() — the composition proof', () => {
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
         localWorkspaceSource(
-          [`github({ summaryFile: ${JSON.stringify(summaryFile)} })`],
+          [`github({ summaryFile: ${JSON.stringify(summaryFile)}, checks: false })`],
           `import { github } from ${JSON.stringify(GITHUB_INDEX)}\n`,
         ),
       )
@@ -178,6 +180,115 @@ describe('vx run with github() — the composition proof', () => {
       expect(md).toContain('✅ ran')
     } finally {
       await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('Checks API', () => {
+  const ctx = { workspaceRoot: '/w', cacheDir: '/c', warn: () => undefined }
+  const ENV = {
+    GITHUB_TOKEN: 't0ken',
+    GITHUB_REPOSITORY: 'vznjs/vx',
+    GITHUB_SHA: 'abc123',
+  }
+
+  it('resolveCheckRunEnv needs all three vars and defaults the API url', async () => {
+    const { resolveCheckRunEnv } = await import('../src/checks.js')
+    expect(resolveCheckRunEnv({})).toBeNull()
+    expect(resolveCheckRunEnv({ ...ENV, GITHUB_TOKEN: '' })).toBeNull()
+    expect(resolveCheckRunEnv(ENV)).toEqual({
+      token: 't0ken',
+      repository: 'vznjs/vx',
+      sha: 'abc123',
+      apiUrl: 'https://api.github.com',
+    })
+    expect(resolveCheckRunEnv({ ...ENV, GITHUB_API_URL: 'https://ghe.corp/api/v3' })!.apiUrl).toBe(
+      'https://ghe.corp/api/v3',
+    )
+  })
+
+  it('payload: conclusion follows exitOk; summary is the job markdown; 65535 cap holds', async () => {
+    const { buildCheckRunPayload, clampSummary } = await import('../src/checks.js')
+    const s = summary([task({}), task({ taskId: 'b#x', status: 'failed', exitCode: 3 })])
+    const payload = buildCheckRunPayload({ summary: s, markdown: '# md', name: 'vx', sha: 'abc' })
+    expect(payload['conclusion']).toBe('failure')
+    expect(payload['head_sha']).toBe('abc')
+    expect((payload['output'] as { title: string }).title).toBe('1 failed')
+    const ok = buildCheckRunPayload({
+      summary: summary([task({})]),
+      markdown: 'm',
+      name: 'vx',
+      sha: 'a',
+    })
+    expect(ok['conclusion']).toBe('success')
+    const clamped = clampSummary('x'.repeat(70_000))
+    expect(clamped.length).toBeLessThanOrEqual(65_535)
+    expect(clamped).toContain('truncated by @vzn/vx-github')
+  })
+
+  it('flush POSTs one completed check-run through the injected transport', async () => {
+    const calls: Array<{ url: string; body: string; auth: string | undefined }> = []
+    const prev = { ...process.env }
+    Object.assign(process.env, ENV)
+    try {
+      const sink = github({
+        summaryFile: '/tmp/sum.md',
+        append: async () => undefined,
+        fetchFn: async (url, init) => {
+          calls.push({ url, body: init.body, auth: init.headers['authorization'] })
+          return { ok: true, status: 201, text: async () => '' }
+        },
+      }).telemetry!(ctx) as GithubSummarySink
+      sink.onRunSummary!(summary([task({})]))
+      expect(calls.length).toBe(0) // prompt-return contract
+      await sink.flush!()
+      expect(calls.length).toBe(1)
+      expect(calls[0]!.url).toBe('https://api.github.com/repos/vznjs/vx/check-runs')
+      expect(calls[0]!.auth).toBe('Bearer t0ken')
+      const body = JSON.parse(calls[0]!.body) as Record<string, unknown>
+      expect(body['status']).toBe('completed')
+      expect(body['conclusion']).toBe('success')
+      expect((body['output'] as { summary: string }).summary).toContain('a#build')
+    } finally {
+      process.env = prev
+    }
+  })
+
+  it('a failing POST warns and never throws — observability cannot break a run', async () => {
+    const warns: string[] = []
+    const prev = { ...process.env }
+    Object.assign(process.env, ENV)
+    try {
+      const sink = github({
+        summaryFile: '/tmp/sum.md',
+        append: async () => undefined,
+        fetchFn: async () => ({ ok: false, status: 403, text: async () => 'nope' }),
+      }).telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
+      sink.onRunSummary!(summary([task({})]))
+      await sink.flush!() // must resolve
+      expect(warns.length).toBe(1)
+      expect(warns[0]).toContain('403')
+      expect(warns[0]).toContain('checks: write')
+    } finally {
+      process.env = prev
+    }
+  })
+
+  it('checks: true without the env warns at activation; default silently skips', async () => {
+    const prev = { ...process.env }
+    delete process.env['GITHUB_TOKEN']
+    delete process.env['GITHUB_REPOSITORY']
+    delete process.env['GITHUB_SHA']
+    try {
+      const warns: string[] = []
+      const wctx = { ...ctx, warn: (m: string) => void warns.push(m) }
+      void github({ summaryFile: '/tmp/s.md', checks: true }).telemetry!(wctx)
+      expect(warns.length).toBe(1)
+      expect(warns[0]).toContain('no check-run will be created')
+      void github({ summaryFile: '/tmp/s.md' }).telemetry!(wctx)
+      expect(warns.length).toBe(1) // default: silent skip
+    } finally {
+      process.env = prev
     }
   })
 })

@@ -10,3 +10,11 @@
 // Anywhere else the plugin declines and costs nothing.
 export { github, GithubSummarySink, type GithubPluginOptions } from './plugin.js'
 export { renderJobSummary } from './summary.js'
+export {
+  buildCheckRunPayload,
+  clampSummary,
+  postCheckRun,
+  resolveCheckRunEnv,
+  type CheckRunEnv,
+  type FetchFn,
+} from './checks.js'
