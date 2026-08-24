@@ -441,6 +441,26 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (seventeenth wave) — history/predict audited: ALL CLEAN, and
+  one false alarm worth its lesson.** The surface feeding `--dry` ETAs and
+  predictive scheduling, least-recently audited survivor of the old
+  architecture. The false alarm: line 95 applies `EXECUTED_RUNS_SQL` to the
+  whole history CTE while line 102 counts cache hits inside it — which
+  would zero the hit-rate if the predicate excluded hits. It does not:
+  `EXECUTED_RUNS_SQL` is literally `status <> 'skipped'`, hits pass, and
+  the design comment above the query documents exactly that split
+  (percentiles over executed successes only; rates over all non-skipped
+  rows). READ THE PREDICATE BEFORE THE INDICTMENT — the name suggests more
+  exclusion than it performs, deliberately. `predict.ts`: pure
+  critical-path fold, the hits-not-modeled-as-zero choice documented with
+  its rationale, median-then-constant fallback. Verdict for the rotation:
+  three consecutive surfaces now close with one class-fix or clean
+  refutations — audit density has caught up with change velocity, and the
+  standing posture shifts to SIGNAL-DRIVEN: canary accumulation (n=40,
+  reporting-loss confirmed on runners at ~7.5%, non-enforcement
+  unobserved), CI, and upstream Bun releases are the triggers; the next
+  hostile pass rides the next substantive change.
+
 - **2026-08-24 (sixteenth wave) — the rest of the metrics audit: refutations,
   recorded so the next audit does not re-tread.** After the LIKE-class fix,
   the remaining suspicious shapes in `metrics.ts` were each read to a
