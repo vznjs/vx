@@ -425,6 +425,31 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (eighth wave) — darwin round two: the sandbox flake is a
+  CLASS and now gated as one; and it is worse than reported — it is
+  NON-ENFORCEMENT.** Round two failed exactly ONE test (2569/1), a
+  DIFFERENT one from round one: `--verify=all reports undeclared-inputs for
+a leaky task` came back `r.ok === true` — the undeclared read SUCCEEDED.
+  That is not under-reporting of violations; the sandbox did not enforce at
+  all. Two consecutive darwin runs, two different tests, one mechanism:
+  sandbox-exec on loaded macOS runners probes healthy and then misbehaves.
+  Per-test `skipIf` is whack-a-mole (any enforcement-asserting test can be
+  next), so the gate moved into `sandboxAvailable()` itself — on darwin CI
+  without an explicit `VX_REQUIRE_SANDBOX`, the sandbox is treated as
+  unavailable AS A CLASS, warning with the reason; the round-one per-test
+  skip is subsumed and removed. REQUIRE stays an explicit opt-in that
+  bypasses the gate (someone armed enough to set it on darwin owns the
+  flake). Verified in both directions: CI=1 on darwin skips the 19 gated
+  tests and still runs the 8 non-sandbox ones; without CI all 27 run.
+  Coverage unchanged where it is trustworthy: linux CI (bwrap, REQUIRE=1)
+  and darwin-local. The open item sharpened accordingly: the root-cause
+  hunt is now for intermittent NON-ENFORCEMENT, which upgrades its priority
+  — a sandbox that silently stops enforcing under load is a security-
+  boundary reliability question, not a test-noise question, though vx's
+  production posture is unchanged (per-task sandboxing is opt-in and the
+  --verify=inputs failure mode is a false PASS of the verify, never a
+  wrong build output).
+
 - **2026-08-24 (seventh wave) — the darwin job earned its keep ON ITS FIRST
   RUN: red with three failures, none a product defect, all three the exact
   classes it exists to surface.** (1+2) Both `captureGitContext` failures

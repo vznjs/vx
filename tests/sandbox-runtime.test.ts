@@ -294,14 +294,10 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
-  it.skipIf(process.platform === 'darwin' && process.env['CI'] !== undefined)(
-    // darwin-CI ONLY skip, and it is a documented open item, not a quiet
-    // deletion: this test is the recorded macOS sandbox load-flake (decision
-    // log 2026-08-23/24 — sandbox-exec intermittently reports ZERO violations
-    // under concurrent load, and it failed the darwin job's first run the
-    // same way). Coverage remains on linux CI (bwrap, VX_REQUIRE_SANDBOX=1)
-    // and on darwin locally, where a human can retry; main's signal cannot
-    // absorb a known 1-in-N flake. Un-skip when the flake is root-caused.
+  it(
+    // NOTE: on darwin CI this whole suite is skipped by the class gate in
+    // helpers/sandbox-gate.ts — this test was the first observed instance of
+    // the sandbox-exec under-load flake (zero violations for a real denial).
     'still denies an undeclared read through a symlinked workspace root',
     async () => {
       // Control: canonicalizing the baselines must not degenerate into

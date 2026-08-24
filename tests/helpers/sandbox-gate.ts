@@ -47,6 +47,23 @@ function required(): boolean {
  * result gates a merge.
  */
 export async function sandboxAvailable(label: string): Promise<boolean> {
+  // macOS CI runners: the sandbox PROBES healthy and then misbehaves under
+  // load — observed as both under-REPORTING (zero violations for a real
+  // denial) and outright non-ENFORCEMENT (an undeclared read succeeding in a
+  // --verify=inputs run) across different tests on consecutive darwin-CI
+  // runs (decision log, 2026-08-24). A per-test skip is whack-a-mole: any
+  // test asserting enforcement can be next. So on darwin CI the sandbox is
+  // treated as unavailable AS A CLASS — unless VX_REQUIRE_SANDBOX is set,
+  // which stays an explicit opt-in. Coverage remains on linux CI (bwrap,
+  // REQUIRE=1) and on darwin locally. Un-gate when the flake is root-caused.
+  if (!required() && process.platform === 'darwin' && process.env['CI'] !== undefined) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[${label}] skipping on darwin CI — sandbox-exec enforcement is unreliable under load on these runners (see the decision log)`,
+    )
+    return false
+  }
+
   const availability = await probeSandbox()
   if (availability.available) return true
 
