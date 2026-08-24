@@ -389,9 +389,11 @@ time every single time.
 - `vx run --verify=inputs` on macOS reports a false `undeclared-inputs` for
   the project's own ancestor directories and prints raw sandbox-exec log lines
   instead of paths. Needs a call on whether directory traversal is an input.
-- **CI is `ubuntu-latest` only.** Three macOS-only defects reached main
-  unseen (tar format, symlinked-base containment, `close()` on an unlinked
-  DB). A darwin job — even a subset — is the structural fix.
+- ~~CI is `ubuntu-latest` only~~ — **CLOSED 2026-08-24**: a `core-darwin`
+  job runs the full core suite on `macos-latest`. Deliberately WITHOUT
+  `VX_REQUIRE_SANDBOX` (the macOS sandbox suites are the recorded load-flaky
+  class; the security boundary stays enforced on the linux job) — promoting
+  the flag there is the follow-up once the runners prove stable.
 - `--info` and `--cache-local` are byte-identical tokens (56 189 248), so a
   blue line is ambiguous between "informational" and "cache". Changing a token
   value moves the visual baselines — a design call.
@@ -422,6 +424,23 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-24 (sixth wave) — the darwin CI job ships, closing the oldest
+  structural open item.** Three macOS-only defects reached main unseen on the
+  ubuntu-only matrix (the 2026-08-22 trio: bsdtar vs `--format=gnu` breaking
+  every cache save, the `/tmp`→`/private/tmp` symlinked-base containment
+  refusing every restore, `close()` leaking on `SQLITE_IOERR_VNODE`), and
+  this session added a fourth macOS-class item (the sandbox load-flakes).
+  `core-darwin` runs the IDENTICAL suite invocation the `test` task runs, on
+  `macos-latest`, guarding the platform-divergence classes: tar formats,
+  fs/symlink semantics, SQLite behaviour. The one deliberate scope cut, made
+  for main-health rather than cost: NO `VX_REQUIRE_SANDBOX` on darwin — the
+  macOS sandbox suites are the recorded load-flaky class and would import
+  that flake straight into main, while the sandbox SECURITY boundary is
+  already enforced by the linux job; an unavailable sandbox skips here, and
+  promoting the flag is the follow-up once the runners prove stable. The
+  first darwin run is itself the experiment — if it surfaces a new macOS
+  divergence, that is the job doing its work on day one.
 
 - **2026-08-24 (fifth wave) — dual-store coherence: the graft priority was
   BACKWARDS; local disk is truth.** The audit target was reapi's cache and

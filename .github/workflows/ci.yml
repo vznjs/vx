@@ -177,3 +177,36 @@ jobs:
             bun test "$f" --timeout 90000
             echo "::endgroup::"
           done
+
+  # The darwin job exists because THREE macOS-only defects reached main
+  # unseen on an ubuntu-only matrix (2026-08-22: bsdtar refusing --format=gnu
+  # broke every cache save; the /tmp -> /private/tmp symlinked-base
+  # containment refusing every restore; close() leaking a handle on
+  # SQLITE_IOERR_VNODE). The platform-divergence classes it guards are tar
+  # formats, filesystem/symlink semantics and SQLite behaviour — all covered
+  # by the core suite with no extra services.
+  #
+  # Deliberately NO VX_REQUIRE_SANDBOX here: the macOS sandbox suites are a
+  # recorded load-flaky class (sandbox-exec under concurrent load — see the
+  # decision log, 2026-08-23), and the sandbox SECURITY boundary is already
+  # ENFORCED by the linux job above. Here an unavailable sandbox skips, so
+  # this job cannot import that flake into main; if the sandbox tests prove
+  # stable on these runners over time, the flag can be promoted.
+  core-darwin:
+    name: core tests (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      # The same invocation the `test` task runs (vx.config.ts), so the two
+      # platforms execute an identical suite.
+      - name: bun test (core, darwin)
+        run: bun test --preload ./tests/setup.ts ./tests/
