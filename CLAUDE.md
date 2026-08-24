@@ -441,6 +441,23 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (sixteenth wave) — the rest of the metrics audit: refutations,
+  recorded so the next audit does not re-tread.** After the LIKE-class fix,
+  the remaining suspicious shapes in `metrics.ts` were each read to a
+  verdict. REFUTED: the three cache-savings AVG subqueries (the r24/rAll
+  twins + the per-project copy) have NOT drifted — identical inner
+  constraints (`cache_hit` null-or-zero + `status='success'`), the
+  SUM-ignores-NULLs semantics deliberate and documented in place, the outer
+  `IS NOT NULL` variants equivalent under SUM; three consistent copies of
+  one decision, with the statuses inside them now guarded by the widened
+  tripwire, so no refactor is warranted. VERIFIED CORRECT by reading: the
+  unguarded `FROM runs` sites at 471/522/550 all carry explicit status
+  filters that exclude skips and hits; 87 and 1103 are the completeness
+  surfaces the invariant explicitly allows unfiltered. The metrics surface
+  is now audited end to end this arc: one confirmed class (7 prefix
+  matches, fixed by derivation), everything else refuted or
+  verified-by-design.
+
 - **2026-08-24 (fifteenth wave) — the status-prefix drift class survived in
   CORE: seven `LIKE 'cache-hit%'` copies, one of them inside the flakiness
   signal; killed by derivation and a widened tripwire that immediately
