@@ -27,6 +27,13 @@
         "unist-util-visit": "^5.1.0",
       },
     },
+    "packages/vx-github": {
+      "name": "@vzn/vx-github",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+      },
+    },
     "packages/vx-otel": {
       "name": "@vzn/vx-otel",
       "version": "0.0.0",
@@ -575,6 +582,8 @@
     "@valibot/to-json-schema": ["@valibot/to-json-schema@1.7.1", "", { "peerDependencies": { "valibot": "^1.4.0" } }, "sha512-3qkmU6KXWh8GIThEAW3kuRHPQBMjWkKy+Ppz3WkUucx53DTpOa6siMn4xDGSOhlVyMrDaJTCTMLYPZVAIk1P0A=="],
 
     "@vzn/vx-docs": ["@vzn/vx-docs@workspace:apps/docs"],
+
+    "@vzn/vx-github": ["@vzn/vx-github@workspace:packages/vx-github"],
 
     "@vzn/vx-otel": ["@vzn/vx-otel@workspace:packages/vx-otel"],
 

@@ -118,6 +118,7 @@ packages/
   vx-otel/              # @vzn/vx-otel — otel() telemetry plugin (OTLP JSON, no SDK)
   vx-reapi/             # @vzn/vx-reapi — Bazel Remote Execution API plugin
                         # (remote cache over ActionCache + CAS; remote execution later)
+  vx-github/            # @vzn/vx-github — GitHub Actions job-summary telemetry plugin
 apps/docs/              # Astro Starlight docs site (imports docs/)
 bench/                  # synthetic-workspace generator + benchmark runner
 docs/                   # source of truth: architecture, caching, cli, execution,
@@ -387,9 +388,13 @@ time every single time.
 
 ### Open items (recorded, NOT fixed)
 
-- `vx run --verify=inputs` on macOS reports a false `undeclared-inputs` for
-  the project's own ancestor directories and prints raw sandbox-exec log lines
-  instead of paths. Needs a call on whether directory traversal is an input.
+- ~~`vx run --verify=inputs` on macOS reports a false `undeclared-inputs` for
+  the project's own ancestor directories and prints raw sandbox-exec log
+  lines instead of paths~~ — **CLOSED 2026-08-24 (twenty-fifth wave)**: the
+  call is made — ancestor-directory traversal is NOT an input. Denials on
+  exact ancestor-or-self DIRECTORY paths of the task's cwd are filtered at
+  the source (realpath'd); file reads inside ancestors still report; verify
+  extracts the bare trailing path from macOS lines. Both directions pinned.
 - ~~CI is `ubuntu-latest` only~~ — **CLOSED 2026-08-24**: a `core-darwin`
   job runs the full core suite on `macos-latest`. Deliberately WITHOUT
   `VX_REQUIRE_SANDBOX` (the macOS sandbox suites are the recorded load-flaky
@@ -447,6 +452,49 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (twenty-sixth wave) — `@vzn/vx-github` ships: the job-summary
+  telemetry plugin, roadmap item 5's first half.** A new workspace package
+  contributing one observe-only sink through the telemetry seam — the
+  seam's second real consumer after vx-otel, which is what the rotation
+  demands of a seam. `github()` declines outside GitHub Actions (no
+  `GITHUB_STEP_SUMMARY`, no cost — otel's decline pattern), streams nothing
+  (`wants: []`), stashes the `RunSummaryRecord` and renders + appends in
+  `flush()`: verdict headline, stats line, failures called out above the
+  per-task table, a Verify column only when verdicts exist,
+  `escapeMarkdownCell` from the façade (exported for exactly this consumer
+  after the cloud summary shipped unescaped once). Pinned: render units
+  (pipe-hostile names included), decline/activation, the prompt-return
+  contract (no I/O in onRunSummary), and a composition proof through a real
+  `run()` fixture. The Checks API PR check-run is the deliberate second
+  half, named in the README roadmap. Also: architecture.md's package table
+  had gone stale (vx-reapi never got a row) — both rows added.
+
+- **2026-08-24 (twenty-fifth wave) — remote-only tasks report as
+  unverifiable; the ancestor-traversal false positive closed; and a
+  two-agent commit collision worth its process line.** (1) The
+  eleventh-wave residual: a `remote:'only'` task under a verify proof
+  no-ops locally and was silently unverified. New verdict
+  `unverifiable-remote-only` — n/a in the tally, a ⚠ line naming the
+  reason, emitted only when a proof was requested; control-pinned (a plain
+  run carries no verdict), differential kills exactly the pin. (2) The
+  settle window UNMASKED the recorded false-`undeclared-inputs` item: with
+  clean verify exits now waiting for the lossy log, macOS's
+  `deny file-read-data` records for the task's own ANCESTOR DIRECTORIES —
+  cwd-reaching traversal, no content — fired ~1/3 per clean run. Owner
+  call closing the item: traversal is not an input. Filter at the source,
+  exact ancestor-or-self dirs of cwd only, realpath'd; leaky-file control
+  5/5, clean task 10/10 from ~1/3; the settle poll counts FILTERED
+  emptiness so noise can't end the window early; verify path extraction
+  learned the macOS bare-path line shape. (3) PROCESS: commit `188c8ee`
+  contains BOTH my verify wave and vx-eb's concurrent Bun.Archive/v27
+  wave — my `git add <paths>` + bare `git commit` committed the whole
+  INDEX, including the other session's by-path staging, and pushed before
+  their commit landed. Nothing lost, history stays (a reset would now be
+  a force-push of main). The discipline adopted by both sessions:
+  `git commit -- <pathspec>`, which ignores the rest of the index by
+  construction. Their wave's content is theirs to log. Canary #7 banked:
+  18/2/0; cumulative n=140, reporting loss 4.3%, non-enforcement zero.
+
 - **2026-08-24 (twenty-fourth wave) — the cache artifact container moves to
   `Bun.Archive`; CACHE_VERSION → v27; a stale "we benchmarked this and said
   no" note corrected in place.** Bun 1.4 landed `Bun.Archive` (libarchive),
@@ -492,7 +540,14 @@ time every single time.
   the artifact-roundtrip "hollow artifact" test built its fixture by spawning
   `tar --format=gnu`, which on macOS FAILS — so on darwin it wrote an EMPTY
   archive and passed for the wrong reason. It builds the archive in-process
-  now.
+  now. **Process note, recorded because it cost real confusion:** this
+  change set LANDED INSIDE commit `188c8ee`, whose message describes only the
+  concurrent verify/sandbox wave — a peer session committed the shared INDEX
+  while these files were staged by pathspec, and the commit was pushed before
+  a split was possible. Nothing was lost and the tree is correct; the rule
+  that follows is that concurrent sessions commit by EXPLICIT PATHSPEC
+  (`git commit <paths>`), never a bare `git commit` that sweeps whatever is
+  staged.
 
 - **2026-08-24 — Bun 1.4 floor: `>=1.4` everywhere, `@types/bun` 1.4, and the
   isolated linker arrived with it.** `Bun.Archive` is a hard dependency now,

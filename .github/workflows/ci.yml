@@ -137,6 +137,8 @@ jobs:
 
       - name: bun test (packages/vx-otel)
         run: cd packages/vx-otel && bun test
+      - name: bun test (packages/vx-github)
+        run: cd packages/vx-github && bun test
 
       # NativeLink gives the EXECUTION half a real scheduler + worker. Its
       # official image is distroless — no /bin/sh — so a worker inside it
