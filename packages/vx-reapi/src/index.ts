@@ -111,7 +111,7 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       const wanted = options.execute === true || Bun.env['VX_REAPI_EXECUTE'] === '1'
       const conn = connection(options)
       if (!wanted || conn === undefined) return undefined
-      executorClient = new ReapiClient(conn)
+      executorClient = new ReapiClient({ ...conn, onWarn: (m) => ctx.warn(m) })
       // Negotiate once: turns zstd transfer compression on when the server
       // advertises it. The digest function stays SHA256 (see wire.negotiate).
       await executorClient.negotiate()
@@ -140,7 +140,7 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
     cache(ctx): CacheLayer | undefined {
       const conn = connection(options)
       if (conn === undefined) return undefined
-      const remote = new ReapiRemoteCache(conn)
+      const remote = new ReapiRemoteCache({ ...conn, onWarn: (m) => ctx.warn(m) })
       // Compose over the local handle the host opened: reads try local, then
       // remote (hydrating local on a remote hit); writes go local immediately
       // and the remote upload drains in the background. All of that is core's

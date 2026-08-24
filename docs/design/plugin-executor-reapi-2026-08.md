@@ -443,9 +443,20 @@ size**, not the total and not the message count:
 | 512 KB | 1 MB   | 2        | hangs                            |
 | 3 MB   | 3 MB   | 1        | works (single-message exception) |
 
-On Bun **1.4.0** the same search puts the boundary at **220 928 bytes works /
-221 056 hangs**, and the hang is PERMANENT — verified over a 120-second budget,
+On Bun **1.4.0** the same search put the boundary at 220 928 bytes works /
+221 056 hangs, and the hang is PERMANENT — verified over a 120-second budget,
 so it is not the transient ~28 s stall of the still-open Bun #39796.
+
+> **Correction (2026-08-24).** That "boundary" is a RACE PROBABILITY, not a
+> line: 128 KB chunks — comfortably inside the measured-safe region — passed
+> hundreds of local and CI runs and then wedged ONCE on CI, on the identical
+> Bun build (`34cbb9a40`). A binary search over a timing race produces a
+> crisp-looking threshold that is really the point where the failure
+> probability crosses the sample size. Only ≤ 65 535 (the RFC default
+> initial window) has never been observed hanging anywhere. The client now
+> DOWNGRADES adaptively: a `DEADLINE_EXCEEDED` on a multi-message write
+> retries once at `SAFE_CHUNK_BYTES`, warned — the 128 KB default stays the
+> fast path, and the rare stall costs one deadline instead of the task.
 
 Ruled out along the way, each by an executed probe rather than reasoning:
 **not** grpc-js (a hand-rolled gRPC framing over raw `node:http2` hangs

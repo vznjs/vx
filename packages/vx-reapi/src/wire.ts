@@ -229,6 +229,8 @@ export interface ReapiOptions {
   toolVersion?: string
   /** Groups several vx runs as one logical build in a server's UI. */
   correlatedInvocationsId?: string
+  /** Surfaced for degraded-but-recovered operations (e.g. a chunk-size downgrade). */
+  onWarn?: (message: string) => void
   /**
    * Deadline for every CACHE-PATH call (unary RPCs, ByteStream transfers).
    * Default 30 000 ms. This is what turns a WEDGED server — accepts TCP,
@@ -253,6 +255,7 @@ export class ReapiClient {
   private readonly headers: Record<string, string>
   private readonly chunkBytes: number
   private readonly callTimeoutMs: number
+  private readonly onWarn: (message: string) => void
   private digestFunction: DigestFunctionName = 'SHA256'
   private compression = false
   private batchCompression = false
@@ -279,6 +282,7 @@ export class ReapiClient {
     this.correlatedInvocationsId = opts.correlatedInvocationsId ?? ''
     this.chunkBytes = opts.chunkBytes ?? CHUNK_BYTES
     this.callTimeoutMs = opts.callTimeoutMs ?? 30_000
+    this.onWarn = opts.onWarn ?? (() => undefined)
     if (!Number.isInteger(this.chunkBytes) || this.chunkBytes < 1) {
       throw new Error(
         `@vzn/vx-reapi: chunkBytes must be a positive integer (got ${this.chunkBytes})`,
@@ -633,6 +637,7 @@ export class ReapiClient {
     // decompresses and verifies against them — so only the wire payload
     // changes. vx artifacts are already-compressed tarballs, but source input
     // trees are not, and those are the bulk of a remote-execution upload.
+    let chunk = this.chunkBytes
     for (let attempt = 0; ; attempt++) {
       const wire = this.compression ? Bun.zstdCompressSync(body) : body
       const segment = this.compression
@@ -640,18 +645,40 @@ export class ReapiClient {
         : `blobs/${digest.hash}/${digest.size_bytes}`
       const resource = `${this.instance ? `${this.instance}/` : ''}uploads/${crypto.randomUUID()}/${segment}`
       try {
-        await this.writeResource(resource, wire, digest, 0)
+        await this.writeResource(resource, wire, digest, 0, chunk)
         return
       } catch (err) {
+        const code = (err as grpc.ServiceError).code
+        // ADAPTIVE DOWNGRADE. The Bun node:http2 flow-control defect is a
+        // RACE, not a boundary: chunk sizes above the RFC default initial
+        // window (65535) usually work and occasionally wedge — observed as a
+        // one-off DEADLINE_EXCEEDED at 128 KB on the same Bun that passed it
+        // hundreds of times. A deadline on a multi-message write therefore
+        // retries ONCE at SAFE_CHUNK_BYTES, the size never observed hanging,
+        // instead of failing the task over a lost coin-flip.
+        // Only a MULTI-message write can be the chunk race — a body that fit
+        // one message never exercised flow control between messages, so its
+        // deadline is the server's problem and re-chunking cannot help.
+        if (
+          code === grpc.status.DEADLINE_EXCEEDED &&
+          chunk > SAFE_CHUNK_BYTES &&
+          wire.length > chunk
+        ) {
+          this.onWarn(
+            `vx/reapi: chunked write of ${digest.hash.slice(0, 12)} hit the ${chunk}-byte chunk stall (Bun http2 flow control); retrying at ${SAFE_CHUNK_BYTES}`,
+          )
+          chunk = SAFE_CHUNK_BYTES
+          continue
+        }
         const delay = RETRY_DELAYS_MS[attempt]
-        if (delay === undefined || !isRetryable((err as grpc.ServiceError).code)) throw err
+        if (delay === undefined || !isRetryable(code)) throw err
         if (!this.compression) {
           // Identity path: ask how far the server got and resume there.
           const status = await this.queryWriteStatus(resource).catch(() => null)
           if (status?.complete === true) return
           if (status !== null && status.committedSize > 0 && status.committedSize < wire.length) {
             try {
-              await this.writeResource(resource, wire, digest, status.committedSize)
+              await this.writeResource(resource, wire, digest, status.committedSize, chunk)
               return
             } catch {
               // fall through to a fresh attempt
@@ -668,6 +695,7 @@ export class ReapiClient {
     body: Uint8Array,
     digest: Digest,
     startOffset: number,
+    chunkBytes: number = this.chunkBytes,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const stream = (this.svc.bs as unknown as Record<string, Function>)['write']!(
@@ -693,7 +721,7 @@ export class ReapiClient {
       let offset = startOffset
       let first = true
       do {
-        const end = Math.min(offset + this.chunkBytes, body.length)
+        const end = Math.min(offset + chunkBytes, body.length)
         stream.write({
           resource_name: first ? resource : '',
           write_offset: offset,

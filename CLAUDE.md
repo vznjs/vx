@@ -423,6 +423,38 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (third wave) — main went RED on a 128 KB chunk stall; the
+  "boundary" was a RACE all along; fixed with adaptive downgrade.** The
+  `plugin packages` job failed on a commit that did not touch the package:
+  the multi-chunk cache round-trip hit `DEADLINE_EXCEEDED after 30.000s` —
+  yesterday's deadline doing exactly its job, converting the silent Bun
+  http2 stall into a diagnosable error, with bazel-remote's log confirming
+  the client stopped sending mid-stream. **Version theory REFUTED first:**
+  CI ran the identical Bun build (`34cbb9a40`) that passed 128 KB hundreds
+  of times locally and twice on the same runner. The correct conclusion is
+  worse and is written back into the README and design doc §14 IN PLACE: my
+  binary-searched "220 928 works / 221 056 hangs" boundary was a race
+  probability dressed as a line — a binary search over a timing race yields
+  a crisp threshold that is really where the failure odds cross the sample
+  size. Only ≤ 65 535 (the RFC default initial window) has never been
+  observed hanging, anywhere. **Fix: adaptive downgrade, keeping the
+  owner's 128 KB decision as the fast path** — `writeBlob` catches
+  `DEADLINE_EXCEEDED` on a MULTI-message write and retries once at
+  `SAFE_CHUNK_BYTES`, warned through the plugin's `ctx.warn`; the rare
+  stall now costs one deadline instead of failing the task. The
+  false-positive CONTROL caught a real over-broad first cut: a 1 KB body
+  "downgraded" too, because the condition tested chunk SIZE rather than
+  whether the write was actually multi-message — a single-message write
+  never exercised inter-message flow control, so its deadline is the
+  server's problem and re-chunking cannot help (`wire.length > chunk`
+  added). Pinned both ways against the wedge: a multi-chunk write shows two
+  deadline waits + the downgrade warn and still surfaces code 4; a
+  single-chunk write deadlines ONCE with no warn. The compounding lesson:
+  this is the SECOND claim about this defect corrected within a day (first
+  "CI stays green one-process", now "128 KB is safe") — for a timing race,
+  treat every "measured safe" as "not yet observed failing", and write it
+  that way the first time.
+
 - **2026-08-24 (second wave) — the `--dry` `@noop` label pinned in both
   directions.** Anti-drift, not a bug hunt: `remote: 'only'` gave placement a
   THIRD state and the plan surface rendered it unpinned. Two e2e pins: a

@@ -96,3 +96,63 @@ describe('a wedged remote (accepts TCP, never answers)', () => {
     }
   }, 20_000)
 })
+
+describe('adaptive chunk downgrade', () => {
+  it('a deadline on a multi-chunk write retries once at SAFE_CHUNK_BYTES, warned', async () => {
+    // The Bun flow-control defect is a RACE, not a boundary — 128 KB chunks
+    // pass hundreds of times and then wedge once (observed on CI, same Bun).
+    // The downgrade turns that lost coin-flip into a warned retry at the size
+    // never observed hanging. Against a fully wedged server BOTH attempts
+    // deadline — what this pins is that the second attempt HAPPENS (elapsed
+    // covers two deadlines, the warn names the downgrade) and that the final
+    // error is still the honest DEADLINE_EXCEEDED.
+    const warns: string[] = []
+    const client = new (await import('../src/wire.js')).ReapiClient({
+      endpoint: `127.0.0.1:${port}`,
+      callTimeoutMs: 900,
+      onWarn: (m) => warns.push(m),
+    })
+    try {
+      const body = new Uint8Array(512 * 1024) // 4 chunks at the 128 KB default
+      const digest = (await import('../src/cache.js')).digestOf(body)
+      const t0 = Date.now()
+      let code: number | undefined
+      try {
+        await client.writeBlob(digest, body)
+      } catch (err) {
+        code = (err as { code?: number }).code
+      }
+      const elapsed = Date.now() - t0
+      expect(code).toBe(4)
+      expect(elapsed).toBeGreaterThanOrEqual(1700) // two deadlines ran
+      expect(warns.some((w) => w.includes('retrying at 65535'))).toBe(true)
+    } finally {
+      client.close()
+    }
+  }, 15_000)
+
+  it('a single-chunk write does NOT downgrade-retry (nothing to downgrade)', async () => {
+    // Control: at or below SAFE_CHUNK_BYTES there is no smaller safe size,
+    // so the deadline surfaces after ONE wait, not two.
+    const warns: string[] = []
+    const client = new (await import('../src/wire.js')).ReapiClient({
+      endpoint: `127.0.0.1:${port}`,
+      callTimeoutMs: 900,
+      onWarn: (m) => warns.push(m),
+    })
+    try {
+      const body = new Uint8Array(1024)
+      const digest = (await import('../src/cache.js')).digestOf(body)
+      const t0 = Date.now()
+      try {
+        await client.writeBlob(digest, body)
+      } catch {
+        /* expected */
+      }
+      expect(Date.now() - t0).toBeLessThan(1700)
+      expect(warns).toEqual([])
+    } finally {
+      client.close()
+    }
+  }, 10_000)
+})

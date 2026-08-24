@@ -75,8 +75,11 @@ import { reapi, SAFE_CHUNK_BYTES } from '@vzn/vx-reapi'
 reapi({ endpoint: '…', chunkBytes: SAFE_CHUNK_BYTES })
 ```
 
-128 KB is measured safe against bazel-remote; it is **unverified** against
-NativeLink, BuildBuddy and Buildbarn. The full probe matrix is in
+The stall is a RACE, not a boundary: 128 KB chunks pass hundreds of runs and
+then wedge once (observed on CI, same Bun build). So the client **downgrades
+adaptively** — a `DEADLINE_EXCEEDED` on a multi-message write retries once at
+`SAFE_CHUNK_BYTES` with a warning, turning a lost coin-flip into a logged
+retry instead of a failed task. The full probe matrix is in
 `docs/design/plugin-executor-reapi-2026-08.md` §14.
 
 ## Deadlines: a wedged server degrades, it does not hang
