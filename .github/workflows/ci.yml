@@ -142,14 +142,24 @@ jobs:
       # official image is distroless — no /bin/sh — so a worker inside it
       # cannot run any REAPI Command that starts with a shell (every vx task
       # does). Rehost the same static musl binary on busybox, which has one.
+      # The busybox base comes from AWS's mirror of the Docker Official
+      # Images, not docker.io: Docker Hub's auth endpoint 500'd this step on
+      # 2026-08-24 and unauthenticated Hub pulls from shared runners also
+      # rate-limit. The build retries anyway — a registry blip must not red
+      # a push that changed nothing here.
       - name: Start NativeLink (execution)
         run: |
           docker create --name nl-x ghcr.io/tracemachina/nativelink:v0.6.0 /x
           docker cp -L nl-x:/bin/nativelink packages/vx-reapi/tests/helpers/nativelink-bin
           docker rm nl-x
           cd packages/vx-reapi/tests/helpers
-          printf 'FROM busybox:musl\nCOPY nativelink-bin /usr/local/bin/nativelink\nENTRYPOINT ["/usr/local/bin/nativelink"]\n' > Dockerfile.nl
-          docker build -q -f Dockerfile.nl -t vx-nativelink-sh .
+          printf 'FROM public.ecr.aws/docker/library/busybox:musl\nCOPY nativelink-bin /usr/local/bin/nativelink\nENTRYPOINT ["/usr/local/bin/nativelink"]\n' > Dockerfile.nl
+          for attempt in 1 2 3; do
+            docker build -q -f Dockerfile.nl -t vx-nativelink-sh . && break
+            echo "docker build attempt $attempt failed; retrying in 20s"
+            [ "$attempt" = 3 ] && exit 1
+            sleep 20
+          done
           docker run -d --name vx-nl -p 51051:50051 \
             -v "$PWD/nativelink-exec.json5:/config.json5" vx-nativelink-sh /config.json5
           sleep 5

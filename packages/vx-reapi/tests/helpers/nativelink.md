@@ -7,7 +7,7 @@ every vx task). Rehost the same static musl binary on busybox:
 ```sh
 docker create --name nl-x ghcr.io/tracemachina/nativelink:v0.6.0 /x
 docker cp -L nl-x:/bin/nativelink ./nativelink && docker rm nl-x
-printf 'FROM busybox:musl\nCOPY nativelink /usr/local/bin/nativelink\nENTRYPOINT ["/usr/local/bin/nativelink"]\n' > Dockerfile
+printf 'FROM public.ecr.aws/docker/library/busybox:musl\nCOPY nativelink /usr/local/bin/nativelink\nENTRYPOINT ["/usr/local/bin/nativelink"]\n' > Dockerfile
 docker build -t vx-nativelink-sh .
 docker run -d --name vx-nl -p 51051:50051 -v "$PWD/exec.json5:/config.json5" vx-nativelink-sh /config.json5
 

@@ -441,6 +441,21 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (thirteenth wave) — main red on a DOCKER HUB 500, not our
+  diff; the NativeLink step hardened against registries having bad days.**
+  `plugin packages` failed on the refutation commit (which touched only
+  core tests and CLAUDE.md) with ZERO test failures in the log — the
+  standing rule's "read where the log actually ends" found the busybox base
+  pull dying on `auth.docker.io` returning 500 inside the NativeLink rehost
+  step. External infra, but a job that gates main must not depend on
+  Docker Hub's uptime OR its unauthenticated rate limits from shared
+  runners. Fix: the base image moves to AWS's mirror of the Docker Official
+  Images (`public.ecr.aws/docker/library/busybox:musl` — pull verified
+  locally before pushing), and the build wraps in a bounded 3-attempt
+  retry so a residual blip warns instead of redding a push. The GHCR
+  NativeLink pull and the bazel-remote service container stay as-is — the
+  latter is Hub-hosted with no official mirror, accepted and noted.
+
 - **2026-08-24 (twelfth wave) — the `isOutputsCurrent` open item was STALE;
   refuted by probe, both directions pinned.** The item claimed
   "size+mode+second-mtime, so a same-size same-second different-content
