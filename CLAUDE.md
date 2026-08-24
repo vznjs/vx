@@ -464,6 +464,39 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (twenty-seventh wave) — the v27 archive container audited:
+  one CONFIRMED clobber (hardlinks), the author's unexecuted probes
+  executed, and the memory question answered with a worse number than
+  predicted.** Cross-session audit of vx-eb's Bun.Archive wave (new-code
+  rule; stored-bytes is the worst class), building on their probe ledger
+  rather than re-treading it — their measured refutations (truncation
+  throws, names come back raw, non-regular entries omitted) were taken as
+  given and held. CONFIRMED: the extract-target link defense unlinked
+  SYMLINKS only, and `Bun.write` truncates a pre-planted HARDLINK's shared
+  inode in place — the artifact bytes were written THROUGH
+  `ln <victim> <dest>/out.txt`, replacing the victim's content (executed
+  probe; the identical threat model the symlink branch already documents,
+  minus the link-shaped tell). Fix: unlink ANY existing non-directory
+  target before writing — breaks every link shape at once, recreates a
+  plain file, and a directory still fails the write fail-closed.
+  Differential: reverting to symlink-only fails exactly the hardlink pin;
+  cache surfaces 176/0. EXECUTED-REFUTED (their pointer #2): a corrupt
+  sidecar throws out of `readArtifact` and cache.ts wraps every
+  non-security throw in `CorruptArtifactError` → the re-run path; pinned.
+  REFUTED-BY-PRECONDITION: the `mode !== 0` chmod-skip sentinel is
+  unreachable — a mode-0 output cannot be PACKED (`Bun.file().bytes()`
+  gets EACCES), so no artifact can carry mode 0 (the probe found this by
+  failing at pack, not extract). MEASURED (their pointer #1, the one they
+  were least comfortable with): isolated read+extract of a 256 MB
+  single-output artifact peaks at ~1043 MB RSS — ~4× the artifact bytes,
+  double the predicted 2× (input + `files()` copies + write buffering).
+  Recorded as a characteristic, not fixed: the 2 GiB decompress ceiling
+  bounds the input, streaming extraction via `Archive.extract()` is
+  unusable (no mtime, no prefix strip — their ledger), and typical
+  artifacts are MBs. Residual noted, not fixed: an epoch-mtime output
+  (`mtimeMs === 0`) skips utimes and re-restores every warm run — perf
+  echo of the closed isOutputsCurrent item, unreachable in practice.
+
 - **2026-08-24 (twenty-sixth wave) — `@vzn/vx-github` ships: the job-summary
   telemetry plugin, roadmap item 5's first half.** A new workspace package
   contributing one observe-only sink through the telemetry seam — the

@@ -285,14 +285,20 @@ export async function extractOutputs(
       const target = path.join(dest.base, dest.rel)
       await mkdir(path.dirname(target), { recursive: true })
 
-      // Symlink TOCTOU defense: if the target IS a symlink, unlink it
-      // first so the upcoming write doesn't follow the link and clobber
-      // whatever it points to (an attacker-planted `<dest>/link ->
-      // /etc/passwd`). lstat does not follow the link, so the link
-      // itself is what we see.
+      // Link TOCTOU defense: if anything already sits at the target,
+      // unlink it before writing. A symlink would make the write follow
+      // the link and clobber its destination; a HARDLINK is the same
+      // attack without the link-shaped tell — `Bun.write` truncates the
+      // shared inode in place, so an attacker-planted
+      // `ln /etc/target <dest>/out.txt` gets the artifact bytes written
+      // THROUGH it (probed 2026-08-24: the linked file's content was
+      // replaced). Unlinking first breaks the link instead of following
+      // it, for every link shape at once; a plain pre-existing file just
+      // gets recreated. A directory at the target survives to fail the
+      // write itself — fail-closed, same as before.
       try {
         const ls = await lstat(target)
-        if (ls.isSymbolicLink()) await unlink(target)
+        if (!ls.isDirectory()) await unlink(target)
       } catch {
         // Target doesn't exist — the common case; fall through.
       }

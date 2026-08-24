@@ -17,7 +17,7 @@
 // that refuses to emit the attack cannot produce the input under test.
 
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -562,3 +562,52 @@ async function scratchFile(dir: string, content: string): Promise<string> {
   await writeFile(p, content)
   return p
 }
+
+describe('pre-planted links at the extraction target', () => {
+  it('a HARDLINK at the target is broken, not truncated through', async () => {
+    // The symlink defense's own threat model, minus the link-shaped tell:
+    // `Bun.write` truncates a hardlink's shared inode in place, so writing
+    // "through" an attacker-planted hardlink replaces the linked file's
+    // content everywhere it is linked. The target must be unlinked first —
+    // which breaks the link — and the linked-to file must keep its bytes.
+    const d = await mkdtemp(path.join(os.tmpdir(), 'vx-hardlink-'))
+    try {
+      const secret = path.join(d, 'secret.txt')
+      await writeFile(secret, 'PRECIOUS')
+      const dest = path.join(d, 'proj')
+      await mkdir(dest, { recursive: true })
+      await link(secret, path.join(dest, 'out.txt'))
+      const src = path.join(d, 'src-out.txt')
+      await writeFile(src, 'ARTIFACT-BYTES')
+      const bytes = await packArtifact({
+        stdout: '',
+        outputs: new Map([['outputs/out.txt', src]]),
+      })
+      await extractOutputs(await readArtifact(bytes), dest)
+      expect(await readFile(secret, 'utf8')).toBe('PRECIOUS')
+      expect(await readFile(path.join(dest, 'out.txt'), 'utf8')).toBe('ARTIFACT-BYTES')
+    } finally {
+      await rm(d, { recursive: true, force: true })
+    }
+  })
+
+  it('a corrupt sidecar surfaces as a parse failure, never a partial read', async () => {
+    // vx-eb's unexecuted probe #2, executed: a sidecar that is present but
+    // not JSON throws out of readArtifact (cache.ts wraps every
+    // non-security throw in CorruptArtifactError → the re-run path).
+    const d = await mkdtemp(path.join(os.tmpdir(), 'vx-sidecar-'))
+    try {
+      const src = path.join(d, 'x.txt')
+      await writeFile(src, 'x')
+      const good = await packArtifact({ stdout: 's', outputs: new Map([['outputs/x.txt', src]]) })
+      const files = await new Bun.Archive(good).files()
+      const entries: Record<string, Uint8Array | string> = {}
+      for (const [n, f] of files) entries[n] = new Uint8Array(await f.arrayBuffer())
+      entries['.vx-meta.json'] = 'NOT JSON {{{'
+      const evil = await new Bun.Archive(entries).bytes()
+      await expect(readArtifact(evil)).rejects.toThrow()
+    } finally {
+      await rm(d, { recursive: true, force: true })
+    }
+  })
+})
