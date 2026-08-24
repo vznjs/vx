@@ -425,6 +425,28 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (seventh wave) — the darwin job earned its keep ON ITS FIRST
+  RUN: red with three failures, none a product defect, all three the exact
+  classes it exists to surface.** (1+2) Both `captureGitContext` failures
+  were TEST-ENV LEAKAGE the linux job could never see: the linux `ci` job
+  runs the suite THROUGH vx, whose isolated child env strips `GITHUB_*`, so
+  the two tests that omit the env argument read an empty environment there —
+  while the darwin job runs `bun test` raw, `GITHUB_REF_NAME=main` reached
+  the CI-recovery ladder, and "a non-git directory" answered branch `main`.
+  The tests were depending on the ABSENCE of ambient env rather than
+  controlling it; both now pass an explicit `{}` like their siblings always
+  did, verified under a simulated CI env both ways (the darwin run itself
+  was the executed repro of the failure). (3) The third was the recorded
+  macOS sandbox load-flake, which runs on darwin because sandbox-exec exists
+  there — the "unavailable skips" mitigation never applied. Resolved with a
+  darwin-CI-ONLY `skipIf`, commented as the open item it is: coverage
+  remains on linux CI (bwrap, REQUIRE=1) and on darwin locally; main's
+  signal cannot absorb a known 1-in-N flake, and the un-skip condition is
+  the root-cause fix. The meta-point for the log: a first CI run on a new
+  platform is a PROBE of the test suite as much as of the product — two of
+  three "failures" were the suite's own hermeticity debts, findable only by
+  an environment nobody had run it in.
+
 - **2026-08-24 (sixth wave) — the darwin CI job ships, closing the oldest
   structural open item.** Three macOS-only defects reached main unseen on the
   ubuntu-only matrix (the 2026-08-22 trio: bsdtar vs `--format=gnu` breaking

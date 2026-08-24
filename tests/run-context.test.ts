@@ -78,7 +78,13 @@ describe('captureGitContext', () => {
     git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
     git(dir, ['checkout', '--detach', '-q', 'HEAD'])
 
-    const ctx = captureGitContext(dir)
+    // An EXPLICIT empty env: this test is about what git alone answers, and
+    // omitting the argument reads process.env — on a real CI box
+    // GITHUB_REF_NAME is set, the CI-recovery ladder answers "main", and the
+    // test fails for the machine it runs on rather than for the code. Found
+    // by the darwin job's first run, which executes bun test with the raw
+    // runner env (the linux job goes through vx's isolated child env).
+    const ctx = captureGitContext(dir, null, {})
     expect(ctx.commitSha).toMatch(/^[0-9a-f]{40,64}$/)
     expect(ctx.branch).toBeNull()
   })
@@ -125,7 +131,8 @@ describe('captureGitContext', () => {
   })
 
   it('returns null commit/branch in a non-git directory without throwing', () => {
-    const ctx = captureGitContext(dir)
+    // Explicit empty env for the same reason as the detached test above.
+    const ctx = captureGitContext(dir, null, {})
     expect(ctx.commitSha).toBeNull()
     expect(ctx.branch).toBeNull()
     expect(ctx.dirty).toBeNull()
