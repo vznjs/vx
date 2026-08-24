@@ -407,6 +407,18 @@ time every single time.
 - Task-log caps count CHARS, not memory (~36× overhead at 1-char chunks);
   when failures alone exceed the run budget the OLDEST failure is stubbed
   first (usually the root cause).
+- **macOS sandbox violation REPORTING is lossy-by-OS under load — measured,
+  partially mitigated, residual unfixable client-side.** Root-cause hunt
+  (2026-08-24): ~430 runs/arm under full-suite load, every failure the same
+  mode — denial ENFORCED (r.ok false), violation lines EMPTY. A bounded
+  settle-poll on the async SRT store (fail-exit + empty store only) halves
+  the loss, 5.0% → 2.2% (22/442 vs 9/413, z≈2.2; arms run sequentially, not
+  interleaved — noted). The residual survives a full 1 s window: those
+  unified-log records were DROPPED under pressure, not delayed, and no poll
+  recovers a record that never arrived. So local flake ~2% remains on
+  loaded runs; darwin-CI is class-gated. STILL UNEXPLAINED: the darwin-CI
+  round-two mode where enforcement itself failed (ok=true for a leaky task)
+  — never reproduced locally.
 - **The macOS sandbox suites are load-flaky as a CLASS.** Two different tests
   failed in two consecutive full-suite runs on Bun 1.4.0 —
   `sandbox-runtime` "still denies an undeclared read through a symlinked
@@ -424,6 +436,28 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-24 (ninth wave) — the sandbox-reporting flake ROOT-CAUSED and
+  measured: lossy unified-log delivery, halved by a settle-poll, residual
+  unfixable client-side.** The local repro made this tractable where the CI
+  modes were not. Mechanism read from the code first: macOS violations come
+  from SRT's store, which a monitor feeds ASYNCHRONOUSLY from the macOS
+  unified log — reading it right after child exit races log delivery.
+  Hypothesis-fix: a bounded settle-poll (10 × 100 ms), gated to exactly the
+  suspicious case (darwin + fail exit + empty store), so clean runs pay
+  nothing. THEN the statistics, not a single run: ~430 iterations per arm of
+  the flaky test looping against a full-suite load. Pre-fix 22/442 (5.0%),
+  post-fix 9/413 (2.2%) — halved, z≈2.2. Honest caveats recorded: arms ran
+  sequentially rather than interleaved, and the residual 2.2% SURVIVED the
+  entire 1 s window — those records were DROPPED by the unified log under
+  pressure, not delayed, so no client-side poll can recover them. Every one
+  of the 31 captured failures was the same mode: denial ENFORCED, reporting
+  empty — the security boundary held in all of them. The fix ships with the
+  measured numbers in its comment; the open item is rewritten from "flaky
+  tests" to the true statement: macOS violation reporting is lossy-by-OS
+  under load, ~2% residual on loaded local runs, darwin-CI class-gated, and
+  the CI-only NON-enforcement mode (round two's ok=true) remains unexplained
+  and never locally reproduced.
 
 - **2026-08-24 (eighth wave) — darwin round two: the sandbox flake is a
   CLASS and now gated as one; and it is worse than reported — it is

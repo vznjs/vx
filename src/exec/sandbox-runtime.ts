@@ -385,11 +385,35 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
 
   // macOS: read the violation store keyed by our tagged command.
+  //
+  // The store is fed ASYNCHRONOUSLY — SRT's monitor ingests macOS unified-log
+  // records, and log delivery lags under load — so reading it immediately
+  // after child exit races the pipeline: the denial happened, the child died
+  // on it, and the store is still empty. Observed locally as the 1-in-N
+  // "denied but zero violation lines" flake (decision log 2026-08-23/24).
+  // When the exit is a FAILURE and the store is empty, give the pipeline a
+  // bounded settle window; a clean exit skips the poll entirely, so the warm
+  // path pays nothing.
+  //
+  // MEASURED (2026-08-24, ~430 runs/arm under full-suite load): the poll
+  // HALVES the loss (5.0% → 2.2%) but cannot eliminate it — the residual
+  // failures survive the whole 1 s window, meaning those records were
+  // DROPPED by the unified log under pressure, not delayed. Reporting on
+  // macOS is therefore lossy-by-OS under load; ENFORCEMENT is unaffected
+  // (every observed loss still denied the read and failed the child).
   const store = SandboxManager.getSandboxViolationStore()
-  const macViolations = store.getViolationsForCommand(taggedCommand).map((v) => ({
-    line: v.line,
-    timestamp: v.timestamp,
-  }))
+  const readMacViolations = (): SandboxViolation[] =>
+    store.getViolationsForCommand(taggedCommand).map((v) => ({
+      line: v.line,
+      timestamp: v.timestamp,
+    }))
+  let macViolations = readMacViolations()
+  if (process.platform === 'darwin' && exitCode !== 0 && macViolations.length === 0) {
+    for (let i = 0; i < 10 && macViolations.length === 0; i++) {
+      await Bun.sleep(100)
+      macViolations = readMacViolations()
+    }
+  }
 
   // Linux: parse the strace log and emit one violation per denied
   // syscall on a path inside denyRead that wasn't unconditionally
