@@ -397,9 +397,13 @@ time every single time.
 - `--info` and `--cache-local` are byte-identical tokens (56 189 248), so a
   blue line is ambiguous between "informational" and "cache". Changing a token
   value moves the visual baselines — a design call.
-- `isOutputsCurrent` compares size+mode+second-mtime, so a same-size,
-  same-second, different-content output can skip a restore. Wants a per-output
-  content hash.
+- ~~`isOutputsCurrent` compares size+mode+second-mtime~~ — **STALE, corrected
+  2026-08-24 by probe**: the check compares at MILLISECOND precision with a
+  restore-time re-sync, and a same-size same-second different-ms edit IS
+  caught (now pinned in `cache-baseline.test.ts`). The remaining residual is
+  a same-size edit with a FORGED identical mtime (`touch -r`) — pinned as
+  the accepted trade (git's index makes the same one); closing it would cost
+  a content hash per output on every warm hit.
 - `LayeredCache` in-memory pack path (`--cache=local:,remote:rw`) still holds
   artifact bytes in RAM; `drainUploads()` has no timeout and is deliberately
   outside the throw-path `finally` (awaiting a wedged remote would turn a
@@ -436,6 +440,24 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-24 (twelfth wave) — the `isOutputsCurrent` open item was STALE;
+  refuted by probe, both directions pinned.** The item claimed
+  "size+mode+second-mtime, so a same-size same-second different-content
+  output can skip a restore" — but the code compares at MILLISECOND
+  precision with a restore-time re-sync, and the probe shows a same-second
+  different-ms same-size edit IS caught. Someone closed the gap and the
+  item never followed; an open-items list that overstates known defects
+  costs audits exactly like one that understates them. The genuine residual
+  was CONFIRMED by the same probe: a same-size edit under a FORGED
+  identical mtime passes with wrong bytes on disk — the documented trade of
+  every mtime-based skip check (git's index accepts the same), and closing
+  it would cost a per-output content hash on every warm hit. Both
+  directions are now pinned in `cache-baseline.test.ts`: the ms-sensitivity
+  pin (with its same-second precondition ASSERTED, not assumed) so the
+  closed gap cannot silently reopen, and the forged-mtime blind spot pinned
+  as accepted-by-design so a future content-hash change has to update the
+  contract deliberately. No code change — the finding IS the correction.
 
 - **2026-08-24 (eleventh wave) — `--verify=inputs` × remote execution was a
   VACUOUS PASS; verify now pins placement local.** The undefined interaction

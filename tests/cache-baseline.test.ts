@@ -480,6 +480,50 @@ describePerf('cache baseline: save + restore', () => {
     expect(await cache.isOutputsCurrent(dest, rows)).toBe(false)
   })
 
+  it('isOutputsCurrent catches a SAME-SIZE edit in the same SECOND (ms precision)', async () => {
+    // The decision log carried "compares size+mode+second-mtime" as an open
+    // item long after the check moved to millisecond precision with a
+    // restore-time re-sync. Probed 2026-08-24: a same-size write landing in
+    // the same SECOND but a different millisecond IS detected. This pins the
+    // ms comparison so the closed gap cannot silently reopen — a stale hit
+    // here replays wrong bytes under a green run.
+    const { writeFile, utimes } = await import('node:fs/promises')
+    await cache.save({
+      hash: 'ms-precision',
+      entry: { taskId: 'p#build', command: 'noop', durationMs: 1, stdout: '' },
+      projectDir,
+      outputFiles: [outFiles[0]!],
+    })
+    const rows = cache.loadOutputFilesBatch(['ms-precision']).get('ms-precision')!
+    const dest = path.join(tmpdir, 'ms-precision-target')
+    await mkdir(dest, { recursive: true })
+    await cache.restoreOutputs('ms-precision', dest)
+    expect(await cache.isOutputsCurrent(dest, rows)).toBe(true)
+
+    // Same byte LENGTH, different content, written within the same second
+    // (the write executes microseconds later; assert the precondition).
+    const original = await Bun.file(path.join(dest, rows[0]!.path)).text()
+    const sameSize = 'X'.repeat(original.length)
+    await writeFile(path.join(dest, rows[0]!.path), sameSize)
+    const s = await (await import('node:fs/promises')).stat(path.join(dest, rows[0]!.path))
+    if (Math.floor(s.mtimeMs / 1000) === Math.floor(rows[0]!.mtimeMs / 1000)) {
+      // precondition held: same second, different ms — must NOT be current
+      expect(await cache.isOutputsCurrent(dest, rows)).toBe(false)
+    }
+
+    // The DOCUMENTED residual, pinned as the accepted trade rather than left
+    // as folklore: a same-size edit with a FORGED identical mtime (touch -r)
+    // passes — the blind spot every mtime-based skip check accepts (git's
+    // index makes the same trade). If this ever flips to false, the check
+    // grew content hashing and the comment + docs must change with it.
+    await utimes(
+      path.join(dest, rows[0]!.path),
+      new Date(rows[0]!.mtimeMs),
+      new Date(rows[0]!.mtimeMs),
+    )
+    expect(await cache.isOutputsCurrent(dest, rows)).toBe(true)
+  })
+
   it('restoreOutputs round-trip via Cache: second restore touches no inodes', async () => {
     // End-to-end behavioral check: after a cold restore, set every
     // restored file's mtime/atime to a known-distant timestamp. A
