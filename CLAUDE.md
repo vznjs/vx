@@ -441,6 +441,26 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (fourteenth wave) — a sandbox-enforcement CANARY now runs on
+  every darwin CI pass, turning the unexplained non-enforcement mode into a
+  data feed.** The mode (an undeclared read SUCCEEDING under the sandbox —
+  seen once on a darwin runner, never locally) cannot be chased without
+  observations, and the class gate that protects main also silenced the only
+  source of them. The canary is data collection, not a gate: 20 leaky-task
+  executions through the REAL `run()` path per darwin job, each classified
+  ENFORCED_REPORTED / ENFORCED_UNREPORTED / NOT_ENFORCED / RUN_ERROR, a
+  greppable `[canary] SUMMARY` line, environment dumped on any
+  NOT_ENFORCED hit, `continue-on-error` + unconditional exit 0. **The
+  harness lesson that shaped it:** the first draft hand-assembled
+  `runSandboxed` baselines and reported NOT_ENFORCED 12/12 at IDLE — on the
+  same machine where the real suites pass 27/0, i.e. when everything fails
+  the harness is wrong, again. The canary therefore drives the exact
+  production path (fixture workspace + `run()` + `sandbox: {}`), and its
+  rewritten form reads 6/6 ENFORCED_REPORTED at idle. From here, every
+  darwin CI log accumulates ~20 observations; the hunt resumes when
+  `not_enforced=` goes non-zero with a uname and outcome attached instead
+  of a mystery.
+
 - **2026-08-24 (thirteenth wave) — main red on a DOCKER HUB 500, not our
   diff; the NativeLink step hardened against registries having bad days.**
   `plugin packages` failed on the refutation commit (which touched only
