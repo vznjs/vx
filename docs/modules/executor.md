@@ -40,7 +40,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   hit would have matched; held in memory for the attempt and never
   persisted (`env`/`runtime` values may be secrets — `entry_inputs` stores
   digests only).
-- `ExecuteResult extends RunResult { violations }`
+- `ExecuteResult extends RunResult { violations; where? }` — `where` is the
+  executor-reported placement label (a REAPI worker id); absent = this
+  host. Rides `TaskOutcome.where` into telemetry only (OTel:
+  `vx.task.where`), never the analytics store.
 - `selectExecutor(executors, task)` — first executor, in order, that may
   take the task: a `remote` executor is skipped outright for a
   `pinnedLocal` task, then `accepts` decides. Throws naming the task when

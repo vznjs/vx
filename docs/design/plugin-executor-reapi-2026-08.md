@@ -193,8 +193,15 @@ deliberately deferred to the plugin wave that gives it a purpose: it has
 real local BEHAVIOUR (skip the task, never clean or restore its outputs
 here), and shipping that with no input-shipping executor in existence would
 give a user who declares it a silently skipped task. Widening the type is
-additive when phase 2's plugin lands. `TaskOutcome.where` (§4) is likewise
-not shipped — telemetry still attributes every task to the local host.
+additive when phase 2's plugin lands. `TaskOutcome.where` (§4) SHIPPED
+2026-08-25: the reapi executor reports the worker id from
+`ExecutedActionMetadata`, the outcome carries it, telemetry's `task.end` +
+summary rows and the OTel span (`vx.task.where`) surface it. Absent =
+local host; never persisted to the analytics store. The `outputs`
+DISCRIMINATOR stays unshipped with the same reasoning as `'only'` was
+staged: `deferred`/`cache` have no consumer until the `--download` +
+CAS-shaped-local-cache arc, and a shipped enum nothing reads is a
+half-finished implementation.
 
 Patterns this implies, documented rather than abstracted away:
 

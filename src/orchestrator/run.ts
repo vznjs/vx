@@ -834,6 +834,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (o.hash !== undefined) t.hash = o.hash
         if (o.cpuMs !== undefined) t.cpuMs = o.cpuMs
         if (o.peakRssBytes !== undefined) t.peakRssBytes = o.peakRssBytes
+        if (o.where !== undefined) t.where = o.where
         if (o.attempts !== undefined) t.attempts = o.attempts
         if (o.verify !== undefined) t.verify = o.verify
         if (o.outputFp !== undefined) t.outputFp = o.outputFp

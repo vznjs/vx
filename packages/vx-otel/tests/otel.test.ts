@@ -472,6 +472,7 @@ const FULL_TASK: Required<Omit<TaskTelemetry, 'verify'>> & Pick<TaskTelemetry, '
   hash: 'deadbeefdeadbeef',
   cpuMs: 900,
   peakRssBytes: 123456789,
+  where: 'worker-7',
   attempts: 2,
   verify: { kind: 'proven-deterministic' },
   outputFp: {
@@ -585,6 +586,7 @@ describe('OTLP losslessness', () => {
     expect(a['vx.cpu_ms']).toBe('900')
     expect(a['vx.peak_rss_bytes']).toBe('123456789')
     expect(a['vx.task.attempts']).toBe('2')
+    expect(a['vx.task.where']).toBe('worker-7')
     expect(a['vx.task.verify']).toBe('proven-deterministic')
   })
 

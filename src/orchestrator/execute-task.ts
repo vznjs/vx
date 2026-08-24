@@ -807,6 +807,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(attempt > 1 ? { attempts: attempt } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
+    ...(result.where !== undefined ? { where: result.where } : {}),
     wallclockStartNs,
     wallclockEndNs,
     ...(verify !== undefined ? { verify } : {}),

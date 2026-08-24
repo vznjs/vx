@@ -93,6 +93,9 @@ export interface TaskOutcome {
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number
+  /** Executor-reported placement label (`ExecuteResult.where`) — set only
+   *  when the task ran somewhere other than this host. Telemetry-only. */
+  where?: string
   /**
    * v11 analytics: hrtime span relative to the parent run's t=0.
    * Lets downstream analytics reconstruct the actual parallel timeline

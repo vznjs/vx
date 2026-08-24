@@ -125,6 +125,13 @@ export interface ExecuteRequest {
 export interface ExecuteResult extends RunResult {
   /** Sandbox violations (empty when unsandboxed). */
   readonly violations: readonly SandboxViolation[]
+  /**
+   * Executor-reported placement label — which machine ran the command
+   * (a REAPI worker id, a pool member). Absent = this host. Rides
+   * `TaskOutcome.where` into telemetry so a task can be attributed to
+   * its worker; never persisted to the analytics store.
+   */
+  readonly where?: string
 }
 
 /** What an executor sees when a task is PLACED — once per task, before scheduling. */

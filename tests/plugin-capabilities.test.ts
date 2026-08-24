@@ -1200,3 +1200,79 @@ describe.skipIf(!sandboxOk)('settleOnCleanExit plumbing — verify vs user sandb
     }
   })
 })
+
+describe('TaskOutcome.where — executor placement attribution', () => {
+  it('an executor-reported where rides the outcome into telemetry; local stays absent', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           hello: { exec: { command: 'echo hi' } },
+         } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/worker',
+             executor() {
+               return {
+                 name: 'spy-remote',
+                 remote: true,
+                 async execute() {
+                   return {
+                     exitCode: 0,
+                     durationMs: 1,
+                     stdout: '',
+                     stderr: '',
+                     violations: [],
+                     where: 'worker-7',
+                   }
+                 },
+               }
+             },
+           }`,
+          `{
+             name: 'org/tap',
+             telemetry() {
+               return {
+                 name: 'tap',
+                 onRecord(rec) {
+                   if (rec.kind === 'task.end') {
+                     ;(globalThis.__vxWhereTap ??= []).push([rec.taskId, rec.where])
+                   }
+                 },
+                 onRunSummary(summary) {
+                   ;(globalThis.__vxWhereSummary ??= []).push(
+                     ...summary.tasks.map((t) => [t.taskId, t.where]),
+                   )
+                 },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const g = globalThis as unknown as {
+        __vxWhereTap?: Array<[string, string | undefined]>
+        __vxWhereSummary?: Array<[string, string | undefined]>
+      }
+      g.__vxWhereTap = []
+      g.__vxWhereSummary = []
+      const r = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(true)
+      // Both telemetry surfaces carry the attribution.
+      expect(g.__vxWhereTap).toEqual([['pkg-a#hello', 'worker-7']])
+      expect(g.__vxWhereSummary).toEqual([['pkg-a#hello', 'worker-7']])
+    } finally {
+      cleanup()
+    }
+  })
+})

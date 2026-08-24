@@ -75,6 +75,9 @@ describe.if(run)('remote execution against a live scheduler + worker', () => {
       )
       expect(res.exitCode).toBe(0)
       expect(stdout).toContain('transformed')
+      // Worker attribution: the executor reports where the command ran.
+      expect(typeof res.where).toBe('string')
+      expect((res.where as string).length).toBeGreaterThan(0)
       const produced = await readFile(path.join(root, 'pkg', 'out.txt'), 'utf8')
       expect(produced.trim()).toBe('HELLO FROM THE SUBMITTER')
     } finally {

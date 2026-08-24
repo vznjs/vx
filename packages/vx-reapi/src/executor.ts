@@ -612,6 +612,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         stdout: req.capture.stdout === false ? '' : stdout,
         stderr: req.capture.stderr === false ? '' : stderr,
         violations: [],
+        ...(worker !== undefined && worker !== '' ? { where: worker } : {}),
       }
     },
   }

@@ -464,6 +464,25 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (thirtieth wave) — `TaskOutcome.where` ships: worker
+  attribution end to end; the outputs discriminator deliberately stays
+  unshipped.** Roadmap item 4 split by the no-half-finished rule: the
+  `disk`/`cache`/`deferred` discriminator has no consumer until the
+  `--download` + CAS-shaped-local-cache arc, so shipping the enum now
+  would be dead schema — recorded in the design doc instead. The
+  consumable slice: `ExecuteResult.where` (executor-reported placement
+  label; absent = this host) → `TaskOutcome.where` → telemetry `task.end`
+  - summary rows → OTel `vx.task.where`. The reapi executor sets it from
+    `ExecutedActionMetadata.worker` (the value it already warned with);
+    deliberately NOT persisted to the analytics store. Pins: the otel
+    losslessness tripwire did its job (adding the field broke the
+    `Required<…>` fixture until the span mapping existed — the exact
+    failure mode it was built to force); a spy-executor run() pin asserts
+    both telemetry surfaces carry `worker-7`; differential (dropping the
+    outcome copy) fails exactly that pin; live exec-e2e asserts a REAL
+    NativeLink worker id arrives (9/0). Docs updated in the same wave
+    (executor module + design doc §5 flipped from "not shipped").
+
 - **2026-08-25 (twenty-ninth wave) — the Checks API check-run ships:
   roadmap item 5 complete.** The second half of `@vzn/vx-github`: with
   `GITHUB_TOKEN` + `GITHUB_REPOSITORY` + `GITHUB_SHA` present, `flush()`
