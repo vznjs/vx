@@ -176,6 +176,9 @@ export interface SandboxedRunArgs {
   timeoutMs?: number
   /** See `CaptureConfig` — which streams are retained on the result. */
   capture?: CaptureConfig
+  /** See `ExecuteSandbox.settleOnCleanExit` — pay the macOS settle window
+   *  even on a 0-exit, because an empty store will be read as proof. */
+  settleOnCleanExit?: boolean
   /**
    * Baseline reads — paths the sandbox unconditionally allows. The
    * caller builds this from resolved `cache.inputs.files`.
@@ -408,7 +411,18 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
       timestamp: v.timestamp,
     }))
   let macViolations = readMacViolations()
-  if (process.platform === 'darwin' && exitCode !== 0 && macViolations.length === 0) {
+  // The fail-exit gate keeps the warm path free — EXCEPT when the caller
+  // says a clean exit + empty store will be read as PROOF (verify=inputs):
+  // a leaky task that swallows its own read error exits 0, so without the
+  // settle window a late unified-log record becomes a FALSE PASS of the
+  // verify (measured locally 2026-08-24: 1/30 at idle, the same lossy
+  // channel as the fail-exit case).
+  const emptyStoreIsProof = args.settleOnCleanExit === true
+  if (
+    process.platform === 'darwin' &&
+    (exitCode !== 0 || emptyStoreIsProof) &&
+    macViolations.length === 0
+  ) {
     for (let i = 0; i < 10 && macViolations.length === 0; i++) {
       await Bun.sleep(100)
       macViolations = readMacViolations()

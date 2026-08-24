@@ -581,6 +581,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         baseAllowWrite,
         baseDenyRead: [args.workspaceRoot],
         config: resolveSandboxConfig(cfg.sandbox ?? {}, node.projectDir),
+        settleOnCleanExit: verifyInputs,
       },
     }
   }

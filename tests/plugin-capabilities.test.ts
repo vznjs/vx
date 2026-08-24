@@ -23,6 +23,9 @@ import { busLogger } from '../src/orchestrator/events.js'
 import { Cache, ChainedCache } from '../src/cache/index.js'
 import { localCachePlugin } from '../src/plugins/local-cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
+import { sandboxAvailable } from './helpers/sandbox-gate.js'
+
+const sandboxOk = await sandboxAvailable('plugin-capabilities settle plumbing')
 
 async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => void }> {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'vx-plugin-cap-'))
@@ -1102,6 +1105,96 @@ describe('executor capability — end-to-end via run()', () => {
       await gitInit(workspaceRoot)
       const summary = await runHello(workspaceRoot)
       expect(summary.ok).toBe(true)
+    } finally {
+      cleanup()
+    }
+  })
+})
+
+describe.skipIf(!sandboxOk)('settleOnCleanExit plumbing — verify vs user sandbox', () => {
+  // The macOS settle window is paid on a clean exit ONLY when an empty
+  // violation store will be read as proof. That intent travels on
+  // ExecuteSandbox.settleOnCleanExit: true exactly when the sandbox was
+  // forced by --verify=inputs, false for a user-declared sandbox (whose
+  // warm path must stay free). A non-remote spy executor captures the
+  // request each way; the verify placement pin only excludes REMOTE
+  // executors, so the spy is offered the task in both runs.
+  it('verify=inputs sets it; a user sandbox does not', async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           verified: {
+             exec: { command: 'echo hi > out.txt' },
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+           },
+           sandboxed: {
+             exec: { command: 'echo hi > out2.txt' },
+             sandbox: {},
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out2.txt'] } },
+           },
+         } }`,
+      )
+      await Bun.write(path.join(workspaceRoot, 'pkg-a/src/x.txt'), 'x')
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/spy',
+             executor() {
+               return {
+                 name: 'sandbox-spy',
+                 async execute(req) {
+                   ;(globalThis.__vxSettleSpy ??= {})[req.taskId] = req.sandbox
+                     ? req.sandbox.settleOnCleanExit
+                     : 'no-sandbox'
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const g = globalThis as unknown as {
+        __vxSettleSpy?: Record<string, boolean | 'no-sandbox'>
+      }
+
+      g.__vxSettleSpy = {}
+      const verified = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['verified'],
+        verify: { determinism: false, inputs: true, fingerprint: false, allow: new Set() },
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      expect(verified.outcomes.length).toBe(1)
+      expect(g.__vxSettleSpy['pkg-a#verified']).toBe(true)
+
+      g.__vxSettleSpy = {}
+      const plain = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['sandboxed'],
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      if (!plain.ok)
+        console.log(
+          'DEBUG outcomes:',
+          JSON.stringify(
+            plain.outcomes.map((o) => ({
+              id: o.node.id,
+              status: o.status,
+              exit: o.exitCode,
+              lines: o.sandboxViolationLines,
+            })),
+          ),
+        )
+      expect(plain.ok).toBe(true)
+      expect(g.__vxSettleSpy['pkg-a#sandboxed']).toBe(false)
     } finally {
       cleanup()
     }

@@ -13,7 +13,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
-import { deniedCalls, probeSandbox, resolveSandboxConfig } from '../src/exec/sandbox-runtime.js'
+import {
+  deniedCalls,
+  initSandbox,
+  probeSandbox,
+  resolveSandboxConfig,
+  runSandboxed,
+} from '../src/exec/sandbox-runtime.js'
 import { run, type Logger, type RunOptions } from '../src/orchestrator/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
@@ -753,3 +759,53 @@ describe('sandbox probe', () => {
     else expect(a.reason.length).toBeGreaterThan(0)
   })
 })
+
+describe.skipIf(!available || process.platform !== 'darwin')(
+  'settleOnCleanExit (darwin) — the verify-shaped settle window',
+  () => {
+    // The settle-poll originally gated on a FAIL exit, so a leaky task that
+    // swallows its own read error (exit 0) never got the window — exactly
+    // the case where --verify=inputs reads an empty store as PROOF over the
+    // lossy unified-log channel (measured 1/30 false passes at idle). A
+    // clean task with the flag pays the FULL 10×100 ms window — no
+    // violations ever arrive to end it early — so the lower bound is
+    // deterministic; the control is a RELATIVE comparison so absolute load
+    // cannot flake it.
+    it(
+      'pays the full settle window on a clean exit; without the flag it returns fast',
+      async () => {
+        await initSandbox()
+        const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-settle-'))
+        try {
+          const base = {
+            cwd: dir,
+            env: process.env,
+            baseAllowRead: [dir],
+            baseAllowWrite: [dir],
+            baseDenyRead: [],
+            config: resolveSandboxConfig({}, dir),
+          }
+          const t0 = performance.now()
+          const settled = await runSandboxed({
+            ...base,
+            command: 'echo ok > out.txt',
+            settleOnCleanExit: true,
+          })
+          const settledMs = performance.now() - t0
+          const t1 = performance.now()
+          const plain = await runSandboxed({ ...base, command: 'echo ok > out.txt' })
+          const plainMs = performance.now() - t1
+          expect(settled.exitCode).toBe(0)
+          expect(plain.exitCode).toBe(0)
+          expect(settledMs).toBeGreaterThanOrEqual(1000)
+          // The flagless run must NOT pay the window: the poll costs ~1000ms,
+          // so a >700ms gap discriminates while surviving load noise.
+          expect(settledMs - plainMs).toBeGreaterThanOrEqual(700)
+        } finally {
+          await rm(dir, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+  },
+)

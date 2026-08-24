@@ -420,9 +420,14 @@ time every single time.
   interleaved — noted). The residual survives a full 1 s window: those
   unified-log records were DROPPED under pressure, not delayed, and no poll
   recovers a record that never arrived. So local flake ~2% remains on
-  loaded runs; darwin-CI is class-gated. STILL UNEXPLAINED: the darwin-CI
-  round-two mode where enforcement itself failed (ok=true for a leaky task)
-  — never reproduced locally.
+  loaded runs; darwin-CI is class-gated. The round-two "non-enforcement"
+  reading was CORRECTED 2026-08-24: `ok=true` on that fixture is ambiguous
+  (it swallows the read error), a discriminating probe classifies every
+  observed false pass as reporting loss with enforcement intact, and the
+  canary (n=100) has never seen `not_enforced`. The hunt is therefore for
+  reporting loss only; the settle window now also covers clean-exit
+  verify tasks (`settleOnCleanExit`), which that shape previously never
+  got.
 - **The macOS sandbox suites are load-flaky as a CLASS.** Two different tests
   failed in two consecutive full-suite runs on Bun 1.4.0 —
   `sandbox-runtime` "still denies an undeclared read through a symlinked
@@ -440,6 +445,65 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-24 (twenty-second wave) — the "non-enforcement" mode was a
+  MISREAD of an ambiguous signal; the verify=inputs false pass is plain
+  reporting loss, and the settle window now covers the clean-exit shape
+  that was silently exempt.** A full-suite gate flake led into it: the
+  `--verify=inputs` leaky-task test failed with `r.ok === true` even in
+  ISOLATION. That fixture swallows its read error and exits 0, so
+  `ok === true` cannot distinguish "read succeeded" (non-enforcement)
+  from "denial enforced, violation record lost" (the known lossy unified
+  log) — and the eighth wave had inferred NON-ENFORCEMENT from exactly
+  this signal on CI. The discriminating probe reads the OUTPUT: 30
+  standalone verify runs, every false pass came back with the fallback
+  bytes, never the secret — denial ENFORCED, record LOST, 1/30 at idle.
+  Same machine, same minutes, the canary (which reads out.txt, not ok)
+  scored 20/20 enforced. So the eighth-wave claim is corrected IN PLACE,
+  the open item's hunt narrows to reporting loss only, and the mechanism
+  for the elevated rate on THIS shape is structural: the ninth wave's
+  settle-poll gates on a FAIL exit, and a leaky-but-swallowing task
+  exits 0 — the one case where an empty store is read as PROOF got no
+  settle window at all. Fix: `ExecuteSandbox.settleOnCleanExit`, set
+  exactly when the sandbox is verify-forced (a user sandbox's warm path
+  stays free), plumbed through the local executor to `runSandboxed`,
+  which now pays the window on `exitCode !== 0 || settleOnCleanExit`.
+  Pinned twice: plumbing (a non-remote spy captures `true` under
+  verify.inputs, `false` under a user sandbox — cross-platform) and
+  behavior (darwin: a clean flagged run pays the FULL deterministic
+  1 s window, ≥700 ms over its unflagged twin — relative bound, so load
+  can't flake it). Honesty ledger: the plumbing pin failed ONCE on its
+  first-ever execution (`plain.ok` false, mode uncaptured) and 0/40
+  since with a diagnostic dump armed — recorded, not explained. The
+  residual stays: a record the OS dropped is unrecoverable client-side;
+  cli.md now tells verify users that Linux is the authoritative proof
+  under load. The meta-lesson is the probe rule again, in its sharpest
+  form yet: `ok=true` reached the wrong conclusion because the FIXTURE
+  swallows the discriminating evidence — assert on the artifact
+  (out.txt), not the verdict, when the verdict conflates modes.
+
+- **2026-08-24 (twenty-first wave) — pool × resources audited: correct by
+  code, previously guaranteed only by comment; now pinned with a
+  discriminating overlap probe.** The question nobody had pinned: does a
+  pooled (remote-executor) task's `exec.resources` reservation charge the
+  LOCAL 2-D admission budget? It must not — the reservation describes the
+  machine that RUNS the task, and charging it locally would let an
+  over-budget remote task solo-clamp the submitter (idling every local
+  worker while the work executes elsewhere). The code is right:
+  `scheduler.costOf` zero-costs pooled tasks exactly as it does
+  restore-tier ones, and the one real scheduler call site passes `poolOf`
+  and `resourceCosts` together. But the guarantee lived in a comment with
+  no test — the recorded defect class. The pin uses the discriminating
+  shape: a pooled task with cpu:100 on budget 2 must OVERLAP in-flight
+  local resource holders, because solo-clamp and axis-holding are mutually
+  exclusive by construction — any charging regression makes the overlap
+  impossible. Differential: dropping the `poolOf` arm from `costOf` fails
+  exactly the new pin (85 ms, deterministic); restore 42/0. Also verified
+  while in there: `resolveResourceCosts` is pure (over-budget is legal by
+  design, no clamp/throw an oversized remote declaration could trip), and
+  the second `resourceCosts` mention in run.ts is footer display, not a
+  second scheduler. Canary #5 banked: 20/0/0; cumulative n=100, reporting
+  loss 3%, non-enforcement still unobserved.
 
 - **2026-08-24 (twentieth wave) — the glob→output_paths audit: both
   hypotheses REFUTED by live probe, and the two load-bearing behaviors are
@@ -711,9 +775,16 @@ durationMs}` (transpile-only bun test cannot see that; the failing
   CLASS and now gated as one; and it is worse than reported — it is
   NON-ENFORCEMENT.** Round two failed exactly ONE test (2569/1), a
   DIFFERENT one from round one: `--verify=all reports undeclared-inputs for
-a leaky task` came back `r.ok === true` — the undeclared read SUCCEEDED.
-  That is not under-reporting of violations; the sandbox did not enforce at
-  all. Two consecutive darwin runs, two different tests, one mechanism:
+a leaky task` came back `r.ok === true` — which this entry originally
+  read as "the undeclared read SUCCEEDED; the sandbox did not enforce at
+  all". **CORRECTED 2026-08-24 (twenty-second wave): that inference was
+  unsound.** The leaky fixture SWALLOWS its read error and exits 0, so
+  `r.ok === true` is exactly what plain REPORTING LOSS produces too — the
+  verify reads an empty violation store as `proven-complete`. A
+  discriminating local probe (out.txt content: the secret vs the fallback)
+  classified every observed false pass as denial-ENFORCED-report-LOST;
+  genuine non-enforcement has never been observed anywhere (canary
+  n=100). Two consecutive darwin runs, two different tests, one mechanism:
   sandbox-exec on loaded macOS runners probes healthy and then misbehaves.
   Per-test `skipIf` is whack-a-mole (any enforcement-asserting test can be
   next), so the gate moved into `sandboxAvailable()` itself — on darwin CI

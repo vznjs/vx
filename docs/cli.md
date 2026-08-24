@@ -383,6 +383,11 @@ $ vx run build --verify=inputs
 - Reads _outside_ the workspace (system CA certs, `~/.config` tool state)
   are not flagged — only undeclared reads _inside_ the workspace, which are
   the ones that can change a cached output.
+- **macOS caveat**: violation records travel through the unified log,
+  which drops entries under heavy load (~2% measured). vx pays a bounded
+  settle window per verified task so a late record can't become a false
+  `proven-complete`, but a record the OS dropped is unrecoverable —
+  under load, treat a Linux (`bwrap`) run as the authoritative proof.
 
 ##### `--verify=fingerprint` — the cross-machine diff feed
 

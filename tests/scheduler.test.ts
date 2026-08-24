@@ -1029,4 +1029,40 @@ describe('executor pools under failure', () => {
     expect(third).toBe(true)
     expect(out.get('a#third')?.status).toBe('success')
   })
+
+  it('a pooled task reserves NO local resources — even an over-budget cost', async () => {
+    // exec.resources describes the machine that RUNS the task; a pooled task
+    // runs on the remote pool, so charging its reservation against the LOCAL
+    // axes would be wrong twice over: an over-budget cost would solo-clamp
+    // (admit only when the axis is idle) and idle the whole local machine
+    // while the work executes elsewhere. The discriminating shape: if the
+    // pooled cost were charged, p#big could NEVER be in flight at the same
+    // time as a local resource holder — solo-clamp and axis-holding are
+    // mutually exclusive by construction. So the pin asserts the overlap.
+    const inFlight = new Set<string>()
+    let overlapped = false
+    const out = await runGraph({
+      nodes: nodes(node('p#big'), node('l#a'), node('l#b')),
+      concurrency: 2,
+      cpuBudget: 2,
+      poolOf: (id) => (id.startsWith('p#') ? pool : undefined),
+      resourceCosts: new Map([
+        ['p#big', { cpu: 100, mem: 0 }], // over budget — would solo-clamp if charged
+        ['l#a', { cpu: 1, mem: 0 }],
+        ['l#b', { cpu: 1, mem: 0 }],
+      ]),
+      execute: async (n) => {
+        inFlight.add(n.id)
+        if (inFlight.has('p#big') && (inFlight.has('l#a') || inFlight.has('l#b'))) {
+          overlapped = true
+        }
+        await new Promise((r) => setTimeout(r, 40))
+        inFlight.delete(n.id)
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(3)
+    expect([...out.values()].every((o) => o.status === 'success')).toBe(true)
+    expect(overlapped).toBe(true)
+  })
 })
