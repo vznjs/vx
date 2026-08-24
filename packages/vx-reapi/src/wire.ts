@@ -121,6 +121,35 @@ export interface Directory {
 }
 
 const PROTO_ROOT = path.join(import.meta.dir, '..', 'protos')
+/**
+ * Download-integrity check: bytes that came back for `digest` must hash to
+ * it. A corrupt or poisoned remote otherwise lands wrong bytes in the local
+ * content-addressed store under a trusted name — served forever under a
+ * green hit. Hashed with the NEGOTIATED digest function via the same
+ * helper every upload uses; a function this build cannot compute falls
+ * back to the length check alone (it also could never have negotiated).
+ */
+function assertBlobIntegrity(
+  bytes: Uint8Array,
+  digest: Digest,
+  digestFunction: DigestFunctionName,
+): void {
+  if (bytes.length !== Number(digest.size_bytes)) {
+    throw new Error(
+      `@vzn/vx-reapi: blob integrity failure for ${digest.hash.slice(0, 16)}…: ` +
+        `size ${bytes.length} != declared ${digest.size_bytes}`,
+    )
+  }
+  if (!canDigest(digestFunction)) return
+  const got = digestWith(digestFunction, bytes).hash
+  if (got !== digest.hash) {
+    throw new Error(
+      `@vzn/vx-reapi: blob integrity failure: bytes hash to ${got.slice(0, 16)}… ` +
+        `but were served for digest ${digest.hash.slice(0, 16)}…`,
+    )
+  }
+}
+
 const LOAD_OPTIONS: protoLoader.Options = {
   includeDirs: [PROTO_ROOT],
   keepCase: true,
@@ -533,7 +562,9 @@ export class ReapiClient {
       for (const r of res.responses ?? []) {
         if ((r.status?.code ?? 0) !== 0 || r.data === undefined) continue
         const zstd = r.compressor === 'ZSTD' || r.compressor === 1
-        out.set(r.digest.hash, zstd ? new Uint8Array(Bun.zstdDecompressSync(r.data)) : r.data)
+        const body = zstd ? new Uint8Array(Bun.zstdDecompressSync(r.data)) : r.data
+        assertBlobIntegrity(body, r.digest, this.digestFunction)
+        out.set(r.digest.hash, body)
       }
       group = []
       grouped = 0
@@ -761,7 +792,13 @@ export class ReapiClient {
           out.set(c, at)
           at += c.length
         }
-        resolve(compressed ? new Uint8Array(Bun.zstdDecompressSync(out)) : out)
+        try {
+          const body = compressed ? new Uint8Array(Bun.zstdDecompressSync(out)) : out
+          assertBlobIntegrity(body, digest, this.digestFunction)
+          resolve(body)
+        } catch (err) {
+          reject(err)
+        }
       })
     })
   }

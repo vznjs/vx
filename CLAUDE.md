@@ -464,6 +464,33 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (twenty-eighth wave) — CAS downloads were UNVERIFIED;
+  confirmed with a lying stub server, fixed with negotiated-function
+  re-hashing.** The zstd/compressed-blobs audit found the sharp edge one
+  layer down: neither `readBlob` nor `batchReadBlobs` checked that the
+  bytes a remote returned actually hash to the digest they were requested
+  under, and `Cache.ingest` writes whatever arrives — so a corrupt or
+  poisoned remote's bytes would land in the local content-addressed store
+  under a trusted name and be served forever under a green hit (the worst
+  failure class; Bazel's client verifies downloads, ours did not).
+  CONFIRMED offline with a grpc-js stub CAS that answers every read with
+  wrong-but-right-length bytes: both paths accepted them at HEAD (the
+  failing pins are the executed repro AND the differential — fix absent =
+  fail, fix present = pass, both observed). Fix: `assertBlobIntegrity` on
+  every read path after decompression — length always, content re-hash
+  via the same `digestWith(negotiated fn)` helper every upload already
+  uses (a function this build cannot compute also could never have
+  negotiated). A refusal surfaces as an error the LayeredCache already
+  degrades to a MISS — the invariant holds instead of being bypassed.
+  False-positive control at two scales: an honest stub passes both paths,
+  and the full live e2e matrix stayed green against real bazel-remote +
+  NativeLink (26 tests: compressed paths, node_modules chain, real
+  `run()`). README documents the read-side mirror. The audit note for the
+  rotation: the compression code itself was CLEAN (per-response
+  compressor honored, resource names correct, commit checks sound) — the
+  finding was in what the path DIDN'T do, which is where a wire audit
+  should look first.
+
 - **2026-08-24 (twenty-seventh wave) — the v27 archive container audited:
   one CONFIRMED clobber (hardlinks), the author's unexecuted probes
   executed, and the memory question answered with a worse number than

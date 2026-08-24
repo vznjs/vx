@@ -82,6 +82,17 @@ adaptively** — a `DEADLINE_EXCEEDED` on a multi-message write retries once at
 retry instead of a failed task. The full probe matrix is in
 `docs/design/plugin-executor-reapi-2026-08.md` §14.
 
+## Downloads are verified
+
+Every blob read — ByteStream and batch alike, compressed or not — is
+re-hashed with the negotiated digest function and length-checked against
+the digest it was requested under. Bytes that don't match are refused with
+a named integrity error instead of being written into the local
+content-addressed store: a corrupt or poisoned remote degrades to a miss
+(the cache invariant), never to wrong bytes under a trusted name. Uploads
+were always server-verified; this is the mirror on the read side, the same
+check Bazel's client performs.
+
 ## Deadlines: a wedged server degrades, it does not hang
 
 Every cache-path call (unary RPCs, ByteStream transfers) carries a gRPC
