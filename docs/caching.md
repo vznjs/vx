@@ -782,8 +782,13 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   now ride a `.vx-meta.json` sidecar. Measured on the real `Cache.save`
   path (300 outputs / 12 MB, min-of-5, interleaved arms against a
   `git worktree` of the previous commit): **158 ms → 11 ms** to pack,
-  restore 39 ms → 33 ms; the artifact grows ~7 compressed bytes per
-  output for the sidecar. The bump is mandatory rather than
+  the artifact grows ~7 compressed bytes per output for the sidecar.
+  Restore is indistinguishable up to ~12 MB, but on a 150 MB
+  incompressible artifact it costs +28% time and +19% peak RSS
+  (74 → 95 ms, 575 → 683 MB peak, fresh process per arm): `files()`
+  returns entries that OWN their bytes, so they coexist with the
+  decompressed tar where the old reader returned views into it. Peak is
+  ~4.5× artifact size, up from ~3.8×. The bump is mandatory rather than
   self-healing: a v26 artifact has no sidecar, so a v27 reader would
   restore its outputs mode-0644 and mtime-now — silently wrong on disk
   rather than a miss.

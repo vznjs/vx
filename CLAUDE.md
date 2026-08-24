@@ -388,6 +388,18 @@ time every single time.
 
 ### Open items (recorded, NOT fixed)
 
+- **A v27 restore holds the decompressed artifact AND a copy of every entry
+  at once** — `Bun.Archive.files()` returns File objects owning their bytes,
+  where the previous hand-rolled reader returned zero-copy views into the tar.
+  Measured on a 150 MB incompressible artifact in a fresh process: peak RSS
+  575 → 683 MB (+19%) and 74 → 95 ms (+28%); at ≤ 12 MB the two paths are
+  indistinguishable. Not binding the decompressed bytes to an outliving local
+  was tried and REFUTED (no change), so the cost is structural. Peak is
+  ~4.5× artifact size against a 2 GiB decompression ceiling that bounds the
+  input, not the multiplier. A streaming read would fix it, but the only
+  streaming surface (`extract()`) neither preserves mtime nor strips the
+  namespace prefix, which is why it was not used.
+
 - ~~`vx run --verify=inputs` on macOS reports a false `undeclared-inputs` for
   the project's own ancestor directories and prints raw sandbox-exec log
   lines instead of paths~~ — **CLOSED 2026-08-24 (twenty-fifth wave)**: the
@@ -518,8 +530,23 @@ time every single time.
   **Measured** on the real `Cache.save`/`restoreOutputs` paths, min-of-N,
   arms interleaved against a `git worktree` of the previous commit: pack
   1 file 6.15 → 0.32 ms, 20 files 11.9 → 0.65 ms, 300 files / 12 MB
-  158 → 11 ms (~14×); restore a wash (0.27 / 2.16 / 33 ms, unchanged);
-  artifact grows ~7 compressed bytes per output for the sidecar.
+  158 → 11 ms (~14×); artifact grows ~7 compressed bytes per output for
+  the sidecar. **Restore CORRECTED after the fact, by my own follow-up
+  measurement:** "a wash" holds only at the sizes I first measured
+  (≤ 12 MB — 0.27 / 0.55 / 2.16 / 33 ms, indistinguishable). On a 150 MB
+  INCOMPRESSIBLE artifact, restored in a fresh process so the pack phase
+  cannot confound it, the new path is SLOWER and HEAVIER: 74 → 95 ms
+  (+28%) and peak RSS 575 → 683 MB (+19%), reproduced twice per arm
+  within 1 MB. Cause is structural, not a bug: the old reader handed out
+  zero-copy VIEWS into the decompressed tar, while `Bun.Archive.files()`
+  hands back File objects owning COPIES, so both live at once. The
+  obvious fix — not binding the decompressed bytes to a local that
+  outlives `readArtifact`, which the old reader could never do — was
+  implemented, measured, and REFUTED (682.8 → 681.9 MB, i.e. nothing),
+  so it was reverted rather than shipped with a comment claiming a
+  benefit it does not deliver. Accepted trade, recorded as an open item:
+  peak is ~4.5× artifact size where it was ~3.8×, and the 2 GiB
+  decompression ceiling bounds the input, not the multiplier.
   **The correction:** `docs/optimizations.md` #12 recorded "kept the
   hand-rolled tar — `Bun.Archive` is 15–400× slower for our artifact shape
   (KB–MB, flat trees)". On Bun 1.4 that is false in both directions and the
