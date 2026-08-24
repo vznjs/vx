@@ -423,6 +423,29 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (fourth wave) — pool-slot leak hypothesis REFUTED; the pool's
+  failure path gains its first coverage.** The audit target: whether the
+  scheduler's `leave()` releases a pooled executor's slot when `execute`
+  rejects mid-flight — a leak would not fail anything, the run would just
+  quietly lose remote parallelism and, with enough failures, wedge. Three
+  probes, all green against the REAL scheduler: six pooled tasks with half
+  rejecting complete 6/6 with peak concurrency exactly at capacity; pool and
+  local slots do not cross-starve (a slow pooled task never blocks the one
+  local worker, and vice versa); and the sharpest shape — the pool FILLED
+  with two rejecting occupants and a third task parked behind them — admits
+  and succeeds. So the release path is symmetric and the hypothesis is
+  REFUTED; the probes stay as permanent pins because the pool feature had
+  ZERO failure-path coverage. Discrimination proven by mutation: neutering
+  the rejection-path `leave()` (line-exact, after a first mutation attempt
+  silently failed to apply and had to be caught — a mutation must be
+  VERIFIED to have changed the file before its result means anything)
+  wedges exactly the parked-behind-failures probe at its timeout; restore
+  41/0. One harness slip caught by its own failure: the probes' success
+  helper referenced a function that did not exist in that file, so every
+  execute rejected and the first run showed 6/6 failed — read as "the
+  scheduler fails everything" it would have been a phantom bug; the
+  ReferenceError in the count mismatch was the tell.
+
 - **2026-08-24 (third wave) — main went RED on a 128 KB chunk stall; the
   "boundary" was a RACE all along; fixed with adaptive downgrade.** The
   `plugin packages` job failed on a commit that did not touch the package:

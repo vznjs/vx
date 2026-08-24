@@ -952,3 +952,81 @@ describe('runGraph — resource admission (exec.resources)', () => {
     expect(ran.has('big#run')).toBe(true)
   })
 })
+
+describe('executor pools under failure', () => {
+  // The pool admission (`poolOf`) landed with the placement wave; nothing
+  // exercised its RELEASE path under a rejecting executor. A leaked slot
+  // would not fail anything — the run would just quietly lose remote
+  // parallelism, and with enough failures wedge entirely, which is why the
+  // probe asserts completion rather than any error.
+  const pool = { name: 'remote', capacity: 2 }
+
+  it('a rejecting execute releases its pool slot — later tasks still run', async () => {
+    let inFlight = 0
+    let peak = 0
+    const ran: string[] = []
+    const out = await runGraph({
+      nodes: nodes(node('a#1'), node('a#2'), node('a#3'), node('a#4'), node('a#5'), node('a#6')),
+      concurrency: 1, // the LOCAL width; the pool must not be throttled by it
+      poolOf: () => pool,
+      execute: async (n) => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, 10))
+        inFlight--
+        ran.push(n.id)
+        // half the pool's work rejects MID-FLIGHT
+        if (n.id === 'a#2' || n.id === 'a#4' || n.id === 'a#6') {
+          throw new Error(`boom ${n.id}`)
+        }
+        return success(n)
+      },
+    })
+    // every task got an outcome — a leaked slot would have wedged the run
+    expect(out.size).toBe(6)
+    expect(ran.length).toBe(6)
+    expect([...out.values()].filter((o) => o.status === 'failed').length).toBe(3)
+    // the pool bound held throughout, including across the rejections
+    expect(peak).toBe(2)
+  })
+
+  it('pooled failures do not consume LOCAL slots, and vice versa', async () => {
+    // One local worker + a capacity-2 pool: a slow pooled task must not stop
+    // local work, and a slow local task must not stop pooled work.
+    const order: string[] = []
+    const out = await runGraph({
+      nodes: nodes(node('p#slow'), node('l#quick')),
+      concurrency: 1,
+      poolOf: (id) => (id.startsWith('p#') ? pool : undefined),
+      execute: async (n) => {
+        if (n.id === 'p#slow') await new Promise((r) => setTimeout(r, 80))
+        order.push(n.id)
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(2)
+    // the local task finished while the pooled one was still in flight
+    expect(order).toEqual(['l#quick', 'p#slow'])
+  })
+
+  it('a task queued behind a full pool runs after a FAILED occupant leaves', async () => {
+    // The sharpest version of the leak probe: fill the pool with two tasks
+    // that both REJECT, with a third parked behind them. If either failure
+    // leaks its slot, the third never admits and the promise never resolves.
+    let third = false
+    const out = await runGraph({
+      nodes: nodes(node('a#f1'), node('a#f2'), node('a#third')),
+      concurrency: 4,
+      poolOf: () => pool,
+      execute: async (n) => {
+        await new Promise((r) => setTimeout(r, 5))
+        if (n.id !== 'a#third') throw new Error('boom')
+        third = true
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(3)
+    expect(third).toBe(true)
+    expect(out.get('a#third')?.status).toBe('success')
+  })
+})
