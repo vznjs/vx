@@ -1011,6 +1011,78 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  it('--verify=inputs pins every task LOCAL — a remote executor cannot vacuously pass the proof', async () => {
+    // The input-completeness proof IS the OS sandbox, which is local
+    // machinery a remote executor silently ignores (the reapi executor has
+    // no sandbox on the worker). Executed remotely, a leaky task would pass
+    // the verify with zero violations — a vacuous green over the exact
+    // property the flag exists to prove. So a verify=inputs run must never
+    // offer any task to a remote executor.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           hello: {
+             exec: { command: 'echo hi > out.txt' },
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+           },
+         } }`,
+      )
+      await Bun.write(path.join(workspaceRoot, 'pkg-a/src/x.txt'), 'x')
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/remote',
+             executor() {
+               return {
+                 name: 'greedy-remote',
+                 remote: true,
+                 async execute(req) {
+                   ;(globalThis.__vxRemoteRuns ??= []).push(req.taskId)
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const g = globalThis as unknown as { __vxRemoteRuns?: string[] }
+      g.__vxRemoteRuns = []
+
+      // CONTROL first: without verify, the remote executor takes the task —
+      // this is what proves the pin below is the verify flag's doing.
+      const plain = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      expect(plain.ok).toBe(true)
+      expect(g.__vxRemoteRuns).toEqual(['pkg-a#hello'])
+
+      g.__vxRemoteRuns = []
+      const verified = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        cache: { localRead: false, localWrite: true, remoteRead: false, remoteWrite: true },
+        verify: { determinism: false, inputs: true, fingerprint: false, allow: new Set() },
+        log: makeSilentLogger(),
+        handleSignals: false,
+      })
+      // The task ran LOCALLY (spy untouched). Whether the verify itself is
+      // green depends on the host's sandbox; placement is what this pins.
+      expect(g.__vxRemoteRuns).toEqual([])
+      expect(verified.outcomes.find((o) => o.node.id === 'pkg-a#hello')).toBeDefined()
+    } finally {
+      cleanup()
+    }
+  })
+
   it('NO DEFAULTS: a workspace with no plugins fails before any task runs and names the fix', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {

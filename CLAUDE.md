@@ -437,6 +437,31 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (eleventh wave) — `--verify=inputs` × remote execution was a
+  VACUOUS PASS; verify now pins placement local.** The undefined interaction
+  nobody had thought through: `verify=inputs` proves input-completeness by
+  forcing the OS sandbox onto the exec — but a remote executor has no
+  sandbox (the reapi executor contains zero references to `req.sandbox`),
+  so a remotely-executed task reported zero violations and the verify
+  GREEN-LIT it, leaky or not. A false pass over the exact property the flag
+  exists to prove, confirmed by code-flow before any probe (the executor
+  ignores the baselines by construction — no run needed to establish it).
+  Fix at the right layer: PLACEMENT — a `verify.inputs` run pins every task
+  local (`placeTasks(…, pinAllLocal)`), because the verify is a local proof
+  procedure by definition; determinism and fingerprint modes are untouched
+  (no sandbox involved, and a remote determinism re-run arguably proves
+  MORE). Pinned with a control-first e2e: without verify the greedy remote
+  spy takes the task (proving the pin is the flag's doing), with
+  `verify.inputs` the spy is never offered anything; the assertion is
+  placement-level rather than sandbox-level so the pin is immune to the
+  macOS reporting lossiness. Differential: dropping the `pinAllLocal`
+  argument fails exactly the new pin; verify suite 58/0 after restore. The
+  remote-execution guide gained the sentence. Remaining in this family,
+  recorded: a remote-only task under `verify.inputs` noops locally and is
+  therefore silently UNVERIFIED rather than reported as unverifiable —
+  low stakes (it also never executes locally by definition) but worth a
+  verify-report surface eventually.
+
 - **2026-08-24 (tenth wave) — the remote-execution GUIDE ships, closing the
   docs gap the arc left.** `remote: 'only'`, install-as-action, worker-image
   requirements and the reliability behaviour existed only in schema.md and

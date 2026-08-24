@@ -255,7 +255,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // can admit a remote-pooled task against its pool instead of a local
   // worker slot. Group tasks run nothing; persistent tasks never reach an
   // executor (local by construction) — both stay off the map.
-  const placements = placeTasks(nodes, executors)
+  //
+  // `--verify=inputs` pins EVERYTHING local: the input-completeness proof
+  // is the OS sandbox, which is local machinery a remote executor silently
+  // ignores — so a remotely-executed task would pass the verify VACUOUSLY,
+  // leaky or not. A verify run is a local proof procedure by definition;
+  // determinism/fingerprint modes are unaffected (no sandbox involved).
+  const placements = placeTasks(nodes, executors, options.verify?.inputs === true)
 
   // Run-level default task timeout (ms), applied to any task WITHOUT its own
   // `exec.timeout`. Precedence, highest first: `--timeout`/RunOptions.timeout
@@ -1079,7 +1085,11 @@ interface Placements {
   remoteOnly: Set<string>
 }
 
-function placeTasks(nodes: Map<string, TaskNode>, executors: readonly TaskExecutor[]): Placements {
+function placeTasks(
+  nodes: Map<string, TaskNode>,
+  executors: readonly TaskExecutor[],
+  pinAllLocal = false,
+): Placements {
   const pinned = pinnedLocalSet(nodes)
   const placements: Placements = {
     executors: new Map(),
@@ -1093,7 +1103,7 @@ function placeTasks(nodes: Map<string, TaskNode>, executors: readonly TaskExecut
       projectName: node.projectName,
       projectDir: node.projectDir,
       command: node.config.exec!.command,
-      pinnedLocal: pinned.has(node.id),
+      pinnedLocal: pinAllLocal || pinned.has(node.id),
       cacheable: node.config.cache !== undefined,
     })
     placements.executors.set(node.id, executor)

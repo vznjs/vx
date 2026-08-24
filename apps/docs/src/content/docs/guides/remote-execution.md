@@ -62,7 +62,9 @@ A task's inputs on the worker are exactly what its cache key declares:
 state — `tsconfig.json` not covered by a glob, `.npmrc`, `node_modules` — is
 deliberately not part of the key and therefore **not on the worker**.
 `vx run --verify=inputs` proves a task's declared inputs are complete before
-you mark it remote-eligible.
+you mark it remote-eligible — and a verify-inputs run pins **everything**
+local, because the proof is the OS sandbox and a worker has none: executed
+remotely, the verify would pass vacuously.
 
 ## node_modules: install as an action
 
