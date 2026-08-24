@@ -476,7 +476,13 @@ time every single time.
   inode in place — the artifact bytes were written THROUGH
   `ln <victim> <dest>/out.txt`, replacing the victim's content (executed
   probe; the identical threat model the symlink branch already documents,
-  minus the link-shaped tell). Fix: unlink ANY existing non-directory
+  minus the link-shaped tell). PROVENANCE (vx-eb's correction, verified
+  against `5b2ae3c:src/cache/tar.ts:415`): the gap is INHERITED — the
+  symlink-only line was ported verbatim from the old tar reader, where it
+  survived every prior audit. A counterexample to the new-code rule worth
+  its own sentence: a faithful port carries the original's bugs at full
+  strength, so the audit trigger is code that MOVED, not only code that
+  is new. Fix: unlink ANY existing non-directory
   target before writing — breaks every link shape at once, recreates a
   plain file, and a directory still fails the write fail-closed.
   Differential: reverting to symlink-only fails exactly the hardlink pin;
@@ -486,14 +492,16 @@ time every single time.
   REFUTED-BY-PRECONDITION: the `mode !== 0` chmod-skip sentinel is
   unreachable — a mode-0 output cannot be PACKED (`Bun.file().bytes()`
   gets EACCES), so no artifact can carry mode 0 (the probe found this by
-  failing at pack, not extract). MEASURED (their pointer #1, the one they
-  were least comfortable with): isolated read+extract of a 256 MB
-  single-output artifact peaks at ~1043 MB RSS — ~4× the artifact bytes,
-  double the predicted 2× (input + `files()` copies + write buffering).
-  Recorded as a characteristic, not fixed: the 2 GiB decompress ceiling
-  bounds the input, streaming extraction via `Archive.extract()` is
-  unusable (no mtime, no prefix strip — their ledger), and typical
-  artifacts are MBs. Residual noted, not fixed: an epoch-mtime output
+  failing at pack, not extract). MEASURED (their pointer #1) by BOTH
+  sessions in parallel, one answer: my isolated read+extract of a 256 MB
+  artifact peaked at ~1043 MB RSS (~4× the bytes); their old-vs-new arms
+  at 150 MB (e954cbe) put it at 575 → 683 MB (+19%, restore +28%),
+  refuted the obvious lifetime fix by measurement, and corrected their
+  own "restore is a wash" claim in place — a wash only below ~12 MB. One
+  characteristic, recorded from both angles: `files()` copies coexist
+  with the decompressed tar, streaming `extract()` is unusable (no
+  mtime, no prefix strip), the 2 GiB ceiling bounds input not
+  multiplier, and typical artifacts are MBs. Residual noted, not fixed: an epoch-mtime output
   (`mtimeMs === 0`) skips utimes and re-restores every warm run — perf
   echo of the closed isOutputsCurrent item, unreachable in practice.
 
