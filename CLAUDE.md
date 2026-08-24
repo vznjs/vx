@@ -446,6 +446,31 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (twenty-third wave) — stable-keys audited: ALL CLEAN,
+  three escape routes each refuted with the code that closes them.** The
+  derivation feeding both remote-prefetch and the restore-tier classify —
+  a wrong "stable" verdict is stale-hit-adjacent — got its first dedicated
+  hostile pass. REFUTED #1 (the sharpest): a `cache.inputs.runtime`
+  command reading a SIBLING project's outputs (`cat ../lib/dist/v.txt`)
+  escapes all three stability clauses — but walking the third-state
+  scenario to the end shows the upstream-key fold SUBSUMES the stale
+  classify-time reading under the same determinism assumption pure-input
+  hashing already makes: a hit under the wrong-keyed entry can only occur
+  in a state where the entry's content is what a fresh execution would
+  produce anyway. The class degrades to one spurious miss per upstream
+  change, converging — never a stale hit. Runtime commands are run-level
+  environment readings BY DESIGN (memoized per project+command for the
+  whole run); caching.md now says so and tells users to declare a
+  producer's output as an input instead of sampling it. REFUTED #2: the
+  runtime memo cannot alias across projects — keyed `projectDir + '\0' +
+command`, documented at the declaration. REFUTED #3: a parent project's
+  `outputs.files` cannot write into a NESTED child project where the
+  producer-project analysis would miss it — `resolveOutputs` excludes
+  nested-project dirs (boundary enforced on outputs, not just inputs).
+  Fourth consecutive surface to close clean or comment-pin-only: the
+  audit rotation stays signal-driven. Canary #6 banked: 19/1/0;
+  cumulative n=120, reporting loss 3.3%, non-enforcement still zero.
+
 - **2026-08-24 (twenty-second wave) — the "non-enforcement" mode was a
   MISREAD of an ambiguous signal; the verify=inputs false pass is plain
   reporting loss, and the settle window now covers the clean-exit shape

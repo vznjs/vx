@@ -484,6 +484,17 @@ lockfile:
   — inside `resolveInputs`, the same place env _values_ are read from
   the host `process.env`. The lock never stores it.
 
+A runtime command executes **once per run, per project** (memoized by
+`projectDir + command`), at key-derivation time — which, with the
+up-front classify/prefetch pass, is before any task runs. It is a
+run-level reading of the ENVIRONMENT (toolchain versions, resolved
+config), not a per-task probe: a command that reads another task's
+OUTPUT folds the pre-run state, which under deterministic upstreams is
+subsumed by the folded upstream keys and degrades to a spurious miss on
+the run after that output changes — never a stale hit — but declare the
+producing task's output as an input (`dependsOn` + files) rather than
+sampling it from a runtime command.
+
 So `vx run --frozen` loads the frozen command strings but still spawns
 them and folds their current output into the key. A `node -v` that goes
 from `v20` to `v22` after the lock was written busts the cache under
