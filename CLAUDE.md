@@ -423,6 +423,40 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 — misbehaving-remote audit: a WEDGED server hung every run at
+  its first cache probe; fixed with cache-path gRPC deadlines.** The rotation
+  said exercise the reapi cache composition against a remote that misbehaves
+  rather than one that is down. CONFIRMED by executed probe: a TCP listener
+  that accepts and never speaks wedged `ReapiRemoteCache.has()` FOREVER — no
+  deadline existed anywhere in the wire, so the standing invariant "a remote
+  cache error degrades to a MISS" was vacuous (the error never happens when
+  the call never returns), and every task's probe would hang the run. A DOWN
+  server was always fine (instant UNAVAILABLE → degrade) — which is exactly
+  why this class survives testing against healthy-or-absent servers. Fix:
+  `callTimeoutMs` (default 30 s) as a gRPC deadline on EVERY cache-path call
+  — all unary RPCs plus ByteStream read/write — but deliberately NOT on
+  `Execute`/`WaitExecution` (queueing behind a busy pool is legitimate and
+  unbounded; a wedged server still cannot reach Execute because the bounded
+  `GetCapabilities` runs first and fails). `DEADLINE_EXCEEDED` stays
+  non-retryable, so a wedge costs ONE deadline, not deadline × retries.
+  Pinned three ways in `tests/wedged.test.ts` (offline — a Bun.listen
+  silent socket, no docker): the raw rejection with code 4 inside the bound;
+  the invariant END-TO-END at the plugin boundary (reapi()'s layer over a
+  wedged remote answers `null` + warns, inside 5 s, instead of hanging);
+  and a DOWN server as the false-positive CONTROL (still fast, passes both
+  ways). Differential: neutering `bounded()` fails exactly the two wedge
+  pins, control unaffected, restore 3/0. **A probe mistake worth keeping:**
+  the first post-fix probe still "hung" — its 10 s observation window was
+  shorter than the 30 s default deadline it was observing. Size the probe
+  window to the bound being tested, or the fix looks broken. **Two process
+  notes from the same session:** an edit script that inserts by line number
+  must do ALL insertions in one descending pass — mixing ranges corrupted
+  offsets and the asserts caught it before the write; and the previous
+  wave's CI claim ("one-process suite stays green on native amd64") was
+  DISPROVEN within the hour and corrected in place — the packages job now
+  runs one bun process per test file, the shape the evidence supports, and
+  went green on `964ce96`.
+
 - **2026-08-23 (tenth wave) — hostile audit of the day-old chaining code:
   three findings CONFIRMED and fixed, one NEW bug found by a failing probe,
   one hang REFUTED as ours.** Per the standing rule that new code is where

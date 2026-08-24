@@ -193,6 +193,7 @@ async function unary<T>(
   method: string,
   req: unknown,
   meta: grpc.Metadata,
+  options: grpc.CallOptions = {},
 ): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -200,6 +201,7 @@ async function unary<T>(
         ;(client as unknown as Record<string, Function>)[method]!(
           req,
           meta,
+          options,
           (err: grpc.ServiceError | null, res: T) => (err ? reject(err) : resolve(res)),
         )
       })
@@ -228,6 +230,16 @@ export interface ReapiOptions {
   /** Groups several vx runs as one logical build in a server's UI. */
   correlatedInvocationsId?: string
   /**
+   * Deadline for every CACHE-PATH call (unary RPCs, ByteStream transfers).
+   * Default 30 000 ms. This is what turns a WEDGED server — accepts TCP,
+   * never answers — into an error the layer above can degrade to a MISS;
+   * without it the first probe hangs the whole run. Execution streams are
+   * NOT bounded by this (queueing behind a busy worker pool is legitimate
+   * and unbounded); a wedged server still cannot reach Execute, because the
+   * deadline-bounded Capabilities call runs first and fails.
+   */
+  callTimeoutMs?: number
+  /**
    * Bytes per ByteStream message. Defaults to `CHUNK_BYTES` (128 KB). Drop to
    * `SAFE_CHUNK_BYTES` if uploads wedge against your server — the ceiling is
    * peer-dependent, see the note on `CHUNK_BYTES`.
@@ -240,6 +252,7 @@ export class ReapiClient {
   private readonly instance: string
   private readonly headers: Record<string, string>
   private readonly chunkBytes: number
+  private readonly callTimeoutMs: number
   private digestFunction: DigestFunctionName = 'SHA256'
   private compression = false
   private batchCompression = false
@@ -265,6 +278,7 @@ export class ReapiClient {
     this.toolVersion = opts.toolVersion ?? '0.0.0'
     this.correlatedInvocationsId = opts.correlatedInvocationsId ?? ''
     this.chunkBytes = opts.chunkBytes ?? CHUNK_BYTES
+    this.callTimeoutMs = opts.callTimeoutMs ?? 30_000
     if (!Number.isInteger(this.chunkBytes) || this.chunkBytes < 1) {
       throw new Error(
         `@vzn/vx-reapi: chunkBytes must be a positive integer (got ${this.chunkBytes})`,
@@ -279,6 +293,11 @@ export class ReapiClient {
    * UI. Omitting it is legal and makes vx invisible in every REAPI server's
    * dashboard, which is the whole reason the field exists.
    */
+  /** Call options carrying the cache-path deadline. */
+  private bounded(): grpc.CallOptions {
+    return { deadline: new Date(Date.now() + this.callTimeoutMs) }
+  }
+
   private meta(): grpc.Metadata {
     const m = new grpc.Metadata()
     for (const [k, v] of Object.entries(this.headers)) m.set(k, v)
@@ -332,7 +351,13 @@ export class ReapiClient {
         splice_blob_support?: boolean
       }
       execution_capabilities?: { exec_enabled?: boolean; digest_function?: string }
-    }>(this.svc.caps, 'getCapabilities', { instance_name: this.instance }, this.meta())
+    }>(
+      this.svc.caps,
+      'getCapabilities',
+      { instance_name: this.instance },
+      this.meta(),
+      this.bounded(),
+    )
     const cc = res.cache_capabilities
     return {
       digestFunctions: cc?.digest_functions ?? [],
@@ -415,6 +440,7 @@ export class ReapiClient {
         'queryWriteStatus',
         { resource_name: resourceName },
         this.meta(),
+        this.bounded(),
       )
       return { committedSize: Number(res.committed_size ?? 0), complete: res.complete === true }
     } catch (err) {
@@ -448,6 +474,7 @@ export class ReapiClient {
         ...(this.digestFunction === 'SHA256' ? {} : { digest_function: this.digestFunction }),
       },
       this.meta(),
+      this.bounded(),
     )
     // A batch call succeeds at the RPC layer while individual blobs fail; a
     // silently dropped input blob would surface later as an unexplained
@@ -497,6 +524,7 @@ export class ReapiClient {
           ...(this.digestFunction === 'SHA256' ? {} : { digest_function: this.digestFunction }),
         },
         this.meta(),
+        this.bounded(),
       )
       for (const r of res.responses ?? []) {
         if ((r.status?.code ?? 0) !== 0 || r.data === undefined) continue
@@ -559,6 +587,7 @@ export class ReapiClient {
       'findMissingBlobs',
       { instance_name: this.instance, blob_digests: digests },
       this.meta(),
+      this.bounded(),
     )
     return res.missing_blob_digests ?? []
   }
@@ -571,6 +600,7 @@ export class ReapiClient {
         'getActionResult',
         { instance_name: this.instance, action_digest: action },
         this.meta(),
+        this.bounded(),
       )
     } catch (err) {
       if ((err as grpc.ServiceError).code === NOT_FOUND) return null
@@ -584,6 +614,7 @@ export class ReapiClient {
       'updateActionResult',
       { instance_name: this.instance, action_digest: action, action_result: result },
       this.meta(),
+      this.bounded(),
     )
   }
 
@@ -641,6 +672,7 @@ export class ReapiClient {
     return new Promise((resolve, reject) => {
       const stream = (this.svc.bs as unknown as Record<string, Function>)['write']!(
         this.meta(),
+        this.bounded(),
         (err: grpc.ServiceError | null, res: { committed_size?: string }) => {
           if (err) return reject(err)
           const committed = Number(res.committed_size ?? 0)
@@ -687,6 +719,7 @@ export class ReapiClient {
       const stream = (this.svc.bs as unknown as Record<string, Function>)['read']!(
         { resource_name: resource, read_offset: 0, read_limit: 0 },
         this.meta(),
+        this.bounded(),
       ) as { on(e: string, f: (x: never) => void): void }
       stream.on('data', (m: { data: Uint8Array }) => chunks.push(m.data))
       stream.on('error', (err: grpc.ServiceError) =>
@@ -828,6 +861,7 @@ export class ReapiClient {
         ...(this.digestFunction === 'SHA256' ? {} : { digest_function: this.digestFunction }),
       },
       this.meta(),
+      this.bounded(),
     )
     return { chunks: res.chunk_digests ?? [], chunkingFunction: res.chunking_function ?? 'UNKNOWN' }
   }
@@ -848,6 +882,7 @@ export class ReapiClient {
         ...(this.digestFunction === 'SHA256' ? {} : { digest_function: this.digestFunction }),
       },
       this.meta(),
+      this.bounded(),
     )
     return res.blob_digest ?? { hash: '', size_bytes: 0 }
   }
@@ -865,6 +900,7 @@ export class ReapiClient {
         'getTree',
         { instance_name: this.instance, root_digest: rootDigest, page_token: pageToken },
         this.meta(),
+        this.bounded(),
       )
       out.push(...(res.directories ?? []))
       pageToken = res.next_page_token ?? ''

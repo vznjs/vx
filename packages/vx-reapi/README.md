@@ -79,6 +79,20 @@ reapi({ endpoint: '…', chunkBytes: SAFE_CHUNK_BYTES })
 NativeLink, BuildBuddy and Buildbarn. The full probe matrix is in
 `docs/design/plugin-executor-reapi-2026-08.md` §14.
 
+## Deadlines: a wedged server degrades, it does not hang
+
+Every cache-path call (unary RPCs, ByteStream transfers) carries a gRPC
+deadline — `callTimeoutMs`, default 30 s. This is what turns a **wedged**
+server — accepts TCP, never answers — into an error the cache layer degrades
+to a MISS; without it the first probe would hang the whole run, and "errors
+degrade to a miss" is vacuous when the call never returns. `DEADLINE_EXCEEDED`
+is deliberately not retried (one deadline, not deadline × retries).
+
+Execution streams (`Execute`/`WaitExecution`) are **not** bounded by it:
+queueing behind a busy worker pool is legitimate and unbounded. A wedged
+server still cannot reach `Execute`, because the deadline-bounded
+`GetCapabilities` call runs first and fails.
+
 ## Tests
 
 `bun test` runs the unit suite anywhere. The round-trip suite needs a real
