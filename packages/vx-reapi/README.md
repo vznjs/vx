@@ -216,7 +216,12 @@ worker (`tests/vx-run-e2e.test.ts`):
 - A dependent task's input tree grafts the install outputs **by reference**
   (per-file digests from the execution record; whole directories as
   re-canonicalised REAPI `Tree`s), so the bytes flow worker→CAS→worker and
-  never transit the submitter.
+  never transit the submitter. The graft applies ONLY to outputs that exist
+  nowhere locally: when an upstream's outputs are materialised on this
+  machine, **local disk is truth** — two machines racing a nondeterministic
+  miss can leave the artifact store and the execution record holding
+  results of different executions under one pure-input key, and a worker
+  fed the record would see bytes this machine's own tasks do not.
 - With **no remote executor declared**, `install` is a local no-op and
   dependents use whatever the machine has ambient — a laptop run behaves
   exactly as it did before the field existed.

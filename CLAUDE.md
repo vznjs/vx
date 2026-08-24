@@ -423,6 +423,33 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (fifth wave) — dual-store coherence: the graft priority was
+  BACKWARDS; local disk is truth.** The audit target was reapi's cache and
+  executor holding state for the same key in TWO stores (the artifact
+  mapping and the execution record). The divergence scenario is real: two
+  machines racing a NONDETERMINISTIC miss leave the stores holding results
+  of DIFFERENT executions under one pure-input key (the key cannot
+  distinguish them — that is what pure-input hashing means), after which a
+  third machine restores one execution's artifact to disk while the shipped
+  graft-first rule fed the OTHER execution's bytes to its workers: vx
+  disagreeing with itself on a single machine. FIXED by inverting the
+  priority: an upstream whose outputs are materialised locally uses LOCAL
+  DISK, and the execution-record graft applies only to outputs that exist
+  nowhere locally (the remote-only install case — which keeps the whole
+  worker→CAS→worker win, since those have no local copy by design). The
+  coherence pin plants a DIVERGENT record whose content IS in the CAS — so
+  a wrongly-consulted graft SUCCEEDS with wrong bytes rather than failing,
+  which is what makes it a coherence probe and not an eviction probe — and
+  asserts the worker reads the local bytes. Differential: reverting to
+  graft-first reads `remote-divergent` where `local-truth` was expected;
+  restore green. Consequence for the eviction guard: the graft branch now
+  runs only when NOTHING is local, so an evicted record there is a REAL
+  loss with nothing to demote to — the warn now says the outputs are gone
+  everywhere and names the remedy (re-run / --force) instead of pretending
+  a fallback exists. Side benefit: one fewer `GetActionResult` round trip
+  per locally-present upstream. 7/7 exec e2e green live against
+  NativeLink.
+
 - **2026-08-24 (fourth wave) — pool-slot leak hypothesis REFUTED; the pool's
   failure path gains its first coverage.** The audit target: whether the
   scheduler's `leave()` releases a pooled executor's slot when `execute`

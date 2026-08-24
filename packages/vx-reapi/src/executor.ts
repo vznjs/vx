@@ -415,11 +415,20 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       const treeGrafts: TreeGraft[] = []
       const localUpstreamPaths: string[] = []
       for (const up of req.inputs.upstream) {
-        const record = await client.getActionResult(execDigestFor(up.hash))
-        if (record === null) {
+        // LOCAL DISK IS TRUTH when the upstream's outputs are materialised
+        // here (core restored or produced them before this task started).
+        // Grafting from the remote execution record instead can DIVERGE: two
+        // machines racing a nondeterministic miss leave the artifact store
+        // and the execution record holding results of DIFFERENT executions
+        // under one pure-input key, and a worker fed the record would see
+        // bytes this machine's own tasks do not. The graft is for outputs
+        // that exist nowhere locally — a remote-only upstream.
+        if (up.outputs.length > 0) {
           localUpstreamPaths.push(...up.outputs)
           continue
         }
+        const record = await client.getActionResult(execDigestFor(up.hash))
+        if (record === null) continue
         // A record can OUTLIVE its blobs: the AC and the CAS evict on
         // independent schedules, and a graft referencing an evicted blob
         // fails on the WORKER with a missing-input error nobody can act on.
@@ -433,10 +442,13 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         ]
         const gone = await client.findMissingBlobs(referenced)
         if (gone.length > 0) {
+          // No local copy exists (that is why we are grafting), so there is
+          // nothing to demote to: the outputs are gone everywhere and the
+          // action WILL fail on the worker. Name the cause now — the worker's
+          // own error will just be a missing file.
           warn(
-            `vx/reapi: upstream ${up.taskId} execution record references ${gone.length} evicted blob(s) — using local outputs`,
+            `vx/reapi: upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob(s)) and never materialised locally — re-run it (e.g. --force)`,
           )
-          localUpstreamPaths.push(...up.outputs)
           continue
         }
         for (const f of record.output_files ?? []) {
@@ -449,11 +461,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         for (const d of record.output_directories ?? []) {
           const treeBlob = await client.readBlob(d.tree_digest)
           if (treeBlob === null) {
-            // Raced an eviction between the completeness check and this read.
+            // Raced an eviction between the completeness check and this
+            // read; on this branch no local copy exists, so the loss is real.
             warn(
-              `vx/reapi: upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS`,
+              `vx/reapi: upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it`,
             )
-            localUpstreamPaths.push(...up.outputs)
             continue
           }
           const decodedTree = decodeTree(treeBlob)

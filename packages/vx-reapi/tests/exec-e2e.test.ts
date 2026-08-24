@@ -313,26 +313,31 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
     }
   }, 180_000)
 
-  it('an execution record with evicted blobs demotes to local outputs instead of a worker error', async () => {
+  it('COHERENCE: local outputs win over a DIVERGENT execution record', async () => {
+    // Two machines racing a nondeterministic miss can leave the artifact
+    // store and the execution record holding results of DIFFERENT executions
+    // under one pure-input key. When the upstream's outputs are materialised
+    // on THIS machine, the worker must see THOSE bytes — not the record's —
+    // or vx disagrees with itself on a single machine.
     const { execDigestFor, digestOf } = await import('../src/cache.js')
-    const root = await mkdtemp(path.join(tmpdir(), 'vx-evict-'))
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-coherence-'))
     const client = new ReapiClient({ endpoint })
     try {
       await client.negotiate()
       await mkdir(path.join(root, 'pkg', 'gen'), { recursive: true })
-      // The upstream's outputs ARE on local disk (it ran locally)…
       await writeFile(path.join(root, 'pkg', 'gen', 'data.txt'), 'local-truth\n')
-      // …but a stale record exists whose blob was never uploaded (an
-      // eviction, compressed into one step: a digest of content the CAS has
-      // never seen).
-      const key = `evicted-${n3}`
-      const phantom = digestOf(new TextEncoder().encode(`never-uploaded-${n3}`))
+      // A divergent record whose content IS present in CAS — so if the graft
+      // were consulted, the action would SUCCEED with the wrong bytes. That
+      // is what makes this a coherence probe rather than an eviction probe.
+      const key = `diverged-${n3}`
+      const remoteBytes = new TextEncoder().encode('remote-divergent\n')
+      const remoteDigest = digestOf(remoteBytes)
+      await client.batchUpdateBlobs([{ digest: remoteDigest, data: remoteBytes }])
       await client.updateActionResult(execDigestFor(key), {
         exit_code: 0,
-        output_files: [{ path: 'pkg/gen/data.txt', digest: phantom, is_executable: false }],
+        output_files: [{ path: 'pkg/gen/data.txt', digest: remoteDigest, is_executable: false }],
       })
-      const warns: string[] = []
-      const executor = reapiExecutor(client, { warn: (m) => warns.push(m) })
+      const executor = reapiExecutor(client, { warn: () => undefined })
       let stdout = ''
       const res = await executor.execute(
         req3(root, {
@@ -352,8 +357,49 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
         }),
       )
       expect(res.exitCode).toBe(0)
-      expect(stdout.trim()).toBe('local-truth') // the fallback carried the day
-      expect(warns.some((w) => w.includes('evicted blob'))).toBe(true)
+      expect(stdout.trim()).toBe('local-truth')
+    } finally {
+      client.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
+
+  it('an evicted record with NO local copy warns that the outputs are gone everywhere', async () => {
+    // The graft branch only runs when nothing is local, so an eviction there
+    // is a real loss. The action will fail on the worker with a bare missing
+    // file — the warn is what names the cause and the remedy.
+    const { execDigestFor, digestOf } = await import('../src/cache.js')
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-evict2-'))
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      await mkdir(path.join(root, 'pkg'), { recursive: true })
+      const key = `evicted-${n3}`
+      const phantom = digestOf(new TextEncoder().encode(`never-uploaded-${n3}`))
+      await client.updateActionResult(execDigestFor(key), {
+        exit_code: 0,
+        output_files: [{ path: 'pkg/gen/data.txt', digest: phantom, is_executable: false }],
+      })
+      const warns: string[] = []
+      const executor = reapiExecutor(client, { warn: (m) => warns.push(m) })
+      const res = await executor.execute(
+        req3(root, {
+          command: 'cat gen/data.txt 2>/dev/null || echo absent',
+          cacheKey: `dep2-${n3}`,
+          inputs: {
+            files: [],
+            env: [],
+            runtime: [],
+            workspaceRuntime: [],
+            upstream: [{ taskId: 'pkg#up', hash: key, outputs: [] }],
+            packageJsonDigest: 'p',
+            configDigest: 'c',
+            workspaceFingerprint: 'w',
+          },
+        }),
+      )
+      expect(res.exitCode).toBe(0)
+      expect(warns.some((w) => w.includes('never materialised locally'))).toBe(true)
     } finally {
       client.close()
       await rm(root, { recursive: true, force: true })
