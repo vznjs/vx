@@ -781,6 +781,101 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  it("placement: --dry labels a noop'd remote-only task as @noop, not as a lie", async () => {
+    // `remote: 'only'` + a remote executor that DECLINES it = the task will
+    // not run anywhere. A --dry that shows the local executor's name there
+    // would promise an execution that never happens; `noop` is the honest
+    // label, and it must only appear for exactly that configuration.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           install: {
+             exec: { command: 'echo i', remote: 'only' },
+             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+           },
+           hello: {
+             exec: { command: 'echo hi' },
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+           },
+         } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/remote',
+             executor() {
+               return {
+                 name: 'picky-remote',
+                 remote: true,
+                 // declines install, takes hello — so one plan shows all
+                 // three label states at once
+                 accepts(task) { return task.taskId !== 'pkg-a#install' },
+                 async execute() { throw new Error('plan mode must not execute') },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const plan = await planRun({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['install', 'hello'],
+        log: makeSilentLogger(),
+      })
+      const byId = new Map(plan.tasks.map((t) => [t.node.id, t.executor]))
+      expect(byId.get('pkg-a#install')).toBe('noop')
+      expect(byId.get('pkg-a#hello')).toBe('picky-remote')
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("placement: --dry shows the REMOTE executor for an 'only' task it accepts", async () => {
+    // The other half: when the remote pool takes it, the label is the
+    // executor's name like any other placement — noop must not leak here.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           install: {
+             exec: { command: 'echo i', remote: 'only' },
+             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+           },
+         } }`,
+      )
+      await Bun.write(
+        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          `{
+             name: 'org/remote',
+             executor() {
+               return {
+                 name: 'pool',
+                 remote: true,
+                 async execute() { throw new Error('plan mode must not execute') },
+               }
+             },
+           }`,
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const plan = await planRun({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['install'],
+        log: makeSilentLogger(),
+      })
+      expect(plan.tasks.find((t) => t.node.id === 'pkg-a#install')?.executor).toBe('pool')
+    } finally {
+      cleanup()
+    }
+  })
+
   it('placement: --dry says nothing when the workspace declares one executor', async () => {
     // The control. With no choice to show, the label is noise, so every
     // plan line stays byte-identical to before placement existed.

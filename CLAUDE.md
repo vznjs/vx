@@ -423,6 +423,18 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (second wave) — the `--dry` `@noop` label pinned in both
+  directions.** Anti-drift, not a bug hunt: `remote: 'only'` gave placement a
+  THIRD state and the plan surface rendered it unpinned. Two e2e pins: a
+  remote executor that DECLINES the 'only' task yields `@noop` while its
+  sibling shows the remote executor's name in the SAME plan (all label
+  states in one fixture); a remote executor that ACCEPTS it shows the pool's
+  name — noop must not leak onto tasks that will run. Mutation check: making
+  the label fall through to the placed executor's name kills exactly the
+  noop pin (a `--dry` that names the local executor for a task that will not
+  run anywhere is promising an execution that never happens). Docs:
+  plan-format.md now defines `@noop`.
+
 - **2026-08-24 — misbehaving-remote audit: a WEDGED server hung every run at
   its first cache probe; fixed with cache-path gRPC deadlines.** The rotation
   said exercise the reapi cache composition against a remote that misbehaves

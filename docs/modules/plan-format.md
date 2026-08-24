@@ -56,9 +56,13 @@ since with a single executor every line would carry the same label:
 
 It is the executor's NAME, not a `local`/`remote` word: the summary line
 already spends both of those on the cache tier ("2 cache hits (1 local, 1
-remote)"), and the name is what a reader can act on. See
+remote)"), and the name is what a reader can act on. One label is not an
+executor: `@noop` marks a `remote: 'only'` task no remote executor took —
+it will not run ANYWHERE this run (dependents use the machine's ambient
+state), and showing the local executor's name there would promise an
+execution that never happens. See
 [`schema.md` § `remote`](../schema.md#remote-optional) for what pins a task
-locally.
+locally and what `'only'` means.
 
 ## `formatPlanJson`
 
