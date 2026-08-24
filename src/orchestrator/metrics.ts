@@ -21,7 +21,7 @@ import { splitTaskId } from '../graph/index.js'
 import { clampInt } from '../util/index.js'
 import { classifyFailureMode, mixedOutcomeKeyCount } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
-import { isPassStatus, TASK_STATUSES } from './telemetry.js'
+import { isCacheHit, isPassStatus, TASK_STATUSES } from './telemetry.js'
 
 // ---------------------------------------------------------------------------
 // Run listing + detail
@@ -444,7 +444,7 @@ export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistory
            COUNT(*) AS total,
            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
-           SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hits,
+           SUM(CASE WHEN cache_hit = 1 OR status IN ${HIT_STATUSES} THEN 1 ELSE 0 END) AS hits,
            SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) AS retried,
            SUM(duration_ms) AS totalDurationMs,
            MAX(ended_at) AS lastSeenAt
@@ -709,7 +709,7 @@ export function getCacheSavings(db: Database): CacheSavings {
                    AND s.status = 'success') AS avgDur
          FROM runs r
          WHERE r.started_at >= ?
-           AND (r.cache_hit = 1 OR r.status LIKE 'cache-hit%')
+           AND (r.cache_hit = 1 OR r.status IN ${HIT_STATUSES})
        )`,
     )
     .get(since) as { saved: number; hits: number; attributed: number }
@@ -722,7 +722,7 @@ export function getCacheSavings(db: Database): CacheSavings {
                    AND (s.cache_hit IS NULL OR s.cache_hit = 0)
                    AND s.status = 'success') AS avgDur
          FROM runs r
-         WHERE (r.cache_hit = 1 OR r.status LIKE 'cache-hit%')
+         WHERE (r.cache_hit = 1 OR r.status IN ${HIT_STATUSES})
        ) WHERE avgDur IS NOT NULL`,
     )
     .get() as { saved: number }
@@ -1220,7 +1220,7 @@ export function listProjects(db: Database, limit = 100): ProjectRollup[] {
               COUNT(DISTINCT task) AS taskCount,
               COUNT(*) AS runs,
               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
-              SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hits,
+              SUM(CASE WHEN cache_hit = 1 OR status IN ${HIT_STATUSES} THEN 1 ELSE 0 END) AS hits,
               SUM(duration_ms) AS totalDurationMs,
               CAST(AVG(duration_ms) AS INTEGER) AS avgDurationMs,
               MAX(ended_at) AS lastRunAt
@@ -1251,7 +1251,7 @@ export function listProjects(db: Database, limit = 100): ProjectRollup[] {
                      AND (s.cache_hit IS NULL OR s.cache_hit = 0)
                      AND s.status = 'success') AS avg
            FROM runs r WHERE r.project = ?
-             AND (r.cache_hit = 1 OR r.status LIKE 'cache-hit%')
+             AND (r.cache_hit = 1 OR r.status IN ${HIT_STATUSES})
          ) WHERE avg IS NOT NULL`,
       )
       .get(r.project) as { saved: number }
@@ -1319,7 +1319,7 @@ export function getRunTrends(
     .query(
       `SELECT (started_at / ?) * ? AS t,
               COUNT(*) AS runs,
-              SUM(CASE WHEN cache_hit = 1 OR status LIKE 'cache-hit%' THEN 1 ELSE 0 END) AS hits,
+              SUM(CASE WHEN cache_hit = 1 OR status IN ${HIT_STATUSES} THEN 1 ELSE 0 END) AS hits,
               SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END) AS hitsLocal,
               SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END) AS hitsRemote,
               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
@@ -1568,6 +1568,16 @@ export interface RegressionArgs {
 // compile-time literals from a closed union, so the interpolation is not a
 // parameterization hole.
 const PASS_STATUSES = `(${TASK_STATUSES.filter(isPassStatus)
+  .map((s) => `'${s}'`)
+  .join(', ')})`
+
+// The hit set, derived the same way. This replaced six SQL prefix-match
+// copies (LIKE on the literal prefix) — the exact class the 2026-08-05
+// status-vocabulary wave removed from the (since-deleted) cloud analytics:
+// a prefix answers a DIFFERENT question ("any status merely NAMED with the
+// prefix"), so a future status that happens to share it would silently
+// count as a hit. The tripwire guarding the class now greps the LIKE form.
+const HIT_STATUSES = `(${TASK_STATUSES.filter(isCacheHit)
   .map((s) => `'${s}'`)
   .join(', ')})`
 const BRANCH_CAP = 12

@@ -441,6 +441,31 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (fifteenth wave) — the status-prefix drift class survived in
+  CORE: seven `LIKE 'cache-hit%'` copies, one of them inside the flakiness
+  signal; killed by derivation and a widened tripwire that immediately
+  out-audited the audit.** The metrics surface (feeds `vx mcp` — wrong
+  answers there mislead AI agents silently) had six SQL prefix-matches on
+  the hit statuses, the exact class the 2026-08-05 wave eradicated from the
+  since-deleted cloud analytics. They survived because that sweep grepped
+  `startsWith`, not SQL `LIKE` — "when a wave fixes a CLASS, grep the class"
+  failed on a SPELLING of the class. Right answers today (the prefix
+  happens to match exactly {cache-hit, cache-hit-remote}); drift by
+  construction tomorrow (any future status sharing the prefix silently
+  counts as a hit). Fixed the sanctioned way: `HIT_STATUSES` derived from
+  `TASK_STATUSES.filter(isCacheHit)` beside the existing PASS derivation,
+  all six sites now `status IN ${HIT_STATUSES}`. **The tripwire extension
+  earned its keep before the commit existed:** widening the
+  no-inline-enumeration scan to also flag `LIKE 'cache-hit%'` /
+  `startsWith('cache-hit')` immediately failed on a SEVENTH copy my
+  metrics-only sweep had missed — in `failure-mode.ts`, inside
+  `mixedOutcomeKeys`, the flakiness signal itself. That live catch doubles
+  as the differential (the widened scan demonstrably discriminates on a
+  real offender, not a synthetic mutation). failure-mode now derives its
+  own list from the same predicate; both derivations are pinned. Canary
+  datapoint #2 also recorded this run: 18/2/0 at n=20 — runner reporting
+  loss ~7.5% cumulative, non-enforcement still unobserved.
+
 - **2026-08-24 (fourteenth wave) — a sandbox-enforcement CANARY now runs on
   every darwin CI pass, turning the unexplained non-enforcement mode into a
   data feed.** The mode (an undeclared read SUCCEEDING under the sandbox —

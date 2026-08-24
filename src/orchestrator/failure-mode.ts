@@ -7,6 +7,14 @@
 
 import type { Database } from 'bun:sqlite'
 import { KEYED_RUNS_SQL } from '../cache/index.js'
+import { isCacheHit, TASK_STATUSES } from './telemetry.js'
+
+// SQL hit set derived from the predicate — never a hand-typed list and never
+// a prefix LIKE (a prefix counts any status merely NAMED cache-hit-*). The
+// status-vocabulary tripwire greps both wrong forms.
+const HIT_STATUSES = `(${TASK_STATUSES.filter(isCacheHit)
+  .map((s) => `'${s}'`)
+  .join(', ')})`
 
 export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
 
@@ -24,7 +32,7 @@ export function mixedOutcomeKeyCount(db: Database, project: string, task: string
          WHERE project = ? AND task = ? AND ${KEYED_RUNS_SQL}
          GROUP BY hash
          HAVING SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) > 0
-            AND SUM(CASE WHEN status = 'success' OR status LIKE 'cache-hit%' OR cache_hit = 1
+            AND SUM(CASE WHEN status = 'success' OR status IN ${HIT_STATUSES} OR cache_hit = 1
                     THEN 1 ELSE 0 END) > 0
        )`,
     )

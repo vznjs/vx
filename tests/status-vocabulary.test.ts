@@ -151,6 +151,13 @@ describe('the tripwire that makes one definition stay one definition', () => {
           if (text.includes("'cache-hit'") && text.includes("'cache-hit-remote'")) {
             offenders.push({ file, line: i + 1, text: text.trim() })
           }
+          // The SQL spelling of the same drift: a LIKE/startsWith on the
+          // prefix answers "any status merely NAMED cache-hit-*" — six
+          // copies of it in core's metrics.ts survived the 2026-08-05 sweep
+          // precisely because that sweep grepped startsWith, not LIKE.
+          if (/LIKE\s+'cache-hit%'/i.test(text) || text.includes("startsWith('cache-hit')")) {
+            offenders.push({ file, line: i + 1, text: text.trim() })
+          }
         })
       }
     }
@@ -169,6 +176,11 @@ describe('the tripwire that makes one definition stay one definition', () => {
     expect({ file, derived: src.includes('TASK_STATUSES.filter(isPassStatus)') }).toEqual({
       file,
       derived: true,
+    })
+    // The HIT list is derived the same way (it replaced the LIKE copies).
+    expect({ file, hitDerived: src.includes('TASK_STATUSES.filter(isCacheHit)') }).toEqual({
+      file,
+      hitDerived: true,
     })
   })
 })
