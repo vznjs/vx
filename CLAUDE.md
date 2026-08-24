@@ -459,7 +459,12 @@ time every single time.
   rewritten form reads 6/6 ENFORCED_REPORTED at idle. From here, every
   darwin CI log accumulates ~20 observations; the hunt resumes when
   `not_enforced=` goes non-zero with a uname and outcome attached instead
-  of a mystery.
+  of a mystery. **First runner datapoint (same day, run on `03b6865`):**
+  `enforced_reported=19 enforced_unreported=1 not_enforced=0` — the
+  REPORTING-loss mode reproduced on GH's runner at 1/20, consistent with
+  the local post-settle-poll 2.2%, confirming the canary measures the real
+  phenomenon on real runners; the non-enforcement mode did not appear at
+  n=20, as expected for a rare event.
 
 - **2026-08-24 (thirteenth wave) — main red on a DOCKER HUB 500, not our
   diff; the NativeLink step hardened against registries having bad days.**
