@@ -304,8 +304,9 @@ export class LayeredCache implements CacheLayer {
   }
 
   async save(args: SaveArgs): Promise<void> {
-    // Local write honors its own gate inside Cache.save (no-op when
-    // local writes are disabled).
+    // Local write honors its own gates inside Cache.save (no-op when local
+    // writes are disabled, or when ChainedCache marked this a duplicate save
+    // to a shared local handle — see `skipLocalWrite` on the contract).
     await this.local.save(args)
     if (!this.policy.remoteWrite) return
     // Write-through upload, OFF the task's critical path: the PUT runs in

@@ -74,15 +74,28 @@ export class ChainedCache implements CacheLayer {
   }
 
   async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
+    // The caller (remote-prefetch) treats a non-null answer as authoritative
+    // for the WHOLE chain: complement = absent, broadcast. That is sound only
+    // if EVERY remote layer answered — a partial union would poison a layer
+    // that cannot batch with another layer's negatives, and its later lazy
+    // get() would skip a real remote hit. So: each answering layer gets its
+    // OWN complement marked here (its own truth — this also spares it the
+    // per-hash GETs for hashes only a sibling holds), and the merged answer
+    // is returned only when no remote layer was left unanswered.
     let out: Set<string> | null = null
+    let complete = true
     for (const layer of this.layers) {
-      if (layer.remoteHasMany === undefined) continue
-      const found = await layer.remoteHasMany(hashes)
-      if (found === null) continue
+      if (layer.hasRemote !== true) continue
+      const found = (await layer.remoteHasMany?.(hashes)) ?? null
+      if (found === null) {
+        complete = false
+        continue
+      }
+      layer.markRemoteAbsent?.(hashes.filter((h) => !found.has(h)))
       out ??= new Set()
       for (const h of found) out.add(h)
     }
-    return out
+    return complete ? out : null
   }
 
   markRemoteAbsent(hashes: Iterable<string>): void {
@@ -113,7 +126,18 @@ export class ChainedCache implements CacheLayer {
   }
 
   async save(args: Parameters<CacheLayer['save']>[0]): Promise<void> {
-    for (const layer of this.layers) await layer.save(args)
+    // Layers wrapping the SAME local handle (two remote plugins over
+    // ctx.localCache) would each pack + write the identical artifact; the
+    // first write is the only one that matters, so later layers get
+    // `skipLocalWrite` and go straight to their remote upload (which reads
+    // the artifact the first layer just wrote — same handle, same path).
+    const seenLocals = new Set<NonNullable<CacheLayer['local']>>()
+    for (const layer of this.layers) {
+      const local = layer.local
+      const skip = local !== undefined && seenLocals.has(local)
+      await layer.save(skip ? { ...args, skipLocalWrite: true } : args)
+      if (local !== undefined) seenLocals.add(local)
+    }
   }
 
   ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void> {

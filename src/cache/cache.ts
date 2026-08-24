@@ -739,6 +739,13 @@ export interface CacheLayer {
     projectDir: string
     outputFiles: string[]
     /**
+     * Set only by ChainedCache when an EARLIER layer in the chain already
+     * wrote this artifact to the same local handle: the local pack + write
+     * is skipped and only the layer's remote side acts. A layer with no
+     * remote side treats it as a full no-op.
+     */
+    skipLocalWrite?: boolean
+    /**
      * Resolved `outputs.workspaceFiles` (absolute paths) + the root
      * they're relative to. Packed under `workspace-outputs/<rel>`.
      * Omitted → artifact bytes identical to the pre-workspaceFiles
@@ -1526,6 +1533,8 @@ export class Cache implements CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
+    /** See `CacheLayer.save`. */
+    skipLocalWrite?: boolean
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
@@ -1548,6 +1557,7 @@ export class Cache implements CacheLayer {
     // still uploads to remote — it calls `packArtifact` itself to get
     // the bytes, since there's no local artifact to read off disk.
     if (!this.write) return
+    if (args.skipLocalWrite === true) return
     const compressed = await this.packArtifact(args)
     await this.writeArtifactAndIndex(
       args.hash,

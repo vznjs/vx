@@ -139,3 +139,102 @@ describe('resolveCache — chaining', () => {
     }),
   )
 })
+
+describe('ChainedCache — layers sharing one local handle', () => {
+  const remoteStub = (): RemoteCacheLayer & { puts: string[] } => {
+    const puts: string[] = []
+    return {
+      puts,
+      has: async () => false,
+      get: async () => null,
+      put: async (hash: string) => {
+        puts.push(hash)
+      },
+    }
+  }
+
+  it('save packs the shared local artifact ONCE, not once per layer', async () => {
+    // `reapi({endpoint:A}), reapi({endpoint:B})` is a legitimate composition
+    // (two CAS endpoints); both wrap ctx.localCache, so resolveCache chains
+    // two LayeredCaches over the SAME Cache. Without dedup, save() walks
+    // both and Cache.save packs the tar twice per miss — pure waste, and
+    // pack is the dominant save cost.
+    const { cache: local, dir } = tmpCache('shared')
+    const proj = mkdtempSync(path.join(tmpdir(), 'vx-chained-proj-'))
+    try {
+      const ra = remoteStub()
+      const rb = remoteStub()
+      const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
+      const chained = new ChainedCache([
+        new LayeredCache(local, ra, { policy }),
+        new LayeredCache(local, rb, { policy }),
+      ])
+      // packArtifact is private; the structural cast is the narrowest spy
+      // that can count the expensive step without widening the class API.
+      type PackSpy = { packArtifact(args: unknown): Promise<Uint8Array> }
+      const spyable = local as unknown as PackSpy
+      let packs = 0
+      const orig = spyable.packArtifact.bind(local)
+      spyable.packArtifact = (args: unknown) => {
+        packs++
+        return orig(args)
+      }
+      await saveEntry(chained, 'h-shared', proj)
+      await chained.drainUploads()
+      expect(packs).toBe(1)
+      // Both REMOTES still received the artifact — dedup is local-only.
+      expect(ra.puts).toEqual(['h-shared'])
+      expect(rb.puts).toEqual(['h-shared'])
+      expect((await chained.get('h-shared'))?.hash).toBe('h-shared')
+    } finally {
+      local.close()
+      for (const d of [dir, proj]) rmSync(d, { recursive: true, force: true })
+    }
+  })
+
+  it('a batch-probe answer from one layer must not poison a layer that cannot batch', async () => {
+    // The remote-prefetch caller treats remoteHasMany's result as
+    // authoritative: complement = absent, broadcast via markRemoteAbsent.
+    // If layer A answers (empty) and layer B cannot batch (no hasMany),
+    // the union is A's answer alone — broadcasting its complement marks
+    // B's inflight false for a hash B's remote actually HAS, and the
+    // later lazy get() silently re-executes a task with a real remote hit.
+    const a = tmpCache('pa')
+    const b = tmpCache('pb')
+    const src = tmpCache('psrc')
+    const proj = mkdtempSync(path.join(tmpdir(), 'vx-chained-proj-'))
+    try {
+      // A real artifact for B's remote to serve.
+      await saveEntry(src.cache, 'h-poison', proj)
+      const artifact = await Bun.file(src.cache.outputsPath('h-poison')).bytes()
+      const remoteA: RemoteCacheLayer = {
+        has: async () => false,
+        get: async () => null,
+        put: async () => undefined,
+        hasMany: async () => new Set<string>(),
+      }
+      const remoteB: RemoteCacheLayer = {
+        // No hasMany — an older serve / a wire without a batch probe.
+        has: async () => true,
+        get: async () => ({ body: artifact.buffer as ArrayBuffer, durationMs: 1 }),
+        put: async () => undefined,
+      }
+      const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
+      const chained = new ChainedCache([
+        new LayeredCache(a.cache, remoteA, { policy }),
+        new LayeredCache(b.cache, remoteB, { policy }),
+      ])
+      // Exactly the remote-prefetch call sequence, guard included: the
+      // caller marks absences ONLY from a non-null batch answer.
+      const present = await chained.remoteHasMany(['h-poison'])
+      if (present !== null) {
+        chained.markRemoteAbsent(['h-poison'].filter((h) => !present.has(h)))
+      }
+      const entry = await chained.get('h-poison', { taskId: 'p#t', command: 'echo' })
+      expect(entry?.hash).toBe('h-poison')
+    } finally {
+      for (const c of [a, b, src]) c.cache.close()
+      for (const d of [a.dir, b.dir, src.dir, proj]) rmSync(d, { recursive: true, force: true })
+    }
+  })
+})

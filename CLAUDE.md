@@ -441,6 +441,46 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (nineteenth wave) — ChainedCache audit: the headline
+  hypothesis refuted, two real defects confirmed by failing pins.** Audit
+  target chosen by the new-code rule: the 2026-08-23 chained-cache wave.
+  REFUTED: the "LayeredCache runs only" gates on remote-prefetch and the
+  short-circuit do NOT break under ChainedCache — both key on the layer's
+  own `hasRemote` (run.ts even documents why not `instanceof`), and
+  ChainedCache derives it from any layer. CONFIRMED #1 (waste): two layers
+  wrapping the SAME local handle — `reapi({endpoint:A}), reapi({endpoint:B})`
+  is in-tree-reachable today — packed and wrote every miss artifact TWICE
+  (`Cache.save` never short-circuits, deliberately: `--force` must rewrite).
+  Fix: `ChainedCache.save` passes `skipLocalWrite` to layers whose `local`
+  an earlier layer already saved; the guard lives in ONE place (`Cache.save`
+  returns early) — my first cut also honored it in `LayeredCache` and the
+  differential caught the redundancy: the mutation SURVIVED because the
+  second guard covered it, which is the two-owners smell, so the redundant
+  copy was removed and the differential re-run against the real owner. Both
+  remotes still receive the artifact (pinned). CONFIRMED #2 (a lost remote
+  hit): `remoteHasMany` returned a PARTIAL union — one layer answering and
+  a sibling that cannot batch (`hasMany` absent: an older serve) yielded a
+  non-null result the caller treats as authoritative for the whole chain,
+  so its complement was broadcast via `markRemoteAbsent` and the non-batch
+  layer's inflight map was poisoned `false` for hashes its remote HAS: the
+  later lazy `get` skipped a REAL remote hit and the task re-executed. Not
+  a stale hit (outputs stay correct) — a silently lost hit. Fix: each
+  answering layer gets its OWN complement marked (also sparing it per-hash
+  GETs for hashes only a sibling holds), and the union is returned only
+  when every remote layer answered; partial = `null` = the caller's
+  per-hash fallback, where answered layers short-circuit via their marks.
+  Probe-harness lesson re-learned: my first poison pin called
+  `markRemoteAbsent` UNguarded where the real caller only marks on
+  non-null — the pin must mirror the caller's exact sequence — and the
+  stub returned `{bytes, meta}` where the contract says `{body,
+durationMs}` (transpile-only bun test cannot see that; the failing
+  assertion looked like the fix not working when it was the harness).
+  Differentials: guard removal fails exactly the pack pin; partial-union
+  mutation fails exactly the poison pin; both restores verified 10/0.
+  No CACHE_VERSION bump: stored bytes were never wrong — one defect wrote
+  the same bytes twice, the other failed to read bytes that were there.
+  Doc updated in the same wave (`docs/modules/chained-cache.md`).
+
 - **2026-08-24 (eighteenth wave) — SpliceBlob proven live; the "blocked"
   label was half wrong and is corrected.** The log carried Split/Splice as
   "unexercised e2e — blocked on a server advertising them". Re-reading the
