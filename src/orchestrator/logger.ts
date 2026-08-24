@@ -61,6 +61,11 @@ export interface Logger {
  *                 Today's CI behavior; also the programmatic default.
  *   errors-only — only failed tasks print.
  *   none        — no per-task output at all.
+ *   hash-only   — one line per task: outcome word, task id, cache key.
+ *                 No frames, no log replay (Turbo `--output-logs
+ *                 hash-only` parity); the end-of-run summary still
+ *                 renders. The line is the run's audit trail: which key
+ *                 each task resolved to, without any build output.
  *   focused     — requested nodes stream raw output live (running the
  *                 task should feel like running the command directly);
  *                 dependency-pulled nodes are silent unless they fail.
@@ -76,7 +81,7 @@ export interface Logger {
  * line even if stdout happens to be a TTY.
  */
 export interface OutputView {
-  mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad'
+  mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad' | 'hash-only'
   gha?: boolean
   ci?: boolean
 }
@@ -134,7 +139,10 @@ function outcomeWord(o: TaskOutcome): string {
 }
 
 export function resolveOutputView(
-  options: { outputLogs?: 'full' | 'errors-only' | 'none'; flow?: 'focused' | 'broad' },
+  options: {
+    outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
+    flow?: 'focused' | 'broad'
+  },
   env: Record<string, string | undefined> = process.env,
 ): OutputView {
   const ci = truthyEnv(env['CI'])
@@ -200,13 +208,14 @@ export function defaultLogger(
   // vx process to 852 MiB RSS, unbounded and linear, and a warm CACHE HIT
   // paid it too (the stored stdout is replayed through this same path).
   //
-  // Deliberately ONLY `none`, and the boundary is the point: `full`,
-  // `broad`, `focused` and `errors-only` all PRINT this output — for
-  // `errors-only` a failed task's log is precisely what the user asked to
-  // see — and silently truncating someone's build log is a worse failure
-  // than the memory it costs. So those modes stay unbounded by decision,
-  // not by oversight.
-  const discardsOutput = view.mode === 'none'
+  // Deliberately ONLY the modes that PROMISE never to print task output —
+  // `none` and `hash-only`. The boundary is the point: `full`, `broad`,
+  // `focused` and `errors-only` all PRINT this output — for `errors-only` a
+  // failed task's log is precisely what the user asked to see — and
+  // silently truncating someone's build log is a worse failure than the
+  // memory it costs. So those modes stay unbounded by decision, not by
+  // oversight.
+  const discardsOutput = view.mode === 'none' || view.mode === 'hash-only'
 
   // One per run, and only in GHA mode: the fence token must be something the
   // fenced task output cannot print.
@@ -574,6 +583,14 @@ export function defaultLogger(
       switch (view.mode) {
         case 'none':
           return
+        case 'hash-only': {
+          // The word carries the outcome (skips/failures included); the
+          // key is what this mode exists to show — absent for a task
+          // that never computed one (skipped, uncacheable).
+          const key = outcome.hash === undefined ? '' : ` ${outcome.hash}`
+          emitLine(`${outcomeWord(outcome)} ${node.id}${key}`)
+          return
+        }
         case 'errors-only':
           if (outcome.status !== 'failed') return
           emitLine(formatFailureLine(node.id, outcome.durationMs, colors))

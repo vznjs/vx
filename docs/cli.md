@@ -195,7 +195,7 @@ stays clean).
 | `--verify[=<what>]`               | optional value | off                                | Prove cache correctness. `determinism` (default): re-run + content-compare outputs. `inputs`: sandbox with the declared-input baseline + flag undeclared reads. `fingerprint`: ship output-tree fingerprints for the cross-machine diff (~1× exec, no re-run). `all`: everything. An unsafe task fails the run with the exact paths. See § `--verify`. Never affects cache keys. |
 | `--verify-allow <pkg#task,…>`     | value          | (none)                             | Comma-list of task ids exempt from failing `--verify` (known-nondeterministic; reported `allowed-nondeterministic`). `--verify-allow=<csv>` form too.                                                                                                                                                                                                                            |
 | `--frozen`                        | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI). See § `--frozen`.                                                                                                                                                                                                                                                                                                   |
-| `--output-logs <mode>`            | value          | flow-derived                       | `full` \| `errors-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                            |
+| `--output-logs <mode>`            | value          | flow-derived                       | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                             |
 | `--verbosity <n>`                 | int (0+)       | `0`                                | `1` prints a per-task summary table after the framed blocks; `2+` reserved. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                          |
 | `--dry[=text\|json]`              | optional value | off                                | Print the task graph + predicted cache hit/miss; skip execution.                                                                                                                                                                                                                                                                                                                 |
 | `--graph[=<path>]`                | optional value | off                                | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                                                                                                                                                                                                                                                           |
@@ -584,8 +584,11 @@ annotation instead.
 
 Explicit override; always beats the flow and CI defaults. `full`
 (frames for executed work, one-liners for quiet cache hits),
-`errors-only` (only failed tasks print; the CI noise budget), `none`
-(no per-task output). The end-of-run summary always prints.
+`errors-only` (only failed tasks print; the CI noise budget),
+`hash-only` (one line per task — outcome word, task id, cache key — and
+no log output at all; the run's audit trail of which key each task
+resolved to, Turbo parity), `none` (no per-task output). The
+end-of-run summary always prints.
 
 ## Planning mode (`--dry`, `--graph`)
 

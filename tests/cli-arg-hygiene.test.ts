@@ -261,3 +261,13 @@ describe('value flags accept the = form', () => {
     expect(report.tasks).toEqual(['build'])
   })
 })
+
+describe('--output-logs hash-only', () => {
+  it('parses in both spellings and rejects a typo with the full mode list', () => {
+    expect(parseRunArgs(['build', '--output-logs', 'hash-only']).outputLogs).toBe('hash-only')
+    expect(parseRunArgs(['build', '--output-logs=hash-only']).outputLogs).toBe('hash-only')
+    expect(parseRunArgs(['build', '--output-logs', 'hashonly']).error).toMatch(
+      /full, errors-only, hash-only, or none/,
+    )
+  })
+})

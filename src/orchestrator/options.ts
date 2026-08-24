@@ -46,11 +46,13 @@ export interface RunOptions {
   /**
    * Explicit per-task output volume for the default logger. ALWAYS
    * overrides the flow default. 'full': frames for work + one-liners
-   * for quiet hits. 'errors-only': only failed tasks print. 'none':
+   * for quiet hits. 'errors-only': only failed tasks print.
+   * 'hash-only': one line per task — outcome, id, cache key — with no
+   * log output (Turbo parity). 'none':
    * no per-task output at all. Status lines (header, summary) always
    * print.
    */
-  outputLogs?: 'full' | 'errors-only' | 'none'
+  outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   /**
    * Run intent, derived by the CLI from selection flags: 'broad' iff
    * `--all` / `--filter` / `--affected` was passed, else 'focused'.

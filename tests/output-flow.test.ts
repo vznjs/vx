@@ -50,6 +50,10 @@ describe('resolveOutputView', () => {
   })
 
   it('explicit --output-logs beats both CI and flow', () => {
+    expect(resolveOutputView({ outputLogs: 'hash-only', flow: 'broad' }, { CI: '1' })).toEqual({
+      mode: 'hash-only',
+      ci: true,
+    })
     expect(resolveOutputView({ outputLogs: 'errors-only', flow: 'broad' }, { CI: '1' })).toEqual({
       mode: 'errors-only',
       ci: true,
@@ -493,6 +497,30 @@ describe('defaultLogger visibility matrix — overrides', () => {
     log.taskStderr(bad, 'oops\n')
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
     expect(out.text()).toContain('failed  miss   one#c')
+  })
+
+  it('hash-only: one audit line per task, key included, zero log output', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'hash-only' }, out)
+    const ok = mkNode('one#a', { requested: true })
+    log.taskStdout(ok, 'this build output must never print\n')
+    log.taskComplete(ok, mkOutcome(ok, 'success'))
+    const hit = mkNode('one#b')
+    log.taskComplete(hit, mkOutcome(hit, 'cache-hit', { restored: true }))
+    const bad = mkNode('one#c')
+    log.taskStderr(bad, 'not even failures replay\n')
+    log.taskComplete(bad, mkOutcome(bad, 'failed'))
+    const skip = mkNode('one#d')
+    log.taskComplete(skip, mkOutcome(skip, 'skipped', { hash: undefined } as never))
+    log.runEnd?.()
+    // Exact expected set, not substring absence: a mangled leak would
+    // sail past `not.toContain`.
+    expect(out.text()).toBe(
+      'success one#a abcdef0123456789\n' +
+        'restored-local one#b abcdef0123456789\n' +
+        'failed one#c abcdef0123456789\n' +
+        'skipped one#d\n',
+    )
   })
 
   it('none: nothing per-task, ever', () => {

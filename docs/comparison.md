@@ -150,10 +150,9 @@ upstream repos.
    BuildBuddy, Buildbarn and bazel-remote all work.
    Turbo `/v8/artifacts` compatibility was DROPPED from core; a
    Turbo-wire cache is a **third-party plugin story** — the seam recipe
-   lives in the extensibility guide. The platform's blob backend (S3/R2
-   GET offload behind the 307) shipped too: an S3-compatible bucket
-   connects and the platform stores no artifact bytes at rest
-   ([`design/s3-blob-backend-2026-07.md`](./design/s3-blob-backend-2026-07.md)).
+   lives in the extensibility guide. (The self-hosted platform's S3 blob
+   backend went with the 2026-08-23 cloud removal; its design doc lives
+   in `design/archive/`.)
 
 2. **`--continue=<mode>` — shipped.** `--continue[=never|deps-ok|always]`
    controls failure propagation: `never` fail-fast (stop dispatch on the
@@ -203,9 +202,10 @@ upstream repos.
 
 ### Maybe-worth-adding (heavier lift, narrower payoff)
 
-7. **`--output-logs hash-only`.** The other three modes
-   (`full` / `errors-only` / `none`) shipped; `hash-only` (print just
-   the task id + hash for hits) remains.
+7. **`--output-logs hash-only` — shipped (2026-08-25).** One line per
+   task — outcome word, task id, cache key — with no log output; the
+   run's audit trail of which key each task resolved to. All four
+   Turbo modes now covered.
    - Turbo: `--output-logs`, schema `outputLogs`.
 
 8. **Configurations (named option sets per target).** `build:prod` vs
@@ -227,9 +227,12 @@ upstream repos.
     - Turbo: `cacheMaxAge`, `cacheMaxSize`.
     - Nx: `maxCacheSize`.
 
-12. **Last-run replay** (`vp run --last-details`). Print the last
-    run's summary without re-executing. (The self-hosted dashboard's
-    run-detail page covers the browsable version.)
+12. **Last-run replay** (`vx run --last-details`). Print the last
+    run's summary without re-executing. Value went UP with the
+    2026-08-23 cloud removal: the dashboard that covered the browsable
+    version is gone, so a CLI replay from the local run history is now
+    the only candidate surface. The `metrics.ts` SQL layer already
+    holds everything it needs.
 
 ### Shipped since this list was first drawn
 

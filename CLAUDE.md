@@ -464,6 +464,27 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (thirty-first wave) — `--output-logs hash-only` ships
+  (Turbo parity, gap #7), and the comparison doc sheds its dead cloud
+  references.** The fourth output mode: one line per task — outcome
+  word, task id, cache key — with zero log output; `discardsOutput` now
+  covers it (the buffers the mode promises never to print are not
+  buffered, same reasoning as `none`). Pinned with the
+  exact-expected-set rule (a mangled leak sails past `not.toContain`):
+  success/hit/failure/skip lines byte-exact, build output asserted
+  absent by the same equality; parse pins cover both flag spellings and
+  the typo message naming all four modes. While sourcing the next arc
+  from docs/comparison.md, two stale cloud references surfaced and are
+  corrected: gap #1 still advertised the removed platform's S3 blob
+  backend (now points at the archived design doc), and gap #12 claimed
+  the dashboard covers last-run replay — the dashboard is GONE, which
+  RAISES #12's value: a CLI `--last-details` over the local metrics
+  layer is now the only candidate surface, noted as such. Also skipped
+  deliberately: a github()+otel() two-sink composition pin — the host's
+  fan-out/isolation/budget behavior is already pinned in
+  telemetry-lifecycle, and each package has its own real-run() proof;
+  a joint pin would add ceremony, not coverage.
+
 - **2026-08-25 (thirtieth wave) — `TaskOutcome.where` ships: worker
   attribution end to end; the outputs discriminator deliberately stays
   unshipped.** Roadmap item 4 split by the no-half-finished rule: the

@@ -58,7 +58,7 @@ export function printHelp(): void {
       '                                  ~2× exec (determinism); CI-shaped. inputs/all need the OS sandbox.',
       '      --verify-allow <pkg#task,…> Exempt known-nondeterministic tasks from failing --verify.',
       '      --frozen                    Load configs from vx-lock.json (CI; pair with vx lock --check).',
-      '      --output-logs <mode>        full | errors-only | none — overrides the flow default',
+      '      --output-logs <mode>        full | errors-only | hash-only | none — overrides the flow default',
       '                                  (focused without --all/--filter/--affected, broad with, full in CI).',
       '      --verbosity <n>             0=quiet, 1=verbose summary, 2+=debug (reserved).',
       '',

@@ -85,7 +85,7 @@ export interface RunArgs {
    */
   verify: { determinism: boolean; inputs: boolean; fingerprint: boolean } | undefined
   verifyAllow: string[]
-  outputLogs?: 'full' | 'errors-only' | 'none'
+  outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   forwardArgs: string[]
   verbosity: number
   dry: 'text' | 'json' | undefined
@@ -251,8 +251,8 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         .filter((s) => s.length > 0)
     } else if (a === '--output-logs' || a?.startsWith('--output-logs=')) {
       const v = a === '--output-logs' ? before[++i] : a.slice('--output-logs='.length)
-      if (v !== 'full' && v !== 'errors-only' && v !== 'none') {
-        return { ...out, error: `--output-logs must be full, errors-only, or none` }
+      if (v !== 'full' && v !== 'errors-only' && v !== 'none' && v !== 'hash-only') {
+        return { ...out, error: `--output-logs must be full, errors-only, hash-only, or none` }
       }
       out.outputLogs = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
