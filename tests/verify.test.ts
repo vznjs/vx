@@ -710,8 +710,65 @@ describe.skipIf(!sandboxOk)('vx run --verify=inputs (input-completeness)', () =>
         verify: INPUTS,
         log: capturingLogger(fixture),
       })
+      if (!r.ok) {
+        console.log(
+          'DEBUG clean-verify fail:',
+          JSON.stringify({
+            verify: r.outcomes[0]!.verify,
+            lines: r.outcomes[0]!.sandboxViolationLines,
+            status: r.outcomes[0]!.status,
+          }),
+        )
+      }
       expect(r.ok).toBe(true)
       expect(r.outcomes[0]!.verify).toEqual({ kind: 'proven-complete' })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a remote-only task is reported unverifiable, not silently green',
+    async () => {
+      // verify=inputs pins placement local, and a `remote: 'only'` task with
+      // no remote executor no-ops — there is no execution to sandbox, so the
+      // proof cannot cover it. The verdict must SAY so; a silent noop reads
+      // as a green proof over ground the proof never touched.
+      const dir = await addProject(
+        fixture.root,
+        'a',
+        `export default {
+          tasks: {
+            run: {
+              exec: { command: 'echo hi > out.txt', remote: 'only' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+            },
+          },
+        }`,
+      )
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'src', 'in.txt'), 'x')
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        verify: INPUTS,
+        log: capturingLogger(fixture),
+      })
+      // Unverifiable is a WARNING, not a failure — the task also never
+      // executes locally by definition, so nothing red.
+      expect(r.ok).toBe(true)
+      expect(r.outcomes[0]!.verify).toEqual({ kind: 'unverifiable-remote-only' })
+
+      // CONTROL: a plain run of the same task carries no verdict at all —
+      // the report exists only when a proof was requested.
+      const plain = await run({
+        cwd: fixture.root,
+        tasks: ['run'],
+        projects: ['a'],
+        log: capturingLogger(fixture),
+      })
+      expect(plain.ok).toBe(true)
+      expect(plain.outcomes[0]!.verify).toBeUndefined()
     },
     TIMEOUT,
   )

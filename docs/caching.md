@@ -153,10 +153,12 @@ On a hit:
 2. If the on-disk output tree already matches the cached snapshot
    (size + mode + **millisecond**-mtime check against `output_files`),
    extraction is skipped entirely — the outcome reports **up-to-date**
-   (`restored: false`). Save-path rows record stat-ms mtimes (tar
-   headers only carry seconds) and `restoreOutputs` re-syncs restored
-   files' mtimes to the rows, so the comparison is exact in steady
-   state. Residual blind spot, accepted like every mtime-based check:
+   (`restored: false`). Mode and millisecond mtime ride the artifact's
+   own `.vx-meta.json` sidecar — recorded from a stat while packing —
+   so the index rows and the restored tree carry the identical values
+   whether the entry was saved locally or ingested from a remote, and
+   the comparison is exact in steady state. Residual blind spot,
+   accepted like every mtime-based check:
    a same-size edit landing in the same millisecond as the recorded
    write, or a deliberately forged mtime (`touch -r`).
 3. Otherwise the task's declared outputs are wiped from the project
@@ -334,8 +336,9 @@ is on):
 2. A second `computeTaskHash` runs with the `captureInto` side-channel
    to record the per-component input fingerprint (miss-only; the
    HashCache memos make it a re-fold, no extra I/O).
-3. The artifact — one `stdout` entry plus `outputs/<rel>` (+
-   `workspace-outputs/<rel>`) entries — is packed in-process into a
+3. The artifact — one `stdout` entry, the `outputs/<rel>` (+
+   `workspace-outputs/<rel>`) entries and the `.vx-meta.json` sidecar —
+   is packed in-process (no staging dir, no subprocess) into a
    single `<hash>.tar.zst`, written to a temp name, validated, and
    atomically renamed into place. Concurrent readers see either no
    entry or a complete entry — never a partial one.
@@ -520,8 +523,9 @@ same reason `lock --check` ignores `inputs.env` value changes.
 └── <hash>.tar.zst                          one artifact per cache entry:
     ├── stdout                              captured stdout (always present, may be empty)
     ├── outputs/<rel>                       declared output files, project-relative (when any)
-    └── workspace-outputs/<rel>             declared outputs.workspaceFiles,
-                                            WORKSPACE-ROOT-relative (when any)
+    ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
+    │                                       WORKSPACE-ROOT-relative (when any)
+    └── .vx-meta.json                       per-output [mode, mtimeMs] sidecar
 ```
 
 `<hash>` is the 16-hex xxh3 key. The `workspace-outputs/` namespace is
@@ -531,13 +535,22 @@ field needed no `CACHE_VERSION` bump). `output_files` rows mirror the
 two namespaces — project rows store the bare rel, workspace rows store
 the full `workspace-outputs/<rel>` name as the discriminator.
 
-The tar is packed `--format=gnu`: like ustar it emits no PAX
-extended-header records (BSD tar emits one per entry, which would leave
-`PaxHeaders/<name>` junk in restored trees), but unlike ustar it can
-express every name a build produces — ustar refuses a single path
-component over 100 bytes outright, and splits anything over 100 bytes
-into `prefix` + `name` (v25). Staged copies carry the source file's
-permission bits, so an executable output restores executable.
+The container is `Bun.Archive` (libarchive), so the tar DIALECT is not
+vx's decision: long names, PAX records and truncation detection are the
+library's, and there is no `tar` subprocess, no `--format=gnu` /
+`--format=gnutar` spelling probe, and no staging copy of every output
+byte before packing (v27).
+
+What libarchive carries no channel for is per-entry metadata: its
+writer takes `{ name: bytes }` and its reader hands back regular files
+only. vx needs both permission bits (a lost executable bit builds cold
+and breaks warm) and millisecond mtimes (the skip-restore probe compares
+them), so `packArtifact` stats each output once and writes
+`.vx-meta.json` — `{ version, files: { <entry>: [mode, mtimeMs] } }` —
+into the archive. Restore applies both. Entries that are not regular
+files (symlinks, hardlinks, devices) are not surfaced by the reader at
+all, so a poisoned artifact cannot smuggle one onto disk; entry NAMES
+are still validated by vx before anything decides where to write.
 
 **Key properties:** one entry is one file — eviction is a single
 unlink; no per-entry manifest, no separate `logs/` tree; and local +
@@ -759,6 +772,21 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
 `CLAUDE.md` (decision log), and the cache test file.
 
 ### History
+
+- **v26 → v27**: the artifact CONTAINER changed, so the stored bytes
+  under an unchanged key are no longer readable the same way — the
+  layout case, not the wrong-bytes case. Packing moved from a `tar`
+  subprocess (with a staged copy of every output and a per-host
+  `--format=gnu` / `--format=gnutar` probe) to `Bun.Archive`, and the
+  per-entry mode + millisecond mtime that tar headers carried natively
+  now ride a `.vx-meta.json` sidecar. Measured on the real `Cache.save`
+  path (300 outputs / 12 MB, min-of-5, interleaved arms against a
+  `git worktree` of the previous commit): **158 ms → 11 ms** to pack,
+  restore 39 ms → 33 ms; the artifact grows ~7 compressed bytes per
+  output for the sidecar. The bump is mandatory rather than
+  self-healing: a v26 artifact has no sidecar, so a v27 reader would
+  restore its outputs mode-0644 and mtime-now — silently wrong on disk
+  rather than a miss.
 
 - **v25 → v26**: the same shape as v25 — stored bytes that are wrong
   under a key nothing about the fix changes — reached by a different

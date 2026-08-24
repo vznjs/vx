@@ -405,11 +405,35 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // macOS is therefore lossy-by-OS under load; ENFORCEMENT is unaffected
   // (every observed loss still denied the read and failed the child).
   const store = SandboxManager.getSandboxViolationStore()
+  // Ancestor-directory traversal is NOT an input (owner call, 2026-08-24,
+  // closing the recorded false-`undeclared-inputs` item): to reach its cwd
+  // at all, a process stats/opens every directory on the path — macOS
+  // reports those as `deny(1) file-read-data <ancestor-dir>` for dirs the
+  // baseline doesn't list, node survives them, and no file CONTENT flowed.
+  // Dropping them is scoped to exact ancestor-or-self DIRECTORY paths of
+  // the task's cwd — a denied read of any file INSIDE an ancestor still
+  // reports. (These records usually arrived too late to be seen at all;
+  // the settle window made the pre-existing class visible on every clean
+  // verify exit.)
+  const cwdReal = toRealPath(args.cwd)
+  const ancestorDirs = new Set<string>()
+  for (let d = cwdReal; ; d = path.dirname(d)) {
+    ancestorDirs.add(d)
+    if (d === path.dirname(d)) break
+  }
+  const isAncestorTraversal = (line: string): boolean => {
+    const m = /deny\(\d+\)\s+file-read-(?:data|metadata)\s+(\/\S+)\s*$/.exec(line)
+    if (m === null) return false
+    return ancestorDirs.has(toRealPath(m[1]!))
+  }
   const readMacViolations = (): SandboxViolation[] =>
-    store.getViolationsForCommand(taggedCommand).map((v) => ({
-      line: v.line,
-      timestamp: v.timestamp,
-    }))
+    store
+      .getViolationsForCommand(taggedCommand)
+      .filter((v) => !isAncestorTraversal(v.line))
+      .map((v) => ({
+        line: v.line,
+        timestamp: v.timestamp,
+      }))
   let macViolations = readMacViolations()
   // The fail-exit gate keeps the warm path free — EXCEPT when the caller
   // says a clean exit + empty store will be read as PROOF (verify=inputs):

@@ -1,6 +1,6 @@
 # `@vzn/vx` — project memory for Claude
 
-A monorepo task runner for pnpm workspaces. Bun-only (≥ 1.3). Pre-alpha.
+A monorepo task runner for pnpm workspaces. Bun-only (≥ 1.4). Pre-alpha.
 **You are the project owner.** Maintain it, push it forward, ship.
 
 ## Project identity in one paragraph
@@ -15,7 +15,7 @@ order with parallelism. Cache hits replay stored outputs. Pre-alpha.
 
 | Concern         | Tool                                                                       |
 | --------------- | -------------------------------------------------------------------------- |
-| Runtime         | Bun ≥ 1.3 (no Node fallback)                                               |
+| Runtime         | Bun ≥ 1.4 (no Node fallback; `Bun.Archive` is a hard dependency)           |
 | Package manager | Bun (`bun install`, `bun.lock`)                                            |
 | Test runner     | `bun test` (tests import `describe`, `it`, `expect`, `vi` from `bun:test`) |
 | Linter          | `oxlint --type-aware --type-check` (real TS diagnostics via `tsgolint`)    |
@@ -105,7 +105,7 @@ src/
     scheduler.ts        # two-tier parallel topo executor (exec + restore queues,
                         # 2-D resource admission over exec.resources)
   cache/                # local cache + the RemoteCacheLayer seam
-    index.ts cache.ts layered-cache.ts chained-cache.ts inputs.ts tar.ts
+    index.ts cache.ts layered-cache.ts chained-cache.ts inputs.ts archive.ts
     cas-backend.ts / digest.ts # pluggable CAS seam (internal, artifact-store roadmap)
   exec/                 # per-task execution primitives
     index.ts runner.ts env.ts sandbox-runtime.ts executor.ts
@@ -306,10 +306,11 @@ time every single time.
 ### Live invariants
 
 - **Versions** (verify in source before quoting): `CACHE_VERSION`
-  `vx-cache-v26`, core `SCHEMA_VERSION` `v24`, `TELEMETRY_SCHEMA_VERSION` 2,
+  `vx-cache-v27`, core `SCHEMA_VERSION` `v24`, `TELEMETRY_SCHEMA_VERSION` 2,
   `LOG_WIRE_VERSION` 1.
-- **When to bump `CACHE_VERSION`:** only when STORED BYTES are wrong under an
-  UNCHANGED key (v25/v26 both were). A key-derivation fix whose old key was
+- **When to bump `CACHE_VERSION`:** when STORED BYTES are wrong under an
+  UNCHANGED key (v25/v26 both were), or when the artifact CONTAINER changes so
+  an old artifact would restore wrong rather than miss (v27). A key-derivation fix whose old key was
   already WRONG is self-healing — it misses once, re-runs, re-caches, and can
   never serve a wrong hit — so it does NOT bump. Say which case applies in
   every entry.
@@ -445,6 +446,74 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-24 (twenty-fourth wave) — the cache artifact container moves to
+  `Bun.Archive`; CACHE_VERSION → v27; a stale "we benchmarked this and said
+  no" note corrected in place.** Bun 1.4 landed `Bun.Archive` (libarchive),
+  and the tar layer was the largest hand-rolled thing in the tree: a 480-line
+  header parser (ustar prefix joins, GNU `L` longnames, PAX skipping,
+  AppleDouble filtering, typeflag rejection) plus a `tar` SUBPROCESS on the
+  save path — the one that needed a per-host `--format=gnu` vs `--format=gnutar`
+  probe because bsdtar refuses GNU tar's spelling, which had already broken
+  EVERY save on macOS once. All of it is gone; `src/cache/archive.ts` is
+  pack + read + extract and the containment checks libarchive cannot make for
+  us. **What libarchive does not carry is per-entry metadata in EITHER
+  direction** — its writer takes `{name: bytes}` and its reader returns
+  regular files only, no mode — so mode and MILLISECOND mtime ride a
+  `.vx-meta.json` sidecar written from one stat per output at pack time.
+  That is not a workaround, it is a strict improvement on two axes: the
+  save path no longer needs its second stat pass to refine tar's
+  seconds-precision mtimes, and a REMOTE-INGESTED entry now indexes the
+  producer's millisecond values, which tar headers made impossible (pinned).
+  Packing also no longer STAGES a copy of every output byte into a temp
+  tree just so an external `tar` could see it under the right name.
+  **Measured** on the real `Cache.save`/`restoreOutputs` paths, min-of-N,
+  arms interleaved against a `git worktree` of the previous commit: pack
+  1 file 6.15 → 0.32 ms, 20 files 11.9 → 0.65 ms, 300 files / 12 MB
+  158 → 11 ms (~14×); restore a wash (0.27 / 2.16 / 33 ms, unchanged);
+  artifact grows ~7 compressed bytes per output for the sidecar.
+  **The correction:** `docs/optimizations.md` #12 recorded "kept the
+  hand-rolled tar — `Bun.Archive` is 15–400× slower for our artifact shape
+  (KB–MB, flat trees)". On Bun 1.4 that is false in both directions and the
+  row is rewritten in place with today's numbers. A benchmark verdict has an
+  expiry date when its subject is a runtime API under active development —
+  re-measure before quoting an old "we evaluated this" as a reason not to.
+  **Behaviour changes, all pinned:** a symlink/hardlink/device entry is no
+  longer THROWN on, it is invisible to the reader and therefore
+  unmaterialisable (stronger, but the pin had to move from the throw to the
+  outcome); directory records are not surfaced, which changes nothing because
+  declared outputs are globbed FILES; the AppleDouble `._*` filter is dropped
+  with the tar subprocess that used to generate the records. **The bump is
+  mandatory, not self-healing:** a v26 artifact has no sidecar, so a v27
+  reader would restore its outputs mode-0644/mtime-now — wrong on disk rather
+  than a miss. Full suite 2569/1, the one failure being the recorded macOS
+  `--verify=inputs` ancestor-directory defect, REPRODUCED 3/3 on the unchanged
+  worktree — differential, so not this change. Fixture lesson worth keeping:
+  the artifact-roundtrip "hollow artifact" test built its fixture by spawning
+  `tar --format=gnu`, which on macOS FAILS — so on darwin it wrote an EMPTY
+  archive and passed for the wrong reason. It builds the archive in-process
+  now.
+
+- **2026-08-24 — Bun 1.4 floor: `>=1.4` everywhere, `@types/bun` 1.4, and the
+  isolated linker arrived with it.** `Bun.Archive` is a hard dependency now,
+  so the engines fields, `packageManager` and the three `@types/bun` pins all
+  move to 1.4. Two Bun 1.4 features EVALUATED and NOT adopted, recorded so the
+  next pass does not re-litigate them: (1) **`bun test --isolate` does fix the
+  cwd-leak class** `tests/setup.ts` exists for — proven with a two-file probe
+  (a file that `chdir`s and never restores; the next file sees the original
+  cwd under `--isolate` and the leaked one without it) — but the core suite
+  does NOT finish under it: killed at >20 min against a 140 s baseline, while
+  a 4-file subset shows no overhead at all (426 vs 432 ms). Something in the
+  suite wedges under isolation; unbisected, so the preload guard stays and
+  this is the open item. (2) The `packages` CI job's **one-bun-process-per-file
+  loop** is the obvious `--isolate` candidate (fresh globalThis + closed
+  resources per file is exactly why the loop exists), but it cannot be verified
+  locally without the REAPI servers and an unverified change to a gate is not a
+  change — left as a candidate. Also noted: `bun install` under 1.4 relinked
+  this workspace with the ISOLATED linker (`node_modules/.bun` store +
+  symlinks, 8 top-level entries). Type-aware lint still resolves `bun-types`
+  through the store — verified by planting a deliberate `TS2322` and watching
+  `oxlint --type-aware --type-check` catch it, i.e. the gate is not vacuous.
 
 - **2026-08-24 (twenty-third wave) — stable-keys audited: ALL CLEAN,
   three escape routes each refuted with the code that closes them.** The

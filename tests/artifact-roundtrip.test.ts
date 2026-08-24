@@ -245,16 +245,11 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     // Replace the stored bytes with a structurally VALID artifact that simply
     // has no outputs — the index still lists dist/app.js, so restoring
     // "successfully" would leave a hole nothing detects afterwards.
-    const stage = await mkdtemp(path.join(os.tmpdir(), 'vx-hollow-'))
-    await writeFile(path.join(stage, 'stdout'), '')
-    const proc = Bun.spawn(['tar', '--format=gnu', '-cf', '-', '-C', stage, 'stdout'], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const tarBytes = await new Response(proc.stdout).bytes()
-    await proc.exited
-    await Bun.write(cache.outputsPath('hollow'), await Bun.zstdCompress(tarBytes))
-    await rm(stage, { recursive: true, force: true })
+    // Built in-process: the previous version of this fixture spawned
+    // `tar --format=gnu`, which bsdtar (macOS) REFUSES — so on darwin it
+    // wrote an EMPTY archive and passed for the wrong reason.
+    const hollow = await new Bun.Archive({ stdout: '' }).bytes()
+    await Bun.write(cache.outputsPath('hollow'), await Bun.zstdCompress(hollow))
 
     await expect(cache.restoreOutputs('hollow', projectDir)).rejects.toThrow(
       /missing 1 recorded output/i,

@@ -125,12 +125,12 @@ Inside the tar we depart from Turbo (we don't mimic Turbo's
 SQLite). But the **on-the-wire framing** stays POSIX-tar so any
 Turbo-aware cache server can transit our blobs unchanged.
 
-| Pattern                                       | Source                                        | vx source                               |
-| --------------------------------------------- | --------------------------------------------- | --------------------------------------- |
-| POSIX ustar headers (no PAX), in-process pack | Turbo (Rust `tar` crate, `Header::new_gnu()`) | `src/cache/tar.ts` (hand-rolled writer) |
-| No AppleDouble `._*` companions               | Turbo (in-process writer, no recurse)         | `src/cache/tar.ts`                      |
-| Extract-side filter strips legacy PAX + `._*` | (vx-only defense-in-depth)                    | `src/cache/tar.ts`                      |
-| zstd compression on the wire                  | Turbo                                         | `Bun.zstdCompress` (tar.zst artifacts)  |
+| Pattern                                   | Source                                        | vx source                               |
+| ----------------------------------------- | --------------------------------------------- | --------------------------------------- |
+| POSIX tar framing, in-process pack        | Turbo (Rust `tar` crate, `Header::new_gnu()`) | `src/cache/archive.ts` (`Bun.Archive`)  |
+| No AppleDouble `._*` companions           | Turbo (in-process writer, no recurse)         | `src/cache/archive.ts` (no `tar` spawn) |
+| Entry-name validation on the extract side | (vx-only defense-in-depth)                    | `src/cache/archive.ts`                  |
+| zstd compression on the wire              | Turbo                                         | `Bun.zstdCompress` (tar.zst artifacts)  |
 
 ### Scheduler + execution
 
@@ -145,12 +145,12 @@ Turbo-aware cache server can transit our blobs unchanged.
 
 ### Output handling
 
-| Pattern                                                            | Source     | vx source                              |
-| ------------------------------------------------------------------ | ---------- | -------------------------------------- |
-| Glob-based `outputs` declaration                                   | Turbo + Nx | `src/config.ts`, `src/cache/inputs.ts` |
-| Restore by file (tar extract, not symlink/hardlink)                | Turbo + Nx | `src/cache/tar.ts` (`extractOutputs`)  |
-| Log replay on cache hit                                            | Turbo + Nx | `src/orchestrator/execute-task.ts`     |
-| **Wipe outputs before exec AND before restore** (strict ownership) | (vx-only)  | `src/cache/inputs.ts` (`cleanOutputs`) |
+| Pattern                                                            | Source     | vx source                                 |
+| ------------------------------------------------------------------ | ---------- | ----------------------------------------- |
+| Glob-based `outputs` declaration                                   | Turbo + Nx | `src/config.ts`, `src/cache/inputs.ts`    |
+| Restore by file (archive extract, not symlink/hardlink)            | Turbo + Nx | `src/cache/archive.ts` (`extractOutputs`) |
+| Log replay on cache hit                                            | Turbo + Nx | `src/orchestrator/execute-task.ts`        |
+| **Wipe outputs before exec AND before restore** (strict ownership) | (vx-only)  | `src/cache/inputs.ts` (`cleanOutputs`)    |
 
 ### CLI conventions
 

@@ -31,12 +31,19 @@
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { mkdirSync, statSync } from 'node:fs'
-import { chmod, mkdir, mkdtemp, rename, rm, stat, utimes } from 'node:fs/promises'
-import os from 'node:os'
+import { mkdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
+import {
+  type ArchiveEntry,
+  ArchiveSecurityError,
+  extractOutputs,
+  packArtifact as packArchive,
+  readArtifact,
+  readEntryText,
+  STDOUT_ENTRY,
+} from './archive.js'
 import { FsCASBackend } from './cas-backend.js'
-import { extractOutputs, parseTarHeaders, readTarText, resolveTarFormat } from './tar.js'
 
 // v17: artifact carries only logs + outputs (stdout + outputs/<rel>).
 // Local and remote layers transport the SAME tar.zst bytes — no
@@ -96,7 +103,7 @@ import { extractOutputs, parseTarHeaders, readTarText, resolveTarFormat } from '
 // `LayeredCache` uploads them, so the reach is a whole team's shared cache
 // rather than one developer's disk. Pre-alpha, so one cold rebuild is the
 // cheap side of that trade.
-const CACHE_VERSION = 'vx-cache-v26'
+const CACHE_VERSION = 'vx-cache-v27'
 // SCHEMA history (drop+recreate on mismatch; pre-alpha, no migrations):
 //   v20: file_hashes.content_hash (git blob OIDs).
 //   v21: dropped the unused outputs_hash column (pure-input hashing).
@@ -533,21 +540,6 @@ export class CorruptArtifactError extends Error {
     super(`cache: corrupt artifact for ${hash}: ${reason}`)
     this.name = 'CorruptArtifactError'
   }
-}
-
-/**
- * Copy a source file's permission bits onto its staged copy.
- *
- * `Bun.write` creates the destination fresh under the process umask — it does
- * NOT carry the source's mode — so an executable output (a compiled binary, a
- * generated shell script, anything `chmod +x`ed) would be staged 0644, the tar
- * header would record 0644, and every cache hit would restore a
- * NON-EXECUTABLE file. The build works cold and breaks warm, which is the
- * worst failure profile there is.
- */
-async function stageMode(src: string, dest: string): Promise<void> {
-  const st = await stat(src)
-  await chmod(dest, st.mode & 0o777)
 }
 
 /**
@@ -1449,7 +1441,7 @@ export class Cache implements CacheLayer {
   }
 
   async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void> {
-    // In-process tar extraction — no fork+exec on the hot path
+    // In-process extraction — no fork+exec on the hot path
     // (~5-10ms reclaimed per hit vs the prior subprocess `tar -xf`).
     //
     // The "tree is already current" skip-everything check happens at
@@ -1474,14 +1466,18 @@ export class Cache implements CacheLayer {
     // declared size is allowed; the oversize ceiling still applies.
     const tarBytes = await zstdDecompressBounded(compressed, hash, true)
 
-    const headers = parseTarHeaders(tarBytes)
-    const provided = new Set<string>()
-    for (const h of headers) {
-      if (h.isDir) continue
-      if (h.name.startsWith('outputs/') || h.name.startsWith(WORKSPACE_OUTPUT_PREFIX)) {
-        provided.add(h.name)
-      }
+    let entries: ArchiveEntry[]
+    try {
+      entries = await readArtifact(tarBytes)
+    } catch (err) {
+      if (err instanceof ArchiveSecurityError) throw err
+      throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     }
+    const provided = new Set(
+      entries
+        .filter((e) => e.name.startsWith('outputs/') || e.name.startsWith(WORKSPACE_OUTPUT_PREFIX))
+        .map((e) => e.name),
+    )
 
     // The index says exactly which files this entry materializes. If the
     // archive cannot produce one of them, restoring "successfully" leaves a
@@ -1502,29 +1498,10 @@ export class Cache implements CacheLayer {
 
     if (provided.size === 0) return
 
-    await extractOutputs(tarBytes, projectDir, workspaceRoot)
-
-    // Re-sync restored files' mtimes to the manifest rows (extract set
-    // them from the tar's SECOND-precision headers). After this, disk
-    // matches the rows at millisecond precision, so isOutputsCurrent
-    // compares exactly — and any later edit moves the mtime off the
-    // recorded historical value and is detected.
-    {
-      await Promise.all(
-        rows.map(async (r) => {
-          try {
-            const abs = r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
-              ? path.join(workspaceRoot ?? projectDir, r.path.slice(WORKSPACE_OUTPUT_PREFIX.length))
-              : path.join(projectDir, r.path)
-            const t = r.mtimeMs / 1000
-            await utimes(abs, t, t)
-          } catch {
-            // File absent from this extract (or unwritable) — the next
-            // probe simply restores again; never fail a hit over mtimes.
-          }
-        }),
-      )
-    }
+    // Mode and mtime ride the archive's sidecar, so the restored tree
+    // matches the index rows at millisecond precision with no second
+    // pass — the rows were built from those same values at ingest.
+    await extractOutputs(entries, projectDir, workspaceRoot)
   }
 
   async save(args: {
@@ -1559,22 +1536,12 @@ export class Cache implements CacheLayer {
     if (!this.write) return
     if (args.skipLocalWrite === true) return
     const compressed = await this.packArtifact(args)
-    await this.writeArtifactAndIndex(
-      args.hash,
-      compressed,
-      {
-        taskId: args.entry.taskId,
-        command: args.entry.command,
-        durationMs: args.entry.durationMs,
-        ...(args.inputComponents !== undefined ? { inputComponents: args.inputComponents } : {}),
-      },
-      // Save-path rows get millisecond mtimes from a fresh stat (tar
-      // headers carry only seconds) — see the row loop for the guard.
-      {
-        projectDir: args.projectDir,
-        ...(args.workspaceRoot !== undefined ? { workspaceRoot: args.workspaceRoot } : {}),
-      },
-    )
+    await this.writeArtifactAndIndex(args.hash, compressed, {
+      taskId: args.entry.taskId,
+      command: args.entry.command,
+      durationMs: args.entry.durationMs,
+      ...(args.inputComponents !== undefined ? { inputComponents: args.inputComponents } : {}),
+    })
   }
 
   /**
@@ -1600,10 +1567,14 @@ export class Cache implements CacheLayer {
   }
 
   /**
-   * Stage stdout + outputs, tar them, zstd-compress, return the bytes.
-   * No disk write to the final cache path — that's the index step's
-   * job. Pure transform, so `ingest()` can skip this and just hand its
-   * remote-supplied bytes straight to `writeArtifactAndIndex`.
+   * Collect stdout + outputs into artifact bytes, zstd-compress, return
+   * them. No disk write to the final cache path — that's the index
+   * step's job. Pure transform, so `ingest()` can skip this and hand
+   * its remote-supplied bytes straight to `writeArtifactAndIndex`.
+   *
+   * Entries are named directly into the archive, so there is no staging
+   * copy of every output byte and no `tar` subprocess (see
+   * `archive.ts`).
    */
   private async packArtifact(args: {
     hash: string
@@ -1613,92 +1584,33 @@ export class Cache implements CacheLayer {
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
   }): Promise<Uint8Array> {
-    const wsOutputFiles = args.workspaceOutputFiles ?? []
-    const stage = await mkdtemp(path.join(os.tmpdir(), 'vx-save-'))
-    try {
-      if (args.outputFiles.length > 0) {
-        const stageOutputs = path.join(stage, 'outputs')
-        await Promise.all(
-          args.outputFiles.map(async (f) => {
-            const rel = path.relative(args.projectDir, f)
-            const dest = path.join(stageOutputs, rel)
-            // Bun.write creates parent dirs as needed.
-            await Bun.write(dest, Bun.file(f))
-            await stageMode(f, dest)
-          }),
-        )
-      }
-      if (wsOutputFiles.length > 0) {
-        // Caller passes workspaceRoot whenever workspaceOutputFiles is
-        // non-empty; the rels are root-anchored by construction.
-        const stageWs = path.join(stage, 'workspace-outputs')
-        await Promise.all(
-          wsOutputFiles.map(async (f) => {
-            const rel = path.relative(args.workspaceRoot!, f)
-            const dest = path.join(stageWs, rel)
-            await Bun.write(dest, Bun.file(f))
-            await stageMode(f, dest)
-          }),
-        )
-      }
-      // stdout is ALWAYS present in the artifact, even if empty, so the
-      // archive layout is predictable: a successful read finds `stdout`
-      // and zero-or-more `outputs/<rel>` / `workspace-outputs/<rel>`
-      // entries.
-      await Bun.write(path.join(stage, 'stdout'), args.entry.stdout ?? '')
-
-      const topLevel: string[] = ['stdout']
-      if (wsOutputFiles.length > 0) topLevel.unshift('workspace-outputs')
-      if (args.outputFiles.length > 0) topLevel.unshift('outputs')
-
-      // GNU tar format — like ustar it emits no PAX extended-header
-      // records (BSD tar, the macOS default, emits one PER ENTRY for
-      // xattrs / mtime-nanos, which would show up as junk
-      // `PaxHeaders/<name>` entries in restored trees), but unlike ustar
-      // it can express EVERY name a build can produce. ustar splits a
-      // name over 100 bytes into prefix+name and simply REFUSES
-      // ("file name is too long (cannot be split)", exit 2) when a single
-      // component exceeds 100 bytes — turning a build that succeeded into
-      // a failed run. GNU carries long names in an `L` record instead,
-      // which the reader has always understood. `resolveTarFormat`
-      // spells the flag the way the LOCAL tar accepts it: GNU tar says
-      // `gnu`, bsdtar (the macOS default) says `gnutar` and refuses
-      // `gnu` — which failed EVERY save on macOS, turning a task that
-      // succeeded into a failed run.
-      const format = await resolveTarFormat()
-      const proc = Bun.spawn(['tar', `--format=${format}`, '-cf', '-', '-C', stage, ...topLevel], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-        // COPYFILE_DISABLE blocks Apple's copyfile() from attaching
-        // xattrs to staged files via inherited child copies; tar then
-        // has nothing to emit AppleDouble for.
-        env: { ...process.env, COPYFILE_DISABLE: '1' },
-      })
-      const [tarBytes, stderrText] = await Promise.all([
-        new Response(proc.stdout).bytes(),
-        new Response(proc.stderr).text(),
-      ])
-      await proc.exited
-      if (proc.exitCode !== 0) {
-        throw new Error(`save: tar exited ${proc.exitCode}: ${stderrText.trim()}`)
-      }
-      return await Bun.zstdCompress(tarBytes)
-    } finally {
-      await rm(stage, { recursive: true, force: true })
+    const outputs = new Map<string, string>()
+    for (const f of args.outputFiles) {
+      outputs.set(`outputs/${path.relative(args.projectDir, f)}`, f)
     }
+    // Caller passes workspaceRoot whenever workspaceOutputFiles is
+    // non-empty; the rels are root-anchored by construction.
+    for (const f of args.workspaceOutputFiles ?? []) {
+      outputs.set(`${WORKSPACE_OUTPUT_PREFIX}${path.relative(args.workspaceRoot!, f)}`, f)
+    }
+    // stdout is ALWAYS present in the artifact, even if empty, so the
+    // layout is predictable: a successful read finds `stdout` and
+    // zero-or-more `outputs/<rel>` / `workspace-outputs/<rel>` entries.
+    const bytes = await packArchive({ stdout: args.entry.stdout ?? '', outputs })
+    return await Bun.zstdCompress(bytes)
   }
 
   /**
-   * Atomically write `compressed` to `<hash>.tar.zst` and (re)build
-   * the entries + output_files SQL rows from the tar headers. Shared
-   * by `save()` (we just packed the bytes) and `ingest()` (we got
-   * them from the remote layer).
+   * Atomically write `compressed` to `<hash>.tar.zst` and (re)build the
+   * entries + output_files SQL rows from the archive itself. Shared by
+   * `save()` (we just packed the bytes) and `ingest()` (we got them from
+   * the remote layer) — both index the identical values, because both
+   * read them out of the artifact.
    */
   private async writeArtifactAndIndex(
     hash: string,
     compressed: Uint8Array,
     meta: IngestMeta,
-    statBase?: { projectDir: string; workspaceRoot?: string },
   ): Promise<void> {
     // Validate BEFORE anything touches the final path. `ingest()` feeds
     // us network bytes; a truncated/garbage body that went live first
@@ -1718,10 +1630,16 @@ export class Cache implements CacheLayer {
       if (err instanceof CorruptArtifactError) throw err
       throw new CorruptArtifactError(hash, 'zstd decompression failed', err)
     }
-    const headers = parseTarHeaders(tarBytes)
+    let entries: ArchiveEntry[]
+    try {
+      entries = await readArtifact(tarBytes)
+    } catch (err) {
+      if (err instanceof ArchiveSecurityError) throw err
+      throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
+    }
     // v17 invariant: every artifact carries a `stdout` entry. Its
     // absence means the bytes decompressed but aren't a vx artifact.
-    if (!headers.some((h) => h.name === 'stdout' && !h.isDir)) {
+    if (!entries.some((e) => e.name === STDOUT_ENTRY)) {
       throw new CorruptArtifactError(hash, 'missing stdout entry')
     }
 
@@ -1747,42 +1665,26 @@ export class Cache implements CacheLayer {
     // Row paths: project entries store the bare rel (`outputs/`
     // stripped); workspace entries keep the full
     // `workspace-outputs/<rel>` name as the namespace discriminator.
-    for (const h of headers) {
-      if (h.isDir) continue
+    //
+    // Mode and MILLISECOND mtime come from the artifact's own sidecar
+    // (`.vx-meta.json`), written from a stat taken while packing. Both
+    // paths — save and remote ingest — therefore index the same values,
+    // and `restoreOutputs` materialises exactly them, so
+    // `isOutputsCurrent` compares equal at ms precision straight after a
+    // restore. (Tar headers carry seconds, which is why the save path
+    // used to need a second stat pass the ingest path could not have.)
+    for (const e of entries) {
       let rowPath: string | null = null
-      if (h.name.startsWith('outputs/')) {
-        const rel = h.name.slice('outputs/'.length)
+      if (e.name.startsWith('outputs/')) {
+        const rel = e.name.slice('outputs/'.length)
         if (rel.length > 0) rowPath = rel
-      } else if (h.name.startsWith(WORKSPACE_OUTPUT_PREFIX)) {
-        if (h.name.length > WORKSPACE_OUTPUT_PREFIX.length) rowPath = h.name
+      } else if (e.name.startsWith(WORKSPACE_OUTPUT_PREFIX)) {
+        if (e.name.length > WORKSPACE_OUTPUT_PREFIX.length) rowPath = e.name
       }
       if (rowPath === null) continue
-      let mtimeMs = Math.floor(h.mtimeMs)
-      // Save path only (ingest has no filesystem to consult): tar
-      // headers truncate mtimes to SECONDS, which is what made the
-      // skip-restore check blind to same-second same-size edits. A
-      // fresh stat refines the row to millisecond precision — but only
-      // when the size still matches the packed header, so the row
-      // always describes the ARTIFACT's bytes; a file mutated between
-      // pack and stat keeps the coarse header time (degraded, not
-      // wrong). restoreOutputs re-syncs disk mtimes to these rows.
-      if (statBase !== undefined) {
-        try {
-          const abs = rowPath.startsWith(WORKSPACE_OUTPUT_PREFIX)
-            ? path.join(
-                statBase.workspaceRoot ?? statBase.projectDir,
-                rowPath.slice(WORKSPACE_OUTPUT_PREFIX.length),
-              )
-            : path.join(statBase.projectDir, rowPath)
-          const st = await stat(abs)
-          if (st.size === h.size) mtimeMs = Math.floor(st.mtimeMs)
-        } catch {
-          // stat failed — keep the header-seconds fallback.
-        }
-      }
-      outputFileRows.push([rowPath, h.size, h.mode & 0o777, mtimeMs])
+      outputFileRows.push([rowPath, e.size, e.mode & 0o777, Math.floor(e.mtimeMs)])
     }
-    const stdoutText = readTarText(tarBytes, headers, 'stdout')
+    const stdoutText = await readEntryText(entries, STDOUT_ENTRY)
 
     const [project, task] = splitTaskId(meta.taskId)
     const now = Date.now()

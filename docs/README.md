@@ -217,7 +217,7 @@ src/
     cache.ts                      # local cache (bun:sqlite + tar.zst artifacts)
     layered-cache.ts              # local + remote composition + the RemoteCacheLayer seam
     inputs.ts                     # input/output glob resolution + boundary enforcement
-    tar.ts                        # tar pack/extract primitives (module-internal)
+    archive.ts                    # Bun.Archive pack/read/extract + containment (module-internal)
   exec/
     index.ts                      # module contract
     runner.ts                     # Bun.spawn wrapper + shellQuote + runPersistent

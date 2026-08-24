@@ -43,6 +43,10 @@ export type VerifyVerdict =
   | { kind: 'no-outputs' }
   /** Didn't execute (cache hit) / not cacheable / group / persistent. */
   | { kind: 'not-verified' }
+  /** A `remote: 'only'` task under `--verify=inputs`: verify pins placement
+   *  local, so the task no-ops — there is no execution to sandbox, locally
+   *  or anywhere. Reported, not silent: the proof does not cover it. */
+  | { kind: 'unverifiable-remote-only' }
 
 /**
  * Content fingerprint of a task's output tree, computed under a `--verify*`

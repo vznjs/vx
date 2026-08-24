@@ -783,8 +783,11 @@ describe('Cache storage (v10)', () => {
       await new Promise((r) => setTimeout(r, 5))
     }
 
-    // Cap = ~200 bytes worth → evict h1 (oldest accessed), maybe h2.
-    const result = await cache.prune({ maxBytes: 200 })
+    // Cap = two artifacts' worth, measured rather than guessed: a
+    // hardcoded byte count silently becomes "evict everything" the next
+    // time the artifact layout gains a record.
+    const oneArtifact = (await import('node:fs')).statSync(cache.outputsPath('h3')).size
+    const result = await cache.prune({ maxBytes: oneArtifact * 2 })
     expect(result.evicted).toBeGreaterThanOrEqual(1)
     // h3 (most recently accessed) survives.
     expect(await cache.get('h3')).not.toBeNull()
@@ -1672,20 +1675,29 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
     expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms2'))).toBe(true)
   })
 
-  it('legacy second-precision rows converge on their first restore', async () => {
+  it('an INGESTED (remote-sourced) artifact indexes ms mtimes too', async () => {
+    // The artifact's own sidecar carries mode + ms mtime, so the ingest
+    // path — which has no filesystem to stat — records exactly what the
+    // producer measured. Before the sidecar it could only read tar
+    // headers, i.e. SECONDS, and a same-second edit after a remote hit
+    // was invisible to the skip-restore probe.
     const outFile = await saveOne('ms3', 'DDDD')
-    // Simulate a pre-fix row: truncate the stored mtime to seconds*1000
-    // (what tar-header-sourced rows held).
-    const coarse = Math.floor(rowsOf('ms3')[0]!.mtimeMs / 1000) * 1000
-    cache
-      .dbHandle()
-      .prepare('UPDATE output_files SET mtime_ms = ? WHERE entry_hash = ?')
-      .run(coarse, 'ms3')
+    const recorded = rowsOf('ms3')[0]!.mtimeMs
+    expect(recorded % 1000).not.toBe(0) // precondition: a sub-second stamp
+
+    const bytes = await Bun.file(cache.outputsPath('ms3')).bytes()
+    await cache.ingest('ms3-remote', bytes, {
+      taskId: 'pkg#build',
+      command: 'b',
+      durationMs: 1,
+    })
+    expect(rowsOf('ms3-remote')[0]!.mtimeMs).toBe(recorded)
+
+    // …and restoring the ingested copy reproduces that stamp on disk, so
+    // the next probe skips instead of restoring again.
     await rm(outFile)
-    await cache.restoreOutputs('ms3', projectDir)
-    // The restore utimes'd the file to the (coarse) row value — exact
-    // match at ms precision, so the probe is stable again.
-    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms3'))).toBe(true)
+    await cache.restoreOutputs('ms3-remote', projectDir)
+    expect(await cache.isOutputsCurrent(projectDir, rowsOf('ms3-remote'))).toBe(true)
   })
 
   it('a forged mtime remains the documented blind spot', async () => {

@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { Cache } from '../src/cache/cache.js'
 import { GitFilesCache, populateGitFilesCache, resolveInputs } from '../src/cache/inputs.js'
-import { parseTarHeaders } from '../src/cache/tar.js'
+import { readArtifact } from '../src/cache/archive.js'
 import { validateProjectConfig } from '../src/workspace/project-loader.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
@@ -303,9 +303,8 @@ describe('workspace-outputs artifact namespace', () => {
 
   async function tarNames(hash: string): Promise<string[]> {
     const compressed = await Bun.file(cache.outputsPath(hash)).bytes()
-    return parseTarHeaders(await Bun.zstdDecompress(compressed))
-      .map((h) => h.name)
-      .filter((n) => !n.endsWith('/'))
+    const entries = await readArtifact(await Bun.zstdDecompress(compressed))
+    return entries.map((e) => e.name)
   }
 
   it('packs both namespaces, indexes rows with the prefix discriminator, restores each anchor', async () => {

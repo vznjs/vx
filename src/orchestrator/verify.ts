@@ -101,7 +101,12 @@ export function undeclaredInputPaths(
 ): string[] {
   const rels = new Set<string>()
   for (const v of violations) {
-    const m = /\[([^\]]+)\]\s*$/.exec(v.line)
+    // Two wire shapes: Linux strace lines carry `[path]`; macOS
+    // sandbox-exec lines end in a bare absolute path
+    // (`node(123) deny(1) file-read-data /abs/path`). Fall back to the
+    // raw line only when neither parses — a path the user can act on
+    // beats a log line every time.
+    const m = /\[([^\]]+)\]\s*$/.exec(v.line) ?? /\s(\/\S+)\s*$/.exec(v.line)
     const raw = m ? m[1]! : v.line
     rels.add(
       path.isAbsolute(raw) ? path.relative(workspaceRoot, raw).split(path.sep).join('/') : raw,
@@ -138,6 +143,9 @@ export function formatVerifySection(outcomes: readonly TaskOutcome[]): string[] 
       case 'not-verified':
         notVerified++
         break
+      case 'unverifiable-remote-only':
+        na++
+        break
     }
   }
   const lines = [
@@ -156,6 +164,8 @@ export function formatVerifySection(outcomes: readonly TaskOutcome[]): string[] 
       lines.push('        add them to cache.inputs.files / workspaceFiles')
     } else if (v.kind === 'rerun-failed') {
       lines.push(`    ✗ ${o.node.id} — verify re-run failed (exit ${v.exitCode})`)
+    } else if (v.kind === 'unverifiable-remote-only') {
+      lines.push(`    ⚠ ${o.node.id} — remote-only: no local execution to prove (unverified)`)
     } else if (v.kind === 'allowed-nondeterministic') {
       lines.push(`    ⚠ ${o.node.id} — nondeterministic (allowed)`)
     }

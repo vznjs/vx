@@ -46,7 +46,7 @@ export type SaveArgs = {
 // Namespace discriminator for workspace outputs in the artifact and
 // the output_files rows: project rows store the bare project-relative
 // path; workspace rows store the full `workspace-outputs/<rel-to-root>`
-// tar entry name.
+// archive entry name.
 export const WORKSPACE_OUTPUT_PREFIX = 'workspace-outputs/'
 
 export class Cache implements CacheLayer {
@@ -219,15 +219,18 @@ Determinism notes:
 ```
 <cacheDir>/
 ├── cache.db                 # SQLite (with cache.db-wal, cache.db-shm)
-└── <hash>.tar.zst           # per-entry artifact:
+└── <hash>.tar.zst           # per-entry artifact (Bun.Archive + zstd):
     ├── stdout               #   captured stdout (always present)
     ├── outputs/             #   declared output files, project-relative
-    └── workspace-outputs/   #   declared outputs.workspaceFiles,
-                             #   WORKSPACE-ROOT-relative (when any;
-                             #   additive — absent for tasks without
-                             #   the field, keeping their artifacts
-                             #   byte-identical to plain v17)
+    ├── workspace-outputs/   #   declared outputs.workspaceFiles,
+    │                        #   WORKSPACE-ROOT-relative (when any)
+    └── .vx-meta.json        #   { version, files: { <entry>: [mode, mtimeMs] } }
 ```
+
+`.vx-meta.json` exists because `Bun.Archive` carries no per-entry
+metadata in either direction — see `src/cache/archive.ts`, which owns
+pack, read and extract, plus the entry-name validation and containment
+checks that libarchive cannot make on vx's behalf.
 
 SQLite stores metadata only:
 

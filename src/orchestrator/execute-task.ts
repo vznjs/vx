@@ -338,12 +338,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // dependents fold it — and the machine's ambient state (node_modules as
   // installed by the dev) serves dependents exactly as before the field.
   if (args.remoteOnlyNoop === true) {
+    // Under a `--verify` proof the noop must be REPORTED, not silent: there
+    // is no execution to sandbox or re-run, so the proof cannot cover this
+    // task (the eleventh-wave residual — a silently unverified task reads
+    // as a green proof over ground the proof never touched).
+    const wantsProof =
+      args.verify !== undefined &&
+      (args.verify.inputs || args.verify.determinism || args.verify.fingerprint)
     return {
       node,
       status: 'success',
       exitCode: 0,
       durationMs: 0,
       hash,
+      ...(wantsProof ? { verify: { kind: 'unverifiable-remote-only' as const } } : {}),
       wallclockStartNs: taskStartNs,
       wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
     }

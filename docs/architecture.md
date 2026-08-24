@@ -11,11 +11,13 @@ packages integrate with core exclusively through its public API
 (`src/index.ts`, imported as the bare `@vzn/vx` specifier — enforced
 by `tests/package-boundaries.test.ts`):
 
-| Package            | What                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------ |
-| `.` (root)         | `@vzn/vx` — the core runner. Everything below in this doc.                                 |
-| `packages/vx-otel` | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps |
-| `apps/docs`        | Astro Starlight docs site; imports `docs/**` at build time                                 |
+| Package              | What                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------ |
+| `.` (root)           | `@vzn/vx` — the core runner. Everything below in this doc.                                       |
+| `packages/vx-otel`   | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps       |
+| `packages/vx-reapi`  | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2 |
+| `packages/vx-github` | `@vzn/vx-github` — `github()` telemetry plugin: the GitHub Actions job summary                   |
+| `apps/docs`          | Astro Starlight docs site; imports `docs/**` at build time                                       |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the ~80-symbol public API and the plugin
@@ -30,16 +32,16 @@ single root file when it has no internals to hide. The design and
 migration history live in
 [`design/module-isolation-2026-06.md`](./design/module-isolation-2026-06.md).
 
-| Module         | Form                        | Contract highlights                                                                                                                          |
-| -------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`/`toPosix`, `ulid`                                                                                   |
-| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                 |
-| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`vx-lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint |
-| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                        |
-| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `RemoteCache`, `CachePolicy`, input/output resolution, `CASBackend`/`Digest`. `tar.ts` stays internal |
-| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                              |
-| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                     |
-| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                           |
+| Module         | Form                        | Contract highlights                                                                                                                              |
+| -------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`/`toPosix`, `ulid`                                                                                       |
+| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                     |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`vx-lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint     |
+| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                            |
+| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `RemoteCache`, `CachePolicy`, input/output resolution, `CASBackend`/`Digest`. `archive.ts` stays internal |
+| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                  |
+| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                         |
+| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                               |
 
 Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `version.ts` (the `VERSION`
