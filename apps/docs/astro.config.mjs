@@ -59,6 +59,7 @@ export default defineConfig({
             { label: 'Environment variables', link: '/guides/environment-variables/' },
             { label: 'Sandboxing tasks', link: '/guides/sandboxing/' },
             { label: 'Remote caching', link: '/guides/remote-caching/' },
+            { label: 'Remote execution', link: '/guides/remote-execution/' },
             { label: 'Continuous integration', link: '/guides/ci/' },
             { label: 'Workspace configuration', link: '/guides/workspace-config/' },
           ],

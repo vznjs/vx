@@ -437,6 +437,19 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-24 (tenth wave) — the remote-execution GUIDE ships, closing the
+  docs gap the arc left.** `remote: 'only'`, install-as-action, worker-image
+  requirements and the reliability behaviour existed only in schema.md and
+  the package README — not where someone setting up remote execution would
+  look. New `guides/remote-execution.md` on the docs site, sidebar entry
+  after Remote caching, cross-linked from it. Content held to the
+  proven-behaviour standard: every claim in it was verified live this
+  session (the distroless `/bin/sh` trap with its misleading ENOENT, the
+  placement rules and `--dry` labels, the worker→CAS→worker chain, the
+  local-disk-is-truth coherence rule, the 128→64 KB downgrade, deadline
+  degradation, `WaitExecution` re-attach, stage surfacing). Astro build
+  clean, page present in dist, cross-link resolves.
+
 - **2026-08-24 (ninth wave) — the sandbox-reporting flake ROOT-CAUSED and
   measured: lossy unified-log delivery, halved by a settle-poll, residual
   unfixable client-side.** The local repro made this tractable where the CI

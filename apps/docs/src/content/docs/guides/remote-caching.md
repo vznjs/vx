@@ -64,7 +64,8 @@ task drained at end of run — failures are logged but never fail the build.
 That means NativeLink, BuildBuddy, Buildbarn and bazel-remote all work as a
 vx remote cache with one endpoint of configuration — six mature server
 implementations, none of them written by us, because the REAPI server is
-deliberately dumb.
+deliberately dumb. The same plugin can also RUN your tasks on that pool —
+see [Remote execution](../remote-execution/).
 
 ```ts
 // vx.workspace.ts — reapi BEFORE localCachePlugin so a remote hit wins.
