@@ -483,6 +483,31 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fifty-eighth wave) — `runner.ts` closes `src/exec/`
+  clean, and the module-doc debt from my own week's work is paid.**
+  Sharpest hypothesis on the runner: every command runs as `sh -c`, so a
+  timeout SIGTERM would kill the shell and ORPHAN the real work.
+  REFUTED, and the treatment is better than the hypothesis — `execWrap`
+  prepends `exec ` for a single external command so the shell is
+  REPLACED, leaving no intermediate to orphan (which also makes
+  `resourceUsage` measure the program rather than the shell), with a
+  guarded fallback for compound commands, builtins and
+  `FOO=bar cmd` forms, and the residual named honestly in the comment:
+  compound-command grandchildren still orphan on a hard kill, "the
+  residual limit every non-cgroup runner shares". Being wrong in the
+  over-cautious direction costs nothing, and `tests/runner.test.ts`
+  already pins the classifier. With env.ts and the heavily-audited
+  sandbox-runtime, that closes exec/. THE ACTUAL DEBT was mine: the repo
+  keeps a per-file doc for 67 modules — `stable-keys.md`,
+  `local-shortcircuit.md` — and the two orchestrator files I shipped
+  today, `download-policy.ts` and `deferred-outputs.ts`, had none. I
+  documented the FEATURE thoroughly (cli reference, the remote-execution
+  guide, the design doc, the log) and skipped the MODULE docs, which is
+  the same rule failing at a different altitude. Both written to the
+  house shape (purpose / public surface / invariants / tests), including
+  the four ways to be deferral-ineligible and the convergence sequence,
+  and both indexed in `docs/modules/README.md`.
+
 - **2026-08-25 (fifty-seventh wave) — `env.ts` audited: the isolation and
   the key trade are both RIGHT and well documented; the doc's copy of the
   allowlist was not, and is now pinned.** The hypothesis worth testing on
