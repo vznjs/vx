@@ -487,6 +487,26 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (sixty-ninth wave) — the repo dogfoods `@vzn/vx-github`,
+  and the un-gated sandbox suite survived a second loaded darwin run.**
+  The plugin shipped this morning had never run in a real Actions
+  environment — every test injects its transport. `vx.workspace.ts` now
+  declares `github()` alongside `otel()`, which costs nothing and proves
+  something on every CI run: on a runner `GITHUB_STEP_SUMMARY` exists so
+  the sink activates and writes the summary; on a laptop it declines.
+  Checked BOTH halves before landing rather than reasoning about them —
+  a local run stays silent, and a run with `GITHUB_STEP_SUMMARY` pointed
+  at a temp file produced 234 bytes of correct markdown (verdict
+  headline, stats line, task table). The Checks API half stays dormant
+  deliberately: this workflow puts no `GITHUB_TOKEN` in the environment,
+  so the plugin skips the check-run rather than guessing, which is its
+  documented default and keeps the change free of new permissions and
+  outward-facing calls. Also banked: canary #19 (19/1/0, cumulative
+  n=380, non-enforcement 0/380) and the precondition that the un-gated
+  sandbox suite RAN on darwin under load a second time — 19 test lines,
+  on a job that had been red for an unrelated fixture reason, which is
+  about as loaded as that runner gets.
+
 - **2026-08-25 (sixty-eighth wave) — RED MAIN on a DOCS-ONLY commit, and
   this time it genuinely was not the diff: git itself failed to write an
   object.** The darwin job went red on the log-compaction commit, which
