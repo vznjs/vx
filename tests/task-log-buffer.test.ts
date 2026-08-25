@@ -106,6 +106,31 @@ describe('TaskLogBuffer — run budget with failure priority', () => {
     expect(total).toBeLessThanOrEqual(RUN_LOG_BUDGET_CHARS)
   })
 
+  it('charge and release stay symmetric across replace, evict and take', () => {
+    // Accounting drift is silent and cumulative: a release that does not
+    // match its charge leaves the budget bounding something other than what
+    // it reports, and only a long-lived process would notice. Both paths
+    // that mutate an entry after charging it are exercised — a task
+    // finishing TWICE with a different chunk count (the defensive
+    // replacement path), and an entry stubbed by eviction and then taken.
+    const buf = new TaskLogBuffer()
+    buf.append('p#a', 'x'.repeat(100))
+    buf.finish('p#a', 'failed', 'miss')
+    for (let i = 0; i < 50; i++) buf.append('p#a', 'y')
+    buf.finish('p#a', 'failed', 'miss') // replaces the first retention
+    buf.takeEntry('p#a')
+    expect(buf.budgetUsed()).toBe(0)
+
+    const big = 'z'.repeat(200 * 1024)
+    for (let i = 0; i < 60; i++) {
+      buf.append(`p#s${i}`, big)
+      buf.finish(`p#s${i}`, 'success', 'miss') // some get stubbed by the budget
+    }
+    for (let i = 0; i < 60; i++) buf.takeEntry(`p#s${i}`)
+    expect(buf.budgetUsed()).toBe(0)
+    expect(buf.size()).toBe(0)
+  })
+
   it('charges per-chunk overhead, so many tiny chunks evict sooner than one big one', () => {
     // The run budget exists to bound MEMORY, and a char count is not one: the
     // same content stored as thousands of separate strings costs multiples of

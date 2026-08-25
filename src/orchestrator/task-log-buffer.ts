@@ -232,6 +232,18 @@ export class TaskLogBuffer {
   }
 
   /**
+   * Budget charged right now, in char-equivalents (test/observability).
+   *
+   * Exposed because the charge/release symmetry is the invariant that keeps
+   * the cap meaningful and the one that fails SILENTLY: a release that does
+   * not match its charge drifts `retainedChars` a little per task, and a
+   * long run ends up bounding something other than what it thinks.
+   */
+  budgetUsed(): number {
+    return this.retainedChars
+  }
+
+  /**
    * Evict until `retainedChars <= RUN_LOG_BUDGET_CHARS`. Successes go first
    * (oldest by seq); only when failures ALONE still exceed the budget do the
    * oldest failures go — a failure is never dropped to keep a success.

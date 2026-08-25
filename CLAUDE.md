@@ -487,6 +487,29 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (sixty-fourth wave) — hostile pass on the log-budget change
+  I shipped two waves ago: REFUTED, and the invariant that could have
+  broken silently is now pinned.** New-code rule turned on my own newest
+  code. The sharp risk in switching the budget from a char count to
+  `chars + chunks × 24` is not the formula, it is SYMMETRY: every charge
+  must be released with the identical cost, and the two paths that mutate
+  an entry AFTER charging it — a task finishing twice (the defensive
+  replacement) and an entry stubbed by eviction then taken — are exactly
+  where a mismatch would hide. Drift there is silent and cumulative: a
+  long run ends up bounding something other than what it reports, with no
+  symptom until memory. Probed both paths directly: `retainedChars`
+  returns to exactly 0 after replace+take and after evict+take-all. The
+  ordering happens to be right by construction (eviction releases BEFORE
+  it zeroes `chunks`), which is precisely the kind of accident worth
+  pinning before someone reorders two lines. Added `budgetUsed()` for the
+  assertion and a test covering both paths; differential — releasing
+  `e.chars` where the charge was `budgetCost(...)` — fails it. Process
+  note: the first differential attempt asserted on an expression that
+  appears at TWO release sites, so it aborted before writing and the tree
+  was untouched; re-anchoring on the preceding `delete` line made it
+  unique. The abort-before-write habit is why that cost one command
+  instead of a confusing green.
+
 - **2026-08-25 (sixty-third wave) — the OPEN-ITEMS list had removal rot of
   its own: three of its entries were already dead.** Reaching for the last
   "actionable" item — the `--info` / `--cache-local` token collision —
