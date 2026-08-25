@@ -105,7 +105,13 @@ describe('TaskLogBuffer — run budget with failure priority', () => {
     expect(total).toBeLessThanOrEqual(RUN_LOG_BUDGET_CHARS)
   })
 
-  it('evicts oldest failures only when failures ALONE exceed the budget', () => {
+  it('keeps the FIRST failure when failures alone exceed the budget', () => {
+    // The tiebreak that matters. When a run fails hard enough that failures
+    // alone blow the budget, the first failure is usually the root cause and
+    // the later ones its cascade — so it is the LAST thing stubbed, not the
+    // first. (This pinned the opposite until 2026-08-25; the recorded open
+    // item called the old order out as "usually the root cause" being
+    // dropped first.)
     const buf = new TaskLogBuffer()
     const chunk = 'x'.repeat(TASK_LOG_TAIL_CHARS)
     for (let i = 0; i < 40; i++) {
@@ -115,9 +121,12 @@ describe('TaskLogBuffer — run budget with failure priority', () => {
     const bundle = buf.drain('r', 'ws')
     const total = bundle.tasks.reduce((n, t) => n + t.content.length, 0)
     expect(total).toBeLessThanOrEqual(RUN_LOG_BUDGET_CHARS)
-    // Oldest failure evicted, newest kept — failures fall to newer failures only.
-    expect(entry(bundle, 'p#f0')!.content).toBe('')
-    expect(entry(bundle, 'p#f39')!.content.length).toBeGreaterThan(0)
+    // The root cause survives; the newest cascade failure is stubbed.
+    expect(entry(bundle, 'p#f0')!.content.length).toBeGreaterThan(0)
+    expect(entry(bundle, 'p#f39')!.content).toBe('')
+    // …and an evicted failure still SHIPS, with its dropped size reported —
+    // silence and eviction must stay distinguishable.
+    expect(entry(bundle, 'p#f39')!.truncatedHeadChars).toBeGreaterThan(0)
   })
 
   // The rule the two tests above used to encode wrongly: an evicted task was
@@ -136,7 +145,10 @@ describe('TaskLogBuffer — run budget with failure priority', () => {
     buf.finish('p#quiet', 'failed', 'miss')
 
     const bundle = buf.drain('r', 'ws')
-    const evicted = entry(bundle, 'p#f0')!
+    // The NEWEST failure is the one stubbed now that the first failure is
+    // protected as the likely root cause; the property under test — evicted
+    // is distinguishable from silent — is unchanged.
+    const evicted = entry(bundle, 'p#f39')!
     // Present, empty, and it SAYS how much it dropped — which is what renders
     // the "earlier output truncated (N KiB dropped)" banner instead of the
     // "No logs captured for this task." fallback.

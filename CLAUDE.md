@@ -443,9 +443,11 @@ time every single time.
   remains only for a THIRD-PARTY `RemoteCacheLayer` whose `put` carries no
   deadline — a plugin-author responsibility the extensibility guide should
   name if a second remote plugin ever appears.
-- Task-log caps count CHARS, not memory (~36× overhead at 1-char chunks);
-  when failures alone exceed the run budget the OLDEST failure is stubbed
-  first (usually the root cause).
+- Task-log caps count CHARS, not memory (~36× overhead at 1-char chunks).
+  ~~When failures alone exceed the run budget the OLDEST failure is stubbed
+  first (usually the root cause)~~ — **FIXED 2026-08-25**: the failed tier
+  now evicts NEWEST-first, so the first failure survives longest; successes
+  keep oldest-first. The char-vs-memory half stands.
 - **macOS sandbox violation REPORTING is lossy-by-OS under load — measured,
   partially mitigated, residual unfixable client-side.** Root-cause hunt
   (2026-08-24): ~430 runs/arm under full-suite load, every failure the same
@@ -480,6 +482,27 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-25 (sixty-first wave) — the task-log budget stubbed the ROOT
+  CAUSE first; the failed tier now evicts newest-first.** Half of a
+  recorded open item, closed. When failures alone exceed the run log
+  budget, `evictToBudget` sorted successes-then-`seq` ascending — oldest
+  first — inside BOTH tiers. For successes that is right (none is more
+  interesting, so recency wins). For failures it is exactly backwards:
+  the FIRST failure is usually the root cause and the later ones its
+  cascade, so a hard-failing run reliably dropped the one log a user
+  needs and kept forty copies of the consequence. The tiebreak is now
+  status-dependent — failures newest-first, successes oldest-first —
+  with the reasoning at the comparator. The pin that encoded the old
+  behaviour was UPDATED, not deleted: it now asserts the first failure
+  survives and the newest is stubbed, plus that the stubbed one still
+  ships with `truncatedHeadChars` set, because "evicted" and "printed
+  nothing" must stay distinguishable (a sibling test pins that property
+  and needed its example id moved for the same reason). Differential:
+  restoring the uniform `a.seq - b.seq` fails exactly the new pin. The
+  open item's OTHER half — caps count chars, not memory, ~36× off at
+  1-char chunks — is untouched and stays recorded; it is a sizing
+  question, not a wrong-answer one.
 
 - **2026-08-25 (sixtieth wave) — the darwin un-gate CONFIRMED under real
   load, and a self-correction: the CAS backend was never dead code.**

@@ -235,8 +235,13 @@ export class TaskLogBuffer {
     const order = [...this.retained.values()].sort((a, b) => {
       const sa = a.status === 'success' ? 0 : 1
       const sb = b.status === 'success' ? 0 : 1
-      // Successes first (drop them first), then oldest-first within a tier.
-      return sa !== sb ? sa - sb : a.seq - b.seq
+      if (sa !== sb) return sa - sb // successes are dropped first, always
+      // Within a tier the tiebreak DIFFERS by status, and the failed one is
+      // the point: when failures alone blow the budget, the FIRST failure is
+      // usually the root cause and the later ones its cascade, so it must be
+      // the last thing stubbed. Successes keep oldest-first — none of them
+      // is more interesting than another, and recency is the better guess.
+      return a.status === 'failed' ? b.seq - a.seq : a.seq - b.seq
     })
     for (const e of order) {
       if (this.retainedChars <= RUN_LOG_BUDGET_CHARS) break
