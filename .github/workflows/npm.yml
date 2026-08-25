@@ -41,7 +41,7 @@ jobs:
       id-token: write # OIDC token for npm Trusted Publishing + provenance
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:

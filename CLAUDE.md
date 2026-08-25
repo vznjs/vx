@@ -487,6 +487,31 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (seventy-fourth wave) — `actions/checkout` v4 → v7 across
+  all four workflows, after checking what actually exists.** Every CI run
+  has been printing "Node.js 20 is deprecated … actions/checkout@v4
+  forced to run on Node.js 24", which I kept reading past while grepping
+  for other things. Queried the API rather than guessing a version, and
+  the pins were further behind than assumed: checkout is at **v7**,
+  setup-node v7, the pages pair v5 — this repo sat on v4/v4/v3/v4. Read
+  the v5–v7 release notes before jumping three majors: v6 adds Node 24
+  support and moves credential persistence to a separate file, v7 blocks
+  fork-PR checkout for `pull_request_target` / `workflow_run` and goes
+  ESM. Neither touches a plain checkout, and this repo's triggers are
+  push / pull_request / workflow_dispatch / release — none of the two v7
+  restricts — so the jump is safe HERE for a reason, not by optimism.
+  All six usages are plain (only release.yml passes `ref:`), so no
+  default was being relied on. DELIBERATELY LEFT: `setup-node@v4` (npm
+  publish with OIDC, exercised only on release — a bump I cannot verify
+  before it matters) and the `upload-pages-artifact@v3` /
+  `deploy-pages@v4` PAIR, which must move together and gates the docs
+  site. Neither is in the deprecation warning; both are follow-ups with
+  named reasons rather than a silent skip. Also learned while reading:
+  `ci.yml` already has `workflow_dispatch` with the comment "manual
+  re-run without a push — for distinguishing runner-infra flakes from
+  real regressions" — which is exactly the tool I should have reached for
+  during today's two darwin e2e flakes instead of pushing a commit.
+
 - **2026-08-25 (seventy-third wave) — dogfooding CONFIRMED end to end,
   and a CI-log grep rule learned twice in one day.** The corrected
   in-step assertion passed on the first run, so the loop that took four
