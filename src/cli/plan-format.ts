@@ -109,11 +109,22 @@ export function formatPlanJson(plan: RunPlan): string {
           deps: t.deps,
           ...(t.p50Ms !== undefined ? { p50Ms: t.p50Ms } : {}),
           ...(t.executor !== undefined ? { executor: t.executor } : {}),
+          ...(t.download !== undefined ? { download: t.download } : {}),
+
           ...(t.node.config.description !== undefined
             ? { description: t.node.config.description }
             : {}),
         })),
         ...(plan.predicted !== undefined ? { predicted: plan.predicted } : {}),
+        // The gate's refusals belong on the SCRIPTING surface too: a CI job
+        // asking "did --download=none actually defer anything, and if not
+        // why" reads this, not the human table. (This object enumerates its
+        // fields deliberately — the plan's internal shape is not the wire —
+        // which is exactly why a new PlannedTask field does not appear here
+        // for free, and why `download` above had to be added by hand.)
+        ...(plan.downloadDowngrades !== undefined
+          ? { downloadDowngrades: plan.downloadDowngrades }
+          : {}),
       },
       null,
       2,

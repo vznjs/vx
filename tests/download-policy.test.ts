@@ -11,7 +11,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { planRun, run } from '../src/index.js'
-import { formatPlanText } from '../src/cli/plan-format.js'
+import { formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
 import { deferralEligibility, resolveDownloadModes } from '../src/orchestrator/download-policy.js'
 import type { TaskNode } from '../src/graph/index.js'
 
@@ -533,6 +533,61 @@ describe('--download end to end', () => {
       })
       expect(plan2.downloadDowngrades?.some((d) => d.taskId === 'pkg-a#gen')).toBe(true)
       expect(formatPlanText(plan2)).toContain('kept eager')
+    } finally {
+      a.cleanup()
+    }
+  })
+
+  it('the JSON plan carries the download decision and the refusals', async () => {
+    // The scripting surface. `formatPlanJson` enumerates its fields, so a
+    // new PlannedTask field does NOT appear there for free — the text plan
+    // and the JSON plan are separate promises and both have to be kept.
+    const a = await fixture()
+    try {
+      await Bun.write(
+        path.join(a.root, 'packages', 'pkg-a', 'vx.config.mjs'),
+        `export default { tasks: {
+           gen: {
+             exec: { command: 'true' },
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+           },
+           reader: {
+             exec: { command: 'true' },
+             cache: { inputs: { files: ['out/**'] }, outputs: { files: ['d/**'] } },
+           },
+         } }`,
+      )
+      const withDowngrade = JSON.parse(
+        formatPlanJson(
+          await planRun({
+            cwd: a.root,
+            tasks: ['gen', 'reader'],
+            projects: ['pkg-a'],
+            download: 'none',
+            log: silent(),
+            handleSignals: false,
+          }),
+        ),
+      ) as { downloadDowngrades?: Array<{ taskId: string; reason: string }> }
+      expect(withDowngrade.downloadDowngrades?.some((d) => d.taskId === 'pkg-a#gen')).toBe(true)
+
+      // …and a deferring task carries the per-task field. `gen` is the one
+      // the fake REMOTE executor accepts — `reader` falls to the local
+      // executor and is eager by placement, which is correct and would make
+      // this assertion prove nothing.
+      const deferring = JSON.parse(
+        formatPlanJson(
+          await planRun({
+            cwd: a.root,
+            tasks: ['gen'],
+            projects: ['pkg-a'],
+            download: 'none',
+            log: silent(),
+            handleSignals: false,
+          }),
+        ),
+      ) as { tasks: Array<{ id: string; download?: string }> }
+      expect(deferring.tasks.find((t) => t.id === 'pkg-a#gen')?.download).toBe('deferred')
     } finally {
       a.cleanup()
     }

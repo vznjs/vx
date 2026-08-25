@@ -487,6 +487,27 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (sixty-seventh wave) — the JSON plan had the same hole as
+  the text plan, one surface over.** Having just built the `--dry` text
+  surface, I ran the OTHER two. `formatPlanJson` enumerates its fields
+  by hand — id, project, task, hash, cacheStatus, deps, p50Ms, executor,
+  description — so `PlannedTask.download` did not appear there for free,
+  and neither did `downloadDowngrades`. The machine-readable surface, the
+  one a CI job actually parses to ask "did `--download=none` defer
+  anything, and if not why", was silent about the entire feature. Both
+  fields added, with the enumeration's deliberateness noted at the site
+  (the plan's internal shape is not the wire — which is exactly why the
+  field had to be added by hand, and why the next one will too).
+  `--graph`/DOT was checked and deliberately NOT extended: it draws
+  dependency structure with cache-status colour, and a transfer decision
+  is not structure — the text and JSON surfaces carry it. Pinned both
+  fields; the differential kills the per-task one. THIRD consecutive
+  wave where my own test was wrong before the code was: this time the
+  per-task assertion used `reader`, which the fixture's fake remote
+  executor does not accept, so it was eager BY PLACEMENT and the
+  assertion would have proven nothing. Reading the fixture's `accepts`
+  before choosing a subject is the habit that was missing.
+
 - **2026-08-25 (sixty-sixth wave) — the `--dry` surface phase 1 CLAIMED
   was never built; `--download` was invisible until now.** Same technique
   that caught the `toplevel` group bug — check a real invocation instead
