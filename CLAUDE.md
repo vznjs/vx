@@ -483,6 +483,28 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (forty-third wave) — `--verify` × deferral was a VACUOUS
+  PROOF; the design's own claim was true of one mode out of three.** The
+  doc asserted "`--verify` runs pin all placement local, so nothing
+  defers under a proof". Code says otherwise: `placeTasks` takes
+  `verify?.inputs === true` — determinism and fingerprint modes leave
+  placement alone. CONFIRMED by executed probe: under
+  `--verify --download=none` the task deferred and the verdict came back
+  `no-outputs` — the n/a bucket — for a task that DECLARES outputs and
+  was simply never examined. Not a stale hit; a misreported proof, which
+  for the feature whose entire purpose is proving cache correctness is
+  the failure that matters. Same class as the eleventh-wave residual the
+  twenty-fifth wave closed for `remote:'only'`, arriving through a
+  different door. Fix: any verify mode forces `--download=all`, with a
+  status line when it overrides an explicit flag — deferral is transfer
+  tuning, a verify run is a rare deliberate correctness run, so eager
+  wins. Probe → fix → the probe re-run showing `proven-deterministic`
+  instead of `no-outputs` → pin → differential (reverting the override
+  fails exactly the pin). The transferable lesson: a design doc's
+  cross-feature claim ("X already handles this") is a HYPOTHESIS about
+  code, not a fact — this one was written by an architect reading the
+  same tree and was still wrong by two modes out of three.
+
 - **2026-08-25 (forty-second wave) — hostile pass on my OWN deferral
   machinery: the eligibility gate had a runtime-command hole, confirmed
   and closed.** New-code rule applied to the code I wrote three waves

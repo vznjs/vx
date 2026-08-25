@@ -268,7 +268,21 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // remote execution's outputs come home. `--verify` pins every task local
   // (so nothing defers under a proof) and `all` keeps today's behaviour
   // byte for byte.
-  const downloadPolicy = options.download ?? 'all'
+  // A proof must observe what it proves. `--verify=inputs` already pins
+  // every task LOCAL (so nothing could defer), but determinism and
+  // fingerprint modes do NOT — and a deferred task's outputs are absent
+  // when the verifier looks, which reported `no-outputs` for a task that
+  // declares outputs: an n/a verdict for work the proof never examined.
+  // Deferral is transfer tuning; a verify run is a rare, deliberate
+  // correctness run. Eager wins, and says so when it overrides.
+  const downloadPolicy = options.verify !== undefined ? 'all' : (options.download ?? 'all')
+  if (
+    options.verify !== undefined &&
+    options.download !== undefined &&
+    options.download !== 'all'
+  ) {
+    log.status(`vx: --verify observes outputs on disk — ignoring --download=${options.download}`)
+  }
   const localPlaced = new Set(
     [...nodes.keys()].filter((id) => placements.executors.get(id)?.remote !== true),
   )

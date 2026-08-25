@@ -223,7 +223,14 @@ command view always agree, so no stale hit exists — or (b) reads them
 with no `dependsOn`, which is undeclared behaviour already outside vx's
 contract (the same rule the git-snapshot invalidation and restore paths
 document). `--verify` runs pin all placement local (2026-08-24 wave),
-so nothing defers under a proof.
+so nothing defers under a proof. **CORRECTED post-ship (2026-08-25):
+that pinning applies to `--verify=inputs` ONLY.** Determinism and
+fingerprint modes leave placement alone, so a remote task DID defer
+under them — and the verifier, finding no outputs on disk, reported
+`no-outputs` (an n/a verdict) for a task that declares outputs and was
+simply never examined. The run now forces `--download=all` whenever any
+verify mode is requested, and says so when it overrides an explicit
+flag: a proof must observe what it proves.
 
 ## 5. The `deferred` kind (questions 2 and 4)
 

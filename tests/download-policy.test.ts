@@ -450,6 +450,33 @@ describe('--download end to end', () => {
     }
   })
 
+  it('a verify run never defers — the proof observes what it proves', async () => {
+    // `--verify=inputs` pins placement local, so nothing could defer there.
+    // Determinism and fingerprint modes do NOT pin, and a deferred task's
+    // outputs are absent when the verifier looks: before this, the run
+    // reported `no-outputs` — an n/a verdict — for a task that declares
+    // outputs and was simply never examined. A vacuous proof, the same
+    // class the twenty-fifth wave fixed for remote-only through another
+    // door.
+    const a = await fixture()
+    try {
+      const r = await run({
+        cwd: a.root,
+        tasks: ['gen'],
+        projects: ['pkg-a'],
+        download: 'none',
+        verify: { determinism: true, inputs: false, fingerprint: false, allow: new Set<string>() },
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes[0]!.outputs).toBeUndefined()
+      expect(r.outcomes[0]!.verify).toEqual({ kind: 'proven-deterministic' })
+    } finally {
+      a.cleanup()
+    }
+  })
+
   it('--download=all is unchanged: outputs land eagerly, entry saved, no deferral', async () => {
     const a = await fixture()
     try {

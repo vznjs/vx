@@ -1268,7 +1268,8 @@ each downgrade. A run in which any task declares a
 `cache.inputs.runtime` / `workspaceRuntime` command defers **nothing**:
 a shell command's reads cannot be bounded, so vx cannot prove it will
 not read a deferred output (the same reason vx refuses to infer inputs
-by tracing). When bytes are fetched later, vx saves an ordinary
+by tracing). `--verify` also forces `all`, since a proof has to observe
+the outputs it is proving; the run says so if you asked for otherwise. When bytes are fetched later, vx saves an ordinary
 cache entry for them, so the next run is a plain local hit.
 
 ## `vx prune`
