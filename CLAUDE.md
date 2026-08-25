@@ -481,6 +481,43 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (thirty-eighth wave) — `bun test --isolate` for the packages
+  job: proposed, measured against REAL servers, REFUTED — it makes the http2
+  stall MORE likely, not less.** The `packages` job runs ONE BUN PROCESS PER
+  TEST FILE in a shell loop, and `--isolate` (fresh globalThis + closed
+  resources per file, Bun 1.4) is the obvious way to delete that loop. The
+  previous entry parked it as unverifiable locally; it is not — the
+  bazel-remote and NativeLink containers from the REAPI spike run on this
+  box, so the whole matrix was measured with `VX_REQUIRE_REAPI` and
+  `VX_REQUIRE_REAPI_EXEC` both set. Six interleaved rounds, 92 tests
+  passing in every single run: plain one-process **0/6** stalls (8.2–8.3 s),
+  per-file loop **1/6** (9.0 s, one 39.0 s), `--isolate` **3/6**
+  (8.5–8.9 s, three at 38.7–38.8 s). Cumulative across the session:
+  isolate ≈ 6 stalls / 11 runs, plain ≈ 1 / 9, per-file ≈ 1 / 6.
+  **The stall was IDENTIFIED, not inferred:** a JUnit reporter run pins it
+  to exactly ONE test taking 30.07 s instead of ~0.1 s, and on the two
+  occasions it was captured that test was a MULTI-CHUNK ByteStream write
+  ("round-trips a multi-chunk artifact at default 128 KB", then "stores and
+  restores an artifact larger than one chunk, byte-identical") — i.e. the
+  recorded Bun `node:http2` multi-message stall (oven-sh/bun#39796), hitting
+  the 30 s gRPC deadline and recovering through the adaptive downgrade, so
+  the test PASSES and only the clock shows it. Mechanism for why isolation
+  is worse, hypothesis not proof: a fresh realm per file means a fresh gRPC
+  client and http2 session per file, so the suite pays the session-setup
+  race nine times instead of once. **Two corrections to the record fall out
+  of this.** (1) The stall was believed CI-only ("the whole suite in one
+  process timed out at 90 s on this runner") — it reproduces on a fast idle
+  laptop, sporadically, which is what a peer-dependent race looks like.
+  (2) On THIS box the shared-process shape is the most stable of the three,
+  which does not overturn the CI observation (2-core shared runner, several
+  30 s stalls would blow the 90 s job timeout) but does mean the loop's
+  stated rationale — "the stall compounds with accumulated gRPC sessions in
+  a single process" — is not what the local numbers show. The loop stays,
+  now for a measured reason rather than an assumed one, and `ci.yml` carries
+  the refutation so the next reader does not re-propose it. No code changed;
+  a gate change that makes the guarded failure MORE likely is not a
+  simplification.
+
 - **2026-08-25 (thirty-seventh wave) — the `--download`/deferred-outputs
   design lands, and it retires the "CAS-shaped local cache" phrase with
   a cost-out.** Architect-drafted, hostilely reviewed, in
@@ -863,7 +900,9 @@ time every single time.
   loop** is the obvious `--isolate` candidate (fresh globalThis + closed
   resources per file is exactly why the loop exists), but it cannot be verified
   locally without the REAPI servers and an unverified change to a gate is not a
-  change — left as a candidate. Also noted: `bun install` under 1.4 relinked
+  change — left as a candidate. **CORRECTED 2026-08-25 (thirty-eighth wave):
+  that candidate is REFUTED — `--isolate` makes the stall the loop exists for
+  MORE frequent, measured against real servers.** Also noted: `bun install` under 1.4 relinked
   this workspace with the ISOLATED linker (`node_modules/.bun` store +
   symlinks, 8 top-level entries). Type-aware lint still resolves `bun-types`
   through the store — verified by planting a deliberate `TS2322` and watching
