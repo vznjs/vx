@@ -517,6 +517,32 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-26 (second wave) — the vx-github classes carried to the
+  sibling plugin: one CONFIRMED, one REFUTED.** Audited `@vzn/vx-otel`
+  against a stated thesis rather than by general sweep, which is what
+  made it quick. CONFIRMED, the empty-vs-undefined asymmetry: `??` falls
+  through only on null/undefined, so `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=''`
+  — what a workflow writing `${{ secrets.X }}` produces when the secret
+  is unset — sailed past the `tracesUrl === undefined` guard and built a
+  sink that POSTed to the empty string on every run. The BASE endpoint
+  was safe purely by accident (a falsy `base` skips `joinSignal`), which
+  is exactly what hid it: the common path declined correctly, so the
+  decline looked tested. `OTEL_SERVICE_NAME=''` had the same shape,
+  yielding an empty service name instead of `vx`. One `present()` helper
+  now normalises every option and env read, whitespace-only included (a
+  stray here-doc newline), so they cannot disagree. REFUTED, the coupled
+  outputs: vx-otel ships traces, metrics and logs through
+  `Promise.all`, and `send()` catches per signal and warns, so one
+  failing signal neither blocks the others nor rejects `flush` — the
+  design vx-github only got yesterday, arrived at independently here.
+  Worth recording as the contrast: the same seam, two plugins, and the
+  older one had the better failure shape. Shipped alongside a diagnostic
+  the refutation exposed — with three CONCURRENT exports each caught on
+  its own, a bare `export failed` cannot distinguish a down collector
+  from one misconfigured signal endpoint, so the warning now names the
+  URL. All three written test-first; each differential fails exactly its
+  own pin; suite 45/0.
+
 - **2026-08-26 — `@vzn/vx-github` audited: two defects, both found by
   reading for ASYMMETRY, both test-first per the new directive.** The
   newest package in the tree, and its Checks API half is the least

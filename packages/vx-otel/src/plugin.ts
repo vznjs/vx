@@ -53,6 +53,19 @@ export function parseOtlpHeaders(raw: string | undefined): Record<string, string
   return out
 }
 
+/**
+ * An EMPTY value is as absent as an unset one. A workflow writing
+ * `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${{ secrets.X }}` with the secret unset
+ * exports an empty string, and `??` does not fall through on it — so an empty
+ * signal URL used to survive the `tracesUrl === undefined` guard and produce a
+ * sink that POSTed to '' on every run. Whitespace-only counts too (a stray
+ * newline from a shell here-doc). Every option and env read goes through this,
+ * so they cannot disagree the way they did.
+ */
+function present(v: string | undefined): string | undefined {
+  return v === undefined || v.trim() === '' ? undefined : v
+}
+
 function joinSignal(base: string, signal: string): string {
   return `${base.replace(/\/+$/, '')}/v1/${signal}`
 }
@@ -66,18 +79,18 @@ export function resolveOtelConfig(
   env: Record<string, string | undefined>,
   warn?: (m: string) => void,
 ): ConstructorParameters<typeof OtelSink>[0] | undefined {
-  const base = opts.endpoint ?? env['OTEL_EXPORTER_OTLP_ENDPOINT']
+  const base = present(opts.endpoint) ?? present(env['OTEL_EXPORTER_OTLP_ENDPOINT'])
   const tracesUrl =
-    opts.tracesEndpoint ??
-    env['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT'] ??
+    present(opts.tracesEndpoint) ??
+    present(env['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT']) ??
     (base ? joinSignal(base, 'traces') : undefined)
   const metricsUrl =
-    opts.metricsEndpoint ??
-    env['OTEL_EXPORTER_OTLP_METRICS_ENDPOINT'] ??
+    present(opts.metricsEndpoint) ??
+    present(env['OTEL_EXPORTER_OTLP_METRICS_ENDPOINT']) ??
     (base ? joinSignal(base, 'metrics') : undefined)
   const logsUrl =
-    opts.logsEndpoint ??
-    env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT'] ??
+    present(opts.logsEndpoint) ??
+    present(env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT']) ??
     (base ? joinSignal(base, 'logs') : undefined)
   if (tracesUrl === undefined) return undefined
   // `OTEL_LOGS_EXPORTER=none` is the standard SDK opt-out; honour it so a
@@ -91,7 +104,7 @@ export function resolveOtelConfig(
     tracesUrl,
     metricsUrl: metricsUrl ?? tracesUrl,
     logsUrl: logsUrl ?? tracesUrl,
-    serviceName: opts.serviceName ?? env['OTEL_SERVICE_NAME'] ?? 'vx',
+    serviceName: present(opts.serviceName) ?? present(env['OTEL_SERVICE_NAME']) ?? 'vx',
     headers: { ...parseOtlpHeaders(env['OTEL_EXPORTER_OTLP_HEADERS']), ...opts.headers },
     metricsEnabled: opts.metrics ?? true,
     logsEnabled,

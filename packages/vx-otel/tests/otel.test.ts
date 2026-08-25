@@ -68,6 +68,36 @@ describe('parseOtlpHeaders', () => {
 })
 
 describe('resolveOtelConfig', () => {
+  it('an EMPTY env var declines like a missing one, on every signal', () => {
+    // A CI workflow writing `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${{ secrets.X }}`
+    // with the secret unset exports an EMPTY STRING, not an unset var. `??`
+    // only falls through on null/undefined, so an empty signal URL sailed past
+    // the `tracesUrl === undefined` guard and produced a sink that POSTed to
+    // '' on every run. The base endpoint was already safe by accident (a
+    // falsy `base` skips joinSignal), which is what hid the asymmetry.
+    expect(resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: '' })).toBeUndefined()
+    expect(resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: '' })).toBeUndefined()
+    // An empty per-signal override falls back to the base rather than
+    // poisoning that one signal's URL.
+    const c = resolveOtelConfig(
+      {},
+      {
+        OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector:4318',
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: '',
+        OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: '',
+      },
+    )!
+    expect(c.metricsUrl).toBe('http://collector:4318/v1/metrics')
+    expect(c.logsUrl).toBe('http://collector:4318/v1/logs')
+    // Same rule for a non-URL string: an empty service name is not a name.
+    expect(
+      resolveOtelConfig(
+        {},
+        { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c:4318', OTEL_SERVICE_NAME: '' },
+      )!.serviceName,
+    ).toBe('vx')
+  })
+
   it('declines (undefined) when no endpoint is configured', () => {
     expect(resolveOtelConfig({}, {})).toBeUndefined()
   })
@@ -401,6 +431,12 @@ describe('OtelSink end-to-end', () => {
     driveOneTask(sink)
     await expect(sink.flush()).resolves.toBeUndefined()
     expect(warnings.some((w) => w.includes('export failed'))).toBe(true)
+    // Three signals ship CONCURRENTLY and each is caught on its own, so
+    // "export failed" alone leaves the reader unable to tell which one — and
+    // whether the collector is down or only one signal path is misconfigured.
+    // Every warning names its URL.
+    expect(warnings.every((w) => w.includes('http'))).toBe(true)
+    expect(warnings.some((w) => w.includes('/v1/traces'))).toBe(true)
   })
 
   it('flush is idempotent (second flush sends nothing)', async () => {

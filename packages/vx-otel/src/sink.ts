@@ -237,8 +237,11 @@ export class OtelSink implements TelemetrySink {
       await this.cfg.post(url, body, headers)
     } catch (err) {
       // export is fully optional — a down collector never affects a run
+      // Name the URL: three signals ship concurrently and each is caught
+      // here on its own, so a bare "export failed" cannot tell a down
+      // collector from one misconfigured signal endpoint.
       this.cfg.warn?.(
-        `[vx-otel] export failed: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx-otel] export failed for ${url}: ${err instanceof Error ? err.message : String(err)}`,
       )
     }
   }
