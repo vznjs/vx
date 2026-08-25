@@ -412,8 +412,16 @@ time every single time.
 - ~~CI is `ubuntu-latest` only~~ — **CLOSED 2026-08-24**: a `core-darwin`
   job runs the full core suite on `macos-latest`. Deliberately WITHOUT
   `VX_REQUIRE_SANDBOX` (the macOS sandbox suites are the recorded load-flaky
-  class; the security boundary stays enforced on the linux job) — promoting
-  the flag there is the follow-up once the runners prove stable.
+  class; the security boundary stays enforced on the linux job). The
+  promotion question was ASSESSED 2026-08-25 and split: full
+  `VX_REQUIRE_SANDBOX` on darwin stays REFUSED — the suites' pins assert
+  on violation LINES, the lossy-by-OS channel (~5% measured), so they
+  would flake at the OS's loss rate regardless of runner stability — but
+  the enforcement CANARY was promoted from data-only to a GATE (220/220
+  enforced across 11 runs; a single `not_enforced` now reds the darwin
+  job, a fully-erroring harness too; reporting loss stays tolerated).
+  Full-suite un-gating needs the pins rewritten to assert on artifacts,
+  not lines.
 - `--info` and `--cache-local` are byte-identical tokens (56 189 248), so a
   blue line is ambiguous between "informational" and "cache". Changing a token
   value moves the visual baselines — a design call.
@@ -465,6 +473,27 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-25 (thirty-third wave) — the darwin promotion call, made on
+  the canary's evidence: the enforcement canary GATES, full
+  `VX_REQUIRE_SANDBOX` stays refused, and the gate helper sheds a
+  refuted claim.** The named follow-up condition ("once the runners
+  prove stable") was assessed against n=220: enforcement is 220/220 —
+  but reporting loss is 5% and STRUCTURAL (lossy-by-OS), and the gated
+  suites' leaky-task pins assert on violation LINES, the lossy channel
+  itself, so promoting the flag would buy a ~5%-flaky darwin job, not
+  coverage. Split instead: the canary — which classifies by ARTIFACT
+  (out.txt content), immune to reporting loss — is promoted from
+  data-only (`continue-on-error`) to a gating step: one `not_enforced`
+  iteration reds the job, as does a fully-erroring harness (an
+  all-RUN_ERROR canary proves nothing and must not read green);
+  `enforced_unreported` stays tolerated and keeps accumulating as data.
+  Differential: a forced NOT_ENFORCED classification exits 1, healthy
+  exits 0. Also fixed while there: `sandbox-gate.ts`'s comment still
+  asserted the REFUTED non-enforcement reading (the comment-outlives-
+  its-correction defect class) — rewritten to the corrected account,
+  including the un-gate condition (pins rewritten to assert on
+  artifacts, not lines).
 
 - **2026-08-25 (thirty-second wave) — `vx last` ships: last-run replay,
   comparison gap #12 closed the wave after its value was re-assessed.**

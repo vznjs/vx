@@ -115,4 +115,16 @@ console.log(
     `enforced_reported=${counts.ENFORCED_REPORTED} enforced_unreported=${counts.ENFORCED_UNREPORTED} ` +
     `not_enforced=${counts.NOT_ENFORCED} run_error=${counts.RUN_ERROR}`,
 )
+// GATE (promoted 2026-08-25, after 220/220 enforced across 11 CI runs):
+// ENFORCEMENT is the security property and it has never failed — a single
+// NOT_ENFORCED is signal, not noise, and must red the job. Reporting loss
+// (ENFORCED_UNREPORTED, ~5% cumulative) stays tolerated: it is
+// lossy-by-OS under load, structural, and asserted on nowhere here. A
+// harness where EVERY iteration errored proves nothing and must not read
+// as green either.
+if (counts.NOT_ENFORCED > 0) process.exit(1)
+if (ITERATIONS > 0 && counts.RUN_ERROR === ITERATIONS) {
+  console.log('[canary] every iteration errored — the harness is broken, not the sandbox')
+  process.exit(1)
+}
 process.exit(0)

@@ -226,10 +226,10 @@ jobs:
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
       # darwin CI because sandbox-exec misbehaves under load here — including
       # one observed NON-ENFORCEMENT (an undeclared read succeeding). That
-      # mode has never reproduced locally, so every darwin run drives 20
-      # leaky-task executions through the REAL run() path and prints a
-      # greppable [canary] SUMMARY line. The script always exits 0; grep the
-      # job logs for `not_enforced=[^0]` when hunting the mode.
-      - name: sandbox enforcement canary (data only)
-        continue-on-error: true
+      # every darwin run drives 20 leaky-task executions through the REAL
+      # run() path and prints a greppable [canary] SUMMARY line. Promoted
+      # from data-only to a GATE 2026-08-25 (220/220 enforced across 11
+      # runs): a NOT_ENFORCED iteration reds the job; reporting loss stays
+      # tolerated (lossy-by-OS, ~5%, asserted on nowhere here).
+      - name: sandbox enforcement canary
         run: bun tests/helpers/sandbox-canary.ts 20

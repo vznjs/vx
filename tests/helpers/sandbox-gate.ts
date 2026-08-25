@@ -47,15 +47,20 @@ function required(): boolean {
  * result gates a merge.
  */
 export async function sandboxAvailable(label: string): Promise<boolean> {
-  // macOS CI runners: the sandbox PROBES healthy and then misbehaves under
-  // load — observed as both under-REPORTING (zero violations for a real
-  // denial) and outright non-ENFORCEMENT (an undeclared read succeeding in a
-  // --verify=inputs run) across different tests on consecutive darwin-CI
-  // runs (decision log, 2026-08-24). A per-test skip is whack-a-mole: any
-  // test asserting enforcement can be next. So on darwin CI the sandbox is
-  // treated as unavailable AS A CLASS — unless VX_REQUIRE_SANDBOX is set,
-  // which stays an explicit opt-in. Coverage remains on linux CI (bwrap,
-  // REQUIRE=1) and on darwin locally. Un-gate when the flake is root-caused.
+  // macOS CI runners: the sandbox PROBES healthy but violation REPORTING is
+  // lossy-by-OS under load (~5% of denials arrive with no unified-log
+  // record — measured; the settle window halves the fail-exit case and the
+  // residual is DROPPED, not delayed). The 2026-08-24 "non-enforcement"
+  // reading was CORRECTED the same day: the signal was ambiguous and every
+  // discriminating probe classified it as reporting loss with enforcement
+  // intact; the enforcement canary is 220/220 across 11 CI runs and GATES
+  // the darwin job as of 2026-08-25. These suites stay class-gated on
+  // darwin CI because many of their pins assert on the violation LINES —
+  // the lossy channel itself — so they would flake at the OS's loss rate.
+  // A per-test skip is whack-a-mole; VX_REQUIRE_SANDBOX stays the explicit
+  // opt-in. Coverage: enforcement on darwin CI via the canary; the full
+  // suites on linux CI (bwrap, REQUIRE=1) and on darwin locally. Un-gate
+  // if the pins are ever rewritten to assert on artifacts, not lines.
   if (!required() && process.platform === 'darwin' && process.env['CI'] !== undefined) {
     // eslint-disable-next-line no-console
     console.warn(
