@@ -483,6 +483,32 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (forty-eighth wave) — `src/workspace/` audited: the
+  `--affected` machinery is CLEAN, and the one gap is a documentation
+  gap on the sharpest CI question it answers.** First dedicated pass
+  over the module. `affected.ts` turns out to be one of the
+  best-defended files in the tree — every hazard I went looking for was
+  already closed and commented with the defect that taught it:
+  `--no-renames` (a cross-project `git mv` would otherwise surface only
+  the destination), `--relative` (a workspace nested under the git root
+  otherwise yields paths that match no project), `-z` (C-quoted
+  non-ASCII names resolve to no project while input hashing sees the
+  real name), untracked files unioned in, `vx-lock.json` excluded, and
+  fingerprint-file changes widening to EVERY project — that last one
+  derived from `WORKSPACE_FINGERPRINT_FILES` so the two surfaces cannot
+  drift. Nothing to fix. The real finding is one level up: `--affected`
+  selects CHANGED projects only, never their dependents (Turbo's
+  `[<base>]` semantics, and the right default), while the CI question
+  users actually ask — "did I break anything downstream?" — needs
+  `--filter '...[main]'`. The filter table documented `...` and the
+  `--affected` section documented the base, but nothing connected them,
+  and the task graph cannot close the gap because `dependsOn` pulls
+  DEPENDENCIES, never dependents. Docs now say so with both commands
+  side by side. Also pinned: `...[<since>]` expanding affected to
+  transitive dependents — the suffix form `[main]...` (dependencies) was
+  covered, the prefix form (dependents) was not, which is exactly the
+  direction that matters for not shipping broken downstream code.
+
 - **2026-08-25 (forty-seventh wave) — the `--download=none` headline
   claim PROVEN live, end to end, instead of audited a fifth time.** Four
   audit waves had already run over the deferral machinery and the signal

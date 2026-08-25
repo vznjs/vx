@@ -217,6 +217,23 @@ describe('applyFilters', () => {
     ])
   })
 
+  it('...[<since>] expands affected to their transitive DEPENDENTS', () => {
+    // The CI-correctness direction, and the one `--affected` alone does
+    // NOT cover: a change in `utils` must be able to pull `ui` and `app`
+    // in, or downstream breakage ships untested. `--affected` is sugar
+    // for the bare `[<base>]`, so this prefix form is what a user reaches
+    // for when they want the dependents too.
+    const f = parseFilter('...[main]', ROOT)
+    expect(f.gitSince).toBe('main')
+    expect(f.withDependents).toBe(true)
+    const affectedByFilter = new Map([[f, new Set(['utils'])]])
+    expect([...applyFilters({ filters: [f], projects, graph, affectedByFilter })].sort()).toEqual([
+      'app',
+      'ui',
+      'utils',
+    ])
+  })
+
   it('[<since>] + ^... suffix expands to deps-of-affected only', () => {
     const f = parseFilter('[main]^...', ROOT)
     expect(f.gitSince).toBe('main')

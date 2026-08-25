@@ -129,6 +129,21 @@ Run the task only in projects whose files changed since `<base>`.
   `HEAD~1` if `origin/HEAD` isn't resolvable.
 - `--affected=<ref>` uses the given git ref.
 
+**It selects the CHANGED projects, not their dependents.** A change in
+`utils` runs `utils`' task; it does not run `app`'s, even when `app`
+depends on `utils`. That is Turbo's `[<base>]` semantics, and it is the
+right default for "test what I touched" — but for "prove I didn't break
+anything downstream" you want the dependents too, which is the `...`
+prefix from the filter table:
+
+```bash
+vx run test --affected              # only what changed
+vx run test --filter '...[main]'    # what changed + everything depending on it
+```
+
+The task graph does not close this gap for you: `dependsOn` pulls a
+task's DEPENDENCIES in, never its dependents.
+
 It's a pure sugar for `--filter '[<base>]'`; both are resolved by
 `src/workspace/affected.ts`, which unions `git diff` against `<base>`
 with `git ls-files --others` so a brand-new untracked source file counts
