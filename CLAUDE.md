@@ -487,6 +487,43 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (second wave) — the same fail-open on the OUTPUT side:
+  an unfetchable declared output was skipped, not refused.** Straight
+  application of the "grep the class in the same wave" rule to the wave
+  that had just landed: `materialiseOutputs` warned and `continue`d on a
+  blob it could not read, and `materialiseTree` did it in four more places
+  (missing Tree blob, no root directory, missing tree file, child absent
+  from the Tree blob) — the first of which materialises NOTHING and still
+  returns. Core's contract is that once an executor returns the declared
+  outputs are on disk, because `save` then tars whatever it finds, so each
+  of those is a HOLE cached under a key claiming a complete build. Same
+  worst class as the upstream graft, reached from the opposite direction.
+  REPRODUCED before fixing, with a stub CAS that has lost the blob: the
+  literal-capture case RESOLVED instead of rejecting (the executor's
+  gRPC-free half is unit-testable once `materialiseOutputs` is exported,
+  which follows the existing `globToOutputPath`/`outputPathSets`
+  precedent). The rule shipped is deliberately NOT "throw on any missing
+  blob", because that would over-refuse: a glob with a wildcard FIRST
+  segment has no REAPI spelling and is sent as `''`, whole-working-
+  directory capture, so the worker returns inputs and undeclared siblings
+  too and a missing blob among THOSE is not this task's hole. Under a
+  literal capture the server returned only what `output_paths` named, so
+  every returned file IS declared and an unfetchable one fails the task.
+  Testing `globToOutputPath(g) === ''` on the declared globs answers this
+  without any path-relativity reasoning — which matters, because
+  `materialiseOutputs` is called with cwd-relative paths on the fresh path
+  and WORKSPACE-relative ones on the record-replay path, and a prefix-
+  matching rule (the first design considered) would have been subtly wrong
+  in one of them. RESIDUAL, deliberate and documented: a genuinely
+  declared output missing under a `''` capture still only warns.
+  Three-way pin — refusal, present-blob control, whole-tree control;
+  differential disables the refusal and fails exactly the refusal pin;
+  live matrix 98/0 against bazel-remote + NativeLink. Also confirmed
+  while in there and NOT changed: `DeferredOutputs.materializeOne`
+  memoises a FAILED fetch for the whole run, so every other consumer of
+  that producer fails too and `exec.retries` never re-attempts it —
+  fail-closed, consistent, and the error names the remedy, so it stays.
+
 - **2026-08-25 — the REAPI upstream graft failed OPEN on an evicted
   dependency: confirmed with a two-arm live repro, fixed by refusing, and
   the stale comment that hid it traced to a precedence inversion.** Audit

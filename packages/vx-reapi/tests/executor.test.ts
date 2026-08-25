@@ -2,7 +2,15 @@
 // placement acceptance. The gRPC-touching half lives in reapi-e2e.test.ts.
 
 import { describe, expect, it } from 'bun:test'
-import { acceptsTask, globToOutputPath, outputPathSets } from '../src/executor.js'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import {
+  acceptsTask,
+  globToOutputPath,
+  materialiseOutputs,
+  outputPathSets,
+} from '../src/executor.js'
 import type { ExecuteRequest, TaskPlacement } from '@vzn/vx'
 
 describe('globToOutputPath', () => {
@@ -70,5 +78,77 @@ describe('acceptsTask', () => {
     expect(acceptsTask(placement({}))).toBe(true)
     expect(acceptsTask(placement({ cacheable: false }))).toBe(false)
     expect(acceptsTask(placement({ pinnedLocal: true }))).toBe(false)
+  })
+})
+
+describe('materialiseOutputs: a declared output that cannot be fetched', () => {
+  // The output side of the same fail-open the upstream graft had. Core's
+  // contract is that after an executor returns, the declared outputs are on
+  // disk — save() then tars whatever it finds. Skipping an unfetchable blob
+  // means the task "succeeds" and its artifact is cached with a HOLE, under a
+  // key claiming a complete build. The stub stands in for a CAS that lost the
+  // blob between the action completing and the fetch.
+  const stub = (have: Map<string, Uint8Array>) =>
+    ({
+      batchReadBlobs: async (ds: { hash: string }[]) => {
+        const out = new Map<string, Uint8Array>()
+        for (const d of ds) {
+          const b = have.get(d.hash)
+          if (b !== undefined) out.set(d.hash, b)
+        }
+        return out
+      },
+      readBlob: async (d: { hash: string }) => have.get(d.hash) ?? null,
+    }) as unknown as Parameters<typeof materialiseOutputs>[0]
+
+  const req = (globs: string[], cwd: string): Parameters<typeof materialiseOutputs>[1] =>
+    ({
+      taskId: 'pkg#build',
+      cwd,
+      workspaceRoot: path.dirname(cwd),
+      outputs: { files: globs, workspaceFiles: [] },
+    }) as unknown as Parameters<typeof materialiseOutputs>[1]
+
+  const result = {
+    output_files: [{ path: 'out.txt', digest: { hash: 'deadbeef', size_bytes: 9 } }],
+  }
+
+  it('a LITERAL capture refuses: every returned file is a declared output', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-mat-'))
+    try {
+      const warns: string[] = []
+      await expect(
+        materialiseOutputs(stub(new Map()), req(['out.txt'], dir), result, (m) => warns.push(m)),
+      ).rejects.toThrow(/out\.txt/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('CONTROL: a present blob is written, no refusal', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-mat-'))
+    try {
+      const have = new Map([['deadbeef', new TextEncoder().encode('contents\n')]])
+      await materialiseOutputs(stub(have), req(['out.txt'], dir), result, () => undefined)
+      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('contents\n')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('CONTROL: whole-tree capture only warns — the file may be incidental', async () => {
+    // `*.js` has a wildcard FIRST segment, so it maps to '' and the worker
+    // returns the entire working directory: inputs and undeclared siblings
+    // ride along. A blob missing for one of THOSE is not this task's hole,
+    // and refusing would break a build that is fine. Residual, deliberate:
+    // a genuinely declared output missing under this shape still only warns.
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-mat-'))
+    try {
+      const warns: string[] = []
+      await materialiseOutputs(stub(new Map()), req(['*.js'], dir), result, (m) => warns.push(m))
+      expect(warns.some((w) => w.includes('out.txt'))).toBe(true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })

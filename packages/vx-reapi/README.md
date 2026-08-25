@@ -111,6 +111,20 @@ declares — so the refusal is the only sound reading, and it matches
 what core does when a deferred producer cannot be materialised.
 Re-run the upstream (`--force`) to repopulate the store.
 
+Bringing a task's OWN outputs back gets the same treatment. Core's
+contract is that once an executor returns, the declared outputs are on
+disk, because the ordinary save path then tars whatever it finds — so
+an output blob that cannot be fetched is a hole that would be cached
+under a key claiming a complete build. Under a literal capture the
+worker returns only what `output_paths` named, so every returned file
+is a declared output and an unfetchable one fails the task. The
+exception is a glob whose FIRST segment is a wildcard (`*.js`): it has
+no REAPI spelling, so it is sent as `''` — whole-working-directory
+capture — and inputs and undeclared siblings come back too. Those
+cannot be told apart from real outputs, so a missing blob there only
+warns; prefer a literal first segment (`dist/*.js`) when you want the
+stricter check.
+
 ## Downloads are verified
 
 Every blob read — ByteStream and batch alike, compressed or not — is

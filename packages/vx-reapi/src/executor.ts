@@ -780,13 +780,33 @@ export function outputPathSets(req: ExecuteRequest, workingDirectory: string): O
  * written them — that is what lets the ordinary save path tar them up with no
  * knowledge of where the work happened.
  */
-async function materialiseOutputs(
+export async function materialiseOutputs(
   client: ReapiClient,
   req: ExecuteRequest,
   result: ActionResult,
   warn: (m: string) => void,
 ): Promise<void> {
   const files = result.output_files ?? []
+  // A glob with a wildcard FIRST segment has no REAPI spelling, so it is sent
+  // as '' — whole-working-directory capture — and the worker returns inputs
+  // and undeclared siblings alongside the real outputs. There is no way to
+  // tell those apart here, so a blob we cannot fetch under that shape only
+  // warns; refusing would break builds that are fine. Under a LITERAL capture
+  // the server returned only what output_paths named, so every file IS a
+  // declared output and an unfetchable one is a hole that `save` would tar up
+  // and cache under a key claiming a complete build. That fails the task.
+  const wholeTreeCapture = [
+    ...(req.outputs?.files ?? []),
+    ...(req.outputs?.workspaceFiles ?? []),
+  ].some((g) => globToOutputPath(g) === '')
+  const missing = (what: string, hash: string): void => {
+    if (!wholeTreeCapture) {
+      throw new Error(
+        `vx/reapi: ${req.taskId} declared output ${what} is missing from the CAS (${hash.slice(0, 12)}) — re-run it (e.g. --force)`,
+      )
+    }
+    warn(`vx/reapi: output ${what} missing from CAS (${hash.slice(0, 12)})`)
+  }
   // Batch the small ones into one round trip; anything larger goes over
   // ByteStream, which is also the only path that can be compressed.
   const small = files.filter((f) => f.digest.size_bytes > 0 && f.digest.size_bytes <= 1024 * 1024)
@@ -802,7 +822,7 @@ async function materialiseOutputs(
           ? new Uint8Array()
           : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
     if (bytes === null) {
-      warn(`vx/reapi: output ${f.path} missing from CAS (${f.digest.hash.slice(0, 12)})`)
+      missing(f.path, f.digest.hash)
       continue
     }
     await writeFile(abs, bytes)
@@ -821,7 +841,7 @@ async function materialiseOutputs(
   }
 
   for (const d of result.output_directories ?? []) {
-    await materialiseTree(client, path.join(req.cwd, d.path), d.tree_digest, warn)
+    await materialiseTree(client, path.join(req.cwd, d.path), d.tree_digest, missing)
   }
 }
 
@@ -836,16 +856,18 @@ async function materialiseTree(
   client: ReapiClient,
   destDir: string,
   treeDigest: Digest,
-  warn: (m: string) => void,
+  // Same policy as the file path: under a literal capture an unmaterialisable
+  // entry is a hole in a DECLARED output directory, so it fails the task.
+  missing: (what: string, hash: string) => void,
 ): Promise<void> {
   const blob = await client.readBlob(treeDigest)
   if (blob === null) {
-    warn(`vx/reapi: output tree ${treeDigest.hash.slice(0, 12)} missing from CAS`)
+    missing('tree', treeDigest.hash)
     return
   }
   const tree = decodeTree(blob)
   if (tree.root === undefined) {
-    warn(`vx/reapi: output tree ${treeDigest.hash.slice(0, 12)} has no root directory`)
+    missing('tree (no root directory)', treeDigest.hash)
     return
   }
   // Children are addressed by their own Directory digest, so index them the
@@ -865,7 +887,7 @@ async function materialiseTree(
           ? new Uint8Array()
           : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
       if (bytes === null) {
-        warn(`vx/reapi: tree file ${f.name} missing from CAS`)
+        missing(path.join(at, f.name), f.digest.hash)
         continue
       }
       const abs = path.join(at, f.name)
@@ -883,7 +905,7 @@ async function materialiseTree(
     for (const child of dir.directories) {
       const node = byDigest.get(child.digest.hash)
       if (node === undefined) {
-        warn(`vx/reapi: tree child ${child.name} not present in the Tree blob`)
+        missing(`${path.join(at, child.name)} (not present in the Tree blob)`, child.digest.hash)
         continue
       }
       await walk(node, path.join(at, child.name))
