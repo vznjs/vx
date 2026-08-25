@@ -96,6 +96,10 @@ export interface TaskOutcome {
   /** Executor-reported placement label (`ExecuteResult.where`) — set only
    *  when the task ran somewhere other than this host. Telemetry-only. */
   where?: string
+  /** `'deferred'` when the task's outputs were left in the remote store
+   *  (`--download=none`) instead of landing on this machine. Absent for
+   *  every ordinary outcome. Telemetry-only. */
+  outputs?: 'deferred'
   /**
    * v11 analytics: hrtime span relative to the parent run's t=0.
    * Lets downstream analytics reconstruct the actual parallel timeline

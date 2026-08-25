@@ -479,4 +479,45 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
       await rm(root, { recursive: true, force: true })
     }
   }, 180_000)
+
+  it('download: deferred leaves the outputs remote until materialize() is called', async () => {
+    // `--download=none`'s wire half: the action still runs on the worker and
+    // the result is authoritative, but no output byte crosses to the
+    // submitter until core asks. Asserted on the ARTIFACT (the file's
+    // presence), not on a count of calls.
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-exec-e2e-'))
+    await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+    await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'deferred bytes\n')
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      const executor = reapiExecutor(client, { warn: () => undefined })
+      const res = await executor.execute(
+        req3(root, {
+          command: 'tr a-z A-Z < src/in.txt > out.txt',
+          download: 'deferred',
+          outputs: { files: ['out.txt'], workspaceFiles: [] },
+          inputs: {
+            files: [{ path: 'pkg/src/in.txt', digest: 'x' }],
+            env: [],
+            runtime: [],
+            workspaceRuntime: [],
+            upstream: [],
+            packageJsonDigest: 'p',
+            configDigest: 'c',
+            workspaceFingerprint: 'w',
+          },
+        } as Partial<ExecuteRequest>),
+      )
+      expect(res.exitCode).toBe(0)
+      expect(res.outputs?.kind).toBe('deferred')
+      const out = path.join(root, 'pkg', 'out.txt')
+      await expect(readFile(out, 'utf8')).rejects.toThrow()
+      await (res.outputs as { materialize: () => Promise<void> }).materialize()
+      expect((await readFile(out, 'utf8')).trim()).toBe('DEFERRED BYTES')
+    } finally {
+      client.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
 })

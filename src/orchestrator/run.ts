@@ -12,6 +12,8 @@ import {
 } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import { initSandbox, probeSandbox, resetSandbox, signalExitCode } from '../exec/index.js'
+import { DeferredOutputs } from './deferred-outputs.js'
+import { resolveDownloadModes } from './download-policy.js'
 import { selectExecutor, type TaskExecutor } from '../exec/index.js'
 import {
   isGroupTask,
@@ -262,6 +264,20 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // leaky or not. A verify run is a local proof procedure by definition;
   // determinism/fingerprint modes are unaffected (no sandbox involved).
   const placements = placeTasks(nodes, executors, options.verify?.inputs === true)
+  // `--download` (default `all`) decides ONCE per task, here, whether a
+  // remote execution's outputs come home. `--verify` pins every task local
+  // (so nothing defers under a proof) and `all` keeps today's behaviour
+  // byte for byte.
+  const downloadPolicy = options.download ?? 'all'
+  const localPlaced = new Set(
+    [...nodes.keys()].filter((id) => placements.executors.get(id)?.remote !== true),
+  )
+  const download = resolveDownloadModes({
+    nodes,
+    policy: downloadPolicy,
+    localPlaced,
+    remoteOnly: placements.remoteOnly,
+  })
 
   // Run-level default task timeout (ms), applied to any task WITHOUT its own
   // `exec.timeout`. Precedence, highest first: `--timeout`/RunOptions.timeout
@@ -345,6 +361,14 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       options.cache ?? FULL_CACHE_POLICY,
       prepared.hasRemoteLayer,
     )
+    const deferredOutputs = new DeferredOutputs({
+      nodes,
+      cache,
+      workspaceRoot,
+      nestedDirsByProject,
+      ...(gitFilesCache !== undefined ? { gitFilesCache } : {}),
+      localWrite: policy.localWrite,
+    })
 
     // `--verify` observes the miss-then-save path and then RESTORES attempt
     // 1 from the artifact that save wrote, so the tree ends byte-identical
@@ -564,6 +588,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         ...(options.verify !== undefined ? { verify: options.verify } : {}),
         log,
         executor: placements.executors.get(node.id) ?? UNPLACED_EXECUTOR,
+        ...(download.modeOf.get(node.id) === 'deferred' ? { download: 'deferred' as const } : {}),
+        deferred: deferredOutputs,
         ...(placements.remoteOnlyNoop.has(node.id) ? { remoteOnlyNoop: true } : {}),
         ...(placements.remoteOnly.has(node.id) ? { remoteOnly: true } : {}),
         nestedProjectDirs: nestedDirsByProject.get(node.projectName) ?? [],
@@ -747,6 +773,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // A task killed by a shutdown signal is in no bucket above, yet it makes
     // `ok` false — name it, or the red exit is undiagnosable.
     for (const line of formatAbortedSection(list)) log.status(line)
+    // Outputs that never came home are not an error, but a silent `dist/`
+    // that is empty-or-stale would be: name every task whose bytes are
+    // still remote.
+    const stillDeferred = deferredOutputs.pending()
+    if (stillDeferred.length > 0) {
+      log.status('')
+      log.status(
+        `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--download=none): ${stillDeferred.join(', ')}`,
+      )
+    }
     if (options.verify !== undefined) {
       for (const line of formatVerifySection(list)) log.status(line)
       // A fingerprint-only run attaches no verdicts, so the verdict-driven
@@ -835,6 +871,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (o.cpuMs !== undefined) t.cpuMs = o.cpuMs
         if (o.peakRssBytes !== undefined) t.peakRssBytes = o.peakRssBytes
         if (o.where !== undefined) t.where = o.where
+        if (o.outputs !== undefined) t.outputs = o.outputs
         if (o.attempts !== undefined) t.attempts = o.attempts
         if (o.verify !== undefined) t.verify = o.verify
         if (o.outputFp !== undefined) t.outputFp = o.outputFp

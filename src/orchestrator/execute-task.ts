@@ -36,6 +36,8 @@ import {
   outputRefs,
   undeclaredInputPaths,
 } from './verify.js'
+import { staticPrefix } from '../util/index.js'
+import type { DeferredOutputs } from './deferred-outputs.js'
 import type { Logger } from './logger.js'
 import {
   computeGroupHash,
@@ -70,6 +72,17 @@ export interface ExecuteArgs {
    * reach dependents' input trees by reference (the executor's job).
    */
   remoteOnly?: boolean
+  /**
+   * Plan-time `--download` decision for THIS task (run.ts). `'deferred'`
+   * means: do not clean, do not save — the executor is expected to leave
+   * the outputs in the remote store and hand back a closure. An executor
+   * that ignores it and materialises anyway simply gets no local entry;
+   * the outputs are on disk but unindexed, which is its contract to keep.
+   */
+  download?: 'eager' | 'deferred'
+  /** Run-scoped deferral registry — where deferred closures land, and
+   *  where a locally-placed consumer fetches its producers from. */
+  deferred?: DeferredOutputs
   nestedProjectDirs: string[]
   /** Anchor for hrtime spans across all tasks in this run. */
   runStartHrTimeNs: bigint
@@ -280,6 +293,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // stored stderr — see the v17 artifact format). Both streams are still
   // drained and still stream chunk-by-chunk to the logger; only the retained
   // copy is dropped, which for a chatty task is its full byte size in heap.
+  // Deferral is decided at plan time and only ever set for a remote-placed,
+  // eligibility-cleared task; it suppresses this machine's clean AND save.
+  const deferralRequested = args.download === 'deferred'
   const capture: CaptureConfig = { stdout: willWrite, stderr: false }
 
   const outputs = cacheCfg?.outputs.files ?? []
@@ -443,7 +459,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     result: ExecuteResult
     exitCode: number
   }> {
-    if (willWrite && outputs.length > 0) {
+    // A deferred task's outputs are deliberately NOT coming, so wiping the
+    // tree would replace a stale build with nothing at all. The eligibility
+    // gate guarantees no key in this run can see what stays behind, and the
+    // summary names every deferred task so `dist/` is not silently stale.
+    if (willWrite && !deferralRequested && outputs.length > 0) {
       // Mark the wiped paths, exactly as the workspace twin below does. The
       // git snapshot still lists them with their committed index OIDs, and
       // resolveFiles SKIPS its existence probe for any path carrying a
@@ -453,7 +473,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const cleanedRels = await cleanOutputs(cleanArgs)
       args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
     }
-    if (willWrite && wsOutputs.length > 0) {
+    if (willWrite && !deferralRequested && wsOutputs.length > 0) {
       // Root-anchored deletions can land in other projects' dirs; mark
       // them so stale per-project git snapshots can't survive the wipe.
       const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
@@ -490,6 +510,30 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       if (code === 0) code = signalExitCode('SIGTERM')
     }
     return { result: res, exitCode: code }
+  }
+
+  // This task is about to run a command HERE, and it missed the cache, so
+  // whatever its dependency closure produced has to actually be on disk.
+  // Producers left deferred are fetched now — once per run, concurrently,
+  // on this task's own worker slot, because they are its real critical
+  // path. A remote-placed task needs nothing: its worker grafts the
+  // upstream bytes by reference. A cache HIT reads no inputs at all.
+  if (args.executor.remote !== true && args.deferred !== undefined) {
+    try {
+      await args.deferred.materializeFor(node)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.taskStderr(node, `\n[vx] ${msg}\n`)
+      return {
+        node,
+        status: 'failed',
+        exitCode: 1,
+        durationMs: 0,
+        hash,
+        wallclockStartNs: taskStartNs,
+        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+      }
+    }
   }
 
   for (;;) {
@@ -539,6 +583,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(inputs !== undefined ? { inputs } : {}),
       ...(cfgCacheable ? { cacheKey: hash } : {}),
       ...(remoteOnly ? { remoteOnly: true } : {}),
+      ...(deferralRequested ? { download: 'deferred' as const } : {}),
       // `--force`/`--no-cache` reach a remote executor's private record
       // through this flag — the policy gates above only cover vx's OWN cache.
       ...(cfgCacheable && !(policy.localRead || policy.remoteRead) ? { refresh: true } : {}),
@@ -600,7 +645,26 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // captured inside the save block while the tree is attempt-1's.
   let verifyFp1: Map<string, string> | undefined
 
-  if (effectiveExitCode === 0 && willWrite) {
+  if (effectiveExitCode === 0 && willWrite && deferralRequested) {
+    // The outputs never landed here: no artifact, no rows. A partial local
+    // record (a row with no artifact) is exactly the corrupt-entry shape
+    // `restoreOutputs` refuses, so writing none is the only clean answer.
+    // The closure is what a later local consumer — or a later eager run —
+    // pulls the bytes with.
+    const materialize = result.outputs?.kind === 'deferred' ? result.outputs.materialize : undefined
+    if (materialize !== undefined) {
+      args.deferred?.register(node.id, {
+        materialize,
+        hash,
+        entry: {
+          taskId: node.id,
+          command: step.command,
+          durationMs: result.durationMs,
+          stdout: result.stdout,
+        },
+      })
+    }
+  } else if (effectiveExitCode === 0 && willWrite) {
     const outputFiles = await resolveOutputs({
       projectDir: node.projectDir,
       outputs,
@@ -808,6 +872,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     ...(result.where !== undefined ? { where: result.where } : {}),
+    ...(deferralRequested && result.outputs?.kind === 'deferred'
+      ? { outputs: 'deferred' as const }
+      : {}),
     wallclockStartNs,
     wallclockEndNs,
     ...(verify !== undefined ? { verify } : {}),
@@ -1004,18 +1071,6 @@ async function prepareOutputsForBind(
  * a file path covers writes to that file; a dir path covers writes
  * anywhere underneath.
  */
-function staticPrefix(glob: string): string {
-  const wildcardIdx = glob.search(/[*?[\]]/)
-  if (wildcardIdx === -1) return glob
-  // Trim back to the last separator before the wildcard so we keep
-  // only complete path components (e.g. `dist/sub-**` → `dist`, not
-  // `dist/sub-`).
-  const head = glob.slice(0, wildcardIdx)
-  const lastSep = head.lastIndexOf('/')
-  if (lastSep === -1) return '.'
-  return head.slice(0, lastSep) || '/'
-}
-
 /**
  * Build the child-process env for one task. Same arguments at every
  * call site (persistent + cached); the project's own

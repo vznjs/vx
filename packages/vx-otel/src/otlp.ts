@@ -119,6 +119,7 @@ export const VX_ATTR = {
   taskHash: 'vx.task.hash',
   cpuMs: 'vx.cpu_ms',
   taskWhere: 'vx.task.where',
+  taskOutputs: 'vx.task.outputs',
   peakRssBytes: 'vx.peak_rss_bytes',
   taskAttempts: 'vx.task.attempts',
   taskVerify: 'vx.task.verify',
@@ -283,6 +284,7 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
   if (t.hash !== undefined) attrs.push(strAttr(VX_ATTR.taskHash, t.hash))
   if (t.cpuMs !== undefined) attrs.push(intAttr(VX_ATTR.cpuMs, t.cpuMs))
   if (t.where !== undefined) attrs.push(strAttr(VX_ATTR.taskWhere, t.where))
+  if (t.outputs !== undefined) attrs.push(strAttr(VX_ATTR.taskOutputs, t.outputs))
   if (t.peakRssBytes !== undefined) attrs.push(intAttr(VX_ATTR.peakRssBytes, t.peakRssBytes))
   if (t.attempts !== undefined) attrs.push(intAttr(VX_ATTR.taskAttempts, t.attempts))
   if (t.wallclockStartNs !== undefined)

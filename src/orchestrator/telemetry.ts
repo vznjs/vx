@@ -162,6 +162,9 @@ export interface TaskTelemetry {
   /** Executor-reported placement (a worker id) — absent for local runs.
    *  Additive-optional, no schema bump (the `attempts`/`verify` precedent). */
   where?: string
+  /** `'deferred'` when the outputs stayed remote (`--download=none`).
+   *  Additive-optional, same no-bump precedent as `where`. */
+  outputs?: 'deferred'
   /** Total attempts when the task RETRIED (>1) — set only when `exec.retries`
    *  / `--retry` produced more than one attempt. A retried-then-passed task is
    *  flaky by definition; this is the telemetry-side flaky signal. */
@@ -436,6 +439,7 @@ export function createTelemetrySource(args: {
         if (outcome.cpuMs !== undefined) rec.cpuMs = outcome.cpuMs
         if (outcome.peakRssBytes !== undefined) rec.peakRssBytes = outcome.peakRssBytes
         if (outcome.where !== undefined) rec.where = outcome.where
+        if (outcome.outputs !== undefined) rec.outputs = outcome.outputs
         if (outcome.attempts !== undefined) rec.attempts = outcome.attempts
         if (outcome.verify !== undefined) rec.verify = outcome.verify
         if (outcome.outputFp !== undefined) rec.outputFp = outcome.outputFp

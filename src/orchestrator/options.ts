@@ -54,6 +54,17 @@ export interface RunOptions {
    */
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   /**
+   * Where a REMOTELY-executed task's outputs land. 'all' (default):
+   * every task's outputs are downloaded to this machine as it completes
+   * — today's behaviour, byte for byte. 'none': outputs stay in the
+   * remote CAS and are fetched lazily, only when a locally-placed task
+   * in the run actually needs them (Bazel's "build without the bytes").
+   * Pure transfer tuning: it can never change what a command produces,
+   * so it is NEVER folded into a cache key (a RunOption, like --verify).
+   * Locally-placed tasks always write in place and ignore this.
+   */
+  download?: 'all' | 'none'
+  /**
    * Run intent, derived by the CLI from selection flags: 'broad' iff
    * `--all` / `--filter` / `--affected` was passed, else 'focused'.
    * Drives the default logger's per-task output policy when neither

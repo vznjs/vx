@@ -103,6 +103,14 @@ export interface ExecuteRequest {
    * execution under the same key.
    */
   readonly remoteOnly?: boolean
+  /**
+   * Whether this task's outputs must land on the submitter's disk now.
+   * 'eager' (or absent) = materialise as today. 'deferred' = leave them
+   * in the remote store and return `outputs: {kind:'deferred'}` with a
+   * closure core can call if a local consumer turns out to need them.
+   * A local executor ignores this — it writes in place by construction.
+   */
+  readonly download?: 'eager' | 'deferred'
   /** The declared output globs — project-relative `files`, root-relative `workspaceFiles`. */
   readonly outputs: {
     readonly files: readonly string[]
@@ -125,6 +133,15 @@ export interface ExecuteRequest {
 export interface ExecuteResult extends RunResult {
   /** Sandbox violations (empty when unsandboxed). */
   readonly violations: readonly SandboxViolation[]
+  /**
+   * Where this task's outputs are. Absent = `{kind:'disk'}` — in place
+   * under `cwd`, which is what every executor did before deferral
+   * existed. `deferred` means they are NOT on disk and `materialize()`
+   * fetches them; core calls it lazily, at most once, and then saves an
+   * ordinary cache entry, so a deferred task leaves no permanent third
+   * state behind.
+   */
+  readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
   /**
    * Executor-reported placement label — which machine ran the command
    * (a REAPI worker id, a pool member). Absent = this host. Rides

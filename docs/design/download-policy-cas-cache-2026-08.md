@@ -177,12 +177,28 @@ output-producers + any `workspaceFiles` involvement, folded
 transitively). Reuse it, inverted:
 
 **A producer is deferral-eligible iff no task in the run graph could
-fold its on-disk outputs into a key** — conservatively: no task's
-project-relative input globs share the producer's project, no task
-declares `inputs.workspaceFiles` that could reach it, and the producer
-declares no `outputs.workspaceFiles`. Ineligible producers silently run
-`eager` (a refusal would break a working build; the gate is a downgrade,
-never an error), and `--dry` names the downgrade reason.
+fold its on-disk outputs into a key** — no task's input globs can MATCH
+the producer's output globs, no task declares `inputs.workspaceFiles`
+that could reach it, and the producer declares no
+`outputs.workspaceFiles`. Ineligible producers silently run `eager` (a
+refusal would break a working build; the gate is a downgrade, never an
+error), and `--dry` names the downgrade reason.
+
+**CORRECTED at implementation (2026-08-25).** This paragraph first read
+"no task's project-relative input globs _share the producer's project_".
+Sound, but INERT: every ordinary workspace has a sibling reading the
+project (`test` reads `src/**` while `build` writes `dist/**`), so that
+rule marks essentially every producer ineligible and leaves
+`--download=none` with nothing to defer — phase 1's consumable claim
+would have been false on arrival. The shipped gate compares the globs'
+STATIC PREFIXES, which answers the question actually being asked
+(`src/**` cannot match `dist/**`) and keeps the conservatism where it
+matters: a leading wildcard yields `.` and reaches everything, a
+cacheable task with no declared `files` counts as reading its whole
+project, and `workspaceFiles` on either side ignores project
+boundaries — all three force ineligible. Project boundaries still bound
+the search to the producer's own project, and a task never observes its
+own outputs (excluded from its own key by construction).
 
 Cross-run residual, reasoned through rather than hand-waved: a FUTURE
 run's consumer that reads the producer's outputs via globs either (a)

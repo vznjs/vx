@@ -79,6 +79,8 @@ src/
     upstream.ts         # filter upstream hashes for cache key
     resources.ts        # exec.resources → absolute per-task admission costs
     stable-keys.ts      # shared stable-key derivation (prefetch + shortcircuit)
+    download-policy.ts  # --download modes + the deferral eligibility gate
+    deferred-outputs.ts # deferred-output registry + lazy materialise/converge
     local-shortcircuit.ts # restore-ahead classify (two-tier scheduler feed)
     remote-prefetch.ts  # background remote GETs (LayeredCache runs only)
     events.ts           # run event bus + serializable WireEvent contract
@@ -480,6 +482,36 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-25 (thirty-ninth wave) — `--download` phase 1 ships:
+  deferred outputs end to end, and the design's own eligibility rule
+  corrected because it was INERT.** The first consumable slice of the
+  deferred arc: `RunOptions.download`/`--download=all|none`, a
+  plan-time per-task `eager|deferred|never` mode, the eligibility gate,
+  `ExecuteRequest.download` + the `disk`/`deferred` result
+  discriminator, the run-scoped `DeferredOutputs` registry with lazy
+  materialisation and convergence, reapi honouring it, and the summary
+  naming what stayed remote. `--download=all` is byte-identical to
+  before (2604/0 with no existing test touched). **The correction that
+  mattered:** §4.3 as written marked a producer ineligible whenever any
+  sibling read its project — true of every real workspace (`test` reads
+  `src/**`, `build` writes `dist/**`), so `--download=none` would have
+  deferred NOTHING and the phase's consumable claim would have been
+  false. Shipped gate compares glob STATIC PREFIXES instead: same
+  conservatism where it matters (leading wildcard ⇒ `.` ⇒ everything,
+  no declared `files` ⇒ whole project, `workspaceFiles` either side ⇒
+  ineligible), but `src/**` vs `dist/**` is correctly disjoint. Doc
+  corrected in place. Five differentials, each failing exactly its pin
+  (save-skip, clean-skip, the materialise call, the memo, the
+  convergence save); eligibility pinned BOTH ways including the
+  false-positive control; live e2e against NativeLink asserts the
+  ARTIFACT (out.txt absent after execute, present after
+  `materialize()`), not a call count. Also centralised `staticPrefix`
+  into `util/paths.ts` rather than copying it — the gate and the
+  sandbox baseline now share one owner. Harness lesson repeated
+  verbatim from the twentieth wave: the live pin first failed in 15 ms
+  because it was appended into a describe whose helper is `req3`, not
+  `request` — a fail that fast is a harness fail.
 
 - **2026-08-25 (thirty-eighth wave) — `bun test --isolate` for the packages
   job: proposed, measured against REAL servers, REFUTED — it makes the http2

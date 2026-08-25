@@ -196,6 +196,7 @@ stays clean).
 | `--verify-allow <pkg#task,…>`     | value          | (none)                             | Comma-list of task ids exempt from failing `--verify` (known-nondeterministic; reported `allowed-nondeterministic`). `--verify-allow=<csv>` form too.                                                                                                                                                                                                                            |
 | `--frozen`                        | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI). See § `--frozen`.                                                                                                                                                                                                                                                                                                   |
 | `--output-logs <mode>`            | value          | flow-derived                       | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                             |
+| `--download <mode>`               | value          | `all`                              | `all` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--download`. `--download=<mode>` form too.                                                                                                                                |
 | `--verbosity <n>`                 | int (0+)       | `0`                                | `1` prints a per-task summary table after the framed blocks; `2+` reserved. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                          |
 | `--dry[=text\|json]`              | optional value | off                                | Print the task graph + predicted cache hit/miss; skip execution.                                                                                                                                                                                                                                                                                                                 |
 | `--graph[=<path>]`                | optional value | off                                | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                                                                                                                                                                                                                                                           |
@@ -1242,6 +1243,27 @@ is gone (pruned, or the run failed and never saved one) the verb still
 names the hash change and says the component diff is unavailable.
 `--format json` emits one machine-readable object (`{ taskId, runId,
 why, diff }`).
+
+### `--download <mode>`
+
+Where a **remotely-executed** task's outputs land. `all` (default)
+downloads every task's outputs to this machine as it completes —
+today's behaviour, byte for byte. `none` leaves them in the remote CAS
+and fetches them **lazily**: only when a locally-placed task in the
+same run actually needs them (Bazel calls this "build without the
+bytes"). A CI job that only wants the verdict moves no output bytes at
+all.
+
+Locally-executed tasks always write in place and ignore the flag, and
+`exec.remote: 'only'` still means never — `--download` cannot override
+it in either direction. **It never affects a cache key**: transfer
+tuning cannot change what a command produces.
+
+One safety gate: a task whose outputs another task's `cache.inputs`
+globs could read on disk is silently kept eager, because deferring it
+would make that key depend on whether the bytes arrived. `--dry` names
+each downgrade. When bytes are fetched later, vx saves an ordinary
+cache entry for them, so the next run is a plain local hit.
 
 ## `vx prune`
 

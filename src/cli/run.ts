@@ -86,6 +86,7 @@ export interface RunArgs {
   verify: { determinism: boolean; inputs: boolean; fingerprint: boolean } | undefined
   verifyAllow: string[]
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
+  download?: 'all' | 'none'
   forwardArgs: string[]
   verbosity: number
   dry: 'text' | 'json' | undefined
@@ -255,6 +256,12 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         return { ...out, error: `--output-logs must be full, errors-only, hash-only, or none` }
       }
       out.outputLogs = v
+    } else if (a === '--download' || a?.startsWith('--download=')) {
+      const v = a === '--download' ? before[++i] : a.slice('--download='.length)
+      if (v !== 'all' && v !== 'none') {
+        return { ...out, error: `--download must be all or none` }
+      }
+      out.download = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
       if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a value` }
@@ -489,6 +496,7 @@ export async function resolveRunOptions(
     flow: detectFlow(parsed),
     ...(parsed.frozen ? { frozen: true } : {}),
     ...(parsed.outputLogs !== undefined ? { outputLogs: parsed.outputLogs } : {}),
+    ...(parsed.download !== undefined ? { download: parsed.download } : {}),
     ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
     forwardArgs: parsed.forwardArgs,
   }

@@ -604,7 +604,13 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
 
       // A remote-only task's outputs stay remote — materialising node_modules
       // onto the submitter's disk is precisely what `remote: 'only'` forbids.
-      if (req.remoteOnly !== true) await materialiseOutputs(client, req, result, warn)
+      // `--download=none` defers the same transfer WITHOUT making it
+      // permanent: the bytes stay in the CAS and core gets a closure to pull
+      // them if a locally-placed consumer turns out to need them.
+      const deferred = req.remoteOnly !== true && req.download === 'deferred'
+      if (req.remoteOnly !== true && !deferred) {
+        await materialiseOutputs(client, req, result, warn)
+      }
 
       return {
         exitCode: result.exit_code ?? 0,
@@ -613,6 +619,14 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         stderr: req.capture.stderr === false ? '' : stderr,
         violations: [],
         ...(worker !== undefined && worker !== '' ? { where: worker } : {}),
+        ...(deferred
+          ? {
+              outputs: {
+                kind: 'deferred' as const,
+                materialize: () => materialiseOutputs(client, req, result, warn),
+              },
+            }
+          : {}),
       }
     },
   }
