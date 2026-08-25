@@ -483,6 +483,36 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fifty-second wave) — `src/graph/` audited: SEVEN
+  hypotheses, seven refutations, no code change.** The `dependsOn`
+  micro-syntax turns user strings into edges, and a mis-parsed spec
+  builds the wrong graph silently, so it earns a pass on stakes. All
+  refuted by reading the code against a specific failure and confirming
+  the guard: (1) cycles hang the scheduler — no, `detectCycle` runs at
+  build time and both a cross-project cycle and a same-project
+  self-cycle are already pinned; (2) `^name` wraps back into the
+  declaring project on a package-graph cycle (legal in PMs) — no, the
+  frontier seeds `visited` with the origin, pinned for both the plain
+  and pattern forms; (3) `pkg#pattern` is documented as rejected but
+  the parser accepts it — the BUILDER rejects it, and more thoroughly
+  than documented (it checks the project half too, so `pkg*#build`
+  fails); (4) parser edge cases (empty spec, `!` with no body, bare
+  `^`, `^`+`#`, empty halves of `pkg#task`) — every one a named error;
+  (5) the frontier's holder-ness differs between the plain and pattern
+  branches, so `--excludeDependencies` would make a walk pass THROUGH a
+  real holder and over-connect — no: `addNode` returns null only when
+  the task is UNDECLARED (`skipAll` returns the node), so both branches
+  are declaration-based, exactly as the comment claims; (6) the
+  `skipNames` filter is applied in the pattern branch only — no, it is
+  checked before the kind dispatch and re-applied per expanded name,
+  which the comment states and the code does; (7) a self-dependency
+  becomes an instant self-cycle — the same-project pattern expansion
+  skips the declaring task by name. Second module in a row to close
+  with no defect (after `src/workspace/`'s 3-clean/1-defect), and the
+  defects that do surface now come from code written THIS WEEK rather
+  than from the mature core — a real signal about where to point the
+  rotation, not a reason to keep sweeping settled modules.
+
 - **2026-08-25 (fifty-first wave) — `project-loader.ts`: the last
   unaudited workspace file, and it yielded a real one — a typo INSIDE
   `exec.persistent` was silently accepted.** The loader is otherwise
