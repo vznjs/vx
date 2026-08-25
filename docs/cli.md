@@ -162,6 +162,20 @@ widens to every project instead, for the same reason it unions in
 untracked files. Only the ROOT copies count: a lockfile vendored inside
 a package is not hashed and selects just that package.
 
+**A file your config IMPORTS selects that project.** vx hashes the
+resolved config, so a shared preset a `vx.config.*` imports is part of
+the cache key — and selection follows the same rule. Editing
+`shared/preset.ts` selects every project whose config imports it,
+directly or through another shared file, even though the file belongs
+to no project and no `workspaceFiles` glob names it. The scan is
+STATIC (nothing is evaluated) and follows RELATIVE specifiers only; a
+bare specifier is a package, and a lockfile change already selects
+everything. It stops at a project boundary: a config importing
+`../../packages/lib/preset.ts` gets the edge, but `preset.ts`'s own
+imports inside `lib` do not reach further — `lib` is already selected
+by containment. Import your helpers by bare specifier to opt out. See
+[`docs/modules/config-imports.md`](./modules/config-imports.md).
+
 **Nothing changed exits 0.** When the selection comes only from
 `--affected` / `[<ref>]` and resolves to zero projects, vx prints
 `nothing affected since <ref>` and exits 0 — a docs-only commit must not

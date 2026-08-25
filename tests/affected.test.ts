@@ -693,3 +693,117 @@ describe('affectedProjects workspaceFiles gate', () => {
     expect([...out]).toEqual([])
   })
 })
+
+// The THIRD selection channel: a project whose `vx.config.*` imports a changed
+// file. Resolved-config hashing folds those values into the cache key, so
+// `affected.ts`'s own rule applies — "input hashing sees it, so `--affected`
+// must too". The controls matter more than the pins here: widening selection
+// is free for correctness (selection is never hashed) and expensive in CI
+// time, so a channel that quietly selects everything would look like a pass.
+describe('affectedProjects: config import closures', () => {
+  let root: string
+  let projects: ProjectMeta[]
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-affimp-'))
+    const w = async (rel: string, body: string) => {
+      const abs = path.join(root, rel)
+      await mkdir(path.dirname(abs), { recursive: true })
+      await writeFile(abs, body)
+    }
+    // Orphan tooling — owned by no project, which is how a shared preset lives.
+    await w('shared/flag.mjs', `import './deep.mjs'\nexport const FLAG = 'one'\n`)
+    await w('shared/deep.mjs', `export const DEEP = 1\n`)
+    await w('shared/a.mjs', `export const A = 1\n`)
+    await w('shared/b.mjs', `export const B = 1\n`)
+    await w('tools/build-helper.mjs', `export const helper = 1\n`) // imported by NOBODY
+    await w('docs/x.md', `# docs\n`)
+    await w('node_modules/pkgx/index.mjs', `export const p = 1\n`)
+
+    await w('packages/app/package.json', JSON.stringify({ name: 'app' }))
+    await w(
+      'packages/app/vx.config.mjs',
+      `import 'pkgx'\nimport { FLAG } from '../../shared/flag.mjs'\nimport { A } from '../../shared/a.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + FLAG + A } } } }\n`,
+    )
+    await w('packages/lib/package.json', JSON.stringify({ name: 'lib' }))
+    await w('packages/lib/vx.config.mjs', `export default { tasks: {} }\n`)
+    await w('packages/lib/preset.mjs', `import './internal.mjs'\nexport const P = 1\n`)
+    await w('packages/lib/internal.mjs', `export const I = 1\n`)
+    await w('apps/x/package.json', JSON.stringify({ name: 'x' }))
+    await w(
+      'apps/x/vx.config.mjs',
+      `import { P } from '../../packages/lib/preset.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + P } } } }\n`,
+    )
+
+    const meta = (name: string, dir: string): ProjectMeta => ({
+      name,
+      dir: path.join(root, dir),
+      configPath: path.join(root, dir, 'vx.config.mjs'),
+      packageJson: { name },
+    })
+    projects = [meta('app', 'packages/app'), meta('lib', 'packages/lib'), meta('x', 'apps/x')]
+
+    await git(root, 'init', '-q')
+    await git(root, 'config', 'user.email', 'test@vx.local')
+    await git(root, 'config', 'user.name', 'vx test')
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'initial')
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const editThenSelect = async (rel: string, body: string): Promise<string[]> => {
+    await writeFile(path.join(root, rel), body)
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    return [...out].sort()
+  }
+
+  it('PIN: a config-imported orphan selects the importing project', async () => {
+    expect(
+      await editThenSelect('shared/flag.mjs', `import './deep.mjs'\nexport const FLAG='two'\n`),
+    ).toEqual(['app'])
+  })
+
+  it('PIN: transitively, through an orphan that imports another orphan', async () => {
+    expect(await editThenSelect('shared/deep.mjs', `export const DEEP = 2\n`)).toEqual(['app'])
+  })
+
+  it('PIN: a config importing INTO another project selects both', async () => {
+    // The shape the orphan-only reading misses: the target is owned, so it is
+    // never an orphan, and no `workspaceFiles` glob is involved.
+    expect(
+      await editThenSelect(
+        'packages/lib/preset.mjs',
+        `import './internal.mjs'\nexport const P=2\n`,
+      ),
+    ).toEqual(['lib', 'x'])
+  })
+
+  it('CONTROL: an orphan module NO config imports selects the exact empty set', async () => {
+    // The refutation of "any root-level .mjs change affects everything".
+    expect(await editThenSelect('tools/build-helper.mjs', `export const helper = 2\n`)).toEqual([])
+  })
+
+  it('CONTROL: a sibling of an imported orphan selects nothing', async () => {
+    expect(await editThenSelect('shared/b.mjs', `export const B = 2\n`)).toEqual([])
+  })
+
+  it('CONTROL: no descent past a project boundary', async () => {
+    // `x`'s config imports lib/preset.mjs, which imports lib/internal.mjs.
+    // Editing internal.mjs selects lib by CONTAINMENT and must not reach x —
+    // the rule that keeps this walk from dragging in a whole source tree.
+    expect(await editThenSelect('packages/lib/internal.mjs', `export const I = 2\n`)).toEqual([
+      'lib',
+    ])
+  })
+
+  it('CONTROL: a bare specifier contributes no edge', async () => {
+    expect(await editThenSelect('node_modules/pkgx/index.mjs', `export const p = 2\n`)).toEqual([])
+  })
+
+  it('CONTROL: a docs-only change still selects nothing', async () => {
+    expect(await editThenSelect('docs/x.md', `# docs edited\n`)).toEqual([])
+  })
+})

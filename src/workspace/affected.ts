@@ -12,6 +12,7 @@
 import path from 'node:path'
 import { UserError } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
+import { configImportOwners } from './config-imports.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 import type { ProjectMeta } from './workspace.js'
 
@@ -100,6 +101,22 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   }
 
   const { owned, orphans } = projectsContaining(args.workspaceRoot, changed, args.projects)
+
+  // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
+  // Resolved-config hashing folds those values into the key, so the same
+  // sentence above applies — input hashing sees it, so selection must. This
+  // runs on the FULL changed set, not just `orphans`: the common shape is a
+  // config reaching into ANOTHER project (`../../src/index.ts`), whose target
+  // is owned and therefore never an orphan at all.
+  for (const name of await configImportOwners({
+    workspaceRoot: args.workspaceRoot,
+    projects: args.projects,
+    changed,
+    skip: owned,
+  })) {
+    owned.add(name)
+  }
+
   if (orphans.length === 0 || args.workspaceGlobOwners === undefined) return owned
   for (const name of await args.workspaceGlobOwners(orphans)) owned.add(name)
   return owned

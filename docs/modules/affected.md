@@ -13,6 +13,9 @@ export interface AffectedArgs {
   workspaceRoot: string
   since: string // required: ref / commit / branch
   projects: readonly ProjectMeta[]
+  /** Which projects declare a `workspaceFiles` glob matching these paths.
+   *  Asked ONLY about paths that belong to no project. */
+  workspaceGlobOwners?: (paths: readonly string[]) => Promise<Set<string>>
 }
 
 export function affectedProjects(args: AffectedArgs): Promise<Set<string>>
@@ -27,11 +30,31 @@ export function defaultAffectedBase(workspaceRoot: string): Promise<string>
 <ref>`. Throws `UserError` if the ref doesn't resolve locally.
 2. `git diff --name-only <since>` — emits the union of committed +
    staged + unstaged changes. Matches Turbo's `[<since>]` semantics.
-3. Each changed path is mapped to its owning project. Projects are
-   sorted by directory length descending so a **nested project wins
-   over its parent** when a file is a descendant of both (consistent
-   with the project-boundary rule).
-4. Returns the deduped set of project names.
+3. Untracked files (`git ls-files --others --exclude-standard`) are
+   unioned in — a brand-new source file is a change. `vx-lock.json` is
+   filtered out, so re-running `vx lock` never selects everything.
+4. If any ROOT lockfile or `pnpm-workspace.yaml` changed, **every**
+   project is selected and the walk stops: those files are folded into
+   the workspace fingerprint, so they re-key every task.
+5. Otherwise each changed path reaches a project through **three
+   channels**, and the union is returned:
+   - **Containment.** Walk the path's ancestor dirs bottom-up until one
+     is a project dir; the first hit is the DEEPEST containing project,
+     so a **nested project wins over its parent**. (This replaced an
+     earlier sort-by-directory-length-descending pass; the walk is
+     O(files · depth) instead of O(files · projects).)
+   - **Config imports.** A project whose `vx.config.*` transitively
+     imports the changed file — see
+     [`config-imports.md`](./config-imports.md). Resolved-config
+     hashing folds those values into the key, so selection has to see
+     them too.
+   - **Workspace globs.** For paths that belong to no project,
+     `workspaceGlobOwners` asks which projects declared a matching
+     `cache.inputs.workspaceFiles` glob.
+
+Selection is never hashed, so widening it changes no cache key — which
+is why every channel here may over-select safely but must not
+under-select.
 
 `defaultAffectedBase`:
 

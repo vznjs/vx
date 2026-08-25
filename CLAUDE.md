@@ -508,6 +508,59 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (sixth wave) — `--affected` was blind to config import
+  closures; closed with a third selection channel.** CONFIRMED by probe
+  before anything was designed: a workspace where
+  `packages/app/vx.config.mjs` imports `../../shared/flag.mjs` and builds
+  its command from it — editing that file moved the resolved command
+  `echo one` → `echo two` (so the KEY moves), while
+  `affectedProjects` returned the EMPTY set. That violates the rule
+  `affected.ts` states verbatim for lockfiles four lines above the bug:
+  "input hashing sees it, so `--affected` must too." In CI this is a
+  silent green — `vx run build --affected` runs nothing after a shared
+  preset changes. Designed via the architect subagent, which corrected my
+  framing on the load-bearing point: **the class is wider than orphans.**
+  This repo's `apps/docs/vx.config.ts` imports `../../src/index.ts`,
+  a file OWNED by another project, so it is never an orphan and the
+  existing `workspaceGlobOwners` seam could never see it; an orphan-only
+  fix would have closed my probe and left the real case live. It also
+  refuted the constraint I handed it: import-graph tracking is NOT
+  infeasible — the `project-loader.ts` note is about runtime `import()`,
+  while `Bun.Transpiler.scanImports` + `Bun.resolveSync` answer it
+  statically, and `import type` is correctly erased. Shipped as
+  `src/workspace/config-imports.ts`: relative specifiers only, reverse
+  edges, one BFS from the changed set, and the rule that makes it
+  affordable — **descend only through files owned by NO project**, so a
+  config reaching into another project records the edge and stops
+  instead of dragging that project's whole source tree in. Rejected on
+  the way: "any orphan ⇒ everything" (a README edit rebuilds the world)
+  and the extension heuristic (this repo's `bench/` and `scripts/` are
+  the counterexample). 3 pins + 5 CONTROLS, and the controls are the
+  half that matters, since selection is never hashed so over-selecting
+  looks exactly like a pass: an unimported root-level `.mjs` selects the
+  EXACT empty set, a sibling orphan selects nothing, and editing
+  `packages/lib/internal.mjs` selects `lib` but NOT the app whose config
+  imports `lib/preset.mjs` — the pin that fails if someone later
+  "improves" this into full transitivity. Differential both directions:
+  disabling the channel fails exactly the 3 pins and leaves all 5
+  controls passing. MEASURED, min-of-5: 0.36 ms on this repo, 9.1 ms at
+  100 configs, 87 ms at 1000 — and 80 ms at 1000 with NO imports at all,
+  so the cost is reading the config files, not resolving the closure
+  (full config EVALUATION, which selection avoids, is ~200 ms there).
+  Two process notes. The realpath hazard the design flagged bit
+  immediately: my first benchmark passed a raw `/var/…` root against
+  `resolveSync`'s `/private/var/…` output and measured 0-of-1000
+  selected — a probe reaching the wrong path, caught only because I
+  asserted the SELECTED COUNT and not just the timing. The fix was to
+  move the realpath INSIDE the module so there is one owner and the
+  misuse is unrepresentable. And `oxlint --type-aware` caught a
+  `string | null` narrowing lost inside a closure that `bun test` had
+  transpiled away happily — the standing "bun test is not the gate"
+  rule, earning itself again. `docs/modules/affected.md` was ALREADY
+  stale (its `AffectedArgs` predated `workspaceGlobOwners`, and step 3
+  still described the sort-by-directory-length pass the ancestor walk
+  replaced) and is corrected in place in the same wave.
+
 - **2026-08-25 (fifth wave) — my own refusals were reporting as "internal
   error in <task>"; classified as `UserError`.** Followed my two new
   throws through to what a user actually SEES, which the earlier waves
