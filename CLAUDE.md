@@ -487,6 +487,30 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (seventy-second wave) — my own verification step was
+  wrong, not the plugin: `$GITHUB_STEP_SUMMARY` is PER-STEP.** The
+  self-check added last wave failed on its first run with "job summary
+  is empty — did @vzn/vx-github decline?", which read as a real
+  dogfooding failure. It was not. The runner gives EACH `run:` step its
+  own summary file and concatenates them at the end, so the plugin wrote
+  the `vx run ci` step's file and my separate verification step tested a
+  fresh empty one — an assertion that could never pass, on a file
+  nothing had written. Reproduced locally in the opposite direction
+  first (`run ci` with `GITHUB_STEP_SUMMARY` set wrote 307 bytes), which
+  is what made the environment difference the suspect rather than the
+  plugin. The check now lives INSIDE the vx step: capture vx's exit
+  code, assert the summary either way — a failing run is when it matters
+  most, since it carries the failure callout — then re-raise the code so
+  it stays the gate. Simulated locally including the re-raise before
+  pushing, and the workflow re-parsed with `Bun.YAML` (7 steps now, the
+  check folded in). The lesson sharpens last wave's own: asserting on
+  the ARTIFACT rather than the wiring is right, but only if you have the
+  artifact's SCOPE right — I asserted on the correct file name in the
+  wrong process. Also observed, not fixed: darwin failed the same run on
+  `vx watch e2e … exits on SIGINT` (45 s, a timeout), a second
+  load-sensitive e2e flake there in consecutive runs after the
+  many-commits one — a pattern worth watching rather than dismissing.
+
 - **2026-08-25 (seventy-first wave) — the dogfooded summary now VERIFIES
   itself, because the failure it could hide is invisible.** Removing
   `--report-file` left the job summary owned entirely by a PLUGIN, and a

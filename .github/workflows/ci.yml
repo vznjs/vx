@@ -101,19 +101,25 @@ jobs:
       - name: vx run ci
         env:
           VX_REQUIRE_SANDBOX: '1'
-        run: bun src/bin.ts run ci
-
-      # The summary is now written by a PLUGIN, and a plugin that declines
-      # writes nothing — which would be a silent regression, because job
-      # summaries are not exposed through the REST API and nobody would
-      # notice a missing one from a green check. `if: always()` because a
-      # FAILING run is when the summary matters most (it carries the failure
-      # callout), and that is also the path a decline would hide.
-      - name: job summary landed
-        if: always()
         run: |
+          # The summary is written by a PLUGIN now, and a plugin that declines
+          # writes nothing — a silent regression, since job summaries are not
+          # exposed through the REST API and a green check looks identical
+          # either way. So assert it, IN THIS STEP: `$GITHUB_STEP_SUMMARY` is
+          # per-STEP (the runner hands each one its own file and concatenates
+          # them), which a separate verification step learned the hard way by
+          # testing its own empty file and failing every time.
+          #
+          # vx's exit code stays the gate: it is captured, the summary is
+          # checked either way — a FAILING run is when the summary matters
+          # most, since it carries the failure callout — and then re-raised.
+          set +e
+          bun src/bin.ts run ci
+          code=$?
+          set -e
           test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-github decline?"; exit 1; }
           grep -q 'vx run' "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is not the vx one"; exit 1; }
+          exit $code
 
   # The `ci` job above is scoped to ./tests (core). Workspace-member tests ran
   # only inside the removed cloud job, so `packages/*/tests/` has been
