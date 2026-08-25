@@ -21,7 +21,7 @@ import {
   runSandboxed,
 } from '../src/exec/sandbox-runtime.js'
 import { run, type Logger, type RunOptions } from '../src/orchestrator/index.js'
-import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { sandboxAvailable, sandboxReportingReliable } from './helpers/sandbox-gate.js'
 
 const TIMEOUT = 60_000
 
@@ -90,6 +90,7 @@ async function addProject(
 }
 
 const available = await sandboxAvailable('sandbox-runtime tests')
+const reportingReliable = await sandboxReportingReliable('sandbox-runtime tests')
 
 describe.skipIf(!available)(`sandbox-runtime`, () => {
   let fixture: Fixture
@@ -331,11 +332,18 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           `,
         })
         const r = await run({ cwd: link, tasks: ['leak'], log: collectingLogger(fixture) })
+        // ENFORCEMENT — artifact-based, so reporting loss cannot move it:
+        // the task failed and the secret never landed in its output.
         expect(r.ok).toBe(false)
-        // The bwrap mount failure named an internal `/newroot/…` path and left
-        // ZERO violations; a real denial names the file the task reached for.
-        const lines = (r.outcomes[0]?.sandboxViolationLines ?? []).join('\n')
-        expect(lines).toContain('token.txt')
+        expect(existsSync(path.join(link, 'packages', 'app', 'out.txt'))).toBe(false)
+        // REPORTING — the bwrap mount failure this pin was written for named
+        // an internal `/newroot/…` path and left ZERO violations, so a real
+        // denial naming the file is the discriminating signal. Withheld where
+        // the unified log drops records under load; see the gate helper.
+        if (reportingReliable) {
+          const lines = (r.outcomes[0]?.sandboxViolationLines ?? []).join('\n')
+          expect(lines).toContain('token.txt')
+        }
       } finally {
         await rm(link, { force: true })
       }

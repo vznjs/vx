@@ -414,17 +414,15 @@ time every single time.
   extracts the bare trailing path from macOS lines. Both directions pinned.
 - ~~CI is `ubuntu-latest` only~~ — **CLOSED 2026-08-24**: a `core-darwin`
   job runs the full core suite on `macos-latest`. Deliberately WITHOUT
-  `VX_REQUIRE_SANDBOX` (the macOS sandbox suites are the recorded load-flaky
-  class; the security boundary stays enforced on the linux job). The
-  promotion question was ASSESSED 2026-08-25 and split: full
-  `VX_REQUIRE_SANDBOX` on darwin stays REFUSED — the suites' pins assert
-  on violation LINES, the lossy-by-OS channel (~5% measured), so they
-  would flake at the OS's loss rate regardless of runner stability — but
-  the enforcement CANARY was promoted from data-only to a GATE (220/220
-  enforced across 11 runs; a single `not_enforced` now reds the darwin
-  job, a fully-erroring harness too; reporting loss stays tolerated).
-  Full-suite un-gating needs the pins rewritten to assert on artifacts,
-  not lines.
+  `VX_REQUIRE_SANDBOX`. The enforcement CANARY gates the darwin job
+  (340/340 enforced across 17 runs; one `not_enforced` reds it), and the
+  suites themselves were UN-GATED there on 2026-08-25 once their
+  enforcement pins were confirmed/rewritten to assert on ARTIFACTS —
+  28 sandbox-runtime tests recovered on darwin CI. Only pins whose
+  PRODUCT is the report (the `undeclared-inputs` verdict; a line naming
+  a file) are still withheld, via `sandboxReportingReliable`. Full
+  `VX_REQUIRE_SANDBOX` on darwin stays refused: it would make the lossy
+  reporting channel a merge gate.
 - `--info` and `--cache-local` are byte-identical tokens (56 189 248), so a
   blue line is ambiguous between "informational" and "cache". Changing a token
   value moves the visual baselines — a design call.
@@ -482,6 +480,30 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-25 (fifty-ninth wave) — darwin CI un-gated: 28 sandbox tests
+  recovered by splitting ENFORCEMENT from REPORTING.** The condition I
+  recorded when refusing the flag promotion ("un-gate if the pins are
+  ever rewritten to assert on artifacts, not lines") turned out to be
+  nearly met already — reading the suite, its enforcement pins assert
+  `r.ok === false`, `status === 'failed'`, and `existsSync(escaped.txt)
+=== false`: artifact-based, immune to a dropped log record. Exactly ONE
+  pin asserted line CONTENT, and verify's input-completeness block is
+  verdict-driven, which is the report itself. So the class gate was
+  withholding 27 reporting-independent tests to protect 6 that need it.
+  Split: `sandboxAvailable` no longer skips darwin CI wholesale, and a
+  new `sandboxReportingReliable` withholds only what the lossy channel
+  can move. The line pin now asserts the ARTIFACT unconditionally (the
+  task failed AND out.txt never appeared) and the line only where
+  reporting is reliable — strictly more coverage than before, since the
+  artifact half never ran on darwin at all. Verified by simulating the
+  environment (`CI=1` on darwin): sandbox-runtime 28 pass / 0 skip where
+  the whole suite used to vanish, verify 24 pass / 5 skip. The general
+  lesson: enforcement and reporting are different properties with
+  different reliability, and a gate that conflates them pays for the
+  weaker one everywhere. The canary proved that distinction empirically
+  (340/340 on the artifact-based question) before it was used to
+  redesign the gate.
 
 - **2026-08-25 (fifty-eighth wave) — `runner.ts` closes `src/exec/`
   clean, and the module-doc debt from my own week's work is paid.**

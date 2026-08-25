@@ -20,7 +20,7 @@ import {
   undeclaredInputPaths,
 } from '../src/orchestrator/verify.js'
 import { xxh3hex } from '../src/util/index.js'
-import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { sandboxReportingReliable } from './helpers/sandbox-gate.js'
 
 const TIMEOUT = 20_000
 
@@ -670,7 +670,9 @@ describe('formatVerifySection (pure)', () => {
 // than deleting the proof's coverage under a green check; a dev host without
 // bwrap/strace still skips. Same gate as tests/sandbox-runtime.test.ts, shared
 // so the two cannot drift about what the rule is.
-const sandboxOk = await sandboxAvailable('verify inputs tests')
+// The `undeclared-inputs` verdict IS the report, so this block needs
+// reporting reliability, not merely an available sandbox.
+const sandboxOk = await sandboxReportingReliable('verify inputs tests')
 
 /** A cacheable task that reads `readCmd` (a node -e body) and writes out.txt. */
 const inputProject = (readExpr: string, inputs = "['src/**','package.json']") =>
