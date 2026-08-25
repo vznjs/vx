@@ -148,7 +148,14 @@ export function resolveDownloadModes(args: {
     // materialisation rides each task's own completion, overlapped with the
     // rest of the run, where a run-end batch would serialise every download
     // after the last task finishes.
-    if (args.policy === 'toplevel' && n.requested === true) {
+    //
+    // SURFACED counts as asked-for. A requested GROUP has no outputs of its
+    // own — `markSurfacedDeps` marks the real tasks it chains — so keying on
+    // `requested` alone made `vx run ci --download=toplevel` (ci being a
+    // group) bring home NOTHING, which is the one thing the mode exists to
+    // avoid. run.ts already pairs the two flags for the same reason when it
+    // decides which persistent children to keep alive.
+    if (args.policy === 'toplevel' && (n.requested === true || n.surfaced === true)) {
       modeOf.set(n.id, 'eager')
       continue
     }

@@ -487,6 +487,30 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (sixty-fifth wave) — `--download=toplevel` brought home
+  NOTHING when the target was a group; the mode's whole point, defeated
+  by one missing flag.** Hostile pass on phase 2/3, the last code from
+  this session without one. CONFIRMED by probe: the `toplevel` clause
+  keyed on `n.requested === true`, but a requested GROUP has no outputs
+  of its own — `markSurfacedDeps` marks the real tasks it chains as
+  `surfaced`, never `requested`. So `vx run ci --download=toplevel`,
+  with `ci` a group over build+test, deferred every task that actually
+  produces something and materialised the group's nothing. The mode
+  exists precisely to bring asked-for outputs home, so it failed at its
+  one job for the most ordinary CI invocation there is. The fix is
+  `requested || surfaced`, which is not a new idea in this tree: run.ts
+  already pairs exactly those two flags when deciding which persistent
+  children to keep alive in the foreground, and I wrote the clause
+  without looking for the precedent. Pinned WITH a control in the same
+  test — a plain intermediate still defers — so the fix cannot degenerate
+  into "everything eager"; differential kills exactly that pin. Phase 3
+  was probed in the same pass and REFUTED on four counts: the record's
+  workspace-relative paths materialise correctly through
+  `cwd: workspaceRoot` for files, symlinks AND tree digests; a record
+  written under one download mode is honoured under the other; the
+  `capture.stdout === false` contract is respected on the replay path;
+  and `--force` still bypasses via `refresh`.
+
 - **2026-08-25 (sixty-fourth wave) — hostile pass on the log-budget change
   I shipped two waves ago: REFUTED, and the invariant that could have
   broken silently is now pinned.** New-code rule turned on my own newest

@@ -1264,7 +1264,8 @@ why, diff }`).
 Where a **remotely-executed** task's outputs land. `all` (default)
 downloads every task's outputs to this machine as it completes —
 today's behaviour, byte for byte. `toplevel` brings home only the tasks
-you actually asked for and leaves intermediates remote. `none` leaves
+you actually asked for — including the real tasks behind a requested
+group — and leaves intermediates remote. `none` leaves
 them in the remote CAS
 and fetches them **lazily**: only when a locally-placed task in the
 same run actually needs them (Bazel calls this "build without the

@@ -174,6 +174,33 @@ describe('resolveDownloadModes', () => {
     expect(r.modeOf.get('a#gen')).toBe('deferred')
   })
 
+  it("`toplevel` treats a requested GROUP's surfaced tasks as asked-for", () => {
+    // A group has no outputs of its own; `markSurfacedDeps` marks the real
+    // tasks it chains. Keying on `requested` alone meant `vx run ci
+    // --download=toplevel` deferred everything and brought home nothing —
+    // the one outcome the mode exists to avoid.
+    const nodes3 = graph(
+      {
+        ...node('a#build', { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }),
+        requested: false,
+        surfaced: true,
+      } as TaskNode,
+      {
+        ...node('b#dep', { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } }),
+        requested: false,
+      } as TaskNode,
+    )
+    const r = resolveDownloadModes({
+      nodes: nodes3,
+      policy: 'toplevel',
+      localPlaced: new Set(),
+      remoteOnly: new Set(),
+    })
+    expect(r.modeOf.get('a#build')).toBe('eager')
+    // …and a plain intermediate still defers, so this is not "everything eager".
+    expect(r.modeOf.get('b#dep')).toBe('deferred')
+  })
+
   it('`toplevel` still honours the eligibility gate for the rest', () => {
     // A requested task is eager because it was asked for; an intermediate
     // whose outputs another key can read is eager because it MUST be.
