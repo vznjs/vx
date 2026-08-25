@@ -401,9 +401,20 @@ time every single time.
   indistinguishable. Not binding the decompressed bytes to an outliving local
   was tried and REFUTED (no change), so the cost is structural. Peak is
   ~4.5× artifact size against a 2 GiB decompression ceiling that bounds the
-  input, not the multiplier. A streaming read would fix it, but the only
-  streaming surface (`extract()`) neither preserves mtime nor strips the
-  namespace prefix, which is why it was not used.
+  input, not the multiplier. A streaming read would fix it. RE-CHECKED
+  2026-08-25 against Bun 1.4.0, and the blocker is now narrower than
+  recorded: `ArchiveExtractOptions` exposes ONLY `glob`, so there is still
+  no prefix strip — but mtime is no longer a reason, because v27 carries
+  mode and millisecond mtime in the `.vx-meta.json` sidecar and applies
+  them after extraction anyway (measured: `extract()` writes 0644 with an
+  extraction-time mtime, and `glob: 'outputs/**'` correctly selects just
+  the outputs subtree). The candidate design is therefore extract-then-
+  rename: stream `outputs/**` to a temp dir on the SAME filesystem, then
+  rename each file into the project dir applying the sidecar's metadata —
+  bounded memory, at the cost of an extra rename per output. NOT
+  implemented and NOT claimed faster; it trades a JS-side copy for a
+  syscall and has to be measured against the current path before it means
+  anything.
 
 - ~~`vx run --verify=inputs` on macOS reports a false `undeclared-inputs` for
   the project's own ancestor directories and prints raw sandbox-exec log
