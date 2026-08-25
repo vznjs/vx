@@ -52,9 +52,10 @@ export function defaultAffectedBase(workspaceRoot: string): Promise<string>
      `workspaceGlobOwners` asks which projects declared a matching
      `cache.inputs.workspaceFiles` glob.
 
-Selection is never hashed, so widening it changes no cache key — which
-is why every channel here may over-select safely but must not
-under-select.
+Selection is never hashed, so widening it changes no cache key: every
+channel here may over-select safely. It does NOT follow that selection
+is complete — the config-import channel stops at project boundaries and
+[documents what that misses](./config-imports.md#where-this-stops).
 
 `defaultAffectedBase`:
 

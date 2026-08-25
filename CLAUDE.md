@@ -508,6 +508,37 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (seventh wave) — audited my OWN channel from the previous
+  wave and found the completeness claim I had just written was false.**
+  New code is where the bugs are, including when it is an hour old.
+  CONFIRMED by probe: when the workspace ROOT is itself a project — the
+  `"."` member this repo calls load-bearing — the config-import walk
+  loses transitivity entirely, because the root project's directory IS
+  the whole workspace, so every `shared/**` file is "owned" and the
+  descent rule stops at the first hop. Same fixture, two shapes: root a
+  project → editing `shared/deep.mjs` selects NOTHING downstream; root
+  not a project → selects `app`. Following that thread showed the class
+  is not special to the root at all: the boundary stop under-selects at
+  ANY project boundary, which is exactly what my own control #6 pinned
+  as intended one wave earlier. So `docs/modules/affected.md` shipped
+  the sentence "every channel here may over-select safely but must not
+  under-select" — a guarantee the code does not have, written by me, in
+  the same wave that broke it. That is the recurring class for the
+  fourth time today, and this time I authored it. DE-CLAIMED and
+  replaced with a precise statement of what is missed, plus a
+  "Where this stops" section documenting both cases. NOT closed, and the
+  reason is measured rather than asserted: full descent from
+  `apps/docs/vx.config.ts` reaches 78 files in 15 ms, so scan time is
+  not the obstacle — the obstacle is that an arbitrary project's SOURCE
+  TREE becomes the walk's bound, and every edit inside it would select
+  the importing project. Both under-selections are now PINNED as tests
+  (the root-is-a-project pair: one hop still selects, two hops
+  deliberately do not), so a future descent-rule change fails loudly and
+  has to move the docs with it. Also checked, since it would have
+  softened the finding: `--affected` does NOT propagate to dependents —
+  that is opt-in via `...<pattern>` — so the package graph does not
+  rescue the missed project.
+
 - **2026-08-25 (sixth wave) — `--affected` was blind to config import
   closures; closed with a third selection channel.** CONFIRMED by probe
   before anything was designed: a workspace where

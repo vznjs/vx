@@ -88,6 +88,36 @@ paid. For scale: full config EVALUATION, which selection deliberately
 avoids, is ~200 ms at that size. On this repo (5 projects) the channel
 costs 0.36 ms.
 
+## Where this stops
+
+The boundary rule buys a bounded walk and pays for it in completeness.
+Both cases below are UNDER-selection, they are deliberate, and they are
+pinned by tests so a future change has to face them:
+
+**A config importing into another project gets ONE hop.** `x`'s config
+imports `packages/lib/preset.mjs`; editing `preset.mjs` selects `x`, but
+editing `packages/lib/internal.mjs` — which `preset.mjs` imports — does
+not. `lib` is selected by containment; `x` is not, even though the value
+flows into its resolved config. Following it would make the walk's cost
+the size of an arbitrary project's source tree rather than the shared
+tooling set.
+
+**When the workspace root is ITSELF a project, transitivity through
+shared files disappears.** vx supports a root `"."` member (this repo
+uses one for core `@vzn/vx`), and that project's directory is the whole
+workspace — so every `shared/**` file is "owned" and the walk stops at
+the first hop. `app`'s config importing `shared/flag.mjs` still selects
+`app` when `flag.mjs` changes; it does NOT when `shared/deep.mjs`
+changes and only `flag.mjs` imports it. In a root-is-a-project
+workspace, keep config helpers one hop from the config, or import them
+by a specifier the containment channel already covers.
+
+Measured for context rather than asserted: full descent from
+`apps/docs/vx.config.ts` reaches 78 files in 15 ms here, so the cost of
+closing this is not scan time — it is that an arbitrary project's
+source tree becomes the walk's bound, and that every edit inside it
+selects the importing project.
+
 ## Known over-selection
 
 Editing core `src/index.ts` now selects `@vzn/vx-docs`, because its

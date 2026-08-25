@@ -807,3 +807,75 @@ describe('affectedProjects: config import closures', () => {
     expect(await editThenSelect('docs/x.md', `# docs edited\n`)).toEqual([])
   })
 })
+
+// The root `"."` member is a supported (and, in this repo, load-bearing)
+// shape, and it interacts with the config-import walk in a way worth pinning
+// rather than discovering: the root project's directory is the WHOLE
+// workspace, so every shared file is "owned" and the walk stops after one
+// hop. This test documents an UNDER-selection. It is deliberate — the
+// alternative makes an arbitrary project's source tree the walk's bound — and
+// it should fail loudly if someone changes the descent rule, so the docs move
+// with the behaviour.
+describe('affectedProjects: a workspace whose ROOT is itself a project', () => {
+  let root: string
+  let projects: ProjectMeta[]
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-affroot-'))
+    const w = async (rel: string, body: string) => {
+      const abs = path.join(root, rel)
+      await mkdir(path.dirname(abs), { recursive: true })
+      await writeFile(abs, body)
+    }
+    await w('shared/flag.mjs', `import './deep.mjs'\nexport const FLAG = 'one'\n`)
+    await w('shared/deep.mjs', `export const DEEP = 1\n`)
+    await w('package.json', JSON.stringify({ name: 'root-pkg' }))
+    await w('vx.config.mjs', `export default { tasks: {} }\n`)
+    await w('packages/app/package.json', JSON.stringify({ name: 'app' }))
+    await w(
+      'packages/app/vx.config.mjs',
+      `import { FLAG } from '../../shared/flag.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + FLAG } } } }\n`,
+    )
+    projects = [
+      {
+        name: 'root-pkg',
+        dir: root,
+        configPath: path.join(root, 'vx.config.mjs'),
+        packageJson: { name: 'root-pkg' },
+      },
+      {
+        name: 'app',
+        dir: path.join(root, 'packages/app'),
+        configPath: path.join(root, 'packages/app/vx.config.mjs'),
+        packageJson: { name: 'app' },
+      },
+    ]
+    await git(root, 'init', '-q')
+    await git(root, 'config', 'user.email', 'test@vx.local')
+    await git(root, 'config', 'user.name', 'vx test')
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'initial')
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('still selects the importer one hop out', async () => {
+    await writeFile(
+      path.join(root, 'shared/flag.mjs'),
+      `import './deep.mjs'\nexport const FLAG='two'\n`,
+    )
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out].sort()).toEqual(['app', 'root-pkg'])
+  })
+
+  it('DOCUMENTED LIMIT: transitivity stops, because the root owns shared/', async () => {
+    // `app`'s config reads FLAG, which is computed from deep.mjs — so app's
+    // key DOES move here and app is NOT selected. Closing this means
+    // descending through a project's own files; see config-imports.md.
+    await writeFile(path.join(root, 'shared/deep.mjs'), `export const DEEP = 2\n`)
+    const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+    expect([...out].sort()).toEqual(['root-pkg'])
+  })
+})
