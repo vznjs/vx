@@ -477,7 +477,20 @@ describe('affectedProjects', () => {
     // equivalent here and halves the subprocess count (150 spawns → 100).
     for (let i = 0; i < 50; i++) {
       await writeFile(path.join(root, 'packages/b/file.txt'), `b-v${i}`)
-      await git(root, 'commit', '-q', '-a', '-m', `b-${i}`)
+      // ONE retry, and only here. This loop is fixture SETUP — 50 real
+      // commits, because `HEAD~50` has to resolve — and on a loaded darwin
+      // runner git itself failed mid-loop with
+      //   `unable to create temporary file: Invalid argument`
+      //   `fatal: failed to write commit object`
+      // i.e. the filesystem refused git's object write, with vx not even in
+      // the picture. Retrying the SETUP cannot mask a defect in the code
+      // under test (that is asserted below, after the loop), and the second
+      // failure still throws with git's own message attached.
+      try {
+        await git(root, 'commit', '-q', '-a', '-m', `b-${i}`)
+      } catch {
+        await git(root, 'commit', '-q', '-a', '-m', `b-${i}`)
+      }
     }
     // Assert the fixture BEFORE the behaviour under test. `HEAD~50` only
     // resolves if all 50 commits landed, and if one silently didn't, the

@@ -487,6 +487,29 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (sixty-eighth wave) — RED MAIN on a DOCS-ONLY commit, and
+  this time it genuinely was not the diff: git itself failed to write an
+  object.** The darwin job went red on the log-compaction commit, which
+  touches two markdown files. The rule says read the failing test and the
+  ACTUAL error before calling it a flake, and both were decisive:
+  `affectedProjects > handles many commits…` died at
+  `git commit -q -a -m b-32` with `unable to create temporary file:
+Invalid argument` / `fatal: failed to write commit object` — the
+  FILESYSTEM refusing git's object write on the 32nd of 50 fixture
+  commits, with vx not in the picture at all. Not the sandbox suite I
+  un-gated the wave before (its first real-load run stayed green), and
+  not the canary. This test has a recorded history of CI reds — its own
+  comments narrate the fourth one — and prior hardening improved its
+  DIAGNOSTICS, which is exactly why this failure was legible in one
+  read. Mitigation kept narrow: ONE retry, only on the setup loop, with
+  the observed git error quoted at the site. Retrying fixture setup
+  cannot mask a defect in the code under test, because the behaviour is
+  asserted after the loop and a second failure still throws with git's
+  own message. What was NOT done: no blanket retry in the shared `git()`
+  helper (its failures elsewhere are meaningful), and no reduction of
+  the commit count (50 is the number that exercises the recursion/arg
+  limit the test exists for).
+
 - **2026-08-25 (sixty-seventh wave) — the JSON plan had the same hole as
   the text plan, one surface over.** Having just built the `--dry` text
   surface, I ran the OTHER two. `formatPlanJson` enumerates its fields
