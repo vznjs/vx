@@ -191,9 +191,40 @@ export async function pruneWorkspaceCmd(args: readonly string[]): Promise<number
   // nothing in the subset make installs fail.
   const workspaceYaml = `packages:\n${rels.map((r) => `  - "${r}"\n`).join('')}`
 
+  // package.json's `workspaces` is where bun/npm/yarn read membership, and it
+  // needs the SAME rewrite as pnpm-workspace.yaml for the same reason — except
+  // the failure is sharper: a GLOB matching nothing is tolerated, but an entry
+  // naming an exact dir that the subset does not contain is fatal
+  // (`bun install` → `error: Workspace not found "packages/b"`, exit 1), so the
+  // emitted context would not install at all. A `.` entry is kept when it was
+  // there: it names the root package, whose manifest is copied.
+  const rewriteRootManifest = async (dest: string): Promise<boolean> => {
+    const src = path.join(root, 'package.json')
+    if (!(await exists(src))) return false
+    let pkg: Record<string, unknown>
+    try {
+      pkg = JSON.parse(await Bun.file(src).text()) as Record<string, unknown>
+    } catch {
+      return false // unparseable: copy it verbatim rather than lose it
+    }
+    const field = pkg['workspaces']
+    const list = Array.isArray(field)
+      ? field
+      : typeof field === 'object' && field !== null && Array.isArray((field as never)['packages'])
+        ? ((field as never)['packages'] as string[])
+        : undefined
+    if (list === undefined) return false
+    const next = (list as string[]).includes('.') ? ['.', ...rels] : [...rels]
+    pkg['workspaces'] = Array.isArray(field) ? next : { ...(field as object), packages: next }
+    await writeFile(path.join(dest, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`)
+    return true
+  }
+
   const emitRoots = async (dest: string): Promise<void> => {
     await writeFile(path.join(dest, 'pnpm-workspace.yaml'), workspaceYaml)
+    const manifestWritten = await rewriteRootManifest(dest)
     for (const f of [...ROOT_FILES, ...WORKSPACE_CONFIGS, ...LOCKFILES]) {
+      if (f === 'package.json' && manifestWritten) continue
       const src = path.join(root, f)
       if (await exists(src)) await cp(src, path.join(dest, f))
     }

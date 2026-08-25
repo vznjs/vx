@@ -1301,7 +1301,14 @@ vx prune <project> [--out-dir <dir>] [--docker]
 ```
 
 `pnpm-workspace.yaml` is REWRITTEN to the exact subset dirs (a glob
-matching absent dirs breaks installs). The lockfile is copied
+matching absent dirs breaks installs), and so is `package.json`'s
+`workspaces` field — that is where bun, npm and yarn read membership.
+The distinction matters: a glob that matches nothing is tolerated, but
+an entry naming an exact directory the subset does not contain is
+fatal, and `bun install` exits 1 with `Workspace not found "…"` before
+anything is installed. Both array and `{ packages: [...] }` forms are
+rewritten, a `"."` entry is preserved, and the rest of the manifest is
+carried through untouched. The lockfile is copied
 **unpruned** — every package manager tolerates a superset lockfile,
 and a wrongly-pruned one is worse than a big correct one; per-format
 lockfile pruning is deliberately out of phase 1. `node_modules`,

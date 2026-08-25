@@ -173,9 +173,15 @@ describe('vx prune: what the configs import', () => {
   beforeAll(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-prune-cfg-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    // EXPLICIT member paths (not a glob) — the shape where a member missing
+    // from the subset makes `bun install` fail outright.
     await writeFile(
       path.join(root, 'package.json'),
-      JSON.stringify({ name: 'cfg-root', private: true }),
+      JSON.stringify({
+        name: 'cfg-root',
+        private: true,
+        workspaces: ['packages/app', 'packages/lib', 'packages/plug', 'packages/unrelated'],
+      }),
     )
     const mk = async (name: string, deps: Record<string, string> = {}) => {
       const dir = path.join(root, 'packages', name)
@@ -227,6 +233,37 @@ describe('vx prune: what the configs import', () => {
         expect(await exists(path.join(out, 'packages', 'lib'))).toBe(true)
         // CONTROL: pulling in config imports must not pull in the world.
         expect(await exists(path.join(out, 'packages', 'unrelated'))).toBe(false)
+      } finally {
+        await rm(out, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'rewrites package.json workspaces to the subset, dropping absent members',
+    async () => {
+      // bun/npm/yarn read membership from package.json, not pnpm-workspace.yaml.
+      // A glob matching nothing is tolerated; an EXPLICIT path that the subset
+      // does not contain is fatal — `bun install` exits 1 with
+      // `Workspace not found "packages/unrelated"`, so the emitted build
+      // context would not install at all.
+      const out = path.join(root, '..', `prune-ws-${process.pid}`)
+      const r = await vx(root, ['prune', 'app', '--out-dir', out])
+      try {
+        expect(r.code).toBe(0)
+        const pkg = JSON.parse(await readFile(path.join(out, 'package.json'), 'utf8')) as {
+          workspaces: string[]
+          name: string
+        }
+        expect(pkg.workspaces).not.toContain('packages/unrelated')
+        expect([...pkg.workspaces].sort()).toEqual([
+          'packages/app',
+          'packages/lib',
+          'packages/plug',
+        ])
+        // Everything else about the manifest survives the rewrite.
+        expect(pkg.name).toBe('cfg-root')
       } finally {
         await rm(out, { recursive: true, force: true })
       }

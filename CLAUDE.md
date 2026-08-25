@@ -508,6 +508,30 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fourth wave) — `vx prune` rewrote the pnpm workspace file
+  but not `package.json`'s `workspaces`, so the emitted context would not
+  install.** Same command, second pass: prune already knew a membership
+  list naming absent dirs breaks installs — that is why it rewrites
+  `pnpm-workspace.yaml` — but bun, npm and yarn read membership from
+  `package.json`, which was copied VERBATIM. MEASURED rather than
+  assumed, because the two shapes differ: a GLOB matching nothing is
+  tolerated (`packages/*` with `b` absent installs fine), while an
+  EXPLICIT entry the subset lacks is fatal — `bun install` prints
+  `error: Workspace not found "packages/b"` and exits 1, before anything
+  is installed. So the Docker context prune exists to produce could not
+  be built at all for any workspace that lists members by path. Fix
+  mirrors the yaml treatment: rewrite `workspaces` to the subset dirs,
+  handling both the array and the `{ packages: [...] }` (yarn) form,
+  preserving a `"."` entry (it names the root package, whose manifest is
+  copied) and carrying the rest of the manifest through. An unparseable
+  manifest falls back to a verbatim copy rather than losing it — reading
+  a user's file is a boundary. Pinned: the absent member is dropped, the
+  three subset dirs are present, and the manifest's other fields survive;
+  differential disables the rewrite and fails exactly that pin, restore
+  9/0. Lesson worth the line: I nearly asserted "npm tolerates a missing
+  member" from memory — the two forms behave differently and only the
+  executed check distinguishes them.
+
 - **2026-08-25 (third wave) — `vx prune` emitted a subset that cannot
   run, and its own header promised the opposite.** New-code rotation
   again (prune shipped yesterday). Its header said "the subset must be
