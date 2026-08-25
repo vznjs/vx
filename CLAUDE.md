@@ -475,6 +475,26 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (thirty-sixth wave) — the bench was silently broken by the
+  no-defaults reframe; fixed, and the post-v27 warm paths measured
+  healthy.** `bun bench/run.ts` failed on every invocation: the synthetic
+  workspace generator predates 2026-08-22's plugins-only contract and
+  emitted no `vx.workspace.*`, so every benched run died on the
+  missing-plugin hint — for three days, invisibly, because benches are
+  not in CI (the skip-is-silent-pass class, bench flavor). The harness
+  also SWALLOWED the evidence: it printed the child's stderr, but the
+  hint goes to stdout — the manual repro found it in one step. Fix:
+  `generate.ts` writes a `vx.workspace.mjs` declaring the local plugins
+  by absolute path (the tests-helper shape; `@vzn/vx` does not resolve
+  from a tmp dir), with a comment naming this exact failure as the
+  tripwire. Then the measurement the fix unblocked, this darwin box,
+  median of 3: 50 projects — cold 174 ms, warm-skip 87 ms, warm-restore
+  100 ms; 100 projects — 270 / 104 / 125 ms. Warm-restore ~15-20% over
+  warm-skip: no sign of a v27 restore regression at bench artifact sizes,
+  consistent with the recorded "a wash below ~12 MB". The committed
+  RESULTS.md (Linux, 2026-07-03) is deliberately NOT regenerated from
+  this host — a fact measured on one box is a fact about that box.
+
 - **2026-08-25 (thirty-fifth wave) — placement × failure-propagation
   audited: clean by construction, now pinned across the boundary.** The
   question: does `--continue=never`'s fail-fast trip cross placement —

@@ -23,6 +23,20 @@ const root = path.resolve(dir)
 
 await mkdir(path.join(root, 'packages'), { recursive: true })
 await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+// NO DEFAULTS (owner directive 2026-08-22): a workspace with no executor and
+// cache plugins fails before any task runs, so the synthetic workspace must
+// declare the local ones — by ABSOLUTE path, since `@vzn/vx` does not
+// resolve from a tmp dir (the same shape tests/helpers/local-workspace.ts
+// emits). The bench broke silently when the reframe landed; benches are not
+// in CI, so this comment is the tripwire: if this file ever fails again with
+// the missing-plugin hint, the workspace contract changed under it.
+const vxSrc = path.resolve(import.meta.dir, '..', 'src')
+await writeFile(
+  path.join(root, 'vx.workspace.mjs'),
+  `import { localExecutorPlugin } from ${JSON.stringify(path.join(vxSrc, 'plugins/local-executor/index.ts'))}\n` +
+    `import { localCachePlugin } from ${JSON.stringify(path.join(vxSrc, 'plugins/local-cache/index.ts'))}\n` +
+    `export default { plugins: [localExecutorPlugin(), localCachePlugin()] }\n`,
+)
 await writeFile(
   path.join(root, 'package.json'),
   JSON.stringify({ name: 'bench-root', private: true }, null, 2),
