@@ -227,12 +227,10 @@ upstream repos.
     - Turbo: `cacheMaxAge`, `cacheMaxSize`.
     - Nx: `maxCacheSize`.
 
-12. **Last-run replay** (`vx run --last-details`). Print the last
-    run's summary without re-executing. Value went UP with the
-    2026-08-23 cloud removal: the dashboard that covered the browsable
-    version is gone, so a CLI replay from the local run history is now
-    the only candidate surface. The `metrics.ts` SQL layer already
-    holds everything it needs.
+12. **Last-run replay — shipped (2026-08-25) as `vx last`.** Replays
+    the most recent (or any recorded) run's summary from the local
+    history: header + per-task table, `--list` for recent run ids,
+    `--format json` for scripting. Read-only over `metrics.ts`.
 
 ### Shipped since this list was first drawn
 

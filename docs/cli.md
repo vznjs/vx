@@ -1243,6 +1243,25 @@ names the hash change and says the component diff is unavailable.
 `--format json` emits one machine-readable object (`{ taskId, runId,
 why, diff }`).
 
+## `vx last`
+
+Replay a recorded run's summary from the local history — no
+re-execution, no cache probe, no config evaluation. With the
+self-hosted dashboard gone (2026-08-23), this is THE run-replay
+surface.
+
+```
+vx last [runId] [--list[=N]] [--format pretty|json]
+```
+
+Bare `vx last` replays the most recent run: a header (verdict, command,
+when, duration, branch @ sha, CI, task/hit/failure counts) and a
+per-task table — status, id, duration, cache key — failures first.
+`vx last --list` prints the N most recent runs (default 10) with their
+run ids; `vx last <runId>` replays a specific one. `--format json`
+emits `{ invocation, tasks }` for scripting. An unknown run id fails
+loud and points at `--list`.
+
 ## `vx mcp` — Model Context Protocol server
 
 Boot an MCP server so AI coding agents (Claude Code, Cursor,

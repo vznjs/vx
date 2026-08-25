@@ -57,6 +57,8 @@ src/
     migrate-turbo.ts    # turbo.json → vx.config.ts mapping (+ vx-preset.ts globals)
     migrate-nx.ts       # nx project-graph.json → vx.config.ts mapping
     show.ts             # `vx show` — live resolved-config introspection
+    last.ts             # `vx last` — replay a recorded run's summary (read-only)
+    why.ts              # `vx why` — cache-key change explainability
     info.ts             # `vx info` doctor printout (`vx stats` = alias)
     upgrade.ts          # `vx upgrade` — binary self-update (bunfs detection)
     mcp.ts              # `vx mcp` — MCP server for AI agents (stdio)
@@ -463,6 +465,24 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-25 (thirty-second wave) — `vx last` ships: last-run replay,
+  comparison gap #12 closed the wave after its value was re-assessed.**
+  The previous wave's comparison-doc correction noted the deleted
+  dashboard had been this gap's answer; `vx last` is the CLI surface
+  that replaces it. Bare = the most recent run's summary (verdict,
+  command, timing, branch @ sha, CI, counts, then the per-task table —
+  status/id/duration/key, failures first); `vx last <runId>` replays a
+  specific run; `--list[=N]` prints recent run ids; `--format json`
+  emits `{invocation, tasks}`. Entirely read-only over the existing
+  metrics layer (`listInvocations`/`getInvocation`/`getRun`) — zero new
+  SQL, no config evaluation, no cache probe; the verb slots beside
+  `vx why` (same DB-reading grammar, same parser conventions including
+  why's flag-name-first lesson). Pinned e2e via bin.ts subprocesses:
+  replay content, --list round-trip (the listed id replays), a FAILED
+  run with failures first, JSON shape, unknown-id fails loud pointing
+  at --list; parser units cover both flag spellings and every rejection
+  message.
 
 - **2026-08-25 (thirty-first wave) — `--output-logs hash-only` ships
   (Turbo parity, gap #7), and the comparison doc sheds its dead cloud

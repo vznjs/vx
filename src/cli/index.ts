@@ -11,6 +11,7 @@ import { migrateCmd } from './migrate.js'
 import { upgradeCmd } from './upgrade.js'
 import { showCmd } from './show.js'
 import { infoCmd } from './info.js'
+import { lastCmd } from './last.js'
 import { whyCmd } from './why.js'
 import { mcpCmd } from './mcp.js'
 import { printHelp } from './help.js'
@@ -48,6 +49,8 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await infoCmd(rest)
     case 'why':
       return await whyCmd(rest)
+    case 'last':
+      return await lastCmd(rest)
     case 'mcp':
       return await mcpCmd(rest)
     case 'serve':
@@ -78,6 +81,7 @@ export { parseLockArgs, type LockArgs } from './lock.js'
 export { parseMigrateArgs, type MigrateArgs } from './migrate.js'
 export { parseShowArgs, type ShowArgs } from './show.js'
 export { parseWhyArgs } from './why.js'
+export { parseLastArgs } from './last.js'
 export { parseMcpArgs, type McpArgs } from './mcp.js'
 export {
   handleMcpRequest,
