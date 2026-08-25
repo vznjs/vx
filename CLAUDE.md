@@ -434,9 +434,15 @@ time every single time.
   the accepted trade (git's index makes the same one); closing it would cost
   a content hash per output on every warm hit.
 - `LayeredCache` in-memory pack path (`--cache=local:,remote:rw`) still holds
-  artifact bytes in RAM; `drainUploads()` has no timeout and is deliberately
-  outside the throw-path `finally` (awaiting a wedged remote would turn a
-  failing run into a hanging one).
+  artifact bytes in RAM; `drainUploads()` has no timeout of its own and is
+  deliberately outside the throw-path `finally`. SHARPENED 2026-08-25: for
+  the reapi layer the wedge concern is CLOSED by construction — `put` is
+  findMissingBlobs + writeBlob + updateActionResult, all deadline-bounded
+  (the eighteenth-wave gRPC deadlines), so a full drain is finite
+  (~pending/4 × 3 calls × deadline worst-case). The unbounded-hang risk
+  remains only for a THIRD-PARTY `RemoteCacheLayer` whose `put` carries no
+  deadline — a plugin-author responsibility the extensibility guide should
+  name if a second remote plugin ever appears.
 - Task-log caps count CHARS, not memory (~36× overhead at 1-char chunks);
   when failures alone exceed the run budget the OLDEST failure is stubbed
   first (usually the root cause).
