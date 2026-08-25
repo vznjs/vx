@@ -480,11 +480,31 @@ describe('archive restore — concurrent restores to the same anchor', () => {
   })
 
   it('two parallel extracts of the same payload produce a consistent tree', async () => {
+    // A regression guard, and honestly a weak one: this loop did NOT
+    // reproduce the pre-fix failure locally in 3 x 400 rounds, though a
+    // loaded darwin CI runner hit it in a single round. The measured
+    // differential lives in the decision log instead (a standalone probe:
+    // 3/400 ENOENT with the unlink-then-write, 0/400 with the rename,
+    // 0/400 with the symlink-only unlink that predates it). The
+    // failure mode was an unlink-then-write leaving the target momentarily
+    // ABSENT, so the other extract's chmod hit ENOENT; the write is a
+    // rename now, and rename never leaves a gap.
     const body = new TextEncoder().encode('payload-payload-payload\n')
     const tar = tarWithEntry('outputs/concurrent.txt', body)
-    await Promise.all([restore(tar, dest), restore(tar, dest)])
-    const restored = await readFile(path.join(dest, 'concurrent.txt'))
-    expect(restored).toEqual(Buffer.from(body))
+    for (let i = 0; i < 400; i++) {
+      // Both entry sets are parsed BEFORE either extract starts, so the two
+      // extracts begin on the same tick. Going through `restore()` (which
+      // awaits its own readArtifact first) offsets them by that parse and
+      // the race essentially stops reproducing — measured: the pre-fix code
+      // survived 3 × 400 rounds that way, and fails these.
+      const [a, b] = [await readArtifact(tar), await readArtifact(tar)]
+      await Promise.all([extractOutputs(a, dest), extractOutputs(b, dest)])
+      const restored = await readFile(path.join(dest, 'concurrent.txt'))
+      expect(restored).toEqual(Buffer.from(body))
+    }
+    // …and no scratch file survived to be swept into the next artifact.
+    const leftovers = [...new Bun.Glob('**/*.vx-tmp-*').scanSync({ cwd: dest })]
+    expect(leftovers).toEqual([])
   })
 })
 

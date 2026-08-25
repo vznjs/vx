@@ -35,7 +35,7 @@
 // materialised — vx's outputs are regular files, and an artifact that
 // claims otherwise silently loses the claim rather than acting on it.
 
-import { lstat, mkdir, chmod, realpath, stat, unlink, utimes } from 'node:fs/promises'
+import { mkdir, chmod, realpath, rename, stat, unlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
@@ -285,33 +285,44 @@ export async function extractOutputs(
       const target = path.join(dest.base, dest.rel)
       await mkdir(path.dirname(target), { recursive: true })
 
-      // Link TOCTOU defense: if anything already sits at the target,
-      // unlink it before writing. A symlink would make the write follow
-      // the link and clobber its destination; a HARDLINK is the same
-      // attack without the link-shaped tell — `Bun.write` truncates the
-      // shared inode in place, so an attacker-planted
-      // `ln /etc/target <dest>/out.txt` gets the artifact bytes written
-      // THROUGH it (probed 2026-08-24: the linked file's content was
-      // replaced). Unlinking first breaks the link instead of following
-      // it, for every link shape at once; a plain pre-existing file just
-      // gets recreated. A directory at the target survives to fail the
-      // write itself — fail-closed, same as before.
+      // Write beside the target and RENAME into place. rename(2) replaces
+      // the destination's directory ENTRY without following it, which is
+      // what makes this both link-safe and concurrency-safe:
+      //
+      //   - a planted symlink or HARDLINK at the target is replaced, not
+      //     written through, so `ln <victim> <dest>/out.txt` cannot get
+      //     the artifact's bytes into <victim>;
+      //   - the target is never momentarily ABSENT. The unlink-then-write
+      //     version opened exactly that window, and a second extract of
+      //     the same payload could delete the file between this one's
+      //     write and its chmod — reproduced 3/400 locally, caught red on
+      //     darwin CI where a loaded runner widened the race;
+      //   - mode and mtime are applied BEFORE the file is visible, so no
+      //     reader sees it with the wrong metadata.
+      //
+      // A directory at the target makes the rename fail — the same
+      // fail-closed outcome the plain write had.
+      const tmp = `${target}.vx-tmp-${process.pid.toString(36)}-${(tmpSeq++).toString(36)}`
       try {
-        const ls = await lstat(target)
-        if (!ls.isDirectory()) await unlink(target)
-      } catch {
-        // Target doesn't exist — the common case; fall through.
-      }
-
-      await Bun.write(target, e.file)
-      if (e.mode !== 0) await chmod(target, e.mode & 0o777)
-      if (e.mtimeMs > 0) {
-        const t = e.mtimeMs / 1000
-        await utimes(target, t, t)
+        await Bun.write(tmp, e.file)
+        if (e.mode !== 0) await chmod(tmp, e.mode & 0o777)
+        if (e.mtimeMs > 0) {
+          const t = e.mtimeMs / 1000
+          await utimes(tmp, t, t)
+        }
+        await rename(tmp, target)
+      } catch (err) {
+        // Never leave a stray `.vx-tmp-*` behind: the declared output globs
+        // would sweep it into the next artifact.
+        await unlink(tmp).catch(() => undefined)
+        throw err
       }
     }),
   )
 }
+
+/** Per-process counter for extract temp names; uniqueness only. */
+let tmpSeq = 0
 
 const WORKSPACE_PREFIX = 'workspace-outputs/'
 

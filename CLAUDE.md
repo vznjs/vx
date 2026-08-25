@@ -483,6 +483,35 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (forty-sixth wave) — RED MAIN, and it WAS my diff: the
+  hardlink fix opened a concurrent-restore window; extraction now writes
+  through a rename.** A docs-only commit went red on darwin
+  `core tests`, which by the standing rule means read the failing TEST
+  and the ACTUAL error before calling it a flake. Both were decisive:
+  `two parallel extracts of the same payload` failing with
+  `ENOENT: chmod` at `archive.ts:307` — one extract's `unlink` removing
+  the file between the OTHER extract's write and its chmod. That window
+  is one the twenty-seventh wave's hardlink fix opened by widening
+  `unlink` from symlinks-only to any non-directory. MEASURED, three
+  arms, 400 iterations each: symlink-only (pre-hardlink) 0/400 twice,
+  unlink-any 3/400 twice, write-to-temp-then-rename 0/400. Fix: write
+  beside the target, apply mode+mtime to the TEMP, `rename` into place.
+  rename(2) replaces the destination's directory ENTRY without following
+  it, so it is link-safe (the hardlink pin still fails without it —
+  verified) AND gap-free (the target is never absent), and metadata
+  lands before the file is visible. A failed write unlinks its temp so a
+  stray `.vx-tmp-*` can never be swept into the next artifact.
+  **Two honesty notes.** (1) Mid-investigation I doubted my own causal
+  claim, reasoning that a fresh dest dir means no unlink runs — wrong:
+  the SECOND extract still finds the first's file and unlinks it. The
+  three-arm measurement settled it rather than the argument. (2) The
+  in-suite pin is weak and says so: it did not reproduce the pre-fix
+  failure in 3 x 400 local rounds even after being tightened twice
+  (interleaving, iteration count), while one loaded CI round did. The
+  differential of record is the standalone probe, not the test — writing
+  the opposite into the test comment would have been the
+  claims-a-guarantee-it-does-not-have defect in its purest form.
+
 - **2026-08-25 (forty-fifth wave) — the `--download` guide lands (the
   docs-in-the-same-wave rule, honoured late), and the vx-github
   `--dry` hypothesis is REFUTED by construction.** Two items, one of
