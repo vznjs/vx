@@ -427,7 +427,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // subscriber, no summary building. The hot path stays off-limits.
     let runContextRecord: RunContextRecord | undefined
     // Gate on a plugin that can actually CONTRIBUTE a sink, not on declaring
-    // any plugin at all: a backend/cache-only plugin has no telemetry hook to
+    // any plugin at all: a cache-only plugin has no telemetry hook to
     // consult, so paying for the record (2 git spawns + a `.vx/workspace-id`
     // write on a remote-less repo) buys nothing. A plugin that has the hook
     // but declines still pays — its answer is only knowable by asking.

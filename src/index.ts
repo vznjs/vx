@@ -118,7 +118,7 @@ export {
 export type { ProjectMeta } from './workspace/index.js'
 
 // Plugin API — the run-level extension points. Behavior capabilities
-// (backend / cache) change WHAT/HOW work runs; the observe-only `telemetry`
+// (executor / cache) change WHAT/HOW work runs; the observe-only `telemetry`
 // capability is the canonical data-export path and cannot change behavior.
 // A plugin is declared in vx.workspace.ts via defineWorkspace({ plugins }).
 // See docs/design/observability-architecture-2026-06.md.

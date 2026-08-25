@@ -13,7 +13,7 @@
 // record; its `TelemetryContext` carries read-only metadata and NO mutable
 // run handle (no bus, no Cache, no RunRequest). There is no API path from a
 // sink back into scheduling/caching/exec — telemetry provably cannot change
-// what or how tasks run. Contrast `backend`/`cache`, which return objects
+// what or how tasks run. Contrast `cache`/`executor`, which return objects
 // core calls INTO; those are the behavior capabilities, kept separate.
 
 import type { OutputFingerprint, TaskStatus, VerifyVerdict } from '../graph/index.js'

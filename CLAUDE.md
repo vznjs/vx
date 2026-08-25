@@ -483,6 +483,29 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fifty-sixth wave) — the backend sweep FINISHED, after
+  catching myself claiming a sweep I had not done.** Checking `eventSink`
+  (the trilogy's third removal candidate) established it is live and
+  merely deprecated — plugin-host still subscribes it, so no defect —
+  but the same grep surfaced `plugin-host.ts`'s own header still naming
+  `backend`. That should have been caught one wave earlier: the previous
+  sweep ran a filtered grep and I read `head -5` of it, fixed those, and
+  wrote "sweep" in the commit message. Reading the head of a filtered
+  list is sampling, not sweeping, and the word in the message was
+  therefore wrong. Done properly this time: twelve more live references
+  corrected across `src/index.ts`, `plugin.ts`, `plugin-host.ts`,
+  `telemetry.ts`, `run.ts` and three module docs, including a
+  capability-table ROW for `backend(ctx)` in `docs/modules/plugin.md`
+  that still described "whole-run delegation; when contributed,
+  executors are not consulted" — a documented capability that cannot be
+  contributed and would now be refused. Deliberately NOT touched:
+  `docs/design/*` (point-in-time proposals — rewriting them would
+  falsify the record), and the comments that explain the removal rather
+  than assume the seam (`run-report.ts`'s note on why its shape lives
+  where it does is exactly right). Verified complete by re-running the
+  grep with every intentional survivor excluded and reading the WHOLE
+  output.
+
 - **2026-08-25 (fifty-fifth wave) — the same sweep applied to the removed
   BACKEND seam found a real defect, not just doc-rot: a `backend`-only
   plugin validated and was then silently ignored.** The cloud sweep's

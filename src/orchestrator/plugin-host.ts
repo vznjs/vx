@@ -1,4 +1,4 @@
-// Plugin consultation for the run-level extension points (backend / cache / executor / eventSink).
+// Plugin consultation for the run-level extension points (cache / executor / eventSink).
 // Each function asks the plugins in order. Nothing is applied by default:
 // core's own executor and cache are plugins under src/plugins/ that a
 // workspace declares like any other, so a list with no provider for a
@@ -23,7 +23,7 @@ import type {
 /**
  * Run a capability factory with crash isolation. A throw becomes a clean
  * `UserError` naming the plugin + hook for the load-bearing capabilities
- * (`backend`/`cache`/`executor`/`setup`) — a broken backend or cache must abort with
+ * (`cache`/`executor`/`setup`) — a broken cache or executor must abort with
  * a clear message, never silently degrade. For `eventSink` the caller
  * logs-and-skips instead (observability must never break a run).
  */
@@ -67,7 +67,7 @@ export async function resolveCache(
 }
 
 /**
- * Collect every plugin's `executor`, in declaration order. Unlike `backend`
+ * Collect every plugin's `executor`, in declaration order. Unlike
  * and `cache` this is a LIST: per task, `selectExecutor` takes the first
  * that accepts. An empty list is the same authoring error as a missing
  * cache provider and fails the same way. A broken factory aborts — an

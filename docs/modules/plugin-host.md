@@ -3,13 +3,15 @@
 ## Purpose
 
 Consults the plugins' run-level capabilities in declaration order
-(`executor`, `cache`, `backend`) and wires each plugin's `eventSink`
+(`executor`, `cache`) and wires each plugin's `eventSink`
 capability onto the run bus via `wireForwarder`, so sinks receive the
 serializable `WireEvent` stream.
 
-`backend` is resolved by the CLI layer (`src/cli/run.ts`) from the
-DECLARED plugins before `run()` starts; every other capability is resolved
-inside `prepareRun`/`run()` from the declared list (`prepared.plugins`).
+Every capability is resolved inside `prepareRun`/`run()` from the declared
+list (`prepared.plugins`). (A whole-run `backend` capability was resolved
+by the CLI layer before `run()` started, until that seam was removed in
+2026-08 — it moved the scheduler server-side, which is exactly what core
+does not do. `executor` replaced it at the per-task grain.)
 Nothing is appended — no executor or no cache is a named error
 (`MISSING_PLUGIN_HINT`).
 

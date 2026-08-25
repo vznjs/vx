@@ -27,7 +27,7 @@ import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 
 /**
  * A vx plugin. Contributes any subset of the run-level capabilities —
- * where work runs (executor / backend), which cache is used (cache), who
+ * where work runs (executor), which cache is used (cache), who
  * observes the run (telemetry). It never changes WHAT a task is (the
  * command string — principle #3), only where and how that command is
  * executed. Registered explicitly in vx.workspace.ts via
@@ -177,7 +177,7 @@ export interface Plugin {
    * be installed synchronously inside setup() so no events are missed.
    *
    * OPTIONAL: a capability-only plugin (one that contributes
-   * `backend`/`cache`/`executor`/`eventSink` but no `setup`) is simply skipped by
+   * `cache`/`executor`/`eventSink` but no `setup`) is simply skipped by
    * `installPlugins` — its capabilities are consulted by `plugin-host.ts`.
    */
   setup?(ctx: PluginContext): void | Promise<void>
@@ -202,7 +202,7 @@ export interface InstallPluginsArgs {
  * hooks are subscribed before the next plugin's setup runs. Throws if any
  * plugin's setup() throws (the run cannot start with a broken plugin).
  *
- * A plugin without a `setup` is a capability-only plugin (backend / cache
+ * A plugin without a `setup` is a capability-only plugin (cache
  * / executor / eventSink) — skipped here; those capabilities are consulted by
  * `plugin-host.ts`.
  */
@@ -216,7 +216,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
       throw new UserError('plugin missing `name` field')
     }
-    // No setup → a capability-only plugin (backend / cache / executor / eventSink),
+    // No setup → a capability-only plugin (cache / executor / eventSink),
     // consulted by plugin-host.ts; skip the hook install. A setup that's
     // present but not callable is a real authoring error — reject it.
     if (plugin.setup === undefined) continue
