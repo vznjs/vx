@@ -580,6 +580,36 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/exec has unknown field "persistant"/)
     })
 
+    it('refuses the REMOVED backend capability by name instead of ignoring it', async () => {
+      // The whole-run backend seam went with vx cloud on 2026-08-23, but it
+      // stayed in the capability list — so a plugin declaring only
+      // `backend` (a third-party one written against the old API) counted
+      // as "contributes a capability" and was then silently ignored. A
+      // no-op plugin that validates is exactly what this check exists to
+      // prevent.
+      const file = path.join(dir, 'vx.workspace.mjs')
+      await writeFile(
+        file,
+        `export default { plugins: [{ name: 'org/old', backend() { return {} } }] }\n`,
+      )
+      await expect(loadWorkspaceConfig(dir)).rejects.toThrow(
+        /backend` is no longer a capability[\s\S]*Use `executor`/,
+      )
+    })
+
+    it('CONTROL: the surviving capabilities still load', async () => {
+      const file = path.join(dir, 'vx.workspace.mjs')
+      await writeFile(
+        file,
+        `export default { plugins: [
+           { name: 'org/c', cache() { return undefined } },
+           { name: 'org/e', executor() { return undefined } },
+           { name: 'org/t', telemetry() { return undefined } },
+         ] }\n`,
+      )
+      await expect(loadWorkspaceConfig(dir)).resolves.toBeDefined()
+    })
+
     it('rejects a typo INSIDE persistent, one level below the sibling checks', async () => {
       // `persistant` (the level above) was already caught; `readWhen` was
       // not, and it is the quieter failure: `readyWhen` stays undefined, so

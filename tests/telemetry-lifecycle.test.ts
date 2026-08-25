@@ -367,9 +367,12 @@ describe('the zero-cost gate keys on the telemetry capability', () => {
   // run pay the telemetry-context cost?" on a remote-less fixture repo.
   const idFile = (root: string) => existsSync(path.join(root, '.vx', 'workspace-id'))
 
-  it('a backend-only plugin pays nothing', async () => {
+  it('a plugin with a non-telemetry capability pays nothing', async () => {
+    // Was a `backend`-only plugin until that capability was removed and the
+    // loader started refusing it by name. The property under test is
+    // unchanged: a plugin that contributes no telemetry costs nothing.
     const root = await runWith(
-      localWorkspaceSource([`{ name: 'org/be', backend() { return undefined } }`]),
+      localWorkspaceSource([`{ name: 'org/ex', executor() { return undefined } }`]),
     )
     expect(idFile(root)).toBe(false)
   }, 30_000)

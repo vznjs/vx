@@ -18,10 +18,11 @@ terminal and a task succeeding or failing. Read it alongside
  │         - bare positionals respect --all / --filter / --affected / cwd
  │         - anchored positionals (pkg#task) target directly
  │         - no positionals + TTY → interactive picker → pkg#task
- │    5. The options map to a RunRequest; the run BACKEND is resolved —
- │       a plugin's `backend` capability wins (e.g. a distribution
- │       plugin), else core's in-process localBackend. --dry /
- │       --graph short-circuit into planRun instead.
+ │    5. The options map to RunOptions and the run executes IN THIS
+ │       PROCESS — always. (A whole-run `backend` seam existed until
+ │       2026-08; it moved the scheduler server-side, which is why it
+ │       went. Per-task placement is the `executor` capability.)
+ │       --dry / --graph short-circuit into planRun instead.
  │
  ├─ Prepare (src/orchestrator/prepare.ts:prepareRun — shared with planRun)
  │    1. findWorkspaceRoot(cwd) — walks up over pnpm-workspace.yaml,

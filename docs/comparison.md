@@ -29,7 +29,7 @@ upstream repo so future revisions can be diffed against reality.
   cache key with two extensions (project package.json folded in;
   resolved-config hash captures TS imports). Bun-only. Smallest CLI
   surface; deliberately no daemon, no JS-function tasks (plugins —
-  executor / backend / cache / telemetry — change WHERE a command
+  executor / cache / telemetry — change WHERE a command
   runs, never what it is). Strict output ownership.
 
 ## Quick CLI flag map
@@ -269,7 +269,7 @@ deliberate design pass.
   of a daemon doesn't pay for itself.
 - **Executor plugin protocol.** "Shell is the API" is a deliberate
   constraint. No JS-function tasks; no executor packages. (The
-  shipped `VxPlugin` system is run-level infrastructure — backend /
+  shipped `VxPlugin` system is run-level infrastructure — executor /
   cache / telemetry — and cannot change task execution.)
 - **Generators / scaffolding.** Not a task-runner concern.
 - **TUI / interactive panes.** Streamed framed blocks + the worker

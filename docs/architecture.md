@@ -592,7 +592,7 @@ The codebase consistently chooses the same trade-offs:
    integration boundary. No JS-function tasks; no executor plugin
    protocol. Presets are TypeScript helpers that _return_ `TaskConfig`
    objects, evaluated at config-load time. (Run-level plugins exist —
-   backend / cache / telemetry — but they never change how a task
+   executor / cache / telemetry — but they never change how a task
    executes.)
 4. **Resolved values, not source bytes.** The cache key derives from
    the _evaluated_ config object, not from the file's text. Imports
@@ -620,7 +620,7 @@ architecture:
 
 - **No executor plugins.** Tasks are shell commands, full stop. The
   shipped plugin system (`VxPlugin`) contributes run-level
-  infrastructure (backend / cache / telemetry) and can observe, but
+  infrastructure (executor / cache / telemetry) and can observe, but
   no plugin can define how a task executes. Presets-as-imports cover
   config reuse.
 - **No daemon.** Every `vx run` is a fresh process. Workspace

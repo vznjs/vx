@@ -130,15 +130,22 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
       if (typeof plug.name !== 'string' || plug.name.length === 0) {
         throw new UserError(`${configPath}: \`plugins[${i}].name\` must be a non-empty string`)
       }
-      const caps = [
-        'setup',
-        'backend',
-        'cache',
-        'executor',
-        'telemetry',
-        'eventSink',
-        'teardown',
-      ] as const
+      // The whole-run `backend` seam was REMOVED on 2026-08-23 with vx
+      // cloud: a run always executes in the `vx run` process. Nothing
+      // consults `.backend` any more, so leaving it in `caps` below meant a
+      // plugin declaring ONLY `backend` — a third-party one written against
+      // the old API, say — validated as "contributes a capability" and was
+      // then silently ignored. Refuse it by name and point at the seam that
+      // replaced it; a silent no-op is the failure this validation exists
+      // to prevent.
+      if (plug.backend !== undefined) {
+        throw new UserError(
+          `${configPath}: \`plugins[${i}].backend\` is no longer a capability — the whole-run ` +
+            `backend seam was removed in 2026-08. Use \`executor\` to change where a single ` +
+            `task's command runs (see docs/architecture.md § plugin capabilities).`,
+        )
+      }
+      const caps = ['setup', 'cache', 'executor', 'telemetry', 'eventSink', 'teardown'] as const
       for (const cap of caps) {
         if (plug[cap] !== undefined && typeof plug[cap] !== 'function') {
           throw new UserError(`${configPath}: \`plugins[${i}].${cap}\` must be a function`)

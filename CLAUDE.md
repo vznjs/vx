@@ -483,6 +483,32 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fifty-fifth wave) — the same sweep applied to the removed
+  BACKEND seam found a real defect, not just doc-rot: a `backend`-only
+  plugin validated and was then silently ignored.** The cloud sweep's
+  discipline pointed at the other 2026-08-23 removal. Ground truth
+  first: `VxPlugin` has no `backend` member and nothing in the
+  orchestrator consults `.backend` — the seam is gone. But
+  `project-loader`'s capability list still contained `'backend'`, so a
+  plugin declaring ONLY that capability — a third-party one written
+  against the pre-removal API, or a user following an old doc — passed
+  the "must contribute at least one capability" check and then did
+  NOTHING, with no error and no warning. That is precisely the no-op
+  authoring mistake the check exists to catch, arriving through the
+  door the check itself left open. Now refused BY NAME, with the
+  message pointing at `executor` as the replacement; false-positive
+  CONTROL pins that cache/executor/telemetry plugins still load, and the
+  differential kills exactly the new pin. `config.ts`'s structural
+  `Plugin` also still declared `backend?()` (and was missing
+  `executor?()` — the same drift in both directions), now corrected.
+  Six stale doc sites fixed alongside, including a DANGLING link to a
+  `cli-backend.md` that no longer exists. The wave's own lesson is in
+  its three test failures: the zero-cost gate built its fixture from a
+  `backend`-only plugin, and the schema doc-drift test pinned the error
+  message's exact capability list — both went red the moment the loader
+  changed, which is the tripwires working, and both needed updating
+  rather than reverting.
+
 - **2026-08-25 (fifty-fourth wave) — doc-rot sweep for the removed
   cloud: three stale references pointing at a product that no longer
   exists.** Cheaper than another module audit and more user-facing: the

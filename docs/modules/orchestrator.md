@@ -155,6 +155,7 @@ To extend, you typically replace something downstream and leave this
 module alone: a different scheduler consumes the same `runGraph`
 signature; a different cache layering is a plugin `cache` capability;
 telemetry is a plugin `telemetry` sink; a different execution venue
-is a plugin `executor` (per task) or `backend` (whole run). Touch
+is a plugin `executor` (per task — the whole-run `backend` seam was
+removed in 2026-08; the scheduler never leaves this process). Touch
 `run.ts` itself only for new run-level
 lifecycle steps.

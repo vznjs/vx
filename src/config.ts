@@ -30,7 +30,7 @@ export interface WorkspaceConfig {
 
 /**
  * Structural plugin shape — any subset of the run-level capabilities
- * (`backend`/`cache`/`telemetry`/`eventSink`) plus optional
+ * (`cache`/`executor`/`telemetry`/`eventSink`) plus optional
  * `setup`/`teardown`. The fully-typed `VxPlugin` lives in
  * `src/orchestrator/plugin.ts` and is what users import; this is a
  * re-declaration with opaque function types so `config.ts` stays a leaf
@@ -39,8 +39,8 @@ export interface WorkspaceConfig {
  */
 export interface Plugin {
   readonly name: string
-  backend?(ctx: unknown): unknown
   cache?(ctx: unknown): unknown
+  executor?(ctx: unknown): unknown
   telemetry?(ctx: unknown): unknown
   eventSink?(ctx: unknown): unknown
   setup?(ctx: unknown): void | Promise<void>
