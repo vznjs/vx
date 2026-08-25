@@ -158,6 +158,16 @@ lint.oxfmt.fix`; the check-only gate is `lint.oxfmt` (part of `lint`).
   (→ `lint.oxlint` + `lint.oxfmt`) and `test`. The four `build.bun.*`
   cross-compiled binaries are built only in `release.yml` (`vx run
 build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
+- **The local gate does NOT cover `packages/*`.** Root `test` is scoped
+  to `./tests` on purpose (a bare `bun test` recurses into every
+  member), and no package declares a vx config, so a green
+  `bun src/bin.ts run ci` says nothing about a plugin change. CI's
+  separate `plugin packages` job is what gates those — it runs
+  vx-otel and vx-github as plain `bun test`, and vx-reapi ONE PROCESS
+  PER FILE (the documented `node:http2` stall, oven-sh/bun#39796).
+  After touching `packages/*`, run that package's suite yourself; for
+  vx-reapi mirror the per-file loop with `VX_REAPI_TEST_ENDPOINT` /
+  `VX_REAPI_EXEC_ENDPOINT` set, or it proves nothing.
 
 ## Conventions
 
