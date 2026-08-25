@@ -487,6 +487,25 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (seventy-third wave) — dogfooding CONFIRMED end to end,
+  and a CI-log grep rule learned twice in one day.** The corrected
+  in-step assertion passed on the first run, so the loop that took four
+  waves is closed with evidence rather than assumption: the plugin ships,
+  is declared in `vx.workspace.ts`, activates on a real runner, writes
+  the job summary, no longer duplicates core's report, and a future
+  decline now fails the build instead of producing a blank page. Darwin
+  went green too — the `vx watch` SIGINT flake did not recur, leaving
+  that pattern at two isolated e2e timeouts rather than a trend.
+  **The method rule**, needed twice today before it stuck: GitHub prints
+  a step's `run:` script into the log before executing it, so grepping a
+  CI log for the text of an error message finds the ECHO whether or not
+  it fired. First it made a passing test name (`a sink that keeps
+throwing > is disabled…`) look like a sink warning; then it reported
+  "summary-check errors: 2" on a job that emitted zero. The discriminator
+  is `##[error]` (or `##[warning]`) — GitHub's own runtime annotation
+  prefix, which the echoed script cannot contain because the echo is
+  wrapped in colour codes. Grep for the ANNOTATION, not the message.
+
 - **2026-08-25 (seventy-second wave) — my own verification step was
   wrong, not the plugin: `$GITHUB_STEP_SUMMARY` is PER-STEP.** The
   self-check added last wave failed on its first run with "job summary
