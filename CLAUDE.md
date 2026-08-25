@@ -487,6 +487,78 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 — the REAPI upstream graft failed OPEN on an evicted
+  dependency: confirmed with a two-arm live repro, fixed by refusing, and
+  the stale comment that hid it traced to a precedence inversion.** Audit
+  target was the newest code (the `--download` deferral arc); the deferral
+  registry itself came back CLEAN and the trail led one layer down, into
+  the chaining code deferral depends on. CONFIRMED against live NativeLink:
+  two arms, same consumer command, same declared `dependsOn`, differing
+  only in whether the upstream's blob is in the CAS — blob present
+  `exit=0 stdout="REAL"`, blob evicted `exit=0 stdout="absent"`. The
+  evicted arm SUCCEEDS with a silently different answer, and vx caches a
+  successful task's outputs under its vx key, so a build computed WITHOUT
+  its dependency's bytes lands under a key asserting they were present.
+  Worst failure class. PROVENANCE: `3f1a9e1` added the eviction check when
+  the record was consulted FIRST and `record === null` fell back to
+  `localUpstreamPaths` — demotion was real then. `046d934` (dual-store
+  coherence, "local disk is truth") inverted the order, which made the
+  branch terminal by construction (`up.outputs` is empty there or we would
+  have taken the local path) and orphaned the comment still promising a
+  demotion "instead of shipping an action that cannot execute". Two
+  comments in one function contradicted each other; the inner one was
+  right. The recurring class again — and this time the stale comment
+  concealed a real fail-open, so de-claiming was never the whole fix.
+  FIX: both eviction branches (the FindMissingBlobs gap and the tree-blob
+  read race) throw and name the upstream, matching what core's own
+  `DeferredOutputs.materializeFor` already does for the identical
+  epistemics — which upstream bytes a command reads is unknowable, that is
+  what `dependsOn` declares. Refusal is PROVABLE (the declared outputs
+  exist nowhere), and `findMissingBlobs([])` short-circuits so a
+  zero-output upstream cannot false-positive. The old pin asserted
+  `exitCode === 0` on a `cat … || echo absent` fixture: it pinned that the
+  SYMPTOM was tolerable, not that the behavior was right, and its own
+  fixture was the demonstration of the hazard. It is replaced by a
+  control+refusal pair in one test. Differential: mutation back to
+  warn+continue fails exactly the new pin in 154 ms (a real assertion
+  failure, not a timeout); restore 11/0; full package matrix 95/0 live,
+  otel 44/0, github 13/0, root gate clean. NO CACHE_VERSION bump, and the
+  reasoning is not the usual one: stored bytes were never wrong under an
+  unchanged key by DERIVATION — the defect let an execution that should
+  have been refused proceed. An entry poisoned during an eviction window
+  before this fix can still persist and cannot be identified post hoc;
+  `--force` on the affected task is the remedy. A global key bump would
+  invalidate every correct entry to chase a state that needs a remote
+  executor plus an AC/CAS eviction skew.
+  REFUTED along the way, so the next audit does not re-tread: (1) a stale
+  on-disk `dist/` cannot masquerade as "materialised" and steal precedence
+  from the graft — `up.outputs` is derived from `loadOutputFilesBatch`,
+  which is HASH-KEYED and local-SQLite-only by design ("they describe the
+  state on this machine's filesystem"), so a deferred task, which writes
+  no local rows, always yields the empty list; (2) a remotely-executed
+  consumer of a deferred upstream is not starved by the skipped
+  materialisation — the CAS graft is the designed path and eviction is now
+  fail-closed; (3) the deferral eligibility gate's scope really is
+  key-observation only, and the execution channel is a different one, which
+  is why reading the gate did not find this.
+  HARNESS LESSON, and it cost the most time: `await expect(p).rejects
+.toThrow()` around the refusal reproduced a 30.00 s DEADLINE_EXCEEDED
+  5/5, where awaiting the same promise directly settles in ~2 ms 3/3. That
+  is the signature of the `node:http2` inbound-frame stall ci.yml already
+  documents (oven-sh/bun#39796, the reason the packages job runs one
+  process per file). I nearly filed a phantom transport defect against a
+  client that was fine: the failure LOOKED like a wedge, and only
+  instrumenting inside `execute()` showed it stalling on a plain
+  `getActionResult` miss that the test itself had just made four times in
+  1 ms each. Mechanism not established (binding the promise first does not
+  help; integrity.test.ts uses `rejects` on the same client without
+  stalling), so the comment records the observation and not a cause.
+  Docs in the same wave: the vx-reapi README gained the upstream-eviction
+  paragraph (the self-key path falls THROUGH to execution, the upstream
+  path REFUSES — opposite answers, and the asymmetry is the point), and
+  the root README's feature inventory picked up `vx why` / `vx last` /
+  `vx prune`, which had shipped without reaching the front door.
+
 - **2026-08-25 (seventy-fourth wave) — `actions/checkout` v4 → v7 across
   all four workflows, after checking what actually exists.** Every CI run
   has been printing "Node.js 20 is deprecated … actions/checkout@v4

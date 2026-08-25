@@ -98,6 +98,19 @@ against the CAS first (`FindMissingBlobs`) — the action cache and the
 CAS evict independently, so a record that outlived its blobs falls
 through to a real execution rather than "succeeding" with nothing.
 
+An UPSTREAM's evicted blobs get the opposite answer, because there is
+nothing to fall through to. When a dependency's outputs live only in
+the CAS — vx grafts them by reference precisely because no local copy
+exists — and those blobs are gone, the action cannot be built with the
+inputs its key claims. vx fails the task and names the upstream rather
+than shipping the action without them: a command that tolerates the
+absence exits 0, and that successful-but-wrong result would be cached
+under a key asserting those bytes were present. Which upstream bytes a
+command actually reads is unknowable — that is what `dependsOn`
+declares — so the refusal is the only sound reading, and it matches
+what core does when a deferred producer cannot be materialised.
+Re-run the upstream (`--force`) to repopulate the store.
+
 ## Downloads are verified
 
 Every blob read — ByteStream and batch alike, compressed or not — is

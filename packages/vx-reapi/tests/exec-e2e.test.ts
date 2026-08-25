@@ -367,42 +367,91 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
     }
   }, 180_000)
 
-  it('an evicted record with NO local copy warns that the outputs are gone everywhere', async () => {
-    // The graft branch only runs when nothing is local, so an eviction there
-    // is a real loss. The action will fail on the worker with a bare missing
-    // file — the warn is what names the cause and the remedy.
+  it('an upstream whose blobs are evicted REFUSES instead of shipping a different build', async () => {
+    // The graft branch runs only when nothing is local, so an evicted blob
+    // has no local path to fall back to: the declared upstream's outputs
+    // exist nowhere. Shipping the action anyway is the WRONG-RESULT class,
+    // not a degraded one — this consumer tolerates the absence, exits 0, and
+    // vx would cache "absent" under a key asserting the upstream's bytes
+    // were present. Both arms run the SAME command and differ only in
+    // whether the blob is in the CAS; the control is what keeps the refusal
+    // from degenerating into "refuse everything".
     const { execDigestFor, digestOf } = await import('../src/cache.js')
     const root = await mkdtemp(path.join(tmpdir(), 'vx-evict2-'))
     const client = new ReapiClient({ endpoint })
+    const upstreamOf = (hash: string) => ({
+      files: [],
+      env: [],
+      runtime: [],
+      workspaceRuntime: [],
+      upstream: [{ taskId: 'pkg#up', hash, outputs: [] }],
+      packageJsonDigest: 'p',
+      configDigest: 'c',
+      workspaceFingerprint: 'w',
+    })
     try {
       await client.negotiate()
       await mkdir(path.join(root, 'pkg'), { recursive: true })
-      const key = `evicted-${n3}`
-      const phantom = digestOf(new TextEncoder().encode(`never-uploaded-${n3}`))
-      await client.updateActionResult(execDigestFor(key), {
+      const executor = reapiExecutor(client, { warn: () => undefined })
+      const command = 'cat gen/data.txt 2>/dev/null || echo absent'
+
+      // CONTROL: the blob IS in the CAS — the graft feeds the real bytes.
+      const bytes = new TextEncoder().encode('REAL\n')
+      const digest = digestOf(bytes)
+      await client.batchUpdateBlobs([{ digest, data: bytes }])
+      const liveKey = `live-${n3}`
+      await client.updateActionResult(execDigestFor(liveKey), {
         exit_code: 0,
-        output_files: [{ path: 'pkg/gen/data.txt', digest: phantom, is_executable: false }],
+        output_files: [{ path: 'pkg/gen/data.txt', digest, is_executable: false }],
       })
-      const warns: string[] = []
-      const executor = reapiExecutor(client, { warn: (m) => warns.push(m) })
-      const res = await executor.execute(
+      let live = ''
+      const ok = await executor.execute(
         req3(root, {
-          command: 'cat gen/data.txt 2>/dev/null || echo absent',
-          cacheKey: `dep2-${n3}`,
-          inputs: {
-            files: [],
-            env: [],
-            runtime: [],
-            workspaceRuntime: [],
-            upstream: [{ taskId: 'pkg#up', hash: key, outputs: [] }],
-            packageJsonDigest: 'p',
-            configDigest: 'c',
-            workspaceFingerprint: 'w',
-          },
+          command,
+          cacheKey: `c-live-${n3}`,
+          onStdout: (c: string) => (live += c),
+          inputs: upstreamOf(liveKey),
         }),
       )
-      expect(res.exitCode).toBe(0)
-      expect(warns.some((w) => w.includes('never materialised locally'))).toBe(true)
+      expect(ok.exitCode).toBe(0)
+      expect(live.trim()).toBe('REAL')
+
+      // The defect: same command, blob evicted. Before the refusal this
+      // returned exit 0 with 'absent' — a successful, silently wrong build.
+      const goneKey = `gone-${n3}`
+      await client.updateActionResult(execDigestFor(goneKey), {
+        exit_code: 0,
+        output_files: [
+          {
+            path: 'pkg/gen/data.txt',
+            digest: digestOf(new TextEncoder().encode(`never-uploaded-${n3}`)),
+            is_executable: false,
+          },
+        ],
+      })
+      // try/catch, NOT `await expect(...).rejects.toThrow()`. MEASURED here:
+      // the `rejects` form leaves this call unresolved for exactly 30 s and
+      // pins a DEADLINE_EXCEEDED that reads like a transport bug (5/5), while
+      // awaiting it directly settles in ~2 ms (3/3). That is the signature of
+      // the node:http2 inbound-frame stall the CI workflow documents
+      // (oven-sh/bun#39796) — same 30 s gRPC deadline, and the reason that job
+      // runs one process per test file. Why this await shape reproduces it
+      // deterministically is NOT established; binding the promise first does
+      // not help, and integrity.test.ts uses `rejects` on the same client
+      // without stalling. Do not "simplify" this back.
+      let refusal = 'NONE'
+      try {
+        await executor.execute(
+          req3(root, {
+            command,
+            cacheKey: `c-gone-${n3}`,
+            inputs: upstreamOf(goneKey),
+          }),
+        )
+      } catch (e) {
+        refusal = e instanceof Error ? e.message : String(e)
+      }
+      expect(refusal).toMatch(/never materialised locally/)
     } finally {
       client.close()
       await rm(root, { recursive: true, force: true })

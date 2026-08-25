@@ -125,9 +125,11 @@ resolution that bridges packages without the task · multi-task runs
 with one shared graph · pnpm-style filters and `--affected` ·
 watch mode · `--dry` / `--graph` plans · persistent dev servers ·
 retries, timeouts, `--continue` modes · per-layer cache control
-(`--cache=local:r,remote:`) · `vx info`, `--summarize`, `--profile`
-Chrome traces, `--report` · `vx cache prune` with TTL and size caps ·
-`vx migrate` from turbo.json or an Nx graph.
+(`--cache=local:r,remote:`) · `vx why` explains a re-run from the
+persisted input fingerprints · `vx last` replays a recorded run ·
+`vx prune` cuts a Docker-ready workspace subset · `vx info`,
+`--summarize`, `--profile` Chrome traces, `--report` · `vx cache prune`
+with TTL and size caps · `vx migrate` from turbo.json or an Nx graph.
 
 ## Extensible by design — the core is provider-neutral
 
