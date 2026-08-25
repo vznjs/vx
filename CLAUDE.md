@@ -487,6 +487,24 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (seventy-first wave) — the dogfooded summary now VERIFIES
+  itself, because the failure it could hide is invisible.** Removing
+  `--report-file` left the job summary owned entirely by a PLUGIN, and a
+  plugin that declines writes nothing. That failure mode is worse than
+  the duplication it replaced and strictly harder to see: GitHub does
+  not expose step summaries through the REST API, so a missing one
+  cannot be checked from outside, and a green run looks identical either
+  way. Added a step that asserts `$GITHUB_STEP_SUMMARY` is non-empty and
+  contains `vx run`, with `if: always()` — a FAILING run is when the
+  summary matters most (it carries the failure callout) and is also
+  exactly the path a decline would hide behind an already-red job. The
+  workflow was parsed with `Bun.YAML` before pushing rather than trusted
+  to indentation: 8 steps, the new one last, `if: always()` intact.
+  The general shape, which is the third instance today: when a change
+  moves a user-visible artifact from one producer to another, the
+  producer swap is verifiable and the ARTIFACT is not — so add the
+  assertion on the artifact, not on the wiring.
+
 - **2026-08-25 (seventieth wave) — dogfooding the GHA plugin DUPLICATED
   the job summary, caught by reading the CI log instead of trusting the
   green.** The previous wave declared `github()` and CI passed, which
