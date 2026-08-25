@@ -1307,6 +1307,28 @@ and a wrongly-pruned one is worse than a big correct one; per-format
 lockfile pruning is deliberately out of phase 1. `node_modules`,
 `.git`, `.vx` and `.turbo` are excluded from the copy.
 
+### What the configs pull in
+
+The subset is the package graph plus one thing the package graph does
+not know about: a workspace package that `vx.workspace.*` **imports**.
+The workspace config loads before any task, so a plugin living in a
+workspace package is as load-bearing as a dependency — without it
+`vx run` inside the container cannot load the config at all. Those
+packages (and their own dependency closure) are added to the subset.
+
+Runnability is otherwise **not** guaranteed, and prune says so rather
+than pretending. A config may import any path; only imports naming a
+workspace package can be resolved and carried. Two shapes get a warning
+on stderr instead:
+
+- a relative import escaping its own package (`../../shared/util.ts`) —
+  it reaches a file no subset short of the whole tree would contain;
+- an import of the workspace ROOT package, which cannot be copied into
+  a subset because it _is_ the workspace.
+
+The scan is static — `from '…'`, `import '…'`, `import('…')` — so a
+computed specifier is invisible to it.
+
 `--docker` splits the output into `json/` (root files + each package's
 `package.json` only — `COPY` this first so the install layer caches
 independently of source edits) and `full/` (the sources):

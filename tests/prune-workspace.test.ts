@@ -1,11 +1,11 @@
 // `vx prune <project>` — the workspace-subset emitter (Turbo parity).
 // E2e via bin.ts subprocesses, in the last.test.ts / why.test.ts pattern.
 
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { parsePruneWorkspaceArgs } from '../src/cli/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -161,4 +161,93 @@ describe('parsePruneWorkspaceArgs', () => {
     expect(parsePruneWorkspaceArgs(['--wat']).error).toMatch(/unknown flag/)
     expect(parsePruneWorkspaceArgs(['a', 'b']).error).toMatch(/unexpected argument/)
   })
+})
+
+// A config's imports decide whether the SUBSET can run at all: the workspace
+// config loads before any task, and a plugin it names from a workspace package
+// has to travel with the subset. What prune cannot satisfy — a relative import
+// reaching outside the copied dirs — is reported instead of silently emitting
+// a build context that dies inside docker.
+describe('vx prune: what the configs import', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-prune-cfg-'))
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'cfg-root', private: true }),
+    )
+    const mk = async (name: string, deps: Record<string, string> = {}) => {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(dir, { recursive: true })
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name, version: '0.0.0', main: 'index.mjs', dependencies: deps }),
+      )
+      await writeFile(path.join(dir, 'index.mjs'), 'export const x = 1\n')
+      return dir
+    }
+    const appDir = await mk('app', { lib: 'workspace:*' })
+    await mk('lib')
+    await mk('plug')
+    await mk('unrelated')
+
+    // A shared helper OUTSIDE any package — the shape prune can never carry.
+    await mkdir(path.join(root, 'shared'), { recursive: true })
+    await writeFile(path.join(root, 'shared', 'util.ts'), 'export const shared = 1\n')
+    await writeFile(
+      path.join(appDir, 'vx.config.ts'),
+      `import { shared } from '../../shared/util.ts'\nexport default { tasks: { build: { exec: { command: 'true' } }, _s: shared } }\n`,
+    )
+
+    // Bare import of a workspace package, resolvable the way a real repo
+    // resolves one — a node_modules link. Side-effect import, so no plugin
+    // contract is involved and loadWorkspace stays happy.
+    await mkdir(path.join(root, 'node_modules'), { recursive: true })
+    await symlink(path.join(root, 'packages', 'plug'), path.join(root, 'node_modules', 'plug'))
+    await writeFile(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource([], `import 'plug'\n`),
+    )
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'carries a workspace package the workspace config imports, and nothing else',
+    async () => {
+      const out = path.join(root, '..', `prune-cfg-${process.pid}`)
+      const r = await vx(root, ['prune', 'app', '--out-dir', out])
+      try {
+        expect(r.code).toBe(0)
+        // `plug` is in NO package.json dependency — only the workspace config
+        // names it, and without it `vx run` cannot load that config at all.
+        expect(await exists(path.join(out, 'packages', 'plug'))).toBe(true)
+        expect(await exists(path.join(out, 'packages', 'lib'))).toBe(true)
+        // CONTROL: pulling in config imports must not pull in the world.
+        expect(await exists(path.join(out, 'packages', 'unrelated'))).toBe(false)
+      } finally {
+        await rm(out, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'reports a project config importing outside the subset',
+    async () => {
+      const out = path.join(root, '..', `prune-esc-${process.pid}`)
+      const r = await vx(root, ['prune', 'app', '--out-dir', out])
+      try {
+        expect(r.err).toContain('../../shared/util.ts')
+        expect(r.err).toContain('outside the pruned subset')
+        // CONTROL: a package whose config stays inside itself is not named.
+        expect(r.err).not.toContain('lib:')
+      } finally {
+        await rm(out, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })

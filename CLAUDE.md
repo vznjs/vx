@@ -498,6 +498,39 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (third wave) — `vx prune` emitted a subset that cannot
+  run, and its own header promised the opposite.** New-code rotation
+  again (prune shipped yesterday). Its header said "the subset must be
+  runnable by vx inside the container"; REPRODUCED on this repo that it
+  is not — `vx prune @vzn/vx-docs` produced a one-package subset, and
+  running vx inside it dies at `Cannot find module '../../src/index.ts'`.
+  Two independent causes, and they want opposite treatments. (1) The
+  workspace config's imports are invisible to the PACKAGE graph: this
+  repo's `vx.workspace.ts` names `@vzn/vx-otel` and `@vzn/vx-github`,
+  which are workspace packages that no target depends on, so they were
+  never copied — and the workspace config loads before any task, so
+  their absence is fatal, not degraded. That one is fixable and now is:
+  a static scan adds config-imported workspace packages (plus their dep
+  closure) to the subset. (2) A relative import escaping its own package
+  (`../../src/index.ts`) reaches a file no subset short of the whole tree
+  contains, and the workspace ROOT package cannot be copied into a subset
+  because it IS the workspace. Those are NOT fixable, so they warn at
+  prune time — a message the user reads now beats a module-not-found
+  inside a docker build — and the header is de-claimed to match, which is
+  the third instance today of the "comment claiming a guarantee the code
+  does not have" class. Pins: the config-named package IS carried, an
+  unrelated workspace package is NOT (the over-inclusion control), the
+  escape is reported, and a package whose config stays inside itself is
+  not named. Differentials run separately, each mutation failing exactly
+  its own pin; restore 8/0. The scan is deliberately static (`from '…'`,
+  `import '…'`, `import('…')`) and documented as blind to computed
+  specifiers rather than sold as complete. REFUTED while here: a config
+  that fails to load does NOT exit 0 — `vx show` and `vx run` both exit 1
+  on an unresolvable config import, so the broken subset is loud, not a
+  silent green. Also fixed: the uncopyable-root warning fired once per
+  matching specifier (three times for `@vzn/vx` + its two plugin
+  subpaths) and is now deduplicated.
+
 - **2026-08-25 (second wave) — the same fail-open on the OUTPUT side:
   an unfetchable declared output was skipped, not refused.** Straight
   application of the "grep the class in the same wave" rule to the wave
