@@ -481,6 +481,34 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (thirty-seventh wave) — the `--download`/deferred-outputs
+  design lands, and it retires the "CAS-shaped local cache" phrase with
+  a cost-out.** Architect-drafted, hostilely reviewed, in
+  `docs/design/download-policy-cas-cache-2026-08.md`. The headline: the
+  deferred arc needs NO local-cache reshape — the REAPI CAS plus the
+  already-shipped exec record (`execDigestFor(vxKey)` → per-file
+  digests) IS the durable representation of a deferred task's outputs,
+  so deferral becomes a run-scoped registry + a widened plugin read.
+  CACHE_VERSION and SCHEMA_VERSION stand still; per-file local CAS is
+  REJECTED with a cost table (mandatory bump a week after v27, sha256
+  on the hot save path, GC + wire redesign vs unmeasured dedup wins);
+  `cas-backend.ts`/`digest.ts` judged not-the-foundation and stay
+  unused (audit candidate). Load-bearing calls: `--download` is a
+  RunOption only, never folded (stripped by construction, pin
+  demanded); eligibility reuses the stable-keys observability relation
+  as a silent DOWNGRADE to eager, never a refusal; `deferred` = no
+  save, no rows, no clean, with `materialize()` called only by core,
+  memoised, before locally-placed missing consumers, converging through
+  ordinary `Cache.save` so no third storage state ever persists;
+  CAS-evicted materialisation fails the CONSUMER loudly. Review drew
+  blood twice: a `SCHEMA_VERSION` v22-for-v24 slip, and §6's widened
+  exec-record short-circuit missing the tenth-wave `refresh` guard —
+  both corrected in the doc. Four phases, each independently
+  consumable; phase 1 (`all|none` end to end) is the named first slice.
+  Implementation is the next arc, not this wave. Canaries #13–15 banked
+  (19/1/0 ×3): cumulative n=300, reporting loss 4.7%, non-enforcement
+  0/300.
+
 - **2026-08-25 (thirty-sixth wave) — the bench was silently broken by the
   no-defaults reframe; fixed, and the post-v27 warm paths measured
   healthy.** `bun bench/run.ts` failed on every invocation: the synthetic
