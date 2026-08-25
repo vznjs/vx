@@ -1030,6 +1030,53 @@ describe('executor pools under failure', () => {
     expect(out.get('a#third')?.status).toBe('success')
   })
 
+  it('fail-fast trips ACROSS placement: a pooled failure stops local dispatch', async () => {
+    // The trip is global by design — placement is admission-only after
+    // placement time — but the guarantee was never pinned across the
+    // boundary. Local slot busy with l#slow while the pooled p#fail fails;
+    // the queued l#next must dequeue AFTER the trip and skip.
+    const started: string[] = []
+    const out = await runGraph({
+      nodes: nodes(node('p#fail'), node('l#slow'), node('l#next')),
+      concurrency: 1,
+      continueMode: 'never',
+      poolOf: (id) => (id.startsWith('p#') ? pool : undefined),
+      onStart: (n) => started.push(n.id),
+      execute: async (n) => {
+        if (n.id === 'p#fail') return failed(n)
+        await new Promise((r) => setTimeout(r, 40))
+        return success(n)
+      },
+    })
+    expect(out.get('p#fail')!.status).toBe('failed')
+    expect(out.get('l#slow')!.status).toBe('success') // in-flight finishes
+    expect(out.get('l#next')!.status).toBe('skipped')
+    expect(started.sort()).toEqual(['l#slow', 'p#fail'])
+  })
+
+  it('fail-fast trips ACROSS placement: a local failure stops pooled dispatch', async () => {
+    // The inverse: pool (capacity 2... use capacity-1 shape) — p#slow holds
+    // the pool while the local l#fail fails; the queued p#next must skip.
+    const one = { name: 'solo', capacity: 1 }
+    const started: string[] = []
+    const out = await runGraph({
+      nodes: nodes(node('l#fail'), node('p#slow'), node('p#next')),
+      concurrency: 1,
+      continueMode: 'never',
+      poolOf: (id) => (id.startsWith('p#') ? one : undefined),
+      onStart: (n) => started.push(n.id),
+      execute: async (n) => {
+        if (n.id === 'l#fail') return failed(n)
+        await new Promise((r) => setTimeout(r, 40))
+        return success(n)
+      },
+    })
+    expect(out.get('l#fail')!.status).toBe('failed')
+    expect(out.get('p#slow')!.status).toBe('success')
+    expect(out.get('p#next')!.status).toBe('skipped')
+    expect(started.sort()).toEqual(['l#fail', 'p#slow'])
+  })
+
   it('a pooled task reserves NO local resources — even an over-budget cost', async () => {
     // exec.resources describes the machine that RUNS the task; a pooled task
     // runs on the remote pool, so charging its reservation against the LOCAL

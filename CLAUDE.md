@@ -475,6 +475,26 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (thirty-fifth wave) — placement × failure-propagation
+  audited: clean by construction, now pinned across the boundary.** The
+  question: does `--continue=never`'s fail-fast trip cross placement —
+  a POOLED failure stopping LOCAL dispatch and the inverse? By code,
+  yes: `failFastTripped` is global and placement is admission-only after
+  placement time. But the guarantee lived in structure, not in a test
+  (the comment-vs-code lesson's milder sibling: correctness by an
+  invariant nobody pinned). Two discriminating pins: local slot busy
+  while a pooled task fails → the queued local task dequeues after the
+  trip and skips (and the inverse with a capacity-1 pool); in-flight
+  work still finishes both ways. Differential: scoping the trip to
+  non-pooled outcomes fails exactly the pooled-failure pin; restore
+  44/0. The rest of the cross was verified already covered: dependents
+  of a failed pooled task skip via the placement-agnostic outcome path,
+  a failing (non-rejecting) pooled task releases its slot through the
+  same completion arm the fourth-wave reject pins cover, and
+  `--continue=always` admission ignores failure everywhere by the shared
+  predicate. Canary #12 banked from the gate's first gating run: 20/0/0;
+  cumulative n=240, reporting loss 4.6%, non-enforcement zero.
+
 - **2026-08-25 (thirty-fourth wave) — `vx prune` ships: the workspace
   subset for Docker builds, comparison gap #10.** Target + transitive
   workspace deps off the existing `buildPackageGraph` (dependencies /
