@@ -386,19 +386,44 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         )
       }
 
-      // A remote-only task whose key already has an execution record needs
-      // nothing at all: the outputs sit in the CAS for dependents to graft,
-      // and this machine's disk was never going to see them. This is the
-      // repeat-run path for `install` — once per lockfile change, ever.
-      if (req.remoteOnly === true && req.cacheKey !== undefined && req.refresh !== true) {
+      // A key that already has an execution record needs no worker at all:
+      // the record IS this task's entry, and its outputs are in the CAS.
+      // Two shapes reach here. `remote: 'only'` — the repeat-run path for
+      // `install`, once per lockfile change, ever. And any DEFERRED
+      // producer: deferral writes no local entry, so vx's own probe misses
+      // on every later run and the record is what makes the second run
+      // cheap. `--force` reaches this through `refresh` and skips it — a
+      // private cache that ignores the flag is still a cache.
+      if (req.cacheKey !== undefined && req.refresh !== true) {
         const prior = await client.getActionResult(execDigestFor(req.cacheKey))
         if (prior !== null) {
-          return {
-            exitCode: 0,
-            durationMs: Math.round((Bun.nanoseconds() - started) / 1e6),
-            stdout: '',
-            stderr: '',
-            violations: [],
+          const referenced = [
+            ...(prior.output_files ?? []).map((f) => f.digest),
+            ...(prior.output_directories ?? []).map((d) => d.tree_digest),
+          ]
+          // AC and CAS evict independently, so a record can outlive its
+          // blobs. A gap means it cannot produce the outputs — fall through
+          // and execute for real rather than "succeed" with nothing.
+          const gone = referenced.length > 0 ? await client.findMissingBlobs(referenced) : []
+          if (gone.length === 0) {
+            const priorStdout = await this_readStream(client, prior.stdout_raw, prior.stdout_digest)
+            if (req.capture.stdout !== false && priorStdout.length > 0) req.onStdout(priorStdout)
+            // The record's paths are WORKSPACE-relative (rebased when it was
+            // written), so the anchor is the workspace root, not the cwd.
+            const fromRecord = (): Promise<void> =>
+              materialiseOutputs(client, { ...req, cwd: req.workspaceRoot }, prior, warn)
+            const deferRecord = req.remoteOnly !== true && req.download === 'deferred'
+            if (req.remoteOnly !== true && !deferRecord) await fromRecord()
+            return {
+              exitCode: 0,
+              durationMs: Math.round((Bun.nanoseconds() - started) / 1e6),
+              stdout: req.capture.stdout === false ? '' : priorStdout,
+              stderr: '',
+              violations: [],
+              ...(deferRecord
+                ? { outputs: { kind: 'deferred' as const, materialize: fromRecord } }
+                : {}),
+            }
           }
         }
       }
@@ -580,9 +605,27 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       if (req.cacheKey !== undefined && (result.exit_code ?? 0) === 0) {
         const rebase = (rel: string): string =>
           workingDirectory === '' ? rel : `${workingDirectory}/${rel}`
+        // Stdout rides the record as a blob so a short-circuited repeat run
+        // can replay it. Best-effort: a record without it replays empty,
+        // never wrong bytes.
+        let stdoutDigest: Digest | undefined
+        const stdoutBytes = new TextEncoder().encode(stdout)
+        if (stdoutBytes.length > 0) {
+          const d = sha256(stdoutBytes)
+          const missing = await client.findMissingBlobs([d]).catch(() => [d])
+          const uploaded =
+            missing.length === 0
+              ? true
+              : await client.writeBlob(d, stdoutBytes).then(
+                  () => true,
+                  () => false,
+                )
+          if (uploaded) stdoutDigest = d
+        }
         await client
           .updateActionResult(execDigestFor(req.cacheKey), {
             exit_code: 0,
+            ...(stdoutDigest === undefined ? {} : { stdout_digest: stdoutDigest }),
             output_files: (result.output_files ?? []).map((f) => ({
               path: rebase(f.path),
               digest: f.digest,
@@ -651,14 +694,23 @@ async function fetchServerLogs(
   return parts.join('')
 }
 
-/** stdout/stderr arrive inline OR as a CAS digest; servers choose. */
+/**
+ * stdout/stderr arrive inline OR as a CAS digest; servers choose.
+ *
+ * `null` is as real as `undefined` here: proto-loader hands back a NULL
+ * message field for an absent `stdout_digest` on the `GetActionResult`
+ * path, where the `Execute` path leaves it undefined. Reading only for
+ * undefined dereferenced the null and crashed the whole execute call —
+ * caught by the node_modules chain test the moment the record
+ * short-circuit widened past `remote: 'only'`.
+ */
 async function this_readStream(
   client: ReapiClient,
   raw: Uint8Array | undefined,
-  digest: Digest | undefined,
+  digest: Digest | undefined | null,
 ): Promise<string> {
-  if (raw !== undefined && raw.length > 0) return new TextDecoder().decode(raw)
-  if (digest !== undefined && digest.size_bytes > 0) {
+  if (raw !== undefined && raw !== null && raw.length > 0) return new TextDecoder().decode(raw)
+  if (digest !== undefined && digest !== null && digest.size_bytes > 0) {
     const bytes = await client.readBlob(digest)
     if (bytes !== null) return new TextDecoder().decode(bytes)
   }

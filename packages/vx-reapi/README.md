@@ -82,6 +82,22 @@ adaptively** — a `DEADLINE_EXCEEDED` on a multi-message write retries once at
 retry instead of a failed task. The full probe matrix is in
 `docs/design/plugin-executor-reapi-2026-08.md` §14.
 
+## Repeat runs skip the worker
+
+Every successful remote execution writes an execution record under the
+task's vx key (`vx-reapi-exec-v1`), listing its outputs by digest plus
+its stdout. A later run whose vx cache missed but whose key already has
+a record skips the Merkle build, the upload pass and `Execute`
+entirely: the outputs are already in the CAS, and stdout replays from
+the record. `--force` bypasses it.
+
+This matters most under `--download=none`, where deferral leaves no
+local cache entry behind, so vx's own probe misses on every later run
+and the record is what makes the second run cheap. Records are checked
+against the CAS first (`FindMissingBlobs`) — the action cache and the
+CAS evict independently, so a record that outlived its blobs falls
+through to a real execution rather than "succeeding" with nothing.
+
 ## Downloads are verified
 
 Every blob read — ByteStream and batch alike, compressed or not — is

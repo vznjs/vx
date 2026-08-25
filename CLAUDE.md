@@ -483,6 +483,31 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (forty-first wave) — `--download` phase 3: the exec-record
+  short-circuit widens, and the existing chain test immediately caught a
+  null it exposed.** Plugin-only. The record short-circuit fired for
+  `remote: 'only'` alone; it now fires for ANY remote task whose key has
+  a record — which is the deferred producer's steady state, since
+  deferral writes no local entry and vx's own probe therefore misses on
+  every later run. A hit skips the Merkle build, the upload pass and
+  `Execute`; the record's blobs are checked with `FindMissingBlobs`
+  first (AC and CAS evict independently, so a record outliving its blobs
+  falls through to a real execution rather than "succeeding" with
+  nothing), stdout replays from a new `stdout_digest` (additive under
+  the unchanged `vx-reapi-exec-v1` sentinel — an old record replays
+  empty, never wrong bytes), and the run's download mode still decides
+  whether the outputs land. The `refresh`/`--force` guard is preserved,
+  as the design review demanded. **The bug the widening exposed:**
+  `getActionResult` hands back `null` for an absent `stdout_digest`
+  where `Execute` leaves it `undefined`, and the shared stream reader
+  guarded only `undefined` — so it dereferenced null and crashed the
+  whole execute call. Caught by the node_modules chain test on the first
+  live run, fixed at the shared helper so both call sites are covered.
+  A textbook argument for keeping the older e2e pins around: the new
+  pin passed while the old one failed. Differential: reverting the guard
+  to `remoteOnly` fails exactly the new short-circuit pin; full reapi
+  suite 78/0 live.
+
 - **2026-08-25 (fortieth wave) — `--download=toplevel` ships: phase 2,
   small by construction as designed.** One clause in the plan-time
   decision function (requested tasks stay eager, everything else defers)

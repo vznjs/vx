@@ -520,4 +520,62 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
       await rm(root, { recursive: true, force: true })
     }
   }, 180_000)
+
+  it('a second run short-circuits on the exec record and replays stdout', async () => {
+    // Phase 3: the deferred producer's steady state. Run once to write the
+    // record, then run the SAME key again — the second execution must not
+    // reach the worker at all, and must still replay the first run's
+    // stdout from the record's stdout_digest.
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-exec-e2e-'))
+    await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+    await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), `sc-${n3}\n`)
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      const stages: string[] = []
+      const executor = reapiExecutor(client, {
+        warn: (m: string) => stages.push(m),
+      })
+      const make = (over: Partial<ExecuteRequest>): ExecuteRequest =>
+        req3(root, {
+          command: 'cat src/in.txt > out.txt && echo SHORTCIRCUIT-STDOUT',
+          cacheKey: `sc-key-${n3}`,
+          outputs: { files: ['out.txt'], workspaceFiles: [] },
+          inputs: {
+            files: [{ path: 'pkg/src/in.txt', digest: 'x' }],
+            env: [],
+            runtime: [],
+            workspaceRuntime: [],
+            upstream: [],
+            packageJsonDigest: 'p',
+            configDigest: 'c',
+            workspaceFingerprint: 'w',
+          },
+          ...over,
+        } as Partial<ExecuteRequest>)
+
+      let firstOut = ''
+      const first = await executor.execute(
+        make({ onStdout: (c: string) => (firstOut += c) } as Partial<ExecuteRequest>),
+      )
+      expect(first.exitCode).toBe(0)
+      expect(firstOut).toContain('SHORTCIRCUIT-STDOUT')
+      // The first run really executed (the worker reported a stage).
+      expect(stages.some((m) => m.includes('executing') || m.includes('completed'))).toBe(true)
+
+      stages.length = 0
+      let secondOut = ''
+      const second = await executor.execute(
+        make({ onStdout: (c: string) => (secondOut += c) } as Partial<ExecuteRequest>),
+      )
+      expect(second.exitCode).toBe(0)
+      // No worker stage at all: the record answered.
+      expect(stages.filter((m) => m.includes('executing'))).toEqual([])
+      // …and stdout came back from the record, not from a re-execution.
+      expect(secondOut).toContain('SHORTCIRCUIT-STDOUT')
+    } finally {
+      client.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
 })
