@@ -487,6 +487,32 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (sixty-sixth wave) — the `--dry` surface phase 1 CLAIMED
+  was never built; `--download` was invisible until now.** Same technique
+  that caught the `toplevel` group bug — check a real invocation instead
+  of re-reading the code — turned on my own completion claim. The design
+  scoped "the `--dry`/summary/telemetry surfaces"; I built the summary
+  line and the telemetry field and shipped calling it done.
+  `download.modeOf` appeared in exactly ONE place, run.ts's executor
+  args: `plan.ts` and `plan-format.ts` had never heard of it, so
+  `--dry --download=none` printed the same text as a plain plan and the
+  eligibility gate — which SILENTLY keeps producers eager — was
+  unobservable. A user asking why nothing defers had nothing to read.
+  Built now: `PlannedTask.download` (attached only when deferred, since
+  an eager task is the default and saying so on every line says
+  nothing), `RunPlan.downloadDowngrades`, placement resolved in the plan
+  path regardless of executor COUNT (labels need a choice to report,
+  modes do not), and a plan footer naming up to three refusals. Pinned
+  end to end through `planRun` + `formatPlanText`. Two process notes:
+  the pin's second half failed first and the CODE was right — I put the
+  reading task outside the requested set, and the gate deliberately asks
+  whether any key IN THIS RUN could observe the producer, the cross-run
+  residual I had written into the design and then tripped over from the
+  other side; and the commit that carried this shipped WITHOUT its log
+  entry, because a docs anchor assert aborted the same script before
+  either write — the abort-before-write habit protected the file but not
+  the sequencing, so the entry lands in the follow-up.
+
 - **2026-08-25 (sixty-fifth wave) — `--download=toplevel` brought home
   NOTHING when the target was a group; the mode's whole point, defeated
   by one missing flag.** Hostile pass on phase 2/3, the last code from
