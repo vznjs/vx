@@ -483,6 +483,27 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fifty-third wave) — deferral × `--continue=always`
+  REFUTED and pinned: the two features were built three waves apart and
+  had never met.** The specific worry: registration happens only on a
+  ZERO exit, so a FAILED deferred producer leaves no registry entry —
+  and `always` is the one mode that runs the dependent anyway. If
+  `materializeFor` had assumed an entry exists for every dep it walks
+  (the registry's own `run()` does use a non-null assertion), the
+  dependent would have thrown out of the registry instead of failing on
+  its own missing input. It does not: the walk filters on
+  `entries.has(dep)` before ever calling `run`, so the assertion is
+  guarded by construction. Executed: producer `failed`, dependent RAN
+  and `failed` on its own, `materialized` empty, no hang. Pinned,
+  because "correct by construction" is exactly the claim that rots when
+  a fourth feature arrives — and the fixture gained a failing-producer
+  mode that the next deferral wave can reuse. Method note: the edit
+  script asserted against a `g.__vxDownload` anchor that oxfmt had
+  reflowed to multi-line since I wrote it, and aborted before writing —
+  the same stale-anchor failure as the archive.ts comment tail two waves
+  ago. Stepwise edits with a labelled assert per hunk named the missing
+  one in one run instead of three.
+
 - **2026-08-25 (fifty-second wave) — `src/graph/` audited: SEVEN
   hypotheses, seven refutations, no code change.** The `dependsOn`
   micro-syntax turns user strings into edges, and a mis-parsed spec

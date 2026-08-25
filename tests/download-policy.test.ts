@@ -219,6 +219,7 @@ interface Fake {
   executed: string[]
   materialized: string[]
   failMaterialize?: boolean
+  failProducer?: boolean
 }
 
 /**
@@ -226,7 +227,9 @@ interface Fake {
  * pkg-b#use runs LOCALLY and cats that file. Cross-project, so the
  * eligibility gate leaves `gen` deferrable.
  */
-async function fixture(opts: { consumers?: number; failMaterialize?: boolean } = {}): Promise<{
+async function fixture(
+  opts: { consumers?: number; failMaterialize?: boolean; failProducer?: boolean } = {},
+): Promise<{
   root: string
   cleanup: () => void
 }> {
@@ -287,6 +290,9 @@ async function fixture(opts: { consumers?: number; failMaterialize?: boolean } =
                  await mkdir(p.join(req.cwd, 'out'), { recursive: true })
                  await Bun.write(p.join(req.cwd, 'out', 'gen.txt'), 'GENERATED')
                }
+               if (fake.failProducer === true) {
+                 return { exitCode: 7, durationMs: 1, stdout: '', stderr: 'boom', violations: [] }
+               }
                const base = { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
                if (req.download === 'deferred') {
                  return { ...base, outputs: { kind: 'deferred', materialize: async () => {
@@ -309,6 +315,7 @@ async function fixture(opts: { consumers?: number; failMaterialize?: boolean } =
     executed: [],
     materialized: [],
     ...(opts.failMaterialize === true ? { failMaterialize: true } : {}),
+    ...(opts.failProducer === true ? { failProducer: true } : {}),
   }
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) }
 }
@@ -529,6 +536,35 @@ describe('--download end to end', () => {
       // One consumer failed on the fetch; the queued one never dispatched.
       expect(consumerStatuses.filter((st) => st === 'failed').length).toBe(1)
       expect(consumerStatuses.filter((st) => st === 'skipped').length).toBe(1)
+    } finally {
+      a.cleanup()
+    }
+  })
+
+  it('--continue=always with a FAILED deferred producer does not wedge its dependent', async () => {
+    // Registration happens only on a zero exit, so a failed producer leaves
+    // NO registry entry — and `--continue=always` runs the dependent anyway.
+    // It must materialise nothing, run, and fail on its own missing input,
+    // rather than hanging or throwing out of the registry walk. The path
+    // exists because the two features were built three waves apart and had
+    // never met.
+    const a = await fixture({ failProducer: true })
+    try {
+      const r = await run({
+        cwd: a.root,
+        tasks: ['use'],
+        projects: ['pkg-b'],
+        download: 'none',
+        continueMode: 'always',
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(false)
+      expect(r.outcomes.find((o) => o.node.id === 'pkg-a#gen')!.status).toBe('failed')
+      // The dependent RAN (not skipped — that is what `always` means) and
+      // failed on its own, with nothing materialised.
+      expect(r.outcomes.find((o) => o.node.id === 'pkg-b#use')!.status).toBe('failed')
+      expect(fake().materialized).toEqual([])
     } finally {
       a.cleanup()
     }
