@@ -11,6 +11,7 @@ import {
   materialiseOutputs,
   outputPathSets,
 } from '../src/executor.js'
+import { UserError } from '@vzn/vx'
 import type { ExecuteRequest, TaskPlacement } from '@vzn/vx'
 
 describe('globToOutputPath', () => {
@@ -112,6 +113,29 @@ describe('materialiseOutputs: a declared output that cannot be fetched', () => {
   const result = {
     output_files: [{ path: 'out.txt', digest: { hash: 'deadbeef', size_bytes: 9 } }],
   }
+
+  it('the refusal is a UserError — the CAS lost bytes, that is not a vx bug', async () => {
+    // The scheduler prints a plain Error as "internal error in <task>", which
+    // would tell a user to file a bug about their own evicted blob. UserError
+    // is the classification that makes it read as the actionable condition it
+    // is, with the --force remedy in the message.
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-mat-'))
+    try {
+      const err = await materialiseOutputs(
+        stub(new Map()),
+        req(['out.txt'], dir),
+        result,
+        () => undefined,
+      ).then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      expect(err).toBeInstanceOf(UserError)
+      expect((err as Error).message).toMatch(/--force/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 
   it('a LITERAL capture refuses: every returned file is a declared output', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'vx-mat-'))

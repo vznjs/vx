@@ -508,6 +508,31 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fifth wave) — my own refusals were reporting as "internal
+  error in <task>"; classified as `UserError`.** Followed my two new
+  throws through to what a user actually SEES, which the earlier waves
+  never did. `scheduler.ts:700-705` splits exactly this: a `UserError`
+  prints `[vx] <task>: <message>`, anything else prints
+  `[vx] internal error in <task>: …` — and its own comment says a
+  UserError "is a config/input failure … not a vx bug — report it
+  plainly, never as an 'internal error'". An evicted remote blob is the
+  environment, not a vx defect, and the message already carries the
+  `--force` remedy, so telling the user to file a bug is the wrong
+  reading of a correct refusal. Six throws in the REAPI executor are now
+  `UserError` (both eviction refusals, the declared-output refusal, the
+  server-reported execution failures, the missing ActionResult); ONE
+  stays a plain Error and now says why in place — a host that routes an
+  undescribed task to the executor violated core's placement contract,
+  which IS a vx bug and should read as one. Verified first that the
+  composition is sound at all: `execute()` rejecting is caught by the
+  scheduler's rejection arm (`.then(f, g)`, deliberately not
+  `.then(f).catch(g)`, so a release cannot run twice) and converted into
+  a `failed` outcome with exit 1 — a refusal fails ONE task, it does not
+  abort the run. Pinned by instance, not message; differential reverts
+  one throw and fails exactly that pin; live matrix 99/0. `UserError` was
+  already on the public façade (`src/index.ts:19`), so this needed no
+  widening — a plugin can classify its own errors today.
+
 - **2026-08-25 (fourth wave) — `vx prune` rewrote the pnpm workspace file
   but not `package.json`'s `workspaces`, so the emitted context would not
   install.** Same command, second pass: prune already knew a membership

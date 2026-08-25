@@ -11,6 +11,7 @@
 
 import { mkdir, writeFile, chmod, rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
+import { UserError } from '@vzn/vx'
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from '@vzn/vx'
 import {
   buildInputTree,
@@ -380,6 +381,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       const started = Bun.nanoseconds()
       // `inputs` is guaranteed by `accepts` (cacheable ⇒ the miss path
       // describes them); the guard is for a host that bypasses placement.
+      // The ONLY plain Error left in this file: a host that routed an
+      // undescribed task here violated core's own placement contract, which
+      // is a vx bug and should read as one. Everything else that throws is
+      // the remote store or the server misbehaving — a UserError, so the
+      // scheduler prints it plainly instead of "internal error in <task>".
       if (req.inputs === undefined) {
         throw new Error(
           `vx/reapi: ${req.taskId} reached the remote executor with no described inputs`,
@@ -470,7 +476,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         ]
         const gone = await client.findMissingBlobs(referenced)
         if (gone.length > 0) {
-          throw new Error(
+          throw new UserError(
             `vx/reapi: upstream ${up.taskId} outputs evicted from the remote store (${gone.length} blob(s)) and never materialised locally — re-run it (e.g. --force)`,
           )
         }
@@ -488,7 +494,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             // read; on this branch no local copy exists, so the loss is
             // real and silently dropping the graft is the same wrong-result
             // hazard as an evicted file.
-            throw new Error(
+            throw new UserError(
               `vx/reapi: upstream ${up.taskId} tree ${d.tree_digest.hash.slice(0, 12)} evicted from CAS — re-run it (e.g. --force)`,
             )
           }
@@ -564,7 +570,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         onStage: (stage) => warn(`vx/reapi: ${req.taskId} ${stage.toLowerCase()}`),
       })
       if (op.error !== undefined && (op.error.code ?? 0) !== 0) {
-        throw new Error(
+        throw new UserError(
           `vx/reapi: execution failed for ${req.taskId}: ${op.error.message ?? `code ${op.error.code}`}`,
         )
       }
@@ -575,14 +581,14 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // only diagnostics that exist for a worker-side failure.
       if (decoded.status !== undefined && decoded.status.code !== 0) {
         const logs = await fetchServerLogs(client, decoded.serverLogs)
-        throw new Error(
+        throw new UserError(
           `vx/reapi: ${req.taskId} execution failed: ${decoded.status.message || `code ${decoded.status.code}`}` +
             (decoded.message === undefined ? '' : ` — ${decoded.message}`) +
             logs,
         )
       }
       if (result === undefined) {
-        throw new Error(
+        throw new UserError(
           `vx/reapi: ${req.taskId} returned no ActionResult${decoded.message === undefined ? '' : `: ${decoded.message}`}`,
         )
       }
@@ -801,7 +807,7 @@ export async function materialiseOutputs(
   ].some((g) => globToOutputPath(g) === '')
   const missing = (what: string, hash: string): void => {
     if (!wholeTreeCapture) {
-      throw new Error(
+      throw new UserError(
         `vx/reapi: ${req.taskId} declared output ${what} is missing from the CAS (${hash.slice(0, 12)}) — re-run it (e.g. --force)`,
       )
     }
