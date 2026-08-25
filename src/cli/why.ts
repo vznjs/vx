@@ -1,6 +1,6 @@
 // `vx why [pkg#task | task]` — answer "why did this task re-run?" from the
-// terminal. The same persisted data the dashboard's "Why did this re-run?"
-// card and the MCP `whyDidThisRerun` tool read: the runs table names the
+// terminal. The same persisted data the MCP `whyDidThisRerun` tool reads:
+// the runs table names the
 // run-over-run hash change, and `entry_inputs` (the input-fingerprint moat)
 // names the exact cache-key components that differ. Read-only over cache.db —
 // no config evaluation, no re-hash.

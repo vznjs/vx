@@ -483,6 +483,29 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fifty-fourth wave) — doc-rot sweep for the removed
+  cloud: three stale references pointing at a product that no longer
+  exists.** Cheaper than another module audit and more user-facing: the
+  cloud removal was 2026-08-23, I had already found two stale refs in
+  `comparison.md` by accident during the hash-only wave, and an accident
+  is not a sweep. Grepping every doc for `dashboard` / `vx-cloud`
+  separated two populations. Most hits are GENERIC and correct — "a
+  dashboard or an HTTP surface" as a hypothetical plugin consumer is
+  exactly right now that a dashboard is a plugin story. Three were
+  claims about something that exists: the comparison table's run-history
+  row offered "a self-hosted dashboard" as vx's answer (now `vx last`,
+  which is the answer that shipped for that gap), the divergence note
+  said "the browsable surface IS the self-hosted dashboard" (now: `vx
+last` for replay, browsable is a telemetry-plugin story, with the
+  removal dated), and `vx why`'s docs AND its source header both cited
+  "the dashboard's 'Why did this re-run?' card" as a sibling surface.
+  That last one is the tell worth keeping: the same stale sentence sat
+  in a doc and in a code comment, so a reader checking the source
+  against the docs would have found them agreeing — and both wrong.
+  Two copies of a claim are how they stay wrong together, which is the
+  same failure mode as two copies of a rule disagreeing, arrived at from
+  the other side.
+
 - **2026-08-25 (fifty-third wave) — deferral × `--continue=always`
   REFUTED and pinned: the two features were built three waves apart and
   had never met.** The specific worry: registration happens only on a

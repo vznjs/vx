@@ -1229,8 +1229,7 @@ vx-lock.json:   yes
 ## `vx why`
 
 Answer "why did this task re-run?" from the terminal — the same
-persisted data the dashboard's "Why did this re-run?" card and the MCP
-`whyDidThisRerun`/`cacheKeyDiff` tools read. Read-only over the local
+persisted data the MCP `whyDidThisRerun` / `cacheKeyDiff` tools read. Read-only over the local
 `cache.db`: no config evaluation, no re-hash.
 
 ```

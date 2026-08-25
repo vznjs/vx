@@ -107,21 +107,21 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 
 ## Cache feature comparison
 
-| Cache feature            | Turbo                                      | Nx                     | vite-task                    | vx                                                                                           |
-| ------------------------ | ------------------------------------------ | ---------------------- | ---------------------------- | -------------------------------------------------------------------------------------------- |
-| Local cache              | tarball-per-hash in `.turbo/cache`         | `.nx/cache` SQLite-ish | materialized-artifact crates | SQLite index + one `<hash>.tar.zst` per entry in `.vx/cache`                                 |
-| Remote cache wire        | Vercel `/v8/artifacts/` (HMAC, pre-signed) | Nx Cloud or plugin     | —                            | plugin-driven (`@vzn/vx-reapi` ships Bazel AC/CAS; Turbo = third-party plugin story)         |
-| Log replay on hit        | yes                                        | yes                    | yes                          | yes                                                                                          |
-| Output restore on hit    | yes                                        | yes                    | yes                          | yes                                                                                          |
-| Output cleaning          | (no — additive)                            | (no)                   | (materialized)               | **yes** — wipe before exec AND before restore                                                |
-| Cache pruning (CLI)      | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `vx cache prune --older-than / --max-size`                                                   |
-| Stats / run history      | `--summarize` JSON files                   | Nx Cloud dashboard     | `--last-details`             | `runs` + `invocations` tables in `cache.db` (direct SQL); `vx info`; a self-hosted dashboard |
-| Per-run JSON summary     | `--summarize`                              | `--outputStyle`        | `--last-details`             | `--summarize[=<path>]`                                                                       |
-| Chrome-trace profile     | `--profile`                                | (Nx Cloud)             | —                            | `--profile[=<path>]`                                                                         |
-| Async remote prefetch    | —                                          | —                      | —                            | **yes** — stable-key GETs overlap execution                                                  |
-| Restore-ahead scheduling | —                                          | —                      | —                            | **yes** — two-tier scheduler restores warm hits ahead of their deps                          |
-| Artifact integrity       | HMAC `x-artifact-tag`                      | (transport-level)      | —                            | **yes** — structural `x-vx-digest` (xxh3, always on; client-verified on GET)                 |
-| Pre-signed URL auth      | yes                                        | yes                    | —                            | **yes** — the platform 307s to pre-signed S3/R2 URLs; client follow drops auth               |
+| Cache feature            | Turbo                                      | Nx                     | vite-task                    | vx                                                                                   |
+| ------------------------ | ------------------------------------------ | ---------------------- | ---------------------------- | ------------------------------------------------------------------------------------ |
+| Local cache              | tarball-per-hash in `.turbo/cache`         | `.nx/cache` SQLite-ish | materialized-artifact crates | SQLite index + one `<hash>.tar.zst` per entry in `.vx/cache`                         |
+| Remote cache wire        | Vercel `/v8/artifacts/` (HMAC, pre-signed) | Nx Cloud or plugin     | —                            | plugin-driven (`@vzn/vx-reapi` ships Bazel AC/CAS; Turbo = third-party plugin story) |
+| Log replay on hit        | yes                                        | yes                    | yes                          | yes                                                                                  |
+| Output restore on hit    | yes                                        | yes                    | yes                          | yes                                                                                  |
+| Output cleaning          | (no — additive)                            | (no)                   | (materialized)               | **yes** — wipe before exec AND before restore                                        |
+| Cache pruning (CLI)      | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `vx cache prune --older-than / --max-size`                                           |
+| Stats / run history      | `--summarize` JSON files                   | Nx Cloud dashboard     | `--last-details`             | `runs` + `invocations` tables in `cache.db` (direct SQL); `vx info`; `vx last`       |
+| Per-run JSON summary     | `--summarize`                              | `--outputStyle`        | `--last-details`             | `--summarize[=<path>]`                                                               |
+| Chrome-trace profile     | `--profile`                                | (Nx Cloud)             | —                            | `--profile[=<path>]`                                                                 |
+| Async remote prefetch    | —                                          | —                      | —                            | **yes** — stable-key GETs overlap execution                                          |
+| Restore-ahead scheduling | —                                          | —                      | —                            | **yes** — two-tier scheduler restores warm hits ahead of their deps                  |
+| Artifact integrity       | HMAC `x-artifact-tag`                      | (transport-level)      | —                            | **yes** — structural `x-vx-digest` (xxh3, always on; client-verified on GET)         |
+| Pre-signed URL auth      | yes                                        | yes                    | —                            | **yes** — the platform 307s to pre-signed S3/R2 URLs; client follow drops auth       |
 
 ## Workspace integration
 
@@ -274,8 +274,9 @@ deliberate design pass.
 - **Generators / scaffolding.** Not a task-runner concern.
 - **TUI / interactive panes.** Streamed framed blocks + the worker
   status region are the terminal format; no Nx-style Terminal UI (an
-  attempt was built and dropped). The browsable surface is the
-  self-hosted dashboard.
+  attempt was built and dropped). `vx last` replays a recorded run from
+  the local history; anything browsable is a telemetry-plugin story
+  now that the self-hosted dashboard is gone (2026-08-23).
 - **Boundaries / package-tag visibility.** Module-level constraint
   rules belong in lint (`oxlint`, `eslint-plugin-import`), not the
   task runner.
