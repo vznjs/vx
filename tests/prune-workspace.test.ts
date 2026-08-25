@@ -272,6 +272,49 @@ describe('vx prune: what the configs import', () => {
   )
 
   it(
+    'the emitted subset actually INSTALLS, and an unrewritten one would not',
+    async () => {
+      // The claim prune exists to make, asserted end to end instead of
+      // inferred from the manifest's contents. The second half pins BUN's
+      // behaviour, which is the whole reason the rewrite is needed: a glob
+      // matching nothing is tolerated, an explicit member the subset lacks is
+      // fatal. If bun ever stops caring, this fails and the rewrite can be
+      // reconsidered on evidence.
+      const out = path.join(root, '..', `prune-inst-${process.pid}`)
+      const r = await vx(root, ['prune', 'app', '--out-dir', out])
+      try {
+        expect(r.code).toBe(0)
+        const install = async (cwd: string): Promise<{ code: number; err: string }> => {
+          const proc = Bun.spawn([process.execPath, 'install', '--no-save'], {
+            cwd,
+            env: { ...process.env },
+            stdout: 'pipe',
+            stderr: 'pipe',
+          })
+          const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+          return { code, err }
+        }
+
+        const ok = await install(out)
+        expect(ok.code).toBe(0)
+
+        // Same subset, manifest reverted to naming a package it does not
+        // contain — the state prune would emit without the rewrite.
+        const manifest = path.join(out, 'package.json')
+        const pkg = JSON.parse(await readFile(manifest, 'utf8')) as Record<string, unknown>
+        pkg['workspaces'] = ['packages/app', 'packages/lib', 'packages/plug', 'packages/unrelated']
+        await writeFile(manifest, JSON.stringify(pkg))
+        const broken = await install(out)
+        expect(broken.code).toBe(1)
+        expect(broken.err).toContain('packages/unrelated')
+      } finally {
+        await rm(out, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'reports a project config importing outside the subset',
     async () => {
       const out = path.join(root, '..', `prune-esc-${process.pid}`)

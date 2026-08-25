@@ -414,11 +414,20 @@ time every single time.
   input, not the multiplier. A streaming read would fix it. RE-CHECKED
   2026-08-25 against Bun 1.4.0, and the blocker is now narrower than
   recorded: `ArchiveExtractOptions` exposes ONLY `glob`, so there is still
-  no prefix strip — but mtime is no longer a reason, because v27 carries
-  mode and millisecond mtime in the `.vx-meta.json` sidecar and applies
-  them after extraction anyway (measured: `extract()` writes 0644 with an
-  extraction-time mtime, and `glob: 'outputs/**'` correctly selects just
-  the outputs subtree). The candidate design is therefore extract-then-
+  no prefix strip — but mtime is no longer a reason, and the reason it is
+  not is sharper than first recorded: `Bun.Archive.write(path, data)`
+  takes in-memory `ArchiveInput` and has NO way to archive a file FROM
+  DISK carrying its metadata, so mode and mtime cannot ride this
+  container even in principle. That is why v27 puts them in the
+  `.vx-meta.json` sidecar and applies them after extraction, and why a
+  streaming restore loses nothing by not preserving them. (My first
+  measurement here — "extract() writes an extraction-time mtime" — was a
+  true observation with the wrong implied cause: the archive never
+  carried one.) All three facts are now PINNED as a tripwire in
+  `tests/bun-archive-capabilities.test.ts`, including a negative
+  assertion on a strip option, so when Bun gains prefix stripping the
+  suite FAILS and this item closes on evidence rather than being
+  re-measured from scratch. The candidate design is therefore extract-then-
   rename: stream `outputs/**` to a temp dir on the SAME filesystem, then
   rename each file into the project dir applying the sidecar's metadata —
   bounded memory, at the cost of an extra rename per output. NOT
@@ -507,6 +516,40 @@ time every single time.
   cost outside GitHub Actions.
 
 ### Recent entries (2026-08)
+
+- **2026-08-25 (eleventh wave) — OWNER DIRECTIVE: a probe that confirms a
+  thesis becomes a TEST, not a log entry.** "When you are testing
+  something write an actual test if not overly expensive to confirm your
+  thesis and have it for the future." Fair, and today gave three probes
+  that proved something and then evaporated. Landed the two worth
+  keeping. (1) `tests/bun-archive-capabilities.test.ts` — a TRIPWIRE on
+  the Bun API the v27 container sits on, since the open item's blocker is
+  a CAPABILITY claim about a dependency, exactly the kind that rots
+  silently. It asserts that `extract()` does NOT honour a strip option
+  (so when Bun gains prefix stripping the suite FAILS and the item closes
+  on evidence), that `glob: 'outputs/**'` does select just the subtree,
+  and that an extracted file lands 0644. Writing it CORRECTED the item:
+  `Bun.Archive.write(path, data)` takes in-memory `ArchiveInput` and has
+  no way to archive a file FROM DISK with its metadata, so mode and mtime
+  cannot ride this container even in principle — which is a sharper
+  reason for the sidecar than what I recorded, and it means my earlier
+  "extract() writes an extraction-time mtime" was a true observation with
+  the wrong implied cause (the archive never carried one). The probe
+  behind that line was itself wrong twice — `Bun.Archive.write` treated
+  my array of paths as CONTENT, producing an archive with one entry
+  named `"0"`, which is what sent me to the type definitions. (2) The
+  `bun install` behaviour justifying prune's manifest rewrite is now an
+  end-to-end pin: the emitted subset INSTALLS (exit 0), and the same
+  subset with the manifest reverted to naming an absent member FAILS with
+  `packages/unrelated` in stderr. Cheap — the whole prune file runs in
+  ~400 ms — and it pins BUN's semantics, so if bun ever stops caring the
+  rewrite can be reconsidered on evidence. Differential fails both pins.
+  DELIBERATELY NOT LANDED, and named rather than dropped silently: the
+  grpc-js subchannel-pooling measurement (20 clients → 1 connection). It
+  needs `lsof`, whose output differs across platforms and which renders
+  port 9092 as a service name, and it counts live connections — timing
+  dependent. A flaky test asserting a pooling detail of a third-party
+  library is worth less than the sentence recording it.
 
 - **2026-08-25 (tenth wave) — the plugin's own wiring came back CLEAN on
   both hypotheses, and got its first test file.** Closing the REAPI
