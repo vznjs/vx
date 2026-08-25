@@ -18,9 +18,12 @@
 // reference impls so downstream work (R2, otel-bridge, distributed-ci)
 // can rely on the type. Byte-identical behaviour today.
 
-import { rm } from 'node:fs/promises'
+import { mkdir, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { Digest } from './digest.js'
+
+/** Per-process counter for put() temp names; uniqueness only. */
+let casTmpSeq = 0
 
 export interface CASBackend {
   /** Write bytes under `digest`. Idempotent — putting the same digest twice is a no-op. */
@@ -78,7 +81,22 @@ export class FsCASBackend implements CASBackend {
         `FsCASBackend.put: sizeBytes mismatch (digest=${digest.sizeBytes}, actual=${bytes.byteLength})`,
       )
     }
-    await Bun.write(this.pathFor(digest), bytes)
+    // Temp + rename, the same shape `Cache.writeArtifactAndIndex` and the
+    // archive extractor use: two writers of the SAME content-addressed
+    // blob are expected (that is what content-addressing invites), and a
+    // plain write lets a reader observe a half-written file under a name
+    // that promises complete bytes. rename(2) is atomic, so a concurrent
+    // reader sees either the old file or the whole new one.
+    const final = this.pathFor(digest)
+    const tmp = `${final}.tmp-${process.pid.toString(36)}-${(casTmpSeq++).toString(36)}`
+    await mkdir(this.rootDir, { recursive: true })
+    try {
+      await Bun.write(tmp, bytes)
+      await rename(tmp, final)
+    } catch (err) {
+      await rm(tmp, { force: true })
+      throw err
+    }
   }
 
   async get(digest: Digest): Promise<Uint8Array | null> {

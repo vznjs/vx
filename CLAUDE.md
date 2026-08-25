@@ -481,6 +481,31 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (sixtieth wave) — the darwin un-gate CONFIRMED under real
+  load, and a self-correction: the CAS backend was never dead code.**
+  (1) The first darwin CI run with the recovered suite is green, and the
+  PRECONDITION was checked rather than assumed — 19 `sandbox-runtime >`
+  lines in the job log prove the suite ran, 5 skips job-wide are exactly
+  the verify reporting block, 2616/0 overall, canary #18 20/0/0
+  (cumulative n=360, non-enforcement still zero). One green run under
+  load is a datapoint, not proof, but the flaky assertions are no longer
+  on that path by construction. (2) The class sweep two waves ago
+  recorded `cas-backend.ts`'s bare `Bun.write` as latent-and-unreachable
+  because "the module has no consumer". WRONG, and the error is
+  instructive: I inherited that judgement from the download-policy
+  design, which said the module is not the foundation for THAT arc — a
+  much narrower claim than "nothing reaches it". `Cache.contentBackend()`
+  is public, exported from the cache index, and has its own integration
+  test, so any embedder can call `put()` concurrently and a reader can
+  observe a half-written blob under a content-addressed name that
+  promises complete bytes. Fixed with the same temp+rename `cache.ts`
+  and the archive extractor use, and pinned DETERMINISTICALLY this time
+  (a reader polling during a 512 KB write: 3/3 mutant failures, versus
+  the archive race's probabilistic 3/400). Lesson worth the line:
+  "unused by the arc I am designing" and "unreachable" are different
+  claims, and I promoted one into the other without checking the
+  exports.
+
 - **2026-08-25 (fifty-ninth wave) — darwin CI un-gated: 28 sandbox tests
   recovered by splitting ENFORCEMENT from REPORTING.** The condition I
   recorded when refusing the flag promotion ("un-gate if the pins are
@@ -835,12 +860,14 @@ last` for replay, browsable is a telemetry-plugin story, with the
   same shape as the twenty-seventh wave's inherited-port finding read
   backwards: a port carries the original's bugs, and a fresh write
   misses the original's fixes. `lockfile.ts` and `run-artifacts.ts` are
-  single-writer, user-invoked paths — benign. One LATENT instance
-  remains, unreachable: `cas-backend.ts`'s `put` is a bare `Bun.write`,
-  but that module has no consumer (the download-policy design judged it
-  not-the-foundation and left it unused), so it stays an audit/delete
-  candidate rather than a fix — changing dead code buys risk, not
-  safety.
+  single-writer, user-invoked paths — benign. One instance was called
+  latent-and-unreachable — `cas-backend.ts`'s bare `Bun.write` put —
+  on the grounds that the module has no consumer. **CORRECTED
+  2026-08-25 (sixtieth wave): it is reachable.** `Cache.contentBackend()`
+  is a public method exported from `src/cache/index.ts` with its own
+  tests, so an embedder can race it; the design doc's "not the
+  foundation for THIS arc" was read as "dead", which it is not. Fixed
+  with the same temp+rename and pinned.
 
 - **2026-08-25 (forty-fifth wave) — the `--download` guide lands (the
   docs-in-the-same-wave rule, honoured late), and the vx-github

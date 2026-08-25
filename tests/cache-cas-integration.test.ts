@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { Cache, makeDigest } from '../src/cache/index.js'
+import { Cache, FsCASBackend, makeDigest } from '../src/cache/index.js'
 
 describe('Cache.contentBackend() — CAS view over saved artifacts', () => {
   it('returns an FsCASBackend rooted at the same cacheDir', async () => {
@@ -28,6 +28,34 @@ describe('Cache.contentBackend() — CAS view over saved artifacts', () => {
     } finally {
       cache.close()
       rmSync(cacheDir, { recursive: true, force: true })
+    }
+  })
+
+  it('put() is atomic: a concurrent reader never sees a partial blob', async () => {
+    // Content-addressing INVITES two writers of the same blob, and this is
+    // a public seam (`Cache.contentBackend()`), so an embedder can race it.
+    // A plain write would let a reader observe a half-written file under a
+    // name that promises complete bytes; temp + rename cannot.
+    const dir = mkdtempSync(path.join(tmpdir(), 'vx-cas-atomic-'))
+    try {
+      const backend = new FsCASBackend(dir)
+      const bytes = new Uint8Array(512 * 1024).fill(7)
+      const digest = makeDigest('a'.repeat(64), bytes.byteLength)
+      let partial = 0
+      const reader = (async () => {
+        for (let i = 0; i < 200; i++) {
+          const got = await backend.get(digest)
+          if (got !== null && got.byteLength !== bytes.byteLength) partial++
+          await Bun.sleep(0)
+        }
+      })()
+      await Promise.all([backend.put(digest, bytes), backend.put(digest, bytes), reader])
+      expect(partial).toBe(0)
+      expect((await backend.get(digest))?.byteLength).toBe(bytes.byteLength)
+      // …and no scratch file survived.
+      expect([...new Bun.Glob('*.tmp-*').scanSync({ cwd: dir })]).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 })
