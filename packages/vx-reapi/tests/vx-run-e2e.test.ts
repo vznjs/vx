@@ -112,4 +112,82 @@ describe.if(armed)('vx run with reapi({ execute: true }) — the install-as-acti
       await rm(root, { recursive: true, force: true })
     }
   }, 240_000)
+
+  it('--download=none moves no output bytes to the submitter, and converges later', async () => {
+    // Phase 1's headline claim, proven end to end against a real cluster:
+    // a run that wants only the verdict executes remotely and leaves every
+    // output byte in the CAS. Then the SAME workspace run eagerly picks the
+    // bytes up through the exec-record short-circuit — no re-execution —
+    // and saves an ordinary entry, so the third run is a plain local hit.
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-run-reapi-dl-'))
+    try {
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture' }))
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'pkg'\n")
+      await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+      await writeFile(path.join(root, 'pkg', 'package.json'), JSON.stringify({ name: 'pkg' }))
+      await writeFile(path.join(root, 'pkg', 'src', 'app.js'), `console.log(${Date.now()})\n`)
+      await writeFile(
+        path.join(root, 'pkg', 'vx.config.mjs'),
+        `export default { tasks: {
+           build: {
+             exec: { command: 'cat src/app.js > out.txt && echo built' },
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+           },
+         } }`,
+      )
+      await writeFile(
+        path.join(root, 'vx.workspace.mjs'),
+        localWorkspaceSource(
+          [`reapi({ endpoint: ${JSON.stringify(ENDPOINT)}, execute: true })`],
+          `import { reapi } from ${JSON.stringify(REAPI_INDEX)}\n`,
+        ),
+      )
+      const git = (...a: string[]) => Bun.spawnSync({ cmd: ['git', ...a], cwd: root })
+      git('init', '-q')
+      git('config', 'user.email', 't@vx.local')
+      git('config', 'user.name', 't')
+      git('config', 'commit.gpgsign', 'false')
+      git('add', '-A')
+      git('commit', '-qm', 'init')
+
+      const deferred = await run({
+        cwd: root,
+        projects: ['pkg'],
+        tasks: ['build'],
+        download: 'none',
+        log: silentLogger(),
+        handleSignals: false,
+      })
+      expect(deferred.ok).toBe(true)
+      const built = deferred.outcomes.find((o) => o.node.id === 'pkg#build')
+      expect(built?.status).toBe('success')
+      // THE claim: the declared output never reached this machine.
+      expect(built?.outputs).toBe('deferred')
+      expect(await exists(path.join(root, 'pkg', 'out.txt'))).toBe(false)
+
+      // Eager re-run of the same key: the record answers, so nothing
+      // re-executes on a worker, and the bytes land + save.
+      const eager = await run({
+        cwd: root,
+        projects: ['pkg'],
+        tasks: ['build'],
+        log: silentLogger(),
+        handleSignals: false,
+      })
+      expect(eager.ok).toBe(true)
+      expect(await exists(path.join(root, 'pkg', 'out.txt'))).toBe(true)
+
+      // Converged: an ordinary local entry now exists.
+      const third = await run({
+        cwd: root,
+        projects: ['pkg'],
+        tasks: ['build'],
+        log: silentLogger(),
+        handleSignals: false,
+      })
+      expect(third.outcomes.find((o) => o.node.id === 'pkg#build')?.status).toBe('cache-hit')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 240_000)
 })

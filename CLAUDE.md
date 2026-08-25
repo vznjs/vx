@@ -483,6 +483,28 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (forty-seventh wave) — the `--download=none` headline
+  claim PROVEN live, end to end, instead of audited a fifth time.** Four
+  audit waves had already run over the deferral machinery and the signal
+  was thinning, so the higher-value gap was the one nobody had closed:
+  phase 1's consumable claim ("a CI job runs `--download=none` against a
+  REAPI cluster and moves zero output bytes") was design intent, pinned
+  only at the executor-unit level. `vx-run-e2e` now drives a real
+  `run()` against NativeLink across three runs of one workspace: the
+  deferred run succeeds with `outputs: 'deferred'` and the declared
+  output ABSENT from the submitter's disk; an eager re-run of the same
+  key picks the bytes up through the exec-record short-circuit; the
+  third run is a plain local `cache-hit`, proving convergence leaves an
+  ordinary entry. That single test exercises deferral, lazy pickup, the
+  phase-3 record path and the convergence save together — the seams
+  between the phases, which every previous pin tested in isolation. The
+  design doc's claim is relabelled MEASURED rather than intended.
+  Method note worth keeping: the decision to stop auditing and start
+  verifying was the right call at the point where three consecutive
+  probes each found something smaller than the last — a thinning-signal
+  read is itself a finding, and the answer to it is to go prove the
+  headline rather than keep grinding the same surface.
+
 - **2026-08-25 (forty-sixth wave) — RED MAIN, and it WAS my diff: the
   hardlink fix opened a concurrent-restore window; extraction now writes
   through a rename.** A docs-only commit went red on darwin

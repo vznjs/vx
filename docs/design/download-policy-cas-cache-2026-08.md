@@ -471,6 +471,12 @@ sizes, on a path that just paid a network round-trip anyway.
    moves zero output bytes to the runner, while a laptop's mixed run
    still works because local consumers materialise lazily. `all`
    remains byte-identical to today.
+   **SHIPPED and VERIFIED LIVE (2026-08-25)**: `vx-run-e2e` drives a real
+   `run()` against NativeLink and pins the whole arc — the deferred run
+   succeeds with the declared output ABSENT from the submitter, an eager
+   re-run of the same key picks the bytes up through the exec-record
+   short-circuit without re-executing, and the third run is a plain local
+   `cache-hit`. The claim above is measured behaviour now, not intent.
 2. **`toplevel`.** The requested-set split in the plan-time decision
    function + pins. Small by construction (§4.2).
 3. **Exec-record short-circuit widening + `stdout_digest`.** Plugin
