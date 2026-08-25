@@ -785,6 +785,16 @@ export interface WhyDidThisRerun {
   note: string
 }
 
+/** The three endings an UNCHANGED cache key can have. */
+function unchangedKeyNote(cacheHit: number | null): string {
+  if (cacheHit === null) {
+    return 'cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown'
+  }
+  return cacheHit
+    ? 'cache key unchanged — this run was served from cache, nothing re-ran'
+    : 'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)'
+}
+
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun {
   const [project, task] = splitTaskId(taskId)
   const this_ = db
@@ -832,7 +842,13 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
       : prev && prev.hash !== this_.hash
         ? 'cache key changed between the previous run and this one (inputs differ)'
         : prev
-          ? 'cache key unchanged — re-run with the same key (likely --no-cache or unrelated)'
+          ? // An unchanged key has two very different endings, and calling
+            // both a "re-run" answered the question wrong: a cache HIT did not
+            // re-run at all, so blaming `--no-cache` named a cause that cannot
+            // have applied. Only a run that EXECUTED on an unchanged key is
+            // the case this verb exists to explain. A row with no recorded
+            // cacheHit (older rows) is neither — say that, do not guess.
+            unchangedKeyNote(this_.cacheHit)
           : 'no prior run for this (project, task)',
   }
 }

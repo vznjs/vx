@@ -1255,6 +1255,12 @@ immediately-previous run; `--run <id>` pins a specific run. A bare task
 name resolves when exactly one project ran it (several → an error
 listing the candidates; unknown → include-match suggestions).
 
+An **unchanged** key has three endings, and the verdict distinguishes
+them rather than calling all three a re-run: the run was served from
+cache (nothing re-ran), it re-executed on the same key (`--no-cache` /
+`--force`, or something outside the key), or it recorded no cache
+outcome at all, in which case vx says so instead of guessing.
+
 ```
 $ vx why app#build
 app#build — run 019f5a02-…

@@ -508,6 +508,39 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (eighth wave) — `vx why` called a cache HIT a re-run, and
+  blamed a flag that could not have applied.** Found by running the verb
+  on real data instead of reading it: `vx why test` reported
+  `status cache-hit · cache hit` and then the verdict "cache key
+  unchanged — re-run with the same key (likely --no-cache or
+  unrelated)". Nothing re-ran; the run was SERVED. A verb whose entire
+  question is "why did this re-run?" answering it wrong about its own
+  headline case is worth more than its size. The note ignored
+  `cache_hit` entirely, so all three endings of an unchanged key
+  collapsed into one sentence. Now three, and the third one refuses to
+  guess: served from cache (nothing re-ran) · re-executed on the same
+  key (`--no-cache` / `--force`, or something outside the key) · no
+  recorded cache outcome, so whether it re-ran is UNKNOWN. Pinned all
+  three in one loop; differential restores the single note and fails
+  exactly that pin. Swept for the old wording across `.ts` and `.md` —
+  no other consumer; `docs/cli.md` documents the three endings now.
+  TWO process lessons, both earned the hard way in this one wave.
+  (1) `bun test` passed 96/0 with a `TS2375` in the test I had just
+  written (`exactOptionalPropertyTypes` rejects assigning
+  `boolean | undefined` to an optional prop) — the standing "bun test is
+  NOT the gate" rule, caught by `oxlint --type-aware` from the root, and
+  the fixture lesson under it: `mkRun` DEFAULTS `cacheHit` to `false`,
+  so persisting NULL means DELETING the key, not assigning `undefined`.
+  My first pin failed for that reason and I nearly read it as the code
+  being wrong. (2) When the gate went red I had grepped its output down
+  to a summary and lost the failing task name — the exact mistake the
+  standing rule warns about. `vx last --list` and `vx last <runId>`
+  recovered it from the run history: `lint.oxlint`, failing under the
+  SAME hash in both red runs, i.e. deterministic and mine, not the
+  timing-sensitive persistent-task test that happened to be visible in
+  the scrollback. Today's own replay command debugging today's own red
+  gate is the best argument for it I could have written.
+
 - **2026-08-25 (seventh wave) — audited my OWN channel from the previous
   wave and found the completeness claim I had just written was false.**
   New code is where the bugs are, including when it is an hour old.

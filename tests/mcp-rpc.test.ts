@@ -67,6 +67,19 @@ function mkRun(args: Partial<RunRecord> & { project: string; task: string }): Ru
   }
 }
 
+/**
+ * `mkRun` defaults `cacheHit` to `false`, so a test that needs the UNKNOWN
+ * (NULL) state must DELETE the key — assigning `undefined` is a type error
+ * under `exactOptionalPropertyTypes` and would not persist NULL anyway.
+ */
+function unknownAware(run: RunRecord, cacheHit: boolean | undefined): RunRecord {
+  if (cacheHit === undefined) {
+    const { cacheHit: _drop, ...rest } = run
+    return rest
+  }
+  return { ...run, cacheHit }
+}
+
 /** A workspace root with a cache.db the MCP context can be pointed at. */
 function makeWorkspace(tag: string): string {
   const root = mkdtempSync(path.join(tmpdir(), `vx-mcp-rpc-${tag}-`))
@@ -889,6 +902,44 @@ describe('whyDidThisRerun', () => {
       expect(got.note).toMatch(/recorded no cache key/)
     } finally {
       rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('an unchanged key reads differently for a HIT, an EXECUTION, and an unknown', async () => {
+    // The verb answers "why did this RE-RUN?", so calling a cache hit a re-run
+    // answered its own question wrong — and blaming `--no-cache` named a cause
+    // that cannot have applied to a run that never executed. Only the middle
+    // case is the one worth explaining; the third must not guess.
+    const cases: Array<[string, boolean | undefined, RegExp]> = [
+      ['hit', true, /served from cache, nothing re-ran/],
+      ['exec', false, /re-executed on the same key/],
+      ['unknown', undefined, /whether it re-ran is unknown/],
+    ]
+    for (const [label, cacheHit, expected] of cases) {
+      const root = makeWorkspace(`unchanged-${label}`)
+      try {
+        seed(root, (cache) => {
+          cache.recordRuns([
+            mkRun({ hash: 'k1', project: 'p', task: 'build', runId: 'a1', startedAt: now - 2000 }),
+            unknownAware(
+              mkRun({
+                hash: 'k1',
+                project: 'p',
+                task: 'build',
+                runId: 'a2',
+                startedAt: now - 1000,
+                ...(cacheHit === true ? { status: 'cache-hit' as const } : {}),
+              }),
+              cacheHit,
+            ),
+          ])
+        })
+        const got = (await call(root, 'whyDidThisRerun', { runId: 'a2', taskId: 'p#build' })) as Why
+        expect(got.hashChanged).toBe(false)
+        expect(got.note).toMatch(expected)
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
     }
   })
 
