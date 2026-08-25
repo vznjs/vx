@@ -511,6 +511,22 @@ time every single time.
   differential of record is the standalone probe, not the test — writing
   the opposite into the test comment would have been the
   claims-a-guarantee-it-does-not-have defect in its purest form.
+  **CLASS SWEEP (same wave, per the standing rule).** Every other
+  file-replacement site in `src/`: `cache.ts`'s artifact write was
+  ALREADY temp+rename — and its comment records this exact lesson, that
+  a pre-rm "opened a race window where writer B could delete writer A's
+  just-renamed file BEFORE A's subsequent stat, producing a spurious
+  ENOENT". The knowledge was in the tree; the sibling module simply did
+  not inherit it when the hardlink defense was written, which is the
+  same shape as the twenty-seventh wave's inherited-port finding read
+  backwards: a port carries the original's bugs, and a fresh write
+  misses the original's fixes. `lockfile.ts` and `run-artifacts.ts` are
+  single-writer, user-invoked paths — benign. One LATENT instance
+  remains, unreachable: `cas-backend.ts`'s `put` is a bare `Bun.write`,
+  but that module has no consumer (the download-policy design judged it
+  not-the-foundation and left it unused), so it stays an audit/delete
+  candidate rather than a fix — changing dead code buys risk, not
+  safety.
 
 - **2026-08-25 (forty-fifth wave) — the `--download` guide lands (the
   docs-in-the-same-wave rule, honoured late), and the vx-github
