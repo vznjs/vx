@@ -123,6 +123,44 @@ spec gray area (sanctioned only for the deprecated field), so a stricter
 third-party worker may reject it — prefer globs with a literal first segment
 (`dist/**`) where you can.
 
+## Keeping the bytes remote: `--download`
+
+By default every remotely-executed task's outputs are downloaded to the
+machine that started the run. For a chain of remote tasks that is often
+pure waste: the next task's worker grafts its inputs straight from the
+CAS, and nobody on your machine reads the intermediates.
+
+```bash
+vx run build --all --download=none      # nothing comes home unless something needs it
+vx run build --all --download=toplevel  # only what you asked for comes home
+```
+
+Bazel calls this "build without the bytes". A deferred task's outputs
+stay in the CAS; if a **locally**-placed task in the same run turns out
+to need them, vx fetches them lazily, once, just before that task runs —
+and then saves an ordinary cache entry for them, so the next run is a
+plain local hit. Nothing you can observe changes except how many bytes
+crossed the network. The end-of-run summary names every task whose
+outputs stayed remote.
+
+Two things it deliberately will not do:
+
+- **It never moves a cache key.** Download policy is transfer tuning, so
+  it is not folded into any key — a `--download=none` run hits the same
+  entries an ordinary run does.
+- **It refuses to defer anything a key could observe.** If some task's
+  `cache.inputs` globs could match a producer's outputs, that producer
+  stays eager; a run declaring any `cache.inputs.runtime` command defers
+  nothing at all, because a shell command's reads cannot be bounded.
+  `--dry` names each downgrade. `--verify` likewise forces `all`: a
+  proof has to observe the outputs it is proving.
+
+Repeat runs are cheap even with nothing cached locally: every successful
+remote execution writes a record under the task's key, so a later run
+whose local cache missed skips the input-tree build, the upload pass and
+`Execute` entirely, and replays the recorded stdout. `--force` bypasses
+it.
+
 ## The worker image
 
 Two requirements, both learned against real servers:

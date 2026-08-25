@@ -483,6 +483,28 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (forty-fifth wave) — the `--download` guide lands (the
+  docs-in-the-same-wave rule, honoured late), and the vx-github
+  `--dry` hypothesis is REFUTED by construction.** Two items, one of
+  each kind. (1) DOCS DEBT, self-caught: `--download` shipped across
+  four waves documented only in `cli.md`'s flag reference — the place a
+  REAPI user would actually look, `guides/remote-execution.md`, never
+  mentioned it. That violates the standing "a feature is not done until
+  its docs land in the same wave" directive, and the honest reading is
+  that the rule was met in letter (a flag table entry) and missed in
+  substance. The guide now carries the whole story: what deferral buys,
+  the two spellings, lazy materialisation + convergence, and the three
+  refusals (never moves a key, never defers what a key could observe,
+  `--verify` forces `all`) plus the repeat-run record short-circuit.
+  (2) REFUTED, cheaply and worth recording so nobody re-treads it: the
+  sharpest hypothesis against the new Checks API surface was that a
+  `--dry` planning run would POST a COMPLETED check-run for a build that
+  never happened. It cannot — the plan path builds no telemetry source
+  and never emits a run summary, so `onRunSummary` is never called and
+  the sink's own "no summary ⇒ no POST" guard is the second line of
+  defence (already pinned). Read-the-code refutation, no probe needed,
+  because the absence is structural rather than conditional.
+
 - **2026-08-25 (forty-fourth wave) — deferral × failure paths: one
   under-report CONFIRMED and fixed, `--continue` propagation REFUTED as
   broken, and a test of mine that was wrong before the code was.** Two
