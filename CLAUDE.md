@@ -443,11 +443,16 @@ time every single time.
   remains only for a THIRD-PARTY `RemoteCacheLayer` whose `put` carries no
   deadline — a plugin-author responsibility the extensibility guide should
   name if a second remote plugin ever appears.
-- Task-log caps count CHARS, not memory (~36× overhead at 1-char chunks).
-  ~~When failures alone exceed the run budget the OLDEST failure is stubbed
-  first (usually the root cause)~~ — **FIXED 2026-08-25**: the failed tier
-  now evicts NEWEST-first, so the first failure survives longest; successes
-  keep oldest-first. The char-vs-memory half stands.
+- ~~Task-log caps count CHARS, not memory; when failures alone exceed the
+  run budget the OLDEST failure is stubbed first~~ — **BOTH CLOSED
+  2026-08-25.** The failed tier evicts NEWEST-first so the root cause
+  survives longest (successes keep oldest-first), and the RUN budget now
+  charges ~24 char-equivalents per retained chunk, so it tracks memory
+  rather than character count. MEASURED on Bun 1.4: 1M chars costs ~1.4 MB
+  as one chunk and ~30 MB as 1M one-char chunks, so the old 4 MiB char
+  budget could hold ~80 MB. The per-task TAIL cap stays a pure char count
+  deliberately — it bounds what a reader is shown, a different question
+  from what the process holds.
 - **macOS sandbox violation REPORTING is lossy-by-OS under load — measured,
   partially mitigated, residual unfixable client-side.** Root-cause hunt
   (2026-08-24): ~430 runs/arm under full-suite load, every failure the same
@@ -482,6 +487,30 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-25 (sixty-second wave) — the log budget now tracks MEMORY, not
+  characters; the open item closes in full.** MEASURED first, because the
+  recorded "~36× overhead at 1-char chunks" was an estimate nobody had
+  executed: on Bun 1.4, 1 000 000 chars costs ~1.4 MB of marginal RSS
+  arriving as ONE chunk and ~30 MB arriving as 1 000 000 one-char chunks
+  (15.4 vs 44.3 MB process RSS). So the 4 MiB char budget could be
+  holding ~80 MB — the cap was measuring the wrong quantity, which is
+  what the open item said. Fix chosen for its blast radius: the RUN
+  budget charges `chars + chunks × 24` instead of restructuring the hot
+  append path, which is deliberately zero-copy (a cache-hit replay is
+  one array push). Chunky output is untouched — one 128 KiB chunk pays
+  24 on 131 072 — while a task emitting a byte at a time is charged for
+  the strings it actually creates. The per-task TAIL cap stays a pure
+  char count ON PURPOSE: it bounds what a READER is shown, which is a
+  different question from what the process HOLDS, and conflating them
+  would shorten visible tails for chunky output to solve a memory
+  problem chunky output does not have. Pinned with two buffers holding
+  IDENTICAL content where only the fragmentation differs — the
+  fragmented one must evict first — and the differential (overhead 0)
+  fails exactly that pin. Considered and rejected: coalescing small
+  chunks into blocks (correct, but it adds state to the hot path and
+  ropes would blunt the win) and capping chunk COUNT (destroys the
+  head-eviction granularity that keeps a tail readable).
 
 - **2026-08-25 (sixty-first wave) — the task-log budget stubbed the ROOT
   CAUSE first; the failed tier now evicts newest-first.** Half of a

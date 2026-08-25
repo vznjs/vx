@@ -6,6 +6,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   LOG_WIRE_VERSION,
   RUN_LOG_BUDGET_CHARS,
+  type TaskLogBundle,
   TASK_LOG_TAIL_CHARS,
   TaskLogBuffer,
 } from '../src/orchestrator/task-log-buffer.js'
@@ -103,6 +104,32 @@ describe('TaskLogBuffer — run budget with failure priority', () => {
     // Total retained stays within budget.
     const total = bundle.tasks.reduce((n, t) => n + t.content.length, 0)
     expect(total).toBeLessThanOrEqual(RUN_LOG_BUDGET_CHARS)
+  })
+
+  it('charges per-chunk overhead, so many tiny chunks evict sooner than one big one', () => {
+    // The run budget exists to bound MEMORY, and a char count is not one: the
+    // same content stored as thousands of separate strings costs multiples of
+    // its length (measured on Bun 1.4 — 1M chars is ~1.4 MB as one chunk,
+    // ~30 MB as 1M one-char chunks). Two buffers get IDENTICAL content; the
+    // fragmented one must hit the budget first.
+    const perTask = 64 * 1024
+    const fill = (buf: TaskLogBuffer, id: string, tiny: boolean): void => {
+      if (tiny) for (let i = 0; i < perTask; i++) buf.append(id, 'x')
+      else buf.append(id, 'x'.repeat(perTask))
+      buf.finish(id, 'success', 'miss')
+    }
+    const chunky = new TaskLogBuffer()
+    const fragmented = new TaskLogBuffer()
+    // Enough tasks that the fragmented arm crosses the budget on overhead
+    // alone while the chunky arm, holding the same characters, does not.
+    const tasks = Math.ceil(RUN_LOG_BUDGET_CHARS / perTask) - 1
+    for (let i = 0; i < tasks; i++) {
+      fill(chunky, `p#c${i}`, false)
+      fill(fragmented, `p#f${i}`, true)
+    }
+    const kept = (b: TaskLogBundle): number => b.tasks.filter((t) => t.content.length > 0).length
+    expect(kept(chunky.drain('r', 'ws'))).toBe(tasks)
+    expect(kept(fragmented.drain('r', 'ws'))).toBeLessThan(tasks)
   })
 
   it('keeps the FIRST failure when failures alone exceed the budget', () => {

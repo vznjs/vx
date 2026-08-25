@@ -88,6 +88,30 @@ interface InFlight {
  * one array push, zero copies. `finish` decides retention; `drain` emits the
  * bundle, failures first.
  */
+/**
+ * Per-retained-chunk overhead, in char-equivalents, charged against the RUN
+ * budget on top of the characters themselves.
+ *
+ * The budget exists to bound MEMORY, but a char count is not one: a task that
+ * emits a byte at a time (unbuffered progress output) stores the same content
+ * as thousands of separate strings, each with its own header and allocation.
+ * MEASURED on Bun 1.4: 1 000 000 chars arrive as one chunk for ~1.4 MB of
+ * marginal RSS, and as 1 000 000 one-char chunks for ~30 MB — so a 4 MiB
+ * char budget could hold ~80 MB of actual memory. Charging each chunk ~24
+ * char-equivalents makes the budget track what it is trying to limit; chunky
+ * output is unaffected (one 128 KiB chunk pays 24 on 131 072).
+ *
+ * The per-task TAIL cap deliberately stays a pure char count — it bounds how
+ * much a reader is shown, which is a different question from how much the
+ * process holds.
+ */
+const CHUNK_OVERHEAD_CHARS = 24
+
+/** What one retained entry costs the run budget: content + per-chunk overhead. */
+function budgetCost(chars: number, chunkCount: number): number {
+  return chars + chunkCount * CHUNK_OVERHEAD_CHARS
+}
+
 export class TaskLogBuffer {
   private readonly inFlight = new Map<string, InFlight>()
   private readonly retained = new Map<string, Retained>()
@@ -150,9 +174,9 @@ export class TaskLogBuffer {
     // Replace an earlier retention for the same task id (a retried task ends
     // once per attempt only via the winning outcome, but be defensive).
     const prior = this.retained.get(taskId)
-    if (prior !== undefined) this.retainedChars -= prior.chars
+    if (prior !== undefined) this.retainedChars -= budgetCost(prior.chars, prior.chunks.length)
     this.retained.set(taskId, entry)
-    this.retainedChars += entry.chars
+    this.retainedChars += budgetCost(entry.chars, entry.chunks.length)
     this.evictToBudget()
   }
 
@@ -168,7 +192,7 @@ export class TaskLogBuffer {
     const e = this.retained.get(taskId)
     if (e === undefined) return undefined
     this.retained.delete(taskId)
-    this.retainedChars -= e.chars
+    this.retainedChars -= budgetCost(e.chars, e.chunks.length)
     return {
       taskId: e.taskId,
       ...(e.hash !== undefined ? { hash: e.hash } : {}),
@@ -246,7 +270,7 @@ export class TaskLogBuffer {
     for (const e of order) {
       if (this.retainedChars <= RUN_LOG_BUDGET_CHARS) break
       if (e.chars === 0) continue // already a stub — frees nothing
-      this.retainedChars -= e.chars
+      this.retainedChars -= budgetCost(e.chars, e.chunks.length)
       e.truncatedHeadChars += e.chars
       e.chunks = []
       e.chars = 0
