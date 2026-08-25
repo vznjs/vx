@@ -103,6 +103,7 @@ facing summary.
 | `<pattern>`     | Match by package name. `*` matches any characters, including `/`.             |
 | `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root). |
 | `{<dir>}`       | Same as `./<dir>`.                                                            |
+| `.`             | The workspace root — i.e. EVERY package, not the one you are standing in.     |
 | `<pattern>...`  | Match + all transitive workspace dependencies.                                |
 | `...<pattern>`  | Match + all transitive workspace dependents.                                  |
 | `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.       |

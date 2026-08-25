@@ -483,6 +483,28 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (forty-ninth wave) — `filter.ts` audited: four hypotheses
+  REFUTED, one undocumented form documented.** The selection DSL decides
+  what runs, and a filter mistake never fails loudly — it silently runs
+  the wrong set — so it earns a pass on stakes alone. REFUTED, each by
+  executed probe: (1) the classic path-prefix spill (`./packages/app`
+  also selecting `./packages/app-extra`) — already closed by matching on
+  `dir + path.sep`, now PINNED because the failure it prevents is silent
+  over-selection, which reports nothing wrong; (2) a trailing slash from
+  shell tab-completion selecting nothing — `path.resolve` normalises it;
+  (3) the `{dir}` brace form drifting from `./dir` — identical;
+  (4) `[<since>]` resolving empty being misreported as a typo — the CLI
+  passes an `onNoMatch` that deliberately skips git selectors, with the
+  reason written at the call site. The one finding: `--filter .` selects
+  EVERY package (it resolves to the workspace root, consistent with the
+  documented "relative to workspace root" rule) — but it was absent from
+  the syntax table, and a pnpm user typing it expects "the package I am
+  standing in". Over-selection is the safe direction, so this is a docs
+  fix, not a behaviour change: the table now carries `.` with its real
+  meaning spelled out, and the pin nails all four path shapes so none
+  can drift. Differential: dropping the `path.sep` guard fails exactly
+  the spill pin.
+
 - **2026-08-25 (forty-eighth wave) — `src/workspace/` audited: the
   `--affected` machinery is CLEAN, and the one gap is a documentation
   gap on the sharpest CI question it answers.** First dedicated pass

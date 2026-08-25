@@ -217,6 +217,28 @@ describe('applyFilters', () => {
     ])
   })
 
+  it('a path filter does not spill into a sibling sharing its prefix', () => {
+    // `./packages/app` must not drag in `./packages/app-extra`. The guard
+    // is matching on `dir + sep`, and the failure it prevents is silent
+    // OVER-selection — a filter that runs more than you asked for reports
+    // nothing wrong, it just costs time and can hide a real failure.
+    const projects2 = [
+      mkProject('app', '/ws/packages/app'),
+      mkProject('appx', '/ws/packages/app-extra'),
+    ]
+    const graph2 = buildPackageGraph(projects2)
+    const sel = (raw: string): string[] => [
+      ...applyFilters({ filters: [parseFilter(raw, ROOT)], projects: projects2, graph: graph2 }),
+    ]
+    expect(sel('./packages/app')).toEqual(['app'])
+    // Shell tab-completion adds the trailing slash; path.resolve eats it.
+    expect(sel('./packages/app/')).toEqual(['app'])
+    expect(sel('{packages/app}')).toEqual(['app'])
+    // `.` is the workspace ROOT, so it selects everything — documented,
+    // and deliberately not pnpm's "the package I am standing in".
+    expect(sel('.').sort()).toEqual(['app', 'appx'])
+  })
+
   it('...[<since>] expands affected to their transitive DEPENDENTS', () => {
     // The CI-correctness direction, and the one `--affected` alone does
     // NOT cover: a change in `utils` must be able to pull `ui` and `app`
