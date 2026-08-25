@@ -14,6 +14,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import path from 'node:path'
+import { ESSENTIAL_ENV } from '../src/exec/index.js'
 import {
   loadProjectConfig,
   loadWorkspaceConfig,
@@ -352,5 +353,19 @@ describe('docs/schema.md unknown-field rejection', () => {
     })
     expect(message).toContain('workspaceFile')
     expect(message).toContain('workspaceFiles')
+  })
+})
+
+describe('docs/schema.md env allowlist matches src/exec/env.ts', () => {
+  it('documents EVERY essential var — the list is a security-shaped answer', async () => {
+    // A reader asking "what does my build script actually see?" gets this
+    // list, so an incomplete copy answers wrongly. It had drifted: USER,
+    // LOGNAME, TEMP and TMP were passed to every task and named nowhere.
+    const doc = await Bun.file(path.resolve(import.meta.dir, '../docs/schema.md')).text()
+    const start = doc.indexOf('**Essential allowlist**')
+    expect(start).toBeGreaterThan(-1)
+    const section = doc.slice(start, start + 1200)
+    const missing = ESSENTIAL_ENV.filter((name) => !section.includes(`\`${name}\``))
+    expect(missing).toEqual([])
   })
 })

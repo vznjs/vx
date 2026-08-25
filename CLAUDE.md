@@ -483,6 +483,30 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fifty-seventh wave) — `env.ts` audited: the isolation and
+  the key trade are both RIGHT and well documented; the doc's copy of the
+  allowlist was not, and is now pinned.** The hypothesis worth testing on
+  a task's environment is the stale-hit one: `CI` is in the essential
+  allowlist (so a task SEES it) but allowlist values are never folded
+  into a key, which means a build whose OUTPUT depends on `CI` could hit
+  across environments. REFUTED as a defect and better than refuted as
+  documentation: schema.md already names `CI` / `FORCE_COLOR` / `TERM`
+  with their exact mechanism (stdout bytes, which vx caches and
+  replays), plus `NODE_OPTIONS` and `LC_ALL`/`LANG`, explains WHY they
+  are excluded (a laptop and a CI runner could never share a remote
+  entry) and shows the fix (`cache.inputs.env`). Isolation itself is
+  real: only the allowlist + `passThrough` + `define` reach a child, so
+  ambient `GITHUB_*` cannot leak into a task. The finding is the
+  two-copies class one layer over: the doc ENUMERATES the code
+  constant, and the copy had drifted — `USER`, `LOGNAME`, `TEMP` and
+  `TMP` are passed to every task and were named nowhere. For a reader
+  asking "what does my build script actually see?" — a security-shaped
+  question — an incomplete list answers wrongly. `ESSENTIAL_ENV` is now
+  exported and a doc-parity test asserts every entry appears in that
+  paragraph, joining the schema-doc-drift suite that already guards the
+  validation-error table; the differential (dropping one name from the
+  doc) fails exactly the new pin.
+
 - **2026-08-25 (fifty-sixth wave) — the backend sweep FINISHED, after
   catching myself claiming a sweep I had not done.** Checking `eventSink`
   (the trilogy's third removal candidate) established it is live and

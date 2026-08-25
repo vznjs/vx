@@ -8,7 +8,13 @@ import path from 'node:path'
 //   3. define: explicit name=value pairs from the task config.
 //   4. binPaths prepended to PATH (after all the above resolve PATH).
 
-const ESSENTIAL_ENV: readonly string[] = [
+/**
+ * Exported so the schema doc's enumeration of it can be PINNED against the
+ * real list: a hand-copied allowlist is how the two drift, and a reader
+ * asking "what does my build script actually see?" is asking a
+ * security-shaped question that a stale list answers wrongly.
+ */
+export const ESSENTIAL_ENV: readonly string[] = [
   'PATH',
   'HOME',
   'SHELL',

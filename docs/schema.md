@@ -382,11 +382,14 @@ interface ExecEnv {
 The child process sees a deliberately limited env. From lowest to
 highest priority:
 
-1. **Essential allowlist** (hard-coded in `src/exec/env.ts`): `PATH`,
-   `HOME`, `SHELL`, `TMPDIR`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`,
-   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`, plus
-   Windows essentials like `SYSTEMROOT` / `APPDATA`. Without these,
-   typical CLI tools break. **_NOT_ folded into the cache key** — the
+1. **Essential allowlist** (hard-coded in `src/exec/env.ts`, and pinned
+   against this list by a test): `PATH`, `HOME`, `SHELL`, `USER`,
+   `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`,
+   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`,
+   and the Windows set `SYSTEMROOT`, `APPDATA`, `LOCALAPPDATA`,
+   `PROGRAMDATA`, `PROGRAMFILES`, `PROGRAMFILES(X86)`, `COMSPEC`,
+   `PATHEXT`. Nothing else from the parent environment reaches a task —
+   that is the whole list. Without these, typical CLI tools break. **_NOT_ folded into the cache key** — the
    same rule `passThrough` states below, and for the same reason.
 
    Read that carefully if your build's _output_ depends on one of
