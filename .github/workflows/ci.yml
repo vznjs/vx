@@ -77,15 +77,17 @@ jobs:
       # project's node_modules/.bin to PATH per task, so oxlint / oxfmt
       # resolve from a raw shell.
       #
-      # `--report-file` appends the per-task result table to the job summary,
-      # so a red run says WHICH task failed on the PR page instead of only in
-      # the log. Dogfooding it here is deliberate: the flag exists because the
-      # documented `--report=markdown >> "$GITHUB_STEP_SUMMARY"` recipe wrote
-      # the entire run log into the summary, and nothing caught that for
-      # months because this repo never ran its own recipe.
+      # The job summary comes from `@vzn/vx-github`, declared in
+      # vx.workspace.ts — it activates on GITHUB_STEP_SUMMARY and writes the
+      # verdict, stats, failures and the per-task table, so a red run says
+      # WHICH task failed on the PR page instead of only in the log.
       #
-      # No `if: always()` needed: vx writes the report itself before exiting,
-      # so a FAILING run — the case this is for — still lands its table, and
+      # `--report-file="$GITHUB_STEP_SUMMARY"` used to be passed here and was
+      # REMOVED when the plugin landed: both write the same file, so the page
+      # carried two tables. The plugin is the surface now; core's
+      # `--report=markdown` / `--report-file` remain for workspaces that want
+      # the table without declaring a plugin. Neither needs `if: always()` —
+      # vx writes before exiting, so a FAILING run still lands its summary and
       # the step's exit code still gates the job.
       #
       # VX_REQUIRE_SANDBOX turns an unavailable OS sandbox into a test FAILURE
@@ -99,7 +101,7 @@ jobs:
       - name: vx run ci
         env:
           VX_REQUIRE_SANDBOX: '1'
-        run: bun src/bin.ts run ci --report-file="$GITHUB_STEP_SUMMARY"
+        run: bun src/bin.ts run ci
 
   # The `ci` job above is scoped to ./tests (core). Workspace-member tests ran
   # only inside the removed cloud job, so `packages/*/tests/` has been

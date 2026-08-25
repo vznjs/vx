@@ -487,6 +487,26 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (seventieth wave) — dogfooding the GHA plugin DUPLICATED
+  the job summary, caught by reading the CI log instead of trusting the
+  green.** The previous wave declared `github()` and CI passed, which
+  proved nothing about what the page LOOKS like. Reading the runner log
+  for evidence the sink wrote cleanly turned up the step's actual
+  command: `bun src/bin.ts run ci --report-file="$GITHUB_STEP_SUMMARY"`
+  — core's manual report was ALREADY writing that exact file, so the
+  plugin's summary appended a SECOND table to the same page. Nothing
+  failed; the artifact was just wrong, which is the class a green check
+  cannot see. The flag is removed with the reasoning recorded at the
+  step: the plugin owns that surface now, while core's
+  `--report=markdown` / `--report-file` remain for workspaces that want
+  the table without declaring a plugin — the two were never meant to run
+  together. A grep lesson too: my "sink warnings" search matched
+  `sink .*(threw|disabled|failed)` and reported 1 hit, which turned out
+  to be a passing TEST NAME (`a sink that keeps throwing > is disabled
+after its first throw`). A pattern loose enough to match test titles
+  will always find something in a log that prints every test name —
+  read the hit before believing the count.
+
 - **2026-08-25 (sixty-ninth wave) — the repo dogfoods `@vzn/vx-github`,
   and the un-gated sandbox suite survived a second loaded darwin run.**
   The plugin shipped this morning had never run in a real Actions
