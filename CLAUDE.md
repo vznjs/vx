@@ -483,6 +483,31 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (forty-second wave) — hostile pass on my OWN deferral
+  machinery: the eligibility gate had a runtime-command hole, confirmed
+  and closed.** New-code rule applied to the code I wrote three waves
+  ago, from the angle the implementation never considered. Both the
+  design's rule and my prefix refinement examined `inputs.files` /
+  `inputs.workspaceFiles` only — but `cache.inputs.runtime` is a SHELL
+  command whose reads cannot be bounded, and its stdout is folded into
+  the key. CONFIRMED by executed probe: a consumer declaring
+  `runtime: 'cat out/gen.txt'` left its producer marked deferrable, so
+  that consumer's key would have moved with a transfer flag. Deferral
+  makes the class SHARPER than it was, which is the part worth
+  recording: skipping the output clean is exactly what leaves a stale
+  prior build for a runtime command to sample — the feature's own
+  never-clean behaviour feeds the hazard. Fix: any run declaring a
+  runtime or workspaceRuntime input defers nothing, blunt and
+  deliberately so (no analysis separates `node -v` from
+  `cat dist/version.txt` — the same reason auto-input inference is a
+  standing non-goal). Pinned both ways with an explicit false-positive
+  CONTROL (a run with no runtime inputs still defers), so the fix cannot
+  degenerate into "refuse everything"; differential kills exactly the
+  new pin. Doc corrected in place for the second time — the gate has now
+  been wrong twice in opposite directions (too coarse to be useful, then
+  too narrow to be sound), which is the honest shape of a correctness
+  gate written against a spec rather than against the config surface.
+
 - **2026-08-25 (forty-first wave) — `--download` phase 3: the exec-record
   short-circuit widens, and the existing chain test immediately caught a
   null it exposed.** Plugin-only. The record short-circuit fired for

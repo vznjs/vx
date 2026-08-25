@@ -39,10 +39,26 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
 
   const readersByProject = new Map<string, { taskId: string; prefixes: string[] }[]>()
   let workspaceReader: string | undefined
+  let runtimeReader: string | undefined
   for (const n of nodes.values()) {
     const cache = n.config.cache
     if (cache === undefined) continue
     if ((cache.inputs?.workspaceFiles?.length ?? 0) > 0) workspaceReader ??= n.id
+    // A `runtime` input is a SHELL COMMAND whose reads are unknowable —
+    // the same reason vx refuses to infer inputs by tracing. It can `cat` a
+    // producer's output (or path-escape its project to do it), and its
+    // stdout is folded into the key, so its answer would differ by whether
+    // the bytes were fetched. Deferral makes that sharper than it already
+    // was: it deliberately skips the output clean, so a stale prior build
+    // is exactly what such a command would sample. Nothing defers in a run
+    // that declares one — worse than nothing would be a key that moves with
+    // a transfer flag.
+    if (
+      (cache.inputs?.runtime?.length ?? 0) > 0 ||
+      (cache.inputs?.workspaceRuntime?.length ?? 0) > 0
+    ) {
+      runtimeReader ??= n.id
+    }
     const files = cache.inputs?.files
     const prefixes = files === undefined || files.length === 0 ? ['.'] : files.map(staticPrefix)
     const list = readersByProject.get(n.projectName)
@@ -61,6 +77,13 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
     }
     const files = outputs?.files ?? []
     if (files.length === 0) continue
+    if (runtimeReader !== undefined) {
+      ineligible.set(
+        n.id,
+        `${runtimeReader} declares a cache.inputs.runtime command, whose reads cannot be bounded`,
+      )
+      continue
+    }
     if (workspaceReader !== undefined) {
       ineligible.set(
         n.id,

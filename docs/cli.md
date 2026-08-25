@@ -1264,7 +1264,11 @@ tuning cannot change what a command produces.
 One safety gate: a task whose outputs another task's `cache.inputs`
 globs could read on disk is silently kept eager, because deferring it
 would make that key depend on whether the bytes arrived. `--dry` names
-each downgrade. When bytes are fetched later, vx saves an ordinary
+each downgrade. A run in which any task declares a
+`cache.inputs.runtime` / `workspaceRuntime` command defers **nothing**:
+a shell command's reads cannot be bounded, so vx cannot prove it will
+not read a deferred output (the same reason vx refuses to infer inputs
+by tracing). When bytes are fetched later, vx saves an ordinary
 cache entry for them, so the next run is a plain local hit.
 
 ## `vx prune`

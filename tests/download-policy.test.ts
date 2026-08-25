@@ -80,6 +80,42 @@ describe('deferralEligibility', () => {
     expect(deferralEligibility(wsIn).get('a#gen')).toContain('inputs.workspaceFiles')
   })
 
+  it('a runtime-command reader forces eager — its reads cannot be bounded', () => {
+    // The hole the first cut had: the gate compared GLOBS, but a
+    // `cache.inputs.runtime` command is a shell command that can `cat` the
+    // producer's outputs, and its stdout is folded into the key. Deferral
+    // sharpens it further by skipping the output clean, so a stale prior
+    // build is exactly what such a command would sample.
+    const nodes = graph(
+      node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } }),
+      node('a#use', {
+        inputs: { files: ['src/**'], runtime: [{ command: 'cat out/gen.txt' }] },
+        outputs: { files: ['dist/**'] },
+      }),
+    )
+    expect(deferralEligibility(nodes).get('a#gen')).toContain('cache.inputs.runtime')
+  })
+
+  it('a workspaceRuntime reader does the same, across projects', () => {
+    const nodes = graph(
+      node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } }),
+      node('b#use', {
+        inputs: { files: ['src/**'], workspaceRuntime: [{ command: 'cat a/out/gen.txt' }] },
+        outputs: { files: ['dist/**'] },
+      }),
+    )
+    expect(deferralEligibility(nodes).has('a#gen')).toBe(true)
+  })
+
+  it('CONTROL: a run with no runtime inputs still defers', () => {
+    // Without this the fix above could degenerate into "refuse everything".
+    const nodes = graph(
+      node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } }),
+      node('a#use', { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }),
+    )
+    expect(deferralEligibility(nodes).has('a#gen')).toBe(false)
+  })
+
   it('project boundaries hold: a different project cannot force it eager', () => {
     const nodes = graph(
       node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] } }),

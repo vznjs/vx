@@ -200,6 +200,20 @@ boundaries — all three force ineligible. Project boundaries still bound
 the search to the producer's own project, and a task never observes its
 own outputs (excluded from its own key by construction).
 
+**SECOND CORRECTION (2026-08-25, post-ship hostile pass).** Both the
+original rule and its prefix refinement examined only `inputs.files` /
+`inputs.workspaceFiles`. A `cache.inputs.runtime` command is a SHELL
+command whose reads cannot be bounded — it can `cat` a producer's
+output, or path-escape its project to do it — and its stdout is folded
+into the key, so its answer moves with whether the bytes were fetched.
+Deferral sharpens the hazard rather than merely inheriting it: skipping
+the output clean is precisely what leaves a stale prior build for such
+a command to sample. A run declaring any runtime input therefore defers
+NOTHING. Blunt, and deliberately so: no static analysis can separate
+`node -v` from `cat dist/version.txt`, which is the same reason vx
+refuses to infer inputs by tracing. Such workspaces get today's eager
+behaviour, never worse than before the flag existed.
+
 Cross-run residual, reasoned through rather than hand-waved: a FUTURE
 run's consumer that reads the producer's outputs via globs either (a)
 declares `dependsOn` on the producer — then the producer is in that
