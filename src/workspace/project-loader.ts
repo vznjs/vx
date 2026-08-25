@@ -252,6 +252,14 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         if (typeof persistent !== 'object' || persistent === null) {
           throw new UserError(`${where}.exec.persistent must be an object (or omitted)`)
         }
+        // The one nested object that had no unknown-key check while every
+        // sibling did — and the failure it let through is the quiet kind:
+        // `readWhen` (typo) leaves `readyWhen` undefined, so the task is
+        // ready the moment it spawns instead of when its server actually
+        // listens, and the dependents that start too early fail in a way
+        // that points at the user's code rather than at their config.
+
+        assertKnownFields(persistent, PERSISTENT_FIELDS, `${where}.exec.persistent`)
         const readyWhen = (persistent as { readyWhen?: unknown }).readyWhen
         if (readyWhen !== undefined && typeof readyWhen !== 'string') {
           throw new UserError(`${where}.exec.persistent.readyWhen must be a string regex`)
@@ -464,6 +472,7 @@ const EXEC_FIELDS = new Set([
   'persistent',
   'remote',
 ])
+const PERSISTENT_FIELDS = new Set(['readyWhen'])
 const CACHE_FIELDS = new Set(['inputs', 'outputs'])
 const CACHE_INPUT_FIELDS = new Set([
   'files',

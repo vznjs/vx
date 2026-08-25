@@ -580,6 +580,29 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/exec has unknown field "persistant"/)
     })
 
+    it('rejects a typo INSIDE persistent, one level below the sibling checks', async () => {
+      // `persistant` (the level above) was already caught; `readWhen` was
+      // not, and it is the quieter failure: `readyWhen` stays undefined, so
+      // the task reports ready the moment it spawns rather than when its
+      // server listens, and the dependents that start too early fail in a
+      // way that points at the user's code instead of their config.
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, cfg(`{ exec: { command: 'true', persistent: { readWhen: 'up' } } }`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /exec\.persistent has unknown field "readWhen"/,
+      )
+    })
+
+    it('CONTROL: valid persistent shapes still load', async () => {
+      // A refusal that breaks a working config is worse than the typo it
+      // catches, so both legal shapes are pinned alongside it.
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, cfg(`{ exec: { command: 'true', persistent: { readyWhen: 'up' } } }`))
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+      await writeFile(file, cfg(`{ exec: { command: 'true', persistent: {} } }`))
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+    })
+
     it('rejects unknown keys at the cache level', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(

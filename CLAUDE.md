@@ -483,6 +483,30 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fifty-first wave) — `project-loader.ts`: the last
+  unaudited workspace file, and it yielded a real one — a typo INSIDE
+  `exec.persistent` was silently accepted.** The loader is otherwise
+  the best-validated surface in the tree: unknown keys are rejected at
+  the task, `exec`, `cache`, `cache.inputs`, `cache.outputs`, `sandbox`,
+  `sandbox.network` and `resources` levels, `EXEC_FIELDS` matches
+  `ExecConfig` exactly (checked field by field — a list that OMITS a
+  real field is the inverse defect, a refusal that breaks a working
+  config), and `..` path segments are refused in output globs with the
+  data-loss reasoning written down. CONFIRMED by probe: `persistent`
+  was the one nested object with no unknown-key check, so
+  `persistent: { readWhen: 'up' }` loaded fine — `readyWhen` stays
+  undefined and the task reports ready the moment it SPAWNS instead of
+  when its server listens. The quiet kind of failure: dependents start
+  too early and fail in a way that points at the user's code rather
+  than their config, and the existing tests covered the typo one level
+  UP (`persistant`) but not one level down. Fixed with the same
+  `assertKnownFields` every sibling uses; pinned with a false-positive
+  CONTROL (both legal shapes — `{readyWhen}` and `{}` — still load),
+  because a refusal that breaks a working config is worse than the typo
+  it catches. Differential kills exactly the new pin. The module audit
+  closes 3 clean / 1 defect, and the defect was in the file that reads
+  user input — which is where the standing rule says to validate.
+
 - **2026-08-25 (fiftieth wave) — `fingerprint.ts` audited: CLEAN, and the
   alarming-looking ABSENCE is pinned as deliberate.** Highest-stakes file
   left in `src/workspace/` — it folds into every cache key, so a miss is
