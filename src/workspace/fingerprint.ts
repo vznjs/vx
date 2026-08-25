@@ -25,6 +25,17 @@ export const WORKSPACE_FINGERPRINT_FILES = [
   'pnpm-workspace.yaml',
 ]
 
+// DELIBERATELY ABSENT: `vx.workspace.{ts,mts,js,mjs}`. Everything it can
+// declare — `concurrency`, `cacheDir`, `timeout`, `predictive`, and the
+// plugin list — is placement, storage or observability, never what a
+// command produces; core's three seams may change WHERE a task runs, not
+// WHAT it runs (architecture principle #3). Folding it in would also do
+// active harm: a laptop declaring only the local plugins and a CI runner
+// declaring `reapi()` would compute different fingerprints and share not
+// one cache entry — the same split the rejected `NODE_OPTIONS` non-goal
+// describes. A per-task input that genuinely varies belongs in
+// `cache.inputs`, which is the surface built for it.
+
 /**
  * One hash for the workspace as a whole, derived from whichever
  * lockfile + workspace-definition files exist at the root. Folded

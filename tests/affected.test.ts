@@ -313,6 +313,29 @@ describe('affectedProjects', () => {
       expect([...out].sort()).toEqual(['a', 'b'])
     })
 
+    it('a vx.workspace change does NOT move the fingerprint', async () => {
+      // The deliberate exclusion, pinned so nobody "fixes" it. Everything
+      // vx.workspace can declare is placement/storage/observability, never
+      // what a command produces — and folding it in would split a laptop
+      // (local plugins) from CI (reapi declared) into disjoint cache
+      // namespaces, sharing not one entry.
+      const before = await computeWorkspaceFingerprint(root)
+      await writeFile(
+        path.join(root, 'vx.workspace.mjs'),
+        'export default { plugins: [], concurrency: 3 }\n',
+      )
+      expect(await computeWorkspaceFingerprint(root)).toBe(before)
+      await writeFile(
+        path.join(root, 'vx.workspace.mjs'),
+        'export default { plugins: [], concurrency: 99, predictive: true }\n',
+      )
+      expect(await computeWorkspaceFingerprint(root)).toBe(before)
+      // CONTROL: the same helper DOES move on a real input change, so the
+      // assertion above is about the exclusion and not a dead hash.
+      await writeFile(path.join(root, 'bun.lock'), '{"lockfileVersion":9}')
+      expect(await computeWorkspaceFingerprint(root)).not.toBe(before)
+    })
+
     it('EVERY file the fingerprint hashes widens selection', async () => {
       // Driven off the exported constant rather than a copy, so adding an entry
       // to the fingerprint cannot leave `--affected` behind. Each name is

@@ -483,6 +483,32 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fiftieth wave) — `fingerprint.ts` audited: CLEAN, and the
+  alarming-looking ABSENCE is pinned as deliberate.** Highest-stakes file
+  left in `src/workspace/` — it folds into every cache key, so a miss is
+  the stale-hit class. The hash itself holds up: seed-chained
+  `name\0` then bytes per file in declaration order, so content cannot
+  migrate between files; absent ≠ empty (an empty lockfile still folds
+  its name and an empty-bytes hash); creating OR deleting a lockfile
+  moves it; and `--affected` is already driven off the same exported
+  constant, with a test asserting the two surfaces move together rather
+  than agreeing by coincidence. The finding is what is NOT hashed:
+  `vx.workspace.{ts,mts,js,mjs}` is absent from the list, which reads
+  like an oversight and is the opposite. Everything a `WorkspaceConfig`
+  can declare — `concurrency`, `cacheDir`, `timeout`, `predictive`, the
+  plugin list — is placement, storage or observability, never what a
+  command produces (architecture principle #3: a plugin may change WHERE
+  a task runs, never what it runs). Folding it in would also do active
+  harm: a laptop declaring the local plugins and a CI runner declaring
+  `reapi()` would compute different fingerprints and share not one cache
+  entry — precisely the split the rejected `NODE_OPTIONS` non-goal
+  describes. Both the reasoning and a pin now sit at the exclusion
+  (config churn must NOT move the hash, with a lockfile control proving
+  the assertion is not a dead hash); the differential — adding
+  `vx.workspace.mjs` to the list — fails exactly that pin. Third
+  consecutive workspace file to close clean, which is a real signal
+  about this module rather than three coincidences.
+
 - **2026-08-25 (forty-ninth wave) — `filter.ts` audited: four hypotheses
   REFUTED, one undocumented form documented.** The selection DSL decides
   what runs, and a filter mistake never fails loudly — it silently runs
