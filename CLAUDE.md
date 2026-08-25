@@ -423,9 +423,10 @@ time every single time.
   a file) are still withheld, via `sandboxReportingReliable`. Full
   `VX_REQUIRE_SANDBOX` on darwin stays refused: it would make the lossy
   reporting channel a merge gate.
-- `--info` and `--cache-local` are byte-identical tokens (56 189 248), so a
-  blue line is ambiguous between "informational" and "cache". Changing a token
-  value moves the visual baselines — a design call.
+- ~~`--info` and `--cache-local` are byte-identical tokens~~ — **MOOT
+  2026-08-25**: those were the dashboard's CSS custom properties, deleted
+  with vx-cloud on 2026-08-23. The item outlived the code it described;
+  nothing in the tree defines either token.
 - ~~`isOutputsCurrent` compares size+mode+second-mtime~~ — **STALE, corrected
   2026-08-24 by probe**: the check compares at MILLISECOND precision with a
   restore-time re-sync, and a same-size same-second different-ms edit IS
@@ -470,23 +471,45 @@ time every single time.
   reporting loss only; the settle window now also covers clean-exit
   verify tasks (`settleOnCleanExit`), which that shape previously never
   got.
-- **The macOS sandbox suites are load-flaky as a CLASS.** Two different tests
-  failed in two consecutive full-suite runs on Bun 1.4.0 —
-  `sandbox-runtime` "still denies an undeclared read through a symlinked
-  workspace root" (zero `sandboxViolationLines` where a denial should name
-  `token.txt`) and `verify` "proves a task whose declared inputs are
-  complete" — and BOTH pass in isolation, 3/3 on re-run. Same family as the
-  recorded `--verify=inputs`-on-macOS defect: sandbox-exec behaviour under
-  concurrent load. Invisible in CI (ubuntu-only), which is the same blind spot
-  the darwin-job item covers. Worth root-causing rather than retrying, because
-  the symptom is a violation-reporting path reporting NO violations — which is
-  indistinguishable from "the sandbox allowed it".
-- The GHA job-summary plugin and the PR check-run integration went with the
-  cloud removal (2026-08-23). Core's `--report=markdown` / `--report-file`
-  still produce the table; the automatic-on-every-run plugin and the Checks
-  API surface need `@vzn/vx-github`.
+- ~~The macOS sandbox suites are load-flaky as a CLASS~~ — **RESOLVED
+  2026-08-25**, and both named tests with it. It WAS root-caused (lossy
+  async unified-log delivery, not sandbox misbehaviour — see the reporting
+  item above): `sandbox-runtime`'s symlinked-root test now asserts the
+  ARTIFACT and only checks the violation line where reporting is reliable,
+  and `verify`'s clean-task false positive was the ancestor-traversal
+  defect, closed at the source. "Invisible in CI (ubuntu-only)" is also
+  stale — the darwin job ships, runs the suite, and gates on the
+  enforcement canary.
+- ~~The GHA job-summary plugin and the PR check-run integration went with
+  the cloud removal~~ — **SHIPPED 2026-08-25** as `@vzn/vx-github`: both
+  halves (the job summary and the Checks API check-run), declining at zero
+  cost outside GitHub Actions.
 
 ### Recent entries (2026-08)
+
+- **2026-08-25 (sixty-third wave) — the OPEN-ITEMS list had removal rot of
+  its own: three of its entries were already dead.** Reaching for the last
+  "actionable" item — the `--info` / `--cache-local` token collision —
+  found no such tokens anywhere in the tree: they were the DASHBOARD's CSS
+  custom properties, deleted with vx-cloud on 2026-08-23. The item had
+  outlived the code it described by two days and would have cost the next
+  session a cycle, as it nearly cost me one. Sweeping the rest of the list
+  on that suspicion found two more: "the macOS sandbox suites are
+  load-flaky as a CLASS" names two specific tests, BOTH since fixed (the
+  symlinked-root pin is artifact-based now, and the clean-task false
+  positive was the ancestor-traversal defect closed at source), asks for
+  root-causing that HAPPENED (lossy unified-log delivery), and calls the
+  problem "invisible in CI (ubuntu-only)" when the darwin job now runs the
+  suite and gates on the canary; and the GHA job-summary/Checks-API item
+  was satisfied in full by `@vzn/vx-github` earlier today. All three
+  closed in the file's strikethrough-with-date convention rather than
+  deleted, so the record of what was true still reads. The lesson
+  generalises the removal-sweep theme one level up: I swept the docs, the
+  source comments and the capability validation after the cloud removal,
+  but not the WORK QUEUE — and a stale entry there is worse than stale
+  prose, because prose merely misinforms a reader while a stale open item
+  actively recruits effort. Sweep the list whenever a removal lands or a
+  named gap ships.
 
 - **2026-08-25 (sixty-second wave) — the log budget now tracks MEMORY, not
   characters; the open item closes in full.** MEASURED first, because the
