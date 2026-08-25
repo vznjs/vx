@@ -24,7 +24,18 @@ export function resolveCheckRunEnv(env: Record<string, string | undefined>): Che
   const token = env['GITHUB_TOKEN']
   const repository = env['GITHUB_REPOSITORY']
   const sha = env['GITHUB_SHA']
-  if (token === undefined || token === '' || repository === undefined || sha === undefined) {
+  // All three treated alike: an EMPTY var is as absent as a missing one.
+  // Only the token used to be checked for empty, so `GITHUB_REPOSITORY=''`
+  // built a POST to `/repos//check-runs` and `GITHUB_SHA=''` sent
+  // `head_sha: ''` — a 404 or 422 warning where a clean decline was meant.
+  if (
+    token === undefined ||
+    token === '' ||
+    repository === undefined ||
+    repository === '' ||
+    sha === undefined ||
+    sha === ''
+  ) {
     return null
   }
   return { token, repository, sha, apiUrl: env['GITHUB_API_URL'] ?? 'https://api.github.com' }

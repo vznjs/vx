@@ -517,6 +517,36 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-26 — `@vzn/vx-github` audited: two defects, both found by
+  reading for ASYMMETRY, both test-first per the new directive.** The
+  newest package in the tree, and its Checks API half is the least
+  exercised code here by construction — this repo's CI puts no
+  `GITHUB_TOKEN` in the environment, so that path has never run against
+  anything real. Audited with injected transports only; nothing was
+  POSTed to the live API. (1) `resolveCheckRunEnv` treated the three
+  required vars UNALIKE: `GITHUB_TOKEN` was rejected when empty, but
+  `GITHUB_REPOSITORY` and `GITHUB_SHA` only when undefined. An empty
+  repository built a POST to `/repos//check-runs` and an empty sha sent
+  `head_sha: ''` — a 404 or 422 warning where a clean decline was
+  intended. The existing test covered the token's empty case and neither
+  of the others, which is how the asymmetry survived. (2) `flush()`
+  awaited the summary write BEFORE the check-run POST with nothing
+  between them, so a failed write (a full runner disk) took the check run
+  with it. That is the exact coupling the package's own doc comment
+  disclaims in the other direction — "the plugin declines the check (not
+  the whole sink) without one, so the summary still works token-less" —
+  and the check is the MORE visible artifact, since it lands on the PR.
+  Now the write is try/caught and reported, the sink carries its own
+  `warn` (which also removed the duplicate warn threaded through the
+  check object), and the POST proceeds either way; reported rather than
+  thrown, because a telemetry sink may never break a run. Both were
+  written as FAILING TESTS FIRST and both differentials fail exactly
+  their own pin; package suite 14/0. Not pursued, recorded so the next
+  pass can weigh it: the footer escapes `summary.run.command` and then
+  wraps it in backticks, so a command containing a pipe would render a
+  literal backslash — the escape is right for the TABLE cells above it
+  and cosmetic-only here.
+
 - **2026-08-25 (eleventh wave) — OWNER DIRECTIVE: a probe that confirms a
   thesis becomes a TEST, not a log entry.** "When you are testing
   something write an actual test if not overly expensive to confirm your

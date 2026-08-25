@@ -49,12 +49,8 @@ export class GithubSummarySink implements TelemetrySink {
     private readonly file: string,
     private readonly title: string,
     private readonly append: (file: string, markdown: string) => Promise<void>,
-    private readonly check?: {
-      env: CheckRunEnv
-      name: string
-      fetchFn: FetchFn
-      warn: (m: string) => void
-    },
+    private readonly warn: (m: string) => void,
+    private readonly check?: { env: CheckRunEnv; name: string; fetchFn: FetchFn },
   ) {}
 
   onRunSummary(summary: RunSummaryRecord): void {
@@ -65,7 +61,18 @@ export class GithubSummarySink implements TelemetrySink {
   async flush(): Promise<void> {
     if (this.summary === undefined) return
     const markdown = renderJobSummary(this.summary, this.title)
-    await this.append(this.file, markdown)
+    // The two artifacts are INDEPENDENT, and the plugin already says so in
+    // one direction: it declines the check-run without a token and still
+    // writes the summary. The reverse has to hold, or a full disk on the
+    // runner costs the PR its check — the more visible of the two. Reported,
+    // not thrown: a telemetry sink may never break a run.
+    try {
+      await this.append(this.file, markdown)
+    } catch (err) {
+      this.warn(
+        `vx-github: could not write the job summary to ${this.file}: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
     if (this.check !== undefined) {
       await postCheckRun({
         env: this.check.env,
@@ -76,7 +83,7 @@ export class GithubSummarySink implements TelemetrySink {
           sha: this.check.env.sha,
         }),
         fetchFn: this.check.fetchFn,
-        warn: this.check.warn,
+        warn: this.warn,
       })
     }
   }
@@ -89,7 +96,7 @@ export function github(options: GithubPluginOptions = {}): VxPlugin {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']
       if (file === undefined || file === '') return undefined
       const append = options.append ?? (async (f: string, md: string) => appendFile(f, md, 'utf8'))
-      let check: ConstructorParameters<typeof GithubSummarySink>[3]
+      let check: ConstructorParameters<typeof GithubSummarySink>[4]
       if (options.checks !== false) {
         const env = resolveCheckRunEnv(process.env)
         if (env !== null) {
@@ -97,7 +104,6 @@ export function github(options: GithubPluginOptions = {}): VxPlugin {
             env,
             name: options.checkName ?? 'vx',
             fetchFn: options.fetchFn ?? (fetch as unknown as FetchFn),
-            warn: (m) => ctx.warn(m),
           }
         } else if (options.checks === true) {
           ctx.warn(
@@ -105,7 +111,13 @@ export function github(options: GithubPluginOptions = {}): VxPlugin {
           )
         }
       }
-      return new GithubSummarySink(file, options.title ?? 'vx run', append, check)
+      return new GithubSummarySink(
+        file,
+        options.title ?? 'vx run',
+        append,
+        (m) => ctx.warn(m),
+        check,
+      )
     },
   }
 }

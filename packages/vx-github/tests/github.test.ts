@@ -192,10 +192,58 @@ describe('Checks API', () => {
     GITHUB_SHA: 'abc123',
   }
 
+  it('a failed summary write still posts the check run', async () => {
+    // The two outputs are independent, and the plugin already says so in one
+    // direction: it declines the CHECK without a token while keeping the
+    // summary. The reverse has to hold, or a full disk on the runner silently
+    // costs the PR its check — the more visible of the two artifacts.
+    const saved = {
+      t: process.env['GITHUB_TOKEN'],
+      r: process.env['GITHUB_REPOSITORY'],
+      s: process.env['GITHUB_SHA'],
+    }
+    process.env['GITHUB_TOKEN'] = 't0ken'
+    process.env['GITHUB_REPOSITORY'] = 'vznjs/vx'
+    process.env['GITHUB_SHA'] = 'abc123'
+    const warns: string[] = []
+    const posted: string[] = []
+    try {
+      const sink = github({
+        summaryFile: '/tmp/sumfile.md',
+        append: async () => {
+          throw new Error('ENOSPC: no space left on device')
+        },
+        fetchFn: async (url: string) => {
+          posted.push(url)
+          return { ok: true, status: 201, text: async () => '' }
+        },
+      }).telemetry!({ ...ctx, warn: (m: string) => warns.push(m) }) as GithubSummarySink
+      sink.onRunSummary!(summary([task({})]))
+      await sink.flush!()
+    } finally {
+      for (const [k, v] of [
+        ['GITHUB_TOKEN', saved.t],
+        ['GITHUB_REPOSITORY', saved.r],
+        ['GITHUB_SHA', saved.s],
+      ] as const) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+    expect(posted.length).toBe(1)
+    expect(warns.some((w) => w.includes('ENOSPC'))).toBe(true)
+  })
+
   it('resolveCheckRunEnv needs all three vars and defaults the API url', async () => {
     const { resolveCheckRunEnv } = await import('../src/checks.js')
     expect(resolveCheckRunEnv({})).toBeNull()
     expect(resolveCheckRunEnv({ ...ENV, GITHUB_TOKEN: '' })).toBeNull()
+    // An EMPTY var is as absent as a missing one, and all three have to agree.
+    // Only the token was checked for it, so an empty repository POSTed to
+    // `/repos//check-runs` and an empty sha POSTed `head_sha: ''` — a 404 or
+    // 422 warning instead of a clean decline.
+    expect(resolveCheckRunEnv({ ...ENV, GITHUB_REPOSITORY: '' })).toBeNull()
+    expect(resolveCheckRunEnv({ ...ENV, GITHUB_SHA: '' })).toBeNull()
     expect(resolveCheckRunEnv(ENV)).toEqual({
       token: 't0ken',
       repository: 'vznjs/vx',
