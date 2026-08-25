@@ -508,6 +508,39 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (ninth wave) — the remote cache's existence probe promised
+  artifacts that were gone, on one server and not the other.** Hostile
+  pass on `ReapiRemoteCache`, the half of the package whose executor gave
+  up two defects earlier today. `has()` was one `GetActionResult` and
+  nothing else, so an AC entry outliving its CAS blob — the state the
+  file's own comment calls "an ordinary state, not a fault" — read as a
+  HIT. MEASURED against both live servers rather than reasoned about,
+  and they DISAGREE: bazel-remote validates an ActionResult's referenced
+  blobs and answers `has -> false`, NativeLink serves the dangling entry
+  and answers `has -> true`. Both answer `get -> null`, so the two calls
+  contradicted each other on NativeLink. Blast radius is exactly one
+  surface — `cache.has()` reaches only `plan.ts`, so `--dry` / `--graph`
+  would predict `cache hit (remote)` for a task that then executes; the
+  restore tier is local-only and cannot be mis-scheduled by it. FIXED by
+  checking the artifact with `findMissingBlobs`, the same pattern this
+  package already uses for upstream records: one extra round trip, and
+  only for a PREDICTED HIT, since a miss still short-circuits in one
+  call. THE TEST PLACEMENT IS THE INTERESTING PART: the natural home is
+  the cache suite, which CI runs against bazel-remote — where the server
+  hides the entry and the assertion passes with or without the fix. A
+  vacuous pin. It lives in the exec suite instead, against NativeLink,
+  which is the only endpoint where the client's own check is observable;
+  the differential confirms it (mutation fails exactly that pin there).
+  Shipped with a control in the same test so the probe cannot degenerate
+  into "never hit". REFUTED while in there, so the next pass does not
+  re-tread: (1) `digestOf` hardcodes sha256 and that is CONSISTENT —
+  `negotiate()` deliberately pins SHA256 unless a caller opts in, and the
+  plugin never does; (2) the cache client never calls `negotiate()`, so
+  it never enables zstd, which costs nothing because the artifact is
+  already `.tar.zst`; (3) `remoteHasMany` is absent for a real reason —
+  REAPI has no batch ActionCache read, so it could not be implemented
+  more cheaply than N calls.
+
 - **2026-08-25 (eighth wave) — `vx why` called a cache HIT a re-run, and
   blamed a flag that could not have applied.** Found by running the verb
   on real data instead of reading it: `vx why test` reported

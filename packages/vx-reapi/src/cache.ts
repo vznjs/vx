@@ -71,9 +71,24 @@ export class ReapiRemoteCache {
     this.client = new ReapiClient(opts)
   }
 
-  /** Existence probe — one `GetActionResult`, no artifact bytes. */
+  /**
+   * Existence probe — no artifact bytes, but it does confirm the artifact
+   * still EXISTS rather than trusting the entry that names it.
+   *
+   * Servers disagree here, measured both ways: bazel-remote validates an
+   * ActionResult's referenced blobs and hides a dangling entry, NativeLink
+   * serves it. Without the second call, `has` on a NativeLink-style server
+   * promises a hit that `get` then cannot honour — and the only consumer of
+   * `has` is the `--dry` / `--graph` plan, whose entire job is predicting
+   * hit vs miss. Costs one extra round trip, and only for a PREDICTED HIT:
+   * a miss still answers in one call.
+   */
   async has(hash: string): Promise<boolean> {
-    return (await this.client.getActionResult(actionDigestFor(hash))) !== null
+    const result = await this.client.getActionResult(actionDigestFor(hash))
+    if (result === null) return false
+    const file = result.output_files?.find((f) => f.path === ARTIFACT_PATH)
+    if (file === undefined) return false
+    return (await this.client.findMissingBlobs([file.digest])).length === 0
   }
 
   async get(hash: string): Promise<{ body: ArrayBuffer; durationMs: number | undefined } | null> {

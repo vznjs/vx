@@ -125,6 +125,17 @@ cannot be told apart from real outputs, so a missing blob there only
 warns; prefer a literal first segment (`dist/*.js`) when you want the
 stricter check.
 
+## The existence probe confirms the artifact, not just the entry
+
+`has()` — what `vx run --dry` and `--graph` use to predict hit vs miss —
+reads the ActionCache entry AND checks the artifact blob is still in the
+CAS. The second call is not redundant, because servers disagree: measured
+against both, bazel-remote validates an ActionResult's referenced blobs
+and hides a dangling entry, while NativeLink serves it. Without the
+check, a plan would report `cache hit (remote)` for a task that then
+executes for real. It costs one extra round trip and only for a PREDICTED
+HIT — a miss still answers in a single call.
+
 ## Downloads are verified
 
 Every blob read — ByteStream and batch alike, compressed or not — is

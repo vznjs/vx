@@ -628,3 +628,50 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
     }
   }, 180_000)
 })
+
+// The CACHE layer's existence probe, pinned HERE rather than in the cache
+// suite on purpose: bazel-remote validates an ActionResult's referenced blobs
+// and hides a dangling entry, so this assertion passes there whether or not
+// the client checks anything — a vacuous pin. NativeLink serves the dangling
+// entry, so this endpoint is the only place the check is observable.
+describe.if(run)('the remote cache probe does not promise an evicted artifact', () => {
+  const endpoint = ENDPOINT as string
+
+  it('has() is FALSE when the artifact blob is gone, TRUE when it is there', async () => {
+    const { ReapiRemoteCache, actionDigestFor, digestOf } = await import('../src/cache.js')
+    const n = `${process.pid}-${Bun.nanoseconds()}`
+    const client = new ReapiClient({ endpoint })
+    const cache = new ReapiRemoteCache({ endpoint })
+    try {
+      await client.negotiate()
+
+      // CONTROL: a real artifact, uploaded — has() must still say yes, or the
+      // refusal has degenerated into "never hit".
+      const live = `vx-live-${n}`
+      const body = new TextEncoder().encode(`artifact-${n}`)
+      await cache.put(live, body, { durationMs: 7 })
+      expect(await cache.has(live)).toBe(true)
+      expect((await cache.get(live)) !== null).toBe(true)
+
+      // The defect: an entry naming a blob that was never uploaded. `get`
+      // already answered null here; `has` used to answer true, so `--dry`
+      // predicted a remote hit for a task that would really execute.
+      const dangling = `vx-dangling-${n}`
+      await client.updateActionResult(actionDigestFor(dangling), {
+        exit_code: 0,
+        output_files: [
+          {
+            path: 'vx-artifact.tar.zst',
+            digest: digestOf(new TextEncoder().encode(`never-uploaded-${n}`)),
+            is_executable: false,
+          },
+        ],
+      })
+      expect(await cache.has(dangling)).toBe(false)
+      expect(await cache.get(dangling)).toBeNull()
+    } finally {
+      cache.close()
+      client.close()
+    }
+  }, 120_000)
+})
