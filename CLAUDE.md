@@ -483,6 +483,30 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (forty-fourth wave) — deferral × failure paths: one
+  under-report CONFIRMED and fixed, `--continue` propagation REFUTED as
+  broken, and a test of mine that was wrong before the code was.** Two
+  angles left over from the deferral rotation. (1) CONFIRMED: the
+  summary's "left outputs remote" list filtered by the `inflight` map,
+  but entries are cleared only on SUCCESS — so a producer whose fetch
+  FAILED was hidden from the very line that tells a user their tree is
+  not current. Exactly backwards: that is the case the line exists for.
+  `pending()` is now simply the surviving entries; differential kills
+  the pin. (2) REFUTED: `--continue=never` propagates a materialisation
+  failure like any other — the synthetic consumer failure flows through
+  the ordinary outcome path, trips the global fail-fast, and leaves the
+  queued sibling skipped. Worth the wave because the FIRST version of
+  that pin failed and the code was right: with both consumers in flight
+  at once they BOTH legitimately fail (fail-fast stops queued dispatch;
+  in-flight work finishes), so the assertion proved nothing until it
+  pinned `concurrency: 1` the way the scheduler's own fail-fast pins
+  do. A red pin is a claim about the TEST at least as often as about
+  the code — recorded again because it cost a cycle to re-derive.
+  Also checked and deliberately left alone: `outputs: 'deferred'` is
+  telemetry-only and absent from `vx last`'s persisted history (the
+  `where` precedent); persisting it would be a schema change for a
+  field the run summary already reports live.
+
 - **2026-08-25 (forty-third wave) — `--verify` × deferral was a VACUOUS
   PROOF; the design's own claim was true of one mode out of three.** The
   doc asserted "`--verify` runs pin all placement local, so nothing

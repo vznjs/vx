@@ -477,6 +477,63 @@ describe('--download end to end', () => {
     }
   })
 
+  it('a failed materialisation still reports the producer as left-remote', async () => {
+    // The entry is cleared only on SUCCESS, so a failed fetch must still
+    // appear in the run's "left outputs remote" line — that is exactly when
+    // the user needs telling that the tree is not current.
+    const a = await fixture({ failMaterialize: true })
+    try {
+      const lines: string[] = []
+      const r = await run({
+        cwd: a.root,
+        tasks: ['use'],
+        projects: ['pkg-b'],
+        download: 'none',
+        log: {
+          status: (l: string) => lines.push(l),
+          error: () => undefined,
+        } as unknown as NonNullable<Parameters<typeof run>[0]['log']>,
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(false)
+      expect(lines.some((l) => l.includes('left outputs remote') && l.includes('pkg-a#gen'))).toBe(
+        true,
+      )
+    } finally {
+      a.cleanup()
+    }
+  })
+
+  it('a materialisation failure trips --continue=never like any other failure', async () => {
+    const a = await fixture({ consumers: 2, failMaterialize: true })
+    try {
+      const r = await run({
+        cwd: a.root,
+        tasks: ['use'],
+        projects: ['pkg-b', 'pkg-b1'],
+        download: 'none',
+        continueMode: 'never',
+        // Strict ordering, as the scheduler's own fail-fast pins use: with
+        // both consumers in flight at once they would BOTH legitimately
+        // fail (fail-fast stops queued dispatch, in-flight work finishes),
+        // which proves nothing about the trip.
+        concurrency: 1,
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(false)
+      expect(r.outcomes.find((o) => o.node.id === 'pkg-a#gen')!.status).toBe('success')
+      const consumerStatuses = r.outcomes
+        .filter((o) => o.node.taskName === 'use')
+        .map((o) => o.status)
+      // One consumer failed on the fetch; the queued one never dispatched.
+      expect(consumerStatuses.filter((st) => st === 'failed').length).toBe(1)
+      expect(consumerStatuses.filter((st) => st === 'skipped').length).toBe(1)
+    } finally {
+      a.cleanup()
+    }
+  })
+
   it('--download=all is unchanged: outputs land eagerly, entry saved, no deferral', async () => {
     const a = await fixture()
     try {

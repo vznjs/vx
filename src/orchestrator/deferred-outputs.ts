@@ -47,9 +47,15 @@ export class DeferredOutputs {
     this.entries.set(taskId, entry)
   }
 
-  /** Task ids still deferred (never materialised) — the summary's list. */
+  /**
+   * Task ids whose outputs are still remote — the summary's list. An entry
+   * is removed only when materialisation SUCCEEDS, so this covers both
+   * "nothing needed them" and "fetching them failed"; the second is
+   * precisely when a user needs to be told the tree is not current, and an
+   * `inflight` filter here used to hide it.
+   */
   pending(): string[] {
-    return [...this.entries.keys()].filter((id) => !this.inflight.has(id)).sort()
+    return [...this.entries.keys()].sort()
   }
 
   get size(): number {
