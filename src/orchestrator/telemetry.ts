@@ -356,8 +356,21 @@ export function createTelemetrySource(args: {
   const { sinks, run, warn } = args
   const runId = run.runId
   // A sink is disabled the first time it throws — its name (or index) goes
-  // here and it's skipped for the rest of the run.
+  // here and it's skipped for the rest of the run, FLUSH INCLUDED. Flushing a
+  // disabled sink would write a buffer that is incomplete by construction: it
+  // stopped being fed records at the moment it threw, so the export would look
+  // like a run that simply had fewer tasks.
   const disabled = new Set<TelemetrySink>()
+  // Never silently. The standing rule is that a never-fail path must still
+  // WARN — telemetry that vanishes without a word is indistinguishable from
+  // telemetry nobody configured.
+  const disable = (sink: TelemetrySink, hook: string, err: unknown): void => {
+    if (disabled.has(sink)) return
+    disabled.add(sink)
+    warn?.(
+      `[vx] telemetry sink '${sink.name}' threw in ${hook}; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
   // Precompute which sinks want each kind, so per-event fan-out is a plain
   // array walk with no per-record `wants` scanning.
   const wantsLog = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.log'))
@@ -369,8 +382,8 @@ export function createTelemetrySource(args: {
       if (!kinds.includes(record.kind)) continue
       try {
         sink.onRecord(record)
-      } catch {
-        disabled.add(sink)
+      } catch (err) {
+        disable(sink, 'onRecord', err)
       }
     }
   }
@@ -468,8 +481,8 @@ export function createTelemetrySource(args: {
         if (disabled.has(sink) || sink.onRunSummary === undefined) continue
         try {
           sink.onRunSummary(summary)
-        } catch {
-          disabled.add(sink)
+        } catch (err) {
+          disable(sink, 'onRunSummary', err)
         }
       }
     },
@@ -485,11 +498,15 @@ export function createTelemetrySource(args: {
       const settled = await settleWithin(
         Promise.all(
           sinks.map(async (sink) => {
-            if (sink.flush === undefined) return
+            if (disabled.has(sink) || sink.flush === undefined) return
             try {
               await sink.flush()
-            } catch {
-              // a sink's flush failure can never break the run
+            } catch (err) {
+              // A flush failure can never break the run — but it still costs
+              // this sink its export, so say so rather than dropping it.
+              warn?.(
+                `[vx] telemetry sink '${sink.name}' failed to flush: ${err instanceof Error ? err.message : String(err)}`,
+              )
             }
           }),
         ),

@@ -90,6 +90,51 @@ describe('deriveCacheSource', () => {
   })
 })
 
+describe('createTelemetrySource — a disabled sink', () => {
+  it('says so, and is skipped for the REST of the run including flush', async () => {
+    // The doc comment promises a throwing sink is "disabled for the rest of
+    // the run" and "skipped for the rest of the run". `onRecord` and
+    // `onRunSummary` honour that; `flush` did not consult the set at all, so
+    // a sink whose state was bad enough to throw was still asked to write its
+    // output — from a buffer that is INCOMPLETE by construction, since it
+    // stopped being fed records the moment it was disabled.
+    //
+    // And the disable was SILENT, against the standing invariant that a
+    // never-fail path must still WARN. Telemetry vanished with no signal.
+    const warns: string[] = []
+    let badFlushed = 0
+    let goodFlushed = 0
+    const bad: TelemetrySink = {
+      name: 'bad-sink',
+      onRecord: () => {
+        throw new Error('boom')
+      },
+      flush: async () => {
+        badFlushed++
+      },
+    }
+    const good: TelemetrySink = {
+      name: 'good-sink',
+      onRecord: () => undefined,
+      flush: async () => {
+        goodFlushed++
+      },
+    }
+    const src = createTelemetrySource({
+      sinks: [bad, good],
+      run: RUN,
+      warn: (m) => warns.push(m),
+    })
+    src.subscriber({ kind: 'run:start', info: { total: 1 } })
+    await src.flush()
+
+    expect(warns.some((w) => w.includes('bad-sink'))).toBe(true)
+    expect(badFlushed).toBe(0)
+    // CONTROL: disabling one sink must not cost the others their flush.
+    expect(goodFlushed).toBe(1)
+  })
+})
+
 describe('createTelemetrySource — projection', () => {
   it('projects run:start → run.start carrying the run context', () => {
     const { sink, records } = recorder()

@@ -207,6 +207,19 @@ build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 ## Never stop — run cycles (standing owner directive, 2026-07-27)
 
 **"Continue on cycles, never stop."** Work is CONTINUOUS, not request-driven.
+
+**EXTENDED 2026-08-26 (owner):** _"please do not stop. ever. audit things, if
+you run out add more tests, try to simplify the core. Make sure the core is
+flexible, and plugins dictate functionality."_ So when nothing is obviously
+broken, the priority order is: **audit** a surface hostilely → **add tests**
+(an invariant a comment or README promises but nothing pins is the best
+candidate; coverage gaps are work, not the absence of it) → **SIMPLIFY CORE**
+(look for what core does that a plugin should, code left over from a removed
+feature, and seams wider than they need to be). The bias while doing all
+three: core stays FLEXIBLE and small, PLUGINS dictate functionality. When a
+change could live in core or behind a seam, it belongs behind the seam; when
+core grows a special case for one consumer, the seam is too narrow rather than
+core needing the branch.
 There is no state in which this project is "done" and waiting for input; a
 finished wave is the start of the next one, and **the plugin architecture
 and `@vzn/vx-reapi` are the named default subject** when nothing more urgent
@@ -516,6 +529,37 @@ time every single time.
   cost outside GitHub Actions.
 
 ### Recent entries (2026-08)
+
+- **2026-08-26 (third wave) — the crash-isolation claim I had leaned on
+  twice was TRUE, and auditing it anyway found two defects beside it.**
+  I had justified "warn, do not throw" in vx-github and the never-fail
+  contract in vx-otel by quoting CLAUDE.md's "sinks are crash-isolated
+  and deadline-bounded" rather than reading it. Verified: `emitSummary`
+  and `onRecord` catch per sink and disable it, `flush` catches per sink
+  and is wrapped in `settleWithin`, and the comment there explains the
+  stake better than the invariant does — `bin.ts` is
+  `process.exit(await run(...))`, so a flush that never settles drains
+  the event loop with no exit code pending and a FAILED run reports
+  green. The claim holds. TWO defects beside it, both the asymmetry
+  class. (1) `disabled` was consulted by `onRecord` and `onRunSummary`
+  and IGNORED by `flush`, so a sink whose state was bad enough to throw
+  was still asked to write its output — from a buffer incomplete by
+  construction, since it stopped being fed the moment it was disabled.
+  An export that looks like a run with fewer tasks is worse than no
+  export. The doc comment promised "skipped for the rest of the run"
+  twice; flush is part of the run. (2) The disable was SILENT — no warn
+  — against the standing invariant that a never-fail path must still
+  WARN, recorded after "a silently discarded ingest shipped once".
+  Telemetry vanished with no signal. Both fixed: one `disable()` helper
+  that warns once naming the sink and the hook, `flush` honouring the
+  set, and a flush failure now reported too rather than swallowed.
+  Written test-first with a CONTROL (disabling one sink must not cost a
+  healthy sibling its flush); both differentials fail exactly that pin.
+  PRECONDITION checked rather than assumed, because `warn` is optional
+  on `createTelemetrySource`: `telemetry-host.ts:86` does pass
+  `ctx.warn`, so the new message is live in real runs and not just in
+  tests. The zero-cost gate was already pinned
+  (`telemetry-lifecycle.test.ts:338`), so nothing to add there.
 
 - **2026-08-26 (second wave) — the vx-github classes carried to the
   sibling plugin: one CONFIRMED, one REFUTED.** Audited `@vzn/vx-otel`
