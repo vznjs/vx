@@ -56,14 +56,16 @@ export interface RunOptions {
   /**
    * Where a REMOTELY-executed task's outputs land. 'all' (default):
    * every task's outputs are downloaded to this machine as it completes
-   * — today's behaviour, byte for byte. 'none': outputs stay in the
-   * remote CAS and are fetched lazily, only when a locally-placed task
-   * in the run actually needs them (Bazel's "build without the bytes").
+   * — today's behaviour, byte for byte. 'toplevel': only the tasks you
+   * REQUESTED land here; intermediates stay remote. 'none': outputs stay
+   * in the remote CAS and are fetched lazily, only when a locally-placed
+   * task in the run actually needs them (Bazel's "build without the
+   * bytes").
    * Pure transfer tuning: it can never change what a command produces,
    * so it is NEVER folded into a cache key (a RunOption, like --verify).
    * Locally-placed tasks always write in place and ignore this.
    */
-  download?: 'all' | 'none'
+  download?: 'all' | 'toplevel' | 'none'
   /**
    * Run intent, derived by the CLI from selection flags: 'broad' iff
    * `--all` / `--filter` / `--affected` was passed, else 'focused'.

@@ -86,7 +86,7 @@ export interface RunArgs {
   verify: { determinism: boolean; inputs: boolean; fingerprint: boolean } | undefined
   verifyAllow: string[]
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
-  download?: 'all' | 'none'
+  download?: 'all' | 'toplevel' | 'none'
   forwardArgs: string[]
   verbosity: number
   dry: 'text' | 'json' | undefined
@@ -258,8 +258,8 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       out.outputLogs = v
     } else if (a === '--download' || a?.startsWith('--download=')) {
       const v = a === '--download' ? before[++i] : a.slice('--download='.length)
-      if (v !== 'all' && v !== 'none') {
-        return { ...out, error: `--download must be all or none` }
+      if (v !== 'all' && v !== 'toplevel' && v !== 'none') {
+        return { ...out, error: `--download must be all, toplevel, or none` }
       }
       out.download = v
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {

@@ -117,6 +117,50 @@ describe('resolveDownloadModes', () => {
     expect(r.modeOf.get('a#local')).toBe('eager')
   })
 
+  it('policy `toplevel` keeps the REQUESTED tasks eager and defers the rest', () => {
+    const requested = graph(
+      {
+        ...node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }),
+        requested: false,
+      } as TaskNode,
+      {
+        ...node('a#ship', { inputs: { files: ['src/**'] }, outputs: { files: ['pkg/**'] } }),
+        requested: true,
+      } as TaskNode,
+    )
+    const r = resolveDownloadModes({
+      nodes: requested,
+      policy: 'toplevel',
+      localPlaced: new Set(),
+      remoteOnly: new Set(),
+    })
+    expect(r.modeOf.get('a#ship')).toBe('eager')
+    expect(r.modeOf.get('a#gen')).toBe('deferred')
+  })
+
+  it('`toplevel` still honours the eligibility gate for the rest', () => {
+    // A requested task is eager because it was asked for; an intermediate
+    // whose outputs another key can read is eager because it MUST be.
+    const nodes2 = graph(
+      {
+        ...node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] } }),
+        requested: false,
+      } as TaskNode,
+      {
+        ...node('a#build', { inputs: { files: ['gen/**'] }, outputs: { files: ['dist/**'] } }),
+        requested: true,
+      } as TaskNode,
+    )
+    const r = resolveDownloadModes({
+      nodes: nodes2,
+      policy: 'toplevel',
+      localPlaced: new Set(),
+      remoteOnly: new Set(),
+    })
+    expect(r.modeOf.get('a#gen')).toBe('eager')
+    expect(r.downgrades.get('a#gen')).toContain('a#build reads gen')
+  })
+
   it("`remote: 'only'` stays never — --download cannot override it", () => {
     const r = resolveDownloadModes({
       nodes,

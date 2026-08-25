@@ -61,6 +61,7 @@ export function printHelp(): void {
       '      --verify-allow <pkg#task,…> Exempt known-nondeterministic tasks from failing --verify.',
       '      --frozen                    Load configs from vx-lock.json (CI; pair with vx lock --check).',
       '      --output-logs <mode>        full | errors-only | hash-only | none — overrides the flow default',
+      '      --download <mode>           all (default) | toplevel | none — where remote outputs land',
       '                                  (focused without --all/--filter/--affected, broad with, full in CI).',
       '      --verbosity <n>             0=quiet, 1=verbose summary, 2+=debug (reserved).',
       '',

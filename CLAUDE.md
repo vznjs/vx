@@ -483,6 +483,22 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (fortieth wave) — `--download=toplevel` ships: phase 2,
+  small by construction as designed.** One clause in the plan-time
+  decision function (requested tasks stay eager, everything else defers)
+  plus the widened union through RunOptions/CLI/help/docs. The design's
+  claim that this phase would be small held up exactly — the decision
+  function was the right seam, and nothing in the registry,
+  materialisation or convergence paths moved. Two pins: requested-eager
+  /intermediate-deferred, and `toplevel` still honouring the eligibility
+  gate (a requested task is eager because it was ASKED for, an
+  ineligible intermediate because it MUST be — the two reasons are
+  distinguishable in `downgrades`). Differential kills exactly the
+  requested-eager pin. One correctness detail worth the line: the
+  eligibility gate now runs for `toplevel` as well as `none` (it was
+  gated on `policy === 'none'`), since `toplevel` defers intermediates
+  and therefore needs the same key-observability protection.
+
 - **2026-08-25 (thirty-ninth wave) — `--download` phase 1 ships:
   deferred outputs end to end, and the design's own eligibility rule
   corrected because it was INERT.** The first consumable slice of the

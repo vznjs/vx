@@ -100,7 +100,7 @@ function prefixesOverlap(a: string, b: string): boolean {
  */
 export function resolveDownloadModes(args: {
   nodes: Map<string, TaskNode>
-  policy: 'all' | 'none'
+  policy: 'all' | 'toplevel' | 'none'
   /** Task ids placed on a LOCAL executor — they write in place. */
   localPlaced: ReadonlySet<string>
   /** Task ids with `exec.remote: 'only'`. */
@@ -108,7 +108,7 @@ export function resolveDownloadModes(args: {
 }): { modeOf: Map<string, DownloadMode>; downgrades: Map<string, string> } {
   const modeOf = new Map<string, DownloadMode>()
   const downgrades = new Map<string, string>()
-  const ineligible = args.policy === 'none' ? deferralEligibility(args.nodes) : new Map()
+  const ineligible = args.policy === 'all' ? new Map() : deferralEligibility(args.nodes)
 
   for (const n of args.nodes.values()) {
     if (isGroupTask(n)) continue
@@ -117,6 +117,15 @@ export function resolveDownloadModes(args: {
       continue
     }
     if (args.policy === 'all' || args.localPlaced.has(n.id)) {
+      modeOf.set(n.id, 'eager')
+      continue
+    }
+    // `toplevel` = the outputs you ASKED for come home; intermediates stay
+    // remote. Decided here rather than by materialising at run end: eager
+    // materialisation rides each task's own completion, overlapped with the
+    // rest of the run, where a run-end batch would serialise every download
+    // after the last task finishes.
+    if (args.policy === 'toplevel' && n.requested === true) {
       modeOf.set(n.id, 'eager')
       continue
     }
