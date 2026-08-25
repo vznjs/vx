@@ -1090,7 +1090,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // line would carry the same label. Resolving the executors here is
       // the same plugin-factory call `prepareRun` already makes for the
       // cache capability, so plan mode gains no new class of side effect.
-      ...(await planExecutorOf(prepared, log)),
+      ...(await planExecutorOf(prepared, log, options.download ?? 'all')),
     })
   } finally {
     prepared.cache.close()
@@ -1177,7 +1177,12 @@ function placeTasks(
 async function planExecutorOf(
   prepared: Awaited<ReturnType<typeof prepareRun>>,
   log: Logger,
-): Promise<{ executorOf?: (id: string) => string | undefined }> {
+  policy: 'all' | 'toplevel' | 'none',
+): Promise<{
+  executorOf?: (id: string) => string | undefined
+  downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
+  downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
+}> {
   let executors: readonly TaskExecutor[]
   try {
     executors = await resolveExecutors(prepared.plugins, {
@@ -1189,11 +1194,39 @@ async function planExecutorOf(
   } catch {
     return {}
   }
-  if (executors.length < 2) return {}
   const placements = placeTasks(prepared.nodes, executors)
+  // Download modes need placement regardless of how many executors there
+  // are (a single REMOTE one still defers); executor LABELS only earn their
+  // column when there is a choice to report.
+  const download =
+    policy === 'all'
+      ? undefined
+      : resolveDownloadModes({
+          nodes: prepared.nodes,
+          policy,
+          localPlaced: new Set(
+            [...prepared.nodes.keys()].filter(
+              (id) => placements.executors.get(id)?.remote !== true,
+            ),
+          ),
+          remoteOnly: placements.remoteOnly,
+        })
   return {
-    executorOf: (id) =>
-      placements.remoteOnlyNoop.has(id) ? 'noop' : placements.executors.get(id)?.name,
+    ...(executors.length < 2
+      ? {}
+      : {
+          executorOf: (id: string) =>
+            placements.remoteOnlyNoop.has(id) ? 'noop' : placements.executors.get(id)?.name,
+        }),
+    ...(download === undefined
+      ? {}
+      : {
+          downloadOf: (id: string) => download.modeOf.get(id),
+          downloadDowngrades: [...download.downgrades].map(([taskId, reason]) => ({
+            taskId,
+            reason,
+          })),
+        }),
   }
 }
 

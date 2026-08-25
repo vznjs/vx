@@ -65,6 +65,22 @@ export function formatPlanText(plan: RunPlan): string {
   lines.push('')
   lines.push(summary.join(', ') + '.')
 
+  // `--download` is invisible without this: the eligibility gate silently
+  // keeps producers eager, so a user who asked for `none` and got no
+  // deferral has nothing to read. Say what WOULD stay remote, and name the
+  // refusals when nothing would.
+  const deferred = real.filter((t) => t.download === 'deferred')
+  const downgrades = plan.downloadDowngrades ?? []
+  if (deferred.length > 0 || downgrades.length > 0) {
+    lines.push('')
+    lines.push(
+      `download: ${deferred.length} task(s) would keep outputs remote` +
+        (downgrades.length > 0 ? `, ${downgrades.length} kept eager:` : '.'),
+    )
+    for (const d of downgrades.slice(0, 3)) lines.push(`    ${d.taskId} — ${d.reason}`)
+    if (downgrades.length > 3) lines.push(`    …and ${downgrades.length - 3} more`)
+  }
+
   // Time prediction — only when history gave us something to say: at least
   // one would-run task has a p50 (an all-unknown prediction is pure noise).
   const p = plan.predicted

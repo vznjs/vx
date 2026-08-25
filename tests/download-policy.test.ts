@@ -10,7 +10,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { run } from '../src/index.js'
+import { planRun, run } from '../src/index.js'
+import { formatPlanText } from '../src/cli/plan-format.js'
 import { deferralEligibility, resolveDownloadModes } from '../src/orchestrator/download-policy.js'
 import type { TaskNode } from '../src/graph/index.js'
 
@@ -479,6 +480,59 @@ describe('--download end to end', () => {
       const consumer = r.outcomes.find((o) => o.node.id === 'pkg-b#use')!
       expect(producer.status).toBe('success')
       expect(consumer.status).toBe('failed')
+    } finally {
+      a.cleanup()
+    }
+  })
+
+  it('--dry SHOWS what would stay remote and why anything was kept eager', async () => {
+    // The gate downgrades silently, so without this surface a user who asks
+    // for --download=none and gets no deferral has nothing to read. Phase 1
+    // claimed the --dry surface and shipped without it; this is the pin that
+    // would have caught that.
+    const a = await fixture()
+    try {
+      const plan = await planRun({
+        cwd: a.root,
+        tasks: ['gen'],
+        projects: ['pkg-a'],
+        download: 'none',
+        log: silent(),
+        handleSignals: false,
+      })
+      const gen = plan.tasks.find((t) => t.node.id === 'pkg-a#gen')
+      expect(gen?.download).toBe('deferred')
+      const text = formatPlanText(plan)
+      expect(text).toContain('would keep outputs remote')
+
+      // …and the downgrade path names the reason rather than staying silent.
+      await Bun.write(
+        path.join(a.root, 'packages', 'pkg-a', 'vx.config.mjs'),
+        `export default { tasks: {
+           gen: {
+             exec: { command: 'true' },
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+           },
+           reader: {
+             exec: { command: 'true' },
+             cache: { inputs: { files: ['out/**'] }, outputs: { files: ['d/**'] } },
+           },
+         } }`,
+      )
+      // BOTH tasks must be in the run graph: the gate asks whether any key
+      // IN THIS RUN could observe the producer, and a task nobody requested
+      // computes no key here (the design's cross-run residual — an
+      // undeclared reader is outside the contract either way).
+      const plan2 = await planRun({
+        cwd: a.root,
+        tasks: ['gen', 'reader'],
+        projects: ['pkg-a'],
+        download: 'none',
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(plan2.downloadDowngrades?.some((d) => d.taskId === 'pkg-a#gen')).toBe(true)
+      expect(formatPlanText(plan2)).toContain('kept eager')
     } finally {
       a.cleanup()
     }

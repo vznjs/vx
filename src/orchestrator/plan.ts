@@ -43,6 +43,12 @@ export interface PlannedTask {
    * and persistent tasks, which never reach an executor.
    */
   executor?: string
+  /**
+   * `'deferred'` when this task's outputs would stay in the remote store
+   * (`--download=none` / `toplevel`). Attached only when it is TRUE — an
+   * eager task is the default and saying so on every line says nothing.
+   */
+  download?: 'deferred'
 }
 
 /**
@@ -70,10 +76,21 @@ export interface RunPlan {
    * equivalent `vx run` would refuse to start.
    */
   unresolvedTasks?: readonly string[]
+  /**
+   * Producers `--download` WANTED to defer but could not, mapped to why.
+   * Without this the gate is invisible: a user asks for `--download=none`,
+   * gets no deferral, and has nothing to read. Empty/absent under
+   * `--download=all`, which defers nothing by definition.
+   */
+  downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
 }
 
 export interface PlanArgs {
   nodes: Map<string, TaskNode>
+  /** Per-task `--download` decision, when the policy is not `all`. */
+  downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
+  /** See `RunPlan.downloadDowngrades`. */
+  downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
   workspaceRoot: string
   workspaceFingerprint: string
   cache: CacheLayer
@@ -157,6 +174,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       cacheStatus: cacheStatusById.get(id) ?? 'no-cache',
       deps: node.deps,
       ...(executor !== undefined ? { executor } : {}),
+      ...(args.downloadOf?.(id) === 'deferred' ? { download: 'deferred' as const } : {}),
     })
   }
 
@@ -168,13 +186,21 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         const p50 = table.get(t.node.id)?.p50DurationMs
         if (p50 !== undefined) t.p50Ms = p50
       }
-      return { tasks, predicted: predictPlan(tasks) }
+      return { tasks, predicted: predictPlan(tasks), ...downgradeField(args) }
     } catch {
       // Failing open: prediction is a nicety — a broken history read must
       // never break `--dry`.
     }
   }
-  return { tasks }
+  return { tasks, ...downgradeField(args) }
+}
+
+/** Carried onto the plan only when the gate actually refused something. */
+function downgradeField(args: PlanArgs): {
+  downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
+} {
+  const d = args.downloadDowngrades
+  return d !== undefined && d.length > 0 ? { downloadDowngrades: d } : {}
 }
 
 /** A task the plan expects to EXECUTE (a no-cache task executes every run). */
