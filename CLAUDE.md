@@ -58,6 +58,7 @@ src/
     migrate-nx.ts       # nx project-graph.json → vx.config.ts mapping
     show.ts             # `vx show` — live resolved-config introspection
     last.ts             # `vx last` — replay a recorded run's summary (read-only)
+    prune.ts            # `vx prune` — workspace subset for Docker (Turbo parity)
     why.ts              # `vx why` — cache-key change explainability
     info.ts             # `vx info` doctor printout (`vx stats` = alias)
     upgrade.ts          # `vx upgrade` — binary self-update (bunfs detection)
@@ -473,6 +474,26 @@ time every single time.
   API surface need `@vzn/vx-github`.
 
 ### Recent entries (2026-08)
+
+- **2026-08-25 (thirty-fourth wave) — `vx prune` ships: the workspace
+  subset for Docker builds, comparison gap #10.** Target + transitive
+  workspace deps off the existing `buildPackageGraph` (dependencies /
+  dev / peer / optional, workspace members only), root manifests, any
+  `vx.workspace.*`, `.npmrc`/`.nvmrc`, and the lockfile; `--docker`
+  splits `json/` (manifests only — the cacheable install layer) from
+  `full/`. Two deliberate calls, both documented in the command header:
+  (1) `pnpm-workspace.yaml` is REWRITTEN to the exact subset dirs — the
+  original glob would match dirs absent from the subset and break
+  installs; (2) the lockfile is copied UNPRUNED — every package manager
+  tolerates a superset, a wrongly-pruned lockfile is worse than a big
+  correct one, and per-format pruning (Turbo ships a crate per format)
+  is out of phase 1 by the no-half-finished rule, recorded as the
+  phase-2 candidate. Tail-eating guards: the out dir may not be/contain
+  the workspace root nor sit inside a copied package (cp would recurse
+  into its own output). Pinned e2e via bin.ts: closure exactness
+  (`other` excluded), node_modules exclusion, yaml rewrite content,
+  docker split shapes, leaf-project prune, unknown-project suggestion,
+  the inside-a-package refusal; parser units for both flag spellings.
 
 - **2026-08-25 (thirty-third wave) — the darwin promotion call, made on
   the canary's evidence: the enforcement canary GATES, full

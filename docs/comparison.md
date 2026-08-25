@@ -217,10 +217,12 @@ upstream repos.
    `package.json` scripts.
    - vite-task: `enablePrePostScripts` (default true).
 
-10. **`vx prune` (workspace subset for Docker builds).** Useful but
-    contained.
-    - Turbo: `turbo prune`
-      (`apps/docs/content/docs/reference/prune.mdx`).
+10. **`vx prune` — shipped (2026-08-25).** Workspace subset for Docker
+    builds: target + transitive workspace deps, rewritten
+    `pnpm-workspace.yaml`, root manifests, unpruned lockfile
+    (deliberate — per-format lockfile pruning is out of phase 1),
+    `--docker` json/full split for layer caching.
+    - Turbo: `turbo prune`.
 
 11. **Cache TTL / size caps in config.** vx has them as CLI flags on
     `vx cache prune` but doesn't auto-evict during runs.

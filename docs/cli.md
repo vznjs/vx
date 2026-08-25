@@ -1243,6 +1243,35 @@ names the hash change and says the component diff is unavailable.
 `--format json` emits one machine-readable object (`{ taskId, runId,
 why, diff }`).
 
+## `vx prune`
+
+Emit a self-contained SUBSET of the workspace for Docker builds
+(Turbo `turbo prune` parity): one project plus its transitive
+workspace dependencies, with root manifests, any `vx.workspace.*`, and
+the lockfile.
+
+```
+vx prune <project> [--out-dir <dir>] [--docker]
+```
+
+`pnpm-workspace.yaml` is REWRITTEN to the exact subset dirs (a glob
+matching absent dirs breaks installs). The lockfile is copied
+**unpruned** — every package manager tolerates a superset lockfile,
+and a wrongly-pruned one is worse than a big correct one; per-format
+lockfile pruning is deliberately out of phase 1. `node_modules`,
+`.git`, `.vx` and `.turbo` are excluded from the copy.
+
+`--docker` splits the output into `json/` (root files + each package's
+`package.json` only — `COPY` this first so the install layer caches
+independently of source edits) and `full/` (the sources):
+
+```dockerfile
+COPY out/json/ .
+RUN pnpm install --frozen-lockfile
+COPY out/full/ .
+RUN pnpm vx run build
+```
+
 ## `vx last`
 
 Replay a recorded run's summary from the local history — no
