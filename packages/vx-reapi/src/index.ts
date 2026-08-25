@@ -105,6 +105,7 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
 
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   let executorClient: ReapiClient | undefined
+  let remoteCache: ReapiRemoteCache | undefined
   return {
     name: REAPI_PLUGIN,
     async executor(ctx): Promise<TaskExecutor | undefined> {
@@ -114,7 +115,21 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       executorClient = new ReapiClient({ ...conn, onWarn: (m) => ctx.warn(m) })
       // Negotiate once: turns zstd transfer compression on when the server
       // advertises it. The digest function stays SHA256 (see wire.negotiate).
-      await executorClient.negotiate()
+      // An unreachable or wrong endpoint surfaces here, and the raw gRPC
+      // string ("14 UNAVAILABLE … Resolution note:") names neither the
+      // plugin's setting nor anything to do about it. Core turns a throwing
+      // factory into a UserError and ABORTS — deliberately, an executor is
+      // load-bearing — so this is the message a user acts on.
+      try {
+        await executorClient.negotiate()
+      } catch (err) {
+        executorClient.close()
+        executorClient = undefined
+        const why = err instanceof Error ? err.message : String(err)
+        throw new Error(
+          `cannot reach the REAPI server at ${conn.endpoint} for remote execution: ${why} — check the endpoint, that the server is running, and that this host can reach it, or drop \`execute\` to use it as a cache only`,
+        )
+      }
       // A cache-only deployment (bazel-remote) advertises no execution
       // capability. Offering it work would hang the run on a server that will
       // never answer, so DECLINE loudly and let the local executor take over.
@@ -136,11 +151,21 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
     teardown(): void {
       executorClient?.close()
       executorClient = undefined
+      // The cache layer holds a client too, and `RemoteCacheLayer` has no
+      // close hook for core to call — `LayeredCache.close()` closes only the
+      // LOCAL handle. Closing it here is lifecycle hygiene rather than a
+      // measured fix: @grpc/grpc-js pools subchannels per target, so 20
+      // unclosed clients were MEASURED to share one connection. It matters
+      // for `vx watch`, which installs and tears down plugins once per
+      // re-run, and it keeps the resource owned by whoever created it.
+      remoteCache?.close()
+      remoteCache = undefined
     },
     cache(ctx): CacheLayer | undefined {
       const conn = connection(options)
       if (conn === undefined) return undefined
       const remote = new ReapiRemoteCache({ ...conn, onWarn: (m) => ctx.warn(m) })
+      remoteCache = remote
       // Compose over the local handle the host opened: reads try local, then
       // remote (hydrating local on a remote hit); writes go local immediately
       // and the remote upload drains in the background. All of that is core's

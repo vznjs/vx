@@ -508,6 +508,46 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-25 (tenth wave) — the plugin's own wiring came back CLEAN on
+  both hypotheses, and got its first test file.** Closing the REAPI
+  rotation on `index.ts`. Hypothesis one, a connection leak: `cache()`
+  builds a `ReapiRemoteCache` (and a gRPC client) that NOTHING closes —
+  `RemoteCacheLayer` declares no `close()` hook, `LayeredCache.close()`
+  closes only the LOCAL handle, and the plugin's `teardown()` released
+  only the executor client. `vx watch` installs and tears down plugins
+  once per re-run, so it looked like one connection per save. REFUTED by
+  measurement: 20 unclosed clients share ONE established connection,
+  because @grpc/grpc-js pools subchannels per target. The probe was
+  wrong twice before it was right — `lsof` renders port 9092 as the
+  service name `XmlIpcRegSvc`, so the first filter counted zero and
+  would have "confirmed" no leak for entirely the wrong reason; `-P`
+  fixed it. Hypothesis two, a bad failure mode for an unreachable
+  endpoint: also REFUTED at the level that matters — core's `safe()`
+  wrapper turns a throwing capability factory into a `UserError` naming
+  plugin and hook, and ABORTS deliberately ("an executor is
+  load-bearing, not observational"). SHIPPED anyway, both small and both
+  pinned: `teardown()` now closes the cache client (hygiene, and the
+  comment says plainly that it is hygiene rather than a measured fix,
+  since pooling hides it), and an unreachable endpoint reports the
+  ENDPOINT plus a remedy instead of a bare `14 UNAVAILABLE … Resolution
+note:` — the cause is kept inside the new message. The real gap was
+  coverage: `index.ts` had NO test file, and the invariant both the code
+  comment and the README promise — "a declared-but-unconfigured plugin
+  costs nothing and must never fail a run" — was pinned nowhere. Five
+  tests now: silent decline with no endpoint (asserting the exact empty
+  warning list, since a warning on every run of every unconfigured
+  workspace is noise a user cannot act on), the env-only endpoint path
+  as the control that the decline test is not passing vacuously,
+  `execute` staying OFF unless asked, the teardown close, and the
+  message. Differentials run separately; each mutation fails exactly its
+  own pin; live matrix 105/0. And once more, in the same wave that
+  records the rule: `bun test` reported 5/5 on a test file carrying TWO
+  lint errors (`no-floating-promises` on `teardown?.()`, and `.then` on
+  a capability typed `Promise<TaskExecutor | undefined> | TaskExecutor`,
+  which may return synchronously). The root gate caught both. After
+  rewriting the test to satisfy them I RE-RAN the differential rather
+  than assuming the earlier one still held — the assertion had moved.
+
 - **2026-08-25 (ninth wave) — the remote cache's existence probe promised
   artifacts that were gone, on one server and not the other.** Hostile
   pass on `ReapiRemoteCache`, the half of the package whose executor gave
