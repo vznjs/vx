@@ -12,6 +12,8 @@ reference.
 
 When you type `vx run build`, vx:
 
+0. **Installs the plugins** your `vx.workspace.ts` declares — including
+   the ones that provide the executor and the cache.
 1. **Discovers** the workspace and its projects.
 2. **Loads** the relevant `vx.config.ts` files.
 3. **Builds the task graph** from `dependsOn` and your package
@@ -20,6 +22,18 @@ When you type `vx run build`, vx:
 5. **Schedules** the graph — for each task, a cache lookup decides
    *restore* vs. *execute*, running as many tasks in parallel as your
    concurrency allows.
+
+### 0. Plugins
+
+Core applies nothing by default. The thing that *runs* a command and the
+thing that *stores* an artifact both arrive as plugins — vx ships its own
+as `localExecutorPlugin()` and `localCachePlugin()`, and you declare them
+like any third-party one. A workspace that declares neither fails before
+the first task with a message naming what to add.
+
+This is why the stages below can talk about "the cache" without saying
+which one: a local store, a Bazel CAS, or something you wrote all fill
+the same seam.
 
 ### 1. Discovery
 
@@ -67,9 +81,11 @@ The scheduler walks the graph in topological order, running independent
 tasks in parallel up to your concurrency. For each task:
 
 - **Cache hit** → restore the stored outputs and replay the logs. (With a
-  remote cache configured, vx checks local first, then remote, hydrating
-  local on a remote hit. Remote lookups are prefetched in the background
-  so latency overlaps execution.)
+  remote cache plugin configured, vx checks local first, then remote,
+  hydrating local on a remote hit. Remote lookups are prefetched in the
+  background so latency overlaps execution, and any remote failure — a
+  timeout, a 500, a corrupt artifact — degrades to a local miss rather
+  than failing the run.)
 - **Cache miss** → wipe the declared outputs, run the command, then store
   the new outputs and logs under the key.
 

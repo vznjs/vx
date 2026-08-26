@@ -59,9 +59,9 @@ and faster:
 - **Stat-check restore skips.** A warm-on-warm restore is N stats with
   zero writes and zero decompression — fingerprints in SQLite tell vx the
   tree is already current.
-- **One artifact format end to end.** Local and remote transport the same
-  `tar.zst` bytes; metadata rides SQLite and HTTP headers. Nothing is
-  repacked anywhere.
+- **One artifact format end to end.** Local and remote move the same
+  `tar.zst` bytes — metadata rides SQLite locally and the remote's own
+  record on the wire, so nothing is repacked at the boundary.
 - **In-process tar**, atomic publish, single-transaction SQL, and
   collision-hardened xxh3 key derivation round it out.
 
@@ -74,9 +74,13 @@ Speed by subtraction is still speed:
 - **No config-eval cache** — configs are programs; a sound cache would
   need a correctness-critical purity heuristic for a ~200 ms win. Not
   worth the risk.
-- **No filesystem-tracing auto-inputs** — a multi-crate native systems
-  project incompatible with no-build-step distribution. Explicit
-  `inputs` are simpler and predictable.
+- **No filesystem-tracing auto-inputs.** Not a gap — a position. A
+  traced input set describes what the task read *that time*, on that
+  machine, which is not the same as what it depends on; and it cannot be
+  known before the task runs, which is exactly when the key is needed.
+  vx asks you to declare inputs and then lets you PROVE the declaration:
+  `vx run --verify=inputs` runs the task under an OS sandbox and reds the
+  run on an undeclared read. Guessing is replaced by checking.
 
 ## Go deeper
 

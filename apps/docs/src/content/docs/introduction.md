@@ -10,9 +10,9 @@ every result by the content of its inputs. Run the same thing twice and
 the second run replays from cache in milliseconds.
 
 If you've used Turborepo or Nx, that shape is familiar. What's different
-is the combination vx targets: **Turborepo's simplicity, more capability
-than either, and the fastest warm runs in the category — with no daemon
-and no plugins.**
+is what vx treats as the hard part: **not making the cache fast, but
+making it impossible for the cache to be wrong** — and then being able
+to tell you why it re-ran when it did.
 
 ## Who vx is for
 
@@ -28,74 +28,107 @@ You'll feel at home with vx if you are:
 - **Starting fresh** and want something that stays out of your way: real
   TypeScript config, shell commands, one binary, no background process.
 
-## What makes vx different
+## The problem vx is actually built around
 
-vx is deliberately shaped like Turborepo — per-package config, an opt-in
-content-addressed cache, a topological scheduler, the Turborepo
-remote-cache wire — with a few decisive swaps:
+A slow build costs you minutes. A **wrong** build costs you a day, and
+it does it quietly — a stale cache hit replays outputs from a build
+whose inputs are gone, the run goes green, and nothing downstream can
+tell. It is the one failure where "it passed" is the symptom.
 
-- **Your config is a program.** `vx.config.ts` is real TypeScript.
-  Imports, shared presets, and computed values all participate in the
-  cache key (vx hashes the *resolved* config object, not the file
-  bytes). Turborepo and Nx hash static JSON and miss this.
+Almost every design decision below is a response to that:
+
+- **Your config is a program, and vx hashes what it evaluates to.**
+  `vx.config.ts` is real TypeScript. A tool that hashes the config
+  *file* misses the preset it imported and the value it computed. vx
+  hashes the resolved object, so imports participate in cache identity.
+- **Strict output ownership.** Declared outputs are wiped before every
+  build *and* every restore, so your tree ends each run bit-identical
+  to the cached snapshot. No stale stragglers, ever.
+- **Explicit inputs, and a way to prove them.** vx never guesses your
+  inputs by tracing filesystem reads. It asks you to declare them — and
+  then `vx run --verify=inputs` runs the task under an OS sandbox so an
+  *undeclared* read is a reported failure rather than a latent one.
+- **`vx why` answers the question the hash can't.** A cache key is one
+  opaque number. vx persists the per-component fingerprint behind it, so
+  it can name the exact file, env var or upstream that moved.
+
+## What else is different
+
 - **Sparse `^task` bridging.** `^build` reaches *through* packages that
   don't declare the task to the nearest dependency that does, so you
   don't litter no-op tasks across the monorepo. Turborepo and Nx stop at
   direct dependencies.
-- **Strict output ownership.** Declared outputs are wiped before every
-  build *and* every restore, so your working tree ends each run
-  bit-identical to the cached snapshot. No stale stragglers, ever.
 - **Daemonless.** No background process, no staleness window, no socket
   state to corrupt — and still faster cold than Nx is daemon-warm.
 - **Shell is the API.** A task is a command string. There are no
-  JS-function tasks and no executor plugin protocol to learn or
-  maintain.
+  JS-function tasks; a plugin can change *where* a command runs, never
+  what it is.
 
 The full, sourced comparison lives in
 [vx vs Turborepo vs Nx](../comparison/). The performance mechanics are in
 [Why vx is fast](../concepts/why-vx-is-fast/).
 
-## Beyond the task runner
+## Core is neutral — plugins decide what happens
 
-The core runner is extended through documented seams — every contract is
-public, every wire is JSON-RPC 2.0. These need **no** additional service:
+This is the part most likely to surprise you, and it is deliberate.
 
-- **[vx mcp](../guides/mcp/)** — Model Context Protocol server over stdio.
-  Claude Code, Cursor, Continue.dev query cache stats and run history
-  through the standard agent-tool protocol.
-- **[Plugin API](../guides/plugins/)** — register lifecycle hooks in
-  `vx.workspace.ts`. Forward outcomes to Sentry, post to Slack, ship
-  metrics anywhere.
-- **[Predictive scheduling](../guides/predictive-scheduling/)** — opt
-  in with `predictive: true`; the scheduler reads run history and
-  dispatches by expected remaining critical path.
-- **[Core is provider-neutral](../guides/extensibility/)** — a dashboard,
-  a remote cache, and distributed execution are all plugins; core depends
-  on none of them.
-- **[OpenTelemetry CI/CD spans](../guides/otel-bridge/)** — set
-  `OTEL_EXPORTER_OTLP_ENDPOINT`, install the three OTel peers; every
-  event lands in Grafana / Honeycomb / Datadog / Tempo natively, no
-  bridge package.
+vx core ships exactly **three seams** and applies none of them by
+default:
 
-Everything that needs a server — a shared cache, remote execution, a
-dashboard — is a **plugin**, never core. `@vzn/vx-reapi` speaks Bazel's
-Remote Execution API, so NativeLink, BuildBuddy, Buildbarn and
-bazel-remote work as a remote cache (and, in time, a remote executor)
-out of the box; `@vzn/vx-otel` exports every run to any OTLP backend.
-See [Extensibility](../guides/extensibility/).
+| Seam        | Decides                             |
+| ----------- | ----------------------------------- |
+| `executor`  | where one task's command runs       |
+| `cache`     | where artifacts live                |
+| `telemetry` | where run records go                |
+
+Even vx's own local executor and local cache are plugins, declared in
+`vx.workspace.ts` like any third-party one. A workspace that declares
+none fails before a single task runs, and tells you what to add.
+
+That sounds like ceremony; it buys something specific. There is no
+privileged first-party path — a remote cache, remote execution, a
+dashboard, or a metrics pipeline are all built on the same contracts
+core's own defaults use, so none of them is a second-class citizen, and
+core never grows a special case for one consumer.
+
+```ts
+// vx.workspace.ts — nothing runs until you say what runs it
+import { defineWorkspace } from '@vzn/vx'
+import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
+import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
+
+export default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })
+```
+
+What ships on those seams today:
+
+- **[`@vzn/vx-reapi`](../guides/remote-caching/)** — speaks Bazel's
+  Remote Execution API, so NativeLink, BuildBuddy, Buildbarn and
+  bazel-remote work as a shared cache *and* as a remote executor that
+  runs your tasks on their workers.
+- **[`@vzn/vx-otel`](../guides/otel-bridge/)** — exports every run as
+  OpenTelemetry traces, metrics and logs over OTLP/HTTP. No SDK, no peer
+  dependencies; set an endpoint and it activates.
+- **[`@vzn/vx-github`](../guides/ci/)** — writes the GitHub Actions job
+  summary and a Checks API run.
+- **[vx mcp](../guides/mcp/)** — a Model Context Protocol server over
+  stdio, so Claude Code, Cursor and Continue.dev can query your cache
+  and run history. Needs no service.
+- **[Predictive scheduling](../guides/predictive-scheduling/)** — opt in
+  with `predictive: true` and the scheduler orders work by expected
+  remaining critical path, learned from your own run history.
 
 ## What vx is *not*
 
-vx is small on purpose. It deliberately has **no** generators or
-scaffolding, **no** plugin/executor protocol, **no** daemon, and **no**
-TUI. It doesn't do dependency installation or version management — it
-runs and caches your tasks, and leaves the rest to the tools you already
-use. If you need code generation and an opinionated plugin ecosystem, Nx
-is the better fit and that's fine.
+vx is small on purpose. It has **no** generators or scaffolding, **no**
+daemon, and **no** TUI. It doesn't install dependencies or manage
+versions — it runs and caches your tasks and leaves the rest to the
+tools you already use. If you want code generation and an opinionated
+plugin ecosystem, Nx is the better fit, and that's fine.
 
 ## Requirements
 
-- **Bun ≥ 1.3.** vx is Bun-native — it ships as TypeScript that Bun runs
+- **Bun ≥ 1.4.** vx is Bun-native — it ships as TypeScript that Bun runs
   directly, with no build step. There is no Node fallback.
 - **git.** vx uses git's index to enumerate and hash inputs (the same
   technique Turborepo uses), so your workspace must be a git repository.
