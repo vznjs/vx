@@ -11,7 +11,7 @@ so existing Turbo users can swap in with minimal muscle-memory churn.
 # Standalone binary via npm (no Bun required on target):
 npm install -g @vzn/vx
 
-# From source (Bun ≥ 1.3):
+# From source (Bun ≥ 1.4):
 bun src/bin.ts --version
 ```
 

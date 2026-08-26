@@ -4,7 +4,7 @@ description: Install vx, write your first vx.config.ts, and run a cached, parall
 ---
 
 This guide takes you from nothing to a cached, parallel task graph. It
-assumes **Bun ≥ 1.3** and a workspace under **git** (vx hashes inputs via
+assumes **Bun ≥ 1.4** and a workspace under **git** (vx hashes inputs via
 git's index, so a repo is required).
 
 Already have a monorepo with Turborepo or Nx? Jump to
@@ -26,7 +26,28 @@ This puts the `vx` binary in your workspace. vx prepends each package's
 `node_modules/.bin` to `PATH` per task, so `tsc`, `vite`, `eslint`, etc.
 resolve from a bare command — no `npx` needed.
 
-## 2. Describe a task
+## 2. Say what runs your tasks
+
+vx applies **nothing** by default — not even the thing that spawns your
+command or the cache that stores its output. Both arrive as plugins, and
+you declare them once at the workspace root:
+
+```ts
+// vx.workspace.ts (next to your root package.json)
+import { defineWorkspace } from '@vzn/vx'
+import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
+import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
+
+export default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })
+```
+
+Skip this and your first run stops before any task with
+`no cache plugin declared`, quoting the snippet above. It is one file,
+once — and it is why a remote cache or a remote executor later is a
+one-line change to this same list rather than a different product.
+(Migrating from Turborepo or Nx? `vx migrate` writes this file for you.)
+
+## 3. Describe a task
 
 Drop a `vx.config.ts` next to any package's `package.json`:
 
@@ -60,7 +81,7 @@ Two things to internalize early:
 `defineProject` is just an identity function for TypeScript autocomplete
 and validation — it has zero runtime effect.
 
-## 3. Run it
+## 4. Run it
 
 ```bash
 vx run build
@@ -76,7 +97,7 @@ vx restored `dist/**` and the captured logs from cache without running
 `tsc`. Change a file under `src/` and re-run — vx detects the changed
 input and rebuilds, then caches the new result.
 
-## 4. Add a second task and a dependency
+## 5. Add a second task and a dependency
 
 ```ts
 export default defineProject({
@@ -102,7 +123,7 @@ vx run test           # runs build → test, in order, then caches both
 produce no files — you still cache the successful no-op so the next run
 is instant.
 
-## 5. Go wide across packages
+## 6. Go wide across packages
 
 Use the `^` prefix to depend on the *same task in your workspace
 dependencies* — the universal monorepo pattern:
@@ -123,7 +144,7 @@ vx run build --filter "@app/*"  # only packages matching a filter
 vx run test --affected          # only what changed vs the base branch
 ```
 
-## 6. See what vx will do (without doing it)
+## 7. See what vx will do (without doing it)
 
 ```bash
 vx run build --all --dry        # predicted cache hits/misses, no execution
