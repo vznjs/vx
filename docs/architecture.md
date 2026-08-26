@@ -513,9 +513,9 @@ kind may fail the run. `--dry` / `--graph` use a lightweight remote
 existence probe (`RemoteCacheLayer.has`) instead of `get` — planning
 never downloads or ingests artifacts.
 
-The first-party wire is the self-hosted platform's `/v1/cache/:hash`
-(streaming PUT, structural `x-vx-digest` integrity verified client-side
-on GET, trust-scoped storage, one-hop 307 blob-offload follow). The **tar
+There is no first-party wire: core ships the seam and nothing else.
+`@vzn/vx-reapi` fills it with Bazel's ActionCache + CAS, re-hashing
+every blob it reads against the digest it was requested under. The **tar
 interior** is the local cache's own format — one `stdout` entry plus
 `outputs/<rel>` — shipped verbatim; local and remote layers transport
 the same tar.zst bytes end-to-end. A Turbo-wire (or any other) cache

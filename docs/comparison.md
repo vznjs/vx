@@ -239,8 +239,9 @@ upstream repos.
 - `vx watch <task>` — debounced re-run loop.
 - `--output-logs full|errors-only|none`.
 - `vx info` (absorbed `vx stats`; the alias remains).
-- Artifact integrity on the native cache wire (`x-vx-digest`, replacing
-  the retired Turbo-compatible HMAC signing).
+- Artifact integrity by content addressing — every blob re-hashed on
+  read against the digest it was requested under (replacing both the
+  retired Turbo-compatible HMAC signing and the retired native wire).
 - OTel run telemetry — the `otel()` plugin in `@vzn/vx-otel` (declare
   it in `vx.workspace.ts` + set `OTEL_EXPORTER_OTLP_ENDPOINT`).
 - Per-task OS sandboxing (`sandbox: {…}`, SRT-backed,

@@ -33,15 +33,15 @@ history in CLAUDE.md's decision log; raw numbers in
    restore, downstream tasks re-enumerate via git only when their
    input globs can actually see a changed path (920 ms → 136 ms on
    the repo that reported it; 81 git spawns → 1).
-5. **Always-on artifact integrity — no key management.** Every
-   artifact on the vx-native cache wire carries an `x-vx-digest`
-   (xxh3 over the bytes) the client verifies against the received
-   body, so a corrupt store or truncating transport degrades to
-   re-execution, never a restored artifact — structural, not opt-in
-   (Turbo's HMAC signing needs a shared key on every machine). The
-   server additionally refuses junk uploads (a non-zstd body 400s)
-   so an accidental bad PUT can never lock a key in the immutable
-   store.
+5. **Always-on artifact integrity — no key management.** Content
+   addressing does the work a signature would: every blob is fetched
+   BY its digest, and `@vzn/vx-reapi` re-hashes what came back with
+   the negotiated digest function before it is written into the local
+   store. A corrupt store or a truncating transport degrades to a
+   MISS — never a restored artifact — and there is no shared secret to
+   distribute or rotate, which is the cost Turbo's HMAC signing pays
+   on every machine. It is the same check Bazel's own client
+   performs.
 6. **A committed config lockfile.** `vx lock` freezes every project's
    **resolved config** (post-evaluation objects — computed values and
    config-time env reads included) into `vx-lock.json`; CI audits it
