@@ -530,6 +530,28 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-26 (fifth wave) — three MORE dead queries, hidden from my own
+  reachability pass by COMMENTS.** Re-ran the analysis repo-wide and it
+  contradicted the wave I had just landed: `getHitRateSplit`,
+  `getTaskDetail` and `getRunHeatmap` showed no consumer, yet my closure
+  had marked them LIVE. The closure searched each root's body TEXT for
+  other function names, so a mention in prose counted as a call —
+  `getTaskDetail` and `getRunHeatmap` appear ONLY inside comments
+  ("still show on `getTaskDetail.recent`", "clamped like every sibling
+  window (getRunHeatmap, periodStats)"), and `getHitRateSplit` appeared
+  nowhere but its own definition. A regex over source cannot tell a call
+  from a sentence, and the failure is silent in the safe direction, which
+  is why it survived. Deleted them with `HitRateSplit`, `TaskDetail`,
+  `HeatmapCell`, `CompareTaskRow`, `TaskMover`, `PeriodStats` and
+  `MAX_WINDOW_DAYS`, plus their tests and façade entries: another 304
+  lines, `metrics.ts` now 888 (from 2101 this morning, −58%). Core suite
+  2733/0, lint clean. The repo-wide sweep that found them also produced
+  87 "unconsumed" exports, and MOST of that list is wrong for a reason
+  worth recording before the next pass trusts it: it excluded every
+  `index.ts`, but `src/cli/index.ts` is the DISPATCHER, not a barrel, so
+  every `*Cmd` looked dead. A barrel is a file with no function bodies —
+  that is the test to apply, not the filename.
+
 - **2026-08-26 (fourth wave) — the cloud's analytics layer removed: 15
   queries, ~2200 lines net, and THREE wrong answers from my own dead-code
   analysis before the right one.** Owner directive to simplify core, and

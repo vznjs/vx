@@ -8,11 +8,8 @@ import {
   explainCacheKeyQuery,
   getCacheStatsSql,
   getHistory,
-  getHitRateSplit,
   getInvocation,
   getRun,
-  getRunHeatmap,
-  getTaskDetail,
   listInvocations,
   listProjects,
   listRuns,
@@ -474,72 +471,6 @@ describe('getCacheStatsSql', () => {
   })
 })
 
-describe('getHitRateSplit', () => {
-  it('clamps a zero or negative window instead of reporting a confident nothing', () => {
-    withCache((cache) => {
-      const now = Date.now()
-      cache.recordRuns([
-        mkRun({
-          hash: 'h1',
-          project: 'pkg',
-          task: 'a',
-          status: 'cache-hit',
-          startedAt: now - 1000,
-        }),
-        mkRun({ hash: 'h2', project: 'pkg', task: 'b', status: 'success', startedAt: now - 2000 }),
-      ])
-      const db = cache.dbHandle()
-      // Unclamped, these put `since` in the future and answered total 0 /
-      // hitRate 0 — indistinguishable from a cache that has never hit.
-      for (const days of [0, -1, -365]) {
-        expect({ days, total: getHitRateSplit(db, days).total }).toEqual({ days, total: 2 })
-      }
-      // Control: a real window is unchanged, and a huge one still clamps to
-      // the ceiling rather than scanning to the epoch.
-      expect(getHitRateSplit(db, 1).total).toBe(2)
-      expect(getHitRateSplit(db, 1e9).total).toBe(2)
-    })
-  })
-
-  it('counts local vs remote hits and computes shares', () => {
-    withCache((cache) => {
-      const now = Date.now()
-      cache.recordRuns([
-        mkRun({ hash: 'h1', project: 'pkg', task: 'a', status: 'success', startedAt: now - 4000 }),
-        mkRun({
-          hash: 'h2',
-          project: 'pkg',
-          task: 'a',
-          status: 'cache-hit',
-          startedAt: now - 3000,
-        }),
-        mkRun({
-          hash: 'h3',
-          project: 'pkg',
-          task: 'a',
-          status: 'cache-hit',
-          startedAt: now - 2000,
-        }),
-        mkRun({
-          hash: 'h4',
-          project: 'pkg',
-          task: 'b',
-          status: 'cache-hit-remote',
-          startedAt: now - 1000,
-        }),
-      ])
-      const split = getHitRateSplit(cache.dbHandle())
-      expect(split.total).toBe(4)
-      expect(split.hits).toBe(3)
-      expect(split.hitLocal).toBe(2)
-      expect(split.hitRemote).toBe(1)
-      expect(split.hitRate).toBeCloseTo(0.75)
-      expect(split.localShare).toBeCloseTo(2 / 3)
-      expect(split.remoteShare).toBeCloseTo(1 / 3)
-    })
-  })
-})
-
 describe('getHistory', () => {
   it('rolls (project, task) aggregates with failureMode classification', () => {
     withCache((cache) => {
@@ -648,31 +579,6 @@ describe('whyDidThisRerunQuery', () => {
   })
 })
 
-describe('getTaskDetail', () => {
-  it('returns null for unknown (project, task)', () => {
-    withCache((cache) => {
-      expect(getTaskDetail(cache.dbHandle(), 'no#such')).toBeNull()
-    })
-  })
-
-  it('returns aggregate + recent runs for a known task', () => {
-    withCache((cache) => {
-      cache.recordRuns([
-        mkRun({ hash: 'h1', project: 'a', task: 'build', durationMs: 100 }),
-        mkRun({ hash: 'h2', project: 'a', task: 'build', durationMs: 200 }),
-      ])
-      const detail = getTaskDetail(cache.dbHandle(), 'a#build')!
-      expect(detail.project).toBe('a')
-      expect(detail.task).toBe('build')
-      expect(detail.recent.length).toBe(2)
-      expect(detail.aggregate!.runs).toBe(2)
-      expect(detail.aggregate!.avgDurationMs).toBe(150)
-      expect(detail.aggregate!.minDurationMs).toBe(100)
-      expect(detail.aggregate!.maxDurationMs).toBe(200)
-    })
-  })
-})
-
 describe('listProjects', () => {
   it('rolls per-project totals + cache entries', () => {
     withCache((cache) => {
@@ -687,19 +593,6 @@ describe('listProjects', () => {
       expect(a.taskCount).toBe(2)
       expect(a.totalDurationMs).toBe(150)
       expect(a.runs).toBe(2)
-    })
-  })
-})
-
-describe('getRunHeatmap', () => {
-  it('emits a 7×24 grid (168 cells) and counts runs in the right cell', () => {
-    withCache((cache) => {
-      const now = Date.now()
-      cache.recordRun(mkRun({ hash: 'h1', project: 'a', task: 'b', startedAt: now }))
-      const cells = getRunHeatmap(cache.dbHandle())
-      expect(cells.length).toBe(168)
-      const total = cells.reduce((acc, c) => acc + c.runs, 0)
-      expect(total).toBe(1)
     })
   })
 })

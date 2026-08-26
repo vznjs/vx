@@ -140,11 +140,8 @@ describe('package boundaries', () => {
       'findWorkspaceRoot',
       'getCacheStatsSql',
       'getHistory',
-      'getHitRateSplit',
       'getInvocation',
       'getRun',
-      'getRunHeatmap',
-      'getTaskDetail',
       // The flakiness classification rule, shared so the cloud analytics twin
       // cannot derive its own answer for the same dashboard badge.
       'isCacheHit',

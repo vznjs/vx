@@ -23,49 +23,11 @@ import { classifyFailureMode } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
 import { isCacheHit, TASK_STATUSES } from './telemetry.js'
 
-/**
- * Cap on a caller-supplied day span. A huge span makes `WHERE created_at >=
- * <since>` degenerate to a full table scan; clamping to ~1 year keeps the
- * fetch bounded to the intended range.
- *
- * The cloud analytics layer sets its own bound and the two are NOT tied. They
- * happen to agree today, but this one guards a single developer's local
- * SQLite `cache.db` while that one guards a range-partitioned Postgres taking
- * 50-100M rows/day — the scale argument is different, so the platform is free
- * to clamp tighter without this having to move. (An earlier comment here
- * claimed the two "mirror" each other; nothing enforced it, and the claim was
- * the sort a reader trusts.)
- */
-const MAX_WINDOW_DAYS = 366
-
 function pickPercentile(sorted: number[], q: number): number | undefined {
   if (sorted.length === 0) return undefined
   const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length))
   return sorted[idx]
 }
-export interface PeriodStats {
-  /** Distinct runs (invocations) in the window. */
-  runs: number
-  /** Task executions recorded (rows). */
-  taskRuns: number
-  /** Executions that actually ran (not a cache hit). */
-  executed: number
-  /** Failed task executions. */
-  failures: number
-  /** Cache-hit task executions (local or remote). */
-  cacheHits: number
-  /** Sum of executed-task durations (ms). */
-  totalDurationMs: number
-  /** Mean duration of successful executed tasks (ms). */
-  avgDurationMs: number
-  p50DurationMs: number | undefined
-  p95DurationMs: number | undefined
-  /** failures / taskRuns. */
-  failureRate: number
-  /** cacheHits / taskRuns. */
-  cacheHitRate: number
-}
-
 // ---------------------------------------------------------------------------
 // Run listing + detail
 // ---------------------------------------------------------------------------
@@ -376,47 +338,6 @@ export function getCacheStatsSql(db: Database): CacheStatsResult {
   }
 }
 
-export interface HitRateSplit {
-  total: number
-  hits: number
-  hitLocal: number
-  hitRemote: number
-  hitRate: number
-  localShare: number
-  remoteShare: number
-}
-
-/**
- * Local-vs-remote cache hit split over the last `days` days. `cache-hit` is a
- * local restore; `cache-hit-remote` was pulled over the network.
- */
-export function getHitRateSplit(db: Database, days = 1): HitRateSplit {
-  // Clamped like every sibling window (getRunHeatmap, periodStats). Unclamped,
-  // a 0 or negative `days` put `since` in the FUTURE, so the query matched
-  // nothing and the split reported a confident `total: 0, hitRate: 0` for a
-  // workspace full of runs — the shape a caller is least able to tell from a
-  // genuinely cold cache.
-  const since = Date.now() - clampInt(days, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
-  const r = db
-    .query(
-      `SELECT COUNT(*) AS total,
-              COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0) AS hitLocal,
-              COALESCE(SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0) AS hitRemote
-       FROM runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}`,
-    )
-    .get(since) as { total: number; hitLocal: number; hitRemote: number }
-  const hits = r.hitLocal + r.hitRemote
-  return {
-    total: r.total,
-    hits,
-    hitLocal: r.hitLocal,
-    hitRemote: r.hitRemote,
-    hitRate: r.total > 0 ? hits / r.total : 0,
-    localShare: hits > 0 ? r.hitLocal / hits : 0,
-    remoteShare: hits > 0 ? r.hitRemote / hits : 0,
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Task history (the same SQL CTE LocalHistoryProvider uses)
 // ---------------------------------------------------------------------------
@@ -561,45 +482,6 @@ export interface CacheEntryRow {
 // ---------------------------------------------------------------------------
 // Task detail — full history for one (project, task)
 // ---------------------------------------------------------------------------
-
-export interface TaskDetail {
-  project: string
-  task: string
-  aggregate: TaskHistoryRow | null
-  recent: RunSummaryRow[]
-  latestEntry: CacheEntryRow | null
-}
-
-export function getTaskDetail(db: Database, taskId: string): TaskDetail | null {
-  const [project, task] = splitTaskId(taskId)
-  const existsRow = db
-    .query('SELECT 1 FROM runs WHERE project = ? AND task = ? LIMIT 1')
-    .get(project, task) as { 1: number } | undefined
-  if (!existsRow) {
-    const entryProbe = db
-      .query('SELECT 1 FROM entries WHERE project = ? AND task = ? LIMIT 1')
-      .get(project, task)
-    if (!entryProbe) return null
-  }
-  const recent = listRuns(db, { project, task, limit: 100 })
-  const histRows = getHistory(db, { project, task, limit: 1 })
-  const entry = db
-    .query(
-      `SELECT hash, project, task, command, exit_code AS exitCode,
-              duration_ms AS durationMs, size_bytes AS sizeBytes,
-              created_at AS createdAt, accessed_at AS accessedAt
-       FROM entries WHERE project = ? AND task = ?
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .get(project, task) as CacheEntryRow | undefined
-  return {
-    project,
-    task,
-    aggregate: histRows[0] ?? null,
-    recent,
-    latestEntry: entry ?? null,
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Cache key explain — latest entries row
@@ -910,21 +792,6 @@ export interface CompareTaskSide {
   exitCode: number
 }
 
-/** A per-task diff row. `a` = this run, `b` = the previous run. */
-export interface CompareTaskRow {
-  taskId: string
-  project: string
-  task: string
-  a: CompareTaskSide | null
-  b: CompareTaskSide | null
-  /** Cache key differs (or the task is only on one side). */
-  hashChanged: boolean
-  /** a.durationMs − b.durationMs; null when either side is absent. */
-  durationDeltaMs: number | null
-  /** Outcome status differs (or the task is only on one side). */
-  statusChanged: boolean
-}
-
 // ---------------------------------------------------------------------------
 // Project-level rollups — where the time and storage actually sit
 // ---------------------------------------------------------------------------
@@ -1007,41 +874,6 @@ export function listProjects(db: Database, limit = 100): ProjectRollup[] {
 // Heatmap — runs per (hour-of-day, day-of-week)
 // ---------------------------------------------------------------------------
 
-export interface HeatmapCell {
-  /** 0 = Sun … 6 = Sat */
-  dayOfWeek: number
-  /** 0 … 23, local time */
-  hourOfDay: number
-  runs: number
-  totalDurationMs: number
-}
-
-/** When do builds happen? Surfaces a 7×24 grid for the last `days` days. */
-export function getRunHeatmap(db: Database, days = 30): HeatmapCell[] {
-  // Same clamp as the trend readers: a hostile `days` makes `since` hugely
-  // negative and the scan degenerate. The 7x24 grid is fixed-size, so this
-  // bounds the FETCH, not the output.
-  const since = Date.now() - clampInt(days, 1, MAX_WINDOW_DAYS) * 24 * 60 * 60 * 1000
-  // Pull raw rows; bucket in JS (timezone math is ugly in pure SQLite, and
-  // `days * 24 * runs/day` rows is a few thousand at most).
-  const rows = db
-    .query(
-      `SELECT started_at, duration_ms FROM runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}`,
-    )
-    .all(since) as { started_at: number; duration_ms: number }[]
-  const grid: HeatmapCell[] = []
-  for (let d = 0; d < 7; d++)
-    for (let h = 0; h < 24; h++)
-      grid.push({ dayOfWeek: d, hourOfDay: h, runs: 0, totalDurationMs: 0 })
-  for (const r of rows) {
-    const date = new Date(r.started_at)
-    const cell = grid[date.getDay() * 24 + date.getHours()]!
-    cell.runs++
-    cell.totalDurationMs += r.duration_ms
-  }
-  return grid
-}
-
 // The hit set, derived the same way. This replaced six SQL prefix-match
 // copies (LIKE on the literal prefix) — the exact class the 2026-08-05
 // status-vocabulary wave removed from the (since-deleted) cloud analytics:
@@ -1051,20 +883,6 @@ export function getRunHeatmap(db: Database, days = 30): HeatmapCell[] {
 const HIT_STATUSES = `(${TASK_STATUSES.filter(isCacheHit)
   .map((s) => `'${s}'`)
   .join(', ')})`
-export interface TaskMover {
-  id: string
-  project: string
-  task: string
-  currentAvgMs: number
-  previousAvgMs: number
-  /** current − previous (positive = slower / regressed). */
-  deltaMs: number
-  /** (current − previous) / previous, as a fraction. */
-  deltaPct: number
-  currentRuns: number
-  previousRuns: number
-}
-
 // ---------------------------------------------------------------------------
 // Stale / prunable entries — what to evict first
 // ---------------------------------------------------------------------------
