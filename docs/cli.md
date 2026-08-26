@@ -1574,9 +1574,9 @@ Surface:
 - `defineProject` / `defineWorkspace` — identity helpers for type
   inference in user configs.
 - `RunOptions` / `RunSummary` / `TaskOutcome` types are re-exported
-  from `@vzn/vx`, alongside the plugin (`VxPlugin`), telemetry
-  (`TelemetrySink`, `RunSummaryRecord`), wire (`RunRequest`,
-  `RunBackend`), and metrics-query surfaces — see `src/index.ts`.
+  from `@vzn/vx`, alongside the plugin (`VxPlugin`, `TaskExecutor`,
+  `CacheLayer`) and telemetry (`TelemetrySink`, `RunSummaryRecord`)
+  surfaces — see `src/index.ts`.
 
 A `log: Logger` option lets embedders swap the default framed-block
 logger for a custom one (e.g. JSON-line emission). Custom loggers

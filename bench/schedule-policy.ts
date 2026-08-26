@@ -32,11 +32,11 @@
  * 2026-07-14) and is out of scope here.
  */
 
-import { computeReverseDepCount, mergePriorities } from '../src/graph/scheduler.js'
-import type { TaskConfig } from '../src/config.js'
-import type { TaskNode } from '../src/graph/index.js'
-import type { HistoryTable, TaskHistory } from '../src/orchestrator/history.js'
-import { computePredictedPriorities } from '../src/orchestrator/predict.js'
+import { computeReverseDepCount, mergePriorities } from '../packages/vx/src/graph/scheduler.js'
+import type { TaskConfig } from '../packages/vx/src/config.js'
+import type { TaskNode } from '../packages/vx/src/graph/index.js'
+import type { HistoryTable, TaskHistory } from '../packages/vx/src/orchestrator/history.js'
+import { computePredictedPriorities } from '../packages/vx/src/orchestrator/predict.js'
 
 interface BenchTask {
   id: string

@@ -7,8 +7,9 @@ The orchestrator module's entry. `run.ts` hosts `run()` / `planRun()`;
 `RunOptions` / `RunSummary` ([`options.md`](./options.md)), `Logger` /
 `defaultLogger` ([`logger.md`](./logger.md)), the `RunPlan` types
 ([`plan.md`](./plan.md)), and the plugin / telemetry / wire /
-metrics surfaces the public API and the service package consume. Invoked
-by `cli/run.ts` (via a `RunBackend`). Discovers the workspace, loads
+metrics surfaces the public API consumes. Invoked directly by
+`cli/run.ts` — a run always executes in the `vx run` process, and the
+scheduler never leaves it. Discovers the workspace, loads
 configs, builds the task graph, opens the cache, installs plugins +
 telemetry, fires cache acceleration (remote prefetch / local
 short-circuit), schedules execution two-tier, manages persistent

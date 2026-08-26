@@ -1,0 +1,42 @@
+{
+  "name": "@vzn/vx",
+  "version": "0.0.0",
+  "description": "An open, extensible monorepo task runner.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./plugins/local-executor": {
+      "types": "./src/plugins/local-executor/index.ts",
+      "import": "./src/plugins/local-executor/index.ts"
+    },
+    "./plugins/local-cache": {
+      "types": "./src/plugins/local-cache/index.ts",
+      "import": "./src/plugins/local-cache/index.ts"
+    }
+  },
+  "bin": {
+    "vx": "./src/bin.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "bun": ">=1.4"
+  },
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "^0.0.74"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/bun": "^1.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

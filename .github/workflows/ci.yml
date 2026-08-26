@@ -65,8 +65,8 @@ jobs:
           echo "ok: bwrap exited 0"
           echo "::endgroup::"
           echo "::group::probeSandbox()"
-          bun -e 'import("/home/runner/work/vx/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => console.log(JSON.stringify(a)))' \
-            || bun -e 'import("./src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => console.log(JSON.stringify(a)))'
+          bun -e 'import("/home/runner/work/vx/vx/packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => console.log(JSON.stringify(a)))' \
+            || bun -e 'import("./packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => console.log(JSON.stringify(a)))'
           echo "::endgroup::"
 
       # Dogfood: vx orchestrates its own gate via vx.config.ts. The `ci`
@@ -114,7 +114,7 @@ jobs:
           # checked either way — a FAILING run is when the summary matters
           # most, since it carries the failure callout — and then re-raised.
           set +e
-          bun src/bin.ts run ci
+          bun packages/vx/src/bin.ts run ci --all
           code=$?
           set -e
           test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-github decline?"; exit 1; }
@@ -253,7 +253,7 @@ jobs:
       # The same invocation the `test` task runs (vx.config.ts), so the two
       # platforms execute an identical suite.
       - name: bun test (core, darwin)
-        run: bun test --preload ./tests/setup.ts ./tests/
+        run: cd packages/vx && bun test --preload ./tests/setup.ts ./tests/
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
       # darwin CI because sandbox-exec misbehaves under load here — including
@@ -264,4 +264,4 @@ jobs:
       # runs): a NOT_ENFORCED iteration reds the job; reporting loss stays
       # tolerated (lossy-by-OS, ~5%, asserted on nowhere here).
       - name: sandbox enforcement canary
-        run: bun tests/helpers/sandbox-canary.ts 20
+        run: bun packages/vx/tests/helpers/sandbox-canary.ts 20

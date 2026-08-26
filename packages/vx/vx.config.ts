@@ -11,8 +11,28 @@ export default defineProject({
       dependsOn: ['lint', 'test'],
     },
 
+    setup: {
+      description: 'bun install on the worker (install-as-an-action)',
+      exec: {
+        remote: 'only',
+        command: 'bun ci',
+      },
+      cache: {
+        inputs: {
+          files: [],
+          workspaceFiles: [
+            'package.json',
+            'bun.lock',
+            'packages/*/package.json',
+            'apps/*/package.json',
+          ],
+        },
+        outputs: { files: ['node_modules/**'] },
+      },
+    },
+
     install: {
-      dependsOn: ['^build'],
+      dependsOn: ['setup', '^build'],
     },
 
     build: {
@@ -56,6 +76,7 @@ export default defineProject({
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: { command: 'oxlint --type-aware --type-check' },
+      dependsOn: ['install'],
       cache: {
         inputs: {
           files: ['src/**', 'tests/**', 'bench/**', '.oxlintrc.json', 'tsconfig.json'],
@@ -71,6 +92,7 @@ export default defineProject({
     'lint.oxfmt': {
       description: 'oxfmt --check (no rewrite; CI-safe)',
       exec: { command: 'oxfmt --check .' },
+      dependsOn: ['install'],
       cache: {
         inputs: {
           files: ['**/*'],

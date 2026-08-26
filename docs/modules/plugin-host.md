@@ -22,8 +22,6 @@ Nothing is appended — no executor or no cache is a named error
 - `resolveCache(plugins, ctx)` → `CacheLayer` (one layer as is; two or
   more chained in order — `ChainedCache`; a layer wrapping the local
   handle subsumes the bare local layer; none is a named error).
-- `resolveBackend(plugins, ctx, fallback)` → `RunBackend` (first wins;
-  the caller's fallback otherwise).
 - `subscribeEventSinks(plugins, bus, ctx)` → `SubscribedEventSinks`
   (the live sinks + a disposer).
 - `teardownPlugins(plugins, sinks, warn)` — end-of-run: each sink's

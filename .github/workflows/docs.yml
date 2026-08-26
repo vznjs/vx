@@ -39,7 +39,7 @@ jobs:
       # to the docs project. `import` regenerates the Starlight content from
       # docs/, then `astro build` writes apps/docs/dist.
       - name: vx run build
-        run: bun src/bin.ts run build --filter @vzn/vx-docs
+        run: bun packages/vx/src/bin.ts run build --filter @vzn/vx-docs
 
       - uses: actions/upload-pages-artifact@v3
         with:

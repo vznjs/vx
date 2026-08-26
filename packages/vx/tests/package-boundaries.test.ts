@@ -23,9 +23,11 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
-const ROOT = path.join(import.meta.dir, '..')
-const CORE_SRC = path.join(ROOT, 'src')
-const PACKAGES_DIR = path.join(ROOT, 'packages')
+const CORE = path.join(import.meta.dir, '..')
+const CORE_SRC = path.join(CORE, 'src')
+// The plugin packages are core's SIBLINGS under the workspace root, which is
+// two levels above core now that core is `packages/vx` rather than the root.
+const PACKAGES_DIR = path.join(CORE, '..')
 
 async function importsOf(dir: string): Promise<{ file: string; specifier: string }[]> {
   const out: { file: string; specifier: string }[] = []
@@ -45,6 +47,9 @@ async function packageSrcDirs(): Promise<{ name: string; src: string }[]> {
   const glob = new Bun.Glob('*/src')
   for await (const rel of glob.scan({ cwd: PACKAGES_DIR, onlyFiles: false })) {
     const name = rel.split(path.sep)[0]!
+    // Core lives under packages/ too, but it is the thing the others import —
+    // scanning it here would ask core to import itself by bare specifier.
+    if (name === 'vx') continue
     out.push({ name, src: path.join(PACKAGES_DIR, rel) })
   }
   return out

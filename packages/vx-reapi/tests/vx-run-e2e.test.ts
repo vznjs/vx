@@ -10,7 +10,7 @@ import { mkdtemp, mkdir, rm, writeFile, access } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { run } from '@vzn/vx'
-import { localWorkspaceSource } from '../../../tests/helpers/local-workspace.js'
+import { localWorkspaceSource } from '../../vx/tests/helpers/local-workspace.js'
 
 const ENDPOINT = Bun.env['VX_REAPI_EXEC_ENDPOINT']
 if (Bun.env['VX_REQUIRE_REAPI_EXEC'] === '1' && (ENDPOINT === undefined || ENDPOINT === '')) {

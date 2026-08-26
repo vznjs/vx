@@ -34,6 +34,9 @@ const TARGETS: readonly Target[] = [
 ]
 
 const ROOT = dirname(import.meta.dir) // scripts/ -> repo root
+// Core is a workspace member now, so its sources, manifest and compiled
+// binaries live under packages/vx — only README/LICENSE stay repo-wide.
+const CORE = join(ROOT, 'packages', 'vx')
 const REPOSITORY = 'https://github.com/vznjs/vx'
 
 function parseArgs(argv: readonly string[]): { version: string; out: string; only?: string } {
@@ -83,7 +86,7 @@ async function emitPlatformPackages(args: {
   const { mainName, base, distPrefix, targets, version, outDir } = args
   for (const t of targets) {
     const pkgName = `${mainName}-${t.target}`
-    const binSrc = join(ROOT, 'dist', `${distPrefix}-${t.target}`)
+    const binSrc = join(CORE, 'dist', `${distPrefix}-${t.target}`)
     if (!(await Bun.file(binSrc).exists())) {
       throw new Error(`missing binary ${binSrc} — run \`vx run build\` first`)
     }
@@ -118,7 +121,7 @@ async function main(): Promise<void> {
 
   await rm(outDir, { recursive: true, force: true })
 
-  const rootPkg = (await Bun.file(join(ROOT, 'package.json')).json()) as {
+  const corePkg = (await Bun.file(join(CORE, 'package.json')).json()) as {
     description?: string
     dependencies?: Record<string, string>
   }
@@ -135,7 +138,7 @@ async function main(): Promise<void> {
 
   const mainDir = join(outDir, 'vx')
   await mkdir(mainDir, { recursive: true })
-  await cp(join(ROOT, 'src'), join(mainDir, 'src'), { recursive: true })
+  await cp(join(CORE, 'src'), join(mainDir, 'src'), { recursive: true })
   await cp(join(ROOT, 'scripts', 'npm-launcher.mjs'), join(mainDir, 'launcher.mjs'))
   await cp(join(ROOT, 'README.md'), join(mainDir, 'README.md'))
   await cp(join(ROOT, 'LICENSE'), join(mainDir, 'LICENSE'))
@@ -143,7 +146,7 @@ async function main(): Promise<void> {
   await writeJson(join(mainDir, 'package.json'), {
     name: '@vzn/vx',
     version,
-    description: rootPkg.description ?? 'An open, extensible monorepo task runner.',
+    description: corePkg.description ?? 'An open, extensible monorepo task runner.',
     type: 'module',
     // The library surface — plugin authors `import { defineProject } from '@vzn/vx'`.
     exports: { '.': { types: './src/index.ts', import: './src/index.ts' } },
@@ -154,7 +157,7 @@ async function main(): Promise<void> {
     optionalDependencies: allOptional('@vzn/vx', version),
     // Runtime deps the library source needs when imported (the binary embeds
     // its own copy). Mirrors the workspace root so versions never drift.
-    dependencies: rootPkg.dependencies ?? {},
+    dependencies: corePkg.dependencies ?? {},
     files: ['src', 'launcher.mjs', 'README.md', 'LICENSE'],
     repository: REPOSITORY,
     homepage: `${REPOSITORY}#readme`,

@@ -41,9 +41,9 @@ jobs:
       # workflow on the same commit is essentially free. --concurrency 2: eight
       # concurrent `--compile --minify --bytecode` builds OOM a 7 GB runner
       # (this workflow OOM'd before with only four).
-      - run: bun src/bin.ts run build --concurrency 2
+      - run: bun packages/vx/src/bin.ts run build --filter @vzn/vx --concurrency 2
 
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: dist/vx-*
+          files: packages/vx/dist/vx-*
