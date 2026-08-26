@@ -68,7 +68,7 @@ export async function resolveCache(
 
 /**
  * Collect every plugin's `executor`, in declaration order. Unlike
- * and `cache` this is a LIST: per task, `selectExecutor` takes the first
+ * `cache` this is a LIST: per task, `selectExecutor` takes the first
  * that accepts. An empty list is the same authoring error as a missing
  * cache provider and fails the same way. A broken factory aborts — an
  * executor is load-bearing, not observational.

@@ -115,9 +115,17 @@ tiebreaks. Nodes the override didn't see fall back to baseline.
 
 ## Observability
 
-`vx info --history` surfaces the same HistoryTable the scheduler
-consumes. `vx mcp` exposes `getRunHistory` so AI agents can ask
-"what does the scheduler think about this task" in plain English.
+The scheduler reads the same run history those verbs read, so you can
+inspect its raw material directly:
+
+```bash
+vx last --list       # recent runs, with per-task durations and outcomes
+vx last <runId>      # one run replayed in full — failures first
+vx why <task>        # what moved that task's key between its last two runs
+```
+
+`vx mcp` exposes `getRunHistory` as a tool, so an AI agent can ask "what
+does the scheduler know about this task" without a shell.
 
 ## Trade-offs
 

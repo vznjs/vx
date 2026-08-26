@@ -1,6 +1,6 @@
 ---
 title: Writing a vx plugin
-description: A vx plugin contributes capabilities from vx.workspace.ts — route execution (backend), swap the cache (cache), or export run data (telemetry). The telemetry capability is the safe, observe-only path for Sentry, Slack, metrics, and OpenTelemetry.
+description: A vx plugin contributes capabilities from vx.workspace.ts — decide where a task runs (executor), where artifacts live (cache), or where run records go (telemetry). Telemetry is the safe, observe-only path for Sentry, Slack, metrics, and OpenTelemetry.
 ---
 
 A plugin is a small object you register in `vx.workspace.ts`. It
@@ -26,9 +26,9 @@ import type { VxPlugin } from '@vzn/vx'
 interface VxPlugin {
   readonly name: string // 'org/plugin-name'
 
-  // BEHAVIOR capabilities — change WHAT/HOW work runs (opt-in, first wins):
-  backend?(ctx): RunBackend | undefined // route execution (local / remote / distributed)
-  cache?(ctx): CacheLayer | undefined // provide the remote cache layer
+  // BEHAVIOR capabilities — decide WHERE work runs and where artifacts live:
+  executor?(ctx): TaskExecutor | undefined // where ONE task's command runs
+  cache?(ctx): CacheLayer | undefined // where artifacts live
 
   // OBSERVE-ONLY capability — cannot change behavior, by construction:
   telemetry?(ctx): TelemetrySink | TelemetrySink[] | undefined // export run data
@@ -38,22 +38,32 @@ interface VxPlugin {
 }
 ```
 
-- **`backend`** returns a `RunBackend` (`run(request) → result`) or `undefined`
-  to decline. First non-undefined wins; else core runs in-process.
-- **`cache`** returns a `CacheLayer` wrapping (or replacing) the local cache,
-  or `undefined`. First non-undefined wins; else the bare local cache —
-  core ships no wire client of its own. **This is the seam the first-party
-  cloud plugin plugs into — and so can you** (see "Bring your own cache").
+- **`executor`** returns a `TaskExecutor` — the thing that actually runs
+  one task's command — or `undefined` to decline. Executors form a
+  **list** in declaration order, and per task the first one whose
+  `accepts(task)` returns true gets it. That is how `@vzn/vx-reapi` can
+  run most tasks on a remote worker while a task marked
+  `exec: { remote: false }` still falls to the local executor in the
+  same run. Declaring none is an authoring error, not a default: vx does
+  not assume even a local executor.
+- **`cache`** returns a `CacheLayer` or `undefined`. Layers **chain**
+  rather than compete: a lookup walks them in order and a save reaches
+  all of them, so a remote plugin declared before `localCachePlugin()`
+  composes with it instead of replacing it. (A bare local layer that
+  another declared layer already wraps is dropped, so the local store is
+  never written twice.) Core ships no wire client of its own.
 - **`telemetry`** returns one or more `TelemetrySink`s that receive versioned
   `RunSummaryRecord` / `TelemetryRecord` values. A sink holds NO run handle, so
   it provably can't change a run; ALL plugins' sinks run (additive), each
-  crash-isolated. This is the export contract OpenTelemetry, a custom HTTP
-  exporter, and the first-party cloud plugin all speak.
+  crash-isolated and deadline-bounded. This is the export contract
+  `@vzn/vx-otel`, `@vzn/vx-github` and any custom exporter all speak.
 
-The first-party cloud plugin just implements all three seams against a
-deployed self-hosted platform. It's fully optional and replaceable —
-nothing in core depends on it, and you can implement your own
-backend/cache/telemetry the same way.
+The plugins that ship alongside vx are ordinary consumers of these same
+seams: `@vzn/vx-reapi` fills `executor` and `cache` against any Bazel
+REAPI server, `@vzn/vx-otel` and `@vzn/vx-github` fill `telemetry`. None
+of them is privileged — core depends on none, and yours plugs in the
+same way. Even vx's own `localExecutorPlugin()` and `localCachePlugin()`
+are written against the public contract.
 
 ## The telemetry sink
 
@@ -337,7 +347,7 @@ Plugins are **isolated from execution by design**:
 
 - If **`setup()`** throws, the run aborts with a `UserError` naming the
   plugin. A broken plugin fails loudly, before any work starts.
-- If a **`backend`** or **`cache`** factory throws, the run aborts the same
+- If an **`executor`** or **`cache`** factory throws, the run aborts the same
   way — these are load-bearing, so a silent degrade would be worse than a
   clean failure.
 - If a **telemetry sink** throws — from `onRecord`, `onRunSummary`, or
@@ -356,7 +366,8 @@ API path from a sink back into scheduling, caching, or execution.
 
 ## What a plugin can and can't change
 
-- **Route execution** — yes, via `backend` (local / remote / distributed).
+- **Decide where a task runs** — yes, via `executor` (this machine, a
+  remote worker pool, a container).
 - **Swap the cache** — yes, via `cache` (your own server, S3, Redis).
 - **Export run data** — yes, via `telemetry` (observe-only).
 - **Change how a task's command runs** — no. Shell is the API
@@ -366,9 +377,11 @@ API path from a sink back into scheduling, caching, or execution.
 - **Register custom MCP/RPC methods** — not today; plugins observe and
   route, they don't extend the inspector surface yet.
 
-Precedence: `backend` and `cache` are **first-non-undefined-wins** in
-declaration order (one plugin's backend/cache is used per run). `telemetry`
-sinks are **additive** — every plugin's sinks run.
+Precedence, and it differs per seam — this is the part worth reading
+twice. `executor` is a **list**: per task, the first executor that
+`accepts` it wins. `cache` layers **chain**: a lookup walks them in
+declaration order, a save reaches all. `telemetry` sinks are
+**additive**: every plugin's sinks run.
 
 ## Reference
 
