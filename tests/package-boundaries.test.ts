@@ -126,7 +126,6 @@ describe('package boundaries', () => {
       'computeTaskHash',
       'createEventBus',
       'createHashCache',
-      'createVxSurface',
       'defaultLogger',
       'defineProject',
       'defineWorkspace',

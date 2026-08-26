@@ -530,6 +530,27 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-26 (sixth wave) — the devframe adapter left core: one
+  consumer's integration is not core's job.** Continuing the
+  simplification with the corrected rule (a barrel is a file with no
+  function bodies, not a filename). `run-state.ts` fed only
+  `devframe-surface.ts`, which fed NOTHING — no in-tree host mounts
+  `createVxSurface`, and the comment justifying it named a `--ui`
+  devframe dev server that does not exist and `vx serve`, a verb deleted
+  long ago. So core carried 219 lines, a public façade export and a
+  `devframe` devDependency to adapt its event bus for one optional tool.
+  The SEAM stays and is the point: `RunOptions.bus` plus the
+  serializable `WireEvent` already let any host subscribe before the run
+  emits — that is core being flexible. The devframe-shaped adapter on
+  top of it is what a consumer writes. Removed both modules, both module
+  docs, both test files, the façade entry, the `devframe` devDependency
+  (91 lockfile lines) and the two stale references; the `bus` doc
+  comment now describes the seam instead of naming a flag that was never
+  built. Core suite 2722/0, `bun install --frozen-lockfile` clean after
+  the lockfile update — worth checking, since dropping a dependency
+  makes CI's frozen install fail if the lockfile is not committed with
+  it, and that is a red main for a change that touched no code path.
+
 - **2026-08-26 (fifth wave) — three MORE dead queries, hidden from my own
   reachability pass by COMMENTS.** Re-ran the analysis repo-wide and it
   contradicted the wave I had just landed: `getHitRateSplit`,

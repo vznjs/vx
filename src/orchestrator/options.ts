@@ -158,8 +158,11 @@ export interface RunOptions {
   /**
    * Inject the run's event bus. When provided, the orchestrator emits
    * onto it instead of creating its own — letting a caller subscribe a
-   * surface (e.g. the `--ui` devframe dev server) BEFORE the run starts
-   * emitting. The terminal renderer is still attached as a subscriber, so
+   * surface BEFORE the run starts emitting. This IS the surface seam:
+   * core ships the bus and the serializable `WireEvent`, and whatever
+   * renders them lives outside. (It used to name a `--ui` devframe dev
+   * server; no such flag exists, and core's devframe adapter was removed
+   * on 2026-08-26 — one consumer's adapter is not core's job.) The terminal renderer is still attached as a subscriber, so
    * default output is unchanged. Default: a fresh internal bus.
    */
   bus?: EventBus

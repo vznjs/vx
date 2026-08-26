@@ -193,12 +193,7 @@ export { projectNode, projectOutcome } from './orchestrator/index.js'
 export type { RunResult } from './orchestrator/index.js'
 
 // Event bus + wire form — adapters (otel-bridge, custom subscribers) ride this.
-export {
-  createEventBus,
-  wireForwarder,
-  toWireEvent,
-  createVxSurface,
-} from './orchestrator/index.js'
+export { createEventBus, wireForwarder, toWireEvent } from './orchestrator/index.js'
 export type {
   EventBus,
   RunEvent,
