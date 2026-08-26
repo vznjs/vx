@@ -530,6 +530,35 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-26 (seventh wave) — five more dead exports, and a barrel
+  re-export that lint could not see but the SUITE could.** Repo-wide
+  sweep with the corrected rule produced eight candidates; verified each
+  BY HAND rather than trusting the script, which was right to do because
+  the script was wrong twice more. First it stripped block comments with
+  a DOTALL regex, and a glob literal like `'dist/**/*.js'` contains
+  `/*` … `*/`, so it ate spans of real code and reported live functions
+  as dead. Then even the line-safe version listed `getCacheStatsSql` and
+  `getHistory`, which turned out to appear only inside COMMENTS in their
+  callers' files. REMOVED: `resolveCacheScope` (derived a PR cache scope
+  for `vx serve` — a deleted verb, and the trust-scope model went with
+  the cloud), the three unused `digest.ts` helpers (`digestEqual`,
+  `digestString`, `parseDigest` — speculative façade widening, the very
+  thing the 2026-07-30 measurement rejected) and vx-otel's `doubleAttr`.
+  KEPT with the reason recorded: `configEvalWorkerCount`, which says at
+  its own site that it exists so a test can pin one worker per
+  concurrent round — a documented seam, not an accident; and
+  `getCacheStatsSql` / `getHistory`, second implementations whose only
+  callers are the tests asserting they agree with `Cache.stats()` and
+  `LocalHistoryProvider`. Those two are a real question for a later
+  wave (a duplicate kept solely to be compared to the original), not
+  something to delete in passing. THE CATCH THAT MATTERED: `oxlint
+--type-aware` passed while `vx info` died with
+  `export 'digestEqual' not found` — the re-export lived on a ONE-LINE
+  `export { a, b, c } from` in `src/cache/index.ts`, which my
+  line-oriented filter skipped and the type checker did not flag. The
+  test suite found it. Every deletion wave today has been caught by
+  tests rather than by lint, which is the argument for both.
+
 - **2026-08-26 (sixth wave) — the devframe adapter left core: one
   consumer's integration is not core's job.** Continuing the
   simplification with the corrected rule (a barrel is a file with no

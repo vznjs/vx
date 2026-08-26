@@ -18,7 +18,7 @@ export {
   WORKSPACE_OUTPUT_PREFIX,
 } from './cache.js'
 export { type CASBackend, FsCASBackend, MemoryCASBackend } from './cas-backend.js'
-export { type Digest, digestEqual, digestString, makeDigest, parseDigest } from './digest.js'
+export { type Digest, makeDigest } from './digest.js'
 export {
   cleanOutputs,
   cleanWorkspaceOutputs,

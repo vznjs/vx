@@ -187,32 +187,6 @@ export function detectCi(env: NodeJS.ProcessEnv | Record<string, string | undefi
   return { ci: false, provider: null }
 }
 
-/**
- * The untrusted per-PR cache partition — a stable identity for THIS pull
- * request, so one fork PR's untrusted cache writes are isolated from another's
- * (no cross-PR pollution or leakage). `VX_CACHE_SCOPE` overrides; otherwise
- * derived from the CI PR context (GitHub PR number, GitLab MR iid, else the
- * head branch). Returns undefined outside a PR (the serve then falls back to a
- * shared untrusted scope). Never throws — sanitized to one safe path segment.
- */
-export function resolveCacheScope(
-  env: NodeJS.ProcessEnv | Record<string, string | undefined>,
-): string | undefined {
-  const safe = (s: string): string => s.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 128)
-  const override = env['VX_CACHE_SCOPE']
-  if (isTruthy(override)) return safe(override as string)
-  // GitHub: a pull_request run has GITHUB_REF = refs/pull/<n>/merge.
-  const ref = env['GITHUB_REF']
-  const m = typeof ref === 'string' ? /^refs\/pull\/(\d+)\//.exec(ref) : null
-  if (m) return `pr-${m[1]}`
-  const headRef = env['GITHUB_HEAD_REF']
-  if (isTruthy(headRef)) return `gh-${safe(headRef as string)}`
-  // GitLab merge request.
-  const iid = env['CI_MERGE_REQUEST_IID']
-  if (isTruthy(iid)) return `mr-${safe(iid as string)}`
-  return undefined
-}
-
 /** Host name (null on failure) + platform + arch. */
 export function captureHostContext(): HostContext {
   let host: string | null = null

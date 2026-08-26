@@ -162,7 +162,6 @@ describe('package boundaries', () => {
       'projectOutcome',
       'readLockfile',
       'resolveCacheDir',
-      'resolveCacheScope',
       'resolveInputs',
       'resolveOutputView',
       'resolveOutputs',

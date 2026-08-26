@@ -50,7 +50,6 @@ export {
   captureHostContext,
   captureWorkspaceIdentity,
   detectCi,
-  resolveCacheScope,
 } from './orchestrator/index.js'
 export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './orchestrator/index.js'
 export { FULL_CACHE_POLICY, parseCachePolicy } from './orchestrator/index.js'

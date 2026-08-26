@@ -30,18 +30,3 @@ export function makeDigest(hash: string, sizeBytes: number): Digest {
   }
   return { hash, sizeBytes }
 }
-
-export function digestEqual(a: Digest, b: Digest): boolean {
-  return a.hash === b.hash && a.sizeBytes === b.sizeBytes
-}
-
-/** Stable wire format for logging / RPC: `hash/sizeBytes`. */
-export function digestString(d: Digest): string {
-  return `${d.hash}/${d.sizeBytes}`
-}
-
-export function parseDigest(s: string): Digest {
-  const slash = s.indexOf('/')
-  if (slash === -1) throw new Error(`invalid digest string: ${JSON.stringify(s)}`)
-  return makeDigest(s.slice(0, slash), Number(s.slice(slash + 1)))
-}

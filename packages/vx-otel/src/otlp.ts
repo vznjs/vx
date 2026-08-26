@@ -43,9 +43,6 @@ export function intAttr(key: string, v: number): KeyValue {
 export function boolAttr(key: string, v: boolean): KeyValue {
   return { key, value: { boolValue: v } }
 }
-export function doubleAttr(key: string, v: number): KeyValue {
-  return { key, value: { doubleValue: v } }
-}
 /** An int64 that is ALREADY a decimal string — OTLP's own encoding for the
  *  type. Passing it through untouched is the point: routing a nanosecond
  *  count through a JS number would round it. */

@@ -4,13 +4,10 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
   type CASBackend,
-  digestEqual,
-  digestString,
   type Digest,
   FsCASBackend,
   makeDigest,
   MemoryCASBackend,
-  parseDigest,
 } from '../src/cache/index.js'
 
 describe('Digest', () => {
@@ -29,23 +26,6 @@ describe('Digest', () => {
     expect(() => makeDigest('abc', -1)).toThrow()
     expect(() => makeDigest('abc', 1.5)).toThrow()
     expect(() => makeDigest('abc', Number.NaN)).toThrow()
-  })
-
-  it('digestEqual is field-wise', () => {
-    expect(digestEqual(makeDigest('a', 1), makeDigest('a', 1))).toBe(true)
-    expect(digestEqual(makeDigest('a', 1), makeDigest('b', 1))).toBe(false)
-    expect(digestEqual(makeDigest('a', 1), makeDigest('a', 2))).toBe(false)
-  })
-
-  it('digestString / parseDigest round-trip', () => {
-    const d = makeDigest('cafebabe', 4096)
-    expect(digestString(d)).toBe('cafebabe/4096')
-    const parsed = parseDigest('cafebabe/4096')
-    expect(digestEqual(d, parsed)).toBe(true)
-  })
-
-  it('parseDigest rejects malformed input', () => {
-    expect(() => parseDigest('no-slash')).toThrow()
   })
 })
 

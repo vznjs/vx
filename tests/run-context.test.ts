@@ -9,7 +9,6 @@ import {
   captureWorkspaceIdentity,
   detectCi,
   normalizeRemoteUrl,
-  resolveCacheScope,
 } from '../src/orchestrator/run-context.js'
 
 function git(cwd: string, args: string[]): void {
@@ -299,20 +298,5 @@ describe('captureWorkspaceIdentity', () => {
     const identity = captureWorkspaceIdentity(dir)
     expect(identity.id).toMatch(/^[0-9a-f]{16}$/)
     expect(identity.name).toBe(path.basename(dir))
-  })
-})
-
-describe('resolveCacheScope', () => {
-  it('derives a per-PR scope from GitHub / GitLab PR context', () => {
-    expect(resolveCacheScope({ GITHUB_REF: 'refs/pull/42/merge' })).toBe('pr-42')
-    expect(resolveCacheScope({ GITHUB_HEAD_REF: 'feature/x' })).toBe('gh-feature-x')
-    expect(resolveCacheScope({ CI_MERGE_REQUEST_IID: '7' })).toBe('mr-7')
-  })
-  it('VX_CACHE_SCOPE overrides and is sanitized', () => {
-    expect(resolveCacheScope({ VX_CACHE_SCOPE: 'my/scope!' })).toBe('my-scope-')
-  })
-  it('returns undefined outside a PR', () => {
-    expect(resolveCacheScope({})).toBeUndefined()
-    expect(resolveCacheScope({ GITHUB_REF: 'refs/heads/main' })).toBeUndefined()
   })
 })
