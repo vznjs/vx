@@ -58,6 +58,7 @@ export default defineConfig({
             { label: 'Dev & long-running tasks', link: '/guides/dev-tasks/' },
             { label: 'Environment variables', link: '/guides/environment-variables/' },
             { label: 'Sandboxing tasks', link: '/guides/sandboxing/' },
+            { label: 'Trusting the cache', link: '/guides/trusting-the-cache/' },
             { label: 'Remote caching', link: '/guides/remote-caching/' },
             { label: 'Remote execution', link: '/guides/remote-execution/' },
             { label: 'Continuous integration', link: '/guides/ci/' },

@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v26'`, in `src/cache/cache.ts`). Bumped only
+   (currently `'vx-cache-v27'`, in `src/cache/cache.ts`). Bumped only
    when the key derivation format changes. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
 2. **`taskId`** — `${projectName}#${taskName}`. Two tasks with
@@ -513,7 +513,7 @@ part of that object (only the strings are), so a changed probe output
 is correct, expected, live behavior rather than lock drift. This is the
 same reason `lock --check` ignores `inputs.env` value changes.
 
-## Storage layout (v17+)
+## Storage layout
 
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)
@@ -743,6 +743,21 @@ moat.
   object at lock time and goes stale.
 - **`vx-lock.json`** — globally excluded (v24); also filtered out of
   `--affected` change sets.
+- **`exec.resources` and `exec.remote`.** Both are pure PLACEMENT: they
+  decide _where_ and _alongside what_ a task runs, never what it
+  produces. Tuning a memory reservation, or pinning a task to this
+  machine, does not bust its cache. `remote` especially must not — the
+  whole contract of a remote executor is that the same command over the
+  same inputs yields the same outputs, so a key that moved with
+  placement would split your laptop from the worker pool over nothing.
+
+  **`exec.timeout` and `exec.retries` are the deliberate exception** —
+  they stay in the key. That asymmetry is easy to misread as an
+  oversight, so: a timeout or a retry budget can change _whether the
+  task completes at all_, which is a different question from where it
+  ran. They were folded in before the placement fields existed, and
+  stripping them now would be a `CACHE_VERSION` bump for no correctness
+  gain.
 
 ## Bumping `CACHE_VERSION`
 
