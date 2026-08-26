@@ -530,6 +530,42 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-26 (ninth wave) — docs passes 2–5: the front door was
+  BROKEN, and every other doc bug was smaller than that.** Continuing
+  the owner's docs directive. The worst finding is the simplest:
+  `quickstart.md` never mentioned `vx.workspace.ts` or plugins, so a
+  reader following the getting-started path hit
+  `no cache plugin declared` on their first run and stopped. CONFIRMED
+  by executing it — a fresh workspace with no workspace file exits 1
+  before any task. `workspace-config.md`, the guide covering that exact
+  file, opened with "The file is entirely optional", contradicting the
+  product's own error message. Both rewritten to lead with plugins, and
+  to give the REASON rather than the snippet: it is one file once, and
+  it is why adding a remote cache later is a line in the same list
+  instead of a different product. (`vx migrate` emits the file —
+  verified in `migrate.ts`, not assumed.) The site's `introduction.md`
+  was selling a previous generation: "the Turborepo remote-cache wire"
+  (dropped), "no plugins" and "no plugin/executor protocol" (there are
+  three seams and an executor one), remote execution "in time" (it
+  shipped), "install the three OTel peers" (vx-otel has NO dependencies
+  at all), Bun ≥ 1.3 (engines says 1.4). Rewritten around what vx is
+  built for — a wrong build costs more than a slow one — and it now
+  EXPLAINS the plugin model instead of denying it. Four more docs still
+  described the removed `/v1/cache` wire and its `x-vx-digest` header as
+  how integrity works; all four now describe content addressing plus the
+  re-hash-on-read that actually ships, with the honest framing that this
+  is why there is no shared secret to rotate. `how-vx-works.md` gained
+  the stage it was missing (plugins install first). `why-vx-is-fast.md`
+  had "metadata rides HTTP headers" and justified no-auto-inputs with a
+  distribution-mechanics reason; the real reason is better and is now
+  stated — a traced set describes what a task read THAT TIME on THAT
+  machine, and cannot be known before the run, which is when the key is
+  needed. Method note: `docs/` is the source and
+  `apps/docs/scripts/import-docs.ts` copies it into the site
+  (`README.md` → `overview.md`), so fixing a generated copy is wasted
+  work — fix `docs/`. The guides under `apps/docs/src/content/docs` are
+  authored only there.
+
 - **2026-08-26 (eighth wave) — docs rework, pass 1: the entry doc was
   making claims the code stopped supporting, including a SECURITY one.**
   Owner asked for the docs to be brought up to date and made to explain
