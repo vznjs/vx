@@ -120,8 +120,8 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Chrome-trace profile     | `--profile`                                | (Nx Cloud)             | —                            | `--profile[=<path>]`                                                                 |
 | Async remote prefetch    | —                                          | —                      | —                            | **yes** — stable-key GETs overlap execution                                          |
 | Restore-ahead scheduling | —                                          | —                      | —                            | **yes** — two-tier scheduler restores warm hits ahead of their deps                  |
-| Artifact integrity       | HMAC `x-artifact-tag`                      | (transport-level)      | —                            | **yes** — structural `x-vx-digest` (xxh3, always on; client-verified on GET)         |
-| Pre-signed URL auth      | yes                                        | yes                    | —                            | **yes** — the platform 307s to pre-signed S3/R2 URLs; client follow drops auth       |
+| Artifact integrity       | HMAC `x-artifact-tag`                      | (transport-level)      | —                            | **yes** — every blob re-hashed on read against the digest it was requested under     |
+| Pre-signed URL auth      | yes                                        | yes                    | —                            | plugin's business — core ships the `cache` seam, not a transport                     |
 
 ## Workspace integration
 

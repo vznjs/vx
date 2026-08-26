@@ -530,6 +530,39 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-26 (eighth wave) — docs rework, pass 1: the entry doc was
+  making claims the code stopped supporting, including a SECURITY one.**
+  Owner asked for the docs to be brought up to date and made to explain
+  the problems vx solves. Truth first, because a doc that is merely
+  well-organised and false is worse than a blunt one. Verified against
+  the code rather than read: `docs/README.md` promised "HMAC artifact
+  signing on the remote wire — a configured key hard-rejects unsigned
+  responses", and HMAC left with the Turbo `/v8` wire; the site's
+  `overview.md` (generated FROM that file) repeated it, and
+  `guides/remote-caching.md` documented a vx-native `/v1/cache` wire
+  with an `x-vx-digest` header that no longer exists either. A stale
+  security claim is the worst kind to leave standing, since a reader
+  plans around it. All three now describe the integrity check that
+  actually ships — every blob re-hashed on read against the digest it
+  was requested under, mismatches degrading to a MISS. Also corrected:
+  "~600 tests" (real: 2717), a `comparison.md` row crediting vx with
+  pre-signed URL auth via "the platform" (removed with the cloud), and
+  an `architecture.md` module table plus prose still naming
+  `run-state.ts` / `devframe-surface.ts`, deleted hours earlier. The
+  README's whole tail was a stale duplicate of the repo layout —
+  claiming a single-package project, a `cache/remote-cache.ts` Turbo
+  client and "v21 key derivation" (actual: v27) — so it was rewritten
+  from the real tree. STRUCTURE: the entry doc now opens with the five
+  PROBLEMS (a cache that returns the wrong answer; nobody can tell you
+  why it re-ran; selection is a different question from hashing; hard
+  boundaries; doing it without becoming the platform) and answers each,
+  instead of opening with benchmark numbers. Checked every relative
+  link resolves. Two authored doc sources exist and it is worth knowing
+  which is which: `docs/` is the deep reference, copied into the site by
+  `apps/docs/scripts/import-docs.ts` (`README.md` → `overview.md`),
+  while the user-facing guides under `apps/docs/src/content/docs/guides`
+  are authored only there.
+
 - **2026-08-26 (seventh wave) — five more dead exports, and a barrel
   re-export that lint could not see but the SUITE could.** Repo-wide
   sweep with the corrected rule produced eight candidates; verified each

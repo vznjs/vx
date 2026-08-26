@@ -58,7 +58,7 @@ layers:
 | Run composition        | `run.ts`, `prepare.ts`, `options.ts`, `plan.ts`, `execute-task.ts`, `task-hash.ts`, `upstream.ts`, `run-context.ts`, `run-artifacts.ts`, `run-report.ts` |
 | Cache acceleration     | `remote-cache-setup.ts`, `remote-prefetch.ts`, `stable-keys.ts`, `local-shortcircuit.ts`                                                                 |
 | Plugin + telemetry     | `plugin.ts`, `plugin-host.ts`, `telemetry.ts`, `telemetry-host.ts`                                                                                       |
-| Events                 | `events.ts`, `run-state.ts`, `devframe-surface.ts`                                                                                                       |
+| Events                 | `events.ts` — the run event bus and the serializable `WireEvent` any surface reads                                                                       |
 | Presentation + queries | `logger.ts`, `framed-output.ts`, `status-line.ts`, `summary.ts`, `tally.ts`, `colors.ts`, `metrics.ts`, `history.ts`, `predict.ts`                       |
 
 ```mermaid
@@ -185,8 +185,9 @@ strings, no bus, no cache handle, no request.
 subscriber (`terminalSubscriber`). Fan-out is synchronous and
 order-preserving, so terminal bytes are identical to a direct call.
 Additional subscribers attach without touching the producer: plugins,
-telemetry, the devframe surface, and `wireForwarder` — which projects
-events into the serializable `WireEvent` form (ids + decimal-string
+telemetry, any surface a caller wires up through `RunOptions.bus`, and
+`wireForwarder` — which projects events into the serializable
+`WireEvent` form (ids + decimal-string
 ns instead of live node refs and bigints) for anything crossing a
 process or socket.
 

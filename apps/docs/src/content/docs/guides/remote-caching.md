@@ -112,11 +112,14 @@ outage slows you down; it never fails you.
 
 ## Artifact integrity
 
-The vx-native `/v1/cache` wire attaches an `x-vx-digest` header — a
-structural hash over the artifact bytes — to every upload; the client
-verifies it against the received bytes on download, so a corrupt store or a
-truncating proxy degrades to re-execution rather than restoring corrupt
-outputs. A bring-your-own backend can adopt the same contract.
+Every blob `@vzn/vx-reapi` reads — ByteStream and batch alike, compressed
+or not — is re-hashed with the negotiated digest function and
+length-checked against the digest it was requested under. Bytes that don't
+match are refused with a named integrity error instead of being written
+into the local content-addressed store, so a corrupt store or a truncating
+proxy degrades to a **miss**, never to wrong bytes under a trusted name.
+That is the same check Bazel's own client performs, and a bring-your-own
+backend filling the `cache` seam should hold to it.
 
 ## In CI
 
