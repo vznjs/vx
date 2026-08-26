@@ -530,6 +530,41 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-26 (tenth wave) — docs passes 6–7: the guide for EXTENDING
+  vx documented a hook the loader refuses.** `guides/plugins.md`
+  declared `backend?()` in its `VxPlugin` block — the whole-run seam
+  removed 2026-08-23, which `project-loader` now rejects BY NAME — and
+  omitted `executor?()`, the per-task seam that replaced it. A plugin
+  author following the extension guide would implement a rejected hook
+  and never learn the working one. It was also wrong about COMPOSITION,
+  which matters more than the name, and both corrections came from
+  reading `plugin-host.ts` rather than assuming: executors are a LIST
+  where per task the first whose `accepts()` returns true wins (that is
+  how vx-reapi runs most tasks remotely while `exec: { remote: false }`
+  falls to the local executor in the SAME run), and cache layers CHAIN —
+  a lookup walks them, a save reaches all — which is why a remote plugin
+  declared before `localCachePlugin()` composes with it instead of
+  replacing it. The guide had claimed "first-non-undefined-wins" for
+  both. Also deleted two references to "the first-party cloud plugin
+  [that] implements all three seams"; it does not exist, and the shipped
+  plugins are ordinary consumers of the same contracts. Found by AUDIT
+  rather than reading: extracting every `--flag` mentioned across the
+  guides and checking it against `src/cli/` surfaced `vx info --history`
+  in predictive-scheduling.md, which errors with `unknown argument`;
+  the other five unknowns were correctly other tools' flags in examples
+  (`bun install --frozen-lockfile`, `tsc --watch`, forwarded `bun test`
+  args). NEW GUIDE, the biggest coverage gap: `vx why` had NO guide at
+  all and `--verify` only passing mentions, though they answer the two
+  questions a cache raises — why did this re-run, and can I trust this
+  hit. "Trusting the cache" frames it that way rather than as a flag
+  list, including that a re-execution on an UNCHANGED key means
+  something is influencing the build the key cannot see. Also corrected
+  `caching.md`: CACHE_VERSION said v26 (it is v27), and the "what's NOT
+  in the key" section omitted that `exec.resources` / `exec.remote` are
+  stripped as pure placement — with the deliberate asymmetry that
+  `timeout` / `retries` are NOT, because those change whether the task
+  completes at all.
+
 - **2026-08-26 (ninth wave) — docs passes 2–5: the front door was
   BROKEN, and every other doc bug was smaller than that.** Continuing
   the owner's docs directive. The worst finding is the simplest:
