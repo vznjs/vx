@@ -16,6 +16,11 @@ export default defineProject({
       exec: {
         remote: 'only',
         command: 'bun ci',
+        env: {
+          define: {
+            BUN_INSTALL_CACHE_DIR: '/root/.bun/install/cache',
+          },
+        },
       },
       cache: {
         inputs: {
@@ -27,7 +32,10 @@ export default defineProject({
             'apps/*/package.json',
           ],
         },
-        outputs: { files: ['node_modules/**'] },
+        outputs: {
+          files: [],
+          workspaceFiles: ['node_modules', 'packages/*/node_modules', 'apps/*/node_modules'],
+        },
       },
     },
 
@@ -35,8 +43,15 @@ export default defineProject({
       dependsOn: ['setup', '^build'],
     },
 
+    // setup -> install -> build. `install` chains the workspace install and
+    // the dependencies' builds; everything that needs node_modules hangs off
+    // it. The extra direct `setup` edge on the leaf tasks is a WORKAROUND:
+    // upstream OUTPUT grafting does not traverse group tasks, so a dependent
+    // of `install` (a group) receives its hash but none of its outputs, and a
+    // remotely-executed task ends up with an empty node_modules. Remove it
+    // once grafting walks through groups.
     build: {
-      dependsOn: ['build.bun'],
+      dependsOn: ['install', 'build.bun'],
     },
 
     lint: {
@@ -59,7 +74,7 @@ export default defineProject({
         // forwarded explicitly (see tests/helpers/sandbox-gate.ts).
         env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
       },
-      dependsOn: ['install'],
+      dependsOn: ['install', 'setup'],
       cache: {
         inputs: {
           files: ['src/**', 'tests/**', 'package.json'],
@@ -76,7 +91,7 @@ export default defineProject({
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: { command: 'oxlint --type-aware --type-check' },
-      dependsOn: ['install'],
+      dependsOn: ['install', 'setup'],
       cache: {
         inputs: {
           files: ['src/**', 'tests/**', 'bench/**', '.oxlintrc.json', 'tsconfig.json'],
@@ -92,7 +107,7 @@ export default defineProject({
     'lint.oxfmt': {
       description: 'oxfmt --check (no rewrite; CI-safe)',
       exec: { command: 'oxfmt --check .' },
-      dependsOn: ['install'],
+      dependsOn: ['install', 'setup'],
       cache: {
         inputs: {
           files: ['**/*'],
@@ -125,7 +140,7 @@ export default defineProject({
     // the cached one.
     'build.bun.linux-x64': {
       description: 'compile standalone binary (linux x64)',
-      dependsOn: ['install'],
+      dependsOn: ['install', 'setup'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
@@ -137,7 +152,7 @@ export default defineProject({
     },
     'build.bun.linux-arm64': {
       description: 'compile standalone binary (linux arm64)',
-      dependsOn: ['install'],
+      dependsOn: ['install', 'setup'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
@@ -149,7 +164,7 @@ export default defineProject({
     },
     'build.bun.darwin-x64': {
       description: 'compile standalone binary (darwin x64)',
-      dependsOn: ['install'],
+      dependsOn: ['install', 'setup'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
@@ -161,7 +176,7 @@ export default defineProject({
     },
     'build.bun.darwin-arm64': {
       description: 'compile standalone binary (darwin arm64)',
-      dependsOn: ['install'],
+      dependsOn: ['install', 'setup'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',

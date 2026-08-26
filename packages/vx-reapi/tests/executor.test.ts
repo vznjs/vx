@@ -53,6 +53,23 @@ describe('outputPathSets', () => {
     expect(sets.outputPaths).toEqual(['gen'])
   })
 
+  // A root-anchored output from a NESTED project has no `..`-free spelling
+  // relative to the project dir, and servers refuse `..` in output_paths
+  // (NativeLink: "Could not convert path contains non-relative component to
+  // RelativePath"). So the executor anchors such an action at the input root
+  // and prefixes the PROJECT-relative globs instead — the mirror image.
+  it('root mode: project globs get the prefix, root globs stay put, nothing has ".."', () => {
+    const sets = outputPathSets(req(['dist/**'], ['node_modules']), '', 'packages/vx')
+    expect(sets.outputPaths).toEqual(['node_modules', 'packages/vx/dist'])
+    expect(sets.outputPaths.some((p) => p.includes('..'))).toBe(false)
+  })
+
+  it('the nested working directory is what forces "..", which is why root mode exists', () => {
+    // The shape the fix replaced: same declaration, anchored at the project.
+    const sets = outputPathSets(req(['dist/**'], ['node_modules']), 'packages/vx')
+    expect(sets.outputPaths).toContain('../../node_modules')
+  })
+
   it('a first-segment wildcard collapses to "" — the whole working directory', () => {
     const sets = outputPathSets(req(['*.js']), '')
     expect(sets.outputPaths).toEqual([''])

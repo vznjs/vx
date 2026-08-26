@@ -953,6 +953,55 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  it("remote:'only' that nobody takes SAYS SO — a silent no-op reads as a task that worked", async () => {
+    // The no-op above is deliberate, but it returns `success` having run
+    // nothing. Without a line saying that, it is indistinguishable from a
+    // task that did the work — and the most common cause (a task with no
+    // `cache` block, which no remote executor can describe to a worker) is
+    // invisible from the outcome. The CONTROL is in the same run: the
+    // ordinary `build` task must not draw a line.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: {
+           install: {
+             exec: { command: 'exit 1', remote: 'only' },
+             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+           },
+           build: {
+             exec: { command: 'cat deps/ambient.txt > out.txt' },
+             dependsOn: ['install'],
+             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+           },
+         } }`,
+      )
+      await Bun.write(path.join(workspaceRoot, 'pkg-a/src/x.txt'), 'x')
+      await Bun.write(path.join(workspaceRoot, 'pkg-a/deps/ambient.txt'), 'ambient-deps')
+      await writeLocalWorkspace(workspaceRoot)
+      await gitInit(workspaceRoot)
+      const lines: string[] = []
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['build'],
+        log: makeSilentLogger((l) => lines.push(l)),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      const noopLines = lines.filter((l) => l.includes("exec.remote is 'only'"))
+      expect(noopLines).toHaveLength(1)
+      expect(noopLines[0]).toContain('pkg-a#install')
+      expect(noopLines[0]).toContain('nothing ran')
+      // no remote executor is declared in this workspace — say that, rather
+      // than blaming the task's own declaration
+      expect(noopLines[0]).toContain('no remote executor is declared')
+      expect(noopLines.some((l) => l.includes('pkg-a#build'))).toBe(false)
+    } finally {
+      cleanup()
+    }
+  })
+
   it("remote:'only' WITH a remote executor ships there, flagged, and stays off this disk", async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {

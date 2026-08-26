@@ -9,7 +9,8 @@
 // anything depending on one, and `exec.remote: false` never reach an
 // executor. This declines the rest of what it cannot honour.
 
-import { mkdir, writeFile, chmod, rm, symlink } from 'node:fs/promises'
+import { mkdir, writeFile, chmod, rm, symlink, readdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { UserError } from '@vzn/vx'
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from '@vzn/vx'
@@ -434,7 +435,33 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         }
       }
 
-      const workingDirectory = toPosix(path.relative(req.workspaceRoot, req.cwd))
+      const projectRel = toPosix(path.relative(req.workspaceRoot, req.cwd))
+      // REAPI `output_paths` are relative to `working_directory`, so a
+      // ROOT-anchored output (`cache.outputs.workspaceFiles`) declared by a
+      // NESTED project can only be spelled with `..` — `packages/vx/../..
+      // /node_modules`. The spec allows `..` in SYMLINK targets but servers
+      // are entitled to refuse it in output paths, and NativeLink does
+      // ("Could not convert path contains non-relative component to
+      // RelativePath"). So when a task declares one, run the action at the
+      // INPUT ROOT and `cd` into the project instead: every output path is
+      // then root-relative and no `..` is ever emitted. Tasks with only
+      // project-relative outputs keep the narrower working directory.
+      // Wildcards in root-anchored outputs are expanded to literal member
+      // paths BEFORE the Command is built (see expandOutputGlobs).
+      const expandedWorkspaceOutputs = await expandOutputGlobs(
+        req.workspaceRoot,
+        req.outputs.workspaceFiles,
+      )
+      const outReq: ExecuteRequest = {
+        ...req,
+        outputs: { ...req.outputs, workspaceFiles: expandedWorkspaceOutputs },
+      }
+      const rootAnchored = req.outputs.workspaceFiles.length > 0
+      const workingDirectory = rootAnchored ? '' : projectRel
+      // The server reports output paths relative to `working_directory`, so
+      // in root mode materialisation anchors at the workspace root — the same
+      // rebase the record-replay path above already does for its own reason.
+      const matReq = rootAnchored ? { ...req, cwd: req.workspaceRoot } : req
 
       // Upstream outputs reach this action's input root one of two ways.
       // PREFERRED: by REFERENCE — the upstream executed remotely and left an
@@ -525,12 +552,12 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         name,
         value,
       }))
-      const outputs = outputPathSets(req, workingDirectory)
+      const outputs = outputPathSets(outReq, workingDirectory, projectRel)
       const command = {
         // `sh -c` matches vx's contract exactly: shell IS the API, so the
         // worker must interpret the string the same way the local executor's
         // spawn does.
-        arguments: ['/bin/sh', '-c', fullCommand(req)],
+        arguments: ['/bin/sh', '-c', fullCommand(req, rootAnchored ? projectRel : '', projectRel)],
         environmentVariables: req.inputs.env.map((e) => ({ name: e.name, value: e.value })),
         outputPaths: outputs.outputPaths,
         // Both generations of the field are set: a v2.1+ server reads
@@ -664,7 +691,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // them if a locally-placed consumer turns out to need them.
       const deferred = req.remoteOnly !== true && req.download === 'deferred'
       if (req.remoteOnly !== true && !deferred) {
-        await materialiseOutputs(client, req, result, warn)
+        await materialiseOutputs(client, matReq, result, warn)
       }
 
       return {
@@ -678,7 +705,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           ? {
               outputs: {
                 kind: 'deferred' as const,
-                materialize: () => materialiseOutputs(client, req, result, warn),
+                materialize: () => materialiseOutputs(client, matReq, result, warn),
               },
             }
           : {}),
@@ -729,11 +756,91 @@ async function this_readStream(
   return ''
 }
 
+/**
+ * REAPI `output_paths` are LITERAL, so a glob whose wildcard sits in the
+ * MIDDLE (`packages/&#42;/node_modules`) collapses to its static prefix
+ * (`packages`) — and that whole directory then replaces the sources in every
+ * consumer's input tree. But the wildcard segments name workspace member
+ * DIRECTORIES, which exist as inputs and are known before the action runs, so
+ * expand them here and emit one literal path per match. Trailing segments are
+ * left untouched: the action produces them, so they need not exist yet.
+ */
+export async function expandOutputGlobs(
+  workspaceRoot: string,
+  globs: readonly string[],
+): Promise<string[]> {
+  const out: string[] = []
+  for (const glob of globs) {
+    const segments = glob.split('/')
+    let prefixes = ['']
+    let i = 0
+    for (; i < segments.length; i++) {
+      const seg = segments[i]!
+      if (!seg.includes('*') && !seg.includes('?') && !seg.includes('[')) {
+        prefixes = prefixes.map((p) => (p === '' ? seg : `${p}/${seg}`))
+        continue
+      }
+      // A wildcard SEGMENT: match it against the directories that exist at
+      // this level. Anything below it stays literal.
+      const matcher = new Bun.Glob(seg)
+      const next: string[] = []
+      for (const prefix of prefixes) {
+        const dir = prefix === '' ? workspaceRoot : path.join(workspaceRoot, prefix)
+        let entries: string[]
+        try {
+          entries = await readdir(dir)
+        } catch {
+          continue
+        }
+        for (const entry of entries.sort()) {
+          if (!matcher.match(entry)) continue
+          if (!existsSync(path.join(dir, entry))) continue
+          next.push(prefix === '' ? entry : `${prefix}/${entry}`)
+        }
+      }
+      prefixes = next
+      if (prefixes.length === 0) break
+    }
+    // Any segments after the LAST wildcard are appended verbatim.
+    const tail = segments.slice(i + 1)
+    for (const p of prefixes) out.push(tail.length === 0 ? p : `${p}/${tail.join('/')}`)
+  }
+  return [...new Set(out)].sort()
+}
+
 /** Forwarded args are appended shell-quoted, exactly as the local executor does. */
-function fullCommand(req: ExecuteRequest): string {
-  if (req.forwardArgs.length === 0) return req.command
-  const quoted = req.forwardArgs.map((a) => `'${a.replaceAll("'", `'\\''`)}'`).join(' ')
-  return `${req.command} ${quoted}`
+function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): string {
+  const quoted =
+    req.forwardArgs.length === 0
+      ? req.command
+      : `${req.command} ${req.forwardArgs.map((a) => `'${a.replaceAll("'", `'\\''`)}'`).join(' ')}`
+  // A remote action gets NO PATH from this machine — sending one would put a
+  // host path in the action digest and split every laptop from every runner.
+  // But a task's command is normally a package binary (`oxlint`, `tsc`), and
+  // the local executor finds those because core prepends the project's
+  // `node_modules/.bin` and the child inherits the caller's PATH. Neither
+  // reaches a worker, so an unqualified command exits 127. Rebuild the same
+  // two entries HERE, from `$PWD` at runtime: hermetic (nothing host-specific
+  // enters the digest) and correct in both anchoring modes.
+  //
+  //   root-anchored → cwd IS the input root, so "$PWD" is the root
+  //   otherwise     → cwd is the project, so climb back out of projectRel
+  const climb =
+    projectRel === ''
+      ? ''
+      : `/${projectRel
+          .split('/')
+          .map(() => '..')
+          .join('/')}`
+  const root = cdInto === '' ? `"$PWD${climb}"` : '"$PWD"'
+  // Order matters: VX_ROOT is read BEFORE the cd, the project-local bin dir
+  // AFTER it, so both are right whichever mode we are in.
+  const cd = cdInto === '' ? '' : `cd '${cdInto}' || exit 1; `
+  return (
+    `VX_ROOT=${root}; ${cd}` +
+    `export PATH="$VX_ROOT/node_modules/.bin:$PWD/node_modules/.bin:$PATH"; ` +
+    quoted
+  )
 }
 
 /**
@@ -765,10 +872,18 @@ export interface OutputPathSets {
   legacyDirectories: string[]
 }
 
-export function outputPathSets(req: ExecuteRequest, workingDirectory: string): OutputPathSets {
+export function outputPathSets(
+  req: ExecuteRequest,
+  workingDirectory: string,
+  projectRel = '',
+): OutputPathSets {
   const rebase = (p: string): string =>
     workingDirectory === '' ? p : toPosix(path.relative(workingDirectory, p))
-  const globs = [...req.outputs.files, ...req.outputs.workspaceFiles.map(rebase)]
+  // Mirror image of `rebase`: when the action runs at the input root, the
+  // PROJECT-relative globs are the ones needing a prefix.
+  const prefix = (p: string): string =>
+    workingDirectory === '' && projectRel !== '' ? `${projectRel}/${p}` : p
+  const globs = [...req.outputs.files.map(prefix), ...req.outputs.workspaceFiles.map(rebase)]
   const paths = new Set<string>()
   const files = new Set<string>()
   const dirs = new Set<string>()

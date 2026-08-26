@@ -264,6 +264,23 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // leaky or not. A verify run is a local proof procedure by definition;
   // determinism/fingerprint modes are unaffected (no sandbox involved).
   const placements = placeTasks(nodes, executors, options.verify?.inputs === true)
+  // A `remote: 'only'` task nobody takes succeeds WITHOUT running. That is
+  // deliberate — on a machine with no remote pool the ambient state already
+  // is what the task would have produced — but it must not be SILENT: a task
+  // reporting success while doing nothing is indistinguishable from one that
+  // worked, and the usual cause (no `cache` block, so no executor can
+  // describe its inputs to a worker) cannot be read off the outcome.
+  if (placements.remoteOnlyNoop.size > 0) {
+    const anyRemote = executors.some((e) => e.remote === true)
+    for (const id of placements.remoteOnlyNoop) {
+      const why = !anyRemote
+        ? 'no remote executor is declared'
+        : nodes.get(id)?.config.cache === undefined
+          ? 'no remote executor accepted it — the task declares no `cache` block, so there is no input set to ship'
+          : 'no remote executor accepted it'
+      log.status(`[vx] ${id}: exec.remote is 'only' and ${why} — nothing ran`)
+    }
+  }
   // `--download` (default `all`) decides ONCE per task, here, whether a
   // remote execution's outputs come home. `--verify` pins every task local
   // (so nothing defers under a proof) and `all` keeps today's behaviour
