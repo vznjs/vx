@@ -530,6 +530,42 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-26 (fourth wave) — the cloud's analytics layer removed: 15
+  queries, ~2200 lines net, and THREE wrong answers from my own dead-code
+  analysis before the right one.** Owner directive to simplify core, and
+  a direct instruction to finish removing vx cloud. `packages/cloud` was
+  already gone from git — what remained locally was one untracked build
+  artifact, now deleted — so the real remnant was `metrics.ts`, the
+  `/v1/*` query layer the deleted dashboard read. FOUND BY REACHABILITY,
+  and the analysis was wrong three times first, each failure looking
+  exactly like a result: (1) excluding `metrics.ts` from the consumer
+  search hid INTRA-FILE callers, so `listRuns` looked dead when `getRun`
+  calls it; (2) filtering "files ending in index.ts" silently dropped
+  real consumers; (3) including `apps/` counted `apps/docs/dist/**` BUILD
+  OUTPUT and doc copies as code callers, which made all 28 look live.
+  The version that holds: roots = referenced by real `.ts` under `src/`
+  or `packages/*/src`, excluding the two pure re-export indexes and the
+  file itself; then transitive closure. 9 roots, 13 live, 15
+  unreachable. DELETED those 15 with their types, private helpers, tests
+  and façade entries. The scripted deletion did real damage twice and
+  the TESTS caught both: brace-matching from the first `{` cut mid-
+  function (the first `{` is inside an object-typed PARAMETER), and a
+  line-level prune ate the `.map((s) => \`'${s}'\`)`out of`HIT_STATUSES`, which emitted statuses UNQUOTED and produced
+`SQLiteError: no such column: cache`in`getHistory`— a kept
+function. Both repaired against the pre-edit copy; the suite is what
+found them, which is the argument for the suite. Two pins moved rather
+than being deleted: the façade snapshot lost its 15 entries, and the
+status-vocabulary tripwire asserted a`PASS_STATUSES`constant that no
+longer needs to exist, so it now asserts the PROPERTY it was really
+guarding — no SQL status list is retyped — which is strictly stronger
+than naming one constant. Core suite 2736/0 before, same after minus
+the deleted tests; packages 45/14/5. Docs in the same wave:`docs/modules/metrics.md`rewritten to say what the layer is now and
+why it shrank,`docs/modules/index.md` corrected, and the five cloud
+  DESIGN docs deleted. Deliberately kept: design docs that merely MENTION
+  the cloud while being about something else (one of them is the live
+  REAPI roadmap), and the decision-log archive — rewriting those would
+  falsify the record rather than remove a product.
+
 - **2026-08-26 (third wave) — the crash-isolation claim I had leaned on
   twice was TRUE, and auditing it anyway found two defects beside it.**
   I had justified "warn, do not throw" in vx-github and the never-fail

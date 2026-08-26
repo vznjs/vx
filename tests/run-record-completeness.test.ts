@@ -34,10 +34,7 @@ import type { Logger } from '../src/orchestrator/index.js'
 import {
   cacheKeyDiff,
   getCacheStatsSql,
-  getFlakiestTasks,
   getHistory,
-  getPeriodComparison,
-  getRecentFailures,
   listProjects,
   LocalHistoryProvider,
   run,
@@ -246,39 +243,6 @@ describe('every recorded outcome earns a row (real CLI)', () => {
     },
     TIMEOUT,
   )
-
-  it(
-    'a failed persistent task reaches the recent-failures surface',
-    async () => {
-      await addProject(
-        fixture.root,
-        'srv',
-        `export default {
-          tasks: {
-            dev: {
-              exec: {
-                command: 'echo nope && exec sleep 2',
-                timeout: 400,
-                persistent: { readyWhen: 'Listening' },
-              },
-            },
-          },
-        }
-        `,
-      )
-      await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
-      const db = new Database(path.join(fixture.root, '.vx', 'cache', 'cache.db'), {
-        readonly: true,
-      })
-      try {
-        const failures = getRecentFailures(db)
-        expect(failures.map((f) => `${f.project}#${f.task}`)).toEqual(['srv#dev'])
-      } finally {
-        db.close()
-      }
-    },
-    TIMEOUT,
-  )
 })
 
 // ---------------------------------------------------------------------------
@@ -395,33 +359,6 @@ describe('a skipped row is a task of the run, never an execution', () => {
     expect(getCacheStatsSql(db).runCountLast24h).toBe(2)
     expect(cache.stats().runCountLast24h).toBe(2)
     expect(cache.stats().runCountLast24h).toBe(getCacheStatsSql(db).runCountLast24h)
-  })
-
-  it('does not dilute getFlakiestTasks failureRate', () => {
-    // Same key both failed and succeeded => a real flake, surfaced. Its rate
-    // is 1 failure in 3 EXECUTIONS, however many skips sit beside it.
-    cache.recordRunBundle({
-      runs: [
-        mkRun({ project: 'app', task: 'test', hash: 'k1', status: 'failed', exitCode: 1 }),
-        mkRun({ project: 'app', task: 'test', hash: 'k1' }),
-        mkRun({ project: 'app', task: 'test', hash: 'k2' }),
-        mkRun({ project: 'app', task: 'test', status: 'skipped', exitCode: 1, durationMs: 0 }),
-        mkRun({ project: 'app', task: 'test', status: 'skipped', exitCode: 1, durationMs: 0 }),
-        mkRun({ project: 'app', task: 'test', status: 'skipped', exitCode: 1, durationMs: 0 }),
-      ],
-      invocation: mkInvocation('r-1'),
-    })
-    const [flaky] = getFlakiestTasks(db)
-    expect(flaky?.id).toBe('app#test')
-    expect(flaky?.runs).toBe(3)
-    expect(flaky?.failureRate).toBeCloseTo(1 / 3, 6)
-  })
-
-  it('does not dilute periodStats taskRuns', () => {
-    seedSuccessesAndSkips()
-    const cmp = getPeriodComparison(db, { windowDays: 7 })
-    expect(cmp.current.stats.taskRuns).toBe(2)
-    expect(cmp.current.stats.executed).toBe(2)
   })
 
   it('does not evict real history from the predictive window', async () => {

@@ -173,15 +173,20 @@ describe('the tripwire that makes one definition stay one definition', () => {
     // a centralisation that misses a call site — is unchanged.)
     const file = 'src/orchestrator/metrics.ts'
     const src = await read(file)
-    expect({ file, derived: src.includes('TASK_STATUSES.filter(isPassStatus)') }).toEqual({
-      file,
-      derived: true,
-    })
-    // The HIT list is derived the same way (it replaced the LIKE copies).
+    // The HIT list is derived (it replaced the LIKE copies). The PASS list
+    // left with the analytics queries deleted on 2026-08-26 — the guard is
+    // about lists that EXIST being derived, not about a particular constant
+    // being present, so it is stated that way now.
     expect({ file, hitDerived: src.includes('TASK_STATUSES.filter(isCacheHit)') }).toEqual({
       file,
       hitDerived: true,
     })
+    // The property that actually matters: no SQL status set is RETYPED. A
+    // hand-written list is what drifts when a status is added.
+    const retyped = [
+      ...src.matchAll(/'(success|failed|cache-hit|cache-hit-remote|skipped|aborted)'\s*,\s*'/g),
+    ]
+    expect({ file, retypedStatusLists: retyped.length }).toEqual({ file, retypedStatusLists: 0 })
   })
 })
 
