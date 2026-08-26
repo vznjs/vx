@@ -985,7 +985,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Crash-isolated + time-bounded inside teardownPlugins, so a faulty
     // plugin can neither fail nor hang the run. Normal completion path
     // only — the finally below just unsubscribes.
-    await teardownPlugins(prepared.plugins, eventSinks?.sinks ?? [], (m) => log.status(m))
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their
@@ -994,8 +993,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // before scheduling, so nothing of its is in flight here.) The
     // background write-through uploads queued by LayeredCache.save
     // settle here for the same reason.
+    //
+    // BEFORE teardownPlugins, and that order is load-bearing: the drain
+    // pushes bytes through a layer a PLUGIN provided, so a plugin that
+    // releases its client in `teardown()` would otherwise have the
+    // channel shut from under the upload — silently losing every remote
+    // write with nothing but a warning. The seam's contract is that a
+    // cache layer stays usable until the run's uploads have settled.
     await prefetchDone
     await cache.drainUploads?.()
+    await teardownPlugins(prepared.plugins, eventSinks?.sinks ?? [], (m) => log.status(m))
     closeCache()
 
     // Tear down SRT's network bridge + (on macOS) log monitor. No-op if

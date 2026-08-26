@@ -1016,6 +1016,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
                       },
                       drainUploads: () => {
                         globalThis.__vxDrained = true
+                        globalThis.__vxTornDownFirst = globalThis.__vxTornDown === true
                         return inner.drainUploads()
                       },
                       remoteHasMany: (h) => inner.remoteHasMany(h),
@@ -1038,6 +1039,9 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
                       close: () => inner.close(),
                     }
                   },
+                  teardown() {
+                    globalThis.__vxTornDown = true
+                  },
                 }`,
             ],
             `
@@ -1056,9 +1060,17 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
         expect(res.ok).toBe(true)
         expect(g['__vxPrefetched']).toBe(true)
         expect(g['__vxDrained']).toBe(true)
+        // ORDER, not just occurrence: the drain pushes bytes through a layer a
+        // PLUGIN provided, so a plugin releasing its client in teardown() must
+        // not run first. When it did, every remote write was lost to
+        // `Channel has been shut down` — a warning, a green run, and nothing
+        // in the remote store (observed against a live REAPI server).
+        expect(g['__vxTornDownFirst']).toBe(false)
       } finally {
         delete g['__vxPrefetched']
         delete g['__vxDrained']
+        delete g['__vxTornDown']
+        delete g['__vxTornDownFirst']
         await rm(fixture.root, { recursive: true, force: true })
       }
     },

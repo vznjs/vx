@@ -599,8 +599,15 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         this_readStream(client, result.stdout_raw, result.stdout_digest),
         this_readStream(client, result.stderr_raw, result.stderr_digest),
       ])
-      if (req.capture.stdout !== false && stdout.length > 0) req.onStdout(stdout)
-      if (req.capture.stderr !== false && stderr.length > 0) req.onStderr(stderr)
+      // DELIVERY is unconditional; `capture` governs RETENTION only. Core
+      // sets `capture: { stdout: willWrite, stderr: false }` meaning "do not
+      // keep a copy in memory" — the local executor still streams both to the
+      // logger chunk-by-chunk regardless. Gating delivery on it here meant a
+      // failing REMOTE task printed an EMPTY frame, because a remote task has
+      // no live stream and this callback is the only path its output has.
+      // `bun install` reporting on stderr was invisible.
+      if (stdout.length > 0) req.onStdout(stdout)
+      if (stderr.length > 0) req.onStderr(stderr)
 
       // Record the execution under the task's vx key, output paths rewritten
       // WORKSPACE-relative (the raw result's are working-directory-relative)
