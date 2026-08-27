@@ -123,6 +123,21 @@ spec gray area (sanctioned only for the deprecated field), so a stricter
 third-party worker may reject it — prefer globs with a literal first segment
 (`dist/**`) where you can.
 
+## What environment the worker sees
+
+Two of vx's three environment lists travel with the action:
+`exec.env.define` (config literals) and `cache.inputs.env` (host values that
+are already in the cache key), merged with a `define` winning on collision
+and sorted by name — the proto requires the sort so equivalent commands hash
+alike.
+
+`exec.env.passThrough` and the essential allowlist do **not** cross. They are
+the submitting machine's resolved values, and putting them in the action
+would split every machine from every other; `passThrough` is also where
+secrets go, and an action's command is stored in the shared CAS. A task whose
+command reads a passed-through secret belongs on `exec: { remote: false }`.
+[Environment variables](../environment-variables/) has the full picture.
+
 ## Keeping the bytes remote: `--download`
 
 By default every remotely-executed task's outputs are downloaded to the

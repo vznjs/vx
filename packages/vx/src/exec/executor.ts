@@ -121,6 +121,16 @@ export interface ExecuteRequest {
   readonly forwardArgs: readonly string[]
   readonly cwd: string
   readonly env: NodeJS.ProcessEnv
+  /**
+   * `exec.env.define` verbatim — literal name=value pairs from the task
+   * config. `env` above is the fully RESOLVED child environment and is
+   * host-specific (it carries this machine's PATH, HOME, TMPDIR…), so an
+   * executor that ships the environment somewhere else cannot use it: those
+   * values would enter the action identity and split every machine from
+   * every other. These are declared in the config, so they are the same
+   * everywhere and safe to forward.
+   */
+  readonly envDefine: Readonly<Record<string, string>>
   readonly capture: CaptureConfig
   readonly timeoutMs?: number
   readonly onStdout: (chunk: string) => void

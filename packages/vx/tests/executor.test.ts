@@ -15,6 +15,7 @@ function req(over: Partial<ExecuteRequest> = {}): ExecuteRequest {
     forwardArgs: [],
     cwd: process.cwd(),
     env: { PATH: process.env['PATH'] ?? '' },
+    envDefine: {},
     capture: { stdout: true, stderr: true },
     onStdout: () => undefined,
     onStderr: () => undefined,

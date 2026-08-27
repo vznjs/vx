@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
   acceptsTask,
+  commandEnvironment,
   globToOutputPath,
   materialiseOutputs,
   outputPathSets,
@@ -74,6 +75,54 @@ describe('outputPathSets', () => {
     const sets = outputPathSets(req(['*.js']), '')
     expect(sets.outputPaths).toEqual([''])
     expect(sets.legacyDirectories).toEqual([''])
+  })
+})
+
+describe('commandEnvironment', () => {
+  const inputs = (env: Array<{ name: string; value: string }>) =>
+    ({ env }) as unknown as NonNullable<ExecuteRequest['inputs']>
+
+  it('carries exec.env.define across to the worker', () => {
+    expect(commandEnvironment(inputs([]), { NODE_ENV: 'production' })).toEqual([
+      { name: 'NODE_ENV', value: 'production' },
+    ])
+  })
+
+  it('carries cache.inputs.env values, which are already folded into the key', () => {
+    expect(commandEnvironment(inputs([{ name: 'API_URL', value: 'https://x' }]), {})).toEqual([
+      { name: 'API_URL', value: 'https://x' },
+    ])
+  })
+
+  // The proto: "in order to ensure that equivalent Commands always hash to the
+  // same value, the environment variables MUST be lexicographically sorted by
+  // name." `inputs.env` arrives sorted; appending defines to it does not stay
+  // sorted, and `Object.entries` follows the config's key INSERTION order — so
+  // two configs declaring the same defines in a different order would build
+  // different action digests and miss each other's entries.
+  it('sorts by name regardless of declaration order', () => {
+    const a = commandEnvironment(inputs([{ name: 'MID', value: '1' }]), { ZED: 'z', ALPHA: 'a' })
+    const b = commandEnvironment(inputs([{ name: 'MID', value: '1' }]), { ALPHA: 'a', ZED: 'z' })
+    expect(a.map((e) => e.name)).toEqual(['ALPHA', 'MID', 'ZED'])
+    expect(b).toEqual(a)
+  })
+
+  it('a define wins over a same-named cache.inputs.env value, once', () => {
+    expect(
+      commandEnvironment(inputs([{ name: 'MODE', value: 'ambient' }]), { MODE: 'declared' }),
+    ).toEqual([{ name: 'MODE', value: 'declared' }])
+  })
+
+  // CONTROL: nothing is injected implicitly. `ExecuteRequest.env` — the
+  // fully resolved child environment, carrying this machine's PATH, HOME and
+  // TMPDIR — is not a parameter here BY CONSTRUCTION, and no essential
+  // allowlist is substituted for it either. Host values in the Command would
+  // enter the action digest and split every machine from every other, and a
+  // Command blob lives in a shared CAS, which is the wrong home for a
+  // passed-through secret. A worker's PATH is the worker image's business;
+  // the executor extends it in the command string, not here.
+  it('declares nothing on its own: empty lists produce an empty environment', () => {
+    expect(commandEnvironment(inputs([]), {})).toEqual([])
   })
 })
 

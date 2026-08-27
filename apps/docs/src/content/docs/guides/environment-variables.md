@@ -84,6 +84,28 @@ work: `PATH`, `HOME`, `SHELL`, `TMPDIR`, `LANG`, `TERM`, `COLORTERM`,
 essentials. Each package's own `node_modules/.bin` is prepended to
 `PATH`. Everything else is invisible unless passed through.
 
+## Remote execution: only two of the three lists travel
+
+If a task runs on a remote worker (see
+[Remote execution](../remote-execution/)), the action that gets sent carries
+`exec.env.define` and `cache.inputs.env` — and nothing else.
+
+`exec.env.passThrough` **does not cross**, and neither does the essential
+allowlist. Those are *this* machine's resolved values, and they are excluded
+for the same reason they are excluded from the cache key: bake a laptop's
+`HOME` into the action and that laptop can never share a result with a CI
+runner. There is a second reason for `passThrough` specifically — it is where
+secrets go, and an action's command is stored in the shared content-addressed
+store, where anyone who can name its digest can read it.
+
+So for a task you want to run remotely:
+
+- a value that is the same everywhere → `exec.env.define`
+- a value that varies by machine and changes the output → `cache.inputs.env`
+  (it is keyed, so a change already produces a different action)
+- a secret the command must read → keep the task local with
+  `exec: { remote: false }`
+
 ## Coming from Turborepo
 
 This maps cleanly:

@@ -29,6 +29,11 @@ import {
 import { execDigestFor } from './cache.js'
 import type { ActionResult, Digest, Directory, Operation, ReapiClient } from './wire.js'
 
+/** `ExecuteRequest.inputs` past the executor's own undefined guard. Derived
+ *  rather than imported: the façade does not export `TaskInputs`, and widening
+ *  it for one alias is the speculative widening the project rejects. */
+type DescribedInputs = NonNullable<ExecuteRequest['inputs']>
+
 export interface DecodedExecuteResponse {
   result?: ActionResult
   message?: string
@@ -558,7 +563,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         // worker must interpret the string the same way the local executor's
         // spawn does.
         arguments: ['/bin/sh', '-c', fullCommand(req, rootAnchored ? projectRel : '', projectRel)],
-        environmentVariables: req.inputs.env.map((e) => ({ name: e.name, value: e.value })),
+        environmentVariables: commandEnvironment(req.inputs, req.envDefine),
         outputPaths: outputs.outputPaths,
         // Both generations of the field are set: a v2.1+ server reads
         // output_paths and ignores the legacy pair; a v2.0 server does the
@@ -862,6 +867,33 @@ export function globToOutputPath(glob: string): string {
   }
   if (literal.length === segments.length) return glob // no wildcard: a literal path
   return literal.join('/')
+}
+
+/**
+ * The action's environment: `cache.inputs.env` (values read from THIS
+ * machine's environment, already folded into the cache key) plus
+ * `exec.env.define` (literals from the task config). A define wins on
+ * collision — it is the more explicit statement of intent. Nothing else from
+ * `req.env` may cross: that is this machine's RESOLVED environment (its PATH,
+ * HOME, TMPDIR), and shipping it would put host-specific values into the
+ * action identity, splitting every machine from every other.
+ *
+ * The result is sorted by name because the proto REQUIRES it — "in order to
+ * ensure that equivalent Commands always hash to the same value, the
+ * environment variables MUST be lexicographically sorted by name". Unsorted,
+ * two configs declaring the same defines in a different order would build
+ * different action digests and miss each other's cache entries.
+ */
+export function commandEnvironment(
+  inputs: DescribedInputs,
+  envDefine: Readonly<Record<string, string>>,
+): Array<{ name: string; value: string }> {
+  const merged = new Map<string, string>()
+  for (const e of inputs.env) merged.set(e.name, e.value)
+  for (const [name, value] of Object.entries(envDefine)) merged.set(name, value)
+  return [...merged]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([name, value]) => ({ name, value }))
 }
 
 export interface OutputPathSets {

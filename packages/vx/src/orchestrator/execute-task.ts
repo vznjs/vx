@@ -575,6 +575,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       forwardArgs: effectiveForwardArgs,
       cwd: node.projectDir,
       env,
+      envDefine: step.env?.define ?? {},
       capture,
       onStdout: (chunk) => log.taskStdout(node, chunk),
       onStderr: (chunk) => log.taskStderr(node, chunk),

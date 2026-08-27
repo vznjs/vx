@@ -294,3 +294,34 @@ worker (`tests/vx-run-e2e.test.ts`):
 The execution record lives under `sha256("vx-reapi-exec-v1\0" + key)` — a
 second AC namespace beside the artifact mapping, listing outputs file-by-file
 with workspace-relative paths.
+
+## What the worker's environment contains
+
+An action's `Command` carries exactly two of vx's three environment lists,
+sorted by name — the proto requires that, so equivalent Commands hash alike:
+
+- **`exec.env.define`** — literal `name: value` pairs from the task config.
+  They read the same on every machine, so they are safe to put into the
+  action identity, and they are already in the vx cache key.
+- **`cache.inputs.env`** — the values this machine resolved for those names.
+  They are in the vx cache key by definition, so a change to one already
+  produces a different action.
+
+A `define` wins over an `inputs.env` entry of the same name: it is the more
+explicit statement of intent.
+
+Nothing else crosses. In particular **`exec.env.passThrough` does not reach a
+remote worker**, and neither does the essential allowlist (`PATH`, `HOME`,
+`TMPDIR`, …) — those are the submitting machine's resolved environment, and
+the worker has its own. Two reasons, and both matter:
+
+- Host values in the `Command` would enter the action digest, so a laptop and
+  a CI runner would never share a remote entry — the same reason the vx key
+  excludes them.
+- A `Command` blob lives in the CAS. `passThrough` is where secrets go, and a
+  token written to a shared content-addressed store is readable by anyone who
+  can name its digest.
+
+So a task that needs a value on a worker must `define` it (config literal) or
+list it in `cache.inputs.env` (host value, keyed). A task whose command reads
+a `passThrough` secret is one to keep local with `exec: { remote: false }`.
