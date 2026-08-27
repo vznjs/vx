@@ -1,0 +1,81 @@
+// Local dev NativeLink for vx remote execution. Same shape as
+// tests/helpers/nativelink-exec.json5, but the CAS/AC are FILESYSTEM stores
+// with room for a real node_modules install: the memory stores in the CI
+// config evict under that load, and an evicted input blob surfaces as
+// "not found in either fast or slow store" mid-action.
+{
+  stores: [
+    {
+      name: 'CAS',
+      filesystem: {
+        content_path: '/nl/cas/content',
+        temp_path: '/nl/cas/temp',
+        eviction_policy: { max_bytes: 21474836480 },
+      },
+    },
+    {
+      name: 'AC',
+      filesystem: {
+        content_path: '/nl/ac/content',
+        temp_path: '/nl/ac/temp',
+        eviction_policy: { max_bytes: 2147483648 },
+      },
+    },
+    {
+      name: 'WORK_FS',
+      fast_slow: {
+        fast: {
+          filesystem: {
+            content_path: '/nl/work_fs/content',
+            temp_path: '/nl/work_fs/temp',
+            eviction_policy: { max_bytes: 10737418240 },
+          },
+        },
+        slow: { ref_store: { name: 'CAS' } },
+      },
+    },
+  ],
+  schedulers: [
+    {
+      name: 'MAIN',
+      simple: {
+        supported_platform_properties: {
+          cpu_count: 'minimum',
+          OSFamily: 'priority',
+          'container-image': 'priority',
+        },
+      },
+    },
+  ],
+  workers: [
+    {
+      local: {
+        worker_api_endpoint: { uri: 'grpc://127.0.0.1:50061' },
+        cas_fast_slow_store: 'WORK_FS',
+        upload_action_result: { ac_store: 'AC' },
+        work_directory: '/nl/work',
+        platform_properties: {
+          cpu_count: { values: ['16'] },
+          OSFamily: { values: ['Linux'] },
+          'container-image': { values: ['*'] },
+        },
+      },
+    },
+  ],
+  servers: [
+    {
+      listener: { http: { socket_address: '0.0.0.0:50051' } },
+      services: {
+        cas: { '': { cas_store: 'CAS' } },
+        ac: { '': { ac_store: 'AC' } },
+        execution: { '': { cas_store: 'CAS', scheduler: 'MAIN' } },
+        capabilities: { '': { remote_execution: { scheduler: 'MAIN' } } },
+        bytestream: { cas_stores: { '': 'CAS' } },
+      },
+    },
+    {
+      listener: { http: { socket_address: '127.0.0.1:50061' } },
+      services: { worker_api: { scheduler: 'MAIN' } },
+    },
+  ],
+}

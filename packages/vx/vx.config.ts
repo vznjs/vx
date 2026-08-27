@@ -45,11 +45,9 @@ export default defineProject({
 
     // setup -> install -> build. `install` chains the workspace install and
     // the dependencies' builds; everything that needs node_modules hangs off
-    // it. The extra direct `setup` edge on the leaf tasks is a WORKAROUND:
-    // upstream OUTPUT grafting does not traverse group tasks, so a dependent
-    // of `install` (a group) receives its hash but none of its outputs, and a
-    // remotely-executed task ends up with an empty node_modules. Remove it
-    // once grafting walks through groups.
+    // it, and depending on the GROUP is enough — a dependent of a group now
+    // receives the real tasks beneath it in its input closure, so a remotely
+    // executed leaf gets setup's node_modules without naming setup itself.
     build: {
       dependsOn: ['install', 'build.bun'],
     },
@@ -74,7 +72,7 @@ export default defineProject({
         // forwarded explicitly (see tests/helpers/sandbox-gate.ts).
         env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
       },
-      dependsOn: ['install', 'setup'],
+      dependsOn: ['install'],
       cache: {
         inputs: {
           files: ['src/**', 'tests/**', 'package.json'],
@@ -91,14 +89,33 @@ export default defineProject({
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: { command: 'oxlint --type-aware --type-check' },
-      dependsOn: ['install', 'setup'],
+      dependsOn: ['install'],
       cache: {
         inputs: {
-          files: ['src/**', 'tests/**', 'bench/**', '.oxlintrc.json', 'tsconfig.json'],
+          // `package.json` is folded into every task's key by core, but the
+          // KEY is not the input set — it has to be declared to be shipped,
+          // and the type checker follows `src/version.ts`'s `../package.json`
+          // import and the `@vzn/vx` self-reference into the members' own
+          // manifests.
+          files: ['src/**', 'tests/**', 'package.json'],
           // The command scans the whole tree, but project-relative globs
           // stop at project boundaries — without these, a change confined to
-          // a sibling package rides a stale lint cache hit.
-          workspaceFiles: ['packages/*/src/**', 'packages/*/tests/**', 'scripts/**'],
+          // a sibling package rides a stale lint cache hit. `bench/`, the
+          // linter config and the tsconfig sit at the workspace ROOT and are
+          // root-anchored for the same reason: declared project-relative they
+          // resolved to paths that do not exist, so editing `.oxlintrc.json`
+          // did not invalidate this task — and a remotely executed action got
+          // no tsconfig, which tsgolint reports as ~900 phantom "Cannot find
+          // name 'process'" errors rather than as a missing file.
+          workspaceFiles: [
+            'packages/*/src/**',
+            'packages/*/tests/**',
+            'scripts/**',
+            'packages/*/package.json',
+            'bench/**',
+            '.oxlintrc.json',
+            'tsconfig.json',
+          ],
         },
         outputs: { files: [] },
       },
@@ -107,13 +124,19 @@ export default defineProject({
     'lint.oxfmt': {
       description: 'oxfmt --check (no rewrite; CI-safe)',
       exec: { command: 'oxfmt --check .' },
-      dependsOn: ['install', 'setup'],
+      dependsOn: ['install'],
       cache: {
         inputs: {
           files: ['**/*'],
           // Same boundary gap as lint.oxlint: `oxfmt --check .` scans the
-          // workspace-member packages too (ui/deploy are oxfmt-ignored).
-          workspaceFiles: ['packages/*/src/**', 'packages/*/tests/**', 'scripts/**'],
+          // workspace-member packages too (ui/deploy are oxfmt-ignored), and
+          // its config lives at the root, outside every project-relative glob.
+          workspaceFiles: [
+            'packages/*/src/**',
+            'packages/*/tests/**',
+            'scripts/**',
+            '.oxfmtrc.json',
+          ],
         },
         outputs: { files: [] },
       },
@@ -140,7 +163,7 @@ export default defineProject({
     // the cached one.
     'build.bun.linux-x64': {
       description: 'compile standalone binary (linux x64)',
-      dependsOn: ['install', 'setup'],
+      dependsOn: ['install'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
@@ -152,7 +175,7 @@ export default defineProject({
     },
     'build.bun.linux-arm64': {
       description: 'compile standalone binary (linux arm64)',
-      dependsOn: ['install', 'setup'],
+      dependsOn: ['install'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
@@ -164,7 +187,7 @@ export default defineProject({
     },
     'build.bun.darwin-x64': {
       description: 'compile standalone binary (darwin x64)',
-      dependsOn: ['install', 'setup'],
+      dependsOn: ['install'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
@@ -176,7 +199,7 @@ export default defineProject({
     },
     'build.bun.darwin-arm64': {
       description: 'compile standalone binary (darwin arm64)',
-      dependsOn: ['install', 'setup'],
+      dependsOn: ['install'],
       exec: {
         command:
           'bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
