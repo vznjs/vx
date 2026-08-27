@@ -751,52 +751,64 @@ describe('execute-task — binary resolution: project bin, then the workspace ro
     await writeFile(path.join(dir, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 })
   }
 
-  it('a root-only binary resolves from a project that is not the root', async () => {
-    const b = await bench()
-    try {
-      await writeBin(path.join(b.root, 'node_modules', '.bin'), 'shared-tool', 'echo from-root')
-      const log = capturingLogger({ root: '', out: [], err: [] })
-      const n = node(b, { exec: { command: 'shared-tool' } }, 'proj#tool')
-      const outcome = await executeTask(baseArgs(b, n, log))
-      expect(outcome.exitCode).toBe(0)
-      expect(outcome.status).toBe('success')
-    } finally {
-      await closeBench(b)
-    }
-  }, TIMEOUT)
+  it(
+    'a root-only binary resolves from a project that is not the root',
+    async () => {
+      const b = await bench()
+      try {
+        await writeBin(path.join(b.root, 'node_modules', '.bin'), 'shared-tool', 'echo from-root')
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const n = node(b, { exec: { command: 'shared-tool' } }, 'proj#tool')
+        const outcome = await executeTask(baseArgs(b, n, log))
+        expect(outcome.exitCode).toBe(0)
+        expect(outcome.status).toBe('success')
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
 
-  it("the project's own bin WINS over a same-named root binary", async () => {
-    const b = await bench()
-    try {
-      await writeBin(path.join(b.root, 'node_modules', '.bin'), 'dup', 'echo from-root')
-      await writeBin(path.join(b.dir, 'node_modules', '.bin'), 'dup', 'echo from-project')
-      const cap = { root: '', out: [] as string[], err: [] as string[] }
-      const log = capturingLogger(cap)
-      const n = node(b, { exec: { command: 'dup' } }, 'proj#dup')
-      await executeTask(baseArgs(b, n, log))
-      expect(cap.out.join('')).toContain('from-project')
-      expect(cap.out.join('')).not.toContain('from-root')
-    } finally {
-      await closeBench(b)
-    }
-  }, TIMEOUT)
+  it(
+    "the project's own bin WINS over a same-named root binary",
+    async () => {
+      const b = await bench()
+      try {
+        await writeBin(path.join(b.root, 'node_modules', '.bin'), 'dup', 'echo from-root')
+        await writeBin(path.join(b.dir, 'node_modules', '.bin'), 'dup', 'echo from-project')
+        const cap = { root: '', out: [] as string[], err: [] as string[] }
+        const log = capturingLogger(cap)
+        const n = node(b, { exec: { command: 'dup' } }, 'proj#dup')
+        await executeTask(baseArgs(b, n, log))
+        expect(cap.out.join('')).toContain('from-project')
+        expect(cap.out.join('')).not.toContain('from-root')
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
 
   // CONTROL: the widening is the ROOT, not the ancestor chain. A sibling
   // project's bin stays invisible — that is the project-isolation rule, and
   // without this pin "resolve the root too" could drift into "walk up".
-  it("a SIBLING project's bin stays invisible", async () => {
-    const b = await bench()
-    try {
-      const sibling = path.join(b.root, 'other')
-      await writeBin(path.join(sibling, 'node_modules', '.bin'), 'sib-only', 'echo leaked')
-      const log = capturingLogger({ root: '', out: [], err: [] })
-      const n = node(b, { exec: { command: 'sib-only' } }, 'proj#sib')
-      const outcome = await executeTask(baseArgs(b, n, log))
-      expect(outcome.exitCode).toBe(127)
-    } finally {
-      await closeBench(b)
-    }
-  }, TIMEOUT)
+  it(
+    "a SIBLING project's bin stays invisible",
+    async () => {
+      const b = await bench()
+      try {
+        const sibling = path.join(b.root, 'other')
+        await writeBin(path.join(sibling, 'node_modules', '.bin'), 'sib-only', 'echo leaked')
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const n = node(b, { exec: { command: 'sib-only' } }, 'proj#sib')
+        const outcome = await executeTask(baseArgs(b, n, log))
+        expect(outcome.exitCode).toBe(127)
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe('execute-task — a group is transparent to the executor input set', () => {
