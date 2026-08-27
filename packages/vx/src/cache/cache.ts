@@ -290,6 +290,20 @@ export interface CacheKeyInput {
    */
   upstreamIds?: ReadonlyMap<string, string>
   /**
+   * The upstream set with GROUP tasks expanded into the real tasks they
+   * stand for — what an input-shipping executor must place in the input
+   * root, which is a different question from what the key folds. NEVER
+   * folded into the digest: the key already cascades through a group's own
+   * roll-up hash, and folding the members too would change every existing
+   * dependent's key to say something the group hash already said. Absent
+   * when no upstream is a group, in which case it equals the folded set.
+   */
+  upstreamGraft?: ReadonlyArray<{
+    readonly taskId: string
+    readonly hash: string
+    readonly projectDir: string
+  }>
+  /**
    * Workspace-level fingerprint — typically a hash of `pnpm-lock.yaml` +
    * `pnpm-workspace.yaml`. Folds resolved dep versions and workspace shape
    * into every task's key, so a lockfile bump invalidates everything.

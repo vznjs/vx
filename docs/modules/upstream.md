@@ -1,11 +1,17 @@
-# `src/orchestrator/upstream.ts` — upstream-hash filter
+# `src/orchestrator/upstream.ts` — upstream selection
 
 ## Purpose
 
-Pick which upstream task hashes participate in the current task's
-cache key, per its `cache.inputs.tasks` declaration. The patterns
-share `graph/dependency-spec.ts`'s parser; this module owns the
-filter semantics (`*` / `^*` / negation).
+Answer two related questions about a task's dependencies, which are
+NOT the same question:
+
+1. **Which upstream hashes the cache key folds** — per the task's
+   `cache.inputs.tasks` declaration. The patterns share
+   `graph/dependency-spec.ts`'s parser; this module owns the filter
+   semantics (`*` / `^*` / negation).
+2. **Which real tasks are in the input closure** — what an
+   input-shipping executor must place in the input root. Same
+   selection, but with GROUP tasks expanded into what they stand for.
 
 ## Public surface
 
@@ -15,13 +21,42 @@ export function filterUpstreamHashes(
   filter: readonly string[] | undefined,
   selfProjectName: string,
   selfTaskId: string,
-): string[]
+): Array<[upstreamTaskId: string, hash: string]>
+
+export function expandGroupUpstream(upstream: readonly TaskOutcome[]): TaskOutcome[]
 ```
 
-Returns the deduped list of upstream cache hashes that pass the
-filter. Order is the iteration order of the internal `Set` — the
-caller of `cache.key` sorts it before folding, so order doesn't
+`filterUpstreamHashes` returns the hash-deduped list of upstream
+entries that pass the filter, each paired with the id of the first
+task seen at that hash (for `entry_inputs` row naming — the id is
+never folded). Order is the iteration order of the internal `Map` —
+the caller of `cache.key` sorts before folding, so order doesn't
 affect identity.
+
+## Groups are transparent to the input closure
+
+A group task has no `exec`, so it produces nothing and has no cache
+entry: its hash is a synthetic roll-up (`computeGroupHash`). That is
+correct for the KEY — a dependent cascades through the roll-up, and
+anything changing beneath the group moves it. It is wrong for the
+INPUT CLOSURE, where asking the local index what the group produced
+returns an empty list.
+
+Locally that is invisible: the members' outputs are already on disk,
+put there by their own tasks. Remotely it is fatal — that list IS the
+input root, so `dependsOn: ['install']` shipped a worker an action
+containing none of what `install` chains.
+
+`expandGroupUpstream` walks a group's `TaskOutcome.groupUpstream`
+(set by the group's own execution, the only place that knows what it
+chained), recursing for nested groups and de-duplicating by task id.
+Two properties are load-bearing:
+
+- **Filter first, then expand.** A group excluded from a task's
+  `cache.inputs.tasks` brings no members with it.
+- **The expansion is never folded.** It reaches the executor as
+  `CacheKeyInput.upstreamGraft` → `TaskInputs.upstream`; the key still
+  folds only the group's roll-up hash, so no existing entry moves.
 
 ## Defaults
 
@@ -57,6 +92,10 @@ The CLI prints this cleanly.
 `*` / `^*` / specific / `pkg#task` / `!form` / `[]` / undefined.
 The pattern parser itself is tested in
 `tests/task-graph.test.ts` (shared module).
+`tests/execute-task.test.ts` pins group expansion end to end — a
+dependent of a group receives the tasks beneath it WITH their output
+lists, and a CONTROL asserts the dependent's cache key does not move
+when the group carries members.
 
 ## What this does NOT do
 

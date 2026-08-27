@@ -90,6 +90,40 @@ export function filterUpstreamHashes(
   return [...selected].map(([hash, id]) => [id, hash])
 }
 
+/**
+ * Expand any GROUP among these outcomes into the real tasks it stands for,
+ * transitively, preserving order and de-duplicating by task id.
+ *
+ * A group has no `exec`, so it has no outputs and no cache entry — its hash
+ * is a synthetic roll-up. A dependent that asked the local index what its
+ * upstream produced therefore got an EMPTY output list for a group, which is
+ * invisible locally (the members' outputs are already on disk, put there by
+ * their own tasks) and fatal for an input-shipping executor, where that list
+ * IS the input root: `dependsOn: ['install']` shipped a worker an action with
+ * none of what `install` chains.
+ *
+ * Groups may nest, so the walk recurses. Only what the FILTER already
+ * selected is passed in, so a group excluded from a task's
+ * `cache.inputs.tasks` brings no members with it.
+ */
+export function expandGroupUpstream(upstream: readonly TaskOutcome[]): TaskOutcome[] {
+  const out: TaskOutcome[] = []
+  const seen = new Set<string>()
+  const walk = (list: readonly TaskOutcome[]): void => {
+    for (const u of list) {
+      if (u.groupUpstream !== undefined) {
+        walk(u.groupUpstream)
+        continue
+      }
+      if (seen.has(u.node.id)) continue
+      seen.add(u.node.id)
+      out.push(u)
+    }
+  }
+  walk(upstream)
+  return out
+}
+
 /** Exact-name compare, or the shared `*`-glob when the name is a pattern. */
 function nameMatcher(name: string): (candidate: string) => boolean {
   if (isTaskPattern(name)) {

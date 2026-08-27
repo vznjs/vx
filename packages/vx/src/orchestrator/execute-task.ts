@@ -175,6 +175,9 @@ function executeGroupTask(args: ExecuteArgs): TaskOutcome {
     exitCode: 0,
     durationMs: 0,
     hash: computeGroupHash(args.upstream),
+    // What this group stands for. A dependent expands it to describe the
+    // real tasks in its input closure — see `TaskOutcome.groupUpstream`.
+    groupUpstream: args.upstream,
     wallclockStartNs: wallclockNs,
     wallclockEndNs: wallclockNs,
   }

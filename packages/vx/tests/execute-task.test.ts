@@ -25,6 +25,7 @@ import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { Cache, type CacheEntry } from '../src/cache/index.js'
 import { localExecutor } from '../src/plugins/local-executor/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
+import type { ExecuteRequest, TaskExecutor } from '../src/exec/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { executeTask, restoreHit } from '../src/orchestrator/execute-task.js'
@@ -732,6 +733,114 @@ describe('execute-task — the --verify side-channel', () => {
       expect(r.outcomes[0]!.status).toBe('success')
       expect(r.outcomes[0]!.verify).toBeUndefined()
       expect(r.outcomes[0]!.outputFp).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+})
+
+describe('execute-task — a group is transparent to the executor input set', () => {
+  // A group has no `exec`, so it produces nothing and has no cache entry — its
+  // hash is a synthetic roll-up. That is fine for the KEY (dependents cascade
+  // through the roll-up) and was silently wrong for `ExecuteRequest.inputs`,
+  // whose whole job is to describe the closure an input-shipping executor must
+  // place in the input root. A dependent of a group received one upstream row
+  // with an EMPTY output list, which is invisible locally — the members'
+  // outputs are already on disk, put there by their own tasks — and fatal
+  // remotely: `dependsOn: ['install']` shipped a worker an action containing
+  // none of what `install` chains.
+  it(
+    'a dependent of a group sees the tasks BENEATH it, with their outputs',
+    async () => {
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+
+        // A real producer with a real cache entry: the upstream output list is
+        // read from the local index by HASH, so a hand-made outcome would prove
+        // nothing about what a dependent actually receives.
+        const producer = node(
+          b,
+          {
+            exec: { command: 'mkdir -p dist && echo built > dist/lib.js' },
+            cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+          },
+          'proj#compile',
+        )
+        const made = await executeTask(baseArgs(b, producer, log))
+        expect(made.status).toBe('success')
+
+        // The group the user actually depends on.
+        const group = node(b, { dependsOn: ['compile'] }, 'proj#install')
+        const groupOutcome = await executeTask({
+          ...baseArgs(b, group, log),
+          upstream: [made],
+        })
+        expect(groupOutcome.groupUpstream?.map((u) => u.node.id)).toEqual(['proj#compile'])
+
+        let seen: ExecuteRequest | undefined
+        const capturing: TaskExecutor = {
+          name: 'capture',
+          execute: (req) => {
+            seen = req
+            return localExecutor().execute(req)
+          },
+        }
+        const consumer = node(
+          b,
+          {
+            dependsOn: ['install'],
+            exec: { command: 'true' },
+            cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+          },
+          'proj#bundle',
+        )
+        await executeTask({
+          ...baseArgs(b, consumer, log),
+          upstream: [groupOutcome],
+          executor: capturing,
+        })
+
+        // The group itself is NOT in the list — it has nothing to contribute and
+        // naming it would send an executor looking for an entry that cannot exist.
+        expect(seen?.inputs?.upstream.map((u) => u.taskId)).toEqual(['proj#compile'])
+        expect(seen?.inputs?.upstream[0]?.hash).toBe(made.hash)
+        expect(seen?.inputs?.upstream[0]?.outputs).toEqual(['proj/dist/lib.js'])
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+
+  // CONTROL: the expansion must not change what the KEY folds. The key
+  // cascades through the group's own roll-up hash and always has; folding the
+  // members too would move every existing dependent's key to say something the
+  // roll-up already said, for no gain.
+  it(
+    'expanding the group does not move the dependent cache key',
+    async () => {
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const consumer = node(
+          b,
+          {
+            dependsOn: ['install'],
+            exec: { command: 'true' },
+            cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+          },
+          'proj#bundle',
+        )
+        const member = upstreamOutcome('proj#compile', 'aaaaaaaaaaaaaaaa')
+        const bare = { ...upstreamOutcome('proj#install', 'gggggggggggggggg') }
+        const withMembers: TaskOutcome = { ...bare, groupUpstream: [member] }
+
+        const a = await executeTask({ ...baseArgs(b, consumer, log), upstream: [bare] })
+        const c = await executeTask({ ...baseArgs(b, consumer, log), upstream: [withMembers] })
+        expect(a.hash).toBe(c.hash)
+      } finally {
+        await closeBench(b)
+      }
     },
     TIMEOUT,
   )

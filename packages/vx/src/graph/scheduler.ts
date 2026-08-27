@@ -93,6 +93,16 @@ export interface TaskOutcome {
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number
+  /**
+   * A GROUP task's own dependency outcomes — the tasks it stands for.
+   * A group has no `exec` and therefore no outputs and no cache entry: its
+   * hash is a synthetic roll-up (`computeGroupHash`), so asking the local
+   * index what it produced returns nothing. A dependent needs the real
+   * tasks beneath it to describe its own input set, and only the group
+   * itself is ever in a position to say which those are. Set on group
+   * outcomes only; never folded into any key.
+   */
+  groupUpstream?: readonly TaskOutcome[]
   /** Executor-reported placement label (`ExecuteResult.where`) — set only
    *  when the task ran somewhere other than this host. Telemetry-only. */
   where?: string

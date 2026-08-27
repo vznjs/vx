@@ -10,7 +10,7 @@ import {
 import type { InputFile, TaskInputs } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { relPosix, xxh3hex } from '../util/index.js'
-import { filterUpstreamHashes } from './upstream.js'
+import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 
 /**
  * Per-run memoization caches for the two derived hashes that don't
@@ -115,22 +115,23 @@ export async function describeTaskInputs(
     path: relPosix(input.workspaceRoot, f),
     digest: digests[i]!,
   }))
-  const upstreamHashes = [...input.upstreamHashes].sort()
+  // Groups expanded: this list describes the INPUT ROOT, not the key, and a
+  // group produces nothing of its own (see `CacheKeyInput.upstreamGraft`).
+  // Sorted by hash so the list — and any action digest derived from it — is
+  // independent of dependency declaration order.
+  const graft = [...(input.upstreamGraft ?? [])].sort((a, b) =>
+    a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0,
+  )
   // Output lists come from the local index — one SELECT for every upstream
   // entry. An upstream with no entry (non-cacheable) contributes an empty list.
-  const rows = args.cache.loadOutputFilesBatch(upstreamHashes)
-  const projectDirOf = new Map(args.upstream.map((o) => [o.node.id, o.node.projectDir]))
-  const upstream = upstreamHashes.map((h) => {
-    const taskId = input.upstreamIds?.get(h) ?? h
-    const dir = projectDirOf.get(taskId)
-    const outputs = (rows.get(h) ?? []).map((r) =>
+  const rows = args.cache.loadOutputFilesBatch(graft.map((g) => g.hash))
+  const upstream = graft.map((g) => {
+    const outputs = (rows.get(g.hash) ?? []).map((r) =>
       r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
         ? r.path.slice(WORKSPACE_OUTPUT_PREFIX.length)
-        : dir === undefined
-          ? r.path
-          : relPosix(input.workspaceRoot, path.join(dir, r.path)),
+        : relPosix(input.workspaceRoot, path.join(g.projectDir, r.path)),
     )
-    return { taskId, hash: h, outputs }
+    return { taskId: g.taskId, hash: g.hash, outputs }
   })
   return {
     hash,
@@ -181,6 +182,14 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
   const upstreamHashes = upstreamPairs.map(([, hash]) => hash)
   // hash → upstream task id, for capture-row naming only (not folded).
   const upstreamIds = new Map(upstreamPairs.map(([id, hash]) => [hash, id]))
+  // The same selection with groups expanded, for the executor's input root.
+  // Filter FIRST, then expand: a group excluded from `cache.inputs.tasks`
+  // must not smuggle its members back in. Not folded — see `upstreamGraft`.
+  const selectedIds = new Set(upstreamPairs.map(([id]) => id))
+  const graftOutcomes = expandGroupUpstream(args.upstream.filter((u) => selectedIds.has(u.node.id)))
+  const upstreamGraft = graftOutcomes
+    .filter((u) => u.hash !== undefined)
+    .map((u) => ({ taskId: u.node.id, hash: u.hash!, projectDir: u.node.projectDir }))
   // Trusted index-OID map for this project (populated by the run's
   // bulk `git ls-files -s` + `git status` pass). Mapped files skip
   // hashFile entirely; everything else falls back to the identical
@@ -215,6 +224,7 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
     workspaceRoot: args.workspaceRoot,
     upstreamHashes,
     upstreamIds,
+    upstreamGraft,
     workspaceFingerprint: args.workspaceFingerprint,
     forwardArgs: effectiveForwardArgs,
     ...(fileHashes !== undefined ? { fileHashes } : {}),
