@@ -204,7 +204,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     persistent: NonNullable<ExecConfig['persistent']>
   }
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
-  const env = taskEnv(node, step)
+  const env = taskEnv(node, step, args.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
   // When readyWhen is set we leave the command untouched so the
@@ -404,7 +404,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
-  const env = taskEnv(node, step)
+  const env = taskEnv(node, step, args.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
   // Miss path: describe the input set ONCE — the executor gets the values
@@ -1076,16 +1076,31 @@ async function prepareOutputsForBind(
  * anywhere underneath.
  */
 /**
- * Build the child-process env for one task. Same arguments at every
- * call site (persistent + cached); the project's own
- * `node_modules/.bin` is prepended to PATH — never the workspace
- * root's, never sibling projects' (per the project-isolation rule).
+ * Build the child-process env for one task. Same arguments at every call site
+ * (persistent + cached). Two `node_modules/.bin` directories are prepended to
+ * PATH: the project's own, then the WORKSPACE ROOT's. Never a sibling
+ * project's, and never an arbitrary ancestor — that is the project-isolation
+ * rule, and the root is not a sibling.
+ *
+ * The root entry is where a monorepo's shared tooling actually lives: declare
+ * `oxlint` once as a root devDependency and every member's `.bin` is empty of
+ * it. Without the root on PATH such a task exits 127, which is what this
+ * repo's own gate did the moment core stopped BEING the root and the two
+ * paths stopped coinciding. It also removes a divergence that mattered more:
+ * the REAPI executor already rebuilds both entries in the action's command,
+ * so a task that resolved on a worker failed on the machine that submitted
+ * it. npm/pnpm/yarn all put the ancestor chain on PATH for the same reason.
  */
-function taskEnv(node: TaskNode, step: ExecConfig): NodeJS.ProcessEnv {
+function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJS.ProcessEnv {
+  const bins = [path.join(node.projectDir, 'node_modules', '.bin')]
+  const rootBin = path.join(workspaceRoot, 'node_modules', '.bin')
+  // Identical when the root is itself a project — dedupe rather than list it
+  // twice, so PATH reads the same either way.
+  if (rootBin !== bins[0]) bins.push(rootBin)
   return buildIsolatedEnv({
     passThrough: step.env?.passThrough ?? [],
     define: step.env?.define ?? {},
     source: process.env,
-    binPaths: [path.join(node.projectDir, 'node_modules', '.bin')],
+    binPaths: bins,
   })
 }
