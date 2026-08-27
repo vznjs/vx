@@ -542,8 +542,14 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         paths: inputPaths,
         digests,
         // The working directory must exist in the input root (REAPI
-        // requirement) even for a task with no file inputs at all.
-        ensureDirs: [workingDirectory],
+        // requirement) even for a task with no file inputs at all. The
+        // PROJECT dir is ensured too, and separately: in root-anchored mode
+        // the action's working directory is the input root and the command
+        // `cd`s into the project instead, so a task whose declared inputs
+        // all live outside its own directory would otherwise `cd` into a
+        // directory the tree never created. Outside root mode the two are
+        // the same path and ensureDirs dedupes.
+        ensureDirs: [workingDirectory, projectRel],
         fileGrafts,
         treeGrafts,
       })

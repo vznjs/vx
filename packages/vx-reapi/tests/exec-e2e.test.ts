@@ -44,6 +44,7 @@ describe.if(run)('remote execution against a live scheduler + worker', () => {
       command: 'tr a-z A-Z < src/in.txt > out.txt && echo transformed',
       forwardArgs: [],
       env: {},
+      envDefine: {},
       capture: { stdout: true, stderr: true },
       onStdout: () => undefined,
       onStderr: () => undefined,
@@ -141,6 +142,7 @@ describe.if(run)("the node_modules chain: remote:'only' install feeds remote bui
       command: 'true',
       forwardArgs: [],
       env: {},
+      envDefine: {},
       capture: { stdout: true, stderr: true },
       onStdout: () => undefined,
       onStderr: () => undefined,
@@ -267,6 +269,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
       command: 'true',
       forwardArgs: [],
       env: {},
+      envDefine: {},
       capture: { stdout: true, stderr: true },
       onStdout: () => undefined,
       onStderr: () => undefined,
@@ -503,11 +506,17 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
   }, 180_000)
 
   it('a workspace-file output outside the project dir round-trips via a ../ path', async () => {
-    // vx sets working_directory to the project dir inside the workspace
-    // input root, so outputs.workspaceFiles rebase to '../…' — a shape the
-    // spec neither sanctions nor forbids. This pins that a real worker
-    // captures it and that materialisation resolves it back to the
-    // workspace root (path.join(cwd, '../shared/gen.txt')).
+    // A root-anchored output has no '..'-free spelling relative to the
+    // project dir, and servers refuse '..' in output_paths — so an action
+    // declaring outputs.workspaceFiles runs at the INPUT ROOT and `cd`s into
+    // the project instead. Two things are pinned here, and this fixture
+    // declares NO input files, which is what makes the second one live: the
+    // worker captures the root-relative output and materialisation resolves
+    // it back to the workspace root, AND the project dir the command `cd`s
+    // into exists in the input tree at all. Nothing else would create it
+    // here — the action's working directory is the root, and a task whose
+    // declared inputs all sit outside its own directory would otherwise
+    // `cd` into nothing and exit non-zero.
     const root = await mkdtemp(path.join(tmpdir(), 'vx-exec-e2e-'))
     await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
     await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'seed\n')
