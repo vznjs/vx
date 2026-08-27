@@ -30,10 +30,12 @@ Configs:
 
 ## Repository layout
 
-Bun workspaces monorepo: the root `"."` member is core `@vzn/vx`
-(load-bearing — without it the root vx.config.ts stops being a
-project); `packages/*` are the integration packages; `apps/docs` is
-the docs site. Core `src/` is eight modules — each directory's
+Bun workspaces monorepo: core `@vzn/vx` is `packages/vx` (moved out of
+the root member 2026-08-26); the other `packages/*` are the plugin
+packages; `apps/docs` is the docs site. The repo root is a plain
+workspace root with NO tasks of its own, so `vx run <task>` from there
+needs `--all` or `--filter @vzn/vx` — that is what CI invokes.
+Core `src/` is eight modules — each directory's
 `index.ts` is its contract; cross-module imports go through it only
 (enforced by `tests/module-boundaries.test.ts`) — plus four root
 files. Core never imports a sibling `@vzn/vx-*`; packages import core
@@ -42,6 +44,7 @@ symlinked by `scripts/link-self.ts` postinstall). Full dependency
 matrix in `docs/architecture.md`.
 
 ```
+packages/vx/            # @vzn/vx — core (paths below are relative to it)
 src/
   bin.ts                # shebang; wires process.argv -> cli run
   index.ts              # public package façade (~80 exports, snapshot-pinned)
@@ -119,7 +122,7 @@ src/
     local-cache/        # published as @vzn/vx/plugins/local-cache
   util/                 # tiny shared helpers
     index.ts paths.ts hash.ts ulid.ts errors.ts
-packages/
+packages/               # (siblings of packages/vx)
   vx-otel/              # @vzn/vx-otel — otel() telemetry plugin (OTLP JSON, no SDK)
   vx-reapi/             # @vzn/vx-reapi — Bazel Remote Execution API plugin
                         # (remote cache over ActionCache + CAS; remote execution later)
@@ -139,29 +142,29 @@ tsconfig.json / package.json / bun.lock / .oxlintrc.json / .oxfmtrc.json
 
 - **Push directly to `main`.** Owner instruction (2026-06-10): no PRs.
   Branch protection is off. Run the full local gate first
-  (`bun src/bin.ts run ci`), then push. Keep commits as small and
+  (`bun packages/vx/src/bin.ts run ci`), then push. Keep commits as small and
   focused as the PRs used to be — one coherent change per commit.
 - **Commit messages:** imperative present; first line < 72 chars; body
   explains _why_. No co-author lines.
 - **Tests must pass.** 250+ tests today. Use `bun test` locally, or
-  `bun src/bin.ts run test` to drive it through vx itself. The 21 OS-sandbox
+  `bun packages/vx/src/bin.ts run test` to drive it through vx itself. The 21 OS-sandbox
   tests skip without `bwrap`/`socat`/`strace`; set `VX_REQUIRE_SANDBOX=1`
   (CI does) to make an unavailable sandbox a FAILURE instead — a skip
   reports green, and those tests cover the isolation boundary.
-- **Format must be clean.** Rewrite via vx: `bun src/bin.ts run
+- **Format must be clean.** Rewrite via vx: `bun packages/vx/src/bin.ts run
 lint.oxfmt.fix`; the check-only gate is `lint.oxfmt` (part of `lint`).
-- **Lint+typecheck must be clean.** Run via vx: `bun src/bin.ts run lint`
+- **Lint+typecheck must be clean.** Run via vx: `bun packages/vx/src/bin.ts run lint`
   — a group fanning out to `lint.oxlint` (oxlint + tsgolint) and
   `lint.oxfmt` (oxfmt --check). No `package.json` scripts — dogfooded
   through vx's own task graph.
-- **CI gate:** `bun src/bin.ts run ci` — a group fanning out to `lint`
+- **CI gate:** `bun packages/vx/src/bin.ts run ci` — a group fanning out to `lint`
   (→ `lint.oxlint` + `lint.oxfmt`) and `test`. The four `build.bun.*`
   cross-compiled binaries are built only in `release.yml` (`vx run
 build`), not in the CI gate. CI workflow is `.github/workflows/ci.yml`.
 - **The local gate does NOT cover `packages/*`.** Root `test` is scoped
   to `./tests` on purpose (a bare `bun test` recurses into every
   member), and no package declares a vx config, so a green
-  `bun src/bin.ts run ci` says nothing about a plugin change. CI's
+  `bun packages/vx/src/bin.ts run ci` says nothing about a plugin change. CI's
   separate `plugin packages` job is what gates those — it runs
   vx-otel and vx-github as plain `bun test`, and vx-reapi ONE PROCESS
   PER FILE (the documented `node:http2` stall, oven-sh/bun#39796).
@@ -529,6 +532,73 @@ time every single time.
   cost outside GitHub Actions.
 
 ### Recent entries (2026-08)
+
+- **2026-08-28 — three owner asks finished, and the live worker proved two
+  more defects that reading never would have.** Picked up from a working tree
+  holding an unfinished `envDefine` thread. (1) **`exec.env.define` now
+  reaches a remote action.** The thread as found appended defines to
+  `inputs.env` and shipped them UNSORTED — and the proto is explicit ("in
+  order to ensure that equivalent Commands always hash to the same value, the
+  environment variables MUST be lexicographically sorted by name"), while
+  `Object.entries` follows the config's key INSERTION order. So two configs
+  declaring the same defines in a different order would have built different
+  action digests and missed each other's entries. `outputPathSets` next door
+  already sorts for that exact reason, which is the tell that the constraint
+  was known and simply missed here. Extracted `commandEnvironment` as a
+  testable seam; defines win on collision; docs in the same wave state the
+  asymmetry that only TWO of vx's three env lists travel —
+  `exec.env.passThrough` and the essential allowlist deliberately do not,
+  because host values in the action digest split every machine from every
+  other AND a Command blob lives in a shared CAS, which is the wrong home for
+  a secret. (2) **Groups are now transparent to the executor's input
+  closure** — the owner's second ask, and the one that was called
+  "not contained". It was, once the two questions were separated: what the KEY
+  folds (a group's synthetic roll-up — UNCHANGED, so no entry moves) and what
+  the INPUT ROOT contains. `TaskOutcome.groupUpstream` carries what a group
+  chained (its own execution is the only place that knows), `expandGroupUpstream`
+  walks it, and `CacheKeyInput.upstreamGraft` carries the result explicitly
+  never folded, alongside the `upstreamIds` precedent. Filter FIRST, then
+  expand. That retired the config workaround where leaf tasks named `setup`
+  directly beside the `install` group they already depended on. (3) The
+  setup→install→build ordering is in place per project.
+  **TWO DEFECTS THE LIVE RUN FOUND AND THE UNIT SUITES COULD NOT.** First, a
+  root-anchored action never created the directory it `cd`s into:
+  `ensureDirs` got the action's working directory, which in that mode IS the
+  root, so a task whose declared inputs all sit outside its own project dir
+  exited 1 on `cd`. exec-e2e caught it because ONE of its fixtures declares no
+  input files — the others create the dir incidentally by having an input
+  inside it. Second, and worse because it is a stale hit in this repo's own
+  gate: three of `lint.oxlint`'s inputs (`bench/**`, `.oxlintrc.json`,
+  `tsconfig.json`) live at the workspace root but were declared
+  PROJECT-relative, so since the move into `packages/vx` they resolved to
+  paths that do not exist and editing the linter config did not invalidate
+  the lint task. The SHAPE is the lesson: a missing input does not report as
+  a missing file, it reports as the tool misbehaving — with no tsconfig in
+  the action, tsgolint emitted ~900 phantom `Cannot find name 'process'`
+  errors. 920 → 5 by root-anchoring the config files, 5 → 0 by declaring the
+  members' `package.json` (folded into every key by core, but the key is not
+  the input set). Remote execution is a completeness proof for the declared
+  input set, which is `--verify=inputs`'s argument arriving from a different
+  direction.
+  **DEV INFRA, now durable rather than a running container.** The worker
+  image bakes a REAL node linked into `/usr/local/bin` — `oven/bun`'s `node`
+  is a symlink to bun, and setting the image's `ENV PATH` is NOT enough
+  because a REAPI worker runs each action with its own minimal environment,
+  so the image PATH never reaches the command. `/usr/local/bin` is on the
+  worker's default PATH, which is why the link belongs there. Both servers
+  moved off `/tmp` bind mounts onto docker volumes after macOS pruning cost
+  an hour twice over: bazel-remote answered writes with
+  `unexpected error opening temp file … no such file or directory` (110 of
+  its 256 shard dirs deleted under it) and NativeLink's mounted config file
+  came back as an empty DIRECTORY. Both look like protocol bugs and are
+  neither. Recorded in `tests/helpers/nativelink.md` with a dev config.
+  NOT MINE, observed and left: `reapi-e2e`'s multi-chunk round-trip is flaky
+  in-file (1 of 3 runs, 5 s timeout, passes in isolation) — the signature of
+  the documented Bun `node:http2` multi-message stall, and it cannot be this
+  wave's, since that suite is the CACHE half and never touches the executor.
+  A process note worth keeping: `git checkout <file>` to undo a differential
+  MUTATION reverted the whole file's work with it. Undo a mutation with the
+  reverse edit, never with checkout.
 
 - **2026-08-26 (tenth wave) — docs passes 6–7: the guide for EXTENDING
   vx documented a hook the loader refuses.** `guides/plugins.md`
