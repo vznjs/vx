@@ -531,6 +531,55 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
     return root
   }
 
+  it('a record read that FAILS degrades to a miss — the task executes, it does not fail', async () => {
+    // The execution record is a shortcut past the worker, so a transport
+    // failure reading it means "no usable record", never "this task failed".
+    // Core's standing rule is that a remote cache error degrades to a MISS;
+    // an executor that propagates one turns a degraded server into a red
+    // build. Observed for real against a NativeLink that had stopped
+    // answering AC hits: every task died on the deadline instead of re-running.
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-exec-e2e-'))
+    await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+    await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'seed\n')
+    const client = new ReapiClient({ endpoint })
+    const warns: string[] = []
+    try {
+      await client.negotiate()
+      // Only the record read fails; everything else is the real client.
+      let reads = 0
+      client.getActionResult = async () => {
+        reads++
+        throw Object.assign(new Error('14 UNAVAILABLE: simulated'), { code: 14 })
+      }
+      const executor = reapiExecutor(client, { warn: (m) => warns.push(m) })
+      const res = await executor.execute(
+        req3(root, {
+          command: 'tr a-z A-Z < src/in.txt > out.txt',
+          outputs: { files: ['out.txt'], workspaceFiles: [] },
+          cacheKey: 'deadbeefdeadbeef',
+          inputs: {
+            files: [{ path: 'pkg/src/in.txt', digest: 'unused' }],
+            env: [],
+            runtime: [],
+            workspaceRuntime: [],
+            upstream: [],
+            packageJsonDigest: 'x',
+            configDigest: 'y',
+            workspaceFingerprint: 'z',
+          },
+        } as Partial<ExecuteRequest>),
+      )
+      expect(reads).toBeGreaterThan(0)
+      expect(res.exitCode).toBe(0)
+      expect((await readFile(path.join(root, 'pkg', 'out.txt'), 'utf8')).trim()).toBe('SEED')
+      // Degraded, not silent: the run says why it did the work.
+      expect(warns.some((w) => /execution record/.test(w))).toBe(true)
+    } finally {
+      client.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
+
   it('the action digest is content-addressed: same task, two different checkout paths', async () => {
     const a = await seeded('same bytes\n')
     const b = await seeded('same bytes\n')

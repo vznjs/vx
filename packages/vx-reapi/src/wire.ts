@@ -271,6 +271,24 @@ export interface ReapiOptions {
    */
   callTimeoutMs?: number
   /**
+   * Deadline for CONTROL-PLANE calls — Capabilities, GetActionResult,
+   * UpdateActionResult, FindMissingBlobs, QueryWriteStatus. Defaults to
+   * `min(callTimeoutMs, 15 000)`.
+   *
+   * Separate from `callTimeoutMs` because the two classes have nothing in
+   * common but a transport. A control-plane message is small and bounded — a
+   * healthy server answers in single-digit milliseconds — while a bulk
+   * transfer is size-proportional and legitimately slow: capturing a
+   * `node_modules` tree is the case that pushes real deployments to raise
+   * `callTimeoutMs` into the minutes. With one knob for both, buying enough
+   * headroom for the upload also means every metadata probe against a WEDGED
+   * server costs those same minutes before it can degrade to a miss, which is
+   * the opposite of what the deadline exists for. Measured against a
+   * NativeLink that had degraded into serving every AC hit never: misses
+   * answered in 3 ms while every hit burned the full deadline.
+   */
+  metaTimeoutMs?: number
+  /**
    * Bytes per ByteStream message. Defaults to `CHUNK_BYTES` (128 KB). Drop to
    * `SAFE_CHUNK_BYTES` if uploads wedge against your server — the ceiling is
    * peer-dependent, see the note on `CHUNK_BYTES`.
@@ -284,6 +302,7 @@ export class ReapiClient {
   private readonly headers: Record<string, string>
   private readonly chunkBytes: number
   private readonly callTimeoutMs: number
+  private readonly metaTimeoutMs: number
   private readonly onWarn: (message: string) => void
   private digestFunction: DigestFunctionName = 'SHA256'
   private compression = false
@@ -311,6 +330,9 @@ export class ReapiClient {
     this.correlatedInvocationsId = opts.correlatedInvocationsId ?? ''
     this.chunkBytes = opts.chunkBytes ?? CHUNK_BYTES
     this.callTimeoutMs = opts.callTimeoutMs ?? 30_000
+    // Derived, not required: raising `callTimeoutMs` for a big upload must
+    // not silently lengthen every metadata probe too.
+    this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, 15_000)
     this.onWarn = opts.onWarn ?? (() => undefined)
     if (!Number.isInteger(this.chunkBytes) || this.chunkBytes < 1) {
       throw new Error(
@@ -326,9 +348,14 @@ export class ReapiClient {
    * UI. Omitting it is legal and makes vx invisible in every REAPI server's
    * dashboard, which is the whole reason the field exists.
    */
-  /** Call options carrying the cache-path deadline. */
+  /** Call options for a BULK transfer — deadline scales with payload size. */
   private bounded(): grpc.CallOptions {
     return { deadline: new Date(Date.now() + this.callTimeoutMs) }
+  }
+
+  /** Call options for a CONTROL-PLANE call — small message, short deadline. */
+  private boundedMeta(): grpc.CallOptions {
+    return { deadline: new Date(Date.now() + this.metaTimeoutMs) }
   }
 
   private meta(): grpc.Metadata {
@@ -389,7 +416,7 @@ export class ReapiClient {
       'getCapabilities',
       { instance_name: this.instance },
       this.meta(),
-      this.bounded(),
+      this.boundedMeta(),
     )
     const cc = res.cache_capabilities
     return {
@@ -473,7 +500,7 @@ export class ReapiClient {
         'queryWriteStatus',
         { resource_name: resourceName },
         this.meta(),
-        this.bounded(),
+        this.boundedMeta(),
       )
       return { committedSize: Number(res.committed_size ?? 0), complete: res.complete === true }
     } catch (err) {
@@ -622,7 +649,7 @@ export class ReapiClient {
       'findMissingBlobs',
       { instance_name: this.instance, blob_digests: digests },
       this.meta(),
-      this.bounded(),
+      this.boundedMeta(),
     )
     return res.missing_blob_digests ?? []
   }
@@ -635,7 +662,7 @@ export class ReapiClient {
         'getActionResult',
         { instance_name: this.instance, action_digest: action },
         this.meta(),
-        this.bounded(),
+        this.boundedMeta(),
       )
     } catch (err) {
       if ((err as grpc.ServiceError).code === NOT_FOUND) return null
@@ -649,7 +676,7 @@ export class ReapiClient {
       'updateActionResult',
       { instance_name: this.instance, action_digest: action, action_result: result },
       this.meta(),
-      this.bounded(),
+      this.boundedMeta(),
     )
   }
 

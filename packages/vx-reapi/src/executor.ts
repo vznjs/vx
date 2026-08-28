@@ -34,6 +34,11 @@ import type { ActionResult, Digest, Directory, Operation, ReapiClient } from './
  *  it for one alias is the speculative widening the project rejects. */
 type DescribedInputs = NonNullable<ExecuteRequest['inputs']>
 
+/** Message text from an unknown throw, for a warning line. */
+function errText(err: unknown): string {
+  return err instanceof Error ? err.message.split('\n')[0]! : String(err)
+}
+
 export interface DecodedExecuteResponse {
   result?: ActionResult
   message?: string
@@ -407,7 +412,24 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // cheap. `--force` reaches this through `refresh` and skips it — a
       // private cache that ignores the flag is still a cache.
       if (req.cacheKey !== undefined && req.refresh !== true) {
-        const prior = await client.getActionResult(execDigestFor(req.cacheKey))
+        // A CACHE READ, and nothing more: the record is a shortcut past the
+        // worker, so a transport failure here means "no usable record", never
+        // "this task failed". Core's standing rule is that a remote cache
+        // error degrades to a MISS, and an executor that instead propagates
+        // one turns a degraded server into a red build — observed against a
+        // NativeLink that had stopped answering AC hits, where every task
+        // died on the deadline rather than simply re-running.
+        //
+        // Deliberately NOT extended to the UPSTREAM record reads below. Those
+        // decide whether a dependency's bytes exist at all, and treating a
+        // failure there as "carry on" is how an action runs without its
+        // inputs and caches the result.
+        const prior = await client.getActionResult(execDigestFor(req.cacheKey)).catch((err) => {
+          warn(
+            `vx/reapi: ${req.taskId} could not read its execution record (${errText(err)}) — executing`,
+          )
+          return null
+        })
         if (prior !== null) {
           const referenced = [
             ...(prior.output_files ?? []).map((f) => f.digest),
@@ -416,7 +438,13 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // AC and CAS evict independently, so a record can outlive its
           // blobs. A gap means it cannot produce the outputs — fall through
           // and execute for real rather than "succeed" with nothing.
-          const gone = referenced.length > 0 ? await client.findMissingBlobs(referenced) : []
+          // Same reasoning: if the completeness probe cannot run, the record
+          // is unusable, which is a miss. `[]` would mean "nothing missing"
+          // and would replay a record whose blobs were never checked.
+          const gone =
+            referenced.length > 0
+              ? await client.findMissingBlobs(referenced).catch(() => referenced)
+              : []
           if (gone.length === 0) {
             const priorStdout = await this_readStream(client, prior.stdout_raw, prior.stdout_digest)
             if (req.capture.stdout !== false && priorStdout.length > 0) req.onStdout(priorStdout)

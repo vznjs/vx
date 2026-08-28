@@ -156,3 +156,55 @@ describe('adaptive chunk downgrade', () => {
     }
   }, 10_000)
 })
+
+describe('control-plane calls are bounded separately from bulk transfers', () => {
+  // One knob for both classes is a trap. A `node_modules` capture legitimately
+  // needs minutes, so a real deployment raises `callTimeoutMs` — and with a
+  // single deadline that also buys every metadata probe the same minutes
+  // before it can degrade to a miss, which is the opposite of what the
+  // deadline is for. Observed against a NativeLink that had degraded into
+  // never answering an AC HIT (misses still returned in 3ms): every task
+  // burned the full 180s upload deadline on a lookup.
+  it('a metadata probe gives up on the SHORT deadline, not the bulk one', async () => {
+    const cache = new ReapiRemoteCache({
+      endpoint: `127.0.0.1:${port}`,
+      callTimeoutMs: 60_000,
+      metaTimeoutMs: 700,
+    })
+    try {
+      const t0 = Date.now()
+      await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
+      const waited = Date.now() - t0
+      expect(waited).toBeGreaterThanOrEqual(600)
+      // The point of the split: nowhere near the 60s bulk deadline.
+      expect(waited).toBeLessThan(5_000)
+    } finally {
+      cache.close()
+    }
+  }, 20_000)
+
+  it('defaults derive from callTimeoutMs and cap at 15s, so raising it never lengthens a probe', async () => {
+    // No metaTimeoutMs given, and a bulk deadline far above the cap.
+    const cache = new ReapiRemoteCache({ endpoint: `127.0.0.1:${port}`, callTimeoutMs: 600_000 })
+    try {
+      const t0 = Date.now()
+      await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
+      expect(Date.now() - t0).toBeLessThan(20_000)
+    } finally {
+      cache.close()
+    }
+  }, 30_000)
+
+  // CONTROL: the cap must not clamp a deliberately SHORT bulk deadline, or
+  // `min()` would silently lengthen a probe that was already tighter.
+  it('a bulk deadline below the cap still governs the probe', async () => {
+    const cache = new ReapiRemoteCache({ endpoint: `127.0.0.1:${port}`, callTimeoutMs: 800 })
+    try {
+      const t0 = Date.now()
+      await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
+      expect(Date.now() - t0).toBeLessThan(5_000)
+    } finally {
+      cache.close()
+    }
+  }, 20_000)
+})

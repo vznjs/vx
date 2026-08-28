@@ -149,17 +149,42 @@ check Bazel's client performs.
 
 ## Deadlines: a wedged server degrades, it does not hang
 
-Every cache-path call (unary RPCs, ByteStream transfers) carries a gRPC
-deadline — `callTimeoutMs`, default 30 s. This is what turns a **wedged**
-server — accepts TCP, never answers — into an error the cache layer degrades
-to a MISS; without it the first probe would hang the whole run, and "errors
-degrade to a miss" is vacuous when the call never returns. `DEADLINE_EXCEEDED`
-is deliberately not retried (one deadline, not deadline × retries).
+Every call carries a deadline, because the killer case is not a server that is
+DOWN — that is an instant `UNAVAILABLE` the cache layer degrades to a miss —
+but one that accepts TCP and never answers. Without a deadline no error ever
+happens and the first probe hangs the whole run.
 
-Execution streams (`Execute`/`WaitExecution`) are **not** bounded by it:
-queueing behind a busy worker pool is legitimate and unbounded. A wedged
-server still cannot reach `Execute`, because the deadline-bounded
-`GetCapabilities` call runs first and fails.
+There are TWO deadlines, and the split matters:
+
+| option           | covers                                                            | default                     |
+| ---------------- | ----------------------------------------------------------------- | --------------------------- |
+| `metaTimeoutMs`  | Capabilities, GetActionResult, UpdateActionResult, FindMissingBlobs, QueryWriteStatus | `min(callTimeoutMs, 15 000)` |
+| `callTimeoutMs`  | ByteStream transfers, Batch{Read,Update}Blobs, Split/SpliceBlob    | `30 000`                     |
+
+A control-plane message is small and bounded: a healthy server answers in
+single-digit milliseconds. A bulk transfer is size-proportional and
+legitimately slow — capturing a `node_modules` tree is what pushes real
+deployments to raise `callTimeoutMs` into the minutes. With one knob for both,
+buying headroom for that upload also buys every metadata probe the same
+minutes before it can degrade, which is the opposite of what the deadline is
+for.
+
+That is not hypothetical. A NativeLink instance degraded into a state where it
+answered every ActionCache MISS in 3 ms and every HIT never — idle CPU,
+nothing in its logs, cleared by a restart with identical on-disk data. With a
+single 180 s deadline, every task burned three minutes on a lookup before
+failing. Now the probe gives up in 15 s and the run re-executes.
+
+Execution streams are deliberately NOT bounded by either: queueing behind a
+busy worker pool is legitimate and unbounded. A wedged server still cannot
+reach Execute, because the deadline-bounded Capabilities call runs first.
+
+A failed READ is never a failed task. The execution-record lookup is a
+shortcut past the worker, so a transport error there means "no usable record"
+and the task executes normally, with a warning naming why. The UPSTREAM record
+reads are the deliberate exception — those decide whether a dependency's bytes
+exist at all, and carrying on past a failure there is how an action runs
+without its inputs and caches the result.
 
 ## Tests
 
