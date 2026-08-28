@@ -94,17 +94,16 @@ describe('commandEnvironment', () => {
     ])
   })
 
-  // The proto: "in order to ensure that equivalent Commands always hash to the
-  // same value, the environment variables MUST be lexicographically sorted by
-  // name." `inputs.env` arrives sorted; appending defines to it does not stay
-  // sorted, and `Object.entries` follows the config's key INSERTION order — so
-  // two configs declaring the same defines in a different order would build
-  // different action digests and miss each other's entries.
-  it('sorts by name regardless of declaration order', () => {
+  // ORDER is NOT pinned here on purpose. The proto requires
+  // environment_variables sorted by name, and `encodeCommand` owns that for
+  // every Command it encodes (pinned byte-for-byte in encoding.test.ts, and
+  // end-to-end against a live worker in exec-e2e). What this function owns is
+  // the SET: one entry per name, whatever order the config declared them in.
+  it('yields one entry per name, however the config declared them', () => {
     const a = commandEnvironment(inputs([{ name: 'MID', value: '1' }]), { ZED: 'z', ALPHA: 'a' })
     const b = commandEnvironment(inputs([{ name: 'MID', value: '1' }]), { ALPHA: 'a', ZED: 'z' })
-    expect(a.map((e) => e.name)).toEqual(['ALPHA', 'MID', 'ZED'])
-    expect(b).toEqual(a)
+    expect([...a].map((e) => e.name).sort()).toEqual(['ALPHA', 'MID', 'ZED'])
+    expect([...b].map((e) => e.name).sort()).toEqual(['ALPHA', 'MID', 'ZED'])
   })
 
   it('a define wins over a same-named cache.inputs.env value, once', () => {

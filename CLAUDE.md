@@ -533,6 +533,42 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-28 (third wave) — my own commit message from this morning was
+  wrong, and the test I wrote to prove it passed VACUOUSLY.** Two audits, one
+  refutation and one self-correction. FIRST, the `TaskInputs.files` question I
+  named as next: does excluding a task's OWN outputs from its input set cost
+  local/remote parity? REFUTED BY EXECUTION rather than argued — a task
+  printing whether its previous `dist/` survived reports `FRESH-TREE` on a
+  normal miss (`cleanOutputs` wipes before the command runs, so a worker's
+  empty tree matches exactly) and `SAW-OWN-OUTPUT` only under a read-only
+  policy, where skipping the wipe is the deliberate "leave the user's tree
+  alone" contract and nothing is saved, so no wrong bytes can be cached from
+  it. Every WRITING path wipes, including `--force`. No defect.
+  SECOND, and the one that matters. Going to pin a genuinely unpinned
+  invariant — that the EXECUTION-side action digest is content-addressed, so
+  two checkouts at different absolute paths share remote results — I added a
+  live test and it passed: same task, two temp roots, same action id, with a
+  differing-content control. Good. Then I added a second case asserting that
+  env DECLARATION ORDER cannot move the digest, and its differential SURVIVED:
+  removing the sort I had shipped that morning changed nothing. `encodeCommand`
+  sorts `environment_variables` itself, has always done so, and
+  `encoding.test.ts` pins it byte-for-byte against protobufjs. So the ordering
+  claim in this morning's commit message was never true, my sort was a second
+  copy of a rule that already had an owner, and the only reason the new test
+  looked meaningful is that a redundant copy makes both copies untestable.
+  Removing the encoder's sort ALONE also changed nothing — the tell that there
+  were two. Fixed by deleting mine: the encoder is the right owner (it covers
+  every Command regardless of who builds the list, and it is where the proto
+  requirement belongs), `commandEnvironment` keeps only what it actually owns
+  — the merged SET, defines winning on collision — and its unit test now pins
+  that instead of an ordering it does not decide. With one owner the
+  differential is real again: removing the encoder's sort fails three pins,
+  the new wire test among them. The log entry above is corrected in place.
+  THE METHOD LESSON, which is the durable part: a redundant safeguard is not
+  free — it makes the differential for BOTH copies come back green, so the
+  thing you are trying to verify becomes unverifiable. When a mutation
+  survives, suspect a second copy before suspecting the test.
+
 - **2026-08-28 (second wave) — the key filter was deciding the INPUT SET
   too, and a live worker found a stale hit in this repo's own test task.**
   Follow-on to the group fix, same conflation from the other side.
@@ -579,21 +615,25 @@ $PATH: "git"` before any of this was visible.
 - **2026-08-28 — three owner asks finished, and the live worker proved two
   more defects that reading never would have.** Picked up from a working tree
   holding an unfinished `envDefine` thread. (1) **`exec.env.define` now
-  reaches a remote action.** The thread as found appended defines to
-  `inputs.env` and shipped them UNSORTED — and the proto is explicit ("in
-  order to ensure that equivalent Commands always hash to the same value, the
-  environment variables MUST be lexicographically sorted by name"), while
-  `Object.entries` follows the config's key INSERTION order. So two configs
-  declaring the same defines in a different order would have built different
-  action digests and missed each other's entries. `outputPathSets` next door
-  already sorts for that exact reason, which is the tell that the constraint
-  was known and simply missed here. Extracted `commandEnvironment` as a
-  testable seam; defines win on collision; docs in the same wave state the
-  asymmetry that only TWO of vx's three env lists travel —
+  reaches a remote action.** Extracted `commandEnvironment` as a testable
+  seam; defines win on collision; docs in the same wave state the asymmetry
+  that only TWO of vx's three env lists travel —
   `exec.env.passThrough` and the essential allowlist deliberately do not,
   because host values in the action digest split every machine from every
   other AND a Command blob lives in a shared CAS, which is the wrong home for
-  a secret. (2) **Groups are now transparent to the executor's input
+  a secret.
+  **CORRECTED IN PLACE the same day, by my own probe — the ORDERING half of
+  that commit's message was WRONG.** It claimed the as-found code shipped
+  defines unsorted and that two configs declaring the same defines in a
+  different order would therefore address different actions and miss each
+  other's results. They would not: `encodeCommand` has ALWAYS sorted
+  `environment_variables` before encoding, and `encoding.test.ts` has always
+  pinned that byte-for-byte against protobufjs. I read the proto comment plus
+  the neighbouring `outputPathSets` sort and inferred a consequence rather
+  than checking the encoder — the "never write a plausible cause you have not
+  proven" rule, broken in the very wave that quotes it. The sort I added was
+  a redundant second copy of a rule the encoder already owned and has since
+  been removed; see the third wave. (2) **Groups are now transparent to the executor's input
   closure** — the owner's second ask, and the one that was called
   "not contained". It was, once the two questions were separated: what the KEY
   folds (a group's synthetic roll-up — UNCHANGED, so no entry moves) and what

@@ -884,11 +884,11 @@ export function globToOutputPath(glob: string): string {
  * HOME, TMPDIR), and shipping it would put host-specific values into the
  * action identity, splitting every machine from every other.
  *
- * The result is sorted by name because the proto REQUIRES it — "in order to
- * ensure that equivalent Commands always hash to the same value, the
- * environment variables MUST be lexicographically sorted by name". Unsorted,
- * two configs declaring the same defines in a different order would build
- * different action digests and miss each other's cache entries.
+ * ORDER is deliberately not this function's business. The proto requires
+ * environment_variables sorted by name so equivalent Commands hash alike, and
+ * `encodeCommand` already sorts every Command it encodes — one owner, byte-
+ * pinned against protobufjs. Sorting here too would be a second copy of the
+ * same rule, and two copies of a canonicalisation agree until they don't.
  */
 export function commandEnvironment(
   inputs: DescribedInputs,
@@ -897,9 +897,7 @@ export function commandEnvironment(
   const merged = new Map<string, string>()
   for (const e of inputs.env) merged.set(e.name, e.value)
   for (const [name, value] of Object.entries(envDefine)) merged.set(name, value)
-  return [...merged]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([name, value]) => ({ name, value }))
+  return [...merged].map(([name, value]) => ({ name, value }))
 }
 
 export interface OutputPathSets {

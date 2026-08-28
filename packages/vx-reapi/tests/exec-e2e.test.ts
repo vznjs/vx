@@ -505,6 +505,108 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
     }
   }, 180_000)
 
+  // The action digest is what a server matches to serve a cached result, so
+  // it has to be a function of the task's CONTENT and nothing else. If a host
+  // path or a declaration order leaked into it, every run would still succeed
+  // — it would just miss on the server, forever, silently. That is the whole
+  // value of a remote cache degrading with no symptom, so it gets a tripwire.
+  const actionIdFor = async (
+    root: string,
+    over: Partial<ExecuteRequest>,
+  ): Promise<string | undefined> => {
+    const client = new ReapiClient({ endpoint })
+    try {
+      await client.negotiate()
+      await reapiExecutor(client, { warn: () => undefined }).execute(req3(root, over))
+      return client.actionId
+    } finally {
+      client.close()
+    }
+  }
+
+  const seeded = async (body: string): Promise<string> => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-exec-e2e-'))
+    await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+    await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), body)
+    return root
+  }
+
+  it('the action digest is content-addressed: same task, two different checkout paths', async () => {
+    const a = await seeded('same bytes\n')
+    const b = await seeded('same bytes\n')
+    try {
+      const spec: Partial<ExecuteRequest> = {
+        command: 'tr a-z A-Z < src/in.txt > out.txt',
+        outputs: { files: ['out.txt'], workspaceFiles: [] },
+        inputs: {
+          files: [{ path: 'pkg/src/in.txt', digest: 'unused' }],
+          env: [],
+          runtime: [],
+          workspaceRuntime: [],
+          upstream: [],
+          packageJsonDigest: 'x',
+          configDigest: 'y',
+          workspaceFingerprint: 'z',
+        },
+      } as Partial<ExecuteRequest>
+      const idA = await actionIdFor(a, spec)
+      const idB = await actionIdFor(b, spec)
+      expect(idA).toBeDefined()
+      // Two checkouts at different absolute paths must address the same
+      // action, or no two machines ever share a remote result.
+      expect(idB).toBe(idA)
+
+      // CONTROL: the pin must not be vacuous. Different input bytes, same
+      // everything else, must land on a DIFFERENT action.
+      const c = await seeded('other bytes\n')
+      try {
+        expect(await actionIdFor(c, spec)).not.toBe(idA)
+      } finally {
+        await rm(c, { recursive: true, force: true })
+      }
+    } finally {
+      await rm(a, { recursive: true, force: true })
+      await rm(b, { recursive: true, force: true })
+    }
+  }, 180_000)
+
+  it('env declaration ORDER does not move the action digest', async () => {
+    // The proto requires environment_variables sorted by name so equivalent
+    // Commands hash alike; `encodeCommand` owns that and encoding.test.ts
+    // pins it byte-for-byte. This is the SYSTEM-level version: two configs
+    // identical in meaning but declared in different order must address the
+    // SAME action, however the bytes get there. `Object.entries` follows
+    // insertion order, so without canonicalisation somewhere on the path
+    // these two would miss each other's results on every server.
+    const root = await seeded('x\n')
+    try {
+      const spec = (define: Record<string, string>): Partial<ExecuteRequest> =>
+        ({
+          command: 'true',
+          envDefine: define,
+          inputs: {
+            files: [{ path: 'pkg/src/in.txt', digest: 'unused' }],
+            env: [{ name: 'MID', value: '1' }],
+            runtime: [],
+            workspaceRuntime: [],
+            upstream: [],
+            packageJsonDigest: 'x',
+            configDigest: 'y',
+            workspaceFingerprint: 'z',
+          },
+        }) as Partial<ExecuteRequest>
+      const forward = await actionIdFor(root, spec({ ZED: 'z', ALPHA: 'a' }))
+      const reverse = await actionIdFor(root, spec({ ALPHA: 'a', ZED: 'z' }))
+      expect(forward).toBeDefined()
+      expect(reverse).toBe(forward)
+
+      // CONTROL: a different VALUE still moves it.
+      expect(await actionIdFor(root, spec({ ZED: 'z', ALPHA: 'different' }))).not.toBe(forward)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
+
   it('a workspace-file output outside the project dir round-trips via a ../ path', async () => {
     // A root-anchored output has no '..'-free spelling relative to the
     // project dir, and servers refuse '..' in output_paths — so an action
