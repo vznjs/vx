@@ -533,6 +533,57 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-28 (fourth wave) — everything runs remotely now, and the last
+  four "environment-bound" failures were nothing of the kind.** Owner asked
+  for all tasks against a live NativeLink, then for it all fixed. RESULT: the
+  full graph executes on a worker — lint, the whole 2 594-test suite, all four
+  cross-compiled binaries and the docs site — 22.7 s cold, and 775 ms with the
+  LOCAL CACHE DELETED, every task served from the remote. Both halves proven.
+  THE BLOCKER, diagnosed by reproducing it from a separate process, and my
+  earlier report of it was WRONG. NativeLink v0.6.0 degrades into answering
+  every ActionCache MISS in 3 ms and every HIT never: idle CPU, empty logs,
+  Capabilities fine, all 282 stored entries affected, surviving the death of
+  every client, cleared by a plain restart with identical on-disk data. NOT
+  the Bun node:http2 stall I had blamed — refuted by measurement: 8 parallel
+  probes are fast, the faithful two-client repro is fast, entries are ~900
+  bytes so size is not it. The server bug is not ours; its two consequences
+  were. (1) ONE deadline covered both a metadata probe and a node_modules
+  upload, so buying headroom for the upload — which is why a real deployment
+  raises it to minutes — bought every lookup those same minutes before it
+  could degrade. Split: `metaTimeoutMs` defaults to `min(callTimeoutMs,
+15 000)`, so raising the bulk deadline can never lengthen a probe, with a
+  control that a deliberately SHORT bulk deadline is not clamped upward.
+  (2) The execution-record read was an unguarded await, so a degraded server
+  produced a RED BUILD instead of a slower one — against core's own rule that
+  a remote cache error degrades to a MISS. It is a shortcut past the worker;
+  a failure means "no usable record". Deliberately NOT extended to the
+  UPSTREAM record reads, where carrying on past a failure is how an action
+  runs without its inputs.
+  THE FOUR FAILURES WERE IMAGE GAPS, not physics, and writing them off as
+  "environment-bound" was premature. The three signal-handling e2e cases
+  check liveness with `process.kill(pid, 0)`, which succeeds for a ZOMBIE —
+  with no init as PID 1 nothing reaps an orphan, so the killed child stayed
+  visible forever. `docker run --init` fixed all three. The fourth needed
+  bubblewrap in the image. Lesson worth the line: "environment-bound" is a
+  claim that deserves the same repro standard as a bug, and twice today it
+  did not get one.
+  A HOLE IN THE GATE, found because a README I had just edited was
+  misformatted while CI was green: `lint.oxlint` / `lint.oxfmt` run with cwd
+  `packages/vx`, so since the move they covered 225 of 426 files — the plugin
+  packages, apps/, docs/, bench/ and scripts/ were never linted by CI. Both
+  now run at the workspace root (also more correct: `.oxlintrc.json` ignores
+  are root-relative), with inputs widened to match what they read.
+  DESIGN, decided with the owner: there is ONE global `setup` and every
+  project's `install` names it. Per-project setup is not expressible —
+  identical definitions still get different keys (the key folds the task id
+  and the project package.json; measured 45e1fa2f vs 50374cee), and making
+  keys equal unconditionally is unsafe because two projects with identical
+  configs and no project-relative inputs would share a result the cwd cannot
+  distinguish. Bazel answers this one level up: `npm_translate_lock` is
+  evaluated once as an external repo and every target depends on that single
+  result; persistent workers are NOT the answer, they amortise process
+  startup and Bazel still requires every action to declare its inputs.
+
 - **2026-08-28 (third wave) — my own commit message from this morning was
   wrong, and the test I wrote to prove it passed VACUOUSLY.** Two audits, one
   refutation and one self-correction. FIRST, the `TaskInputs.files` question I
