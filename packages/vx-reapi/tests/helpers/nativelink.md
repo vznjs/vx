@@ -23,7 +23,8 @@ worker); the copy CI uses lives at `tests/helpers/nativelink-exec.json5`.
 
 ## A worker that can run this repo's own tasks
 
-Driving `vx run` at a worker needs more than a shell: a JS toolchain, and a
+Driving `vx run` at a worker needs more than a shell: `git` (vx defers file
+enumeration to `git ls-files` and hard-requires it), a JS toolchain, and a
 REAL Node.js. `oven/bun` puts a `node` on PATH that is a SYMLINK TO BUN, and
 bun is not a drop-in — the `node_modules/.bin` shims are
 `#!/usr/bin/env node` scripts, and silently running them under a different
@@ -38,10 +39,11 @@ RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in arm64) nodearch=arm64 ;; amd64) nodearch=x64 ;; \
       *) echo "unsupported arch: $arch" >&2; exit 1 ;; esac; \
-    apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates; \
+    apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates git; \
     curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${nodearch}.tar.xz" -o /tmp/node.tar.xz; \
     mkdir -p /opt/node; tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1; rm /tmp/node.tar.xz; \
     apt-get purge -y curl xz-utils && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*; \
+    git --version; \
     /opt/node/bin/node --version
 
 # /usr/local/bin, not just PATH: a REAPI worker runs each action with its OWN
@@ -74,6 +76,22 @@ half-deleted answers writes with
 `unexpected error opening temp file: … no such file or directory`, and a
 mounted config file that has been removed comes back as an empty DIRECTORY,
 which the server then refuses to parse.
+
+## What this repo's own suite can and cannot do on a worker
+
+Running `vx run ci --all` against a worker is the strongest end-to-end check
+available, and it does pass except for four tests that are environment-bound
+by nature rather than broken:
+
+- the three `signal handling during vx run (e2e)` cases, which send SIGINT /
+  SIGTERM to a vx process and assert 130 / 143 — signal delivery and process
+  grouping inside a worker action are not the submitter's;
+- `--verify=inputs pins every task LOCAL`, which needs the OS sandbox
+  (bubblewrap) present in the image.
+
+The other ~2 580 pass. Everything else that failed on the first attempt was a
+real gap in this repo's DECLARED inputs, not in the worker — see
+"It proves your declared inputs" in the remote-execution guide.
 
 ```sh
 docker volume create vx-nl-data

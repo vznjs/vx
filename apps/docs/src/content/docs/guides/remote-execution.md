@@ -176,6 +176,27 @@ whose local cache missed skips the input-tree build, the upload pass and
 `Execute` entirely, and replays the recorded stdout. `--force` bypasses
 it.
 
+## It proves your declared inputs
+
+A worker gets exactly what you declared and nothing else, so the first
+remote run of a task is an input-completeness check you did not have to ask
+for. Locally an undeclared file is invisible — it is on disk either way, so
+the task passes and the cache quietly keys on an incomplete set.
+
+The failure mode is worth knowing in advance, because it does not look like
+a missing file. A type-checker with no `tsconfig.json` in its action does not
+say "no tsconfig"; it reports several hundred errors about missing globals. A
+test that reads a doc it never declared fails its assertion, not its `open`.
+So when a task fails remotely and passes locally, suspect
+`cache.inputs.files` / `workspaceFiles` before suspecting the worker.
+
+The same gap is a stale hit locally, which is the more expensive half: if a
+task reads a file it does not declare, editing that file does not change the
+task's cache key, and the run you needed is served from cache instead. That
+is the same question [`--verify=inputs`](../trusting-the-cache/) answers with
+an OS sandbox — remote execution just answers it as a side effect of shipping
+the inputs somewhere else.
+
 ## The worker image
 
 Two requirements, both learned against real servers:

@@ -76,6 +76,24 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['src/**', 'tests/**', 'package.json'],
+          // The suite reads outside its own project, and both reaches are
+          // load-bearing rather than incidental: the doc-drift tests assert
+          // `docs/cli.md` and `docs/schema.md` against the parser and the
+          // loader, and `package-boundaries` scans every sibling's `src/`.
+          // Undeclared, editing `docs/cli.md` left this task on a cache hit
+          // and the drift test never re-ran — the exact thing it exists to
+          // catch. Remote execution is what surfaced it: locally the files
+          // are on disk whether declared or not.
+          // Named exactly, not `docs/**`: the two files the drift tests read
+          // are the only ones that matter, and a broad glob would put the
+          // 1 MB decision-log archive in every action's input tree and re-run
+          // the whole suite whenever the log gains an entry.
+          workspaceFiles: [
+            'docs/cli.md',
+            'docs/schema.md',
+            'packages/*/src/**',
+            'packages/*/package.json',
+          ],
           // Folded into the KEY as well, which passThrough alone does not do.
           // Without it a green artifact from a run that SKIPPED the 21 sandbox
           // tests restores into a run that was supposed to require them — the
