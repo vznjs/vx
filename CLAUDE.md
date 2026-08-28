@@ -568,6 +568,29 @@ time every single time.
   free — it makes the differential for BOTH copies come back green, so the
   thing you are trying to verify becomes unverifiable. When a mutation
   survives, suspect a second copy before suspecting the test.
+  SWEPT THE CLASS IN THE SAME WAVE, per the standing rule, and the three
+  candidates did NOT all resolve the same way — which is the useful part.
+  REFUTED: `outputPathSets` and `encodeCommand` both sort the output paths,
+  but each copy is independently pinned (removing the first fails
+  executor.test.ts, the second fails encoding.test.ts). Belt-and-braces with a
+  real differential on BOTH sides is not the hazard; the hazard is
+  belt-and-braces where neither side has one. Left alone.
+  CONFIRMED: `buildInputTree` sorts its `paths` and claimed it did so "so the
+  tree — and therefore the action digest — is deterministic regardless of the
+  caller's ordering". Untrue, and the WAY it is untrue is the finding.
+  `encodeDirectory` sorts every node's names at encode time and owns the
+  property; MEASURED with that sort removed, path order stays stable while
+  GRAFT order moves the digest. Grafts are inserted after the path loop and
+  carry the order the SERVER listed an upstream's outputs in, so no local sort
+  can reach them. Which means the obvious pin to write — "path order does not
+  move the digest" — passes with the real owner broken. That is the false
+  security in concrete form. The new test pins GRAFT order instead, with a
+  content control so it cannot degenerate into "always equal", and keeps the
+  path-order case explicitly labelled as the control that passes either way.
+  The sort stays for the honest reason (deterministic warning text), and the
+  comment now says which. The stake is not hypothetical for this arc: graft
+  order IS the upstream-outputs path, and if it moved the digest every
+  dependent action would miss on every server while still succeeding.
 
 - **2026-08-28 (second wave) — the key filter was deciding the INPUT SET
   too, and a live worker found a stale hit in this repo's own test task.**
