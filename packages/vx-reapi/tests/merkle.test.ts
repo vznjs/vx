@@ -185,3 +185,63 @@ describe('graft shadowing', () => {
     void h
   })
 })
+
+describe('the input tree is canonical, and encodeDirectory is what makes it so', () => {
+  // The action digest is only useful if it is a function of CONTENT. Two
+  // callers assembling the same tree in different orders must address the same
+  // action or no two machines — and no two runs — ever share a result, silently
+  // and while still succeeding.
+  //
+  // The pin is on GRAFT order deliberately. `buildInputTree` also sorts its
+  // `paths` argument, so a pin written against path order passes even with
+  // `encodeDirectory`'s sorting removed — a false sense of security, MEASURED:
+  // with that sort broken, path order stays stable and graft order moves the
+  // digest by 16 hex chars. Grafts are inserted after the path loop and carry
+  // the order the SERVER listed an upstream's outputs in, which is exactly the
+  // input no local sort can reach.
+  let root: string
+  beforeAll(async () => {
+    root = await mkdtemp(path.join(tmpdir(), 'vx-canon-'))
+    await mkdir(path.join(root, 'a'), { recursive: true })
+    await writeFile(path.join(root, 'a', 'one.txt'), 'one\n')
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const d = (s: string) => sha256(new TextEncoder().encode(s))
+  const grafts = [
+    { path: 'zeta.js', digest: d('z'), isExecutable: false },
+    { path: 'alpha.js', digest: d('a'), isExecutable: false },
+    { path: 'mid.js', digest: d('m'), isExecutable: false },
+  ]
+  const build = (fileGrafts: typeof grafts) =>
+    buildInputTree({ workspaceRoot: root, paths: ['a/one.txt'], ensureDirs: [''], fileGrafts })
+
+  it('graft ORDER does not move the tree digest', async () => {
+    const forward = await build(grafts)
+    const reverse = await build([...grafts].reverse())
+    expect(reverse.root.hash).toBe(forward.root.hash)
+  })
+
+  it('graft CONTENT does — the control, so the pin cannot mean "always equal"', async () => {
+    const forward = await build(grafts)
+    const changed = await build([
+      ...grafts.slice(0, 2),
+      { path: 'mid.js', digest: d('different'), isExecutable: false },
+    ])
+    expect(changed.root.hash).not.toBe(forward.root.hash)
+  })
+
+  it('path order does not move it either', async () => {
+    await writeFile(path.join(root, 'a', 'two.txt'), 'two\n')
+    const p = ['a/one.txt', 'a/two.txt']
+    const forward = await buildInputTree({ workspaceRoot: root, paths: p, ensureDirs: [''] })
+    const reverse = await buildInputTree({
+      workspaceRoot: root,
+      paths: [...p].reverse(),
+      ensureDirs: [''],
+    })
+    expect(reverse.root.hash).toBe(forward.root.hash)
+  })
+})

@@ -158,8 +158,10 @@ export async function buildInputTree(args: {
   const seen = new Set<string>()
   let fileCount = 0
 
-  // Sorted so the tree — and therefore the action digest — is deterministic
-  // regardless of the caller's ordering.
+  // Insertion order is NOT what makes the tree deterministic — `encodeDirectory`
+  // sorts every node's names at encode time, and it has to, because grafts are
+  // inserted after this loop and no ordering here could reach them. Sorted
+  // anyway so a warning naming several paths reads the same run to run.
   for (const rel of [...args.paths].sort()) {
     const abs = path.join(args.workspaceRoot, rel)
     // lstat, not stat: a symlinked input must be REPRESENTED as a symlink.
