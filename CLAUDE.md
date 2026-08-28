@@ -533,6 +533,49 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-28 (second wave) — the key filter was deciding the INPUT SET
+  too, and a live worker found a stale hit in this repo's own test task.**
+  Follow-on to the group fix, same conflation from the other side.
+  `cache.inputs.tasks` is defined by the schema as "which upstream tasks'
+  cache KEYS participate in this task's key" — an invalidation statement —
+  and it was also filtering the executor's input closure. What a task may
+  READ is `dependsOn`, and locally every dependency's outputs are on disk
+  before the command runs however the filter is written, so a task decoupled
+  from an upstream's key silently lost that upstream's BYTES when it ran
+  remotely while behaving correctly on the machine that submitted it. Worst
+  shape for a placement bug: the machine you debug on is the one that works.
+  Fixed by building the closure from the unfiltered dependency set, which
+  DELETED the filter-then-expand dance rather than adding to it; pinned with
+  a control that the filter still decouples the key. The `upstreamGraft` doc
+  was then wrong on both counts (never absent, no longer equal to the folded
+  set) and is corrected in place.
+  **`vx run ci --all` AGAINST A LIVE WORKER, and it earned its keep.** 12
+  remote failures → 4. Eight were this repo's own DECLARED INPUTS being
+  incomplete: the doc-drift tests read `docs/cli.md` and `docs/schema.md`,
+  `package-boundaries` scans every sibling's `src/`, and `test` declared
+  none of it. That is a STALE HIT, not merely a remote gap, and it defeats
+  precisely the tests it hides — PROVEN both ways with `--dry`: declared, a
+  line appended to `docs/cli.md` moves the key 8da1e46d → ae747c50 and back
+  on restore; undeclared, the same edit leaves it at 45bae68c. So editing the
+  CLI docs left `test` on a cache hit and the drift test never ran. Declared
+  the two files BY NAME rather than `docs/**`, which would put the 1 MB
+  decision log in every action and re-run the suite on every log entry.
+  THE GENERAL PROPERTY, now in the remote-execution guide: a worker gets
+  exactly what you declared, so a task's first remote run is an
+  input-completeness proof you did not ask for — the same question
+  `--verify=inputs` answers with a sandbox, arrived at for free. And the
+  failure mode does NOT look like a missing file: tsgolint with no tsconfig
+  in its action reports ~900 missing-global errors, and a test reading an
+  undeclared doc fails its assertion rather than its `open`. So when a task
+  fails remotely and passes locally, suspect the declared inputs first.
+  The 4 remaining are environment-bound rather than broken and are recorded
+  as such: three signal-handling e2e cases asserting 130/143 from signals a
+  worker action does not deliver the same way, and the `--verify=inputs`
+  placement pin, which needs bubblewrap in the image. The worker image also
+  needed `git` baked in — vx defers file enumeration to `git ls-files` and
+  hard-requires it, so the whole suite died on `Executable not found in
+$PATH: "git"` before any of this was visible.
+
 - **2026-08-28 — three owner asks finished, and the live worker proved two
   more defects that reading never would have.** Picked up from a working tree
   holding an unfinished `envDefine` thread. (1) **`exec.env.define` now
