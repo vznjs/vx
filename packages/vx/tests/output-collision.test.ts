@@ -34,6 +34,12 @@ function task(outputs: string[], wsOutputs?: string[]): TaskConfig {
   }
 }
 
+/** Same, but the task never materialises its outputs on this machine. */
+function remoteOnlyTask(outputs: string[], wsOutputs?: string[]): TaskConfig {
+  const t = task(outputs, wsOutputs)
+  return { ...t, exec: { ...t.exec!, remote: 'only' } } as TaskConfig
+}
+
 /** Build a graph over projects → tasks, requesting every task. */
 function graph(projects: Record<string, Record<string, TaskConfig>>): void {
   const entries = new Map<string, ProjectEntry>()
@@ -259,5 +265,60 @@ describe('the data loss itself, end to end', () => {
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('a remote-only task cannot participate in a collision', () => {
+  // The hazard is local cleaning — "whichever runs second DELETES the other's
+  // output". A `remote: 'only'` task turns off both cache axes in
+  // execute-task, so it never probes, restores, cleans or saves on this
+  // machine. There is nothing of its on disk to delete and it deletes nothing
+  // of anyone's, so the refusal would be a false positive — and a false
+  // positive here breaks a build that works, which this file's own header
+  // calls worse than the defect.
+  //
+  // Found by hitting it: two projects each declaring their own
+  // install-as-an-action both capture the workspace-root `node_modules` under
+  // a hoisting package manager, and the refusal fired on a pair that cannot
+  // exhibit the hazard.
+  it('two remote-only installs may both capture the workspace root', () => {
+    expect(() =>
+      graph({
+        core: { setup: remoteOnlyTask([], ['node_modules']) },
+        docs: { setup: remoteOnlyTask([], ['node_modules']) },
+      }),
+    ).not.toThrow()
+  })
+
+  it('one remote-only and one ordinary task is still allowed', () => {
+    // The ordinary one cleans its own declared outputs, but the remote-only
+    // task has nothing on this disk for that clean to destroy.
+    expect(() =>
+      graph({
+        core: { setup: remoteOnlyTask([], ['node_modules']) },
+        docs: { vendor: task([], ['node_modules']) },
+      }),
+    ).not.toThrow()
+  })
+
+  // CONTROL: the refusal is intact for the case it was written for. Without
+  // this, "exempt remote-only" could silently degenerate into "exempt
+  // everything" and the data-loss guard would be gone with a green suite.
+  it('two ORDINARY tasks declaring the same output are still refused', () => {
+    expect(() =>
+      graph({
+        core: { a: task([], ['node_modules']) },
+        docs: { b: task([], ['node_modules']) },
+      }),
+    ).toThrow(/both declare the output/)
+  })
+
+  it('the project-relative namespace is exempted the same way', () => {
+    expect(() =>
+      graph({ core: { a: remoteOnlyTask(['dist/**']), b: task(['dist/**']) } }),
+    ).not.toThrow()
+    expect(() => graph({ core: { a: task(['dist/**']), b: task(['dist/**']) } })).toThrow(
+      /both declare the output/,
+    )
   })
 })

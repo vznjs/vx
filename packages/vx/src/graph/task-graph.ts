@@ -489,6 +489,26 @@ function detectOutputCollisions(nodes: Map<string, TaskNode>): void {
   }
 }
 
+/**
+ * A `remote: 'only'` task never materialises its outputs on THIS machine —
+ * execute-task turns off both the read and the write axis for it, so there is
+ * no probe, no restore, no output clean and no local save. The collision
+ * hazard is entirely about local cleaning ("whichever runs second DELETES the
+ * other's output"), so a pair including one of these cannot exhibit it: there
+ * is nothing of its on disk to delete, and it deletes nothing of anyone's.
+ *
+ * Found while trying to give two projects their own install-as-an-action:
+ * both legitimately capture the workspace-root `node_modules` under a
+ * hoisting package manager, and the refusal fired on a pair that cannot
+ * exhibit the hazard. That particular layout was abandoned for an unrelated
+ * reason (identical definitions still get different cache keys), so this is
+ * not load-bearing today — it is a refusal narrowed to what it can prove,
+ * which this file's header asks for explicitly.
+ */
+function neverWritesLocally(n: TaskNode): boolean {
+  return n.config.exec?.remote === 'only'
+}
+
 function collide(
   a: TaskNode,
   b: TaskNode,
@@ -496,6 +516,7 @@ function collide(
   bGlobs: readonly string[] | undefined,
   field: 'files' | 'workspaceFiles',
 ): void {
+  if (neverWritesLocally(a) || neverWritesLocally(b)) return
   for (const ga of aGlobs ?? []) {
     for (const gb of bGlobs ?? []) {
       if (!outputsOverlap(ga, gb)) continue
