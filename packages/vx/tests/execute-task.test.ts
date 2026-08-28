@@ -919,6 +919,98 @@ describe('execute-task — a group is transparent to the executor input set', ()
   )
 })
 
+describe('execute-task — cache.inputs.tasks filters the KEY, not the input set', () => {
+  // `cache.inputs.tasks` is defined as "which upstream tasks' cache KEYS
+  // participate in this task's KEY" — an invalidation statement. What a task
+  // may READ is `dependsOn`, and locally every dependency's outputs are on
+  // disk before the command runs no matter what the filter says. So an
+  // executor that ships the input closure must ship the dependency closure;
+  // deriving it from the filtered set instead means a task decoupled from an
+  // upstream's key silently loses that upstream's BYTES when it runs remotely,
+  // while behaving correctly on the machine that submitted it.
+  it(
+    'an upstream excluded from the key is still in the input closure',
+    async () => {
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const producer = node(
+          b,
+          {
+            exec: { command: 'mkdir -p dist && echo built > dist/lib.js' },
+            cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+          },
+          'proj#compile',
+        )
+        const made = await executeTask(baseArgs(b, producer, log))
+        expect(made.status).toBe('success')
+
+        let seen: ExecuteRequest | undefined
+        const capturing: TaskExecutor = {
+          name: 'capture',
+          execute: (req) => {
+            seen = req
+            return localExecutor().execute(req)
+          },
+        }
+        const consumer = node(
+          b,
+          {
+            dependsOn: ['compile'],
+            exec: { command: 'true' },
+            // Decoupled from every upstream KEY — and still depends on compile.
+            cache: { inputs: { files: ['package.json'], tasks: [] }, outputs: { files: [] } },
+          },
+          'proj#bundle',
+        )
+        await executeTask({
+          ...baseArgs(b, consumer, log),
+          upstream: [made],
+          executor: capturing,
+        })
+
+        expect(seen?.inputs?.upstream.map((u) => u.taskId)).toEqual(['proj#compile'])
+        expect(seen?.inputs?.upstream[0]?.outputs).toEqual(['proj/dist/lib.js'])
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+
+  // CONTROL: the filter still does its actual job. Excluding an upstream must
+  // still change nothing about the key when that upstream's hash moves.
+  it(
+    'the filter still decouples the KEY',
+    async () => {
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const consumer = node(
+          b,
+          {
+            dependsOn: ['compile'],
+            exec: { command: 'true' },
+            cache: { inputs: { files: ['package.json'], tasks: [] }, outputs: { files: [] } },
+          },
+          'proj#bundle',
+        )
+        const drive = (hash: string) =>
+          executeTask({
+            ...baseArgs(b, consumer, log),
+            upstream: [upstreamOutcome('proj#compile', hash)],
+          })
+        const a = await drive('aaaaaaaaaaaaaaaa')
+        const c = await drive('bbbbbbbbbbbbbbbb')
+        expect(a.hash).toBe(c.hash)
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('execute-task — dispatch: group and persistent paths', () => {
   it('a group never touches the cache, costs nothing, and cascades its upstreams', async () => {
     // A group has no `exec`, so it must not reach the cached path at all: the

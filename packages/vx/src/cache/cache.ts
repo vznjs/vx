@@ -290,13 +290,22 @@ export interface CacheKeyInput {
    */
   upstreamIds?: ReadonlyMap<string, string>
   /**
-   * The upstream set with GROUP tasks expanded into the real tasks they
-   * stand for — what an input-shipping executor must place in the input
-   * root, which is a different question from what the key folds. NEVER
-   * folded into the digest: the key already cascades through a group's own
-   * roll-up hash, and folding the members too would change every existing
-   * dependent's key to say something the group hash already said. Absent
-   * when no upstream is a group, in which case it equals the folded set.
+   * The task's DEPENDENCY closure with GROUP tasks expanded into the real
+   * tasks they stand for — what an input-shipping executor must place in the
+   * input root. A different question from what the key folds, and derived
+   * differently in both directions:
+   *
+   * - It expands groups, which contribute a synthetic roll-up hash and no
+   *   outputs of their own, so a dependent of one would otherwise describe
+   *   an empty closure.
+   * - It ignores `cache.inputs.tasks`. That filter says which upstream KEYS
+   *   this task's key folds; what the task may READ is `dependsOn`, and
+   *   locally every dependency's outputs are on disk before the command runs
+   *   however the filter is written.
+   *
+   * NEVER folded into the digest — the key cascades through a group's own
+   * roll-up hash already, and folding either difference in would move every
+   * existing dependent's key without telling it anything new.
    */
   upstreamGraft?: ReadonlyArray<{
     readonly taskId: string

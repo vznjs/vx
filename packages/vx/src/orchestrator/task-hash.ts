@@ -182,12 +182,14 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
   const upstreamHashes = upstreamPairs.map(([, hash]) => hash)
   // hash → upstream task id, for capture-row naming only (not folded).
   const upstreamIds = new Map(upstreamPairs.map(([id, hash]) => [hash, id]))
-  // The same selection with groups expanded, for the executor's input root.
-  // Filter FIRST, then expand: a group excluded from `cache.inputs.tasks`
-  // must not smuggle its members back in. Not folded — see `upstreamGraft`.
-  const selectedIds = new Set(upstreamPairs.map(([id]) => id))
-  const graftOutcomes = expandGroupUpstream(args.upstream.filter((u) => selectedIds.has(u.node.id)))
-  const upstreamGraft = graftOutcomes
+  // The DEPENDENCY closure, groups expanded — for the executor's input root.
+  // Deliberately NOT the filtered set above: `cache.inputs.tasks` says which
+  // upstream KEYS this task's key folds, and what a task may READ is
+  // `dependsOn`. Locally every dependency's outputs are on disk before the
+  // command runs however the filter is written, so an executor that ships the
+  // input closure has to ship the same thing or the task sees less remotely
+  // than it does here. Not folded — see `upstreamGraft`.
+  const upstreamGraft = expandGroupUpstream(args.upstream)
     .filter((u) => u.hash !== undefined)
     .map((u) => ({ taskId: u.node.id, hash: u.hash!, projectDir: u.node.projectDir }))
   // Trusted index-OID map for this project (populated by the run's

@@ -10,8 +10,9 @@ NOT the same question:
    `graph/dependency-spec.ts`'s parser; this module owns the filter
    semantics (`*` / `^*` / negation).
 2. **Which real tasks are in the input closure** — what an
-   input-shipping executor must place in the input root. Same
-   selection, but with GROUP tasks expanded into what they stand for.
+   input-shipping executor must place in the input root. That is the
+   `dependsOn` closure with GROUP tasks expanded into what they stand
+   for, and it is deliberately NOT filtered by `cache.inputs.tasks`.
 
 ## Public surface
 
@@ -50,13 +51,26 @@ containing none of what `install` chains.
 `expandGroupUpstream` walks a group's `TaskOutcome.groupUpstream`
 (set by the group's own execution, the only place that knows what it
 chained), recursing for nested groups and de-duplicating by task id.
-Two properties are load-bearing:
+The expansion is never folded: it reaches the executor as
+`CacheKeyInput.upstreamGraft` → `TaskInputs.upstream`, while the key
+still folds only the group's roll-up hash, so no existing entry moves.
 
-- **Filter first, then expand.** A group excluded from a task's
-  `cache.inputs.tasks` brings no members with it.
-- **The expansion is never folded.** It reaches the executor as
-  `CacheKeyInput.upstreamGraft` → `TaskInputs.upstream`; the key still
-  folds only the group's roll-up hash, so no existing entry moves.
+## The key filter does not filter the input closure
+
+`cache.inputs.tasks` is an INVALIDATION statement — the schema defines
+it as "which upstream tasks' cache keys participate in this task's
+key". What a task may READ is `dependsOn`, and locally every
+dependency's outputs are on disk before the command runs however the
+filter is written.
+
+So the closure is built from the unfiltered dependency set. Deriving
+it from the filtered one instead would mean a task decoupled from an
+upstream's key silently loses that upstream's BYTES when it runs
+remotely, while behaving correctly on the machine that submitted it —
+the same conflation as the group case, arrived at from the other side.
+`tests/execute-task.test.ts` pins both directions: an upstream
+excluded from the key is still in the closure, and a CONTROL that the
+filter still decouples the key.
 
 ## Defaults
 
