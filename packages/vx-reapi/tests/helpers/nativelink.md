@@ -24,8 +24,9 @@ worker); the copy CI uses lives at `tests/helpers/nativelink-exec.json5`.
 ## A worker that can run this repo's own tasks
 
 Driving `vx run` at a worker needs more than a shell: `git` (vx defers file
-enumeration to `git ls-files` and hard-requires it), a JS toolchain, and a
-REAL Node.js. `oven/bun` puts a `node` on PATH that is a SYMLINK TO BUN, and
+enumeration to `git ls-files` and hard-requires it), a JS toolchain, a REAL
+Node.js, and — to run vx's OWN suite there — the OS-sandbox tools
+(`bubblewrap`, `socat`, `strace`, `ripgrep`). `oven/bun` puts a `node` on PATH that is a SYMLINK TO BUN, and
 bun is not a drop-in — the `node_modules/.bin` shims are
 `#!/usr/bin/env node` scripts, and silently running them under a different
 runtime fails in ways that read as bugs in the tool. Install the official
@@ -39,7 +40,8 @@ RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in arm64) nodearch=arm64 ;; amd64) nodearch=x64 ;; \
       *) echo "unsupported arch: $arch" >&2; exit 1 ;; esac; \
-    apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates git; \
+    apt-get update && apt-get install -y --no-install-recommends curl xz-utils ca-certificates git \
+      bubblewrap socat strace ripgrep; \
     curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${nodearch}.tar.xz" -o /tmp/node.tar.xz; \
     mkdir -p /opt/node; tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1; rm /tmp/node.tar.xz; \
     apt-get purge -y curl xz-utils && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*; \
@@ -77,25 +79,35 @@ half-deleted answers writes with
 mounted config file that has been removed comes back as an empty DIRECTORY,
 which the server then refuses to parse.
 
-## What this repo's own suite can and cannot do on a worker
+## Run the container with `--init`
 
-Running `vx run ci --all` against a worker is the strongest end-to-end check
-available, and it does pass except for four tests that are environment-bound
-by nature rather than broken:
+The three `signal handling during vx run (e2e)` cases assert that a signalled
+vx kills its child, and they check liveness with `process.kill(pid, 0)` —
+which succeeds for a ZOMBIE. With no init as PID 1 there is nothing to reap an
+orphan, so the dead child stays visible and the assertion fails on a worker
+while passing everywhere else. `docker run --init` supplies the reaper.
 
-- the three `signal handling during vx run (e2e)` cases, which send SIGINT /
-  SIGTERM to a vx process and assert 130 / 143 — signal delivery and process
-  grouping inside a worker action are not the submitter's;
-- `--verify=inputs pins every task LOCAL`, which needs the OS sandbox
-  (bubblewrap) present in the image.
-
-The other ~2 580 pass. Everything else that failed on the first attempt was a
-real gap in this repo's DECLARED inputs, not in the worker — see
-"It proves your declared inputs" in the remote-execution guide.
+That is the whole difference: with `--init` and the sandbox tools in the
+image, this repo's ENTIRE suite passes on a worker — 2 594 tests, zero
+failures. Every failure seen before that was a worker-image gap or a real gap
+in this repo's DECLARED inputs, never the protocol; see "It proves your
+declared inputs" in the remote-execution guide.
 
 ```sh
 docker volume create vx-nl-data
-docker run -d --name vx-nativelink -p 50051:50051 \
+docker run -d --name vx-nativelink --init --privileged -p 50051:50051 \
   -v "$PWD/nativelink-dev.json5:/nativelink.json5:ro" -v vx-nl-data:/nl \
   vx-nativelink:bun-node /nativelink.json5
 ```
+
+## When it stops answering hits
+
+NativeLink v0.6.0 can degrade into a state where every ActionCache MISS
+returns in 3 ms and every HIT never returns: CPU idle, nothing in its logs,
+Capabilities answering normally, every stored entry affected. It survives
+killing every client, and a plain `docker restart` with identical on-disk data
+clears it — so it is in-memory server state, not corruption and not the client.
+
+vx degrades correctly through it (a metadata probe gives up on
+`metaTimeoutMs` and the task re-executes rather than failing), so the symptom
+is a slow run rather than a red one. Restart the container.

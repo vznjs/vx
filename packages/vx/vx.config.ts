@@ -106,7 +106,13 @@ export default defineProject({
 
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
-      exec: { command: 'oxlint --type-aware --type-check' },
+      // Run at the WORKSPACE ROOT, not in this project. Two reasons, and the
+      // second is the one that bites: `.oxlintrc.json`'s ignore patterns are
+      // root-relative, so linting from inside a member makes them miss; and
+      // with core no longer being the root, `oxlint` here saw only
+      // packages/vx — 225 files of 426 — so the plugin packages, apps/ and
+      // scripts/ were never linted by the gate at all.
+      exec: { command: 'cd ../.. && ./node_modules/.bin/oxlint --type-aware --type-check' },
       dependsOn: ['install'],
       cache: {
         inputs: {
@@ -125,15 +131,11 @@ export default defineProject({
           // did not invalidate this task — and a remotely executed action got
           // no tsconfig, which tsgolint reports as ~900 phantom "Cannot find
           // name 'process'" errors rather than as a missing file.
-          workspaceFiles: [
-            'packages/*/src/**',
-            'packages/*/tests/**',
-            'scripts/**',
-            'packages/*/package.json',
-            'bench/**',
-            '.oxlintrc.json',
-            'tsconfig.json',
-          ],
+          // The command reads the WHOLE tree now, so the declared set is the
+          // whole tree. `ALWAYS_IGNORE` already excludes node_modules, .git,
+          // .vx and build intermediates, so this is the repo's source, not
+          // its dependencies.
+          workspaceFiles: ['**/*'],
         },
         outputs: { files: [] },
       },
@@ -141,7 +143,10 @@ export default defineProject({
 
     'lint.oxfmt': {
       description: 'oxfmt --check (no rewrite; CI-safe)',
-      exec: { command: 'oxfmt --check .' },
+      // Same root escape as lint.oxlint, same reason: from this project it
+      // checked 225 of the repo's 426 files, so a misformatted file anywhere
+      // outside packages/vx passed the gate.
+      exec: { command: 'cd ../.. && ./node_modules/.bin/oxfmt --check .' },
       dependsOn: ['install'],
       cache: {
         inputs: {
@@ -149,12 +154,7 @@ export default defineProject({
           // Same boundary gap as lint.oxlint: `oxfmt --check .` scans the
           // workspace-member packages too (ui/deploy are oxfmt-ignored), and
           // its config lives at the root, outside every project-relative glob.
-          workspaceFiles: [
-            'packages/*/src/**',
-            'packages/*/tests/**',
-            'scripts/**',
-            '.oxfmtrc.json',
-          ],
+          workspaceFiles: ['**/*'],
         },
         outputs: { files: [] },
       },

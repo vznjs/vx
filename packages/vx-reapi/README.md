@@ -156,10 +156,10 @@ happens and the first probe hangs the whole run.
 
 There are TWO deadlines, and the split matters:
 
-| option           | covers                                                            | default                     |
-| ---------------- | ----------------------------------------------------------------- | --------------------------- |
-| `metaTimeoutMs`  | Capabilities, GetActionResult, UpdateActionResult, FindMissingBlobs, QueryWriteStatus | `min(callTimeoutMs, 15 000)` |
-| `callTimeoutMs`  | ByteStream transfers, Batch{Read,Update}Blobs, Split/SpliceBlob    | `30 000`                     |
+| option          | covers                                                                                | default                      |
+| --------------- | ------------------------------------------------------------------------------------- | ---------------------------- |
+| `metaTimeoutMs` | Capabilities, GetActionResult, UpdateActionResult, FindMissingBlobs, QueryWriteStatus | `min(callTimeoutMs, 15 000)` |
+| `callTimeoutMs` | ByteStream transfers, Batch{Read,Update}Blobs, Split/SpliceBlob                       | `30 000`                     |
 
 A control-plane message is small and bounded: a healthy server answers in
 single-digit milliseconds. A bulk transfer is size-proportional and
