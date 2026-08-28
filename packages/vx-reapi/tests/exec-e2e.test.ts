@@ -580,6 +580,15 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
     }
   }, 180_000)
 
+  // NOT PINNED HERE, deliberately. The client-side execute bound IS verified —
+  // with it, an unfinishable action rejects in 4 051 ms naming the bound;
+  // without it, the same case runs until bun kills the test at 120 s. But the
+  // pin cannot live in this fixture: aborting the client does not kill the
+  // worker's process, so the abandoned command keeps this single-worker
+  // server's only slot, and by the time the test runs alongside its siblings
+  // even a 60 s metadata deadline expires. A stub-client unit test is the
+  // right home for it; until then the behaviour is exercised by hand.
+
   it('the action digest is content-addressed: same task, two different checkout paths', async () => {
     const a = await seeded('same bytes\n')
     const b = await seeded('same bytes\n')

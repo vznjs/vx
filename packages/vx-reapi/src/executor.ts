@@ -353,7 +353,21 @@ function readVarint(buf: Uint8Array, at: number): [number, number] {
   return [result >>> 0, i]
 }
 
+/**
+ * Backstop for an action the server never finishes. Generous on purpose: it
+ * exists so a wedged remote cannot hang a run forever, not to police slow
+ * builds — a task that knows its own bound should declare `exec.timeout`,
+ * which takes precedence.
+ */
+const DEFAULT_EXECUTE_TIMEOUT_MS = 600_000
+
 export interface ReapiExecutorOptions {
+  /**
+   * Client-side bound on a single action, measured from the EXECUTING
+   * transition (time spent QUEUED behind a busy pool is legitimate and is not
+   * counted). Overridden per task by `exec.timeout`. Defaults to 10 minutes.
+   */
+  executeTimeoutMs?: number
   /** REAPI platform properties (`container-image`, `OSFamily`, …). */
   platform?: Record<string, string>
   /** How many tasks this executor runs at once; becomes the scheduler's pool. */
@@ -631,10 +645,51 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // The action id lets a server group this action's CAS/AC traffic in its
       // UI; set before Execute so the streaming call carries it too.
       client.actionId = actionDigest.hash
-      const op = await client.execute(actionDigest, {
-        ...(opts.priority === undefined ? {} : { priority: opts.priority }),
-        onStage: (stage) => warn(`vx/reapi: ${req.taskId} ${stage.toLowerCase()}`),
-      })
+      // `exec.timeout` rides the Action so the SERVER can enforce it, but a
+      // server that ignores it — or has stopped making progress at all —
+      // leaves the client waiting forever, and the operation stream is no
+      // help: a stalled NativeLink kept sending EXECUTING heartbeats for
+      // eighteen minutes while its worker sat blocked, so neither a total
+      // deadline nor an inactivity one would have fired. The task's own
+      // declared timeout is the honest bound, and enforcing it here makes it
+      // mean the same thing wherever the task runs.
+      //
+      // Clocked from the EXECUTING transition, not from submission: time
+      // spent QUEUED behind a busy pool is legitimate and unbounded, which is
+      // why `execute` carries no deadline of its own.
+      const stallAfter = req.timeoutMs ?? opts.executeTimeoutMs ?? DEFAULT_EXECUTE_TIMEOUT_MS
+      const stall = new AbortController()
+      let stallTimer: ReturnType<typeof setTimeout> | undefined
+      const armStall = (): void => {
+        if (stallTimer !== undefined) return
+        stallTimer = setTimeout(() => stall.abort(), stallAfter)
+      }
+      let op: Operation
+      try {
+        op = await client.execute(
+          actionDigest,
+          {
+            ...(opts.priority === undefined ? {} : { priority: opts.priority }),
+            onStage: (stage) => {
+              if (stage.toUpperCase() === 'EXECUTING') armStall()
+              warn(`vx/reapi: ${req.taskId} ${stage.toLowerCase()}`)
+            },
+          },
+          stall.signal,
+        )
+      } catch (err) {
+        if (stall.signal.aborted) {
+          throw new UserError(
+            `vx/reapi: ${req.taskId} was still executing ${stallAfter}ms after the worker ` +
+              `started it and the server never reported a result — giving up on the remote ` +
+              `operation. Raise exec.timeout (or the plugin's executeTimeoutMs) if the task ` +
+              `is legitimately this slow; otherwise the remote is not making progress.`,
+          )
+        }
+        throw err
+      } finally {
+        if (stallTimer !== undefined) clearTimeout(stallTimer)
+      }
       if (op.error !== undefined && (op.error.code ?? 0) !== 0) {
         throw new UserError(
           `vx/reapi: execution failed for ${req.taskId}: ${op.error.message ?? `code ${op.error.code}`}`,

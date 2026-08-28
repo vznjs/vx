@@ -63,6 +63,11 @@ export const REAPI_PLUGIN = 'vx/reapi'
 
 export interface ReapiPluginOptions extends Partial<ReapiOptions> {
   /**
+   * Client-side bound on one action, from the EXECUTING transition. See
+   * `ReapiExecutorOptions.executeTimeoutMs`; `exec.timeout` wins per task.
+   */
+  executeTimeoutMs?: number
+  /**
    * Endpoint, or omit to read `VX_REAPI_ENDPOINT`. With neither the plugin
    * DECLINES — a declared-but-unconfigured plugin costs nothing and must
    * never fail a run.
@@ -145,6 +150,9 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
       return reapiExecutor(executorClient, {
         ...(options.platform === undefined ? {} : { platform: options.platform }),
         ...(options.capacity === undefined ? {} : { capacity: options.capacity }),
+        ...(options.executeTimeoutMs === undefined
+          ? {}
+          : { executeTimeoutMs: options.executeTimeoutMs }),
         warn: (m) => ctx.warn(m),
       })
     },
