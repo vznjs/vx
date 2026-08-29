@@ -109,13 +109,13 @@ export default defineProject({
 
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
-      // Run at the WORKSPACE ROOT, not in this project. Two reasons, and the
-      // second is the one that bites: `.oxlintrc.json`'s ignore patterns are
-      // root-relative, so linting from inside a member makes them miss; and
-      // with core no longer being the root, `oxlint` here saw only
-      // packages/vx — 225 files of 426 — so the plugin packages, apps/ and
-      // scripts/ were never linted by the gate at all.
-      exec: { command: 'cd ../.. && ./node_modules/.bin/oxlint --type-aware --type-check' },
+      // Runs HERE, over this project's files. Since core moved out of the
+      // root that is 225 of the repo's 426 files — the rest is covered by the
+      // sibling packages linting THEMSELVES, not by this task reaching out of
+      // its own directory. A task that climbs to the workspace root hardcodes
+      // how deep it sits and breaks the project boundary; every project owns
+      // its own lint instead.
+      exec: { command: 'oxlint --type-aware --type-check' },
       dependsOn: ['install'],
       cache: {
         inputs: {
@@ -134,11 +134,11 @@ export default defineProject({
           // did not invalidate this task — and a remotely executed action got
           // no tsconfig, which tsgolint reports as ~900 phantom "Cannot find
           // name 'process'" errors rather than as a missing file.
-          // The command reads the WHOLE tree now, so the declared set is the
-          // whole tree. `ALWAYS_IGNORE` already excludes node_modules, .git,
-          // .vx and build intermediates, so this is the repo's source, not
-          // its dependencies.
-          workspaceFiles: ['**/*'],
+          // The linter's config and the tsconfig live at the workspace root,
+          // outside every project-relative glob. Declared as INPUTS — which
+          // is what `workspaceFiles` is for — so editing them invalidates
+          // this task. The command still runs HERE, in this project.
+          workspaceFiles: ['.oxlintrc.json', 'tsconfig.json'],
         },
         outputs: { files: [] },
       },
@@ -146,10 +146,9 @@ export default defineProject({
 
     'lint.oxfmt': {
       description: 'oxfmt --check (no rewrite; CI-safe)',
-      // Same root escape as lint.oxlint, same reason: from this project it
-      // checked 225 of the repo's 426 files, so a misformatted file anywhere
-      // outside packages/vx passed the gate.
-      exec: { command: 'cd ../.. && ./node_modules/.bin/oxfmt --check .' },
+      // Same as lint.oxlint: this project's files only, with the siblings
+      // covering their own.
+      exec: { command: 'oxfmt --check .' },
       dependsOn: ['install'],
       cache: {
         inputs: {
@@ -157,7 +156,7 @@ export default defineProject({
           // Same boundary gap as lint.oxlint: `oxfmt --check .` scans the
           // workspace-member packages too (ui/deploy are oxfmt-ignored), and
           // its config lives at the root, outside every project-relative glob.
-          workspaceFiles: ['**/*'],
+          workspaceFiles: ['.oxfmtrc.json'],
         },
         outputs: { files: [] },
       },
