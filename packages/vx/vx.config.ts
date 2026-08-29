@@ -2,11 +2,14 @@ import { defineProject } from './src/index.ts'
 
 export default defineProject({
   tasks: {
-    // CI gate = fast feedback: lint + test only. Building the four
-    // cross-compiled release binaries lives in `release.yml` (`vx run
-    // build`), which runs them alone — fanning all four out concurrently
-    // alongside lint + test starves the ubuntu runner and a darwin
-    // cross-compile gets OOM-killed.
+    // CI gate = fast feedback: lint + test. The four cross-compiled release
+    // binaries are still `release.yml`'s job, but they DO reach the gate now,
+    // pulled in through apps/docs' `install` -> `^build`. That used to be
+    // refused here on the grounds that fanning all four out alongside lint +
+    // test starves the ubuntu runner and OOM-kills a darwin cross-compile;
+    // that is no longer true and the evidence is a green run — docs.yml built
+    // all four on ubuntu-latest in 1.1-1.8s each, and the full gate with them
+    // included passes. Re-measure before re-adding a restriction.
     ci: {
       dependsOn: ['lint', 'test'],
     },

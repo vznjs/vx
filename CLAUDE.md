@@ -533,6 +533,52 @@ time every single time.
 
 ### Recent entries (2026-08)
 
+- **2026-08-29 — the forced full graph hangs, and the hang is now BOUNDED
+  rather than fixed.** Owner set an acceptance bar: `vx run build lint --all
+--force` must finish in ≤ 1 min against a live worker. It does not, and the
+  honest status is that vx no longer hangs while the underlying stall is
+  unresolved.
+  MEASURED, on a fresh server with nothing else running: `setup` executes and
+  captures fine (13.58 s for 26 022 blobs / 516 MB, all of which reach the
+  CAS — verified by counting them there). Its CONSUMERS then stall. A single
+  forced `build.bun.linux-x64` sat with SEVEN files in its action tree and no
+  `bun` process, not growing, with nothing in the server's log, while the
+  operation stream heartbeat EXECUTING. So it is not concurrency (one task
+  alone does it), not the upload, and not warm-up (a second attempt behaves
+  identically). It is NativeLink materialising a 26 k-file grafted tree.
+  THE STRUCTURAL CAUSE is the one the Bazel research already named: `setup`
+  captures node_modules as ONE opaque output, so every dependent action must
+  materialise all 26 084 files / 483 MB before its command starts. A
+  cross-compile actually needs ONE package — proven by compiling core with no
+  node_modules at all, which fails only on `@anthropic-ai/sandbox-runtime`.
+  That is `rules_js`'s fine-grained-deps argument arriving as a measurement
+  rather than an opinion.
+  SHIPPED: a client-side bound on one action, because nothing bounded this and
+  the run waited forever. Neither obvious bound works and that is why this was
+  the third thing tried — a total deadline on Execute is wrong (queueing
+  behind a busy pool is legitimate and unbounded, which is why the call
+  carries none) and an inactivity deadline is wrong too (the stream was NOT
+  idle, it heartbeat the same stage 263 times over eighteen minutes). The
+  honest bound is the one the user already declares: `exec.timeout` now bounds
+  the CLIENT as well as riding the Action, clocked from the EXECUTING
+  transition so queue time stays free, with `executeTimeoutMs` (10 min) as a
+  backstop for tasks that declare none. Confirmed in production: the stalled
+  compile failed at 614 s instead of never.
+  NOT PINNED, deliberately, and recorded rather than quietly skipped: the
+  bound IS verified by hand (4 051 ms reject with it, 120 s bun-kill without)
+  but the e2e fixture cannot carry the pin — aborting the client does not kill
+  the worker's process, so the abandoned command holds the single-worker
+  server's only slot and every later test times out. My first draft used
+  `sleep 600` and poisoned the whole file for ten minutes a run. A stub-client
+  unit test is the right home.
+  ALSO: the docs build is in the gate now. `vx run ci --all` fanned out to
+  core only, and docs.yml triggers just on `docs/**` / `apps/docs/**`, so a
+  core change that broke `astro build` left BOTH workflows green. The
+  dependency is real — appending a line to `src/version.ts` moves the docs
+  build key 15c93832 → cc5552e4 through `^build`. It pulls the four
+  cross-compiles into the gate, which the config warned would OOM the runner;
+  that warning is now DISPROVEN by a green run and is corrected in place.
+
 - **2026-08-28 (fourth wave) — everything runs remotely now, and the last
   four "environment-bound" failures were nothing of the kind.** Owner asked
   for all tasks against a live NativeLink, then for it all fixed. RESULT: the
