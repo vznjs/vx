@@ -2,6 +2,18 @@ import { defineProject } from '@vzn/vx'
 
 export default defineProject({
   tasks: {
+    // The gate for this project. Without it `vx run ci --all` — which is what
+    // CI invokes — covered only core, so a change to `packages/vx` that broke
+    // `astro build` left BOTH workflows green: the ci gate never built the
+    // site, and docs.yml only triggers on `docs/**` / `apps/docs/**` paths.
+    // The breakage would surface on whatever unrelated docs commit came next.
+    // The dependency is real and the cache proves it — editing a core source
+    // file moves this project's build key through `^build`, so this costs a
+    // rebuild exactly when core or the docs actually change.
+    ci: {
+      dependsOn: ['build'],
+    },
+
     // Regenerate the Starlight content collection from the repo's `docs/`
     // tree. Deliberately UNCACHED: it writes generated pages into
     // `src/content/docs/`, a directory that also holds tracked,
