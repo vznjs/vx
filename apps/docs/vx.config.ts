@@ -24,17 +24,10 @@ export default defineProject({
       exec: { command: 'bun scripts/import-docs.ts' },
     },
 
-    // setup -> install -> build. `setup` is the workspace install, and there
-    // is exactly ONE of it for the whole repo — dependency installation is a
-    // workspace concern, not a per-project one, so every project's `install`
-    // names the same task rather than declaring its own. (Bazel solves this
-    // the same way: `npm_translate_lock` is evaluated once as an external
-    // repository and every target depends on that single result. Per-project
-    // installs are not expressible here anyway — identical definitions still
-    // get different cache keys, since the key folds the task id and the
-    // project's package.json, so N projects would mean N installs.)
+    // install -> build, ordering only. The install itself is the agent
+    // pool's `prepare`, run once against the shared workspace.
     install: {
-      dependsOn: ['@vzn/vx#setup', '^build'],
+      dependsOn: ['^build'],
     },
 
     build: {

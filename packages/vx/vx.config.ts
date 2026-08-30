@@ -14,43 +14,15 @@ export default defineProject({
       dependsOn: ['lint', 'test'],
     },
 
-    setup: {
-      description: 'bun install on the worker (install-as-an-action)',
-      exec: {
-        remote: 'only',
-        command: 'bun ci',
-        env: {
-          define: {
-            BUN_INSTALL_CACHE_DIR: '/root/.bun/install/cache',
-          },
-        },
-      },
-      cache: {
-        inputs: {
-          files: [],
-          workspaceFiles: [
-            'package.json',
-            'bun.lock',
-            'packages/*/package.json',
-            'apps/*/package.json',
-          ],
-        },
-        outputs: {
-          files: [],
-          workspaceFiles: ['node_modules', 'packages/*/node_modules', 'apps/*/node_modules'],
-        },
-      },
-    },
-
     install: {
-      dependsOn: ['setup', '^build'],
+      dependsOn: ['^build'],
     },
 
-    // setup -> install -> build. `install` chains the workspace install and
-    // the dependencies' builds; everything that needs node_modules hangs off
-    // it, and depending on the GROUP is enough — a dependent of a group now
-    // receives the real tasks beneath it in its input closure, so a remotely
-    // executed leaf gets setup's node_modules without naming setup itself.
+    // install -> build. Dependencies are NOT installed by a task any more:
+    // the agent pool's `prepare` runs the install once against the workspace
+    // every agent shares, and a lockfile change already re-keys every task
+    // through the workspace fingerprint. `install` is now purely ordering —
+    // this project's dependencies are built before it is.
     build: {
       dependsOn: ['install', 'build.bun'],
     },

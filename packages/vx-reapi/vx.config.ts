@@ -3,7 +3,7 @@ import { defineProject } from '@vzn/vx'
 export default defineProject({
   tasks: {
     install: {
-      dependsOn: ['@vzn/vx#setup', '^build'],
+      dependsOn: ['^build'],
     },
 
     // Lint only, deliberately. This package's suite needs a live bazel-remote
@@ -21,8 +21,13 @@ export default defineProject({
     },
 
     'lint.oxlint': {
-      description: 'oxlint with tsgolint-backed type-aware checks',
-      exec: { command: 'oxlint --type-aware --type-check' },
+      // Plain oxlint, not --type-aware: the root tsconfig's `include` covers
+      // packages/vx only, so there is no type graph for this package to check
+      // against. Type-aware linting here would be asserting on a program that
+      // does not exist — it passed locally only because the checker silently
+      // fell back to whatever it could resolve by walking up.
+      description: 'oxlint',
+      exec: { command: 'oxlint' },
       dependsOn: ['install'],
       cache: {
         inputs: {

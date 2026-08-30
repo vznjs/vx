@@ -2,11 +2,11 @@ import { defineProject } from '@vzn/vx'
 
 export default defineProject({
   tasks: {
-    // setup -> install -> lint/test, the shape every project uses. `setup` is
-    // the workspace install and there is exactly one of it for the repo, so
-    // it is named cross-project rather than duplicated here.
+    // install -> lint/test, ordering only: this package's dependencies are
+    // built before it is. The dependency INSTALL is the agent pool's
+    // `prepare`, run once against the workspace every agent shares.
     install: {
-      dependsOn: ['@vzn/vx#setup', '^build'],
+      dependsOn: ['^build'],
     },
 
     ci: {
@@ -22,8 +22,13 @@ export default defineProject({
     // covered 225 of the repo's 426 files — every sibling package went
     // unchecked. A project lints itself.
     'lint.oxlint': {
-      description: 'oxlint with tsgolint-backed type-aware checks',
-      exec: { command: 'oxlint --type-aware --type-check' },
+      // Plain oxlint, not --type-aware: the root tsconfig's `include` covers
+      // packages/vx only, so there is no type graph for this package to check
+      // against. Type-aware linting here would be asserting on a program that
+      // does not exist — it passed locally only because the checker silently
+      // fell back to whatever it could resolve by walking up.
+      description: 'oxlint',
+      exec: { command: 'oxlint' },
       dependsOn: ['install'],
       cache: {
         inputs: {
