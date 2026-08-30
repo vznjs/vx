@@ -15,6 +15,7 @@
 
 import { createEventBus, run, type RunEvent as VxRunEvent } from '@vzn/vx'
 import { SyncClient } from './client.js'
+import { WORKER_ENV } from './worker-env.js'
 import type { Assignment, WorkerCapabilities } from './protocol.js'
 
 export interface WorkerOptions {
@@ -54,6 +55,10 @@ export class Worker {
 
   /** Register, then serve assignments until told to stop or the count is up. */
   async start(): Promise<void> {
+    // Marks every nested `run()` this process makes as already ON a worker, so
+    // the agents plugin declines there instead of dispatching the assignment
+    // straight back to the synchronizer that sent it.
+    process.env[WORKER_ENV] = '1'
     const reg = await this.client.register({
       name: this.opts.name,
       capabilities: this.opts.capabilities,

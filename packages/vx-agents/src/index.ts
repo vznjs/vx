@@ -19,9 +19,11 @@
 import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement, VxPlugin } from '@vzn/vx'
 import { UserError } from '@vzn/vx'
 import { SyncClient } from './client.js'
+import { WORKER_ENV } from './worker-env.js'
 import type { AssignmentResult, Requirement, RunEvent } from './protocol.js'
 
 export { SyncClient, SyncError, type SyncClientOptions } from './client.js'
+export { WORKER_ENV } from './worker-env.js'
 export { SyncServer, type SyncServerOptions } from './sync.js'
 export { Worker, lockDigest, type WorkerOptions } from './worker.js'
 export {
@@ -88,6 +90,12 @@ export function agents(options: AgentsPluginOptions = {}): VxPlugin {
   return {
     name: AGENTS_PLUGIN,
     executor(ctx): TaskExecutor | undefined {
+      // A worker is the END of the line. It serves an assignment by running a
+      // scoped `run()` of that task, which loads this same workspace config —
+      // so without this the plugin would accept the task and dispatch it back
+      // to the synchronizer, forever. Checked before the endpoint because a
+      // config that hardcodes `endpoint:` must not escape it either.
+      if (Bun.env[WORKER_ENV] === '1') return undefined
       const endpoint = options.endpoint ?? Bun.env['VX_AGENTS_ENDPOINT']
       if (endpoint === undefined || endpoint === '') return undefined
       const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY

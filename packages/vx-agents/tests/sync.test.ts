@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { SyncClient } from '../src/client.js'
 import { SyncServer } from '../src/sync.js'
 import { satisfies, type RunEvent } from '../src/protocol.js'
+import { agents, WORKER_ENV } from '../src/index.js'
 
 let server: ReturnType<SyncServer['listen']> | undefined
 let sync: SyncServer
@@ -159,3 +160,27 @@ async function settle(done: () => boolean, ms = 2000): Promise<void> {
   const deadline = Date.now() + ms
   while (!done() && Date.now() < deadline) await Bun.sleep(5)
 }
+
+describe('the recursion guard', () => {
+  // A worker serves an assignment by running a scoped `run()` of that task,
+  // which loads the SAME workspace config. Without the sentinel the plugin
+  // would accept the task there and dispatch it straight back to the
+  // synchronizer that sent it — a loop that never terminates and looks like
+  // a hung build.
+  const ctx = { workspaceRoot: '/tmp', cacheDir: '/tmp/.vx', concurrency: 1, warn: () => {} }
+
+  it('declines inside a worker, even with an endpoint configured', () => {
+    process.env[WORKER_ENV] = '1'
+    try {
+      expect(agents({ endpoint: 'http://sync:8787' }).executor?.(ctx)).toBeUndefined()
+    } finally {
+      delete process.env[WORKER_ENV]
+    }
+  })
+
+  it('takes the work when it is NOT inside a worker', () => {
+    // The control: without this the guard could degenerate into "always
+    // decline" and the plugin would silently never run anything.
+    expect(agents({ endpoint: 'http://sync:8787' }).executor?.(ctx)).toBeDefined()
+  })
+})
