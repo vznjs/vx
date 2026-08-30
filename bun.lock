@@ -7,6 +7,7 @@
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
+        "@vzn/vx-agents": "workspace:*",
         "@vzn/vx-github": "workspace:*",
         "@vzn/vx-otel": "workspace:*",
         "@vzn/vx-reapi": "workspace:*",
@@ -41,6 +42,17 @@
       "devDependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
         "@types/bun": "^1.4.0",
+      },
+    },
+    "packages/vx-agents": {
+      "name": "@vzn/vx-agents",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
       },
     },
     "packages/vx-github": {
@@ -552,6 +564,8 @@
     "@upsetjs/venn.js": ["@upsetjs/venn.js@2.0.0", "", { "optionalDependencies": { "d3-selection": "^3.0.0", "d3-transition": "^3.0.1" } }, "sha512-WbBhLrooyePuQ1VZxrJjtLvTc4NVfpOyKx0sKqioq9bX1C1m7Jgykkn8gLrtwumBioXIqam8DLxp88Adbue6Hw=="],
 
     "@vzn/vx": ["@vzn/vx@workspace:packages/vx"],
+
+    "@vzn/vx-agents": ["@vzn/vx-agents@workspace:packages/vx-agents"],
 
     "@vzn/vx-docs": ["@vzn/vx-docs@workspace:apps/docs"],
 
