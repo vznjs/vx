@@ -750,13 +750,14 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
     const client = new ReapiClient({ endpoint })
     try {
       await client.negotiate()
-      const stages: string[] = []
-      const executor = reapiExecutor(client, {
-        warn: (m: string) => stages.push(m),
-      })
+      const executor = reapiExecutor(client, { warn: () => {} })
       const make = (over: Partial<ExecuteRequest>): ExecuteRequest =>
         req3(root, {
-          command: 'cat src/in.txt > out.txt && echo SHORTCIRCUIT-STDOUT',
+          // The uuid is what makes the replay PROVABLE: a second execution
+          // could not reproduce it, so byte-identical stdout can only have come
+          // from the record.
+          command:
+            'cat src/in.txt > out.txt && echo SHORTCIRCUIT-STDOUT $(cat /proc/sys/kernel/random/uuid)',
           cacheKey: `sc-key-${n3}`,
           outputs: { files: ['out.txt'], workspaceFiles: [] },
           inputs: {
@@ -778,19 +779,24 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
       )
       expect(first.exitCode).toBe(0)
       expect(firstOut).toContain('SHORTCIRCUIT-STDOUT')
-      // The first run really executed (the worker reported a stage).
-      expect(stages.some((m) => m.includes('executing') || m.includes('completed'))).toBe(true)
+      // Guard against a vacuous pin below: if the uuid never made it into
+      // stdout, two empty markers would compare equal and prove nothing.
+      expect(firstOut).toMatch(/SHORTCIRCUIT-STDOUT [0-9a-f-]{36}/)
 
-      stages.length = 0
       let secondOut = ''
       const second = await executor.execute(
         make({ onStdout: (c: string) => (secondOut += c) } as Partial<ExecuteRequest>),
       )
       expect(second.exitCode).toBe(0)
-      // No worker stage at all: the record answered.
-      expect(stages.filter((m) => m.includes('executing'))).toEqual([])
-      // …and stdout came back from the record, not from a re-execution.
-      expect(secondOut).toContain('SHORTCIRCUIT-STDOUT')
+      // THE pin: byte-identical stdout, uuid included. A re-execution would
+      // print a different one, so this can only be the record's blob replayed.
+      // Asserted on the bytes rather than on the warnings this used to read —
+      // those fired several times per action and were removed, and a pin on
+      // incidental output breaks when the output is tidied rather than when
+      // the behaviour moves.
+      expect(secondOut).toBe(firstOut)
+      // The short-circuit return carries no worker id, because no worker ran.
+      expect(second.where).toBeUndefined()
     } finally {
       client.close()
       await rm(root, { recursive: true, force: true })
