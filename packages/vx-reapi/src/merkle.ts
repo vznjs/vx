@@ -575,9 +575,43 @@ export function encodeAction(a: {
   ])
 }
 
+/** `Tree { root = 1, children = 2 }` — the encode half of `decodeTree`. */
+export function encodeTree(root: Directory, children: readonly Directory[]): Uint8Array {
+  return concat([
+    lenField(1, encodeDirectory(root)),
+    ...children.map((c) => lenField(2, encodeDirectory(c))),
+  ])
+}
+
 /** `Tree { root = 1, children = 2 }` — the shape an OutputDirectory points at. */
 export function decodeTree(buf: Uint8Array): { root?: Directory; children: Directory[] } {
-  const out: { root?: Directory; children: Directory[] } = { children: [] }
+  const full = decodeTreeWithBytes(buf)
+  return { ...(full.root === undefined ? {} : { root: full.root }), children: full.children }
+}
+
+/**
+ * `decodeTree`, but each child also carries the RAW bytes it was decoded from.
+ *
+ * The only link between a `Directory` and its parent is a digest, and that
+ * digest was computed by the WORKER over ITS encoding. Re-deriving one by
+ * re-encoding our own parse is a guess: any byte-level difference — field
+ * order, an omitted default, node properties we drop — makes the lookup miss,
+ * and a miss is silent (the child is simply skipped). Hashing the bytes the
+ * worker actually sent is exact, needs no round trip, and cannot drift.
+ *
+ * Measured before this existed: of the 649 directories in one captured tree,
+ * only the 4 at the root resolved, so a walk two levels deep found almost
+ * nothing and reported the whole tree instead.
+ */
+export function decodeTreeWithBytes(buf: Uint8Array): {
+  root?: Directory
+  children: Directory[]
+  childDigests: string[]
+} {
+  const out: { root?: Directory; children: Directory[]; childDigests: string[] } = {
+    children: [],
+    childDigests: [],
+  }
   let i = 0
   while (i < buf.length) {
     const [key, k] = readVarintAt(buf, i)
@@ -589,7 +623,10 @@ export function decodeTree(buf: Uint8Array): { root?: Directory; children: Direc
     const slice = buf.subarray(i, i + len)
     i += len
     if (key >>> 3 === 1) out.root = decodeDirectory(slice)
-    else if (key >>> 3 === 2) out.children.push(decodeDirectory(slice))
+    else if (key >>> 3 === 2) {
+      out.children.push(decodeDirectory(slice))
+      out.childDigests.push(sha256(slice).hash)
+    }
   }
   return out
 }

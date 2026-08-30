@@ -9,7 +9,7 @@
 // anything depending on one, and `exec.remote: false` never reach an
 // executor. This declines the rest of what it cannot honour.
 
-import { mkdir, writeFile, chmod, rm, symlink, readdir } from 'node:fs/promises'
+import { mkdir, writeFile, chmod, rm, symlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { UserError } from '@vzn/vx'
@@ -17,10 +17,12 @@ import type { ExecuteRequest, ExecuteResult, TaskExecutor, TaskPlacement } from 
 import {
   buildInputTree,
   decodeTree,
+  decodeTreeWithBytes,
   DigestCache,
   encodeAction,
   encodeCommand,
   encodeDirectory,
+  encodeTree,
   sha256,
   type Blob,
   type FileGraft,
@@ -28,6 +30,99 @@ import {
 } from './merkle.js'
 import { execDigestFor } from './cache.js'
 import type { ActionResult, Digest, Directory, Operation, ReapiClient } from './wire.js'
+
+/**
+ * Split a coarse output directory into the paths its GLOB actually names.
+ *
+ * REAPI `output_paths` are literal, so a glob with a wildcard in the MIDDLE
+ * (`packages/*&#47;node_modules`) has to be requested as its static prefix
+ * (`packages`) — and the worker duly returns that whole directory, manifests
+ * and all. Grafting THAT into a consumer replaces its entire `packages/`,
+ * taking every project's sources with it.
+ *
+ * The producer is the one place that knows the glob, so it decomposes here,
+ * on the way INTO the execution record: one entry per real match, each a Tree
+ * of its own. A consumer then grafts `packages/vx/node_modules` and nothing
+ * else, and replacement stays exactly what it was — it just lands at the path
+ * the user actually declared.
+ *
+ * Nothing reads the submitter's filesystem: the matches come from the tree the
+ * worker returned, so the record is a function of the action's own result.
+ */
+async function decomposeOutputDir(
+  client: ReapiClient,
+  entry: { path: string; tree_digest: Digest },
+  globs: readonly string[],
+  warn: (m: string) => void,
+): Promise<Array<{ path: string; tree_digest: Digest }>> {
+  // Only globs that COLLAPSED to this entry are interesting; a literal glob
+  // already names its own path.
+  const wild = globs.filter((g) => globToOutputPath(g) === entry.path && g !== entry.path)
+  if (wild.length === 0) return [entry]
+
+  const blob = await client.readBlob(entry.tree_digest)
+  if (blob === null) {
+    warn(`vx/reapi: could not read the Tree for ${entry.path} — recording it whole`)
+    return [entry]
+  }
+  // Keyed by the WORKER's own bytes, not by re-encoding our parse of them —
+  // see decodeTreeWithBytes. Re-encoding resolved 4 of 649 directories here.
+  const tree = decodeTreeWithBytes(blob)
+  if (tree.root === undefined) return [entry]
+  const byDigest = new Map<string, Directory>()
+  tree.children.forEach((c, i) => byDigest.set(tree.childDigests[i]!, c))
+
+  const out: Array<{ path: string; tree_digest: Digest }> = []
+  const seen = new Set<string>()
+
+  // Every transitive child of `dir`, which is what a Tree message must carry.
+  const descendants = (dir: Directory, acc: Directory[] = []): Directory[] => {
+    for (const d of dir.directories) {
+      const child = byDigest.get(d.digest.hash)
+      if (child === undefined) continue
+      acc.push(child)
+      descendants(child, acc)
+    }
+    return acc
+  }
+
+  const walk = (dir: Directory, segments: readonly string[], prefix: string): void => {
+    if (segments.length === 0) {
+      if (seen.has(prefix)) return
+      seen.add(prefix)
+      const data = encodeTree(dir, descendants(dir))
+      out.push({ path: prefix, tree_digest: sha256(data), __data: data } as never)
+      return
+    }
+    const [head, ...rest] = segments
+    for (const d of dir.directories) {
+      // A wildcard segment matches every directory at this level; anything
+      // else has to match by name. Only whole-segment wildcards are handled —
+      // a partial one (`node_*`) falls through and the entry stays whole.
+      if (head !== '*' && d.name !== head) continue
+      const child = byDigest.get(d.digest.hash)
+      if (child === undefined) continue
+      walk(child, rest, `${prefix}/${d.name}`)
+    }
+  }
+
+  for (const glob of wild) {
+    const rest = glob.slice(entry.path.length + 1).split('/')
+    if (rest.some((seg) => seg !== '*' && /[*?[\]{]/.test(seg))) continue
+    walk(tree.root, rest, entry.path)
+  }
+  if (out.length === 0) return [entry]
+
+  // Upload the Tree blobs the new entries point at. ByteStream rather than a
+  // batch: a Tree for a real dependency directory is megabytes, and batching
+  // several into one message trips the server's own 4 MiB receive limit.
+  for (const e of out) {
+    const data = (e as unknown as { __data: Uint8Array }).__data
+    const missing = await client.findMissingBlobs([e.tree_digest]).catch(() => [e.tree_digest])
+    if (missing.length > 0) await client.writeBlob(e.tree_digest, data)
+  }
+  return out.map((e) => ({ path: e.path, tree_digest: e.tree_digest }))
+}
 
 /** `ExecuteRequest.inputs` past the executor's own undefined guard. Derived
  *  rather than imported: the façade does not export `TaskInputs`, and widening
@@ -493,16 +588,17 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // INPUT ROOT and `cd` into the project instead: every output path is
       // then root-relative and no `..` is ever emitted. Tasks with only
       // project-relative outputs keep the narrower working directory.
-      // Wildcards in root-anchored outputs are expanded to literal member
-      // paths BEFORE the Command is built (see expandOutputGlobs).
-      const expandedWorkspaceOutputs = await expandOutputGlobs(
-        req.workspaceRoot,
-        req.outputs.workspaceFiles,
-      )
-      const outReq: ExecuteRequest = {
-        ...req,
-        outputs: { ...req.outputs, workspaceFiles: expandedWorkspaceOutputs },
-      }
+      // A wildcard in the MIDDLE of a root-anchored output
+      // (`packages/*/node_modules`) still collapses to its static prefix
+      // here, because REAPI output paths are literal. That used to be
+      // dangerous — the whole `packages` directory came back and REPLACED the
+      // sources in every consumer's input tree — so the globs were expanded
+      // against the submitter's filesystem first. They are not any more:
+      // grafts MERGE into the input tree (see buildInputTree), so a broad
+      // capture folds in alongside what a consumer declared instead of over
+      // it. Expanding was also impure — it made the action digest depend on
+      // which directories happened to exist on the machine that submitted it.
+      const outReq: ExecuteRequest = req
       const rootAnchored = req.outputs.workspaceFiles.length > 0
       const workingDirectory = rootAnchored ? '' : projectRel
       // The server reports output paths relative to `working_directory`, so
@@ -528,8 +624,23 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         // under one pure-input key, and a worker fed the record would see
         // bytes this machine's own tasks do not. The graft is for outputs
         // that exist nowhere locally — a remote-only upstream.
-        if (up.outputs.length > 0) {
-          localUpstreamPaths.push(...up.outputs)
+        // "Materialised here" has to be CHECKED, not assumed. `up.outputs`
+        // comes from the local index, which records what an entry contains —
+        // not whether those files are on this disk right now. A task whose
+        // producer ran remotely and did not bring its outputs home has index
+        // rows and no files, and the tree build then dies on `stat` with
+        // ENOENT naming a path the user never asked about. When they are
+        // genuinely absent, the record graft is the correct source, which is
+        // the branch below.
+        const present = up.outputs.filter((rel) => existsSync(path.join(req.workspaceRoot, rel)))
+        if (present.length > 0) {
+          if (present.length !== up.outputs.length) {
+            warn(
+              `vx/reapi: ${up.taskId} has ${up.outputs.length - present.length} output(s) recorded ` +
+                `but missing on disk — grafting is not possible for a partial set, using what is here`,
+            )
+          }
+          localUpstreamPaths.push(...present)
           continue
         }
         const record = await client.getActionResult(execDigestFor(up.hash))
@@ -670,9 +781,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           actionDigest,
           {
             ...(opts.priority === undefined ? {} : { priority: opts.priority }),
+            // Stage transitions are consumed, not printed: they arrive many
+            // times per action and said nothing a reader could act on.
             onStage: (stage) => {
               if (stage.toUpperCase() === 'EXECUTING') armStall()
-              warn(`vx/reapi: ${req.taskId} ${stage.toLowerCase()}`)
             },
           },
           stall.signal,
@@ -713,8 +825,10 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           `vx/reapi: ${req.taskId} returned no ActionResult${decoded.message === undefined ? '' : `: ${decoded.message}`}`,
         )
       }
+      // The worker id is REPORTED, not logged: it rides `ExecuteResult.where`
+      // into telemetry, where a consumer can attribute a task to a machine.
+      // A line per task said the same thing to everyone, every run.
       const worker = result.execution_metadata?.worker
-      if (worker !== undefined && worker !== '') warn(`vx/reapi: ${req.taskId} ran on ${worker}`)
 
       const [stdout, stderr] = await Promise.all([
         this_readStream(client, result.stdout_raw, result.stdout_digest),
@@ -755,6 +869,17 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 )
           if (uploaded) stdoutDigest = d
         }
+        // A coarse capture is split into the paths its glob really names
+        // before it is recorded — see decomposeOutputDir.
+        const declaredGlobs = [
+          ...req.outputs.workspaceFiles,
+          ...req.outputs.files.map((g) => (projectRel === '' ? g : `${projectRel}/${g}`)),
+        ]
+        const recordedDirs: Array<{ path: string; tree_digest: Digest }> = []
+        for (const d of result.output_directories ?? []) {
+          const rebased = { path: rebase(d.path), tree_digest: d.tree_digest }
+          recordedDirs.push(...(await decomposeOutputDir(client, rebased, declaredGlobs, warn)))
+        }
         await client
           .updateActionResult(execDigestFor(req.cacheKey), {
             exit_code: 0,
@@ -764,10 +889,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               digest: f.digest,
               is_executable: f.is_executable === true,
             })),
-            output_directories: (result.output_directories ?? []).map((d) => ({
-              path: rebase(d.path),
-              tree_digest: d.tree_digest,
-            })),
+            output_directories: recordedDirs,
             output_symlinks: (result.output_symlinks ?? []).map((sl) => ({
               path: rebase(sl.path),
               target: sl.target,
@@ -848,58 +970,6 @@ async function this_readStream(
     if (bytes !== null) return new TextDecoder().decode(bytes)
   }
   return ''
-}
-
-/**
- * REAPI `output_paths` are LITERAL, so a glob whose wildcard sits in the
- * MIDDLE (`packages/&#42;/node_modules`) collapses to its static prefix
- * (`packages`) — and that whole directory then replaces the sources in every
- * consumer's input tree. But the wildcard segments name workspace member
- * DIRECTORIES, which exist as inputs and are known before the action runs, so
- * expand them here and emit one literal path per match. Trailing segments are
- * left untouched: the action produces them, so they need not exist yet.
- */
-export async function expandOutputGlobs(
-  workspaceRoot: string,
-  globs: readonly string[],
-): Promise<string[]> {
-  const out: string[] = []
-  for (const glob of globs) {
-    const segments = glob.split('/')
-    let prefixes = ['']
-    let i = 0
-    for (; i < segments.length; i++) {
-      const seg = segments[i]!
-      if (!seg.includes('*') && !seg.includes('?') && !seg.includes('[')) {
-        prefixes = prefixes.map((p) => (p === '' ? seg : `${p}/${seg}`))
-        continue
-      }
-      // A wildcard SEGMENT: match it against the directories that exist at
-      // this level. Anything below it stays literal.
-      const matcher = new Bun.Glob(seg)
-      const next: string[] = []
-      for (const prefix of prefixes) {
-        const dir = prefix === '' ? workspaceRoot : path.join(workspaceRoot, prefix)
-        let entries: string[]
-        try {
-          entries = await readdir(dir)
-        } catch {
-          continue
-        }
-        for (const entry of entries.sort()) {
-          if (!matcher.match(entry)) continue
-          if (!existsSync(path.join(dir, entry))) continue
-          next.push(prefix === '' ? entry : `${prefix}/${entry}`)
-        }
-      }
-      prefixes = next
-      if (prefixes.length === 0) break
-    }
-    // Any segments after the LAST wildcard are appended verbatim.
-    const tail = segments.slice(i + 1)
-    for (const p of prefixes) out.push(tail.length === 0 ? p : `${p}/${tail.join('/')}`)
-  }
-  return [...new Set(out)].sort()
 }
 
 /** Forwarded args are appended shell-quoted, exactly as the local executor does. */

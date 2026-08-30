@@ -190,10 +190,29 @@ function ctors(): { v2: Ctors; bs: Ctors } {
  * clients where there is one. `channelOverride` is grpc-js's supported way to
  * bind extra stubs onto an existing channel.
  */
+/** Per-entry encoding cost in a Batch request: a 64-char hex hash, a size,
+ *  and the nested field tags and length prefixes around them. Rounded up. */
+const BATCH_ENTRY_OVERHEAD = 128
+
+/** One batch must fit in a single gRPC message; 4 MiB is the ecosystem
+ *  default and 64 KiB leaves room for the envelope. */
+const SAFE_BATCH_BYTES = 4 * 1024 * 1024 - 64 * 1024
+
+/** grpc's 4 MiB receive default is far below REAPI's real message sizes. */
+const MAX_MESSAGE_BYTES = 256 * 1024 * 1024
+
 function loadServices(target: string, creds: grpc.ChannelCredentials): ServiceClients {
   const { v2, bs } = ctors()
-  const cas = new v2['ContentAddressableStorage']!(target, creds)
-  const shared = { channelOverride: cas.getChannel() }
+  // An ActionResult listing a real dependency tree is megabytes, and the
+  // default limit rejects it with RESOURCE_EXHAUSTED — measured at 4 359 595
+  // bytes against the 4 194 304 default. Applied to EVERY stub: the limit is
+  // per-client, so sharing one channel does not share it.
+  const opts = {
+    'grpc.max_receive_message_length': MAX_MESSAGE_BYTES,
+    'grpc.max_send_message_length': MAX_MESSAGE_BYTES,
+  }
+  const cas = new v2['ContentAddressableStorage']!(target, creds, opts)
+  const shared = { ...opts, channelOverride: cas.getChannel() }
   return {
     cas,
     ac: new v2['ActionCache']!(target, creds, shared),
@@ -302,6 +321,10 @@ export class ReapiClient {
   private readonly headers: Record<string, string>
   private readonly chunkBytes: number
   private readonly callTimeoutMs: number
+  /** What `negotiate()` learned the server will accept in one Batch call.
+   *  Used whenever a caller does not pass a budget, so a call site cannot
+   *  silently fall back to a larger default than the server allows. */
+  private negotiatedBatchBytes = 0
   private readonly metaTimeoutMs: number
   private readonly onWarn: (message: string) => void
   private digestFunction: DigestFunctionName = 'SHA256'
@@ -421,7 +444,14 @@ export class ReapiClient {
     const cc = res.cache_capabilities
     return {
       digestFunctions: cc?.digest_functions ?? [],
-      maxBatchBytes: Number(cc?.max_batch_total_size_bytes ?? 0),
+      // CLAMPED, not trusted. `max_batch_total_size_bytes` is what the
+      // server's CAS logic will accept in one Batch call; it says nothing
+      // about what its gRPC layer will carry, and grpc's default caps a
+      // single message at 4 MiB. Buildbarn advertises its configured message
+      // size here, so a generous config produced batches it then refused —
+      // `batchUpdateBlobs` rejected at 4 356 859 vs 4 194 304. Anything
+      // larger than the safe bound goes by ByteStream anyway, which chunks.
+      maxBatchBytes: this.rememberBatchBytes(Number(cc?.max_batch_total_size_bytes ?? 0)),
       acUpdateEnabled: cc?.action_cache_update_capabilities?.update_enabled === true,
       execEnabled: res.execution_capabilities?.exec_enabled === true,
       supportedCompressors: cc?.supported_compressors ?? [],
@@ -562,7 +592,10 @@ export class ReapiClient {
   ): Promise<Map<string, Uint8Array>> {
     const out = new Map<string, Uint8Array>()
     if (digests.length === 0) return out
-    const budget = maxBatchBytes > 0 ? maxBatchBytes : 4 * 1024 * 1024 - 64 * 1024
+    const budget =
+      maxBatchBytes > 0
+        ? Math.min(maxBatchBytes, SAFE_BATCH_BYTES)
+        : this.negotiatedBatchBytes || SAFE_BATCH_BYTES
     let group: Digest[] = []
     let grouped = 0
     const flush = async (): Promise<void> => {
@@ -597,9 +630,24 @@ export class ReapiClient {
       grouped = 0
     }
     for (const d of digests) {
-      if (grouped + d.size_bytes > budget && group.length > 0) await flush()
+      // Same encoding charge as the upload side: the RESPONSE carries a
+      // digest and framing per blob on top of the bytes, so counting payload
+      // alone overshoots the server's ceiling — observed as
+      // `Attempted to read a total of at least 2 291 516 bytes, while a
+      // maximum of 2 097 152 bytes is permitted`.
+      const cost = d.size_bytes + BATCH_ENTRY_OVERHEAD
+      // A blob too large for ANY batch has to go by ByteStream, which chunks.
+      // The upload side always did this; the read side did not, so one large
+      // blob was put in a group of its own and the request still exceeded the
+      // ceiling no matter how the rest were grouped.
+      if (cost > budget) {
+        const bytes = await this.readBlob(d)
+        if (bytes !== null) out.set(d.hash, bytes)
+        continue
+      }
+      if (grouped + cost > budget && group.length > 0) await flush()
       group.push(d)
-      grouped += d.size_bytes
+      grouped += cost
     }
     await flush()
     return out
@@ -622,23 +670,39 @@ export class ReapiClient {
     // 0 means the server did not say; the gRPC default max message is 4 MB and
     // the request carries framing on top, so leave headroom rather than
     // discovering the limit as a RESOURCE_EXHAUSTED mid-run.
-    const budget = maxBatchBytes > 0 ? maxBatchBytes : 4 * 1024 * 1024 - 64 * 1024
+    const budget =
+      maxBatchBytes > 0
+        ? Math.min(maxBatchBytes, SAFE_BATCH_BYTES)
+        : this.negotiatedBatchBytes || SAFE_BATCH_BYTES
     let batch: Array<{ digest: Digest; data: Uint8Array }> = []
     let batched = 0
     for (const b of todo) {
-      if (b.digest.size_bytes > budget) {
+      // Charge the ENCODING, not just the payload. Each entry also carries a
+      // 64-character hash, a size, and several layers of field tags and
+      // length prefixes; summing raw sizes alone under-counts by ~100 bytes
+      // per blob, which for a few thousand small files is hundreds of
+      // kilobytes — enough to push a batch that "fits" over the wire limit
+      // and have the server refuse it (observed: 4 356 859 sent against a
+      // 4 194 304 ceiling).
+      const cost = b.digest.size_bytes + BATCH_ENTRY_OVERHEAD
+      if (cost > budget) {
         await this.writeBlob(b.digest, b.data)
         continue
       }
-      if (batched + b.digest.size_bytes > budget) {
+      if (batched + cost > budget) {
         await this.batchUpdateBlobs(batch)
         batch = []
         batched = 0
       }
       batch.push(b)
-      batched += b.digest.size_bytes
+      batched += cost
     }
     await this.batchUpdateBlobs(batch)
+  }
+
+  private rememberBatchBytes(advertised: number): number {
+    this.negotiatedBatchBytes = Math.min(advertised || SAFE_BATCH_BYTES, SAFE_BATCH_BYTES)
+    return this.negotiatedBatchBytes
   }
 
   /** The subset of `digests` the server does NOT have — the upload-minimality primitive. */
