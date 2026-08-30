@@ -482,15 +482,13 @@ describe('loadProjectConfig', () => {
     const withResources = (literal: string) =>
       `export default { tasks: { build: { exec: { command: 'tsc', resources: ${literal} } } } }`
 
-    it('accepts numbers, percents, fractional cpus, and size strings', async () => {
+    it('accepts cores, megabytes, an image, and fractional cpus', async () => {
       for (const literal of [
         `{ cpus: 2 }`,
-        `{ cpus: '50%' }`,
         `{ cpus: 0.5 }`,
         `{ memory: 1024 }`,
-        `{ memory: '512MB' }`,
-        `{ memory: '25%' }`,
-        `{ cpus: '12.5%', memory: '2GB' }`,
+        `{ image: 'vx-playwright' }`,
+        `{ cpus: 2, memory: 4096, image: 'vx-playwright' }`,
         `{}`,
       ]) {
         const file = path.join(dir, 'vx.config.mjs')
@@ -501,26 +499,47 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects invalid cpus forms', async () => {
-      for (const literal of [`{ cpus: -1 }`, `{ cpus: NaN }`, `{ cpus: '%' }`, `{ cpus: '2GB' }`]) {
-        const file = path.join(dir, 'vx.config.mjs')
-        await writeFile(file, withResources(literal))
-        await expect(loadProjectConfig(file)).rejects.toThrow(
-          /resources\.cpus must be a non-negative number or a "<n>%" string/,
-        )
-      }
-    })
-
-    it('rejects invalid memory forms (incl. fractional sizes)', async () => {
+      // Percent forms went with the 2026-08-30 units change: a percentage
+      // names a fraction of THIS run's budget, and an executor placing the
+      // task on another machine has no way to mean anything by it.
       for (const literal of [
-        `{ memory: -1 }`,
-        `{ memory: '5X' }`,
-        `{ memory: '1.5GB' }`,
-        `{ memory: '%' }`,
+        `{ cpus: -1 }`,
+        `{ cpus: NaN }`,
+        `{ cpus: '50%' }`,
+        `{ cpus: '2GB' }`,
       ]) {
         const file = path.join(dir, 'vx.config.mjs')
         await writeFile(file, withResources(literal))
         await expect(loadProjectConfig(file)).rejects.toThrow(
-          /resources\.memory must be a non-negative integer/,
+          /resources\.cpus must be a non-negative number of CPU cores/,
+        )
+      }
+    })
+
+    it('rejects invalid memory forms', async () => {
+      // A size STRING is rejected too, deliberately: the unit is megabytes,
+      // and silently accepting '512MB' beside `memory: 512` would give two
+      // spellings that differ by a factor of a million.
+      for (const literal of [
+        `{ memory: -1 }`,
+        `{ memory: 1.5 }`,
+        `{ memory: '512MB' }`,
+        `{ memory: '25%' }`,
+      ]) {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(file, withResources(literal))
+        await expect(loadProjectConfig(file)).rejects.toThrow(
+          /resources\.memory must be a non-negative integer number of megabytes/,
+        )
+      }
+    })
+
+    it('rejects an empty or non-string image', async () => {
+      for (const literal of [`{ image: '' }`, `{ image: 7 }`]) {
+        const file = path.join(dir, 'vx.config.mjs')
+        await writeFile(file, withResources(literal))
+        await expect(loadProjectConfig(file)).rejects.toThrow(
+          /resources\.image must be a non-empty/,
         )
       }
     })
@@ -678,7 +697,7 @@ describe('loadProjectConfig', () => {
             command: 'true',
             timeout: 1000,
             retries: 1,
-            resources: { cpus: 1, memory: '1GB' },
+            resources: { cpus: 1, memory: 1024, image: 'vx-toolchain' },
             env: { passThrough: ['CI'], define: { A: 'b' } },
           },
           sandbox: { network: false },

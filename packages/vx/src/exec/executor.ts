@@ -175,6 +175,18 @@ export interface TaskPlacement {
   readonly pinnedLocal: boolean
   /** Declares `cache` — the only tasks whose input set is described, and so the only ones that can ship. */
   readonly cacheable: boolean
+  /**
+   * `exec.resources` VERBATIM — CPU cores, megabytes, and the image a
+   * worker must be running for this task to be routed to it. All three are
+   * requirements MATCHED against what an executor has, never instructions
+   * to build a machine: a distributed executor's workers belong to whoever
+   * runs the fleet.
+   *
+   * Placement is where this belongs: `exec.resources` is stripped from the
+   * cache key precisely because it decides WHERE a task fits, never what
+   * it produces.
+   */
+  readonly resources?: Readonly<{ cpus?: number; memory?: number; image?: string }>
 }
 
 export interface TaskExecutor {
@@ -190,6 +202,20 @@ export interface TaskExecutor {
   readonly capacity?: number
   /** Per-task opt-out at placement time. Absent = accepts every task it is offered. */
   accepts?(task: TaskPlacement): boolean
+  /**
+   * The tasks placed here that have NOT finished yet — called once after
+   * placement with the whole set, then again after each completion (any
+   * outcome: a cache hit and a failure both remove one).
+   *
+   * An executor that provisions something per task — a container, an
+   * allocation, a pod — otherwise has to guess. `capacity` says how much it
+   * MAY run at once; this says how much is actually left, so it can size
+   * what it creates to the work that remains and give capacity back the
+   * moment the run can no longer use it, rather than holding it until
+   * teardown. Absent = the executor does not care and nothing is computed
+   * for it.
+   */
+  demand?(remaining: ReadonlySet<string>): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 

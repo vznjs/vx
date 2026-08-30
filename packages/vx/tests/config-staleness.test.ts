@@ -169,7 +169,7 @@ describe('worker-evaluated repeat loads', () => {
           timeout: 1000,
           retries: 2,
           env: { passThrough: ['HOME'], define: { A: 'b' } },
-          resources: { cpus: 2, memory: '512MB' },
+          resources: { cpus: 2, memory: 512 },
         },
         cache: {
           inputs: { files: ['src/**'], env: ['CI'], tasks: ['^build'], runtime: ['node -v'] },
@@ -192,7 +192,7 @@ describe('worker-evaluated repeat loads', () => {
     const second = JSON.stringify(await loadProjectConfig(file))
     expect(second).toBe(first)
     // Not a vacuous comparison of two empty objects.
-    expect(first).toContain('512MB')
+    expect(first).toContain('"memory":512')
   })
 
   it('leave the first-load hot path free of workers', async () => {

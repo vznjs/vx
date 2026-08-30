@@ -258,14 +258,18 @@ function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
 }
 
 /**
- * Project the config for hashing: `exec.resources` and `exec.remote` are
- * pure PLACEMENT hints with zero effect on outputs, so they're stripped —
- * tuning a reservation, or pinning a task to this machine, never busts a
- * cache. `remote` in particular must not: the whole contract of a remote
- * executor is that the same command over the same inputs produces the same
- * outputs, so a key that moved when placement changed would split a laptop
- * from a worker pool over nothing. A config that declares neither takes the
- * fast path and stringifies byte-identically to before the fields existed
+ * Project the config for hashing: `exec.resources` (cores, memory AND the
+ * image a task must be matched to) and `exec.remote` are pure PLACEMENT
+ * hints with zero effect on outputs, so they're stripped — tuning a
+ * reservation, pinning a task to this machine, or naming the container it
+ * runs in never busts a cache. `remote` in particular must not: the whole
+ * contract of a remote executor is that the same command over the same
+ * inputs produces the same outputs, so a key that moved when placement
+ * changed would split a laptop from a worker pool over nothing. `image`
+ * rides the same rule one step further: a task that ran locally and the
+ * same task on a worker must share an entry, and a task whose output really
+ * does depend on its toolchain says so with `cache.inputs.runtime`, which
+ * works on both. A config that declares neither takes the fast path and stringifies byte-identically to before the fields existed
  * (why this needs no CACHE_VERSION bump). `timeout`/`retries` stay folded
  * — their keys are distinct by design (see the decision log); stripping
  * them retroactively would bump CACHE_VERSION.

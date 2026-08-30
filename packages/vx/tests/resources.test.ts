@@ -1,7 +1,7 @@
-// exec.resources — the resolver (percent/size forms → absolute costs),
-// the cache-key strip (reservations are scheduling hints, never hashed),
-// the --memory budget flag, and an end-to-end admission pin through a
-// real run. Admission mechanics themselves are pinned in scheduler.test.ts.
+// exec.resources — the resolver (cores/megabytes → absolute costs), the
+// cache-key strip (reservations are scheduling hints, never hashed), the
+// --memory budget flag, and an end-to-end admission pin through a real run.
+// Admission mechanics themselves are pinned in scheduler.test.ts.
 
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -18,40 +18,30 @@ import { parseRunArgs } from '../src/cli/index.js'
 const GiB = 1024 ** 3
 
 describe('resolveCpu', () => {
-  it('number is CPU units, fractional allowed', () => {
-    expect(resolveCpu(8, 8)).toBe(8)
-    expect(resolveCpu(0.5, 8)).toBe(0.5)
-  })
-  it('percent resolves against the CPU budget', () => {
-    expect(resolveCpu('50%', 8)).toBe(4)
-    expect(resolveCpu('12.5%', 8)).toBe(1)
-  })
-  it('over-100% resolves past the budget (solo-clamp territory)', () => {
-    expect(resolveCpu('150%', 8)).toBe(12)
+  it('number is CPU cores, fractional allowed', () => {
+    expect(resolveCpu(8)).toBe(8)
+    expect(resolveCpu(0.5)).toBe(0.5)
   })
   it('undefined and 0 reserve nothing', () => {
-    expect(resolveCpu(undefined, 8)).toBe(0)
-    expect(resolveCpu(0, 8)).toBe(0)
+    expect(resolveCpu(undefined)).toBe(0)
+    expect(resolveCpu(0)).toBe(0)
   })
 })
 
 describe('resolveMem', () => {
-  it('number is bytes', () => {
-    expect(resolveMem(1024, 16 * GiB)).toBe(1024)
-  })
-  it('size strings parse in powers of 1024', () => {
-    expect(resolveMem('2GB', 16 * GiB)).toBe(2 * GiB)
-    expect(resolveMem('512MB', 16 * GiB)).toBe(512 * 1024 * 1024)
-  })
-  it('percent resolves against the memory budget', () => {
-    expect(resolveMem('50%', 16 * GiB)).toBe(8 * GiB)
+  it('number is MEGABYTES, resolved to the bytes the budget axis counts', () => {
+    // The declared unit is MB so the same number means the same thing on this
+    // machine and on a worker; the budget stays in bytes because that is what
+    // `--memory` and os.totalmem() speak.
+    expect(resolveMem(1)).toBe(1024 * 1024)
+    expect(resolveMem(4096)).toBe(4 * GiB)
   })
   it('undefined reserves nothing', () => {
-    expect(resolveMem(undefined, 16 * GiB)).toBe(0)
+    expect(resolveMem(undefined)).toBe(0)
   })
 })
 
-function node(id: string, resources?: { cpus?: number | string; memory?: number | string }) {
+function node(id: string, resources?: { cpus?: number; memory?: number; image?: string }) {
   const n: TaskNode = {
     id,
     projectName: id.split('#')[0]!,
@@ -70,19 +60,27 @@ describe('resolveResourceCosts', () => {
       ['a#run', node('a#run')],
       ['b#run', node('b#run')],
     ])
-    expect(resolveResourceCosts(nodes, 8, 16 * GiB).size).toBe(0)
+    expect(resolveResourceCosts(nodes).size).toBe(0)
   })
 
   it('omits zero-cost declarations and resolves the rest', () => {
     const nodes = new Map([
       ['a#run', node('a#run', { cpus: 0, memory: 0 })],
-      ['b#run', node('b#run', { cpus: '50%' })],
-      ['c#run', node('c#run', { memory: '1GB' })],
+      ['b#run', node('b#run', { cpus: 4 })],
+      ['c#run', node('c#run', { memory: 1024 })],
     ])
-    const costs = resolveResourceCosts(nodes, 8, 16 * GiB)
+    const costs = resolveResourceCosts(nodes)
     expect(costs.has('a#run')).toBe(false)
     expect(costs.get('b#run')).toEqual({ cpu: 4, mem: 0 })
     expect(costs.get('c#run')).toEqual({ cpu: 0, mem: GiB })
+  })
+
+  it('reserves nothing for an image-only declaration', () => {
+    // `image` is a placement MATCH, not a reservation — a task that only says
+    // which worker it belongs on must not start reserving CPU it never asked
+    // for, and must not fall out of the empty-map fast path either.
+    const nodes = new Map([['a#run', node('a#run', { image: 'vx-playwright' })]])
+    expect(resolveResourceCosts(nodes).size).toBe(0)
   })
 })
 
@@ -239,7 +237,7 @@ describe('exec.resources — cache key stability (the strip)', () => {
       // byte-identically to the no-declaration config).
       await writeFile(
         path.join(dir, 'vx.config.mjs'),
-        configWith(`, resources: { cpus: 2, memory: '1GB' }`),
+        configWith(`, resources: { cpus: 2, memory: 1024 }`),
       )
       const withResources = await run({
         cwd: fixture.root,
@@ -250,7 +248,10 @@ describe('exec.resources — cache key stability (the strip)', () => {
       expect(withResources.outcomes[0]!.status).toBe('cache-hit')
 
       // Tune it → still hits.
-      await writeFile(path.join(dir, 'vx.config.mjs'), configWith(`, resources: { cpus: '75%' }`))
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        configWith(`, resources: { cpus: 6, image: 'vx-other' }`),
+      )
       const tuned = await run({
         cwd: fixture.root,
         tasks: ['run'],
@@ -272,14 +273,14 @@ describe('exec.resources — end-to-end admission', () => {
   })
 
   it(
-    'two 100%-cpu tasks serialize through a real run',
+    'two whole-budget cpu tasks serialize through a real run',
     async () => {
       const config = `export default {
         tasks: {
           run: {
             exec: {
               command: "date +%s%N > start.txt && sleep 0.2 && date +%s%N > end.txt",
-              resources: { cpus: '100%' },
+              resources: { cpus: 4 },
             },
           },
         },

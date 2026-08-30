@@ -173,7 +173,10 @@ describe('computeTaskHash — what the config contributes', () => {
       node: node({}, { exec: { command: 'build', resources: { cpus: 2 } } }),
     })
     const eight = await key({
-      node: node({}, { exec: { command: 'build', resources: { cpus: 8, memory: '2GB' } } }),
+      node: node(
+        {},
+        { exec: { command: 'build', resources: { cpus: 8, memory: 2048, image: 'other' } } },
+      ),
     })
     expect(eight).toBe(two)
   })

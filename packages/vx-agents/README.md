@@ -1,7 +1,8 @@
 # `@vzn/vx-agents`
 
-Run vx tasks on a pool of warm agents — containers, Nomad allocations or
-Kubernetes pods — instead of shipping an input tree per action.
+Distributed execution for vx: a small **synchronizer** plus a fleet of
+**persistent workers** that keep a checkout, an install and a local cache
+between runs. Nx Agents' concepts, without the cloud UI.
 
 ```ts
 import { defineWorkspace } from '@vzn/vx'
@@ -11,105 +12,112 @@ import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
 
 export default defineWorkspace({
   plugins: [
-    agents({ image: 'my-toolchain:latest', count: 8, cpu: 2, memory: '3g', prepare: 'bun ci' }),
+    agents({ endpoint: 'https://sync.internal:8787', concurrency: 8 }),
     localExecutorPlugin(),
     localCachePlugin(),
   ],
 })
 ```
 
-Declared before the local executor it takes every task the local one would
-have run. Declared after — or with no `image` and no `VX_AGENTS_IMAGE` — it
-declines and costs nothing.
+Declared before the local executor it takes every task the local one would have
+run. With no `endpoint` and no `VX_AGENTS_ENDPOINT` it declines and costs
+nothing, so a workspace can declare it unconditionally.
 
-## Why this exists
+## The shape
 
-The Remote Execution API is built for hermetic, fine-grained actions: each one
-declares a complete input tree, the server materialises it, runs, and returns
-outputs. That is right when an action's inputs are a handful of files.
-
-This workspace hands it 26 084 in one opaque `node_modules`, so every task paid
-to materialise all of it before its command started — a floor of about seven
-seconds, uncorrelated with the work. Linting 40 files cost the same as linting 225.
-
-An agent is prepared once and reused, so there is no floor. Measured on the
-same repo and the same command:
-
-| task                    | REAPI  | agents | host   |
-| ----------------------- | ------ | ------ | ------ |
-| `lint.oxlint` (vx-otel) | 7.36 s | 175 ms | 64 ms  |
-| `lint.oxfmt` (vx-reapi) | 7.45 s | 517 ms | 361 ms |
-| `build.bun.linux-arm64` | 7.35 s | 476 ms | 340 ms |
-
-Nothing is uploaded and nothing is downloaded: the agents share the workspace,
-so a command reads the same bytes vx just hashed and writes its outputs where
-vx expects them. No Merkle tree, no CAS, no graft, nothing to go stale between
-the two.
-
-**The trade.** A task can read files it never declared, so the declared-input
-set is no longer PROVEN by execution the way a remote action proves it. vx
-still hashes inputs locally, so caching is unaffected — but the completeness
-of `cache.inputs` becomes something your harness enforces rather than
-something the executor discovers.
-
-## Backends
-
-All three keep agents **warm** and exec into them. Every scheduler's natural
-unit is a job that runs to completion, and dispatching one per vx task pays
-container start every time — measured at ~400 ms against ~30 ms for exec'ing
-into something already running.
-
-| `backend`    | agent is          | needs           | `cpu` / `memory` |
-| ------------ | ----------------- | --------------- | ---------------- |
-| `docker`     | a container       | nothing         | `2` / `'3g'`     |
-| `nomad`      | one job, N allocs | `nomad` on PATH | MHz / MiB        |
-| `kubernetes` | a long-lived Pod  | `kubectl`       | `'2'` / `'4Gi'`  |
-
-Each shells out to the CLI rather than vendoring a client: nothing to version,
-no auth matrix to reimplement, and failure modes an operator already reads.
-
-## The shared workspace
-
-Every agent must see the **same files** — vx hashes them here and the command
-reads them there.
-
-- `docker` and `nomad` take a host path in `volume`, defaulting to the
-  workspace root. Right for a local cluster.
-- `kubernetes` takes a volume source verbatim: `{ hostPath: { path: '…' } }`
-  on a single node, a ReadWriteMany claim across real ones.
-
-vx does not pretend a remote cluster can see your laptop. A task whose files
-are not there fails on its first command, loudly.
-
-## `prepare`
-
-Runs once before any task takes an agent — typically the install. A non-zero
-exit is **fatal**: an agent that silently skipped it would run every task
-against a half-built tree and report the failures as the tasks' own.
-
-`prepareScope` defaults to `'pool'` because every built-in backend shares one
-workspace, so the install belongs to the workspace rather than the agent.
-Running it per agent against a shared mount is not merely wasteful — eight
-concurrent `bun ci` processes fight, and the loser reports
-`EEXIST: failed to symlink dependencies`. Agents that did not run it still wait
-for it. Set `'agent'` when your agents have their own checkout.
-
-## Other transports
-
-`pool.ts` owns leasing and knows nothing about containers, so a fourth backend
-is one function:
-
-```ts
-agents({ createAgent: async (index) => ({ id: `ssh-${index}`, exec, dispose }) })
+```
+vx run (CI)  ──HTTPS──►  synchronizer  ◄──HTTPS──  worker … worker
+     │                                                  │
+     └──────────────── remote cache (CAS) ──────────────┘
 ```
 
-## Things learned the hard way
+**The fleet is yours.** A Nomad job, a compose file, a systemd unit — anything
+that keeps N `vx-agent` processes alive. Nothing in it is vx-specific, and vx
+never talks to your scheduler, holds cloud credentials, or provisions anything.
 
-- The image's `ENTRYPOINT` is **overridden**, not appended to. A toolchain
-  image usually has one, and the keep-alive would otherwise become an argument
-  to it — the container exits and every task reports "not running".
-- An agent needs the same two `node_modules/.bin` entries core puts on a local
-  task's PATH, or a package binary exits 127 remotely while working locally.
-- `nomad alloc exec` and `kubectl exec` take no `-e` flags, so environment
-  crosses as a shell prefix — and therefore must be quoted, or a value with a
-  space becomes another command.
+**Workers persist**, which is the whole point. Per run a worker fetches the
+commit and reinstalls only if the lockfile moved; a task it ran last week may
+still be a **local** cache hit — a tier below the remote cache that a container
+started per run can never have.
+
+**The synchronizer is a rendezvous, not a coordinator.** It exists because an
+ephemeral CI job cannot open a connection into a cluster and a worker cannot
+open one back to a job that may not exist in ten minutes — but both can reach
+one HTTPS endpoint. It holds a queue, streams output back, and decides the one
+thing vx cannot: **which** worker, preferring one already sitting on the run's
+commit.
+
+**vx keeps the scheduler.** Assignments are one task at a time in the order
+core decided. The run record, the summary and `where` attribution never leave
+the `vx run` process.
+
+## Running it
+
+```sh
+# the synchronizer — one process, no database
+VX_SYNC_PORT=8787 VX_SYNC_TOKEN=… bunx vx-sync
+
+# a worker — N of these, wherever you like
+VX_AGENTS_ENDPOINT=https://sync.internal:8787 \
+VX_SYNC_TOKEN=… \
+VX_AGENT_WORKSPACE=/work \
+VX_AGENT_IMAGE=vx-toolchain \
+VX_AGENT_CORES=4 VX_AGENT_MEMORY=8192 \
+VX_AGENT_MAX_ASSIGNMENTS=200 \
+  bunx vx-agent
+```
+
+A worker needs `git`, the toolchain your tasks use, and read access to the
+repository — it fetches the run's commit itself.
+
+## Matching tasks to workers
+
+A worker advertises what it is; a task declares what it needs. Both are
+`exec.resources`, which core strips from the cache key, so declaring them never
+invalidates anything:
+
+```ts
+e2e: {
+  exec: {
+    command: 'playwright test',
+    resources: { cpus: 2, memory: 4096, image: 'vx-playwright' },
+  },
+}
+```
+
+`cpus` is cores, `memory` is megabytes, `image` matches `VX_AGENT_IMAGE`. An
+axis the task omits constrains nothing; an axis a **worker** omits satisfies
+only a task that did not ask — "unknown" is not "enough", and routing an 8 GB
+task to a worker that never advertised its memory would turn a placement error
+into someone's OOM.
+
+## How results come back
+
+Three kinds, three routes:
+
+- **Exit code and logs** ride the synchronizer, live, so the CI terminal looks
+  like an ordinary `vx run`.
+- **Artifacts never travel worker→vx directly.** The worker saves its cache
+  entry; whoever needs the bytes restores them. Another worker restoring a
+  dependency is the normal path; the CI job pulling home what it asked for is
+  `--download=toplevel`.
+- **The run record** never left the submitter.
+
+So a **remote cache is not optional** here. Without one, workers cannot see
+each other's outputs and every one of them re-runs its upstreams.
+
+## Requirements on your side
+
+- The commit must be **reachable from the remote** — workers fetch it. On a
+  pull request that is the merge SHA, which lives on no branch, so the worker
+  fetches the SHA directly rather than cloning a branch.
+- The tree should be **clean**. Uncommitted work never reaches a worker; this
+  is a CI feature, and running it locally is for testing it.
+
+## Extending
+
+`src/protocol.ts` is the whole wire — HTTP + JSON, long-poll for work, SSE for
+the stream back, deliberately dull so both ends can reach one endpoint through
+any firewall. `SyncClient` is shared by the plugin and the worker on purpose:
+two clients would drift on a field name with nothing to catch it until a run
+hung.

@@ -16,7 +16,7 @@ export { VERSION } from './version.js'
 // page) should have one implementation — and so should the ONE strict integer
 // parser, whose entire purpose is that `Number()` silently accepts `0x10` and
 // `1e3` at a boundary where a typo must be an error, not a different number.
-export { clampInt, parseDecimalInt, UserError } from './util/index.js'
+export { clampInt, parseDecimalInt, parseSize, UserError } from './util/index.js'
 
 // Schema types and helpers (used by user vx.config files and presets).
 export type {

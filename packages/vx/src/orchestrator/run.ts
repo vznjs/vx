@@ -281,6 +281,30 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       log.status(`[vx] ${id}: exec.remote is 'only' and ${why} — nothing ran`)
     }
   }
+  // Demand: what each executor still has left to run. An executor that
+  // provisions per task (a container, an allocation, a pod) otherwise has to
+  // guess from `capacity` alone and hold everything until teardown. Built
+  // ONLY for executors that asked — with none declared there is no map, no
+  // set, and no call in the completion path.
+  const demandOf = new Map<TaskExecutor, Set<string>>()
+  for (const [id, executor] of placements.executors) {
+    if (executor.demand === undefined) continue
+    let remaining = demandOf.get(executor)
+    if (remaining === undefined) demandOf.set(executor, (remaining = new Set()))
+    remaining.add(id)
+  }
+  // The SAME set is handed back every time, narrowed in place: a consumer
+  // reading it later sees the truth rather than a stale snapshot.
+  for (const [executor, remaining] of demandOf) executor.demand!(remaining)
+  const narrowDemand =
+    demandOf.size === 0
+      ? (): void => {}
+      : (id: string): void => {
+          for (const [executor, remaining] of demandOf) {
+            if (remaining.delete(id)) executor.demand!(remaining)
+          }
+        }
+
   // `--download` (default `all`) decides ONCE per task, here, whether a
   // remote execution's outputs come home. `--verify` pins every task local
   // (so nothing defers under a proof) and `all` keeps today's behaviour
@@ -535,7 +559,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Nothing declared → empty map → fields omitted from the scheduler
     // AND the footer → byte-identical legacy path.
     const memBudget = options.memory ?? os.totalmem()
-    const resourceCosts = resolveResourceCosts(nodes, concurrency, memBudget)
+    const resourceCosts = resolveResourceCosts(nodes)
 
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
@@ -713,6 +737,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       },
       onFinish: (o) => {
         log.taskComplete(o.node, o)
+        narrowDemand(o.node.id)
       },
       execute: executeWithDedup,
       // Predictive scheduling: empty map when not opted in, in which
@@ -1181,6 +1206,9 @@ function placeTasks(
       command: node.config.exec!.command,
       pinnedLocal: pinAllLocal || pinned.has(node.id),
       cacheable: node.config.cache !== undefined,
+      ...(node.config.exec?.resources === undefined
+        ? {}
+        : { resources: node.config.exec.resources }),
     })
     placements.executors.set(node.id, executor)
     if (node.config.exec?.remote === 'only') {

@@ -208,23 +208,32 @@ keys.
 
 ```ts
 interface ResourcesConfig {
-  cpus?: number | string // CPU units (fractional ok) or "<n>%" of the CPU budget
-  memory?: number | string // bytes, "512MB"/"2GB" (powers of 1024), or "<n>%" of RAM
+  cpus?: number // CPU cores, fractional allowed
+  memory?: number // megabytes — 4096 is four gigabytes
+  image?: string // container image a worker must be running to take this task
 }
 ```
 
-Resource **reservations** for scheduling admission. A task declares how
-much CPU / memory it needs, and the scheduler packs ready tasks so
-concurrent reservations never exceed a budget on either axis — a 12 GB
-linker and a 6-core type-check no longer count the same as a near-free
-`lint`. Turbo and Nx have nothing comparable (flat task-count
-concurrency only); Bazel's local resources are the precedent.
+What a task needs from a machine. Locally that is a **reservation** for
+scheduling admission: the scheduler packs ready tasks so concurrent
+reservations never exceed a budget on either axis — a 12 GB linker and a
+6-core type-check no longer count the same as a near-free `lint`. Turbo and
+Nx have nothing comparable (flat task-count concurrency only); Bazel's local
+resources are the precedent. A distributed executor reads the same numbers as
+a **requirement** and routes the task to a worker that satisfies them.
 
 ```ts
 test: {
   exec: {
     command: 'vitest run integration',
-    resources: { cpus: 4, memory: '2GB' }, // or { cpus: '50%', memory: '25%' }
+    resources: { cpus: 4, memory: 2048 },
+  },
+}
+
+e2e: {
+  exec: {
+    command: 'playwright test',
+    resources: { cpus: 2, memory: 4096, image: 'vx-playwright' },
   },
 }
 ```
@@ -237,11 +246,19 @@ test: {
   field (or declares `0`) is gated only by the concurrency-count limit.
   Reservations coordinate among tasks that opt in; every existing
   config schedules byte-identically.
-- **Budgets:** `cpus` percent resolves against the run's `concurrency`;
-  `memory` percent against total system RAM, overridable with
-  `vx run --memory <size>`. **Container caveat:** in a cgroup-limited
-  container `os.totalmem()` reports the HOST's RAM — pass `--memory`
-  with the real limit in CI containers.
+- **The same numbers everywhere.** Cores and megabytes mean the same thing
+  on this machine and on a worker, which is why percent forms were removed
+  on 2026-08-30: a percentage names a fraction of THIS run's budget, and an
+  executor placing the task elsewhere has no way to mean anything by it. The
+  local budgets are the run's `concurrency` and total system RAM, the latter
+  overridable with `vx run --memory <size>`. **Container caveat:** in a
+  cgroup-limited container `os.totalmem()` reports the HOST's RAM — pass
+  `--memory` with the real limit in CI containers.
+- **`image` is a MATCH, never a provisioning instruction.** A distributed
+  executor's workers belong to whoever runs the fleet; a task naming an image
+  is routed to a worker already running it, and an executor with no such
+  worker reports that rather than building one. Executors that do not run
+  containers ignore the field.
 - **Never blocks the run:** a reservation larger than the whole budget
   is admitted alone (when nothing else holds that axis), so an
   over-declared task still runs — one at a time — instead of

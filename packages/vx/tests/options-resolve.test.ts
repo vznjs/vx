@@ -475,7 +475,6 @@ describe('concurrency ladder — options > workspace > hardwareConcurrency', () 
       // means a refactor that resolved concurrency correctly but stopped
       // threading it into `cpuBudget` (or resolved a different value for it)
       // flips one of these two arms. `resources.test.ts` cannot see this: its
-      // `cpus: '100%'` is budget-relative and serializes at any budget.
       const config = `export default {
         tasks: {
           run: {
@@ -537,7 +536,7 @@ describe('memory ladder — RunOptions.memory > os.totalmem()', () => {
       const config = `export default {
         tasks: {
           run: {
-            exec: { command: ${JSON.stringify(SPAN_CMD)}, resources: { memory: '600MB' } },
+            exec: { command: ${JSON.stringify(SPAN_CMD)}, resources: { memory: 600 } },
           },
         },
       }`

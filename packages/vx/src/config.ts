@@ -291,19 +291,17 @@ export interface ExecConfig {
  * rejects unknown keys.
  */
 export interface ResourcesConfig {
+  /** CPU cores; fractional is allowed (`0.5`). */
+  cpus?: number
+  /** Megabytes. `memory: 4096` is four gigabytes. */
+  memory?: number
   /**
-   * CPU units (fractional ok, e.g. `0.5`), or a `"<n>%"` string of the
-   * CPU budget (the run's `concurrency`). `cpus: "50%"` on a budget of 8
-   * reserves 4 units.
+   * The container image this task needs, MATCHED against what a worker
+   * advertises — never a provisioning instruction, since a distributed
+   * executor's workers belong to whoever runs the fleet. Ignored by
+   * executors that do not run containers.
    */
-  cpus?: number | string
-  /**
-   * Bytes, a size string (`"2GB"`, `"512MB"` — K/M/G/T, powers of 1024),
-   * or a `"<n>%"` string of the memory budget (`os.totalmem()` unless
-   * overridden with `--memory` — pass `--memory` in cgroup-limited
-   * containers, where `os.totalmem()` reports the HOST's RAM).
-   */
-  memory?: number | string
+  image?: string
 }
 
 export interface PersistentConfig {

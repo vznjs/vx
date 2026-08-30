@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { MAX_TIMEOUT_MS, parseSize, UserError, xxh3hex } from '../util/index.js'
+import { MAX_TIMEOUT_MS, UserError, xxh3hex } from '../util/index.js'
 import { evaluateConfigFresh } from './config-eval.js'
 
 const WORKSPACE_CONFIG_FILENAMES = [
@@ -730,12 +730,11 @@ function validateSandbox(sandbox: unknown, where: string, hasExec: boolean): voi
   }
 }
 
-const RESOURCES_FIELDS = new Set(['cpus', 'memory'])
-const PERCENT_RE = /^\d+(\.\d+)?%$/
+const RESOURCES_FIELDS = new Set(['cpus', 'memory', 'image'])
 
 function validateResources(resources: unknown, where: string): void {
   if (typeof resources !== 'object' || resources === null || Array.isArray(resources)) {
-    throw new UserError(`${where} must be an object (e.g. \`{ cpus: 2, memory: '2GB' }\`)`)
+    throw new UserError(`${where} must be an object (e.g. \`{ cpus: 2, memory: 2048 }\`)`)
   }
   for (const key of Object.keys(resources as object)) {
     if (!RESOURCES_FIELDS.has(key)) {
@@ -744,27 +743,22 @@ function validateResources(resources: unknown, where: string): void {
       )
     }
   }
-  const { cpus, memory } = resources as { cpus?: unknown; memory?: unknown }
-  if (cpus !== undefined) {
-    const ok =
-      typeof cpus === 'number'
-        ? Number.isFinite(cpus) && cpus >= 0
-        : typeof cpus === 'string' && PERCENT_RE.test(cpus)
-    if (!ok) {
-      throw new UserError(`${where}.cpus must be a non-negative number or a "<n>%" string`)
-    }
+  const { cpus, memory, image } = resources as {
+    cpus?: unknown
+    memory?: unknown
+    image?: unknown
   }
-  if (memory !== undefined) {
-    const ok =
-      typeof memory === 'number'
-        ? Number.isInteger(memory) && memory >= 0
-        : typeof memory === 'string' && (PERCENT_RE.test(memory) || parseSize(memory) !== null)
-    if (!ok) {
-      throw new UserError(
-        `${where}.memory must be a non-negative integer (bytes), ` +
-          `a size string like "512MB", or a "<n>%" string`,
-      )
-    }
+  if (cpus !== undefined && (typeof cpus !== 'number' || !Number.isFinite(cpus) || cpus < 0)) {
+    throw new UserError(`${where}.cpus must be a non-negative number of CPU cores`)
+  }
+  if (
+    memory !== undefined &&
+    (typeof memory !== 'number' || !Number.isInteger(memory) || memory < 0)
+  ) {
+    throw new UserError(`${where}.memory must be a non-negative integer number of megabytes`)
+  }
+  if (image !== undefined && (typeof image !== 'string' || image === '')) {
+    throw new UserError(`${where}.image must be a non-empty string (or omitted)`)
   }
 }
 
