@@ -484,7 +484,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     violations = []
     const req = await buildRequest()
-    const res = await args.executor.execute(req)
+    // An executor that THROWS produces no captured output, so the task's
+    // frame would print the command and nothing else while the reason went
+    // straight to stderr and scrolled away in a broad run. Put it in the
+    // task's own stream first: the frame is where a reader looks for why a
+    // task failed, and a remote executor's failures are exactly the ones with
+    // no other trace. Rethrown unchanged — the scheduler still classifies it,
+    // and still prints it plainly for a UserError.
+    const res = await args.executor.execute(req).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err)
+      log.taskStderr(node, `${message}\n`)
+      throw err
+    })
     violations = [...res.violations]
     // Fail-on-violation, on BOTH platforms: macOS reads SRT's structured
     // violation store, Linux parses the strace log the sandboxed spawn
