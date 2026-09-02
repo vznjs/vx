@@ -160,9 +160,6 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
       }
     }
   }
-  if (config.predictive !== undefined && typeof config.predictive !== 'boolean') {
-    throw new UserError(`${configPath}: \`predictive\` must be a boolean`)
-  }
 }
 
 /**

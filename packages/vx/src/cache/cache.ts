@@ -148,10 +148,8 @@ const SCHEMA_VERSION = 'v24'
  * row drags every average toward zero.
  *
  * Lives here, beside the schema, because the same figure is computed in more
- * than one place (`Cache.stats` and `metrics.getCacheStatsSql` both answer
+ * than one place (`Cache.stats` and the run-history queries both answer
  * "runs in the last 24h") and two copies of a rule are how they drift apart.
- * The cloud analytics copy mirrors it as `EXECUTED_TASK_RUNS_SQL` over
- * Postgres `task_runs`, which receives the same rows.
  */
 export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
 
@@ -1932,7 +1930,7 @@ export class Cache implements CacheLayer {
     // 30 days comfortably covers `vx stats` (24 h windows) and any
     // CI-side analytics consumers. The `invocations` header table (one
     // row per `vx run`) is pruned on the SAME window — otherwise a
-    // header would outlive its `runs` rows, so `vx info`/`vx mcp` would
+    // header would outlive its `runs` rows, so `vx info`/`vx last` would
     // list an invocation whose task detail is already gone, and the
     // table would grow unbounded on a long-lived checkout.
     try {

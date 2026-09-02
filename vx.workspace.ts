@@ -12,12 +12,8 @@ import { github } from '@vzn/vx-github'
 //   otel()   — export each run as OpenTelemetry traces + metrics. Activates
 //              when OTEL_EXPORTER_OTLP_ENDPOINT is set, declines otherwise.
 //   github() — write each run as a GitHub Actions job summary. Activates on
-//              GITHUB_STEP_SUMMARY, declines everywhere else (so a laptop
-//              run pays nothing). The Checks API half stays dormant here:
-//              this workflow puts no GITHUB_TOKEN in the environment, and
-//              the plugin skips the check-run rather than guessing. We
-//              dogfood our own plugins — that is how their decline paths
-//              get exercised on every run.
+//              GITHUB_STEP_SUMMARY, declines everywhere else. We dogfood our
+//              own plugins so their decline paths run on every laptop run.
 export default defineWorkspace({
   plugins: [otel(), github(), localExecutorPlugin(), localCachePlugin()],
 })

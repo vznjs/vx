@@ -4,11 +4,7 @@ import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
 import { Cache, type RunRecord } from '../src/cache/index.js'
-import {
-  EmptyHistoryProvider,
-  getHistory,
-  LocalHistoryProvider,
-} from '../src/orchestrator/index.js'
+import { EmptyHistoryProvider, LocalHistoryProvider } from '../src/orchestrator/index.js'
 
 function mkRun(args: {
   hash: string
@@ -124,70 +120,8 @@ describe('LocalHistoryProvider', () => {
       expect(entry!.p50DurationMs).toBeGreaterThan(0)
       expect(entry!.p99DurationMs).toBeGreaterThan(0)
       // Every run sits on its OWN cache key and none was retried, so the lone
-      // failure is a legitimate break, not flakiness — the same verdict
-      // `metrics.getHistory` reaches on these rows.
+      // failure is a legitimate break, not flakiness.
       expect(entry!.failureMode).toBe('stable')
-    } finally {
-      cache.close()
-      rmSync(cacheDir, { recursive: true, force: true })
-    }
-  })
-
-  // Both surfaces classify the SAME `runs` rows — the dashboard / `vx info`
-  // read and what `vx mcp` hands an AI agent. They used to encode the rule
-  // independently and reached OPPOSITE verdicts on identical data, telling an
-  // agent to bolt `exec.retries` onto a deterministic break.
-  it('agrees with metrics.getHistory on every failure shape', async () => {
-    const cache = makeCache()
-    try {
-      const now = Date.now()
-      const rows: RunRecord[] = []
-      // (a) deterministic break — five failures, each on its OWN key.
-      for (let i = 0; i < 5; i++) {
-        rows.push(
-          mkRun({
-            hash: `break-${i}`,
-            project: 'pkg',
-            task: 'lint',
-            status: 'failed',
-            durationMs: 10,
-            startedAt: now - 5000 + i,
-          }),
-        )
-      }
-      // (b) genuine flake — ONE key that both failed and succeeded.
-      rows.push(
-        mkRun({
-          hash: 'flake-key',
-          project: 'pkg',
-          task: 'flaky',
-          status: 'failed',
-          durationMs: 10,
-          startedAt: now - 3000,
-        }),
-        mkRun({
-          hash: 'flake-key',
-          project: 'pkg',
-          task: 'flaky',
-          status: 'success',
-          durationMs: 10,
-          startedAt: now - 2000,
-        }),
-      )
-      cache.recordRuns(rows)
-      const db = (cache as unknown as { db: Database }).db
-      const provider = new LocalHistoryProvider(db)
-      const table = await provider.loadFor(['pkg#lint', 'pkg#flaky'])
-
-      for (const [project, task, expected] of [
-        ['pkg', 'lint', 'stable'],
-        ['pkg', 'flaky', 'flaky-fatal'],
-      ] as const) {
-        const viaMetrics = getHistory(db, { project, task })[0]!.failureMode
-        const viaProvider = table.get(`${project}#${task}`)!.failureMode
-        expect(viaMetrics).toBe(expected)
-        expect(viaProvider).toBe(expected)
-      }
     } finally {
       cache.close()
       rmSync(cacheDir, { recursive: true, force: true })
@@ -216,9 +150,6 @@ describe('LocalHistoryProvider', () => {
       const db = (cache as unknown as { db: Database }).db
       const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#test'])).get('pkg#test')
       expect(entry!.failureMode).not.toBe('stable')
-      expect(getHistory(db, { project: 'pkg', task: 'test' })[0]!.failureMode).toBe(
-        entry!.failureMode,
-      )
     } finally {
       cache.close()
       rmSync(cacheDir, { recursive: true, force: true })

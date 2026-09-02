@@ -289,13 +289,13 @@ async function buildRunners(dir: string): Promise<Runner[]> {
       '--minify',
       '--bytecode',
       `--target=${target}`,
-      path.join(vxRoot, 'src', 'bin.ts'),
+      path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts'),
       '--outfile',
       vxBin,
     ],
     vxRoot,
   )
-  const vxRun = compiled.ok ? [vxBin] : [process.execPath, path.join(vxRoot, 'src', 'bin.ts')]
+  const vxRun = compiled.ok ? [vxBin] : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
   const vxVer = (await sh([...vxRun, '--version'], dir)).out.trim()
   const conc = ['--concurrency', String(CONCURRENCY)]
   runners.push({

@@ -958,8 +958,6 @@ interface WorkspaceConfig {
   timeout?: number
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly Plugin[]
-  /** Opt in to history-based predictive scheduler priorities. */
-  predictive?: boolean
 }
 ```
 
@@ -996,15 +994,10 @@ interface WorkspaceConfig {
   endpoint configured) costs nothing — a run with no active plugin
   is byte-identical to one with none declared. Plugins observe, route
   and execute; they never change what a task is.
-- **`predictive`** — **experimental, unbenchmarked.** When `true` and
-  `cache.db` has prior runs, the scheduler picks the next ready task
-  by expected remaining critical-path duration (history p50s)
-  instead of the static reverse-deps count. Fails open: any error in
-  history loading degrades to the baseline heuristic.
 
 The loader validates the shape (positive integer for `concurrency`,
 string for `cacheDir`, plugin objects with a name and at least one
-capability, boolean `predictive`) and throws a `UserError` on
+capability) and throws a `UserError` on
 malformed input.
 
 There are no workspace-level `globalInputs` / task-default fields:
@@ -1277,4 +1270,3 @@ Workspace-config errors:
 | `plugins[<i>].name must be a non-empty string`                                                   | Missing / empty plugin name.                             |
 | `plugins[<i>].<capability> must be a function`                                                   | A capability key holding something that is not callable. |
 | `plugins[<i>] must contribute at least one of setup/cache/executor/telemetry/eventSink/teardown` | A plugin object with no capability.                      |
-| `predictive must be a boolean`                                                                   | Wrong shape.                                             |

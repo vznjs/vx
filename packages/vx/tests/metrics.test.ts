@@ -6,12 +6,9 @@ import { type InvocationRecord, Cache, type RunRecord } from '../src/cache/index
 import {
   cacheKeyDiff,
   explainCacheKeyQuery,
-  getCacheStatsSql,
-  getHistory,
   getInvocation,
   getRun,
   listInvocations,
-  listProjects,
   listRuns,
   whyDidThisRerunQuery,
 } from '../src/orchestrator/index.js'
@@ -434,116 +431,6 @@ describe('getRun', () => {
   })
 })
 
-describe('getCacheStatsSql', () => {
-  it('counts entries + computes hit rate + local/remote split from runs in last 24h', () => {
-    withCache((cache) => {
-      const now = Date.now()
-      cache.recordRuns([
-        mkRun({
-          hash: 'h1',
-          project: 'pkg',
-          task: 'build',
-          status: 'success',
-          startedAt: now - 1500,
-        }),
-        mkRun({
-          hash: 'h2',
-          project: 'pkg',
-          task: 'build',
-          status: 'cache-hit',
-          startedAt: now - 1000,
-        }),
-        mkRun({
-          hash: 'h3',
-          project: 'pkg',
-          task: 'test',
-          status: 'cache-hit-remote',
-          startedAt: now - 500,
-        }),
-      ])
-      const stats = getCacheStatsSql(cache.dbHandle())
-      expect(stats.runCountLast24h).toBe(3)
-      expect(stats.hitCountLast24h).toBe(2)
-      expect(stats.hitLocalCountLast24h).toBe(1)
-      expect(stats.hitRemoteCountLast24h).toBe(1)
-      expect(stats.hitRate24h).toBeCloseTo(2 / 3)
-    })
-  })
-})
-
-describe('getHistory', () => {
-  it('rolls (project, task) aggregates with failureMode classification', () => {
-    withCache((cache) => {
-      const now = Date.now()
-      cache.recordRuns(
-        Array.from({ length: 6 }, (_, i) =>
-          mkRun({
-            // The failing run reuses h4's key — a same-key flap, so the task
-            // classifies flaky (a unique-key failure would read 'stable').
-            hash: i === 5 ? 'h4' : `h${i}`,
-            project: 'pkg',
-            task: 'test',
-            status: i === 5 ? 'failed' : 'success',
-            startedAt: now - 1000 * (6 - i),
-            durationMs: 100 + i * 50,
-          }),
-        ),
-      )
-      const rows = getHistory(cache.dbHandle(), { project: 'pkg', task: 'test' })
-      expect(rows.length).toBe(1)
-      expect(rows[0]!.id).toBe('pkg#test')
-      expect(rows[0]!.runs).toBe(6)
-      expect(rows[0]!.successRate).toBeCloseTo(5 / 6, 5)
-      expect(rows[0]!.failureMode).toBe('flaky-recoverable')
-      expect(rows[0]!.p50DurationMs).toBeGreaterThan(0)
-    })
-  })
-
-  it('reads a unique-key failure as stable (a break, not a flake)', () => {
-    withCache((cache) => {
-      const now = Date.now()
-      cache.recordRuns(
-        Array.from({ length: 6 }, (_, i) =>
-          mkRun({
-            hash: `h${i}`,
-            project: 'pkg',
-            task: 'test',
-            status: i === 5 ? 'failed' : 'success',
-            startedAt: now - 1000 * (6 - i),
-            durationMs: 100 + i * 50,
-          }),
-        ),
-      )
-      const rows = getHistory(cache.dbHandle(), { project: 'pkg', task: 'test' })
-      expect(rows[0]!.failureMode).toBe('stable')
-    })
-  })
-
-  it('keeps the most-recently-run tasks when the page truncates', () => {
-    withCache((cache) => {
-      const now = Date.now()
-      // 60 alphabetically-early pairs, all older…
-      const runs = Array.from({ length: 60 }, (_, i) =>
-        mkRun({
-          hash: `h${i}`,
-          project: `aaa${String(i).padStart(3, '0')}`,
-          task: 'build',
-          startedAt: now - 1_000_000 + i,
-        }),
-      )
-      // …and the one that just ran, sorting LAST alphabetically.
-      runs.push(mkRun({ hash: 'hz', project: 'zzz-just-ran', task: 'build', startedAt: now - 10 }))
-      cache.recordRuns(runs)
-      const rows = getHistory(cache.dbHandle(), { limit: 50 })
-      expect(rows.length).toBe(50)
-      // An unordered DISTINCT scan sliced in JS returns the alphabetical
-      // prefix — which drops exactly the task the user just ran.
-      expect(rows.map((r) => r.id)).toContain('zzz-just-ran#build')
-      expect(rows[0]!.id).toBe('zzz-just-ran#build')
-    })
-  })
-})
-
 describe('explainCacheKeyQuery', () => {
   it('returns the most recent entries row for a (project, task)', () => {
     withCache((cache) => {
@@ -575,24 +462,6 @@ describe('whyDidThisRerunQuery', () => {
     withCache((cache) => {
       const result = whyDidThisRerunQuery(cache.dbHandle(), 'r-x', 'pkg#test')
       expect(result.found).toBe(false)
-    })
-  })
-})
-
-describe('listProjects', () => {
-  it('rolls per-project totals + cache entries', () => {
-    withCache((cache) => {
-      cache.recordRuns([
-        mkRun({ hash: 'h1', project: 'a', task: 'build', durationMs: 100 }),
-        mkRun({ hash: 'h2', project: 'a', task: 'test', durationMs: 50 }),
-        mkRun({ hash: 'h3', project: 'b', task: 'build', durationMs: 200 }),
-      ])
-      const rows = listProjects(cache.dbHandle())
-      expect(rows.length).toBe(2)
-      const a = rows.find((r) => r.project === 'a')!
-      expect(a.taskCount).toBe(2)
-      expect(a.totalDurationMs).toBe(150)
-      expect(a.runs).toBe(2)
     })
   })
 })

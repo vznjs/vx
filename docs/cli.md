@@ -28,7 +28,6 @@ vx show [PROJECT[#TASK]] [--format pretty|json]
 vx info
 vx stats              # deprecated alias of vx info
 vx upgrade [tag]      # self-update a compiled binary
-vx mcp [--stdio]      # MCP server for AI agents
 
 # Meta
 vx help
@@ -641,8 +640,7 @@ predicted: ~72.64s wall · ~72.64s total execution
 
 **Time prediction.** A would-run task with recorded history shows its
 typical executed duration (`~p50` over its recent non-hit runs in the
-local `cache.db` — the same history the opt-in predictive scheduler
-reads). The footer predicts the run: `wall` is the longest dependency
+local `cache.db`). The footer predicts the run: `wall` is the longest dependency
 chain of would-run cost (cache hits restore near-instantly and count
 as 0), `total execution` is the sum across would-run tasks. Tasks with
 no history count as 0 and are called out (`N tasks without history
@@ -1386,42 +1384,6 @@ run ids; `vx last <runId>` replays a specific one. `--format json`
 emits `{ invocation, tasks }` for scripting. An unknown run id fails
 loud and points at `--list`.
 
-## `vx mcp` — Model Context Protocol server
-
-Boot an MCP server so AI coding agents (Claude Code, Cursor,
-Continue.dev, VS Code GitHub Copilot, …) can query vx state through
-the standard agent-tool protocol. Stdio transport only.
-
-```
-vx mcp                           # stdio transport (default)
-vx mcp --stdio                   # explicit
-```
-
-Add to an MCP client config (Claude Code example):
-
-```jsonc
-// ~/.claude/mcp.json
-{
-  "mcpServers": {
-    "vx": { "command": "vx", "args": ["mcp"] },
-  },
-}
-```
-
-Tools exposed:
-
-| Tool              | Purpose                                                                                                                     |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `getCacheStats`   | Aggregate cache stats (entries, total size, runs/hits last 24h, hit rate)                                                   |
-| `getRunHistory`   | Recent runs filtered by `project` / `task` / `limit`, with per-pair p50/p99/successRate/hitRate aggregates                  |
-| `explainCacheKey` | Persisted entry metadata for a `project#task` (hash, command, exit code, duration, size, created_at)                        |
-| `whyDidThisRerun` | Compares a `(runId, taskId)` against the immediately preceding run for the same task; reports whether the cache key changed |
-
-All tools read the local `cache.db` opened on demand. No network, no
-auth (stdio is process-private). Future tools (`runTasks`,
-`getRunState`) ship under the `vx:rpc` channel when the inspector WS
-surface lands.
-
 ## Output format
 
 `vx run` emits framed blocks. Stdout/stderr from each task is
@@ -1526,8 +1488,7 @@ sqlite3 .vx/cache/cache.db "
 ```
 
 The schema is documented in
-[`caching.md` § SQLite tables](./caching.md#sqlite-tables). `vx mcp`
-exposes the same queries to an AI agent.
+[`caching.md` § SQLite tables](./caching.md#sqlite-tables).
 
 ## What's still missing vs Turbo
 

@@ -34,7 +34,7 @@ The five carved-in-stone rules from §3 are now true of the running code:
 | Fail-safe to local                      | OTel bridge missing → silent skip; remote cache 500 → cache miss; coordinator unreachable → falls back to in-process |
 | Shell is the API for tasks              | distributed worker spawns `sh -c <command>` like the local executor                                                  |
 
-Detail in `docs/progress/implementation-log-2026-06.md`.
+The phase-by-phase implementation log was removed with the 2026-09 cleanup; it is in git history.
 
 ## 1. The end-state vision (one screen)
 

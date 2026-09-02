@@ -740,9 +740,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         narrowDemand(o.node.id)
       },
       execute: executeWithDedup,
-      // Predictive scheduling: empty map when not opted in, in which
-      // case the scheduler keeps the static baseline behavior.
-      priorities: prepared.priorities,
       // Local short-circuit: confirmed stable local hits the scheduler
       // runs ahead of their deps as low-priority worker-slot backfill.
       // Empty when the short-circuit didn't fire → byte-identical.

@@ -33,9 +33,6 @@ import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index
 import type { Logger } from '../src/orchestrator/index.js'
 import {
   cacheKeyDiff,
-  getCacheStatsSql,
-  getHistory,
-  listProjects,
   LocalHistoryProvider,
   run,
   whyDidThisRerunQuery,
@@ -311,57 +308,7 @@ describe('a skipped row is a task of the run, never an execution', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  /** Two real 100ms successes plus three skips for the same pair. */
-  function seedSuccessesAndSkips(): void {
-    cache.recordRunBundle({
-      runs: [
-        mkRun({ project: 'app', task: 'build', hash: 'k1', durationMs: 100 }),
-        mkRun({ project: 'app', task: 'build', hash: 'k2', durationMs: 100 }),
-        mkRun({ project: 'app', task: 'build', status: 'skipped', exitCode: 1, durationMs: 0 }),
-        mkRun({ project: 'app', task: 'build', status: 'skipped', exitCode: 1, durationMs: 0 }),
-        mkRun({ project: 'app', task: 'build', status: 'skipped', exitCode: 1, durationMs: 0 }),
-      ],
-      invocation: mkInvocation('r-1'),
-    })
-  }
-
-  it('does not dilute getHistory runs / successRate / hitRate', () => {
-    seedSuccessesAndSkips()
-    const [row] = getHistory(db)
-    expect(row?.runs).toBe(2)
-    expect(row?.successes).toBe(2)
-    expect(row?.successRate).toBe(1)
-  })
-
-  it('a task that has ONLY ever been skipped has no execution history', () => {
-    cache.recordRunBundle({
-      runs: [
-        mkRun({ project: 'app', task: 'never', status: 'skipped', exitCode: 1, durationMs: 0 }),
-      ],
-      invocation: mkInvocation('r-1'),
-    })
-    expect(getHistory(db)).toEqual([])
-  })
-
-  it('does not drag listProjects avgDurationMs toward zero', () => {
-    seedSuccessesAndSkips()
-    const [p] = listProjects(db)
-    expect(p?.runs).toBe(2)
-    expect(p?.avgDurationMs).toBe(100)
-  })
-
-  it('does not dilute the 24h run count / hit rate, on EITHER copy of it', () => {
-    seedSuccessesAndSkips()
-    // Two implementations answer this: `Cache.stats` (what `vx info` and
-    // `vx mcp getCacheStats` read) and `getCacheStatsSql` (the dashboard).
-    // Pinning them equal is the drift guard — guarding one and not the other
-    // is how the same number starts disagreeing with itself.
-    expect(getCacheStatsSql(db).runCountLast24h).toBe(2)
-    expect(cache.stats().runCountLast24h).toBe(2)
-    expect(cache.stats().runCountLast24h).toBe(getCacheStatsSql(db).runCountLast24h)
-  })
-
-  it('does not evict real history from the predictive window', async () => {
+  it('does not evict real history from the duration-history window', async () => {
     // Window of 2: the skips are the NEWEST rows, so an unfiltered window
     // would hold nothing but skips and report a 0% success rate.
     cache.recordRunBundle({

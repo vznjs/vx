@@ -51,8 +51,8 @@ export interface RunSummary {
    config loading (lock-backed under `--frozen`), package + task
    graph, cache open (local policy slice; the declared `cache`
    layers chained in order; an injected
-   `RunOptions.remoteCache` wrap wins), bulk git populate, hash memo, optional
-   predictive priorities. **Caller owns `cache.close()`.**
+   `RunOptions.remoteCache` wrap wins), bulk git populate, hash memo.
+   **Caller owns `cache.close()`.**
 3. **Empty-case handling.** `no-tasks-declared` / `empty-graph` →
    log, close cache, return NOT-ok.
 4. **Plugins.** When declared: `installPlugins` (setup hooks;

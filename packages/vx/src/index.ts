@@ -105,7 +105,7 @@ export type { CacheLayer, RemoteCacheLayer, RunRecord, InvocationRecord } from '
 // parser in a sibling package would drift), and the loader chain
 // (`loadWorkspace` → `listProjectMetas` → `loadProjectConfig`) is the same
 // one `vx show` uses. Workspace's `listProjects` re-exports as
-// `listProjectMetas` — the bare name belongs to the metrics query below.
+// `listProjectMetas` (the bare name once belonged to a metrics query).
 export { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from './workspace/index.js'
 export { readLockfile, LOCKFILE_NAME } from './workspace/index.js'
 export type { Lockfile, LockfileEntry } from './workspace/index.js'
@@ -202,17 +202,14 @@ export type {
   OutcomeView,
 } from './orchestrator/index.js'
 
-// Metrics / analytics query layer over cache.db — a service plugin's HTTP
-// surface reads from these (the queries stay in core; a serve exposes them over HTTP).
+// Run-history queries over cache.db — what `vx why` / `vx last` read. An
+// out-of-process surface (an MCP server, a dashboard plugin) reads the same.
 export {
   cacheKeyDiff,
   explainCacheKeyQuery,
-  getCacheStatsSql,
-  getHistory,
   getInvocation,
   getRun,
   listInvocations,
-  listProjects,
   listRuns,
   whyDidThisRerunQuery,
 } from './orchestrator/index.js'

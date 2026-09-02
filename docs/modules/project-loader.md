@@ -116,7 +116,7 @@ the shipped standalone binary fail with `ModuleNotFound`.
   cannot cross a Worker boundary at all. So a `vx.workspace.ts` import
   closure can still go stale in a long-lived process. Nothing there
   feeds a cache key (it carries `concurrency`, `cacheDir`, `timeout`,
-  `predictive`, `plugins`), so this cannot produce a stale hit; a
+  `plugins`), so this cannot produce a stale hit; a
   workspace-config edit still needs a restart to take effect.
 
 ## Tests

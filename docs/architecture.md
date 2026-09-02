@@ -241,8 +241,8 @@ never branches on layering.
   Failed tasks mark their dependents `skipped`; independent siblings
   keep running; restore-tier tasks bypass the failed-dep check (their
   key is dep-independent). Priority = transitive-reverse-dependent
-  count (bitset closure), optionally overridden by history-based
-  predictive weights. The scheduler is pure / ignorant of caching —
+  count (bitset closure), optionally overridden by a caller-supplied
+  `priorities` map. The scheduler is pure / ignorant of caching —
   it receives an `execute(node, upstream)` callback, an optional
   `priorities` map, and an optional `restoreTier` set.
 - **`graph/dependency-spec.ts`** — shared Turbo/Nx micro-syntax parser
@@ -309,8 +309,7 @@ never branches on layering.
       package graph → task-graph build → cache open (local `Cache`
       with the policy's local slice, wrapped by a plugin cache or the
       env-var remote layer) → bulk `git ls-files` populate →
-      per-run hash memo → optional predictive priorities
-      (`defineWorkspace({ predictive: true })`).
+      per-run hash memo.
    2. Plugins install as bus subscribers (`installPlugins` +
       `subscribeEventSinks`), then — only when plugins are declared —
       the run context (git/CI/host, one git spawn) is captured and
@@ -397,8 +396,7 @@ rules enforced: `exec.persistent` rejects malformed shapes; a
 persistent task with a `cache` block is rejected (no exit to cache);
 group tasks (no `exec`) must declare `dependsOn`; `cache.inputs.files`
 and `cache.outputs.files` are required when `cache` is set;
-`vx.workspace.ts`'s `plugins` array and `predictive` flag are
-shape-checked too.
+`vx.workspace.ts`'s `plugins` array is shape-checked too.
 
 ### Config-time imports & the bootstrap problem
 

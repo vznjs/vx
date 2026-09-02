@@ -19,13 +19,6 @@ export interface WorkspaceConfig {
    * `vx run`. See `docs/design/extension-protocol-2026-06.md` §5.
    */
   plugins?: readonly Plugin[]
-  /**
-   * Opt in to history-aware predictive scheduling. When `true` and
-   * `cache.db` has prior runs, the scheduler picks the next ready
-   * task by expected remaining critical-path duration (HistoryTable
-   * p50) instead of the static reverse-deps count.
-   */
-  predictive?: boolean
 }
 
 /**

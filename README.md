@@ -160,9 +160,7 @@ than promised. The same seams are open to anyone.
 | Daemon required for speed | **No**                                                                | Optional                       | Yes              |
 | Per-task sandbox          | **Yes** — kernel-level, opt-in                                        | No                             | No               |
 | Provable cache safety     | **Yes** — `--verify` (determinism) + `--verify=inputs` (completeness) | No                             | No               |
-| MCP server for AI agents  | **Yes** — `vx mcp` (stdio, reads your local cache)                    | No                             | No               |
 | Plugin API                | **Yes** — executor / cache / telemetry seams                          | No                             | Yes (TS-tied)    |
-| Predictive scheduling     | **Yes** (opt-in: `predictive: true`)                                  | No                             | No               |
 | OTel CI/CD spans          | **Yes** — `otel()` plugin, zero OTel-SDK deps                         | No                             | Paid             |
 | Install                   | **Single binary** — npm or 1 curl line, no Node/Bun needed            | npm + Node                     | npm + Node       |
 
@@ -251,9 +249,8 @@ Full technical docs live under [`docs/`](./docs/) and on the
 - [`docs/comparison.md`](./docs/comparison.md) — Turbo / Nx / vite-task feature matrix
 - [`docs/modules/`](./docs/modules/) — one reference page per source module
 
-The full design record lives under [`docs/design/`](./docs/design/);
-[`docs/design/archive/`](./docs/design/archive/) keeps the superseded
-proposals, including the removed self-hosted platform.
+The design record lives under [`docs/design/`](./docs/design/); the
+maintainers' handoff is [`docs/STATUS.md`](./docs/STATUS.md).
 
 ## Status
 
@@ -271,9 +268,7 @@ is Windows (unsupported).
 | ---------------------------------------------- | ----------------------- | ---------------------------------------------------------------- |
 | Core task runner + caching                     | **production-ready**    | dogfooded continuously; 2,600+ tests, all green                  |
 | `vx run --verify` (provable cache correctness) | **shippable**           | determinism + input-completeness proofs; CI-gate recipe in docs  |
-| `vx mcp`                                       | **shippable**           | live cache.db tools over stdio                                   |
 | Plugin API (executor / cache / telemetry)      | **shippable**           | crash-isolated; core's own executor + cache are ordinary plugins |
-| Predictive scheduling                          | **shippable as opt-in** | gated on `predictive: true` + observed data                      |
 | OTel export (`@vzn/vx-otel`)                   | **shippable**           | declare `otel()` in `vx.workspace.ts`; OTLP traces + metrics     |
 | REAPI remote cache (`@vzn/vx-reapi`)           | **in progress**         | Bazel ActionCache + CAS; NativeLink / BuildBuddy / Buildbarn     |
 

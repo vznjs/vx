@@ -327,7 +327,7 @@ describe('affectedProjects', () => {
       expect(await computeWorkspaceFingerprint(root)).toBe(before)
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
-        'export default { plugins: [], concurrency: 99, predictive: true }\n',
+        'export default { plugins: [], concurrency: 99 }\n',
       )
       expect(await computeWorkspaceFingerprint(root)).toBe(before)
       // CONTROL: the same helper DOES move on a real input change, so the

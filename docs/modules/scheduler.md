@@ -40,7 +40,7 @@ export interface ScheduleOptions {
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
-  /** Optional per-node weight override (predictive scheduling). */
+  /** Optional per-node weight override (a scheduling policy's seam). */
   priorities?: ReadonlyMap<string, number>
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */
   restoreTier?: ReadonlySet<string>
@@ -89,9 +89,9 @@ Priority within a queue: highest transitive-reverse-dependent count
 first (`computeReverseDepCount` — an exact bitset closure swept in
 reverse-topo order, O(E·N/32); Set-based closures cost 8.5 s at 3,270
 tasks). Ties break in graph-insertion order via binary-search insert.
-When `priorities` is passed (predictive scheduling,
-`defineWorkspace({ predictive: true })`), those weights override the
-baseline for covered nodes, scaled to always sort above it.
+When `priorities` is passed, those weights override the baseline for
+covered nodes, scaled to always sort above it. Nothing in core computes
+one today; it is the seam a scheduling-policy plugin will feed.
 
 ## Failure isolation
 

@@ -292,7 +292,6 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     'plugins[<i>] must contribute at least one of setup/cache/executor/telemetry/eventSink/teardown',
     workspaceConfig('{ plugins: [{ name: "p" }] }'),
   ],
-  ['predictive must be a boolean', workspaceConfig('{ predictive: "yes" }')],
 ]
 
 /**

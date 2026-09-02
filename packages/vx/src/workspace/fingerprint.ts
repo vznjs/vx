@@ -26,7 +26,7 @@ export const WORKSPACE_FINGERPRINT_FILES = [
 ]
 
 // DELIBERATELY ABSENT: `vx.workspace.{ts,mts,js,mjs}`. Everything it can
-// declare — `concurrency`, `cacheDir`, `timeout`, `predictive`, and the
+// declare — `concurrency`, `cacheDir`, `timeout`, and the
 // plugin list — is placement, storage or observability, never what a
 // command produces; core's three seams may change WHERE a task runs, not
 // WHAT it runs (architecture principle #3). Folding it in would also do

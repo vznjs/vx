@@ -36,7 +36,6 @@ For the high-level data flow, read
 | [`cli-help.md`](./cli-help.md)       | `src/cli/help.ts` — static help text.                                    |
 | [`cli-format.md`](./cli-format.md)   | `src/cli/format.ts` — `formatBytes` and other shared formatters.         |
 | [`plan-format.md`](./plan-format.md) | `src/cli/plan-format.ts` — plan → text / JSON / DOT.                     |
-| [`mcp.md`](./mcp.md)                 | `src/cli/mcp.ts` — `vx mcp` MCP server for AI agents (stdio).            |
 | [`upgrade.md`](./upgrade.md)         | `src/cli/upgrade.ts` — `vx upgrade` binary self-update.                  |
 
 The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
@@ -72,8 +71,7 @@ The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 | [`deferred-outputs.md`](./deferred-outputs.md)     | `src/orchestrator/deferred-outputs.ts` — deferred-output registry + lazy materialise/converge. |
 | [`local-shortcircuit.md`](./local-shortcircuit.md) | `src/orchestrator/local-shortcircuit.ts` — restore-ahead classify (two-tier schedule).         |
 | [`remote-prefetch.md`](./remote-prefetch.md)       | `src/orchestrator/remote-prefetch.ts` — background remote GETs (LayeredCache only).            |
-| [`metrics.md`](./metrics.md)                       | `src/orchestrator/metrics.ts` — analytics SQL layer behind `/v1/*` + `vx mcp`.                 |
-| [`history-predict.md`](./history-predict.md)       | `src/orchestrator/{history,predict}.ts` — opt-in predictive scheduling (experimental).         |
+| [`history.md`](./history.md)                       | `src/orchestrator/history.ts` — per-task duration history behind `--dry` predictions.        |
 | [`run-report.md`](./run-report.md)                 | `src/orchestrator/run-report.ts` — `--report=markdown` table.                                  |
 
 ## Workspace + discovery

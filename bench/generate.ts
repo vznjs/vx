@@ -30,7 +30,7 @@ await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "package
 // emits). The bench broke silently when the reframe landed; benches are not
 // in CI, so this comment is the tripwire: if this file ever fails again with
 // the missing-plugin hint, the workspace contract changed under it.
-const vxSrc = path.resolve(import.meta.dir, '..', 'src')
+const vxSrc = path.resolve(import.meta.dir, '..', 'packages', 'vx', 'src')
 await writeFile(
   path.join(root, 'vx.workspace.mjs'),
   `import { localExecutorPlugin } from ${JSON.stringify(path.join(vxSrc, 'plugins/local-executor/index.ts'))}\n` +

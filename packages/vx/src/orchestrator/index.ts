@@ -36,7 +36,6 @@ export {
   LocalHistoryProvider,
   type TaskHistory,
 } from './history.js'
-export { computePredictedPriorities } from './predict.js'
 export {
   installPlugins,
   type CacheContext,
@@ -98,12 +97,9 @@ export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './ru
 export {
   cacheKeyDiff,
   explainCacheKey as explainCacheKeyQuery,
-  getCacheStatsSql,
-  getHistory,
   getInvocation,
   getRun,
   listInvocations,
-  listProjects,
   listRuns,
   whyDidThisRerun as whyDidThisRerunQuery,
 } from './metrics.js'
@@ -111,17 +107,12 @@ export type {
   CacheEntryRow,
   CacheKeyDiff,
   CacheKeyExplanation,
-  CacheStatsResult,
-  CompareTaskSide,
-  GetHistoryArgs,
   InputDiffEntry,
   InvocationDetail,
   InvocationRow,
   ListInvocationsArgs,
   ListRunsArgs,
-  ProjectRollup,
   RunDetail,
   RunSummaryRow,
-  TaskHistoryRow,
   WhyDidThisRerun,
 } from './metrics.js'

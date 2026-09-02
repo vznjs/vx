@@ -150,9 +150,7 @@ upstream repos.
    BuildBuddy, Buildbarn and bazel-remote all work.
    Turbo `/v8/artifacts` compatibility was DROPPED from core; a
    Turbo-wire cache is a **third-party plugin story** — the seam recipe
-   lives in the extensibility guide. (The self-hosted platform's S3 blob
-   backend went with the 2026-08-23 cloud removal; its design doc lives
-   in `design/archive/`.)
+   lives in the extensibility guide.
 
 2. **`--continue=<mode>` — shipped.** `--continue[=never|deps-ok|always]`
    controls failure propagation: `never` fail-fast (stop dispatch on the
@@ -248,7 +246,7 @@ upstream repos.
   fail-on-violation).
 - Root-anchored inputs/outputs (`workspaceFiles`) and runtime-command
   inputs (`runtime` / `workspaceRuntime`).
-- `vx lock` / `vx run --frozen`, `vx migrate`, `vx show`, `vx mcp`.
+- `vx lock` / `vx run --frozen`, `vx migrate`, `vx show`.
 
 ### Explicitly rejected (owner decisions — do not re-propose)
 

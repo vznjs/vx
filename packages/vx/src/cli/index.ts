@@ -14,7 +14,6 @@ import { infoCmd } from './info.js'
 import { lastCmd } from './last.js'
 import { pruneWorkspaceCmd } from './prune.js'
 import { whyCmd } from './why.js'
-import { mcpCmd } from './mcp.js'
 import { printHelp } from './help.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
@@ -54,8 +53,6 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await lastCmd(rest)
     case 'prune':
       return await pruneWorkspaceCmd(rest)
-    case 'mcp':
-      return await mcpCmd(rest)
     case 'serve':
     case 'dev':
       // vx core is only a task runner — it has no service layer of its own.
@@ -86,12 +83,4 @@ export { parseShowArgs, type ShowArgs } from './show.js'
 export { parseWhyArgs } from './why.js'
 export { parseLastArgs } from './last.js'
 export { parsePruneWorkspaceArgs } from './prune.js'
-export { parseMcpArgs, type McpArgs } from './mcp.js'
-export {
-  handleMcpRequest,
-  listMcpTools,
-  setMcpContext,
-  type McpContext,
-  type McpToolDef,
-} from './mcp-rpc.js'
 export { formatBytes } from './format.js'

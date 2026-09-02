@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { computeReverseDepCount, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import { computePredictedPriorities } from '../src/orchestrator/index.js'
-import type { HistoryTable, TaskHistory } from '../src/orchestrator/history.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
   return {
@@ -285,24 +283,13 @@ describe('runGraph', () => {
     })
   })
 
-  // End-to-end: predictive (time-based) critical-path priority must drive the
-  // schedule order, not just the structural reverse-dep count. Guards the whole
-  // computePredictedPriorities → mergePriorities → runGraph path — the one CORE-1
-  // silently broke (priorities that collapsed to own-duration on real graphs).
-  describe('predictive critical-path priority (time-based) drives order', () => {
-    const hist = (p50: number): TaskHistory => ({
-      runs: 5,
-      p50DurationMs: p50,
-      p99DurationMs: p50,
-      successRate: 1,
-      hitRate: 0,
-      failureMode: 'stable',
-    })
-
-    it('runs the head of the LONGER critical-path chain first, breaking a reverse-dep tie', async () => {
+  // A caller-supplied priority map (the seam a scheduling plugin feeds) must
+  // drive the schedule order, not just the structural reverse-dep count.
+  describe('caller-supplied priorities drive order', () => {
+    it('runs the head of the HIGHER-priority chain first, breaking a reverse-dep tie', async () => {
       // Two independent chains, IDENTICAL structure (each head blocks exactly
-      // one task → same reverse-dep count → a structural tie). By TIME, chain A
-      // is the critical path (1000+1000ms) and chain B is trivial (10+10ms).
+      // one task → same reverse-dep count → a structural tie). By PRIORITY,
+      // chain A is the critical path and chain B is trivial.
       const a1 = node('p#a1')
       const a2 = node('p#a2', ['p#a1'])
       const b1 = node('p#b1')
@@ -315,15 +302,12 @@ describe('runGraph', () => {
         ['p#a1', a1],
         ['p#a2', a2],
       ])
-      const history: HistoryTable = new Map([
-        ['p#a1', hist(1000)],
-        ['p#a2', hist(1000)],
-        ['p#b1', hist(10)],
-        ['p#b2', hist(10)],
+      const priorities = new Map([
+        ['p#a1', 2000],
+        ['p#a2', 1000],
+        ['p#b1', 20],
+        ['p#b2', 10],
       ])
-      const priorities = computePredictedPriorities([...m.values()], history)
-      // Sanity: a1's predicted remaining critical path (2000) >> b1's (20).
-      expect(priorities.get('p#a1')!).toBeGreaterThan(priorities.get('p#b1')!)
 
       const started: string[] = []
       await runGraph({
@@ -336,7 +320,7 @@ describe('runGraph', () => {
         },
       })
       // a1 runs before b1 despite being inserted later and having the same
-      // reverse-dep count — the time-based critical path won.
+      // reverse-dep count — the supplied priority won.
       expect(started.indexOf('p#a1')).toBeLessThan(started.indexOf('p#b1'))
     })
   })

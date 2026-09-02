@@ -1,8 +1,7 @@
 # Architecture Overhaul — June 2026 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> superpowers:subagent-driven-development or superpowers:executing-plans
-> to implement this plan task-by-task. Steps use checkbox (`- [ ]`)
+> **Historical.** Written as a task-by-task plan for agentic workers;
+> everything below shipped or was superseded. Steps use checkbox (`- [ ]`)
 > syntax for tracking. Phases 2/4/6 are decision-gated: their detailed
 > task lists are written when their inputs exist (bug-hunt findings,
 > module audit). Do not invent placeholder work for them.

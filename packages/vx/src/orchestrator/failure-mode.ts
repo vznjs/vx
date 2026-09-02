@@ -1,6 +1,6 @@
 // The flakiness verdict, in ONE place. Two surfaces classify the same
-// `runs` rows — `metrics.getHistory` (the dashboard / `vx info` read) and
-// `LocalHistoryProvider` (what `vx mcp` hands an AI agent) — and they used
+// `runs` rows — the run-history readers and `LocalHistoryProvider` (what
+// `--dry` predictions read) — and they used
 // to encode the rule independently, which let them drift into opposite
 // verdicts on identical data. Both now call `classifyFailureMode`, so the
 // rule cannot fork again.

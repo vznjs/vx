@@ -142,8 +142,6 @@ describe('package boundaries', () => {
       'expandRequested',
       'explainCacheKeyQuery',
       'findWorkspaceRoot',
-      'getCacheStatsSql',
-      'getHistory',
       'getInvocation',
       'getRun',
       // The flakiness classification rule, shared so the cloud analytics twin
@@ -153,7 +151,6 @@ describe('package boundaries', () => {
       'isPassStatus',
       'listInvocations',
       'listProjectMetas',
-      'listProjects',
       'listRuns',
       'loadProjectConfig',
       'loadWorkspace',

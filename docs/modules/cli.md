@@ -54,7 +54,6 @@ See:
 - [`cli-migrate.md`](./cli-migrate.md) — `vx migrate`
 - [`cli-show-info.md`](./cli-show-info.md) — `vx show` / `vx info`
 - [`cli-upgrade.md`](./cli-upgrade.md) — `vx upgrade`
-- [`cli-mcp.md`](./cli-mcp.md) — `vx mcp`
 - [`cli-help.md`](./cli-help.md) — `vx help`
 - [`cli-format.md`](./cli-format.md) — shared formatters
 

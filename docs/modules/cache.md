@@ -306,8 +306,7 @@ interface CacheStats {
 ```
 
 `stats(opts?)` takes an optional `{ project }` scope, narrowing both the
-entry aggregate and the 24h run aggregate to that project — what the
-`vx mcp` cache-stats tool passes when an agent asks about one project.
+entry aggregate and the 24h run aggregate to that project.
 
 `hitCountLast24h` counts every hit; `attributedHitsLast24h` counts only
 those with a local executed-success baseline, which is the subset a

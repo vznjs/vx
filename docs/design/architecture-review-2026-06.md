@@ -44,8 +44,8 @@ What the review called for vs. what's in the running code:
 | §8.4 Predictive feasible; data dependency is the gate                                     | ✓ shipped Phase A-B                                                                       |
 | §9 Wave plan: wire spec → CAS → HistoryTable → Hono migration → MCP → distributed → cloud | ✓ shipped (except host-side Hono migration)                                               |
 
-The detailed phase-by-phase implementation log is
-`docs/progress/implementation-log-2026-06.md`.
+The detailed phase-by-phase implementation log was removed with the
+2026-09 cleanup; it is in git history.
 
 ## 0. Executive verdict
 

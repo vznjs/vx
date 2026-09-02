@@ -45,8 +45,6 @@ import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
 import type { RunOptions } from './options.js'
-import { type HistoryTable, LocalHistoryProvider } from './history.js'
-import { computePredictedPriorities } from './predict.js'
 
 export interface PreparedRun {
   workspaceRoot: string
@@ -70,12 +68,6 @@ export interface PreparedRun {
    * `--verify`) restores an artifact that was never written.
    */
   hasRemoteLayer: boolean
-  /**
-   * Predicted priorities (history-aware critical-path). Populated only
-   * when the workspace opts in via `defineWorkspace({ predictive: true })`.
-   * Empty map otherwise — scheduler falls back to its baseline.
-   */
-  priorities: ReadonlyMap<string, number>
   nodes: Map<string, TaskNode>
   /**
    * Requested task specs that matched NO project — a typo, or a stray
@@ -322,7 +314,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cache,
       localCache,
       hasRemoteLayer,
-      priorities: new Map(),
       nodes: new Map(),
       unresolvedTasks,
       workspaceFingerprint,
@@ -343,26 +334,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       : {}),
   })
 
-  // Predictive scheduling (architecture-review §8.4 / Phase 4): when
-  // the workspace opts in via `predictive: true`, load history for
-  // every node in the graph + compute expected-critical-path weights.
-  // The scheduler applies them on top of the static baseline. Failing
-  // open: any error in history loading degrades to baseline-only,
-  // never to a broken run.
-  let priorities: ReadonlyMap<string, number> = new Map()
-  if (workspaceConfig?.predictive === true) {
-    const history = new LocalHistoryProvider(localCache.dbHandle())
-    try {
-      const ids = [...nodes.keys()]
-      const table: HistoryTable = await history.loadFor(ids)
-      priorities = computePredictedPriorities([...nodes.values()], table)
-    } catch (err) {
-      log.status(
-        `[vx] predictive scheduling fell back to baseline: ${err instanceof Error ? err.message : String(err)}`,
-      )
-    }
-  }
-
   return {
     workspaceRoot,
     workspaceConfig,
@@ -371,7 +342,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     cache,
     localCache,
     hasRemoteLayer,
-    priorities,
     nodes,
     unresolvedTasks,
     workspaceFingerprint,

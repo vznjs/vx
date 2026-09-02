@@ -34,7 +34,7 @@ terminal and a task succeeding or failing. Read it alongside
  │    2. loadWorkspace — parses the appropriate manifest. Bun.YAML
  │       for pnpm; Bun.file().json() for the package.json forms.
  │    3. loadWorkspaceConfig — optional vx.workspace.{ts,mts,js,mjs}
- │       at the root (concurrency / cacheDir / plugins / predictive).
+ │       at the root (concurrency / cacheDir / timeout / plugins).
  │    4. listProjects — globs every workspace member's package.json,
  │       finds sibling vx.config.* files, detects duplicate package
  │       names (hard error with both paths).
@@ -61,11 +61,6 @@ terminal and a task succeeding or failing. Read it alongside
  │   11. Bulk git populate — ONE `git ls-files -s --others` (plus one
  │       `git status --porcelain`) at the root fills the per-project
  │       GitFilesCache with file lists + index OIDs.
- │   12. Predictive priorities (opt-in via defineWorkspace(
- │       { predictive: true })): history p50s from cache.db →
- │       expected-critical-path weights for the scheduler. Fails open
- │       to the baseline.
- │
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
  │    (every project that declares the task). Anchored entries
@@ -134,7 +129,7 @@ terminal and a task succeeding or failing. Read it alongside
  │    Up to N tasks concurrently over two ready queues:
  │      - EXEC tier — dep-gated; ready when every dep completed.
  │        Priority: transitive-reverse-dependent count (bitset
- │        closure), optionally overridden by predictive weights.
+ │        closure), optionally overridden by a `priorities` map.
  │      - RESTORE tier — confirmed stable local hits; ready
  │        IMMEDIATELY (no dep gate, no failed-dep→skip check — their
  │        key is dep-independent) at LOW priority. The drain rule:

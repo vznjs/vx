@@ -1,22 +1,35 @@
-# `src/orchestrator/history.ts` + `predict.ts` — predictive scheduling
+# `src/orchestrator/history.ts` — per-task duration history
 
 ## Purpose
 
-`history.ts`: a per-run read-only `HistoryTable` snapshot (last N runs
-per task pair via one SQL CTE over `cache.db.runs`), loaded at
-`prepareRun`. `predict.ts`: pure functions turning that history into
-expected-remaining-critical-path priorities the scheduler consumes via
-its `priorities` override.
+A per-run, read-only `HistoryTable` snapshot: the last N recorded runs
+per `(project, task)` pair, folded into one row each (p50 / p99 duration,
+success rate, hit rate, failure mode) via one SQL CTE over
+`cache.db.runs`.
 
-## Status
+## Who reads it
 
-**Experimental, opt-in** via `defineWorkspace({ predictive: true })`.
-Off by default; unbenchmarked against the baseline reverse-deps
-heuristic — promote or remove after a real A/B (consulting-review
-2026-07 roadmap item).
+- `plan.ts` (`--dry` / `--graph`): attaches each would-run task's p50 and
+  predicts the run's wall-clock. Explicit inspection commands, so the
+  read's cost is fine there.
+- Nothing on the default `vx run` path. The scheduler's `priorities`
+  input is the seam a scheduling-policy plugin will feed; core no longer
+  computes priorities from history (the opt-in `predictive` mode was
+  removed 2026-09-02 — it cost ~280 ms of history loading on a large
+  cache, more than a warm run).
 
 ## Invariants
 
-- Zero cost when off: no history query, scheduler keeps its static
-  heuristic.
-- Providers: `LocalHistoryProvider` (cache.db). Never mutated mid-run.
+- Zero cost on a plain run: no history query is issued.
+- `LocalHistoryProvider(db, window)` never mutates; `EmptyHistoryProvider`
+  is the no-history stand-in.
+- The flakiness / failure-mode verdict comes from `classifyFailureMode`
+  (`failure-mode.ts`), shared with the run-history queries in
+  `metrics.ts`, so the two surfaces cannot disagree.
+- Skipped rows (`status = 'skipped'`) are excluded from the window
+  (`EXECUTED_RUNS_SQL`), so a run of skips cannot dilute the numbers.
+
+## Tests
+
+`tests/history.test.ts`, `tests/plan-predict.test.ts`,
+`tests/run-record-completeness.test.ts`.

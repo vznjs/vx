@@ -612,7 +612,7 @@ CREATE INDEX runs_run_id     ON runs(run_id);
 -- a cache key — a `skipped` task (its upstream failed, so it never probed)
 -- and a `persistent` one (a dev server is not cacheable) — and they store
 -- `hash = ''`. `''` is impossible for a real key (16 hex chars), so it reads
--- unambiguously as "no key recorded"; the key-diff surfaces (`vx mcp`'s
+-- unambiguously as "no key recorded"; the key-diff surfaces (`vx why`'s
 -- whyDidThisRerun, the cache-key diff) guard it rather than reporting
 -- "inputs unchanged" from two rows that never had inputs to compare.
 --

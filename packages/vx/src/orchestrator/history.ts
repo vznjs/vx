@@ -31,7 +31,7 @@ export interface TaskHistory {
   /** Cache hit rate over the recent window ([0, 1]). */
   hitRate: number
   /** Failure mode classification. Shares `classifyFailureMode` with
-   *  `metrics.getHistory` so the two surfaces cannot disagree. */
+   *  the run-history readers so the two surfaces cannot disagree. */
   failureMode: FailureMode
 }
 

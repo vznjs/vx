@@ -1,33 +1,21 @@
-// Metrics query module — pure functions over a `bun:sqlite` Database.
+// Run-history queries — pure functions over a `bun:sqlite` Database.
 //
-// A service plugin's serve exposes these as HTTP routes; a dashboard SPA
-// and `vx mcp` both read through them. One canonical home for every
-// aggregate over the runs / entries
-// tables. The schema itself is owned by src/cache/cache.ts — the
-// drift guard in tests/metrics.test.ts runs every exported query against
-// a freshly-created cache.db so a schema bump that breaks one fails the
-// gate here, not in the dashboard.
+// `vx why` and `vx last` read through them, and so can any out-of-process
+// surface (an MCP server plugin, a dashboard). One canonical home for every
+// aggregate over the runs / entries tables. The schema itself is owned by
+// src/cache/cache.ts.
 //
 // Pure SQL + JSON-safe return shapes. No Cache lifecycle here; the
 // caller opens and closes. bigints are serialized as decimal strings
 // for JSON compatibility (matches the WireEvent timeUnixNano rule).
 
 import type { Database } from 'bun:sqlite'
-// The two `runs` predicates live beside the schema in cache/cache.ts: the 24h
-// run count is answered BOTH here and by `Cache.stats` (what `vx info` and
-// `vx mcp` read), and a rule written twice is a rule that drifts.
-import { EXECUTED_RUNS_SQL, KEYED_RUNS_SQL } from '../cache/index.js'
+// The keyed-run predicate lives beside the schema in cache/cache.ts, so a
+// rule written once cannot drift.
+import { KEYED_RUNS_SQL } from '../cache/index.js'
 import { splitTaskId } from '../graph/index.js'
 import { clampInt } from '../util/index.js'
-import { classifyFailureMode } from './failure-mode.js'
-import type { FailureMode } from './failure-mode.js'
-import { isCacheHit, TASK_STATUSES } from './telemetry.js'
 
-function pickPercentile(sorted: number[], q: number): number | undefined {
-  if (sorted.length === 0) return undefined
-  const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length))
-  return sorted[idx]
-}
 // ---------------------------------------------------------------------------
 // Run listing + detail
 // ---------------------------------------------------------------------------
@@ -299,172 +287,6 @@ export function getRun(db: Database, runId: string): RunDetail | null {
 
 // ---------------------------------------------------------------------------
 // Cache stats
-// ---------------------------------------------------------------------------
-
-export interface CacheStatsResult {
-  entryCount: number
-  totalBytes: number
-  runCountLast24h: number
-  hitCountLast24h: number
-  hitRate24h: number
-  /** `status = 'cache-hit'` over the last 24h. */
-  hitLocalCountLast24h: number
-  /** `status = 'cache-hit-remote'` over the last 24h. */
-  hitRemoteCountLast24h: number
-}
-
-export function getCacheStatsSql(db: Database): CacheStatsResult {
-  const aggregate = db
-    .query('SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM entries')
-    .get() as { n: number; bytes: number }
-  const since = Date.now() - 24 * 60 * 60 * 1000
-  const runs = db
-    .query(
-      `SELECT COUNT(*) AS total,
-              COALESCE(SUM(CASE WHEN status = 'cache-hit' THEN 1 ELSE 0 END), 0) AS hitLocal,
-              COALESCE(SUM(CASE WHEN status = 'cache-hit-remote' THEN 1 ELSE 0 END), 0) AS hitRemote
-       FROM runs WHERE started_at >= ? AND ${EXECUTED_RUNS_SQL}`,
-    )
-    .get(since) as { total: number; hitLocal: number; hitRemote: number }
-  const hits = runs.hitLocal + runs.hitRemote
-  return {
-    entryCount: aggregate.n,
-    totalBytes: aggregate.bytes,
-    runCountLast24h: runs.total,
-    hitCountLast24h: hits,
-    hitRate24h: runs.total > 0 ? hits / runs.total : 0,
-    hitLocalCountLast24h: runs.hitLocal,
-    hitRemoteCountLast24h: runs.hitRemote,
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Task history (the same SQL CTE LocalHistoryProvider uses)
-// ---------------------------------------------------------------------------
-
-export interface TaskHistoryRow {
-  id: string
-  project: string
-  task: string
-  runs: number
-  successes: number
-  failures: number
-  hits: number
-  successRate: number
-  hitRate: number
-  failureMode: FailureMode
-  p50DurationMs: number | undefined
-  p99DurationMs: number | undefined
-  minDurationMs: number | undefined
-  maxDurationMs: number | undefined
-  avgDurationMs: number | undefined
-  totalDurationMs: number
-  lastSeenAt: number | undefined
-}
-
-export interface GetHistoryArgs {
-  project?: string
-  task?: string
-  limit?: number
-}
-
-export function getHistory(db: Database, args: GetHistoryArgs = {}): TaskHistoryRow[] {
-  const limit = clampInt(args.limit ?? 50, 1, 500)
-  const where: string[] = []
-  const params: (string | number)[] = []
-  if (args.project) {
-    where.push('project = ?')
-    params.push(args.project)
-  }
-  if (args.task) {
-    where.push('task = ?')
-    params.push(args.task)
-  }
-  // Execution history only: a task that has so far only ever been SKIPPED has
-  // none, and every field below (successRate / hitRate / the percentiles /
-  // failureMode's denominator) would be computed over a non-event. Its rows
-  // still show on `getTaskDetail.recent`, which reads `listRuns` unfiltered.
-  where.push(EXECUTED_RUNS_SQL)
-  const clause = `WHERE ${where.join(' AND ')}`
-  // Rank + LIMIT in SQL: the result is a PAGE, so slicing an unordered
-  // DISTINCT scan in JS returns the ALPHABETICAL prefix — the task that just
-  // ran is exactly the one a truncated page must not drop.
-  const pairs = db
-    .query(
-      `SELECT project, task FROM runs ${clause}
-       GROUP BY project, task
-       ORDER BY MAX(started_at) DESC
-       LIMIT ?`,
-    )
-    .all(...params, limit) as {
-    project: string
-    task: string
-  }[]
-
-  return pairs.map((p) => {
-    const aggregate = db
-      .query(
-        `SELECT
-           COUNT(*) AS total,
-           SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
-           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
-           SUM(CASE WHEN cache_hit = 1 OR status IN ${HIT_STATUSES} THEN 1 ELSE 0 END) AS hits,
-           SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) AS retried,
-           SUM(duration_ms) AS totalDurationMs,
-           MAX(ended_at) AS lastSeenAt
-         FROM runs WHERE project = ? AND task = ? AND ${EXECUTED_RUNS_SQL}`,
-      )
-      .get(p.project, p.task) as {
-      total: number
-      successes: number
-      failures: number
-      hits: number
-      retried: number
-      totalDurationMs: number | null
-      lastSeenAt: number | null
-    }
-    const total = aggregate.total || 0
-    const failures = aggregate.failures || 0
-    const failureMode = classifyFailureMode(db, p.project, p.task, {
-      total,
-      failures,
-      retried: aggregate.retried || 0,
-    })
-    const durations = db
-      .query(
-        `SELECT duration_ms FROM runs
-         WHERE project = ? AND task = ?
-           AND (cache_hit IS NULL OR cache_hit = 0)
-           AND status = 'success'
-         ORDER BY started_at DESC LIMIT 50`,
-      )
-      .all(p.project, p.task) as { duration_ms: number }[]
-    const sorted = durations.map((r) => r.duration_ms).sort((a, b) => a - b)
-    const avg = sorted.length > 0 ? sorted.reduce((a, b) => a + b, 0) / sorted.length : undefined
-    return {
-      id: `${p.project}#${p.task}`,
-      project: p.project,
-      task: p.task,
-      runs: total,
-      successes: aggregate.successes || 0,
-      failures,
-      hits: aggregate.hits || 0,
-      successRate: total > 0 ? (aggregate.successes || 0) / total : 0,
-      hitRate: total > 0 ? (aggregate.hits || 0) / total : 0,
-      failureMode,
-      p50DurationMs: pickPercentile(sorted, 0.5),
-      p99DurationMs: pickPercentile(sorted, 0.99),
-      minDurationMs: sorted[0],
-      maxDurationMs: sorted[sorted.length - 1],
-      avgDurationMs: avg !== undefined ? Math.round(avg) : undefined,
-      totalDurationMs: aggregate.totalDurationMs ?? 0,
-      lastSeenAt: aggregate.lastSeenAt ?? undefined,
-    }
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Cache entries — what's actually stored
 // ---------------------------------------------------------------------------
 
 export interface CacheEntryRow {
@@ -784,105 +606,3 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
 // ---------------------------------------------------------------------------
 
 /** One task's outcome on one side of a comparison. */
-export interface CompareTaskSide {
-  status: string
-  durationMs: number
-  hash: string
-  cacheHit: boolean | null
-  exitCode: number
-}
-
-// ---------------------------------------------------------------------------
-// Project-level rollups — where the time and storage actually sit
-// ---------------------------------------------------------------------------
-
-export interface ProjectRollup {
-  project: string
-  taskCount: number
-  runs: number
-  failures: number
-  hits: number
-  hitRate: number
-  totalDurationMs: number
-  avgDurationMs: number
-  cacheBytes: number
-  cacheEntries: number
-  lastRunAt: number | undefined
-  estimatedTimeSavedMs: number
-}
-
-export function listProjects(db: Database, limit = 100): ProjectRollup[] {
-  const rows = db
-    .query(
-      `SELECT project,
-              COUNT(DISTINCT task) AS taskCount,
-              COUNT(*) AS runs,
-              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
-              SUM(CASE WHEN cache_hit = 1 OR status IN ${HIT_STATUSES} THEN 1 ELSE 0 END) AS hits,
-              SUM(duration_ms) AS totalDurationMs,
-              CAST(AVG(duration_ms) AS INTEGER) AS avgDurationMs,
-              MAX(ended_at) AS lastRunAt
-       FROM runs WHERE ${EXECUTED_RUNS_SQL}
-       GROUP BY project ORDER BY SUM(duration_ms) DESC LIMIT ?`,
-    )
-    .all(clampInt(limit, 1, 500)) as Array<{
-    project: string
-    taskCount: number
-    runs: number
-    failures: number
-    hits: number
-    totalDurationMs: number | null
-    avgDurationMs: number | null
-    lastRunAt: number | null
-  }>
-  return rows.map((r) => {
-    const ent = db
-      .query(
-        'SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS b FROM entries WHERE project = ?',
-      )
-      .get(r.project) as { n: number; b: number }
-    const saved = db
-      .query(
-        `SELECT COALESCE(SUM(avg), 0) AS saved FROM (
-           SELECT (SELECT CAST(AVG(duration_ms) AS INTEGER) FROM runs s
-                   WHERE s.project = r.project AND s.task = r.task
-                     AND (s.cache_hit IS NULL OR s.cache_hit = 0)
-                     AND s.status = 'success') AS avg
-           FROM runs r WHERE r.project = ?
-             AND (r.cache_hit = 1 OR r.status IN ${HIT_STATUSES})
-         ) WHERE avg IS NOT NULL`,
-      )
-      .get(r.project) as { saved: number }
-    return {
-      project: r.project,
-      taskCount: r.taskCount,
-      runs: r.runs,
-      failures: r.failures,
-      hits: r.hits,
-      hitRate: r.runs > 0 ? r.hits / r.runs : 0,
-      totalDurationMs: r.totalDurationMs ?? 0,
-      avgDurationMs: r.avgDurationMs ?? 0,
-      cacheBytes: ent.b,
-      cacheEntries: ent.n,
-      lastRunAt: r.lastRunAt ?? undefined,
-      estimatedTimeSavedMs: saved.saved,
-    }
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Heatmap — runs per (hour-of-day, day-of-week)
-// ---------------------------------------------------------------------------
-
-// The hit set, derived the same way. This replaced six SQL prefix-match
-// copies (LIKE on the literal prefix) — the exact class the 2026-08-05
-// status-vocabulary wave removed from the (since-deleted) cloud analytics:
-// a prefix answers a DIFFERENT question ("any status merely NAMED with the
-// prefix"), so a future status that happens to share it would silently
-// count as a hit. The tripwire guarding the class now greps the LIKE form.
-const HIT_STATUSES = `(${TASK_STATUSES.filter(isCacheHit)
-  .map((s) => `'${s}'`)
-  .join(', ')})`
-// ---------------------------------------------------------------------------
-// Stale / prunable entries — what to evict first
-// ---------------------------------------------------------------------------

@@ -111,12 +111,6 @@ What ships on those seams today:
   dependencies; set an endpoint and it activates.
 - **[`@vzn/vx-github`](../guides/ci/)** — writes the GitHub Actions job
   summary and a Checks API run.
-- **[vx mcp](../guides/mcp/)** — a Model Context Protocol server over
-  stdio, so Claude Code, Cursor and Continue.dev can query your cache
-  and run history. Needs no service.
-- **[Predictive scheduling](../guides/predictive-scheduling/)** — opt in
-  with `predictive: true` and the scheduler orders work by expected
-  remaining critical path, learned from your own run history.
 
 ## What vx is *not*
 
