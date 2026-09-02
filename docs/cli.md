@@ -1411,8 +1411,10 @@ export function mcp(): VxPlugin {
 }
 ```
 
-The dispatcher tries core's verbs first — a plugin can never shadow
-`vx run` — and consults plugins only for a word core does not know,
+(`@vzn/vx-mcp` ships exactly this: declare `mcp()` and `vx mcp` serves
+the four read-only run-history tools to AI agents.) The dispatcher tries
+core's verbs first — a plugin can never shadow `vx run` — and consults
+plugins only for a word core does not know,
 loading the workspace config from the cwd to find them (outside a
 workspace the verb is simply unknown). The first plugin in declaration
 order that declares the verb runs it; its return value is the exit

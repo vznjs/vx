@@ -119,6 +119,9 @@ What ships on those seams today:
   dependencies; set an endpoint and it activates.
 - **[`@vzn/vx-github`](../guides/ci/)** — writes the GitHub Actions job
   summary and a Checks API run.
+- **[`@vzn/vx-mcp`](../guides/mcp/)** — adds `vx mcp`, a read-only Model
+  Context Protocol server so Claude Code, Cursor and Continue.dev can
+  query your cache and run history. No SDK, no service.
 
 ## What vx is *not*
 

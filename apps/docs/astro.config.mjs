@@ -71,6 +71,7 @@ export default defineConfig({
             { label: 'Core is provider-neutral', link: '/guides/extensibility/' },
             { label: 'Writing a vx plugin', link: '/guides/plugins/' },
             { label: 'OpenTelemetry traces & metrics', link: '/guides/otel-bridge/' },
+            { label: 'vx mcp — AI agents', link: '/guides/mcp/' },
           ],
         },
         {

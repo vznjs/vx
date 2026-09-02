@@ -150,6 +150,14 @@ Process: push directly to `main`, no PRs. Gate before every push:
   no difference at 100 projects (the tree is too small for the walk to
   matter); the compiled binary starts in 16 ms vs 25 ms from source and
   runs the 100-project warm run in 72 ms vs 78.
+- 2026-09-03 — **`@vzn/vx-mcp` shipped.** The MCP server is back as a
+  plugin on the `commands` seam: `mcp()` adds `vx mcp`, a native stdio
+  JSON-RPC server (no SDK — the reference one pulls in an HTTP stack the
+  transport never uses) exposing the four read-only tools over
+  `cache.db` through the public façade. The removed core tests were
+  recovered and ported (tools), plus protocol and real-stdio tests; the
+  repo dogfoods `mcp()`; CI runs the package suite; the guide and
+  sidebar entry are back.
 
 ## In flight
 
@@ -166,9 +174,7 @@ Process: push directly to `main`, no PRs. Gate before every push:
    `onLoad` never fires for `.js`/`.ts` files (probed, both). Options
    left: rewrite the config source before import (breaks relative
    imports unless written beside the file) or a Bun fix. Parked.
-2. **An MCP server plugin package** (`@vzn/vx-mcp`, `commands: { mcp }`)
-   reading the same run-history queries `vx why` uses.
-3. **Docs + site pass** — the remaining pages that still say "three
+2. **Docs + site pass** — the remaining pages that still say "three
    seams" (`docs/README.md`, `docs/architecture.md` prose,
    `concepts/how-vx-works.md`), and a fresh Turbo/Nx comparison table.
 

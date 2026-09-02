@@ -3,6 +3,7 @@ import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
 import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
 import { otel } from '@vzn/vx-otel'
 import { github } from '@vzn/vx-github'
+import { mcp } from '@vzn/vx-mcp'
 
 // Nothing runs that is not declared here — including core's own executor
 // and cache. Order is precedence: a plugin listed earlier is consulted
@@ -14,6 +15,7 @@ import { github } from '@vzn/vx-github'
 //   github() — write each run as a GitHub Actions job summary. Activates on
 //              GITHUB_STEP_SUMMARY, declines everywhere else. We dogfood our
 //              own plugins so their decline paths run on every laptop run.
+//   mcp()    — adds `vx mcp`, the read-only MCP server AI agents talk to.
 export default defineWorkspace({
-  plugins: [otel(), github(), localExecutorPlugin(), localCachePlugin()],
+  plugins: [otel(), github(), mcp(), localExecutorPlugin(), localCachePlugin()],
 })

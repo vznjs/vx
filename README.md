@@ -160,8 +160,9 @@ remote cache and remote execution against NativeLink, BuildBuddy,
 Buildbarn or bazel-remote), [`@vzn/vx-otel`](packages/vx-otel)
 (OpenTelemetry traces + metrics + logs, zero SDK deps),
 [`@vzn/vx-github`](packages/vx-github) (Actions job summary + Checks
-API), and `@vzn/vx/plugins/schedule-history` (order by learned critical
-path). Nothing distributed ships in this repo; the seams are how you
+API), [`@vzn/vx-mcp`](packages/vx-mcp) (`vx mcp` — a read-only Model
+Context Protocol server for AI coding agents, no SDK), and
+`@vzn/vx/plugins/schedule-history` (order by learned critical path). Nothing distributed ships in this repo; the seams are how you
 build it.
 
 ## How it compares

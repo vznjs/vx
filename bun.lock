@@ -8,6 +8,7 @@
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
         "@vzn/vx-github": "workspace:*",
+        "@vzn/vx-mcp": "workspace:*",
         "@vzn/vx-otel": "workspace:*",
         "@vzn/vx-reapi": "workspace:*",
         "oxfmt": "^0.55.0",
@@ -44,6 +45,17 @@
     },
     "packages/vx-github": {
       "name": "@vzn/vx-github",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
+    "packages/vx-mcp": {
+      "name": "@vzn/vx-mcp",
       "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "^1.4.0",
@@ -551,6 +563,8 @@
     "@vzn/vx-docs": ["@vzn/vx-docs@workspace:apps/docs"],
 
     "@vzn/vx-github": ["@vzn/vx-github@workspace:packages/vx-github"],
+
+    "@vzn/vx-mcp": ["@vzn/vx-mcp@workspace:packages/vx-mcp"],
 
     "@vzn/vx-otel": ["@vzn/vx-otel@workspace:packages/vx-otel"],
 
