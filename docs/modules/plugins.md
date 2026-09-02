@@ -64,6 +64,6 @@ another history source.
 
 ## Tests
 
-`tests/local-plugins.test.ts`; the `NO DEFAULTS` / `CONTROL` e2e pins in
+`tests/local-plugins.test.ts`, `tests/schedule-history.test.ts`; the `NO DEFAULTS` / `CONTROL` e2e pins in
 `tests/plugin-capabilities.test.ts`; `tests/helpers/local-workspace.ts` is
 the one place fixtures get the declaration.

@@ -13,15 +13,23 @@ reference.
 When you type `vx run build`, vx:
 
 0. **Installs the plugins** your `vx.workspace.ts` declares — including
-   the ones that provide the executor and the cache.
+   the ones that provide the executor and the cache. (`config` hook:
+   the workspace config, before it is used.)
 1. **Discovers** the workspace and its projects.
-2. **Loads** the relevant `vx.config.ts` files.
+2. **Loads** the relevant `vx.config.ts` files. (`project` hook: each
+   loaded project's tasks, re-validated afterwards.)
 3. **Builds the task graph** from `dependsOn` and your package
-   dependencies.
+   dependencies. (`graph` hook: the edges; then `key`, extra material
+   per task.)
 4. **Hashes** each task's inputs into a cache key.
 5. **Schedules** the graph — for each task, a cache lookup decides
    *restore* vs. *execute*, running as many tasks in parallel as your
-   concurrency allows.
+   concurrency allows. (`schedule` hook: which ready task first;
+   `executor` and `cache` decide where it runs and where its artifact
+   lives; `telemetry` receives every record.)
+
+Every parenthesis is a plugin hook, and every one is optional — see
+[Writing a vx plugin](/vx/guides/plugins/).
 
 ### 0. Plugins
 

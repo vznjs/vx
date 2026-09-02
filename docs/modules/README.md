@@ -34,6 +34,7 @@ For the high-level data flow, read
 | [`cli-watch.md`](./cli-watch.md)     | `src/cli/watch.ts` — `vx watch <task>`: re-run on FS change.             |
 | [`cli-cache.md`](./cli-cache.md)     | `src/cli/cache.ts` — `vx cache prune`, duration / size parsers.          |
 | [`cli-help.md`](./cli-help.md)       | `src/cli/help.ts` — static help text.                                    |
+| [`plugin-commands.md`](./plugin-commands.md) | `src/cli/plugin-commands.ts` — plugin-contributed verbs (`VxPlugin.commands`). |
 | [`cli-format.md`](./cli-format.md)   | `src/cli/format.ts` — `formatBytes` and other shared formatters.         |
 | [`plan-format.md`](./plan-format.md) | `src/cli/plan-format.ts` — plan → text / JSON / DOT.                     |
 | [`upgrade.md`](./upgrade.md)         | `src/cli/upgrade.ts` — `vx upgrade` binary self-update.                  |
@@ -119,7 +120,7 @@ The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 
 | File                                     | Topic                                                                                  |
 | ---------------------------------------- | -------------------------------------------------------------------------------------- |
-| [`plugins.md`](./plugins.md)             | `src/plugins/<name>/` — core's executor + cache as isolated, subpath-exported plugins. |
+| [`plugins.md`](./plugins.md)             | `src/plugins/<name>/` — core's executor, cache and history scheduler as isolated, subpath-exported plugins. |
 | [`chained-cache.md`](./chained-cache.md) | `src/cache/chained-cache.ts` — several declared cache layers, chained in order.        |
 
 ## Utilities
@@ -130,6 +131,7 @@ The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 | [`util-hash.md`](./util-hash.md)     | `src/util/hash.ts` — xxHash3 helpers shared by every key-derivation site. |
 | [`util-ulid.md`](./util-ulid.md)     | `src/util/ulid.ts` — run-id generator (`Bun.randomUUIDv7` wrapper).       |
 | [`util-errors.md`](./util-errors.md) | `src/util/errors.ts` — `UserError` class for stack-less error reporting.  |
+| [`timing.md`](./timing.md)           | `src/util/timing.ts` — the `VX_TIMING=1` stage table + per-task spans.    |
 
 For the public package surface (what `import('@vzn/vx')` resolves to)
 see [`index.md`](./index.md).
