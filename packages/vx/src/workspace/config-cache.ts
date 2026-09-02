@@ -10,7 +10,10 @@
 //   - the config's bytes and the bytes of every file it transitively imports
 //     by RELATIVE specifier (the closure), paths included;
 //   - the workspace fingerprint (lockfiles), which covers package imports;
-//   - Bun's version and this module's own version.
+//   - Bun's version, vx's version and this module's own version. A stored
+//     evaluation is served WITHOUT re-validation, so it must never outlive
+//     the validator that accepted it — a vx upgrade that tightens a rule
+//     re-evaluates every config once.
 //
 // It applies only to configs that are PROVABLY pure by a conservative static
 // check: every import is relative or `@vzn/vx` (whose `defineProject` /
@@ -27,6 +30,7 @@
 
 import path from 'node:path'
 import { xxh3 } from '../util/index.js'
+import { VERSION } from '../version.js'
 
 /** Bump when the key derivation or the stored shape changes. */
 export const CONFIG_EVAL_VERSION = 1
@@ -173,7 +177,7 @@ export function stripLiterals(source: string): string | null {
  */
 export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<string | null> {
   let h = xxh3(
-    `vx-config-eval-v${CONFIG_EVAL_VERSION}\0${Bun.version}\0${a.workspaceFingerprint}\0`,
+    `vx-config-eval-v${CONFIG_EVAL_VERSION}\0${VERSION}\0${Bun.version}\0${a.workspaceFingerprint}\0`,
   )
   const visited = new Set<string>([a.configPath])
   const queue: Array<{ file: string; bytes: Uint8Array }> = [{ file: a.configPath, bytes: a.bytes }]

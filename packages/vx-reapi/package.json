@@ -12,6 +12,7 @@
     }
   },
   "files": [
+    "index.ts",
     "src",
     "protos",
     "README.md"

@@ -28,7 +28,9 @@ const ALLOWED: Record<string, readonly string[]> = {
   util: [],
   config: [],
   version: [],
-  workspace: ['util', 'config'],
+  // `version`: the config-evaluation cache keys on vx's version, since a
+  // stored evaluation is served without re-validation.
+  workspace: ['util', 'config', 'version'],
   graph: ['util', 'config', 'workspace'],
   cache: ['util', 'config'],
   exec: ['util', 'config'],

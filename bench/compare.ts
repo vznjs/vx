@@ -133,6 +133,16 @@ async function generate(dir: string): Promise<void> {
     workspaces: ['packages/*'],
   })
   await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+  // NO DEFAULTS: a workspace declares its executor and cache. By absolute
+  // path into this checkout, since the tmp dir has no `@vzn/vx` in
+  // node_modules; the plugin files' own `@vzn/vx` import resolves through
+  // the checkout's node_modules (the self-link), for the binary as well.
+  await writeFile(
+    path.join(dir, 'vx.workspace.mjs'),
+    `import { localExecutorPlugin } from ${JSON.stringify(path.join(vxRoot, 'packages/vx/src/plugins/local-executor/index.ts'))}\n` +
+      `import { localCachePlugin } from ${JSON.stringify(path.join(vxRoot, 'packages/vx/src/plugins/local-cache/index.ts'))}\n` +
+      `export default { plugins: [localExecutorPlugin(), localCachePlugin()] }\n`,
+  )
   await json('turbo.json', {
     $schema: 'https://turborepo.com/schema.json',
     tasks: { build: {}, installDeps: {}, test: {} },
@@ -295,7 +305,14 @@ async function buildRunners(dir: string): Promise<Runner[]> {
     ],
     vxRoot,
   )
-  const vxRun = compiled.ok ? [vxBin] : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
+  // Bun 1.4.0's compiled binary carries a signature this macOS rejects
+  // (SIGKILL on launch, exit 137 — see docs/benchmarks.md); an ad-hoc
+  // re-sign repairs it, exactly as release.yml does. Fall back to the source
+  // tree only when the binary still cannot answer `--version`.
+  if (compiled.ok && process.platform === 'darwin') await sh(['codesign', '-s', '-', '--force', vxBin], dir)
+  const binWorks = compiled.ok && (await sh([vxBin, '--version'], dir)).ok
+  if (compiled.ok && !binWorks) console.error('  compiled vx binary does not launch; measuring from source')
+  const vxRun = binWorks ? [vxBin] : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
   const vxVer = (await sh([...vxRun, '--version'], dir)).out.trim()
   const conc = ['--concurrency', String(CONCURRENCY)]
   runners.push({
@@ -457,7 +474,8 @@ for (const r of runners) {
   try {
     rows.push(await measure(r, ws))
   } catch (err) {
-    console.error(`  ${r.name} skipped: ${(err as Error).message.split('\n')[0]}`)
+    const lines = (err as Error).message.split('\n').filter((l) => l.trim() !== '')
+    console.error(`  ${r.name} skipped: ${lines[0]} ${lines[1] ?? ''}`)
     rows.push({
       runner: r.name,
       version: r.version,

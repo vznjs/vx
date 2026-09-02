@@ -6,19 +6,19 @@
 - **Tasks:** `build` = `sleep 1 && mkdir -p dist && touch dist/index.js`; `test` = `sleep 1`; `installDeps` = `true` — identical across all runners.
 - **Concurrency:** 10 (pinned identically for every runner).
 - **Measured:** whole-repo `build`+`test`, median of 1, one runner at a time, wall-clock of the CLI invocation.
-- **Host:** Linux 6.18.5 · 4 cores · linux/x64
-- **Date:** 2026-07-03
+- **Host:** Darwin 27.0.0 · 10 cores · darwin/arm64
+- **Date:** 2026-09-02
 
-| Runner      | Version  | Fresh (cold)      | Warm (no restore) | Warm (restore)   |
-| ----------- | -------- | ----------------- | ----------------- | ---------------- |
-| vx          | vx 0.0.0 | 10.42 s           | 121 ms            | 147 ms           |
-| vx (frozen) | vx 0.0.0 | 10.40 s (1.0× vx) | 135 ms (1.1× vx)  | 134 ms (0.9× vx) |
-| turbo       | 2.10.3   | 10.57 s (1.0× vx) | 209 ms (1.7× vx)  | 225 ms (1.5× vx) |
-| nx          | 23.0.1   | 28.85 s (2.8× vx) | 736 ms (6.1× vx)  | 734 ms (5.0× vx) |
+| Runner | Version | Fresh (cold) | Warm (no restore) | Warm (restore) |
+| ------ | ------- | ------------ | ----------------- | -------------- |
+| vx | vx 0.0.0 | 10.45 s | 76 ms | 83 ms |
+| vx (frozen) | vx 0.0.0 | 10.49 s (1.0× vx) | 83 ms (1.1× vx) | 88 ms (1.1× vx) |
+| turbo | 2.10.12 | 10.58 s (1.0× vx) | 71 ms (0.9× vx) | 97 ms (1.2× vx) |
+| nx | 23.2.0 | 19.66 s (1.9× vx) | 540 ms (7.1× vx) | 531 ms (6.4× vx) |
 
-**Cache states.** _Fresh_ clears the runner's cache and runs cold (key
-derivation + execution + save). _Warm, no restore_ re-runs with the cache
-warm and outputs intact (the steady-state dev loop). _Warm, restore_
+**Cache states.** *Fresh* clears the runner's cache and runs cold (key
+derivation + execution + save). *Warm, no restore* re-runs with the cache
+warm and outputs intact (the steady-state dev loop). *Warm, restore*
 deletes every `dist/` first, so the runner restores outputs from cache.
 
 Reproduce: `bun bench/compare.ts 10 5 1`.

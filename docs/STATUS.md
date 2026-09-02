@@ -119,6 +119,28 @@ Process: push directly to `main`, no PRs. Gate before every push:
   guide reframed around the pipeline stage table; the CLI imports every
   verb but `run` lazily (hygiene — `--version` measured unchanged at
   25 ms).
+- 2026-09-03 — **perf wave 4 (small).** `vx info` reports whether git's
+  `core.fsmonitor` / `core.untrackedCache` are on, with the remedy —
+  the one `git status` walk per run is the warm run's critical path at
+  1000 projects and git's own caches make it near-free. The
+  config-evaluation key now folds vx's VERSION: a stored evaluation is
+  served without re-validation, so it must not outlive the validator
+  that accepted it (audit finding on the wave-1 code). `bench/compare.ts`
+  re-signs the compiled binary on darwin before measuring (it was
+  silently measuring nothing — "vx skipped: vx failed").
+- 2026-09-03 — **FOUND: the standalone binary could not load any
+  workspace config.** Bun 1.4.0's compiled binaries resolve an on-disk
+  package by directory convention only — `<pkg>/index.ts`,
+  `<pkg>/<subpath>/index.ts` — and ignore package.json `exports` /
+  `main` (probed: an entry of `./src/index.ts` resolved to the root
+  `index.ts` regardless; a package with no root file was "not found").
+  `@vzn/vx`'s entry is `src/index.ts`, so every `import … from '@vzn/vx'`
+  under the binary failed — the bench's "vx skipped" was this, not the
+  signature. FIX: root shims `packages/*/index.ts` and
+  `packages/vx/plugins/<name>/index.ts` re-exporting the real entries,
+  shipped in `files`, pinned identical by
+  `tests/package-entry-shims.test.ts`; the darwin CI job now runs the
+  re-signed binary against a bare-specifier workspace end to end.
 
 ## In flight
 
@@ -126,10 +148,15 @@ Process: push directly to `main`, no PRs. Gate before every push:
 
 ## Next (ordered)
 
-1. **Perf wave 4** — `git status` is the critical
-   path at 1000 projects — `vx info` should say when `core.fsmonitor` /
-   `core.untrackedCache` are off. Then a fresh Turbo/Nx head-to-head via
-   `bench/compare.ts`.
+1. **The shipped binary's second core.** A compiled `vx` loading a
+   `vx.workspace.ts` that imports `@vzn/vx` pulls a SECOND copy of core
+   from `node_modules` (source, ~12 ms) on every run, and cross-copy
+   `instanceof` does not hold (a plugin's `UserError` prints with a
+   stack). REFUTED 2026-09-03 as a runtime-plugin fix: Bun 1.4.0's
+   `Bun.plugin` `onResolve` never fires for bare package specifiers and
+   `onLoad` never fires for `.js`/`.ts` files (probed, both). Options
+   left: rewrite the config source before import (breaks relative
+   imports unless written beside the file) or a Bun fix. Parked.
 2. **An MCP server plugin package** (`@vzn/vx-mcp`, `commands: { mcp }`)
    reading the same run-history queries `vx why` uses.
 3. **Docs + site pass** — the remaining pages that still say "three

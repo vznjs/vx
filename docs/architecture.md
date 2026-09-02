@@ -94,7 +94,7 @@ graph TD
 
 |                  | util | config | version | workspace | graph | cache | exec | orchestrator | cli |
 | ---------------- | ---- | ------ | ------- | --------- | ----- | ----- | ---- | ------------ | --- |
-| **workspace**    | ✓    | ✓      |         | —         |       |       |      |              |     |
+| **workspace**    | ✓    | ✓      | ✓       | —         |       |       |      |              |     |
 | **graph**        | ✓    | ✓      |         | ✓         | —     |       |      |              |     |
 | **cache**        | ✓    | ✓      |         |           |       | —     |      |              |     |
 | **exec**         | ✓    | ✓      |         |           |       |       | —    |              |     |

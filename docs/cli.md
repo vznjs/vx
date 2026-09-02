@@ -1221,10 +1221,11 @@ checks (pretty only):
 
 ```
 $ vx info
-vx:             0.0.0
-bun:            1.3.14
-git:            2.53.0
-workspace root: /work/repo
+vx:                0.0.0
+bun:               1.4.0
+git:               2.53.0
+git status cache:  core.fsmonitor, core.untrackedCache off — `git config core.fsmonitor true` makes every run's status walk near-free on a large tree
+workspace root:    /work/repo
 projects:       12 (34 tasks)
 cache dir:      /work/repo/.vx/cache
 cache entries:  42 (1.3 GB)
@@ -1235,13 +1236,18 @@ vx-lock.json:   yes
 - `git` shows `(not found)` when the binary is missing; a broken
   project config contributes zero tasks instead of failing the
   printout.
+- `git status cache`: vx runs ONE `git status` per run to find dirty
+  and untracked files, and on a large tree that walk is the warm run's
+  critical path. git's `core.fsmonitor` (a daemon that watches the
+  worktree) and `core.untrackedCache` make it near-free after the first
+  run; both are off by default, so `vx info` says when they are.
 - `vx stats` is a **deprecated alias** of `vx info` (info absorbed
   it); it prints byte-identical output.
 
 ## `vx why`
 
-Answer "why did this task re-run?" from the terminal — the same
-persisted data the MCP `whyDidThisRerun` / `cacheKeyDiff` tools read. Read-only over the local
+Answer "why did this task re-run?" from the terminal, from the
+per-component input fingerprints core persists on every miss. Read-only over the local
 `cache.db`: no config evaluation, no re-hash.
 
 ```

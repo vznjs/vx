@@ -207,18 +207,28 @@ describe('vx info (e2e)', () => {
     async () => {
       const r = await vx(root, ['info'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain(`vx:             ${VERSION}`)
+      // Labels are padded to the widest one; pin the row, not the width.
+      const row = (label: string, value: string): RegExp =>
+        new RegExp(
+          `^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: +${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+          'm',
+        )
+      expect(r.out).toMatch(row('vx', VERSION))
       expect(r.out).toContain(Bun.version)
       expect(r.out).toContain('git:')
+      // The status-cache row names the git settings whichever way they are set.
+      expect(r.out).toMatch(
+        /^git status cache: +(fsmonitor \+ untrackedCache on|core\.(fsmonitor|untrackedCache).* off — `git config core\.\w+ true`)/m,
+      )
       // macOS realpaths /var → /private/var inside the child; match on
       // the unique tmpdir basename rather than the absolute prefix.
-      expect(r.out).toContain('workspace root: ')
+      expect(r.out).toMatch(/^workspace root: +\S/m)
       expect(r.out).toContain(path.basename(root))
-      expect(r.out).toContain('projects:       2 (3 tasks)')
+      expect(r.out).toMatch(row('projects', '2 (3 tasks)'))
       expect(r.out).toContain('cache dir:')
-      expect(r.out).toContain('cache entries:  0 (0 B)')
-      expect(r.out).toContain('runs (24h):     0')
-      expect(r.out).toContain('vx-lock.json:   no')
+      expect(r.out).toMatch(row('cache entries', '0 (0 B)'))
+      expect(r.out).toMatch(row('runs (24h)', '0'))
+      expect(r.out).toMatch(row('vx-lock.json', 'no'))
     },
     TIMEOUT,
   )

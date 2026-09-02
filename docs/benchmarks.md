@@ -48,14 +48,37 @@ Two tools, and they answer different questions:
   about where an `await` waited (it attributes the wait to whatever frame
   was on the stack).
 
-Two measurement lessons from this wave, recorded so they are not
-re-learned: a micro-benchmark of a sync call in isolation (`statSync`
+Three measurement lessons from this wave, recorded so they are not
+re-learned. A compiled Bun 1.4.0 binary resolves on-disk packages by
+`<pkg>/index.ts` only and ignores `exports`, so `bench/compare.ts`
+measured nothing ("vx skipped") until the packages gained root shims —
+if the vx row ever reads `n/a` again, read the skip line first. a micro-benchmark of a sync call in isolation (`statSync`
 2 µs vs `stat` 13 µs) does not predict the run — the async forms run in
 parallel on the thread pool under the scheduler's concurrency, and
 switching the warm-hit path to sync calls made the 1000-project run
 40 ms SLOWER. And Bun 1.4.0's `--compile` binaries carry a signature this
 macOS rejects (SIGKILL on launch); an ad-hoc `codesign -s - --force`
 repairs it, which the release workflow now does on a macOS runner.
+
+## Head-to-head, 2026-09-03 (46 packages, `bench/compare.ts 10 5 1`)
+
+Same workspace, identical commands, every runner pinned to concurrency
+10, daemons on for Turbo/Nx, vx as its compiled binary. Median of 1,
+this machine (macOS arm64, Bun 1.4.0):
+
+| Runner      | Version | Fresh (cold) | Warm (no restore) | Warm (restore) |
+| ----------- | ------- | ------------ | ----------------- | -------------- |
+| vx          | 0.0.0   | 10.45 s      | 76 ms             | 83 ms          |
+| vx (frozen) | 0.0.0   | 10.49 s      | 83 ms             | 88 ms          |
+| turbo       | 2.10.12 | 10.58 s      | **71 ms**         | 97 ms          |
+| nx          | 23.2.0  | 19.66 s      | 540 ms            | 531 ms         |
+
+Read it honestly: at 46 packages Turborepo 2.10 and vx are within a few
+milliseconds of each other on a fully-cached run — Turbo's daemon
+answers "what changed" without a walk, vx pays one `git status`. vx wins
+the restore case and ties the cold one; Nx is 7× off. The gap vx is
+built for opens with scale (the next section), and the remaining fixed
+cost at this size is process start + git, not the pipeline.
 
 ## A real monorepo: 3,270 tasks, 100 layers
 

@@ -27,6 +27,8 @@
     "vx": "./src/bin.ts"
   },
   "files": [
+    "plugins",
+    "index.ts",
     "src",
     "README.md"
   ],

@@ -26,6 +26,11 @@ This puts the `vx` binary in your workspace. vx prepends each package's
 `node_modules/.bin` to `PATH` per task, so `tsc`, `vite`, `eslint`, etc.
 resolve from a bare command — no `npx` needed.
 
+Using the standalone binary from a release instead? Still add
+`@vzn/vx` to the workspace's devDependencies: your `vx.workspace.ts`
+and `vx.config.ts` import it, and the binary resolves that import from
+your `node_modules` (it also gives you the types).
+
 ## 2. Say what runs your tasks
 
 vx applies **nothing** by default — not even the thing that spawns your

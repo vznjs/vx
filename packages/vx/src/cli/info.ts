@@ -53,6 +53,11 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
     ['vx', VERSION],
     ['bun', Bun.version],
     ['git', gitVersion()],
+    // The one `git status` walk per run is the warm path's critical path on
+    // a large tree (~55 ms at 1000 projects, measured 2026-09-02). git's
+    // own caches make it near-free after the first run, and they are OFF by
+    // default — say so, since nothing else in a run would.
+    ['git status cache', gitStatusCache(root)],
     ['workspace root', root],
     ['projects', `${metas.length} (${taskCount} task${taskCount === 1 ? '' : 's'})`],
     ['cache dir', cacheDir],
@@ -64,6 +69,31 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
   const lines = rows.map(([label, value]) => `${`${label}:`.padEnd(labelW + 1)} ${value}`)
   process.stdout.write(`${lines.join('\n')}\n`)
   return 0
+}
+
+/** Whether git's fsmonitor / untracked cache are on, with the remedy when not. */
+function gitStatusCache(root: string): string {
+  try {
+    const p = Bun.spawnSync({
+      cmd: ['git', 'config', '--get-regexp', '^core\\.(fsmonitor|untrackedcache)$'],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const out = p.exitCode === 0 ? new TextDecoder().decode(p.stdout) : ''
+    const on = (key: string): boolean =>
+      new RegExp(`^core\\.${key} (true|1|yes|on)$`, 'im').test(out)
+    const fsmonitor = on('fsmonitor')
+    const untracked = on('untrackedcache')
+    if (fsmonitor && untracked) return 'fsmonitor + untrackedCache on'
+    const missing = [
+      ...(fsmonitor ? [] : ['core.fsmonitor']),
+      ...(untracked ? [] : ['core.untrackedCache']),
+    ]
+    return `${missing.join(', ')} off — \`git config ${missing[0]} true\` makes every run's status walk near-free on a large tree`
+  } catch {
+    return '(unknown)'
+  }
 }
 
 function gitVersion(): string {

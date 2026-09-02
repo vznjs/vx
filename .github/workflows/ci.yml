@@ -279,3 +279,26 @@ jobs:
           codesign --verify /tmp/vx-ci && echo "bun's own signature: valid" || echo "bun's own signature: INVALID (expected on Bun 1.4.0)"
           codesign -s - --force /tmp/vx-ci
           /tmp/vx-ci --version
+
+      # …and runs a workspace written the way the docs show it: bare
+      # `@vzn/vx` / `@vzn/vx/plugins/*` imports resolved through node_modules.
+      # A compiled Bun 1.4.0 binary ignores package.json `exports` for on-disk
+      # packages and only finds `<pkg>/index.ts` (measured 2026-09-03), which
+      # is why the packages ship root shims — this is the end-to-end proof
+      # that a binary user's config loads.
+      - name: compiled binary runs a bare-specifier workspace
+        run: |
+          W=$(mktemp -d)
+          mkdir -p "$W/packages/a/src" "$W/node_modules/@vzn"
+          ln -s "$GITHUB_WORKSPACE/packages/vx" "$W/node_modules/@vzn/vx"
+          cd "$W"
+          echo '{"name":"ws","private":true}' > package.json
+          printf 'packages:\n  - "packages/*"\n' > pnpm-workspace.yaml
+          echo '{"name":"a"}' > packages/a/package.json
+          echo x > packages/a/src/x.js
+          printf "import { defineProject } from '@vzn/vx'\nexport default defineProject({ tasks: { build: { exec: { command: 'echo built' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } })\n" > packages/a/vx.config.mjs
+          printf "import { defineWorkspace } from '@vzn/vx'\nimport { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'\nimport { localCachePlugin } from '@vzn/vx/plugins/local-cache'\nexport default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })\n" > vx.workspace.mjs
+          printf 'node_modules\n.vx\n' > .gitignore
+          git init -q && git add -A && git -c user.email=ci@vx -c user.name=ci commit -qm init
+          /tmp/vx-ci run build --all
+          /tmp/vx-ci run build --all | grep -q 'a#build'

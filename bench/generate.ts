@@ -27,13 +27,12 @@ await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "package
 // this, `git ls-files --others` walks 2×N untracked files that no real repo
 // has and the enumeration numbers say nothing about real repos.
 await writeFile(path.join(root, '.gitignore'), 'dist\n.vx\n')
-// NO DEFAULTS (owner directive 2026-08-22): a workspace with no executor and
-// cache plugins fails before any task runs, so the synthetic workspace must
-// declare the local ones — by ABSOLUTE path, since `@vzn/vx` does not
-// resolve from a tmp dir (the same shape tests/helpers/local-workspace.ts
-// emits). The bench broke silently when the reframe landed; benches are not
-// in CI, so this comment is the tripwire: if this file ever fails again with
-// the missing-plugin hint, the workspace contract changed under it.
+// NO DEFAULTS: a workspace with no executor and cache plugins fails before
+// any task runs, so the synthetic workspace declares the local ones — by
+// ABSOLUTE path into this checkout, since a tmp dir has no `@vzn/vx` in
+// node_modules (the same shape tests/helpers/local-workspace.ts emits).
+// Benches are not in CI, so this comment is the tripwire: if this file ever
+// fails with the missing-plugin hint, the workspace contract changed under it.
 const vxSrc = path.resolve(import.meta.dir, '..', 'packages', 'vx', 'src')
 await writeFile(
   path.join(root, 'vx.workspace.mjs'),
