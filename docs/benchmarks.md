@@ -3,6 +3,27 @@
 Empirical overhead numbers vs. Turborepo and Nx on synthetic workspaces.
 Updated as the runners evolve.
 
+## Warm-run overhead (2026-09-02)
+
+The number that matters most to a developer is the warm no-op run: every
+task a cache hit, nothing to restore. `bench/generate.ts` workspaces,
+`vx run build --all`, this machine (macOS arm64, Bun 1.4.0), best of 5:
+
+| Projects | Before (2026-09-02 morning) | After   | What changed                                      |
+| -------- | --------------------------- | ------- | ------------------------------------------------- |
+| 100      | 105 ms                      | 92 ms   | git enumeration overlaps config evaluation        |
+| 1000     | 380–450 ms                  | 270 ms  | + cached evaluations of pure configs              |
+
+Where the remaining 270 ms at 1000 projects goes (from `bun --cpu-prof`
++ `bench/profile-summary.ts`): git's untracked-file walk (~55 ms, now
+concurrent with config loading), the cache probes + restore stat-checks
+for 1000 tasks, hashing, and ~25 ms of process + module start-up. The
+1.7 s cold run is the 1000 `cp` commands.
+
+Reproduce: `bun bench/run.ts 1000 5`, or profile one run with
+`bun --cpu-prof --cpu-prof-dir=/tmp/prof packages/vx/src/bin.ts run build --all`
+and `bun bench/profile-summary.ts /tmp/prof/*.cpuprofile`.
+
 ## A real monorepo: 3,270 tasks, 100 layers
 
 The shape that actually stresses a task runner: **100 dependency layers**,

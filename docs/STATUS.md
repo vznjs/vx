@@ -49,31 +49,39 @@ Process: push directly to `main`, no PRs. Gate before every push:
   `docs/progress/`, and the design docs of removed products (dashboard,
   TUI, cloud execution service, trust scopes, lookahead/predictive
   scheduling). `bench/` paths fixed for the `packages/vx` layout.
+- 2026-09-02 — **perf wave 1.** Baseline measured (`docs/benchmarks.md`
+  § Warm-run overhead): 100 projects 105 ms, 1000 projects ~400 ms warm.
+  Profiled with `bun --cpu-prof` + the new `bench/profile-summary.ts`.
+  Two changes: (1) an UNSCOPED run starts the git enumeration before the
+  configs load, overlapping ~55 ms of git with config evaluation
+  (`startGitEnumeration` / `applyGitEnumeration`); (2) a config
+  evaluation cache for provably-pure configs
+  (`src/workspace/config-cache.ts`, `config_evals` table). Result:
+  92 ms / 270 ms. The bench generator now gitignores `dist` and `.vx`
+  like a real repo (the untracked walk was 2× inflated).
 
 ## In flight
 
-- Nothing. Next up is the bench + profile baseline.
+- Nothing.
 
 ## Next (ordered)
 
-1. **Bench + profile baseline** — `bench/run.ts` at 100 and 1000
-   projects; a stage-timing profile of the warm path (startup, config
-   eval, git enumeration, hashing, SQLite, scheduling). Record in
-   `docs/benchmarks.md`.
-2. **Perf wave** — driven by the profile. Candidates already known:
-   config-evaluation cache keyed on the static import closure
-   (`config-imports.ts` already computes it); fewer SQLite round trips on
-   the warm path; run-history recording cost; startup module graph.
-3. **Plugin pipeline v2** — Vite-shaped hooks on ONE `VxPlugin` type:
-   `config` / `configResolved` / `graph` (shape + order) / `hash` (extra
-   key parts) / `executor` / `cache` / `schedule` (priorities — the
-   replacement for the removed predictive mode) / `reporter` (events +
-   summary) / `commands` (CLI verbs). Existing plugins migrate; the
-   deprecated `eventSink` goes.
-4. **Move verbs out of core** behind `commands`: `migrate`, `prune`,
+1. **Perf wave 2** — re-profile at 1000 projects after wave 1. Known
+   candidates: the per-task cache probe + restore stat-check path (1000
+   SQLite round trips + stats), `git ls-files --others` vs taking
+   untracked paths from the `status` spawn that already runs (−40 ms CPU),
+   startup module graph (lazy-import the non-`run` verbs), run-history
+   recording. Then a fresh Turbo/Nx head-to-head via `bench/compare.ts`.
+2. **Plugin pipeline v2** — design accepted in
+   `docs/design/pipeline-2026-09.md`: stage-named hooks on ONE `VxPlugin`
+   (`config` / `project` / `graph` / `key` / `schedule` / `executor` /
+   `cache` / `telemetry` / `setup` / `commands`), declaration order
+   everywhere, in-place transforms re-validated by core, zero cost when
+   absent. Phase 1 = remove `eventSink`, add `config` + `project` +
+   `graph`.
+3. **Move verbs out of core** behind `commands`: `migrate`, `prune`,
    `upgrade`, and an MCP server package.
-5. **Docs + site rewrite** around the pipeline model. Delete design docs
-   for removed products.
+4. **Docs + site rewrite** around the pipeline model.
 
 ## Decisions (this arc)
 

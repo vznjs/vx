@@ -17,7 +17,10 @@ import {
   FULL_CACHE_POLICY,
   GitFilesCache,
   LayeredCache,
-  populateGitFilesCache,
+  applyGitEnumeration,
+  gitPathspecs,
+  startGitEnumeration,
+  type GitEnumeration,
 } from '../cache/index.js'
 import {
   buildPackageGraph,
@@ -181,6 +184,30 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   for (const project of anchored) {
     if (haveConfig.has(project)) seeds.add(project)
   }
+
+  // The local cache opens BEFORE the configs load: it is also where their
+  // cached evaluations live. `--cache-dir <path>` (RunOptions.cacheDir)
+  // overrides the workspace `cacheDir` field + the `.vx/cache` default;
+  // resolved relative to cwd.
+  const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
+  const cacheDir = options.cacheDir
+    ? path.resolve(options.cwd, options.cacheDir)
+    : resolveCacheDir(workspaceRoot, workspaceConfig)
+  const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
+  const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
+
+  // An UNSCOPED run enumerates the whole tree whatever the configs say, so
+  // git can start now and overlap the config evaluation below (~60 ms
+  // against ~80 ms on a 1000-project tree). A scoped run waits: its
+  // pathspecs depend on which projects the configs pull in.
+  const unscoped = options.projects === undefined && hasBare
+  const earlyGit: Promise<GitEnumeration> | undefined = unscoped
+    ? startGitEnumeration(workspaceRoot, ['.'])
+    : undefined
+  // A broken config below throws before this is awaited; the detached
+  // handler keeps that from surfacing as an unhandled rejection (the real
+  // await further down still sees the error).
+  earlyGit?.catch(() => {})
   type ConfigMeta = (typeof projectsWithConfigs)[number]
   const metaByName = new Map<string, ConfigMeta>(projectsWithConfigs.map((m) => [m.name, m]))
   const needed = new Set<string>()
@@ -217,19 +244,30 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // may declare cross edges of its own. The common case (no cross deps)
   // is a single round, identical to loading the closure in one batch.
   const projects = new Map<string, ProjectEntry>()
-  while (pending.length > 0) {
-    const round = pending.splice(0, pending.length)
-    const configs = await Promise.all(
-      round.map((m) =>
-        lock ? frozenProjectConfig(lock, m, workspaceRoot) : loadProjectConfig(m.configPath),
-      ),
-    )
-    for (let i = 0; i < round.length; i++) {
-      const meta = round[i]!
-      const config = configs[i] as ProjectConfig
-      projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
-      for (const name of crossDepProjects(config)) considerWithDeps(name)
+  try {
+    while (pending.length > 0) {
+      const round = pending.splice(0, pending.length)
+      const configs = await Promise.all(
+        round.map((m) =>
+          lock
+            ? frozenProjectConfig(lock, m, workspaceRoot)
+            : loadProjectConfig(m.configPath, {
+                evalCache: { store: localCache, workspaceFingerprint },
+              }),
+        ),
+      )
+      for (let i = 0; i < round.length; i++) {
+        const meta = round[i]!
+        const config = configs[i] as ProjectConfig
+        projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
+        for (const name of crossDepProjects(config)) considerWithDeps(name)
+      }
     }
+  } catch (err) {
+    // The cache opened before the configs loaded (it holds their cached
+    // evaluations); a config error must not leak the handle.
+    localCache.close()
+    throw err
   }
 
   // Boundary geometry considers every config-bearing project in the
@@ -246,13 +284,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const requested = expandRequested(options.tasks, candidateProjects, projects)
   const unresolvedTasks = unresolvedRequests(options.tasks, candidateProjects, projects)
 
-  const policy: CachePolicy = options.cache ?? FULL_CACHE_POLICY
-  // `--cache-dir <path>` (RunOptions.cacheDir) overrides the workspace
-  // `cacheDir` field + the `.vx/cache` default; resolved relative to cwd.
-  const cacheDir = options.cacheDir
-    ? path.resolve(options.cwd, options.cacheDir)
-    : resolveCacheDir(workspaceRoot, workspaceConfig)
-  const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
   // Cache seam precedence: an EXPLICITLY injected remote layer
   // (RunOptions.remoteCache — a distribution agent or serve that already
   // holds a wire client) wins outright; else a plugin's `cache` capability;
@@ -281,7 +312,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // layer's own truthful answer; `LayeredCache` sets it, a bare `Cache`
   // doesn't, and a third-party layer opts in when it really has a remote.
   const hasRemoteLayer = cache.hasRemote === true
-  const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
 
   const gitFilesCache = new GitFilesCache()
   // Bulk-populate via a single `git ls-files` at the workspace root —
@@ -295,12 +325,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       (t) => (t.cache?.inputs.workspaceFiles?.length ?? 0) > 0,
     ),
   )
-  await populateGitFilesCache(
-    workspaceRoot,
-    [...projects.values()].map((p) => p.dir),
-    gitFilesCache,
-    usesWorkspaceInputs,
-  )
+  const projectDirs = [...projects.values()].map((p) => p.dir)
+  const enumeration = await (earlyGit ??
+    startGitEnumeration(
+      workspaceRoot,
+      gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
+    ))
+  applyGitEnumeration(enumeration, workspaceRoot, projectDirs, gitFilesCache, usesWorkspaceInputs)
   const hashCache = createHashCache()
 
   // Empty-cases bookkeeping. We still construct the cache + fingerprint

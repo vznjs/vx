@@ -965,7 +965,55 @@ export async function populateGitFilesCache(
   cache: GitFilesCache,
   workspaceWide = false,
 ): Promise<void> {
-  // The two spawns are independent — run them concurrently so the
+  const enumeration = await startGitEnumeration(
+    workspaceRoot,
+    gitPathspecs(workspaceRoot, projectDirs, workspaceWide),
+  )
+  applyGitEnumeration(enumeration, workspaceRoot, projectDirs, cache, workspaceWide)
+}
+
+/** What one workspace-wide enumeration learned, before it is partitioned per project. */
+export interface GitEnumeration {
+  /** Every enumerated path, workspace-relative, tracked and untracked. */
+  all: string[]
+  /** Workspace-relative path → index OID, for files whose worktree state matched the index. */
+  trusted: Map<string, string>
+  /** Whether the worktree had uncommitted changes; null when `git status` failed. */
+  dirty: boolean | null
+}
+
+/**
+ * Pathspec scoping: when the run only needs a handful of projects
+ * (scoped config loading), let git scan just those dirs — 75 ms →
+ * 11 ms on an 11k-file repo. Above 64 dirs (or when a project IS
+ * the root) the whole-tree scan wins on arg/exec overhead anyway.
+ */
+export function gitPathspecs(
+  workspaceRoot: string,
+  projectDirs: readonly string[],
+  workspaceWide: boolean,
+): string[] {
+  const rels = projectDirs.map((d) => path.relative(workspaceRoot, d).split(path.sep).join('/'))
+  const scoped =
+    !workspaceWide &&
+    rels.length > 0 &&
+    rels.length <= 64 &&
+    rels.every((r) => r !== '' && r !== '.')
+  return scoped ? rels : ['.']
+}
+
+/**
+ * The spawn half of `populateGitFilesCache`, separated so an UNSCOPED run
+ * can start it before the configs are evaluated — the enumeration needs
+ * only the pathspecs, and `['.']` is right for every unscoped run — and
+ * overlap ~60 ms of git with ~80 ms of config evaluation on a
+ * 1000-project tree instead of paying them back to back.
+ */
+export async function startGitEnumeration(
+  workspaceRoot: string,
+  pathspecs: readonly string[],
+): Promise<GitEnumeration> {
+  // The spawns are independent — run them concurrently so the
   // bulk-populate costs max(ls-files, status) wall time, not the sum
   // (status alone is ~74 ms on a 1000-project tree; serial spawning
   // was a measurable warm-path regression vs the pre-OID code).
@@ -988,17 +1036,6 @@ export async function populateGitFilesCache(
       return null
     }
   }
-  // Pathspec scoping: when the run only needs a handful of projects
-  // (scoped config loading), let git scan just those dirs — 75 ms →
-  // 11 ms on an 11k-file repo. Above 64 dirs (or when a project IS
-  // the root) the whole-tree scan wins on arg/exec overhead anyway.
-  const rels = projectDirs.map((d) => path.relative(workspaceRoot, d).split(path.sep).join('/'))
-  const scoped =
-    !workspaceWide &&
-    rels.length > 0 &&
-    rels.length <= 64 &&
-    rels.every((r) => r !== '' && r !== '.')
-  const pathspecs = scoped ? rels : ['.']
   const [ls, status, prefixRes, flagged, coreCfg] = await Promise.all([
     spawnGit(['ls-files', '-s', '--others', '--exclude-standard', '-z', '--', ...pathspecs]),
     spawnGit(['status', '--porcelain', '-z', '--', ...pathspecs]),
@@ -1052,7 +1089,7 @@ export async function populateGitFilesCache(
   // Aggregate dirtiness for the Tier-3 invocation record — derived from
   // this same status spawn so `run()` needs no second `git status`.
   // null when the status spawn failed (non-repo / git error).
-  cache.setWorktreeDirty(dirty === null ? null : dirty.size > 0)
+  const worktreeDirty = dirty === null ? null : dirty.size > 0
   const trusted = dirty === null ? new Map<string, string>() : oids
   if (dirty !== null) {
     for (const rel of dirty) trusted.delete(rel)
@@ -1084,6 +1121,19 @@ export async function populateGitFilesCache(
     coreConfig: coreCfg !== null && coreCfg.exitCode === 0 ? coreCfg.stdout : '',
     spawnGit,
   })
+  return { all, trusted, dirty: worktreeDirty }
+}
+
+/** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */
+export function applyGitEnumeration(
+  enumeration: GitEnumeration,
+  workspaceRoot: string,
+  projectDirs: readonly string[],
+  cache: GitFilesCache,
+  workspaceWide = false,
+): void {
+  const { all, trusted } = enumeration
+  cache.setWorktreeDirty(enumeration.dirty)
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
   // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×

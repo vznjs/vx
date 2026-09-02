@@ -23,6 +23,10 @@ const root = path.resolve(dir)
 
 await mkdir(path.join(root, 'packages'), { recursive: true })
 await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+// A real workspace ignores its build outputs and vx's cache dir; without
+// this, `git ls-files --others` walks 2×N untracked files that no real repo
+// has and the enumeration numbers say nothing about real repos.
+await writeFile(path.join(root, '.gitignore'), 'dist\n.vx\n')
 // NO DEFAULTS (owner directive 2026-08-22): a workspace with no executor and
 // cache plugins fails before any task runs, so the synthetic workspace must
 // declare the local ones — by ABSOLUTE path, since `@vzn/vx` does not

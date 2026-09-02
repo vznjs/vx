@@ -859,6 +859,8 @@ export class Cache implements CacheLayer {
   private readonly upsertFileHash: ReturnType<Database['prepare']>
   private readonly insertOutputFile: ReturnType<Database['prepare']>
   private readonly deleteOutputFiles: ReturnType<Database['prepare']>
+  private readonly selectConfigEval: ReturnType<Database['prepare']>
+  private readonly insertConfigEval: ReturnType<Database['prepare']>
   /** Memoized repo object format for blob-OID hashing (lazy-detected). */
   private objectFormat: 'sha1' | 'sha256' | null = null
 
@@ -910,7 +912,7 @@ export class Cache implements CacheLayer {
       | undefined
     if (meta && meta.value !== SCHEMA_VERSION) {
       this.db.exec(
-        'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs;',
+        'DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS file_hashes; DROP TABLE IF EXISTS output_files; DROP TABLE IF EXISTS invocations; DROP TABLE IF EXISTS run_task_inputs; DROP TABLE IF EXISTS entry_inputs; DROP TABLE IF EXISTS config_evals;',
       )
       this.db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'version'").run(SCHEMA_VERSION)
     } else if (!meta) {
@@ -918,6 +920,17 @@ export class Cache implements CacheLayer {
         .prepare("INSERT INTO schema_meta(key, value) VALUES ('version', ?)")
         .run(SCHEMA_VERSION)
     }
+
+    // Cached config evaluations (workspace/config-cache.ts): the validated
+    // config as JSON, keyed by everything the evaluation could observe. A
+    // separate exec so the artifact schema above stays byte-identical.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS config_evals (
+        key        TEXT PRIMARY KEY,
+        json       TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+    `)
 
     this.db.exec(`
       -- stdout/stderr live in the <hash>.tar.zst artifact, not here
@@ -1120,6 +1133,23 @@ export class Cache implements CacheLayer {
         mtime_ms   = excluded.mtime_ms
     `)
     this.deleteOutputFiles = this.db.prepare('DELETE FROM output_files WHERE entry_hash = ?')
+    this.selectConfigEval = this.db.prepare('SELECT json FROM config_evals WHERE key = ?')
+    this.insertConfigEval = this.db.prepare(
+      'INSERT OR REPLACE INTO config_evals(key, json, created_at) VALUES (?, ?, ?)',
+    )
+  }
+
+  /** `ConfigEvalStore`: a cached config evaluation, honouring the local READ axis. */
+  getConfigEval(key: string): string | null {
+    if (!this.read) return null
+    const row = this.selectConfigEval.get(key) as { json: string } | null
+    return row?.json ?? null
+  }
+
+  /** `ConfigEvalStore`: remember a validated evaluation, honouring the local WRITE axis. */
+  putConfigEval(key: string, json: string): void {
+    if (!this.write) return
+    this.insertConfigEval.run(key, json, Date.now())
   }
 
   /**
@@ -1937,6 +1967,9 @@ export class Cache implements CacheLayer {
       const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
       this.db.prepare('DELETE FROM runs WHERE ended_at < ?').run(cutoff)
       this.db.prepare('DELETE FROM invocations WHERE ended_at < ?').run(cutoff)
+      // A config that has not been loaded in 30 days was edited (its key
+      // moved) or its project left; either way the row is dead weight.
+      this.db.prepare('DELETE FROM config_evals WHERE created_at < ?').run(cutoff)
     } catch {
       // Retention is best-effort; never block closing the handle.
     }

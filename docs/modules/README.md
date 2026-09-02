@@ -84,6 +84,7 @@ The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 | [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.             |
 | [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                       |
 | [`config-imports.md`](./config-imports.md) | `src/workspace/config-imports.ts` — the config-import selection channel.            |
+| [`config-cache.md`](./config-cache.md)     | `src/workspace/config-cache.ts` — cached evaluations of provably-pure configs.      |
 | [`nested-dirs.md`](./nested-dirs.md)       | `src/workspace/nested-dirs.ts` — boundary set (other projects rooted under each).   |
 | [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — workspace fingerprint (lockfile + workspace yaml). |
 | [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `vx-lock.json` freeze / trust / audit.                |

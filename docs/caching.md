@@ -706,6 +706,21 @@ moat.
 - **One handle, one schema-meta sentinel.** Schema mismatch wipes
   the tables (pre-alpha) — there's no migration code to maintain.
 
+## Config evaluation cache
+
+Evaluating configs is the largest fixed cost of a warm run on a big
+workspace (~80 ms for 1000 synthetic configs; reading them as data is
+~12 ms). A config that is **provably pure** — every import relative or
+`@vzn/vx`, and no mention of `process`, `Bun`, `Date`, `fetch`,
+`import.meta`, `require`, a dynamic `import()`, `await`, … outside string
+literals and comments — is served from `cache.db`'s `config_evals` table,
+keyed by its bytes, the bytes of every file in its relative import
+closure, the workspace fingerprint (lockfiles) and Bun's version. Editing
+a shared preset moves the key. Anything the static check cannot prove
+pure evaluates live, exactly as before, so the cache can be slower but
+never wrong. Details and the deny-list:
+[`modules/config-cache.md`](./modules/config-cache.md).
+
 ## Performance characteristics
 
 - **Hashing cost** on a clean tree is near-zero per file: git index
