@@ -733,14 +733,14 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       const cache = new GitFilesCache()
       const projectDirs = ['a', 'b', 'c'].map((n) => path.join(workspaceRoot, 'packages', n))
       await populateGitFilesCache(workspaceRoot, projectDirs, cache)
-      // One bulk `ls-files -s --others` (file list + index OIDs), one
-      // `status --porcelain` (dirty set), one `rev-parse` (repo→workspace
-      // path + git-dir), one `ls-files -v` (skip-worktree / assume-unchanged
-      // flags), one `config --get-regexp` (the clean-filter gate) — all
-      // concurrent, never per-project. `check-attr` is NOT among them: this
-      // fixture declares no attributes, and paying for it here would mean
-      // paying for it in every plain repo.
-      expect(spawnCount).toBe(5)
+      // One index-only `ls-files -s -v` (tracked list + index OIDs +
+      // skip-worktree flags), one `status --porcelain -uall` (dirty set +
+      // untracked files — the ONLY worktree walk), one `rev-parse`
+      // (repo→workspace path + git-dir), one `config --get-regexp` (the
+      // clean-filter gate) — all concurrent, never per-project. `check-attr`
+      // is NOT among them: this fixture declares no attributes, and paying
+      // for it here would mean paying for it in every plain repo.
+      expect(spawnCount).toBe(4)
       // Every project got a non-null entry partitioned from the bulk
       // listing — `src.ts` shows up project-relative.
       for (const dir of projectDirs) {

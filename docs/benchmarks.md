@@ -9,20 +9,48 @@ The number that matters most to a developer is the warm no-op run: every
 task a cache hit, nothing to restore. `bench/generate.ts` workspaces,
 `vx run build --all`, this machine (macOS arm64, Bun 1.4.0), best of 5:
 
-| Projects | Before (2026-09-02 morning) | After   | What changed                                      |
-| -------- | --------------------------- | ------- | ------------------------------------------------- |
-| 100      | 105 ms                      | 92 ms   | git enumeration overlaps config evaluation        |
-| 1000     | 380–450 ms                  | 270 ms  | + cached evaluations of pure configs              |
+| Projects | Before (2026-09-02 morning) | Wave 1  | Wave 2  | What changed                                                    |
+| -------- | --------------------------- | ------- | ------- | --------------------------------------------------------------- |
+| 100      | 105 ms                      | 92 ms   | 79 ms   | git overlaps config load; `.git/HEAD` read replaces a git spawn |
+| 1000     | 380–450 ms                  | 270 ms  | 242 ms  | + cached pure-config evals; one worktree walk; readdir discovery |
 
-Where the remaining 270 ms at 1000 projects goes (from `bun --cpu-prof`
-+ `bench/profile-summary.ts`): git's untracked-file walk (~55 ms, now
-concurrent with config loading), the cache probes + restore stat-checks
-for 1000 tasks, hashing, and ~25 ms of process + module start-up. The
-1.7 s cold run is the 1000 `cp` commands.
+Where the remaining 242 ms at 1000 projects goes (`VX_TIMING=1`, see
+below): discovery 22 ms, config load 31 ms (all cache hits) overlapped
+with git's one worktree walk (`status -uall`, ~57 ms, the critical
+path), the run-graph phase 78 ms (1000 hits: probe, output glob, stat
+check), history recording 12 ms, cache open 9 ms, and ~50 ms of process
+start + module load + exit outside the table. The 1.7 s cold run is the
+1000 `cp` commands.
 
-Reproduce: `bun bench/run.ts 1000 5`, or profile one run with
-`bun --cpu-prof --cpu-prof-dir=/tmp/prof packages/vx/src/bin.ts run build --all`
-and `bun bench/profile-summary.ts /tmp/prof/*.cpuprofile`.
+Reproduce: `bun bench/run.ts 1000 5`.
+
+### Profiling a run
+
+Two tools, and they answer different questions:
+
+- **`VX_TIMING=1 vx run …`** prints a stage table to stderr at the end of
+  the run — discovery, cache open, config load, git enumeration, graph,
+  classify/probe, run graph, history, close — with each stage's own and
+  cumulative time, plus accumulated per-task spans (`cache.get`,
+  `output glob`, `output stat`, `task hash`). This is the first thing to
+  read: it says WHICH stage moved. The per-task spans run under the
+  scheduler's concurrency, so they over-count (a span's wall includes
+  time yielded to other tasks); compare them to each other, not to the
+  stage total.
+- **`bun --cpu-prof --cpu-prof-dir=/tmp/prof packages/vx/src/bin.ts run …`**
+  then `bun bench/profile-summary.ts /tmp/prof/*.cpuprofile` gives self
+  time by function and by file. Good for finding a hot loop; unreliable
+  about where an `await` waited (it attributes the wait to whatever frame
+  was on the stack).
+
+Two measurement lessons from this wave, recorded so they are not
+re-learned: a micro-benchmark of a sync call in isolation (`statSync`
+2 µs vs `stat` 13 µs) does not predict the run — the async forms run in
+parallel on the thread pool under the scheduler's concurrency, and
+switching the warm-hit path to sync calls made the 1000-project run
+40 ms SLOWER. And Bun 1.4.0's `--compile` binaries carry a signature this
+macOS rejects (SIGKILL on launch); an ad-hoc `codesign -s - --force`
+repairs it, which the release workflow now does on a macOS runner.
 
 ## A real monorepo: 3,270 tasks, 100 layers
 

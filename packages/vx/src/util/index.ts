@@ -3,6 +3,7 @@
 
 export { UserError } from './errors.js'
 export { xxh3, xxh3hex } from './hash.js'
+export { mark, printTimings, span } from './timing.js'
 export { clampInt, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export { relPosix, staticPrefix } from './paths.js'
 export { settleWithin, teardownTimeoutMs } from './settle.js'

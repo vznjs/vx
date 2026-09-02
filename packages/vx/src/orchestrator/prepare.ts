@@ -9,7 +9,7 @@
 
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { UserError } from '../util/index.js'
+import { mark, UserError } from '../util/index.js'
 import {
   Cache,
   type CacheLayer,
@@ -142,10 +142,13 @@ function crossDepProjects(config: ProjectConfig): string[] {
  * empty plan).
  */
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
+  mark('startup')
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
   const workspace = await loadWorkspace(workspaceRoot)
   const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
+  mark('workspace config')
   const projectMetas = await listProjects(workspace)
+  mark('discover projects')
 
   // SCOPED config loading: configs are programs, and evaluating 1090
   // of them costs ~200 ms — the dominant fixed cost of small runs.
@@ -195,6 +198,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     : resolveCacheDir(workspaceRoot, workspaceConfig)
   const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
+  mark('open cache')
 
   // An UNSCOPED run enumerates the whole tree whatever the configs say, so
   // git can start now and overlap the config evaluation below (~60 ms
@@ -269,6 +273,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     localCache.close()
     throw err
   }
+  mark('load configs')
 
   // Boundary geometry considers every config-bearing project in the
   // workspace, loaded or not — an out-of-scope nested project must
@@ -332,6 +337,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
     ))
   applyGitEnumeration(enumeration, workspaceRoot, projectDirs, gitFilesCache, usesWorkspaceInputs)
+  mark('git enumeration')
   const hashCache = createHashCache()
 
   // Empty-cases bookkeeping. We still construct the cache + fingerprint

@@ -53,6 +53,16 @@ export function captureGitContext(
 ): GitContext {
   let commitSha: string | null = null
   let branch: string | null = null
+  // Read `.git` directly first: HEAD plus one ref file (or packed-refs) is
+  // ~0.1 ms, where the spawn below is ~8 ms — on EVERY run, including a
+  // 60 ms warm one. The spawn stays as the fallback for whatever the reader
+  // does not understand (a ref format this code has not seen, a gitdir it
+  // cannot resolve), so an unusual repo is slower, never wrong.
+  const direct = readHeadDirect(workspaceRoot)
+  if (direct !== null) {
+    branch = direct.branch ?? ciBranch(env)
+    return { commitSha: direct.commitSha, branch, dirty }
+  }
   try {
     const proc = Bun.spawnSync({
       cmd: ['git', '-C', workspaceRoot, 'rev-parse', 'HEAD', '--abbrev-ref', 'HEAD'],
@@ -84,6 +94,58 @@ export function captureGitContext(
   // exported variable must never relabel it.
   branch ??= ciBranch(env)
   return { commitSha, branch, dirty }
+}
+
+/**
+ * `HEAD`'s commit and branch from the `.git` files, or null when anything
+ * about the layout is unfamiliar (the caller then spawns git). Handles a
+ * `.git` directory, a `.git` FILE (`gitdir: …` — a linked worktree, whose
+ * refs live under `commondir`), a symbolic HEAD, a detached HEAD, loose refs
+ * and `packed-refs`.
+ */
+function readHeadDirect(
+  workspaceRoot: string,
+): { commitSha: string; branch: string | null } | null {
+  try {
+    let gitDir = path.join(workspaceRoot, '.git')
+    const st = fs.statSync(gitDir)
+    if (st.isFile()) {
+      const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(gitDir, 'utf8'))
+      if (m === null) return null
+      gitDir = path.resolve(workspaceRoot, m[1]!.trim())
+    }
+    let commonDir = gitDir
+    const commonFile = path.join(gitDir, 'commondir')
+    if (fs.existsSync(commonFile)) {
+      commonDir = path.resolve(gitDir, fs.readFileSync(commonFile, 'utf8').trim())
+    }
+    const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim()
+    const SHA = /^[0-9a-f]{40,64}$/
+    if (SHA.test(head)) return { commitSha: head, branch: null }
+    const ref = /^ref:\s*(refs\/heads\/(.+))$/.exec(head)
+    if (ref === null) return null
+    const refPath = ref[1]!
+    const branch = ref[2]!
+    for (const base of [gitDir, commonDir]) {
+      const loose = path.join(base, refPath)
+      if (fs.existsSync(loose)) {
+        const sha = fs.readFileSync(loose, 'utf8').trim()
+        return SHA.test(sha) ? { commitSha: sha, branch } : null
+      }
+    }
+    const packed = path.join(commonDir, 'packed-refs')
+    if (fs.existsSync(packed)) {
+      for (const line of fs.readFileSync(packed, 'utf8').split('\n')) {
+        if (line.endsWith(` ${refPath}`)) {
+          const sha = line.slice(0, line.length - refPath.length - 1)
+          return SHA.test(sha) ? { commitSha: sha, branch } : null
+        }
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 /**

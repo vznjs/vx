@@ -265,3 +265,17 @@ jobs:
       # tolerated (lossy-by-OS, ~5%, asserted on nowhere here).
       - name: sandbox enforcement canary
         run: bun packages/vx/tests/helpers/sandbox-canary.ts 20
+
+      # A compiled binary must LAUNCH on macOS. Bun 1.4.0's `--compile`
+      # signature is rejected by macOS (SIGKILL, exit 137) until it is
+      # re-signed ad hoc — the release workflow does that on a macOS runner.
+      # This pins both halves: the raw build's signature state is reported,
+      # and the re-signed binary answers `--version`. If a future Bun signs
+      # correctly, the first line changes and the re-sign step can go.
+      - name: compiled binary launches after ad-hoc re-sign
+        run: |
+          cd packages/vx
+          bun build --compile --target=bun-darwin-arm64 src/bin.ts --outfile /tmp/vx-ci
+          codesign --verify /tmp/vx-ci && echo "bun's own signature: valid" || echo "bun's own signature: INVALID (expected on Bun 1.4.0)"
+          codesign -s - --force /tmp/vx-ci
+          /tmp/vx-ci --version

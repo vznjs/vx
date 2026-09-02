@@ -43,7 +43,38 @@ jobs:
       # (this workflow OOM'd before with only four).
       - run: bun packages/vx/src/bin.ts run build --filter @vzn/vx --concurrency 2
 
+      # The darwin binaries are RE-SIGNED before they ship. Bun 1.4.0's
+      # `--compile` writes an ad-hoc signature that macOS rejects ("code or
+      # signature have been modified") — the binary is SIGKILLed on launch,
+      # every build flavour, cross-compiled or native (measured 2026-09-02 on
+      # Darwin 27). An ad-hoc `codesign -s - --force` repairs it, and only a
+      # macOS runner has codesign, so the two darwin targets take a detour.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: darwin-unsigned
+          path: packages/vx/dist/vx-darwin-*
+          retention-days: 1
+
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: packages/vx/dist/vx-*
+          files: packages/vx/dist/vx-linux-*
+
+  sign-darwin:
+    needs: assets
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: darwin-unsigned
+          path: dist
+      - name: Re-sign ad hoc and prove the arm64 binary launches
+        run: |
+          chmod +x dist/vx-darwin-*
+          for f in dist/vx-darwin-*; do codesign -s - --force "$f"; codesign --verify --verbose=2 "$f"; done
+          ./dist/vx-darwin-arm64 --version
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: dist/vx-darwin-*

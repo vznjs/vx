@@ -22,7 +22,7 @@ import {
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
-import { MAX_TIMEOUT_MS, ulid, UserError } from '../util/index.js'
+import { mark, MAX_TIMEOUT_MS, printTimings, ulid, UserError } from '../util/index.js'
 import { executeTask } from './execute-task.js'
 import { resolveResourceCosts } from './resources.js'
 import { computeTaskHash } from './task-hash.js'
@@ -166,6 +166,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const log = busLogger(bus)
 
   const prepared = await prepareRun(options, log)
+  mark('prepare (graph)')
   // A requested name that matched no project is a typo (or a stray
   // positional from an `=`-only flag written with a space). Failing the
   // whole run — even when OTHER requested tasks resolved — is the point:
@@ -726,6 +727,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       }
     }
 
+    mark('classify + probe')
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -796,6 +798,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       await allExited
     }
 
+    mark('run graph')
     // Clear the status line for good before the summary prints.
     log.runEnd?.()
 
@@ -1004,6 +1007,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       tags: JSON.stringify(options.tags ?? {}),
     }
     cache.recordRunBundle({ runs: toRecord, invocation })
+    mark('record history')
     // Hand the per-run summary to the telemetry sinks + drain them. Only
     // when a sink is active (telemetry !== undefined) — otherwise this
     // whole block is skipped and the run is byte-identical to before.
@@ -1043,6 +1047,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     await cache.drainUploads?.()
     await teardownPlugins(prepared.plugins, eventSinks?.sinks ?? [], (m) => log.status(m))
     closeCache()
+    mark('close')
+    printTimings()
 
     // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
     // no task was sandboxed; otherwise SRT keeps proxy servers alive and

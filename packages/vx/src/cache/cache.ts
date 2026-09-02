@@ -1461,6 +1461,10 @@ export class Cache implements CacheLayer {
     // current; the on-disk tree under projectDir is whatever it was,
     // and nothing was supposed to land there.
     if (expected.length === 0) return true
+    // Promise-form stat, deliberately: statSync is ~2 µs against ~13 µs in
+    // isolation, but this runs under the scheduler's concurrency and the
+    // async form keeps the stats on the thread pool in parallel — the sync
+    // version measured slower on a 1000-hit warm run (2026-09-02).
     const results = await Promise.all(
       expected.map(async (e) => {
         try {

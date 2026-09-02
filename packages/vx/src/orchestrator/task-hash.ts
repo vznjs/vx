@@ -9,7 +9,7 @@ import {
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
-import { relPosix, xxh3hex } from '../util/index.js'
+import { span, relPosix, xxh3hex } from '../util/index.js'
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 
 /**
@@ -90,7 +90,12 @@ export interface ComputeHashArgs {
  * `computeGroupHash` is exported for that purpose.
  */
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
-  return await args.cache.key(await resolveKeyInput(args))
+  const end = span('task hash')
+  try {
+    return await args.cache.key(await resolveKeyInput(args))
+  } finally {
+    end()
+  }
 }
 
 /**

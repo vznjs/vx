@@ -716,13 +716,17 @@ interface GitLsResult {
    * dirtiness — callers intersect with `git status` before trusting.
    */
   oids: Map<string, string>
+  /** Paths flagged skip-worktree / assume-unchanged (only when `-v` was passed). */
+  flagged: Set<string>
 }
 
 // `<mode> <oid> <stage>\t<path>` — the staged-entry form of
 // `ls-files -s`. `--others` paths print bare; with `-z`,
 // core.quotePath quoting is off, so a bare path containing a literal
 // tab still can't match this fixed-form prefix.
-const LS_FILES_STAGE_RE = /^([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
+// `ls-files -s -v`: an optional cache-state flag (`H`, `S`, `h`, …) then the
+// stage record. Both answers come from ONE spawn.
+const LS_FILES_STAGE_RE = /^(?:([A-Za-z]) )?([0-7]{6}) ([0-9a-f]{40,64}) ([0-3])\t/
 
 /**
  * Run `git ls-files -s --others --exclude-standard -z .` in `cwd`.
@@ -761,10 +765,11 @@ function runGitLsFiles(cwd: string): GitLsResult {
   return parseLsFilesOutput(new TextDecoder().decode(proc.stdout))
 }
 
-function parseLsFilesOutput(out: string): GitLsResult {
+export function parseLsFilesOutput(out: string): GitLsResult {
   const files: string[] = []
   const oids = new Map<string, string>()
-  if (out.length === 0) return { files, oids }
+  const flagged = new Set<string>()
+  if (out.length === 0) return { files, oids, flagged }
   // NUL-separated; trailing NUL produces an empty segment we skip.
   for (const record of out.split('\0')) {
     if (record.length === 0) continue
@@ -775,13 +780,18 @@ function parseLsFilesOutput(out: string): GitLsResult {
     }
     const filePath = record.slice(m[0].length)
     files.push(filePath)
-    const mode = m[1]!
-    const stage = m[3]!
+    const mode = m[2]!
+    const stage = m[4]!
     if ((mode === '100644' || mode === '100755') && stage === '0') {
-      oids.set(filePath, m[2]!)
+      oids.set(filePath, m[3]!)
     }
+    // A LOWERCASE letter means skip-worktree or assume-unchanged (`S` is the
+    // older spelling of skip-worktree): git has been told to stop looking at
+    // the worktree file, so its index OID says nothing about the disk.
+    const flag = m[1]
+    if (flag !== undefined && (flag === 'S' || (flag >= 'a' && flag <= 'z'))) flagged.add(filePath)
   }
-  return { files, oids }
+  return { files, oids, flagged }
 }
 
 /** One completed `git` invocation. */
@@ -900,12 +910,17 @@ export function parseFlaggedOutput(out: string): Set<string> {
   return flagged
 }
 
-function parseStatusOutput(out: string): Set<string> {
+function parseStatusOutput(out: string): { dirty: Set<string>; untracked: string[] } {
   const tokens = out.split('\0')
   const dirty = new Set<string>()
+  const untracked: string[] = []
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]!
     if (token.length < 4) continue
+    if (token[0] === '?') {
+      untracked.push(token.slice(3))
+      continue
+    }
     dirty.add(token.slice(3))
     // X = R or C → the next token is the rename/copy source path.
     const x = token[0]
@@ -914,7 +929,7 @@ function parseStatusOutput(out: string): Set<string> {
       dirty.add(tokens[i]!)
     }
   }
-  return dirty
+  return { dirty, untracked }
 }
 
 /**
@@ -1036,9 +1051,16 @@ export async function startGitEnumeration(
       return null
     }
   }
-  const [ls, status, prefixRes, flagged, coreCfg] = await Promise.all([
-    spawnGit(['ls-files', '-s', '--others', '--exclude-standard', '-z', '--', ...pathspecs]),
-    spawnGit(['status', '--porcelain', '-z', '--', ...pathspecs]),
+  // Four spawns, one worktree walk. `ls-files -s -v` reads the INDEX only
+  // (~9 ms on a 1000-project tree) and answers two questions at once: every
+  // tracked path's OID and its cache-state flag. `status -uall` is the one
+  // command that walks the worktree, and it answers two as well: which
+  // tracked paths are dirty AND which files are untracked. Asking
+  // `ls-files --others` for the untracked set walked the same tree a second
+  // time (~50 ms of CPU, concurrent with status but contending with it).
+  const [ls, status, prefixRes, coreCfg] = await Promise.all([
+    spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs]),
+    spawnGit(['status', '--porcelain', '-z', '-uall', '--', ...pathspecs]),
     // Two answers from one spawn. `--show-prefix` is the repo→workspace path
     // (empty when the workspace root IS the git root): `ls-files` prints
     // cwd(workspace)-relative paths but `status` prints repo-root-relative
@@ -1047,12 +1069,6 @@ export async function startGitEnumeration(
     // `info/attributes` for the filter gate (it is not always `.git/` — a
     // linked worktree's `.git` is a FILE pointing elsewhere).
     spawnGit(['rev-parse', '--show-prefix', '--git-dir']),
-    // Index-only, so it costs ~5 ms against the enumeration's ~19 ms on a
-    // 15k-file tree and runs concurrently with it. `-v` tags each entry with
-    // its cache state; a LOWERCASE letter means skip-worktree or
-    // assume-unchanged — git has been told to stop looking at the worktree
-    // file, so its index OID says nothing about what is (or isn't) on disk.
-    spawnGit(['ls-files', '-v', '-z', '--', ...pathspecs]),
     // Reads three config keys, no tree scan — the gate for whether a clean
     // filter can rewrite bytes between the index and the worktree. Exits 1
     // when none are set, which is the common case and means "no gate".
@@ -1070,7 +1086,7 @@ export async function startGitEnumeration(
         `Run 'git init' in your workspace root.${stderr ? ` (git: ${stderr})` : ''}`,
     )
   }
-  const { files: all, oids } = parseLsFilesOutput(ls.stdout)
+  const { files: tracked, oids, flagged } = parseLsFilesOutput(ls.stdout)
   // Normalize `status`'s repo-root-relative paths to workspace-relative (strip
   // the `--show-prefix`) so the dirty set is keyed identically to the trusted
   // OID map. Without this, when the workspace root is a git subdir, a modified
@@ -1083,9 +1099,15 @@ export async function startGitEnumeration(
     prefixRes !== null && prefixRes.exitCode === 0 ? prefixRes.stdout.split('\n') : []
   const gitPrefix = (revLines[0] ?? '').trim()
   const gitDir = (revLines[1] ?? '').trim()
-  const dirtyRaw =
+  const parsedStatus =
     status !== null && status.exitCode === 0 ? parseStatusOutput(status.stdout) : null
-  const dirty = dirtyRaw === null ? null : stripPrefixFromSet(dirtyRaw, gitPrefix)
+  const dirty = parsedStatus === null ? null : stripPrefixFromSet(parsedStatus.dirty, gitPrefix)
+  // Untracked files are inputs too (a new file is the commonest edit there
+  // is). They come from the status walk, repo-root-relative like the dirty
+  // set. Without a status answer the enumeration is the index alone.
+  const untracked =
+    parsedStatus === null ? [] : [...stripPrefixFromSet(new Set(parsedStatus.untracked), gitPrefix)]
+  const all = untracked.length === 0 ? tracked : tracked.concat(untracked)
   // Aggregate dirtiness for the Tier-3 invocation record — derived from
   // this same status spawn so `run()` needs no second `git status`.
   // null when the status spawn failed (non-repo / git error).
@@ -1101,9 +1123,7 @@ export async function startGitEnumeration(
   // materializing it later changes no key and the old artifact is replayed.
   // Dropping the OID sends these back through the probe, where they correctly
   // fall out of the input set while unmaterialized.
-  if (flagged !== null && flagged.exitCode === 0) {
-    for (const rel of parseFlaggedOutput(flagged.stdout)) trusted.delete(rel)
-  }
+  for (const rel of flagged) trusted.delete(rel)
   // An index OID is only the file's content hash when git stores the worktree
   // bytes VERBATIM. Under a clean filter (`text`/`eol`/`ident`) the blob is a
   // DIFFERENT sequence of bytes — the LF-normalized form — while the task
@@ -1197,6 +1217,10 @@ async function scanUnion(
   const matches = new Set<string>()
   for (const pattern of positive) {
     const glob = new Bun.Glob(pattern)
+    // Async scan, deliberately: the sync walk is faster in isolation (37 µs
+    // vs 56 µs on a one-file `dist/**`) but SERIALISES on the main thread,
+    // and this runs under the scheduler's concurrency — measured 2026-09-02,
+    // switching it to scanSync made a 1000-hit warm run 40 ms SLOWER.
     for await (const rel of glob.scan({ cwd, onlyFiles: true, dot: true })) {
       if (excludeGlobs.some((g) => g.match(rel))) continue
       matches.add(path.resolve(cwd, rel))

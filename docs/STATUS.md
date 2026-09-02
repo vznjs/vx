@@ -59,6 +59,25 @@ Process: push directly to `main`, no PRs. Gate before every push:
   (`src/workspace/config-cache.ts`, `config_evals` table). Result:
   92 ms / 270 ms. The bench generator now gitignores `dist` and `.vx`
   like a real repo (the untracked walk was 2× inflated).
+- 2026-09-02 — **perf wave 2** (79 ms / 242 ms). `VX_TIMING=1` stage
+  table + accumulated spans (`src/util/timing.ts`). One worktree walk:
+  `ls-files -s -v` (index only, OIDs + skip-worktree flags in one spawn)
+  and `status --porcelain -uall` (dirty + untracked) replace
+  `ls-files --others` + `status` + `ls-files -v` — 4 spawns, not 5.
+  `.git/HEAD` is read directly for the run's commit/branch (spawn kept
+  as fallback): −10 ms on every run. Discovery reads `<dir>/*` members
+  via readdir, not `Bun.Glob` (25 → 2 ms), manifest + listing in flight
+  together (68 → 22 ms at 1000). `localeCompare` sort → code-unit sort
+  (28 ms of ICU). REFUTED and reverted: sync `stat`/glob/`readFileSync`
+  on the warm-hit path — faster in isolation, 40 ms slower under the
+  scheduler's concurrency (documented in `docs/benchmarks.md`).
+  FOUND: Bun 1.4.0 `--compile` binaries are SIGKILLed on this macOS
+  (invalid ad-hoc signature, every flavour); `codesign -s - --force`
+  repairs it — release.yml re-signs the darwin binaries on a macOS runner
+  and the darwin CI job pins that a re-signed build launches.
+  REFUTED: shipping the CLI as one `bun build --target=bun` bundle —
+  `--version` 25 → 36 ms and the warm run 79 → 98 ms; Bun loads the
+  169-module source tree faster than it parses a 1.2 MB file.
 
 ## In flight
 
@@ -66,12 +85,13 @@ Process: push directly to `main`, no PRs. Gate before every push:
 
 ## Next (ordered)
 
-1. **Perf wave 2** — re-profile at 1000 projects after wave 1. Known
-   candidates: the per-task cache probe + restore stat-check path (1000
-   SQLite round trips + stats), `git ls-files --others` vs taking
-   untracked paths from the `status` spawn that already runs (−40 ms CPU),
-   startup module graph (lazy-import the non-`run` verbs), run-history
-   recording. Then a fresh Turbo/Nx head-to-head via `bench/compare.ts`.
+1. **Perf wave 3** — the run-graph phase (78 ms / 1000 hits: batch the
+   short-circuit probes into one `IN (…)` query, attach output rows to
+   the entry so `restoreHit` does not re-query, reuse compiled `Bun.Glob`
+   per pattern); `git status` is the critical
+   path at 1000 projects — `vx info` should say when `core.fsmonitor` /
+   `core.untrackedCache` are off. Then a fresh Turbo/Nx head-to-head via
+   `bench/compare.ts`.
 2. **Plugin pipeline v2** — design accepted in
    `docs/design/pipeline-2026-09.md`: stage-named hooks on ONE `VxPlugin`
    (`config` / `project` / `graph` / `key` / `schedule` / `executor` /

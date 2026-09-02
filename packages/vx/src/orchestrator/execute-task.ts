@@ -36,7 +36,7 @@ import {
   outputRefs,
   undeclaredInputPaths,
 } from './verify.js'
-import { staticPrefix } from '../util/index.js'
+import { span, staticPrefix } from '../util/index.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
 import type { Logger } from './logger.js'
 import {
@@ -397,7 +397,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       }
       // Confirmed stable miss — skip the probe, fall through to run.
     } else {
+      const endProbe = span('cache.get')
       const hit = await cache.get(hash, { taskId: node.id, command: step.command })
+      endProbe()
       if (hit) {
         return restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
       }
@@ -953,7 +955,9 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // tar (decompress + parse) at the same point.
   let skipRestore = false
   if (anyOutputs) {
+    const endRows = span('output rows')
     const expected = args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+    endRows()
     if (expected.length > 0) {
       // Two namespaces in the rows: bare rels are project outputs,
       // `workspace-outputs/<rel>` rows anchor at the workspace root.
@@ -961,6 +965,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
       const wsExpected = expected
         .filter((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
         .map((e) => ({ ...e, path: e.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
+      const endGlob = span('output glob')
       const actualAbs = await resolveOutputs({
         projectDir: node.projectDir,
         outputs,
@@ -970,6 +975,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
       })
+      endGlob()
       const setsMatch = (
         actual: readonly string[],
         exp: ReadonlyArray<{ path: string }>,
@@ -984,9 +990,11 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         path.relative(args.workspaceRoot, p).split(path.sep).join('/'),
       )
       if (setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)) {
+        const endStat = span('output stat')
         skipRestore =
           (await args.cache.isOutputsCurrent(node.projectDir, projExpected)) &&
           (await args.cache.isOutputsCurrent(args.workspaceRoot, wsExpected))
+        endStat()
       }
     }
   }
