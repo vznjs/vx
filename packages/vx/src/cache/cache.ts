@@ -30,7 +30,7 @@
 //   close           : release the SQLite handle
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
-import { mkdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { mkdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
@@ -919,6 +919,15 @@ export class Cache implements CacheLayer {
     // because callers use `new Cache(...)` directly; `mkdirSync` keeps
     // that property without a subprocess fork.
     mkdirSync(cacheDir, { recursive: true })
+    // Make the cache dir invisible to git, every time it is created: a
+    // `*` .gitignore inside it (the Cargo / Nx convention). Two reasons,
+    // both measured. A cache nobody ignored gets COMMITTED by the next
+    // `git add -A`; and vx's own `git status -uall` walks it — 1000
+    // artifacts doubled the enumeration on the bench workspace before
+    // its generator ignored `.vx`. An ignored directory is skipped by the
+    // walk entirely. Only written when absent, so a user's own file wins.
+    const ignore = path.join(cacheDir, '.gitignore')
+    if (!existsSync(ignore)) writeFileSync(ignore, '*\n')
     this.db = new Database(path.join(cacheDir, 'cache.db'), { create: true })
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')

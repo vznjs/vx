@@ -200,6 +200,14 @@ Process: push directly to `main`, no PRs. Gate before every push:
   linux ones and `@vzn/vx` after it. Neither path has a test that can
   run in CI short of a publish; the tree assembly is checked by hand
   (`bun scripts/build-npm.ts <v> --only=<target> --out=<dir>`).
+- 2026-09-03 — the cache directory now writes a `*` `.gitignore` into
+  itself when created (Cargo / Nx convention; a user's own file wins).
+  Two consequences, one of them a latent correctness hazard: a cache
+  nobody ignored got committed by `git add -A`, and — for a workspace
+  whose ROOT is a project with `**/*` inputs — the artifacts were
+  enumerated as inputs, so every save moved the next key. It also keeps
+  vx's own `status -uall` walk out of the artifact directory. Pinned in
+  `tests/cache-gitignore.test.ts` with a stray-file control.
 
 ## In flight
 

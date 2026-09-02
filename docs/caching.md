@@ -517,6 +517,9 @@ same reason `lock --check` ignores `inputs.env` value changes.
 
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)
+├── .gitignore                              `*` — written when the dir is created, so the
+│                                           cache is never committed and never enumerated
+│                                           as an input (a user's own file is left alone)
 ├── cache.db                                SQLite metadata + run history
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory

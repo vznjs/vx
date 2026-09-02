@@ -1551,17 +1551,12 @@ The schema is documented in
 
 ## What's still missing vs Turbo
 
-Tracked in detail in [`comparison.md`](./comparison.md). Recap of the
-gaps visible from the CLI:
-
-- `--output-logs hash-only` (the other three modes shipped).
-- `vx prune` (workspace subset for Docker builds).
-
-`--continue=<mode>` and `--cache-dir <path>` both shipped and are
-documented in the flag table above. Remote-cache credentials are not
-core CLI flags at all: core carries no HTTP cache client — a remote
-cache arrives through a plugin's `cache` capability, which owns its own
-configuration.
+Tracked in [`comparison.md`](./comparison.md). Nothing visible from the
+CLI is open: `--output-logs hash-only`, `vx prune`, `--continue=<mode>`
+and `--cache-dir <path>` all shipped and are documented above.
+Remote-cache credentials are not core CLI flags at all: core carries no
+HTTP cache client — a remote cache arrives through a plugin's `cache`
+capability, which owns its own configuration.
 
 ## Programmatic API
 
