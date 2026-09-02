@@ -3,9 +3,11 @@
 **The fastest way to build a monorepo.**
 
 vx runs your task graph, remembers every result, and never does the
-same work twice. Fully cached runs finish in milliseconds — 144 ms
-across 100 packages, 0.62 s across a 1090-package graph of 3,270
-tasks. Measured, reproducible, on hardware you own.
+same work twice. Fully cached runs finish in milliseconds — 76 ms
+across 46 packages, 297 ms across a 476-package graph of 1,428 tasks,
+where Turborepo takes 342 ms and Nx 1.38 s on the identical workspace.
+Measured, reproducible, on hardware you own
+([benchmarks](docs/benchmarks.md)).
 
 One binary. No daemon. No Node. Nothing to babysit.
 

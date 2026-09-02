@@ -125,11 +125,13 @@ function effectiveCachePolicy(requested: CachePolicy, hasRemoteLayer: boolean): 
  *     third-party remote layer stalls on the classify just as hard.
  *   - the policy reads locally (a `--no-cache`/`--force`/`--cache=local:`
  *     run reads nothing locally → nothing to restore → skip);
- *   - the graph has at least one dependency edge (a flat graph has no
- *     ordering to bypass — restoring is what execute() already does, so
- *     there's no upside and we avoid the upfront probe pass).
- * The per-task correctness gates (stable key, no workspace-outputs in
- * graph) live in `startLocalShortCircuit`.
+ *   - there is at least one task.
+ * A flat graph has no ordering to bypass, but the classify pass is worth
+ * paying for anyway: it probes every stable key through ONE batched
+ * `getMany` instead of a `cache.get` per task inside the run, which
+ * measured 84 → 78 ms on 100 dep-free tasks and 249 → 237 ms on 1000
+ * (2026-09-03, interleaved arms). The per-task correctness gates (stable
+ * key, no workspace-outputs in graph) live in `startLocalShortCircuit`.
  */
 export function shouldShortCircuit(
   nodes: Map<string, TaskNode>,
@@ -138,8 +140,7 @@ export function shouldShortCircuit(
 ): boolean {
   if (cache.hasRemote === true) return false
   if (!policy.localRead) return false
-  for (const node of nodes.values()) if (node.deps.length > 0) return true
-  return false
+  return nodes.size > 0
 }
 
 export async function run(options: RunOptions): Promise<RunSummary> {
@@ -601,8 +602,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // restore-tier the scheduler runs ahead of their deps but only as
     // worker-slot backfill (misses own the pool) — and execute reuses
     // each probe, so there is no second cache.get. Gated by
-    // shouldShortCircuit (localRead + has-deps); when off, both maps are
-    // empty and the run is byte-identical.
+    // shouldShortCircuit (local reads on, no remote layer); when off, both
+    // maps are empty and the run is byte-identical.
     let shortCircuit: ShortCircuit = EMPTY_SHORT_CIRCUIT
     if (shouldShortCircuit(nodes, policy, cache)) {
       shortCircuit = await startLocalShortCircuit({

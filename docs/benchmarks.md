@@ -76,9 +76,24 @@ this machine (macOS arm64, Bun 1.4.0):
 Read it honestly: at 46 packages Turborepo 2.10 and vx are within a few
 milliseconds of each other on a fully-cached run — Turbo's daemon
 answers "what changed" without a walk, vx pays one `git status`. vx wins
-the restore case and ties the cold one; Nx is 7× off. The gap vx is
-built for opens with scale (the next section), and the remaining fixed
-cost at this size is process start + git, not the pipeline.
+the restore case and ties the cold one; Nx is 7× off. The remaining
+fixed cost at this size is process start + git, not the pipeline.
+
+The same harness at **476 packages / 1,428 graph nodes**
+(`bench/compare.ts 20 25 1`, same day, same machine — the committed
+`bench/RESULTS.md`):
+
+| Runner      | Fresh (cold) | Warm (no restore) | Warm (restore) |
+| ----------- | ------------ | ----------------- | -------------- |
+| vx          | 1m 40s       | **297 ms**        | **416 ms**     |
+| vx (frozen) | 1m 40s       | 285 ms            | 399 ms         |
+| turbo       | 1m 40s       | 342 ms (1.2×)     | 612 ms (1.5×)  |
+| nx          | 3m 23s       | 1.38 s (4.7×)     | 1.33 s (3.2×)  |
+
+This is the shape vx is built for: the gap opens with the graph, and
+opens fastest on the restore path, where vx's per-hit work (one batched
+probe, a stat check, no extraction when the tree is already current) is
+what the others do not do.
 
 ## A real monorepo: 3,270 tasks, 100 layers
 

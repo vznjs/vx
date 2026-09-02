@@ -141,6 +141,15 @@ Process: push directly to `main`, no PRs. Gate before every push:
   shipped in `files`, pinned identical by
   `tests/package-entry-shims.test.ts`; the darwin CI job now runs the
   re-signed binary against a bare-specifier workspace end to end.
+- 2026-09-03 — **perf wave 5.** The local short-circuit's classify pass
+  now runs for flat (dep-free) graphs too: it never bypasses an order
+  there, but its one batched `getMany` replaces a `cache.get` per task
+  inside the run. A/B against an immutable worktree, interleaved:
+  100 dep-free tasks 84–86 → 78–79 ms, 1000 → 249 → 237 ms. Measured
+  and refuted on the way: git `core.fsmonitor` + `untrackedCache` make
+  no difference at 100 projects (the tree is too small for the walk to
+  matter); the compiled binary starts in 16 ms vs 25 ms from source and
+  runs the 100-project warm run in 72 ms vs 78.
 
 ## In flight
 
