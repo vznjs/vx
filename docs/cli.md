@@ -1384,6 +1384,35 @@ run ids; `vx last <runId>` replays a specific one. `--format json`
 emits `{ invocation, tasks }` for scripting. An unknown run id fails
 loud and points at `--list`.
 
+## Plugin commands
+
+A plugin declared in `vx.workspace.ts` can add verbs:
+
+```ts
+export function mcp(): VxPlugin {
+  return {
+    name: 'org/mcp',
+    commands: {
+      mcp: {
+        description: 'serve the run history to an AI agent over stdio',
+        async run(argv, ctx) {
+          // ctx.workspaceRoot, ctx.cacheDir, ctx.warn(...)
+          return 0 // the process exit code
+        },
+      },
+    },
+  }
+}
+```
+
+The dispatcher tries core's verbs first — a plugin can never shadow
+`vx run` — and consults plugins only for a word core does not know,
+loading the workspace config from the cwd to find them (outside a
+workspace the verb is simply unknown). The first plugin in declaration
+order that declares the verb runs it; its return value is the exit
+code, and a thrown `UserError` prints as cleanly as core's own. `vx help`
+lists every plugin verb under "Plugin commands", with the plugin's name.
+
 ## Output format
 
 `vx run` emits framed blocks. Stdout/stderr from each task is

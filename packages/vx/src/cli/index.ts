@@ -15,6 +15,7 @@ import { lastCmd } from './last.js'
 import { pruneWorkspaceCmd } from './prune.js'
 import { whyCmd } from './why.js'
 import { printHelp } from './help.js'
+import { pluginCommandHelp, resolvePluginCommand } from './plugin-commands.js'
 
 export async function run(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv
@@ -24,7 +25,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     case '--help':
     case '-h':
     case 'help':
-      printHelp()
+      printHelp(await pluginCommandHelp())
       return 0
     case '--version':
     case 'version':
@@ -53,24 +54,31 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await lastCmd(rest)
     case 'prune':
       return await pruneWorkspaceCmd(rest)
-    case 'serve':
-    case 'dev':
-      // vx core is only a task runner — it has no service layer of its own.
-      // A dashboard, remote cache, distributed execution, etc. are provided
-      // by PLUGINS (declared in vx.workspace.ts), never by core. We keep this
-      // neutral hint for the common muscle-memory verbs, but core names no
-      // specific plugin package: any package can provide these.
-      process.stderr.write(
-        `vx: '${command}' is not a vx core command.\n` +
-          `  vx core runs tasks in-process. A dashboard, remote cache, and\n` +
-          `  distributed execution come from plugins — not core. See the plugin\n` +
-          `  guide: https://vznjs.github.io/vx/guides/plugins/\n`,
-      )
-      return 1
-    default:
+    default: {
+      // Not a core verb: a plugin declared in the workspace around the cwd
+      // may own it (`VxPlugin.commands`). Core verbs were matched above, so
+      // nothing here can shadow them.
+      const resolved = await resolvePluginCommand(command)
+      if (resolved !== null) return await resolved.command.run(rest, resolved.ctx)
+      if (command === 'serve' || command === 'dev') {
+        // vx core is only a task runner — it has no service layer of its
+        // own. A dashboard, remote cache, distributed execution, etc. are
+        // provided by PLUGINS (declared in vx.workspace.ts), never by core.
+        // We keep this neutral hint for the common muscle-memory verbs, but
+        // core names no specific plugin package: any package can provide
+        // these.
+        process.stderr.write(
+          `vx: '${command}' is not a vx core command.\n` +
+            `  vx core runs tasks in-process. A dashboard, remote cache, and\n` +
+            `  distributed execution come from plugins — not core. See the plugin\n` +
+            `  guide: https://vznjs.github.io/vx/guides/plugins/\n`,
+        )
+        return 1
+      }
       process.stderr.write(`vx: unknown command: ${command}\n`)
       printHelp()
       return 1
+    }
   }
 }
 

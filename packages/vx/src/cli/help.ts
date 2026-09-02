@@ -1,4 +1,4 @@
-export function printHelp(): void {
+export function printHelp(pluginCommands: readonly string[] = []): void {
   process.stdout.write(
     [
       'vx — open, extensible monorepo task runner',
@@ -139,6 +139,7 @@ export function printHelp(): void {
       '                       on drift (e.g. configs that read env vars). Run it before',
       '                       `vx run --frozen` in CI.',
       '',
+      ...(pluginCommands.length > 0 ? ['Plugin commands:', ...pluginCommands, ''] : []),
     ].join('\n'),
   )
 }

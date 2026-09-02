@@ -66,6 +66,17 @@ export interface VxPlugin {
    */
   graph?(nodes: Map<string, TaskNode>, ctx: GraphHookContext): void | Promise<void>
 
+  // --- CLI verbs (opt-in) ---------------------------------------------------
+
+  /**
+   * Verbs this plugin adds to the `vx` CLI, keyed by name. Consulted only
+   * for a verb core does not know — core's own verbs always win — and only
+   * when the cwd is inside a workspace that declares the plugin. `vx help`
+   * lists them under "Plugin commands". A verb's exit code is the process
+   * exit code; a thrown `UserError` prints cleanly, like core's own.
+   */
+  readonly commands?: Readonly<Record<string, PluginCommand>>
+
   // --- BEHAVIOR capabilities (change WHAT/HOW work runs — opt-in) -----------
 
   /**
@@ -127,6 +138,15 @@ interface BaseContext {
 }
 
 export interface PluginSetupContext extends BaseContext {}
+
+/** One CLI verb contributed by a plugin. */
+export interface PluginCommand {
+  /** One line for `vx help`. */
+  readonly description: string
+  run(argv: readonly string[], ctx: CommandContext): number | Promise<number>
+}
+
+export interface CommandContext extends BaseContext {}
 
 /** `config` runs before the cache dir is known — it may be what the hook changes. */
 export interface WorkspaceHookContext {

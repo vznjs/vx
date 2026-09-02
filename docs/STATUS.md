@@ -95,6 +95,13 @@ Process: push directly to `main`, no PRs. Gate before every push:
   orders the run, invalid/dangling/cyclic edits are refused naming the
   plugin and stage, and a stage-less workspace validates each config
   exactly once.
+- 2026-09-03 — **pipeline v2, phase 2: `commands`.** A plugin declares
+  `commands: { verb: { description, run(argv, ctx) } }`; the dispatcher
+  consults plugins only for a word core does not know, loading the
+  workspace config from the cwd (`src/cli/plugin-commands.ts`); `vx help`
+  lists them. Pinned: argv + context + exit code, core verbs win, unknown
+  stays unknown (in and out of a workspace), malformed entries refused
+  by the loader.
 
 ## In flight
 
@@ -106,11 +113,10 @@ Process: push directly to `main`, no PRs. Gate before every push:
    path at 1000 projects — `vx info` should say when `core.fsmonitor` /
    `core.untrackedCache` are off. Then a fresh Turbo/Nx head-to-head via
    `bench/compare.ts`.
-2. **Plugin pipeline v2, phases 2–3** — design in
-   `docs/design/pipeline-2026-09.md`. Phase 2: `commands` (CLI verbs from
-   plugins; then move `migrate` / `prune` / `upgrade` out). Phase 3:
-   `schedule` (priorities) and `key` (extra key material), with a
-   reference history-based scheduling plugin to prove the seam.
+2. **Plugin pipeline v2, phase 3** — `schedule` (priorities) and `key`
+   (extra key material), with a reference history-based scheduling
+   plugin to prove the seam. Then move `migrate` / `prune` / `upgrade`
+   out of core behind `commands` (a `@vzn/vx-tools` package).
 3. **Move verbs out of core** behind `commands`: `migrate`, `prune`,
    `upgrade`, and an MCP server package.
 4. **Docs + site rewrite** around the pipeline model.

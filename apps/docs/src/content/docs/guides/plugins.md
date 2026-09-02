@@ -38,8 +38,35 @@ interface VxPlugin {
   // OBSERVE-ONLY capability — cannot change behavior, by construction:
   telemetry?(ctx): TelemetrySink | TelemetrySink[] | undefined // export run data
 
+  // CLI verbs — consulted for a word core does not know:
+  commands?: { [verb]: { description: string; run(argv, ctx): number } }
+
   setup?(ctx): void | Promise<void> // one-time validation before any capability
   teardown?(): void | Promise<void> // end-of-run flush/close
+}
+```
+
+## Adding a verb
+
+`commands` adds words to the `vx` CLI. Core's verbs are matched first —
+nothing can shadow `vx run` — and a plugin verb runs only when the cwd
+is inside a workspace that declares the plugin. `vx help` lists them.
+
+```ts
+export function mcp(): VxPlugin {
+  return {
+    name: 'org/mcp',
+    commands: {
+      mcp: {
+        description: 'serve run history to an AI agent over stdio',
+        async run(argv, ctx) {
+          const db = new Cache(ctx.cacheDir).dbHandle() // the same queries `vx why` reads
+          // … speak MCP on stdin/stdout …
+          return 0 // the process exit code
+        },
+      },
+    },
+  }
 }
 ```
 

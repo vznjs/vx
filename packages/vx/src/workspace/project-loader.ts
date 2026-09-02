@@ -156,6 +156,7 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
         config?: unknown
         project?: unknown
         graph?: unknown
+        commands?: unknown
         teardown?: unknown
       }
       if (typeof plug.name !== 'string' || plug.name.length === 0) {
@@ -191,11 +192,29 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
           throw new UserError(`${configPath}: \`plugins[${i}].${cap}\` must be a function`)
         }
       }
+      if (plug.commands !== undefined) {
+        if (plug.commands === null || typeof plug.commands !== 'object') {
+          throw new UserError(`${configPath}: \`plugins[${i}].commands\` must be an object`)
+        }
+        for (const [verb, cmd] of Object.entries(plug.commands as Record<string, unknown>)) {
+          const c = cmd as { description?: unknown; run?: unknown } | null
+          if (
+            c === null ||
+            typeof c !== 'object' ||
+            typeof c.run !== 'function' ||
+            typeof c.description !== 'string'
+          ) {
+            throw new UserError(
+              `${configPath}: \`plugins[${i}].commands.${verb}\` must be { description: string, run: function }`,
+            )
+          }
+        }
+      }
       // A plugin must contribute at least one capability or lifecycle hook
       // — an empty `{ name }` object is a no-op authoring mistake.
-      if (caps.every((cap) => plug[cap] === undefined)) {
+      if (caps.every((cap) => plug[cap] === undefined) && plug.commands === undefined) {
         throw new UserError(
-          `${configPath}: \`plugins[${i}]\` must contribute at least one of ${caps.join('/')}`,
+          `${configPath}: \`plugins[${i}]\` must contribute at least one of ${[...caps, 'commands'].join('/')}`,
         )
       }
     }
