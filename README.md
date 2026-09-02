@@ -131,23 +131,36 @@ persisted input fingerprints · `vx last` replays a recorded run ·
 `--summarize`, `--profile` Chrome traces, `--report` · `vx cache prune`
 with TTL and size caps · `vx migrate` from turbo.json or an Nx graph.
 
-## Extensible by design — the core is provider-neutral
+## A pipeline with seams — plugins decide what happens
 
-`vx` runs tasks and nothing else. A dashboard, a remote cache,
-distributed execution, and telemetry export all arrive through
-**plugins** declared in `vx.workspace.ts`, filling three seams the
-core exposes — **backend** (where a task runs), **cache** (a remote
-layer behind the local one), and **telemetry** (a read-only stream of
-the versioned `TelemetryRecord` / `RunSummaryRecord` contract). Core
-depends on none of them; the arrow only ever points plugin → core.
-First-party plugins ship the OpenTelemetry exporter
-([`@vzn/vx-otel`](https://www.npmjs.com/package/@vzn/vx-otel), OTLP
-traces + metrics with zero OTel-SDK deps) and the Bazel Remote Execution
-API client (`@vzn/vx-reapi` — remote cache over ActionCache + CAS against
-NativeLink, BuildBuddy, Buildbarn or bazel-remote). Core applies **no
-plugin by default** — even its own executor and cache are plugins your
-workspace declares, which is what makes "replace any part" real rather
-than promised. The same seams are open to anyone.
+Core is the pipeline: discover projects, evaluate configs, build the
+task graph, derive keys, schedule, execute, cache, observe. Plugins
+declared in `vx.workspace.ts` hook each stage, Vite-style, on one
+`VxPlugin` object:
+
+| Stage      | Hook                         | A plugin can…                                              |
+| ---------- | ---------------------------- | ---------------------------------------------------------- |
+| workspace  | `config(ws, ctx)`            | edit the workspace config before it is used                |
+| project    | `project(config, ctx)`       | add, remove or rewrite a project's tasks (keyed like yours) |
+| graph      | `graph(nodes, ctx)`          | add or drop edges, mark tasks requested                    |
+| key        | `key(task, ctx)`             | fold extra material into the cache key (named in `vx why`) |
+| schedule   | `schedule(nodes, ctx)`       | decide which ready task runs first                         |
+| execute    | `executor(ctx)`              | decide WHERE a task's command runs (local, a REAPI worker) |
+| store      | `cache(ctx)`                 | decide where artifacts live (local, a shared remote)       |
+| observe    | `telemetry(ctx)` / `setup`   | receive every run record, or the raw event bus             |
+| cli        | `commands`                   | add verbs to `vx`                                          |
+
+Core applies **no plugin by default** — even its own local executor and
+cache are plugins your workspace declares, which is what makes "replace
+any part" real rather than promised. First-party plugins:
+[`@vzn/vx-reapi`](packages/vx-reapi) (Bazel Remote Execution API —
+remote cache and remote execution against NativeLink, BuildBuddy,
+Buildbarn or bazel-remote), [`@vzn/vx-otel`](packages/vx-otel)
+(OpenTelemetry traces + metrics + logs, zero SDK deps),
+[`@vzn/vx-github`](packages/vx-github) (Actions job summary + Checks
+API), and `@vzn/vx/plugins/schedule-history` (order by learned critical
+path). Nothing distributed ships in this repo; the seams are how you
+build it.
 
 ## How it compares
 

@@ -17,35 +17,43 @@ execution and cache are plugins too (`@vzn/vx/plugins/local-executor`,
 third-party one — which is how "a plugin can replace any part" is pinned
 rather than promised.
 
-## The seams
+## The pipeline
 
-A plugin is a small object in `vx.workspace.ts` that contributes any of
-three capabilities. Each is independent and opt-in. **Nothing is applied
-by default** — a workspace declares every plugin it uses, including the
-local executor and cache; one that declares neither fails before any task
-runs, naming the exact lines to add.
+A run is a pipeline — discover projects, evaluate configs, build the
+task graph, derive keys, schedule, execute, cache, observe — and a plugin
+is a small object in `vx.workspace.ts` that hooks any of those stages.
+Each hook is independent and opt-in, and declaration order is the order
+everywhere. **Nothing is applied by default** — a workspace declares
+every plugin it uses, including the local executor and cache; one that
+declares neither fails before any task runs, naming the exact lines to
+add.
 
 ```mermaid
 flowchart LR
-  core["vx core<br/>task runner · fully offline"]
-  core -. executor .-> b(["where one task's command runs"])
-  core -. cache .-> c(["shared / remote cache"])
-  core -. telemetry .-> t(["export run data"])
-  b --> p["plugins in vx.workspace.ts<br/>first-party OR your own"]
-  c --> p
-  t --> p
+  cfg["configs"] --> proj["project()"] --> graph["graph()"] --> key["key()"] --> sched["schedule()"] --> exec["executor()"] --> cache["cache()"] --> obs["telemetry()"]
+  proj -. edit tasks .-> p["plugins in vx.workspace.ts<br/>first-party OR your own"]
+  exec -. where it runs .-> p
+  cache -. where artifacts live .-> p
+  obs -. run records out .-> p
 ```
 
-| Seam        | What a plugin swaps                                | Declared by                          |
-| ----------- | -------------------------------------------------- | ------------------------------------ |
-| `executor`  | *where* ONE task's command runs — local or a worker | `localExecutorPlugin()`, or your own |
-| `cache`     | *which* cache is used — your server, S3, a CAS     | `localCachePlugin()`, or your own    |
-| `telemetry` | *where* run data goes — OTel, Slack, your DB        | nothing unless declared              |
+| Stage    | Hook                   | What a plugin decides                                   | Declared by                          |
+| -------- | ---------------------- | ------------------------------------------------------- | ------------------------------------ |
+| project  | `project(config, ctx)` | a project's tasks — add, remove, rewrite (keyed like yours) | nothing unless declared          |
+| graph    | `graph(nodes, ctx)`    | the run's edges                                         | nothing unless declared              |
+| key      | `key(task, ctx)`       | extra cache-key material (named in `vx why`)            | nothing unless declared              |
+| schedule | `schedule(nodes, ctx)` | which ready task runs first                             | `scheduleHistoryPlugin()`, or your own |
+| execute  | `executor(ctx)`        | *where* ONE task's command runs — local or a worker     | `localExecutorPlugin()`, or your own |
+| store    | `cache(ctx)`           | *which* cache is used — your server, S3, a CAS          | `localCachePlugin()`, or your own    |
+| observe  | `telemetry(ctx)`       | *where* run data goes — OTel, Slack, your DB            | nothing unless declared              |
+| cli      | `commands`             | which verbs `vx` has                                    | nothing unless declared              |
 
-None of these can change *what* a task's command is — shell is the API. An
-`executor` changes WHERE the command runs, never the command itself.
-`telemetry` is observe-only by construction (a sink holds no run handle),
-so it can never change, slow, or fail a run.
+None of these can change *what* a task's command is once it is declared
+— shell is the API. `project` may add or rewrite a task, and that edit
+is hashed into the key exactly like a hand edit; an `executor` changes
+WHERE the command runs, never the command itself; `telemetry` is
+observe-only by construction (a sink holds no run handle), so it can
+never change, slow, or fail a run.
 
 See [Writing a vx plugin](/vx/guides/plugins/) for the full contract and
 runnable examples.

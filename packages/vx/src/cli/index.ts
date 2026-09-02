@@ -4,18 +4,15 @@
 
 import { VERSION } from '../version.js'
 import { runCmd } from './run.js'
-import { watchCmd } from './watch.js'
-import { cacheCmd } from './cache.js'
-import { lockCmd } from './lock.js'
-import { migrateCmd } from './migrate.js'
-import { upgradeCmd } from './upgrade.js'
-import { showCmd } from './show.js'
-import { infoCmd } from './info.js'
-import { lastCmd } from './last.js'
-import { pruneWorkspaceCmd } from './prune.js'
-import { whyCmd } from './why.js'
 import { printHelp } from './help.js'
 import { pluginCommandHelp, resolvePluginCommand } from './plugin-commands.js'
+
+// Every verb but `run` is imported when invoked. `vx run` is the hot path
+// and nearly every invocation; the other verbs' modules are code that
+// process never calls. Measured 2026-09-03: `--version` is 25 ms either
+// way (module loading is not where start-up goes), so this is hygiene, not
+// a speed-up. The specifiers are string literals, so `bun build --compile`
+// still embeds them.
 
 export async function run(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv
@@ -34,26 +31,26 @@ export async function run(argv: readonly string[]): Promise<number> {
     case 'run':
       return await runCmd(rest)
     case 'watch':
-      return await watchCmd(rest)
+      return await (await import('./watch.js')).watchCmd(rest)
     case 'cache':
-      return await cacheCmd(rest)
+      return await (await import('./cache.js')).cacheCmd(rest)
     case 'lock':
-      return await lockCmd(rest)
+      return await (await import('./lock.js')).lockCmd(rest)
     case 'migrate':
-      return await migrateCmd(rest)
+      return await (await import('./migrate.js')).migrateCmd(rest)
     case 'upgrade':
-      return await upgradeCmd(rest)
+      return await (await import('./upgrade.js')).upgradeCmd(rest)
     case 'show':
-      return await showCmd(rest)
+      return await (await import('./show.js')).showCmd(rest)
     case 'info':
     case 'stats': // deprecated alias — `vx info` absorbed `vx stats`
-      return await infoCmd(rest)
+      return await (await import('./info.js')).infoCmd(rest)
     case 'why':
-      return await whyCmd(rest)
+      return await (await import('./why.js')).whyCmd(rest)
     case 'last':
-      return await lastCmd(rest)
+      return await (await import('./last.js')).lastCmd(rest)
     case 'prune':
-      return await pruneWorkspaceCmd(rest)
+      return await (await import('./prune.js')).pruneWorkspaceCmd(rest)
     default: {
       // Not a core verb: a plugin declared in the workspace around the cwd
       // may own it (`VxPlugin.commands`). Core verbs were matched above, so

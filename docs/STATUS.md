@@ -115,6 +115,10 @@ Process: push directly to `main`, no PRs. Gate before every push:
   façade. Pinned: material moves/keeps the key deterministically, a
   non-string value is refused, weights decide order with an
   insertion-order control, override semantics, non-finite refused.
+- 2026-09-03 — README, the site introduction and the extensibility
+  guide reframed around the pipeline stage table; the CLI imports every
+  verb but `run` lazily (hygiene — `--version` measured unchanged at
+  25 ms).
 
 ## In flight
 
@@ -126,13 +130,19 @@ Process: push directly to `main`, no PRs. Gate before every push:
    path at 1000 projects — `vx info` should say when `core.fsmonitor` /
    `core.untrackedCache` are off. Then a fresh Turbo/Nx head-to-head via
    `bench/compare.ts`.
-2. **Move verbs out of core** behind `commands`: `migrate`, `prune`,
-   `upgrade` into a `@vzn/vx-tools` package (core's verb list becomes
-   run / watch / show / why / last / info / cache / lock), and an MCP
-   server package reading the same run-history queries `vx why` uses.
-3. **Move verbs out of core** behind `commands`: `migrate`, `prune`,
-   `upgrade`, and an MCP server package.
-4. **Docs + site rewrite** around the pipeline model.
+2. **An MCP server plugin package** (`@vzn/vx-mcp`, `commands: { mcp }`)
+   reading the same run-history queries `vx why` uses.
+3. **Docs + site pass** — the remaining pages that still say "three
+   seams" (`docs/README.md`, `docs/architecture.md` prose,
+   `concepts/how-vx-works.md`), and a fresh Turbo/Nx comparison table.
+
+DECIDED 2026-09-03: `migrate`, `prune` and `upgrade` STAY in core. They
+are the first things a Turbo/Nx user and a Docker user run, and
+`upgrade` must live in the binary it upgrades; asking for a second
+install before the first `vx migrate` is an adoption cost with no
+runtime benefit — the verbs are imported only when invoked, so a
+`vx run` never loads them. The `commands` seam is for verbs core has no
+business shipping.
 
 ## Decisions (this arc)
 

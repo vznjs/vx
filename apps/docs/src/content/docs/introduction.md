@@ -68,22 +68,30 @@ The full, sourced comparison lives in
 [vx vs Turborepo vs Nx](../comparison/). The performance mechanics are in
 [Why vx is fast](../concepts/why-vx-is-fast/).
 
-## Core is neutral — plugins decide what happens
+## Core is a pipeline — plugins decide what happens
 
 This is the part most likely to surprise you, and it is deliberate.
 
-vx core ships exactly **three seams** and applies none of them by
-default:
+vx core is a pipeline — discover, evaluate configs, build the graph,
+derive keys, schedule, execute, cache, observe — and every stage has a
+hook a plugin can fill, on one `VxPlugin` object, in the order you
+declare them:
 
-| Seam        | Decides                             |
-| ----------- | ----------------------------------- |
-| `executor`  | where one task's command runs       |
-| `cache`     | where artifacts live                |
-| `telemetry` | where run records go                |
+| Stage     | Hook                   | Decides                                          |
+| --------- | ---------------------- | ------------------------------------------------ |
+| project   | `project(config, ctx)` | which tasks a project has (add, remove, rewrite) |
+| graph     | `graph(nodes, ctx)`    | which edges the run has                          |
+| key       | `key(task, ctx)`       | extra material in the cache key                  |
+| schedule  | `schedule(nodes, ctx)` | which ready task runs first                      |
+| execute   | `executor(ctx)`        | where one task's command runs                    |
+| store     | `cache(ctx)`           | where artifacts live                             |
+| observe   | `telemetry(ctx)`       | where run records go                             |
+| cli       | `commands`             | which verbs `vx` has                             |
 
-Even vx's own local executor and local cache are plugins, declared in
-`vx.workspace.ts` like any third-party one. A workspace that declares
-none fails before a single task runs, and tells you what to add.
+Core applies **none** of them by default. Even vx's own local executor
+and local cache are plugins, declared in `vx.workspace.ts` like any
+third-party one. A workspace that declares none fails before a single
+task runs, and tells you what to add.
 
 That sounds like ceremony; it buys something specific. There is no
 privileged first-party path — a remote cache, remote execution, a

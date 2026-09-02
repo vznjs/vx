@@ -65,13 +65,18 @@ guessing it.
 
 ### 5. Doing all that without becoming the platform
 
-Core ships three seams — `executor` (where one task's command runs),
-`cache` (where artifacts live), `telemetry` (where run records go) —
-and applies **none** of them by default. Even vx's own local executor
-and local cache are plugins you declare. A workspace that declares none
-fails before any task runs, naming the fix. Nothing here is a
-first-party product you have to adopt to get the good behaviour.
-([modules/plugin.md](./modules/plugin.md) — and the
+Core is a pipeline with a hook at every stage — `project` (a project's
+tasks), `graph` (the edges), `key` (extra key material), `schedule`
+(which ready task runs first), `executor` (where one task's command
+runs), `cache` (where artifacts live), `telemetry` (where run records
+go), `commands` (which verbs exist) — and applies **none** of them by
+default. Even vx's own local executor and local cache are plugins you
+declare. A workspace that declares none fails before any task runs,
+naming the fix. Nothing here is a first-party product you have to adopt
+to get the good behaviour, and nothing distributed ships in this repo —
+the hooks are how it gets built.
+([modules/plugin.md](./modules/plugin.md), the design in
+[design/pipeline-2026-09.md](./design/pipeline-2026-09.md), and the
 "Extending vx" guides on the docs site)
 
 ## What that buys, measured
