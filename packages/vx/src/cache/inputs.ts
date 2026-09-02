@@ -155,10 +155,8 @@ async function resolveWorkspaceFiles(args: {
   }
   if (positive.length === 0) return []
 
-  const excludeGlobs = [...ALWAYS_IGNORE, ...args.ownWorkspaceOutputs, ...negative].map(
-    (p) => new Bun.Glob(p),
-  )
-  const positiveGlobs = positive.map((p) => new Bun.Glob(p))
+  const excludeGlobs = [...ALWAYS_IGNORE, ...args.ownWorkspaceOutputs, ...negative].map(globFor)
+  const positiveGlobs = positive.map(globFor)
   // Workspace-wide partition, keyed by the workspace root. Populated
   // up-front by `populateGitFilesCache(..., workspaceWide: true)` when
   // any loaded task declares workspaceFiles; a missing/invalidated
@@ -272,9 +270,7 @@ export async function resolveOutputs(args: {
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   if (args.outputs.length === 0) return []
-  const excludeGlobs = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs).map(
-    (p) => new Bun.Glob(p),
-  )
+  const excludeGlobs = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs).map(globFor)
   const scanned = [...(await scanUnion(args.outputs, excludeGlobs, args.projectDir))]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
   // DELETES whatever this returns, and `Bun.Glob.scan` happily walks `..` out
@@ -633,7 +629,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
 
   const boundaryIgnores = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs)
   const excludeGlobs = [...ALWAYS_IGNORE, ...boundaryIgnores, ...args.ownOutputs, ...negative].map(
-    (p) => new Bun.Glob(p),
+    globFor,
   )
 
   // Defer to git for the file set (Turbo / Nx parity). Nested .gitignore
@@ -644,7 +640,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // per task (build + test + lint + …). Spawning git N times for the
   // same project per run is wasteful; we cache the result for the
   // duration of one orchestrator run.
-  const positiveGlobs = positive.map((p) => new Bun.Glob(p))
+  const positiveGlobs = positive.map(globFor)
   let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
   if (gitFiles === undefined) {
     // Mid-run re-enumeration. The OIDs this spawn could yield are NOT
@@ -1216,7 +1212,7 @@ async function scanUnion(
 ): Promise<Set<string>> {
   const matches = new Set<string>()
   for (const pattern of positive) {
-    const glob = new Bun.Glob(pattern)
+    const glob = globFor(pattern)
     // Async scan, deliberately: the sync walk is faster in isolation (37 µs
     // vs 56 µs on a one-file `dist/**`) but SERIALISES on the main thread,
     // and this runs under the scheduler's concurrency — measured 2026-09-02,
@@ -1227,6 +1223,16 @@ async function scanUnion(
     }
   }
   return matches
+}
+
+// Compiled once per pattern string for the life of the process: a `Bun.Glob`
+// is immutable, and the same handful of declared globs are compiled again
+// for every task otherwise (three sites, up to thousands of times per run).
+const globMemo = new Map<string, Bun.Glob>()
+function globFor(pattern: string): Bun.Glob {
+  let g = globMemo.get(pattern)
+  if (g === undefined) globMemo.set(pattern, (g = new Bun.Glob(pattern)))
+  return g
 }
 
 function boundaryIgnorePatterns(projectDir: string, nestedDirs: string[]): string[] {

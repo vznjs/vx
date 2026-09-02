@@ -78,6 +78,12 @@ Process: push directly to `main`, no PRs. Gate before every push:
   REFUTED: shipping the CLI as one `bun build --target=bun` bundle —
   `--version` 25 → 36 ms and the warm run 79 → 98 ms; Bun loads the
   169-module source tree faster than it parses a 1.2 MB file.
+- 2026-09-02 — **perf wave 3.** `CacheLayer.getMany?` (one `entries`
+  + one `output_files` query per 900 hashes, artifact stats in flight
+  together); the local short-circuit probes through it when the layer
+  offers it. `CacheEntry.outputRows` carries the rows so `restoreHit`
+  stops re-querying. Compiled `Bun.Glob`s memoised per pattern. A/B on
+  `run test --all` (2000 tasks with deps): 328 → 311 ms.
 
 ## In flight
 
@@ -85,10 +91,7 @@ Process: push directly to `main`, no PRs. Gate before every push:
 
 ## Next (ordered)
 
-1. **Perf wave 3** — the run-graph phase (78 ms / 1000 hits: batch the
-   short-circuit probes into one `IN (…)` query, attach output rows to
-   the entry so `restoreHit` does not re-query, reuse compiled `Bun.Glob`
-   per pattern); `git status` is the critical
+1. **Perf wave 4** — `git status` is the critical
    path at 1000 projects — `vx info` should say when `core.fsmonitor` /
    `core.untrackedCache` are off. Then a fresh Turbo/Nx head-to-head via
    `bench/compare.ts`.

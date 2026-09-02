@@ -364,6 +364,13 @@ export interface CacheEntry {
   exitCode: number
   durationMs: number
   outputFiles: string[]
+  /**
+   * The `output_files` rows behind `outputFiles` (size / mode / mtime), when
+   * the layer that produced this entry had them in hand. `restoreHit` reads
+   * them for its tree-is-current check instead of re-querying — one SQL
+   * round trip per cache hit, saved.
+   */
+  outputRows?: OutputFileRow[]
   /** Captured stdout, always present (may be empty). stderr is not cached. */
   stdout: string
   storedAt: string
@@ -686,6 +693,12 @@ export interface CacheLayer {
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**
+   * Optional batched `get` (same answers, fewer round trips). The
+   * short-circuit probe uses it when a layer offers one; a layer without it
+   * is probed hash by hash.
+   */
+  getMany?(hashes: readonly string[]): Promise<Map<string, CacheEntry>>
+  /**
    * Lightweight existence probe. `'local'` / `'remote'` names the layer
    * that holds the artifact; `null` is a miss. NEVER moves bytes: no
    * artifact read, no remote download, no local ingest, no accessed_at
@@ -841,6 +854,21 @@ interface EntryRow {
   stdout: string
   created_at: number
   accessed_at: number
+}
+
+function entryOf(row: EntryRow, fileRows: OutputFileRow[]): CacheEntry {
+  return {
+    hash: row.hash,
+    taskId: `${row.project}#${row.task}`,
+    command: row.command,
+    exitCode: row.exit_code,
+    durationMs: row.duration_ms,
+    outputFiles: fileRows.map((r) => r.path),
+    outputRows: fileRows,
+    stdout: row.stdout,
+    storedAt: new Date(row.created_at).toISOString(),
+    source: 'local',
+  }
 }
 
 export class Cache implements CacheLayer {
@@ -1395,18 +1423,39 @@ export class Cache implements CacheLayer {
     // for four up-to-date hits on ~70 MB binaries). restoreOutputs
     // reads the artifact itself, only when extraction actually runs.
     const fileRows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
+    return entryOf(row, fileRows)
+  }
 
-    return {
-      hash: row.hash,
-      taskId: `${row.project}#${row.task}`,
-      command: row.command,
-      exitCode: row.exit_code,
-      durationMs: row.duration_ms,
-      outputFiles: fileRows.map((r) => r.path),
-      stdout: row.stdout,
-      storedAt: new Date(row.created_at).toISOString(),
-      source: 'local',
+  /**
+   * `get` for many hashes at once: one `entries` query and one
+   * `output_files` query per chunk instead of two per hash, with the
+   * artifact-existence stats in flight together. Same answers as N calls
+   * to `get` — a hash whose artifact is gone is simply absent from the map.
+   * The up-front short-circuit probe is the caller; per-hit `get` stays for
+   * the lazy path.
+   */
+  async getMany(hashes: readonly string[]): Promise<Map<string, CacheEntry>> {
+    const out = new Map<string, CacheEntry>()
+    if (!this.read || hashes.length === 0) return out
+    const rows: EntryRow[] = []
+    for (let i = 0; i < hashes.length; i += 900) {
+      const chunk = hashes.slice(i, i + 900)
+      const placeholders = chunk.map(() => '?').join(',')
+      rows.push(
+        ...(this.db
+          .query(`SELECT * FROM entries WHERE hash IN (${placeholders})`)
+          .all(...(chunk as readonly SQLQueryBindings[])) as EntryRow[]),
+      )
     }
+    if (rows.length === 0) return out
+    const present = await Promise.all(rows.map((r) => Bun.file(this.tarPath(r.hash)).exists()))
+    const live = rows.filter((_r, i) => present[i])
+    const fileRows = this.loadOutputFilesBatch(live.map((r) => r.hash))
+    for (const row of live) {
+      this.touched.add(row.hash)
+      out.set(row.hash, entryOf(row, fileRows.get(row.hash) ?? []))
+    }
+    return out
   }
 
   // Existence probe: SQL row + artifact-on-disk check, no byte reads

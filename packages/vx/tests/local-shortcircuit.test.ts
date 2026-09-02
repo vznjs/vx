@@ -436,16 +436,25 @@ describe('local cache short-circuit', () => {
       // Cold populates the cache.
       await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
 
-      // Warm: count Cache.get calls. Two cacheable tasks → exactly two
-      // probes total (the up-front classify; execute() reuses them).
+      // Warm: count the probes. Two cacheable tasks → ONE batched probe
+      // carrying both hashes (the up-front classify) and no per-task
+      // `get` at all (execute() reuses the batch's answers).
       const getSpy = spyOn(Cache.prototype, 'get')
-      const warm = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
-      expect(warm.ok).toBe(true)
-      expect(
-        warm.outcomes.every((o) => o.node.config.exec === undefined || o.status === 'cache-hit'),
-      ).toBe(true)
-      expect(getSpy).toHaveBeenCalledTimes(2)
-      getSpy.mockRestore()
+      const getManySpy = spyOn(Cache.prototype, 'getMany')
+      try {
+        const warm = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+        expect(warm.ok).toBe(true)
+        expect(
+          warm.outcomes.every((o) => o.node.config.exec === undefined || o.status === 'cache-hit'),
+        ).toBe(true)
+        expect(getManySpy).toHaveBeenCalledTimes(1)
+        expect(getManySpy.mock.calls[0]![0]).toHaveLength(2)
+        expect(getSpy).toHaveBeenCalledTimes(0)
+      } finally {
+        // A leaked prototype spy poisons every later file in the process.
+        getSpy.mockRestore()
+        getManySpy.mockRestore()
+      }
     },
     TIMEOUT,
   )

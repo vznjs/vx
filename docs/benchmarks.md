@@ -14,6 +14,11 @@ task a cache hit, nothing to restore. `bench/generate.ts` workspaces,
 | 100      | 105 ms                      | 92 ms   | 79 ms   | git overlaps config load; `.git/HEAD` read replaces a git spawn |
 | 1000     | 380–450 ms                  | 270 ms  | 242 ms  | + cached pure-config evals; one worktree walk; readdir discovery |
 
+Wave 3 (batched short-circuit probe, output rows carried on the entry,
+memoised `Bun.Glob`s) measured on the graph WITH dependencies —
+`vx run test --all`, 2000 tasks, interleaved arms against an immutable
+worktree of the previous commit: 327–329 ms → 308–314 ms.
+
 Where the remaining 242 ms at 1000 projects goes (`VX_TIMING=1`, see
 below): discovery 22 ms, config load 31 ms (all cache hits) overlapped
 with git's one worktree walk (`status -uall`, ~57 ms, the critical

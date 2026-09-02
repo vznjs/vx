@@ -125,6 +125,22 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   // it); a miss stays exec-tier with a known-miss reuse entry. The pool
   // keeps the up-front pass from being a serial pre-phase on a wide warm
   // graph — the probes parallelize at the run's concurrency.
+  // A layer with a batched `get` answers every probe in a couple of
+  // queries; the pool below is for layers without one.
+  if (args.cache.getMany !== undefined) {
+    try {
+      const hits = await args.cache.getMany(candidates.map((c) => c.hash))
+      for (const { hash, node } of candidates) {
+        const hit = hits.get(hash) ?? null
+        preProbed.set(node.id, { hash, hit })
+        if (hit !== null && !anyWorkspaceOutputs) restoreTier.add(node.id)
+      }
+      return { preProbed, restoreTier }
+    } catch {
+      // Fall through to the per-hash pool, which isolates a failing probe
+      // to its own task.
+    }
+  }
   let next = 0
   const workers = Math.max(1, Math.min(args.concurrency, candidates.length))
   const pump = async (): Promise<void> => {

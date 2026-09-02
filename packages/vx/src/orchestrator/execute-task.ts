@@ -956,7 +956,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   let skipRestore = false
   if (anyOutputs) {
     const endRows = span('output rows')
-    const expected = args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+    const expected = hit.outputRows ?? args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
     endRows()
     if (expected.length > 0) {
       // Two namespaces in the rows: bare rels are project outputs,
