@@ -174,6 +174,20 @@ Process: push directly to `main`, no PRs. Gate before every push:
   so it is made true rather than hoped for. Also: `packages/vx` had no
   README although `files` shipped one; the README status table named
   surfaces that no longer exist.
+- 2026-09-03 — measured, not worth doing: lazy-loading modules off the
+  `vx run` path. The whole module graph loads in ~13 ms of the 25 ms
+  `--version` (Bun's own start is the rest); the largest module,
+  `exec/sandbox-runtime.ts` at 7 ms, is mostly the cache graph it shares
+  with everything else. No single module is worth a dynamic import; the
+  compiled binary's bytecode already takes start-up to 16 ms.
+- 2026-09-03 — the docs site's LANDING PAGE (`apps/docs/src/pages/index.astro`)
+  still sold the removed platform: "trust-scoped, HMAC-signed cache",
+  `predictive: true`, a dead link to the predictive guide, July's
+  3,270-task numbers against older Turbo/Nx. Rewritten to what ships —
+  the pipeline hooks, `vx why`/`--verify`, REAPI cache + execution,
+  `@vzn/vx-mcp`, the schedule-history plugin — and to the 2026-09
+  476-package measurement, including that Turbo 2.10 ties vx at 46
+  packages. A landing page is the one doc a stale claim hurts most.
 
 ## In flight
 

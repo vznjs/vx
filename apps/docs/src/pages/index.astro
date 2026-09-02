@@ -61,8 +61,8 @@ const features = [
   {
     icon: 'lock',
     tone: 'var(--plasma)',
-    title: 'A cache that can’t be poisoned',
-    body: 'Trust-scoped remote cache: a fork PR reads main’s cache to stay fast but can only write its own quarantined scope — a poisoned artifact never reaches a trusted build. Artifacts are immutable, and HMAC signing verifies bytes on top. The GitHub-Actions model, server-enforced.',
+    title: 'A cache you can interrogate — and prove',
+    body: 'vx why names the exact file, env var or upstream that moved a task’s key instead of “miss”. vx run --verify re-runs a task and compares outputs byte for byte; --verify=inputs runs it under the sandbox so an undeclared read is a reported failure. No other runner can tell you why it re-ran.',
   },
   {
     icon: 'graph',
@@ -72,38 +72,38 @@ const features = [
   },
 ]
 
-// Platform layer — capabilities Nx and Turbo don't have OSS. Every claim
-// shipped in the 2026-06 arc (see docs/design/*-2026-06.md).
+// The pipeline — what plugins can decide. Every claim traces to
+// docs/design/pipeline-2026-09.md and the plugin guide.
 const platform = [
-  {
-    icon: 'spark',
-    tone: 'var(--phosphor)',
-    title: 'MCP for AI agents',
-    body: 'vx mcp boots a Model Context Protocol server over stdio. Claude Code, Cursor, Continue.dev query cache stats, run history, and rebuild causes through the standard agent-tool protocol. No other runner ships an MCP surface.',
-  },
   {
     icon: 'plug',
     tone: 'var(--amber)',
-    title: 'Plugin API',
-    body: 'Register plugins in vx.workspace.ts to subscribe to lifecycle hooks. Forward outcomes to Sentry, post to Slack, ship metrics anywhere. Vite-style lifecycle hooks, crash-isolated per hook.',
-  },
-  {
-    icon: 'brain',
-    tone: 'var(--amber)',
-    title: 'Predictive scheduling',
-    body: 'predictive: true and the scheduler reads run history, computes expected remaining critical-path per task, and dispatches by it. The only task runner that learns from itself.',
+    title: 'A pipeline with a hook at every stage',
+    body: 'One VxPlugin object, Vite-style: project() adds or rewrites a package’s tasks (keyed exactly like yours), graph() edits the edges, key() folds extra material into the cache key, schedule() decides which ready task runs first, commands adds verbs to vx. Declaration order is the order; core re-validates what a stage produced.',
   },
   {
     icon: 'wire',
     tone: 'var(--phosphor)',
-    title: 'Provider-neutral core',
-    body: 'Core is only a task runner — fully offline, no account, no service. Where a task runs, which cache backs it, and where run data goes are plugins you declare in vx.workspace.ts. Core applies none by default: even its own executor and cache are plugins, so "replace any part" is pinned, not promised.',
+    title: 'Nothing applied by default',
+    body: 'Core is only the pipeline — fully offline, no account, no service. Where a task runs (executor), where artifacts live (cache) and where run records go (telemetry) are plugins you declare in vx.workspace.ts. Even vx’s own local executor and cache are plugins, so “replace any part” is pinned, not promised.',
   },
   {
     icon: 'cloud',
     tone: 'var(--plasma)',
-    title: 'Bazel-compatible remote cache',
-    body: '@vzn/vx-reapi speaks the Bazel Remote Execution API, so NativeLink, BuildBuddy, Buildbarn and bazel-remote all work as a shared cache with one endpoint of configuration — six mature server implementations, none of which we had to write.',
+    title: 'Bazel-compatible remote cache and execution',
+    body: '@vzn/vx-reapi speaks the Bazel Remote Execution API: NativeLink, BuildBuddy, Buildbarn and bazel-remote work as a shared cache, and NativeLink’s workers run your tasks remotely — the executor seam, filled by a plugin, with nothing distributed shipped in core.',
+  },
+  {
+    icon: 'spark',
+    tone: 'var(--phosphor)',
+    title: 'MCP for AI agents',
+    body: '@vzn/vx-mcp adds vx mcp: a read-only Model Context Protocol server over stdio, so Claude Code, Cursor and Continue.dev query cache stats, run history and rebuild causes through the standard agent-tool protocol. No SDK, no service — a plugin on the commands seam.',
+  },
+  {
+    icon: 'brain',
+    tone: 'var(--amber)',
+    title: 'Scheduling that learns — as a plugin',
+    body: '@vzn/vx/plugins/schedule-history orders ready tasks by the expected remaining critical path learned from your own run history. It is the reference schedule() plugin: a policy core exposes a hook for, not a flag core carries.',
   },
 ]
 
@@ -129,33 +129,25 @@ const benchRows = [
   {
     task: 'Cold build · from scratch',
     bars: [
-      { name: 'vx', val: 228, disp: '3m 48s', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 498, disp: '8m 18s', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 507, disp: '8m 27s', c: 'var(--c-nx)' },
+      { name: 'vx', val: 100, disp: '1m 40s', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 100, disp: '1m 40s', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 203, disp: '3m 23s', c: 'var(--c-nx)' },
     ],
   },
   {
     task: 'Fully cached · nothing to rebuild',
     bars: [
-      { name: 'vx', val: 0.55, disp: '0.55s', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 1.6, disp: '1.60s', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 9.86, disp: '9.86s', c: 'var(--c-nx)' },
+      { name: 'vx', val: 297, disp: '297ms', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 342, disp: '342ms', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 1380, disp: '1.38s', c: 'var(--c-nx)' },
     ],
   },
   {
     task: 'Restoring outputs · cache → disk',
     bars: [
-      { name: 'vx', val: 0.89, disp: '0.89s', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 2.0, disp: '2.00s', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 10.44, disp: '10.44s', c: 'var(--c-nx)' },
-    ],
-  },
-  {
-    task: 'CPU burned · cold build, user time',
-    bars: [
-      { name: 'vx', val: 22.7, disp: '22.7s', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 1250, disp: '1,250s', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 2038, disp: '2,038s', c: 'var(--c-nx)' },
+      { name: 'vx', val: 416, disp: '416ms', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 612, disp: '612ms', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 1330, disp: '1.33s', c: 'var(--c-nx)' },
     ],
   },
 ]
@@ -174,6 +166,7 @@ const footCols = {
     { t: 'Sandboxing', h: href('guides/sandboxing/') },
   ],
   migrate: [
+    { t: 'From package.json scripts (vx init)', h: href('cli/') + '#vx-init' },
     { t: 'From Turborepo', h: href('migrate/from-turborepo/') },
     { t: 'From Nx', h: href('migrate/from-nx/') },
   ],
@@ -289,19 +282,19 @@ const footCols = {
             </div>
             <div class="stats">
               <div class="stat">
-                <span class="val"><span class="num">2</span><span class="unit">×</span></span>
-                <span class="label">Faster cold builds</span>
-                <span class="sub">vs Turbo &amp; Nx</span>
+                <span class="val"><span class="num">297</span><span class="unit">ms</span></span>
+                <span class="label">Full cache replay</span>
+                <span class="sub">1,428 tasks · 476 packages</span>
               </div>
               <div class="stat plasma">
-                <span class="val"><span class="num">0.55</span><span class="unit">s</span></span>
-                <span class="label">Full cache replay</span>
-                <span class="sub">3,270 tasks</span>
+                <span class="val"><span class="num">1.5</span><span class="unit">×</span></span>
+                <span class="label">Faster restores</span>
+                <span class="sub">vs Turborepo 2.10</span>
               </div>
               <div class="stat amber">
-                <span class="val"><span class="num">50</span><span class="unit">×</span></span>
-                <span class="label">Less CPU burned</span>
-                <span class="sub">vs Turbo &amp; Nx</span>
+                <span class="val"><span class="num">4.7</span><span class="unit">×</span></span>
+                <span class="label">Faster warm runs</span>
+                <span class="sub">vs Nx 23</span>
               </div>
             </div>
           </div>
@@ -455,7 +448,7 @@ const footCols = {
                         ? href('guides/extensibility/')
                         : f.icon === 'cloud'
                           ? href('guides/remote-caching/')
-                          : href('guides/predictive-scheduling/')
+                          : href('guides/plugins/') + '#keys-and-order'
                 }
               >
                 <span class="ico">
@@ -485,7 +478,7 @@ const footCols = {
         <div class="bench-panel container vx-scanlines">
           <div class="bench-head">
             <div>
-              <p class="vx-kicker">// 3,270 tasks</p>
+              <p class="vx-kicker">// 1,428 tasks · 476 packages</p>
               <h2>Lower is better. We checked.</h2>
             </div>
             <div class="bench-legend">
@@ -525,10 +518,13 @@ const footCols = {
           </div>
           <div class="bench-note">
             <p>
-              vx builds the whole graph in <strong>under 4 minutes</strong> where Turborepo and Nx take
-              <strong>over 8</strong> — burning <span class="accent">~50× less CPU</span> doing it. Once
-              cached, every repeat run replays in <span class="accent">under a second</span>, and Nx never
-              catches up.
+              476 packages, 1,428 tasks, identical commands, every runner pinned to the same
+              concurrency, daemons on for the others, measured one at a time (2026-09,
+              <code>bench/compare.ts 20 25 1</code>). A fully cached run replays in
+              <span class="accent">297 ms</span> — Turborepo 2.10 takes 342 ms, Nx 23 takes 1.38 s —
+              and restoring every output from cache is <span class="accent">1.5× faster</span> than
+              Turbo. At 46 packages the two are within a few milliseconds; the gap opens with the
+              graph.
             </p>
           </div>
         </div>
