@@ -272,7 +272,7 @@ maintainers' handoff is [`docs/STATUS.md`](./docs/STATUS.md).
 ## Status
 
 **Pre-alpha.** The schema is settling; we bump `CACHE_VERSION` rather
-than maintain back-compat. **2,600+ tests; CI green on every commit**;
+than maintain back-compat. **~2,500 core tests plus the package suites; CI green on every commit**;
 the project dogfoods itself (`vx run ci`). Published on npm:
 [`@vzn/vx`](https://www.npmjs.com/package/@vzn/vx) (a prebuilt standalone
 binary).
@@ -281,13 +281,16 @@ Production readiness for the **core task runner**: the semantics are
 solid; it is dogfooded continuously. The main operational rough edge
 is Windows (unsupported).
 
-| Surface                                        | Maturity                | Notes                                                            |
-| ---------------------------------------------- | ----------------------- | ---------------------------------------------------------------- |
-| Core task runner + caching                     | **production-ready**    | dogfooded continuously; 2,600+ tests, all green                  |
-| `vx run --verify` (provable cache correctness) | **shippable**           | determinism + input-completeness proofs; CI-gate recipe in docs  |
-| Plugin API (executor / cache / telemetry)      | **shippable**           | crash-isolated; core's own executor + cache are ordinary plugins |
-| OTel export (`@vzn/vx-otel`)                   | **shippable**           | declare `otel()` in `vx.workspace.ts`; OTLP traces + metrics     |
-| REAPI remote cache (`@vzn/vx-reapi`)           | **in progress**         | Bazel ActionCache + CAS; NativeLink / BuildBuddy / Buildbarn     |
+| Surface                                        | Maturity                | Notes                                                                  |
+| ---------------------------------------------- | ----------------------- | ---------------------------------------------------------------------- |
+| Core task runner + caching                     | **production-ready**    | dogfooded continuously; ~2,500 core tests + the package suites, green   |
+| `vx run --verify` (provable cache correctness) | **shippable**           | determinism + input-completeness proofs; CI-gate recipe in docs        |
+| Plugin pipeline (9 hooks, `commands` included) | **shippable**           | crash-isolated, re-validated; core's own executor + cache are plugins  |
+| `vx init` / `vx migrate` (scripts, Turbo, Nx)  | **shippable**           | one config per package, TODOs where a source cannot say                |
+| REAPI remote cache + execution (`@vzn/vx-reapi`) | **shippable**         | Bazel AC + CAS + Execute; NativeLink / BuildBuddy / Buildbarn / bazel-remote |
+| OTel export (`@vzn/vx-otel`)                   | **shippable**           | OTLP traces + metrics + logs, zero SDK deps                            |
+| GitHub Actions (`@vzn/vx-github`)              | **shippable**           | job summary + Checks API run                                           |
+| MCP server (`@vzn/vx-mcp`)                     | **shippable**           | `vx mcp` — read-only tools for AI agents, no SDK                       |
 
 ## Development
 

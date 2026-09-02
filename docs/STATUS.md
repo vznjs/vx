@@ -167,6 +167,13 @@ Process: push directly to `main`, no PRs. Gate before every push:
   `vx migrate --from scripts`, and the scripts path is `vx migrate`'s
   fallback when neither Turbo nor Nx is present. Quickstart and README
   point at it.
+- 2026-09-03 — darwin CI red on the `vx init` commit, NOT the diff: the
+  ms-mtime ingest test sampled the clock for its "sub-second stamp"
+  precondition and the runner's write landed on an exact second (1 in
+  1000 by construction). The precondition is now stamped with `utimes`,
+  so it is made true rather than hoped for. Also: `packages/vx` had no
+  README although `files` shipped one; the README status table named
+  surfaces that no longer exist.
 
 ## In flight
 

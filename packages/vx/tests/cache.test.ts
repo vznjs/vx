@@ -1681,9 +1681,22 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
     // producer measured. Before the sidecar it could only read tar
     // headers, i.e. SECONDS, and a same-second edit after a remote hit
     // was invisible to the skip-restore probe.
-    const outFile = await saveOne('ms3', 'DDDD')
+    // The precondition is a sub-second stamp on the saved file. Sampling the
+    // clock for it fails whenever the write lands on an exact second — one
+    // run in a thousand, and darwin CI found that run (2026-09-03). Stamp
+    // it, so the precondition is MADE true rather than hoped for.
+    const outFile = path.join(projectDir, 'dist', 'o.txt')
+    await writeFile(outFile, 'DDDD')
+    const stamp = new Date(Math.floor(Date.now() / 1000) * 1000 + 250)
+    await utimes(outFile, stamp, stamp)
+    await cache.save({
+      hash: 'ms3',
+      projectDir,
+      outputFiles: [outFile],
+      entry: { taskId: 'pkg#build', command: 'b', durationMs: 1, stdout: '' },
+    })
     const recorded = rowsOf('ms3')[0]!.mtimeMs
-    expect(recorded % 1000).not.toBe(0) // precondition: a sub-second stamp
+    expect(recorded % 1000).toBe(250)
 
     const bytes = await Bun.file(cache.outputsPath('ms3')).bytes()
     await cache.ingest('ms3-remote', bytes, {
