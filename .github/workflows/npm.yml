@@ -32,8 +32,65 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The darwin binaries are built AND SIGNED here. Bun 1.4.0's `--compile`
+  # signature is rejected by macOS (SIGKILL on launch) until re-signed ad hoc,
+  # and only a macOS runner has codesign — so the two darwin platform packages
+  # come from this job, and the ubuntu job publishes @vzn/vx after them.
+  darwin:
+    name: build, sign & publish darwin packages
+    runs-on: macos-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - name: Resolve version
+        id: version
+        run: |
+          RAW="${{ github.event.inputs.version || github.event.release.tag_name }}"
+          if [ -z "$RAW" ]; then echo "no version (not a release and no input)"; exit 1; fi
+          echo "version=${RAW#v}" >> "$GITHUB_OUTPUT"
+      - run: bun install --frozen-lockfile
+      - name: Stamp version
+        run: |
+          bun -e 'const p = await Bun.file("package.json").json(); p.version = process.argv[1]; await Bun.write("package.json", JSON.stringify(p, null, 2) + "\n")' "${{ steps.version.outputs.version }}"
+      - name: Build, sign and prove the darwin binaries
+        run: |
+          bun packages/vx/src/bin.ts run build.bun.darwin-x64 build.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
+          for f in packages/vx/dist/vx-darwin-*; do codesign -s - --force "$f"; codesign --verify --verbose=2 "$f"; done
+          packages/vx/dist/vx-darwin-arm64 --version
+      - name: Assemble the darwin platform packages
+        run: |
+          bun scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=darwin-x64 --out=dist/npm
+          bun scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=darwin-arm64 --out=dist/npm-arm64
+          cp -r dist/npm-arm64/@vzn/vx-darwin-arm64 dist/npm/@vzn/
+      - name: Publish darwin platform packages
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -e
+          for pkg in dist/npm/@vzn/vx-darwin-x64 dist/npm/@vzn/vx-darwin-arm64; do
+            name="$(node -p "require('$(pwd)/$pkg/package.json').name")"
+            if npm view "$name@$VERSION" version >/dev/null 2>&1; then
+              echo "$name@$VERSION already on the registry — skipping"
+            else
+              npm publish "$pkg" --access public
+            fi
+          done
+
   publish:
     name: build & publish @vzn/vx
+    needs: darwin
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -120,15 +177,16 @@ jobs:
       # Cross-compile the four standalone binaries (fanned out + cached by
       # vx). --concurrency 2: concurrent `--compile --minify --bytecode`
       # builds OOM a 7 GB runner.
-      - name: Build binaries
-        run: bun packages/vx/src/bin.ts run build --filter @vzn/vx --concurrency 2
-
-      - name: Assemble npm tree
-        run: bun scripts/build-npm.ts "${{ steps.version.outputs.version }}"
-
-      # Platform packages FIRST so the main package's optionalDependencies
-      # resolve on the registry, then the primary @vzn/vx package. Trusted
-      # Publishing (OIDC) supplies auth + provenance — no token needed.
+      # Linux targets only — the darwin binaries come from the `darwin` job
+      # below, which can sign them. `vx run build.bun.<target>` is one task
+      # per target with its own cache slot.
+      - name: Build linux binaries
+        run: bun packages/vx/src/bin.ts run build.bun.linux-x64 build.bun.linux-arm64 --filter @vzn/vx --concurrency 2
+      - name: Assemble npm tree (linux platform packages + @vzn/vx)
+        run: |
+          bun scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-x64 --out=dist/npm
+          bun scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-arm64 --out=dist/npm-arm64
+          cp -r dist/npm-arm64/@vzn/vx-linux-arm64 dist/npm/@vzn/
       - name: Publish
         if: ${{ github.event.inputs.dry_run != 'true' }}
         # Dual auth: if an NPM_TOKEN secret exists it's used (one token covers
@@ -149,11 +207,11 @@ jobs:
           # republishing an existing version. So skip any package already on
           # the registry at this version — a re-run then completes the set
           # instead of aborting on the first already-published one.
+          # The darwin platform packages were published by the `darwin` job;
+          # @vzn/vx goes last so every optionalDependency it names exists.
           for pkg in \
             dist/npm/@vzn/vx-linux-x64 \
             dist/npm/@vzn/vx-linux-arm64 \
-            dist/npm/@vzn/vx-darwin-x64 \
-            dist/npm/@vzn/vx-darwin-arm64 \
             dist/npm/vx; do
             name="$(node -p "require('$(pwd)/$pkg/package.json').name")"
             echo "::group::npm publish $name@$VERSION ($pkg)"

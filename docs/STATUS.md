@@ -188,6 +188,18 @@ Process: push directly to `main`, no PRs. Gate before every push:
   `@vzn/vx-mcp`, the schedule-history plugin — and to the 2026-09
   476-package measurement, including that Turbo 2.10 ties vx at 46
   packages. A landing page is the one doc a stale claim hurts most.
+- 2026-09-03 — **the npm distribution was broken twice over.** (1) The
+  published `@vzn/vx` manifest (assembled by `scripts/build-npm.ts`)
+  exported only `"."`, so the `@vzn/vx/plugins/local-executor` import in
+  every quickstart workspace file could not resolve for an npm user; it
+  now ships the workspace package's exports map plus the root shims.
+  (2) The darwin binaries in the platform packages were cross-compiled
+  on ubuntu and never signed — SIGKILL on launch for every macOS npm
+  user. `npm.yml` now builds, ad-hoc signs and publishes the darwin
+  platform packages from a macOS job, and the ubuntu job publishes the
+  linux ones and `@vzn/vx` after it. Neither path has a test that can
+  run in CI short of a publish; the tree assembly is checked by hand
+  (`bun scripts/build-npm.ts <v> --only=<target> --out=<dir>`).
 
 ## In flight
 

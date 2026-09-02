@@ -18,7 +18,7 @@
 //   bun scripts/build-npm.ts <version> [--out=dist/npm] [--only=linux-x64]
 
 import { chmod, cp, mkdir, rm } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 
 interface Target {
   target: string
@@ -115,7 +115,7 @@ async function emitPlatformPackages(args: {
 
 async function main(): Promise<void> {
   const { version, out, only } = parseArgs(Bun.argv.slice(2))
-  const outDir = join(ROOT, out)
+  const outDir = isAbsolute(out) ? out : join(ROOT, out)
   const targets = only ? TARGETS.filter((t) => t.target === only) : TARGETS
   if (targets.length === 0) throw new Error(`--only=${only}: unknown target`)
 
@@ -124,6 +124,7 @@ async function main(): Promise<void> {
   const corePkg = (await Bun.file(join(CORE, 'package.json')).json()) as {
     description?: string
     dependencies?: Record<string, string>
+    exports: Record<string, unknown>
   }
 
   // --- @vzn/vx: platform binaries + the library/launcher package -----------
@@ -139,6 +140,12 @@ async function main(): Promise<void> {
   const mainDir = join(outDir, 'vx')
   await mkdir(mainDir, { recursive: true })
   await cp(join(CORE, 'src'), join(mainDir, 'src'), { recursive: true })
+  // The root shims: Bun 1.4.0's compiled binary resolves an on-disk package
+  // by `<pkg>/index.ts` / `<pkg>/<subpath>/index.ts` and ignores the exports
+  // map, so without these a workspace config fails to import `@vzn/vx` under
+  // the very binary this package ships (see packages/vx/index.ts).
+  await cp(join(CORE, 'index.ts'), join(mainDir, 'index.ts'))
+  await cp(join(CORE, 'plugins'), join(mainDir, 'plugins'), { recursive: true })
   await cp(join(ROOT, 'scripts', 'npm-launcher.mjs'), join(mainDir, 'launcher.mjs'))
   await cp(join(ROOT, 'README.md'), join(mainDir, 'README.md'))
   await cp(join(ROOT, 'LICENSE'), join(mainDir, 'LICENSE'))
@@ -149,7 +156,10 @@ async function main(): Promise<void> {
     description: corePkg.description ?? 'An open, extensible monorepo task runner.',
     type: 'module',
     // The library surface — plugin authors `import { defineProject } from '@vzn/vx'`.
-    exports: { '.': { types: './src/index.ts', import: './src/index.ts' } },
+    // The same exports map the workspace package declares — the plugin
+    // subpaths (`@vzn/vx/plugins/local-executor`, …) are what every
+    // vx.workspace.ts imports; a map with only "." shipped once.
+    exports: corePkg.exports,
     types: './src/index.ts',
     // The CLI — a Node launcher that execs the matching platform binary.
     bin: { vx: './launcher.mjs' },
@@ -158,7 +168,7 @@ async function main(): Promise<void> {
     // Runtime deps the library source needs when imported (the binary embeds
     // its own copy). Mirrors the workspace root so versions never drift.
     dependencies: corePkg.dependencies ?? {},
-    files: ['src', 'launcher.mjs', 'README.md', 'LICENSE'],
+    files: ['index.ts', 'plugins', 'src', 'launcher.mjs', 'README.md', 'LICENSE'],
     repository: REPOSITORY,
     homepage: `${REPOSITORY}#readme`,
     bugs: `${REPOSITORY}/issues`,
