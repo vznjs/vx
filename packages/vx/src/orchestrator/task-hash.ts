@@ -235,6 +235,7 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
     workspaceFingerprint: args.workspaceFingerprint,
     forwardArgs: effectiveForwardArgs,
     ...(fileHashes !== undefined ? { fileHashes } : {}),
+    ...(args.node.keyParts !== undefined ? { pluginParts: args.node.keyParts } : {}),
     ...(args.captureInto !== undefined ? { captureInto: args.captureInto } : {}),
   }
 }

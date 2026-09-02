@@ -49,6 +49,19 @@ the host opened (`ctx.localCache`: the run index + the local artifact
 store). Declared like any other cache layer; put a remote layer BEFORE it to
 look there first (`docs/modules/chained-cache.md`).
 
+## `schedule-history` — `@vzn/vx/plugins/schedule-history`
+
+`scheduleHistoryPlugin({ window? })` → `vx/schedule-history`. The
+reference `schedule` stage: orders ready tasks by their expected
+REMAINING critical-path duration (own p50 + the longest chain of
+dependents), learned from the local run history through
+`LocalHistoryProvider(ctx.localCache.dbHandle())`. Fails open — a broken
+history read warns and leaves the baseline order. This was core's
+opt-in `predictive` mode until 2026-09-02; as a plugin its history read
+is paid only by the workspaces that declare it. `criticalPathPriorities`
+is exported for tests and for policies that want the same scoring over
+another history source.
+
 ## Tests
 
 `tests/local-plugins.test.ts`; the `NO DEFAULTS` / `CONTROL` e2e pins in

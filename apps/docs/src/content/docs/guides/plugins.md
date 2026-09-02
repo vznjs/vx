@@ -26,10 +26,12 @@ import type { VxPlugin } from '@vzn/vx'
 interface VxPlugin {
   readonly name: string // 'org/plugin-name'
 
-  // PIPELINE stages — shape the run before it executes (edit in place):
+  // PIPELINE stages — shape the run before it executes:
   config?(workspace, ctx): void // the workspace config, before it is used
   project?(config, ctx): void // one loaded project's tasks: add / remove / edit
   graph?(nodes, ctx): void // the task graph: edges, requested, resources
+  key?(task, ctx): Record<string, string> // extra cache-key material per task
+  schedule?(nodes, ctx): Map<string, number> // task id → priority among ready tasks
 
   // BEHAVIOR capabilities — decide WHERE work runs and where artifacts live:
   executor?(ctx): TaskExecutor | undefined // where ONE task's command runs
@@ -120,6 +122,37 @@ A dep naming a task that is not in the run, or a cycle, is refused with
 the plugin's name and the stage: `plugin 'org/test-after-build' failed in
 graph: …`. `config` runs first and sees the workspace config before
 `concurrency` or `cacheDir` are read from it.
+
+### Keys and order
+
+`key` adds material the declared inputs cannot see — a tool version, a
+feature flag — to every task's cache key. It is folded only when a
+plugin contributes something, so keys without it are unchanged, and
+`vx why` names it as a `plugin` component:
+
+```ts
+export function nodeMajor(): VxPlugin {
+  const major = process.versions.node.split('.')[0]!
+  return { name: 'org/node-major', key: () => ({ 'node-major': major }) }
+}
+```
+
+`schedule` decides which READY task runs first when more are ready than
+there are workers. Return `Map<taskId, weight>`; higher runs first, and
+the scheduler's structural baseline (how many tasks a task unblocks)
+stays the tie-break. Core ships one reference policy — the expected
+remaining critical path learned from your own run history:
+
+```ts
+import { scheduleHistoryPlugin } from '@vzn/vx/plugins/schedule-history'
+
+export default defineWorkspace({
+  plugins: [scheduleHistoryPlugin(), localExecutorPlugin(), localCachePlugin()],
+})
+```
+
+It costs one history read per run, in the workspaces that declare it —
+which is why it is a plugin and not a flag.
 
 - **`executor`** returns a `TaskExecutor` — the thing that actually runs
   one task's command — or `undefined` to decline. Executors form a

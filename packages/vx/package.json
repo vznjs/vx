@@ -17,6 +17,10 @@
     "./plugins/local-cache": {
       "types": "./src/plugins/local-cache/index.ts",
       "import": "./src/plugins/local-cache/index.ts"
+    },
+    "./plugins/schedule-history": {
+      "types": "./src/plugins/schedule-history/index.ts",
+      "import": "./src/plugins/schedule-history/index.ts"
     }
   },
   "bin": {

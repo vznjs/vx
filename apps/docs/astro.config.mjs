@@ -70,9 +70,7 @@ export default defineConfig({
           items: [
             { label: 'Core is provider-neutral', link: '/guides/extensibility/' },
             { label: 'Writing a vx plugin', link: '/guides/plugins/' },
-            { label: 'vx mcp — AI agents', link: '/guides/mcp/' },
             { label: 'OpenTelemetry traces & metrics', link: '/guides/otel-bridge/' },
-            { label: 'Predictive scheduling', link: '/guides/predictive-scheduling/' },
           ],
         },
         {

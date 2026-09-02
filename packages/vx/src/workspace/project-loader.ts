@@ -156,6 +156,8 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
         config?: unknown
         project?: unknown
         graph?: unknown
+        key?: unknown
+        schedule?: unknown
         commands?: unknown
         teardown?: unknown
       }
@@ -181,6 +183,8 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
         'config',
         'project',
         'graph',
+        'key',
+        'schedule',
         'setup',
         'cache',
         'executor',

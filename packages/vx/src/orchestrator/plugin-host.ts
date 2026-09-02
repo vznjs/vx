@@ -16,7 +16,9 @@ import type {
   CacheContext,
   ExecutorContext,
   GraphHookContext,
+  KeyHookContext,
   ProjectHookContext,
+  ScheduleHookContext,
   VxPlugin,
   WorkspaceHookContext,
 } from './plugin.js'
@@ -47,7 +49,7 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
 
 export function hasHook(
   plugins: readonly VxPlugin[],
-  hook: 'config' | 'project' | 'graph',
+  hook: 'config' | 'project' | 'graph' | 'key' | 'schedule',
 ): boolean {
   for (const p of plugins) if (p[hook] !== undefined) return true
   return false
@@ -105,6 +107,65 @@ export async function applyGraphHooks(
     }
     detectCycle(nodes)
   })
+}
+
+/**
+ * `key` stage: every plugin may add `{ name: value }` material to every
+ * task. Stored on the node as sorted `[plugin/name, value]` pairs so the
+ * fold is order-independent and `vx why` can name the contributor.
+ */
+export async function applyKeyHooks(
+  plugins: readonly VxPlugin[],
+  nodes: Map<string, TaskNode>,
+  ctx: KeyHookContext,
+): Promise<void> {
+  for (const node of nodes.values()) {
+    const parts: Array<readonly [string, string]> = []
+    for (const plugin of plugins) {
+      if (plugin.key === undefined) continue
+      const material = await safe(plugin, 'key', () => plugin.key!(node, ctx))
+      if (material === undefined) continue
+      for (const [name, value] of Object.entries(material)) {
+        if (typeof value !== 'string') {
+          throw new UserError(
+            `plugin '${plugin.name}' failed in key: value for '${name}' on ${node.id} is not a string`,
+          )
+        }
+        parts.push([`${plugin.name}/${name}`, value])
+      }
+    }
+    if (parts.length > 0) {
+      parts.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      node.keyParts = parts
+    }
+  }
+}
+
+/**
+ * `schedule` stage: the merged priorities map (a later plugin's weight for
+ * a task overrides an earlier one's). Empty when no plugin answered.
+ */
+export async function applyScheduleHooks(
+  plugins: readonly VxPlugin[],
+  nodes: ReadonlyMap<string, TaskNode>,
+  ctx: ScheduleHookContext,
+): Promise<ReadonlyMap<string, number>> {
+  const merged = new Map<string, number>()
+  for (const plugin of plugins) {
+    if (plugin.schedule === undefined) continue
+    const weights = await safe(plugin, 'schedule', () => plugin.schedule!(nodes, ctx))
+    if (weights === undefined) continue
+    for (const [id, w] of weights) {
+      if (!nodes.has(id)) continue
+      if (typeof w !== 'number' || !Number.isFinite(w)) {
+        throw new UserError(
+          `plugin '${plugin.name}' failed in schedule: weight for ${id} is not a finite number`,
+        )
+      }
+      merged.set(id, w)
+    }
+  }
+  return merged
 }
 
 /**

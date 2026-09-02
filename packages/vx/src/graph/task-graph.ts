@@ -38,6 +38,12 @@ export interface TaskNode {
    * them `requested`, so `forwardArgs` scoping is unaffected.
    */
   surfaced?: boolean
+  /**
+   * Extra cache-key material from plugins' `key` stage, as sorted
+   * `[name, value]` pairs; set by `prepareRun`, folded by `Cache.key`.
+   * Absent when no plugin declares the stage.
+   */
+  keyParts?: ReadonlyArray<readonly [name: string, value: string]>
 }
 
 export function taskId(project: string, task: string): string {

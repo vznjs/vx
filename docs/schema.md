@@ -986,8 +986,10 @@ interface WorkspaceConfig {
   `config` (edit the workspace config), `project` (edit a loaded
   project's tasks — inject, remove, rewrite; re-validated by core and
   hashed into the key like a hand edit), `graph` (edit the task graph's
-  edges), CLI `commands` (`{ verb: { description, run(argv, ctx) } }`,
-  consulted for a verb core does not know) — and the run-level
+  edges), `key` (per-task `{ name: value }` material folded into the
+  cache key), `schedule` (task id → priority, merged over the
+  scheduler's baseline), CLI `commands` (`{ verb: { description,
+  run(argv, ctx) } }`, consulted for a verb core does not know) — and the run-level
   capabilities `cache` (which cache
   layer is used), `executor
   (`executor(ctx)` — return a `TaskExecutor` (where one task's command
@@ -1275,4 +1277,4 @@ Workspace-config errors:
 | `plugins[<i>] must be an object`                                                                 | A non-object entry in `plugins`.                         |
 | `plugins[<i>].name must be a non-empty string`                                                   | Missing / empty plugin name.                             |
 | `plugins[<i>].<capability> must be a function`                                                   | A capability key holding something that is not callable. |
-| `plugins[<i>] must contribute at least one of config/project/graph/setup/cache/executor/telemetry/teardown/commands` | A plugin object with no capability.                      |
+| `plugins[<i>] must contribute at least one of config/project/graph/key/schedule/setup/cache/executor/telemetry/teardown/commands` | A plugin object with no capability.                      |

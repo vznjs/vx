@@ -342,6 +342,12 @@ export interface CacheKeyInput {
    */
   fileHashes?: ReadonlyMap<string, string>
   /**
+   * Material a plugin's `key` stage contributed, as sorted `[name, value]`
+   * pairs. Folded only when non-empty, so a workspace without a key plugin
+   * derives exactly the key it always did.
+   */
+  pluginParts?: ReadonlyArray<readonly [name: string, value: string]>
+  /**
    * When set, `key()` pushes each component (kind, name, hash) it folds
    * — at the same fold sites, in fold order. Pure SIDE-CHANNEL: it does
    * not change the returned digest in any way. On a cache MISS the
@@ -1350,6 +1356,15 @@ export class Cache implements CacheLayer {
     if (cap) {
       for (const u of upstream) {
         cap.push({ kind: 'upstream', name: input.upstreamIds?.get(u) ?? u, hash: u })
+      }
+    }
+
+    const pluginParts = input.pluginParts ?? []
+    if (pluginParts.length > 0) {
+      h = xxh3(`plugin:${pluginParts.length}`, h)
+      for (const [n, v] of pluginParts) h = xxh3(`${n}\0${v}`, h)
+      if (cap) {
+        for (const [n, v] of pluginParts) cap.push({ kind: 'plugin', name: n, hash: xxh3hex(v) })
       }
     }
 

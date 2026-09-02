@@ -102,6 +102,19 @@ Process: push directly to `main`, no PRs. Gate before every push:
   lists them. Pinned: argv + context + exit code, core verbs win, unknown
   stays unknown (in and out of a workspace), malformed entries refused
   by the loader.
+- 2026-09-03 — **pipeline v2, phase 3: `key` + `schedule`.** `key(task,
+  ctx)` returns `{ name: value }` material stored on the node
+  (`TaskNode.keyParts`, sorted `plugin/name` pairs) and folded by
+  `Cache.key` as `plugin` components — only when non-empty, so every
+  existing key is unchanged (no `CACHE_VERSION` bump). `schedule(nodes,
+  ctx)` returns task → weight, merged over the scheduler's baseline
+  (later plugin wins per task); `ctx.localCache` gives a policy the run
+  history. The removed predictive mode is back as the reference plugin
+  `@vzn/vx/plugins/schedule-history` (its priority function and tests
+  recovered from history), which put `LocalHistoryProvider` on the
+  façade. Pinned: material moves/keeps the key deterministically, a
+  non-string value is refused, weights decide order with an
+  insertion-order control, override semantics, non-finite refused.
 
 ## In flight
 
@@ -113,10 +126,10 @@ Process: push directly to `main`, no PRs. Gate before every push:
    path at 1000 projects — `vx info` should say when `core.fsmonitor` /
    `core.untrackedCache` are off. Then a fresh Turbo/Nx head-to-head via
    `bench/compare.ts`.
-2. **Plugin pipeline v2, phase 3** — `schedule` (priorities) and `key`
-   (extra key material), with a reference history-based scheduling
-   plugin to prove the seam. Then move `migrate` / `prune` / `upgrade`
-   out of core behind `commands` (a `@vzn/vx-tools` package).
+2. **Move verbs out of core** behind `commands`: `migrate`, `prune`,
+   `upgrade` into a `@vzn/vx-tools` package (core's verb list becomes
+   run / watch / show / why / last / info / cache / lock), and an MCP
+   server package reading the same run-history queries `vx why` uses.
 3. **Move verbs out of core** behind `commands`: `migrate`, `prune`,
    `upgrade`, and an MCP server package.
 4. **Docs + site rewrite** around the pipeline model.

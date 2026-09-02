@@ -89,7 +89,11 @@ describe('package boundaries', () => {
     const glob = new Bun.Glob('*/index.ts')
     const entries: string[] = []
     for await (const rel of glob.scan({ cwd: pluginsDir })) entries.push(rel)
-    expect(entries.sort()).toEqual(['local-cache/index.ts', 'local-executor/index.ts'])
+    expect(entries.sort()).toEqual([
+      'local-cache/index.ts',
+      'local-executor/index.ts',
+      'schedule-history/index.ts',
+    ])
     for (const rel of entries) {
       const imports = await importsOf(path.join(pluginsDir, path.dirname(rel)))
       const bare = imports.filter((i) => !i.specifier.startsWith('.')).map((i) => i.specifier)
@@ -107,11 +111,13 @@ describe('package boundaries', () => {
     const actual = Object.keys(mod).sort()
     const expected = [
       'Cache',
+      'EmptyHistoryProvider',
       'FULL_CACHE_POLICY',
       'GitFilesCache',
       'LOCKFILE_NAME',
       'LOG_WIRE_VERSION',
       'LayeredCache',
+      'LocalHistoryProvider',
       'RUN_LOG_BUDGET_CHARS',
       'TASK_LOG_TAIL_CHARS',
       'TASK_STATUSES',

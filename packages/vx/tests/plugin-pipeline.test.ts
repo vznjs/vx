@@ -237,6 +237,91 @@ describe('graph stage', () => {
   )
 })
 
+describe('key stage', () => {
+  it(
+    'plugin material moves the key, is stable across runs, and is named in the components',
+    async () => {
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'echo b' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
+      )
+      await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
+      await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
+      await workspace([])
+      const bare = (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!.hash
+      await workspace([`{ name: 'org/tool', key() { return { 'node-major': '22' } } }`])
+      const withKey = (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!.hash
+      expect(withKey).not.toBe(bare)
+      // Deterministic material → the same key on the next derivation.
+      expect((await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!.hash).toBe(
+        withKey,
+      )
+      // A different value is a different key.
+      await workspace([`{ name: 'org/tool', key() { return { 'node-major': '24' } } }`])
+      expect(
+        (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!.hash,
+      ).not.toBe(withKey)
+      // A non-string value is refused, naming plugin and stage.
+      await workspace([`{ name: 'org/tool', key() { return { n: 22 } } }`])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        /plugin 'org\/tool' failed in key: value for 'n'/,
+      )
+    },
+    TIMEOUT,
+  )
+})
+
+describe('schedule stage', () => {
+  it(
+    "a plugin's weights decide which ready task runs first",
+    async () => {
+      // Two independent tasks, identical structure: insertion order would run
+      // a#build first at concurrency 1. The plugin says b first.
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([
+        `{ name: 'org/order', schedule() { return new Map([['a#build', 1], ['b#build', 100]]) } }`,
+      ])
+      const log = silent()
+      const summary = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 1,
+        log,
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(log.started).toEqual(['b#build', 'a#build'])
+      // Control: without the plugin, insertion order.
+      await workspace([])
+      const log2 = silent()
+      await run({ cwd: root, tasks: ['build'], concurrency: 1, log: log2, handleSignals: false })
+      expect(log2.started).toEqual(['a#build', 'b#build'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a later plugin overrides an earlier one per task; a non-finite weight is refused',
+    async () => {
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([
+        `{ name: 'org/first', schedule() { return new Map([['a#build', 100]]) } }`,
+        `{ name: 'org/second', schedule() { return new Map([['a#build', 1], ['b#build', 50]]) } }`,
+      ])
+      const log = silent()
+      await run({ cwd: root, tasks: ['build'], concurrency: 1, log, handleSignals: false })
+      expect(log.started).toEqual(['b#build', 'a#build'])
+      await workspace([`{ name: 'org/nan', schedule() { return new Map([['a#build', NaN]]) } }`])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        /plugin 'org\/nan' failed in schedule/,
+      )
+    },
+    TIMEOUT,
+  )
+})
+
 describe('zero cost when absent', () => {
   it(
     'a workspace with no stage plugins validates each config exactly once',

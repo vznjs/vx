@@ -47,7 +47,9 @@ import {
 import {
   applyConfigHooks,
   applyGraphHooks,
+  applyKeyHooks,
   applyProjectHooks,
+  applyScheduleHooks,
   hasHook,
   resolveCache,
 } from './plugin-host.js'
@@ -78,6 +80,12 @@ export interface PreparedRun {
    * `--verify`) restores an artifact that was never written.
    */
   hasRemoteLayer: boolean
+  /**
+   * Scheduling priorities from plugins' `schedule` stage (task id → weight,
+   * merged over the structural baseline by the scheduler). Empty when no
+   * plugin declares the stage.
+   */
+  priorities: ReadonlyMap<string, number>
   nodes: Map<string, TaskNode>
   /**
    * Requested task specs that matched NO project — a typo, or a stray
@@ -382,6 +390,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cache,
       localCache,
       hasRemoteLayer,
+      priorities: new Map(),
       nodes: new Map(),
       unresolvedTasks,
       workspaceFingerprint,
@@ -409,6 +418,18 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
     })
   }
+  if (hasHook(plugins, 'key')) {
+    await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: (m) => log.status(m) })
+  }
+  let priorities: ReadonlyMap<string, number> = new Map()
+  if (hasHook(plugins, 'schedule')) {
+    priorities = await applyScheduleHooks(plugins, nodes, {
+      workspaceRoot,
+      cacheDir,
+      warn: (m) => log.status(m),
+      localCache,
+    })
+  }
 
   return {
     workspaceRoot,
@@ -418,6 +439,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     cache,
     localCache,
     hasRemoteLayer,
+    priorities,
     nodes,
     unresolvedTasks,
     workspaceFingerprint,

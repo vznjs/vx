@@ -1,6 +1,6 @@
 # The pipeline — plugin API v2 (2026-09)
 
-**Status: accepted design, shipping in phases (see the phase list).**
+**Status: shipped — phases 1–3 landed 2026-09-03 (`config`, `project`, `graph`, `commands`, `key`, `schedule`); phase 4 (docs/site rewrite around the stage table) and the verb move-out remain.**
 
 ## Why
 

@@ -66,6 +66,33 @@ export interface VxPlugin {
    */
   graph?(nodes: Map<string, TaskNode>, ctx: GraphHookContext): void | Promise<void>
 
+  /**
+   * Extra cache-key material for one task: a `{ name: value }` record that
+   * is folded into the key (and named in `vx why`) — a tool version, a
+   * feature flag, anything the declared inputs cannot see. Runs once per
+   * task per run, before any key is derived. Return undefined to add
+   * nothing. Values must be deterministic for the same inputs or the key
+   * never hits.
+   */
+  key?(
+    task: TaskNode,
+    ctx: KeyHookContext,
+  ):
+    | Readonly<Record<string, string>>
+    | undefined
+    | Promise<Readonly<Record<string, string>> | undefined>
+
+  /**
+   * Scheduling priorities: task id → weight, higher runs first among READY
+   * tasks (merged over the structural baseline, which stays the tie-break).
+   * Runs once, after the graph is final. A later plugin's weight for a task
+   * overrides an earlier one's. Return undefined to leave the baseline.
+   */
+  schedule?(
+    nodes: ReadonlyMap<string, TaskNode>,
+    ctx: ScheduleHookContext,
+  ): ReadonlyMap<string, number> | undefined | Promise<ReadonlyMap<string, number> | undefined>
+
   // --- CLI verbs (opt-in) ---------------------------------------------------
 
   /**
@@ -166,6 +193,13 @@ export interface ProjectHookContext extends BaseContext {
 export interface GraphHookContext extends BaseContext {
   /** Task ids the user asked for (the rest were pulled in by `dependsOn`). */
   readonly requested: readonly string[]
+}
+
+export interface KeyHookContext extends BaseContext {}
+
+export interface ScheduleHookContext extends BaseContext {
+  /** The run's local cache handle — its `dbHandle()` holds the run history a policy can learn from. */
+  readonly localCache: Cache
 }
 
 export interface CacheContext extends BaseContext {

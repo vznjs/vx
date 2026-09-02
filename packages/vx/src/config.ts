@@ -23,7 +23,7 @@ export interface WorkspaceConfig {
 
 /**
  * Structural plugin shape — any subset of the pipeline stages
- * (`config`/`project`/`graph`), run-level capabilities
+ * (`config`/`project`/`graph`/`key`/`schedule`), run-level capabilities
  * (`cache`/`executor`/`telemetry`) and CLI `commands`, plus optional
  * `setup`/`teardown`. The fully-typed `VxPlugin` lives in
  * `src/orchestrator/plugin.ts` and is what users import; this is a
@@ -36,6 +36,8 @@ export interface Plugin {
   config?(workspace: unknown, ctx: unknown): unknown
   project?(config: unknown, ctx: unknown): unknown
   graph?(nodes: unknown, ctx: unknown): unknown
+  key?(task: unknown, ctx: unknown): unknown
+  schedule?(nodes: unknown, ctx: unknown): unknown
   readonly commands?: Readonly<Record<string, unknown>>
   cache?(ctx: unknown): unknown
   executor?(ctx: unknown): unknown

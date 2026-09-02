@@ -121,7 +121,7 @@ describe('module boundaries', () => {
         if (!resolved.startsWith(dir + path.sep)) escapes.push(`${norm} → ${m[1]!}`)
       }
     }
-    expect(new Set(seen)).toEqual(new Set(['local-cache', 'local-executor']))
+    expect(new Set(seen)).toEqual(new Set(['local-cache', 'local-executor', 'schedule-history']))
     expect(escapes).toEqual([])
   })
 
