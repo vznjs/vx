@@ -271,6 +271,36 @@ describe('key stage', () => {
   )
 })
 
+describe('key stage — explainability', () => {
+  it(
+    'a changed plugin part is what `vx why` names',
+    async () => {
+      // The docs say key material is "named in vx why". Pinned by running
+      // the real verb: two runs with different material, then the diff.
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'echo b' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
+      )
+      await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
+      await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
+      await workspace([`{ name: 'org/tool', key() { return { 'node-major': '22' } } }`])
+      await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      await workspace([`{ name: 'org/tool', key() { return { 'node-major': '24' } } }`])
+      await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      const why = Bun.spawnSync({
+        cmd: [process.execPath, path.resolve(import.meta.dir, '../src/bin.ts'), 'why', 'a#build'],
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      const out = new TextDecoder().decode(why.stdout)
+      expect(why.exitCode).toBe(0)
+      expect(out).toContain('cache key changed')
+      expect(out).toMatch(/changed +plugin +org\/tool\/node-major/)
+    },
+    TIMEOUT,
+  )
+})
+
 describe('schedule stage', () => {
   it(
     "a plugin's weights decide which ready task runs first",
@@ -317,6 +347,51 @@ describe('schedule stage', () => {
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         /plugin 'org\/nan' failed in schedule/,
       )
+    },
+    TIMEOUT,
+  )
+})
+
+describe('schedule-history plugin end to end', () => {
+  it(
+    'orders by the critical path learned from this workspace’s own run history',
+    async () => {
+      // Two independent chains of identical shape. Chain A is slow in
+      // history, chain B trivial; with one worker the plugin must start A.
+      // Insertion order (a first) would ALSO start a — so the fixture makes
+      // B the slow one, and the plugin has to reverse the insertion order.
+      await pkg(
+        'a',
+        "export default { tasks: { build: { exec: { command: 'true' } }, test: { dependsOn: ['build'], exec: { command: 'true' } } } }\n",
+      )
+      await pkg(
+        'b',
+        "export default { tasks: { build: { exec: { command: 'sleep 0.15' } }, test: { dependsOn: ['build'], exec: { command: 'sleep 0.15' } } } }\n",
+      )
+      const pluginPath = path.resolve(import.meta.dir, '../src/plugins/schedule-history/index.ts')
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        `import { scheduleHistoryPlugin } from ${JSON.stringify(pluginPath)}\n` +
+          localWorkspaceSource(['scheduleHistoryPlugin()']).replace(
+            'export default',
+            'export default',
+          ),
+      )
+      // Run 1 records the durations (no history yet → insertion order).
+      const first = silent()
+      await run({ cwd: root, tasks: ['test'], concurrency: 1, log: first, handleSignals: false })
+      expect(first.started[0]).toBe('a#build')
+      // Run 2: history says chain B is the critical path → B's head first.
+      const second = silent()
+      const summary = await run({
+        cwd: root,
+        tasks: ['test'],
+        concurrency: 1,
+        log: second,
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(second.started[0]).toBe('b#build')
     },
     TIMEOUT,
   )

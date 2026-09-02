@@ -208,6 +208,12 @@ Process: push directly to `main`, no PRs. Gate before every push:
   enumerated as inputs, so every save moved the next key. It also keeps
   vx's own `status -uall` walk out of the artifact directory. Pinned in
   `tests/cache-gitignore.test.ts` with a stray-file control.
+- 2026-09-03 — two claims turned into pins: "key material is named in
+  `vx why`" (probed first: `changed plugin org/tool/node-major`, then
+  pinned through the real verb) and the schedule-history plugin end to
+  end (run 1 records durations, run 2 starts the historically slow
+  chain first against insertion order). The docs front door's numbers
+  are this month's.
 
 ## In flight
 
@@ -224,9 +230,12 @@ Process: push directly to `main`, no PRs. Gate before every push:
    `onLoad` never fires for `.js`/`.ts` files (probed, both). Options
    left: rewrite the config source before import (breaks relative
    imports unless written beside the file) or a Bun fix. Parked.
-2. **Docs + site pass** — the remaining pages that still say "three
-   seams" (`docs/README.md`, `docs/architecture.md` prose,
-   `concepts/how-vx-works.md`), and a fresh Turbo/Nx comparison table.
+2. **`docs/comparison.md` refresh** — the feature matrix predates Turbo
+   2.10 / Nx 23 and vx's pipeline; re-verify every row against the
+   upstream repos it cites (the doc's own rule) and add the hooks.
+3. **Audit rotation** — the newest code first: the `commands` resolver
+   under a broken workspace file, `getMany` under a layered cache, the
+   scripts mapper on odd `package.json` shapes. Probes become tests.
 
 DECIDED 2026-09-03: `migrate`, `prune` and `upgrade` STAY in core. They
 are the first things a Turbo/Nx user and a Docker user run, and

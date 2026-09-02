@@ -84,10 +84,11 @@ the hooks are how it gets built.
 Numbers come from `bench/` and are reproducible; the invariant behind
 each is recorded in [optimizations.md](./optimizations.md).
 
-- A fully-cached run on a 100-project workspace completes in **144 ms**
-  wall-clock — restoring costs about what an intact tree costs.
-- A 1090-package, 100-layer dense graph (3270 tasks) runs fully cached
-  in **0.62 s**.
+- A fully-cached run on a 100-project workspace completes in **79 ms**
+  wall-clock; on 476 packages / 1,428 tasks in **297 ms**, where
+  Turborepo 2.10 takes 342 ms and Nx 23 takes 1.38 s on the identical
+  workspace — and restoring every output is 1.5× faster than Turbo
+  ([benchmarks.md](./benchmarks.md), 2026-09).
 - At 15k input files, deriving every cache key costs **zero file reads**
   — hashes come from git's index for tracked, clean files.
 - No daemon. Nothing to keep warm, nothing to restart.
