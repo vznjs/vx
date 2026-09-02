@@ -12,9 +12,11 @@ behavior lives in the plugin package (vite-style), not in core.
 | Capability       | Consulted by        | Contract                                                                               |
 | ---------------- | ------------------- | -------------------------------------------------------------------------------------- |
 | `executor(ctx)`  | `plugin-host.ts`    | return a `TaskExecutor` or decline; ALL kept in order, first accepting runs            |
+| `config(ws, ctx)`    | `prepareRun`, first | edit the workspace config in place before anything is derived from it                  |
+| `project(cfg, ctx)`  | per loaded config   | add/remove/edit a project's tasks in place; core re-validates after the last plugin    |
+| `graph(nodes, ctx)`  | after graph build   | edit `deps`/`requested`/resources in place; dangling deps and cycles are refused        |
 | `cache(ctx)`     | run setup           | return a `CacheLayer` or decline; ALL kept in order and chained (see chained-cache.md) |
 | `telemetry(ctx)` | `telemetry-host.ts` | return sink(s) or decline                                                              |
-| `eventSink(ctx)` | `plugin-host.ts`    | raw `WireEvent` consumer                                                               |
 | `setup(ctx)`     | `installPlugins`    | validate config; throw `UserError`                                                     |
 | `teardown()`     | end-of-run          | flush/close; crash-isolated, 3s-bounded                                                |
 

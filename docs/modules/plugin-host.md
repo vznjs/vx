@@ -2,10 +2,13 @@
 
 ## Purpose
 
-Consults the plugins' run-level capabilities in declaration order
-(`executor`, `cache`) and wires each plugin's `eventSink`
-capability onto the run bus via `wireForwarder`, so sinks receive the
-serializable `WireEvent` stream.
+Runs the pipeline stages (`config`, `project`, `graph` — each plugin
+edits the object in place, in declaration order; `hasHook` is the
+zero-cost gate that skips a stage nobody declares), consults the
+run-level capabilities (`executor`, `cache`), and runs each plugin's
+`teardown()` at the end of the run, crash-isolated and time-bounded.
+After the `graph` stage the graph is re-checked (every dep names a node,
+no cycle) and a violation is reported against the last plugin that ran.
 
 Every capability is resolved inside `prepareRun`/`run()` from the declared
 list (`prepared.plugins`). (A whole-run `backend` capability was resolved

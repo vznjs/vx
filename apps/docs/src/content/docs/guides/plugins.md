@@ -15,16 +15,21 @@ Everything below is real, runnable code against the types exported from
 
 ## The contract
 
-A `VxPlugin` is a plain object with a `name` and any of four optional
-capabilities — declared in `vx.workspace.ts` via `defineWorkspace({
-plugins: [...] })`. Each capability is independent and opt-in; declaring a
-plugin that contributes none is zero-overhead.
+A `VxPlugin` is a plain object with a `name` and any of the optional
+hooks below — declared in `vx.workspace.ts` via `defineWorkspace({
+plugins: [...] })`. Each hook is independent and opt-in; a stage nobody
+declares costs nothing, and declaration order is the order everywhere.
 
 ```ts
 import type { VxPlugin } from '@vzn/vx'
 
 interface VxPlugin {
   readonly name: string // 'org/plugin-name'
+
+  // PIPELINE stages — shape the run before it executes (edit in place):
+  config?(workspace, ctx): void // the workspace config, before it is used
+  project?(config, ctx): void // one loaded project's tasks: add / remove / edit
+  graph?(nodes, ctx): void // the task graph: edges, requested, resources
 
   // BEHAVIOR capabilities — decide WHERE work runs and where artifacts live:
   executor?(ctx): TaskExecutor | undefined // where ONE task's command runs
@@ -37,6 +42,57 @@ interface VxPlugin {
   teardown?(): void | Promise<void> // end-of-run flush/close
 }
 ```
+
+## Shaping the pipeline
+
+The three stage hooks are how a plugin **adds** something to every
+project without every `vx.config.ts` repeating it. Core re-validates
+whatever a stage produced, so a plugin can only create what the loader
+would accept from you — and the cache key hashes the task config
+*after* `project` ran, so an injected task is keyed exactly like one you
+wrote by hand.
+
+A plugin that gives every TypeScript package a `typecheck` task:
+
+```ts
+import type { VxPlugin } from '@vzn/vx'
+
+export function typecheck(): VxPlugin {
+  return {
+    name: 'org/typecheck',
+    project(config, ctx) {
+      if (!ctx.packageJson['devDependencies']?.['typescript']) return
+      config.tasks ??= {}
+      config.tasks['typecheck'] ??= {
+        exec: { command: 'tsc --noEmit' },
+        cache: { inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: [] } },
+      }
+    },
+  }
+}
+```
+
+A plugin that makes every `test` wait for its project's `build`:
+
+```ts
+export function testAfterBuild(): VxPlugin {
+  return {
+    name: 'org/test-after-build',
+    graph(nodes) {
+      for (const node of nodes.values()) {
+        if (node.taskName !== 'test') continue
+        const build = `${node.projectName}#build`
+        if (nodes.has(build) && !node.deps.includes(build)) node.deps.push(build)
+      }
+    },
+  }
+}
+```
+
+A dep naming a task that is not in the run, or a cycle, is refused with
+the plugin's name and the stage: `plugin 'org/test-after-build' failed in
+graph: …`. `config` runs first and sees the workspace config before
+`concurrency` or `cacheDir` are read from it.
 
 - **`executor`** returns a `TaskExecutor` — the thing that actually runs
   one task's command — or `undefined` to decline. Executors form a

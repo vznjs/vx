@@ -225,7 +225,7 @@ Patterns this implies, documented rather than abstracted away:
 | `run-context.ts` (git/CI/host/PR scope)                                            | **Keep** — provider-neutral context every ctx receives                        |
 | `events.ts` bus + `WireEvent` (logger, MCP, metrics consume it)                    | **Keep**                                                                      |
 | `backend` capability, `protocol.ts`, `wire.ts`, `wire-render.ts`, `cli/backend.ts` | **Deprecate** at phase 2; **delete** when cloud's dist half retires (phase 4) |
-| `eventSink` (deprecated)                                                           | **Delete** at phase 2 (cloud no longer uses it)                               |
+| `eventSink` (deprecated)                                                           | **Deleted** 2026-09-03 (pipeline v2 phase 1)                               |
 | `devframe-surface.ts`                                                              | **Delete** if no core consumer remains (verify in the plan)                   |
 | `metrics.ts`, `history`/`predict`, `vx mcp`                                        | **Keep** — local SQLite insights                                              |
 

@@ -20,6 +20,7 @@ export {
 } from './scheduler.js'
 export {
   buildTaskGraph,
+  detectCycle,
   expandRequested,
   isGroupTask,
   markSurfacedDeps,

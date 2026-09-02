@@ -531,7 +531,7 @@ function collide(
   }
 }
 
-function detectCycle(nodes: Map<string, TaskNode>): void {
+export function detectCycle(nodes: Map<string, TaskNode>): void {
   // Iterative DFS over dense-indexed colors. Recursion + `Map<string,
   // number>` worked, but deep workspaces (long chains of `dependsOn`)
   // can blow V8's frame budget, and per-node Map lookups dominate the

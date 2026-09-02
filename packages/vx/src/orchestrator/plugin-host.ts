@@ -1,4 +1,4 @@
-// Plugin consultation for the run-level extension points (cache / executor / eventSink).
+// Plugin consultation for the run-level extension points (cache / executor).
 // Each function asks the plugins in order. Nothing is applied by default:
 // core's own executor and cache are plugins under src/plugins/ that a
 // workspace declares like any other, so a list with no provider for a
@@ -9,15 +9,16 @@
 import { ChainedCache, type CacheLayer } from '../cache/index.js'
 import type { TaskExecutor } from '../exec/index.js'
 import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
-import type { EventBus } from './events.js'
-import { wireForwarder } from './events.js'
+import type { ProjectConfig, WorkspaceConfig } from '../config.js'
+import { detectCycle, type TaskNode } from '../graph/index.js'
 import { MISSING_PLUGIN_HINT } from './missing-plugin.js'
 import type {
   CacheContext,
-  EventSink,
-  EventSinkContext,
   ExecutorContext,
+  GraphHookContext,
+  ProjectHookContext,
   VxPlugin,
+  WorkspaceHookContext,
 } from './plugin.js'
 
 /**
@@ -35,6 +36,75 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
       `plugin '${plugin.name}' failed in ${hook}: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
+}
+
+// --- Pipeline stages ---------------------------------------------------------
+//
+// Each stage hands plugins the object core is about to use, in declaration
+// order, and the caller re-validates afterwards. `hasHook` is the zero-cost
+// gate: with no plugin declaring a stage the caller skips the loop AND the
+// re-validation, so a workspace without pipeline plugins pays nothing.
+
+export function hasHook(
+  plugins: readonly VxPlugin[],
+  hook: 'config' | 'project' | 'graph',
+): boolean {
+  for (const p of plugins) if (p[hook] !== undefined) return true
+  return false
+}
+
+/** `config` stage: every plugin edits the workspace config in place. */
+export async function applyConfigHooks(
+  plugins: readonly VxPlugin[],
+  workspace: WorkspaceConfig,
+  ctx: WorkspaceHookContext,
+): Promise<void> {
+  for (const plugin of plugins) {
+    if (plugin.config === undefined) continue
+    await safe(plugin, 'config', () => plugin.config!(workspace, ctx))
+  }
+}
+
+/** `project` stage: every plugin edits one project's config in place. */
+export async function applyProjectHooks(
+  plugins: readonly VxPlugin[],
+  config: ProjectConfig,
+  ctx: ProjectHookContext,
+): Promise<void> {
+  for (const plugin of plugins) {
+    if (plugin.project === undefined) continue
+    await safe(plugin, 'project', () => plugin.project!(config, ctx))
+  }
+}
+
+/**
+ * `graph` stage: every plugin edits the task graph in place, then the graph
+ * is checked the way the builder checks its own output — every dep names a
+ * node in the graph, and there is no cycle. A violation is reported against
+ * the LAST plugin that ran, which is the one whose edit made it so.
+ */
+export async function applyGraphHooks(
+  plugins: readonly VxPlugin[],
+  nodes: Map<string, TaskNode>,
+  ctx: GraphHookContext,
+): Promise<void> {
+  let last: VxPlugin | undefined
+  for (const plugin of plugins) {
+    if (plugin.graph === undefined) continue
+    await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
+    last = plugin
+  }
+  if (last === undefined) return
+  await safe(last, 'graph', () => {
+    for (const node of nodes.values()) {
+      for (const dep of node.deps) {
+        if (!nodes.has(dep)) {
+          throw new Error(`${node.id} depends on '${dep}', which is not a task in this run's graph`)
+        }
+      }
+    }
+    detectCycle(nodes)
+  })
 }
 
 /**
@@ -94,116 +164,26 @@ export async function resolveExecutors(
   return executors
 }
 
-export interface SubscribedEventSinks {
-  /** Removes every bus subscription. Called in run()'s finally. */
-  dispose(): void
-  /** The installed sinks (with the owning plugin's name for warnings),
-   *  so run() can await each sink's `flush()` at end-of-run. */
-  sinks: ReadonlyArray<{ pluginName: string; sink: EventSink }>
-}
-
 /**
- * Subscribe every plugin's `eventSink` to the bus via `wireForwarder`,
- * each isolated so a throwing sink can never break the run. Additive: with
- * no eventSink plugin nothing subscribes and behavior is unchanged.
- * Returns the disposer plus the installed sinks (for the end-of-run flush).
- */
-export async function subscribeEventSinks(
-  plugins: readonly VxPlugin[],
-  bus: EventBus,
-  ctx: EventSinkContext,
-): Promise<SubscribedEventSinks> {
-  const disposers: Array<() => void> = []
-  const sinks: Array<{ pluginName: string; sink: EventSink }> = []
-  for (const plugin of plugins) {
-    if (plugin.eventSink === undefined) continue
-    let sink
-    try {
-      sink = await plugin.eventSink(ctx)
-    } catch (err) {
-      ctx.warn(
-        `[vx] plugin '${plugin.name}' eventSink failed to initialize; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
-      )
-      continue
-    }
-    if (sink === undefined) continue
-    sinks.push({ pluginName: plugin.name, sink })
-    // A sink is disabled the first time it throws, matching the telemetry
-    // source's rule for the same reason: a sink that throws once is broken,
-    // and re-entering it for every remaining event of the run only reaches an
-    // identical throw. Swallowing silently keeps the isolation the run needs
-    // ("observability must never break a run") while leaving the operator with
-    // no way to learn their sink never ran — so say it once, by name.
-    let disabled = false
-    disposers.push(
-      bus.subscribe(
-        wireForwarder((event) => {
-          if (disabled) return
-          try {
-            sink.onEvent(event)
-          } catch (err) {
-            disabled = true
-            ctx.warn(
-              `[vx] plugin '${plugin.name}' event sink threw; disabled for this run: ${err instanceof Error ? err.message : String(err)}`,
-            )
-          }
-        }),
-      ),
-    )
-  }
-  return {
-    dispose: () => {
-      for (const dispose of disposers) dispose()
-    },
-    sinks,
-  }
-}
-
-/**
- * End-of-run plugin lifecycle: await each event sink's optional
- * `flush()` (its last chance to ship buffered records), then each
- * plugin's optional `teardown()`. Crash-isolated — a throwing
- * flush/teardown is logged and skipped, never propagated — and each
- * call is time-bounded by {@link teardownTimeoutMs}. Runs on the
- * normal completion path only; the finally-path disposers just
- * unsubscribe.
+ * End-of-run plugin lifecycle: each plugin's optional `teardown()`, in
+ * declaration order. Crash-isolated — a throwing teardown is logged and
+ * skipped, never propagated — and each call is time-bounded by
+ * {@link teardownTimeoutMs}. Runs on the normal completion path only; the
+ * finally-path disposers just unsubscribe. (Telemetry sinks flush before
+ * this, in telemetry-host.ts, with the same reporting rule.)
  *
- * The bound is PER CALL and the phases are sequential, so the worst case
+ * The bound is PER CALL and the calls are sequential, so the worst case
  * composes: measured at the 3s default, 1/2/3 simultaneously-hung plugins
  * cost 3.0/6.0/9.0s. That is deliberate rather than overlooked — the
  * telemetry sibling races its sinks concurrently, but a plugin's teardown
  * may release something a later one still holds, and declaration order is
- * the contract this file keeps elsewhere. Each hung call now names itself,
- * so the delay is attributable instead of mysterious.
+ * the contract this file keeps elsewhere. Each hung call names itself, so
+ * the delay is attributable instead of mysterious.
  */
 export async function teardownPlugins(
   plugins: readonly VxPlugin[],
-  sinks: ReadonlyArray<{ pluginName: string; sink: EventSink }>,
   warn: (message: string) => void,
 ): Promise<void> {
-  for (const { pluginName, sink } of sinks) {
-    if (sink.flush === undefined) continue
-    const ms = teardownTimeoutMs()
-    try {
-      const settled = await settleWithin(Promise.resolve(sink.flush()), ms)
-      // `settleWithin` returns false when the deadline won, and its docstring
-      // leaves it to the caller to decide whether a lost result is worth
-      // reporting. It is: a flush is the sink's LAST chance to ship what it
-      // buffered, so a timeout means those records are gone. Dropping the
-      // verdict made this function speak for a rejecting flush and stay silent
-      // for a hanging one, and made it disagree with its documented sibling in
-      // telemetry.ts, which reports exactly this.
-      if (!settled) {
-        warn(
-          `[vx] plugin '${pluginName}' event sink flush timed out after ${ms}ms; buffered records lost`,
-        )
-      }
-    } catch (err) {
-      warn(
-        `[vx] plugin '${pluginName}' event sink flush failed: ${err instanceof Error ? err.message : String(err)}`,
-      )
-    }
-  }
   for (const plugin of plugins) {
     if (plugin.teardown === undefined) continue
     const ms = teardownTimeoutMs()

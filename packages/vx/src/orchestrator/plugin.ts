@@ -1,28 +1,19 @@
-// Plugin API — in-process extensions on top of the run event bus.
+// Plugin API — the ONE `VxPlugin` contract (docs/design/pipeline-2026-09.md).
 //
-// Collapses what `architecture-review-2026-06.md §4.1` calls the
-// in-process subscriber + the WS subscriber into ONE Plugin contract.
-// Users register plugins via defineWorkspace({ plugins }); each plugin
-// receives a PluginContext with the bus + workspace metadata and can
-// install lifecycle hooks. Plugins observe; they do not redirect.
+// Users register plugins via defineWorkspace({ plugins }). Behaviour
+// capabilities (`cache`, `executor`) return objects core calls INTO;
+// observe capabilities (`telemetry`, `setup` on the bus) can only read.
 //
-// Crash isolation: a plugin that throws on setup() is wrapped in a
-// UserError-style failure message naming the plugin (clean abort, no
-// stack), matching the existing 'broken vx.config.ts' error style. A
-// plugin that throws inside a hook is logged + the plugin is disabled
-// for the remainder of the run (mirrors the deleted Observer's
-// makeSafeObserver pattern; surfaces are isolated from execution).
-//
-// Hook return values: today every hook is fire-and-forget (the bus IS
-// the message pipe; hooks just give users an ergonomic place to read
-// it). One write-capable hook is reserved for a future iteration —
-// onCacheLookup returning { skip: true } — but not in v1.
+// Crash isolation: a plugin that throws in a load-bearing hook aborts the
+// run with a clean UserError naming plugin + hook. A plugin that throws
+// inside a bus hook is logged and disabled for the remainder of the run.
 
 import type { Cache, CacheLayer, CachePolicy } from '../cache/index.js'
+import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { UserError } from '../util/index.js'
-import type { EventBus, RunStartInfo, WireEvent } from './events.js'
+import type { EventBus, RunStartInfo } from './events.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 
 /**
@@ -43,6 +34,37 @@ import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 export interface VxPlugin {
   /** Stable identifier, convention `'org/name'`. Used in errors + precedence logs. */
   readonly name: string
+
+  // --- PIPELINE stages (shape the run before it executes — opt-in) ----------
+  //
+  // Each receives the object core is about to use and edits it IN PLACE;
+  // core re-validates after the last plugin, so a plugin cannot produce what
+  // the loader would refuse from a user. Declaration order is the order.
+  // Whatever a stage changes reaches the cache key by construction: the key
+  // hashes the task config AFTER `project` ran. See
+  // docs/design/pipeline-2026-09.md.
+
+  /**
+   * The workspace config, before anything is derived from it (concurrency,
+   * cacheDir, timeout, …). `plugins` is already fixed by the time this runs.
+   */
+  config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
+
+  /**
+   * One project's validated config, right after it loaded and before the
+   * graph is built. Add, remove or edit tasks. Runs for every loaded project
+   * on every run — a config's cached evaluation is the user's file, and the
+   * hook is applied on top of it live.
+   */
+  project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
+
+  /**
+   * The task graph, after `dependsOn` expansion and before scheduling. Add
+   * or drop edges (`node.deps`), mark tasks requested, adjust resources. A
+   * dep naming a task that is not in the graph, or a cycle, is refused with
+   * the plugin's name.
+   */
+  graph?(nodes: Map<string, TaskNode>, ctx: GraphHookContext): void | Promise<void>
 
   // --- BEHAVIOR capabilities (change WHAT/HOW work runs — opt-in) -----------
 
@@ -86,15 +108,6 @@ export interface VxPlugin {
     | Promise<TelemetrySink | TelemetrySink[] | undefined>
 
   /**
-   * @deprecated Prefer `telemetry`. Contribute an event sink — a consumer of
-   * the serializable WireEvent stream, subscribed for the whole run via
-   * wireForwarder. Fire-and-forget; a throwing sink is isolated and cannot
-   * break the run. Kept as a back-compat path; `telemetry` is the canonical,
-   * analytics-shaped export contract.
-   */
-  eventSink?(ctx: EventSinkContext): EventSink | undefined | Promise<EventSink | undefined>
-
-  /**
    * Optional one-time setup before any capability is consulted (validate the
    * workspace, open a connection, read a token). Throwing aborts the run with
    * a clean UserError naming the plugin — same contract as the old setup().
@@ -103,12 +116,6 @@ export interface VxPlugin {
 
   /** Optional teardown at end-of-run (flush a sink, close a socket). Errors are logged, never thrown. */
   teardown?(): void | Promise<void>
-}
-
-/** A WireEvent consumer. onEvent is fire-and-forget; flush is awaited at teardown. */
-export interface EventSink {
-  onEvent(event: WireEvent): void
-  flush?(): Promise<void>
 }
 
 /** Shared, read-only context every capability factory receives. */
@@ -120,7 +127,26 @@ interface BaseContext {
 }
 
 export interface PluginSetupContext extends BaseContext {}
-export interface EventSinkContext extends BaseContext {}
+
+/** `config` runs before the cache dir is known — it may be what the hook changes. */
+export interface WorkspaceHookContext {
+  readonly workspaceRoot: string
+  warn(message: string): void
+}
+
+export interface ProjectHookContext extends BaseContext {
+  /** The package name (`package.json#name`). */
+  readonly name: string
+  /** The project's directory, absolute. */
+  readonly dir: string
+  /** The parsed `package.json`, read-only. */
+  readonly packageJson: Readonly<Record<string, unknown>>
+}
+
+export interface GraphHookContext extends BaseContext {
+  /** Task ids the user asked for (the rest were pulled in by `dependsOn`). */
+  readonly requested: readonly string[]
+}
 
 export interface CacheContext extends BaseContext {
   /** The local Cache handle the plugin may wrap (LayeredCache(local, remote)). */
@@ -177,7 +203,7 @@ export interface Plugin {
    * be installed synchronously inside setup() so no events are missed.
    *
    * OPTIONAL: a capability-only plugin (one that contributes
-   * `cache`/`executor`/`eventSink` but no `setup`) is simply skipped by
+   * `cache`/`executor`/`telemetry` but no `setup`) is simply skipped by
    * `installPlugins` — its capabilities are consulted by `plugin-host.ts`.
    */
   setup?(ctx: PluginContext): void | Promise<void>
@@ -203,7 +229,7 @@ export interface InstallPluginsArgs {
  * plugin's setup() throws (the run cannot start with a broken plugin).
  *
  * A plugin without a `setup` is a capability-only plugin (cache
- * / executor / eventSink) — skipped here; those capabilities are consulted by
+ * / executor / telemetry) — skipped here; those capabilities are consulted by
  * `plugin-host.ts`.
  */
 export async function installPlugins(args: InstallPluginsArgs): Promise<() => void> {
@@ -216,7 +242,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
       throw new UserError('plugin missing `name` field')
     }
-    // No setup → a capability-only plugin (cache / executor / eventSink),
+    // No setup → a capability-only plugin (cache / executor / telemetry),
     // consulted by plugin-host.ts; skip the hook install. A setup that's
     // present but not callable is a real authoring error — reject it.
     if (plugin.setup === undefined) continue

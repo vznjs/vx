@@ -86,12 +86,10 @@ terminal and a task succeeding or failing. Read it alongside
  │    When vx.workspace.ts declares plugins:
  │      1. installPlugins — each plugin's optional setup() hook runs;
  │         a throw aborts the run with a clean UserError naming it.
- │      2. subscribeEventSinks — each `eventSink` capability attaches
- │         to the bus via wireForwarder (isolated; deprecated path).
- │      3. Run context capture — ONE git spawn (commit + branch; dirty
+ │      2. Run context capture — ONE git spawn (commit + branch; dirty
  │         reuses the GitFilesCache's status), CI-env detection,
  │         host/os/arch. Never fails a run.
- │      4. subscribeTelemetry — collects every plugin's TelemetrySink;
+ │      3. subscribeTelemetry — collects every plugin's TelemetrySink;
  │         with ZERO sinks it returns undefined and NOTHING subscribes
  │         (the no-telemetry hot path is byte-identical).
  │    With no plugins declared, all four steps are skipped entirely.

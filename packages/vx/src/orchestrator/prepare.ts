@@ -34,6 +34,7 @@ import {
   loadWorkspaceConfig,
   readLockfile,
   resolveCacheDir,
+  validateProjectConfig,
   type ProjectEntry,
 } from '../workspace/index.js'
 import {
@@ -43,7 +44,13 @@ import {
   type TaskNode,
   unresolvedRequests,
 } from '../graph/index.js'
-import { resolveCache } from './plugin-host.js'
+import {
+  applyConfigHooks,
+  applyGraphHooks,
+  applyProjectHooks,
+  hasHook,
+  resolveCache,
+} from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
@@ -146,6 +153,15 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
   const workspace = await loadWorkspace(workspaceRoot)
   const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
+  // The `config` stage runs before anything is derived from the workspace
+  // config; the plugin list itself is already fixed.
+  const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
+  if (workspaceConfig !== null && hasHook(plugins, 'config')) {
+    await applyConfigHooks(plugins, workspaceConfig, {
+      workspaceRoot,
+      warn: (m) => log.status(m),
+    })
+  }
   mark('workspace config')
   const projectMetas = await listProjects(workspace)
   mark('discover projects')
@@ -248,6 +264,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // may declare cross edges of its own. The common case (no cross deps)
   // is a single round, identical to loading the closure in one batch.
   const projects = new Map<string, ProjectEntry>()
+  const projectStage = hasHook(plugins, 'project')
   try {
     while (pending.length > 0) {
       const round = pending.splice(0, pending.length)
@@ -263,6 +280,21 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       for (let i = 0; i < round.length; i++) {
         const meta = round[i]!
         const config = configs[i] as ProjectConfig
+        if (projectStage) {
+          // The `project` stage edits the validated object in place; core
+          // then re-validates so a plugin can only produce what the loader
+          // accepts from a user. The message names the config file — the
+          // plugin's edit is a defect in THAT project's tasks.
+          await applyProjectHooks(plugins, config, {
+            workspaceRoot,
+            cacheDir,
+            warn: (m) => log.status(m),
+            name: meta.name,
+            dir: meta.dir,
+            packageJson: meta.packageJson as unknown as Readonly<Record<string, unknown>>,
+          })
+          validateProjectConfig(config, `${meta.configPath} (after plugins)`)
+        }
         projects.set(meta.name, { name: meta.name, dir: meta.dir, config })
         for (const name of crossDepProjects(config)) considerWithDeps(name)
       }
@@ -296,7 +328,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // cache is a plugin concern (native-cache-wire-2026-07). Injection
   // winning prevents double-wrapping when the workspace also declares a
   // cache plugin.
-  const plugins = (workspaceConfig?.plugins ?? []) as readonly VxPlugin[]
   const cache = options.remoteCache
     ? new LayeredCache(localCache, options.remoteCache, {
         policy,
@@ -370,6 +401,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       ? { excludeDependencies: options.excludeDependencies }
       : {}),
   })
+  if (hasHook(plugins, 'graph')) {
+    await applyGraphHooks(plugins, nodes, {
+      workspaceRoot,
+      cacheDir,
+      warn: (m) => log.status(m),
+      requested: [...nodes.values()].filter((n) => n.requested).map((n) => n.id),
+    })
+  }
 
   return {
     workspaceRoot,

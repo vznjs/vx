@@ -153,7 +153,9 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
         cache?: unknown
         executor?: unknown
         telemetry?: unknown
-        eventSink?: unknown
+        config?: unknown
+        project?: unknown
+        graph?: unknown
         teardown?: unknown
       }
       if (typeof plug.name !== 'string' || plug.name.length === 0) {
@@ -174,7 +176,16 @@ function validateWorkspace(config: WorkspaceConfig, configPath: string): void {
             `task's command runs (see docs/architecture.md § plugin capabilities).`,
         )
       }
-      const caps = ['setup', 'cache', 'executor', 'telemetry', 'eventSink', 'teardown'] as const
+      const caps = [
+        'config',
+        'project',
+        'graph',
+        'setup',
+        'cache',
+        'executor',
+        'telemetry',
+        'teardown',
+      ] as const
       for (const cap of caps) {
         if (plug[cap] !== undefined && typeof plug[cap] !== 'function') {
           throw new UserError(`${configPath}: \`plugins[${i}].${cap}\` must be a function`)

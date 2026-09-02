@@ -22,9 +22,9 @@ export interface WorkspaceConfig {
 }
 
 /**
- * Structural plugin shape — any subset of the run-level capabilities
- * (`cache`/`executor`/`telemetry`/`eventSink`) plus optional
- * `setup`/`teardown`. The fully-typed `VxPlugin` lives in
+ * Structural plugin shape — any subset of the pipeline stages
+ * (`config`/`project`/`graph`) and run-level capabilities
+ * (`cache`/`executor`/`telemetry`), plus optional `setup`/`teardown`. The fully-typed `VxPlugin` lives in
  * `src/orchestrator/plugin.ts` and is what users import; this is a
  * re-declaration with opaque function types so `config.ts` stays a leaf
  * module (no orchestrator import). The orchestrator casts to `VxPlugin`
@@ -32,10 +32,12 @@ export interface WorkspaceConfig {
  */
 export interface Plugin {
   readonly name: string
+  config?(workspace: unknown, ctx: unknown): unknown
+  project?(config: unknown, ctx: unknown): unknown
+  graph?(nodes: unknown, ctx: unknown): unknown
   cache?(ctx: unknown): unknown
   executor?(ctx: unknown): unknown
   telemetry?(ctx: unknown): unknown
-  eventSink?(ctx: unknown): unknown
   setup?(ctx: unknown): void | Promise<void>
   teardown?(): void | Promise<void>
 }

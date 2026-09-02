@@ -123,10 +123,11 @@ export type { ProjectMeta } from './workspace/index.js'
 // See docs/design/observability-architecture-2026-06.md.
 export type {
   VxPlugin,
-  EventSink,
   CacheContext,
   ExecutorContext,
-  EventSinkContext,
+  GraphHookContext,
+  ProjectHookContext,
+  WorkspaceHookContext,
   PluginSetupContext,
 } from './orchestrator/index.js'
 // Process primitives — what an executor plugin builds on. `@vzn/vx/plugins/local-executor`

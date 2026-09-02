@@ -85,7 +85,7 @@ describe('Plugin API — end-to-end via run()', () => {
     }
   })
 
-  it('invokes each plugin teardown() and each event sink flush() exactly once at end-of-run', async () => {
+  it('invokes each plugin teardown() and each telemetry sink flush() exactly once at end-of-run', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
@@ -94,9 +94,9 @@ describe('Plugin API — end-to-end via run()', () => {
           [
             `{
              name: 'org/lifecycle',
-             eventSink() {
+             telemetry() {
                return {
-                 onEvent() {},
+                 onRecord() {},
                  async flush() { globalThis.__vxLifecycle.flush++ },
                }
              },

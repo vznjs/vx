@@ -28,8 +28,7 @@ import { resolveResourceCosts } from './resources.js'
 import { computeTaskHash } from './task-hash.js'
 import { busLogger, createEventBus, terminalSubscriber } from './events.js'
 import { installPlugins } from './plugin.js'
-import { resolveExecutors, subscribeEventSinks, teardownPlugins } from './plugin-host.js'
-import type { SubscribedEventSinks } from './plugin-host.js'
+import { resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, deriveCacheSource, isCacheHit, isPassStatus } from './telemetry.js'
 import type { RunContextRecord, TaskTelemetry } from './telemetry.js'
@@ -193,14 +192,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   }
   // Install user plugins as additional bus subscribers BEFORE the run
   // starts emitting events. `installPlugins` runs each plugin's optional
-  // `setup` hook (the old observe-only path); `subscribeEventSinks` wires
-  // each plugin's `eventSink` capability onto the bus via wireForwarder.
-  // Both fail-fast on a setup() throw with a clean UserError naming the
-  // plugin; eventSink init failures are isolated (observability never
-  // breaks a run). A plugin without `setup`/`eventSink` (the local executor
-  // and cache) is skipped by both loops — they subscribe nothing.
+  // `setup` hook and fails fast on a throw with a clean UserError naming
+  // the plugin. A plugin without `setup` (the local executor and cache)
+  // subscribes nothing.
   let disposePlugins: (() => void) | undefined
-  let eventSinks: SubscribedEventSinks | undefined
   let telemetry: TelemetryHandle | undefined
   try {
     disposePlugins = await installPlugins({
@@ -209,11 +204,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
       warn: (m) => log.status(m),
-    })
-    eventSinks = await subscribeEventSinks(prepared.plugins, bus, {
-      workspaceRoot: prepared.workspaceRoot,
-      cacheDir: prepared.cacheDir,
-      warn: (m: string) => log.status(m),
     })
   } catch (err) {
     disposePlugins?.()
@@ -250,7 +240,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     })
   } catch (err) {
     disposePlugins?.()
-    eventSinks?.dispose()
     prepared.cache.close()
     throw err
   }
@@ -1023,11 +1012,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       telemetry.emitSummary(summary)
       await telemetry.flush()
     }
-    // End-of-run plugin lifecycle: each event sink's flush() (its last
-    // chance to ship buffered records) and each plugin's teardown().
-    // Crash-isolated + time-bounded inside teardownPlugins, so a faulty
-    // plugin can neither fail nor hang the run. Normal completion path
-    // only — the finally below just unsubscribes.
+    // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
+    // + time-bounded inside teardownPlugins, so a faulty plugin can neither
+    // fail nor hang the run. Normal completion path only — the finally
+    // below just unsubscribes.
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their
@@ -1045,7 +1033,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // cache layer stays usable until the run's uploads have settled.
     await prefetchDone
     await cache.drainUploads?.()
-    await teardownPlugins(prepared.plugins, eventSinks?.sinks ?? [], (m) => log.status(m))
+    await teardownPlugins(prepared.plugins, (m) => log.status(m))
     closeCache()
     mark('close')
     printTimings()
@@ -1084,7 +1072,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Plugins installed at the top of run() get their bus subscriptions
     // released here. Idempotent; safe even if installPlugins threw.
     disposePlugins?.()
-    eventSinks?.dispose()
     telemetry?.dispose()
     // No-op after the normal path's close. On a throw this is the only
     // close there is, and it must not itself throw — that would replace

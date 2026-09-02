@@ -39,9 +39,10 @@ export {
 export {
   installPlugins,
   type CacheContext,
-  type EventSink,
-  type EventSinkContext,
   type ExecutorContext,
+  type GraphHookContext,
+  type ProjectHookContext,
+  type WorkspaceHookContext,
   type InstallPluginsArgs,
   type Plugin,
   type PluginContext,
@@ -50,7 +51,14 @@ export {
   type PluginSetupContext,
   type VxPlugin,
 } from './plugin.js'
-export { resolveCache, resolveExecutors, subscribeEventSinks } from './plugin-host.js'
+export {
+  applyConfigHooks,
+  applyGraphHooks,
+  applyProjectHooks,
+  hasHook,
+  resolveCache,
+  resolveExecutors,
+} from './plugin-host.js'
 export { MISSING_PLUGIN_HINT } from './missing-plugin.js'
 export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 // The bounded log-capture buffer every telemetry sink shares — see the

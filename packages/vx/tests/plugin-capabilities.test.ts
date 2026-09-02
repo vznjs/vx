@@ -1,4 +1,4 @@
-// The run-level plugin capabilities (backend / cache / executor / eventSink),
+// The run-level plugin capabilities (cache / executor / telemetry),
 // inverted from core's hardcoded hooks in Phase 1 of
 // docs/design/core-cloud-split-2026-06.md. Each test declares a VxPlugin
 // in vx.workspace.mjs and asserts the seam is consulted. Nothing is applied
@@ -11,15 +11,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { CORE_INDEX, localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { planRun, run } from '../src/index.js'
-import {
-  resolveCache,
-  resolveExecutors,
-  subscribeEventSinks,
-  createEventBus,
-  type VxPlugin,
-} from '../src/orchestrator/index.js'
+import { resolveCache, resolveExecutors, type VxPlugin } from '../src/orchestrator/index.js'
 import type { TaskExecutor, TaskInputs } from '../src/exec/index.js'
-import { busLogger } from '../src/orchestrator/events.js'
 import { Cache, ChainedCache } from '../src/cache/index.js'
 import { localCachePlugin } from '../src/plugins/local-cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
@@ -140,69 +133,6 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     }
   })
 
-  it('subscribeEventSinks: a sink receives WireEvents off the bus', async () => {
-    const bus = createEventBus()
-    const events: string[] = []
-    const plugins: VxPlugin[] = [
-      { name: 'org/sink', eventSink: () => ({ onEvent: (e) => events.push(e.kind) }) },
-    ]
-    const subscribed = await subscribeEventSinks(plugins, bus, baseCtx)
-    const log = busLogger(bus)
-    log.runStart?.({ total: 1 })
-    log.runEnd?.()
-    subscribed.dispose()
-    expect(subscribed.sinks).toHaveLength(1)
-    expect(subscribed.sinks[0]!.pluginName).toBe('org/sink')
-    expect(events).toContain('run:start')
-    expect(events).toContain('run:end')
-  })
-
-  it('subscribeEventSinks: a throwing sink is isolated and does not break emission', async () => {
-    const bus = createEventBus()
-    const good: string[] = []
-    const plugins: VxPlugin[] = [
-      {
-        name: 'org/bad-sink',
-        eventSink: () => ({
-          onEvent: () => {
-            throw new Error('sink boom')
-          },
-        }),
-      },
-      { name: 'org/good-sink', eventSink: () => ({ onEvent: (e) => good.push(e.kind) }) },
-    ]
-    const subscribed = await subscribeEventSinks(plugins, bus, baseCtx)
-    const log = busLogger(bus)
-    expect(() => log.runStart?.({ total: 1 })).not.toThrow()
-    subscribed.dispose()
-    expect(good).toContain('run:start')
-  })
-
-  it('subscribeEventSinks: a throwing eventSink FACTORY is isolated (logged, not thrown)', async () => {
-    const bus = createEventBus()
-    const warnings: string[] = []
-    const plugins: VxPlugin[] = [
-      {
-        name: 'org/bad-factory',
-        eventSink: () => {
-          throw new Error('factory boom')
-        },
-      },
-    ]
-    let subscribed: Awaited<ReturnType<typeof subscribeEventSinks>> | undefined
-    await expect(
-      (async () => {
-        subscribed = await subscribeEventSinks(plugins, bus, {
-          ...baseCtx,
-          warn: (m) => warnings.push(m),
-        })
-      })(),
-    ).resolves.toBeUndefined()
-    subscribed?.dispose()
-    expect(subscribed?.sinks).toHaveLength(0)
-    expect(warnings.some((w) => w.includes('org/bad-factory'))).toBe(true)
-  })
-
   it('resolveExecutors: keeps every contributed executor in declaration order', async () => {
     const a: TaskExecutor = { name: 'a', execute: () => Promise.reject(new Error('unused')) }
     const b: TaskExecutor = { name: 'b', execute: () => Promise.reject(new Error('unused')) }
@@ -266,42 +196,6 @@ describe('plugin capabilities — end-to-end', () => {
       expect((globalThis as { __vxCachePluginConsulted?: boolean }).__vxCachePluginConsulted).toBe(
         true,
       )
-    } finally {
-      cleanup()
-    }
-  })
-
-  it('an eventSink plugin receives WireEvents during a real run()', async () => {
-    const { workspaceRoot, cleanup } = await writeFixture()
-    try {
-      await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
-        localWorkspaceSource(
-          [
-            `{
-             name: 'org/sink',
-             eventSink() {
-               return { onEvent: (e) => globalThis.__vxSinkEvents.push(e.kind) }
-             },
-           }`,
-          ],
-          `globalThis.__vxSinkEvents = []
-`,
-        ),
-      )
-      await gitInit(workspaceRoot)
-      const summary = await run({
-        cwd: workspaceRoot,
-        projects: ['pkg-a'],
-        tasks: ['hello'],
-        log: makeSilentLogger(),
-        handleSignals: false,
-      })
-      expect(summary.ok).toBe(true)
-      const events = (globalThis as unknown as { __vxSinkEvents: string[] }).__vxSinkEvents
-      expect(events).toContain('run:start')
-      expect(events).toContain('task:start')
-      expect(events).toContain('run:end')
     } finally {
       cleanup()
     }

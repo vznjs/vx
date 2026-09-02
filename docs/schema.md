@@ -982,12 +982,16 @@ interface WorkspaceConfig {
   Declaration order is precedence: every `executor` is consulted in order
   per task (first to accept runs it); every `cache` layer is chained
   (lookup walks, save reaches all). Each entry is a
-  `VxPlugin` object contributing any subset of `cache` (which cache
+  `VxPlugin` object contributing any subset of the pipeline stages
+  `config` (edit the workspace config), `project` (edit a loaded
+  project's tasks — inject, remove, rewrite; re-validated by core and
+  hashed into the key like a hand edit), `graph` (edit the task graph's
+  edges) — and the run-level capabilities `cache` (which cache
   layer is used), `executor`
   (`executor(ctx)` — return a `TaskExecutor` (where one task's command
   runs) or decline), `telemetry` (observe-only data export — the
   canonical path for OTel, a self-hosted dashboard, or custom sinks),
-  the deprecated `eventSink`, plus optional `setup`/`teardown`.
+  plus optional `setup`/`teardown`.
   First-party plugins include `otel()` from `@vzn/vx-otel` and
   `@vzn/vx-reapi`. A plugin
   that declines every capability (e.g. `otel()` with no OTLP
@@ -1269,4 +1273,4 @@ Workspace-config errors:
 | `plugins[<i>] must be an object`                                                                 | A non-object entry in `plugins`.                         |
 | `plugins[<i>].name must be a non-empty string`                                                   | Missing / empty plugin name.                             |
 | `plugins[<i>].<capability> must be a function`                                                   | A capability key holding something that is not callable. |
-| `plugins[<i>] must contribute at least one of setup/cache/executor/telemetry/eventSink/teardown` | A plugin object with no capability.                      |
+| `plugins[<i>] must contribute at least one of config/project/graph/setup/cache/executor/telemetry/teardown` | A plugin object with no capability.                      |

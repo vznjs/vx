@@ -488,7 +488,7 @@ export function createTelemetrySource(args: {
     },
     async flush(): Promise<void> {
       const ms = teardownTimeoutMs()
-      // Bounded, for the same reason the `eventSink` sibling is bounded in
+      // Bounded, for the same reason plugin teardown is bounded in
       // plugin-host.ts: run() awaits this BEFORE closeCache() and before it
       // returns, and bin.ts is `process.exit(await run(...))`. A sink whose
       // flush never settles therefore drains the event loop with no exit code

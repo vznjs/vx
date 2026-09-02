@@ -566,7 +566,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // Observer hook (the logger's taskComplete). Crash-isolated: a
       // throwing observer must NOT break scheduling — it would otherwise
       // skip the dependent-enqueue + tick below and hang the run. Same
-      // "observability never breaks a run" rule the telemetry/eventSink
+      // "observability never breaks a run" rule the telemetry
       // paths hold. Isolated here (not the completion arm) so a throw
       // can't be mistaken for the task itself failing.
       try {

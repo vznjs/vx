@@ -84,6 +84,17 @@ Process: push directly to `main`, no PRs. Gate before every push:
   offers it. `CacheEntry.outputRows` carries the rows so `restoreHit`
   stops re-querying. Compiled `Bun.Glob`s memoised per pattern. A/B on
   `run test --all` (2000 tasks with deps): 328 → 311 ms.
+- 2026-09-03 — **pipeline v2, phase 1.** The deprecated `eventSink` seam
+  is gone (`setup(ctx)` on the bus and `telemetry` are the two observe
+  paths). Three pipeline stages on `VxPlugin`: `config(ws, ctx)`,
+  `project(config, ctx)`, `graph(nodes, ctx)` — in-place edits in
+  declaration order, re-validated by core (`validateProjectConfig`,
+  dangling-dep + cycle check), zero cost when no plugin declares them
+  (`hasHook`). Pinned in `tests/plugin-pipeline.test.ts`: an injected
+  task keys byte-for-byte like a hand-written one, a plugin-added edge
+  orders the run, invalid/dangling/cyclic edits are refused naming the
+  plugin and stage, and a stage-less workspace validates each config
+  exactly once.
 
 ## In flight
 
@@ -95,13 +106,11 @@ Process: push directly to `main`, no PRs. Gate before every push:
    path at 1000 projects — `vx info` should say when `core.fsmonitor` /
    `core.untrackedCache` are off. Then a fresh Turbo/Nx head-to-head via
    `bench/compare.ts`.
-2. **Plugin pipeline v2** — design accepted in
-   `docs/design/pipeline-2026-09.md`: stage-named hooks on ONE `VxPlugin`
-   (`config` / `project` / `graph` / `key` / `schedule` / `executor` /
-   `cache` / `telemetry` / `setup` / `commands`), declaration order
-   everywhere, in-place transforms re-validated by core, zero cost when
-   absent. Phase 1 = remove `eventSink`, add `config` + `project` +
-   `graph`.
+2. **Plugin pipeline v2, phases 2–3** — design in
+   `docs/design/pipeline-2026-09.md`. Phase 2: `commands` (CLI verbs from
+   plugins; then move `migrate` / `prune` / `upgrade` out). Phase 3:
+   `schedule` (priorities) and `key` (extra key material), with a
+   reference history-based scheduling plugin to prove the seam.
 3. **Move verbs out of core** behind `commands`: `migrate`, `prune`,
    `upgrade`, and an MCP server package.
 4. **Docs + site rewrite** around the pipeline model.
