@@ -38,6 +38,9 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await (await import('./lock.js')).lockCmd(rest)
     case 'migrate':
       return await (await import('./migrate.js')).migrateCmd(rest)
+    case 'init':
+      // A workspace from nowhere: package.json scripts are the source.
+      return await (await import('./migrate.js')).migrateCmd(['--from', 'scripts', ...rest])
     case 'upgrade':
       return await (await import('./upgrade.js')).upgradeCmd(rest)
     case 'show':

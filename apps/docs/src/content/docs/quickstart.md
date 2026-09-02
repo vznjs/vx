@@ -50,7 +50,10 @@ Skip this and your first run stops before any task with
 `no cache plugin declared`, quoting the snippet above. It is one file,
 once — and it is why a remote cache or a remote executor later is a
 one-line change to this same list rather than a different product.
-(Migrating from Turborepo or Nx? `vx migrate` writes this file for you.)
+
+Or let vx write it: `vx init` scaffolds this file and one `vx.config.ts`
+per package from your `package.json` scripts (`vx migrate` does the same
+from a `turbo.json` or an Nx graph). Steps 3–5 show what it generates.
 
 ## 3. Describe a task
 

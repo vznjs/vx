@@ -10,12 +10,13 @@ import { relPosix, UserError } from '../util/index.js'
 import { findWorkspaceRoot, listProjects, loadWorkspace } from '../workspace/index.js'
 import { quote } from './migrate-emit.js'
 import { migrateNx } from './migrate-nx.js'
+import { migrateScripts } from './migrate-scripts.js'
 import { migrateTurbo } from './migrate-turbo.js'
 
 export interface MigrateArgs {
   dry: boolean
   force: boolean
-  from?: 'turbo' | 'nx'
+  from?: 'turbo' | 'nx' | 'scripts'
   error?: string
 }
 
@@ -27,7 +28,9 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
     else if (a === '--force') out.force = true
     else if (a === '--from' || a?.startsWith('--from=')) {
       const v = a === '--from' ? args[++i] : a.slice('--from='.length)
-      if (v !== 'turbo' && v !== 'nx') return { ...out, error: `--from must be turbo or nx` }
+      if (v !== 'turbo' && v !== 'nx' && v !== 'scripts') {
+        return { ...out, error: `--from must be turbo, nx or scripts` }
+      }
       out.from = v
     } else if (a?.startsWith('-')) return { ...out, error: `unknown flag: ${a}` }
     else return { ...out, error: `unexpected argument: ${a}` }
@@ -95,7 +98,10 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
 
   let source: string
   let plan: MigrationPlan
-  if (parsed.from === 'nx' || (parsed.from === undefined && !hasTurbo)) {
+  if (parsed.from === 'scripts') {
+    source = 'package.json scripts'
+    plan = migrateScripts(metas)
+  } else if (parsed.from === 'nx' || (parsed.from === undefined && !hasTurbo)) {
     if (hasGraph) {
       source = '.nx/workspace-data/project-graph.json'
       plan = await migrateNx(root, metas)
@@ -107,13 +113,18 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           '`nx graph --file=.nx/workspace-data/project-graph.json`, then re-run vx migrate',
       )
     } else {
-      throw new UserError('nothing to migrate: no turbo.json or nx.json at the workspace root')
+      // A workspace from nowhere: the scripts are the source (`vx init`).
+      source = 'package.json scripts'
+      plan = migrateScripts(metas)
     }
-  } else if (hasTurbo) {
+  } else {
     source = 'turbo.json'
     plan = await migrateTurbo(root, metas)
-  } else {
-    throw new UserError('nothing to migrate: no turbo.json or nx.json at the workspace root')
+  }
+  if (plan.projects.length === 0) {
+    throw new UserError(
+      `nothing to migrate: no ${source === 'package.json scripts' ? 'package.json scripts in any workspace member' : 'tasks in ' + source}`,
+    )
   }
 
   const files: { relPath: string; abs: string; contents: string }[] = []

@@ -4,7 +4,7 @@
 // round-tripped through loadProjectConfig — TODO comments must never
 // break parsing, and placeholder commands must validate.
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -754,13 +754,17 @@ describe('vx migrate source detection', () => {
   )
 
   it(
-    'neither source is an error',
+    'neither source falls back to package.json scripts, and an empty workspace is an error',
     async () => {
       const root = await makeRoot('vx-migrate-det3-')
       try {
-        const r = await vx(root, ['migrate'])
-        expect(r.code).toBe(1)
-        expect(r.err).toContain('turbo.json')
+        const empty = await vx(root, ['migrate'])
+        expect(empty.code).toBe(1)
+        expect(empty.err).toContain('no package.json scripts')
+        await addPackage(root, 'a', { build: 'tsc' })
+        const scripts = await vx(root, ['migrate', '--dry'])
+        expect(scripts.code).toBe(0)
+        expect(scripts.out).toContain('package.json scripts → vx.config.ts')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -783,5 +787,97 @@ describe('parseMigrateArgs', () => {
   })
   it('positionals error', () => {
     expect(parseMigrateArgs(['turbo']).error).toContain('turbo')
+  })
+})
+
+// ─── Scripts (`vx init`) ───────────────────────────────────────────────
+
+async function makeScriptsWorkspace(): Promise<string> {
+  const root = await makeRoot('vx-migrate-scripts-')
+  await addPackage(root, 'app', {
+    build: 'tsc -b',
+    test: 'vitest run',
+    lint: 'eslint .',
+    dev: 'vite',
+    postinstall: 'echo hooks are not tasks',
+  })
+  await addPackage(root, 'lib', { build: 'tsc' })
+  await addPackage(root, 'silent', {})
+  return root
+}
+
+describe('vx init (package.json scripts)', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeScriptsWorkspace()
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'writes a config per package with scripts, plus the workspace file, and loads clean',
+    async () => {
+      const r = await vx(root, ['init'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(r.out).toContain('package.json scripts → vx.config.ts')
+      expect(r.out).toContain('vx.workspace.ts')
+      // A package with no scripts gets no config.
+      expect(await Bun.file(path.join(root, 'packages', 'silent', 'vx.config.ts')).exists()).toBe(
+        false,
+      )
+      const app = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
+      const tasks = app.tasks!
+      expect(Object.keys(tasks).sort()).toEqual(['build', 'dev', 'lint', 'test'])
+      expect(tasks['build']!.exec?.command).toBe('tsc -b')
+      expect(tasks['build']!.dependsOn).toEqual(['^build'])
+      // Caching needs declared outputs; the scaffold says so instead of guessing.
+      expect(tasks['build']!.cache).toEqual({ inputs: { files: ['**/*'] }, outputs: { files: [] } })
+      expect(tasks['test']!.dependsOn).toEqual(['build'])
+      expect(tasks['test']!.cache).toBeUndefined()
+      expect(tasks['dev']!.exec?.persistent).toEqual({})
+      const text = await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).text()
+      expect(text).toContain('TODO(vx-migrate): cache: inputs default')
+      expect(text).toContain('TODO(vx-migrate): persistent')
+      // The generated workspace runs. Its vx.workspace.ts imports `@vzn/vx`
+      // the way a user's does, so give the tmp workspace the package.
+      await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
+      await symlink(
+        path.resolve(import.meta.dir, '..'),
+        path.join(root, 'node_modules', '@vzn', 'vx'),
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      const run = await vx(root, ['run', 'build', '--all', '--dry'])
+      expect(run.code).toBe(0)
+      expect(run.out).toContain('app#build')
+      expect(run.out).toContain('lib#build')
+    },
+    TIMEOUT,
+  )
+
+  it('refuses to overwrite without --force, like migrate', async () => {
+    const again = await vx(root, ['init'])
+    expect(again.code).toBe(1)
+    expect(again.err).toContain('refusing to overwrite')
+    const forced = await vx(root, ['init', '--force'])
+    expect(forced.code).toBe(0)
+  })
+
+  it('is also the fallback source of vx migrate when no turbo.json or nx exists', async () => {
+    const r = await vx(root, ['migrate', '--dry'])
+    expect(r.code).toBe(0)
+    expect(r.out).toContain('package.json scripts → vx.config.ts')
+  })
+
+  it('a workspace with no scripts anywhere says so', async () => {
+    const empty = await makeRoot('vx-migrate-empty-')
+    try {
+      await addPackage(empty, 'a', {})
+      const r = await vx(empty, ['init'])
+      expect(r.code).toBe(1)
+      expect(r.err).toContain('no package.json scripts')
+    } finally {
+      await rm(empty, { recursive: true, force: true })
+    }
   })
 })

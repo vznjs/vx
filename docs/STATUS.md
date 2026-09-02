@@ -158,6 +158,15 @@ Process: push directly to `main`, no PRs. Gate before every push:
   recovered and ported (tools), plus protocol and real-stdio tests; the
   repo dogfoods `mcp()`; CI runs the package suite; the guide and
   sidebar entry are back.
+- 2026-09-03 — **`vx init`.** A workspace from nowhere had no scaffold:
+  `vx migrate` only knew Turbo and Nx. `migrate-scripts.ts` maps
+  `package.json` scripts to tasks (command verbatim; `build` gets
+  `^build` and a cache block with EMPTY outputs under a TODO — a guessed
+  `dist/**` would restore the wrong tree; `test`/`lint`/`typecheck`
+  wait for `build`; dev-server shapes become persistent). `vx init` is
+  `vx migrate --from scripts`, and the scripts path is `vx migrate`'s
+  fallback when neither Turbo nor Nx is present. Quickstart and README
+  point at it.
 
 ## In flight
 

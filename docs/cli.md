@@ -23,7 +23,8 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <bytes>]
 vx lock [--check]
-vx migrate [--from turbo|nx] [--dry] [--force]
+vx init [--dry] [--force]
+vx migrate [--from turbo|nx|scripts] [--dry] [--force]
 vx show [PROJECT[#TASK]] [--format pretty|json]
 vx info
 vx stats              # deprecated alias of vx info
@@ -1087,10 +1088,28 @@ for this platform and atomically replaces the running executable
 when running from source — use `git pull`. (An npm-installed vx
 updates with `npm update -g @vzn/vx` instead.)
 
+## `vx init`
+
+Scaffold a workspace that comes from nowhere: one `vx.config.ts` per
+package from its `package.json` scripts, plus `vx.workspace.ts`
+declaring the local executor and cache. Exactly `vx migrate --from
+scripts`, and the same `--dry` / `--force` flags.
+
+Each script becomes a task with its command verbatim. `build` gets
+`dependsOn: ['^build']` and a cache block whose inputs are the whole
+project and whose outputs are **empty** — under a `TODO(vx-migrate)`
+naming what to fill in, because nothing is cached until outputs are
+declared and a guessed `dist/**` would restore the wrong tree for every
+package that writes elsewhere. `test` / `lint` / `typecheck` wait for
+`build` when the package has one; `dev` / `start` / `serve` / `watch` /
+`preview` become persistent tasks with a TODO to add `readyWhen`.
+
 ## `vx migrate`
 
 Generate one `vx.config.ts` per workspace package from an existing
-Turbo or Nx setup. The source is auto-detected at the workspace root:
+Turbo or Nx setup — or, with neither present, from `package.json`
+scripts (see `vx init`). The source is auto-detected at the workspace
+root:
 
 - `turbo.json` → **Turbo path**. Reads the root pipeline (`tasks` in
   turbo 2, `pipeline` in turbo 1), per-package `turbo.json` `extends`
@@ -1105,6 +1124,9 @@ Turbo or Nx setup. The source is auto-detected at the workspace root:
   nx command once (or `nx graph --file=.nx/workspace-data/project-graph.json`).
 - Both present → pass `--from turbo` or `--from nx` to disambiguate
   from.
+- Neither present → **scripts path**: `package.json` scripts, the
+  `vx init` mapping. `--from scripts` selects it explicitly even when
+  a `turbo.json` exists.
 
 ```
 vx migrate           # write vx.config.ts files (and vx-preset.ts when needed)
