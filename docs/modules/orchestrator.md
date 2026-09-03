@@ -55,12 +55,13 @@ export interface RunSummary {
    **Caller owns `cache.close()`.**
 3. **Empty-case handling.** `no-tasks-declared` / `empty-graph` →
    log, close cache, return NOT-ok.
-4. **Plugins.** When declared: `installPlugins` (setup hooks;
-   fail-fast UserError) + `subscribeEventSinks` (deprecated raw-wire
-   path), then run-context capture (one git spawn; dirty reuses the
-   GitFilesCache status) and `subscribeTelemetry` — which returns
-   `undefined` when zero sinks are contributed, so a plain run adds
-   no subscriber and builds no records.
+4. **Plugins.** When declared: `installPlugins` (setup hooks on the
+   bus; a throw is a fail-fast UserError naming the plugin), then
+   run-context capture (one git spawn; dirty reuses the GitFilesCache
+   status) and `subscribeTelemetry` — which returns `undefined` when
+   zero sinks are contributed, so a plain run adds no subscriber and
+   builds no records. The pipeline stages (`config`, `project`,
+   `graph`, `key`, `schedule`) ran earlier, inside `prepareRun`.
 5. **Run-level state.** `runId` (ULID) + `runStartHrTimeNs` anchor +
    `liveChildren` set + `persistentRegistry` map. SIGINT/SIGTERM
    handlers installed here, removed in a `finally`.
