@@ -703,6 +703,13 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   missing formatter makes the check THROW rather than pass vacuously
   (probed: the spawn itself fails, so the fallback branch is unreachable
   for an absent binary).
+- 2026-09-03 — **RED darwin on 5f17041 (a STATUS-only commit): a timing
+  assumption in the wave-6 e2e pin.** It asserted the MISS records no
+  directories because the tree is younger than the 50 ms racy window;
+  on the slower macOS runner the build and save took longer than the
+  window, so the miss recorded and the pin failed. The racy rule is
+  pinned deterministically at the Cache level; the e2e now asserts only
+  that the aged hit records and that a stray still forces the restore.
 
 ## In flight
 

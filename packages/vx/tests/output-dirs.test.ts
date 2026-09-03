@@ -181,7 +181,7 @@ describe('warm hits through run() with the short-circuit', () => {
   })
 
   it('the first aged hit records the directories; an added stray still forces the restore', async () => {
-    expect((await runBuild()).ok).toBe(true) // the miss: the tree is too young to snapshot
+    expect((await runBuild()).ok).toBe(true) // the miss
     const recordedDirs = () => {
       const c = db()
       const hash = (
@@ -193,7 +193,10 @@ describe('warm hits through run() with the short-circuit', () => {
       c.close()
       return recorded
     }
-    expect(recordedDirs()).toEqual([]) // racy: written moments ago
+    // Whether the MISS recorded anything depends on how long its build and
+    // save took against the racy window (a slow macOS runner exceeded it and
+    // recorded; this box does not) — the racy rule is pinned deterministically
+    // at the Cache level above, so only the aged hit is asserted here.
     await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
     expect((await runBuild()).ok).toBe(true) // warm hit: the walk proves the tree, old enough to record
     expect(recordedDirs()).toEqual(['dist', 'dist/sub'])
