@@ -95,14 +95,24 @@ export async function handleMessage(raw: string, ctx: ToolContext): Promise<Resp
   }
 }
 
-/** Serve until stdin closes. Messages are handled in order, one at a time. */
-export async function serveStdio(options: ServerOptions): Promise<void> {
+/**
+ * Serve `input` until it ends, writing one JSON line per reply. Messages are
+ * handled in order, one at a time. ONE streaming decoder for the whole
+ * session: a chunk boundary can fall inside a multi-byte character, and a
+ * per-chunk decode turned `pé#build` into `p��#build` — a tool answering
+ * for a task that does not exist (reproduced 2026-09-03).
+ */
+export async function serve(
+  input: AsyncIterable<Uint8Array>,
+  write: (line: string) => void,
+  options: ServerOptions,
+): Promise<void> {
   const out = (r: Response): void => {
-    process.stdout.write(`${JSON.stringify(r)}\n`)
+    write(`${JSON.stringify(r)}\n`)
   }
+  const decoder = new TextDecoder()
   let buffer = ''
-  for await (const chunk of Bun.stdin.stream()) {
-    buffer += new TextDecoder().decode(chunk)
+  const drain = async (): Promise<void> => {
     let nl = buffer.indexOf('\n')
     while (nl !== -1) {
       const line = buffer.slice(0, nl).trim()
@@ -114,8 +124,19 @@ export async function serveStdio(options: ServerOptions): Promise<void> {
       nl = buffer.indexOf('\n')
     }
   }
+  for await (const chunk of input) {
+    buffer += decoder.decode(chunk, { stream: true })
+    await drain()
+  }
+  buffer += decoder.decode()
+  await drain()
   if (buffer.trim().length > 0) {
     const r = await handleMessage(buffer.trim(), options)
     if (r !== null) out(r)
   }
+}
+
+/** Serve stdin → stdout until stdin closes. */
+export async function serveStdio(options: ServerOptions): Promise<void> {
+  await serve(Bun.stdin.stream(), (line) => process.stdout.write(line), options)
 }

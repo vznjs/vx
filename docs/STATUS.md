@@ -369,6 +369,19 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   equality against the unstamped manifest on EVERY push, so the
   inlining contract is exercised outside releases too. Also trimmed the launcher's `@vzn/vx-cloud` framing (removed
   product).
+- 2026-09-03 — **`@vzn/vx-mcp` mangled a character split across stdin
+  chunks.** Audit of the newest plugin's least-exercised edge, PROVEN
+  with a driver that wrote a request in two chunks cut between the two
+  bytes of `é` (precondition asserted: the first chunk ends in `0xC3`):
+  the per-chunk `TextDecoder` produced `p��#build`, and the tool
+  answered for a task that does not exist. One streaming decoder per
+  session now; the framing loop is `serve(input, write, ctx)` so a test
+  can feed it chunks, pinned for the split and for several messages in
+  one chunk plus a trailing message without a newline. The mutation
+  (per-chunk decoder) fails exactly the split pin. First probe was
+  vacuous — the cut landed AFTER the character — caught only because the
+  rerun asserted the lead byte; assert the precondition, not just the
+  outcome.
 
 ## In flight
 

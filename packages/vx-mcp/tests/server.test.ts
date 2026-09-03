@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { Cache, VERSION } from '@vzn/vx'
-import { handleMessage, PROTOCOL_VERSION } from '../src/server.js'
+import { handleMessage, PROTOCOL_VERSION, serve } from '../src/server.js'
 
 const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
 const PLUGIN_ENTRY = path.resolve(import.meta.dir, '../src/index.ts')
@@ -237,4 +237,47 @@ it('the fixture really has one entry', () => {
   } finally {
     cache.close()
   }
+})
+
+// The stdio framing, fed chunks directly. A chunk boundary inside a
+// multi-byte character is the case a per-chunk decoder cannot survive: it
+// yielded `p��#build`, and the tool answered for a task that does not exist.
+describe('serve (stdio framing)', () => {
+  async function* chunks(...parts: Uint8Array[]): AsyncGenerator<Uint8Array> {
+    for (const p of parts) {
+      await Bun.sleep(1)
+      yield p
+    }
+  }
+
+  it('reassembles a multi-byte character split across chunks, and a line split across chunks', async () => {
+    const msg =
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'explainCacheKey', arguments: { taskId: 'pé#build' } },
+      }) + '\n'
+    const bytes = new TextEncoder().encode(msg)
+    const lead = msg.indexOf('é') // ASCII before it: char index == byte index
+    expect(bytes[lead]).toBe(0xc3) // precondition: the cut is INSIDE the character
+    const lines: string[] = []
+    await serve(chunks(bytes.slice(0, lead + 1), bytes.slice(lead + 1)), (l) => lines.push(l), ctx)
+    expect(lines).toHaveLength(1)
+    const reply = JSON.parse(lines[0]!) as { result: { content: { text: string }[] } }
+    const body = JSON.parse(reply.result.content[0]!.text) as { taskId: string; project: string }
+    expect(body).toMatchObject({ taskId: 'pé#build', project: 'pé' })
+  })
+
+  it('handles several messages in one chunk and a trailing message with no newline', async () => {
+    const two =
+      JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }) +
+      '\n' +
+      JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) +
+      '\n' +
+      JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' }) // no trailing newline
+    const lines: string[] = []
+    await serve(chunks(new TextEncoder().encode(two)), (l) => lines.push(l), ctx)
+    expect(lines.map((l) => (JSON.parse(l) as { id: number }).id)).toEqual([1, 2])
+  })
 })
