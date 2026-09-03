@@ -315,6 +315,17 @@ describe('key stage — explainability', () => {
       expect(why.exitCode).toBe(0)
       expect(out).toContain('cache key changed')
       expect(out).toMatch(/changed +plugin +org\/tool\/node-major/)
+      // A plugin that leaves the workspace is a REMOVED part, not silence.
+      await workspace([])
+      await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      const gone = Bun.spawnSync({
+        cmd: [process.execPath, path.resolve(import.meta.dir, '../src/bin.ts'), 'why', 'a#build'],
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      expect(new TextDecoder().decode(gone.stdout)).toMatch(
+        /removed +plugin +org\/tool\/node-major/,
+      )
     },
     TIMEOUT,
   )

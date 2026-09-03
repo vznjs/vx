@@ -424,10 +424,14 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
    non-finite refusal are pinned; `mergePriorities` keeps the baseline
    for tasks a plugin does not score, so a partial map boosts rather
    than starves; an unknown task id in a plugin's map is silently
-   ignored — ordering-only, so harmless). Next candidates: the npm
-   distribution path end to end on this machine (assemble → pack →
-   install into a temp project → launcher runs); `--download` × the
-   shard runner's isolated process. Probes become tests.
+   ignored — ordering-only, so harmless); the npm distribution path end
+   to end (DONE — found the version stamp miss); `vx why` on plugin key
+   parts (REFUTED — a removed plugin reports `removed plugin
+org/tool/node-major`, a renamed one `added`; the removed shape is now
+   in the explainability pin). Next candidates: `--download` × the shard
+   runner's isolated process; the launcher's source fallback when the
+   platform package is absent but Bun is installed. Probes become
+   tests.
 3. **The watch e2e flake** — if `re-runs the task after a file change,
 then exits on SIGINT` times out again, keep that run's stdout: the
    presence of `re-running...` separates a lost event from a slow
