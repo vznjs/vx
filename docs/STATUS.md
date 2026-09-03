@@ -265,10 +265,14 @@ passed once the load fell.
   release: on npmjs.com add the GitHub Actions trusted publisher (owner
   `vznjs`, repo `vx`, workflow `npm.yml`, no environment) to each of the
   five packages, then delete the `NPM_TOKEN` secret (it is no longer
-  read; npm restricts it — v0.0.17's `E401`, v0.0.18's hold). A publish
-  cannot be exercised locally; a `workflow_dispatch` with `dry_run`
-  proves the build half, the next release proves the auth half.
-  Documented in `docs/cli.md` § Releasing.
+  read; npm restricts it — v0.0.17's `E401`, v0.0.18's hold). The
+  build half is PROVEN: a `workflow_dispatch` dry run of the new
+  workflow (run 33812502741, 2026-09-04) succeeded on both jobs — pinned
+  actions resolve, the npm ≥ 11.5.1 guard passes on macOS and ubuntu,
+  all five packages build and assemble at the stamped version, and
+  only the two publish steps were skipped, as `dry_run` intends. The
+  auth half is proven by the next release. Documented in
+  `docs/cli.md` § Releasing.
 
 ## Next (ordered)
 
