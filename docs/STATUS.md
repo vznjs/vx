@@ -213,6 +213,16 @@ plugin-host.md, orchestrator.md and the architecture walkthrough still
 described the `eventSink` seam removed in pipeline v2. All corrected
 to what exists; the grep for the class (`EventSink`, `inference`,
 `globalInputs`, `predictive`, `dashboard`) is clean outside history.
+The same evening: the dispatcher module doc was rebuilt from the verb
+switch (it listed `mcp` as core, kept a service-package redirect row,
+omitted `init`/`why`/`last`/`prune`, linked four module docs that do
+not exist); four docs still named the removed service package's
+coordinator (façade list, module index, scheduler, dispatcher); the
+why-vx-is-fast page said vx has no config-eval cache and quoted June
+numbers; the key-derivation list and the caching guide gained the
+`key` stage's plugin material; the pipeline design doc's `commands`
+shape was wrong; and three "upstream hash" phrasings now say input
+key, never outputs.
 
 **Red mains, each explained and pinned:** an ms-mtime precondition
 sampled the clock (stamped now); a 400-round guard past the 5 s
