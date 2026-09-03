@@ -33,3 +33,27 @@ export function staticPrefix(glob: string): string {
   if (lastSep === -1) return '.'
   return head.slice(0, lastSep) || '/'
 }
+
+/**
+ * The directories a task's declared outputs cover WHOLE — every glob is
+ * `<dir>/**` with a plain, non-root, non-escaping `<dir>` — or `null` when
+ * any glob is shaped otherwise. The directory-mtime short-circuit on a warm
+ * hit (`Cache.outputDirsCurrent`) is sound only for whole subtrees: with
+ * every directory under `<dir>` recorded, a file added or removed anywhere
+ * the glob could see bumps a recorded directory's mtime (its parent, or a
+ * new directory whose creation bumped a recorded ancestor). A root-anchored
+ * `**\/*.js` has no such closed set, so it keeps the walk.
+ */
+export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null {
+  if (globs.length === 0) return null
+  const out: string[] = []
+  for (const g of globs) {
+    const m = /^([^*?[\]{}!]+?)\/\*\*$/.exec(g)
+    if (m === null) return null
+    const dir = m[1]!.replace(/\/+$/, '')
+    if (dir === '' || dir === '.' || dir.startsWith('/') || dir.split('/').includes('..'))
+      return null
+    out.push(dir)
+  }
+  return [...new Set(out)]
+}

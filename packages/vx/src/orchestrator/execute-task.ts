@@ -36,7 +36,7 @@ import {
   outputRefs,
   undeclaredInputPaths,
 } from './verify.js'
-import { span, staticPrefix } from '../util/index.js'
+import { span, staticPrefix, wholeSubtreePrefixes } from '../util/index.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
 import type { Logger } from './logger.js'
 import {
@@ -712,6 +712,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         stdout: result.stdout,
       },
     })
+    {
+      const savedDirPrefixes = wholeSubtreePrefixes(outputs)
+      if (savedDirPrefixes !== null) {
+        await cache.recordOutputDirs?.(hash, node.projectDir, savedDirPrefixes)
+      }
+    }
     // --verify: fingerprint attempt 1's outputs by CONTENT (raw bytes, never
     // the mtime+size memo). The determinism re-run below compares against it,
     // and the fingerprinting modes (`--verify`/`=all`/`=fingerprint`) fold it
@@ -932,6 +938,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   const outputs = cacheCfg?.outputs.files ?? []
   const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
   const anyOutputs = outputs.length > 0 || wsOutputs.length > 0
+  const dirPrefixes = wholeSubtreePrefixes(outputs)
   const cleanArgs = {
     projectDir: node.projectDir,
     outputs,
@@ -965,17 +972,38 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
       const wsExpected = expected
         .filter((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
         .map((e) => ({ ...e, path: e.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
-      const endGlob = span('output glob')
-      const actualAbs = await resolveOutputs({
-        projectDir: node.projectDir,
-        outputs,
-        nestedProjectDirs: args.nestedProjectDirs,
-      })
-      const actualWsAbs = await resolveWorkspaceOutputs({
-        workspaceRoot: args.workspaceRoot,
-        outputs: wsOutputs,
-      })
-      endGlob()
+      // The directory short-circuit: for whole-subtree globs, unchanged
+      // mtimes on every directory recorded at the last save/restore prove
+      // the output SET is unchanged (a file added or removed anywhere the
+      // glob could see bumps a recorded directory), so the walk that cost
+      // 0.36 ms per warm hit is replaced by a few stats. The per-file
+      // fingerprint check below still runs; only the enumeration is skipped.
+      let setKnown = false
+      if (dirPrefixes !== null && wsOutputs.length === 0 && args.cache.loadOutputDirsBatch) {
+        const endDirs = span('output dirs')
+        const dirRows = args.cache.loadOutputDirsBatch([hash]).get(hash) ?? []
+        const covers = dirPrefixes.every((pre) => dirRows.some((r) => r.path === pre))
+        setKnown = covers && (await args.cache.outputDirsCurrent!(node.projectDir, dirRows))
+        endDirs()
+      }
+      let actualAbs: string[]
+      let actualWsAbs: string[]
+      if (setKnown) {
+        actualAbs = projExpected.map((e) => path.join(node.projectDir, e.path))
+        actualWsAbs = []
+      } else {
+        const endGlob = span('output glob')
+        actualAbs = await resolveOutputs({
+          projectDir: node.projectDir,
+          outputs,
+          nestedProjectDirs: args.nestedProjectDirs,
+        })
+        actualWsAbs = await resolveWorkspaceOutputs({
+          workspaceRoot: args.workspaceRoot,
+          outputs: wsOutputs,
+        })
+        endGlob()
+      }
       const setsMatch = (
         actual: readonly string[],
         exp: ReadonlyArray<{ path: string }>,
@@ -995,6 +1023,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
           (await args.cache.isOutputsCurrent(node.projectDir, projExpected)) &&
           (await args.cache.isOutputsCurrent(args.workspaceRoot, wsExpected))
         endStat()
+        // The walk ran and proved the tree current (rows absent, or a
+        // directory had moved — a benign touch): snapshot the directories
+        // so the next hit skips the walk.
+        if (skipRestore && !setKnown && dirPrefixes !== null) {
+          await args.cache.recordOutputDirs?.(hash, node.projectDir, dirPrefixes)
+        }
       }
     }
   }
@@ -1004,6 +1038,9 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
     if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
     await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot)
+    if (dirPrefixes !== null) {
+      await args.cache.recordOutputDirs?.(hash, node.projectDir, dirPrefixes)
+    }
     // Restored outputs changed the project's tree — but on this
     // path we know the EXACT changed paths (wiped declared
     // outputs + the artifact's files). Record them instead of

@@ -16,6 +16,8 @@ export {
   type RunRecord,
   type TaskInputRow,
   WORKSPACE_OUTPUT_PREFIX,
+  type OutputDirRow,
+  OUTPUT_DIRS_CAP,
 } from './cache.js'
 export { type CASBackend, FsCASBackend } from './cas-backend.js'
 export { type Digest } from './digest.js'

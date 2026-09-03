@@ -14,6 +14,7 @@ import type {
   CacheStatsOptions,
   IngestMeta,
   InvocationRecord,
+  OutputDirRow,
   OutputFileRow,
   PruneOptions,
   PruneResult,
@@ -119,6 +120,20 @@ export class ChainedCache implements CacheLayer {
 
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean> {
     return this.layers[0]!.isOutputsCurrent(projectDir, expected)
+  }
+
+  // The directory short-circuit lives with the layer that owns the local
+  // rows — the first, like the file check.
+  recordOutputDirs(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void> {
+    return this.layers[0]!.recordOutputDirs?.(hash, projectDir, prefixes) ?? Promise.resolve()
+  }
+
+  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
+    return this.layers[0]!.loadOutputDirsBatch?.(hashes) ?? new Map()
+  }
+
+  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean> {
+    return this.layers[0]!.outputDirsCurrent?.(projectDir, rows) ?? Promise.resolve(false)
   }
 
   restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void> {

@@ -32,7 +32,7 @@ import type {
   RunRecord,
   SaveArgs,
 } from './cache.js'
-import { FULL_CACHE_POLICY } from './cache.js'
+import { FULL_CACHE_POLICY, type OutputDirRow } from './cache.js'
 
 /**
  * What a remote cache layer must provide — THE plugin seam for remote
@@ -396,6 +396,18 @@ export class LayeredCache implements CacheLayer {
 
   async isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean> {
     return this.local.isOutputsCurrent(projectDir, expected)
+  }
+
+  recordOutputDirs(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void> {
+    return this.local.recordOutputDirs(hash, projectDir, prefixes)
+  }
+
+  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
+    return this.local.loadOutputDirsBatch(hashes)
+  }
+
+  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean> {
+    return this.local.outputDirsCurrent(projectDir, rows)
   }
 
   recordRun(run: RunRecord): void {

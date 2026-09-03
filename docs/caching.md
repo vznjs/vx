@@ -250,6 +250,36 @@ So before execution starts, `run()` kicks off **background prefetches**:
    remote GET per key**, whether it was served by the prefetch, the
    lazy read-through, or both.
 
+## A current tree: when a warm hit restores nothing
+
+A hit whose outputs are already on disk should cost a few stats, not an
+extraction. Two checks decide, both against rows the cache recorded when
+the tree last matched the entry (`output_files`, and since 2026-09-03
+`output_dirs`):
+
+1. **The set.** The files under the declared output globs must be exactly
+   the entry's files — no strays, nothing missing — because a restore
+   wipes and rewrites the declared outputs, and a stray left in place
+   would be a stale file the hit silently kept. Until Wave 6 this was a
+   glob walk on every hit (0.36 ms each; 365 ms of CPU on a warm
+   1000-project run). Now, for globs of the shape `<dir>/**` (a whole
+   subtree — `wholeSubtreePrefixes`), the cache records every directory
+   under `<dir>` with its mtime after each save and restore; on the next
+   hit, unchanged mtimes on all of them prove the set unchanged, since a
+   file added or removed anywhere the glob could see bumps its parent
+   directory, and a new directory bumps the recorded directory that
+   contains it. Any other glob shape (`**/*.js`, `dist/*`), a missing
+   row set (a remote ingest records none), a moved directory, or more
+   than 256 directories keeps the walk — and a walk that proves the tree
+   current records the directories so the following hit can skip it.
+2. **The files.** Every recorded file's `(size, mode, mtime-ms)` must
+   match. This never left: the directory rule only replaces the
+   enumeration, not the fingerprint.
+
+The trade is the one every mtime-based skip accepts, already documented
+for files: a deliberately forged directory mtime (`touch -r`) hides a
+stray. Both directions are pinned in `tests/output-dirs.test.ts`.
+
 Hard invariants:
 
 - **Remote-only.** This entire path is gated on a `LayeredCache` being

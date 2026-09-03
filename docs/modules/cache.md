@@ -327,13 +327,15 @@ Surfaced by `vx info` (and its `vx stats` alias).
 - Doesn't verify entries are intact byte-for-byte. The file existence
   check is the integrity gate for the artifact as a whole; `restore
 Outputs` additionally refuses when the archive cannot produce an output
-  the `output_files` index recorded (a restore that materializes nothing
+  the `output_files` index recorded — and, for `<dir>/**` globs, the
+  `output_dirs` rows that let a warm hit prove the set unchanged without a
+  walk (`docs/caching.md` § A current tree) — (a restore that materializes nothing
   must never be reported as a hit — the caller has already wiped the
   declared outputs by then).
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v25'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v27'`; `SCHEMA_VERSION` is
 `'v22'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

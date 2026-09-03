@@ -497,6 +497,27 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   driven as a subprocess: a plugin class merely NAMED `UserError` prints
   one line, a plain `Error` prints its stack; the mutation back to
   `instanceof` fails exactly the foreign-copy pin.
+- 2026-09-03 — **perf wave 6: the output walk is gone from the warm
+  hit.** `isOutputsCurrent` stats the recorded files; the glob existed to
+  prove the output SET — no strays, nothing missing — and cost 0.36 ms
+  per hit (365 ms CPU on a warm 1000-project run, the largest
+  accumulated cost in the stage table). For `<dir>/**` globs the cache
+  now records every directory under `<dir>` with its mtime after each
+  save and restore (`output_dirs`, machine-local like the file rows; no
+  `CACHE_VERSION` bump — nothing stored under a key changed, and absent
+  rows mean the walk); on a hit, unchanged mtimes on all of them prove
+  the set unchanged (a file added or removed anywhere the glob could see
+  bumps a recorded directory). Any other glob shape, a remote ingest, a
+  moved directory or > 256 directories keeps the walk. The per-file
+  fingerprint check is untouched. MEASURED, interleaved A/B against a
+  worktree at the previous commit: 1000 projects 224 → 204 ms (−9%);
+  100 projects 77 ms best of 5. Pinned both ways in
+  `tests/output-dirs.test.ts` (eligibility table, every set change,
+  symlink not descended, cap, the forged-mtime trade, a stray still
+  wiped on the next hit through `run()`, a root-anchored control); two
+  mutations — skip without checking, record nothing — fail exactly
+  their pins. Docs: `caching.md` § A current tree, `benchmarks.md`
+  Wave 6, `modules/cache.md` (its stale `v25` corrected to `v27`).
 
 ## In flight
 
@@ -532,8 +553,9 @@ then exits on SIGINT` times out again, keep that run's stdout: the
 5. **Re-measure the warm run after each day's work** — the hot path is
    the product. `bun bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap (2026-09-03: flat).
-6. **The next perf lead, measured (2026-09-03, `VX_TIMING=1`, warm 1000
-   projects, 203 ms in-process):** git enumeration 51 ms (overlapped with
+6. **DONE 2026-09-03 as wave 6 (224 → 204 ms).** The lead, kept for the
+   method: measured (`VX_TIMING=1`, warm 1000
+   projects, 203 ms in-process):\*\* git enumeration 51 ms (overlapped with
    33 ms of config loads), discover 22, classify+probe 22, run graph 46,
    history 8. Inside run graph the accumulated cost is the OUTPUT
    CURRENCY check: 365 ms CPU of `output glob` over 1000 warm hits

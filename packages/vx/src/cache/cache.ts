@@ -31,7 +31,7 @@
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
-import { mkdir, rename, rm, stat } from 'node:fs/promises'
+import { lstat, mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import {
@@ -524,6 +524,15 @@ export interface OutputFileRow {
   mtimeMs: number
 }
 
+/** One directory under a whole-subtree output glob, as it stood after the last save or restore on THIS machine. */
+export interface OutputDirRow {
+  path: string
+  mtimeMs: number
+}
+
+/** More directories than this under a task's output prefixes: record nothing, keep the walk. */
+export const OUTPUT_DIRS_CAP = 256
+
 /**
  * The shape every cache implementation honors. `Cache` (the local v10
  * implementation) and `LayeredCache` both `implements` this so the
@@ -750,6 +759,19 @@ export interface CacheLayer {
    */
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
   /**
+   * The directory-mtime short-circuit behind a warm hit (optional — a layer
+   * without it keeps the output walk). `recordOutputDirs` snapshots every
+   * directory under each of `prefixes` (project-relative, whole-subtree
+   * globs only — see `wholeSubtreePrefixes`) after a save or restore;
+   * `loadOutputDirsBatch` reads them back; `outputDirsCurrent` is true iff
+   * every recorded directory still carries its recorded mtime, which proves
+   * no file was added or removed anywhere the glob could see. Machine-local
+   * state, like the output rows: a remote ingest records none.
+   */
+  recordOutputDirs?(hash: string, projectDir: string, prefixes: readonly string[]): Promise<void>
+  loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
+  /**
    * Extract the artifact's `outputs/` entries into `projectDir` and —
    * when `workspaceRoot` is given — its `workspace-outputs/` entries
    * into the workspace root. Callers restoring entries that may carry
@@ -892,6 +914,8 @@ export class Cache implements CacheLayer {
   private readonly selectFileHash: ReturnType<Database['prepare']>
   private readonly upsertFileHash: ReturnType<Database['prepare']>
   private readonly insertOutputFile: ReturnType<Database['prepare']>
+  private readonly insertOutputDir: ReturnType<Database['prepare']>
+  private readonly deleteOutputDirs: ReturnType<Database['prepare']>
   private readonly deleteOutputFiles: ReturnType<Database['prepare']>
   private readonly selectConfigEval: ReturnType<Database['prepare']>
   private readonly insertConfigEval: ReturnType<Database['prepare']>
@@ -1055,6 +1079,18 @@ export class Cache implements CacheLayer {
         PRIMARY KEY (entry_hash, path),
         FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
       );
+      -- Every directory under a whole-subtree output glob, with its mtime
+      -- as of the last save/restore on THIS machine (2026-09-03). On a warm
+      -- hit, unchanged mtimes prove the output SET is unchanged, replacing
+      -- the glob walk that cost 0.36 ms per hit. Machine-local: a remote
+      -- ingest writes none, and the first hit after it walks and records.
+      CREATE TABLE IF NOT EXISTS output_dirs (
+        entry_hash  TEXT NOT NULL,
+        path        TEXT NOT NULL,
+        mtime_ms    INTEGER NOT NULL,
+        PRIMARY KEY (entry_hash, path),
+        FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+      );
       -- v22 (Tier 3): one header row per vx-run invocation. The runs
       -- table is per-task; this is the per-invocation record that
       -- carries git/CI/host context, the command, tags, and run-level
@@ -1176,6 +1212,10 @@ export class Cache implements CacheLayer {
         mtime_ms   = excluded.mtime_ms
     `)
     this.deleteOutputFiles = this.db.prepare('DELETE FROM output_files WHERE entry_hash = ?')
+    this.insertOutputDir = this.db.prepare(
+      'INSERT INTO output_dirs(entry_hash, path, mtime_ms) VALUES (?, ?, ?)',
+    )
+    this.deleteOutputDirs = this.db.prepare('DELETE FROM output_dirs WHERE entry_hash = ?')
     this.selectConfigEval = this.db.prepare('SELECT json FROM config_evals WHERE key = ?')
     this.insertConfigEval = this.db.prepare(
       'INSERT OR REPLACE INTO config_evals(key, json, created_at) VALUES (?, ?, ?)',
@@ -1566,6 +1606,95 @@ export class Cache implements CacheLayer {
 
   outputsPath(hash: string): string {
     return this.tarPath(hash)
+  }
+
+  /**
+   * Snapshot every directory under each of `prefixes` for `hash`. Called
+   * after a save and after a restore, when the tree is known to equal the
+   * entry's set. Symlinked directories are not descended (the output walk
+   * refuses them too). Over `OUTPUT_DIRS_CAP` directories, or on any
+   * error, the rows are cleared and the next hit keeps the walk.
+   */
+  async recordOutputDirs(
+    hash: string,
+    projectDir: string,
+    prefixes: readonly string[],
+  ): Promise<void> {
+    const rows: Array<[string, number]> = []
+    const walk = async (rel: string): Promise<boolean> => {
+      const abs = path.join(projectDir, rel)
+      let st
+      try {
+        st = await lstat(abs)
+      } catch {
+        return false
+      }
+      if (!st.isDirectory()) return false
+      rows.push([rel, st.mtimeMs])
+      if (rows.length > OUTPUT_DIRS_CAP) return false
+      let entries
+      try {
+        entries = await readdir(abs, { withFileTypes: true })
+      } catch {
+        return false
+      }
+      for (const e of entries) {
+        if (e.isDirectory() && !e.isSymbolicLink()) {
+          if (!(await walk(`${rel}/${e.name}`))) return false
+        }
+      }
+      return true
+    }
+    let ok = true
+    for (const prefix of prefixes) {
+      if (!(await walk(prefix))) {
+        ok = false
+        break
+      }
+    }
+    this.db.transaction(() => {
+      this.deleteOutputDirs.run(hash)
+      if (!ok) return
+      for (const [rel, mtime] of rows) this.insertOutputDir.run(hash, rel, mtime)
+    })()
+  }
+
+  loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
+    const out = new Map<string, OutputDirRow[]>()
+    if (hashes.length === 0) return out
+    const placeholders = hashes.map(() => '?').join(',')
+    const rows = this.db
+      .query(
+        `SELECT entry_hash, path, mtime_ms FROM output_dirs WHERE entry_hash IN (${placeholders})`,
+      )
+      .all(...(hashes as readonly SQLQueryBindings[])) as Array<{
+      entry_hash: string
+      path: string
+      mtime_ms: number
+    }>
+    for (const r of rows) {
+      const list = out.get(r.entry_hash)
+      const row = { path: r.path, mtimeMs: r.mtime_ms }
+      if (list) list.push(row)
+      else out.set(r.entry_hash, [row])
+    }
+    return out
+  }
+
+  /** True iff every recorded directory exists with its recorded mtime (ms). Same forged-mtime trade as the file check. */
+  async outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean> {
+    if (rows.length === 0) return false
+    const results = await Promise.all(
+      rows.map(async (r) => {
+        try {
+          const st = await stat(path.join(projectDir, r.path))
+          return st.isDirectory() && Math.abs(st.mtimeMs - r.mtimeMs) < 1
+        } catch {
+          return false
+        }
+      }),
+    )
+    return results.every(Boolean)
   }
 
   async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void> {
