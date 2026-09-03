@@ -224,7 +224,11 @@ numbers; the key-derivation list and the caching guide gained the
 shape was wrong; and three "upstream hash" phrasings now say input
 key, never outputs.
 
-**Red mains, each explained and pinned:** an ms-mtime precondition
+**Red mains, each explained and pinned:** RED MAIN 638281d (2026-09-03,
+mine): a pin's import never landed and the gate failed lint and a
+shard, but the commit was chained after a gate piped through `grep`,
+whose exit status is grep's — the rule CLAUDE.md states; fixed in the
+next commit with the gate's own exit tested, and the memory carries it. an ms-mtime precondition
 sampled the clock (stamped now); a 400-round guard past the 5 s
 timeout under four shards (30 s + cost hint); Linux racy-clean (the
 50 ms window); a darwin-only timing assumption in an e2e pin; a version

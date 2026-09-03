@@ -1,3 +1,4 @@
+import { documentedFlags } from '../src/cli/help.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import {
