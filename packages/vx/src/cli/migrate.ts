@@ -204,7 +204,7 @@ export async function migrateCmd(
     report.push(
       'vx init: no package.json scripts to turn into tasks.',
       hasWorkspaceFile ? 'vx.workspace.ts already exists.' : 'wrote vx.workspace.ts.',
-      'Declare tasks in a vx.config.ts beside a package.json, for example:',
+      'Declare tasks in a vx.config.ts beside a package.json — your own command, for example:',
       '',
       ...EXAMPLE_CONFIG.trimEnd()
         .split('\n')
