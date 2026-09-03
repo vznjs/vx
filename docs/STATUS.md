@@ -518,6 +518,13 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   mutations — skip without checking, record nothing — fail exactly
   their pins. Docs: `caching.md` § A current tree, `benchmarks.md`
   Wave 6, `modules/cache.md` (its stale `v25` corrected to `v27`).
+  Stage table after the wave (warm 1000, in-process): run graph 98 →
+  27 ms, total 203 → 176 ms, no `output glob` line at all; the new
+  `output dirs` span read 0.12 ms per hit — one SQL round trip each — so
+  the entry now carries the directory rows like the file rows (`getMany`
+  batches them, the lazy `get` attaches them, parity pinned) and the hit
+  path reads them without a query: run graph 18 ms, the span 0.07 ms per
+  hit and all of it stats.
 
 ## In flight
 

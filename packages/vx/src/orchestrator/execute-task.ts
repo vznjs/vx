@@ -979,9 +979,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
       // 0.36 ms per warm hit is replaced by a few stats. The per-file
       // fingerprint check below still runs; only the enumeration is skipped.
       let setKnown = false
-      if (dirPrefixes !== null && wsOutputs.length === 0 && args.cache.loadOutputDirsBatch) {
+      if (dirPrefixes !== null && wsOutputs.length === 0 && args.cache.outputDirsCurrent) {
         const endDirs = span('output dirs')
-        const dirRows = args.cache.loadOutputDirsBatch([hash]).get(hash) ?? []
+        // Loaded with the entry (batched by getMany, or with the lazy get).
+        const dirRows = hit.outputDirRows ?? []
         const covers = dirPrefixes.every((pre) => dirRows.some((r) => r.path === pre))
         setKnown = covers && (await args.cache.outputDirsCurrent!(node.projectDir, dirRows))
         endDirs()

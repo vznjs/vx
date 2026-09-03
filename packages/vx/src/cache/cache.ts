@@ -377,6 +377,12 @@ export interface CacheEntry {
    * round trip per cache hit, saved.
    */
   outputRows?: OutputFileRow[]
+  /**
+   * The `output_dirs` rows behind the directory short-circuit, when the
+   * batched `getMany` loaded them — one query for the run instead of one
+   * per hit (0.12 ms each across a warm 1000-project run before this).
+   */
+  outputDirRows?: OutputDirRow[]
   /** Captured stdout, always present (may be empty). stderr is not cached. */
   stdout: string
   storedAt: string
@@ -1487,7 +1493,9 @@ export class Cache implements CacheLayer {
     // for four up-to-date hits on ~70 MB binaries). restoreOutputs
     // reads the artifact itself, only when extraction actually runs.
     const fileRows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
-    return entryOf(row, fileRows)
+    const entry = entryOf(row, fileRows)
+    entry.outputDirRows = this.loadOutputDirsBatch([hash]).get(hash) ?? []
+    return entry
   }
 
   /**
@@ -1514,10 +1522,14 @@ export class Cache implements CacheLayer {
     if (rows.length === 0) return out
     const present = await Promise.all(rows.map((r) => Bun.file(this.tarPath(r.hash)).exists()))
     const live = rows.filter((_r, i) => present[i])
-    const fileRows = this.loadOutputFilesBatch(live.map((r) => r.hash))
+    const liveHashes = live.map((r) => r.hash)
+    const fileRows = this.loadOutputFilesBatch(liveHashes)
+    const dirRows = this.loadOutputDirsBatch(liveHashes)
     for (const row of live) {
       this.touched.add(row.hash)
-      out.set(row.hash, entryOf(row, fileRows.get(row.hash) ?? []))
+      const entry = entryOf(row, fileRows.get(row.hash) ?? [])
+      entry.outputDirRows = dirRows.get(row.hash) ?? []
+      out.set(row.hash, entry)
     }
     return out
   }
