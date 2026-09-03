@@ -14,6 +14,13 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const dir = process.argv[2]
+// The count is the SECOND argument. A number here would create a directory
+// named after it in the cwd (a `1000/` appeared in the repo root that way,
+// 2026-09-03); refuse it.
+if (dir === undefined || /^\d+$/.test(dir)) {
+  process.stderr.write('usage: bun bench/generate.ts <dir> [projects=100]\n')
+  process.exit(2)
+}
 const count = Number(process.argv[3] ?? 100)
 if (!dir || !Number.isInteger(count) || count < 1) {
   console.error('usage: bun bench/generate.ts <dir> [projects=100]')

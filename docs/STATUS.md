@@ -649,6 +649,13 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   without evaluating and evaluates the miss; forcing the batch empty
   fails exactly that pin. The lead's ceiling was ~3 ms and the stage
   table agrees.
+- 2026-09-03 — **two small pins and the closing measurement.** The
+  batched loader's claim that a round with two broken configs names the
+  FIRST in the given order is now a pin (both orders). `bench/generate.ts`
+  refuses a numeric first argument: its count is the second, and a
+  `1000/` directory had appeared in the repo root that way. Closing warm
+  run, best of 5: 1000 projects 177 ms (recorded 172, two outliers from a
+  box running CI polls), 100 projects 79 ms.
 
 ## In flight
 

@@ -215,6 +215,18 @@ describe('loadProjectConfig with an eval cache', () => {
     expect(store.batchGets).toBe(before + 1) // one lookup for the round
   })
 
+  it('a round with two broken configs names the FIRST in the given order, as one-by-one did', async () => {
+    const ok = await write(
+      'packages/ok/vx.config.mjs',
+      "export default { tasks: { build: { exec: { command: 'x' } } } }\n",
+    )
+    const bad1 = await write('packages/bad1/vx.config.mjs', 'export default { tasks: 42 }\n')
+    const bad2 = await write('packages/bad2/vx.config.mjs', 'export default { tasks: 43 }\n')
+    const evalCache = { store: new MemoryStore(), workspaceFingerprint: 'fp' }
+    await expect(loadProjectConfigs([ok, bad1, bad2], { evalCache })).rejects.toThrow(/bad1/)
+    await expect(loadProjectConfigs([ok, bad2, bad1], { evalCache })).rejects.toThrow(/bad2/)
+  })
+
   it('never stores an impure config, and `fresh` bypasses the cache entirely', async () => {
     const impure = await write(
       'packages/b/vx.config.mjs',
