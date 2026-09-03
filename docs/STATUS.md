@@ -738,7 +738,15 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    accepted `touch -r` trade in view, pin both directions, and MEASURE
    before claiming the ~15% it suggests.
 
-7. **DONE as wave 7 (git first, 195 → 172 ms).** Reading the table
+7. **After waves 7 and 8, closing 2026-09-03:** in-process stage table
+   on the 1000-project bench — discover projects 19.9ms; load configs 22.8ms; git enumeration 20.7ms; classify + probe; run graph 21.1ms; record history 11.4ms; close 2.4ms 151.5ms; — and whole-process best of
+   5: 1000 projects 186 ms, 100 projects 77 ms. What is left is the
+   floors: the git walk (~28 ms exposed), 1,000 task hashes (11 ms),
+   1,000 file and directory stats (18 ms), 1,000 manifest reads in
+   discovery (10 ms) and the batched inserts (9 ms). The next real win
+   is structural (fsmonitor-backed git status, or not needing a walk at
+   all), not another stage shave. **Wave 7 (git first, 195 → 172 ms).**
+   Reading the table
    after it: `open cache` (12.5 ms) and `discover` (21 ms) read high
    while git runs because the spawns' pipe callbacks land in whichever
    stage is current — the parts themselves measure 1.2 ms (SQLite open),
