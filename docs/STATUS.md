@@ -493,6 +493,10 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   `instanceof` sites (`CorruptArtifactError`, `DependencySpecError`) throw
   and catch inside the same copy — REFUTED. Docs: `modules/util-errors.md`,
   the plugins guide (throw your own class named `UserError` if you like).
+  `bin.ts` itself, the one consumer no in-process test reaches, is now
+  driven as a subprocess: a plugin class merely NAMED `UserError` prints
+  one line, a plain `Error` prints its stack; the mutation back to
+  `instanceof` fails exactly the foreign-copy pin.
 
 ## In flight
 

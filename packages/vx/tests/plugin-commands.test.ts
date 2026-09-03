@@ -147,3 +147,47 @@ describe('a broken workspace file', () => {
     expect(text).toContain('vx.workspace')
   })
 })
+
+// bin.ts is the one consumer of `isUserError` no in-process test reaches: it
+// is the entry, and `process.exit` ends the caller. Driven as a subprocess.
+// The plugin's error class is defined INLINE and merely named `UserError` —
+// what a plugin importing `@vzn/vx` from node_modules looks like to a
+// compiled vx (a different class object). Reproduced through the real binary
+// on 2026-09-03: it printed `vx: UserError: …` with a stack.
+describe('bin.ts prints a foreign-copy UserError as one line', () => {
+  const bin = path.resolve(import.meta.dir, '../src/bin.ts')
+  function spawn(verb: string): { code: number | null; err: string } {
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, bin, verb],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    return { code: p.exitCode, err: p.stderr.toString() }
+  }
+  const PLUGIN = `{
+    name: 'org/foreign',
+    commands: {
+      refuse: { description: 'throws a class merely NAMED UserError', run() {
+        class ForeignUserError extends Error { constructor(m) { super(m); this.name = 'UserError' } }
+        throw new ForeignUserError('bad flag --x')
+      } },
+      crash: { description: 'throws a plain Error', run() { throw new Error('kaboom') } },
+    },
+  }`
+
+  it('a class named UserError from another copy prints the message only, exit 1', async () => {
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([PLUGIN]))
+    const r = spawn('refuse')
+    expect(r.code).toBe(1)
+    expect(r.err).toBe('vx: bad flag --x\n')
+  })
+
+  it('CONTROL: a plain Error still prints its stack', async () => {
+    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([PLUGIN]))
+    const r = spawn('crash')
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('vx: Error: kaboom')
+    expect(r.err).toContain('    at ')
+  })
+})
