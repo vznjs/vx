@@ -404,6 +404,36 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   the no-bun arm was a harness error (a symlinked `npx` resolves its CLI
   through the symlink's real dir) — invoke the launcher through `node`
   directly.
+- 2026-09-03 — **two docs pages were on the site but in no sidebar.**
+  Diffed the import script's globs against the hand-listed sidebar:
+  `overview` (the deep-reference entry, `docs/README.md`, rewritten
+  2026-08-26 around the five problems) and `differentiators` were
+  imported and unreachable. The overview now heads the Internals group.
+  `differentiators.md` was a second pitch carrying June numbers
+  (144 vs 279 ms) that `benchmarks.md` and `comparison.md` § Where vx is
+  ahead supersede — deleted, both inbound links repointed, and a
+  "decision log lives in CLAUDE.md" phrase corrected while there.
+  `tests/docs-sidebar-coverage.test.ts` pins both directions (every
+  imported top-level doc is named; every sidebar link has a source);
+  removing the new entry fails the orphan pin.
+- 2026-09-03 — **two follow-ups from the same gate run.** (1) The
+  macOS reporting-loss residual hit the local sharded gate a SECOND
+  time (`--verify=all … leaky task` → `ok: true`), so the remedy named
+  the first time is applied: on darwin the REPORTING assertions run only
+  under `VX_REQUIRE_SANDBOX` (opt-in), not only on darwin CI — the
+  sharded gate is the load that drops the records, and no timeout can
+  recover a record that never arrived. Enforcement stays asserted
+  everywhere; linux CI runs the reporting pins under bubblewrap. (2) The
+  docs import cleared only three generated entries, so the deleted
+  `differentiators.md` outlived its source as a live page for one build.
+  A name manifest cannot fix this (my first attempt used the site's
+  `.gitignore`, and removing the dead entry BEFORE the import meant the
+  stale page was never named again) — so generated pages are now
+  self-describing: the import writes a YAML comment marker into every
+  frontmatter and clears any top-level page carrying it. Probed: a
+  planted marked page is removed, an unmarked authored one survives. The
+  coverage test still pins that the ignore list equals the imported set,
+  so a generated page cannot be committed by accident.
 
 ## In flight
 

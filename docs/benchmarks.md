@@ -9,10 +9,10 @@ The number that matters most to a developer is the warm no-op run: every
 task a cache hit, nothing to restore. `bench/generate.ts` workspaces,
 `vx run build --all`, this machine (macOS arm64, Bun 1.4.0), best of 5:
 
-| Projects | Before (2026-09-02 morning) | Wave 1  | Wave 2  | Wave 5  | What changed                                                                       |
-| -------- | --------------------------- | ------- | ------- | ------- | ---------------------------------------------------------------------------------- |
-| 100      | 105 ms                      | 92 ms   | 79 ms   | 78 ms   | git overlaps config load; `.git/HEAD` read replaces a git spawn; batched probe      |
-| 1000     | 380–450 ms                  | 270 ms  | 242 ms  | 237 ms  | + cached pure-config evals; one worktree walk; readdir discovery; batched probe    |
+| Projects | Before (2026-09-02 morning) | Wave 1 | Wave 2 | Wave 5 | What changed                                                                    |
+| -------- | --------------------------- | ------ | ------ | ------ | ------------------------------------------------------------------------------- |
+| 100      | 105 ms                      | 92 ms  | 79 ms  | 78 ms  | git overlaps config load; `.git/HEAD` read replaces a git spawn; batched probe  |
+| 1000     | 380–450 ms                  | 270 ms | 242 ms | 237 ms | + cached pure-config evals; one worktree walk; readdir discovery; batched probe |
 
 Wave 3 (batched short-circuit probe, output rows carried on the entry,
 memoised `Bun.Glob`s) measured on the graph WITH dependencies —
@@ -194,10 +194,10 @@ fully cached (`vx run build test --all`):
 Input hashing then moved to git blob OIDs (v20, `git ls-files -s`): clean
 files cost zero reads/stats, dropping the warm run-phase from ~245 ms to
 **~76 ms (3.2×)** at 500 projects × 30 files, and cold runs never read
-committed file contents at all. The full decision log lives in CLAUDE.md;
+committed file contents at all. The decision history lives in git (the log was retired 2026-09-02);
 the shipped-optimization catalog with invariants is
 [`optimizations.md`](./optimizations.md), and the engineering tour is
-[`differentiators.md`](./differentiators.md).
+[`comparison.md` § Where vx is ahead](./comparison.md#where-vx-is-ahead).
 
 ## Known headroom
 

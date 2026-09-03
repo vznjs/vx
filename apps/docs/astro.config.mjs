@@ -103,6 +103,7 @@ export default defineConfig({
           label: 'Internals',
           collapsed: true,
           items: [
+            { label: 'Technical overview', link: '/overview/' },
             { label: 'Architecture', link: '/architecture/' },
             { label: 'Optimizations', link: '/optimizations/' },
             { label: 'Shared patterns with Turbo / Nx', link: '/patterns/' },

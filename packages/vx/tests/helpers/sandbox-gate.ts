@@ -65,10 +65,16 @@ function required(): boolean {
  */
 export async function sandboxReportingReliable(label: string): Promise<boolean> {
   if (!(await sandboxAvailable(label))) return false
-  if (process.platform === 'darwin' && process.env['CI'] !== undefined && !required()) {
+  // darwin, not only darwin CI: the sharded gate loads a dev box the way
+  // CI loads a runner, and the residual reached the local gate twice on
+  // 2026-09-03 (`--verify=all … leaky task` answering ok: true). The
+  // records are DROPPED, not late, so no timeout helps. Enforcement stays
+  // asserted everywhere; the reporting pins run on linux (bubblewrap) and
+  // on any darwin box that opts in with VX_REQUIRE_SANDBOX.
+  if (process.platform === 'darwin' && !required()) {
     // eslint-disable-next-line no-console
     console.warn(
-      `[${label}] skipping the REPORTING assertions on darwin CI — the unified log drops violation records under load; enforcement is still covered here and by the canary`,
+      `[${label}] skipping the REPORTING assertions on darwin — the unified log drops violation records under load; enforcement is still covered here and by the canary (set VX_REQUIRE_SANDBOX=1 to run them anyway)`,
     )
     return false
   }
