@@ -184,7 +184,9 @@ verb's flag is ever suggested (`--older-tha` under `run` gets no hint;
 found by probing); `editDistance` lives in `util/`. And the plugins
 guide's promise that its code is real is pinned:
 `tests/docs-snippets.test.ts` type-checks every block against the
-façade (13 of 14; the contract sketch is skipped by rule).
+façade (13 of 14; the contract sketch is skipped by rule). The other
+six guides' `ts` blocks are prose excerpts by design — object
+fragments without a wrapper — and stay unchecked.
 
 **Audits with pins (each mutation fails exactly its pin).** Config-eval
 purity gate closed against `\u0070rocess`, `global`/`self` aliases and
@@ -239,7 +241,23 @@ passed once the load fell.
    plugins guide, the stub layers in the tests and `vx-reapi` in one
    commit, and measure a 150 MiB round trip through the stub before
    and after. Not started.
-3. **The shipped binary's second core.** A compiled `vx` loading a
+3. **Zero-migration adoption as a plugin (candidate, owner's call).**
+   The Vite-shaped ecosystem lever: `plugins: [turbo()]` in a Turbo
+   repo (or `nx()`) and `vx run build --all` works against `turbo.json`
+   + `package.json` scripts with no generated files — a trial that
+   commits nothing. The `project` stage is the right seam, and the
+   mapping already exists in `migrate-turbo.ts` / `migrate-nx.ts`, but
+   ONE seam gap blocks it: `prepareRun` loads only packages that have a
+   config file (`prepare.ts`, the `configPath` filter), so the stage
+   never visits a config-less package. Widening: when any plugin
+   declares `project`, a package without a config is loaded as
+   `{ tasks: {} }` for the stage to fill (zero cost otherwise — the
+   filter stays when no plugin declares it). Then a `@vzn/vx-turbo`
+   package reusing the mapper's IR without the preset splices, ~150
+   lines, with the migrate suite's fixtures as its tests. Not built:
+   `vx migrate` is one command and a second source of task truth is a
+   maintenance surface; decide with the owner.
+4. **The shipped binary's second core.** A compiled `vx` loading a
    `vx.workspace.ts` that imports `@vzn/vx` pulls a second copy of core
    from `node_modules` (~12 ms) on every run — and makes a binary user
    install the package at all. REFUTED 2026-09-03 as a runtime fix: a
@@ -257,11 +275,11 @@ passed once the load fell.
    runtime-plugin fix (Bun 1.4.0's `Bun.plugin` hooks never fire for
    bare specifiers or `.ts`); options left are rewriting the config
    source before import or a Bun fix. Parked.
-4. **The watch e2e flake** — if `re-runs the task after a file change,
+5. **The watch e2e flake** — if `re-runs the task after a file change,
 then exits on SIGINT` times out again, keep that run's stdout: the
    presence of `re-running...` separates a lost event from a slow
    re-run (see the 2026-09-03 watch entry).
-5. **Re-measure the warm run after each day's work** — the hot path is
+6. **Re-measure the warm run after each day's work** — the hot path is
    the product. `bun bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap. Closing figures
    for 2026-09-03, after wave 6 and the discovery change, best of 5:
