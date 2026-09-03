@@ -76,8 +76,10 @@ Cycles are detected here and reported with the offending path.
 For each task, vx derives a **content hash** from everything it depends
 on: the declared input files (read via git's index), tracked env values,
 the resolved command, the project's `package.json`, the workspace
-lockfile, forwarded `--` args, and the hashes of upstream tasks. Same
-inputs → same key → the work has been done before.
+lockfile, forwarded `--` args, and the input keys of upstream tasks —
+their inputs, never their outputs, so a change cascades through
+`dependsOn` without reading a single produced file. Same inputs → same
+key → the work has been done before.
 
 Reading file identity from git's index is what makes hashing nearly free:
 on a clean tree, deriving every key costs zero file reads and zero stats —
