@@ -34,6 +34,7 @@
  */
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
+import { listSchedule, type GraphNode } from './ideal.js'
 import path from 'node:path'
 
 const LAYERS = Number(process.argv[2] ?? 100)
@@ -524,13 +525,11 @@ type Baseline = {
 function idealMakespanMs(sleepMs: number): { makespan: number; critical: number; work: number } {
   // Nodes: per package build (sleep), installDeps (0), test (sleep).
   // build → installDeps → ^build (deps' builds); test → installDeps.
-  type Node = { dur: number; deps: number[]; succ: number[]; indeg: number; id: string }
-  const nodes: Node[] = []
+  const nodes: GraphNode[] = []
   const idOf = new Map<string, number>()
-  const add = (id: string, dur: number): number => {
+  const add = (id: string, dur: number): void => {
     idOf.set(id, nodes.length)
-    nodes.push({ dur, deps: [], succ: [], indeg: 0, id })
-    return nodes.length - 1
+    nodes.push({ id, dur, deps: [] })
   }
   for (let layer = 1; layer <= LAYERS; layer++) {
     for (let idx = 1; idx <= (layer === LAYERS ? 1 : PER_LAYER); idx++) {
@@ -541,11 +540,7 @@ function idealMakespanMs(sleepMs: number): { makespan: number; critical: number;
     }
   }
   const link = (from: string, to: string): void => {
-    const a = idOf.get(from)!
-    const b = idOf.get(to)!
-    nodes[a]!.succ.push(b)
-    nodes[b]!.deps.push(a)
-    nodes[b]!.indeg++
+    nodes[idOf.get(to)!]!.deps.push(idOf.get(from)!)
   }
   for (let layer = 1; layer <= LAYERS; layer++) {
     for (let idx = 1; idx <= (layer === LAYERS ? 1 : PER_LAYER); idx++) {
@@ -556,69 +551,7 @@ function idealMakespanMs(sleepMs: number): { makespan: number; critical: number;
         link(`${dep}#build`, `${name}#installDeps`)
     }
   }
-  // Critical path (longest path by duration) via topological order.
-  const order: number[] = []
-  const indeg = nodes.map((n) => n.indeg)
-  const q = nodes.map((_, i) => i).filter((i) => indeg[i] === 0)
-  while (q.length > 0) {
-    const i = q.shift()!
-    order.push(i)
-    for (const s of nodes[i]!.succ) if (--indeg[s]! === 0) q.push(s)
-  }
-  const dist: number[] = Array.from({ length: nodes.length }, () => 0)
-  for (const i of order) {
-    dist[i] = Math.max(dist[i]!, nodes[i]!.dur)
-    for (const s of nodes[i]!.succ) dist[s] = Math.max(dist[s]!, dist[i]! + nodes[s]!.dur)
-  }
-  const critical = Math.max(...dist)
-  const work = nodes.reduce((a, n) => a + n.dur, 0)
-  // Bottom level: the longest path from a node to any sink. An ideal
-  // scheduler runs the node that gates the most downstream work first —
-  // FIFO would start a layer's tests before its builds and starve the next
-  // layer (it read 4m 58s here, above vx's own measured 3m 46s).
-  const level: number[] = Array.from({ length: nodes.length }, () => 0)
-  for (let k = order.length - 1; k >= 0; k--) {
-    const i = order[k]!
-    let best = 0
-    for (const s of nodes[i]!.succ) best = Math.max(best, level[s]!)
-    level[i] = nodes[i]!.dur + best
-  }
-  // Greedy critical-path-first list schedule on CONCURRENCY workers.
-  const ready: number[] = nodes.map((_, i) => i).filter((i) => nodes[i]!.indeg === 0)
-  const remaining = nodes.map((n) => n.indeg)
-  const running: Array<{ end: number; node: number }> = []
-  let now = 0
-  let makespan = 0
-  const start = (i: number): void => {
-    running.push({ end: now + nodes[i]!.dur, node: i })
-  }
-  const takeReady = (): number => {
-    let bi = 0
-    for (let k = 1; k < ready.length; k++) if (level[ready[k]!]! > level[ready[bi]!]!) bi = k
-    return ready.splice(bi, 1)[0]!
-  }
-  while (ready.length > 0 || running.length > 0) {
-    // zero-duration nodes complete instantly; start as many as fit
-    while (ready.length > 0 && running.length < CONCURRENCY) start(takeReady())
-    if (running.length === 0) break
-    running.sort((a, b) => a.end - b.end)
-    const next = running.shift()!
-    now = next.end
-    makespan = Math.max(makespan, now)
-    for (const s of nodes[next.node]!.succ) if (--remaining[s]! === 0) ready.push(s)
-    // drain everything else finishing at the same instant
-    while (running.length > 0 && running[0]!.end === now) {
-      const r = running.shift()!
-      for (const s of nodes[r.node]!.succ) if (--remaining[s]! === 0) ready.push(s)
-    }
-  }
-  // A list schedule is never below the true lower bound and, with uniform
-  // durations, never above the work bound by more than one task.
-  const lower = Math.max(critical, work / CONCURRENCY)
-  if (makespan < lower - 1e-6 || makespan > work / CONCURRENCY + critical + sleepMs) {
-    throw new Error(`ideal schedule out of bounds: ${makespan} vs lower ${lower}`)
-  }
-  return { makespan, critical, work }
+  return listSchedule(nodes, CONCURRENCY)
 }
 
 async function measureBaseline(dir: string): Promise<Baseline> {

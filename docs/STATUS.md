@@ -627,6 +627,16 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   above vx's 30.8 — because both vary by ±2 s at this size; the legend
   and the doc say so rather than let a dashed bar longer than vx's pass
   unexplained. Turbo and Nx rows are the morning's measurement.
+- 2026-09-03 — **the baseline's ideal scheduler is a pure module with
+  pins.** `bench/ideal.ts` (`listSchedule(nodes, workers)`) is what
+  `compare.ts` now calls; `tests/bench-ideal.test.ts` pins it over graphs
+  with hand-computable optima — a diamond bound by its critical path, a
+  graph where FIFO needs 4 s and critical-path-first 3 s, a zero-cost
+  ordering node with a work-bound fan-out, the empty graph, a cycle
+  refused. The FIFO mutation fails exactly the gating pin. The function
+  asserts its own bounds (never below max(critical path, work ÷
+  workers), never above the work bound plus the critical path plus one
+  task), so a wrong floor cannot reach the website silently again.
 
 ## In flight
 
