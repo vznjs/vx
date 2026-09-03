@@ -204,6 +204,16 @@ thousands of modules is `@vx-shard-isolate`d because `bun test` pins
 ~2 descriptors per import — tripwire test kept for the day Bun fixes
 it).
 
+**Stale-claim sweep (2026-09-03, evening).** Six live docs described
+a removed seam or a rejected approach as current: the fork map and the
+execute-task and inputs module docs offered auto-input inference (a
+rejected approach) as a plan; prepare.md offered `globalInputs` /
+`globalEnv` and a telemetry handle; the module index, plugin.md,
+plugin-host.md, orchestrator.md and the architecture walkthrough still
+described the `eventSink` seam removed in pipeline v2. All corrected
+to what exists; the grep for the class (`EventSink`, `inference`,
+`globalInputs`, `predictive`, `dashboard`) is clean outside history.
+
 **Red mains, each explained and pinned:** an ms-mtime precondition
 sampled the clock (stamped now); a 400-round guard past the 5 s
 timeout under four shards (30 s + cost hint); Linux racy-clean (the
