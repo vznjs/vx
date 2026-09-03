@@ -500,54 +500,38 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
 
 ## Next (ordered)
 
-1. **The shipped binary's second core.** A compiled `vx` loading a
-   `vx.workspace.ts` that imports `@vzn/vx` pulls a SECOND copy of core
-   from `node_modules` (source, ~12 ms) on every run, and cross-copy
-   `instanceof` does not hold (a plugin's `UserError` prints with a
-   stack). REFUTED 2026-09-03 as a runtime-plugin fix: Bun 1.4.0's
-   `Bun.plugin` `onResolve` never fires for bare package specifiers and
-   `onLoad` never fires for `.js`/`.ts` files (probed, both). Options
-   left: rewrite the config source before import (breaks relative
-   imports unless written beside the file) or a Bun fix. Parked — but
-   the USER-VISIBLE half closed 2026-09-03: `isUserError` classifies by
-   name across copies, so a plugin's refusal prints one line from the
-   binary and a REAPI refusal is never an "internal error". What
-   remains is the ~12 ms and the duplicate module state.
-2. **Audit rotation** — the newest code first. Done 2026-09-03: the
-   scripts mapper (two defects fixed), `getMany` (parity pinned), the
-   `commands` resolver under a broken workspace file (already pinned).
-   Done later the same day: the purity gate (three false SAFEs closed),
-   `armWatcher` workspace-wide mode (REFUTED as a gap — `cli.test.ts`
-   drives the single-root-watcher mode end to end including the
-   readiness line), the watch probe file reaching a cache key (REFUTED —
-   watchers arm after the initial run; a concurrent `vx run` in another
-   terminal could at worst see one self-healing miss); the shard runner's
-   exit on a signal-killed child (REFUTED — Bun resolves `exited` as
-   128+signal, a number, so an OOM-killed `bun test` reports 137, not
-   green; `process.exit(null)` would have been 0); the `schedule` stage
-   (REFUTED — later-plugin-wins, ordering with a control and the
-   non-finite refusal are pinned; `mergePriorities` keeps the baseline
-   for tasks a plugin does not score, so a partial map boosts rather
-   than starves; an unknown task id in a plugin's map is silently
-   ignored — ordering-only, so harmless); the npm distribution path end
-   to end (DONE — found the version stamp miss); `vx why` on plugin key
-   parts (REFUTED — a removed plugin reports `removed plugin
-org/tool/node-major`, a renamed one `added`; the removed shape is now
-   in the explainability pin); the launcher's fallback arms (DONE —
-   pinned); the shard helpers as declared inputs of the `test.N` tasks
-   (REFUTED — editing `tests/helpers/shard-deal.ts` or `tests/setup.ts`
-   moves the shard key, proven with `--dry`; a comment in `vx.config.ts`
-   does not, correctly, since the resolved object is what is hashed);
-   `armWatcher` on an unwritable directory (REFUTED as a hang — `ready`
-   is false in 4 ms with the watcher kept; now pinned).
-   `--download` × the shard runner's isolated process is a non-question:
-   an isolated process changes nothing about a run. Next: re-measure the
-   warm run after each day's work (the hot path is the product). Probes
-   become tests.
-3. **The watch e2e flake** — if `re-runs the task after a file change,
+1. **A live REAPI run of the whole graph.** `vx run ci --all` against a
+   NativeLink worker has not run since the barrel narrowing and the
+   by-name error classification (both 2026-09-03); the plugin's unit
+   half is green, the live files skip without an endpoint, and docker
+   was down on this machine that day. `tests/helpers/nativelink.md` has
+   the dev config. Expect nothing to change; prove it.
+2. **Streaming restore** — the one open memory item: a v27 restore
+   holds the decompressed artifact and a copy of every entry at once
+   (peak ~4.5× artifact size, +19% RSS on a 150 MB artifact). The
+   candidate is extract-then-rename on the same filesystem; NOT claimed
+   faster — measure against the current path first.
+   `tests/bun-archive-capabilities.test.ts` fails the day Bun gains
+   prefix stripping, which would make it simpler.
+3. **The shipped binary's second core.** A compiled `vx` loading a
+   `vx.workspace.ts` that imports `@vzn/vx` pulls a second copy of core
+   from `node_modules` (~12 ms) on every run. The user-visible half is
+   closed (`isUserError` classifies by name across copies); what remains
+   is the cost and the duplicate module state. REFUTED as a
+   runtime-plugin fix (Bun 1.4.0's `Bun.plugin` hooks never fire for
+   bare specifiers or `.ts`); options left are rewriting the config
+   source before import or a Bun fix. Parked.
+4. **The watch e2e flake** — if `re-runs the task after a file change,
 then exits on SIGINT` times out again, keep that run's stdout: the
    presence of `re-running...` separates a lost event from a slow
    re-run (see the 2026-09-03 watch entry).
+5. **Re-measure the warm run after each day's work** — the hot path is
+   the product. `bun bench/run.ts 100 5` and `1000 5`; an interleaved
+   A/B against an immutable worktree settles any gap (2026-09-03: flat).
+
+The audit rotation continues by the standing rule: newest code first,
+probes become tests, refutations recorded in the shipped entry that
+closes them.
 
 DECIDED 2026-09-03: `migrate`, `prune` and `upgrade` STAY in core. They
 are the first things a Turbo/Nx user and a Docker user run, and
