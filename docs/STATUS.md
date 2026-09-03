@@ -224,6 +224,17 @@ numbers; the key-derivation list and the caching guide gained the
 shape was wrong; and three "upstream hash" phrasings now say input
 key, never outputs.
 
+**Stale-hit class, caught by CI on a docs-only commit (2026-09-03
+evening).** The stat memo behind `Cache.hashFile` (mtime, size, ctime,
+inode, all floored to ms) reused a digest after a rewrite that landed
+in the same millisecond as the stat it had recorded — mtime restored,
+same size, same inode, same ctime to the ms — the racy-clean class
+git's index solves and the directory snapshot got in the morning. A
+file changed within `FILE_HASH_RACY_MS` (50) of the stat is now hashed
+but not memoised; pinned (a fresh file leaves no `file_hashes` row, an
+aged one does; fails without the fix). The warm path never meets the
+window.
+
 **Red mains, each explained and pinned:** RED MAIN 638281d (2026-09-03,
 mine): a pin's import never landed and the gate failed lint and a
 shard, but the commit was chained after a gate piped through `grep`,

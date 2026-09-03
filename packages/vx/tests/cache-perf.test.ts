@@ -6,7 +6,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile, utimes, stat, rename } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { Cache, type RunRecord } from '../src/cache/cache.js'
+import { Cache, type RunRecord, FILE_HASH_RACY_MS } from '../src/cache/cache.js'
 
 /** Git blob OID (sha1 domain — fixtures live outside any repo). */
 function blobOid(content: string): string {
@@ -100,6 +100,26 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     const secondHash = await cache.hashFile(f)
     expect(secondHash).not.toBe(firstHash)
     expect(secondHash).toBe(blobOid('BBBBBB'))
+  })
+
+  it('does not memoise a file changed within the racy window, and does once it has aged', async () => {
+    // A rewrite landing in the same tick as the recorded stat keeps ctime,
+    // size and inode equal (mtime can be restored), so a row stored from
+    // that tick would serve a stale digest. The row is withheld until the
+    // file is older than the window.
+    const f = path.join(dir, 'young.txt')
+    await writeFile(f, 'AAAAAA')
+    const first = await cache.hashFile(f)
+    const rows = () =>
+      (
+        cache.dbHandle().prepare('SELECT COUNT(*) AS n FROM file_hashes WHERE path = ?').get(f) as {
+          n: number
+        }
+      ).n
+    expect(rows()).toBe(0) // fresh: hashed, not memoised
+    await Bun.sleep(FILE_HASH_RACY_MS + 20)
+    expect(await cache.hashFile(f)).toBe(first)
+    expect(rows()).toBe(1) // aged: memoised now
   })
 
   it('does NOT reuse the digest across an atomic write-then-rename', async () => {

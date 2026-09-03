@@ -550,6 +550,9 @@ export const OUTPUT_DIRS_CAP = 256
  */
 export const OUTPUT_DIRS_RACY_MS = 50
 
+/** The stat memo's twin of `OUTPUT_DIRS_RACY_MS`: a file changed within this window of the stat is not memoised. */
+export const FILE_HASH_RACY_MS = 50
+
 /**
  * The shape every cache implementation honors. `Cache` (the local v10
  * implementation) and `LayeredCache` both `implements` this so the
@@ -1453,7 +1456,17 @@ export class Cache implements CacheLayer {
       return row.content_hash
     }
     const ch = await this.hashFileFromDisk(filePath)
-    this.upsertFileHash.run(filePath, mtimeMs, size, ctimeMs, ino, ch, Date.now())
+    // git's racy-clean rule, applied to the memo: a stat taken in the same
+    // tick as the file's last change cannot be trusted next time, because a
+    // rewrite landing in that tick keeps ctime (and, with mtime restored,
+    // every other field) equal and would hand back THIS digest for other
+    // bytes — seen once on ubuntu CI, on a docs-only commit. So a file
+    // changed within the window is hashed again on its next call rather
+    // than memoised; the warm path never meets it (keys are derived long
+    // after the files were written).
+    if (Date.now() - ctimeMs >= FILE_HASH_RACY_MS) {
+      this.upsertFileHash.run(filePath, mtimeMs, size, ctimeMs, ino, ch, Date.now())
+    }
     return ch
   }
 
