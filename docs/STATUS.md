@@ -290,6 +290,21 @@ Process: push directly to `main`, no PRs. Gate before every push:
   dropped) fails exactly its pin. `LayeredCache`/`ChainedCache` declare
   no `getMany`, so a remote-backed run takes the per-hash pool — by
   design (`hasRemote` skips the up-front classify anyway).
+- 2026-09-03 — **`docs/comparison.md` re-verified** against
+  `turbo@2.10.12`, `nx@23.2.0` and vite-task `main` (now Vite+'s
+  `vp run` engine), reading the upstream reference pages rather than
+  memory. Corrected: Turbo 2.10 deprecates its daemon, `--parallel`,
+  `--no-cache` and `--remote-only` (the flag map said otherwise); Nx's
+  skip-deps flag is `--excludeTaskDependencies`; Turbo `--continue`
+  values; both tools' output-mode vocabularies. Removed the
+  "transparent config-eval caching — rejected" entry (shipped
+  2026-09-02 as a purity GATE, which is why the earlier rejection no
+  longer applies), marked pre/post lifecycle shipped via `vx init`,
+  added the pipeline, `vx why`, the eval cache, the new plugins and the
+  npm distribution to "shipped" and "ahead", and rewrote the
+  remote-cache and executor divergences for a core that ships seams,
+  not wires. New flag-map rows: retries/timeouts, `--verify`,
+  placement/`--download`, run reports.
 
 ## In flight
 
@@ -306,12 +321,17 @@ Process: push directly to `main`, no PRs. Gate before every push:
    `onLoad` never fires for `.js`/`.ts` files (probed, both). Options
    left: rewrite the config source before import (breaks relative
    imports unless written beside the file) or a Bun fix. Parked.
-2. **`docs/comparison.md` refresh** — the feature matrix predates Turbo
-   2.10 / Nx 23 and vx's pipeline; re-verify every row against the
-   upstream repos it cites (the doc's own rule) and add the hooks.
-3. **Audit rotation** — the newest code first: the `commands` resolver
-   under a broken workspace file, `getMany` under a layered cache, the
-   scripts mapper on odd `package.json` shapes. Probes become tests.
+2. **Audit rotation** — the newest code first. Done 2026-09-03: the
+   scripts mapper (two defects fixed), `getMany` (parity pinned), the
+   `commands` resolver under a broken workspace file (already pinned).
+   Next candidates: `armWatcher` under the workspace-wide (single root
+   watcher) mode end to end; the config-eval cache's purity gate on
+   template literals and regex literals; `--download` × the shard
+   runner's isolated process. Probes become tests.
+3. **The watch e2e flake** — if `re-runs the task after a file change,
+   then exits on SIGINT` times out again, keep that run's stdout: the
+   presence of `re-running...` separates a lost event from a slow
+   re-run (see the 2026-09-03 watch entry).
 
 DECIDED 2026-09-03: `migrate`, `prune` and `upgrade` STAY in core. They
 are the first things a Turbo/Nx user and a Docker user run, and
