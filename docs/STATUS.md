@@ -233,7 +233,9 @@ git's index solves and the directory snapshot got in the morning. A
 file changed within `FILE_HASH_RACY_MS` (50) of the stat is now hashed
 but not memoised; pinned (a fresh file leaves no `file_hashes` row, an
 aged one does; fails without the fix). The warm path never meets the
-window.
+window. The pin first assumed the write and the hash land within the
+window and failed under the loaded gate; it now retries until an
+attempt provably lands inside it, measured from the file's own ctime.
 
 **Red mains, each explained and pinned:** RED MAIN 638281d (2026-09-03,
 mine): a pin's import never landed and the gate failed lint and a
@@ -252,25 +254,21 @@ passed once the load fell.
 
 ## In flight
 
-- **npm publishing moved to trusted publishing (2026-09-04) — one
-  owner step remains.** v0.0.18's publish went out on the classic
-  `NPM_TOKEN`: three packages live within minutes, `@vzn/vx` and
-  `@vzn/vx-linux-arm64` held by npm at "being processed" for over an
-  hour under npm's restriction of tokens that bypass 2FA (v0.0.17 had
-  died on the same token with `E401`). `npm.yml` no longer reads any
-  token: both publish steps rely on the job's OIDC exchange (`id-token:
-  write`, npm ≥ 11.5.1 guarded on both jobs), pass `--provenance`
-  explicitly, run under a default-deny top-level `permissions: {}`,
-  and every action in `npm.yml` and `release.yml` is pinned to a commit
-  SHA. The npm build script writes the object-form `repository` that
-  npm was rewriting with a warning on every publish. OWNER STEP: on
-  npmjs.com, add the GitHub Actions trusted publisher (owner `vznjs`,
-  repo `vx`, workflow `npm.yml`, no environment) to each of the five
-  packages, then delete the `NPM_TOKEN` secret; then either wait for
-  npm to release the two held 0.0.18 packages or dispatch `npm publish`
-  with `0.0.18` — the loops skip the three already live. Documented in
-  `docs/cli.md` § Releasing. A publish cannot be exercised locally; the
-  next release is the proof.
+- **v0.0.18 is fully on npm; one owner step remains before the next
+  release.** npm released the two held packages about ninety minutes
+  after the publish: all five serve 0.0.18 as `latest` (2026-09-04
+  00:20Z). `npm.yml` now publishes with trusted publishing only — no
+  token read anywhere, `--provenance` explicit, the npm ≥ 11.5.1 +
+  sigstore guard on both jobs, `permissions: {}` at the top, every
+  action in `npm.yml` and `release.yml` pinned to a commit SHA, and the
+  object-form `repository` npm was rewriting. OWNER STEP before the next
+  release: on npmjs.com add the GitHub Actions trusted publisher (owner
+  `vznjs`, repo `vx`, workflow `npm.yml`, no environment) to each of the
+  five packages, then delete the `NPM_TOKEN` secret (it is no longer
+  read; npm restricts it — v0.0.17's `E401`, v0.0.18's hold). A publish
+  cannot be exercised locally; a `workflow_dispatch` with `dry_run`
+  proves the build half, the next release proves the auth half.
+  Documented in `docs/cli.md` § Releasing.
 
 ## Next (ordered)
 
