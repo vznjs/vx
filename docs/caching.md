@@ -102,6 +102,13 @@ over (in order):
     files also yields every tracked file's OID — so deriving these
     hashes costs zero file reads, zero per-file stats, zero SQLite
     lookups.
+12. **Plugin key material** — the `{ name: value }` pairs a plugin's
+    `key(task, ctx)` stage returned for this task, stored on the node as
+    sorted `plugin/name` pairs and folded after the upstream keys,
+    ONLY when non-empty — so a workspace with no `key` plugin derives
+    byte-identical keys to one before the stage existed (no
+    `CACHE_VERSION` bump when it shipped). `vx why` names a changed pair
+    as `plugin <plugin>/<name>`.
 
     Your globs are a **filter over the set git reports**, so a filter
     can only ever remove — a gitignored file can never be filtered back
