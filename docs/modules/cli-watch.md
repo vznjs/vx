@@ -46,8 +46,13 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
    - For the workspace root, `fs.watch(root, { recursive: false })`
      — only fingerprint files (`pnpm-lock.yaml` / `bun.lock` / …)
      trigger.
-   - Filter out `node_modules` / `.git` / `.vx` path segments and
-     `.tsbuildinfo` / `~` suffixes (editor swap files).
+   - Filter out `node_modules` / `.git` / `.vx` path segments,
+     `.tsbuildinfo` / `~` suffixes (editor swap files), the RESOLVED
+     cache directory (a relocated `cacheDir` would otherwise re-trigger
+     every cycle), and each project's declared outputs
+     (`cache.outputs.files`, root-relative `workspaceFiles`) — a cycle
+     that writes `dist/` is not an edit (`makeWatchIgnore`, pinned in
+     `tests/watch-rules.test.ts`).
    - Debounce events `~150ms` after the last one before triggering a
      cycle.
    - Reentrancy guard: while a cycle is running, further events set
