@@ -475,7 +475,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // trusted OID — so a declared output the producer deletes and does not
       // re-create would stay in a same-project consumer's input set, keeping
       // that consumer's key unchanged while the file is gone from disk.
+      const endClean = span('miss: clean outputs')
       const cleanedRels = await cleanOutputs(cleanArgs)
+      endClean()
       args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
     }
     if (willWrite && !deferralRequested && wsOutputs.length > 0) {
@@ -485,7 +487,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, cleanedWsRels)
     }
     violations = []
+    const endReq = span('miss: build request')
     const req = await buildRequest()
+    endReq()
     // An executor that THROWS produces no captured output, so the task's
     // frame would print the command and nothing else while the reason went
     // straight to stderr and scrolled away in a broad run. Put it in the
@@ -493,11 +497,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // task failed, and a remote executor's failures are exactly the ones with
     // no other trace. Rethrown unchanged — the scheduler still classifies it,
     // and still prints it plainly for a UserError.
+    const endExec = span('miss: execute')
     const res = await args.executor.execute(req).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err)
       log.taskStderr(node, `${message}\n`)
       throw err
     })
+    endExec()
     violations = [...res.violations]
     // Fail-on-violation, on BOTH platforms: macOS reads SRT's structured
     // violation store, Linux parses the strace log the sandboxed spawn
@@ -682,6 +688,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
     }
   } else if (effectiveExitCode === 0 && willWrite) {
+    const endResolve = span('miss: resolve outputs')
     const outputFiles = await resolveOutputs({
       projectDir: node.projectDir,
       outputs,
@@ -691,6 +698,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       workspaceRoot: args.workspaceRoot,
       outputs: wsOutputs,
     })
+    endResolve()
+    const endSave = span('miss: save')
     // Tier-3 input fingerprint: the digest rows captured by the pre-exec
     // describe above, persisted with the entry inside `cache.save`'s
     // transaction. Miss path only — the warm/hit path never reaches here.
@@ -712,6 +721,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         stdout: result.stdout,
       },
     })
+    endSave()
     {
       const savedDirPrefixes = wholeSubtreePrefixes(outputs)
       if (savedDirPrefixes !== null) {

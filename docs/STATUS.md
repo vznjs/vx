@@ -260,6 +260,21 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    batched inserts (4 ms after `runs_hash` went). The next real win is
    structural (not needing a walk), not another stage shave; fsmonitor,
    untracked cache and `-unormal` are refuted (see Shipped).
+   COLD floors (same bench, cache wiped, `VX_TIMING=1` — the miss path
+   carries spans since 2026-09-03): 2.06 s wall for 1,000 `echo` tasks at
+   concurrency 10, i.e. ~20 ms per task-slot: execute 13.8 ms, save 3.6,
+   resolve outputs 1.4, clean 0.6, task hash 0.01; cold config load 340
+   ms (1,000 evaluations, no eval cache yet). Of the 13.8, the shell IS
+   the floor on macOS: bare `sh -c 'echo built'` costs 9.2 ms per slot
+   at 10 concurrent against 2.5 for `/bin/echo` spawned directly
+   (stable over three rounds; `runCommand` adds 0.2 over the bare
+   spawn). LEAD, not taken: spawning a shell-free command (`tsc -b`,
+   `vitest run`) directly would save ~7 ms per task-slot on macOS and
+   ~0 on Linux (dash starts in ~1 ms), against the principle that the
+   shell is the API — PATH order, builtins, `command not found` → 127,
+   scripts without a shebang all have to read identically. The headline
+   shape's tasks use `&&`, so its rows would not move. Decide with the
+   owner.
 
 ## Decisions (this arc)
 
