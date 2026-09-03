@@ -86,8 +86,8 @@ the restore case and ties the cold one; Nx is 7× off. The remaining
 fixed cost at this size is process start + git, not the pipeline.
 
 The same harness at **476 packages / 1,428 graph nodes**
-(`bench/compare.ts 20 25 1`, same day, same machine — the committed
-`bench/RESULTS.md`):
+(`bench/compare.ts 20 25 1`, 2026-09-02, same machine; a mid-size data
+point — the committed `bench/RESULTS.md` is the 3,270-task run below):
 
 | Runner      | Fresh (cold) | Warm (no restore) | Warm (restore) |
 | ----------- | ------------ | ----------------- | -------------- |

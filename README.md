@@ -4,8 +4,10 @@
 
 vx runs your task graph, remembers every result, and never does the
 same work twice. Fully cached runs finish in milliseconds — 76 ms
-across 46 packages, 297 ms across a 476-package graph of 1,428 tasks,
-where Turborepo takes 342 ms and Nx 1.38 s on the identical workspace.
+across 46 packages, 559 ms across a 1,090-package graph of 3,270 tasks,
+where Turborepo takes 760 ms and Nx 3.59 s on the identical workspace —
+and a cold build of that graph burns 34 s of CPU in vx, 73 s in Turborepo
+and 114 minutes in Nx.
 Measured, reproducible, on hardware you own
 ([benchmarks](docs/benchmarks.md)).
 
@@ -141,17 +143,17 @@ task graph, derive keys, schedule, execute, cache, observe. Plugins
 declared in `vx.workspace.ts` hook each stage, Vite-style, on one
 `VxPlugin` object:
 
-| Stage      | Hook                         | A plugin can…                                              |
-| ---------- | ---------------------------- | ---------------------------------------------------------- |
-| workspace  | `config(ws, ctx)`            | edit the workspace config before it is used                |
-| project    | `project(config, ctx)`       | add, remove or rewrite a project's tasks (keyed like yours) |
-| graph      | `graph(nodes, ctx)`          | add or drop edges, mark tasks requested                    |
-| key        | `key(task, ctx)`             | fold extra material into the cache key (named in `vx why`) |
-| schedule   | `schedule(nodes, ctx)`       | decide which ready task runs first                         |
-| execute    | `executor(ctx)`              | decide WHERE a task's command runs (local, a REAPI worker) |
-| store      | `cache(ctx)`                 | decide where artifacts live (local, a shared remote)       |
-| observe    | `telemetry(ctx)` / `setup`   | receive every run record, or the raw event bus             |
-| cli        | `commands`                   | add verbs to `vx`                                          |
+| Stage     | Hook                       | A plugin can…                                               |
+| --------- | -------------------------- | ----------------------------------------------------------- |
+| workspace | `config(ws, ctx)`          | edit the workspace config before it is used                 |
+| project   | `project(config, ctx)`     | add, remove or rewrite a project's tasks (keyed like yours) |
+| graph     | `graph(nodes, ctx)`        | add or drop edges, mark tasks requested                     |
+| key       | `key(task, ctx)`           | fold extra material into the cache key (named in `vx why`)  |
+| schedule  | `schedule(nodes, ctx)`     | decide which ready task runs first                          |
+| execute   | `executor(ctx)`            | decide WHERE a task's command runs (local, a REAPI worker)  |
+| store     | `cache(ctx)`               | decide where artifacts live (local, a shared remote)        |
+| observe   | `telemetry(ctx)` / `setup` | receive every run record, or the raw event bus              |
+| cli       | `commands`                 | add verbs to `vx`                                           |
 
 Core applies **no plugin by default** — even its own local executor and
 cache are plugins your workspace declares, which is what makes "replace
@@ -281,16 +283,16 @@ Production readiness for the **core task runner**: the semantics are
 solid; it is dogfooded continuously. The main operational rough edge
 is Windows (unsupported).
 
-| Surface                                        | Maturity                | Notes                                                                  |
-| ---------------------------------------------- | ----------------------- | ---------------------------------------------------------------------- |
-| Core task runner + caching                     | **production-ready**    | dogfooded continuously; ~2,500 core tests + the package suites, green   |
-| `vx run --verify` (provable cache correctness) | **shippable**           | determinism + input-completeness proofs; CI-gate recipe in docs        |
-| Plugin pipeline (9 hooks, `commands` included) | **shippable**           | crash-isolated, re-validated; core's own executor + cache are plugins  |
-| `vx init` / `vx migrate` (scripts, Turbo, Nx)  | **shippable**           | one config per package, TODOs where a source cannot say                |
-| REAPI remote cache + execution (`@vzn/vx-reapi`) | **shippable**         | Bazel AC + CAS + Execute; NativeLink / BuildBuddy / Buildbarn / bazel-remote |
-| OTel export (`@vzn/vx-otel`)                   | **shippable**           | OTLP traces + metrics + logs, zero SDK deps                            |
-| GitHub Actions (`@vzn/vx-github`)              | **shippable**           | job summary + Checks API run                                           |
-| MCP server (`@vzn/vx-mcp`)                     | **shippable**           | `vx mcp` — read-only tools for AI agents, no SDK                       |
+| Surface                                          | Maturity             | Notes                                                                        |
+| ------------------------------------------------ | -------------------- | ---------------------------------------------------------------------------- |
+| Core task runner + caching                       | **production-ready** | dogfooded continuously; ~2,500 core tests + the package suites, green        |
+| `vx run --verify` (provable cache correctness)   | **shippable**        | determinism + input-completeness proofs; CI-gate recipe in docs              |
+| Plugin pipeline (9 hooks, `commands` included)   | **shippable**        | crash-isolated, re-validated; core's own executor + cache are plugins        |
+| `vx init` / `vx migrate` (scripts, Turbo, Nx)    | **shippable**        | one config per package, TODOs where a source cannot say                      |
+| REAPI remote cache + execution (`@vzn/vx-reapi`) | **shippable**        | Bazel AC + CAS + Execute; NativeLink / BuildBuddy / Buildbarn / bazel-remote |
+| OTel export (`@vzn/vx-otel`)                     | **shippable**        | OTLP traces + metrics + logs, zero SDK deps                                  |
+| GitHub Actions (`@vzn/vx-github`)                | **shippable**        | job summary + Checks API run                                                 |
+| MCP server (`@vzn/vx-mcp`)                       | **shippable**        | `vx mcp` — read-only tools for AI agents, no SDK                             |
 
 ## Development
 
