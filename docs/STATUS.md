@@ -154,7 +154,10 @@ proven closed — see Next § 4). The cache dir writes its own
 `.gitignore`. Replayed and found working as documented: every verb,
 the policy flags, a failing task, a persistent task, `--affected`, the
 plugin author's first plugin from the guide (which gained § Testing
-your plugin), and the same first run through the compiled binary.
+your plugin), the same first run through the compiled binary, and
+`vx migrate` on a scratch Turborepo (negated outputs and the
+persistent task get exact TODOs, `env` passes through, global inputs
+become `vx-preset.ts`).
 
 **Audits with pins (each mutation fails exactly its pin).** Config-eval
 purity gate closed against `\u0070rocess`, `global`/`self` aliases and
@@ -190,7 +193,11 @@ passed once the load fell.
    NativeLink worker has not run since the barrel narrowing and the
    by-name error classification (both 2026-09-03); the plugin's unit
    half is green, the live files skip without an endpoint, and docker
-   was down on this machine that day. `tests/helpers/nativelink.md` has
+   was down on this machine all day. Without docker, `brew install
+   bazel-remote` (bottled, 2.6.2) gives the remote-CACHE half a server
+   in one step (`bazel-remote --dir <tmp> --grpc_address :9092`, then
+   `VX_REAPI_TEST_ENDPOINT=grpc://localhost:9092`); execution still
+   needs NativeLink. Left for the owner: it is a download. `tests/helpers/nativelink.md` has
    the dev config. Expect nothing to change; prove it.
 2. **The remote seam still moves whole artifacts.** With save, ingest
    and restore bounded, `RemoteCacheLayer` is the last place a large
