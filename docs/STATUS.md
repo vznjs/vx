@@ -537,7 +537,9 @@ org/tool/node-major`, a renamed one `added`; the removed shape is now
    pinned); the shard helpers as declared inputs of the `test.N` tasks
    (REFUTED — editing `tests/helpers/shard-deal.ts` or `tests/setup.ts`
    moves the shard key, proven with `--dry`; a comment in `vx.config.ts`
-   does not, correctly, since the resolved object is what is hashed).
+   does not, correctly, since the resolved object is what is hashed);
+   `armWatcher` on an unwritable directory (REFUTED as a hang — `ready`
+   is false in 4 ms with the watcher kept; now pinned).
    `--download` × the shard runner's isolated process is a non-question:
    an isolated process changes nothing about a run. Next: re-measure the
    warm run after each day's work (the hot path is the product). Probes

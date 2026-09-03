@@ -7,7 +7,7 @@
 // worker the OS kills fires no `error` event and its caller waits forever.
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import fs, { existsSync } from 'node:fs'
+import fs, { chmodSync, existsSync } from 'node:fs'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import path from 'node:path'
@@ -243,4 +243,28 @@ describe('armWatcher against a fake fs.watch', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+})
+
+// An unwritable watched directory (a project made read-only, or removed and
+// recreated under a stricter mode) cannot take a probe: `ready` is false at
+// once — no wait on an impossible write — and the watcher is kept, so a later
+// permission fix still delivers. Executed 2026-09-03 (4 ms, no throw).
+describe('armWatcher on an unwritable directory', () => {
+  it.skipIf(process.getuid?.() === 0)(
+    'reports not-ready immediately and keeps the watcher',
+    async () => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-ro-'))
+      chmodSync(dir, 0o500)
+      try {
+        const t0 = Date.now()
+        const armed = armWatcher(dir, true, () => {}, 2_000)
+        expect(await armed.ready).toBe(false)
+        expect(Date.now() - t0).toBeLessThan(1_000) // it did not sit out the 2 s budget
+        armed.watcher.close()
+      } finally {
+        chmodSync(dir, 0o700)
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+  )
 })
