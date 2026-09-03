@@ -59,14 +59,18 @@ jobs:
           if [ -z "$RAW" ]; then echo "no version (not a release and no input)"; exit 1; fi
           echo "version=${RAW#v}" >> "$GITHUB_OUTPUT"
       - run: bun install --frozen-lockfile
+      # packages/vx/package.json is the manifest `src/version.ts` inlines;
+      # stamping the root one (as this did until 2026-09-03) leaves the
+      # binary at `vx 0.0.0`. The build step asserts the stamp took.
       - name: Stamp version
         run: |
-          bun -e 'const p = await Bun.file("package.json").json(); p.version = process.argv[1]; await Bun.write("package.json", JSON.stringify(p, null, 2) + "\n")' "${{ steps.version.outputs.version }}"
+          bun -e 'const f = "packages/vx/package.json"; const p = await Bun.file(f).json(); p.version = process.argv[1]; await Bun.write(f, JSON.stringify(p, null, 2) + "\n")' "${{ steps.version.outputs.version }}"
       - name: Build, sign and prove the darwin binaries
         run: |
           bun packages/vx/src/bin.ts run build.bun.darwin-x64 build.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
           for f in packages/vx/dist/vx-darwin-*; do codesign -s - --force "$f"; codesign --verify --verbose=2 "$f"; done
-          packages/vx/dist/vx-darwin-arm64 --version
+          GOT="$(packages/vx/dist/vx-darwin-arm64 --version)"
+          test "$GOT" = "vx ${{ steps.version.outputs.version }}" || { echo "binary reports '$GOT', expected 'vx ${{ steps.version.outputs.version }}'"; exit 1; }
       - name: Assemble the darwin platform packages
         run: |
           bun scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=darwin-x64 --out=dist/npm
@@ -166,13 +170,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Stamp the version into package.json BEFORE compiling — `vx --version`
-      # reads it from package.json (inlined by `bun build --compile`), so the
-      # binary must be built with the release version in place. Ephemeral (CI
-      # only, never committed).
+      # Stamp the version into packages/vx/package.json BEFORE compiling —
+      # `src/version.ts` inlines THAT manifest under `bun build --compile`,
+      # so the binary must be built with the release version in place (the
+      # root manifest, stamped here until 2026-09-03, is read by nothing).
+      # Ephemeral (CI only, never committed).
       - name: Stamp version
         run: |
-          bun -e 'const p = await Bun.file("package.json").json(); p.version = process.argv[1]; await Bun.write("package.json", JSON.stringify(p, null, 2) + "\n")' "${{ steps.version.outputs.version }}"
+          bun -e 'const f = "packages/vx/package.json"; const p = await Bun.file(f).json(); p.version = process.argv[1]; await Bun.write(f, JSON.stringify(p, null, 2) + "\n")' "${{ steps.version.outputs.version }}"
 
       # Cross-compile the four standalone binaries (fanned out + cached by
       # vx). --concurrency 2: concurrent `--compile --minify --bytecode`
@@ -180,8 +185,11 @@ jobs:
       # Linux targets only — the darwin binaries come from the `darwin` job
       # below, which can sign them. `vx run build.bun.<target>` is one task
       # per target with its own cache slot.
-      - name: Build linux binaries
-        run: bun packages/vx/src/bin.ts run build.bun.linux-x64 build.bun.linux-arm64 --filter @vzn/vx --concurrency 2
+      - name: Build linux binaries and prove the stamp took
+        run: |
+          bun packages/vx/src/bin.ts run build.bun.linux-x64 build.bun.linux-arm64 --filter @vzn/vx --concurrency 2
+          GOT="$(packages/vx/dist/vx-linux-x64 --version)"
+          test "$GOT" = "vx ${{ steps.version.outputs.version }}" || { echo "binary reports '$GOT', expected 'vx ${{ steps.version.outputs.version }}' — the stamp missed the manifest the binary inlines"; exit 1; }
       - name: Assemble npm tree (linux platform packages + @vzn/vx)
         run: |
           bun scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-x64 --out=dist/npm

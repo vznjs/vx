@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // npm launcher for a vx command — the entry a published package's `bin` points
 // at. It execs the prebuilt standalone binary shipped as a per-platform
-// optionalDependency, so end users get the command WITHOUT installing Bun. ONE
-// launcher serves both `@vzn/vx` and `@vzn/vx-cloud`: everything is derived from
-// this package's OWN name, read from the package.json sitting beside this file.
+// optionalDependency, so end users get the command WITHOUT installing Bun.
+// Everything is derived from this package's OWN name, read from the
+// package.json sitting beside this file, so any package built by
+// scripts/build-npm.ts can carry it:
 //
-//   @vzn/vx        → platform pkg @vzn/vx-<key>,        binary `vx`
-//   @vzn/vx-cloud  → platform pkg @vzn/vx-cloud-<key>,  binary `vx-cloud`
+//   @vzn/vx → platform pkg @vzn/vx-<key>, binary `vx`
 //
 // Resolution order:
 //   1. the matching <name>-<platform> optionalDependency's binary (the normal
@@ -26,11 +26,10 @@ const require = createRequire(import.meta.url)
 const here = dirname(fileURLToPath(import.meta.url))
 const pkg = require('./package.json')
 
-// Derive the platform-package prefix + binary basename from this package's name
-// so the same launcher works for @vzn/vx and @vzn/vx-cloud. `base` is the
-// unscoped name (vx / vx-cloud) — the command AND the binary filename inside the
-// platform package. `vxSourceEntry` (a package.json field) is the source-mode
-// entry: `src/bin.ts` for vx, `src/cli/bin.ts` for vx-cloud.
+// Derive the platform-package prefix + binary basename from this package's
+// name. `base` is the unscoped name — the command AND the binary filename
+// inside the platform package. `vxSourceEntry` (a package.json field) is the
+// source-mode entry, `src/bin.ts` by default.
 const name = pkg.name
 const base = name.replace(/^@[^/]+\//, '')
 const sourceEntry = pkg.vxSourceEntry ?? 'src/bin.ts'

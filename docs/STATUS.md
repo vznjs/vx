@@ -79,11 +79,11 @@ Process: push directly to `main`, no PRs. Gate before every push:
   `--version` 25 → 36 ms and the warm run 79 → 98 ms; Bun loads the
   169-module source tree faster than it parses a 1.2 MB file.
 - 2026-09-02 — **perf wave 3.** `CacheLayer.getMany?` (one `entries`
-  + one `output_files` query per 900 hashes, artifact stats in flight
-  together); the local short-circuit probes through it when the layer
-  offers it. `CacheEntry.outputRows` carries the rows so `restoreHit`
-  stops re-querying. Compiled `Bun.Glob`s memoised per pattern. A/B on
-  `run test --all` (2000 tasks with deps): 328 → 311 ms.
+  - one `output_files` query per 900 hashes, artifact stats in flight
+    together); the local short-circuit probes through it when the layer
+    offers it. `CacheEntry.outputRows` carries the rows so `restoreHit`
+    stops re-querying. Compiled `Bun.Glob`s memoised per pattern. A/B on
+    `run test --all` (2000 tasks with deps): 328 → 311 ms.
 - 2026-09-03 — **pipeline v2, phase 1.** The deprecated `eventSink` seam
   is gone (`setup(ctx)` on the bus and `telemetry` are the two observe
   paths). Three pipeline stages on `VxPlugin`: `config(ws, ctx)`,
@@ -103,11 +103,11 @@ Process: push directly to `main`, no PRs. Gate before every push:
   stays unknown (in and out of a workspace), malformed entries refused
   by the loader.
 - 2026-09-03 — **pipeline v2, phase 3: `key` + `schedule`.** `key(task,
-  ctx)` returns `{ name: value }` material stored on the node
+ctx)` returns `{ name: value }` material stored on the node
   (`TaskNode.keyParts`, sorted `plugin/name` pairs) and folded by
   `Cache.key` as `plugin` components — only when non-empty, so every
   existing key is unchanged (no `CACHE_VERSION` bump). `schedule(nodes,
-  ctx)` returns task → weight, merged over the scheduler's baseline
+ctx)` returns task → weight, merged over the scheduler's baseline
   (later plugin wins per task); `ctx.localCache` gives a policy the run
   history. The removed predictive mode is back as the reference plugin
   `@vzn/vx/plugins/schedule-history` (its priority function and tests
@@ -258,7 +258,7 @@ Process: push directly to `main`, no PRs. Gate before every push:
   (each mutation fails exactly its pin). `docs/cli.md` § `vx init`.
 - 2026-09-03 — **`vx watch` proves each watcher delivers before saying
   "watching".** The watch e2e (`re-runs the task after a file change,
-  then exits on SIGINT`) timed out at 45 s in one sharded gate run, its
+then exits on SIGINT`) timed out at 45 s in one sharded gate run, its
   third recorded timeout (two on darwin CI). MEASURED a real race: on
   macOS a recursive `fs.watch` returns before its FSEvents stream is
   live, and a write made immediately after it is lost 5/30 under CPU
@@ -334,7 +334,7 @@ Process: push directly to `main`, no PRs. Gate before every push:
   never), and an isolated file gets its own process. Two mutations fail
   exactly their pins. OBSERVED in this wave's first gate run and
   recorded rather than retried silently: `--verify=all reports
-  undeclared-inputs … for a leaky task` returned `ok: true` once — the
+undeclared-inputs … for a leaky task` returned `ok: true` once — the
   documented macOS reporting-loss residual (denial enforced, unified-log
   record dropped under load, ~2% on loaded runs). The sharded gate loads
   this machine the way CI loads a runner, so the residual that darwin CI
@@ -350,6 +350,23 @@ Process: push directly to `main`, no PRs. Gate before every push:
   `UserError` naming the plugin and verb; pinned with a control
   (an integer still passes through); the mutation fails exactly the
   pin. The plugins guide says so at the `return 0` line.
+- 2026-09-03 — **the npm distribution path run end to end locally, and
+  it found the version stamp missing its target.** Assembled the
+  darwin-arm64 tree with `scripts/build-npm.ts`, packed both packages,
+  `npm install`ed the tarballs into a temp project, and drove `vx
+--version`, `vx init` and a cached `vx run` through the Node launcher:
+  all work. But the launcher reported `vx 0.0.0` for a `0.0.0-e2e`
+  package, and the cause is in both workflows: they stamp the ROOT
+  `package.json` while `src/version.ts` inlines `packages/vx/package.json`
+  — a pre-move assumption, so since 2026-08-26 every release binary
+  would have said `vx 0.0.0`. PROVEN by reproduction (root stamp →
+  `0.0.0`; core stamp → `9.9.9`). No release has shipped since the move,
+  so no user saw it. All three stamp steps (release assets, the npm
+  darwin job, the npm linux job) now stamp the core manifest AND each
+  job asserts a built binary's `--version` equals the stamped version, so
+  a future move fails the release instead of shipping a mislabelled
+  binary. Also trimmed the launcher's `@vzn/vx-cloud` framing (removed
+  product).
 
 ## In flight
 
@@ -377,11 +394,17 @@ Process: push directly to `main`, no PRs. Gate before every push:
    terminal could at worst see one self-healing miss); the shard runner's
    exit on a signal-killed child (REFUTED — Bun resolves `exited` as
    128+signal, a number, so an OOM-killed `bun test` reports 137, not
-   green; `process.exit(null)` would have been 0). Next candidate:
-   `--download` × the shard runner's isolated process. Probes become
-   tests.
+   green; `process.exit(null)` would have been 0); the `schedule` stage
+   (REFUTED — later-plugin-wins, ordering with a control and the
+   non-finite refusal are pinned; `mergePriorities` keeps the baseline
+   for tasks a plugin does not score, so a partial map boosts rather
+   than starves; an unknown task id in a plugin's map is silently
+   ignored — ordering-only, so harmless). Next candidates: the npm
+   distribution path end to end on this machine (assemble → pack →
+   install into a temp project → launcher runs); `--download` × the
+   shard runner's isolated process. Probes become tests.
 3. **The watch e2e flake** — if `re-runs the task after a file change,
-   then exits on SIGINT` times out again, keep that run's stdout: the
+then exits on SIGINT` times out again, keep that run's stdout: the
    presence of `re-running...` separates a lost event from a slow
    re-run (see the 2026-09-03 watch entry).
 

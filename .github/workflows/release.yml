@@ -26,15 +26,17 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
 
-      # Stamp the release version into package.json BEFORE compiling — the
-      # binary reads its version from package.json (inlined by
-      # `bun build --compile`), so without this the attached binaries would
-      # report `vx 0.0.0`. Ephemeral (CI only, never committed).
+      # Stamp the release version into packages/vx/package.json BEFORE
+      # compiling — `src/version.ts` inlines THAT manifest under
+      # `bun build --compile`. Since core moved into packages/vx
+      # (2026-08-26) this step stamped the ROOT manifest, which nothing
+      # reads, so every binary would have reported `vx 0.0.0`; proven by
+      # reproduction 2026-09-03 and asserted below. Ephemeral (CI only).
       - name: Stamp version
         run: |
           VERSION="${{ github.event.release.tag_name }}"
           VERSION="${VERSION#v}"
-          bun -e 'const p = await Bun.file("package.json").json(); p.version = process.argv[1]; await Bun.write("package.json", JSON.stringify(p, null, 2) + "\n")' "$VERSION"
+          bun -e 'const f = "packages/vx/package.json"; const p = await Bun.file(f).json(); p.version = process.argv[1]; await Bun.write(f, JSON.stringify(p, null, 2) + "\n")' "$VERSION"
 
       # Dogfood: `build` fans out to `build.bun.<target>`
       # (8 compiles). Each sub-task is individually cached, so re-running this
@@ -73,7 +75,10 @@ jobs:
         run: |
           chmod +x dist/vx-darwin-*
           for f in dist/vx-darwin-*; do codesign -s - --force "$f"; codesign --verify --verbose=2 "$f"; done
-          ./dist/vx-darwin-arm64 --version
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          GOT="$(./dist/vx-darwin-arm64 --version)"
+          test "$GOT" = "vx $VERSION" || { echo "binary reports '$GOT', expected 'vx $VERSION' — the version stamp missed the manifest the binary inlines"; exit 1; }
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
