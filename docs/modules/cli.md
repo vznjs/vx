@@ -65,9 +65,10 @@ See:
 - No tab completion.
 - No subcommand aliases beyond the help / version sugar and the
   deprecated `stats` → `info`.
-- No service commands — `serve` / `dev` / `coordinator` / `worker`
-  belong to the separate service package's binary (core has no service
-  CLI).
+- No service commands — there is no daemon, server or worker verb in
+  core and no separate service package (removed 2026-09-02). A plugin
+  that wants a verb adds it through `commands`; `vx mcp` is the
+  reference.
 
 ## Tests
 
