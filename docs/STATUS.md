@@ -935,7 +935,13 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
    and after. Not started.
 3. **The shipped binary's second core.** A compiled `vx` loading a
    `vx.workspace.ts` that imports `@vzn/vx` pulls a second copy of core
-   from `node_modules` (~12 ms) on every run. The user-visible half is
+   from `node_modules` (~12 ms) on every run — and makes a binary user
+   install the package at all. REFUTED 2026-09-03 as a runtime fix: a
+   `Bun.plugin` `onResolve` hook registered by the binary never fires
+   for a bare specifier imported by a dynamically imported user file
+   (Bun 1.4.0, probed in plain `bun` with a `.ts` and a `.mjs` user
+   file), so the binary cannot serve its bundled core to the workspace
+   file that way. The user-visible half is
    closed (`isUserError` classifies by name across copies); what remains
    is the cost and the duplicate module state — and the cost is NOT
    measurable as an A/B from a workspace file (2026-09-03): a workspace
