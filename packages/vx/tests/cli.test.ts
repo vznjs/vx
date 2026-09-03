@@ -960,6 +960,11 @@ describe('parseRunArgs', () => {
   it('parses --concurrency (no short alias)', () => {
     expect(parseRunArgs(['build', '--concurrency', '2']).concurrency).toBe(2)
     expect(parseRunArgs(['build', '-c', '4']).error).toMatch(/unknown flag: -c/)
+    // A near miss names the documented flag; a far one gets no guess.
+    expect(parseRunArgs(['build', '--concurency', '4']).error).toBe(
+      'unknown flag: --concurency (did you mean --concurrency?)',
+    )
+    expect(parseRunArgs(['build', '--zzz']).error).toBe('unknown flag: --zzz')
   })
 
   it('parses --cache-dir (space + = forms) without colliding with --cache', () => {

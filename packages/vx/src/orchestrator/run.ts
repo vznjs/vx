@@ -23,7 +23,7 @@ import {
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
-import { mark, MAX_TIMEOUT_MS, printTimings, ulid, UserError } from '../util/index.js'
+import { mark, MAX_TIMEOUT_MS, printTimings, ulid, UserError, editDistance } from '../util/index.js'
 import { executeTask } from './execute-task.js'
 import { resolveResourceCosts } from './resources.js'
 import { computeTaskHash } from './task-hash.js'
@@ -1335,21 +1335,4 @@ function didYouMean(
     if (best !== undefined && best !== name) hints.push(best)
   }
   return hints.length === 0 ? '' : ` Did you mean ${hints.join(', ')}?`
-}
-
-function editDistance(a: string, b: string): number {
-  if (Math.abs(a.length - b.length) > 2) return 3
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
-  for (let i = 1; i <= a.length; i++) {
-    const cur = [i]
-    for (let j = 1; j <= b.length; j++) {
-      cur[j] = Math.min(
-        prev[j]! + 1,
-        cur[j - 1]! + 1,
-        prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
-      )
-    }
-    prev = cur
-  }
-  return prev[b.length]!
 }

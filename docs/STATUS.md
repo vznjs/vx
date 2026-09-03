@@ -162,7 +162,13 @@ become `vx-preset.ts`) and on a scratch Nx graph (named inputs expand,
 common executors (`@nx/vite:*`, `@nx/vitest:test`, `@nx/jest:jest`,
 `@nx/eslint:lint`, `@nx/js:tsc`) now become their CLI under a TODO
 naming the executor instead of an exit-1 placeholder; pinned with the
-unknown-executor control, fails without the table.
+unknown-executor control, fails without the table. A mistyped flag
+names the documented one within two edits (`--concurency` → `did you
+mean --concurrency?`), the candidates read from the help text so no
+second list drifts; `editDistance` lives in `util/`. And the plugins
+guide's promise that its code is real is pinned:
+`tests/docs-snippets.test.ts` type-checks every block against the
+façade (13 of 14; the contract sketch is skipped by rule).
 
 **Audits with pins (each mutation fails exactly its pin).** Config-eval
 purity gate closed against `\u0070rocess`, `global`/`self` aliases and

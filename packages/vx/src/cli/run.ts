@@ -1,6 +1,7 @@
 import readline from 'node:readline/promises'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
+import { documentedFlags } from './help.js'
 import {
   affectedProjects,
   applyFilters,
@@ -27,7 +28,7 @@ import {
 import type { ProjectConfig } from '../config.js'
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
-import { MAX_TIMEOUT_MS, parseDecimalInt, parseSize } from '../util/index.js'
+import { MAX_TIMEOUT_MS, parseDecimalInt, parseSize, editDistance } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
@@ -366,7 +367,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       }
       out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
-      return { ...out, error: `unknown flag: ${a}` }
+      return { ...out, error: `unknown flag: ${a}${didYouMeanFlag(a)}` }
     } else if (a !== undefined) {
       out.tasks.push(a)
     }
@@ -856,4 +857,19 @@ function formatRow(o: OutcomeView): { task: string; status: string; duration: st
     status,
     duration: `${o.durationMs}ms`,
   }
+}
+
+/** `(did you mean --concurrency?)` for a flag within two edits of a documented one. */
+function didYouMeanFlag(flag: string): string {
+  const name = flag.replace(/=.*$/, '')
+  let best: string | undefined
+  let bestD = 3
+  for (const f of documentedFlags()) {
+    const d = editDistance(name, f)
+    if (d < bestD) {
+      bestD = d
+      best = f
+    }
+  }
+  return best === undefined || best === name ? '' : ` (did you mean ${best}?)`
 }
