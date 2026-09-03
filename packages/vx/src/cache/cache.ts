@@ -33,7 +33,7 @@ import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { lstat, mkdir, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
+import { relPosix, UserError, xxh3, xxh3hex, span } from '../util/index.js'
 import {
   ArchiveSecurityError,
   extractArtifactStream,
@@ -1954,7 +1954,9 @@ export class Cache implements CacheLayer {
     if (!this.write) return
     if (args.skipLocalWrite === true) return
     await mkdir(this.cacheDir, { recursive: true })
+    const endPack = span('save: pack')
     const compressed = await this.packArtifactToTemp(this.tempPath(args.hash), args)
+    endPack()
     await this.writeArtifactAndIndex(args.hash, compressed, {
       taskId: args.entry.taskId,
       command: args.entry.command,
@@ -2112,7 +2114,9 @@ export class Cache implements CacheLayer {
       // The final path is still untouched until the archive has passed.
       // node's writeFile, not Bun.write: the latter copies the buffer first
       // (measured on 150 MiB: +151 MiB and 33 ms against +0 and 21 ms).
+      const endWrite = span('save: write temp')
       await writeFile(tmpPath, compressed)
+      endWrite()
     } else {
       // `save` already streamed the artifact into its temp.
       tmpPath = compressed.tmpPath
@@ -2126,7 +2130,9 @@ export class Cache implements CacheLayer {
         compressed instanceof Uint8Array && compressed.byteLength <= STREAM_DECODE_FROM
           ? compressed
           : Bun.file(tmpPath)
+      const endScan = span('save: scan')
       scanned = await scanArtifact(await decodedTar(source, hash))
+      endScan()
       // v17 invariant: every artifact carries a `stdout` entry. Its
       // absence means the bytes decompressed but aren't a vx artifact.
       if (scanned.stdout === null) {
@@ -2144,7 +2150,9 @@ export class Cache implements CacheLayer {
     // just-renamed file BEFORE A's subsequent stat, producing a
     // spurious ENOENT. The rename itself preserves the "either-or"
     // semantics for concurrent readers.
+    const endRename = span('save: rename')
     await rename(tmpPath, finalPath)
+    endRename()
 
     const totalBytes =
       compressed instanceof Uint8Array ? compressed.byteLength : Bun.file(finalPath).size
@@ -2219,7 +2227,9 @@ export class Cache implements CacheLayer {
         }
       }
     })
+    const endTx = span('save: index tx')
     tx()
+    endTx()
   }
 
   /** Apply the deferred accessed_at bumps in one statement. */

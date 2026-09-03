@@ -274,7 +274,11 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    shell is the API — PATH order, builtins, `command not found` → 127,
    scripts without a shebang all have to read identically. The headline
    shape's tasks use `&&`, so its rows would not move. Decide with the
-   owner.
+   owner. The save's 3.8 ms splits (spans `save: *`): pack 1.25, write
+   temp 0.63, rename 0.55, scan 0.46, index tx 0.17. Two trims measured
+   as not worth their code (< 1 ms per task together, ~0.15% of the
+   cold row): a synchronous compress for tiny buffers, and indexing a
+   locally built artifact from its plan instead of re-scanning it.
 
 ## Decisions (this arc)
 
