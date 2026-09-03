@@ -25,11 +25,14 @@ Nothing is appended — no executor or no cache is a named error
 - `resolveCache(plugins, ctx)` → `CacheLayer` (one layer as is; two or
   more chained in order — `ChainedCache`; a layer wrapping the local
   handle subsumes the bare local layer; none is a named error).
-- `subscribeEventSinks(plugins, bus, ctx)` → `SubscribedEventSinks`
-  (the live sinks + a disposer).
-- `teardownPlugins(plugins, sinks, warn)` — end-of-run: each sink's
-  `flush()` then each plugin's `teardown()`, each under try/catch and a
-  time bound; errors warn, never throw.
+- `applyConfigHooks` / `applyProjectHooks` / `applyGraphHooks` /
+  `applyKeyHooks` / `applyScheduleHooks` — the pipeline stages, run in
+  declaration order only when some plugin declares them (`hasHook`).
+- `resolveExecutors(plugins, ctx)` — the executors in order; the first
+  to accept a task runs it.
+- `teardownPlugins(plugins, warn)` — end-of-run: each plugin's
+  `teardown()` under try/catch and a time bound; errors warn, never
+  throw. Telemetry sinks are flushed by the telemetry host, not here.
 
 ## Invariants
 

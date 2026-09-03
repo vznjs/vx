@@ -30,8 +30,11 @@ behavior lives in the plugin package (vite-style), not in core.
   plugins is zero-overhead (measured ~116ms unchanged).
 - `setup` throws fail the run with a clean error naming the plugin;
   everything else is crash-isolated (observability never breaks a run).
-- `teardown()` and `EventSink.flush()` ARE invoked at end-of-run (since
-  2026-07) — plugins may rely on them to drain buffers.
+- `teardown()` and every telemetry sink's `flush()` ARE invoked at
+  end-of-run, each under try/catch and a time bound — plugins may rely
+  on them to drain buffers. (The older `eventSink` seam is gone since
+  pipeline v2; `setup(ctx)` on the bus and `telemetry` are the two
+  observe paths.)
 - **No defaults.** Core's own executor and cache are plugins under
   `src/plugins/` (see plugins.md), declared like any other; a workspace
   that declares no executor or no cache fails before any task runs.
