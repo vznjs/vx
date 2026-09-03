@@ -11,7 +11,24 @@ export default defineProject({
     // file moves this project's build key through `^build`, so this costs a
     // rebuild exactly when core or the docs actually change.
     ci: {
-      dependsOn: ['build'],
+      dependsOn: ['build', 'site-check'],
+    },
+
+    // The landing page's benchmark rows, tiles and note and the benchmarks
+    // doc's stress section are GENERATED from bench/results.json by
+    // bench/update-site.ts; this refuses drift (a hand edit, or a refreshed
+    // results file without a regenerated site). Inputs are the four files
+    // the check reads, named from the workspace root.
+    'site-check': {
+      description: 'the site matches bench/results.json (bench/update-site.ts --check)',
+      exec: { command: 'bun ../../bench/update-site.ts --check' },
+      cache: {
+        inputs: {
+          files: ['src/pages/index.astro'],
+          workspaceFiles: ['bench/results.json', 'bench/update-site.ts', 'docs/benchmarks.md'],
+        },
+        outputs: { files: [] },
+      },
     },
 
     // Regenerate the Starlight content collection from the repo's `docs/`
