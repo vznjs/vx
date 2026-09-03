@@ -252,32 +252,27 @@ passed once the load fell.
 
 ## In flight
 
-- **Release v0.0.17 (owner, 2026-09-03 21:19Z) is half-published — two
-  owner actions needed.** The release targeted `main` at 638281d, my
-  red commit of that minute (a test file's missing import; the binaries
-  are built from the same `src/` as the fix 6a59b46 and passed the
-  version assertion, so the attached assets are fine). `Release assets`
-  succeeded. `npm publish` published `@vzn/vx-darwin-x64@0.0.17` and
-  then failed on `@vzn/vx-darwin-arm64` with `E401 … token is invalid`
-  while npm tried to open a web-auth flow — the log's own notice: "npm
-  tokens that bypass 2FA are being restricted for … direct publishing".
-  The classic `NPM_TOKEN` no longer publishes reliably. Core and the
-  other three platform packages stay at 0.0.16, so installs are
-  unaffected (no core version references 0.0.17). Both publish steps
-  in `npm.yml` (the darwin job and the linux + core `publish` job) set
-  `NODE_AUTH_TOKEN: secrets.NPM_TOKEN` and both grant `id-token:
-  write`; the step comment says the token is used when the secret
-  exists and npm falls back to OIDC trusted publishing only when it is
-  empty. So every package was on the classic token, and the core job
-  would have hit the same E401 had it run. (1) Either configure
-  trusted publishing on npmjs.com for all five packages (workflow
-  `npm.yml`, environment none) and delete the `NPM_TOKEN` secret so
-  both jobs fall back to OIDC, or replace it with a granular access
-  token with publish rights and 2FA bypass; then (2) dispatch the
-  `npm publish` workflow with version `0.0.17` — both publish loops
-  skip a package already on the registry, so the run resumes at
-  darwin-arm64 and finishes with core. Not done here: a credential and
-  an outward publish are the owner's.
+- **Release v0.0.18 (owner, 2026-09-03 21:30Z, on the green 155d78d)
+  superseded the half-published v0.0.17; npm is still processing two
+  packages.** Its `npm publish` run printed `+ name@0.0.18` for all
+  five packages. As of 21:50Z the registry serves `@vzn/vx-darwin-x64`,
+  `-darwin-arm64` and `-linux-x64` at 0.0.18, while `@vzn/vx` and
+  `-linux-arm64` still answer 0.0.16 — their publish log carries npm's
+  "Your package is being processed and may take a few minutes to become
+  available", npm's asynchronous processing under the token policy
+  noted below, so this is expected latency, not a failure. If either is
+  still absent after an hour, the npm account's notifications say why
+  (that is the owner's view). The v0.0.17 leftover (`-darwin-x64@0.0.17`
+  alone) is harmless: no core version references it. Background that
+  still matters: both publish steps in `npm.yml` set `NODE_AUTH_TOKEN`
+  from the classic `NPM_TOKEN` and fall back to OIDC trusted publishing
+  only when it is empty; npm now restricts classic tokens for direct
+  publishing (the v0.0.17 darwin publish died on `E401 token is
+  invalid` mid-run), so before the next release the owner either
+  configures trusted publishers on npmjs.com for all five packages and
+  deletes the secret, or rotates to a granular token with publish
+  rights and 2FA bypass. Both publish loops skip a package already on
+  the registry, so any re-run resumes where it stopped.
 
 ## Next (ordered)
 
