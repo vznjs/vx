@@ -365,7 +365,9 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   darwin job, the npm linux job) now stamp the core manifest AND each
   job asserts a built binary's `--version` equals the stamped version, so
   a future move fails the release instead of shipping a mislabelled
-  binary. Also trimmed the launcher's `@vzn/vx-cloud` framing (removed
+  binary — and both CI jobs (ubuntu and darwin) now assert the same
+  equality against the unstamped manifest on EVERY push, so the
+  inlining contract is exercised outside releases too. Also trimmed the launcher's `@vzn/vx-cloud` framing (removed
   product).
 
 ## In flight

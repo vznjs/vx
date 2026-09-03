@@ -121,6 +121,17 @@ jobs:
           grep -q 'vx run' "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is not the vx one"; exit 1; }
           exit $code
 
+      # The gate above compiles the four binaries. The one this runner can
+      # execute must report the version packages/vx/package.json carries —
+      # the manifest src/version.ts inlines and the release workflows stamp.
+      # Asserting it on every push means a layout move cannot break the
+      # stamp unseen again (it did, 2026-08-26 → 2026-09-03).
+      - name: compiled binary reports the manifest version
+        run: |
+          WANT="vx $(bun -e 'console.log((await Bun.file("packages/vx/package.json").json()).version)')"
+          GOT="$(packages/vx/dist/vx-linux-x64 --version)"
+          test "$GOT" = "$WANT" || { echo "::error::binary reports '$GOT', expected '$WANT'"; exit 1; }
+
   # The `ci` job above is scoped to ./tests (core). Workspace-member tests ran
   # only inside the removed cloud job, so `packages/*/tests/` has been
   # unguarded since — this job is what makes a plugin's suite gate a push.
@@ -284,7 +295,13 @@ jobs:
           bun build --compile --target=bun-darwin-arm64 src/bin.ts --outfile /tmp/vx-ci
           codesign --verify /tmp/vx-ci && echo "bun's own signature: valid" || echo "bun's own signature: INVALID (expected on Bun 1.4.0)"
           codesign -s - --force /tmp/vx-ci
-          /tmp/vx-ci --version
+          # The binary inlines packages/vx/package.json's version; the release
+          # workflows stamp that file and assert this same equality. Proving it
+          # on every push means a layout move cannot silently break the stamp
+          # again (it did, unseen, from 2026-08-26 to 2026-09-03).
+          WANT="vx $(bun -e 'console.log((await Bun.file("packages/vx/package.json").json()).version)')"
+          GOT="$(/tmp/vx-ci --version)"
+          test "$GOT" = "$WANT" || { echo "binary reports '$GOT', expected '$WANT'"; exit 1; }
 
       # …and runs a workspace written the way the docs show it: bare
       # `@vzn/vx` / `@vzn/vx/plugins/*` imports resolved through node_modules.
