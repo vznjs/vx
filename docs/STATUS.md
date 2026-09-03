@@ -809,7 +809,13 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   read back through vx and libarchive. Headline shape re-measured after
   wave 10 (`RUNNERS=vx`, load 10.8): cold 3m 46s, warm 516 → 510 ms,
   restore 799 → 777 ms, CPU cold 34.09 → 34.61 s, CPU warm 1.35 → 1.34 s
-  — no regression from the streamed save; site regenerated. Two more pins from the audit: a pax `path` record that renames a
+  — no regression from the streamed save; site regenerated. One more
+  pin on the extractor's abort: a directory it created is pruned only
+  while empty — a file a concurrent writer put there between entry 1
+  and the poisoned entry 2 survives, the staged temp does not, and the
+  control without the writer leaves the destination empty (the plant
+  waits for the directory to exist, because a stream pulls ahead of its
+  consumer). Two more pins from the audit: a pax `path` record that renames a
   benign header to a traversal is refused with nothing written, and a
   compressed stream cut mid-archive above the threshold surfaces as
   `CorruptArtifactError` through the real cache with the staged temp

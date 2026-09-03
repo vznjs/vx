@@ -18,7 +18,17 @@
 
 // @vx-shard-cost 6  (the 400-round concurrent-restore guard, measured 2026-09-03 under load)
 import { existsSync } from 'node:fs'
-import { link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import {
+  link,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -462,6 +472,56 @@ describe('archive restore — mixed valid + malicious entries', () => {
     await expect(restore(tar, dest)).rejects.toThrow(/escape|traversal|unsafe/i)
     expect(existsSync(path.join(dest, 'good.txt'))).toBe(false)
     expect(existsSync(path.join(dest, '..', 'evil.txt'))).toBe(false)
+  })
+
+  it('abort prunes the empty directories it created but leaves one a concurrent writer filled', async () => {
+    // Entry 1 lands under a fresh `dist/new/`; entry 2 is a traversal, so
+    // the archive is rejected after entry 1 was staged. Between the two,
+    // another process writes into `dist/new/` — the abort must remove the
+    // staged temp and the directories it created ONLY while they are
+    // empty, never a neighbour's file. The control (no concurrent writer)
+    // pins that the whole created chain is pruned.
+    const tar = concatTar([
+      makeHeader({ name: 'outputs/dist/new/a.txt', size: 3, typeFlag: '0' }),
+      makeDataBlock(new TextEncoder().encode('ok\n')),
+      makeHeader({ name: 'outputs/../evil.txt', size: 4, typeFlag: '0' }),
+      makeDataBlock(new TextEncoder().encode('bad\n')),
+      EOF_BLOCKS,
+    ])
+    const withWriter = (plant: boolean): ReadableStream<Uint8Array> => {
+      let sent = 0
+      return new ReadableStream({
+        async pull(c) {
+          if (sent === 0) {
+            c.enqueue(tar.subarray(0, 1024)) // entry 1, header + body
+          } else if (sent === 1) {
+            // A stream pulls ahead of its consumer, so wait for the
+            // extractor to have created entry 1's directory, then a
+            // neighbour appears in it before entry 2 is delivered.
+            if (plant) {
+              const dir = path.join(dest, 'dist/new')
+              for (let i = 0; !existsSync(dir) && i < 2000; i++) await Bun.sleep(1)
+              await writeFile(path.join(dir, 'keep.txt'), 'theirs')
+            }
+            c.enqueue(tar.subarray(1024))
+          } else {
+            c.close()
+          }
+          sent++
+        },
+      })
+    }
+    await expect(extractArtifactStream(withWriter(true), dest, undefined)).rejects.toThrow(
+      /escape|traversal|unsafe/i,
+    )
+    expect(await readFile(path.join(dest, 'dist/new/keep.txt'), 'utf8')).toBe('theirs')
+    expect(await readdir(path.join(dest, 'dist/new'))).toEqual(['keep.txt']) // no a.txt, no temp
+    await rm(path.join(dest, 'dist'), { recursive: true, force: true })
+
+    await expect(extractArtifactStream(withWriter(false), dest, undefined)).rejects.toThrow(
+      /escape|traversal|unsafe/i,
+    )
+    expect(await readdir(dest)).toEqual([]) // CONTROL: the created chain is pruned
   })
 
   it('a pax `path` record that renames a benign header to a traversal is refused', async () => {
