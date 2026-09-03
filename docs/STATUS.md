@@ -158,7 +158,9 @@ TODO). `init` on a workspace with no scripts writes the workspace file
 and prints an example config and the next command; generated configs
 carry `import type { ProjectConfig }` + `satisfies` (erased at runtime);
 an unresolved config import is a `UserError` naming the file and, for
-`@vzn/vx`, the install command; a typo says `Did you mean build?`.
+`@vzn/vx`, the install command; a typo says `Did you mean build?`,
+and a qualified one is hinted as a runnable spec on either half
+(`ap#build`, `app#buidl` → `app#build`).
 `vx watch` ignores a task's own declared outputs (one cycle per edit)
 and proves each watcher delivers before saying "watching"
 (`.vx-watch-probe`, re-written on a backoff; the e2e flake is NOT

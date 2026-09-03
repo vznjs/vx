@@ -103,6 +103,19 @@ describe('task selection', () => {
   )
 
   it(
+    'a qualified near-miss is hinted as a runnable spec, on either half',
+    async () => {
+      await addProject('app', ['build'])
+      const log = silent()
+      await run({ cwd: root, tasks: ['ap#build', 'app#buidl'], log })
+      expect(log.lines.join('\n')).toContain(
+        'No projects declare task(s): ap#build, app#buidl. Did you mean app#build, app#build?',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a bogus ANCHORED task fails the run even when another task resolves',
     async () => {
       await addProject('a', ['build'])

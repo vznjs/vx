@@ -1309,30 +1309,47 @@ function poolOfPlacement(
 }
 
 /**
- * A typo's nearest declared task, when one is within two edits — the
- * message names the fix instead of only the mistake. Project-qualified
- * specs (`pkg#task`) are matched on their task half.
+ * A typo's nearest declared name, when one is within two edits — the
+ * message names the fix instead of only the mistake. A bare name is
+ * matched against every declared task; `pkg#task` against the project
+ * names first (the task kept) and then against that project's tasks, so
+ * the hint is a spec the user can run.
  */
 function didYouMean(
   unresolved: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,
 ): string {
-  const declared = new Set<string>()
-  for (const p of projects.values())
-    for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
-  const hints: string[] = []
-  for (const spec of unresolved) {
-    const name = spec.slice(spec.indexOf('#') + 1)
+  const nearest = (name: string, candidates: Iterable<string>): string | undefined => {
     let best: string | undefined
     let bestD = 3
-    for (const t of declared) {
-      const d = editDistance(name, t)
+    for (const c of candidates) {
+      const d = editDistance(name, c)
       if (d < bestD) {
         bestD = d
-        best = t
+        best = c
       }
     }
-    if (best !== undefined && best !== name) hints.push(best)
+    return best === name ? undefined : best
+  }
+  const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
+  const allTasks = new Set<string>()
+  for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
+  const hints: string[] = []
+  for (const spec of unresolved) {
+    const at = spec.indexOf('#')
+    if (at < 0) {
+      const t = nearest(spec, allTasks)
+      if (t !== undefined) hints.push(t)
+      continue
+    }
+    const [proj, task] = [spec.slice(0, at), spec.slice(at + 1)]
+    if (!projects.has(proj)) {
+      const p = nearest(proj, projects.keys())
+      if (p !== undefined && tasksOf(projects.get(p)).includes(task)) hints.push(`${p}#${task}`)
+      continue
+    }
+    const t = nearest(task, tasksOf(projects.get(proj)))
+    if (t !== undefined) hints.push(`${proj}#${t}`)
   }
   return hints.length === 0 ? '' : ` Did you mean ${hints.join(', ')}?`
 }
