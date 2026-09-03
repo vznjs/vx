@@ -276,6 +276,23 @@ describe('tarPack', () => {
     expect([...files.keys()].sort()).toEqual([...names].sort())
   })
 
+  it('a long multibyte name goes through pax and reads back through vx and libarchive', async () => {
+    // The header name under pax is the first 100 BYTES; slicing by
+    // characters left a multibyte name over 100 bytes and threw.
+    const names = [
+      'outputs/' + 'é'.repeat(200) + '.txt',
+      'outputs/日本語/' + '文'.repeat(40) + '.md',
+      'outputs/' + 'ü'.repeat(60) + '/' + 'ß'.repeat(60) + '.js', // fits the prefix split
+    ]
+    const parts: Uint8Array[] = []
+    for await (const c of tarPack(names.map((name) => ({ name, size: 1, body: 'x' }))))
+      parts.push(c)
+    const tar = concat(...parts)
+    expect((await collect(tar)).map((e) => e.name)).toEqual(names)
+    const files = await new Bun.Archive(tar).files()
+    expect([...files.keys()].sort()).toEqual([...names].sort())
+  })
+
   it('refuses a body whose length disagrees with its declared size', async () => {
     const bad = [{ name: 'outputs/x', size: 5, body: 'abc' }]
     await expect(

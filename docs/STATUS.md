@@ -122,7 +122,13 @@ count instead of refused; the `trusted` flag went. Reader pins: pax
 octal, ustar split at its exact limits (against libarchive and the
 system `tar`), a poisoned trailing entry writing nothing, a concurrent
 writer's file surviving abort, a cut compressed stream refused with no
-temp. No `CACHE_VERSION` bump: same layout, readable either way.
+temp. No `CACHE_VERSION` bump: same layout, readable either way. One
+defect found by the audit rotation the same evening: a name over 100
+bytes made of multibyte characters (a 141-byte Japanese path is
+enough) threw "name too long for ustar" instead of writing its pax
+record, because the header name under pax was sliced by characters;
+it is the first 100 bytes now, pinned against vx and libarchive, and
+the pin fails without the fix.
 Measurement traps recorded: a Blob source is not bounded; a one-process
 memory probe with a large buffer live reads GC pacing (+315 vs +30 MiB
 in a fresh process); piped oxlint prints one line per finding.

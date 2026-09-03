@@ -237,16 +237,23 @@ function writeOctal(h: Uint8Array, off: number, len: number, n: number): void {
   h[off + len - 1] = 0
 }
 
-function header(name: string, size: number, type: string, mode: number, mtime: number): Uint8Array {
+function header(
+  name: string | Uint8Array,
+  size: number,
+  type: string,
+  mode: number,
+  mtime: number,
+): Uint8Array {
   const h = new Uint8Array(BLOCK)
-  const nameBytes = encoder.encode(name)
+  const nameBytes = typeof name === 'string' ? encoder.encode(name) : name
   if (nameBytes.byteLength <= 100) {
     h.set(nameBytes, 0)
   } else {
     // ustar prefix split: the longest tail that fits 100 bytes, split at
     // a `/`, with the head fitting 155. Anything else needs pax.
     const cut = splitForUstar(nameBytes)
-    if (cut === null) throw new TarFormatError(`name too long for ustar: ${name}`)
+    if (cut === null)
+      throw new TarFormatError(`name too long for ustar: ${decoder.decode(nameBytes)}`)
     h.set(nameBytes.subarray(cut + 1), 0)
     h.set(nameBytes.subarray(0, cut), 345)
   }
@@ -319,13 +326,16 @@ export async function* tarPack(
   for await (const input of inputs) {
     const mode = input.mode ?? 0o644
     const mtime = input.mtime ?? 0
-    let headerName = input.name
+    // Under a pax record the ustar name is a courtesy for readers that
+    // ignore pax: its first 100 BYTES, never characters — a multibyte
+    // name sliced by characters can be over 100 bytes again.
+    let headerName: string | Uint8Array = input.name
     if (needsPax(input.name)) {
       const pax = paxRecord('path', input.name)
       yield header('PaxHeaders/entry', pax.byteLength, 'x', 0o644, mtime)
       yield pax
       yield padding(pax.byteLength)
-      headerName = input.name.slice(0, 100)
+      headerName = encoder.encode(input.name).subarray(0, 100)
     }
     yield header(headerName, input.size, '0', mode, mtime)
     if (input.body instanceof Blob) {
