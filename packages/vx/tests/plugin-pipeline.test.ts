@@ -131,6 +131,25 @@ describe('project stage', () => {
   )
 
   it(
+    'edits do not accumulate across runs in one process (the watch shape)',
+    async () => {
+      // `vx watch` calls run() repeatedly in one process. The first load of
+      // a config hands the hook Bun's module object; a repeat load comes
+      // from the eval cache or the worker, both fresh — so an append-style
+      // edit must land exactly once per run, never twice on the second.
+      await pkg('a', build)
+      await workspace([
+        `{ name: 'org/suffix', project(config) { config.tasks.build.description = (config.tasks.build.description ?? '') + '+x' } }`,
+      ])
+      const one = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      const two = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      expect(one.tasks[0]!.node.config.description).toBe('+x')
+      expect(two.tasks[0]!.node.config.description).toBe('+x')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a plugin that produces an invalid task is refused like a user would be',
     async () => {
       await pkg('a', build)
