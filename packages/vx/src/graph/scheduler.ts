@@ -1,4 +1,4 @@
-import { UserError, isUserError } from '../util/index.js'
+import { isUserError } from '../util/index.js'
 import type { TaskNode } from './task-graph.js'
 
 export type TaskStatus =

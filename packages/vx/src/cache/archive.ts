@@ -385,7 +385,12 @@ class Extractor {
     this.staged.push({ name, tmp, target, created })
     if (body instanceof Uint8Array) {
       this.inflightBytes += body.byteLength
-      this.inflight.push(Bun.write(tmp, body))
+      const write = Bun.write(tmp, body)
+      // A write that fails before `commit` or `abort` awaits it must not
+      // surface as an unhandled rejection; the awaiting `Promise.all` still
+      // sees the error through the original promise.
+      write.catch(() => undefined)
+      this.inflight.push(write)
       if (this.inflightBytes > INFLIGHT_BYTES) await this.drain()
       return
     }

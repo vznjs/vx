@@ -768,10 +768,16 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   dir. Then (same day) ingest moved onto the same reader
   (`scanArtifact` lists entries and stdout without materialising) and
   `readArtifact` / `extractOutputs` / `readEntryText` were deleted:
-  `Bun.Archive` now only WRITES artifacts. Refuted on the way: `Bun.Archive` does not auto-detect zstd and
-  `.files()` copies every entry (+131 MiB on 150 MiB), so it cannot be
-  the streaming reader. `Bun.Archive.extract` was not measured — its
+  `Bun.Archive` now only WRITES artifacts; the security suite is back
+  to one `restore` helper (there is one reader to drift). Refuted on
+  the way: `Bun.Archive` does not auto-detect zstd and `.files()`
+  copies every entry (+131 MiB on 150 MiB), so it cannot be the
+  streaming reader. `Bun.Archive.extract` was not measured — its
   materialisation of links is the class the extractor exists to refuse.
+  Headline shape re-measured for vx alone afterwards (`RUNNERS=vx`,
+  box idle): cold 3m 46s → 3m 46s, warm 549 → 516 ms, restore 844 →
+  799 ms, CPU warm 2.00 → 1.35 s — no regression from the new reader
+  on 1 090 one-file artifacts; the site regenerated from the new rows.
   Docs: `docs/caching.md` § container, `docs/modules/cache.md`.
 
 ## In flight

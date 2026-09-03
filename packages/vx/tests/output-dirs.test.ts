@@ -11,7 +11,6 @@
 // walk (and therefore the restore).
 
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
