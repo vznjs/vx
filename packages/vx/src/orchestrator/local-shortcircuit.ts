@@ -38,6 +38,7 @@
 //     conservative exclusion). Those tasks still get an exec-tier probe
 //     reuse entry so there's no double work.
 
+import { span } from '../util/index.js'
 import type { CacheEntry, CacheLayer, GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { deriveStableKeys } from './stable-keys.js'
@@ -95,10 +96,13 @@ const EMPTY: ShortCircuit = { preProbed: new Map(), restoreTier: new Set() }
  */
 export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<ShortCircuit> {
   let stableKeys
+  const endKeys = span('stable keys')
   try {
     stableKeys = await deriveStableKeys(args)
   } catch {
     return EMPTY
+  } finally {
+    endKeys()
   }
   const candidates = stableKeys.filter(({ node }) => node.config.cache !== undefined)
   if (candidates.length === 0) return EMPTY
@@ -129,7 +133,9 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   // queries; the pool below is for layers without one.
   if (args.cache.getMany !== undefined) {
     try {
+      const endProbe = span('probe')
       const hits = await args.cache.getMany(candidates.map((c) => c.hash))
+      endProbe()
       for (const { hash, node } of candidates) {
         const hit = hits.get(hash) ?? null
         preProbed.set(node.id, { hash, hit })

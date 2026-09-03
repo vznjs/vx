@@ -724,7 +724,11 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    of `getMany`'s 5.8 ms on the bench (2026-09-03), and moving them to
    restore time needs a re-execute fallback for a hit whose artifact is
    gone, which the hit path lacks. CLOSED: a new failure path for 2.7 ms
-   is the wrong trade. **The stage table
+   is the wrong trade. `classify + probe` (23 ms) now has spans:
+   `stable keys` 12 ms — of which the 1,000 task hashes are 10–11, so
+   the classification itself is ~1.5 — and `probe` 8.3 ms (`getMany`
+   5.8 plus the restore-tier bookkeeping). The hashing is the floor of
+   key derivation; nothing here is a lead. **The stage table
    after wave 6** (warm 1000 projects, in-process
    ~176 ms; the bench's whole-process number is 204 ms): git enumeration
    54 ms wall (overlapped with the 36 ms of cached config loads, so ~20 ms
