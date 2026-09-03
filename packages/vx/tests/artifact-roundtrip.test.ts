@@ -9,7 +9,7 @@
 // while `packArtifact` still stages the wrong mode, and vice versa — only the
 // full produce → cache → wipe → restore loop pins the property that matters.
 
-import { chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -262,5 +262,69 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     await cache.restoreOutputs('ok', projectDir)
     expect(await Bun.file(path.join(projectDir, 'dist/app.js')).text()).toBe('BUILT')
     expect((await stat(path.join(projectDir, 'dist/app.js'))).mode & 0o777).toBe(0o755)
+  })
+})
+
+describe('restoreOutputs decodes a large artifact as a stream', () => {
+  // Above STREAM_DECODE_FROM (4 MiB compressed) the restore never holds the
+  // tar: the zstd frame is decoded and the entries staged as they arrive
+  // (measured 2026-09-03 on 150 MiB: peak +644 MiB in memory, +49 MiB
+  // streamed). Incompressible bytes keep the artifact above the threshold.
+  let cacheDir: string
+  let projectDir: string
+  let cache: Cache
+  const big = new Uint8Array(6 * 1024 * 1024)
+  for (let o = 0; o < big.byteLength; o += 65536) crypto.getRandomValues(big.subarray(o, o + 65536))
+
+  beforeEach(async () => {
+    cacheDir = path.join(root, 'cache')
+    projectDir = path.join(root, 'proj')
+    await mkdir(projectDir, { recursive: true })
+    cache = new Cache(cacheDir)
+  })
+
+  afterEach(() => {
+    cache.close()
+  })
+
+  it('restores byte-exact with the sidecar mode and millisecond mtime', async () => {
+    await mkdir(path.join(projectDir, 'dist'), { recursive: true })
+    await Bun.write(path.join(projectDir, 'dist/big.bin'), big)
+    await write(path.join(projectDir, 'dist/run.sh'), '#!/bin/sh\n')
+    await chmod(path.join(projectDir, 'dist/run.sh'), 0o755)
+    const stamp = new Date('2024-05-06T07:08:09.123Z')
+    await utimes(path.join(projectDir, 'dist/run.sh'), stamp, stamp)
+    await cache.save({
+      hash: 'large',
+      entry: { taskId: 'a#build', command: 'build', durationMs: 1, stdout: '' },
+      projectDir,
+      outputFiles: [path.join(projectDir, 'dist/big.bin'), path.join(projectDir, 'dist/run.sh')],
+    })
+    expect((await stat(cache.outputsPath('large'))).size).toBeGreaterThan(4 * 1024 * 1024)
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+
+    await cache.restoreOutputs('large', projectDir)
+    expect(Buffer.from(await Bun.file(path.join(projectDir, 'dist/big.bin')).bytes())).toEqual(
+      Buffer.from(big),
+    )
+    const st = await stat(path.join(projectDir, 'dist/run.sh'))
+    expect(st.mode & 0o777).toBe(0o755)
+    expect(Math.floor(st.mtimeMs)).toBe(stamp.getTime())
+    expect(await readdir(projectDir)).not.toContain(expect.stringMatching(/vx-tmp/))
+  })
+
+  it('a poisoned entry AFTER the large one leaves nothing behind', async () => {
+    // The staging core renames only once the whole archive has been read,
+    // so a traversal at the END of a big artifact cannot leave the benign
+    // bytes in place — and the temp beside the target is gone too.
+    const tar = await new Bun.Archive({
+      stdout: '',
+      'outputs/dist/big.bin': big,
+      'outputs/../evil.txt': 'bad',
+    }).bytes()
+    await Bun.write(cache.outputsPath('poisoned'), Bun.zstdCompressSync(tar))
+    await expect(cache.restoreOutputs('poisoned', projectDir)).rejects.toThrow(/unsafe|escape/i)
+    expect(await readdir(projectDir)).toEqual([])
+    expect(await Bun.file(path.join(root, 'evil.txt')).exists()).toBe(false)
   })
 })

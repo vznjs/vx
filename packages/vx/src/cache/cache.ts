@@ -37,7 +37,7 @@ import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import {
   type ArchiveEntry,
   ArchiveSecurityError,
-  extractOutputs,
+  extractArtifactStream,
   packArtifact as packArchive,
   readArtifact,
   readEntryText,
@@ -676,6 +676,47 @@ async function zstdDecompressBounded(
     )
   }
   return out
+}
+
+/** Compressed artifacts above this size are decoded as a stream on restore. */
+const STREAM_DECODE_FROM = 4 * 1024 * 1024
+
+const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
+  new ReadableStream({
+    start(c) {
+      c.enqueue(bytes)
+      c.close()
+    },
+  })
+
+/**
+ * The streaming twin of `zstdDecompressBounded` for a local artifact: the
+ * decoded bytes as a stream, refused past the same ceiling. A malicious
+ * frame cannot expand past the cap here either — the count runs as bytes
+ * are produced, before any of them reach the extractor's next entry.
+ */
+function zstdDecodeStream(file: Bun.BunFile, hash: string): ReadableStream<Uint8Array> {
+  let total = 0
+  return file
+    .stream()
+    .pipeThrough(new DecompressionStream('zstd'))
+    .pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          total += chunk.byteLength
+          if (total > MAX_DECOMPRESSED_ARTIFACT_BYTES) {
+            controller.error(
+              new CorruptArtifactError(
+                hash,
+                `decompresses past ${MAX_DECOMPRESSED_ARTIFACT_BYTES} bytes (cap)`,
+              ),
+            )
+            return
+          }
+          controller.enqueue(chunk)
+        },
+      }),
+    )
 }
 
 export interface CacheLayer {
@@ -1805,47 +1846,46 @@ export class Cache implements CacheLayer {
     if (!(await Bun.file(src).exists())) {
       throw new CorruptArtifactError(hash, 'artifact file vanished before restore')
     }
-    const compressed = await Bun.file(src).bytes()
-    // Local artifact (already validated at ingest): trusted, so a missing
-    // declared size is allowed; the oversize ceiling still applies.
-    const tarBytes = await zstdDecompressBounded(compressed, hash, true)
-
-    let entries: ArchiveEntry[]
-    try {
-      entries = await readArtifact(tarBytes)
-    } catch (err) {
-      if (err instanceof ArchiveSecurityError) throw err
-      throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
-    }
-    const provided = new Set(
-      entries
-        .filter((e) => e.name.startsWith('outputs/') || e.name.startsWith(WORKSPACE_OUTPUT_PREFIX))
-        .map((e) => e.name),
-    )
-
     // The index says exactly which files this entry materializes. If the
     // archive cannot produce one of them, restoring "successfully" leaves a
     // hole that no later run detects: the skip-restore check compares the
     // same truncated expectation against the same truncated tree and agrees
-    // forever. Refuse instead of silently under-restoring.
+    // forever. Refuse instead of silently under-restoring — checked before
+    // anything is renamed into place.
     const rows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
-    const missing = rows
+    const expected = rows
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
-      .filter((name) => !provided.has(name))
-    if (missing.length > 0) {
-      throw new CorruptArtifactError(
-        hash,
-        `artifact is missing ${missing.length} recorded output(s): ${missing.slice(0, 3).join(', ')}`,
-      )
+    const verify = (provided: ReadonlySet<string>): void => {
+      const missing = expected.filter((name) => !provided.has(name))
+      if (missing.length > 0) {
+        throw new CorruptArtifactError(
+          hash,
+          `artifact is missing ${missing.length} recorded output(s): ${missing.slice(0, 3).join(', ')}`,
+        )
+      }
     }
 
-    if (provided.size === 0) return
-
-    // Mode and mtime ride the archive's sidecar, so the restored tree
-    // matches the index rows at millisecond precision with no second
-    // pass — the rows were built from those same values at ingest.
-    await extractOutputs(entries, projectDir, workspaceRoot)
+    // One tar reader and one extractor either way; only the decode differs
+    // by size. A large artifact is decoded and read as it streams, so the
+    // restore costs a chunk of memory, not 4× the artifact (measured
+    // 2026-09-03 on 150 MiB: +644 MiB in memory, +49 MiB streamed, same
+    // wall time). A small one is decoded in one call: the stream setup
+    // costs ~35 µs per artifact, which is 4% of the headline restore row
+    // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
+    // per 1 000). The local artifact was validated at ingest, so a missing
+    // declared size is allowed; the output ceiling applies to both.
+    const file = Bun.file(src)
+    const tar =
+      file.size <= STREAM_DECODE_FROM
+        ? oneChunk(await zstdDecompressBounded(await file.bytes(), hash, true))
+        : zstdDecodeStream(file, hash)
+    try {
+      await extractArtifactStream(tar, projectDir, workspaceRoot, verify)
+    } catch (err) {
+      if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
+      throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
+    }
   }
 
   async save(args: {

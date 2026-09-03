@@ -568,11 +568,24 @@ field needed no `CACHE_VERSION` bump). `output_files` rows mirror the
 two namespaces — project rows store the bare rel, workspace rows store
 the full `workspace-outputs/<rel>` name as the discriminator.
 
-The container is `Bun.Archive` (libarchive), so the tar DIALECT is not
-vx's decision: long names, PAX records and truncation detection are the
-library's, and there is no `tar` subprocess, no `--format=gnu` /
-`--format=gnutar` spelling probe, and no staging copy of every output
-byte before packing (v27).
+The container is written by `Bun.Archive` (libarchive): there is no
+`tar` subprocess, no `--format=gnu` / `--format=gnutar` spelling probe,
+and no staging copy of every output byte before packing (v27). Two
+readers consume it. Ingest and the tests read it through `Bun.Archive`
+in memory. **Restore streams it** (`src/cache/tar-stream.ts`): the zstd
+frame is decoded and the tar read as it arrives — ustar name/prefix,
+pax `path`/`size`, GNU long names, header checksums, truncation — and
+every regular entry is written beside its target as `.vx-tmp-*` and
+renamed into place only after the whole archive has ended cleanly and
+the index's recorded outputs are all present. Memory is bounded by a
+chunk, not the artifact (measured 2026-09-03, 150 MiB incompressible:
+peak +644 MiB through `Bun.Archive`, +49 MiB streamed, same wall
+time). An artifact up to 4 MiB compressed is decoded in one call
+first — the stream setup costs ~35 µs each, 4% of the headline
+restore row when every artifact is a one-file `dist/` — and then fed
+to the same reader and extractor, so there is one extraction path.
+The 2 GiB decompression ceiling applies to both: declared size and
+output length for the one-call decode, a running count for the stream.
 
 What libarchive carries no channel for is per-entry metadata: its
 writer takes `{ name: bytes }` and its reader hands back regular files
@@ -581,9 +594,14 @@ and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them), so `packArtifact` stats each output once and writes
 `.vx-meta.json` — `{ version, files: { <entry>: [mode, mtimeMs] } }` —
 into the archive. Restore applies both. Entries that are not regular
-files (symlinks, hardlinks, devices) are not surfaced by the reader at
-all, so a poisoned artifact cannot smuggle one onto disk; entry NAMES
-are still validated by vx before anything decides where to write.
+files (symlinks, hardlinks, devices) are never materialised — the
+in-memory reader omits them and the streaming one skips them — so a
+poisoned artifact cannot smuggle one onto disk; entry NAMES are
+validated by vx before anything decides where to write, and a bad
+entry anywhere, even the last, rejects the WHOLE archive: the temps
+are unlinked and the empty directories the extraction created are
+pruned. `tests/archive-security.test.ts` runs every restore case
+against both readers.
 
 **Key properties:** one entry is one file — eviction is a single
 unlink; no per-entry manifest, no separate `logs/` tree; and local +

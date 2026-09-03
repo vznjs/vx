@@ -745,6 +745,33 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   `fsmonitor--daemon stop`). fsmonitor itself: 57.6 vs 59.1 ms, no gain
   on this tree. The walk is git's fixed cost at this size.
 
+- 2026-09-03 — **perf wave 9: streaming restore.** `restoreOutputs`
+  no longer holds the artifact: `src/cache/tar-stream.ts` reads the tar
+  as it streams out of `DecompressionStream('zstd')` (ustar name/prefix,
+  pax `path`/`size`, GNU `L`, checksums, truncation → `TarFormatError`),
+  and `archive.ts` gained one staging extractor both readers share —
+  write beside the target as `.vx-tmp-*`, rename only after the WHOLE
+  archive ended cleanly and the index's recorded outputs are present;
+  on any failure unlink the temps and prune the empty directories the
+  extraction created. Measured in a fresh process, 150 MiB
+  incompressible artifact: peak RSS +644 MiB → +49–60 MiB, wall
+  112–121 → 103–115 ms. Tiny artifacts: the stream setup costs ~35 µs
+  each (390 vs 355 ms per 1 000, 4% of the headline restore row), so
+  artifacts ≤ 4 MiB compressed decode in one call and feed the SAME
+  reader and extractor. The 2 GiB ceiling is a running count on the
+  stream. `tests/archive-security.test.ts` now runs every restore case
+  against both readers (`describe.each`); `tests/tar-stream.test.ts`
+  pins the dialect (Bun.Archive round trip across chunk sizes 1…1 MiB,
+  pax and GNU long names, corrupt checksum, truncation);
+  `tests/artifact-roundtrip.test.ts` pins the >4 MiB path through the
+  real cache incl. a poisoned trailing entry leaving an empty project
+  dir. Ingest still reads in memory (it holds the remote bytes anyway).
+  Refuted on the way: `Bun.Archive` does not auto-detect zstd and
+  `.files()` copies every entry (+131 MiB on 150 MiB), so it cannot be
+  the streaming reader. `Bun.Archive.extract` was not measured — its
+  materialisation of links is the class the extractor exists to refuse.
+  Docs: `docs/caching.md` § container, `docs/modules/cache.md`.
+
 ## In flight
 
 - Nothing.
@@ -757,32 +784,29 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
    half is green, the live files skip without an endpoint, and docker
    was down on this machine that day. `tests/helpers/nativelink.md` has
    the dev config. Expect nothing to change; prove it.
-2. **Streaming restore** — the one open memory item: a v27 restore
-   holds the decompressed artifact and a copy of every entry at once
-   (peak ~4.5× artifact size, +19% RSS on a 150 MB artifact). The
-   candidate is extract-then-rename on the same filesystem; NOT claimed
-   faster — measure against the current path first.
-   `tests/bun-archive-capabilities.test.ts` fails the day Bun gains
-   prefix stripping, which would make it simpler.
-3. **The shipped binary's second core.** A compiled `vx` loading a
+2. **The shipped binary's second core.** A compiled `vx` loading a
    `vx.workspace.ts` that imports `@vzn/vx` pulls a second copy of core
    from `node_modules` (~12 ms) on every run. The user-visible half is
    closed (`isUserError` classifies by name across copies); what remains
-   is the cost and the duplicate module state. REFUTED as a
+   is the cost and the duplicate module state — and the cost is NOT
+   measurable as an A/B from a workspace file (2026-09-03): a workspace
+   importing plugins by absolute source path also loads source, since the
+   binary cannot expose its bundled core to a workspace import, so both
+   arms read equal (77 vs 74–81 ms at 100 projects). REFUTED as a
    runtime-plugin fix (Bun 1.4.0's `Bun.plugin` hooks never fire for
    bare specifiers or `.ts`); options left are rewriting the config
    source before import or a Bun fix. Parked.
-4. **The watch e2e flake** — if `re-runs the task after a file change,
+3. **The watch e2e flake** — if `re-runs the task after a file change,
 then exits on SIGINT` times out again, keep that run's stdout: the
    presence of `re-running...` separates a lost event from a slow
    re-run (see the 2026-09-03 watch entry).
-5. **Re-measure the warm run after each day's work** — the hot path is
+4. **Re-measure the warm run after each day's work** — the hot path is
    the product. `bun bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap. Closing figures
    for 2026-09-03, after wave 6 and the discovery change, best of 5:
    1000 projects 193 ms (table says 204, measured before discovery
    changed), 100 projects 81 ms, on a box that had run the gate all day.
-6. **DONE 2026-09-03 as wave 6 (224 → 204 ms).** The lead, kept for the
+5. **DONE 2026-09-03 as wave 6 (224 → 204 ms).** The lead, kept for the
    method: measured (`VX_TIMING=1`, warm 1000
    projects, 203 ms in-process):\*\* git enumeration 51 ms (overlapped with
    33 ms of config loads), discover 22, classify+probe 22, run graph 46,
@@ -797,7 +821,7 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    accepted `touch -r` trade in view, pin both directions, and MEASURE
    before claiming the ~15% it suggests.
 
-7. **After waves 7 and 8, closing 2026-09-03:** in-process stage table
+6. **After waves 7 and 8, closing 2026-09-03:** in-process stage table
    on the 1000-project bench — discover 20 ms, load configs 23, git
    enumeration 21, classify + probe 23, run graph 21, record history 11,
    total ~151 ms — and whole-process best of 5: 1000 projects 186 ms,

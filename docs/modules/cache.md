@@ -230,7 +230,10 @@ Determinism notes:
 `.vx-meta.json` exists because `Bun.Archive` carries no per-entry
 metadata in either direction — see `src/cache/archive.ts`, which owns
 pack, read and extract, plus the entry-name validation and containment
-checks that libarchive cannot make on vx's behalf.
+checks that no tar reader can make on vx's behalf. Restore reads the
+tar as a stream (`src/cache/tar-stream.ts`) so its memory is bounded
+by a chunk; ingest reads it in memory. Both feed one staging extractor
+(write beside the target, rename after the whole archive is read).
 
 SQLite stores metadata only:
 
@@ -271,7 +274,15 @@ Reads via `get()` are non-blocking thanks to WAL.
 - Otherwise extracts `outputs/<rel>` into `projectDir/<rel>` and —
   when `workspaceRoot` is given — `workspace-outputs/<rel>` into
   `workspaceRoot/<rel>`, creating parent directories as needed.
-- Pre-existing local files at output paths are **overwritten**.
+- Pre-existing local files at output paths are **overwritten** — by
+  rename, never by a write through a planted link, and never with a
+  moment of absence.
+- Artifacts above 4 MiB compressed are decoded as a stream; smaller
+  ones in one call. Same reader, same extractor, same 2 GiB ceiling.
+- Throws (`CorruptArtifactError`) when the artifact vanished, is not
+  a readable archive, or lacks an output the index recorded; throws
+  `ArchiveSecurityError` on an unsafe name or an escape. Either way
+  nothing was renamed into place.
 
 `get(hash)`:
 

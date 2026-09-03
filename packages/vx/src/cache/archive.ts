@@ -22,21 +22,34 @@
 // headers as the only source they were second-precision, and the save
 // path needed a second stat pass to refine them.
 //
-// What this deliberately does NOT do is re-implement tar. Long names,
-// PAX records, format dialects and truncation detection are libarchive's
-// job now. What stays here is the part libarchive cannot decide for us:
-// WHERE an entry may land on disk. Every name is validated and every
-// destination is proven to stay inside its anchor before a byte is
-// written, because a cache artifact is attacker-reachable (a poisoned
-// remote, a tampered local entry) and "zip slip" is the class.
+// Two readers share one extractor. `readArtifact` + `extractOutputs` take
+// the whole tar in memory (libarchive via `Bun.Archive`): the ingest path,
+// which already holds the remote bytes, and the small-artifact restore.
+// `extractArtifactStream` reads the tar as it streams out of the zstd
+// decoder (`tar-stream.ts`) and never holds more than a chunk of it:
+// restoring a 150 MiB artifact through `Bun.Archive` peaked at 3.2× its
+// size (measured 2026-09-03), which is the wrong shape for a task whose
+// output IS the big thing. Both feed the same staging core: every entry
+// is written beside its target under a `.vx-tmp-*` name and renamed into
+// place only once the WHOLE archive has been read and every name proven
+// safe, so a poisoned entry anywhere — even the last one — leaves nothing
+// behind but the empty directories it needed, which are pruned too.
+//
+// What stays here is the part no tar reader can decide for us: WHERE an
+// entry may land on disk. Every name is validated and every destination
+// is proven to stay inside its anchor before a byte is written, because a
+// cache artifact is attacker-reachable (a poisoned remote, a tampered
+// local entry) and "zip slip" is the class.
 //
 // Entries that are not regular files (symlinks, hardlinks, devices,
-// FIFOs) are absent from `files()` and therefore can never be
-// materialised — vx's outputs are regular files, and an artifact that
-// claims otherwise silently loses the claim rather than acting on it.
+// FIFOs) are never materialised — `Bun.Archive.files()` omits them and
+// the streaming reader reports them only to be skipped — vx's outputs are
+// regular files, and an artifact that claims otherwise silently loses the
+// claim rather than acting on it.
 
-import { mkdir, chmod, realpath, rename, stat, unlink, utimes } from 'node:fs/promises'
+import { mkdir, chmod, realpath, rename, rmdir, stat, unlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
+import { tarEntries } from './tar-stream.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
 const META_ENTRY = '.vx-meta.json'
@@ -174,14 +187,146 @@ export async function extractOutputs(
   workspaceDest?: string,
 ): Promise<void> {
   await mkdir(destDir, { recursive: true })
+  const x = new Extractor(destDir, workspaceDest)
+  const targets = entries
+    .map((e) => ({ e, dest: x.destFor(e.name) }))
+    .filter(
+      (t): t is { e: ArchiveEntry; dest: { base: string; rel: string } } =>
+        t.dest !== null && t.dest.rel.length > 0,
+    )
 
-  // Each namespace anchors at its own destination dir.
-  const destFor = (name: string): { base: string; rel: string } | null => {
-    if (name.startsWith('outputs/')) {
-      return { base: destDir, rel: name.slice('outputs/'.length) }
+  // Containment is proven for EVERY entry before ANY of them is written:
+  // a mixed artifact (benign entries plus one traversal) must leave
+  // nothing behind, not a partial tree plus an error.
+  await Promise.all(
+    targets.map(({ e, dest }) =>
+      x.assertContained(dest.base, path.join(dest.base, dest.rel), e.name),
+    ),
+  )
+  try {
+    await Promise.all(
+      targets.map(({ e, dest }) => x.stage(e.name, path.join(dest.base, dest.rel), e.file)),
+    )
+    await x.commit((name) => {
+      const e = entries.find((c) => c.name === name)!
+      return [e.mode, e.mtimeMs]
+    })
+  } catch (err) {
+    await x.abort()
+    throw err
+  }
+}
+
+/**
+ * The streaming twin of `readArtifact` + `extractOutputs`: `tar` is the
+ * DECOMPRESSED archive as a byte stream. Entries are validated and staged
+ * as they arrive and renamed into place only after the archive has ended
+ * cleanly and `verify` (the caller's look at which output names the
+ * archive provided — the index's missing-output check) has passed. Any
+ * failure — an unsafe name, an escape, a truncated stream, `verify` —
+ * leaves nothing behind. Returns the provided output names.
+ */
+export async function extractArtifactStream(
+  tar: ReadableStream<Uint8Array>,
+  destDir: string,
+  workspaceDest: string | undefined,
+  verify?: (provided: ReadonlySet<string>) => void,
+): Promise<Set<string>> {
+  await mkdir(destDir, { recursive: true })
+  const x = new Extractor(destDir, workspaceDest)
+  const provided = new Set<string>()
+  const headerMtime = new Map<string, number>()
+  let meta: MetaFile['files'] = {}
+  try {
+    for await (const e of tarEntries(tar)) {
+      if (e.type !== '0') continue
+      if (e.name === META_ENTRY) {
+        meta = (JSON.parse(await textOf(e.body)) as MetaFile).files ?? {}
+        continue
+      }
+      assertSafeName(e.name)
+      const dest = x.destFor(e.name)
+      if (dest === null || dest.rel.length === 0) continue
+      const target = path.join(dest.base, dest.rel)
+      await x.assertContained(dest.base, target, e.name)
+      provided.add(e.name)
+      headerMtime.set(e.name, e.mtimeMs)
+      await x.stage(e.name, target, e.size <= SMALL_ENTRY ? await bytesOf(e.body) : e.body)
     }
-    if (workspaceDest !== undefined && name.startsWith(WORKSPACE_PREFIX)) {
-      return { base: workspaceDest, rel: name.slice(WORKSPACE_PREFIX.length) }
+    verify?.(provided)
+    await x.commit((name) => {
+      const m = meta[name]
+      return [m?.[0] ?? 0o644, m?.[1] ?? headerMtime.get(name) ?? 0]
+    })
+  } catch (err) {
+    await x.abort()
+    throw err
+  }
+  return provided
+}
+
+/**
+ * Entries up to this size are buffered and written without waiting, so a
+ * thousand tiny outputs restore with the same parallelism as the in-memory
+ * path; larger ones stream chunk by chunk to a file sink.
+ */
+const SMALL_ENTRY = 4 * 1024 * 1024
+
+/** Buffered small writes in flight before the next one waits for them. */
+const INFLIGHT_BYTES = 64 * 1024 * 1024
+
+async function bytesOf(body: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
+  const parts: Uint8Array[] = []
+  let n = 0
+  for await (const c of body) {
+    parts.push(new Uint8Array(c))
+    n += c.byteLength
+  }
+  if (parts.length === 1) return parts[0]!
+  const out = new Uint8Array(n)
+  let off = 0
+  for (const p of parts) {
+    out.set(p, off)
+    off += p.byteLength
+  }
+  return out
+}
+
+const textOf = async (body: AsyncIterable<Uint8Array>): Promise<string> =>
+  new TextDecoder().decode(await bytesOf(body))
+
+/** One staged entry: written at `tmp`, renamed to `target` on commit. */
+interface Staged {
+  name: string
+  tmp: string
+  target: string
+  /** The topmost directory `mkdir -p` created for it, pruned on abort. */
+  created: string | undefined
+}
+
+/**
+ * The staging core both readers share. Nothing reaches its final name
+ * until `commit`; `abort` removes every temp and the empty directories
+ * this extraction created.
+ */
+class Extractor {
+  private readonly staged: Staged[] = []
+  private inflight: Promise<unknown>[] = []
+  private inflightBytes = 0
+  private readonly realBaseCache = new Map<string, string>()
+
+  constructor(
+    private readonly destDir: string,
+    private readonly workspaceDest: string | undefined,
+  ) {}
+
+  /** Each namespace anchors at its own destination dir. */
+  destFor(name: string): { base: string; rel: string } | null {
+    if (name.startsWith('outputs/')) {
+      return { base: this.destDir, rel: name.slice('outputs/'.length) }
+    }
+    if (this.workspaceDest !== undefined && name.startsWith(WORKSPACE_PREFIX)) {
+      return { base: this.workspaceDest, rel: name.slice(WORKSPACE_PREFIX.length) }
     }
     return null
   }
@@ -194,10 +339,9 @@ export async function extractOutputs(
   // escape. Both sides are realpath'd, so a legitimate symlinked ANCESTOR of
   // the base dir itself (e.g. macOS /tmp → /private/tmp) resolves
   // consistently and is not flagged.
-  const realBaseCache = new Map<string, string>()
-  const realBaseOf = async (base: string): Promise<string> => {
+  private async realBaseOf(base: string): Promise<string> {
     const key = path.resolve(base)
-    let r = realBaseCache.get(key)
+    let r = this.realBaseCache.get(key)
     if (r === undefined) {
       // The base often does NOT exist yet — the workspace-outputs anchor is
       // created lazily by the first entry. Falling back to the un-resolved
@@ -221,7 +365,7 @@ export async function extractOutputs(
         }
         return key
       })
-      realBaseCache.set(key, r)
+      this.realBaseCache.set(key, r)
     }
     return r
   }
@@ -232,13 +376,13 @@ export async function extractOutputs(
   // sound BEFORE anything is created — checking only the immediate parent
   // would pass for `dist/a/b` when `dist` is the symlink and `dist/a` does
   // not exist yet.
-  const assertContained = async (base: string, target: string, name: string): Promise<void> => {
+  async assertContained(base: string, target: string, name: string): Promise<void> {
     const baseResolved = path.resolve(base)
     const targetResolved = path.resolve(target)
     if (targetResolved !== baseResolved && !targetResolved.startsWith(baseResolved + path.sep)) {
       throw new ArchiveSecurityError(`archive entry escapes destDir (unsafe): ${name}`)
     }
-    const realBase = await realBaseOf(base)
+    const realBase = await this.realBaseOf(base)
     // Only ancestors strictly BELOW the base are candidates — those are the
     // ones a poisoned entry could follow out of the tree. The walk must never
     // climb past the base: when the base itself does not exist yet (the
@@ -264,61 +408,102 @@ export async function extractOutputs(
     // pre-existing symlink to follow — the chain will be created fresh.
   }
 
-  const targets = entries
-    .map((e) => ({ e, dest: destFor(e.name) }))
-    .filter(
-      (t): t is { e: ArchiveEntry; dest: { base: string; rel: string } } =>
-        t.dest !== null && t.dest.rel.length > 0,
-    )
+  /**
+   * Write the entry beside its target. Buffers (a Blob or bytes) are
+   * written without waiting, bounded by `INFLIGHT_BYTES`; a chunk stream
+   * goes to a file sink one piece at a time.
+   */
+  async stage(
+    name: string,
+    target: string,
+    body: Blob | Uint8Array | AsyncIterable<Uint8Array>,
+  ): Promise<void> {
+    const created = await mkdir(path.dirname(target), { recursive: true })
+    // Write beside the target and RENAME into place. rename(2) replaces
+    // the destination's directory ENTRY without following it, which is
+    // what makes this both link-safe and concurrency-safe:
+    //
+    //   - a planted symlink or HARDLINK at the target is replaced, not
+    //     written through, so `ln <victim> <dest>/out.txt` cannot get
+    //     the artifact's bytes into <victim>;
+    //   - the target is never momentarily ABSENT. The unlink-then-write
+    //     version opened exactly that window, and a second extract of
+    //     the same payload could delete the file between this one's
+    //     write and its chmod — reproduced 3/400 locally, caught red on
+    //     darwin CI where a loaded runner widened the race;
+    //   - mode and mtime are applied BEFORE the file is visible, so no
+    //     reader sees it with the wrong metadata.
+    //
+    // A directory at the target makes the rename fail — the same
+    // fail-closed outcome the plain write had.
+    const tmp = `${target}.vx-tmp-${process.pid.toString(36)}-${(tmpSeq++).toString(36)}`
+    this.staged.push({ name, tmp, target, created })
+    if (body instanceof Blob || body instanceof Uint8Array) {
+      this.inflightBytes += body instanceof Blob ? body.size : body.byteLength
+      this.inflight.push(Bun.write(tmp, body))
+      if (this.inflightBytes > INFLIGHT_BYTES) await this.drain()
+      return
+    }
+    const sink = Bun.file(tmp).writer()
+    try {
+      for await (const piece of body) await sink.write(piece)
+    } finally {
+      await sink.end()
+    }
+  }
 
-  // Containment is proven for EVERY entry before ANY of them is written:
-  // a mixed artifact (benign entries plus one traversal) must leave
-  // nothing behind, not a partial tree plus an error.
-  await Promise.all(
-    targets.map(({ e, dest }) =>
-      assertContained(dest.base, path.join(dest.base, dest.rel), e.name),
-    ),
-  )
+  private async drain(): Promise<void> {
+    const pending = this.inflight
+    this.inflight = []
+    this.inflightBytes = 0
+    await Promise.all(pending)
+  }
 
-  await Promise.all(
-    targets.map(async ({ e, dest }) => {
-      const target = path.join(dest.base, dest.rel)
-      await mkdir(path.dirname(target), { recursive: true })
-
-      // Write beside the target and RENAME into place. rename(2) replaces
-      // the destination's directory ENTRY without following it, which is
-      // what makes this both link-safe and concurrency-safe:
-      //
-      //   - a planted symlink or HARDLINK at the target is replaced, not
-      //     written through, so `ln <victim> <dest>/out.txt` cannot get
-      //     the artifact's bytes into <victim>;
-      //   - the target is never momentarily ABSENT. The unlink-then-write
-      //     version opened exactly that window, and a second extract of
-      //     the same payload could delete the file between this one's
-      //     write and its chmod — reproduced 3/400 locally, caught red on
-      //     darwin CI where a loaded runner widened the race;
-      //   - mode and mtime are applied BEFORE the file is visible, so no
-      //     reader sees it with the wrong metadata.
-      //
-      // A directory at the target makes the rename fail — the same
-      // fail-closed outcome the plain write had.
-      const tmp = `${target}.vx-tmp-${process.pid.toString(36)}-${(tmpSeq++).toString(36)}`
-      try {
-        await Bun.write(tmp, e.file)
-        if (e.mode !== 0) await chmod(tmp, e.mode & 0o777)
-        if (e.mtimeMs > 0) {
-          const t = e.mtimeMs / 1000
-          await utimes(tmp, t, t)
+  /** Apply each entry's mode and mtime, then rename everything into place. */
+  async commit(metaFor: (name: string) => [mode: number, mtimeMs: number]): Promise<void> {
+    await this.drain()
+    await Promise.all(
+      this.staged.map(async (s) => {
+        const [mode, mtimeMs] = metaFor(s.name)
+        if (mode !== 0) await chmod(s.tmp, mode & 0o777)
+        if (mtimeMs > 0) {
+          const t = mtimeMs / 1000
+          await utimes(s.tmp, t, t)
         }
-        await rename(tmp, target)
-      } catch (err) {
-        // Never leave a stray `.vx-tmp-*` behind: the declared output globs
-        // would sweep it into the next artifact.
-        await unlink(tmp).catch(() => undefined)
-        throw err
+        await rename(s.tmp, s.target)
+      }),
+    )
+    this.staged.length = 0
+  }
+
+  /**
+   * Never leave a stray `.vx-tmp-*` behind: the declared output globs would
+   * sweep it into the next artifact. Directories this extraction created
+   * are removed bottom-up while empty; one a concurrent writer has since
+   * filled is left alone.
+   */
+  async abort(): Promise<void> {
+    await Promise.allSettled(this.inflight)
+    this.inflight = []
+    await Promise.all(this.staged.map((s) => unlink(s.tmp).catch(() => undefined)))
+    for (const s of this.staged) {
+      if (s.created === undefined) continue
+      let dir = path.dirname(s.target)
+      const top = path.resolve(s.created)
+      while (dir.startsWith(top)) {
+        if (
+          !(await rmdir(dir).then(
+            () => true,
+            () => false,
+          ))
+        )
+          break
+        if (dir === top) break
+        dir = path.dirname(dir)
       }
-    }),
-  )
+    }
+    this.staged.length = 0
+  }
 }
 
 /** Per-process counter for extract temp names; uniqueness only. */
