@@ -696,7 +696,10 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   found the drift my session-local scripts had left: the tiles and the
   note still said 559 ms and 34 s after the vx rows were refreshed to
   549 ms and 31 s, and the doc heading carried a raw timestamp. The
-  scratchpad scripts are gone; the generator is the only path.
+  scratchpad scripts are gone; the generator is the only path, and the
+  docs project's `ci` group now depends on a `site-check` task that runs
+  `--check` with the results file, the generator, the landing page and
+  the doc as inputs — a hand-edited tile turns it red (verified).
 
 ## In flight
 
