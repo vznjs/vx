@@ -869,7 +869,18 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   a persistent task with `readyWhen`, `--affected=HEAD` on a clean and a
   dirty tree, and the policy flags `--no-cache`, `--force`, `--cache
   local:r`, `--cache-dir`, with `--cache bogus` and `--concurrency 0`
-  refused naming the expected shape.
+  refused naming the expected shape. Warm run re-measured after the
+  DX wave (1000-project bench, interleaved against a worktree at
+  44384a9, in-process totals): 151–184 ms vs 159–202 — no regression;
+  git's exposed time swings 21–47 ms in both arms, which is the walk's
+  own noise, not a lead. The same first run replayed through the
+  COMPILED darwin binary (re-signed; `dist/vx-darwin-arm64`): version,
+  init, the missing-package error, run, typo hint — identical. One
+  thing a newcomer will meet: after `init` the second run is a miss,
+  because the scaffold's inputs are the whole project and the task's
+  own `out.txt` lands in them; `vx why build` names exactly that file
+  as the added component and the third run is up to date, so it is
+  the config's TODO, not a defect.
   Reader audit: a size field that is not all octal digits is refused
   before any entry is yielded (`parseInt` read `5zz` as 5 and let the
   damage surface later, if at all — pinned, fails without the fix); a
@@ -944,82 +955,15 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    for 2026-09-03, after wave 6 and the discovery change, best of 5:
    1000 projects 193 ms (table says 204, measured before discovery
    changed), 100 projects 81 ms, on a box that had run the gate all day.
-6. **DONE 2026-09-03 as wave 6 (224 → 204 ms).** The lead, kept for the
-   method: measured (`VX_TIMING=1`, warm 1000
-   projects, 203 ms in-process):\*\* git enumeration 51 ms (overlapped with
-   33 ms of config loads), discover 22, classify+probe 22, run graph 46,
-   history 8. Inside run graph the accumulated cost is the OUTPUT
-   CURRENCY check: 365 ms CPU of `output glob` over 1000 warm hits
-   (0.36 ms each) plus 49 ms of stats, against 11 ms for every task
-   hash. The glob exists so a hit is "current" only when the output
-   tree equals the entry's set exactly (strict ownership). The obvious
-   design is a directory-mtime short-circuit — record each output
-   directory's mtime at save/restore, skip the glob while it matches —
-   but `isOutputsCurrent` is stale-hit-critical: design it with the
-   accepted `touch -r` trade in view, pin both directions, and MEASURE
-   before claiming the ~15% it suggests.
-
-7. **After waves 7 and 8, closing 2026-09-03:** in-process stage table
-   on the 1000-project bench — discover 20 ms, load configs 23, git
-   enumeration 21, classify + probe 23, run graph 21, record history 11,
-   total ~151 ms — and whole-process best of 5: 1000 projects 186 ms,
-   100 projects 77 ms. What is left is the
-   floors: the git walk (~28 ms exposed), 1,000 task hashes (11 ms),
-   1,000 file and directory stats (18 ms), 1,000 manifest reads in
-   discovery (10 ms) and the batched inserts (9 ms). The next real win
-   is structural (fsmonitor-backed git status, or not needing a walk at
-   all), not another stage shave. **Wave 7 (git first, 195 → 172 ms).**
-   Reading the table
-   after it: `open cache` (12.5 ms) and `discover` (21 ms) read high
-   while git runs because the spawns' pipe callbacks land in whichever
-   stage is current — the parts themselves measure 1.2 ms (SQLite open),
-   0.1 (fingerprint), 1.4 (package graph), 17 (discovery alone). Not
-   leads. `record history` was 11 ms of 1,000 inserts × five `runs`
-   indexes — one of which, `runs_hash`, had no reader (every consumer of
-   `runs.hash` looks the row up by run id or project+task first);
-   dropping it measured 11.5 → 3.9 ms for the inserts. Two small leads
-   left, each measured: the 1,000 `config_evals` point lookups (DONE —
-   `loadProjectConfigs`, one query per round); and `getMany`'s 1,000
-   artifact-existence stats inside `classify + probe` — MEASURED 2.7 ms
-   of `getMany`'s 5.8 ms on the bench (2026-09-03), and moving them to
-   restore time needs a re-execute fallback for a hit whose artifact is
-   gone, which the hit path lacks. CLOSED: a new failure path for 2.7 ms
-   is the wrong trade. `classify + probe` (23 ms) now has spans:
-   `stable keys` 12 ms — of which the 1,000 task hashes are 10–11, so
-   the classification itself is ~1.5 — and `probe` 8.3 ms (`getMany`
-   5.8 plus the restore-tier bookkeeping). The hashing is the floor of
-   key derivation; nothing here is a lead. **The stage table
-   after wave 6** (warm 1000 projects, in-process
-   ~176 ms; the bench's whole-process number is 204 ms): git enumeration
-   54 ms wall (overlapped with the 36 ms of cached config loads, so ~20 ms
-   exposed), discover projects 22–44 ms (a readdir + a manifest read +
-   JSON.parse per project), classify + probe 26 ms, run graph 18 ms
-   (all of it file and directory stats), history 8 ms. The next real
-   lead is git. SPLIT (2026-09-03, in-process timer, 7 runs, min):
-   `ls-files -s -v` 11 ms, `status --porcelain -z -uall` 59 ms,
-   `rev-parse` 9 ms, `config` ~9 ms — the last two are the spawn floor
-   itself. The four run concurrently, so wall = the status walk;
-   `core.untrackedCache` did NOT help on this filesystem (58.6 ms with
-   it). `rev-parse --show-prefix --git-dir` is derivable from the `.git`
-   resolution `readHeadDirect` already does (a CPU saving, ~9 ms, wall
-   gain a few ms on a loaded box — the helper would have to move out of
-   `orchestrator` for `cache` to reach it); `config` is NOT safely
-   derivable (global/system config decide CRLF classification, which is
-   key-affecting). Caching the status result would need a proof it is
-   still valid, and the index mtime is not one — an untracked file is
-   invisible to the index. Discovery's readdir is DONE (stats, above).
-
-The audit rotation continues by the standing rule: newest code first,
-probes become tests, refutations recorded in the shipped entry that
-closes them.
-
-DECIDED 2026-09-03: `migrate`, `prune` and `upgrade` STAY in core. They
-are the first things a Turbo/Nx user and a Docker user run, and
-`upgrade` must live in the binary it upgrades; asking for a second
-install before the first `vx migrate` is an adoption cost with no
-runtime benefit — the verbs are imported only when invoked, so a
-`vx run` never loads them. The `commands` seam is for verbs core has no
-business shipping.
+   Floors on the 1000-project bench (in-process, 2026-09-03): discover
+   20 ms, load configs 21–23, git enumeration 21–47 exposed (the walk's
+   own noise), classify + probe 23, run graph 19–21, record history
+   11; total 151–184. What is left is the git walk (~60 ms, exposed by
+   whatever it fails to overlap), 1,000 task hashes (11 ms), 1,000 file
+   and directory stats (18 ms), 1,000 manifest reads (10 ms) and the
+   batched inserts (4 ms after `runs_hash` went). The next real win is
+   structural (not needing a walk), not another stage shave; fsmonitor,
+   untracked cache and `-unormal` are refuted (see Shipped).
 
 ## Decisions (this arc)
 
