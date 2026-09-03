@@ -279,6 +279,17 @@ Process: push directly to `main`, no PRs. Gate before every push:
   shards — I/O, not CPU). Next time it fires, the failing run's stdout
   is the evidence to keep: whether `re-running...` ever printed
   separates a lost event from a slow re-run.
+- 2026-09-03 — **`getMany` audited: REFUTED as a stale-hit source, parity
+  pinned.** The batched probe behind the short-circuit classify mirrors
+  `get` on the three answers that are not rows: the local read gate
+  (`--force` classifies nothing as a hit), an artifact deleted under its
+  index row (absent, as `get` returns null), and the deferred
+  `accessed_at` touch LRU pruning reads. None was pinned;
+  `tests/cache-get-many.test.ts` now holds all three with a control, and
+  each of three mutations (gate ignored, existence skipped, touch
+  dropped) fails exactly its pin. `LayeredCache`/`ChainedCache` declare
+  no `getMany`, so a remote-backed run takes the per-hash pool — by
+  design (`hasRemote` skips the up-front classify anyway).
 
 ## In flight
 
