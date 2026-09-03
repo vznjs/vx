@@ -532,6 +532,13 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   a `.ts` config pays one. Bench-level the difference sits inside the
   noise floor, so the micro-measurement is the record. Precedence is
   unchanged (first name in the list wins, as `find` did).
+- 2026-09-03 — **RED MAIN for one run (1ad0859), not the diff:** the
+  ubuntu job's `archive restore — concurrent restores … two parallel
+extracts` guard ran 400 rounds past the 5 s default timeout under the
+  gate's four parallel shards on a small runner. Its own comment calls
+  it a weak guard whose bound is the rounds; it now carries a 30 s
+  timeout and a shard-cost hint. Discovery (the commit's diff) was
+  green on both jobs' other files.
 
 ## In flight
 

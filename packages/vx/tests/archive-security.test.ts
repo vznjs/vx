@@ -16,6 +16,7 @@
 // Hostile fixtures are still hand-built byte by byte, because a writer
 // that refuses to emit the attack cannot produce the input under test.
 
+// @vx-shard-cost 6  (the 400-round concurrent-restore guard, measured 2026-09-03 under load)
 import { existsSync } from 'node:fs'
 import { link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -505,7 +506,10 @@ describe('archive restore — concurrent restores to the same anchor', () => {
     // …and no scratch file survived to be swept into the next artifact.
     const leftovers = [...new Bun.Glob('**/*.vx-tmp-*').scanSync({ cwd: dest })]
     expect(leftovers).toEqual([])
-  })
+    // 400 rounds run ~2 s idle and past the 5 s default under the ubuntu
+    // gate's four parallel shards (red main, 2026-09-03); the bound is the
+    // rounds, not the clock.
+  }, 30_000)
 })
 
 describe('packArtifact → readArtifact → extractOutputs round trip', () => {
