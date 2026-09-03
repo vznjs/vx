@@ -806,7 +806,10 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   under 10 the full gate passed in 63 s, 24/24 — the failures were the
   box. A pin followed: the ustar split lands exactly at the 155-byte
   prefix and 100-byte name limits and goes pax one byte past either,
-  read back through vx and libarchive. Two more pins from the audit: a pax `path` record that renames a
+  read back through vx and libarchive. Headline shape re-measured after
+  wave 10 (`RUNNERS=vx`, load 10.8): cold 3m 46s, warm 516 → 510 ms,
+  restore 799 → 777 ms, CPU cold 34.09 → 34.61 s, CPU warm 1.35 → 1.34 s
+  — no regression from the streamed save; site regenerated. Two more pins from the audit: a pax `path` record that renames a
   benign header to a traversal is refused with nothing written, and a
   compressed stream cut mid-archive above the threshold surfaces as
   `CorruptArtifactError` through the real cache with the staged temp
@@ -841,7 +844,20 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
    half is green, the live files skip without an endpoint, and docker
    was down on this machine that day. `tests/helpers/nativelink.md` has
    the dev config. Expect nothing to change; prove it.
-2. **The shipped binary's second core.** A compiled `vx` loading a
+2. **The remote seam still moves whole artifacts.** With save, ingest
+   and restore bounded, `RemoteCacheLayer` is the last place a large
+   artifact sits in memory: `put(hash, body: ArrayBuffer | Uint8Array)`
+   gets the on-disk artifact via `Bun.file().bytes()`, and `get` returns
+   an `ArrayBuffer` that ingest writes to its temp. Widening both to a
+   `Blob` (a `BunFile` is one; bytes wrap in one) would let uploads
+   stream from disk and downloads land in the temp directly — but
+   `@vzn/vx-reapi` must digest the whole body before it can upload, so
+   the plugin side needs a streaming digest and a chunked `writeBlob`
+   first. A breaking seam change for plugin authors; do it with the
+   plugins guide, the stub layers in the tests and `vx-reapi` in one
+   commit, and measure a 150 MiB round trip through the stub before
+   and after. Not started.
+3. **The shipped binary's second core.** A compiled `vx` loading a
    `vx.workspace.ts` that imports `@vzn/vx` pulls a second copy of core
    from `node_modules` (~12 ms) on every run. The user-visible half is
    closed (`isUserError` classifies by name across copies); what remains
@@ -853,17 +869,17 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
    runtime-plugin fix (Bun 1.4.0's `Bun.plugin` hooks never fire for
    bare specifiers or `.ts`); options left are rewriting the config
    source before import or a Bun fix. Parked.
-3. **The watch e2e flake** — if `re-runs the task after a file change,
+4. **The watch e2e flake** — if `re-runs the task after a file change,
 then exits on SIGINT` times out again, keep that run's stdout: the
    presence of `re-running...` separates a lost event from a slow
    re-run (see the 2026-09-03 watch entry).
-4. **Re-measure the warm run after each day's work** — the hot path is
+5. **Re-measure the warm run after each day's work** — the hot path is
    the product. `bun bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap. Closing figures
    for 2026-09-03, after wave 6 and the discovery change, best of 5:
    1000 projects 193 ms (table says 204, measured before discovery
    changed), 100 projects 81 ms, on a box that had run the gate all day.
-5. **DONE 2026-09-03 as wave 6 (224 → 204 ms).** The lead, kept for the
+6. **DONE 2026-09-03 as wave 6 (224 → 204 ms).** The lead, kept for the
    method: measured (`VX_TIMING=1`, warm 1000
    projects, 203 ms in-process):\*\* git enumeration 51 ms (overlapped with
    33 ms of config loads), discover 22, classify+probe 22, run graph 46,
@@ -878,7 +894,7 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    accepted `touch -r` trade in view, pin both directions, and MEASURE
    before claiming the ~15% it suggests.
 
-6. **After waves 7 and 8, closing 2026-09-03:** in-process stage table
+7. **After waves 7 and 8, closing 2026-09-03:** in-process stage table
    on the 1000-project bench — discover 20 ms, load configs 23, git
    enumeration 21, classify + probe 23, run graph 21, record history 11,
    total ~151 ms — and whole-process best of 5: 1000 projects 186 ms,

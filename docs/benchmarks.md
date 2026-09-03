@@ -121,12 +121,12 @@ The committed `bench/RESULTS.md` / `bench/results.json` are this run.
 |                                 | vx                                                         | Turborepo     | Nx                |
 | ------------------------------- | ---------------------------------------------------------- | ------------- | ----------------- |
 | **Cold** (nothing cached)       | **3m 46s**                                                 | 5m 13s (1.4×) | 34m 44s (9.2×)    |
-| **Warm**, nothing to rebuild    | **516ms**                                                  | 760ms (1.5×)  | 3.59s (7.0×)      |
-| **Warm**, restore outputs       | **799ms**                                                  | 1.17s (1.5×)  | 4.15s (5.2×)      |
-| **CPU burned**, cold (user+sys) | **34.09s**                                                 | 1m 13s (2.1×) | 114m 06s (200.8×) |
-| **CPU burned**, warm (user+sys) | **1.35s**                                                  | 4.40s (3.3×)  | 5.54s (4.1×)      |
+| **Warm**, nothing to rebuild    | **510ms**                                                  | 760ms (1.5×)  | 3.59s (7.0×)      |
+| **Warm**, restore outputs       | **777ms**                                                  | 1.17s (1.5×)  | 4.15s (5.3×)      |
+| **CPU burned**, cold (user+sys) | **34.61s**                                                 | 1m 13s (2.1×) | 114m 06s (197.8×) |
+| **CPU burned**, warm (user+sys) | **1.34s**                                                  | 4.40s (3.3×)  | 5.54s (4.1×)      |
 | _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —             | —                 |
-| _Measured floors_ (context)     | git walk 65ms · walk + raw copy 360ms · task shells 33.52s | —             | —                 |
+| _Measured floors_ (context)     | git walk 67ms · walk + raw copy 352ms · task shells 33.15s | —             | —                 |
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the

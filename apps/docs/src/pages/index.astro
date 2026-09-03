@@ -130,7 +130,7 @@ const benchRows = [
     task: 'Cold build · from scratch',
     bars: [
       { name: 'baseline', val: 218000, disp: '3m 38s', c: 'var(--c-baseline)' },
-      { name: 'vx', val: 226497, disp: '3m 46s', c: 'var(--phosphor)', best: true },
+      { name: 'vx', val: 226450, disp: '3m 46s', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 313463, disp: '5m 13s', c: 'var(--c-turbo)' },
       { name: 'nx', val: 2084171, disp: '34m 44s', c: 'var(--c-nx)' },
     ],
@@ -139,7 +139,7 @@ const benchRows = [
     task: 'Fully cached · nothing to rebuild',
     bars: [
       { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },
-      { name: 'vx', val: 516, disp: '516ms', c: 'var(--phosphor)', best: true },
+      { name: 'vx', val: 510, disp: '510ms', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 760, disp: '760ms', c: 'var(--c-turbo)' },
       { name: 'nx', val: 3594, disp: '3.59s', c: 'var(--c-nx)' },
     ],
@@ -148,7 +148,7 @@ const benchRows = [
     task: 'Restoring outputs · cache → disk',
     bars: [
       { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },
-      { name: 'vx', val: 799, disp: '799ms', c: 'var(--phosphor)', best: true },
+      { name: 'vx', val: 777, disp: '777ms', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 1174, disp: '1.17s', c: 'var(--c-turbo)' },
       { name: 'nx', val: 4149, disp: '4.15s', c: 'var(--c-nx)' },
     ],
@@ -157,7 +157,7 @@ const benchRows = [
     task: 'CPU burned · cold build, user + system',
     bars: [
       { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },
-      { name: 'vx', val: 34086, disp: '34.09s', c: 'var(--phosphor)', best: true },
+      { name: 'vx', val: 34610, disp: '34.61s', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 73079, disp: '1m 13s', c: 'var(--c-turbo)' },
       { name: 'nx', val: 6846039, disp: '114m 06s', c: 'var(--c-nx)' },
     ],
@@ -294,7 +294,7 @@ const footCols = {
             </div>
             <div class="stats">
               <div class="stat">
-                <span class="val"><span class="num">516</span><span class="unit">ms</span></span>
+                <span class="val"><span class="num">510</span><span class="unit">ms</span></span>
                 <span class="label">Full cache replay</span>
                 <span class="sub">3,270 tasks · 1,090 packages</span>
               </div>
@@ -541,8 +541,8 @@ const footCols = {
               pinned to the same concurrency, daemons on for the others, measured one at a time
               (2026-09-03, Turborepo 2.10.12, Nx 23.2.0, Apple silicon, 10 cores). The tasks are
               <code>sleep 1</code>, so the clock measures the runner and CPU measures its overhead:
-              vx burned 34 s to build the whole graph cold, Turborepo 73 s, Nx 114 minutes. Warm,
-              vx replays 3,270 tasks in 516ms; Turborepo 760ms; Nx 3.59s. Reproduce with
+              vx burned 35 s to build the whole graph cold, Turborepo 73 s, Nx 114 minutes. Warm,
+              vx replays 3,270 tasks in 510ms; Turborepo 760ms; Nx 3.59s. Reproduce with
               <code>bun bench/compare.ts 100 11 1</code>; the committed results are this run. The dashed <em>baseline</em> is the theoretical best case: cold is the tasks' own 3m 38s on 10 perfectly parallel workers along the dependency graph, and a cached run, a restore and the CPU a runner burns are 0 in theory — every bar is the runner's overhead. Bars are proportional within a row; a bar more than ten times the next runner's is clipped with a break, and the numbers are exact.
             </p>
           </div>
