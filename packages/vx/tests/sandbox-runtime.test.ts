@@ -20,7 +20,7 @@ import {
   resolveSandboxConfig,
   runSandboxed,
 } from '../src/exec/sandbox-runtime.js'
-import { run, type Logger, type RunOptions } from '../src/orchestrator/index.js'
+import { run, type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
 import { sandboxAvailable, sandboxReportingReliable } from './helpers/sandbox-gate.js'
 
 const TIMEOUT = 60_000
@@ -35,8 +35,10 @@ interface Fixture {
  * sandboxed task that fails on CI only (a bubblewrap or seccomp error on
  * the runner) otherwise leaves nothing in the log but `Received: false`.
  */
-function expectOk(r: { ok: boolean }, fixture: Fixture): void {
-  if (!r.ok) throw new Error(`run was not ok; task output:\n${fixture.log.join('\n')}`)
+function expectOk(r: RunSummary, fixture: Fixture): void {
+  if (r.ok) return
+  const exits = r.outcomes.map((o) => `${o.node.id} ${o.status} exit=${o.exitCode}`).join(', ')
+  throw new Error(`run was not ok (${exits}); task output:\n${fixture.log.join('\n')}`)
 }
 
 const collectingLogger = (fixture: Fixture): Logger => ({
