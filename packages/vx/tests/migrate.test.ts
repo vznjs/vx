@@ -848,6 +848,12 @@ describe('vx init on a workspace with no scripts', () => {
       const again = await vx(root, ['init'])
       expect(again.code).toBe(0)
       expect(again.out).toContain('vx.workspace.ts already exists')
+      // --dry on an empty workspace writes nothing and says so.
+      await rm(path.join(root, 'vx.workspace.ts'))
+      const dry = await vx(root, ['init', '--dry'])
+      expect(dry.code).toBe(0)
+      expect(dry.out).toContain('would write vx.workspace.ts (dry run, nothing written)')
+      expect(await Bun.file(path.join(root, 'vx.workspace.ts')).exists()).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
