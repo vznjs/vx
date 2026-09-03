@@ -54,7 +54,10 @@ export async function resolveRunOptions(
    (`--dry`, `--graph`, `--summarize`, `--profile`, `--affected`,
    `--excludeDependencies`) accept either the bare form or `=<value>`.
 3. Unknown flags + missing values + invalid integers → returned via
-   `RunArgs.error`. The handler short-circuits to exit 1.
+   `RunArgs.error`. The handler short-circuits to exit 1. An unknown
+   flag names the nearest documented `vx run` flag within two edits
+   (`documentedFlags('run')` reads the help text's `(for run)` sections,
+   so there is no second list to drift).
 4. Mutually-exclusive combinations checked at the end:
    `--dry` + `--graph`; either + `--summarize` / `--profile`.
 
@@ -95,8 +98,10 @@ If `--dry` or `--graph` is set:
    - `--graph=''` → `formatGraphDot(plan)` → stdout.
    - `--graph=<path>` → `formatGraphDot(plan)` → `Bun.write(path, ...)`.
 3. A requested name that matched no project (`plan.unresolvedTasks`),
-   or an empty plan → exits 1 with `no projects declare task(s): …`,
-   before any DOT / JSON is written.
+   or an empty plan → exits 1 with `no projects declare task(s): …`
+   (plus `Did you mean <task>?` when a declared task, or for `pkg#task`
+   a runnable spec, is within two edits), before any DOT / JSON is
+   written.
 
 ## Verbose summary
 
