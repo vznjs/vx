@@ -869,6 +869,25 @@ describe('vx init (package.json scripts)', () => {
     expect(r.out).toContain('package.json scripts → vx.config.ts')
   })
 
+  it('a scripts field that is not an object contributes nothing (indices are not script names)', async () => {
+    const odd = await makeRoot('vx-migrate-oddscripts-')
+    try {
+      const dir = path.join(odd, 'packages', 'weird')
+      await mkdir(dir, { recursive: true })
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'weird', scripts: ['tsc'] }),
+      )
+      await addPackage(odd, 'fine', { build: 'tsc' })
+      const r = await vx(odd, ['init', '--dry'])
+      expect(r.code).toBe(0)
+      expect(r.out).toContain('packages/fine/vx.config.ts')
+      expect(r.out).not.toContain('packages/weird/vx.config.ts')
+    } finally {
+      await rm(odd, { recursive: true, force: true })
+    }
+  })
+
   it('a workspace with no scripts anywhere says so', async () => {
     const empty = await makeRoot('vx-migrate-empty-')
     try {

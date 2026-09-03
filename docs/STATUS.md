@@ -214,6 +214,16 @@ Process: push directly to `main`, no PRs. Gate before every push:
   end (run 1 records durations, run 2 starts the historically slow
   chain first against insertion order). The docs front door's numbers
   are this month's.
+- 2026-09-03 — audit rotation on the newest code. REFUTED: `getMany`
+  under a layered/chained cache — neither wrapper exposes it, and the
+  short-circuit already declines any layer with a remote, so a batched
+  local probe can never skip a remote read. CONFIRMED and fixed: an
+  unknown verb in a workspace whose `vx.workspace.*` fails to load
+  printed the loader's stack instead of "unknown command" — a typo read
+  as a broken workspace. Now both facts are stated (unknown verb, plus
+  why plugin verbs could not be looked up). CONFIRMED and fixed:
+  `migrate-scripts` enumerated a non-object `scripts` field's indices as
+  script names. Both pinned.
 
 ## In flight
 

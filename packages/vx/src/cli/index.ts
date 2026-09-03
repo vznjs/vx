@@ -59,7 +59,17 @@ export async function run(argv: readonly string[]): Promise<number> {
       // may own it (`VxPlugin.commands`). Core verbs were matched above, so
       // nothing here can shadow them.
       const resolved = await resolvePluginCommand(command)
-      if (resolved !== null) return await resolved.command.run(rest, resolved.ctx)
+      if (resolved !== null && !('loadError' in resolved)) {
+        return await resolved.command.run(rest, resolved.ctx)
+      }
+      // A broken workspace file cannot say whether the verb exists. Say
+      // both things: the verb is unknown HERE, and why the lookup could not
+      // finish — a typo still reads as a typo, and a real plugin verb still
+      // points at the file that broke it.
+      const loadNote =
+        resolved !== null && 'loadError' in resolved
+          ? `\n  (plugin verbs could not be looked up: vx.workspace failed to load: ${resolved.loadError})`
+          : ''
       if (command === 'serve' || command === 'dev') {
         // vx core is only a task runner — it has no service layer of its
         // own. A dashboard, remote cache, distributed execution, etc. are
@@ -75,7 +85,7 @@ export async function run(argv: readonly string[]): Promise<number> {
         )
         return 1
       }
-      process.stderr.write(`vx: unknown command: ${command}\n`)
+      process.stderr.write(`vx: unknown command: ${command}${loadNote}\n`)
       printHelp()
       return 1
     }

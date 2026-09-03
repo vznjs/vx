@@ -20,7 +20,11 @@ const PERSISTENT = new Set(['dev', 'start', 'serve', 'watch', 'preview'])
 const AFTER_BUILD = new Set(['test', 'lint', 'typecheck', 'check', 'e2e'])
 
 function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
-  return (meta.packageJson as unknown as { scripts?: Record<string, unknown> }).scripts ?? {}
+  // package.json is a boundary: `scripts` is whatever the file holds. A
+  // string or an array would enumerate its indices as script names.
+  const raw = (meta.packageJson as unknown as { scripts?: unknown }).scripts
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+  return raw as Record<string, unknown>
 }
 
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {

@@ -103,11 +103,28 @@ describe('plugin commands', () => {
     }
   })
 
-  it('a malformed commands entry is refused by the loader, naming it', async () => {
+  it('a malformed commands entry is refused by the loader, and the refusal is what the verb reports', async () => {
     await Bun.write(
       path.join(root, 'vx.workspace.mjs'),
       localWorkspaceSource([`{ name: 'org/bad', commands: { hello: { run() { return 0 } } } }`]),
     )
-    await expect(cli(['hello'])).rejects.toThrow(/plugins\[0\]\.commands\.hello/)
+    expect(await cli(['hello'])).toBe(1)
+    const text = err.join('')
+    expect(text).toContain('unknown command: hello')
+    expect(text).toMatch(/plugins\[0\]\.commands\.hello/)
+  })
+})
+
+describe('a broken workspace file', () => {
+  it('reports the unknown verb AND why plugin verbs could not be looked up', async () => {
+    await Bun.write(
+      path.join(root, 'vx.workspace.mjs'),
+      'export default { plugins: [ this is not javascript\n',
+    )
+    expect(await cli(['nope'])).toBe(1)
+    const text = err.join('')
+    expect(text).toContain('unknown command: nope')
+    expect(text).toContain('plugin verbs could not be looked up')
+    expect(text).toContain('vx.workspace')
   })
 })
