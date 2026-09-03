@@ -583,12 +583,14 @@ frame is decoded and the tar read as it arrives — ustar name/prefix,
 pax `path`/`size`, GNU long names, header checksums, truncation — and
 every regular entry is written beside its target as `.vx-tmp-*` and
 renamed into place only after the whole archive has ended cleanly and
-the index's recorded outputs are all present. vx itself holds one chunk of the tar at a time — a single 400 MiB entry
-restores at +30 MiB RSS, the same as a 150 MiB one — while the per-entry
-buffers of many mid-sized entries are garbage the collector reclaims at
-its own pace (200 × 2 MiB measured +90–180 MiB, never the artifact's
-size).Archive`, +49 MiB streamed, same wall
-time). An artifact up to 4 MiB compressed is decoded in one call
+the index's recorded outputs are all present. vx itself holds one
+chunk of the tar at a time (measured 2026-09-03, incompressible
+artifacts, fresh process: 150 MiB peaked at +644 MiB through
+`Bun.Archive` and +49 MiB streamed at the same wall time; a single
+400 MiB entry restores at +30 MiB, the same as a 150 MiB one), while
+the per-entry buffers of many mid-sized entries are garbage the
+collector reclaims at its own pace (200 × 2 MiB measured +90–180 MiB,
+never the artifact's size). An artifact up to 4 MiB compressed is decoded in one call
 first — the stream setup costs ~35 µs each, 4% of the headline
 restore row when every artifact is a one-file `dist/` — and then fed
 to the same reader and extractor, so there is one extraction path.
