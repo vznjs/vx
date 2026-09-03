@@ -169,7 +169,7 @@ function pushBodyLines(lines: string[], text: string): void {
 }
 
 /** Stable per-project hue: FNV-style fold of the name into the palette. */
-export function projectColor(projectName: string): string {
+function projectColor(projectName: string): string {
   let h = 0
   for (let i = 0; i < projectName.length; i++) {
     h = (h * 31 + projectName.charCodeAt(i)) >>> 0
@@ -198,7 +198,7 @@ export function paintIdParts(
   )
 }
 
-export function paintId(
+function paintId(
   projectName: string,
   taskName: string,
   colors: ColorSupport,
@@ -207,11 +207,7 @@ export function paintId(
   return paintIdParts(projectName, projectName, taskName, colors, opts)
 }
 
-export function paintTaskId(
-  node: TaskNode,
-  colors: ColorSupport,
-  opts: { bold?: boolean } = {},
-): string {
+function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolean } = {}): string {
   return paintId(node.projectName, node.taskName, colors, opts)
 }
 
@@ -223,8 +219,8 @@ export function paintTaskId(
 // fixed cell so durations line up and a ticking elapsed never shifts
 // the row. All detail (exit code, output) lives in the framed block.
 export const TIME_COL = 7 // "0ms" … "999.99s"
-export const STATUS_COL = 7 // "success" / "running" / "skipped"
-export const CACHE_COL = 6 // "remote" / "local" / "fresh" / "miss"
+const STATUS_COL = 7 // "success" / "running" / "skipped"
+const CACHE_COL = 6 // "remote" / "local" / "fresh" / "miss"
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
@@ -297,7 +293,7 @@ function cacheOf(o: TaskOutcome): { word: string; color: string } {
 }
 
 /** The painted status glyph (shape = cache axis, color = task axis). */
-export function taskGlyph(o: TaskOutcome, colors: ColorSupport): string {
+function taskGlyph(o: TaskOutcome, colors: ColorSupport): string {
   return paint(statusOf(o).color, glyphShape(o), colors)
 }
 

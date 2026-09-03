@@ -120,7 +120,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
  * are read by filterUpstreamHashes / computeGroupHash; the rest of
  * TaskOutcome is irrelevant here, so we cast a minimal shape.
  */
-export function synthUpstream(
+function synthUpstream(
   node: TaskNode,
   nodes: Map<string, TaskNode>,
   keyById: Map<string, string>,
@@ -189,7 +189,7 @@ export function dependsOnSiblingOutputs(
   return false
 }
 
-export function topoOrder(nodes: Map<string, TaskNode>): string[] {
+function topoOrder(nodes: Map<string, TaskNode>): string[] {
   const indegree = new Map<string, number>()
   const dependents = new Map<string, string[]>()
   for (const node of nodes.values()) {

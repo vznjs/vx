@@ -761,7 +761,7 @@ function runGitLsFiles(cwd: string): GitLsResult {
   return parseLsFilesOutput(new TextDecoder().decode(proc.stdout))
 }
 
-export function parseLsFilesOutput(out: string): GitLsResult {
+function parseLsFilesOutput(out: string): GitLsResult {
   const files: string[] = []
   const oids = new Map<string, string>()
   const flagged = new Set<string>()

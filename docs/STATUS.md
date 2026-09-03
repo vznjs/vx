@@ -449,6 +449,15 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   gate twenty-odd times. Nothing today touched the run hot path
   (`vx watch`, `vx init`, the eval-cache deny-list, the shard runner,
   docs), and the measurement agrees.
+- 2026-09-03 — **sixteen internal seams narrowed.** The dead-export
+  sweep (corrected rules: a barrel is a file with no function bodies;
+  comments and tests are not consumers) found 61 core exports with no
+  real consumer; 45 are test-facing seams the suite reads, which this
+  repo accepts on purpose, and 16 were referenced by nothing at all —
+  yet every one is used inside its own file, so only the `export`
+  keyword was dead. Dropped it on all sixteen (`ZERO_COST` also left the
+  graph barrel). No behaviour change; the type-aware lint is the proof
+  nothing imported them.
 
 ## In flight
 

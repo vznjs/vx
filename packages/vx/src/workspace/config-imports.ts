@@ -36,7 +36,7 @@ import type { ProjectMeta } from './workspace.js'
  * reason. `import type` is erased by `scanImports` and so contributes no edge,
  * which is correct: an erased import cannot move a resolved value.
  */
-export function scanLocalImports(source: string, fromDir: string, loader: 'ts' | 'js'): string[] {
+function scanLocalImports(source: string, fromDir: string, loader: 'ts' | 'js'): string[] {
   let specifiers: string[]
   try {
     specifiers = new Bun.Transpiler({ loader }).scanImports(source).map((i) => i.path)

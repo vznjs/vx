@@ -52,7 +52,7 @@ export async function hashOutputTree(refs: readonly OutputRef[]): Promise<Map<st
 
 /** Per-file map cap on a shipped fingerprint (~40 KB at the cap). The tree
  *  digest always folds ALL entries, so detection never depends on the map. */
-export const FP_MAX_FILES = 500
+const FP_MAX_FILES = 500
 
 /** Roll an output-tree fingerprint map into the shippable `OutputFingerprint`
  *  payload (Phase 4, cross-machine diff): a tree digest over ALL sorted

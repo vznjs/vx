@@ -16,7 +16,6 @@ export {
   type TaskOutcome,
   type TaskStatus,
   type VerifyVerdict,
-  ZERO_COST,
 } from './scheduler.js'
 export {
   buildTaskGraph,

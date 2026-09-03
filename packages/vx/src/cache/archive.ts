@@ -39,7 +39,7 @@ import { mkdir, chmod, realpath, rename, stat, unlink, utimes } from 'node:fs/pr
 import path from 'node:path'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
-export const META_ENTRY = '.vx-meta.json'
+const META_ENTRY = '.vx-meta.json'
 
 /** Archive entry name of the always-present stdout record. */
 export const STDOUT_ENTRY = 'stdout'

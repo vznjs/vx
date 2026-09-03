@@ -582,7 +582,7 @@ export class CorruptArtifactError extends Error {
  * bounding a malicious/compromised remote's ability to OOM a victim who takes
  * a cache hit.
  */
-export const MAX_DECOMPRESSED_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
+const MAX_DECOMPRESSED_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
 
 /**
  * Read a zstd frame's declared Frame_Content_Size (RFC 8878 §3.1.1) WITHOUT

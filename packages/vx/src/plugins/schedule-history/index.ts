@@ -12,7 +12,7 @@
 
 import { LocalHistoryProvider, type HistoryTable, type TaskNode, type VxPlugin } from '@vzn/vx'
 
-export const SCHEDULE_HISTORY_PLUGIN = 'vx/schedule-history'
+const SCHEDULE_HISTORY_PLUGIN = 'vx/schedule-history'
 
 /** Default duration when neither task history nor a workspace median exists. */
 const DEFAULT_DURATION_MS = 1000

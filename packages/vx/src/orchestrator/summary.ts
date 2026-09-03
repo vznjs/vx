@@ -28,7 +28,7 @@ const GRADIENT_TO = [0xf4, 0x72, 0xb6] as const
 const RULE_DASHES = 57
 
 /** Total visible rule width: `\u2500 <mark> ` + dashes. Shared by summary + header. */
-export function gradientRule(colors: ColorSupport, mark = 'vx'): string {
+function gradientRule(colors: ColorSupport, mark = 'vx'): string {
   const head = `\u2500 `
   const dashes = '\u2500'.repeat(Math.max(8, RULE_DASHES + 2 - mark.length))
   if (!colors.enabled) return `${head}${mark} ${dashes}`

@@ -173,7 +173,7 @@ export interface ResourceCost {
   mem: number
 }
 
-export const ZERO_COST: ResourceCost = { cpu: 0, mem: 0 }
+const ZERO_COST: ResourceCost = { cpu: 0, mem: 0 }
 
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
