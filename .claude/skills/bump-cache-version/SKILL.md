@@ -25,23 +25,27 @@ you must bump it; otherwise stale entries can produce wrong restores.
 
 ## Files to update (in order)
 
-1. **`src/cache.ts`** — `const CACHE_VERSION = 'vx-cache-vN'`. Increment N.
-2. **`docs/caching.md`** — append to the "Bumping `CACHE_VERSION`"
-   section the version + reason.
-3. **`docs/modules/cache.md`** — if the `CacheKeyInput` / `CacheEntry`
-   shape changed, update the schema there.
-4. **`CLAUDE.md`** — append to the decision log:
-   `- **YYYY-MM**: CACHE_VERSION → vN. <reason>. PR #<n>.`
-5. **Cache tests** (`src/cache.test.ts`) — if you changed key derivation,
-   update the assertions; if you changed storage layout, update e2e
-   fixtures.
+1. **`packages/vx/src/cache/cache.ts`** — `const CACHE_VERSION = 'vx-cache-vN'`.
+   Increment N.
+2. **`docs/caching.md`** — append to the "Bumping `CACHE_VERSION`" section
+   the version + reason.
+3. **`docs/modules/cache.md`** — the quoted current version, and the
+   `CacheKeyInput` / `CacheEntry` shape if it changed.
+4. **`CLAUDE.md`** § Live invariants — the quoted `CACHE_VERSION`.
+5. **`docs/STATUS.md`** — the shipped entry that carries the change says
+   why the bump was needed (or why it was not: a key-derivation fix whose
+   old key was already wrong is self-healing; a machine-local acceleration
+   table with a fallback — `output_dirs`, 2026-09-03 — is not identity).
+6. **Cache tests** (`packages/vx/tests/cache*.test.ts`) — key-derivation
+   assertions and storage-layout fixtures.
 
 ## After the bump
 
-Run the local check:
+Run the gate from the repo root (never `bun test` alone — it cannot see a
+type error):
 
 ```sh
-bun run lint && bun run format:check && bun test src/
+bun packages/vx/src/bin.ts run ci --all
 ```
 
 Then commit with a body that explains why the bump was needed — future
@@ -49,11 +53,7 @@ you will read it to understand cache invalidation history.
 
 ## Reference
 
-Current version, decision log, and reasoning live in `CLAUDE.md` and
-`docs/caching.md`. Cache version history:
-
-- v7 → v8: folded `forwardArgs` into the key (PR #2, CLI alignment).
-- v8 → v9: TaskConfig JSON shape changed (`exec` array → single,
-  `tasks` nested under `run`). PR #3.
-- v9 → v10: SQLite-backed metadata + on-disk outputs; per-entry
-  manifest removed. PR #<this>.
+The current version and the reasoning live in `CLAUDE.md` § Live
+invariants and `docs/caching.md`; the history is in git (the decision log
+was retired 2026-09-02). Current: `vx-cache-v27`, core `SCHEMA_VERSION`
+`v24`.
