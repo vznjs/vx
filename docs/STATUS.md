@@ -722,7 +722,10 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   minutes set the scale. The chart now draws true proportions with no
   minimum; a row's scale is its largest non-outlier value, and a bar
   more than 10× the next runner's is drawn clipped with a break, its
-  number exact. `bench/update-site.ts` regenerates all of it.
+  number exact. `bench/update-site.ts` regenerates all of it, and
+  `tests/bench-site.test.ts` pins the two rules in the core suite (the
+  cold row's baseline equals the results' ideal, the other three are 0;
+  the chart has no minimum width and clips an outlier).
 
 ## In flight
 
