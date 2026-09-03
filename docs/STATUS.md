@@ -392,6 +392,18 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   decode class from the vx-mcp fix across every package: every other
   `TextDecoder().decode` runs on a complete buffer (spawn outputs,
   protobuf slices) and `runner.ts` already streams — REFUTED elsewhere.
+- 2026-09-03 — **the npm launcher pinned; its fallback arms REFUTED as
+  defects.** Probed with only the `@vzn/vx` tarball installed (no
+  platform package): with Bun on PATH the launcher runs the shipped
+  source and reports the stamped version; with Bun hidden it prints the
+  actionable message and exits 1. The one drift was its hint saying
+  `Bun (>=1.3)` against an engines floor of 1.4. `tests/npm-launcher.test.ts`
+  now drives the real launcher through `node` against a fake install
+  tree: platform binary exec with argv and exit-code mirroring, the
+  no-binary-no-bun message, and the bun source fallback. First probe of
+  the no-bun arm was a harness error (a symlinked `npx` resolves its CLI
+  through the symlink's real dir) — invoke the launcher through `node`
+  directly.
 
 ## In flight
 
