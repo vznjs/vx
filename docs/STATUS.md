@@ -324,6 +324,23 @@ Process: push directly to `main`, no PRs. Gate before every push:
   own `Bun.gc` ran finalizers that closed descriptors earlier files had
   leaked. It now collects before the baseline too and pins a quarter of
   the measured floor over 40 imports.
+- 2026-09-03 — **the shard dealer is pinned.** The runner's dealing was
+  its only untested new code: `tests/helpers/shard-deal.ts` now holds
+  `describeTestFile` / `dealShards` / `shardGroups`, `shard.ts` is the
+  CLI over them, and `tests/shard-deal.test.ts` pins over a synthetic
+  directory that a cost hint beats size, `@vx-shard-isolate` is read
+  from the head, LPT deals the heaviest file alone when it outweighs the
+  rest, every test file lands in exactly one shard (helpers and `.md`
+  never), and an isolated file gets its own process. Two mutations fail
+  exactly their pins. OBSERVED in this wave's first gate run and
+  recorded rather than retried silently: `--verify=all reports
+  undeclared-inputs … for a leaky task` returned `ok: true` once — the
+  documented macOS reporting-loss residual (denial enforced, unified-log
+  record dropped under load, ~2% on loaded runs). The sharded gate loads
+  this machine the way CI loads a runner, so the residual that darwin CI
+  class-gates can now show up locally; it passes alone and is not this
+  wave's. If it recurs in the local gate, gate the reporting assertions
+  on load rather than raising timeouts — the record is dropped, not late.
 
 ## In flight
 
@@ -343,10 +360,17 @@ Process: push directly to `main`, no PRs. Gate before every push:
 2. **Audit rotation** — the newest code first. Done 2026-09-03: the
    scripts mapper (two defects fixed), `getMany` (parity pinned), the
    `commands` resolver under a broken workspace file (already pinned).
-   Next candidates: `armWatcher` under the workspace-wide (single root
-   watcher) mode end to end; the config-eval cache's purity gate on
-   template literals and regex literals; `--download` × the shard
-   runner's isolated process. Probes become tests.
+   Done later the same day: the purity gate (three false SAFEs closed),
+   `armWatcher` workspace-wide mode (REFUTED as a gap — `cli.test.ts`
+   drives the single-root-watcher mode end to end including the
+   readiness line), the watch probe file reaching a cache key (REFUTED —
+   watchers arm after the initial run; a concurrent `vx run` in another
+   terminal could at worst see one self-healing miss); the shard runner's
+   exit on a signal-killed child (REFUTED — Bun resolves `exited` as
+   128+signal, a number, so an OOM-killed `bun test` reports 137, not
+   green; `process.exit(null)` would have been 0). Next candidate:
+   `--download` × the shard runner's isolated process. Probes become
+   tests.
 3. **The watch e2e flake** — if `re-runs the task after a file change,
    then exits on SIGINT` times out again, keep that run's stdout: the
    presence of `re-running...` separates a lost event from a slow

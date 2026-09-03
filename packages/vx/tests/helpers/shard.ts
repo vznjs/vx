@@ -29,8 +29,8 @@
 // by one file cannot reach another shard, which is the failure a single
 // process hid once (a prototype spy left by a failing test, 2026-09-03).
 
-import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { dealShards, shardGroups } from './shard-deal.js'
 
 const [mode, shardsArg, indexArg] = process.argv.slice(2)
 const shards = Number(shardsArg)
@@ -47,49 +47,14 @@ if (
   process.exit(2)
 }
 const dir = path.resolve(import.meta.dir, '..')
-
-interface TestFile {
-  rel: string
-  cost: number
-  isolate: boolean
-}
-
-function describe(file: string): TestFile {
-  const head = readFileSync(path.join(dir, file), 'utf8').slice(0, 2000)
-  const hint = /^\/\/ @vx-shard-cost (\d+(?:\.\d+)?)\b/m.exec(head)
-  return {
-    rel: `./tests/${file}`,
-    cost: hint !== null ? Number(hint[1]) : statSync(path.join(dir, file)).size / 10_000,
-    isolate: /^\/\/ @vx-shard-isolate\b/m.test(head),
-  }
-}
-
-const files = readdirSync(dir)
-  .filter((f) => f.endsWith('.test.ts'))
-  .map(describe)
-  .sort((a, b) => b.cost - a.cost || (a.rel < b.rel ? -1 : 1))
-const load: number[] = Array.from({ length: shards }, () => 0)
-const buckets: TestFile[][] = Array.from({ length: shards }, () => [])
-for (const file of files) {
-  let lightest = 0
-  for (let i = 1; i < shards; i++) if (load[i]! < load[lightest]!) lightest = i
-  load[lightest]! += file.cost
-  buckets[lightest]!.push(file)
-}
-const mine = buckets[index]!
+const mine = dealShards(dir, shards)[index]!
 
 if (mode === 'list') {
   process.stdout.write(mine.map((f) => f.rel).join(' ') + '\n')
   process.exit(0)
 }
 
-// One process for the shared files, one per isolated file. Every group runs
-// even after a failure so a red shard reports every failing test, not the
-// first group's.
-const groups: string[][] = []
-const shared = mine.filter((f) => !f.isolate).map((f) => f.rel)
-if (shared.length > 0) groups.push(shared)
-for (const f of mine) if (f.isolate) groups.push([f.rel])
+const groups = shardGroups(mine)
 
 let exit = 0
 for (const group of groups) {
