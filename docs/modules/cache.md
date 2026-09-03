@@ -230,10 +230,11 @@ Determinism notes:
 `.vx-meta.json` exists because `Bun.Archive` carries no per-entry
 metadata in either direction — see `src/cache/archive.ts`, which owns
 pack, read and extract, plus the entry-name validation and containment
-checks that no tar reader can make on vx's behalf. Restore reads the
-tar as a stream (`src/cache/tar-stream.ts`) so its memory is bounded
-by a chunk; ingest reads it in memory. Both feed one staging extractor
-(write beside the target, rename after the whole archive is read).
+checks that no tar reader can make on vx's behalf. The tar is read as
+a stream (`src/cache/tar-stream.ts`): `scanArtifact` lists entries for
+ingest's index rows, `extractArtifactStream` restores through one
+staging extractor (write beside the target, rename after the whole
+archive is read), so memory is bounded by a chunk either way.
 
 SQLite stores metadata only:
 

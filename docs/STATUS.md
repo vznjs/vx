@@ -765,8 +765,10 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   pax and GNU long names, corrupt checksum, truncation);
   `tests/artifact-roundtrip.test.ts` pins the >4 MiB path through the
   real cache incl. a poisoned trailing entry leaving an empty project
-  dir. Ingest still reads in memory (it holds the remote bytes anyway).
-  Refuted on the way: `Bun.Archive` does not auto-detect zstd and
+  dir. Then (same day) ingest moved onto the same reader
+  (`scanArtifact` lists entries and stdout without materialising) and
+  `readArtifact` / `extractOutputs` / `readEntryText` were deleted:
+  `Bun.Archive` now only WRITES artifacts. Refuted on the way: `Bun.Archive` does not auto-detect zstd and
   `.files()` copies every entry (+131 MiB on 150 MiB), so it cannot be
   the streaming reader. `Bun.Archive.extract` was not measured — its
   materialisation of links is the class the extractor exists to refuse.

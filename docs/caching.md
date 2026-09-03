@@ -570,9 +570,10 @@ the full `workspace-outputs/<rel>` name as the discriminator.
 
 The container is written by `Bun.Archive` (libarchive): there is no
 `tar` subprocess, no `--format=gnu` / `--format=gnutar` spelling probe,
-and no staging copy of every output byte before packing (v27). Two
-readers consume it. Ingest and the tests read it through `Bun.Archive`
-in memory. **Restore streams it** (`src/cache/tar-stream.ts`): the zstd
+and no staging copy of every output byte before packing (v27). vx
+reads it with its own streaming reader (`src/cache/tar-stream.ts`);
+ingest lists entries through it without materialising a byte, and
+**restore streams it**: the zstd
 frame is decoded and the tar read as it arrives — ustar name/prefix,
 pax `path`/`size`, GNU long names, header checksums, truncation — and
 every regular entry is written beside its target as `.vx-tmp-*` and
@@ -595,13 +596,12 @@ them), so `packArtifact` stats each output once and writes
 `.vx-meta.json` — `{ version, files: { <entry>: [mode, mtimeMs] } }` —
 into the archive. Restore applies both. Entries that are not regular
 files (symlinks, hardlinks, devices) are never materialised — the
-in-memory reader omits them and the streaming one skips them — so a
+reader reports them only to be skipped — so a
 poisoned artifact cannot smuggle one onto disk; entry NAMES are
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps
 are unlinked and the empty directories the extraction created are
-pruned. `tests/archive-security.test.ts` runs every restore case
-against both readers.
+pruned (`tests/archive-security.test.ts`).
 
 **Key properties:** one entry is one file — eviction is a single
 unlink; no per-entry manifest, no separate `logs/` tree; and local +

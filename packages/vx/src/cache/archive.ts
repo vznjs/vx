@@ -22,18 +22,17 @@
 // headers as the only source they were second-precision, and the save
 // path needed a second stat pass to refine them.
 //
-// Two readers share one extractor. `readArtifact` + `extractOutputs` take
-// the whole tar in memory (libarchive via `Bun.Archive`): the ingest path,
-// which already holds the remote bytes, and the small-artifact restore.
-// `extractArtifactStream` reads the tar as it streams out of the zstd
-// decoder (`tar-stream.ts`) and never holds more than a chunk of it:
-// restoring a 150 MiB artifact through `Bun.Archive` peaked at 3.2× its
-// size (measured 2026-09-03), which is the wrong shape for a task whose
-// output IS the big thing. Both feed the same staging core: every entry
-// is written beside its target under a `.vx-tmp-*` name and renamed into
-// place only once the WHOLE archive has been read and every name proven
-// safe, so a poisoned entry anywhere — even the last one — leaves nothing
-// behind but the empty directories it needed, which are pruned too.
+// The tar is read as a stream (`tar-stream.ts`) in both directions of
+// use: `scanArtifact` lists what an artifact holds (ingest's index rows
+// and stdout) without materialising a byte, and `extractArtifactStream`
+// restores it while never holding more than a chunk. `Bun.Archive` used
+// to read it too, and restoring a 150 MiB artifact through it peaked at
+// 3.2× its size (measured 2026-09-03) — the wrong shape for a task whose
+// output IS the big thing. Every regular entry is written beside its
+// target under a `.vx-tmp-*` name and renamed into place only once the
+// WHOLE archive has been read and every name proven safe, so a poisoned
+// entry anywhere — even the last one — leaves nothing behind but the
+// empty directories it needed, which are pruned too.
 //
 // What stays here is the part no tar reader can decide for us: WHERE an
 // entry may land on disk. Every name is validated and every destination
@@ -42,10 +41,9 @@
 // local entry) and "zip slip" is the class.
 //
 // Entries that are not regular files (symlinks, hardlinks, devices,
-// FIFOs) are never materialised — `Bun.Archive.files()` omits them and
-// the streaming reader reports them only to be skipped — vx's outputs are
-// regular files, and an artifact that claims otherwise silently loses the
-// claim rather than acting on it.
+// FIFOs) are never materialised — the reader reports them only to be
+// skipped — vx's outputs are regular files, and an artifact that claims
+// otherwise silently loses the claim rather than acting on it.
 
 import { mkdir, chmod, realpath, rename, rmdir, stat, unlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
@@ -79,8 +77,6 @@ export interface ArchiveEntry {
   mode: number
   /** Modification time in ms since epoch from the sidecar. */
   mtimeMs: number
-  /** The entry's bytes, as handed back by `Bun.Archive`. */
-  file: File
 }
 
 /**
@@ -130,96 +126,45 @@ export async function packArtifact(args: {
 }
 
 /**
- * Parse artifact bytes into validated entries. Rejects the WHOLE
- * archive when any name is unsafe — a partial extract of a poisoned
- * artifact is the outcome the traversal defense exists to prevent.
+ * List an artifact's regular entries with their restore metadata, and
+ * its stdout text (`null` when the entry is absent — not a vx artifact),
+ * without materialising anything. Rejects the WHOLE archive when any
+ * name is unsafe — a partial reading of a poisoned artifact is the
+ * outcome the traversal defense exists to prevent.
  */
-export async function readArtifact(bytes: Uint8Array): Promise<ArchiveEntry[]> {
-  const files = await new Bun.Archive(bytes).files()
-
+export async function scanArtifact(
+  tar: ReadableStream<Uint8Array>,
+): Promise<{ entries: ArchiveEntry[]; stdout: string | null }> {
+  const seen: Array<{ name: string; size: number; mtimeMs: number }> = []
   let meta: MetaFile['files'] = {}
-  const metaFile = files.get(META_ENTRY)
-  if (metaFile !== undefined) {
-    const parsed = JSON.parse(await metaFile.text()) as MetaFile
-    meta = parsed.files ?? {}
+  let stdout: string | null = null
+  for await (const e of tarEntries(tar)) {
+    if (e.type !== '0') continue
+    if (e.name === META_ENTRY) {
+      meta = (JSON.parse(await textOf(e.body)) as MetaFile).files ?? {}
+      continue
+    }
+    assertSafeName(e.name)
+    if (e.name === STDOUT_ENTRY) stdout = await textOf(e.body)
+    seen.push({ name: e.name, size: e.size, mtimeMs: e.mtimeMs })
   }
-
-  const out: ArchiveEntry[] = []
-  for (const [name, file] of files) {
-    if (name === META_ENTRY) continue
-    assertSafeName(name)
-    const m = meta[name]
-    out.push({
-      name,
-      size: file.size,
+  return {
+    entries: seen.map((s) => {
+      const m = meta[s.name]
       // A foreign artifact (or one whose sidecar lost an entry) restores
       // readable-but-not-executable rather than failing the hit: the
       // sidecar is metadata, never the authority on whether bytes exist.
-      mode: m?.[0] ?? 0o644,
-      mtimeMs: m?.[1] ?? file.lastModified,
-      file,
-    })
-  }
-  return out
-}
-
-/** Read one entry's text body; `''` when the entry is absent. */
-export async function readEntryText(
-  entries: readonly ArchiveEntry[],
-  name: string,
-): Promise<string> {
-  const e = entries.find((x) => x.name === name)
-  return e === undefined ? '' : await e.file.text()
-}
-
-/**
- * Materialise `outputs/<rel>` under `destDir/<rel>` and — when
- * `workspaceDest` is given — `workspace-outputs/<rel>` under
- * `workspaceDest/<rel>`. Entries in neither namespace are ignored.
- *
- * Mode and mtime come from the sidecar, so a restored tree compares
- * equal to the recorded index rows at millisecond precision and
- * `isOutputsCurrent` can skip the next restore.
- */
-export async function extractOutputs(
-  entries: readonly ArchiveEntry[],
-  destDir: string,
-  workspaceDest?: string,
-): Promise<void> {
-  await mkdir(destDir, { recursive: true })
-  const x = new Extractor(destDir, workspaceDest)
-  const targets = entries
-    .map((e) => ({ e, dest: x.destFor(e.name) }))
-    .filter(
-      (t): t is { e: ArchiveEntry; dest: { base: string; rel: string } } =>
-        t.dest !== null && t.dest.rel.length > 0,
-    )
-
-  // Containment is proven for EVERY entry before ANY of them is written:
-  // a mixed artifact (benign entries plus one traversal) must leave
-  // nothing behind, not a partial tree plus an error.
-  await Promise.all(
-    targets.map(({ e, dest }) =>
-      x.assertContained(dest.base, path.join(dest.base, dest.rel), e.name),
-    ),
-  )
-  try {
-    await Promise.all(
-      targets.map(({ e, dest }) => x.stage(e.name, path.join(dest.base, dest.rel), e.file)),
-    )
-    await x.commit((name) => {
-      const e = entries.find((c) => c.name === name)!
-      return [e.mode, e.mtimeMs]
-    })
-  } catch (err) {
-    await x.abort()
-    throw err
+      return { name: s.name, size: s.size, mode: m?.[0] ?? 0o644, mtimeMs: m?.[1] ?? s.mtimeMs }
+    }),
+    stdout,
   }
 }
 
 /**
- * The streaming twin of `readArtifact` + `extractOutputs`: `tar` is the
- * DECOMPRESSED archive as a byte stream. Entries are validated and staged
+ * Restore from `tar`, the DECOMPRESSED archive as a byte stream:
+ * `outputs/<rel>` lands under `destDir/<rel>` and — when `workspaceDest`
+ * is given — `workspace-outputs/<rel>` under `workspaceDest/<rel>`;
+ * entries in neither namespace are ignored. Entries are validated and staged
  * as they arrive and renamed into place only after the archive has ended
  * cleanly and `verify` (the caller's look at which output names the
  * archive provided — the index's missing-output check) has passed. Any
@@ -267,8 +212,8 @@ export async function extractArtifactStream(
 
 /**
  * Entries up to this size are buffered and written without waiting, so a
- * thousand tiny outputs restore with the same parallelism as the in-memory
- * path; larger ones stream chunk by chunk to a file sink.
+ * thousand tiny outputs restore in parallel; larger ones stream chunk by
+ * chunk to a file sink.
  */
 const SMALL_ENTRY = 4 * 1024 * 1024
 
@@ -305,9 +250,9 @@ interface Staged {
 }
 
 /**
- * The staging core both readers share. Nothing reaches its final name
- * until `commit`; `abort` removes every temp and the empty directories
- * this extraction created.
+ * The staging core. Nothing reaches its final name until `commit`;
+ * `abort` removes every temp and the empty directories this extraction
+ * created.
  */
 class Extractor {
   private readonly staged: Staged[] = []
@@ -409,14 +354,14 @@ class Extractor {
   }
 
   /**
-   * Write the entry beside its target. Buffers (a Blob or bytes) are
-   * written without waiting, bounded by `INFLIGHT_BYTES`; a chunk stream
-   * goes to a file sink one piece at a time.
+   * Write the entry beside its target. A buffer is written without
+   * waiting, bounded by `INFLIGHT_BYTES`; a chunk stream goes to a file
+   * sink one piece at a time.
    */
   async stage(
     name: string,
     target: string,
-    body: Blob | Uint8Array | AsyncIterable<Uint8Array>,
+    body: Uint8Array | AsyncIterable<Uint8Array>,
   ): Promise<void> {
     const created = await mkdir(path.dirname(target), { recursive: true })
     // Write beside the target and RENAME into place. rename(2) replaces
@@ -438,8 +383,8 @@ class Extractor {
     // fail-closed outcome the plain write had.
     const tmp = `${target}.vx-tmp-${process.pid.toString(36)}-${(tmpSeq++).toString(36)}`
     this.staged.push({ name, tmp, target, created })
-    if (body instanceof Blob || body instanceof Uint8Array) {
-      this.inflightBytes += body instanceof Blob ? body.size : body.byteLength
+    if (body instanceof Uint8Array) {
+      this.inflightBytes += body.byteLength
       this.inflight.push(Bun.write(tmp, body))
       if (this.inflightBytes > INFLIGHT_BYTES) await this.drain()
       return

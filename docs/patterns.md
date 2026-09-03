@@ -148,7 +148,7 @@ Turbo-aware cache server can transit our blobs unchanged.
 | Pattern                                                            | Source     | vx source                                 |
 | ------------------------------------------------------------------ | ---------- | ----------------------------------------- |
 | Glob-based `outputs` declaration                                   | Turbo + Nx | `src/config.ts`, `src/cache/inputs.ts`    |
-| Restore by file (archive extract, not symlink/hardlink)            | Turbo + Nx | `src/cache/archive.ts` (`extractOutputs`) |
+| Restore by file (archive extract, not symlink/hardlink)            | Turbo + Nx | `src/cache/archive.ts` (`extractArtifactStream`) |
 | Log replay on cache hit                                            | Turbo + Nx | `src/orchestrator/execute-task.ts`        |
 | **Wipe outputs before exec AND before restore** (strict ownership) | (vx-only)  | `src/cache/inputs.ts` (`cleanOutputs`)    |
 

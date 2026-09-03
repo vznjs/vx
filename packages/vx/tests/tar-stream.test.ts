@@ -6,15 +6,9 @@
 
 import { describe, expect, it } from 'bun:test'
 import { TarFormatError, tarEntries } from '../src/cache/tar-stream.js'
+import { streamOf } from './helpers/stream.js'
 
 const enc = new TextEncoder()
-const streamOf = (bytes: Uint8Array, chunk = 1000): ReadableStream<Uint8Array> =>
-  new ReadableStream({
-    start(c) {
-      for (let i = 0; i < bytes.byteLength; i += chunk) c.enqueue(bytes.subarray(i, i + chunk))
-      c.close()
-    },
-  })
 
 async function collect(bytes: Uint8Array, chunk?: number) {
   const out: Array<{ name: string; size: number; type: string; text: string }> = []

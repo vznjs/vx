@@ -23,7 +23,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { readArtifact } from '../src/cache/archive.js'
+import { scanArtifact } from '../src/cache/archive.js'
+import { streamOf } from './helpers/stream.js'
 import { Cache } from '../src/cache/cache.js'
 import { xxh3, xxh3hex } from '../src/util/hash.js'
 
@@ -722,14 +723,14 @@ describePerf('cache baseline: SQLite writes', () => {
   })
 })
 
-describePerf('readArtifact — foreign tar dialects', () => {
+describePerf('scanArtifact — foreign tar dialects', () => {
   /**
    * PAX extended-header records (typeflag 'x' / 'g') are what BSD tar —
    * the macOS default — emits per entry for xattrs and nanosecond
    * mtimes. A hand-rolled reader had to recognise and skip them or they
-   * showed up as `PaxHeaders/<name>` junk files in restored trees; that
-   * is now libarchive's problem, and this pins that it stays solved for
-   * an artifact produced by some OTHER tar.
+   * showed up as `PaxHeaders/<name>` junk files in restored trees; this
+   * pins that the streaming reader skips them for an artifact produced
+   * by some OTHER tar.
    *
    * The bytes are constructed directly rather than shelled out to,
    * because which dialect the host `tar` speaks is exactly the variable
@@ -786,14 +787,16 @@ describePerf('readArtifact — foreign tar dialects', () => {
     const paxBody = new TextEncoder().encode('30 mtime=1716913200.123456789\n')
     const realBody = new TextEncoder().encode('console.log("hi")\n')
 
-    const entries = await readArtifact(
-      concat([
-        makeHeader({ name: 'PaxHeaders/main.js', size: paxBody.length, typeFlag: 'x' }),
-        makeDataBlock(paxBody),
-        makeHeader({ name: 'outputs/main.js', size: realBody.length, typeFlag: '0' }),
-        makeDataBlock(realBody),
-        new Uint8Array(1024),
-      ]),
+    const { entries } = await scanArtifact(
+      streamOf(
+        concat([
+          makeHeader({ name: 'PaxHeaders/main.js', size: paxBody.length, typeFlag: 'x' }),
+          makeDataBlock(paxBody),
+          makeHeader({ name: 'outputs/main.js', size: realBody.length, typeFlag: '0' }),
+          makeDataBlock(realBody),
+          new Uint8Array(1024),
+        ]),
+      ),
     )
 
     expect(entries.map((e) => e.name)).toEqual(['outputs/main.js'])
@@ -806,14 +809,16 @@ describePerf('readArtifact — foreign tar dialects', () => {
   it('reads past a global PAX record (typeflag g) too', async () => {
     const globalPax = new TextEncoder().encode('25 comment=globaljunk\n')
     const realBody = new TextEncoder().encode('x')
-    const entries = await readArtifact(
-      concat([
-        makeHeader({ name: 'pax_global_header', size: globalPax.length, typeFlag: 'g' }),
-        makeDataBlock(globalPax),
-        makeHeader({ name: 'outputs/a.txt', size: realBody.length, typeFlag: '0' }),
-        makeDataBlock(realBody),
-        new Uint8Array(1024),
-      ]),
+    const { entries } = await scanArtifact(
+      streamOf(
+        concat([
+          makeHeader({ name: 'pax_global_header', size: globalPax.length, typeFlag: 'g' }),
+          makeDataBlock(globalPax),
+          makeHeader({ name: 'outputs/a.txt', size: realBody.length, typeFlag: '0' }),
+          makeDataBlock(realBody),
+          new Uint8Array(1024),
+        ]),
+      ),
     )
     expect(entries.map((e) => e.name)).toEqual(['outputs/a.txt'])
   })

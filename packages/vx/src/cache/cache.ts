@@ -35,12 +35,10 @@ import { lstat, mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import {
-  type ArchiveEntry,
   ArchiveSecurityError,
   extractArtifactStream,
+  scanArtifact,
   packArtifact as packArchive,
-  readArtifact,
-  readEntryText,
   STDOUT_ENTRY,
 } from './archive.js'
 import { FsCASBackend } from './cas-backend.js'
@@ -2001,7 +1999,7 @@ export class Cache implements CacheLayer {
     // would leave a corrupt `<hash>.tar.zst` behind (with no SQL row,
     // since the decompress throw aborted indexing) for every later
     // reader to trip over. Decompress + parse also produce the
-    // `output_files` rows: same headers extractOutputs will see on
+    // `output_files` rows: same headers the restore will see on
     // restore, so the size/mode/mtime fingerprint we store matches
     // what isOutputsCurrent will compare against post-restore.
     let tarBytes: Uint8Array
@@ -2014,18 +2012,19 @@ export class Cache implements CacheLayer {
       if (err instanceof CorruptArtifactError) throw err
       throw new CorruptArtifactError(hash, 'zstd decompression failed', err)
     }
-    let entries: ArchiveEntry[]
+    let scanned: Awaited<ReturnType<typeof scanArtifact>>
     try {
-      entries = await readArtifact(tarBytes)
+      scanned = await scanArtifact(oneChunk(tarBytes))
     } catch (err) {
       if (err instanceof ArchiveSecurityError) throw err
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     }
     // v17 invariant: every artifact carries a `stdout` entry. Its
     // absence means the bytes decompressed but aren't a vx artifact.
-    if (!entries.some((e) => e.name === STDOUT_ENTRY)) {
+    if (scanned.stdout === null) {
       throw new CorruptArtifactError(hash, 'missing stdout entry')
     }
+    const { entries } = scanned
 
     const finalPath = this.tarPath(hash)
     // tmp suffix mixes pid + hrtime + a random hex chunk so two saves
@@ -2068,7 +2067,7 @@ export class Cache implements CacheLayer {
       if (rowPath === null) continue
       outputFileRows.push([rowPath, e.size, e.mode & 0o777, Math.floor(e.mtimeMs)])
     }
-    const stdoutText = await readEntryText(entries, STDOUT_ENTRY)
+    const stdoutText = scanned.stdout
 
     const [project, task] = splitTaskId(meta.taskId)
     const now = Date.now()

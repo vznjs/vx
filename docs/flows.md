@@ -45,7 +45,7 @@ sequenceDiagram
 
 ## 2. Warm run — local cache hit
 
-Owners: `cache/cache.ts:get` + `isOutputsCurrent`, `cache/archive.ts:extractOutputs`.
+Owners: `cache/cache.ts:get` + `isOutputsCurrent`, `cache/archive.ts:extractArtifactStream`.
 
 ```mermaid
 sequenceDiagram
@@ -63,7 +63,7 @@ sequenceDiagram
         Note over C: skip extraction entirely —<br/>the warm-warm path costs N stats, zero writes
     else any output stale/missing
         C->>C: wipe declared outputs (cleanOutputs)
-        C->>T: extractOutputs(entries → outputs/*)
+        C->>T: extractArtifactStream(tar stream → outputs/*)
         Note over T: path-traversal + symlink-clobber guards<br/>utimes restores header mtimes so the next<br/>run's stat-check passes
     end
     X->>X: replay cached stdout through logger
