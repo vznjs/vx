@@ -160,13 +160,18 @@ fixture). The git-path block verifies:
 
 Possible directions:
 
-- **Auto-tracking inputs** (vite-task style) — instead of static
-  globs, capture the files the command actually read via syscall
-  spying. Replace `resolveFiles` with a strategy that runs the command
-  in a tracing wrapper. Significant scope.
-- **Cross-project inputs** — add a notion of "this file from that
-  project" (e.g., `{ project: 'lib-a', files: '...' }`). Today this is
-  expressed only via the `dependsOn` + upstream-hash propagation;
-  direct file references across projects are forbidden.
-- **Faster hashing** — current implementation reads files sequentially.
-  Parallelizing would help on very large input sets.
+- **Auto-tracking inputs is NOT one** (vite-task style syscall spying,
+  the observed set becoming the next run's inputs): owner-rejected
+  (CLAUDE.md § Rejected). Inputs stay declared; `--verify=inputs` runs
+  the task under the sandbox and reports an undeclared read as a
+  finding, so the declared set is proven rather than inferred.
+- **Cross-project inputs** exist as `cache.inputs.workspaceFiles`
+  (root-relative globs, which may reach into another project's
+  directory) and, for outputs of an upstream task, through `dependsOn`
+  folding the upstream INPUT key. A per-project `{ project, files }`
+  form is not planned: the two cover the cases, and project boundaries
+  stay hard for plain `files` globs.
+- **Enumeration from something other than git's index** (a VFS, a
+  watchman daemon, a different VCS) — replace the one worktree walk in
+  `resolveFiles`; the identity contract (a blob id for a tracked-clean
+  file, a content hash otherwise) stays, since the cache key folds it.
