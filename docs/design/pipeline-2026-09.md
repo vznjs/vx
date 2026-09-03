@@ -88,7 +88,7 @@ interface KeyContext extends PluginContext {
 higher runs first among ready tasks; merged over the structural baseline
 exactly as `runGraph`'s existing `priorities` input.
 
-`commands` is `Record<string, (argv: readonly string[], ctx: CommandContext) => Promise<number>>`.
+`commands` is `Record<string, { description: string; run(argv: readonly string[], ctx: CommandContext): number | Promise<number> }>` — the description is what `vx help` prints, and a `run` resolving anything but an integer fails the verb naming the plugin.
 The CLI dispatcher tries core verbs first; on an unknown verb it loads
 the workspace config and asks each plugin, in order. `vx --help` lists
 plugin verbs after core's when a workspace is present.
