@@ -305,6 +305,25 @@ Process: push directly to `main`, no PRs. Gate before every push:
   remote-cache and executor divergences for a core that ships seams,
   not wires. New flag-map rows: retries/timeouts, `--verify`,
   placement/`--download`, run reports.
+- 2026-09-03 — **the config-eval purity gate had three false SAFEs,
+  proven at the gate and closed.** Probed `configEvalKey` (not just the
+  lexer) with evasive spellings: `\u0070rocess.env.HOME` (an identifier
+  escape the word list cannot see — it evaluated to a home path that
+  would then be served forever), `global['proc' + 'ess']` and
+  `self[…]` (Bun exposes both as live `globalThis` aliases), and
+  `Temporal.Now` (a second clock). All four were CACHED AS PURE. Now:
+  `global`, `self`, `Temporal` are denied, and any backslash left in
+  code position refuses the config. REFUTED while there: nested
+  template literals inside `${}`, brace-bearing objects inside `${}`,
+  and strings containing `}` inside `${}` are all lexed correctly. Four
+  table pins; two mutations fail exactly their rows. No
+  `CONFIG_EVAL_VERSION` bump: a refused config never consults the
+  table, so a stale entry stored under the old rule is unreachable.
+  ALSO, caught by this wave's gate: the descriptor tripwire from the
+  sharding wave read 20 imports as +12 in a shared shard process — its
+  own `Bun.gc` ran finalizers that closed descriptors earlier files had
+  leaked. It now collects before the baseline too and pins a quarter of
+  the measured floor over 40 imports.
 
 ## In flight
 

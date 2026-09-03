@@ -30,9 +30,15 @@ closure is provably pure:
 - the closure has ≤ 32 files;
 - with string literals and comments removed (`stripLiterals`), no file
   mentions a global through which the environment can leak: `process`,
-  `Bun`, `globalThis`, `fetch`, `Date`, `Intl`, `crypto`, `performance`,
-  `navigator`, `require`, `eval`, `Function`, `await`, `toLocale*`,
-  `import.meta`, `Math.random`, or a dynamic `import(`.
+  `Bun`, `globalThis`, `global`, `self` (Bun's two live aliases of
+  `globalThis` — a computed `global['proc' + 'ess']` never spells
+  `process`), `fetch`, `Date`, `Temporal`, `Intl`, `crypto`,
+  `performance`, `navigator`, `require`, `eval`, `Function`, `await`,
+  `toLocale*`, `import.meta`, `Math.random`, or a dynamic `import(`;
+- no backslash survives in code position: outside literals that is an
+  identifier escape, and `\u0070rocess` IS `process` while matching no
+  word in the list. Every spelling in the last two rules was cached as
+  pure before it was listed (2026-09-03).
 
 `stripLiterals` refuses (returns `null`) on any `/` outside a comment: a
 regex literal can contain a quote, and a lexer that misread one would

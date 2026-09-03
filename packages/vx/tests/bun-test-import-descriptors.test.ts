@@ -22,8 +22,12 @@ describe.skipIf(process.platform !== 'darwin')('bun test import descriptors', ()
   it('pins at least one descriptor per dynamically imported module', async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'vx-fd-tripwire-'))
     try {
+      // Collect BEFORE the baseline too: in a shared process the GC below
+      // also runs finalizers that close descriptors earlier files leaked,
+      // and that offset once read 20 imports as +12 (2026-09-03).
+      Bun.gc(true)
       const before = readdirSync('/dev/fd').length
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 40; i++) {
         const dir = path.join(root, `d${i}`)
         mkdirSync(dir)
         writeFileSync(path.join(dir, 'm.mjs'), `export const v = ${i}\n`)
@@ -31,9 +35,10 @@ describe.skipIf(process.platform !== 'darwin')('bun test import descriptors', ()
       }
       Bun.gc(true)
       const after = readdirSync('/dev/fd').length
-      // ≥ 20 rather than the measured ~46: the count per module is the
-      // runner's business, the pin is only that imports are not free.
-      expect(after - before).toBeGreaterThanOrEqual(20)
+      // A quarter of the measured ~90 for 40 modules: the count per module
+      // is the runner's business, the pin is only that imports are not free
+      // (plain `bun` measures exactly 0).
+      expect(after - before).toBeGreaterThanOrEqual(10)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

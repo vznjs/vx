@@ -91,6 +91,13 @@ describe('configEvalKey', () => {
     "await import('./x.mjs')",
     "require('./x.cjs')",
     "fetch('http://x')",
+    // Every spelling below was CACHED AS PURE on 2026-09-03 and evaluated to
+    // a machine-dependent value: an identifier escape the word list cannot
+    // see, the two live globalThis aliases Bun exposes, and a second clock.
+    '\\u0070rocess.env.HOME',
+    "global['proc' + 'ess'].env.HOME",
+    "self['proc' + 'ess'].env.HOME",
+    'Temporal.Now.instant().epochMilliseconds',
   ])('refuses to cache a config that mentions %s', async (expr) => {
     const cfg = await write(
       'packages/r/vx.config.mjs',

@@ -54,8 +54,12 @@ const MAX_CLOSURE_FILES = 32
 // do not capture. Tested against the source with string literals and
 // comments removed (`stripLiterals`), because `node -e "process.exit(0)"`
 // is an ordinary command, not an impure config.
+// `global` and `self` are live objects in Bun (aliases of `globalThis`), so
+// a computed `global['proc' + 'ess']` reaches process without ever
+// spelling it; `Temporal` is a clock. All three were CACHED AS PURE before
+// they were listed (2026-09-03).
 const IMPURE_RE =
-  /\b(?:process|Bun|globalThis|fetch|Date|Intl|crypto|performance|navigator|require|eval|Function|await|toLocale\w*)\b|import\s*\.\s*meta|Math\s*\.\s*random|\bimport\s*\(/
+  /\b(?:process|Bun|globalThis|global|self|fetch|Date|Temporal|Intl|crypto|performance|navigator|require|eval|Function|await|toLocale\w*)\b|import\s*\.\s*meta|Math\s*\.\s*random|\bimport\s*\(/
 
 // Static `import … from '…'` / `export … from '…'` / `import '…'` forms.
 // `[^;'"]*?` spans newlines, so multi-line specifier lists match.
@@ -185,7 +189,9 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<string | null
     const { file, bytes } = queue.shift()!
     const source = decoder.decode(bytes)
     const code = stripLiterals(source)
-    if (code === null || IMPURE_RE.test(code)) return null
+    // A backslash in code position is an identifier escape (`\u0070rocess`
+    // IS `process`) — the one spelling the deny-list cannot see. Refuse it.
+    if (code === null || code.includes('\\') || IMPURE_RE.test(code)) return null
     h = xxh3(`${file}\0`, h)
     h = xxh3(bytes, h)
     for (const m of source.matchAll(IMPORT_RE)) {
