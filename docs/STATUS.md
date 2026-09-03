@@ -699,7 +699,10 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   scratchpad scripts are gone; the generator is the only path, and the
   docs project's `ci` group now depends on a `site-check` task that runs
   `--check` with the results file, the generator, the landing page and
-  the doc as inputs — a hand-edited tile turns it red (verified).
+  the doc as inputs — a hand-edited tile turns it red (verified), and a
+  missing formatter makes the check THROW rather than pass vacuously
+  (probed: the spawn itself fails, so the fallback branch is unreachable
+  for an absent binary).
 
 ## In flight
 
