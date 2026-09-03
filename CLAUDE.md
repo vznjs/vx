@@ -16,6 +16,10 @@ runs (`executor`), where artifacts live (`cache`), who observes
 CLI verbs exist. Core applies NO plugin by default; even the local executor
 and cache are declared in `vx.workspace.ts`.
 
+Pipeline stages a plugin can fill, in order: `config` → `project` →
+`graph` → `key` → `schedule` → `executor` / `cache` → `telemetry` /
+`setup`, plus `commands` (CLI verbs). Design: `docs/design/pipeline-2026-09.md`.
+
 Decision drivers, in order: **performance, modularity, extensibility.**
 Nothing distributed ships in this repo (no agents, cloud, dashboards); the
 seams exist so someone can build those on top. `@vzn/vx-reapi` is the proof
@@ -35,17 +39,20 @@ packages/vx/            @vzn/vx core (src/ + tests/); paths below relative to it
   src/bin.ts            shebang → cli
   src/index.ts          public façade (snapshot-pinned by tests/package-boundaries.test.ts)
   src/config.ts         user schema: defineProject / defineWorkspace
-  src/cli/              verbs: run watch cache lock migrate show info why last prune upgrade
-  src/orchestrator/     run() pipeline, execute-task, task-hash, plugin seams, events, logger
-  src/workspace/        discovery, config eval, package graph, --filter/--affected, lockfile
+  src/cli/              verbs: run watch cache lock init migrate show info why last prune upgrade;
+                        plugin-commands.ts resolves plugin verbs (`commands` seam)
+  src/orchestrator/     run() pipeline, execute-task, task-hash, plugin stages + seams, events, logger
+  src/workspace/        discovery, config eval (+ config-cache.ts), package graph, --filter/--affected, lockfile
   src/graph/            task graph + two-tier scheduler
-  src/cache/            local SQLite+archive cache, layered/chained remote seam, inputs
+  src/cache/            local SQLite+archive cache, layered/chained remote seam, inputs (git enumeration)
   src/exec/             runner (Bun.spawn), env isolation, sandbox
-  src/plugins/          core's own plugins: local-executor, local-cache
-  src/util/
+  src/plugins/          core's own plugins: local-executor, local-cache, schedule-history
+  src/util/             incl. timing.ts (`VX_TIMING=1` stage table)
+  index.ts, plugins/*/index.ts  root shims (Bun's compiled binary ignores the exports map)
 packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)
 packages/vx-github      GitHub Actions job summary + Checks API plugin
+packages/vx-mcp         `vx mcp` — MCP server for AI agents (commands seam, no SDK)
 apps/docs               Astro Starlight site; docs/ is imported by scripts/import-docs.ts
 bench/                  synthetic workspace generator + runners (vx / turbo / nx)
 docs/                   source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/

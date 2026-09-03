@@ -297,11 +297,11 @@ is Windows (unsupported).
 ```sh
 git clone https://github.com/vznjs/vx && cd vx
 bun install
-bun src/bin.ts run ci          # format-check + lint + test
-bun src/bin.ts run build       # cross-target binaries → dist/
+bun packages/vx/src/bin.ts run ci --all     # lint + test + docs build, every package
+bun packages/vx/src/bin.ts run build --filter @vzn/vx   # cross-target binaries → packages/vx/dist/
 ```
 
-vx is self-hosted: every dev task routes through `bun src/bin.ts run <task>` per the repo's own `vx.config.ts`. No `package.json` scripts; CI invokes vx directly.
+vx is self-hosted: every dev task routes through `bun packages/vx/src/bin.ts run <task>` per each package's own `vx.config.ts`. No `package.json` scripts; CI invokes vx directly. Start with [`docs/STATUS.md`](docs/STATUS.md) — the living handoff — and `CLAUDE.md`.
 
 ## License
 
