@@ -322,9 +322,13 @@ jobs:
           printf 'packages:\n  - "packages/*"\n' > pnpm-workspace.yaml
           echo '{"name":"a"}' > packages/a/package.json
           echo x > packages/a/src/x.js
-          printf "import { defineProject } from '@vzn/vx'\nexport default defineProject({ tasks: { build: { exec: { command: 'echo built' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } })\n" > packages/a/vx.config.mjs
+          printf "import { defineProject } from '@vzn/vx'\nexport default defineProject({ tasks: { build: { exec: { command: 'echo built > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } })\n" > packages/a/vx.config.mjs
           printf "import { defineWorkspace } from '@vzn/vx'\nimport { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'\nimport { localCachePlugin } from '@vzn/vx/plugins/local-cache'\nexport default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })\n" > vx.workspace.mjs
           printf 'node_modules\n.vx\n' > .gitignore
           git init -q && git add -A && git -c user.email=ci@vx -c user.name=ci commit -qm init
           /tmp/vx-ci run build --all
+          # The cached run restores the declared output through the binary's
+          # own container reader: delete it, and it must come back.
+          rm packages/a/out.txt
           /tmp/vx-ci run build --all | grep -q 'a#build'
+          test "$(cat packages/a/out.txt)" = "built" || { echo "::error::cached run did not restore out.txt"; exit 1; }
