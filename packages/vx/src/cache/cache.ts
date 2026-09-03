@@ -1060,7 +1060,12 @@ export class Cache implements CacheLayer {
         -- The direct within-run flaky signal.
         attempts            INTEGER
       );
-      CREATE INDEX IF NOT EXISTS runs_hash       ON runs(hash);
+      -- runs_hash had no reader: every consumer of runs.hash looks the row
+      -- up by run_id or (project, task) first. Dropped 2026-09-03 — it cost
+      -- 1,000 warm-run inserts 11.5 → 3.9 ms; the DROP sheds it from
+      -- existing databases (a schema-meta bump is for stored shapes, and
+      -- an index is not one).
+      DROP INDEX IF EXISTS runs_hash;
       CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
       CREATE INDEX IF NOT EXISTS runs_project    ON runs(project, task);
       CREATE INDEX IF NOT EXISTS runs_ended      ON runs(ended_at);

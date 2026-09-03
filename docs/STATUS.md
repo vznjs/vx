@@ -608,6 +608,15 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   projects 170 → 154 ms. Interleaved A/B, three rounds of three, whole
   process: 195 → 172 ms (−12%); 100 projects 74 ms best of 5. Seven
   suites that could pin spawn order pass unchanged.
+- 2026-09-03 — **an unread index cost every warm run 7 ms.** Splitting
+  `record history` (11 ms on the 1000-project bench) found `runs` carrying
+  five indexes and `runs_hash` serving no query: both readers of
+  `runs.hash` (`vx why`, the input diff) look the row up by run id or
+  project+task and then read the column. Measured on a copy of the bench
+  database: 1,000 inserts 11.5 → 3.9 ms without it. The schema now
+  `DROP INDEX IF EXISTS` it so existing databases shed it on open; no
+  schema-version bump (an index is not a stored shape). The cache, why,
+  metrics, history and run-record suites pass unchanged.
 
 ## In flight
 
@@ -661,7 +670,16 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    accepted `touch -r` trade in view, pin both directions, and MEASURE
    before claiming the ~15% it suggests.
 
-7. **DONE as wave 7 (git first, 195 → 172 ms). The stage table after wave 6** (warm 1000 projects, in-process
+7. **DONE as wave 7 (git first, 195 → 172 ms).** Reading the table
+   after it: `open cache` (12.5 ms) and `discover` (21 ms) read high
+   while git runs because the spawns' pipe callbacks land in whichever
+   stage is current — the parts themselves measure 1.2 ms (SQLite open),
+   0.1 (fingerprint), 1.4 (package graph), 17 (discovery alone). Not
+   leads. `record history` was 11 ms of 1,000 inserts × five `runs`
+   indexes — one of which, `runs_hash`, had no reader (every consumer of
+   `runs.hash` looks the row up by run id or project+task first);
+   dropping it measured 11.5 → 3.9 ms for the inserts. **The stage table
+   after wave 6** (warm 1000 projects, in-process
    ~176 ms; the bench's whole-process number is 204 ms): git enumeration
    54 ms wall (overlapped with the 36 ms of cached config loads, so ~20 ms
    exposed), discover projects 22–44 ms (a readdir + a manifest read +
