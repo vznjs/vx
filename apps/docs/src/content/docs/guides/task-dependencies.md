@@ -112,7 +112,8 @@ typo should fail loudly.
 ## Ordering vs. cache identity
 
 `dependsOn` does two things at once: it **orders** execution, and by
-default it folds the upstream's hash into this task's **cache key**.
+default it folds the upstream's input key (never its outputs) into this
+task's **cache key**.
 Sometimes you want the ordering but not the key coupling — e.g. an
 integration test that must run *after* a dev server starts but whose
 result doesn't depend on it. Separate them with `cache.inputs.tasks`:
