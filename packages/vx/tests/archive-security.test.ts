@@ -522,6 +522,16 @@ describe('archive restore — mixed valid + malicious entries', () => {
       /escape|traversal|unsafe/i,
     )
     expect(await readdir(dest)).toEqual([]) // CONTROL: the created chain is pruned
+
+    // A pre-existing sibling whose name shares the created directory's
+    // prefix (`dist2` beside a created `dist`) is not the chain's.
+    await mkdir(path.join(dest, 'dist2'))
+    await writeFile(path.join(dest, 'dist2', 'keep.txt'), 'theirs')
+    await expect(extractArtifactStream(withWriter(false), dest, undefined)).rejects.toThrow(
+      /escape|traversal|unsafe/i,
+    )
+    expect(await readdir(dest)).toEqual(['dist2'])
+    expect(await readFile(path.join(dest, 'dist2', 'keep.txt'), 'utf8')).toBe('theirs')
   })
 
   it('a pax `path` record that renames a benign header to a traversal is refused', async () => {
