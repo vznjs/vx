@@ -883,7 +883,10 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   ~4.5× artifact size, up from ~3.8×. The bump is mandatory rather than
   self-healing: a v26 artifact has no sidecar, so a v27 reader would
   restore its outputs mode-0644 and mtime-now — silently wrong on disk
-  rather than a miss.
+  rather than a miss. Since 2026-09-03 the same layout is written and
+  read by vx's own streaming tar code (no bump: the bytes are readable
+  either way), and the peak above is history — save, ingest and restore
+  are bounded by a chunk now; see § Artifact container.
 
 - **v25 → v26**: the same shape as v25 — stored bytes that are wrong
   under a key nothing about the fix changes — reached by a different
