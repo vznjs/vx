@@ -243,6 +243,19 @@ Process: push directly to `main`, no PRs. Gate before every push:
   a file list in a variable reached `bun test` as ONE argument matching
   nothing, and every "passing" bisection arm had run zero tests. Assert
   the count of tests run, not just the count of failures.
+- 2026-09-03 — **`vx init` audit: hooks and delegation.** Probed the
+  scripts mapper with odd shapes. REFUTED: colon names (`test:unit`,
+  `build:watch`) emit quoted, load and run. CONFIRMED: `prebuild` /
+  `postbuild` became standalone tasks, so `vx run build` ran `tsc` alone
+  where `npm run build` had run `rimraf dist && tsc && …` — the hook is
+  usually the clean step. Now `pre<x>`/`post<x>` fold into `x`'s command
+  in npm order (lifecycle hooks like `prepack` never do; a `pre<x>` with
+  no `x` stays a task). And a script that is nothing but
+  `<pm> run <other>` becomes a group over `<other>` (no exec), so the
+  graph sees the dependency instead of a package-manager subprocess it
+  cannot cache; arguments, flags or a chain keep it verbatim.
+  `delegatedScript` is table-pinned; both rules have differentials
+  (each mutation fails exactly its pin). `docs/cli.md` § `vx init`.
 
 ## In flight
 

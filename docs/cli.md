@@ -1104,6 +1104,19 @@ package that writes elsewhere. `test` / `lint` / `typecheck` wait for
 `build` when the package has one; `dev` / `start` / `serve` / `watch` /
 `preview` become persistent tasks with a TODO to add `readyWhen`.
 
+Two npm conventions are mapped rather than copied, because copying them
+loses behaviour. `pre<x>` / `post<x>` hooks, which npm runs around `x`
+without being named, are folded into `x`'s command in that order
+(`prebuild: rimraf dist` + `build: tsc` → `rimraf dist && tsc`), under a
+TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
+npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
+A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
+<other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
+over `<other>` — `dependsOn` and no command — so the graph runs and
+caches the target instead of a package-manager subprocess it cannot
+see. Arguments, flags or a `&&` chain make it a real command again and
+it is left verbatim.
+
 ## `vx migrate`
 
 Generate one `vx.config.ts` per workspace package from an existing

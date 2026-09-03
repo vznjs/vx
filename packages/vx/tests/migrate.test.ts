@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseMigrateArgs } from '../src/cli/index.js'
+import { delegatedScript } from '../src/cli/migrate-scripts.js'
 import { loadProjectConfig } from '../src/workspace/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -792,6 +793,29 @@ describe('parseMigrateArgs', () => {
 
 // ─── Scripts (`vx init`) ───────────────────────────────────────────────
 
+describe('delegatedScript', () => {
+  it.each([
+    ['npm run x', 'x'],
+    ['pnpm x', 'x'],
+    ['pnpm run x', 'x'],
+    ['yarn run x', 'x'],
+    ['yarn x', 'x'],
+    ['bun run x', 'x'],
+    ['bun x', 'x'],
+    ['npm test', 'test'],
+    ['npm start', 'start'],
+    ['  npm run test:unit  ', 'test:unit'],
+    ['npm x', null], // npm needs `run` for anything but test/start
+    ['npm run x -- --flag', null],
+    ['npm run x --silent', null],
+    ['npm run x && npm run y', null],
+    ['NODE_ENV=1 npm run x', null],
+    ['npm run $SCRIPT', null],
+  ])('%s → %p', (command, expected) => {
+    expect(delegatedScript(command)).toBe(expected)
+  })
+})
+
 async function makeScriptsWorkspace(): Promise<string> {
   const root = await makeRoot('vx-migrate-scripts-')
   await addPackage(root, 'app', {
@@ -868,6 +892,94 @@ describe('vx init (package.json scripts)', () => {
     expect(r.code).toBe(0)
     expect(r.out).toContain('package.json scripts → vx.config.ts')
   })
+
+  // npm runs `pre<x>` / `post<x>` around `x` without being asked, so a
+  // standalone `prebuild` task would be one `vx run build` never runs — and
+  // that hook is usually `rimraf dist`. CONFIRMED before the fold (2026-09-03):
+  // the emitted `build` ran `echo build` alone.
+  it('folds pre/post hooks into the script they wrap, in npm order', async () => {
+    const hooked = await makeRoot('vx-migrate-hooks-')
+    try {
+      await addPackage(hooked, 'app', {
+        prebuild: 'rimraf dist',
+        build: 'tsc -b',
+        postbuild: 'cp -r assets dist/',
+        pretest: 'echo no test script here',
+        pack: 'echo pack',
+        prepack: 'echo lifecycle, not a hook of a task',
+      })
+      const r = await vx(hooked, ['init'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      const cfg = await loadProjectConfig(path.join(hooked, 'packages', 'app', 'vx.config.ts'))
+      const tasks = cfg.tasks!
+      // `pretest` wraps nothing (no `test`), so it stays a task of its own;
+      // `prepack` is an npm lifecycle hook and is never a task.
+      expect(Object.keys(tasks).sort()).toEqual(['build', 'pack', 'pretest'])
+      expect(tasks['build']!.exec?.command).toBe('rimraf dist && tsc -b && cp -r assets dist/')
+      expect(tasks['pack']!.exec?.command).toBe('echo pack')
+      const text = await Bun.file(path.join(hooked, 'packages', 'app', 'vx.config.ts')).text()
+      expect(text).toContain(
+        'TODO(vx-migrate): npm ran `prebuild` and `postbuild` around this script',
+      )
+    } finally {
+      await rm(hooked, { recursive: true, force: true })
+    }
+  })
+
+  // `test: npm run test:unit` used to become a task whose command spawns the
+  // package manager, which then runs a script the graph cannot see or cache.
+  // A group over the target says the same thing in vx's own terms.
+  it(
+    'a script that only delegates to another becomes a group over it; chains stay verbatim',
+    async () => {
+      const del = await makeRoot('vx-migrate-delegate-')
+      try {
+        await addPackage(del, 'app', {
+          build: 'tsc -b',
+          'test:unit': 'vitest run',
+          test: 'npm run test:unit',
+          ci: 'yarn build',
+          check: 'pnpm lint && pnpm typecheck',
+          lint: 'eslint .',
+          typecheck: 'tsc --noEmit',
+          release: 'npm run build -- --prod',
+          prerelease: 'echo pre-release',
+          publishit: 'npm run release',
+        })
+        const r = await vx(del, ['init'])
+        expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+        const tasks = (await loadProjectConfig(path.join(del, 'packages', 'app', 'vx.config.ts')))
+          .tasks!
+        // Group: no exec, the target plus `build` (test waits for build).
+        expect(tasks['test']!.exec).toBeUndefined()
+        expect(tasks['test']!.dependsOn).toEqual(['test:unit', 'build'])
+        expect(tasks['ci']!.exec).toBeUndefined()
+        expect(tasks['ci']!.dependsOn).toEqual(['build'])
+        // CONTROLS — each of these stays a real command:
+        expect(tasks['check']!.exec?.command).toBe('pnpm lint && pnpm typecheck') // a chain
+        // Arguments make it a real command, and its hook folds in front.
+        expect(tasks['release']!.exec?.command).toBe('echo pre-release && npm run build -- --prod')
+        // Delegating to a script that is itself hooked is still a plain group.
+        expect(tasks['publishit']!.exec).toBeUndefined()
+        expect(tasks['publishit']!.dependsOn).toEqual(['release'])
+        expect(tasks['test:unit']!.exec?.command).toBe('vitest run')
+        // The generated workspace plans the delegation as two tasks.
+        await mkdir(path.join(del, 'node_modules', '@vzn'), { recursive: true })
+        await symlink(
+          path.resolve(import.meta.dir, '..'),
+          path.join(del, 'node_modules', '@vzn', 'vx'),
+        )
+        Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: del })
+        const run = await vx(del, ['run', 'test', '--all', '--dry'])
+        expect(run.code).toBe(0)
+        expect(run.out).toContain('app#test:unit')
+        expect(run.out).toContain('app#build')
+      } finally {
+        await rm(del, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 
   it('a scripts field that is not an object contributes nothing (indices are not script names)', async () => {
     const odd = await makeRoot('vx-migrate-oddscripts-')
