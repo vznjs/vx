@@ -463,6 +463,11 @@ Plugins are **isolated from execution by design**:
 
 - If **`setup()`** throws, the run aborts with a `UserError` naming the
   plugin. A broken plugin fails loudly, before any work starts.
+- Core tells a user's mistake from its own bug by the error's **name**:
+  anything named `UserError` prints as one line (`vx: <message>`), anything
+  else prints a stack. Throw `UserError` from `@vzn/vx`, or your own class
+  with `name = 'UserError'` — a compiled `vx` and a plugin's `@vzn/vx` can
+  be two copies of core, and the name is what survives that boundary.
 - If an **`executor`** or **`cache`** factory throws, the run aborts the same
   way — these are load-bearing, so a silent degrade would be worse than a
   clean failure.

@@ -37,3 +37,16 @@ internal bugs — those should show a full stack so we can find them.
 
 `tests/errors.test.ts` — verifies the `name` field, basic shape.
 Real coverage comes from every module's "bad input" tests.
+
+## `isUserError(err)`
+
+`instanceof UserError`, plus the same class arriving from **another copy of
+core**. A compiled `vx` binary carries core inside it while a workspace
+plugin imports `@vzn/vx` from `node_modules`, so a plugin's `UserError` is a
+different class object and `instanceof` is false across the boundary — a
+plugin verb's refusal printed with a stack, and a REAPI refusal would have
+read as an "internal error" (reproduced through the real binary,
+2026-09-03). `bin.ts`, the scheduler and `@vzn/vx-mcp` consult this
+helper; it is on the façade so a plugin can classify the same way. The
+**name** `UserError` is the contract that survives the copy boundary: a
+plugin may throw its own class named `UserError` without importing core's.

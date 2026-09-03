@@ -489,7 +489,10 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   second copy itself (~12 ms per run) stays parked; the name is the
   contract that survives the copy boundary. Pinned: the helper with a
   foreign-class control, and a scheduler run whose executor throws a
-  foreign-copy user error reports plainly.
+  foreign-copy user error reports plainly. Swept the class: the other
+  `instanceof` sites (`CorruptArtifactError`, `DependencySpecError`) throw
+  and catch inside the same copy — REFUTED. Docs: `modules/util-errors.md`,
+  the plugins guide (throw your own class named `UserError` if you like).
 
 ## In flight
 
