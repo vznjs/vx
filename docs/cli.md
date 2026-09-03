@@ -1207,7 +1207,14 @@ Mapping highlights:
   `'self'`/absent → `'target'`, project lists → `'proj#target'`.
   The graph's dependency edges are ignored (vx derives package edges
   from manifests); edges with no manifest counterpart produce one
-  report line ("N implicit Nx deps not representable").
+  report line ("N implicit Nx deps not representable"). The executors whose CLI is unambiguous become that command under a
+  TODO naming the executor (`@nx/vite:build` → `vite build`,
+  `@nx/vite:dev-server` → `vite`, `@nx/vite:preview-server` →
+  `vite preview`, `@nx/vite:test` / `@nx/vitest:test` → `vitest run`,
+  `@nx/jest:jest` → `jest`, `@nx/eslint:lint` → `eslint .`,
+  `@nx/js:tsc` → `tsc -p tsconfig.json`); executor options are not
+  carried over, which is what the TODO asks you to check. Any other
+  executor becomes a placeholder that fails loudly.
 
 Everything unmappable becomes a `// TODO(vx-migrate): …` comment in
 the generated file — TODOs are always comments, never values, so

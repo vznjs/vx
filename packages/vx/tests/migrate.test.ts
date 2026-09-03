@@ -854,6 +854,44 @@ describe('vx init on a workspace with no scripts', () => {
   })
 })
 
+describe('vx migrate (nx) — well-known executors', () => {
+  it('maps a known executor to its CLI under a TODO; an unknown one stays a placeholder', async () => {
+    const root = await makeRoot('vx-migrate-nx-exec-')
+    try {
+      await addPackage(root, 'app', {})
+      await mkdir(path.join(root, '.nx', 'workspace-data'), { recursive: true })
+      await Bun.write(
+        path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
+        JSON.stringify({
+          nodes: {
+            app: {
+              name: 'app',
+              type: 'app',
+              data: {
+                root: 'packages/app',
+                targets: {
+                  test: { executor: '@nx/vitest:test', options: {} },
+                  odd: { executor: '@acme/thing:do', options: { x: 1 } },
+                },
+              },
+            },
+          },
+          dependencies: { app: [] },
+        }),
+      )
+      const r = await vx(root, ['migrate', '--from', 'nx'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      const cfg = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
+      expect(cfg.tasks!['test']!.exec?.command).toBe('vitest run')
+      expect(cfg.tasks!['odd']!.exec?.command).toContain('TODO(vx-migrate)')
+      expect(r.out).toContain('mapped from executor "@nx/vitest:test"')
+      expect(r.out).toContain('executor "@acme/thing:do" has no shell equivalent')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('vx init (package.json scripts)', () => {
   let root: string
   beforeAll(async () => {

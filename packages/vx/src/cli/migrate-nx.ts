@@ -416,11 +416,34 @@ function mapCommand(
     return PLACEHOLDER
   }
   if (executor === undefined && typeof target.command === 'string') return target.command
+  // The common executors wrap one CLI each; the task runs on the first
+  // try and the TODO still asks for a look, since executor options
+  // (config paths, watch flags) are not carried over.
+  const known = executor === undefined ? undefined : KNOWN_EXECUTORS[executor]
+  if (known !== undefined) {
+    todos.push(
+      `command ${JSON.stringify(known)} mapped from executor ${JSON.stringify(executor)} — ` +
+        `verify it against the executor's options: ${JSON.stringify(options)}`,
+    )
+    return known
+  }
   todos.push(
     `executor ${JSON.stringify(executor ?? '(none)')} has no shell equivalent — fill in the ` +
       `CLI command. options: ${JSON.stringify(options)}`,
   )
   return PLACEHOLDER
+}
+
+/** Nx executors whose CLI is unambiguous; anything else is a placeholder. */
+const KNOWN_EXECUTORS: Record<string, string> = {
+  '@nx/vite:build': 'vite build',
+  '@nx/vite:dev-server': 'vite',
+  '@nx/vite:preview-server': 'vite preview',
+  '@nx/vite:test': 'vitest run',
+  '@nx/vitest:test': 'vitest run',
+  '@nx/jest:jest': 'jest',
+  '@nx/eslint:lint': 'eslint .',
+  '@nx/js:tsc': 'tsc -p tsconfig.json',
 }
 
 function countImplicitDeps(

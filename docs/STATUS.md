@@ -157,7 +157,12 @@ plugin author's first plugin from the guide (which gained § Testing
 your plugin), the same first run through the compiled binary, and
 `vx migrate` on a scratch Turborepo (negated outputs and the
 persistent task get exact TODOs, `env` passes through, global inputs
-become `vx-preset.ts`).
+become `vx-preset.ts`) and on a scratch Nx graph (named inputs expand,
+`{workspaceRoot}` outputs map, chained commands join) — where the
+common executors (`@nx/vite:*`, `@nx/vitest:test`, `@nx/jest:jest`,
+`@nx/eslint:lint`, `@nx/js:tsc`) now become their CLI under a TODO
+naming the executor instead of an exit-1 placeholder; pinned with the
+unknown-executor control, fails without the table.
 
 **Audits with pins (each mutation fails exactly its pin).** Config-eval
 purity gate closed against `\u0070rocess`, `global`/`self` aliases and
