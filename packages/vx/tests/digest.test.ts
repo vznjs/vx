@@ -2,13 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import {
-  type CASBackend,
-  type Digest,
-  FsCASBackend,
-  makeDigest,
-  MemoryCASBackend,
-} from '../src/cache/index.js'
+import { type CASBackend, type Digest, FsCASBackend } from '../src/cache/index.js'
+import { makeDigest } from '../src/cache/digest.js'
+import { MemoryCASBackend } from '../src/cache/cas-backend.js'
 
 describe('Digest', () => {
   it('makeDigest accepts hex hashes and non-negative size', () => {

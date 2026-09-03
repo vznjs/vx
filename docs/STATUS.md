@@ -458,6 +458,24 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   keyword was dead. Dropped it on all sixteen (`ZERO_COST` also left the
   graph barrel). No behaviour change; the type-aware lint is the proof
   nothing imported them.
+- 2026-09-03 — **ten test-only names left the module barrels, two of
+  them the public façade.** Of the 45 test-facing exports, 16 rode on a
+  barrel or the façade. The docs decided each: the event-bus trio
+  (`toWireEvent`, `wireForwarder`, `projectNode`), `EmptyHistoryProvider`,
+  `listRuns` and `LOG_WIRE_VERSION` are described as seams or invariants
+  and stay; the two log sizing constants and eight barrel-only helpers
+  (`stripLiterals`, `CONFIG_EVAL_VERSION`, `MemoryCASBackend`,
+  `makeDigest`, `populateGitFilesCache`, `ESSENTIAL_ENV`, `deniedCalls`,
+  `PERSISTENT_TAIL_CHARS`) were contract noise only tests read. Tests
+  now import them from the defining files (allowed for tests by the
+  boundary rule); the façade snapshot lost two entries. The barrels are
+  the cross-module contract, and a contract should name only what
+  crosses. One pin pushed back: `util-tail.test.ts` asserted the cap
+  constant is re-exported by the util barrel "because dropping any of
+  these breaks the sole production holder" — true of the four
+  FUNCTIONS `logger.ts` imports, false of the constant, which nothing in
+  `src` reads through the barrel. The pin now says so and covers the
+  functions only.
 
 ## In flight
 

@@ -179,12 +179,7 @@ export {
 // rules (per-task tail, per-run budget, failures never evicted by successes,
 // a hit's bytes belong to the run that executed) are a decision, not an
 // implementation detail. Two sinks rolling their own is how they fork.
-export {
-  LOG_WIRE_VERSION,
-  RUN_LOG_BUDGET_CHARS,
-  TASK_LOG_TAIL_CHARS,
-  TaskLogBuffer,
-} from './orchestrator/index.js'
+export { LOG_WIRE_VERSION, TaskLogBuffer } from './orchestrator/index.js'
 export type {
   CacheSource,
   RunContextRecord,

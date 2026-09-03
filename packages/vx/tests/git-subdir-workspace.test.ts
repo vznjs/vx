@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { affectedProjects } from '../src/workspace/index.js'
-import { GitFilesCache, populateGitFilesCache } from '../src/cache/index.js'
+import { GitFilesCache } from '../src/cache/index.js'
+import { populateGitFilesCache } from '../src/cache/inputs.js'
 
 // Regression: when the vx workspace root is a SUBDIR of the git repo (a polyglot
 // repo whose JS workspace lives under e.g. `code/`), `git ls-files` prints

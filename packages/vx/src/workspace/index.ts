@@ -18,12 +18,7 @@ export {
 } from './lockfile.js'
 export { loadProjectConfig, loadWorkspaceConfig, validateProjectConfig } from './project-loader.js'
 export type { LoadProjectConfigOptions } from './project-loader.js'
-export {
-  CONFIG_EVAL_VERSION,
-  configEvalKey,
-  stripLiterals,
-  type ConfigEvalStore,
-} from './config-cache.js'
+export { configEvalKey, type ConfigEvalStore } from './config-cache.js'
 export {
   findWorkspaceRoot,
   listProjects,

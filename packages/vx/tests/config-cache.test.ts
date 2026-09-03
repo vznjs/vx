@@ -7,13 +7,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
-import {
-  CONFIG_EVAL_VERSION,
-  configEvalKey,
-  loadProjectConfig,
-  stripLiterals,
-  type ConfigEvalStore,
-} from '../src/workspace/index.js'
+import { configEvalKey, loadProjectConfig, type ConfigEvalStore } from '../src/workspace/index.js'
+import { stripLiterals } from '../src/workspace/config-cache.js'
+import { CONFIG_EVAL_VERSION } from '../src/workspace/config-cache.js'
 
 let root: string
 beforeEach(async () => {

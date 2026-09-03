@@ -17,13 +17,12 @@ export {
   type TaskInputRow,
   WORKSPACE_OUTPUT_PREFIX,
 } from './cache.js'
-export { type CASBackend, FsCASBackend, MemoryCASBackend } from './cas-backend.js'
-export { type Digest, makeDigest } from './digest.js'
+export { type CASBackend, FsCASBackend } from './cas-backend.js'
+export { type Digest } from './digest.js'
 export {
   cleanOutputs,
   cleanWorkspaceOutputs,
   GitFilesCache,
-  populateGitFilesCache,
   applyGitEnumeration,
   gitPathspecs,
   startGitEnumeration,

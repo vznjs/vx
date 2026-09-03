@@ -38,12 +38,13 @@ import {
   type Tail,
 } from '../src/util/tail.js'
 // logger.ts imports through the module CONTRACT, not the file, per
-// tests/module-boundaries.test.ts. Dropping any of these from the barrel
-// breaks the sole production holder, so the re-export is part of the surface.
+// tests/module-boundaries.test.ts. Dropping any of these FUNCTIONS from the
+// barrel breaks the sole production holder, so their re-export is part of
+// the surface. The cap constant is not: nothing in src reads it through the
+// barrel (it left the barrel 2026-09-03), so it is pinned from the file.
 import {
   appendTail as appendViaBarrel,
   createTail as createViaBarrel,
-  PERSISTENT_TAIL_CHARS as CAP_VIA_BARREL,
   resetTail as resetViaBarrel,
   tailText as tailTextViaBarrel,
 } from '../src/util/index.js'
@@ -726,7 +727,6 @@ describe('call-site contracts', () => {
     expect(createViaBarrel).toBe(createTail)
     expect(tailTextViaBarrel).toBe(tailText)
     expect(resetViaBarrel).toBe(resetTail)
-    expect(CAP_VIA_BARREL).toBe(PERSISTENT_TAIL_CHARS)
   })
 
   // The cap CLAUDE.md and docs quote as "64 KiB". A silent change to it moves

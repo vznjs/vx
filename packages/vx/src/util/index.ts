@@ -8,12 +8,5 @@ export { clampInt, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export { relPosix, staticPrefix } from './paths.js'
 export { settleWithin, teardownTimeoutMs } from './settle.js'
 export { parseSize } from './size.js'
-export {
-  appendTail,
-  createTail,
-  PERSISTENT_TAIL_CHARS,
-  resetTail,
-  tailText,
-  type Tail,
-} from './tail.js'
+export { appendTail, createTail, resetTail, tailText, type Tail } from './tail.js'
 export { ulid } from './ulid.js'

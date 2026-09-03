@@ -1,7 +1,7 @@
 // Module contract. Cross-module imports must come through here; see
 // docs/design/module-isolation-2026-06.md and tests/module-boundaries.test.ts.
 
-export { ESSENTIAL_ENV, buildIsolatedEnv } from './env.js'
+export { buildIsolatedEnv } from './env.js'
 export {
   runCommand,
   runPersistent,
@@ -10,7 +10,6 @@ export {
   type CaptureConfig,
 } from './runner.js'
 export {
-  deniedCalls,
   initSandbox,
   probeSandbox,
   resetSandbox,

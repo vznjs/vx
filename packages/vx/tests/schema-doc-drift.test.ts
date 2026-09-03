@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import path from 'node:path'
-import { ESSENTIAL_ENV } from '../src/exec/index.js'
+import { ESSENTIAL_ENV } from '../src/exec/env.js'
 import {
   loadProjectConfig,
   loadWorkspaceConfig,

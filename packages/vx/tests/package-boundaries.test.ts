@@ -118,8 +118,6 @@ describe('package boundaries', () => {
       'LOG_WIRE_VERSION',
       'LayeredCache',
       'LocalHistoryProvider',
-      'RUN_LOG_BUDGET_CHARS',
-      'TASK_LOG_TAIL_CHARS',
       'TASK_STATUSES',
       'TELEMETRY_SCHEMA_VERSION',
       'TaskLogBuffer',

@@ -6,7 +6,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { Cache, FsCASBackend, makeDigest } from '../src/cache/index.js'
+import { Cache, FsCASBackend } from '../src/cache/index.js'
+import { makeDigest } from '../src/cache/digest.js'
 
 describe('Cache.contentBackend() — CAS view over saved artifacts', () => {
   it('returns an FsCASBackend rooted at the same cacheDir', async () => {
