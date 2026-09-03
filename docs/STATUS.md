@@ -726,6 +726,24 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   `tests/bench-site.test.ts` pins the two rules in the core suite (the
   cold row's baseline equals the results' ideal, the other three are 0;
   the chart has no minimum width and clips an outlier).
+- 2026-09-03 — **`status -unormal` REFUTED as a lead — and a measurement
+  trap recorded.** A split of the 59 ms status walk read `-uall` 58.6 ms
+  against `-unormal` 18.8, so a two-spawn design (stop at untracked
+  directories, list their files with one scoped `ls-files -o` only when
+  any exist) was built and pinned. Measured beside the other three
+  enumeration spawns it was SLOWER (76–86 ms), and a clean matrix —
+  untracked cache off/on × `-uall`/`-unormal` × alone/beside — read
+  `-unormal` at 60 ms alone and 64–78 beside, `-uall` 59.6 and 78: no
+  difference, and git's untracked cache changes nothing. The 18.8 was
+  an artifact: the fsmonitor probe run just before had left git's
+  untracked-cache extension in the bench index, which git keeps using
+  after the config is unset. Reverted to `-uall`; the new pin (files
+  inside a brand-new untracked directory enumerate, an ignored one does
+  not) stays as a tripwire. Lesson for the memory: a git-side number
+  measured after another git probe is suspect until the index
+  extensions are cleared (`update-index --no-untracked-cache`,
+  `fsmonitor--daemon stop`). fsmonitor itself: 57.6 vs 59.1 ms, no gain
+  on this tree. The walk is git's fixed cost at this size.
 
 ## In flight
 

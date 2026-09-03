@@ -405,6 +405,29 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     expect(rels).not.toContain(path.join('src', 'skip.ts'))
   })
 
+  // The status walk runs with `-uall`, so files inside a brand-new untracked
+  // DIRECTORY are enumerated one by one, ignore rules included. A `-unormal`
+  // walk (which stops at the directory) measured no faster once a probe's
+  // leftover untracked-cache state was cleared (2026-09-03); this pins the
+  // behaviour that walk would have to preserve.
+  it('files inside a brand-new untracked directory enter the inputs; an ignored one inside it does not', async () => {
+    await write(path.join(root, '.gitignore'), 'node_modules/\n')
+    await write(path.join(projectDir, 'src', 'gen', 'deep', 'made.ts'))
+    await write(path.join(projectDir, 'src', 'gen', 'node_modules', 'dep', 'index.js'))
+    // Don't `git add`. The whole `src/gen/` tree is untracked.
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    const rels = got.files.map((p) => path.relative(projectDir, p))
+    expect(rels).toContain(path.join('src', 'gen', 'deep', 'made.ts'))
+    expect(rels).not.toContain(path.join('src', 'gen', 'node_modules', 'dep', 'index.js'))
+  })
+
   it('untracked-but-not-ignored files participate in inputs (no commit required)', async () => {
     // A freshly-added file that hasn't been `git add`ed yet should
     // still enter the hash — that's the `--others --exclude-standard`
