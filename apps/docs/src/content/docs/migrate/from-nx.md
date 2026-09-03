@@ -32,8 +32,12 @@ build: {
 
 This is more explicit and more portable — the command is right there, no
 plugin indirection — but it does mean executor-backed targets need a real
-command. `vx migrate` leaves a `TODO(vx-migrate)` placeholder where it
-can't infer one, so nothing is silently wrong.
+command. `vx migrate` infers it for the common executors — `@nx/vite:*`
+(`vite build`, `vite`, `vite preview`, `vitest run`), `@nx/vitest:test`,
+`@nx/jest:jest`, `@nx/eslint:lint`, `@nx/js:tsc` — under a TODO that
+asks you to check it against the executor's options, and leaves a
+`TODO(vx-migrate)` placeholder where it can't infer one, so nothing is
+silently wrong.
 
 ## Let `vx migrate` do the mechanical part
 
