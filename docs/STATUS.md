@@ -857,7 +857,14 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   cycle per edit now, pinned in `tests/watch-rules.test.ts`. Also the
   `@vzn/vx-otel` README's example declared only `otel()`, which no
   workspace can run (nothing is applied by default); it names the local
-  plugins like its siblings.
+  plugins like its siblings. And the one ecosystem gap the replay
+  found: the first-party plugins test themselves through a core test
+  helper reached by relative path, which an outside author cannot do.
+  No new code was the right answer — `run()` from `@vzn/vx` against a
+  temp workspace whose file imports the plugins by absolute path
+  (`import.meta.resolve`) is the whole pattern — so the plugins guide
+  gained § Testing your plugin with that exact test, proven against
+  the published entry points from a scratch package.
   Reader audit: a size field that is not all octal digits is refused
   before any entry is yielded (`parseInt` read `5zz` as 5 and let the
   damage surface later, if at all — pinned, fails without the fix); a

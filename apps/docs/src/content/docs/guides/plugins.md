@@ -457,6 +457,66 @@ object instead of `LayeredCache`. `CacheLayer`, `RemoteCacheLayer`,
 `LayeredCache`, and `Cache` are all exported from `@vzn/vx`. The first-party
 cloud plugin is exactly this pattern; yours sits alongside it as an equal.
 
+## Testing your plugin
+
+Drive a real run against a throwaway workspace with `run()` from
+`@vzn/vx` — the same call the CLI makes — and assert on what your sink
+received. The fixture lives in a temp dir where nothing resolves
+`@vzn/vx`, so its workspace file imports plugins by absolute path:
+the local ones resolved from your test file (where the package is
+installed) and the plugin under test from its source.
+
+```ts
+// my-plugin.test.ts
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { run, type RunSummaryRecord, type VxPlugin } from '@vzn/vx'
+
+const summaries: RunSummaryRecord[] = []
+export function myPlugin(): VxPlugin {
+  return { name: 'me/first', telemetry: () => ({ onRunSummary: (s) => summaries.push(s) }) }
+}
+
+let root: string
+beforeEach(async () => {
+  root = await mkdtemp(path.join(os.tmpdir(), 'my-plugin-'))
+  await writeFile(path.join(root, 'package.json'), '{"name":"fixture","workspaces":["packages/*"]}')
+  await mkdir(path.join(root, 'packages/app'), { recursive: true })
+  await writeFile(path.join(root, 'packages/app/package.json'), '{"name":"app"}')
+  await writeFile(
+    path.join(root, 'packages/app/vx.config.mjs'),
+    "export default { tasks: { build: { exec: { command: 'echo built' } } } }\n",
+  )
+  const abs = (spec: string) => JSON.stringify(Bun.fileURLToPath(import.meta.resolve(spec)))
+  await writeFile(
+    path.join(root, 'vx.workspace.mjs'),
+    [
+      `import { localExecutorPlugin } from ${abs('@vzn/vx/plugins/local-executor')}`,
+      `import { localCachePlugin } from ${abs('@vzn/vx/plugins/local-cache')}`,
+      `import { myPlugin } from ${abs('./my-plugin.test.ts')}`,
+      'export default { plugins: [localExecutorPlugin(), localCachePlugin(), myPlugin()] }',
+    ].join('\n'),
+  )
+  Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+})
+afterEach(() => rm(root, { recursive: true, force: true }))
+
+it('receives one summary with the task outcome', async () => {
+  const r = await run({ cwd: root, projects: ['app'], tasks: ['build'], handleSignals: false })
+  expect(r.ok).toBe(true)
+  expect(summaries).toHaveLength(1)
+  expect(summaries[0]!.tasks.map((t) => [t.taskId, t.status])).toEqual([['app#build', 'success']])
+})
+```
+
+`handleSignals: false` keeps the run from installing process-wide
+signal handlers inside the test runner. Every telemetry record, the
+cache, and the task outcomes are the real thing; a second `run()` in
+the same fixture is a cache hit, which is how you test what your sink
+sees on one.
+
 ## Crash isolation
 
 Plugins are **isolated from execution by design**:
