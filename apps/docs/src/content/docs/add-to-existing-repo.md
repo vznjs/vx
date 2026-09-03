@@ -9,7 +9,10 @@ exactly as it is. This guide shows the incremental path.
 
 Migrating *from* a specific tool? Those guides generate config for you:
 [from Turborepo](../migrate/from-turborepo/),
-[from Nx](../migrate/from-nx/).
+[from Nx](../migrate/from-nx/). No tool at all? `vx init` writes the
+workspace file and one config per package from its `package.json`
+scripts; the hand-written path below is the same result, one package at
+a time.
 
 ## 1. Install at the workspace root
 
