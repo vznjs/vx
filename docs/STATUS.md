@@ -710,6 +710,19 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   window, so the miss recorded and the pin failed. The racy rule is
   pinned deterministically at the Cache level; the e2e now asserts only
   that the aged hit records and that a stray still forces the restore.
+- 2026-09-03 — **baseline corrected to the owner's definition; bars
+  proportional.** The owner's screenshot: only the cold row has a
+  theoretical nonzero baseline; a cached run, a restore and the CPU a
+  runner burns are 0 in theory, so the site's baseline for those rows is
+  0 and everything drawn is the runner (the measured floors — one git
+  walk, walk + raw copy, the task shells under xargs — stay in
+  `bench/RESULTS.md` and the doc as context, not as the baseline). And
+  the bars were not proportional: a 3% minimum width put vx (30.8 s),
+  Turbo (73 s) and the baseline at the same floor while Nx's 114
+  minutes set the scale. The chart now draws true proportions with no
+  minimum; a row's scale is its largest non-outlier value, and a bar
+  more than 10× the next runner's is drawn clipped with a break, its
+  number exact. `bench/update-site.ts` regenerates all of it.
 
 ## In flight
 

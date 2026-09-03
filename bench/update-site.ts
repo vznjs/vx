@@ -73,13 +73,30 @@ const row = (task: string, key: keyof Row, baseKey: keyof Results['baseline']): 
     '    ],',
     '  },',
   ].join('\n')
+// The baseline is THEORETICAL: cold is the tasks' own durations under an
+// ideal schedule; a cached run, a restore and the CPU a runner burns are 0
+// in theory — everything drawn is the runner (owner's definition,
+// 2026-09-03). The measured floors (one git walk, a raw copy, the task
+// shells under xargs) stay in bench/RESULTS.md as context.
+const zeroRow = (task: string, key: keyof Row): string =>
+  [
+    '  {',
+    `    task: '${task}',`,
+    '    bars: [',
+    "      { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },",
+    bar('vx', Number(vx[key]), 'var(--phosphor)', true),
+    bar('turbo', Number(turbo[key]), 'var(--c-turbo)'),
+    bar('nx', Number(nx[key]), 'var(--c-nx)'),
+    '    ],',
+    '  },',
+  ].join('\n')
 const rowsBlock =
   'const benchRows = [\n' +
   [
     row('Cold build · from scratch', 'fresh', 'fresh'),
-    row('Fully cached · nothing to rebuild', 'warmNoRestore', 'warmNoRestore'),
-    row('Restoring outputs · cache → disk', 'warmRestore', 'warmRestore'),
-    row('CPU burned · cold build, user + system', 'freshCpu', 'freshCpu'),
+    zeroRow('Fully cached · nothing to rebuild', 'warmNoRestore'),
+    zeroRow('Restoring outputs · cache → disk', 'warmRestore'),
+    zeroRow('CPU burned · cold build, user + system', 'freshCpu'),
   ].join('\n') +
   '\n]\n'
 
@@ -109,7 +126,7 @@ const note = `<p>
               <code>sleep 1</code>, so the clock measures the runner and CPU measures its overhead:
               vx burned ${Math.round(vx.freshCpu / 1000)} s to build the whole graph cold, Turborepo ${Math.round(turbo.freshCpu / 1000)} s, Nx ${Math.round(nx.freshCpu / 60_000)} minutes. Warm,
               vx replays ${nodes.toLocaleString('en-US')} tasks in ${disp(vx.warmNoRestore)}; Turborepo ${disp(turbo.warmNoRestore)}; Nx ${disp(nx.warmNoRestore)}. Reproduce with
-              <code>bun bench/compare.ts 100 11 1</code>; the committed results are this run. The dashed <em>baseline</em> bar is the theoretical best case: cold is the tasks' own ${disp(B.fresh)} on 10 perfectly parallel workers along the dependency graph, warm is one <code>git status</code> walk (${disp(B.warmNoRestore)}), restore adds a raw copy of every output file, and CPU is the tasks' own shells under <code>xargs</code> (${disp(B.freshCpu)}) — what is left above it is the runner. At this size the CPU floor and a runner's own CPU each vary by about two seconds between runs, so vx's cold CPU sits within the floor's noise.
+              <code>bun bench/compare.ts 100 11 1</code>; the committed results are this run. The dashed <em>baseline</em> is the theoretical best case: cold is the tasks' own ${disp(B.fresh)} on 10 perfectly parallel workers along the dependency graph, and a cached run, a restore and the CPU a runner burns are 0 in theory — every bar is the runner's overhead. Bars are proportional within a row; a bar more than ten times the next runner's is clipped with a break, and the numbers are exact.
             </p>`
 landing = landing.replace(
   /<p>\s*[\d,]+ packages, [\d,]+ tasks, 100 dependency layers,[\s\S]*?<\/p>/,
@@ -137,21 +154,21 @@ The committed \`bench/RESULTS.md\` / \`bench/results.json\` are this run.
 | **Warm**, restore outputs    | **${disp(vx.warmRestore)}** | ${cell(turbo, 'warmRestore')} | ${cell(nx, 'warmRestore')} |
 | **CPU burned**, cold (user+sys) | **${disp(vx.freshCpu)}** | ${cell(turbo, 'freshCpu')} | ${cell(nx, 'freshCpu')} |
 | **CPU burned**, warm (user+sys) | **${disp(vx.warmNoRestoreCpu)}** | ${cell(turbo, 'warmNoRestoreCpu')} | ${cell(nx, 'warmNoRestoreCpu')} |
-| _Baseline_ (theoretical best) | ${disp(B.fresh)} | — | — |
-| _Baseline_, warm / restore | ${disp(B.warmNoRestore)} / ${disp(B.warmRestore)} | — | — |
-| _Baseline_, CPU cold / warm | ${disp(B.freshCpu)} / ${disp(B.warmNoRestoreCpu)} | — | — |
+| _Baseline_ (theoretical best) | ${disp(B.fresh)} cold; 0 warm, restore, CPU | — | — |
+| _Measured floors_ (context)  | git walk ${disp(B.warmNoRestore)} · walk + raw copy ${disp(B.warmRestore)} · task shells ${disp(B.freshCpu)} | — | — |
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the
 exact dependency graph (critical path ${disp(B.criticalPathMs)}, total work ÷
-workers ${disp(B.workBoundMs)}); warm is ONE \`git status -uall\` walk — the floor
-of asking what changed; restore adds a raw copy of every output file; CPU
-is the tasks' own shells (one measured spawn × the task count) plus that
-walk. vx's cold overhead over the ideal schedule is
-${Math.round((vx.fresh - B.fresh) / 1000)} s on ${nodes.toLocaleString('en-US')} tasks. At this size the CPU floor
-and a runner's own CPU each vary by about two seconds between runs (the same
-3,270 shells under \`xargs\` read 33.5–34.9 s across readings), so vx's cold
-CPU sits within the floor's noise.
+workers ${disp(B.workBoundMs)}); a cached run, a restore and the CPU a
+runner burns are 0 in theory, so every measured number in those rows is
+the runner. vx's cold overhead over the ideal schedule is
+${Math.round((vx.fresh - B.fresh) / 1000)} s on ${nodes.toLocaleString('en-US')} tasks. For context, the
+**measured floors** row gives what the cheapest possible implementation
+of each step costs on this machine: one \`git status -uall\` walk (the
+cost of asking what changed), that walk plus a raw copy of every output
+file, and the task shells themselves under \`xargs -P 10\` (which vary by
+about two seconds between runs; vx's cold CPU sits within that noise).
 
 **CPU** is user + system time of the invocation and every child it
 waited for. The tasks are \`sleep\`, so this is the runner's own work; a

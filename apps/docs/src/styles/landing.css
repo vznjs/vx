@@ -808,6 +808,12 @@ a.platform-card:hover .learn {
 .bench-bar.best .fill {
   box-shadow: 0 0 16px color-mix(in srgb, var(--c) 50%, transparent);
 }
+/* A bar more than ten times the next runner's is drawn at full width with a
+   break at its end — the number beside it is exact; the bar is not. */
+.bench-bar.clipped .fill {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent calc(100% - 26px), #000 calc(100% - 20px), transparent calc(100% - 18px), #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent calc(100% - 26px), #000 calc(100% - 20px), transparent calc(100% - 18px), #000 calc(100% - 12px), transparent);
+}
 /* The theoretical best case: a hollow, dashed bar so the gap to it reads as overhead. */
 .bench-bar.baseline .fill {
   background: transparent;

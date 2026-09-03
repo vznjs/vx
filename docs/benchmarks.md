@@ -118,28 +118,28 @@ every runner pinned to concurrency 10. `bun bench/compare.ts 100 11 1`,
 this machine (macOS arm64, 10 cores), Turbo 2.10.12, Nx 23.2.0.
 The committed `bench/RESULTS.md` / `bench/results.json` are this run.
 
-|                                 | vx            | Turborepo     | Nx                |
-| ------------------------------- | ------------- | ------------- | ----------------- |
-| **Cold** (nothing cached)       | **3m 46s**    | 5m 13s (1.4×) | 34m 44s (9.2×)    |
-| **Warm**, nothing to rebuild    | **549ms**     | 760ms (1.4×)  | 3.59s (6.5×)      |
-| **Warm**, restore outputs       | **844ms**     | 1.17s (1.4×)  | 4.15s (4.9×)      |
-| **CPU burned**, cold (user+sys) | **30.79s**    | 1m 13s (2.4×) | 114m 06s (222.4×) |
-| **CPU burned**, warm (user+sys) | **2.00s**     | 4.40s (2.2×)  | 5.54s (2.8×)      |
-| _Baseline_ (theoretical best)   | 3m 38s        | —             | —                 |
-| _Baseline_, warm / restore      | 66ms / 364ms  | —             | —                 |
-| _Baseline_, CPU cold / warm     | 33.93s / 94ms | —             | —                 |
+|                                 | vx                                                         | Turborepo     | Nx                |
+| ------------------------------- | ---------------------------------------------------------- | ------------- | ----------------- |
+| **Cold** (nothing cached)       | **3m 46s**                                                 | 5m 13s (1.4×) | 34m 44s (9.2×)    |
+| **Warm**, nothing to rebuild    | **549ms**                                                  | 760ms (1.4×)  | 3.59s (6.5×)      |
+| **Warm**, restore outputs       | **844ms**                                                  | 1.17s (1.4×)  | 4.15s (4.9×)      |
+| **CPU burned**, cold (user+sys) | **30.79s**                                                 | 1m 13s (2.4×) | 114m 06s (222.4×) |
+| **CPU burned**, warm (user+sys) | **2.00s**                                                  | 4.40s (2.2×)  | 5.54s (2.8×)      |
+| _Baseline_ (theoretical best)   | 3m 38s cold; 0 warm, restore, CPU                          | —             | —                 |
+| _Measured floors_ (context)     | git walk 66ms · walk + raw copy 364ms · task shells 33.93s | —             | —                 |
 
 **Baseline** is the theoretical best case, so each row shows its overhead:
 cold is the tasks' own durations list-scheduled on 10 workers along the
 exact dependency graph (critical path 1m 40s, total work ÷
-workers 3m 38s); warm is ONE `git status -uall` walk — the floor
-of asking what changed; restore adds a raw copy of every output file; CPU
-is the tasks' own shells (one measured spawn × the task count) plus that
-walk. vx's cold overhead over the ideal schedule is
-8 s on 3,270 tasks. At this size the CPU floor
-and a runner's own CPU each vary by about two seconds between runs (the same
-3,270 shells under `xargs` read 33.5–34.9 s across readings), so vx's cold
-CPU sits within the floor's noise.
+workers 3m 38s); a cached run, a restore and the CPU a
+runner burns are 0 in theory, so every measured number in those rows is
+the runner. vx's cold overhead over the ideal schedule is
+8 s on 3,270 tasks. For context, the
+**measured floors** row gives what the cheapest possible implementation
+of each step costs on this machine: one `git status -uall` walk (the
+cost of asking what changed), that walk plus a raw copy of every output
+file, and the task shells themselves under `xargs -P 10` (which vary by
+about two seconds between runs; vx's cold CPU sits within that noise).
 
 **CPU** is user + system time of the invocation and every child it
 waited for. The tasks are `sleep`, so this is the runner's own work; a

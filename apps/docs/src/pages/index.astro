@@ -138,7 +138,7 @@ const benchRows = [
   {
     task: 'Fully cached · nothing to rebuild',
     bars: [
-      { name: 'baseline', val: 66, disp: '66ms', c: 'var(--c-baseline)' },
+      { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },
       { name: 'vx', val: 549, disp: '549ms', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 760, disp: '760ms', c: 'var(--c-turbo)' },
       { name: 'nx', val: 3594, disp: '3.59s', c: 'var(--c-nx)' },
@@ -147,7 +147,7 @@ const benchRows = [
   {
     task: 'Restoring outputs · cache → disk',
     bars: [
-      { name: 'baseline', val: 364, disp: '364ms', c: 'var(--c-baseline)' },
+      { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },
       { name: 'vx', val: 844, disp: '844ms', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 1174, disp: '1.17s', c: 'var(--c-turbo)' },
       { name: 'nx', val: 4149, disp: '4.15s', c: 'var(--c-nx)' },
@@ -156,7 +156,7 @@ const benchRows = [
   {
     task: 'CPU burned · cold build, user + system',
     bars: [
-      { name: 'baseline', val: 33933, disp: '33.93s', c: 'var(--c-baseline)' },
+      { name: 'baseline', val: 0, disp: '0', c: 'var(--c-baseline)' },
       { name: 'vx', val: 30787, disp: '30.79s', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 73079, disp: '1m 13s', c: 'var(--c-turbo)' },
       { name: 'nx', val: 6846039, disp: '114m 06s', c: 'var(--c-nx)' },
@@ -504,15 +504,22 @@ const footCols = {
           <div class="bench-rows">
             {
               benchRows.map((r) => {
-                const rowMax = Math.max(...r.bars.map((b) => b.val))
+                // Proportional within the row. The scale is the largest value that
+                // is not an outlier (more than 10× the next largest); an outlier is
+                // drawn clipped with a break so the others stay readable. No
+                // minimum width — a small bar is small.
+                const sorted = [...r.bars.map((b) => b.val)].sort((a, b) => b - a)
+                const outlier = sorted.length > 1 && sorted[0]! > 10 * sorted[1]!
+                const rowMax = (outlier ? sorted[1]! : sorted[0]!) * 1.05
                 return (
                   <div class="bench-row">
                     <p class="task">{r.task}</p>
                     {r.bars.map((b) => {
-                      const pct = Math.max((b.val / rowMax) * 100, 3)
+                      const clipped = b.val > rowMax
+                      const pct = clipped ? 100 : (b.val / rowMax) * 100
                       return (
                         <div
-                          class={`bench-bar${b.best ? ' best' : ''}${b.name === 'baseline' ? ' baseline' : ''}`}
+                          class={`bench-bar${b.best ? ' best' : ''}${b.name === 'baseline' ? ' baseline' : ''}${clipped ? ' clipped' : ''}`}
                           style={`--c:${b.c};--w:${pct}%`}
                         >
                           <span class="name">{b.name}</span>
@@ -536,7 +543,7 @@ const footCols = {
               <code>sleep 1</code>, so the clock measures the runner and CPU measures its overhead:
               vx burned 31 s to build the whole graph cold, Turborepo 73 s, Nx 114 minutes. Warm,
               vx replays 3,270 tasks in 549ms; Turborepo 760ms; Nx 3.59s. Reproduce with
-              <code>bun bench/compare.ts 100 11 1</code>; the committed results are this run. The dashed <em>baseline</em> bar is the theoretical best case: cold is the tasks' own 3m 38s on 10 perfectly parallel workers along the dependency graph, warm is one <code>git status</code> walk (66ms), restore adds a raw copy of every output file, and CPU is the tasks' own shells under <code>xargs</code> (33.93s) — what is left above it is the runner. At this size the CPU floor and a runner's own CPU each vary by about two seconds between runs, so vx's cold CPU sits within the floor's noise.
+              <code>bun bench/compare.ts 100 11 1</code>; the committed results are this run. The dashed <em>baseline</em> is the theoretical best case: cold is the tasks' own 3m 38s on 10 perfectly parallel workers along the dependency graph, and a cached run, a restore and the CPU a runner burns are 0 in theory — every bar is the runner's overhead. Bars are proportional within a row; a bar more than ten times the next runner's is clipped with a break, and the numbers are exact.
             </p>
           </div>
         </div>
