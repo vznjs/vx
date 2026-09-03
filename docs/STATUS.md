@@ -252,14 +252,21 @@ passed once the load fell.
   tokens that bypass 2FA are being restricted for … direct publishing".
   The classic `NPM_TOKEN` no longer publishes reliably. Core and the
   other three platform packages stay at 0.0.16, so installs are
-  unaffected (no core version references 0.0.17). (1) Replace
-  `NPM_TOKEN` with a granular access token that has publish rights and
-  2FA bypass — or set up npm trusted publishing (OIDC) for the five
-  packages, which the workflow's provenance step already half-does —
-  then (2) re-run the `npm publish` workflow by dispatch with version
-  `0.0.17`: the darwin step skips a package already on the registry, so
-  the run completes from arm64 onward. Not done here: both are the
-  owner's (a credential and an outward publish).
+  unaffected (no core version references 0.0.17). The exact
+  difference: `npm.yml`'s `publish` job (core + linux) publishes with
+  npm trusted publishing — `id-token: write`, no token — while the
+  darwin job also sets `NODE_AUTH_TOKEN: secrets.NPM_TOKEN` on its
+  publish step, and a set token takes precedence over OIDC, so that
+  step is the only one still on the classic token. (1) Either
+  configure trusted publishing on npmjs.com for `@vzn/vx-darwin-x64`
+  and `@vzn/vx-darwin-arm64` (workflow `npm.yml`, environment none) and
+  drop the `NODE_AUTH_TOKEN` line from the darwin step, or replace
+  `NPM_TOKEN` with a granular access token with publish rights and 2FA
+  bypass; then (2) dispatch the `npm publish` workflow with version
+  `0.0.17` — every publish step skips a package already on the
+  registry, so the run resumes at darwin-arm64 and finishes with core.
+  Not done here: a credential and an outward publish are the owner's,
+  and the workflow edit is useless without the npm-side config.
 
 ## Next (ordered)
 
