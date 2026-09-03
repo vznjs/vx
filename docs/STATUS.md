@@ -313,6 +313,9 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    as not worth their code (< 1 ms per task together, ~0.15% of the
    cold row): a synchronous compress for tiny buffers, and indexing a
    locally built artifact from its plan instead of re-scanning it.
+   `vx watch` start on the same bench: the initial run plus a sweep of
+   all 1,000 configs (repeat loads through the worker) — the sweep is
+   35 ms, no visible pause.
 
 ## Decisions (this arc)
 
