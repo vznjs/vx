@@ -539,6 +539,21 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   it a weak guard whose bound is the rounds; it now carries a 30 s
   timeout and a shard-cost hint. Discovery (the commit's diff) was
   green on both jobs' other files.
+- 2026-09-03 — **RED MAIN (73a8021) — mine, wave 6, Linux only:** the
+  ubuntu e2e `cache-hit restore removes stale files` wrote its stray right
+  after a run, and Linux file timestamps are coarse (a kernel tick, up
+  to 10 ms), so a directory modified in the same tick as the one that
+  set its recorded mtime keeps that mtime and the stray was invisible —
+  the racy-clean problem git's index solves by distrusting stats newer
+  than the snapshot. Same rule now: a directory whose mtime lies within
+  50 ms of the snapshot is racy and the WHOLE snapshot is dropped (a racy
+  child dropped alone would leave its parent trusted); the next hit
+  walks, and once the tree is older than the window it is recorded for
+  good. Cost: one extra walk per entry after a save or restore; the
+  steady state is unchanged. Pinned (`OUTPUT_DIRS_RACY_MS`), and the e2e
+  pin now shows the miss recording nothing and the first aged hit
+  recording. macOS had passed every time — APFS timestamps are fine
+  enough that the same-tick case never showed.
 
 ## In flight
 

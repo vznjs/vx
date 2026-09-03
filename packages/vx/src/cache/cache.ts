@@ -540,6 +540,18 @@ export interface OutputDirRow {
 export const OUTPUT_DIRS_CAP = 256
 
 /**
+ * A directory whose mtime lies within this many ms of the snapshot is RACY
+ * and the whole snapshot is dropped. File timestamps are coarse on Linux
+ * (a kernel tick, up to 10 ms), so a write landing in the same tick as the
+ * one that made the directory's recorded mtime leaves the mtime unchanged
+ * and the change invisible — git's index distrusts stats this young for
+ * the same reason (a stray survived a hit on the ubuntu job, 2026-09-03).
+ * The next hit walks, and once the tree is older than the window it is
+ * recorded for good.
+ */
+export const OUTPUT_DIRS_RACY_MS = 50
+
+/**
  * The shape every cache implementation honors. `Cache` (the local v10
  * implementation) and `LayeredCache` both `implements` this so the
  * orchestrator's `executeTask` can take either without a discriminated
@@ -1664,6 +1676,10 @@ export class Cache implements CacheLayer {
         break
       }
     }
+    // All or nothing: a racy directory dropped alone would leave its
+    // parent trusted while an addition inside it bumps only the dropped one.
+    const youngest = Date.now() - OUTPUT_DIRS_RACY_MS
+    if (rows.some(([, mtime]) => mtime > youngest)) ok = false
     this.db.transaction(() => {
       this.deleteOutputDirs.run(hash)
       if (!ok) return

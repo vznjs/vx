@@ -68,7 +68,16 @@ function median(xs: number[]): number {
   return s[Math.floor(s.length / 2)]!
 }
 
-async function sh(cmd: string[], cwd: string): Promise<{ ms: number; ok: boolean; out: string }> {
+/**
+ * Wall time and CPU time of one invocation. CPU is the runner process plus
+ * every descendant it waited for (`getrusage(RUSAGE_CHILDREN)` semantics,
+ * which Bun exposes as `resourceUsage()` after exit). A daemon that outlives
+ * the invocation (Turbo's, Nx's) is NOT counted, so their CPU is a floor.
+ */
+async function sh(
+  cmd: string[],
+  cwd: string,
+): Promise<{ ms: number; cpuMs: number; ok: boolean; out: string }> {
   const t0 = Bun.nanoseconds()
   const p = Bun.spawn({ cmd, cwd, stdout: 'pipe', stderr: 'pipe', env: RUNNER_ENV })
   const [code, out, err] = await Promise.all([
@@ -76,7 +85,9 @@ async function sh(cmd: string[], cwd: string): Promise<{ ms: number; ok: boolean
     new Response(p.stdout).text(),
     new Response(p.stderr).text(),
   ])
-  return { ms: (Bun.nanoseconds() - t0) / 1e6, ok: code === 0, out: out + err }
+  const usage = p.resourceUsage()
+  const cpuMs = usage ? (usage.cpuTime.user + usage.cpuTime.system) / 1000 : NaN
+  return { ms: (Bun.nanoseconds() - t0) / 1e6, cpuMs, ok: code === 0, out: out + err }
 }
 
 // ---- scaffolding ----
@@ -309,10 +320,14 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   // (SIGKILL on launch, exit 137 — see docs/benchmarks.md); an ad-hoc
   // re-sign repairs it, exactly as release.yml does. Fall back to the source
   // tree only when the binary still cannot answer `--version`.
-  if (compiled.ok && process.platform === 'darwin') await sh(['codesign', '-s', '-', '--force', vxBin], dir)
+  if (compiled.ok && process.platform === 'darwin')
+    await sh(['codesign', '-s', '-', '--force', vxBin], dir)
   const binWorks = compiled.ok && (await sh([vxBin, '--version'], dir)).ok
-  if (compiled.ok && !binWorks) console.error('  compiled vx binary does not launch; measuring from source')
-  const vxRun = binWorks ? [vxBin] : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
+  if (compiled.ok && !binWorks)
+    console.error('  compiled vx binary does not launch; measuring from source')
+  const vxRun = binWorks
+    ? [vxBin]
+    : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
   const vxVer = (await sh([...vxRun, '--version'], dir)).out.trim()
   const conc = ['--concurrency', String(CONCURRENCY)]
   runners.push({
@@ -379,22 +394,36 @@ type Row = {
   fresh: number
   warmNoRestore: number
   warmRestore: number
+  /** CPU (user + system) of the invocation and the children it waited for, per state. */
+  freshCpu: number
+  warmNoRestoreCpu: number
+  warmRestoreCpu: number
 }
 
 async function measure(r: Runner, dir: string): Promise<Row> {
   const fresh: number[] = []
+  const freshCpu: number[] = []
   for (let i = 0; i < REPS; i++) {
     await r.clear()
     const res = await sh(r.run, dir)
     if (!res.ok) throw new Error(`${r.name} failed:\n${res.out.slice(-2000)}`)
     fresh.push(res.ms)
+    freshCpu.push(res.cpuMs)
   }
   const warmNoRestore: number[] = []
-  for (let i = 0; i < REPS; i++) warmNoRestore.push((await sh(r.run, dir)).ms)
+  const warmNoRestoreCpu: number[] = []
+  for (let i = 0; i < REPS; i++) {
+    const res = await sh(r.run, dir)
+    warmNoRestore.push(res.ms)
+    warmNoRestoreCpu.push(res.cpuMs)
+  }
   const warmRestore: number[] = []
+  const warmRestoreCpu: number[] = []
   for (let i = 0; i < REPS; i++) {
     await deleteDist(dir)
-    warmRestore.push((await sh(r.run, dir)).ms)
+    const res = await sh(r.run, dir)
+    warmRestore.push(res.ms)
+    warmRestoreCpu.push(res.cpuMs)
   }
   return {
     runner: r.name,
@@ -402,6 +431,9 @@ async function measure(r: Runner, dir: string): Promise<Row> {
     fresh: median(fresh),
     warmNoRestore: median(warmNoRestore),
     warmRestore: median(warmRestore),
+    freshCpu: median(freshCpu),
+    warmNoRestoreCpu: median(warmNoRestoreCpu),
+    warmRestoreCpu: median(warmRestoreCpu),
   }
 }
 
@@ -415,7 +447,10 @@ function fmt(ms: number): string {
 
 function markdown(rows: Row[]): string {
   const vx = rows.find((r) => r.runner === 'vx')
-  const speed = (row: Row, key: 'fresh' | 'warmNoRestore' | 'warmRestore') => {
+  const speed = (
+    row: Row,
+    key: 'fresh' | 'warmNoRestore' | 'warmRestore' | 'freshCpu' | 'warmNoRestoreCpu',
+  ) => {
     if (!vx || row.runner === 'vx' || vx[key] === 0 || Number.isNaN(row[key])) return ''
     return ` (${(row[key] / vx[key]).toFixed(1)}× vx)`
   }
@@ -430,13 +465,13 @@ function markdown(rows: Row[]): string {
 - **Host:** ${os.type()} ${os.release()} · ${os.cpus().length} cores · ${process.platform}/${process.arch}
 - **Date:** ${new Date().toISOString().slice(0, 10)}
 
-| Runner | Version | Fresh (cold) | Warm (no restore) | Warm (restore) |
-| ------ | ------- | ------------ | ----------------- | -------------- |
+| Runner | Version | Fresh (cold) | Warm (no restore) | Warm (restore) | CPU, cold | CPU, warm |
+| ------ | ------- | ------------ | ----------------- | -------------- | --------- | --------- |
 `
   const body = rows
     .map(
       (r) =>
-        `| ${r.runner} | ${r.version} | ${fmt(r.fresh)}${speed(r, 'fresh')} | ${fmt(r.warmNoRestore)}${speed(r, 'warmNoRestore')} | ${fmt(r.warmRestore)}${speed(r, 'warmRestore')} |`,
+        `| ${r.runner} | ${r.version} | ${fmt(r.fresh)}${speed(r, 'fresh')} | ${fmt(r.warmNoRestore)}${speed(r, 'warmNoRestore')} | ${fmt(r.warmRestore)}${speed(r, 'warmRestore')} | ${fmt(r.freshCpu)}${speed(r, 'freshCpu')} | ${fmt(r.warmNoRestoreCpu)}${speed(r, 'warmNoRestoreCpu')} |`,
     )
     .join('\n')
   return `${head}${body}
@@ -445,6 +480,11 @@ function markdown(rows: Row[]): string {
 derivation + execution + save). *Warm, no restore* re-runs with the cache
 warm and outputs intact (the steady-state dev loop). *Warm, restore*
 deletes every \`dist/\` first, so the runner restores outputs from cache.
+
+**CPU** is user + system time of the invocation and every child it waited
+for (the tasks themselves are \`sleep\`, so this is the runner's own
+work). A daemon that outlives the invocation (Turbo's, Nx's) is not
+counted, so their CPU is a floor.
 
 Reproduce: \`bun bench/compare.ts ${LAYERS} ${PER_LAYER} ${REPS}\`.
 `
@@ -482,6 +522,9 @@ for (const r of runners) {
       fresh: NaN,
       warmNoRestore: NaN,
       warmRestore: NaN,
+      freshCpu: NaN,
+      warmNoRestoreCpu: NaN,
+      warmRestoreCpu: NaN,
     })
   }
 }

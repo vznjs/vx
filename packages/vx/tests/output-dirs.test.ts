@@ -24,7 +24,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache, OUTPUT_DIRS_CAP } from '../src/cache/index.js'
+import { Cache, OUTPUT_DIRS_CAP, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { defaultLogger } from '../src/orchestrator/logger.js'
 import { wholeSubtreePrefixes } from '../src/util/index.js'
@@ -76,6 +76,9 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
       outputFiles: [path.join(proj, 'dist/a.js')],
       entry: { taskId: 'p#build', command: 'x', durationMs: 1, stdout: '' },
     })
+    // The fixture's directories are brand new; let them age past the racy
+    // window so a record below is not dropped as racy (pinned separately).
+    await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
   })
   afterEach(() => {
     cache.close()
@@ -133,6 +136,15 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     expect(await cache.outputDirsCurrent(proj, [])).toBe(false) // no rows ⇒ never a skip
   })
 
+  it('a directory modified within the racy window is not snapshotted at all (coarse timestamps)', async () => {
+    w('dist/fresh/x.js') // dist/ and dist/fresh just changed
+    await cache.recordOutputDirs('h1', proj, ['dist'])
+    expect(rows()).toEqual([]) // all or nothing
+    await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
+    await cache.recordOutputDirs('h1', proj, ['dist'])
+    expect(rows().map((r) => r.path)).toContain('dist/fresh')
+  })
+
   it('a forged directory mtime is the accepted trade (documented, like touch -r on a file)', async () => {
     await cache.recordOutputDirs('h1', proj, ['dist'])
     const recorded = rows().find((r) => r.path === 'dist')!
@@ -168,17 +180,24 @@ describe('warm hits through run() with the short-circuit', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('the miss records the directories; a warm hit is current; an added stray still forces the restore', async () => {
-    expect((await runBuild()).ok).toBe(true)
-    const c = db()
-    const hash = (
-      c.dbHandle().query("SELECT hash FROM entries WHERE task = 'build'").get() as { hash: string }
-    ).hash
-    const recorded = c.loadOutputDirsBatch([hash]).get(hash) ?? []
-    c.close()
-    expect(recorded.map((r) => r.path).sort()).toEqual(['dist', 'dist/sub'])
-
-    expect((await runBuild()).ok).toBe(true) // warm hit, tree current
+  it('the first aged hit records the directories; an added stray still forces the restore', async () => {
+    expect((await runBuild()).ok).toBe(true) // the miss: the tree is too young to snapshot
+    const recordedDirs = () => {
+      const c = db()
+      const hash = (
+        c.dbHandle().query("SELECT hash FROM entries WHERE task = 'build'").get() as {
+          hash: string
+        }
+      ).hash
+      const recorded = (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path).sort()
+      c.close()
+      return recorded
+    }
+    expect(recordedDirs()).toEqual([]) // racy: written moments ago
+    await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
+    expect((await runBuild()).ok).toBe(true) // warm hit: the walk proves the tree, old enough to record
+    expect(recordedDirs()).toEqual(['dist', 'dist/sub'])
+    expect((await runBuild()).ok).toBe(true) // warm hit, directories trusted
     await Bun.sleep(5)
     writeFileSync(path.join(dist(), 'stray.js'), 'stale')
     expect((await runBuild()).ok).toBe(true)
