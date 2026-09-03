@@ -252,27 +252,25 @@ passed once the load fell.
 
 ## In flight
 
-- **Release v0.0.18 (owner, 2026-09-03 21:30Z, on the green 155d78d)
-  superseded the half-published v0.0.17; npm is still processing two
-  packages.** Its `npm publish` run printed `+ name@0.0.18` for all
-  five packages. As of 21:50Z the registry serves `@vzn/vx-darwin-x64`,
-  `-darwin-arm64` and `-linux-x64` at 0.0.18, while `@vzn/vx` and
-  `-linux-arm64` still answer 0.0.16 — their publish log carries npm's
-  "Your package is being processed and may take a few minutes to become
-  available", npm's asynchronous processing under the token policy
-  noted below, so this is expected latency, not a failure. If either is
-  still absent after an hour, the npm account's notifications say why
-  (that is the owner's view). The v0.0.17 leftover (`-darwin-x64@0.0.17`
-  alone) is harmless: no core version references it. Background that
-  still matters: both publish steps in `npm.yml` set `NODE_AUTH_TOKEN`
-  from the classic `NPM_TOKEN` and fall back to OIDC trusted publishing
-  only when it is empty; npm now restricts classic tokens for direct
-  publishing (the v0.0.17 darwin publish died on `E401 token is
-  invalid` mid-run), so before the next release the owner either
-  configures trusted publishers on npmjs.com for all five packages and
-  deletes the secret, or rotates to a granular token with publish
-  rights and 2FA bypass. Both publish loops skip a package already on
-  the registry, so any re-run resumes where it stopped.
+- **npm publishing moved to trusted publishing (2026-09-04) — one
+  owner step remains.** v0.0.18's publish went out on the classic
+  `NPM_TOKEN`: three packages live within minutes, `@vzn/vx` and
+  `@vzn/vx-linux-arm64` held by npm at "being processed" for over an
+  hour under npm's restriction of tokens that bypass 2FA (v0.0.17 had
+  died on the same token with `E401`). `npm.yml` no longer reads any
+  token: both publish steps rely on the job's OIDC exchange (`id-token:
+  write`, npm ≥ 11.5.1 guarded on both jobs), pass `--provenance`
+  explicitly, run under a default-deny top-level `permissions: {}`,
+  and every action in `npm.yml` and `release.yml` is pinned to a commit
+  SHA. The npm build script writes the object-form `repository` that
+  npm was rewriting with a warning on every publish. OWNER STEP: on
+  npmjs.com, add the GitHub Actions trusted publisher (owner `vznjs`,
+  repo `vx`, workflow `npm.yml`, no environment) to each of the five
+  packages, then delete the `NPM_TOKEN` secret; then either wait for
+  npm to release the two held 0.0.18 packages or dispatch `npm publish`
+  with `0.0.18` — the loops skip the three already live. Documented in
+  `docs/cli.md` § Releasing. A publish cannot be exercised locally; the
+  next release is the proof.
 
 ## Next (ordered)
 

@@ -87,7 +87,9 @@ discovery order — in `config_closures`, written whenever the slow path
 keys a config whose relative imports all carry an explicit extension.
 On the next load, `loadProjectConfigs` keys such a config from per-file
 identities alone (`Cache.hashFile`: the git blob id behind an
-mtime/size/ctime/inode memo — no read, no scan) with
+mtime/size/ctime/inode memo — no read, no scan; a file changed within
+`FILE_HASH_RACY_MS` of its stat is hashed but not memoised, so a config
+edited moments ago is never served from a stale identity) with
 `configEvalKeyFromClosure`, whose fold is byte-identical to
 `configEvalKey`'s, so the two paths share entries. A fast key that misses
 takes the slow path for that config, which re-indexes it.

@@ -106,17 +106,30 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
     // A rewrite landing in the same tick as the recorded stat keeps ctime,
     // size and inode equal (mtime can be restored), so a row stored from
     // that tick would serve a stale digest. The row is withheld until the
-    // file is older than the window.
+    // file is older than the window. The in-window half must PROVE it was
+    // inside the window from the file's own ctime — a loaded box can put
+    // more than 50 ms between the write and the hash, and then a stored
+    // row is the correct outcome, not a failure.
     const f = path.join(dir, 'young.txt')
-    await writeFile(f, 'AAAAAA')
-    const first = await cache.hashFile(f)
     const rows = () =>
       (
         cache.dbHandle().prepare('SELECT COUNT(*) AS n FROM file_hashes WHERE path = ?').get(f) as {
           n: number
         }
       ).n
-    expect(rows()).toBe(0) // fresh: hashed, not memoised
+    let inWindow = false
+    for (let attempt = 0; attempt < 50 && !inWindow; attempt++) {
+      await writeFile(f, `AAAAAA${attempt}`)
+      await cache.hashFile(f)
+      const age = Date.now() - Math.floor((await stat(f)).ctimeMs)
+      if (age < FILE_HASH_RACY_MS - 5) {
+        inWindow = true
+        expect(rows()).toBe(0) // fresh: hashed, not memoised
+      }
+      cache.dbHandle().prepare('DELETE FROM file_hashes WHERE path = ?').run(f)
+    }
+    expect(inWindow).toBe(true) // the box managed one write+hash inside the window
+    const first = await cache.hashFile(f)
     await Bun.sleep(FILE_HASH_RACY_MS + 20)
     expect(await cache.hashFile(f)).toBe(first)
     expect(rows()).toBe(1) // aged: memoised now

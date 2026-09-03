@@ -37,7 +37,8 @@ const ROOT = dirname(import.meta.dir) // scripts/ -> repo root
 // Core is a workspace member now, so its sources, manifest and compiled
 // binaries live under packages/vx — only README/LICENSE stay repo-wide.
 const CORE = join(ROOT, 'packages', 'vx')
-const REPOSITORY = 'https://github.com/vznjs/vx'
+/** Object form: npm rewrites a string on publish and warns about it each time. */
+const REPOSITORY = { type: 'git', url: 'git+https://github.com/vznjs/vx.git' } as const
 
 function parseArgs(argv: readonly string[]): { version: string; out: string; only?: string } {
   let version: string | undefined

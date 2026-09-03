@@ -1092,6 +1092,27 @@ Exit codes:
   (`--check` without one), or any drift (every mismatched project is
   listed on stderr).
 
+## Releasing (maintainers)
+
+A GitHub release publishes everything: `release.yml` builds the four
+binaries, ad-hoc signs the darwin ones and attaches them; `npm.yml`
+builds the five npm packages (`@vzn/vx` and one per platform) and
+publishes them with **npm trusted publishing** — the job's OIDC token
+is exchanged for a short-lived credential and provenance is attached,
+so no long-lived npm token exists anywhere. Both publish loops skip a
+package already on the registry, so a re-run (`npm publish` →
+_Run workflow_ with the version) resumes where it stopped.
+
+One-time setup, per package, on npmjs.com → package → Settings →
+Trusted Publisher → GitHub Actions: owner `vznjs`, repository `vx`,
+workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
+`@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64` and
+`@vzn/vx-linux-arm64`. Then delete the `NPM_TOKEN` repository secret:
+the workflow no longer reads it, and npm restricts classic tokens for
+direct publishing (the `E401 token is invalid` that stopped v0.0.17).
+Every `uses:` in both workflows is pinned to a commit SHA with the
+version in a comment; bump the SHA and the comment together.
+
 ## `vx upgrade`
 
 Self-update the compiled binary in place: downloads the release asset
