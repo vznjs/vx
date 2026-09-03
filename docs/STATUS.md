@@ -134,7 +134,10 @@ as 150 MiB), while 200 × 2 MiB entries read +90–180 MiB of per-entry
 garbage the collector paces — identical configurations differed by
 90 MiB run to run, so no code change is justified; the docs now say
 "holds one chunk", not "bounded by a chunk". The in-flight write bound
-and the buffering threshold were both varied and changed nothing.
+and the buffering threshold were both varied and changed nothing. The
+darwin CI job's compiled-binary step now declares an output, deletes
+it and asserts the cached run restores it, so the container is
+exercised through the binary on every push, not only locally.
 Measurement traps recorded: a Blob source is not bounded; a one-process
 memory probe with a large buffer live reads GC pacing (+315 vs +30 MiB
 in a fresh process); piped oxlint prints one line per finding.
