@@ -439,6 +439,16 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   than files would read as green. The runner now refuses an empty shard
   (exit 2, naming the fix); pinned by spawning the real CLI, with a
   control that a populated shard still lists its file.
+- 2026-09-03 — **warm run re-measured after the day's work: no
+  regression.** `bench/run.ts`, best of 5: 1000 projects 224 ms (recorded
+  237); 100 projects 84 ms against a recorded 78 — an 8% gap, so it was
+  settled the way the rules say rather than argued: an interleaved A/B
+  against an immutable `git worktree` at a4c8acc (the morning's last
+  commit), three rounds of three reps each. Baseline min 85 ms, main
+  min 83 ms — flat. The 78 was a cooler box; today's box had run the
+  gate twenty-odd times. Nothing today touched the run hot path
+  (`vx watch`, `vx init`, the eval-cache deny-list, the shard runner,
+  docs), and the measurement agrees.
 
 ## In flight
 
@@ -475,10 +485,15 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
    to end (DONE — found the version stamp miss); `vx why` on plugin key
    parts (REFUTED — a removed plugin reports `removed plugin
 org/tool/node-major`, a renamed one `added`; the removed shape is now
-   in the explainability pin). Next candidates: `--download` × the shard
-   runner's isolated process; the launcher's source fallback when the
-   platform package is absent but Bun is installed. Probes become
-   tests.
+   in the explainability pin); the launcher's fallback arms (DONE —
+   pinned); the shard helpers as declared inputs of the `test.N` tasks
+   (REFUTED — editing `tests/helpers/shard-deal.ts` or `tests/setup.ts`
+   moves the shard key, proven with `--dry`; a comment in `vx.config.ts`
+   does not, correctly, since the resolved object is what is hashed).
+   `--download` × the shard runner's isolated process is a non-question:
+   an isolated process changes nothing about a run. Next: re-measure the
+   warm run after each day's work (the hot path is the product). Probes
+   become tests.
 3. **The watch e2e flake** — if `re-runs the task after a file change,
 then exits on SIGINT` times out again, keep that run's stdout: the
    presence of `re-running...` separates a lost event from a slow
