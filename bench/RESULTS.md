@@ -11,11 +11,11 @@
 
 | Runner           | Version  | Fresh (cold)      | Warm (no restore) | Warm (restore)   | CPU, cold           | CPU, warm        |
 | ---------------- | -------- | ----------------- | ----------------- | ---------------- | ------------------- | ---------------- |
-| baseline (ideal) | —        | 3m 38s            | 71 ms             | 299 ms           | 34.05 s             | 96 ms            |
-| vx               | vx 0.0.0 | 3m 46s            | 559 ms            | 830 ms           | 34.33 s             | 1.80 s           |
-| vx (frozen)      | vx 0.0.0 | 3m 47s (1.0× vx)  | 616 ms (1.1× vx)  | 822 ms (1.0× vx) | 35.76 s (1.0× vx)   | 1.63 s (0.9× vx) |
-| turbo            | 2.10.12  | 5m 13s (1.4× vx)  | 760 ms (1.4× vx)  | 1.17 s (1.4× vx) | 1m 13s (2.1× vx)    | 4.40 s (2.4× vx) |
-| nx               | 23.2.0   | 34m 44s (9.2× vx) | 3.59 s (6.4× vx)  | 4.15 s (5.0× vx) | 114m 6s (199.4× vx) | 5.54 s (3.1× vx) |
+| baseline (ideal) | —        | 3m 38s            | 66 ms             | 364 ms           | 33.93 s             | 94 ms            |
+| vx               | vx 0.0.0 | 3m 46s            | 549 ms            | 844 ms           | 30.79 s             | 2.00 s           |
+| vx (frozen)      | vx 0.0.0 | 3m 47s (1.0× vx)  | 476 ms (0.9× vx)  | 743 ms (0.9× vx) | 34.33 s (1.1× vx)   | 1.33 s (0.7× vx) |
+| turbo            | 2.10.12  | 5m 13s (1.4× vx)  | 760 ms (1.4× vx)  | 1.17 s (1.4× vx) | 1m 13s (2.4× vx)    | 4.40 s (2.2× vx) |
+| nx               | 23.2.0   | 34m 44s (9.2× vx) | 3.59 s (6.5× vx)  | 4.15 s (4.9× vx) | 114m 6s (222.4× vx) | 5.54 s (2.8× vx) |
 
 **Cache states.** _Fresh_ clears the runner's cache and runs cold (key
 derivation + execution + save). _Warm, no restore_ re-runs with the cache

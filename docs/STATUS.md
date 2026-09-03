@@ -617,6 +617,16 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   `DROP INDEX IF EXISTS` it so existing databases shed it on open; no
   schema-version bump (an index is not a stored shape). The cache, why,
   metrics, history and run-record suites pass unchanged.
+- 2026-09-03 — **the site's vx rows re-measured after waves 6 and 7**
+  (`RUNNERS="vx,vx (frozen)"`, a new `compare.ts` filter that re-runs a
+  subset and keeps the committed rows of the rest — ~10 minutes instead
+  of 50): cold 3m 46s, warm 549 ms, restore 844 ms, CPU 30.8 s; frozen
+  476 ms / 743 ms. At 3,270 `sleep 1` tasks the ~40 ms the two waves took
+  off a 1000-project warm run sits inside this shape's run-to-run noise,
+  which is the honest reading. The CPU floor re-measured at 33.9 s —
+  above vx's 30.8 — because both vary by ±2 s at this size; the legend
+  and the doc say so rather than let a dashed bar longer than vx's pass
+  unexplained. Turbo and Nx rows are the morning's measurement.
 
 ## In flight
 
@@ -678,7 +688,16 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    leads. `record history` was 11 ms of 1,000 inserts × five `runs`
    indexes — one of which, `runs_hash`, had no reader (every consumer of
    `runs.hash` looks the row up by run id or project+task first);
-   dropping it measured 11.5 → 3.9 ms for the inserts. **The stage table
+   dropping it measured 11.5 → 3.9 ms for the inserts. Two small leads
+   left, each measured: the 1,000 `config_evals` point lookups in
+   `load configs` cost 3.6 ms where one `IN` query costs 0.7 — but each
+   key needs its config's bytes and import closure, computed inside
+   `loadProjectConfig`, so batching means prefetching a round's keys
+   ahead of the loads (a config-cache path: correctness first); and
+   `getMany`'s 1,000 artifact-existence stats inside `classify + probe`
+   (~5–10 ms) could move to restore time, but only with a re-execute
+   fallback for a hit whose artifact is gone, which the hit path lacks
+   (the getMany/get parity pin would move with it). **The stage table
    after wave 6** (warm 1000 projects, in-process
    ~176 ms; the bench's whole-process number is 204 ms): git enumeration
    54 ms wall (overlapped with the 36 ms of cached config loads, so ~20 ms

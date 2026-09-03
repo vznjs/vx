@@ -6,27 +6,27 @@
   "concurrency": 10,
   "reps": 1,
   "buildSleep": "1",
-  "date": "2026-09-03T10:08:43.417Z",
+  "date": "2026-09-03T10:32:36.417Z",
   "rows": [
     {
       "runner": "vx",
       "version": "vx 0.0.0",
-      "fresh": 226153.628333,
-      "warmNoRestore": 559.082209,
-      "warmRestore": 829.836083,
-      "freshCpu": 34332.67,
-      "warmNoRestoreCpu": 1799.229,
-      "warmRestoreCpu": 2818.006
+      "fresh": 225707.968167,
+      "warmNoRestore": 548.925458,
+      "warmRestore": 844.094333,
+      "freshCpu": 30786.997,
+      "warmNoRestoreCpu": 2004.369,
+      "warmRestoreCpu": 3019.359
     },
     {
       "runner": "vx (frozen)",
       "version": "vx 0.0.0",
-      "fresh": 226817.176375,
-      "warmNoRestore": 615.9675,
-      "warmRestore": 821.855708,
-      "freshCpu": 35755.266,
-      "warmNoRestoreCpu": 1633.238,
-      "warmRestoreCpu": 2538.11
+      "fresh": 226531.17025,
+      "warmNoRestore": 475.573041,
+      "warmRestore": 743.375292,
+      "freshCpu": 34328.297,
+      "warmNoRestoreCpu": 1334.781,
+      "warmRestoreCpu": 2413.367
     },
     {
       "runner": "turbo",
@@ -51,10 +51,10 @@
   ],
   "baseline": {
     "fresh": 218000,
-    "warmNoRestore": 70.696292,
-    "warmRestore": 298.510042,
-    "freshCpu": 34048.314,
-    "warmNoRestoreCpu": 96.318,
+    "warmNoRestore": 66.444583,
+    "warmRestore": 363.53712399999995,
+    "freshCpu": 33932.907999999996,
+    "warmNoRestoreCpu": 93.895,
     "criticalPathMs": 100000,
     "workBoundMs": 218000
   }

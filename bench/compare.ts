@@ -722,6 +722,19 @@ if (BASELINE_ONLY) {
   const install = await sh(['bun', 'add', '-d', 'turbo', 'nx', '--no-save'], ws).catch(() => null)
   if (!install || !install.ok) await sh(['bun', 'add', '-d', 'turbo', 'nx'], ws)
   runners = await buildRunners(ws)
+  // RUNNERS=vx,turbo re-measures a subset and keeps the committed rows of
+  // the rest (a vx-only refresh is ~5 minutes; Nx alone is ~40).
+  const only = process.env['RUNNERS']
+    ?.split(',')
+    .map((n) => n.trim())
+    .filter(Boolean)
+  if (only && only.length > 0) {
+    runners = runners.filter((r) => only.includes(r.name))
+    const prior = JSON.parse(await Bun.file(path.join(vxRoot, 'bench', 'results.json')).text()) as {
+      rows: Row[]
+    }
+    rows = prior.rows.filter((r) => !only.includes(r.runner))
+  }
   await gitInit(ws)
   console.error(`runners: ${runners.map((r) => `${r.name}@${r.version}`).join(', ')}`)
 }
@@ -749,6 +762,8 @@ for (const r of runners) {
   }
 }
 
+const ORDER = ['vx', 'vx (frozen)', 'turbo', 'nx']
+rows.sort((a, b) => ORDER.indexOf(a.runner) - ORDER.indexOf(b.runner))
 console.error('measuring the baseline (ideal schedule, one git walk, a raw copy) …')
 const baseline = await measureBaseline(ws)
 const md = markdown(rows, baseline)
