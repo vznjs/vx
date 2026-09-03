@@ -778,7 +778,11 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   box idle): cold 3m 46s → 3m 46s, warm 549 → 516 ms, restore 844 →
   799 ms, CPU warm 2.00 → 1.35 s — no regression from the new reader
   on 1 090 one-file artifacts; the site regenerated from the new rows.
-  Docs: `docs/caching.md` § container, `docs/modules/cache.md`.
+  Two more pins from the audit: a pax `path` record that renames a
+  benign header to a traversal is refused with nothing written, and a
+  compressed stream cut mid-archive above the threshold surfaces as
+  `CorruptArtifactError` through the real cache with the staged temp
+  gone. Docs: `docs/caching.md` § container, `docs/modules/cache.md`.
 
 ## In flight
 

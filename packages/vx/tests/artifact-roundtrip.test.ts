@@ -313,6 +313,27 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
     expect(await readdir(projectDir)).not.toContain(expect.stringMatching(/vx-tmp/))
   })
 
+  it('a compressed stream cut mid-archive is a corrupt artifact, and nothing lands', async () => {
+    // Above the threshold the decoder runs as a stream; a frame that ends
+    // early must surface as CorruptArtifactError (the re-run path), not as
+    // a short entry, and the staged temp beside the target must be gone.
+    await mkdir(path.join(projectDir, 'dist'), { recursive: true })
+    await Bun.write(path.join(projectDir, 'dist/big.bin'), big)
+    await cache.save({
+      hash: 'cut',
+      entry: { taskId: 'a#build', command: 'build', durationMs: 1, stdout: '' },
+      projectDir,
+      outputFiles: [path.join(projectDir, 'dist/big.bin')],
+    })
+    const whole = await Bun.file(cache.outputsPath('cut')).bytes()
+    expect(whole.byteLength).toBeGreaterThan(4 * 1024 * 1024)
+    await Bun.write(cache.outputsPath('cut'), whole.subarray(0, whole.byteLength - 4096))
+    await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
+
+    await expect(cache.restoreOutputs('cut', projectDir)).rejects.toThrow(/corrupt artifact/i)
+    expect(await readdir(projectDir)).toEqual([])
+  })
+
   it('a poisoned entry AFTER the large one leaves nothing behind', async () => {
     // The staging core renames only once the whole archive has been read,
     // so a traversal at the END of a big artifact cannot leave the benign

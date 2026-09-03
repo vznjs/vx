@@ -464,6 +464,23 @@ describe('archive restore — mixed valid + malicious entries', () => {
     expect(existsSync(path.join(dest, '..', 'evil.txt'))).toBe(false)
   })
 
+  it('a pax `path` record that renames a benign header to a traversal is refused', async () => {
+    // The ustar name field is clean; the pax extended header (what a
+    // producer emits for a long path) overrides it. The check must see
+    // the name the entry would actually land under.
+    const pax = new TextEncoder().encode('28 path=outputs/../evil.txt\n')
+    const tar = concatTar([
+      makeHeader({ name: 'PaxHeaders/benign', size: pax.length, typeFlag: 'x' }),
+      makeDataBlock(pax),
+      makeHeader({ name: 'outputs/benign.txt', size: 4, typeFlag: '0' }),
+      makeDataBlock(new TextEncoder().encode('bad\n')),
+      EOF_BLOCKS,
+    ])
+    await expect(restore(tar, dest)).rejects.toThrow(/escape|traversal|unsafe/i)
+    expect(existsSync(path.join(dest, '..', 'evil.txt'))).toBe(false)
+    expect(existsSync(path.join(dest, 'benign.txt'))).toBe(false)
+  })
+
   it('a containment failure anywhere writes NOTHING, even for benign siblings', async () => {
     // Containment is proven for every entry before any is written, so a
     // symlinked-parent escape on one entry cannot leave its neighbours
