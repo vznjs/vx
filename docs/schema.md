@@ -38,6 +38,12 @@ export default defineProject({
 `defineProject` is an identity function — it exists purely so
 TypeScript narrows literal types in your config (clean autocomplete,
 strict validation against the schema). It has zero runtime effect.
+The same typing without a runtime import is
+`import type { ProjectConfig } from '@vzn/vx'` plus
+`export default { … } satisfies ProjectConfig` — the form `vx init`
+and `vx migrate` generate, because Bun erases the type import and the
+file then loads in a workspace that runs the `vx` binary without the
+package installed. Either form is fine; the object is what vx reads.
 
 `tasks` is a `Record<string, TaskConfig>`. Task names are arbitrary
 strings; they're referenced by `dependsOn`, by `cache.inputs.tasks`,
