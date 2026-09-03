@@ -28,21 +28,23 @@ export { formatBytes } from './format.js'
 
 ## Subcommands
 
-| Argv first token                           | Handler                                                               |
-| ------------------------------------------ | --------------------------------------------------------------------- |
-| `run`                                      | `cli/run.ts:runCmd(rest)`                                             |
-| `watch`                                    | `cli/watch.ts:watchCmd(rest)`                                         |
-| `cache`                                    | `cli/cache.ts:cacheCmd(rest)`                                         |
-| `lock`                                     | `cli/lock.ts:lockCmd(rest)`                                           |
-| `migrate`                                  | `cli/migrate.ts:migrateCmd(rest)`                                     |
-| `upgrade`                                  | `cli/upgrade.ts:upgradeCmd(rest)`                                     |
-| `show`                                     | `cli/show.ts:showCmd(rest)`                                           |
-| `info` / `stats` (deprecated alias)        | `cli/info.ts:infoCmd(rest)`                                           |
-| `mcp`                                      | `cli/mcp.ts:mcpCmd(rest)`                                             |
-| `serve` / `dev` / `coordinator` / `worker` | redirect message: these live in the service package, not core; exit 1 |
-| `help` / `--help` / `-h` / _(empty)_       | `cli/help.ts:printHelp()`                                             |
-| `version` / `--version`                    | `process.stdout.write('vx <VERSION>\n')`                              |
-| anything else                              | print `unknown command`, then help, exit 1                            |
+| Argv first token                     | Handler                                                                 |
+| ------------------------------------ | ----------------------------------------------------------------------- |
+| `run`                                | `cli/run.ts:runCmd(rest)`                                               |
+| `watch`                              | `cli/watch.ts:watchCmd(rest)`                                           |
+| `cache`                              | `cli/cache.ts:cacheCmd(rest)`                                           |
+| `lock`                               | `cli/lock.ts:lockCmd(rest)`                                             |
+| `migrate`                            | `cli/migrate.ts:migrateCmd(rest)`                                       |
+| `init`                               | `cli/migrate.ts:migrateCmd(['--from', 'scripts', ...rest], { init: true })` — the scripts mapping; scaffolds an empty workspace instead of refusing |
+| `upgrade`                            | `cli/upgrade.ts:upgradeCmd(rest)`                                       |
+| `show`                               | `cli/show.ts:showCmd(rest)`                                             |
+| `info` / `stats` (deprecated alias)  | `cli/info.ts:infoCmd(rest)`                                             |
+| `why`                                | `cli/why.ts:whyCmd(rest)`                                               |
+| `last`                               | `cli/last.ts:lastCmd(rest)`                                             |
+| `prune`                              | `cli/prune.ts:pruneCmd(rest)`                                           |
+| `help` / `--help` / `-h` / _(empty)_ | `cli/help.ts:printHelp(pluginVerbs)` — plugin verbs listed with their plugin |
+| `version` / `--version`              | `process.stdout.write('vx <VERSION>\n')`                                |
+| anything else                        | `cli/plugin-commands.ts:resolvePluginCommand` — the workspace's plugins are asked, in order, for a `commands` entry (`vx mcp` from `@vzn/vx-mcp` is one); a verb resolving a non-integer fails naming the plugin; nothing found → `unknown command` (plus why plugin verbs could not be looked up when the workspace file failed to load), then help, exit 1 |
 
 Per-subcommand parsers / handlers carry their own argv-walk loops.
 See:
@@ -50,12 +52,11 @@ See:
 - [`cli-run.md`](./cli-run.md) — `vx run`
 - [`cli-watch.md`](./cli-watch.md) — `vx watch`
 - [`cli-cache.md`](./cli-cache.md) — `vx cache prune`
-- [`cli-lock.md`](./cli-lock.md) — `vx lock` / `--check`
-- [`cli-migrate.md`](./cli-migrate.md) — `vx migrate`
-- [`cli-show-info.md`](./cli-show-info.md) — `vx show` / `vx info`
-- [`cli-upgrade.md`](./cli-upgrade.md) — `vx upgrade`
 - [`cli-help.md`](./cli-help.md) — `vx help`
 - [`cli-format.md`](./cli-format.md) — shared formatters
+- `vx lock`, `vx migrate` / `vx init`, `vx show` / `vx info`, `vx why`,
+  `vx last`, `vx prune`, `vx upgrade`: documented in
+  [`../cli.md`](../cli.md); no separate module doc.
 
 ## What this does NOT do
 
