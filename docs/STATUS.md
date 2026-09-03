@@ -575,6 +575,18 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    accepted `touch -r` trade in view, pin both directions, and MEASURE
    before claiming the ~15% it suggests.
 
+7. **The stage table after wave 6** (warm 1000 projects, in-process
+   ~176 ms; the bench's whole-process number is 204 ms): git enumeration
+   54 ms wall (overlapped with the 36 ms of cached config loads, so ~20 ms
+   exposed), discover projects 22–44 ms (a readdir + a manifest read +
+   JSON.parse per project), classify + probe 26 ms, run graph 18 ms
+   (all of it file and directory stats), history 8 ms. The next real
+   lead is git: `status --porcelain -uall` is the floor of the untracked
+   walk, and caching its result would need a proof it is still valid
+   (index mtime is not enough — an untracked file is invisible to the
+   index). Discovery could skip the per-project readdir by stat-ing the
+   config filenames directly; measure before believing it.
+
 The audit rotation continues by the standing rule: newest code first,
 probes become tests, refutations recorded in the shipped entry that
 closes them.
