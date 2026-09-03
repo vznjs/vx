@@ -70,6 +70,10 @@ You don't have to list these — they're always part of the key:
 - **The workspace lockfile fingerprint** — `bun.lock`,
   `pnpm-lock.yaml`, etc.
 - **Upstream task hashes** — see [cascading](#cascading-through-dependencies).
+- **Plugin key material** — whatever a plugin's `key(task, ctx)` stage
+  returns for the task (a toolchain version, a container digest), folded
+  only when a plugin declares it and named in `vx why`; see
+  [Writing a vx plugin](../plugins/#shaping-the-pipeline).
 - **The resolved command + env declarations**, and any forwarded `--`
   args.
 
