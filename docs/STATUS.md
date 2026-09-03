@@ -588,11 +588,19 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    exposed), discover projects 22–44 ms (a readdir + a manifest read +
    JSON.parse per project), classify + probe 26 ms, run graph 18 ms
    (all of it file and directory stats), history 8 ms. The next real
-   lead is git: `status --porcelain -uall` is the floor of the untracked
-   walk, and caching its result would need a proof it is still valid
-   (index mtime is not enough — an untracked file is invisible to the
-   index). Discovery could skip the per-project readdir by stat-ing the
-   config filenames directly; measure before believing it.
+   lead is git. SPLIT (2026-09-03, in-process timer, 7 runs, min):
+   `ls-files -s -v` 11 ms, `status --porcelain -z -uall` 59 ms,
+   `rev-parse` 9 ms, `config` ~9 ms — the last two are the spawn floor
+   itself. The four run concurrently, so wall = the status walk;
+   `core.untrackedCache` did NOT help on this filesystem (58.6 ms with
+   it). `rev-parse --show-prefix --git-dir` is derivable from the `.git`
+   resolution `readHeadDirect` already does (a CPU saving, ~9 ms, wall
+   gain a few ms on a loaded box — the helper would have to move out of
+   `orchestrator` for `cache` to reach it); `config` is NOT safely
+   derivable (global/system config decide CRLF classification, which is
+   key-affecting). Caching the status result would need a proof it is
+   still valid, and the index mtime is not one — an untracked file is
+   invisible to the index. Discovery's readdir is DONE (stats, above).
 
 The audit rotation continues by the standing rule: newest code first,
 probes become tests, refutations recorded in the shipped entry that
