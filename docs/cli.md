@@ -1627,7 +1627,7 @@ Surface:
 - `planRun(options)` — predict, no execute. Returns
   `Promise<RunPlan>`. Used by `--dry` / `--graph`.
 - `prepareRun(options, log)` — the shared setup (discovery → configs →
-  graph → cache). What a coordinator embeds.
+  graph → cache). What an embedder builds on.
 - `defineProject` / `defineWorkspace` — identity helpers for type
   inference in user configs.
 - `RunOptions` / `RunSummary` / `TaskOutcome` types are re-exported
