@@ -159,6 +159,22 @@ function crossDepProjects(config: ProjectConfig): string[] {
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
   mark('startup')
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
+  // An UNSCOPED run (no explicit scope, at least one bare task name)
+  // enumerates the whole tree whatever the configs say, so git starts
+  // HERE — the walk needs only the root — and overlaps the workspace
+  // config, discovery, the cache open and the config evaluation. Its
+  // ~60 ms is the warm run's wall floor on a 1000-project tree; it used to
+  // start after discovery and the cache open, ~25 ms later. A scoped run
+  // waits: its pathspecs depend on which projects the configs pull in.
+  const unscoped =
+    options.projects === undefined && options.tasks.some((spec) => spec.indexOf('#') <= 0)
+  const earlyGit: Promise<GitEnumeration> | undefined = unscoped
+    ? startGitEnumeration(workspaceRoot, ['.'])
+    : undefined
+  // A broken config below throws before this is awaited; the detached
+  // handler keeps that from surfacing as an unhandled rejection (the real
+  // await further down still sees the error).
+  earlyGit?.catch(() => {})
   const workspace = await loadWorkspace(workspaceRoot)
   const workspaceConfig = await loadWorkspaceConfig(workspaceRoot)
   // The `config` stage runs before anything is derived from the workspace
@@ -224,18 +240,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
   mark('open cache')
 
-  // An UNSCOPED run enumerates the whole tree whatever the configs say, so
-  // git can start now and overlap the config evaluation below (~60 ms
-  // against ~80 ms on a 1000-project tree). A scoped run waits: its
-  // pathspecs depend on which projects the configs pull in.
-  const unscoped = options.projects === undefined && hasBare
-  const earlyGit: Promise<GitEnumeration> | undefined = unscoped
-    ? startGitEnumeration(workspaceRoot, ['.'])
-    : undefined
-  // A broken config below throws before this is awaited; the detached
-  // handler keeps that from surfacing as an unhandled rejection (the real
-  // await further down still sees the error).
-  earlyGit?.catch(() => {})
   type ConfigMeta = (typeof projectsWithConfigs)[number]
   const metaByName = new Map<string, ConfigMeta>(projectsWithConfigs.map((m) => [m.name, m]))
   const needed = new Set<string>()

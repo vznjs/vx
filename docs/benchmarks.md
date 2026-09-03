@@ -9,10 +9,17 @@ The number that matters most to a developer is the warm no-op run: every
 task a cache hit, nothing to restore. `bench/generate.ts` workspaces,
 `vx run build --all`, this machine (macOS arm64, Bun 1.4.0), best of 5:
 
-| Projects | Before (2026-09-02 morning) | Wave 1 | Wave 2 | Wave 5 | Wave 6 | What changed                                                                                    |
-| -------- | --------------------------- | ------ | ------ | ------ | ------ | ----------------------------------------------------------------------------------------------- |
-| 100      | 105 ms                      | 92 ms  | 79 ms  | 78 ms  | 77 ms  | git overlaps config load; `.git/HEAD` read replaces a git spawn; batched probe; no output walk  |
-| 1000     | 380–450 ms                  | 270 ms | 242 ms | 237 ms | 204 ms | + cached pure-config evals; one worktree walk; readdir discovery; batched probe; no output walk |
+| Projects | Before (2026-09-02 morning) | Wave 1 | Wave 2 | Wave 5 | Wave 6 | Wave 7 | What changed                                                                                               |
+| -------- | --------------------------- | ------ | ------ | ------ | ------ | ------ | ---------------------------------------------------------------------------------------------------------- |
+| 100      | 105 ms                      | 92 ms  | 79 ms  | 78 ms  | 77 ms  | 74 ms  | git overlaps config load; `.git/HEAD` read replaces a git spawn; batched probe; no output walk; git first  |
+| 1000     | 380–450 ms                  | 270 ms | 242 ms | 237 ms | 204 ms | 172 ms | + cached pure-config evals; one worktree walk; readdir discovery; batched probe; no output walk; git first |
+
+Wave 7 (2026-09-03) starts the unscoped git enumeration the moment the
+workspace root is known — ahead of the workspace config, discovery and
+the cache open, ~25 ms earlier than before — so the `status` walk that is
+the warm run's wall floor overlaps everything. Interleaved A/B against a
+worktree at the previous commit, three rounds of three: 1000 projects
+min 195 → 172 ms.
 
 Wave 6 (2026-09-03) removed the per-hit output walk: for `dist/**`-shaped
 globs, the mtimes of every directory under the prefix, recorded at the

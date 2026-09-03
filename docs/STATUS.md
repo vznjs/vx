@@ -597,6 +597,17 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   floors against the committed rows in ~9 minutes. Dashed grey bar on
   the landing chart, a legend sentence in the note, rows in
   `bench/RESULTS.md` and `benchmarks.md` § A real monorepo.
+- 2026-09-03 — **perf wave 7: git starts the moment the root is known.**
+  The git enumeration split (spawn-wait 68–70 ms for the four concurrent
+  spawns, JS apply 4 ms) said the wait is the walk, and the early start
+  for unscoped runs sat AFTER the workspace config, discovery and the
+  cache open although it needs only the root and the task specs. Moved
+  to right after `findWorkspaceRoot` (the unscoped rule recomputed from
+  the specs there; the later `hasBare` loop still seeds the scope). Stage
+  table: git enumeration own 41–55 → 25–30 ms, in-process warm 1000
+  projects 170 → 154 ms. Interleaved A/B, three rounds of three, whole
+  process: 195 → 172 ms (−12%); 100 projects 74 ms best of 5. Seven
+  suites that could pin spawn order pass unchanged.
 
 ## In flight
 
@@ -650,7 +661,7 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    accepted `touch -r` trade in view, pin both directions, and MEASURE
    before claiming the ~15% it suggests.
 
-7. **The stage table after wave 6** (warm 1000 projects, in-process
+7. **DONE as wave 7 (git first, 195 → 172 ms). The stage table after wave 6** (warm 1000 projects, in-process
    ~176 ms; the bench's whole-process number is 204 ms): git enumeration
    54 ms wall (overlapped with the 36 ms of cached config loads, so ~20 ms
    exposed), discover projects 22–44 ms (a readdir + a manifest read +
