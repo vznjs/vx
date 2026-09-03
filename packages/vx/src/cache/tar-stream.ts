@@ -212,3 +212,136 @@ export async function* tarEntries(stream: ReadableStream<Uint8Array>): AsyncGene
     }
   }
 }
+
+// ─── Writer ───────────────────────────────────────────────────────────
+
+/** One regular file to pack. `body` is read as it is written. */
+export interface TarInput {
+  name: string
+  size: number
+  /** Permission bits; the sidecar carries the exact value, this is for foreign readers. */
+  mode?: number
+  /** Seconds since epoch; the sidecar carries the millisecond value. */
+  mtime?: number
+  body: Blob | Uint8Array | string
+}
+
+const encoder = new TextEncoder()
+
+function writeOctal(h: Uint8Array, off: number, len: number, n: number): void {
+  const digits = n.toString(8).padStart(len - 1, '0')
+  if (digits.length > len - 1)
+    throw new TarFormatError(`value ${n} does not fit a ${len}-byte field`)
+  h.set(encoder.encode(digits), off)
+  h[off + len - 1] = 0
+}
+
+function header(name: string, size: number, type: string, mode: number, mtime: number): Uint8Array {
+  const h = new Uint8Array(BLOCK)
+  const nameBytes = encoder.encode(name)
+  if (nameBytes.byteLength <= 100) {
+    h.set(nameBytes, 0)
+  } else {
+    // ustar prefix split: the longest tail that fits 100 bytes, split at
+    // a `/`, with the head fitting 155. Anything else needs pax.
+    const cut = splitForUstar(nameBytes)
+    if (cut === null) throw new TarFormatError(`name too long for ustar: ${name}`)
+    h.set(nameBytes.subarray(cut + 1), 0)
+    h.set(nameBytes.subarray(0, cut), 345)
+  }
+  writeOctal(h, 100, 8, mode & 0o7777)
+  writeOctal(h, 108, 8, 0)
+  writeOctal(h, 116, 8, 0)
+  writeOctal(h, 124, 12, size)
+  writeOctal(h, 136, 12, mtime)
+  h[156] = type.charCodeAt(0)
+  h.set(encoder.encode('ustar\0'), 257)
+  h.set(encoder.encode('00'), 263)
+  h.fill(32, 148, 156)
+  let sum = 0
+  for (let i = 0; i < BLOCK; i++) sum += h[i]!
+  h.set(encoder.encode(sum.toString(8).padStart(6, '0')), 148)
+  h[154] = 0
+  h[155] = 32
+  return h
+}
+
+/** Byte index of the `/` to split at, or null when no split satisfies both fields. */
+function splitForUstar(name: Uint8Array): number | null {
+  for (let i = name.byteLength - 1; i > 0; i--) {
+    if (name[i] !== 47) continue
+    const tail = name.byteLength - i - 1
+    if (tail > 100) return null
+    if (tail >= 1 && i <= 155) return i
+  }
+  return null
+}
+
+function paxRecord(key: string, value: string): Uint8Array {
+  const body = encoder.encode(` ${key}=${value}\n`)
+  let len = body.byteLength + 1
+  while (String(len).length + body.byteLength !== len) len = String(len).length + body.byteLength
+  const out = new Uint8Array(len)
+  out.set(encoder.encode(String(len)), 0)
+  out.set(body, String(len).length)
+  return out
+}
+
+const padding = (size: number): Uint8Array => new Uint8Array((BLOCK - (size % BLOCK)) % BLOCK)
+const padded = (size: number): number => size + ((BLOCK - (size % BLOCK)) % BLOCK)
+
+/** Whether `name` needs a pax `path` record (fits neither ustar field). */
+function needsPax(name: string): boolean {
+  const bytes = encoder.encode(name)
+  return bytes.byteLength > 100 && splitForUstar(bytes) === null
+}
+
+/** The exact number of bytes `tarPack` writes for these inputs. */
+export function tarSize(inputs: readonly TarInput[]): number {
+  let size = BLOCK * 2
+  for (const i of inputs) {
+    if (needsPax(i.name)) size += BLOCK + padded(paxRecord('path', i.name).byteLength)
+    size += BLOCK + padded(i.size)
+  }
+  return size
+}
+
+/**
+ * Pack regular files as a tar stream: ustar with the name/prefix split,
+ * a pax `path` record when a name fits neither field — exactly the
+ * dialect `tarEntries` reads — and the two-block end marker. Bodies are
+ * streamed, so memory is bounded by a chunk, never by an entry.
+ */
+export async function* tarPack(
+  inputs: AsyncIterable<TarInput> | Iterable<TarInput>,
+): AsyncGenerator<Uint8Array> {
+  for await (const input of inputs) {
+    const mode = input.mode ?? 0o644
+    const mtime = input.mtime ?? 0
+    let headerName = input.name
+    if (needsPax(input.name)) {
+      const pax = paxRecord('path', input.name)
+      yield header('PaxHeaders/entry', pax.byteLength, 'x', 0o644, mtime)
+      yield pax
+      yield padding(pax.byteLength)
+      headerName = input.name.slice(0, 100)
+    }
+    yield header(headerName, input.size, '0', mode, mtime)
+    if (input.body instanceof Blob) {
+      let n = 0
+      for await (const chunk of input.body.stream()) {
+        n += chunk.byteLength
+        yield chunk
+      }
+      if (n !== input.size)
+        throw new TarFormatError(`${input.name}: ${n} bytes read, ${input.size} declared`)
+    } else {
+      const bytes = typeof input.body === 'string' ? encoder.encode(input.body) : input.body
+      if (bytes.byteLength !== input.size)
+        throw new TarFormatError(`${input.name}: ${bytes.byteLength} bytes, ${input.size} declared`)
+      yield bytes
+    }
+    yield padding(input.size)
+  }
+  yield new Uint8Array(BLOCK * 2)
+}

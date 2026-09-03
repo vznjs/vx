@@ -568,12 +568,17 @@ field needed no `CACHE_VERSION` bump). `output_files` rows mirror the
 two namespaces — project rows store the bare rel, workspace rows store
 the full `workspace-outputs/<rel>` name as the discriminator.
 
-The container is written by `Bun.Archive` (libarchive): there is no
-`tar` subprocess, no `--format=gnu` / `--format=gnutar` spelling probe,
-and no staging copy of every output byte before packing (v27). vx
-reads it with its own streaming reader (`src/cache/tar-stream.ts`);
-ingest lists entries through it without materialising a byte, and
-**restore streams it**: the zstd
+The container is written and read by vx's own streaming tar code
+(`src/cache/tar-stream.ts`): ustar with the name/prefix split and a pax
+`path` record past it, header checksums, and nothing else — there is no
+`tar` subprocess, no libarchive, and no staging copy. **Save streams
+it**: each output is stat'd once, then read from disk as it is written
+and compressed straight into the temp file (measured 2026-09-03 on a
+150 MiB output: peak +705 MiB → +241–269 MiB; the streamed compressor
+is ~2.4× the one-call cost per byte, so a small artifact is packed in
+memory and compressed in one call — tiny saves unchanged within
+noise). Ingest lists entries through the reader without materialising
+a byte, and **restore streams it**: the zstd
 frame is decoded and the tar read as it arrives — ustar name/prefix,
 pax `path`/`size`, GNU long names, header checksums, truncation — and
 every regular entry is written beside its target as `.vx-tmp-*` and
@@ -587,12 +592,14 @@ restore row when every artifact is a one-file `dist/` — and then fed
 to the same reader and extractor, so there is one extraction path.
 The 2 GiB decompression ceiling applies to both: declared size and
 output length for the one-call decode, a running count for the stream.
+A frame that declares no content size (what a streaming compressor
+writes — vx's own saves above 4 MiB) is always decoded as a stream, so
+a sizeless bomb has nowhere to expand and vx's artifacts ingest
+anywhere.
 
-What libarchive carries no channel for is per-entry metadata: its
-writer takes `{ name: bytes }` and its reader hands back regular files
-only. vx needs both permission bits (a lost executable bit builds cold
+Tar headers carry mode and second mtimes. vx needs both permission bits (a lost executable bit builds cold
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
-them), so `packArtifact` stats each output once and writes
+them) exactly, so the pack stats each output once and writes
 `.vx-meta.json` — `{ version, files: { <entry>: [mode, mtimeMs] } }` —
 into the archive. Restore applies both. Entries that are not regular
 files (symlinks, hardlinks, devices) are never materialised — the

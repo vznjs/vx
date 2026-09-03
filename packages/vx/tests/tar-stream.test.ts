@@ -5,7 +5,7 @@
 // entries.
 
 import { describe, expect, it } from 'bun:test'
-import { TarFormatError, tarEntries } from '../src/cache/tar-stream.js'
+import { TarFormatError, tarEntries, tarPack, tarSize } from '../src/cache/tar-stream.js'
 import { streamOf } from './helpers/stream.js'
 
 const enc = new TextEncoder()
@@ -143,5 +143,75 @@ describe('tarEntries', () => {
       /end-of-archive|ends inside/,
     )
     expect((await collect(full))[0]!.size).toBe(1000) // CONTROL
+  })
+})
+
+describe('tarPack', () => {
+  const inputs = () => {
+    const prefixed = 'outputs/' + 'd'.repeat(120) + '/' + 'f'.repeat(90) + '.txt'
+    const paxOnly = 'outputs/' + 'x'.repeat(300) + '.txt'
+    return [
+      { name: 'stdout', size: 3, body: 'log' },
+      { name: 'outputs/empty', size: 0, body: new Uint8Array(0) },
+      { name: 'outputs/run.sh', size: 9, mode: 0o755, mtime: 1_700_000_000, body: '#!/bin/sh' },
+      { name: prefixed, size: 4, body: new Blob(['deep']) },
+      { name: paxOnly, size: 3, body: 'far' },
+      { name: 'outputs/big.bin', size: 3000, body: new Uint8Array(3000).fill(7) },
+    ]
+  }
+  async function bytesOf(): Promise<Uint8Array> {
+    const parts: Uint8Array[] = []
+    for await (const c of tarPack(inputs())) parts.push(c)
+    return concat(...parts)
+  }
+
+  it("round-trips through vx's own reader with names, sizes, bytes and header mode", async () => {
+    const tar = await bytesOf()
+    expect(tar.byteLength).toBe(tarSize(inputs())) // the plan's size is exact, pax included
+    expect(tar.byteLength % 512).toBe(0)
+    const got = await collect(tar, 333)
+    expect(got.map((e) => [e.name, e.size, e.type])).toEqual(
+      inputs().map((i) => [i.name, i.size, '0']),
+    )
+    expect(got[2]!.text).toBe('#!/bin/sh')
+    expect(got[5]!.text).toBe('\x07'.repeat(3000))
+  })
+
+  it('is readable by libarchive (Bun.Archive) — an independent implementation', async () => {
+    const files = await new Bun.Archive(await bytesOf()).files()
+    expect([...files.keys()].sort()).toEqual(
+      inputs()
+        .map((i) => i.name)
+        .sort(),
+    )
+    expect(await files.get('stdout')!.text()).toBe('log')
+    expect(files.get('outputs/' + 'x'.repeat(300) + '.txt')!.size).toBe(3)
+  })
+
+  it('is listed identically by the system tar (external control)', async () => {
+    const tar = await bytesOf()
+    const proc = Bun.spawn(['tar', '-tf', '-'], {
+      stdin: new Blob([tar]),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const out = await new Response(proc.stdout).text()
+    expect(await proc.exited).toBe(0)
+    expect(out.trim().split('\n').sort()).toEqual(
+      inputs()
+        .map((i) => i.name)
+        .sort(),
+    )
+  })
+
+  it('refuses a body whose length disagrees with its declared size', async () => {
+    const bad = [{ name: 'outputs/x', size: 5, body: 'abc' }]
+    await expect(
+      (async () => {
+        for await (const _ of tarPack(bad)) {
+          /* drain */
+        }
+      })(),
+    ).rejects.toThrow(TarFormatError)
   })
 })

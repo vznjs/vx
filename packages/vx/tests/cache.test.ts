@@ -644,14 +644,31 @@ describe('Cache storage (v10)', () => {
     expect(await cache.get('h-bomb')).toBeNull()
   })
 
-  it('ingest() rejects a remote zstd frame with no declared content size', async () => {
-    // Streaming-mode frame (FCS flag 0, not single-segment) → no declared
-    // size. Our producer always writes one, so a sizeless frame over the
-    // untrusted (ingest) boundary is refused rather than blindly expanded.
-    const frame = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x00, 0x01, 0x00, 0x00])
+  it('ingest() decodes a sizeless zstd frame as a stream: a valid one indexes, garbage is refused', async () => {
+    // A streaming producer (CompressionStream — vx's own save above 4 MiB)
+    // writes no Frame_Content_Size. Such a frame used to be refused at the
+    // untrusted boundary as a bomb shape; now it is decoded under the
+    // running count instead, so vx's own artifacts ingest anywhere and a
+    // sizeless bomb still has nowhere to expand.
+    const tar = await new Bun.Archive({ stdout: 'streamed', 'outputs/dist/a.js': 'a' }).bytes()
+    const sizeless = new Uint8Array(
+      await new Response(
+        new Blob([tar]).stream().pipeThrough(new CompressionStream('zstd')),
+      ).arrayBuffer(),
+    )
+    expect(zstdContentSize(sizeless)).toBeNull() // CONTROL: the frame really is sizeless
+    await cache.ingest('h-sizeless', sizeless, {
+      taskId: 'pkg#build',
+      command: 'tsc',
+      durationMs: 1,
+    })
+    expect((await cache.get('h-sizeless'))?.stdout).toBe('streamed')
+
+    const garbage = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x00, 0x01, 0x00, 0x00])
     await expect(
-      cache.ingest('h-sizeless', frame, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
+      cache.ingest('h-garbage', garbage, { taskId: 'pkg#build', command: 'tsc', durationMs: 1 }),
     ).rejects.toThrow(CorruptArtifactError)
+    expect(existsSync(path.join(cacheDir, 'h-garbage.tar.zst'))).toBe(false)
   })
 
   it('ingest() reads a 4-byte Frame_Content_Size (fcsFlag 2) and rejects an oversize declaration', async () => {

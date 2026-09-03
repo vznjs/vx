@@ -127,7 +127,7 @@ Turbo-aware cache server can transit our blobs unchanged.
 
 | Pattern                                   | Source                                        | vx source                               |
 | ----------------------------------------- | --------------------------------------------- | --------------------------------------- |
-| POSIX tar framing, in-process pack        | Turbo (Rust `tar` crate, `Header::new_gnu()`) | `src/cache/archive.ts` (`Bun.Archive`)  |
+| POSIX tar framing, in-process pack        | Turbo (Rust `tar` crate, `Header::new_gnu()`) | `src/cache/archive.ts` (`tar-stream.ts`) |
 | No AppleDouble `._*` companions           | Turbo (in-process writer, no recurse)         | `src/cache/archive.ts` (no `tar` spawn) |
 | Entry-name validation on the extract side | (vx-only defense-in-depth)                    | `src/cache/archive.ts`                  |
 | zstd compression on the wire              | Turbo                                         | `Bun.zstdCompress` (tar.zst artifacts)  |

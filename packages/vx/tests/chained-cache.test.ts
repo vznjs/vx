@@ -169,15 +169,18 @@ describe('ChainedCache — layers sharing one local handle', () => {
         new LayeredCache(local, ra, { policy }),
         new LayeredCache(local, rb, { policy }),
       ])
-      // packArtifact is private; the structural cast is the narrowest spy
-      // that can count the expensive step without widening the class API.
-      type PackSpy = { packArtifact(args: unknown): Promise<Uint8Array> }
+      // packArtifactToTemp is private (the pack step a local save runs);
+      // the structural cast is the narrowest spy that can count the
+      // expensive step without widening the class API.
+      type PackSpy = {
+        packArtifactToTemp(tmp: string, args: unknown): Promise<Uint8Array | { tmpPath: string }>
+      }
       const spyable = local as unknown as PackSpy
       let packs = 0
-      const orig = spyable.packArtifact.bind(local)
-      spyable.packArtifact = (args: unknown) => {
+      const orig = spyable.packArtifactToTemp.bind(local)
+      spyable.packArtifactToTemp = (tmp: string, args: unknown) => {
         packs++
-        return orig(args)
+        return orig(tmp, args)
       }
       await saveEntry(chained, 'h-shared', proj)
       await chained.drainUploads()

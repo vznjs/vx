@@ -1,4 +1,5 @@
-// Cache artifact container — built on `Bun.Archive` (libarchive, Bun ≥ 1.4).
+// Cache artifact container: a zstd-compressed tar, read and written by
+// vx's own streaming tar code (`tar-stream.ts`).
 //
 // An artifact is a tar of:
 //   stdout                       always present; the vx-artifact marker
@@ -6,33 +7,24 @@
 //   workspace-outputs/<rel>      workspace-root-relative outputs
 //   .vx-meta.json                per-output mode + millisecond mtime
 //
-// `Bun.Archive` carries no per-entry metadata in either direction: the
-// writer takes `{ name: bytes }` and the reader hands back a
-// `Map<string, File>` (regular files only — no mode, no directory or
-// symlink records). vx needs BOTH, and needs them exactly:
-//
-//   - mode, because an output that lost its executable bit builds cold
-//     and breaks warm — the worst failure profile there is;
-//   - millisecond mtime, because `isOutputsCurrent` skips a restore when
-//     size+mode+mtime match, and tar headers only carry SECONDS.
-//
-// So the pack side stats each output once and writes both into
+// Tar headers carry mode and SECOND mtimes; vx needs both exactly — a
+// lost executable bit builds cold and breaks warm, and `isOutputsCurrent`
+// skips a restore when size+mode+mtime match at millisecond precision —
+// so the pack side stats each output once and writes both into
 // `.vx-meta.json`, and the restore side applies them. That also makes a
-// REMOTE-ingested entry's index rows millisecond-accurate — with tar
-// headers as the only source they were second-precision, and the save
-// path needed a second stat pass to refine them.
+// REMOTE-ingested entry's index rows millisecond-accurate.
 //
-// The tar is read as a stream (`tar-stream.ts`) in both directions of
-// use: `scanArtifact` lists what an artifact holds (ingest's index rows
-// and stdout) without materialising a byte, and `extractArtifactStream`
-// restores it while never holding more than a chunk. `Bun.Archive` used
-// to read it too, and restoring a 150 MiB artifact through it peaked at
-// 3.2× its size (measured 2026-09-03) — the wrong shape for a task whose
-// output IS the big thing. Every regular entry is written beside its
-// target under a `.vx-tmp-*` name and renamed into place only once the
-// WHOLE archive has been read and every name proven safe, so a poisoned
-// entry anywhere — even the last one — leaves nothing behind but the
-// empty directories it needed, which are pruned too.
+// Both directions stream. `packArtifactStream` reads each output as it is
+// written; `scanArtifact` lists what an artifact holds without
+// materialising a byte; `extractArtifactStream` restores while never
+// holding more than a chunk. `Bun.Archive` used to do all three and
+// needed the whole tar in memory on every side — restoring a 150 MiB
+// artifact peaked at 3.2× its size, saving one at 4.7× (measured
+// 2026-09-03). Every regular entry is written beside its target under a
+// `.vx-tmp-*` name and renamed into place only once the WHOLE archive has
+// been read and every name proven safe, so a poisoned entry anywhere —
+// even the last one — leaves nothing behind but the empty directories it
+// needed, which are pruned too.
 //
 // What stays here is the part no tar reader can decide for us: WHERE an
 // entry may land on disk. Every name is validated and every destination
@@ -47,7 +39,7 @@
 
 import { mkdir, chmod, realpath, rename, rmdir, stat, unlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
-import { tarEntries } from './tar-stream.js'
+import { TarFormatError, type TarInput, tarEntries, tarPack, tarSize } from './tar-stream.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
 const META_ENTRY = '.vx-meta.json'
@@ -92,37 +84,100 @@ export class ArchiveSecurityError extends Error {
   }
 }
 
-/**
- * Build the uncompressed artifact bytes from files still on disk.
- *
- * There is no staging directory: the previous implementation COPIED
- * every output into a temp tree just so an external `tar` could see it
- * under the right name, then spawned `tar` and read the whole archive
- * back through a pipe. Naming entries directly removes that copy, the
- * fork+exec, and the `--format=gnu` / `--format=gnutar` spelling probe
- * that existed only because the two tar implementations disagree.
- */
-export async function packArtifact(args: {
+/** What `packArtifactStream` packs: stdout plus archive name → absolute source path. */
+export interface PackArgs {
   stdout: string
-  /** Archive name → absolute source path, for every output file. */
   outputs: ReadonlyMap<string, string>
-}): Promise<Uint8Array> {
-  const entries: Record<string, Uint8Array | string> = { [STDOUT_ENTRY]: args.stdout }
-  const meta: MetaFile = { version: 1, files: {} }
+}
 
-  await Promise.all(
+/** A packed artifact's plan: its entries with their stats, and the tar's exact size. */
+export interface ArtifactPlan {
+  inputs: TarInput[]
+  size: number
+}
+
+/**
+ * Stat every output once (size, and the sidecar's mode + millisecond
+ * mtime) and lay out the tar — stdout first, the outputs, the sidecar
+ * last — with its exact size, so the caller can choose the one-call pack
+ * for a small artifact and the streamed one for a large one before a
+ * byte is read. A symlinked output is stored as its target's content, as
+ * it always was.
+ */
+export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
+  const meta: MetaFile = { version: 1, files: {} }
+  const files = await Promise.all(
     [...args.outputs].map(async ([name, abs]) => {
-      // Read and stat the same file once each. `Bun.file(abs).bytes()`
-      // follows a symlinked output exactly as the staging copy did, so
-      // a link is stored as its target's content — unchanged behaviour.
-      const [bytes, st] = await Promise.all([Bun.file(abs).bytes(), stat(abs)])
-      entries[name] = bytes
+      const st = await stat(abs)
       meta.files[name] = [st.mode & 0o777, Math.floor(st.mtimeMs)]
+      return {
+        name,
+        abs,
+        size: st.size,
+        mode: st.mode & 0o777,
+        mtime: Math.floor(st.mtimeMs / 1000),
+      }
     }),
   )
+  const stdout = new TextEncoder().encode(args.stdout)
+  const metaBytes = new TextEncoder().encode(JSON.stringify(meta))
+  const inputs: TarInput[] = [
+    { name: STDOUT_ENTRY, size: stdout.byteLength, body: stdout },
+    ...files.map((f) => ({
+      name: f.name,
+      size: f.size,
+      mode: f.mode,
+      mtime: f.mtime,
+      body: Bun.file(f.abs) as Blob,
+    })),
+    { name: META_ENTRY, size: metaBytes.byteLength, body: metaBytes },
+  ]
+  return { inputs, size: tarSize(inputs) }
+}
 
-  entries[META_ENTRY] = JSON.stringify(meta)
-  return await new Bun.Archive(entries).bytes()
+/** The tar as a stream: each output is read from disk as it is written. */
+export function packArtifactStream(plan: ArtifactPlan): ReadableStream<Uint8Array> {
+  return streamOf(tarPack(plan.inputs))
+}
+
+/**
+ * The tar in memory — the small-artifact path and the tests. Bodies are
+ * read whole (one `bytes()` each, in flight together) rather than
+ * streamed: a thousand one-file artifacts pay the stream setup
+ * otherwise (measured 2026-09-03: 238 → 293 ms per 1 000 saves).
+ */
+export async function packArtifactBytes(plan: ArtifactPlan): Promise<Uint8Array> {
+  const inputs = await Promise.all(
+    plan.inputs.map(async (i) =>
+      i.body instanceof Blob ? { ...i, body: await i.body.bytes() } : i,
+    ),
+  )
+  const out = new Uint8Array(plan.size)
+  let off = 0
+  for await (const chunk of tarPack(inputs)) {
+    out.set(chunk, off)
+    off += chunk.byteLength
+  }
+  if (off !== plan.size) throw new TarFormatError(`packed ${off} bytes, planned ${plan.size}`)
+  return out
+}
+
+/** Plan and pack in one go, in memory. */
+export async function packArtifact(args: PackArgs): Promise<Uint8Array> {
+  return await packArtifactBytes(await planArtifact(args))
+}
+
+function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await gen.next()
+      if (done) controller.close()
+      else controller.enqueue(value)
+    },
+    cancel() {
+      void gen.return(undefined)
+    },
+  })
 }
 
 /**

@@ -778,7 +778,31 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   box idle): cold 3m 46s → 3m 46s, warm 549 → 516 ms, restore 844 →
   799 ms, CPU warm 2.00 → 1.35 s — no regression from the new reader
   on 1 090 one-file artifacts; the site regenerated from the new rows.
-  Two more pins from the audit: a pax `path` record that renames a
+  **Wave 10 (same day): the save streams too, and `Bun.Archive` is
+  gone.** `tar-stream.ts` gained the writer (`tarPack`: ustar with the
+  prefix split, pax `path` past it, `tarSize` for the exact plan);
+  `planArtifact` stats every output once and lays the tar out,
+  `packArtifactStream` reads each output as it is written and
+  `save` compresses it straight into the temp via
+  `CompressionStream('zstd')`, then indexes from the file. Measured on
+  a 150 MiB output: +705 → +241–269 MiB, 160 → 197–227 ms (the streamed
+  compressor is ~2.4× the one-call cost per byte); a small artifact is
+  packed in memory and compressed in one call — interleaved A/B on
+  1 000 one-file saves against a HEAD worktree: 239–280 vs 247–261 ms,
+  inside the noise. The writer is pinned against three readers (vx's,
+  libarchive, the system `tar`) and `tarSize` against the bytes. A
+  sizeless zstd frame (what a streaming compressor writes) is no longer
+  refused at the ingest boundary — it is decoded under the running
+  count, so vx's own artifacts ingest anywhere and a sizeless bomb has
+  nowhere to expand; the `trusted` flag went with it.
+  `tests/bun-archive-capabilities.test.ts` deleted: the capability it
+  watched for is no longer wanted. Gate note: the cache suites (all
+  eight archive/cache/remote files) are green; the FULL local gate could
+  not run — this box sat at load 70–97 for an hour with macOS
+  `diagnosticd` pegged behind the sandbox's `log stream` consumers, and
+  the e2e timeouts failed identically at HEAD in a worktree — so lint,
+  format, docs build and site-check ran locally and CI is the arbiter
+  for this commit (memory: loaded-box-gate-failures). Two more pins from the audit: a pax `path` record that renames a
   benign header to a traversal is refused with nothing written, and a
   compressed stream cut mid-archive above the threshold surfaces as
   `CorruptArtifactError` through the real cache with the staged temp

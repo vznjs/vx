@@ -38,7 +38,9 @@ import {
   ArchiveSecurityError,
   extractArtifactStream,
   scanArtifact,
-  packArtifact as packArchive,
+  packArtifactBytes,
+  packArtifactStream,
+  planArtifact,
 } from './archive.js'
 import { FsCASBackend } from './cas-backend.js'
 
@@ -643,19 +645,15 @@ export function zstdContentSize(b: Uint8Array): bigint | null {
 }
 
 /**
- * Decompress a zstd artifact with a hard output ceiling. `trusted` marks a
- * locally-produced artifact (always carries a declared content size); an
- * UNTRUSTED (remote-sourced) frame that declares no content size is refused,
- * since our producer and the Turbo servers we interop with always write one —
- * a sizeless frame from the network is the shape a bomb takes to dodge the
- * pre-decompress check.
+ * Decompress a zstd artifact that DECLARES its content size, with a hard
+ * output ceiling: refused before a byte is allocated when the declaration
+ * is over the cap, and again on the actual length. A frame with no
+ * declaration (a streamed producer's — vx's own, above 4 MiB) never comes
+ * here: `decodedTar` decodes it as a stream under the running count, so
+ * a sizeless bomb has nowhere to expand.
  */
-async function zstdDecompressBounded(
-  compressed: Uint8Array,
-  hash: string,
-  trusted: boolean,
-): Promise<Uint8Array> {
-  assertDeclaredSize(compressed, hash, trusted)
+async function zstdDecompressBounded(compressed: Uint8Array, hash: string): Promise<Uint8Array> {
+  assertDeclaredSize(compressed, hash)
   const out = await Bun.zstdDecompress(compressed)
   if (out.length > MAX_DECOMPRESSED_ARTIFACT_BYTES) {
     throw new CorruptArtifactError(
@@ -666,8 +664,8 @@ async function zstdDecompressBounded(
   return out
 }
 
-/** The pre-decompress half of the ceiling: the frame header's own claim. */
-function assertDeclaredSize(compressed: Uint8Array, hash: string, trusted: boolean): void {
+/** The pre-decompress half of the ceiling: the frame header's own claim, when it makes one. */
+function assertDeclaredSize(compressed: Uint8Array, hash: string): bigint | null {
   const declared = zstdContentSize(compressed)
   if (declared !== null && declared > BigInt(MAX_DECOMPRESSED_ARTIFACT_BYTES)) {
     throw new CorruptArtifactError(
@@ -675,10 +673,24 @@ function assertDeclaredSize(compressed: Uint8Array, hash: string, trusted: boole
       `declares ${declared} decompressed bytes (> ${MAX_DECOMPRESSED_ARTIFACT_BYTES} cap)`,
     )
   }
-  if (declared === null && !trusted) {
-    throw new CorruptArtifactError(hash, 'remote zstd frame carries no declared content size')
-  }
+  return declared
 }
+
+/** Compressed artifacts above this size are decoded as a stream, on restore and on ingest. */
+const STREAM_DECODE_FROM = 4 * 1024 * 1024
+
+/** Collect a byte stream; only ever used where the seam wants bytes. */
+async function bytesOf(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+  return new Uint8Array(await new Response(stream).arrayBuffer())
+}
+
+/**
+ * Bun's `CompressionStream` types do not satisfy `pipeThrough`'s pair
+ * (its readable side is typed `NonSharedUint8Array`); the runtime object
+ * is a plain byte transform.
+ */
+const zstdEncoder = (): TransformStream<Uint8Array, Uint8Array> =>
+  new CompressionStream('zstd') as unknown as TransformStream<Uint8Array, Uint8Array>
 
 const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
   new ReadableStream({
@@ -688,31 +700,30 @@ const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
     },
   })
 
-/** Compressed artifacts above this size are decoded as a stream, on restore and on ingest. */
-const STREAM_DECODE_FROM = 4 * 1024 * 1024
-
 /**
- * The decoded tar as a stream: one call for a small artifact, a streamed
- * decode for a large one — the stream setup is ~35 µs, which matters at
- * a thousand one-file artifacts and nowhere else. Bytes in memory are
- * only ever the small case (a large source must be a FILE: a Blob copies
- * its bytes and hands the decoder everything at once, measured +519 MiB
- * on 150 MiB against +448 for the plain decode). Both apply the 2 GiB
- * ceiling; `trusted` is the local artifact validated at ingest (a missing
- * declared size is allowed), untrusted is the remote boundary.
+ * The decoded tar as a stream: one call for a small artifact that
+ * declares its size, a streamed decode otherwise — the stream setup is
+ * ~35 µs, which matters at a thousand one-file artifacts and nowhere
+ * else. Bytes in memory are only ever the small case (a large source
+ * must be a FILE: a Blob copies its bytes and hands the decoder
+ * everything at once, measured +519 MiB on 150 MiB against +448 for the
+ * plain decode). The 2 GiB ceiling applies either way: the declaration
+ * and the result length in one call, a running count on the stream.
  */
 async function decodedTar(
   source: Uint8Array | Bun.BunFile,
   hash: string,
-  trusted: boolean,
 ): Promise<ReadableStream<Uint8Array>> {
   if (source instanceof Uint8Array) {
-    return oneChunk(await zstdDecompressBounded(source, hash, trusted))
+    if (assertDeclaredSize(source, hash) === null) return zstdDecodeStream(new Blob([source]), hash)
+    return oneChunk(await zstdDecompressBounded(source, hash))
   }
   if (source.size <= STREAM_DECODE_FROM) {
-    return oneChunk(await zstdDecompressBounded(await source.bytes(), hash, trusted))
+    const bytes = await source.bytes()
+    if (assertDeclaredSize(bytes, hash) === null) return zstdDecodeStream(source, hash)
+    return oneChunk(await zstdDecompressBounded(bytes, hash))
   }
-  assertDeclaredSize(await source.slice(0, 32).bytes(), hash, trusted)
+  assertDeclaredSize(await source.slice(0, 32).bytes(), hash)
   return zstdDecodeStream(source, hash)
 }
 
@@ -1903,7 +1914,7 @@ export class Cache implements CacheLayer {
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
     try {
-      const tar = await decodedTar(Bun.file(src), hash, true)
+      const tar = await decodedTar(Bun.file(src), hash)
       await extractArtifactStream(tar, projectDir, workspaceRoot, verify)
     } catch (err) {
       if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
@@ -1942,7 +1953,8 @@ export class Cache implements CacheLayer {
     // the bytes, since there's no local artifact to read off disk.
     if (!this.write) return
     if (args.skipLocalWrite === true) return
-    const compressed = await this.packArtifact(args)
+    await mkdir(this.cacheDir, { recursive: true })
+    const compressed = await this.packArtifactToTemp(this.tempPath(args.hash), args)
     await this.writeArtifactAndIndex(args.hash, compressed, {
       taskId: args.entry.taskId,
       command: args.entry.command,
@@ -1983,14 +1995,13 @@ export class Cache implements CacheLayer {
    * copy of every output byte and no `tar` subprocess (see
    * `archive.ts`).
    */
-  private async packArtifact(args: {
-    hash: string
-    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
+  /** Archive name → absolute source path for every declared output. */
+  private outputsOf(args: {
     projectDir: string
     outputFiles: string[]
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
-  }): Promise<Uint8Array> {
+  }): Map<string, string> {
     const outputs = new Map<string, string>()
     for (const f of args.outputFiles) {
       outputs.set(`outputs/${path.relative(args.projectDir, f)}`, f)
@@ -2000,11 +2011,61 @@ export class Cache implements CacheLayer {
     for (const f of args.workspaceOutputFiles ?? []) {
       outputs.set(`${WORKSPACE_OUTPUT_PREFIX}${path.relative(args.workspaceRoot!, f)}`, f)
     }
+    return outputs
+  }
+
+  /**
+   * The compressed artifact, in memory: the remote upload when local
+   * writes are off. A large artifact is packed and compressed as a
+   * stream and collected — the seam takes bytes.
+   */
+  private async packArtifact(args: {
+    entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
+    projectDir: string
+    outputFiles: string[]
+    workspaceOutputFiles?: string[]
+    workspaceRoot?: string
+  }): Promise<Uint8Array> {
     // stdout is ALWAYS present in the artifact, even if empty, so the
     // layout is predictable: a successful read finds `stdout` and
     // zero-or-more `outputs/<rel>` / `workspace-outputs/<rel>` entries.
-    const bytes = await packArchive({ stdout: args.entry.stdout ?? '', outputs })
-    return await Bun.zstdCompress(bytes)
+    const plan = await planArtifact({
+      stdout: args.entry.stdout ?? '',
+      outputs: this.outputsOf(args),
+    })
+    if (plan.size <= STREAM_DECODE_FROM)
+      return await Bun.zstdCompress(await packArtifactBytes(plan))
+    return await bytesOf(packArtifactStream(plan).pipeThrough(zstdEncoder()))
+  }
+
+  /**
+   * Pack for the local save. A large artifact is read from disk as it is
+   * written and compressed as a stream straight into the temp, so it
+   * never sits in memory (measured 2026-09-03 on a 150 MiB output: +705
+   * MiB before). The streamed compressor is ~2.4× the one-call cost per
+   * byte and a stream costs ~35 µs to set up, so a small artifact is
+   * packed in memory and compressed in one call — returned as bytes,
+   * nothing written yet.
+   */
+  private async packArtifactToTemp(
+    tmpPath: string,
+    args: Parameters<Cache['packArtifact']>[0],
+  ): Promise<Uint8Array | { tmpPath: string }> {
+    const plan = await planArtifact({
+      stdout: args.entry.stdout ?? '',
+      outputs: this.outputsOf(args),
+    })
+    if (plan.size <= STREAM_DECODE_FROM)
+      return await Bun.zstdCompress(await packArtifactBytes(plan))
+    const sink = Bun.file(tmpPath).writer()
+    try {
+      for await (const chunk of packArtifactStream(plan).pipeThrough(zstdEncoder())) {
+        await sink.write(chunk)
+      }
+    } finally {
+      await sink.end()
+    }
+    return { tmpPath }
   }
 
   /**
@@ -2014,9 +2075,17 @@ export class Cache implements CacheLayer {
    * the remote layer) — both index the identical values, because both
    * read them out of the artifact.
    */
+  /** tmp suffix mixes pid + hrtime + a random hex chunk so two saves of
+   *  the same hash from the same process (or from two forked workers that
+   *  happen to share a wall-clock ms) don't pick the same tmp filename and
+   *  race on the rename. */
+  private tempPath(hash: string): string {
+    return `${this.tarPath(hash)}.tmp-${process.pid}-${process.hrtime.bigint()}-${Math.random().toString(36).slice(2, 10)}`
+  }
+
   private async writeArtifactAndIndex(
     hash: string,
-    compressed: Uint8Array,
+    compressed: Uint8Array | { tmpPath: string },
     meta: IngestMeta,
   ): Promise<void> {
     // Validate BEFORE anything touches the final path. `ingest()` feeds
@@ -2028,26 +2097,31 @@ export class Cache implements CacheLayer {
     // restore, so the size/mode/mtime fingerprint we store matches
     // what isOutputsCurrent will compare against post-restore.
     const finalPath = this.tarPath(hash)
-    // tmp suffix mixes pid + hrtime + a random hex chunk so two saves
-    // of the same hash from the same process (or from two forked
-    // workers that happen to share a wall-clock ms) don't pick the
-    // same tmp filename and race on the rename.
-    const tmpPath = `${finalPath}.tmp-${process.pid}-${process.hrtime.bigint()}-${Math.random().toString(36).slice(2, 10)}`
-    await mkdir(this.cacheDir, { recursive: true })
-    // The temp is written BEFORE validation so a large artifact can be
-    // scanned from the file as it decodes — a file stream reads in
-    // bounded pieces; the bytes in memory would not (see `decodedTar`).
-    // The final path is still untouched until the archive has passed.
-    // node's writeFile, not Bun.write: the latter copies the buffer first
-    // (measured on 150 MiB: +151 MiB and 33 ms against +0 and 21 ms).
-    await writeFile(tmpPath, compressed)
+    let tmpPath: string
+    if (compressed instanceof Uint8Array) {
+      tmpPath = this.tempPath(hash)
+      await mkdir(this.cacheDir, { recursive: true })
+      // The temp is written BEFORE validation so a large artifact can be
+      // scanned from the file as it decodes — a file stream reads in
+      // bounded pieces; the bytes in memory would not (see `decodedTar`).
+      // The final path is still untouched until the archive has passed.
+      // node's writeFile, not Bun.write: the latter copies the buffer first
+      // (measured on 150 MiB: +151 MiB and 33 ms against +0 and 21 ms).
+      await writeFile(tmpPath, compressed)
+    } else {
+      // `save` already streamed the artifact into its temp.
+      tmpPath = compressed.tmpPath
+    }
     let scanned: Awaited<ReturnType<typeof scanArtifact>>
     try {
       // ingest() is the UNTRUSTED boundary — `compressed` is bytes just
       // pulled from a remote. Refuse a bomb (declared or sizeless) before it
       // can expand into memory.
-      const source = compressed.byteLength <= STREAM_DECODE_FROM ? compressed : Bun.file(tmpPath)
-      scanned = await scanArtifact(await decodedTar(source, hash, false))
+      const source =
+        compressed instanceof Uint8Array && compressed.byteLength <= STREAM_DECODE_FROM
+          ? compressed
+          : Bun.file(tmpPath)
+      scanned = await scanArtifact(await decodedTar(source, hash))
       // v17 invariant: every artifact carries a `stdout` entry. Its
       // absence means the bytes decompressed but aren't a vx artifact.
       if (scanned.stdout === null) {
@@ -2067,7 +2141,8 @@ export class Cache implements CacheLayer {
     // semantics for concurrent readers.
     await rename(tmpPath, finalPath)
 
-    const totalBytes = compressed.byteLength
+    const totalBytes =
+      compressed instanceof Uint8Array ? compressed.byteLength : Bun.file(finalPath).size
     const outputFileRows: Array<[string, number, number, number]> = []
     // Per-output-file fingerprint rows feed the skip-restore check.
     // Row paths: project entries store the bare rel (`outputs/`

@@ -219,7 +219,7 @@ Determinism notes:
 ```
 <cacheDir>/
 ├── cache.db                 # SQLite (with cache.db-wal, cache.db-shm)
-└── <hash>.tar.zst           # per-entry artifact (Bun.Archive + zstd):
+└── <hash>.tar.zst           # per-entry artifact (tar + zstd, vx's own streaming tar code):
     ├── stdout               #   captured stdout (always present)
     ├── outputs/             #   declared output files, project-relative
     ├── workspace-outputs/   #   declared outputs.workspaceFiles,
@@ -227,14 +227,15 @@ Determinism notes:
     └── .vx-meta.json        #   { version, files: { <entry>: [mode, mtimeMs] } }
 ```
 
-`.vx-meta.json` exists because `Bun.Archive` carries no per-entry
-metadata in either direction — see `src/cache/archive.ts`, which owns
-pack, read and extract, plus the entry-name validation and containment
-checks that no tar reader can make on vx's behalf. The tar is read as
-a stream (`src/cache/tar-stream.ts`): `scanArtifact` lists entries for
-ingest's index rows, `extractArtifactStream` restores through one
-staging extractor (write beside the target, rename after the whole
-archive is read), so memory is bounded by a chunk either way.
+`.vx-meta.json` exists because tar headers carry only second mtimes —
+see `src/cache/archive.ts`, which owns pack, scan and extract, plus the
+entry-name validation and containment checks that no tar reader can
+make on vx's behalf. Both directions stream (`src/cache/tar-stream.ts`):
+`packArtifactStream` reads each output as it is written, `scanArtifact`
+lists entries for ingest's index rows, `extractArtifactStream` restores
+through one staging extractor (write beside the target, rename after
+the whole archive is read), so memory is bounded by a chunk either way;
+a small artifact (≤ 4 MiB) is packed and decoded in one call instead.
 
 SQLite stores metadata only:
 
