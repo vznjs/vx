@@ -69,6 +69,25 @@ describe('plugin commands', () => {
     expect(err.join('')).not.toContain('unknown command')
   })
 
+  // `process.exit(undefined)` is exit 0: a JS-authored verb that forgets its
+  // return on a failure branch read as SUCCESS (probed 2026-09-03). The
+  // contract is an exit code; a verb that cannot say fails, naming its owner.
+  it('a verb that resolves nothing fails plainly instead of reading as success', async () => {
+    await writeFile(
+      path.join(root, 'vx.workspace.mjs'),
+      localWorkspaceSource([
+        `{ name: 'org/forgetful', commands: {
+          noret: { description: 'forgets its return', async run() {} },
+          ok: { description: 'control', async run() { return 0 } },
+        } }`,
+      ]),
+    )
+    await expect(cli(['noret'])).rejects.toThrow(
+      "plugin 'org/forgetful': command 'noret' resolved undefined instead of an exit code",
+    )
+    expect(await cli(['ok'])).toBe(0) // CONTROL: an integer passes through
+  })
+
   it("core's verbs win — a plugin naming `version` never runs", async () => {
     await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['version'])).toBe(0)

@@ -64,7 +64,7 @@ export function mcp(): VxPlugin {
         async run(argv, ctx) {
           const db = new Cache(ctx.cacheDir).dbHandle() // the same queries `vx why` reads
           // … speak MCP on stdin/stdout …
-          return 0 // the process exit code
+          return 0 // the process exit code — resolving anything else fails the verb
         },
       },
     },

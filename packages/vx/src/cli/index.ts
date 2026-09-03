@@ -6,6 +6,7 @@ import { VERSION } from '../version.js'
 import { runCmd } from './run.js'
 import { printHelp } from './help.js'
 import { pluginCommandHelp, resolvePluginCommand } from './plugin-commands.js'
+import { UserError } from '../util/index.js'
 
 // Every verb but `run` is imported when invoked. `vx run` is the hot path
 // and nearly every invocation; the other verbs' modules are code that
@@ -60,7 +61,16 @@ export async function run(argv: readonly string[]): Promise<number> {
       // nothing here can shadow them.
       const resolved = await resolvePluginCommand(command)
       if (resolved !== null && !('loadError' in resolved)) {
-        return await resolved.command.run(rest, resolved.ctx)
+        const code = await resolved.command.run(rest, resolved.ctx)
+        // A plugin is a boundary: a JS-authored verb that resolves nothing
+        // would reach `process.exit(undefined)` and read as SUCCESS. A verb
+        // that cannot say whether it succeeded fails, naming its owner.
+        if (!Number.isInteger(code)) {
+          throw new UserError(
+            `plugin '${resolved.plugin.name}': command '${command}' resolved ${JSON.stringify(code)} instead of an exit code`,
+          )
+        }
+        return code
       }
       // A broken workspace file cannot say whether the verb exists. Say
       // both things: the verb is unknown HERE, and why the lookup could not

@@ -341,6 +341,15 @@ Process: push directly to `main`, no PRs. Gate before every push:
   class-gates can now show up locally; it passes alone and is not this
   wave's. If it recurs in the local gate, gate the reporting assertions
   on load rather than raising timeouts — the record is dropped, not late.
+- 2026-09-03 — **a plugin verb that resolved nothing read as SUCCESS.**
+  Probed the `commands` seam through the real CLI: a `UserError` prints
+  cleanly (exit 1), a plain `Error` prints its stack (exit 1), but a
+  verb resolving `undefined` — a JS-authored plugin that forgets its
+  return on a failure branch — reached `process.exit(undefined)`, which
+  is exit 0. The dispatcher now fails a non-integer result as a
+  `UserError` naming the plugin and verb; pinned with a control
+  (an integer still passes through); the mutation fails exactly the
+  pin. The plugins guide says so at the `return 0` line.
 
 ## In flight
 
