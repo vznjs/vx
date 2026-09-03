@@ -929,7 +929,14 @@ run...` precedes it.
    changes. When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
-   so any workspace file can be an input).
+   so any workspace file can be an input). `vx watch: watching …` is
+   printed only after every watcher has reported a probe file written
+   under it (`.vx-watch-probe`, re-written on a short backoff until its
+   event arrives, then removed): on macOS a directory watcher can return
+   before its event stream is live, and an edit in that gap is silently
+   lost — so the line is a promise, not a hope. A
+   watcher that stays silent for 2 s is kept, with a warning that early
+   edits there may be missed.
 3. **On change.** The triggering path is logged
    (`vx watch: <project> <relpath>; re-running...`) and the
    orchestrator is invoked again with the same options. Events arriving

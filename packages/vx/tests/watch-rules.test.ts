@@ -6,9 +6,18 @@
 // time could never help), and the config-worker deadline that exists because a
 // worker the OS kills fires no `error` event and its caller waits forever.
 
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import fs, { existsSync } from 'node:fs'
+import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import path from 'node:path'
-import { isIgnoredWatchPath, makeWatchIgnore, watchCmd } from '../src/cli/watch.js'
+import {
+  armWatcher,
+  isIgnoredWatchPath,
+  makeWatchIgnore,
+  WATCH_PROBE,
+  watchCmd,
+} from '../src/cli/watch.js'
 import { WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
 
 describe('the ignore filter', () => {
@@ -160,5 +169,78 @@ describe('flags that format ONE run are refused, not silently ignored', () => {
     expect(await watchCmd(argv)).toBe(1)
     expect({ flag, named: stderr.includes(flag) }).toEqual({ flag, named: true })
     expect(stderr).toContain('single run')
+  })
+})
+
+// `vx watch` prints "watching" only after each watcher has reported a probe
+// file written under it — on macOS a recursive watcher can return before its
+// FSEvents stream is live, and an edit in that gap is lost (5/30 under load,
+// measured 2026-09-03). This pins the helper's contract: readiness is proved
+// by the probe, the probe never reaches the caller, and it is gone afterwards.
+describe('armWatcher', () => {
+  for (const recursive of [true, false]) {
+    it(`proves delivery with a probe it then removes (recursive: ${recursive})`, async () => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-'))
+      const seen: string[] = []
+      const armed = armWatcher(dir, recursive, (f) => seen.push(f))
+      try {
+        expect(await armed.ready).toBe(true)
+        expect(existsSync(path.join(dir, WATCH_PROBE))).toBe(false)
+        // A real edit after readiness is delivered; the probe never was.
+        await writeFile(path.join(dir, 'edit.txt'), 'x')
+        const start = Date.now()
+        while (!seen.includes('edit.txt') && Date.now() - start < 3000) await Bun.sleep(5)
+        expect(seen).toContain('edit.txt')
+        expect(seen).not.toContain(WATCH_PROBE)
+      } finally {
+        armed.watcher.close()
+        await rm(dir, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+// The differential for the proof itself: a watcher that never speaks must
+// yield `ready === false`. A helper that resolved without waiting for the
+// probe's event would pass the real-watcher pins above and fail this one.
+describe('armWatcher against a fake fs.watch', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  function fakeWatch(deliver: boolean): { closed: () => boolean } {
+    let closed = false
+    vi.spyOn(fs, 'watch').mockImplementation(((
+      _dir: string,
+      _opts: unknown,
+      cb: (event: string, filename: string) => void,
+    ) => {
+      if (deliver) queueMicrotask(() => cb('rename', WATCH_PROBE))
+      return { close: () => (closed = true) } as unknown as fs.FSWatcher
+    }) as unknown as typeof fs.watch)
+    return { closed: () => closed }
+  }
+
+  it('a watcher that never reports the probe is NOT ready', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-silent-'))
+    fakeWatch(false)
+    try {
+      const armed = armWatcher(dir, true, () => {}, 100)
+      expect(await armed.ready).toBe(false)
+      expect(existsSync(path.join(dir, WATCH_PROBE))).toBe(false) // cleaned up either way
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a watcher that reports the probe is ready, and the caller never sees the probe', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-fake-'))
+    fakeWatch(true)
+    const seen: string[] = []
+    try {
+      const armed = armWatcher(dir, true, (f) => seen.push(f), 100)
+      expect(await armed.ready).toBe(true)
+      expect(seen).toEqual([])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })

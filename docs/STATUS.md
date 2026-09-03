@@ -256,6 +256,29 @@ Process: push directly to `main`, no PRs. Gate before every push:
   cannot cache; arguments, flags or a chain keep it verbatim.
   `delegatedScript` is table-pinned; both rules have differentials
   (each mutation fails exactly its pin). `docs/cli.md` § `vx init`.
+- 2026-09-03 — **`vx watch` proves each watcher delivers before saying
+  "watching".** The watch e2e (`re-runs the task after a file change,
+  then exits on SIGINT`) timed out at 45 s in one sharded gate run, its
+  third recorded timeout (two on darwin CI). MEASURED a real race: on
+  macOS a recursive `fs.watch` returns before its FSEvents stream is
+  live, and a write made immediately after it is lost 5/30 under CPU
+  load (0/30 idle, 0/30 after a 50 ms pause). `armWatcher` now writes a
+  `.vx-watch-probe` under every watcher and resolves ready when that
+  probe's event arrives (intercepted before the ignore filter, removed
+  at once); a silent watcher gets 2 s and a warning. The probe is
+  RE-WRITTEN on a backoff until seen, because it is subject to the race
+  it detects: under the full gate's load an immediate write was lost
+  outright 1 in 20 (never arrived in 30 s) while every delivered event
+  took under 60 ms — loss, not latency — and a single-shot probe
+  reported two real watchers silent in one gate run. Pinned with a fake
+  `fs.watch`: silent ⇒ `ready === false`, which a helper that skipped the
+  wait cannot pass. HONEST SCOPE: the e2e flake is NOT proven closed —
+  under a 10-busy-loop harness the e2e block passed 4/4 with the probe
+  AND 4/4 with it disabled, so that load shape does not reproduce the
+  gate's timeout (the gate adds four compiles, astro and three other
+  shards — I/O, not CPU). Next time it fires, the failing run's stdout
+  is the evidence to keep: whether `re-running...` ever printed
+  separates a lost event from a slow re-run.
 
 ## In flight
 

@@ -71,6 +71,88 @@ export function makeWatchIgnore(cacheDir: string): (base: string, filename: stri
   }
 }
 
+/**
+ * The file `armWatcher` writes under a watched directory to prove the
+ * watcher delivers. Intercepted by name before any other handling, so it
+ * can never trigger a cycle, and removed before "watching" is printed.
+ */
+export const WATCH_PROBE = '.vx-watch-probe'
+
+/** How long a watcher gets to report its own probe before the loop goes on without proof. */
+const WATCH_PROBE_TIMEOUT_MS = 2_000
+
+export interface ArmedWatcher {
+  watcher: fs.FSWatcher
+  /** Resolves `true` once the watcher reported the probe, `false` on timeout. */
+  ready: Promise<boolean>
+}
+
+/**
+ * `fs.watch` plus proof of delivery. On macOS a recursive watcher is an
+ * FSEvents stream that another thread schedules AFTER the call returns, and
+ * a change landing in that gap is never delivered — MEASURED 2026-09-03: a
+ * write made immediately after `fs.watch` was lost 5 times in 30 under CPU
+ * load (0 in 30 idle, 0 in 30 after a 50 ms pause). The gap has no fixed
+ * width, so no pause is the answer and no timeout on the waiting side ever
+ * was (the e2e flake this closes had one of 45 s). A probe file written
+ * under the watcher and waited for is: once ITS event arrives, the stream
+ * is live for everything after it.
+ *
+ * `onEvent` never sees the probe (create or unlink), and the probe is
+ * removed before `ready` resolves.
+ */
+export function armWatcher(
+  dir: string,
+  recursive: boolean,
+  onEvent: (filename: string) => void,
+  timeoutMs = WATCH_PROBE_TIMEOUT_MS,
+): ArmedWatcher {
+  let markReady: (ok: boolean) => void = () => {}
+  const seen = new Promise<boolean>((resolve) => {
+    markReady = resolve
+  })
+  const watcher = fs.watch(dir, { recursive, persistent: true }, (_event, filename) => {
+    if (filename == null || typeof filename !== 'string') return
+    if (filename === WATCH_PROBE) {
+      markReady(true)
+      return
+    }
+    onEvent(filename)
+  })
+  const probe = path.join(dir, WATCH_PROBE)
+  const ready = (async (): Promise<boolean> => {
+    // The probe is subject to the very race it detects: a write that lands
+    // in the gap is lost like any other (1 in 20 under a full gate's load,
+    // measured 2026-09-03, with every delivered event under 60 ms). So it is
+    // re-written on a short backoff until its event arrives — the first write
+    // after the stream goes live is the one that proves it.
+    const deadline = Date.now() + timeoutMs
+    let ok = false
+    let step = 50
+    while (!ok) {
+      try {
+        fs.writeFileSync(probe, String(Date.now()))
+      } catch {
+        break // an unwritable dir gets no proof; the watcher is kept
+      }
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) break
+      const pause = new Promise<boolean>((resolve) => {
+        setTimeout(() => resolve(false), Math.min(step, remaining)).unref()
+      })
+      ok = await Promise.race([seen, pause])
+      step = Math.min(step * 2, 400)
+    }
+    try {
+      fs.unlinkSync(probe)
+    } catch {
+      // already gone
+    }
+    return ok
+  })()
+  return { watcher, ready }
+}
+
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args)
   if (parsed.error) {
@@ -255,6 +337,20 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   const isIgnoredPath = makeWatchIgnore(cacheDir)
 
   const watchers: fs.FSWatcher[] = []
+  const proofs: Promise<void>[] = []
+  const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): void => {
+    const armed = armWatcher(dir, recursive, onEvent)
+    watchers.push(armed.watcher)
+    proofs.push(
+      armed.ready.then((ok) => {
+        if (!ok) {
+          process.stderr.write(
+            `vx watch: ${dir}: the watcher gave no sign of life within ${WATCH_PROBE_TIMEOUT_MS} ms; early edits there may be missed\n`,
+          )
+        }
+      }),
+    )
+  }
 
   if (workspaceWide) {
     // workspaceFiles inputs in play: any file in the workspace can be
@@ -263,16 +359,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     // ignore filter keeps node_modules / .git / .vx churn out; edits
     // outside any task's inputs still cost only a cache-hit cycle.
     try {
-      const w = fs.watch(
-        workspaceRoot,
-        { recursive: true, persistent: true },
-        (_event, filename) => {
-          if (filename == null || typeof filename !== 'string') return
-          if (isIgnoredPath(workspaceRoot, filename)) return
-          trigger(`root ${filename}`)
-        },
-      )
-      watchers.push(w)
+      arm(workspaceRoot, true, (filename) => {
+        if (isIgnoredPath(workspaceRoot, filename)) return
+        trigger(`root ${filename}`)
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       process.stderr.write(`vx watch: cannot watch workspace root: ${msg}\n`)
@@ -283,13 +373,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     // cover every project + node_modules + caches).
     for (const proj of projects) {
       try {
-        const w = fs.watch(proj.dir, { recursive: true, persistent: true }, (_event, filename) => {
-          if (filename == null) return
-          if (typeof filename !== 'string') return
+        arm(proj.dir, true, (filename) => {
           if (isIgnoredPath(proj.dir, filename)) return
           trigger(`${proj.name} ${filename}`)
         })
-        watchers.push(w)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         process.stderr.write(`vx watch: cannot watch ${proj.dir}: ${msg}\n`)
@@ -300,15 +387,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     // pnpm-workspace.yaml edits trigger re-runs even when no project
     // dir saw the change.
     try {
-      const w = fs.watch(
-        workspaceRoot,
-        { recursive: false, persistent: true },
-        (_event, filename) => {
-          if (filename == null || typeof filename !== 'string') return
-          if (isWorkspaceFingerprintFile(filename)) trigger(`root ${filename}`)
-        },
-      )
-      watchers.push(w)
+      arm(workspaceRoot, false, (filename) => {
+        if (isWorkspaceFingerprintFile(filename)) trigger(`root ${filename}`)
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       process.stderr.write(`vx watch: cannot watch workspace root: ${msg}\n`)
@@ -318,6 +399,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // The orchestrator's writes into `.vx/cache/` don't trigger
   // re-runs because IGNORED_SEGMENTS includes `.vx`. Users who
   // relocate the cache dir outside `.vx/` need their own filtering.
+
+  // "watching" is a promise that an edit from now on is seen; every
+  // watcher has proved (or been given 2 s to prove) delivery first.
+  await Promise.all(proofs)
 
   process.stdout.write(
     workspaceWide
