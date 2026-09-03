@@ -78,15 +78,20 @@ only what's actually different (execution vs prediction).
 
 ## Extension points
 
-- **Named inputs / target defaults.** A workspace-level transformation
-  that rewrites each `ProjectEntry.config` (e.g. expanding
-  `$inputs:default` references) should run between project-config load
-  and graph build. Add it as a step here.
-- **`globalInputs` / `globalEnv`.** Workspace-level cache-key
-  contributions would land in the fingerprint step.
-- **Telemetry handle.** A `Telemetry` sink could be constructed here
-  and added to `PreparedRun`, with default a no-op. Both callers would
-  receive it via the context.
+- **Reshaping projects between config load and graph build** is the
+  `project` pipeline stage (`VxPlugin.project(config, meta, ctx)`): a
+  plugin edits each loaded project's tasks in place and core
+  re-validates. That is where a target-defaults or named-inputs
+  expansion would live IF it were wanted — workspace-level
+  `namedInputs`, `globalInputs` and `globalEnv` are owner-rejected
+  non-goals (CLAUDE.md § Rejected): configs are TypeScript and compose
+  through shared presets instead.
+- **Observing the run** is the `telemetry` seam (`VxPlugin.telemetry(ctx)`)
+  and the raw bus (`setup(ctx)`); both are constructed by the run, not
+  here, and reach every task through the context.
+- **Anything that needs the prepared graph** (priorities, resources,
+  extra key material) has its own stage: `graph`, `schedule`, `key`.
+  See `docs/design/pipeline-2026-09.md`.
 
 ## Tests
 
