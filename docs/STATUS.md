@@ -252,21 +252,21 @@ passed once the load fell.
   tokens that bypass 2FA are being restricted for … direct publishing".
   The classic `NPM_TOKEN` no longer publishes reliably. Core and the
   other three platform packages stay at 0.0.16, so installs are
-  unaffected (no core version references 0.0.17). The exact
-  difference: `npm.yml`'s `publish` job (core + linux) publishes with
-  npm trusted publishing — `id-token: write`, no token — while the
-  darwin job also sets `NODE_AUTH_TOKEN: secrets.NPM_TOKEN` on its
-  publish step, and a set token takes precedence over OIDC, so that
-  step is the only one still on the classic token. (1) Either
-  configure trusted publishing on npmjs.com for `@vzn/vx-darwin-x64`
-  and `@vzn/vx-darwin-arm64` (workflow `npm.yml`, environment none) and
-  drop the `NODE_AUTH_TOKEN` line from the darwin step, or replace
-  `NPM_TOKEN` with a granular access token with publish rights and 2FA
-  bypass; then (2) dispatch the `npm publish` workflow with version
-  `0.0.17` — every publish step skips a package already on the
-  registry, so the run resumes at darwin-arm64 and finishes with core.
-  Not done here: a credential and an outward publish are the owner's,
-  and the workflow edit is useless without the npm-side config.
+  unaffected (no core version references 0.0.17). Both publish steps
+  in `npm.yml` (the darwin job and the linux + core `publish` job) set
+  `NODE_AUTH_TOKEN: secrets.NPM_TOKEN` and both grant `id-token:
+  write`; the step comment says the token is used when the secret
+  exists and npm falls back to OIDC trusted publishing only when it is
+  empty. So every package was on the classic token, and the core job
+  would have hit the same E401 had it run. (1) Either configure
+  trusted publishing on npmjs.com for all five packages (workflow
+  `npm.yml`, environment none) and delete the `NPM_TOKEN` secret so
+  both jobs fall back to OIDC, or replace it with a granular access
+  token with publish rights and 2FA bypass; then (2) dispatch the
+  `npm publish` workflow with version `0.0.17` — both publish loops
+  skip a package already on the registry, so the run resumes at
+  darwin-arm64 and finishes with core. Not done here: a credential and
+  an outward publish are the owner's.
 
 ## Next (ordered)
 
