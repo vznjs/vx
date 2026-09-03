@@ -40,10 +40,36 @@ async function loadDefaultExport(
   // content-hash bust would replay an evaluation made under earlier
   // env values when the file bytes are unchanged in this process.
   const bust = fresh ? `${xxh3hex(bytes)}-${Bun.randomUUIDv7()}` : xxh3hex(bytes)
-  const ns = (await import(`${configPath}?vx-bust=${bust}`)) as { default?: unknown }
+  let ns: { default?: unknown }
+  try {
+    ns = (await import(`${configPath}?vx-bust=${bust}`)) as { default?: unknown }
+  } catch (err) {
+    throw unresolvedImportError(err, configPath, kind) ?? err
+  }
   const mod = ns?.default
   assertDefaultObject(mod, kind, configPath)
   return mod
+}
+
+/**
+ * A config whose import cannot be resolved is the user's to fix, and the
+ * usual cause has one answer: the workspace runs the vx binary and never
+ * installed `@vzn/vx`, which its own `vx.workspace.ts` imports. Bun's
+ * resolver error also carries the module-cache bust query; the user
+ * gets the file they wrote.
+ */
+export function unresolvedImportError(
+  err: unknown,
+  configPath: string,
+  kind: string,
+): UserError | null {
+  if (!(err instanceof Error) || err.name !== 'ResolveMessage') return null
+  const spec = /Cannot find (?:package|module) ['"]([^'"]+)['"]/.exec(err.message)?.[1]
+  const what =
+    spec === undefined ? err.message.replace(/\?vx-bust=\S+/g, '') : `cannot find '${spec}'`
+  const hint =
+    spec?.startsWith('@vzn/vx') === true ? `; install it in the workspace: bun add -d @vzn/vx` : ''
+  return new UserError(`${kind} config ${configPath}: ${what}${hint}`)
 }
 
 export interface LoadProjectConfigOptions {
@@ -160,7 +186,9 @@ export async function loadProjectConfigs(
     const repeat = loadedConfigs.has(configPath)
     loadedConfigs.add(configPath)
     const mod = repeat
-      ? await evaluateConfigFresh(configPath)
+      ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
+          throw unresolvedImportError(err, configPath, 'Project') ?? err
+        })
       : await loadDefaultExport(configPath, 'Project', opts?.fresh === true, bytes!)
     assertDefaultObject(mod, 'Project', configPath)
     // Validation runs HERE, on whichever object we ended up with, so a

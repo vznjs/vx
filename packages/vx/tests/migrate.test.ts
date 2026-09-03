@@ -830,6 +830,30 @@ async function makeScriptsWorkspace(): Promise<string> {
   return root
 }
 
+describe('vx init on a workspace with no scripts', () => {
+  it('writes the workspace file, prints an example config and the next command', async () => {
+    const root = await makeRoot('vx-init-empty-')
+    await addPackage(root, 'app', {})
+    try {
+      const r = await vx(root, ['init'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(await Bun.file(path.join(root, 'vx.workspace.ts')).exists()).toBe(true)
+      expect(await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).exists()).toBe(
+        false,
+      )
+      expect(r.out).toContain('no package.json scripts to turn into tasks')
+      expect(r.out).toContain('satisfies ProjectConfig')
+      expect(r.out).toContain('next: vx run build --all')
+      // Idempotent: a second init neither rewrites nor refuses.
+      const again = await vx(root, ['init'])
+      expect(again.code).toBe(0)
+      expect(again.out).toContain('vx.workspace.ts already exists')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('vx init (package.json scripts)', () => {
   let root: string
   beforeAll(async () => {
@@ -861,6 +885,11 @@ describe('vx init (package.json scripts)', () => {
       expect(tasks['test']!.cache).toBeUndefined()
       expect(tasks['dev']!.exec?.persistent).toEqual({})
       const text = await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).text()
+      // Typed for the editor through a type-only import Bun erases, so the
+      // file loaded above without `@vzn/vx` installed.
+      expect(text).toContain("import type { ProjectConfig } from '@vzn/vx'")
+      expect(text).toContain('} satisfies ProjectConfig')
+      expect(r.out).toContain('next: vx run build --all')
       expect(text).toContain('TODO(vx-migrate): cache: inputs default')
       expect(text).toContain('TODO(vx-migrate): persistent')
       // The generated workspace runs. Its vx.workspace.ts imports `@vzn/vx`
@@ -1000,13 +1029,16 @@ describe('vx init (package.json scripts)', () => {
     }
   })
 
-  it('a workspace with no scripts anywhere says so', async () => {
+  it('a workspace with no scripts anywhere is scaffolded by init but refused by migrate', async () => {
     const empty = await makeRoot('vx-migrate-empty-')
     try {
       await addPackage(empty, 'a', {})
+      const m = await vx(empty, ['migrate', '--from', 'scripts'])
+      expect(m.code).toBe(1)
+      expect(m.err).toContain('no package.json scripts')
       const r = await vx(empty, ['init'])
-      expect(r.code).toBe(1)
-      expect(r.err).toContain('no package.json scripts')
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(r.out).toContain('no package.json scripts to turn into tasks')
     } finally {
       await rm(empty, { recursive: true, force: true })
     }

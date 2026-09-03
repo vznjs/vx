@@ -1099,8 +1099,17 @@ updates with `npm update -g @vzn/vx` instead.)
 
 Scaffold a workspace that comes from nowhere: one `vx.config.ts` per
 package from its `package.json` scripts, plus `vx.workspace.ts`
-declaring the local executor and cache. Exactly `vx migrate --from
-scripts`, and the same `--dry` / `--force` flags.
+declaring the local executor and cache. The same mapping as `vx migrate
+--from scripts`, with the same `--dry` / `--force` flags; the one
+difference is a workspace with no scripts at all, which `init` still
+scaffolds (the workspace file, a printed example config, and the next
+command to run) where `migrate` reports nothing to convert. Every
+generated config is typed for the editor through
+`import type { ProjectConfig } from '@vzn/vx'` and `satisfies
+ProjectConfig` — a type-only import Bun erases, so the file loads in a
+workspace that runs the `vx` binary without the package installed. The
+workspace file DOES import `@vzn/vx` at runtime; a run in a workspace
+without it says so and names the install command.
 
 Each script becomes a task with its command verbatim. `build` gets
 `dependsOn: ['^build']` and a cache block whose inputs are the whole

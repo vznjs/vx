@@ -22,6 +22,34 @@ describe('loadProjectConfig', () => {
     expect(cfg.tasks?.build?.exec?.command).toBe('tsc')
   })
 
+  it('an import the config cannot resolve is a user error naming the file, with the install hint for @vzn/vx', async () => {
+    // The usual cause: the workspace runs the vx binary and never
+    // installed `@vzn/vx`, which the config imports at runtime.
+    const file = path.join(dir, 'vx.config.mjs')
+    await writeFile(
+      file,
+      "import { defineProject } from '@vzn/vx'\nexport default defineProject({ tasks: {} })\n",
+    )
+    const err = await loadProjectConfig(file).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(err?.name).toBe('UserError')
+    expect(err?.message).toContain(`Project config ${file}`)
+    expect(err?.message).toContain("cannot find '@vzn/vx'")
+    expect(err?.message).toContain('bun add -d @vzn/vx')
+    expect(err?.message).not.toContain('vx-bust')
+    // Any other unresolved package: same shape, no vx-specific hint.
+    await writeFile(file, "import x from 'no-such-package-xyz'\nexport default { tasks: {} }\n")
+    const other = await loadProjectConfig(file).then(
+      () => null,
+      (e: unknown) => e as Error,
+    )
+    expect(other?.name).toBe('UserError')
+    expect(other?.message).toContain("cannot find 'no-such-package-xyz'")
+    expect(other?.message).not.toContain('bun add')
+  })
+
   it('throws clearly when the config did not export a default object', async () => {
     const file = path.join(dir, 'vx.config.mjs')
     await writeFile(file, 'export const notDefault = 1')

@@ -83,6 +83,21 @@ describe('task selection', () => {
       expect(r.ok).toBe(false)
       expect(r.outcomes).toEqual([])
       expect(log.lines.join('\n')).toContain('No projects declare task(s): totallybogus.')
+      expect(log.lines.join('\n')).not.toContain('Did you mean') // nothing within two edits
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a near-miss names the declared task it is closest to',
+    async () => {
+      await addProject('a', ['build'])
+      const log = silent()
+      const r = await run({ cwd: root, tasks: ['buidl'], log })
+      expect(r.ok).toBe(false)
+      expect(log.lines.join('\n')).toContain(
+        'No projects declare task(s): buidl. Did you mean build?',
+      )
     },
     TIMEOUT,
   )

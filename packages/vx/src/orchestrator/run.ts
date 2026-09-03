@@ -2,6 +2,7 @@
 // run with caching. Each step delegates to a single-purpose sibling file
 // so the layers can be swapped without touching the others.
 
+import type { ProjectEntry } from '../workspace/index.js'
 import os from 'node:os'
 import {
   type CacheLayer,
@@ -174,7 +175,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // it. When EVERY name is unresolved this is the `no-tasks-declared`
   // case too; the message is identical, so that branch stays below.
   if (prepared.unresolvedTasks.length > 0) {
-    log.status(`No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.`)
+    log.status(
+      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${didYouMean(prepared.unresolvedTasks, prepared.projects)}`,
+    )
     prepared.cache.close()
     return { ok: false, outcomes: [] }
   }
@@ -1303,4 +1306,50 @@ function poolOfPlacement(
       ? undefined
       : { name: executor.name, capacity: executor.capacity }
   }
+}
+
+/**
+ * A typo's nearest declared task, when one is within two edits — the
+ * message names the fix instead of only the mistake. Project-qualified
+ * specs (`pkg#task`) are matched on their task half.
+ */
+function didYouMean(
+  unresolved: readonly string[],
+  projects: ReadonlyMap<string, ProjectEntry>,
+): string {
+  const declared = new Set<string>()
+  for (const p of projects.values())
+    for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
+  const hints: string[] = []
+  for (const spec of unresolved) {
+    const name = spec.slice(spec.indexOf('#') + 1)
+    let best: string | undefined
+    let bestD = 3
+    for (const t of declared) {
+      const d = editDistance(name, t)
+      if (d < bestD) {
+        bestD = d
+        best = t
+      }
+    }
+    if (best !== undefined && best !== name) hints.push(best)
+  }
+  return hints.length === 0 ? '' : ` Did you mean ${hints.join(', ')}?`
+}
+
+function editDistance(a: string, b: string): number {
+  if (Math.abs(a.length - b.length) > 2) return 3
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(
+        prev[j]! + 1,
+        cur[j - 1]! + 1,
+        prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
+      )
+    }
+    prev = cur
+  }
+  return prev[b.length]!
 }

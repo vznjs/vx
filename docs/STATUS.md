@@ -820,6 +820,28 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   was declared, a file removed in between) left its partial temp in
   the cache dir; the temp is unlinked on the failure now, pinned with
   the small-path twin as a control, and the pin fails without the fix.
+- 2026-09-03 — **first-run DX** (owner's steer: performance and
+  functionality, only what is necessary, the best DX, an ecosystem like
+  Vite's). A newcomer's first five minutes were replayed in a scratch
+  workspace and three things blocked them: `vx init` on a workspace with
+  no scripts wrote nothing and said "nothing to migrate"; the generated
+  config told the user to wrap it in `defineProject()` themselves; and a
+  run in a workspace without `@vzn/vx` installed died with a raw
+  `ResolveMessage` carrying the module-cache bust query. Now `init`
+  always writes `vx.workspace.ts`, prints an example config and the
+  next command (`next: vx run build --all`) when there are no scripts
+  (`migrate` keeps its error — a conversion with no input); generated
+  configs carry `import type { ProjectConfig } from '@vzn/vx'` +
+  `satisfies ProjectConfig` (erased at runtime, so they load without
+  the package); and an unresolved import in a config is a `UserError`
+  naming the file and, for `@vzn/vx`, `bun add -d @vzn/vx`, on both
+  the in-process and worker evaluation paths. And a typo names its
+  fix: `No projects declare task(s): buidl. Did you mean build?` —
+  the nearest declared task within two edits, measured against every
+  discovered project (the prepared result now carries `projects`, since
+  a lone typo leaves no graph nodes to look at). Pinned in
+  `tests/migrate.test.ts`, `tests/project-loader.test.ts` and
+  `tests/task-selection.test.ts`; docs in `docs/cli.md` § vx init.
   Reader audit: a size field that is not all octal digits is refused
   before any entry is yielded (`parseInt` read `5zz` as 5 and let the
   damage surface later, if at all — pinned, fails without the fix); a

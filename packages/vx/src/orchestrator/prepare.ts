@@ -94,6 +94,8 @@ export interface PreparedRun {
    * than run the remainder silently.
    */
   unresolvedTasks: readonly string[]
+  /** Every discovered project — the declared task names a typo is measured against. */
+  projects: ReadonlyMap<string, ProjectEntry>
   workspaceFingerprint: string
   nestedDirsByProject: Map<string, string[]>
   /**
@@ -394,6 +396,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       priorities: new Map(),
       nodes: new Map(),
       unresolvedTasks,
+      projects,
       workspaceFingerprint,
       nestedDirsByProject,
       gitFilesCache,
@@ -443,6 +446,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     priorities,
     nodes,
     unresolvedTasks,
+    projects,
     workspaceFingerprint,
     nestedDirsByProject,
     gitFilesCache,
