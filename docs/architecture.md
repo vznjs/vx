@@ -487,7 +487,8 @@ functions; those are the seam. Internal helpers can change.
 | `cache/cas-backend.ts`        | R2 / S3 / REAPI blob storage beneath the cache                                     |
 | `exec/runner.ts`              | Spawn into containers / remote builders                                            |
 | `exec/env.ts`                 | Adjust isolation policy (broader allowlist, OS-specific essentials)                |
-| `cache/inputs.ts`             | fspy-style auto-input inference (LD_PRELOAD / Detours / unotify)                   |
+| `cache/inputs.ts`             | Enumerate inputs from something other than git's index (a VFS, Jujutsu, a watchman daemon) — declared inputs stay the contract; inference is rejected, see CLAUDE.md |
+| `cache/archive.ts` + `cache/tar-stream.ts` | A different artifact container (zip, CAS-chunked); the pack/scan/extract seam and the name and containment checks stay |
 | `orchestrator/logger.ts`      | Plain-text logger, JSON-line logger, observability emitter                         |
 | `exec/executor.ts`            | Route a task's command elsewhere (a plugin `executor` does this without a fork)    |
 
