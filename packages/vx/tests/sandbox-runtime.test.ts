@@ -30,6 +30,15 @@ interface Fixture {
   log: string[]
 }
 
+/**
+ * `expectOk(r, fixture)` with the task's own output in the failure: a
+ * sandboxed task that fails on CI only (a bubblewrap or seccomp error on
+ * the runner) otherwise leaves nothing in the log but `Received: false`.
+ */
+function expectOk(r: { ok: boolean }, fixture: Fixture): void {
+  if (!r.ok) throw new Error(`run was not ok; task output:\n${fixture.log.join('\n')}`)
+}
+
 const collectingLogger = (fixture: Fixture): Logger => ({
   status(line) {
     fixture.log.push(line)
@@ -253,7 +262,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         tasks: ['build'],
         log: collectingLogger(fixture),
       })
-      expect(r.ok).toBe(true)
+      expectOk(r, fixture)
       expect(await readFile(path.join(projDir, 'out.txt'), 'utf8')).toBe('shared')
     },
     TIMEOUT,
@@ -406,7 +415,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         tasks: ['build'],
         log: collectingLogger(fixture),
       })
-      expect(r.ok).toBe(true)
+      expectOk(r, fixture)
       expect(existsSync('/tmp/vx-allowwrite-test.txt')).toBe(true)
       await rm('/tmp/vx-allowwrite-test.txt', { force: true })
       void projDir
@@ -439,7 +448,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         tasks: ['build'],
         log: collectingLogger(fixture),
       })
-      expect(r.ok).toBe(true)
+      expectOk(r, fixture)
       expect(existsSync(path.join(projDir, 'dist/marker.txt'))).toBe(true)
     },
     TIMEOUT,
@@ -581,7 +590,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       tasks: ['x'],
       log: collectingLogger(fixture),
     })
-    expect(r.ok).toBe(true)
+    expectOk(r, fixture)
   })
 
   // ─── Boolean network shortcuts ──────────────────────────────────
