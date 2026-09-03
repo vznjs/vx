@@ -609,7 +609,10 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    re-run (see the 2026-09-03 watch entry).
 5. **Re-measure the warm run after each day's work** — the hot path is
    the product. `bun bench/run.ts 100 5` and `1000 5`; an interleaved
-   A/B against an immutable worktree settles any gap (2026-09-03: flat).
+   A/B against an immutable worktree settles any gap. Closing figures
+   for 2026-09-03, after wave 6 and the discovery change, best of 5:
+   1000 projects 193 ms (table says 204, measured before discovery
+   changed), 100 projects 81 ms, on a box that had run the gate all day.
 6. **DONE 2026-09-03 as wave 6 (224 → 204 ms).** The lead, kept for the
    method: measured (`VX_TIMING=1`, warm 1000
    projects, 203 ms in-process):\*\* git enumeration 51 ms (overlapped with
