@@ -719,11 +719,12 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    `runs.hash` looks the row up by run id or project+task first);
    dropping it measured 11.5 → 3.9 ms for the inserts. Two small leads
    left, each measured: the 1,000 `config_evals` point lookups (DONE —
-   `loadProjectConfigs`, one query per round); and
-   `getMany`'s 1,000 artifact-existence stats inside `classify + probe`
-   (~5–10 ms) could move to restore time, but only with a re-execute
-   fallback for a hit whose artifact is gone, which the hit path lacks
-   (the getMany/get parity pin would move with it). **The stage table
+   `loadProjectConfigs`, one query per round); and `getMany`'s 1,000
+   artifact-existence stats inside `classify + probe` — MEASURED 2.7 ms
+   of `getMany`'s 5.8 ms on the bench (2026-09-03), and moving them to
+   restore time needs a re-execute fallback for a hit whose artifact is
+   gone, which the hit path lacks. CLOSED: a new failure path for 2.7 ms
+   is the wrong trade. **The stage table
    after wave 6** (warm 1000 projects, in-process
    ~176 ms; the bench's whole-process number is 204 ms): git enumeration
    54 ms wall (overlapped with the 36 ms of cached config loads, so ~20 ms

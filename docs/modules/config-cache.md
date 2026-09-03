@@ -8,6 +8,12 @@ cost of a warm run (2026-09-02, synthetic 1000-project workspace: ~80 ms
 to import the modules, ~12 ms to read the same files as data). The cache
 stores the **validated** config as JSON in `cache.db` (`config_evals`),
 and `loadProjectConfig` serves a hit without importing the module.
+`prepareRun` loads each round of configs through `loadProjectConfigs`,
+which reads every file's bytes and key in parallel and asks the store ONCE
+(`ConfigEvalStore.getConfigEvals`, optional; `Cache` answers with one `IN`
+query per 900 keys — 1,000 point lookups measured 3.6 ms against 0.7 for
+the batch), then evaluates only the misses in the order given, so a failure
+names the first broken file as a one-by-one load did.
 
 ## Key
 
