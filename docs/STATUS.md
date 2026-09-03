@@ -476,6 +476,20 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   FUNCTIONS `logger.ts` imports, false of the constant, which nothing in
   `src` reads through the barrel. The pin now says so and covers the
   functions only.
+- 2026-09-03 — **the parked "second core" item, half-closed at the seam
+  that matters.** Reproduced through the REAL compiled binary: a plugin
+  verb throwing `UserError` printed `vx: UserError: bad flag --x` plus a
+  stack, because the plugin's class comes from the node_modules copy of
+  core and `instanceof` is false across copies. The scheduler had the
+  same check, so a REAPI refusal from the shipped binary would have
+  read as an "internal error" — the 2026-08-25 classification fix,
+  silently undone in the binary. `isUserError` (by name as well as by
+  class) is now what `bin.ts`, the scheduler and `@vzn/vx-mcp` consult,
+  and it is on the façade so a plugin can classify the same way. The
+  second copy itself (~12 ms per run) stays parked; the name is the
+  contract that survives the copy boundary. Pinned: the helper with a
+  foreign-class control, and a scheduler run whose executor throws a
+  foreign-copy user error reports plainly.
 
 ## In flight
 
@@ -491,7 +505,11 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
    `Bun.plugin` `onResolve` never fires for bare package specifiers and
    `onLoad` never fires for `.js`/`.ts` files (probed, both). Options
    left: rewrite the config source before import (breaks relative
-   imports unless written beside the file) or a Bun fix. Parked.
+   imports unless written beside the file) or a Bun fix. Parked — but
+   the USER-VISIBLE half closed 2026-09-03: `isUserError` classifies by
+   name across copies, so a plugin's refusal prints one line from the
+   binary and a REAPI refusal is never an "internal error". What
+   remains is the ~12 ms and the duplicate module state.
 2. **Audit rotation** — the newest code first. Done 2026-09-03: the
    scripts mapper (two defects fixed), `getMany` (parity pinned), the
    `commands` resolver under a broken workspace file (already pinned).

@@ -153,6 +153,7 @@ describe('package boundaries', () => {
       'isCacheHit',
       'isGroupTask',
       'isPassStatus',
+      'isUserError',
       'listInvocations',
       'listProjectMetas',
       'listRuns',

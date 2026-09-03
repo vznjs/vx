@@ -1,4 +1,4 @@
-import { UserError } from '../util/index.js'
+import { UserError, isUserError } from '../util/index.js'
 import type { TaskNode } from './task-graph.js'
 
 export type TaskStatus =
@@ -707,7 +707,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             // UserError is a config/input failure (e.g. a failed
             // `cache.inputs.runtime` command), not a vx bug — report it
             // plainly, never as an "internal error".
-            if (err instanceof UserError) {
+            if (isUserError(err)) {
               process.stderr.write(`[vx] ${id}: ${message}\n`)
             } else {
               const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''

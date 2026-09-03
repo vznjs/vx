@@ -3,7 +3,7 @@
 // `tools/call` — plus `ping`; notifications are acknowledged by silence.
 // Everything else is the standard "method not found".
 
-import { UserError, VERSION } from '@vzn/vx'
+import { isUserError, VERSION } from '@vzn/vx'
 import { handleToolCall, listTools, type ToolContext } from './tools.js'
 
 /** The newest protocol revision this server speaks; an older client's version is echoed back. */
@@ -71,8 +71,10 @@ export async function handleMessage(raw: string, ctx: ToolContext): Promise<Resp
           return reply({ content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] })
         } catch (err) {
           // A tool's own refusal is a RESULT the agent should read, not a
-          // protocol error: it names what to fix ("taskId must be …").
-          if (err instanceof UserError) {
+          // protocol error: it names what to fix ("taskId must be …"). By
+          // name, not instanceof: inside a compiled vx the tools' core and
+          // this plugin's `@vzn/vx` can be two copies of the same class.
+          if (isUserError(err)) {
             return reply({ content: [{ type: 'text', text: err.message }], isError: true })
           }
           throw err

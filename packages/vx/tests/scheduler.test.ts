@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, spyOn } from 'bun:test'
 import { computeReverseDepCount, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -1095,5 +1095,47 @@ describe('executor pools under failure', () => {
     expect(out.size).toBe(3)
     expect([...out.values()].every((o) => o.status === 'success')).toBe(true)
     expect(overlapped).toBe(true)
+  })
+})
+
+// A UserError thrown by an executor from ANOTHER COPY of core (a plugin's
+// `@vzn/vx` inside a compiled vx) is still a user error: reported as
+// `[vx] <id>: <message>`, never as an "internal error" with the class name
+// prefixed. `instanceof` cannot see across the copy boundary; the name can.
+describe('runGraph reports a foreign-copy UserError plainly', () => {
+  class ForeignUserError extends Error {
+    constructor(message: string) {
+      super(message)
+      this.name = 'UserError'
+    }
+  }
+  async function stderrOf(err: Error): Promise<string> {
+    let out = ''
+    const spy = spyOn(process.stderr, 'write').mockImplementation(((chunk: string) => {
+      out += String(chunk)
+      return true
+    }) as never)
+    try {
+      const result = await runGraph({
+        nodes: nodes(node('a#build')),
+        concurrency: 1,
+        execute: async () => {
+          throw err
+        },
+      })
+      expect(result.get('a#build')?.status).toBe('failed')
+    } finally {
+      spy.mockRestore()
+    }
+    return out
+  }
+  it('a foreign-copy UserError prints the message only', async () => {
+    const out = await stderrOf(new ForeignUserError('remote blob evicted; re-run with --force'))
+    expect(out).toContain('[vx] a#build: remote blob evicted; re-run with --force')
+    expect(out).not.toContain('internal error')
+  })
+  it('CONTROL: a plain Error is still an internal error', async () => {
+    const out = await stderrOf(new Error('kaboom'))
+    expect(out).toContain('[vx] internal error in a#build: kaboom')
   })
 })
