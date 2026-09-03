@@ -684,7 +684,11 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   re-evaluates through the fast key, an extensionless import never
   indexed; the fold-only-the-config and drop-the-extension-rule
   mutations each fail exactly their pins. Docs: `modules/config-cache.md`
-  § The warm fast path, `caching.md`.
+  § The warm fast path, `caching.md`. Two edges pinned afterwards: a
+  DELETED closure file cannot be served from the index (the fast key
+  cannot be built and the live load fails on the import, never the
+  stale value), and the closure index honours the local read/write
+  axes like the evaluations do.
 
 ## In flight
 

@@ -3,6 +3,7 @@
 // evaluation could have read; anything that can observe the environment
 // evaluates live.
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -284,6 +285,23 @@ describe('loadProjectConfig with an eval cache', () => {
     expect(store.puts).toBe(puts + 1)
   })
 
+  it('a deleted closure file cannot be served from the index: the fast key misses and the live load fails', async () => {
+    const preset = await write('shared/gone.mjs', "export const cmd = 'echo here'\n")
+    const cfg = await write(
+      'packages/c/vx.config.mjs',
+      "import { cmd } from '../../shared/gone.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+    )
+    const store = new MemoryStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    await loadProjectConfigs([cfg], { evalCache })
+    expect(store.closures.has(cfg)).toBe(true)
+    await rm(preset)
+    // The stored evaluation still exists under the old key, but the fast key
+    // cannot be built (the identity of a missing file throws), and the live
+    // load fails on the import — never the stale 'echo here'.
+    await expect(loadProjectConfigs([cfg], { evalCache })).rejects.toThrow()
+  })
+
   it('an extensionless relative import is never indexed (a new file could change its resolution)', async () => {
     await write('shared/loose.mjs', "export const cmd = 'echo loose'\n")
     const cfg = await write(
@@ -347,5 +365,26 @@ describe('Cache as a ConfigEvalStore', () => {
     noRead.putConfigEval('k', '{}')
     expect(noRead.getConfigEval('k')).toBeNull()
     noRead.close()
+  })
+  it('the closure index honours the local read/write axes too', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cc-axes-'))
+    try {
+      const wo = new Cache(dir, { read: true, write: false })
+      wo.putConfigClosure('/p/vx.config.mjs', ['/p/vx.config.mjs'])
+      expect(wo.getConfigClosures(['/p/vx.config.mjs']).size).toBe(0) // nothing written
+      wo.close()
+      const rw = new Cache(dir)
+      rw.putConfigClosure('/p/vx.config.mjs', ['/p/vx.config.mjs', '/p/preset.mjs'])
+      expect(rw.getConfigClosures(['/p/vx.config.mjs']).get('/p/vx.config.mjs')).toEqual([
+        '/p/vx.config.mjs',
+        '/p/preset.mjs',
+      ])
+      rw.close()
+      const ro = new Cache(dir, { read: false, write: true })
+      expect(ro.getConfigClosures(['/p/vx.config.mjs']).size).toBe(0) // read gate
+      ro.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
