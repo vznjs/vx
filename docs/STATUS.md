@@ -382,6 +382,16 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   vacuous — the cut landed AFTER the character — caught only because the
   rerun asserted the lead byte; assert the precondition, not just the
   outcome.
+- 2026-09-03 — **RED MAIN, mine, for one run:** the darwin CI job failed
+  on the version assertion added an hour earlier — that step `cd`s into
+  `packages/vx` before compiling, so the assertion's relative
+  `packages/vx/package.json` did not exist there (`ENOENT`). The ubuntu
+  copy passed because it runs from the root. An assertion written
+  against path assumptions, broken by a path assumption. Both copies now
+  name the manifest from `$GITHUB_WORKSPACE`. Also swept the split-chunk
+  decode class from the vx-mcp fix across every package: every other
+  `TextDecoder().decode` runs on a complete buffer (spawn outputs,
+  protobuf slices) and `runner.ts` already streams — REFUTED elsewhere.
 
 ## In flight
 

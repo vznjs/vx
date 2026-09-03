@@ -128,7 +128,7 @@ jobs:
       # stamp unseen again (it did, 2026-08-26 → 2026-09-03).
       - name: compiled binary reports the manifest version
         run: |
-          WANT="vx $(bun -e 'console.log((await Bun.file("packages/vx/package.json").json()).version)')"
+          WANT="vx $(bun -e 'console.log((await Bun.file(process.argv[1]).json()).version)' "$GITHUB_WORKSPACE/packages/vx/package.json")"
           GOT="$(packages/vx/dist/vx-linux-x64 --version)"
           test "$GOT" = "$WANT" || { echo "::error::binary reports '$GOT', expected '$WANT'"; exit 1; }
 
@@ -299,7 +299,10 @@ jobs:
           # workflows stamp that file and assert this same equality. Proving it
           # on every push means a layout move cannot silently break the stamp
           # again (it did, unseen, from 2026-08-26 to 2026-09-03).
-          WANT="vx $(bun -e 'console.log((await Bun.file("packages/vx/package.json").json()).version)')"
+          # This step runs from packages/vx (see the cd above), so name the
+          # manifest from the workspace root — the first run of this assertion
+          # went red on exactly that relative path (2026-09-03).
+          WANT="vx $(bun -e 'console.log((await Bun.file(process.argv[1]).json()).version)' "$GITHUB_WORKSPACE/packages/vx/package.json")"
           GOT="$(/tmp/vx-ci --version)"
           test "$GOT" = "$WANT" || { echo "binary reports '$GOT', expected '$WANT'"; exit 1; }
 
