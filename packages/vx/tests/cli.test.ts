@@ -965,6 +965,13 @@ describe('parseRunArgs', () => {
       'unknown flag: --concurency (did you mean --concurrency?)',
     )
     expect(parseRunArgs(['build', '--zzz']).error).toBe('unknown flag: --zzz')
+    // The candidate list itself: run's documented flags come from the help
+    // text's `(for run)` sections, and prune's flag is not among them.
+    const flags = documentedFlags('run')
+    expect(flags).toContain('--concurrency')
+    expect(flags).toContain('--affected')
+    expect(flags).not.toContain('--older-than')
+    expect(documentedFlags('no-such-verb')).toEqual([])
     // Another verb's flag is never suggested to `run`.
     expect(parseRunArgs(['build', '--older-tha', '1d']).error).toBe('unknown flag: --older-tha')
   })
