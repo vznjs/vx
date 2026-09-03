@@ -39,17 +39,18 @@ function field(h: Uint8Array, off: number, len: number): string {
 }
 
 function octal(h: Uint8Array, off: number, len: number): number {
-  const s = field(h, off, len).trim()
-  if (s === '') return 0
   // GNU base-256 (high bit set) for sizes ≥ 8 GiB.
   if (h[off]! & 0x80) {
     let n = 0
     for (let i = off + 1; i < off + len; i++) n = n * 256 + h[i]!
     return n
   }
-  const n = parseInt(s, 8)
-  if (!Number.isFinite(n)) throw new TarFormatError(`bad octal field: ${JSON.stringify(s)}`)
-  return n
+  const s = field(h, off, len).trim()
+  if (s === '') return 0
+  // Every digit, not the longest parseable prefix: `parseInt` would read
+  // a corrupt `5zz` as 5 and let the damage surface later, if at all.
+  if (!/^[0-7]+$/.test(s)) throw new TarFormatError(`bad octal field: ${JSON.stringify(s)}`)
+  return parseInt(s, 8)
 }
 
 function checksumOk(h: Uint8Array): boolean {

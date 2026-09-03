@@ -121,6 +121,57 @@ describe('tarEntries', () => {
     expect(names).toEqual(['2:outputs/link', '5:outputs/dir/', '0:outputs/f.txt'])
   })
 
+  it('reads a GNU base-256 size field', async () => {
+    const size = new Uint8Array(12)
+    size[0] = 0x80
+    size[11] = 5
+    const h = header({ name: 'outputs/a', size: 0, type: '0' })
+    h.set(size, 124)
+    // re-checksum after the field swap
+    h.set(enc.encode('        '), 148)
+    let sum = 0
+    for (const b of h) sum += b
+    h.set(enc.encode(sum.toString(8).padStart(6, '0') + '\0 '), 148)
+    const tar = concat(h, padTo512(enc.encode('hello')), EOF_BLOCKS)
+    expect(await collect(tar)).toEqual([{ name: 'outputs/a', size: 5, type: '0', text: 'hello' }])
+  })
+
+  it('refuses a size field that is not all octal digits, before yielding anything', async () => {
+    // `parseInt` would read the longest parseable prefix — `00000zz0000`
+    // as 0 — and the corruption would surface only as a later checksum
+    // mismatch, or not at all for `5zz`.
+    for (const junk of ['00000zz0000\0', '5zz        \0']) {
+      const h = header({ name: 'outputs/a', size: 5, type: '0' })
+      h.set(enc.encode(junk), 124)
+      h.set(enc.encode('        '), 148)
+      let sum = 0
+      for (const b of h) sum += b
+      h.set(enc.encode(sum.toString(8).padStart(6, '0') + '\0 '), 148)
+      const tar = concat(h, padTo512(enc.encode('hello')), EOF_BLOCKS)
+      const seen: string[] = []
+      await expect(
+        (async () => {
+          for await (const e of tarEntries(streamOf(tar))) seen.push(e.name)
+        })(),
+      ).rejects.toThrow(/octal/)
+      expect(seen).toEqual([])
+    }
+  })
+
+  it('refuses a pax record whose length field lies, either way', async () => {
+    for (const rec of ['40 path=outputs/p\n', '5 path=outputs/p\n']) {
+      const pax = enc.encode(rec)
+      const tar = concat(
+        header({ name: 'PaxHeaders/x', size: pax.byteLength, type: 'x' }),
+        padTo512(pax),
+        header({ name: 'outputs/q', size: 1, type: '0' }),
+        padTo512(enc.encode('z')),
+        EOF_BLOCKS,
+      )
+      await expect(collect(tar)).rejects.toThrow(/malformed pax/)
+    }
+  })
+
   it('refuses a corrupt checksum', async () => {
     const tar = concat(
       header({ name: 'outputs/f.txt', size: 3, type: '0' }),

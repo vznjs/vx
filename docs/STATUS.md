@@ -819,7 +819,12 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   output cannot be read after the plan's stat (a directory where a file
   was declared, a file removed in between) left its partial temp in
   the cache dir; the temp is unlinked on the failure now, pinned with
-  the small-path twin as a control, and the pin fails without the fix. Two more pins from the audit: a pax `path` record that renames a
+  the small-path twin as a control, and the pin fails without the fix.
+  Reader audit: a size field that is not all octal digits is refused
+  before any entry is yielded (`parseInt` read `5zz` as 5 and let the
+  damage surface later, if at all — pinned, fails without the fix); a
+  GNU base-256 size and a pax record whose length field lies either way
+  are pinned as read and refused respectively. Two more pins from the audit: a pax `path` record that renames a
   benign header to a traversal is refused with nothing written, and a
   compressed stream cut mid-archive above the threshold surfaces as
   `CorruptArtifactError` through the real cache with the staged temp
