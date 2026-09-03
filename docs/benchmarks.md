@@ -101,7 +101,7 @@ opens fastest on the restore path, where vx's per-hit work (one batched
 probe, a stat check, no extraction when the tree is already current) is
 what the others do not do.
 
-## A real monorepo: 3,270 tasks, 100 layers (2026-09-03T08:26:19.097Z)
+## A real monorepo: 3,270 tasks, 100 layers (2026-09-03T10:08:43.417Z)
 
 The shape that actually stresses a task runner: **100 dependency layers**,
 ~11 packages per layer, ~30 deps per package, three tasks each
@@ -111,13 +111,25 @@ every runner pinned to concurrency 10. `bun bench/compare.ts 100 11 1`,
 this machine (macOS arm64, 10 cores), Turbo 2.10.12, Nx 23.2.0.
 The committed `bench/RESULTS.md` / `bench/results.json` are this run.
 
-|                                 | vx         | Turborepo     | Nx                |
-| ------------------------------- | ---------- | ------------- | ----------------- |
-| **Cold** (nothing cached)       | **3m 46s** | 5m 13s (1.4×) | 34m 44s (9.2×)    |
-| **Warm**, nothing to rebuild    | **559ms**  | 760ms (1.4×)  | 3.59s (6.4×)      |
-| **Warm**, restore outputs       | **830ms**  | 1.17s (1.4×)  | 4.15s (5.0×)      |
-| **CPU burned**, cold (user+sys) | **34.33s** | 1m 13s (2.1×) | 114m 06s (199.4×) |
-| **CPU burned**, warm (user+sys) | **1.80s**  | 4.40s (2.4×)  | 5.54s (3.1×)      |
+|                                 | vx            | Turborepo     | Nx                |
+| ------------------------------- | ------------- | ------------- | ----------------- |
+| **Cold** (nothing cached)       | **3m 46s**    | 5m 13s (1.4×) | 34m 44s (9.2×)    |
+| **Warm**, nothing to rebuild    | **559ms**     | 760ms (1.4×)  | 3.59s (6.4×)      |
+| **Warm**, restore outputs       | **830ms**     | 1.17s (1.4×)  | 4.15s (5.0×)      |
+| **CPU burned**, cold (user+sys) | **34.33s**    | 1m 13s (2.1×) | 114m 06s (199.4×) |
+| **CPU burned**, warm (user+sys) | **1.80s**     | 4.40s (2.4×)  | 5.54s (3.1×)      |
+| _Baseline_ (theoretical best)   | 3m 38s        | —             | —                 |
+| _Baseline_, warm / restore      | 71ms / 299ms  | —             | —                 |
+| _Baseline_, CPU cold / warm     | 34.05s / 96ms | —             | —                 |
+
+**Baseline** is the theoretical best case, so each row shows its overhead:
+cold is the tasks' own durations list-scheduled on 10 workers along the
+exact dependency graph (critical path 1m 40s, total work ÷
+workers 3m 38s); warm is ONE `git status -uall` walk — the floor
+of asking what changed; restore adds a raw copy of every output file; CPU
+is the tasks' own shells (one measured spawn × the task count) plus that
+walk. vx's cold overhead over the ideal schedule is
+8 s on 3,270 tasks.
 
 **CPU** is user + system time of the invocation and every child it
 waited for. The tasks are `sleep`, so this is the runner's own work; a

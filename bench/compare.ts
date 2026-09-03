@@ -446,7 +446,7 @@ function fmt(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`
 }
 
-function markdown(rows: Row[]): string {
+function markdown(rows: Row[], baseline: Baseline): string {
   const vx = rows.find((r) => r.runner === 'vx')
   const speed = (
     row: Row,
@@ -468,6 +468,7 @@ function markdown(rows: Row[]): string {
 
 | Runner | Version | Fresh (cold) | Warm (no restore) | Warm (restore) | CPU, cold | CPU, warm |
 | ------ | ------- | ------------ | ----------------- | -------------- | --------- | --------- |
+| baseline (ideal) | — | ${fmt(baseline.fresh)} | ${fmt(baseline.warmNoRestore)} | ${fmt(baseline.warmRestore)} | ${fmt(baseline.freshCpu)} | ${fmt(baseline.warmNoRestoreCpu)} |
 `
   const body = rows
     .map(
@@ -482,6 +483,13 @@ derivation + execution + save). *Warm, no restore* re-runs with the cache
 warm and outputs intact (the steady-state dev loop). *Warm, restore*
 deletes every \`dist/\` first, so the runner restores outputs from cache.
 
+**Baseline** is the theoretical best case, so each row shows its overhead:
+cold is the tasks' own durations list-scheduled on ${CONCURRENCY} workers along the
+exact dependency graph (critical path ${fmt(baseline.criticalPathMs)}, total work ÷ workers
+${fmt(baseline.workBoundMs)}); warm is ONE \`git status -uall\` walk — the floor of asking
+what changed; restore adds a raw copy of every output file; CPU is the tasks'
+own shells (one measured spawn × the task count) plus that walk.
+
 **CPU** is user + system time of the invocation and every child it waited
 for (the tasks themselves are \`sleep\`, so this is the runner's own
 work). A daemon that outlives the invocation (Turbo's, Nx's) is not
@@ -493,22 +501,233 @@ Reproduce: \`bun bench/compare.ts ${LAYERS} ${PER_LAYER} ${REPS}\`.
 
 // ---- main ----
 
+// ---- baseline: the theoretical best case, so every bar shows its overhead ----
+//
+// Cold: the tasks' own durations list-scheduled on CONCURRENCY workers along
+// the exact dependency graph (a greedy schedule; with uniform durations it
+// is within one task of optimal and never below the true lower bound
+// max(critical path, total work / workers)). Warm: nothing executes, but a
+// correct cached runner must still ask git what changed — ONE
+// `git status --porcelain -uall` walk is the floor, measured. Restore: that
+// walk plus a raw copy of every output file back into place, measured. CPU:
+// the tasks' own shells (one measured spawn × the task count) plus the walk.
+type Baseline = {
+  fresh: number
+  warmNoRestore: number
+  warmRestore: number
+  freshCpu: number
+  warmNoRestoreCpu: number
+  criticalPathMs: number
+  workBoundMs: number
+}
+
+function idealMakespanMs(sleepMs: number): { makespan: number; critical: number; work: number } {
+  // Nodes: per package build (sleep), installDeps (0), test (sleep).
+  // build → installDeps → ^build (deps' builds); test → installDeps.
+  type Node = { dur: number; deps: number[]; succ: number[]; indeg: number; id: string }
+  const nodes: Node[] = []
+  const idOf = new Map<string, number>()
+  const add = (id: string, dur: number): number => {
+    idOf.set(id, nodes.length)
+    nodes.push({ dur, deps: [], succ: [], indeg: 0, id })
+    return nodes.length - 1
+  }
+  for (let layer = 1; layer <= LAYERS; layer++) {
+    for (let idx = 1; idx <= (layer === LAYERS ? 1 : PER_LAYER); idx++) {
+      const name = pkgName(layer, idx)
+      add(`${name}#installDeps`, 0)
+      add(`${name}#build`, sleepMs)
+      add(`${name}#test`, sleepMs)
+    }
+  }
+  const link = (from: string, to: string): void => {
+    const a = idOf.get(from)!
+    const b = idOf.get(to)!
+    nodes[a]!.succ.push(b)
+    nodes[b]!.deps.push(a)
+    nodes[b]!.indeg++
+  }
+  for (let layer = 1; layer <= LAYERS; layer++) {
+    for (let idx = 1; idx <= (layer === LAYERS ? 1 : PER_LAYER); idx++) {
+      const name = pkgName(layer, idx)
+      link(`${name}#installDeps`, `${name}#build`)
+      link(`${name}#installDeps`, `${name}#test`)
+      for (const dep of Object.keys(depsFor(layer, idx)))
+        link(`${dep}#build`, `${name}#installDeps`)
+    }
+  }
+  // Critical path (longest path by duration) via topological order.
+  const order: number[] = []
+  const indeg = nodes.map((n) => n.indeg)
+  const q = nodes.map((_, i) => i).filter((i) => indeg[i] === 0)
+  while (q.length > 0) {
+    const i = q.shift()!
+    order.push(i)
+    for (const s of nodes[i]!.succ) if (--indeg[s]! === 0) q.push(s)
+  }
+  const dist: number[] = Array.from({ length: nodes.length }, () => 0)
+  for (const i of order) {
+    dist[i] = Math.max(dist[i]!, nodes[i]!.dur)
+    for (const s of nodes[i]!.succ) dist[s] = Math.max(dist[s]!, dist[i]! + nodes[s]!.dur)
+  }
+  const critical = Math.max(...dist)
+  const work = nodes.reduce((a, n) => a + n.dur, 0)
+  // Bottom level: the longest path from a node to any sink. An ideal
+  // scheduler runs the node that gates the most downstream work first —
+  // FIFO would start a layer's tests before its builds and starve the next
+  // layer (it read 4m 58s here, above vx's own measured 3m 46s).
+  const level: number[] = Array.from({ length: nodes.length }, () => 0)
+  for (let k = order.length - 1; k >= 0; k--) {
+    const i = order[k]!
+    let best = 0
+    for (const s of nodes[i]!.succ) best = Math.max(best, level[s]!)
+    level[i] = nodes[i]!.dur + best
+  }
+  // Greedy critical-path-first list schedule on CONCURRENCY workers.
+  const ready: number[] = nodes.map((_, i) => i).filter((i) => nodes[i]!.indeg === 0)
+  const remaining = nodes.map((n) => n.indeg)
+  const running: Array<{ end: number; node: number }> = []
+  let now = 0
+  let makespan = 0
+  const start = (i: number): void => {
+    running.push({ end: now + nodes[i]!.dur, node: i })
+  }
+  const takeReady = (): number => {
+    let bi = 0
+    for (let k = 1; k < ready.length; k++) if (level[ready[k]!]! > level[ready[bi]!]!) bi = k
+    return ready.splice(bi, 1)[0]!
+  }
+  while (ready.length > 0 || running.length > 0) {
+    // zero-duration nodes complete instantly; start as many as fit
+    while (ready.length > 0 && running.length < CONCURRENCY) start(takeReady())
+    if (running.length === 0) break
+    running.sort((a, b) => a.end - b.end)
+    const next = running.shift()!
+    now = next.end
+    makespan = Math.max(makespan, now)
+    for (const s of nodes[next.node]!.succ) if (--remaining[s]! === 0) ready.push(s)
+    // drain everything else finishing at the same instant
+    while (running.length > 0 && running[0]!.end === now) {
+      const r = running.shift()!
+      for (const s of nodes[r.node]!.succ) if (--remaining[s]! === 0) ready.push(s)
+    }
+  }
+  // A list schedule is never below the true lower bound and, with uniform
+  // durations, never above the work bound by more than one task.
+  const lower = Math.max(critical, work / CONCURRENCY)
+  if (makespan < lower - 1e-6 || makespan > work / CONCURRENCY + critical + sleepMs) {
+    throw new Error(`ideal schedule out of bounds: ${makespan} vs lower ${lower}`)
+  }
+  return { makespan, critical, work }
+}
+
+async function measureBaseline(dir: string): Promise<Baseline> {
+  const sleepMs = Number(BUILD_SLEEP) * 1000
+  const ideal = idealMakespanMs(sleepMs)
+  // The floor of "did anything change": one untracked walk, best of 5.
+  const status = ['git', 'status', '--porcelain', '-z', '-uall']
+  const walks: Array<{ ms: number; cpuMs: number }> = []
+  for (let i = 0; i < 5; i++) walks.push(await sh(status, dir))
+  const walk = walks.sort((a, b) => a.ms - b.ms)[0]!
+  // The floor of restoring: every output file written back from a pristine
+  // copy, best of 3 (the outputs are exactly what `build` produces).
+  const snapshot = path.join(dir, '.baseline-outputs')
+  await rm(snapshot, { recursive: true, force: true })
+  await mkdir(snapshot, { recursive: true })
+  const pkgDirs: string[] = []
+  for (let layer = 1; layer <= LAYERS; layer++) {
+    for (let idx = 1; idx <= (layer === LAYERS ? 1 : PER_LAYER); idx++) {
+      pkgDirs.push(pkgDirName(layer, idx))
+    }
+  }
+  for (const d of pkgDirs) {
+    await mkdir(path.join(snapshot, d, 'dist'), { recursive: true })
+    await writeFile(path.join(snapshot, d, 'dist', 'index.js'), '')
+  }
+  const copies: number[] = []
+  for (let i = 0; i < 3; i++) {
+    await deleteDist(dir)
+    const t0 = Bun.nanoseconds()
+    await Promise.all(
+      pkgDirs.map(async (d) => {
+        await mkdir(path.join(dir, 'packages', d, 'dist'), { recursive: true })
+        await Bun.write(
+          path.join(dir, 'packages', d, 'dist', 'index.js'),
+          Bun.file(path.join(snapshot, d, 'dist', 'index.js')),
+        )
+      }),
+    )
+    copies.push((Bun.nanoseconds() - t0) / 1e6)
+  }
+  await rm(snapshot, { recursive: true, force: true })
+  const copy = Math.min(...copies)
+  // The tasks' own CPU: the exact commands under the thinnest runner there
+  // is — `xargs -P CONCURRENCY sh -c` — in one resource-usage reading.
+  // Sampling one spawn at a time over-counted process creation (it read
+  // above vx's whole cold run); xargs's own CPU is noise, and this is the
+  // floor every runner's "CPU, cold" is measured against.
+  const cmds: string[] = []
+  for (const d of pkgDirs) {
+    const cwd = path.join(dir, 'packages', d)
+    cmds.push(
+      `cd ${cwd} && ${BUILD_CMD}`,
+      `cd ${cwd} && ${TEST_CMD}`,
+      `cd ${cwd} && ${INSTALL_CMD}`,
+    )
+  }
+  const list = path.join(dir, '.baseline-cmds.txt')
+  await writeFile(list, cmds.join('\n') + '\n')
+  // Best of two: the same 3,270 shells read 33.5 s and 34.9 s back to back
+  // (2026-09-03), so one reading has ±1 s of noise — the size of a good
+  // runner's entire overhead.
+  const xargsCpu: number[] = []
+  for (let i = 0; i < 2; i++) {
+    const xargs = await sh(['sh', '-c', `xargs -P ${CONCURRENCY} -I{} sh -c '{}' < ${list}`], dir)
+    if (!xargs.ok) throw new Error(`baseline xargs failed:\n${xargs.out.slice(-500)}`)
+    xargsCpu.push(xargs.cpuMs)
+    await deleteDist(dir)
+  }
+  await rm(list, { force: true })
+  const tasksCpu = Math.min(...xargsCpu)
+  return {
+    fresh: ideal.makespan,
+    warmNoRestore: walk.ms,
+    warmRestore: walk.ms + copy,
+    freshCpu: tasksCpu + walk.cpuMs,
+    warmNoRestoreCpu: walk.cpuMs,
+    criticalPathMs: ideal.critical,
+    workBoundMs: ideal.work / CONCURRENCY,
+  }
+}
+
+const BASELINE_ONLY = process.env['BASELINE_ONLY'] === '1'
+
 const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-compare-'))
 
 console.error(`scaffolding ${PACKAGES} packages × ${LAYERS} layers in ${ws} …`)
 await generate(ws)
 
-console.error('installing turbo + nx into the workspace …')
-const install = await sh(['bun', 'add', '-d', 'turbo', 'nx', '--no-save'], ws).catch(() => null)
-if (!install || !install.ok) await sh(['bun', 'add', '-d', 'turbo', 'nx'], ws)
-
-const runners = await buildRunners(ws)
-await gitInit(ws)
-console.error(`runners: ${runners.map((r) => `${r.name}@${r.version}`).join(', ')}`)
+let rows: Row[] = []
+let runners: Runner[] = []
+if (BASELINE_ONLY) {
+  // Recompute only the baseline against the committed rows (the full
+  // comparison is ~50 minutes; the floors take one).
+  const prior = JSON.parse(await Bun.file(path.join(vxRoot, 'bench', 'results.json')).text()) as {
+    rows: Row[]
+  }
+  rows = prior.rows
+  await gitInit(ws)
+} else {
+  console.error('installing turbo + nx into the workspace …')
+  const install = await sh(['bun', 'add', '-d', 'turbo', 'nx', '--no-save'], ws).catch(() => null)
+  if (!install || !install.ok) await sh(['bun', 'add', '-d', 'turbo', 'nx'], ws)
+  runners = await buildRunners(ws)
+  await gitInit(ws)
+  console.error(`runners: ${runners.map((r) => `${r.name}@${r.version}`).join(', ')}`)
+}
 
 // Runners are measured ONE AT A TIME (never concurrently) so they don't
 // fight over CPU/disk and skew each other's timings.
-const rows: Row[] = []
 for (const r of runners) {
   await quiesce(ws)
   console.error(`measuring ${r.name} …`)
@@ -530,7 +749,9 @@ for (const r of runners) {
   }
 }
 
-const md = markdown(rows)
+console.error('measuring the baseline (ideal schedule, one git walk, a raw copy) …')
+const baseline = await measureBaseline(ws)
+const md = markdown(rows, baseline)
 await writeFile(path.join(vxRoot, 'bench', 'RESULTS.md'), md)
 await writeFile(
   path.join(vxRoot, 'bench', 'results.json'),
@@ -545,6 +766,7 @@ await writeFile(
       buildSleep: BUILD_SLEEP,
       date: new Date().toISOString(),
       rows,
+      baseline,
     },
     null,
     2,

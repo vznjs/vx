@@ -9,17 +9,25 @@
 - **Host:** Darwin 27.0.0 · 10 cores · darwin/arm64
 - **Date:** 2026-09-03
 
-| Runner      | Version  | Fresh (cold)      | Warm (no restore) | Warm (restore)   | CPU, cold           | CPU, warm        |
-| ----------- | -------- | ----------------- | ----------------- | ---------------- | ------------------- | ---------------- |
-| vx          | vx 0.0.0 | 3m 46s            | 559 ms            | 830 ms           | 34.33 s             | 1.80 s           |
-| vx (frozen) | vx 0.0.0 | 3m 47s (1.0× vx)  | 616 ms (1.1× vx)  | 822 ms (1.0× vx) | 35.76 s (1.0× vx)   | 1.63 s (0.9× vx) |
-| turbo       | 2.10.12  | 5m 13s (1.4× vx)  | 760 ms (1.4× vx)  | 1.17 s (1.4× vx) | 1m 13s (2.1× vx)    | 4.40 s (2.4× vx) |
-| nx          | 23.2.0   | 34m 44s (9.2× vx) | 3.59 s (6.4× vx)  | 4.15 s (5.0× vx) | 114m 6s (199.4× vx) | 5.54 s (3.1× vx) |
+| Runner           | Version  | Fresh (cold)      | Warm (no restore) | Warm (restore)   | CPU, cold           | CPU, warm        |
+| ---------------- | -------- | ----------------- | ----------------- | ---------------- | ------------------- | ---------------- |
+| baseline (ideal) | —        | 3m 38s            | 71 ms             | 299 ms           | 34.05 s             | 96 ms            |
+| vx               | vx 0.0.0 | 3m 46s            | 559 ms            | 830 ms           | 34.33 s             | 1.80 s           |
+| vx (frozen)      | vx 0.0.0 | 3m 47s (1.0× vx)  | 616 ms (1.1× vx)  | 822 ms (1.0× vx) | 35.76 s (1.0× vx)   | 1.63 s (0.9× vx) |
+| turbo            | 2.10.12  | 5m 13s (1.4× vx)  | 760 ms (1.4× vx)  | 1.17 s (1.4× vx) | 1m 13s (2.1× vx)    | 4.40 s (2.4× vx) |
+| nx               | 23.2.0   | 34m 44s (9.2× vx) | 3.59 s (6.4× vx)  | 4.15 s (5.0× vx) | 114m 6s (199.4× vx) | 5.54 s (3.1× vx) |
 
 **Cache states.** _Fresh_ clears the runner's cache and runs cold (key
 derivation + execution + save). _Warm, no restore_ re-runs with the cache
 warm and outputs intact (the steady-state dev loop). _Warm, restore_
 deletes every `dist/` first, so the runner restores outputs from cache.
+
+**Baseline** is the theoretical best case, so each row shows its overhead:
+cold is the tasks' own durations list-scheduled on 10 workers along the
+exact dependency graph (critical path 1m 40s, total work ÷ workers
+3m 38s); warm is ONE `git status -uall` walk — the floor of asking
+what changed; restore adds a raw copy of every output file; CPU is the tasks'
+own shells (one measured spawn × the task count) plus that walk.
 
 **CPU** is user + system time of the invocation and every child it waited
 for (the tasks themselves are `sleep`, so this is the runner's own

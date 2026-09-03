@@ -6,7 +6,7 @@
   "concurrency": 10,
   "reps": 1,
   "buildSleep": "1",
-  "date": "2026-09-03T08:26:19.097Z",
+  "date": "2026-09-03T10:08:43.417Z",
   "rows": [
     {
       "runner": "vx",
@@ -48,5 +48,14 @@
       "warmNoRestoreCpu": 5540.269,
       "warmRestoreCpu": 6690.947
     }
-  ]
+  ],
+  "baseline": {
+    "fresh": 218000,
+    "warmNoRestore": 70.696292,
+    "warmRestore": 298.510042,
+    "freshCpu": 34048.314,
+    "warmNoRestoreCpu": 96.318,
+    "criticalPathMs": 100000,
+    "workBoundMs": 218000
+  }
 }

@@ -129,6 +129,7 @@ const benchRows = [
   {
     task: 'Cold build · from scratch',
     bars: [
+      { name: 'baseline', val: 218000, disp: '3m 38s', c: 'var(--c-baseline)' },
       { name: 'vx', val: 226154, disp: '3m 46s', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 313463, disp: '5m 13s', c: 'var(--c-turbo)' },
       { name: 'nx', val: 2084171, disp: '34m 44s', c: 'var(--c-nx)' },
@@ -137,6 +138,7 @@ const benchRows = [
   {
     task: 'Fully cached · nothing to rebuild',
     bars: [
+      { name: 'baseline', val: 71, disp: '71ms', c: 'var(--c-baseline)' },
       { name: 'vx', val: 559, disp: '559ms', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 760, disp: '760ms', c: 'var(--c-turbo)' },
       { name: 'nx', val: 3594, disp: '3.59s', c: 'var(--c-nx)' },
@@ -145,6 +147,7 @@ const benchRows = [
   {
     task: 'Restoring outputs · cache → disk',
     bars: [
+      { name: 'baseline', val: 299, disp: '299ms', c: 'var(--c-baseline)' },
       { name: 'vx', val: 830, disp: '830ms', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 1174, disp: '1.17s', c: 'var(--c-turbo)' },
       { name: 'nx', val: 4149, disp: '4.15s', c: 'var(--c-nx)' },
@@ -153,6 +156,7 @@ const benchRows = [
   {
     task: 'CPU burned · cold build, user + system',
     bars: [
+      { name: 'baseline', val: 34048, disp: '34.05s', c: 'var(--c-baseline)' },
       { name: 'vx', val: 34333, disp: '34.33s', c: 'var(--phosphor)', best: true },
       { name: 'turbo', val: 73079, disp: '1m 13s', c: 'var(--c-turbo)' },
       { name: 'nx', val: 6846039, disp: '114m 06s', c: 'var(--c-nx)' },
@@ -508,7 +512,7 @@ const footCols = {
                       const pct = Math.max((b.val / rowMax) * 100, 3)
                       return (
                         <div
-                          class={`bench-bar${b.best ? ' best' : ''}`}
+                          class={`bench-bar${b.best ? ' best' : ''}${b.name === 'baseline' ? ' baseline' : ''}`}
                           style={`--c:${b.c};--w:${pct}%`}
                         >
                           <span class="name">{b.name}</span>
@@ -532,7 +536,7 @@ const footCols = {
               <code>sleep 1</code>, so the clock measures the runner and CPU measures its overhead:
               vx burned 34 s to build the whole graph cold, Turborepo 73 s, Nx 114 minutes. Warm,
               vx replays 3,270 tasks in 559 ms; Turborepo 760 ms; Nx 3.6 s. Reproduce with
-              <code>bun bench/compare.ts 100 11 1</code>; the committed results are this run.
+              <code>bun bench/compare.ts 100 11 1</code>; the committed results are this run. The dashed <em>baseline</em> bar is the theoretical best case: cold is the tasks' own 3m 38s on 10 perfectly parallel workers along the dependency graph, warm is one <code>git status</code> walk (71ms), restore adds a raw copy of every output file, and CPU is the tasks' own shells under <code>xargs</code> (34.05s) — what is left above it is the runner.
             </p>
           </div>
         </div>

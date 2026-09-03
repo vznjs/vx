@@ -48,6 +48,7 @@
   /* ---- Competitor reference swatches ---- */
   --c-turbo: #ff5e9c;
   --c-nx: #6aa8ff;
+  --c-baseline: #8a8f98;
 
   /* ---- Semantic aliases ---- */
   --bg-page: var(--ink-900);
@@ -806,6 +807,16 @@ a.platform-card:hover .learn {
 }
 .bench-bar.best .fill {
   box-shadow: 0 0 16px color-mix(in srgb, var(--c) 50%, transparent);
+}
+/* The theoretical best case: a hollow, dashed bar so the gap to it reads as overhead. */
+.bench-bar.baseline .fill {
+  background: transparent;
+  border: 1px dashed var(--c-baseline);
+  box-shadow: none;
+}
+.bench-bar.baseline .name,
+.bench-bar.baseline .disp {
+  color: var(--c-baseline);
 }
 @keyframes bench-grow {
   from {

@@ -575,6 +575,28 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   row is the number that travels between machines. Landing page rows,
   tiles and note, `benchmarks.md` § A real monorepo, and the committed
   `bench/RESULTS.md` / `results.json` are this run.
+- 2026-09-03 — **baseline bars on the site: the theoretical best case,
+  so every bar shows its overhead** (owner's ask). Definition, all
+  measured or computed by `bench/compare.ts` and committed in
+  `bench/results.json` (`baseline`): cold = the 3,270 tasks' own
+  durations list-scheduled critical-path-first on 10 workers along the
+  exact dependency graph (3m 38s — the work bound, 2,180 task-seconds ÷
+  10; the critical path is 100 s); warm = one `git status -uall` walk,
+  the floor of asking what changed (71 ms); restore = that walk plus a
+  raw copy of every output file (299 ms); CPU = the exact commands under
+  the thinnest runner, `xargs -P 10 sh -c`, best of two readings
+  (34.05 s; single readings of the same shells varied 33.5–34.9 s). Two
+  wrong turns recorded: a FIFO list schedule read 4m 58s, ABOVE vx's
+  measured cold run, because it starts a layer's tests before its builds
+  and starves the next layer — an ideal scheduler is critical-path-first;
+  and sampling one shell at a time over-counted process creation (38.6 s
+  of "floor" against vx's 34.3 s whole run). Read against the floor: vx's
+  overhead is 8 s cold (3.7%), 488 ms warm, 531 ms restore, and 0.3 s of
+  CPU — inside the floor's noise; Turbo's 95 s cold and 39 s of CPU;
+  Nx's 31 minutes and 114 minutes. `BASELINE_ONLY=1` recomputes the
+  floors against the committed rows in ~9 minutes. Dashed grey bar on
+  the landing chart, a legend sentence in the note, rows in
+  `bench/RESULTS.md` and `benchmarks.md` § A real monorepo.
 
 ## In flight
 
