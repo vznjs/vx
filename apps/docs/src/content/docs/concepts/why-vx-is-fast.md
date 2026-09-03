@@ -14,10 +14,11 @@ These are reproducible on your own machine, not marketing figures:
 
 - **vx alone** — `bun bench/run.ts [projects]` measures vx across
   fresh / warm-no-restore / warm-restore. A 100-project workspace
-  replays fully-cached in **~144 ms**; restore costs about the same as an
-  untouched tree.
+  replays fully-cached in **~75 ms** whole-process (1,000 projects in
+  ~170 ms), and a restore costs about the same as an untouched tree;
+  the current floors are in [Benchmarks](../../benchmarks/).
 - **Head-to-head vs Turborepo and Nx** — `bun bench/compare.ts` scaffolds
-  one repo (1000 packages, 10 dependency layers, a `build` + `test` task
+  one repo (1,090 packages, 100 dependency layers, a `build` + `test` task
   each) and runs all three runners across the same three cache states.
   vx leads on the warm paths; the committed results live in
   [Benchmarks](../../benchmarks/). Run it yourself — every number here is
@@ -71,9 +72,13 @@ Speed by subtraction is still speed:
 
 - **No daemon / project-graph process** — the cold numbers say it isn't
   needed.
-- **No config-eval cache** — configs are programs; a sound cache would
-  need a correctness-critical purity heuristic for a ~200 ms win. Not
-  worth the risk.
+- **A config-eval cache only where it is provably sound** — configs
+  are programs, so the cache is gated, not heuristic: a config that
+  reads the environment, the clock, or anything non-deterministic is
+  refused the cache outright (denied identifiers, including escaped and
+  aliased spellings), and one that passes is keyed by the git blob ids
+  of its whole import closure. Worth ~20 ms of the 1,000-project warm
+  run; a refused config simply evaluates live.
 - **No filesystem-tracing auto-inputs.** Not a gap — a position. A
   traced input set describes what the task read *that time*, on that
   machine, which is not the same as what it depends on; and it cannot be
