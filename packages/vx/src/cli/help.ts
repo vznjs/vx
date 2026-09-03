@@ -150,7 +150,19 @@ export function helpText(pluginCommands: readonly string[] = []): string {
   ].join('\n')
 }
 
-/** The documented `--flags`, read from the help text so there is no second list to drift. */
-export function documentedFlags(): string[] {
-  return [...new Set(helpText().match(/--[a-zA-Z][a-zA-Z-]*/g) ?? [])]
+/**
+ * The documented `--flags` of one verb, read from the help text's
+ * sections headed `… (for <verb>):` so there is no second list to drift —
+ * and no hint that names another verb's flag.
+ */
+export function documentedFlags(verb: string): string[] {
+  const flags = new Set<string>()
+  let inVerb = false
+  for (const line of helpText().split('\n')) {
+    if (/^[A-Z][A-Za-z ]*(?: \(for [a-z]+\))?:$/.test(line))
+      inVerb = line.endsWith(`(for ${verb}):`)
+    if (!inVerb) continue
+    for (const f of line.match(/--[a-zA-Z][a-zA-Z-]*/g) ?? []) flags.add(f)
+  }
+  return [...flags]
 }

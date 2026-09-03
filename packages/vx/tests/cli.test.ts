@@ -965,6 +965,8 @@ describe('parseRunArgs', () => {
       'unknown flag: --concurency (did you mean --concurrency?)',
     )
     expect(parseRunArgs(['build', '--zzz']).error).toBe('unknown flag: --zzz')
+    // Another verb's flag is never suggested to `run`.
+    expect(parseRunArgs(['build', '--older-tha', '1d']).error).toBe('unknown flag: --older-tha')
   })
 
   it('parses --cache-dir (space + = forms) without colliding with --cache', () => {

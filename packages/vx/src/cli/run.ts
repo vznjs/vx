@@ -864,7 +864,7 @@ function didYouMeanFlag(flag: string): string {
   const name = flag.replace(/=.*$/, '')
   let best: string | undefined
   let bestD = 3
-  for (const f of documentedFlags()) {
+  for (const f of documentedFlags('run')) {
     const d = editDistance(name, f)
     if (d < bestD) {
       bestD = d
