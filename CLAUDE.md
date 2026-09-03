@@ -76,7 +76,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.test.ts`).
   `// @vx-shard-isolate` for a process of its own — `bun test` pins
   descriptors per import, see the helper's header). A plain
   `cd packages/vx && bun test --preload ./tests/setup.ts ./tests/` still
-  runs everything in one process, which is what the darwin CI job does.
+  runs everything in one process; the darwin CI job runs the same runner
+  as ONE shard (`shard.ts run 1 0`), so the isolated file gets its own
+  process there too.
 - `packages/*` suites are gated by CI's separate job; after touching a
   plugin package run its suite yourself (`vx-reapi` one process per file
   with `VX_REAPI_TEST_ENDPOINT` / `VX_REAPI_EXEC_ENDPOINT` set, or it

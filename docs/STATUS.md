@@ -532,6 +532,19 @@ then exits on SIGINT` times out again, keep that run's stdout: the
 5. **Re-measure the warm run after each day's work** — the hot path is
    the product. `bun bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap (2026-09-03: flat).
+6. **The next perf lead, measured (2026-09-03, `VX_TIMING=1`, warm 1000
+   projects, 203 ms in-process):** git enumeration 51 ms (overlapped with
+   33 ms of config loads), discover 22, classify+probe 22, run graph 46,
+   history 8. Inside run graph the accumulated cost is the OUTPUT
+   CURRENCY check: 365 ms CPU of `output glob` over 1000 warm hits
+   (0.36 ms each) plus 49 ms of stats, against 11 ms for every task
+   hash. The glob exists so a hit is "current" only when the output
+   tree equals the entry's set exactly (strict ownership). The obvious
+   design is a directory-mtime short-circuit — record each output
+   directory's mtime at save/restore, skip the glob while it matches —
+   but `isOutputsCurrent` is stale-hit-critical: design it with the
+   accepted `touch -r` trade in view, pin both directions, and MEASURE
+   before claiming the ~15% it suggests.
 
 The audit rotation continues by the standing rule: newest code first,
 probes become tests, refutations recorded in the shipped entry that
