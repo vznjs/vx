@@ -31,48 +31,114 @@ export default defineProject({
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
     },
 
+    // The suite runs as FOUR parallel processes (tests/helpers/shard.ts
+    // deals the files longest-first by cost), each its own cached task.
+    // One process took ~145 s; four take ~40 s wall on ten cores, and
+    // separate processes are stricter than one — a spy or global leaked by
+    // one file cannot reach another shard, which a single process hid once.
+    //
+    // Every shard declares the SAME inputs, deliberately: the shard helper
+    // reads the whole tests/ directory to deal the files, so a file added
+    // anywhere can move any shard's list. The helper runs `bun test` with
+    // --preload tests/setup.ts (a global cwd-restore guard, so a chdir'ing
+    // suite can never leak its cwd into the next file) and gives a file
+    // marked `@vx-shard-isolate` a process of its own — `bun test` pins
+    // descriptors per imported module, and one fixture importing 2 000
+    // configs hits the macOS cap for every file after it. The child env is
+    // isolated, so the sandbox
+    // gate's switch has to be forwarded explicitly (tests/helpers/sandbox-gate.ts)
+    // AND folded into the key — a green artifact from a run that SKIPPED
+    // the sandbox tests must not restore into one that requires them.
+    // The suite reads outside its own project: the doc-drift tests assert
+    // `docs/cli.md` / `docs/schema.md` and `package-boundaries` scans every
+    // sibling's `src/`; declared by name, not `docs/**`.
     test: {
-      description: 'bun test against the tests/ tree',
-      // Scope to ./tests so workspace-member tests (packages/**/tests/) stay
-      // isolated to their own packages — `bun test` without a path scans
-      // recursively, and a bare `tests/` filter substring-matches a package's
-      // own tests dir too. The leading `./` anchors the scan to the root
-      // tests/ dir only. `bun test` from a clean root still runs everything.
-      // --preload wires a global cwd-restore guard (tests/setup.ts) so a
-      // chdir'ing suite can never leak its cwd into the next file — Bun shares
-      // one process across files and does NOT restore cwd at the boundary.
+      description: 'bun test against the tests/ tree (four shards)',
+      dependsOn: ['test.0', 'test.1', 'test.2', 'test.3'],
+    },
+
+    'test.0': {
+      description: 'bun test, shard 0 of 4 (tests/helpers/shard.ts)',
       exec: {
-        command: 'bun test --preload ./tests/setup.ts ./tests/',
-        // The child env is isolated, so the sandbox gate's switch has to be
-        // forwarded explicitly (see tests/helpers/sandbox-gate.ts).
+        command: 'bun tests/helpers/shard.ts run 4 0',
         env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
       },
       dependsOn: ['install'],
       cache: {
         inputs: {
           files: ['src/**', 'tests/**', 'package.json'],
-          // The suite reads outside its own project, and both reaches are
-          // load-bearing rather than incidental: the doc-drift tests assert
-          // `docs/cli.md` and `docs/schema.md` against the parser and the
-          // loader, and `package-boundaries` scans every sibling's `src/`.
-          // Undeclared, editing `docs/cli.md` left this task on a cache hit
-          // and the drift test never re-ran — the exact thing it exists to
-          // catch. Remote execution is what surfaced it: locally the files
-          // are on disk whether declared or not.
-          // Named exactly, not `docs/**`: the two files the drift tests read
-          // are the only ones that matter, and a broad glob would put the
-          // 1 MB decision-log archive in every action's input tree and re-run
-          // the whole suite whenever the log gains an entry.
           workspaceFiles: [
             'docs/cli.md',
             'docs/schema.md',
             'packages/*/src/**',
             'packages/*/package.json',
           ],
-          // Folded into the KEY as well, which passThrough alone does not do.
-          // Without it a green artifact from a run that SKIPPED the 21 sandbox
-          // tests restores into a run that was supposed to require them — the
-          // hole in the fix, not a nicety.
+          env: ['VX_REQUIRE_SANDBOX'],
+        },
+        outputs: { files: [] },
+      },
+    },
+
+    'test.1': {
+      description: 'bun test, shard 1 of 4 (tests/helpers/shard.ts)',
+      exec: {
+        command: 'bun tests/helpers/shard.ts run 4 1',
+        env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+      },
+      dependsOn: ['install'],
+      cache: {
+        inputs: {
+          files: ['src/**', 'tests/**', 'package.json'],
+          workspaceFiles: [
+            'docs/cli.md',
+            'docs/schema.md',
+            'packages/*/src/**',
+            'packages/*/package.json',
+          ],
+          env: ['VX_REQUIRE_SANDBOX'],
+        },
+        outputs: { files: [] },
+      },
+    },
+
+    'test.2': {
+      description: 'bun test, shard 2 of 4 (tests/helpers/shard.ts)',
+      exec: {
+        command: 'bun tests/helpers/shard.ts run 4 2',
+        env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+      },
+      dependsOn: ['install'],
+      cache: {
+        inputs: {
+          files: ['src/**', 'tests/**', 'package.json'],
+          workspaceFiles: [
+            'docs/cli.md',
+            'docs/schema.md',
+            'packages/*/src/**',
+            'packages/*/package.json',
+          ],
+          env: ['VX_REQUIRE_SANDBOX'],
+        },
+        outputs: { files: [] },
+      },
+    },
+
+    'test.3': {
+      description: 'bun test, shard 3 of 4 (tests/helpers/shard.ts)',
+      exec: {
+        command: 'bun tests/helpers/shard.ts run 4 3',
+        env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+      },
+      dependsOn: ['install'],
+      cache: {
+        inputs: {
+          files: ['src/**', 'tests/**', 'package.json'],
+          workspaceFiles: [
+            'docs/cli.md',
+            'docs/schema.md',
+            'packages/*/src/**',
+            'packages/*/package.json',
+          ],
           env: ['VX_REQUIRE_SANDBOX'],
         },
         outputs: { files: [] },

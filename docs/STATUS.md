@@ -224,6 +224,25 @@ Process: push directly to `main`, no PRs. Gate before every push:
   why plugin verbs could not be looked up). CONFIRMED and fixed:
   `migrate-scripts` enumerated a non-object `scripts` field's indices as
   script names. Both pinned.
+- 2026-09-03 — **the core suite runs as four shards** (`test.0`–`test.3`,
+  `tests/helpers/shard.ts run 4 <i>`), longest-first by a
+  `// @vx-shard-cost <s>` hint or file size: the gate's test stage went
+  from ~145 s in one process to ~50 s wall. Shard 2 failed
+  deterministically at first with `EBADF … posix_spawn git` from the
+  fourth file on, and the cause is the RUNNER, not vx: under `bun test`
+  every dynamically imported module pins ~2 descriptors (plus 2–3 per
+  directory) for the life of the process, released by nothing, while the
+  same code under plain `bun` pins none (measured 50 imports: 115 vs 0).
+  `scale-graph` imports 2 000 configs, parks the process at the
+  10 240-descriptor macOS cap, and the next spawn anywhere dies. The
+  single-process suite survives only because that file sorts late. Now a
+  file marked `// @vx-shard-isolate` gets its own process, and
+  `tests/bun-test-import-descriptors.test.ts` pins the leak (darwin) so
+  the hint can go when Bun fixes it — a Bun issue worth filing. Method
+  note that cost an hour: zsh does not word-split an unquoted `$VAR`, so
+  a file list in a variable reached `bun test` as ONE argument matching
+  nothing, and every "passing" bisection arm had run zero tests. Assert
+  the count of tests run, not just the count of failures.
 
 ## In flight
 

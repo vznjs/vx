@@ -9,10 +9,10 @@ The number that matters most to a developer is the warm no-op run: every
 task a cache hit, nothing to restore. `bench/generate.ts` workspaces,
 `vx run build --all`, this machine (macOS arm64, Bun 1.4.0), best of 5:
 
-| Projects | Before (2026-09-02 morning) | Wave 1  | Wave 2  | What changed                                                    |
-| -------- | --------------------------- | ------- | ------- | --------------------------------------------------------------- |
-| 100      | 105 ms                      | 92 ms   | 79 ms   | git overlaps config load; `.git/HEAD` read replaces a git spawn |
-| 1000     | 380–450 ms                  | 270 ms  | 242 ms  | + cached pure-config evals; one worktree walk; readdir discovery |
+| Projects | Before (2026-09-02 morning) | Wave 1  | Wave 2  | Wave 5  | What changed                                                                       |
+| -------- | --------------------------- | ------- | ------- | ------- | ---------------------------------------------------------------------------------- |
+| 100      | 105 ms                      | 92 ms   | 79 ms   | 78 ms   | git overlaps config load; `.git/HEAD` read replaces a git spawn; batched probe      |
+| 1000     | 380–450 ms                  | 270 ms  | 242 ms  | 237 ms  | + cached pure-config evals; one worktree walk; readdir discovery; batched probe    |
 
 Wave 3 (batched short-circuit probe, output rows carried on the entry,
 memoised `Bun.Glob`s) measured on the graph WITH dependencies —

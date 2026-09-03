@@ -252,10 +252,14 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # The same invocation the `test` task runs (vx.config.ts), so the two
-      # platforms execute an identical suite.
+      # The same runner the `test.*` tasks use (vx.config.ts), as ONE shard,
+      # so the two platforms execute an identical suite — including the
+      # process of its own that `@vx-shard-isolate` gives scale-graph. That
+      # matters most here: `bun test` pins descriptors per imported module
+      # and macOS caps a process at 10 240, so one process running every
+      # file survives only by file order (tests/helpers/shard.ts).
       - name: bun test (core, darwin)
-        run: cd packages/vx && bun test --preload ./tests/setup.ts ./tests/
+        run: cd packages/vx && bun tests/helpers/shard.ts run 1 0
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
       # darwin CI because sandbox-exec misbehaves under load here — including

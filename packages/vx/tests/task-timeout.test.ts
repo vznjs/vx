@@ -5,6 +5,7 @@
 // killed (SIGTERM) and reported `failed` — never cached. The run-level
 // defaults are threaded as options only, so they never touch a cache key.
 
+// @vx-shard-cost 6  (measured 2026-09-03; see tests/helpers/shard.ts)
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'

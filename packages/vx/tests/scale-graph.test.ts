@@ -14,6 +14,8 @@
 // time (guarding ALGORITHMIC COMPLEXITY, not absolute speed), and a
 // functional pin (the graph is correct at scale, not merely fast).
 
+// @vx-shard-cost 7
+// @vx-shard-isolate  (2 000 imported configs pin ~10 000 descriptors under bun test — see tests/helpers/shard.ts)  (measured 2026-09-03; see tests/helpers/shard.ts)
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'

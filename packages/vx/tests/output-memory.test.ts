@@ -8,6 +8,7 @@
 // unbounded one, on the same machine, in the same test run — so they do
 // not encode this container's absolute numbers.
 
+// @vx-shard-cost 42  (measured 2026-09-03; see tests/helpers/shard.ts)
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 

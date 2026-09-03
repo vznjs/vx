@@ -26,6 +26,7 @@
 // entire concurrency + memory ladders, and the combined key-stability and
 // wire boundaries.
 
+// @vx-shard-cost 5  (measured 2026-09-03; see tests/helpers/shard.ts)
 import { readFileSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
