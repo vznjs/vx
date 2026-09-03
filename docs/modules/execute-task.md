@@ -157,9 +157,12 @@ behaviors with dedicated test cases:
 This module is the seam most likely to grow over time. Plausible
 extensions:
 
-- **fspy-style input tracing.** Replace the static `resolveInputs`
-  call with a wrapped runner that records reads during exec, then
-  use the observed set as the cache input on the next run.
+- **Input tracing is NOT one of them.** Recording reads during exec and
+  using the observed set as the next run's inputs is a rejected
+  approach (CLAUDE.md § Rejected): inputs stay declared and explicit.
+  What the seam does support is *proving* the declared set —
+  `--verify=inputs` runs the task under the sandbox and reports an
+  undeclared read as a finding, never as a new input.
 - **Conditional output capture.** Compress / dedupe before save.
   Hook between `resolveOutputs` and `cache.save`.
 - **Pre-spawn hooks.** Run a setup script (e.g. cgroup/limits
