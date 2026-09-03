@@ -204,6 +204,27 @@ describe('tarPack', () => {
     )
   })
 
+  it('splits exactly at the ustar limits and goes pax one byte past either', async () => {
+    // prefix ≤ 155 bytes, name ≤ 100 bytes, split at a `/`: the two
+    // exact-fit names must land in the ustar fields (no pax header), one
+    // byte more on either side must produce a pax `path` record — and all
+    // four must read back byte-identical through vx and libarchive.
+    const fit = 'p'.repeat(155) + '/' + 'n'.repeat(100)
+    const prefixOver = 'p'.repeat(156) + '/' + 'n'.repeat(100)
+    const nameOver = 'p'.repeat(155) + '/' + 'n'.repeat(101)
+    const twoSlashes = 'a'.repeat(60) + '/' + 'b'.repeat(90) + '/' + 'c'.repeat(90) // split at the last `/`
+    const names = [fit, prefixOver, nameOver, twoSlashes]
+    const inputs = names.map((name) => ({ name, size: 1, body: 'x' }))
+    const parts: Uint8Array[] = []
+    for await (const c of tarPack(inputs)) parts.push(c)
+    const tar = concat(...parts)
+    // Header count reveals the encoding: 4 entries + 2 pax headers + 2 end blocks.
+    expect(tar.byteLength).toBe(512 * (4 * 2 + 2 * 2 + 2))
+    expect((await collect(tar)).map((e) => e.name)).toEqual(names)
+    const files = await new Bun.Archive(tar).files()
+    expect([...files.keys()].sort()).toEqual([...names].sort())
+  })
+
   it('refuses a body whose length disagrees with its declared size', async () => {
     const bad = [{ name: 'outputs/x', size: 5, body: 'abc' }]
     await expect(

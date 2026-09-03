@@ -801,8 +801,12 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   not run — this box sat at load 70–97 for an hour with macOS
   `diagnosticd` pegged behind the sandbox's `log stream` consumers, and
   the e2e timeouts failed identically at HEAD in a worktree — so lint,
-  format, docs build and site-check ran locally and CI is the arbiter
-  for this commit (memory: loaded-box-gate-failures). Two more pins from the audit: a pax `path` record that renames a
+  format, docs build and site-check ran locally and CI was the arbiter
+  for that commit (memory: loaded-box-gate-failures). Once the load fell
+  under 10 the full gate passed in 63 s, 24/24 — the failures were the
+  box. A pin followed: the ustar split lands exactly at the 155-byte
+  prefix and 100-byte name limits and goes pax one byte past either,
+  read back through vx and libarchive. Two more pins from the audit: a pax `path` record that renames a
   benign header to a traversal is refused with nothing written, and a
   compressed stream cut mid-archive above the threshold surfaces as
   `CorruptArtifactError` through the real cache with the staged temp
