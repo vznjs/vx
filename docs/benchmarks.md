@@ -163,12 +163,19 @@ skips the work.
 ```bash
 bun bench/compare.ts                 # 100 layers × 11 (3,270 nodes) — the full shape (slow)
 bun bench/compare.ts 10 5 1          # 46 packages, 10 layers — quick
+BASELINE_ONLY=1 bun bench/compare.ts # recompute only the baseline floors against the committed rows (~9 min)
 BUILD_SLEEP=0 bun bench/compare.ts 20 11 2   # deep graph, pure framework overhead
 ```
 
 It writes [`bench/RESULTS.md`](https://github.com/vznjs/vx/blob/main/bench/RESULTS.md)
 (committed, so the numbers can be referenced from a commit). A quick run —
 46 packages, 10 layers, 1 s tasks, concurrency 10 for all:
+
+Since 2026-09-03 the table also carries **CPU** columns and a **baseline**
+row — the theoretical best case (an ideal schedule of the tasks, one git
+walk, a raw copy of the outputs, the commands under `xargs`), so each
+runner's row reads as overhead above it. The definitions live in the
+generated `bench/RESULTS.md`. The quick 46-package run below predates both.
 
 | Runner      | Fresh (cold)      | Warm (no restore) | Warm (restore)   |
 | ----------- | ----------------- | ----------------- | ---------------- |
