@@ -864,7 +864,12 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   temp workspace whose file imports the plugins by absolute path
   (`import.meta.resolve`) is the whole pattern — so the plugins guide
   gained § Testing your plugin with that exact test, proven against
-  the published entry points from a scratch package.
+  the published entry points from a scratch package. Also replayed
+  clean: a failing task (framed stderr, exit code, dependent skipped),
+  a persistent task with `readyWhen`, `--affected=HEAD` on a clean and a
+  dirty tree, and the policy flags `--no-cache`, `--force`, `--cache
+  local:r`, `--cache-dir`, with `--cache bogus` and `--concurrency 0`
+  refused naming the expected shape.
   Reader audit: a size field that is not all octal digits is refused
   before any entry is yielded (`parseInt` read `5zz` as 5 and let the
   damage surface later, if at all — pinned, fails without the fix); a
