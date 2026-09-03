@@ -926,7 +926,10 @@ run...` precedes it.
 2. **Watch loop.** After the initial run finishes, every project's
    directory in scope is watched recursively. The workspace root is
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
-   changes. When any project's config declares
+   changes. A task's own declared outputs (`cache.outputs.files`,
+   `outputs.workspaceFiles`) never trigger a re-run — a cycle that
+   writes `dist/` is not an edit — and neither do `node_modules`,
+   `.git` or the cache directory. When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so any workspace file can be an input). `vx watch: watching …` is

@@ -71,6 +71,30 @@ describe('the ignore filter follows the RESOLVED cache dir, not the .vx literal'
     expect(ignore(root, path.relative(root, path.join(cacheDir, 'ab', 'cd.tar.zst')))).toBe(true)
   })
 
+  it("drops a task's own declared outputs, under either watcher, and nothing beside them", () => {
+    // A cycle that writes `dist/` must not be taken for an edit: without
+    // this every edit costs a second run that reports "up-to-date".
+    const proj = path.join(root, 'packages', 'app')
+    const ignore = makeWatchIgnore(
+      path.join(root, '.vx', 'cache'),
+      new Map([
+        [proj, ['dist/**', 'out.txt']],
+        [root, ['generated/*.json']], // outputs.workspaceFiles, root-relative
+      ]),
+    )
+    // per-project watcher: paths relative to the project dir
+    expect(ignore(proj, path.join('dist', 'index.js'))).toBe(true)
+    expect(ignore(proj, 'out.txt')).toBe(true)
+    expect(ignore(proj, path.join('src', 'index.ts'))).toBe(false)
+    expect(ignore(proj, 'out.txt.bak')).toBe(false)
+    // root watcher: paths relative to the root resolve to the same project
+    expect(ignore(root, path.join('packages', 'app', 'dist', 'index.js'))).toBe(true)
+    expect(ignore(root, path.join('packages', 'app', 'src', 'index.ts'))).toBe(false)
+    expect(ignore(root, path.join('generated', 'a.json'))).toBe(true)
+    // another project's `dist/` is not this project's output
+    expect(ignore(root, path.join('packages', 'lib', 'dist', 'index.js'))).toBe(false)
+  })
+
   it('still ignores the .vx default when no override is set', () => {
     const ignore = makeWatchIgnore(path.join(root, '.vx', 'cache'))
     expect(ignore(root, path.join('.vx', 'cache', 'cache.db'))).toBe(true)

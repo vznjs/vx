@@ -10,10 +10,12 @@ package stays zero-dependency and version-drift-free).
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'
+import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
+import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
 import { otel } from '@vzn/vx-otel'
 
 export default defineWorkspace({
-  plugins: [otel()],
+  plugins: [localExecutorPlugin(), localCachePlugin(), otel()],
 })
 ```
 

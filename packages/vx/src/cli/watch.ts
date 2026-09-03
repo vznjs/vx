@@ -62,12 +62,31 @@ export function isIgnoredWatchPath(rel: string): boolean {
  * (~3.7 re-runs/second, forever) where the default `.vx` cache settles at 0.
  * A hard-coded literal cannot see a configured path — the resolved one can.
  */
-export function makeWatchIgnore(cacheDir: string): (base: string, filename: string) => boolean {
+export function makeWatchIgnore(
+  cacheDir: string,
+  outputs: ReadonlyMap<string, readonly string[]> = new Map(),
+): (base: string, filename: string) => boolean {
   const cacheAbs = path.resolve(cacheDir)
+  // A task's own outputs are not edits: without this every cycle that
+  // writes `dist/` (or `out.txt`) re-runs once more, reporting
+  // "up-to-date" for the trouble. Matched under the directory the globs
+  // are relative to, whichever watcher delivered the event.
+  const declared = [...outputs].map(
+    ([dir, globs]) => [path.resolve(dir), globs.map((g) => new Bun.Glob(g))] as const,
+  )
   return (base, filename) => {
     if (isIgnoredWatchPath(filename)) return true
     const abs = path.resolve(base, filename)
-    return abs === cacheAbs || abs.startsWith(cacheAbs + path.sep)
+    if (abs === cacheAbs || abs.startsWith(cacheAbs + path.sep)) return true
+    for (const [dir, globs] of declared) {
+      if (!abs.startsWith(dir + path.sep)) continue
+      const rel = abs
+        .slice(dir.length + 1)
+        .split(path.sep)
+        .join('/')
+      if (globs.some((g) => g.match(rel))) return true
+    }
+    return false
   }
 }
 
@@ -231,11 +250,13 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   process.stdout.write('vx watch: initial run...\n\n')
   await runOrchestrator(opts)
 
+  const swept = await sweepConfigs(allProjects, workspaceRoot)
   return await runWatchLoop({
     opts,
     workspaceRoot,
     projects: scope,
-    workspaceWide: await anyTaskUsesWorkspaceFiles(allProjects),
+    workspaceWide: swept.workspaceWide,
+    outputs: swept.outputs,
     // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
     cacheDir:
       opts.cacheDir ?? resolveCacheDir(workspaceRoot, await loadWorkspaceConfig(workspaceRoot)),
@@ -243,15 +264,25 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
 }
 
 /**
- * `inputs.workspaceFiles` globs have no project boundary — any file in
- * the workspace can be an input. When any config declares them, the
- * per-project watchers can't see all triggering paths, so the loop
- * switches to one recursive root watcher. Checked across ALL projects
- * (not just the scope) because dependsOn can pull tasks from anywhere;
- * a broken out-of-scope config is skipped, matching scoped-run
- * semantics (it surfaces when that project enters scope).
+ * One sweep over every config for the two things the loop needs: whether
+ * any task declares `inputs.workspaceFiles` — globs with no project
+ * boundary, so the per-project watchers can't see all triggering paths
+ * and the loop switches to one recursive root watcher — and each
+ * project's declared outputs, so their writes are not taken for edits.
+ * Checked across ALL projects (not just the scope) because dependsOn can
+ * pull tasks from anywhere; a broken out-of-scope config is skipped,
+ * matching scoped-run semantics (it surfaces when that project enters
+ * scope).
  */
-async function anyTaskUsesWorkspaceFiles(projects: readonly ProjectMeta[]): Promise<boolean> {
+async function sweepConfigs(
+  projects: readonly ProjectMeta[],
+  workspaceRoot: string,
+): Promise<{ workspaceWide: boolean; outputs: Map<string, string[]> }> {
+  const outputs = new Map<string, string[]>()
+  const add = (dir: string, globs: readonly string[] | undefined): void => {
+    if (globs === undefined || globs.length === 0) return
+    outputs.set(dir, [...(outputs.get(dir) ?? []), ...globs])
+  }
   // Concurrent, not sequential: the run that just happened already
   // loaded the in-scope configs, so these are REPEAT loads that
   // re-evaluate in a worker. Issuing them together lets one worker
@@ -261,16 +292,20 @@ async function anyTaskUsesWorkspaceFiles(projects: readonly ProjectMeta[]): Prom
       if (p.configPath === null) return false
       try {
         const config = await loadProjectConfig(p.configPath)
-        return Object.values(config.tasks ?? {}).some(
-          (task) => (task.cache?.inputs?.workspaceFiles?.length ?? 0) > 0,
-        )
+        let wide = false
+        for (const task of Object.values(config.tasks ?? {})) {
+          if ((task.cache?.inputs?.workspaceFiles?.length ?? 0) > 0) wide = true
+          add(p.dir, task.cache?.outputs?.files)
+          add(workspaceRoot, task.cache?.outputs?.workspaceFiles)
+        }
+        return wide
       } catch {
         // broken config — out of this concern's scope
         return false
       }
     }),
   )
-  return uses.includes(true)
+  return { workspaceWide: uses.includes(true), outputs }
 }
 
 interface WatchLoopArgs {
@@ -280,10 +315,12 @@ interface WatchLoopArgs {
   workspaceWide: boolean
   /** Absolute, already-resolved — the loop must never re-derive it. */
   cacheDir: string
+  /** Declared output globs per directory they are relative to (project dir, or the root for `workspaceFiles`). */
+  outputs: ReadonlyMap<string, readonly string[]>
 }
 
 async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
-  const { opts, workspaceRoot, projects, workspaceWide, cacheDir } = args
+  const { opts, workspaceRoot, projects, workspaceWide, cacheDir, outputs } = args
 
   // Reentrancy guard — never two orchestrator runs in flight. While
   // one is running, any further events set `pending = true` and the
@@ -334,7 +371,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // project's dir recursively, so a `node_modules` write under a
   // project would otherwise trigger every save during `bun install` —
   // and vx's own cache writes would trigger a cycle that writes again.
-  const isIgnoredPath = makeWatchIgnore(cacheDir)
+  const isIgnoredPath = makeWatchIgnore(cacheDir, outputs)
 
   const watchers: fs.FSWatcher[] = []
   const proofs: Promise<void>[] = []

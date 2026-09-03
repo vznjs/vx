@@ -842,6 +842,22 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   a lone typo leaves no graph nodes to look at). Pinned in
   `tests/migrate.test.ts`, `tests/project-loader.test.ts` and
   `tests/task-selection.test.ts`; docs in `docs/cli.md` § vx init.
+  Replayed and found working as documented, nothing to fix: the plugin
+  author's first plugin from the guide (a telemetry sink receiving the
+  run summary, a `hello` verb that `vx help` lists with its plugin, a
+  malformed hook refused naming `plugins[2].telemetry`), and every
+  read verb on the scratch workspace (`show`, `show app#build`, `show
+  --format json`, `info`, `why build`, `last`, `last --list`, `lock`,
+  `lock --check`, `cache prune` without flags, `version`). `vx watch`
+  found one real defect: a task writing its declared output inside its
+  project (`out.txt`, `dist/`) re-triggered the loop, so every edit cost
+  a second cycle that reported "up-to-date". The config sweep the loop
+  already runs collects each project's declared outputs, and the ignore
+  predicate drops a path matching them under either watcher shape; one
+  cycle per edit now, pinned in `tests/watch-rules.test.ts`. Also the
+  `@vzn/vx-otel` README's example declared only `otel()`, which no
+  workspace can run (nothing is applied by default); it names the local
+  plugins like its siblings.
   Reader audit: a size field that is not all octal digits is refused
   before any entry is yielded (`parseInt` read `5zz` as 5 and let the
   damage surface later, if at all — pinned, fails without the fix); a
