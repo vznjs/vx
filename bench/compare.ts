@@ -86,7 +86,8 @@ async function sh(
     new Response(p.stderr).text(),
   ])
   const usage = p.resourceUsage()
-  const cpuMs = usage ? (usage.cpuTime.user + usage.cpuTime.system) / 1000 : NaN
+  // Bun reports cpuTime as BigInt microseconds.
+  const cpuMs = usage ? Number(usage.cpuTime.user + usage.cpuTime.system) / 1000 : NaN
   return { ms: (Bun.nanoseconds() - t0) / 1e6, cpuMs, ok: code === 0, out: out + err }
 }
 

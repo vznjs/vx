@@ -554,6 +554,27 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   pin now shows the miss recording nothing and the first aged hit
   recording. macOS had passed every time — APFS timestamps are fine
   enough that the same-tick case never showed.
+- 2026-09-03 — **the site's benchmark is the 3,270-task shape again,
+  re-run today with CPU.** The owner read the landing page as "vx got
+  much slower, especially cold, and CPU is missing". What had happened:
+  the 2026-09-02 rewrite swapped the page's benchmark from the
+  1,090-package / 3,270-task stress shape (`bench/compare.ts` defaults)
+  to a 476-package run with a narrower margin, and dropped the cold and
+  CPU rows because the reproducible runner did not measure CPU. vx did
+  NOT get slower: re-run on the old shape today, vx is cold 3m 46s
+  (the page had said 3m 48s), warm 559 ms (0.55 s), restore 830 ms
+  (0.89 s). `compare.ts` now reports CPU (user + system of the
+  invocation and the children it waited for — a daemon that outlives it
+  is not counted, so Turbo's and Nx's are floors). Today, same machine
+  (10 cores), Turbo 2.10.12: cold 5m 13s (1.4×), warm 760 ms (1.4×),
+  restore 1.17 s (1.4×), CPU 73 s vs vx's 34 s (2.1×). Nx 23.2.0
+  collapsed on this shape: cold 34m 44s (9.2×), warm 3.59 s (6.4×),
+  CPU 114 minutes (199×). The June figures (Turbo 8m 18s cold, 1,250 s
+  CPU) came from a 4-core Linux box, where the runners' overhead
+  competes with the tasks for cores — noted in `benchmarks.md`; the CPU
+  row is the number that travels between machines. Landing page rows,
+  tiles and note, `benchmarks.md` § A real monorepo, and the committed
+  `bench/RESULTS.md` / `results.json` are this run.
 
 ## In flight
 

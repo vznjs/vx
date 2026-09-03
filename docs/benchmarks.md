@@ -101,45 +101,38 @@ opens fastest on the restore path, where vx's per-hit work (one batched
 probe, a stat check, no extraction when the tree is already current) is
 what the others do not do.
 
-## A real monorepo: 3,270 tasks, 100 layers
+## A real monorepo: 3,270 tasks, 100 layers (2026-09-03T08:26:19.097Z)
 
 The shape that actually stresses a task runner: **100 dependency layers**,
 ~11 packages per layer, ~30 deps per package, three tasks each
 (`build` + `installDeps` + `test`, `sleep 1` for build and test) — **3,270
-task nodes**. Same repo, same hardware, same task commands; Turbo and Nx
-pinned to `--concurrency=10` / `parallel: 10`.
+task nodes**, 1,090 packages. Same repo, same hardware, same task commands;
+every runner pinned to concurrency 10. `bun bench/compare.ts 100 11 1`,
+this machine (macOS arm64, 10 cores), Turbo 2.10.12, Nx 23.2.0.
+The committed `bench/RESULTS.md` / `bench/results.json` are this run.
 
-|                              | vx         | Turborepo | Nx       |
-| ---------------------------- | ---------- | --------- | -------- |
-| **Cold** (nothing cached)    | **3m 48s** | 8m 18s    | 8m 27s   |
-| **Warm**, nothing to rebuild | **0.55s**  | 1.60s     | 9.86s    |
-| **Warm**, restore outputs    | **0.89s**  | 2.00s     | 10.44s   |
-| **Total CPU burned** (user)  | **22.7s**  | 1,250.4s  | 2,037.5s |
+|                                 | vx         | Turborepo     | Nx                |
+| ------------------------------- | ---------- | ------------- | ----------------- |
+| **Cold** (nothing cached)       | **3m 46s** | 5m 13s (1.4×) | 34m 44s (9.2×)    |
+| **Warm**, nothing to rebuild    | **559ms**  | 760ms (1.4×)  | 3.59s (6.4×)      |
+| **Warm**, restore outputs       | **830ms**  | 1.17s (1.4×)  | 4.15s (5.0×)      |
+| **CPU burned**, cold (user+sys) | **34.33s** | 1m 13s (2.1×) | 114m 06s (199.4×) |
+| **CPU burned**, warm (user+sys) | **1.80s**  | 4.40s (2.4×)  | 5.54s (3.1×)      |
 
-Read it: vx runs the cold build in **under 4 minutes** where both others
-take **over 8** (2.2× faster), and a fully-cached run in **0.55s** — 2.9×
-faster than Turbo and **17.8× faster than Nx**.
-
-Add `vx lock` + `vx run --frozen` (the CI path — execute the frozen graph
-with **zero per-run config evaluation**) and the warm runs drop further
-still: **0.49s** with nothing to rebuild and **0.80s** restoring outputs,
-another ~10–12% off — at which point a fully-cached check of 3,270 tasks
-is faster than most single test files.
-
-The last row is the foundation. For the _same 3,270 tasks_, vx spent
-**~23 seconds of CPU**; Turborepo spent **~1,250**; Nx spent **~2,037**.
-That's roughly **50× less work per task** — and it's why the gap _widens_
-as the graph grows: vx's overhead barely registers, so wall-clock tracks
-the actual work, while the others spend most of their time being a task
-runner. vx doesn't chase speed as a feature; low overhead is structural
-(no daemon, git-OID hashing, an O(N+E) bitset scheduler).
+**CPU** is user + system time of the invocation and every child it
+waited for. The tasks are `sleep`, so this is the runner's own work; a
+daemon that outlives the invocation (Turbo's, Nx's) is not counted, so
+their CPU is a floor.
 
 > Methodology note: a synthetic graph with `sleep`-based tasks isolates
 > _runner_ overhead from real compilation. All three runners are
 > configured **identically** — same commands, the same `src/**` inputs and
 > `dist/**` outputs, the same concurrency. (Hashing `**/*` instead would
 > include each task's own output in its inputs and break caching for
-> everyone.) The smaller head-to-head below is fully reproducible here.
+> everyone.) An earlier run of this shape (June 2026, a 4-core Linux box)
+> read cold 3m 48s / 8m 18s / 8m 27s and CPU 22.7 s / 1,250 s / 2,038 s;
+> cold wall time depends on how many cores the runners' overhead competes
+> with the tasks for, which is why the CPU row is the one that travels.
 
 ## Reproducible head-to-head (vx vs Turborepo vs Nx)
 

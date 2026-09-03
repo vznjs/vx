@@ -1,40 +1,52 @@
 {
-  "layers": 20,
-  "perLayer": 25,
-  "packages": 476,
+  "layers": 100,
+  "perLayer": 11,
+  "packages": 1090,
   "depsPerPkg": 30,
   "concurrency": 10,
   "reps": 1,
   "buildSleep": "1",
-  "date": "2026-09-02T23:01:01.229Z",
+  "date": "2026-09-03T08:26:19.097Z",
   "rows": [
     {
       "runner": "vx",
       "version": "vx 0.0.0",
-      "fresh": 99687.95975,
-      "warmNoRestore": 296.80725,
-      "warmRestore": 415.746875
+      "fresh": 226153.628333,
+      "warmNoRestore": 559.082209,
+      "warmRestore": 829.836083,
+      "freshCpu": 34332.67,
+      "warmNoRestoreCpu": 1799.229,
+      "warmRestoreCpu": 2818.006
     },
     {
       "runner": "vx (frozen)",
       "version": "vx 0.0.0",
-      "fresh": 99847.905208,
-      "warmNoRestore": 285.122959,
-      "warmRestore": 398.7925
+      "fresh": 226817.176375,
+      "warmNoRestore": 615.9675,
+      "warmRestore": 821.855708,
+      "freshCpu": 35755.266,
+      "warmNoRestoreCpu": 1633.238,
+      "warmRestoreCpu": 2538.11
     },
     {
       "runner": "turbo",
       "version": "2.10.12",
-      "fresh": 100482.118708,
-      "warmNoRestore": 342.046208,
-      "warmRestore": 611.961042
+      "fresh": 313463.3125,
+      "warmNoRestore": 760.372209,
+      "warmRestore": 1174.1555,
+      "freshCpu": 73078.956,
+      "warmNoRestoreCpu": 4398.013,
+      "warmRestoreCpu": 7320.293
     },
     {
       "runner": "nx",
       "version": "23.2.0",
-      "fresh": 202655.79675,
-      "warmNoRestore": 1381.566542,
-      "warmRestore": 1329.543375
+      "fresh": 2084171.163333,
+      "warmNoRestore": 3593.814417,
+      "warmRestore": 4148.519458,
+      "freshCpu": 6846038.718,
+      "warmNoRestoreCpu": 5540.269,
+      "warmRestoreCpu": 6690.947
     }
   ]
 }

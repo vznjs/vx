@@ -129,25 +129,33 @@ const benchRows = [
   {
     task: 'Cold build · from scratch',
     bars: [
-      { name: 'vx', val: 100, disp: '1m 40s', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 100, disp: '1m 40s', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 203, disp: '3m 23s', c: 'var(--c-nx)' },
+      { name: 'vx', val: 226154, disp: '3m 46s', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 313463, disp: '5m 13s', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 2084171, disp: '34m 44s', c: 'var(--c-nx)' },
     ],
   },
   {
     task: 'Fully cached · nothing to rebuild',
     bars: [
-      { name: 'vx', val: 297, disp: '297ms', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 342, disp: '342ms', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 1380, disp: '1.38s', c: 'var(--c-nx)' },
+      { name: 'vx', val: 559, disp: '559ms', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 760, disp: '760ms', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 3594, disp: '3.59s', c: 'var(--c-nx)' },
     ],
   },
   {
     task: 'Restoring outputs · cache → disk',
     bars: [
-      { name: 'vx', val: 416, disp: '416ms', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 612, disp: '612ms', c: 'var(--c-turbo)' },
-      { name: 'nx', val: 1330, disp: '1.33s', c: 'var(--c-nx)' },
+      { name: 'vx', val: 830, disp: '830ms', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 1174, disp: '1.17s', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 4149, disp: '4.15s', c: 'var(--c-nx)' },
+    ],
+  },
+  {
+    task: 'CPU burned · cold build, user + system',
+    bars: [
+      { name: 'vx', val: 34333, disp: '34.33s', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 73079, disp: '1m 13s', c: 'var(--c-turbo)' },
+      { name: 'nx', val: 6846039, disp: '114m 06s', c: 'var(--c-nx)' },
     ],
   },
 ]
@@ -282,17 +290,17 @@ const footCols = {
             </div>
             <div class="stats">
               <div class="stat">
-                <span class="val"><span class="num">297</span><span class="unit">ms</span></span>
+                <span class="val"><span class="num">559</span><span class="unit">ms</span></span>
                 <span class="label">Full cache replay</span>
-                <span class="sub">1,428 tasks · 476 packages</span>
+                <span class="sub">3,270 tasks · 1,090 packages</span>
               </div>
               <div class="stat plasma">
-                <span class="val"><span class="num">1.5</span><span class="unit">×</span></span>
-                <span class="label">Faster restores</span>
+                <span class="val"><span class="num">2.1</span><span class="unit">×</span></span>
+                <span class="label">Less CPU burned</span>
                 <span class="sub">vs Turborepo 2.10</span>
               </div>
               <div class="stat amber">
-                <span class="val"><span class="num">4.7</span><span class="unit">×</span></span>
+                <span class="val"><span class="num">6.4</span><span class="unit">×</span></span>
                 <span class="label">Faster warm runs</span>
                 <span class="sub">vs Nx 23</span>
               </div>
@@ -478,7 +486,7 @@ const footCols = {
         <div class="bench-panel container vx-scanlines">
           <div class="bench-head">
             <div>
-              <p class="vx-kicker">// 1,428 tasks · 476 packages</p>
+              <p class="vx-kicker">// 3,270 tasks · 1,090 packages</p>
               <h2>Lower is better. We checked.</h2>
             </div>
             <div class="bench-legend">
@@ -518,13 +526,13 @@ const footCols = {
           </div>
           <div class="bench-note">
             <p>
-              476 packages, 1,428 tasks, identical commands, every runner pinned to the same
-              concurrency, daemons on for the others, measured one at a time (2026-09,
-              <code>bench/compare.ts 20 25 1</code>). A fully cached run replays in
-              <span class="accent">297 ms</span> — Turborepo 2.10 takes 342 ms, Nx 23 takes 1.38 s —
-              and restoring every output from cache is <span class="accent">1.5× faster</span> than
-              Turbo. At 46 packages the two are within a few milliseconds; the gap opens with the
-              graph.
+              1,090 packages, 3,270 tasks, 100 dependency layers, identical commands, every runner
+              pinned to the same concurrency, daemons on for the others, measured one at a time
+              (2026-09-03, Turborepo 2.10.12, Nx 23.2.0, Apple silicon, 10 cores). The tasks are
+              <code>sleep 1</code>, so the clock measures the runner and CPU measures its overhead:
+              vx burned 34 s to build the whole graph cold, Turborepo 73 s, Nx 114 minutes. Warm,
+              vx replays 3,270 tasks in 559 ms; Turborepo 760 ms; Nx 3.6 s. Reproduce with
+              <code>bun bench/compare.ts 100 11 1</code>; the committed results are this run.
             </p>
           </div>
         </div>
