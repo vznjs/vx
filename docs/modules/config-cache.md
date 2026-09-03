@@ -18,7 +18,7 @@ names the first broken file as a one-by-one load did.
 ## Key
 
 `configEvalKey({ configPath, bytes, workspaceFingerprint })` folds, in
-order: `CONFIG_EVAL_VERSION`, `Bun.version`, the workspace fingerprint
+order: `CONFIG_EVAL_VERSION` (2 since 2026-09-03: the key folds each closure file's git blob id, not its bytes), `Bun.version`, the workspace fingerprint
 (lockfiles — covers package imports), then for the config and every file
 it transitively imports by **relative** specifier: the path and the
 bytes. Editing a shared preset the config imports moves the key even
@@ -71,3 +71,26 @@ allowed-import set, each impurity token, impurity inside an imported
 file, the literal stripper (strings, templates, comments, the slash
 bail-out), the served-from-store proof (a store row replaced under the
 same key is what the loader returns), and the read/write axes.
+
+## The warm fast path (2026-09-03)
+
+Reading and scanning 1,000 configs to key them cost 15 ms on a warm run;
+stat-hashing them costs 5. The store (`Cache`) keeps each config's
+**ordered closure** — the config first, then every relative import in
+discovery order — in `config_closures`, written whenever the slow path
+keys a config whose relative imports all carry an explicit extension.
+On the next load, `loadProjectConfigs` keys such a config from per-file
+identities alone (`Cache.hashFile`: the git blob id behind an
+mtime/size/ctime/inode memo — no read, no scan) with
+`configEvalKeyFromClosure`, whose fold is byte-identical to
+`configEvalKey`'s, so the two paths share entries. A fast key that misses
+takes the slow path for that config, which re-indexes it.
+
+Sound because closure membership can only change by editing a listed file
+(the config, or an import that gains or drops an import), which changes
+that file's identity and so the key. The one exception is an
+**extensionless** relative import: a new file could change what it
+resolves to without touching any listed file, so such a config is served
+by the slow path and never indexed (`indexable: false`). Both directions
+are pinned in `tests/config-cache.test.ts`; the mutations that fold only
+the config, or drop the extension rule, each fail exactly their pin.

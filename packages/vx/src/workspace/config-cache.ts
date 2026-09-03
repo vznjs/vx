@@ -28,15 +28,32 @@
 // `vx lock` both go through `JSON.stringify` — so a cached config derives
 // the same cache key as a live evaluation of the same bytes.
 
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { xxh3 } from '../util/index.js'
 import { VERSION } from '../version.js'
 
 /** Bump when the key derivation or the stored shape changes. */
-export const CONFIG_EVAL_VERSION = 1
+export const CONFIG_EVAL_VERSION = 2
 
 /** Where cached evaluations live; `Cache` implements it over `cache.db`. */
 export interface ConfigEvalStore {
+  /**
+   * The warm fast path (all optional; a store without them keys by bytes).
+   * `hashFile` is the file's git blob id behind an mtime/size/ctime/inode
+   * memo — no read when unchanged; `getConfigClosures` / `putConfigClosure`
+   * keep each config's ORDERED closure (the config first, then every
+   * relative import in discovery order), so a warm load keys the config by
+   * stat-hashing that list instead of reading and scanning every file
+   * (1,000 configs: 5 ms against 15, measured 2026-09-03). Sound because
+   * closure membership can only change by editing a listed file, which
+   * changes that file's hash and so the key; the one exception, an
+   * extensionless relative import whose resolution a new file could
+   * shadow, is never indexed.
+   */
+  hashFile?(file: string): Promise<string>
+  getConfigClosures?(configPaths: readonly string[]): Map<string, string[]>
+  putConfigClosure?(configPath: string, files: readonly string[]): void
   getConfigEval(key: string): string | null
   /**
    * Many keys in one round-trip (optional; a store without it is asked per
@@ -47,8 +64,23 @@ export interface ConfigEvalStore {
   putConfigEval(key: string, json: string): void
 }
 
+/** What `configEvalKey` learned besides the key, for the store's closure index. */
+export interface ConfigEvalKeyResult {
+  key: string
+  /** The config first, then every relative import in discovery order. */
+  closure: string[]
+  /** False when a relative import is extensionless — a new file could change its resolution. */
+  indexable: boolean
+}
+
 export interface ConfigEvalKeyArgs {
   configPath: string
+  /**
+   * Per-file identity, the same function the store's warm path uses. Absent
+   * (tests, a store without one), the git blob id is computed from the
+   * bytes in-process.
+   */
+  hashFile?: (file: string) => Promise<string>
   bytes: Uint8Array
   workspaceFingerprint: string
 }
@@ -185,11 +217,28 @@ export function stripLiterals(source: string): string | null {
  * not provably pure (or its closure cannot be read), in which case the
  * caller evaluates live and stores nothing.
  */
-export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<string | null> {
-  let h = xxh3(
-    `vx-config-eval-v${CONFIG_EVAL_VERSION}\0${VERSION}\0${Bun.version}\0${a.workspaceFingerprint}\0`,
+/** `git hash-object` of `bytes` (sha1 domain), the identity `Cache.hashFile` returns for a sha1 repo. */
+export function blobOidOf(bytes: Uint8Array): string {
+  const hasher = new Bun.CryptoHasher('sha1')
+  hasher.update(`blob ${bytes.byteLength}\0`)
+  hasher.update(bytes)
+  return hasher.digest('hex')
+}
+
+function keySeed(workspaceFingerprint: string): bigint {
+  return xxh3(
+    `vx-config-eval-v${CONFIG_EVAL_VERSION}\0${VERSION}\0${Bun.version}\0${workspaceFingerprint}\0`,
   )
+}
+
+const EXPLICIT_EXT = /\.(?:m?[jt]s|cjs|cts)$/
+
+export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKeyResult | null> {
+  let h = keySeed(a.workspaceFingerprint)
+  const hashOf = a.hashFile ?? (async (_file: string, bytes?: Uint8Array) => blobOidOf(bytes!))
   const visited = new Set<string>([a.configPath])
+  const closure: string[] = []
+  let indexable = true
   const queue: Array<{ file: string; bytes: Uint8Array }> = [{ file: a.configPath, bytes: a.bytes }]
   while (queue.length > 0) {
     const { file, bytes } = queue.shift()!
@@ -198,23 +247,26 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<string | null
     // A backslash in code position is an identifier escape (`\u0070rocess`
     // IS `process`) — the one spelling the deny-list cannot see. Refuse it.
     if (code === null || code.includes('\\') || IMPURE_RE.test(code)) return null
-    h = xxh3(`${file}\0`, h)
-    h = xxh3(bytes, h)
+    const identity = a.hashFile ? await a.hashFile(file) : await hashOf(file, bytes)
+    h = xxh3(`${file}\0${identity}`, h)
+    closure.push(file)
     for (const m of source.matchAll(IMPORT_RE)) {
       const spec = m[1] ?? m[2]!
       if (spec === PURE_PACKAGE) continue
       if (!spec.startsWith('./') && !spec.startsWith('../')) return null
+      if (!EXPLICIT_EXT.test(spec)) indexable = false
       let resolved: string
       try {
-        resolved = Bun.resolveSync(spec, path.dirname(file))
+        // Real-pathed: `Bun.resolveSync` answers with the symlinked spelling
+        // on one call and the real one on another (a tmp workspace under
+        // /var vs /private/var), and the key folds the path — a spelling
+        // that drifts between runs is a spurious miss and a duplicated
+        // memo row.
+        resolved = realpathSync(Bun.resolveSync(spec, path.dirname(file)))
       } catch {
         return null
       }
       if (visited.has(resolved)) continue
-      // A relative path that lands in a dependency's tree is the lockfile's
-      // business, and reading it here would key on bytes the fingerprint
-      // already covers — but a package can also be a workspace symlink whose
-      // source moves without the lockfile moving. Evaluate live instead.
       if (resolved.split(path.sep).includes('node_modules')) return null
       visited.add(resolved)
       if (visited.size > MAX_CLOSURE_FILES) return null
@@ -225,5 +277,28 @@ export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<string | null
       }
     }
   }
+  return { key: h.toString(16).padStart(16, '0'), closure, indexable }
+}
+
+/**
+ * The warm path: the key for a config whose ordered closure the store
+ * remembers, from per-file identities alone — no read, no scan. The fold is
+ * byte-identical to `configEvalKey`'s, so the two paths share entries. A
+ * changed or vanished file changes its identity and misses, and the slow
+ * path then re-indexes.
+ */
+export async function configEvalKeyFromClosure(a: {
+  closure: readonly string[]
+  hashFile: (file: string) => Promise<string>
+  workspaceFingerprint: string
+}): Promise<string | null> {
+  let h = keySeed(a.workspaceFingerprint)
+  let identities: string[]
+  try {
+    identities = await Promise.all(a.closure.map((f) => a.hashFile(f)))
+  } catch {
+    return null
+  }
+  for (let i = 0; i < a.closure.length; i++) h = xxh3(`${a.closure[i]}\0${identities[i]}`, h)
   return h.toString(16).padStart(16, '0')
 }

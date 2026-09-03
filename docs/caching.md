@@ -747,9 +747,13 @@ workspace (~80 ms for 1000 synthetic configs; reading them as data is
 `@vzn/vx`, and no mention of `process`, `Bun`, `Date`, `fetch`,
 `import.meta`, `require`, a dynamic `import()`, `await`, … outside string
 literals and comments — is served from `cache.db`'s `config_evals` table,
-keyed by its bytes, the bytes of every file in its relative import
-closure, the workspace fingerprint (lockfiles) and Bun's version. Editing
-a shared preset moves the key. Anything the static check cannot prove
+keyed by the git blob id of the config and of every file in its
+relative import closure, the workspace fingerprint (lockfiles) and Bun's
+version. Editing a shared preset moves the key. On a warm run the
+closure is remembered per config, so the key comes from a stat-backed
+identity per file — no read, no scan — for every config whose relative
+imports carry an explicit extension (an extensionless one could be
+re-resolved by a new file, so it keeps the scan). Anything the static check cannot prove
 pure evaluates live, exactly as before, so the cache can be slower but
 never wrong. Details and the deny-list:
 [`modules/config-cache.md`](./modules/config-cache.md).

@@ -656,6 +656,35 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   `1000/` directory had appeared in the repo root that way. Closing warm
   run, best of 5: 1000 projects 177 ms (recorded 172, two outliers from a
   box running CI polls), 100 projects 79 ms.
+- 2026-09-03 — **perf wave 8: a warm config load keys itself from stat
+  identities.** Reading and scanning 1,000 configs to key them cost
+  15 ms (bytes 9.3, gate + key 6.1); stat-hashing them with `hashFile`'s
+  mtime/size/ctime/inode memo costs 5.2. The store now keeps each
+  config's ORDERED closure (`config_closures`: the config first, then
+  every relative import in discovery order), written whenever the slow
+  path keys a config whose relative imports all carry an explicit
+  extension; on the next load `loadProjectConfigs` keys such a config
+  with `configEvalKeyFromClosure` — per-file identities only, no read,
+  no scan — and a fast key that misses takes the slow path for that one
+  config, which re-indexes it. `CONFIG_EVAL_VERSION` → 2: the key now
+  folds each closure file's git blob id instead of its bytes (old
+  entries unreachable, self-healing on the first miss). SOUND because
+  membership can only change by editing a listed file, which changes
+  its identity and so the key; the one exception — an extensionless
+  relative import a new file could re-resolve — is never indexed.
+  Resolved imports are real-pathed in the slow path: `Bun.resolveSync`
+  answered with the symlinked spelling on one call and the real one on
+  another, a spurious miss and a duplicated memo row. MEASURED:
+  in-process `load configs` 27 → 20 ms on the 1000-project bench (three
+  runs each); the whole-process interleaved A/B was INSIDE this box's
+  noise (mins 184 vs 178 with a 623 ms outlier — CI polls and a long
+  day), so the stage table is the record and the A/B is not claimed.
+  Pinned: closure order and indexability, a warm load served from the
+  index with nothing evaluated, a preset edit that misses and
+  re-evaluates through the fast key, an extensionless import never
+  indexed; the fold-only-the-config and drop-the-extension-rule
+  mutations each fail exactly their pins. Docs: `modules/config-cache.md`
+  § The warm fast path, `caching.md`.
 
 ## In flight
 

@@ -2,12 +2,13 @@
 // pure config is served from its stored evaluation, keyed by every byte the
 // evaluation could have read; anything that can observe the environment
 // evaluates live.
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import {
+  blobOidOf,
   configEvalKey,
   loadProjectConfig,
   loadProjectConfigs,
@@ -31,13 +32,33 @@ async function write(rel: string, text: string): Promise<string> {
   return full
 }
 
-const keyOf = (configPath: string, fingerprint = 'fp') =>
+const keyedOf = (configPath: string, fingerprint = 'fp') =>
   Bun.file(configPath)
     .bytes()
     .then((bytes) => configEvalKey({ configPath, bytes, workspaceFingerprint: fingerprint }))
+const keyOf = (configPath: string, fingerprint = 'fp') =>
+  keyedOf(configPath, fingerprint).then((r) => (r === null ? null : r.key))
 
 class MemoryStore implements ConfigEvalStore {
   batchGets = 0
+  hashes = 0
+  closures = new Map<string, string[]>()
+  /** The identity `Cache.hashFile` returns for a sha1 repo: the git blob id of the bytes. */
+  async hashFile(file: string): Promise<string> {
+    this.hashes++
+    return blobOidOf(await Bun.file(file).bytes())
+  }
+  getConfigClosures(paths: readonly string[]): Map<string, string[]> {
+    const out = new Map<string, string[]>()
+    for (const p of paths) {
+      const c = this.closures.get(p)
+      if (c !== undefined) out.set(p, c)
+    }
+    return out
+  }
+  putConfigClosure(path: string, files: readonly string[]): void {
+    this.closures.set(path, [...files])
+  }
   getConfigEvals(keys: readonly string[]): Map<string, string> {
     this.batchGets++
     const out = new Map<string, string>()
@@ -75,6 +96,11 @@ describe('configEvalKey', () => {
     await writeFile(preset, "export const cmd = 'echo two'\n")
     expect(await keyOf(cfg)).not.toBe(k1)
     expect(CONFIG_EVAL_VERSION).toBeGreaterThan(0)
+    // The closure is the config first, then its imports in discovery order,
+    // and an import with an explicit extension is indexable.
+    const keyed = (await keyedOf(cfg))!
+    expect(keyed.closure).toEqual([cfg, await realpath(preset)]) // imports resolve to real paths
+    expect(keyed.indexable).toBe(true)
   })
 
   it('allows the @vzn/vx import, and nothing else that is not relative', async () => {
@@ -225,6 +251,52 @@ describe('loadProjectConfig with an eval cache', () => {
     const evalCache = { store: new MemoryStore(), workspaceFingerprint: 'fp' }
     await expect(loadProjectConfigs([ok, bad1, bad2], { evalCache })).rejects.toThrow(/bad1/)
     await expect(loadProjectConfigs([ok, bad2, bad1], { evalCache })).rejects.toThrow(/bad2/)
+  })
+
+  // The warm fast path: once a config's closure is indexed, the next load
+  // keys it from per-file identities (a hash per closure file, no scan) and
+  // serves the stored evaluation. A preset edit changes that preset's
+  // identity, so the fast key misses and the slow path re-evaluates.
+  it('keys a warm load from the indexed closure, and a preset edit still misses', async () => {
+    const preset = await write('shared/preset.mjs', "export const cmd = 'echo one'\n")
+    const cfg = await write(
+      'packages/a/vx.config.mjs',
+      "import { cmd } from '../../shared/preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+    )
+    const store = new MemoryStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    const first = await loadProjectConfigs([cfg], { evalCache })
+    expect(first[0]?.tasks?.build?.exec?.command).toBe('echo one')
+    expect(store.closures.get(cfg)).toEqual([cfg, await realpath(preset)]) // indexed on the miss
+    const [key] = [...store.rows.keys()]
+    // Prove the second load is served from the store: replace the stored
+    // JSON under the same key.
+    store.rows.set(key!, JSON.stringify({ tasks: { build: { exec: { command: 'from-cache' } } } }))
+    const puts = store.puts
+    const second = await loadProjectConfigs([cfg], { evalCache })
+    expect(second[0]?.tasks?.build?.exec?.command).toBe('from-cache')
+    expect(store.puts).toBe(puts) // nothing evaluated
+    // Now edit the PRESET: its identity changes, the fast key misses, the
+    // slow path evaluates the new value and re-indexes.
+    await writeFile(preset, "export const cmd = 'echo two'\n")
+    const third = await loadProjectConfigs([cfg], { evalCache })
+    expect(third[0]?.tasks?.build?.exec?.command).toBe('echo two')
+    expect(store.puts).toBe(puts + 1)
+  })
+
+  it('an extensionless relative import is never indexed (a new file could change its resolution)', async () => {
+    await write('shared/loose.mjs', "export const cmd = 'echo loose'\n")
+    const cfg = await write(
+      'packages/b/vx.config.mjs',
+      "import { cmd } from '../../shared/loose'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
+    )
+    const store = new MemoryStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    const [c] = await loadProjectConfigs([cfg], { evalCache })
+    expect(c?.tasks?.build?.exec?.command).toBe('echo loose')
+    expect(store.puts).toBe(1) // still cached by the slow path …
+    expect(store.closures.has(cfg)).toBe(false) // … but never indexed
+    expect((await keyedOf(cfg))?.indexable).toBe(false)
   })
 
   it('never stores an impure config, and `fresh` bypasses the cache entirely', async () => {

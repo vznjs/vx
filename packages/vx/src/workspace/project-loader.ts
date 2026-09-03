@@ -2,7 +2,7 @@ import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { MAX_TIMEOUT_MS, UserError, xxh3hex } from '../util/index.js'
 import { evaluateConfigFresh } from './config-eval.js'
-import { configEvalKey, type ConfigEvalStore } from './config-cache.js'
+import { configEvalKey, configEvalKeyFromClosure, type ConfigEvalStore } from './config-cache.js'
 
 const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.ts',
@@ -67,18 +67,44 @@ export async function loadProjectConfigs(
   opts?: LoadProjectConfigOptions,
 ): Promise<ProjectConfig[]> {
   const evalCache = opts?.fresh === true ? undefined : opts?.evalCache
+  const store = evalCache?.store
+  const hashFile = store?.hashFile?.bind(store)
+  // The warm fast path: a config whose ordered closure the store remembers
+  // is keyed from per-file identities (a stat each, no read, no scan); the
+  // slow path below reads, gates and scans, and indexes the closure for
+  // next time when every import is explicit.
+  const closures =
+    hashFile !== undefined && store?.getConfigClosures !== undefined
+      ? store.getConfigClosures(configPaths)
+      : new Map<string, string[]>()
   const prepared = await Promise.all(
     configPaths.map(async (configPath) => {
+      const closure = closures.get(configPath)
+      if (closure !== undefined && evalCache !== undefined && hashFile !== undefined) {
+        const fastKey = await configEvalKeyFromClosure({
+          closure,
+          hashFile,
+          workspaceFingerprint: evalCache.workspaceFingerprint,
+        })
+        if (fastKey !== null) return { configPath, bytes: null, cacheKey: fastKey, indexed: true }
+      }
       const bytes = await Bun.file(configPath).bytes()
-      const cacheKey =
+      const keyed =
         evalCache === undefined
           ? null
           : await configEvalKey({
               configPath,
               bytes,
               workspaceFingerprint: evalCache.workspaceFingerprint,
+              ...(hashFile !== undefined ? { hashFile } : {}),
             })
-      return { configPath, bytes, cacheKey }
+      return {
+        configPath,
+        bytes,
+        cacheKey: keyed?.key ?? null,
+        indexed: false,
+        closure: keyed !== null && keyed.indexable ? keyed.closure : undefined,
+      }
     }),
   )
   let hits = new Map<string, string>()
@@ -96,13 +122,36 @@ export async function loadProjectConfigs(
     }
   }
   const out: ProjectConfig[] = []
-  for (const { configPath, bytes, cacheKey } of prepared) {
+  for (const entry of prepared) {
+    const { configPath, cacheKey } = entry
     const hit = cacheKey === null ? undefined : hits.get(cacheKey)
     // Stored AFTER validation, so a hit needs none; the key covers every
     // byte the evaluation could have read.
     if (hit !== undefined) {
       out.push(JSON.parse(hit) as ProjectConfig)
       continue
+    }
+    // A fast key that missed: the closure is stale or the file changed.
+    // Take the slow path for this one config, which re-indexes it.
+    let bytes = entry.bytes
+    let closure = entry.closure
+    let key = cacheKey
+    if (entry.indexed) {
+      bytes = await Bun.file(configPath).bytes()
+      const keyed = await configEvalKey({
+        configPath,
+        bytes,
+        workspaceFingerprint: evalCache!.workspaceFingerprint,
+        ...(hashFile !== undefined ? { hashFile } : {}),
+      })
+      key = keyed?.key ?? null
+      closure = keyed !== null && keyed.indexable ? keyed.closure : undefined
+      const slowHit = key === null ? null : (store!.getConfigEval(key) ?? null)
+      if (slowHit !== null) {
+        out.push(JSON.parse(slowHit) as ProjectConfig)
+        if (closure !== undefined) store!.putConfigClosure?.(configPath, closure)
+        continue
+      }
     }
     // A REPEAT load in this process re-evaluates in a worker, because the
     // bust above cannot reach the config's import closure — see
@@ -112,13 +161,16 @@ export async function loadProjectConfigs(
     loadedConfigs.add(configPath)
     const mod = repeat
       ? await evaluateConfigFresh(configPath)
-      : await loadDefaultExport(configPath, 'Project', opts?.fresh === true, bytes)
+      : await loadDefaultExport(configPath, 'Project', opts?.fresh === true, bytes!)
     assertDefaultObject(mod, 'Project', configPath)
     // Validation runs HERE, on whichever object we ended up with, so a
     // malformed config reports the identical UserError whether it was
     // evaluated in-process or in a worker.
     validateProjectConfig(mod as ProjectConfig, configPath)
-    if (cacheKey !== null) evalCache!.store.putConfigEval(cacheKey, JSON.stringify(mod))
+    if (key !== null) {
+      evalCache!.store.putConfigEval(key, JSON.stringify(mod))
+      if (closure !== undefined) evalCache!.store.putConfigClosure?.(configPath, closure)
+    }
     out.push(mod as ProjectConfig)
   }
   return out

@@ -1107,6 +1107,15 @@ export class Cache implements CacheLayer {
       -- hit, unchanged mtimes prove the output SET is unchanged, replacing
       -- the glob walk that cost 0.36 ms per hit. Machine-local: a remote
       -- ingest writes none, and the first hit after it walks and records.
+      -- Each config's ORDERED import closure (the config first), so a warm
+      -- load keys it by stat-hashing the list (the file_hashes memo) instead
+      -- of reading and scanning every file. Machine-local; pruned with
+      -- config_evals (2026-09-03).
+      CREATE TABLE IF NOT EXISTS config_closures (
+        config_path TEXT PRIMARY KEY,
+        files_json  TEXT NOT NULL,
+        created_at  INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS output_dirs (
         entry_hash  TEXT NOT NULL,
         path        TEXT NOT NULL,
@@ -1250,6 +1259,35 @@ export class Cache implements CacheLayer {
     if (!this.read) return null
     const row = this.selectConfigEval.get(key) as { json: string } | null
     return row?.json ?? null
+  }
+
+  /** `ConfigEvalStore`: each config's ordered closure, one `IN` query per 900 paths. */
+  getConfigClosures(configPaths: readonly string[]): Map<string, string[]> {
+    const out = new Map<string, string[]>()
+    if (!this.read || configPaths.length === 0) return out
+    for (let i = 0; i < configPaths.length; i += 900) {
+      const chunk = configPaths.slice(i, i + 900)
+      const rows = this.db
+        .query(
+          `SELECT config_path, files_json FROM config_closures WHERE config_path IN (${chunk.map(() => '?').join(',')})`,
+        )
+        .all(...(chunk as readonly SQLQueryBindings[])) as Array<{
+        config_path: string
+        files_json: string
+      }>
+      for (const r of rows) out.set(r.config_path, JSON.parse(r.files_json) as string[])
+    }
+    return out
+  }
+
+  /** `ConfigEvalStore`: remember a config's ordered closure, honouring the local WRITE axis. */
+  putConfigClosure(configPath: string, files: readonly string[]): void {
+    if (!this.write) return
+    this.db
+      .prepare(
+        'INSERT INTO config_closures(config_path, files_json, created_at) VALUES (?, ?, ?) ON CONFLICT(config_path) DO UPDATE SET files_json = excluded.files_json, created_at = excluded.created_at',
+      )
+      .run(configPath, JSON.stringify(files), Date.now())
   }
 
   /** `ConfigEvalStore`: the batched read — one `IN` query per 900 keys, honouring the local READ axis. */
@@ -2225,6 +2263,7 @@ export class Cache implements CacheLayer {
       // A config that has not been loaded in 30 days was edited (its key
       // moved) or its project left; either way the row is dead weight.
       this.db.prepare('DELETE FROM config_evals WHERE created_at < ?').run(cutoff)
+      this.db.prepare('DELETE FROM config_closures WHERE created_at < ?').run(cutoff)
     } catch {
       // Retention is best-effort; never block closing the handle.
     }

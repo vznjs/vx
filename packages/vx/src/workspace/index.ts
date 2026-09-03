@@ -23,7 +23,12 @@ export {
   validateProjectConfig,
 } from './project-loader.js'
 export type { LoadProjectConfigOptions } from './project-loader.js'
-export { configEvalKey, type ConfigEvalStore } from './config-cache.js'
+export {
+  blobOidOf,
+  configEvalKey,
+  configEvalKeyFromClosure,
+  type ConfigEvalStore,
+} from './config-cache.js'
 export {
   findWorkspaceRoot,
   listProjects,
