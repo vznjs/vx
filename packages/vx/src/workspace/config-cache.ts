@@ -38,6 +38,12 @@ export const CONFIG_EVAL_VERSION = 1
 /** Where cached evaluations live; `Cache` implements it over `cache.db`. */
 export interface ConfigEvalStore {
   getConfigEval(key: string): string | null
+  /**
+   * Many keys in one round-trip (optional; a store without it is asked per
+   * key). A warm 1000-project run paid 3.6 ms for 1,000 point lookups where
+   * one `IN` query costs 0.7 (measured 2026-09-03).
+   */
+  getConfigEvals?(keys: readonly string[]): Map<string, string>
   putConfigEval(key: string, json: string): void
 }
 

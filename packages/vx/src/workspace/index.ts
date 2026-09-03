@@ -16,7 +16,12 @@ export {
   type Lockfile,
   type LockfileEntry,
 } from './lockfile.js'
-export { loadProjectConfig, loadWorkspaceConfig, validateProjectConfig } from './project-loader.js'
+export {
+  loadProjectConfig,
+  loadProjectConfigs,
+  loadWorkspaceConfig,
+  validateProjectConfig,
+} from './project-loader.js'
 export type { LoadProjectConfigOptions } from './project-loader.js'
 export { configEvalKey, type ConfigEvalStore } from './config-cache.js'
 export {

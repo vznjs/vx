@@ -637,6 +637,18 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   asserts its own bounds (never below max(critical path, work ÷
   workers), never above the work bound plus the critical path plus one
   task), so a wrong floor cannot reach the website silently again.
+- 2026-09-03 — **the config-eval lookups are one query per round.**
+  `loadProjectConfigs(paths, opts)` reads every config's bytes and key in
+  parallel, asks the store once (`ConfigEvalStore.getConfigEvals`,
+  optional — a store without it is asked per key; `Cache` answers with
+  one `IN` query per 900 keys), then evaluates only the misses in the
+  order given so a failure still names the first broken file.
+  `loadProjectConfig` is the one-element case; `prepareRun`'s round loop
+  calls the batch. Measured earlier: 1,000 point lookups 3.6 ms, one
+  `IN` query 0.7. Pinned: a mixed round serves the hit from ONE lookup
+  without evaluating and evaluates the miss; forcing the batch empty
+  fails exactly that pin. The lead's ceiling was ~3 ms and the stage
+  table agrees.
 
 ## In flight
 
@@ -699,11 +711,8 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    indexes — one of which, `runs_hash`, had no reader (every consumer of
    `runs.hash` looks the row up by run id or project+task first);
    dropping it measured 11.5 → 3.9 ms for the inserts. Two small leads
-   left, each measured: the 1,000 `config_evals` point lookups in
-   `load configs` cost 3.6 ms where one `IN` query costs 0.7 — but each
-   key needs its config's bytes and import closure, computed inside
-   `loadProjectConfig`, so batching means prefetching a round's keys
-   ahead of the loads (a config-cache path: correctness first); and
+   left, each measured: the 1,000 `config_evals` point lookups (DONE —
+   `loadProjectConfigs`, one query per round); and
    `getMany`'s 1,000 artifact-existence stats inside `classify + probe`
    (~5–10 ms) could move to restore time, but only with a re-execute
    fallback for a hit whose artifact is gone, which the hit path lacks

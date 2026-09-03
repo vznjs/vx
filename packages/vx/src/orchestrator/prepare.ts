@@ -29,7 +29,7 @@ import {
   findWorkspaceRoot,
   frozenProjectConfig,
   listProjects,
-  loadProjectConfig,
+  loadProjectConfigs,
   loadWorkspace,
   loadWorkspaceConfig,
   readLockfile,
@@ -280,15 +280,12 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   try {
     while (pending.length > 0) {
       const round = pending.splice(0, pending.length)
-      const configs = await Promise.all(
-        round.map((m) =>
-          lock
-            ? frozenProjectConfig(lock, m, workspaceRoot)
-            : loadProjectConfig(m.configPath, {
-                evalCache: { store: localCache, workspaceFingerprint },
-              }),
-        ),
-      )
+      const configs = lock
+        ? await Promise.all(round.map((m) => frozenProjectConfig(lock, m, workspaceRoot)))
+        : await loadProjectConfigs(
+            round.map((m) => m.configPath),
+            { evalCache: { store: localCache, workspaceFingerprint } },
+          )
       for (let i = 0; i < round.length; i++) {
         const meta = round[i]!
         const config = configs[i] as ProjectConfig

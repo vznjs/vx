@@ -1252,6 +1252,22 @@ export class Cache implements CacheLayer {
     return row?.json ?? null
   }
 
+  /** `ConfigEvalStore`: the batched read — one `IN` query per 900 keys, honouring the local READ axis. */
+  getConfigEvals(keys: readonly string[]): Map<string, string> {
+    const out = new Map<string, string>()
+    if (!this.read || keys.length === 0) return out
+    for (let i = 0; i < keys.length; i += 900) {
+      const chunk = keys.slice(i, i + 900)
+      const rows = this.db
+        .query(
+          `SELECT key, json FROM config_evals WHERE key IN (${chunk.map(() => '?').join(',')})`,
+        )
+        .all(...(chunk as readonly SQLQueryBindings[])) as Array<{ key: string; json: string }>
+      for (const r of rows) out.set(r.key, r.json)
+    }
+    return out
+  }
+
   /** `ConfigEvalStore`: remember a validated evaluation, honouring the local WRITE axis. */
   putConfigEval(key: string, json: string): void {
     if (!this.write) return

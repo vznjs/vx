@@ -7,7 +7,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
-import { configEvalKey, loadProjectConfig, type ConfigEvalStore } from '../src/workspace/index.js'
+import {
+  configEvalKey,
+  loadProjectConfig,
+  loadProjectConfigs,
+  type ConfigEvalStore,
+} from '../src/workspace/index.js'
 import { stripLiterals } from '../src/workspace/config-cache.js'
 import { CONFIG_EVAL_VERSION } from '../src/workspace/config-cache.js'
 
@@ -32,6 +37,16 @@ const keyOf = (configPath: string, fingerprint = 'fp') =>
     .then((bytes) => configEvalKey({ configPath, bytes, workspaceFingerprint: fingerprint }))
 
 class MemoryStore implements ConfigEvalStore {
+  batchGets = 0
+  getConfigEvals(keys: readonly string[]): Map<string, string> {
+    this.batchGets++
+    const out = new Map<string, string>()
+    for (const k of keys) {
+      const v = this.rows.get(k)
+      if (v !== undefined) out.set(k, v)
+    }
+    return out
+  }
   rows = new Map<string, string>()
   puts = 0
   getConfigEval(key: string): string | null {
@@ -170,6 +185,34 @@ describe('loadProjectConfig with an eval cache', () => {
     const second = await loadProjectConfig(cfg, { evalCache })
     expect(second.tasks?.build?.exec?.command).toBe('from-cache')
     expect(store.puts).toBe(1)
+  })
+
+  // The batched loader is what `prepareRun` calls: one store lookup for a
+  // round's keys, misses evaluated in order. Same contract as one by one.
+  it('loadProjectConfigs serves hits from ONE batched lookup and evaluates only the misses', async () => {
+    const a = await write(
+      'packages/a/vx.config.mjs',
+      "export default { tasks: { build: { exec: { command: 'a' } } } }\n",
+    )
+    const b = await write(
+      'packages/b/vx.config.mjs',
+      "export default { tasks: { build: { exec: { command: 'b' } } } }\n",
+    )
+    const store = new MemoryStore()
+    const evalCache = { store, workspaceFingerprint: 'fp' }
+    await loadProjectConfig(a, { evalCache }) // a is stored; b is not
+    expect(store.puts).toBe(1)
+    const [keyA] = [...store.rows.keys()]
+    store.rows.set(
+      keyA!,
+      JSON.stringify({ tasks: { build: { exec: { command: 'a-from-cache' } } } }),
+    )
+    const before = store.batchGets
+    const [ca, cb] = await loadProjectConfigs([a, b], { evalCache })
+    expect(ca?.tasks?.build?.exec?.command).toBe('a-from-cache') // served, not evaluated
+    expect(cb?.tasks?.build?.exec?.command).toBe('b') // evaluated and stored
+    expect(store.puts).toBe(2)
+    expect(store.batchGets).toBe(before + 1) // one lookup for the round
   })
 
   it('never stores an impure config, and `fresh` bypasses the cache entirely', async () => {

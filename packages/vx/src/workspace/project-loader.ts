@@ -56,42 +56,80 @@ export interface LoadProjectConfigOptions {
   evalCache?: { store: ConfigEvalStore; workspaceFingerprint: string }
 }
 
+/**
+ * Load many configs at once: every file's bytes and cache key in parallel,
+ * ONE store lookup for all keys, then only the misses are evaluated (in the
+ * order given, so a failure names the first broken file the way a
+ * one-by-one load did). A single-path load is the one-element case.
+ */
+export async function loadProjectConfigs(
+  configPaths: readonly string[],
+  opts?: LoadProjectConfigOptions,
+): Promise<ProjectConfig[]> {
+  const evalCache = opts?.fresh === true ? undefined : opts?.evalCache
+  const prepared = await Promise.all(
+    configPaths.map(async (configPath) => {
+      const bytes = await Bun.file(configPath).bytes()
+      const cacheKey =
+        evalCache === undefined
+          ? null
+          : await configEvalKey({
+              configPath,
+              bytes,
+              workspaceFingerprint: evalCache.workspaceFingerprint,
+            })
+      return { configPath, bytes, cacheKey }
+    }),
+  )
+  let hits = new Map<string, string>()
+  if (evalCache !== undefined) {
+    const keys = prepared.map((p) => p.cacheKey).filter((k): k is string => k !== null)
+    if (keys.length > 0) {
+      if (evalCache.store.getConfigEvals !== undefined) {
+        hits = evalCache.store.getConfigEvals(keys)
+      } else {
+        for (const k of keys) {
+          const hit = evalCache.store.getConfigEval(k)
+          if (hit !== null) hits.set(k, hit)
+        }
+      }
+    }
+  }
+  const out: ProjectConfig[] = []
+  for (const { configPath, bytes, cacheKey } of prepared) {
+    const hit = cacheKey === null ? undefined : hits.get(cacheKey)
+    // Stored AFTER validation, so a hit needs none; the key covers every
+    // byte the evaluation could have read.
+    if (hit !== undefined) {
+      out.push(JSON.parse(hit) as ProjectConfig)
+      continue
+    }
+    // A REPEAT load in this process re-evaluates in a worker, because the
+    // bust above cannot reach the config's import closure — see
+    // config-eval.ts. A FIRST load keeps the in-process import, so the
+    // single `vx run` hot path never pays for a worker.
+    const repeat = loadedConfigs.has(configPath)
+    loadedConfigs.add(configPath)
+    const mod = repeat
+      ? await evaluateConfigFresh(configPath)
+      : await loadDefaultExport(configPath, 'Project', opts?.fresh === true, bytes)
+    assertDefaultObject(mod, 'Project', configPath)
+    // Validation runs HERE, on whichever object we ended up with, so a
+    // malformed config reports the identical UserError whether it was
+    // evaluated in-process or in a worker.
+    validateProjectConfig(mod as ProjectConfig, configPath)
+    if (cacheKey !== null) evalCache!.store.putConfigEval(cacheKey, JSON.stringify(mod))
+    out.push(mod as ProjectConfig)
+  }
+  return out
+}
+
 export async function loadProjectConfig(
   configPath: string,
   opts?: LoadProjectConfigOptions,
 ): Promise<ProjectConfig> {
-  const bytes = await Bun.file(configPath).bytes()
-  const evalCache = opts?.fresh === true ? undefined : opts?.evalCache
-  const cacheKey =
-    evalCache === undefined
-      ? null
-      : await configEvalKey({
-          configPath,
-          bytes,
-          workspaceFingerprint: evalCache.workspaceFingerprint,
-        })
-  if (cacheKey !== null) {
-    const hit = evalCache!.store.getConfigEval(cacheKey)
-    // Stored AFTER validation, so a hit needs none; the key covers every
-    // byte the evaluation could have read.
-    if (hit !== null) return JSON.parse(hit) as ProjectConfig
-  }
-  // A REPEAT load in this process re-evaluates in a worker, because the
-  // bust above cannot reach the config's import closure — see
-  // config-eval.ts. A FIRST load keeps the in-process import, so the
-  // single `vx run` hot path never pays for a worker.
-  const repeat = loadedConfigs.has(configPath)
-  loadedConfigs.add(configPath)
-  const mod = repeat
-    ? await evaluateConfigFresh(configPath)
-    : await loadDefaultExport(configPath, 'Project', opts?.fresh === true, bytes)
-  assertDefaultObject(mod, 'Project', configPath)
-  // Validation runs HERE, on whichever object we ended up with, so a
-  // malformed config reports the identical UserError whether it was
-  // evaluated in-process or in a worker.
-  validateProjectConfig(mod as ProjectConfig, configPath)
-  if (cacheKey !== null) evalCache!.store.putConfigEval(cacheKey, JSON.stringify(mod))
-  return mod as ProjectConfig
+  const [config] = await loadProjectConfigs([configPath], opts)
+  return config!
 }
 
 /**
