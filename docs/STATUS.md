@@ -241,7 +241,25 @@ passed once the load fell.
 
 ## In flight
 
-- Nothing.
+- **Release v0.0.17 (owner, 2026-09-03 21:19Z) is half-published — two
+  owner actions needed.** The release targeted `main` at 638281d, my
+  red commit of that minute (a test file's missing import; the binaries
+  are built from the same `src/` as the fix 6a59b46 and passed the
+  version assertion, so the attached assets are fine). `Release assets`
+  succeeded. `npm publish` published `@vzn/vx-darwin-x64@0.0.17` and
+  then failed on `@vzn/vx-darwin-arm64` with `E401 … token is invalid`
+  while npm tried to open a web-auth flow — the log's own notice: "npm
+  tokens that bypass 2FA are being restricted for … direct publishing".
+  The classic `NPM_TOKEN` no longer publishes reliably. Core and the
+  other three platform packages stay at 0.0.16, so installs are
+  unaffected (no core version references 0.0.17). (1) Replace
+  `NPM_TOKEN` with a granular access token that has publish rights and
+  2FA bypass — or set up npm trusted publishing (OIDC) for the five
+  packages, which the workflow's provenance step already half-does —
+  then (2) re-run the `npm publish` workflow by dispatch with version
+  `0.0.17`: the darwin step skips a package already on the registry, so
+  the run completes from arm64 onward. Not done here: both are the
+  owner's (a credential and an outward publish).
 
 ## Next (ordered)
 
