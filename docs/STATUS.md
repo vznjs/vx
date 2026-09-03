@@ -739,8 +739,10 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    before claiming the ~15% it suggests.
 
 7. **After waves 7 and 8, closing 2026-09-03:** in-process stage table
-   on the 1000-project bench — discover projects 19.9ms; load configs 22.8ms; git enumeration 20.7ms; classify + probe; run graph 21.1ms; record history 11.4ms; close 2.4ms 151.5ms; — and whole-process best of
-   5: 1000 projects 186 ms, 100 projects 77 ms. What is left is the
+   on the 1000-project bench — discover 20 ms, load configs 23, git
+   enumeration 21, classify + probe 23, run graph 21, record history 11,
+   total ~151 ms — and whole-process best of 5: 1000 projects 186 ms,
+   100 projects 77 ms. What is left is the
    floors: the git walk (~28 ms exposed), 1,000 task hashes (11 ms),
    1,000 file and directory stats (18 ms), 1,000 manifest reads in
    discovery (10 ms) and the batched inserts (9 ms). The next real win
