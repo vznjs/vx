@@ -18,6 +18,7 @@ const SHIMS: ReadonlyArray<[pkg: string, shim: string, real: string]> = [
   ['vx-otel', 'index.ts', 'src/index.ts'],
   ['vx-github', 'index.ts', 'src/index.ts'],
   ['vx-reapi', 'index.ts', 'src/index.ts'],
+  ['vx-mcp', 'index.ts', 'src/index.ts'],
 ]
 
 describe('root entry shims for compiled binaries', () => {
@@ -28,7 +29,7 @@ describe('root entry shims for compiled binaries', () => {
     for (const k of Object.keys(realMod)) expect(shimMod[k]).toBe(realMod[k])
   })
 
-  it.each(['vx', 'vx-otel', 'vx-github', 'vx-reapi'])(
+  it.each(['vx', 'vx-otel', 'vx-github', 'vx-reapi', 'vx-mcp'])(
     '%s ships its shim (package.json files)',
     async (pkg) => {
       const manifest = (await Bun.file(path.join(PACKAGES, pkg, 'package.json')).json()) as {
