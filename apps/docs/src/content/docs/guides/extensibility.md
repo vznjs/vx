@@ -39,6 +39,7 @@ flowchart LR
 
 | Stage    | Hook                   | What a plugin decides                                   | Declared by                          |
 | -------- | ---------------------- | ------------------------------------------------------- | ------------------------------------ |
+| workspace | `config(ws, ctx)`     | the workspace config — concurrency, cacheDir, before it is used | nothing unless declared              |
 | project  | `project(config, ctx)` | a project's tasks — add, remove, rewrite (keyed like yours) | nothing unless declared          |
 | graph    | `graph(nodes, ctx)`    | the run's edges                                         | nothing unless declared              |
 | key      | `key(task, ctx)`       | extra cache-key material (named in `vx why`)            | nothing unless declared              |
