@@ -315,11 +315,12 @@ never branches on layering.
       with the policy's local slice, wrapped by a plugin cache or the
       env-var remote layer) → bulk `git ls-files` populate →
       per-run hash memo.
-   2. Plugins install as bus subscribers (`installPlugins` +
-      `subscribeEventSinks`), then — only when plugins are declared —
-      the run context (git/CI/host, one git spawn) is captured and
+   2. Plugins install as bus subscribers (`installPlugins` runs each
+      `setup(ctx)`), then — only when plugins are declared — the run
+      context (git/CI/host, one git spawn) is captured and
       `subscribeTelemetry` wires the telemetry source (no-op when
-      every plugin declines).
+      every plugin declines). The pipeline stages ran inside
+      `prepareRun`, step 1.
    3. `markSurfacedDeps(nodes)` marks the display-only surfaced tasks
       for requested groups; the run banner context is built for the
       footer (there is no top-of-run header).
