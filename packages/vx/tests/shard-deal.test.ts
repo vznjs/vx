@@ -85,3 +85,27 @@ describe('shard dealing', () => {
     expect(shardGroups(shard.filter((f) => f.isolate))).toEqual([['./tests/hungry.test.ts']])
   })
 })
+
+// The runner itself, over the real tests directory: an empty shard is a
+// refusal (exit 2), never a silent green.
+describe('shard runner CLI', () => {
+  const cli = path.resolve(import.meta.dir, 'helpers/shard.ts')
+  it('refuses to run a shard that received no files', () => {
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, cli, 'run', '200', '199'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(p.exitCode).toBe(2)
+    expect(p.stderr.toString()).toContain('shard 199 of 200 has no files')
+  })
+  it('CONTROL: a shard that received files lists them', () => {
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, cli, 'list', '200', '0'],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(p.exitCode).toBe(0)
+    expect(p.stdout.toString().trim()).toMatch(/^\.\/tests\/.+\.test\.ts$/)
+  })
+})

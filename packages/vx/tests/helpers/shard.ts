@@ -48,6 +48,14 @@ if (
 }
 const dir = path.resolve(import.meta.dir, '..')
 const mine = dealShards(dir, shards)[index]!
+// An empty shard would exit 0 having run nothing — a `test.N` task with more
+// shards than files passing silently. Refuse it; `list` may still be empty.
+if (mode === 'run' && mine.length === 0) {
+  process.stderr.write(
+    `shard ${index} of ${shards} has no files: fewer test files than shards — lower the shard count in vx.config.ts\n`,
+  )
+  process.exit(2)
+}
 
 if (mode === 'list') {
   process.stdout.write(mine.map((f) => f.rel).join(' ') + '\n')

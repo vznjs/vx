@@ -434,6 +434,11 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   planted marked page is removed, an unmarked authored one survives. The
   coverage test still pins that the ignore list equals the imported set,
   so a generated page cannot be committed by accident.
+- 2026-09-03 — **an empty shard passed silently.** `shard.ts run 200 199`
+  exited 0 having spawned nothing, so a `test.N` task with more shards
+  than files would read as green. The runner now refuses an empty shard
+  (exit 2, naming the fix); pinned by spawning the real CLI, with a
+  control that a populated shard still lists its file.
 
 ## In flight
 
