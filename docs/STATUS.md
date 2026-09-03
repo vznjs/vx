@@ -128,7 +128,13 @@ bytes made of multibyte characters (a 141-byte Japanese path is
 enough) threw "name too long for ustar" instead of writing its pax
 record, because the header name under pax was sliced by characters;
 it is the first 100 bytes now, pinned against vx and libarchive, and
-the pin fails without the fix.
+the pin fails without the fix. Memory claim measured to its edge: vx
+holds one chunk (a single 400 MiB entry restores at +30 MiB, the same
+as 150 MiB), while 200 × 2 MiB entries read +90–180 MiB of per-entry
+garbage the collector paces — identical configurations differed by
+90 MiB run to run, so no code change is justified; the docs now say
+"holds one chunk", not "bounded by a chunk". The in-flight write bound
+and the buffering threshold were both varied and changed nothing.
 Measurement traps recorded: a Blob source is not bounded; a one-process
 memory probe with a large buffer live reads GC pacing (+315 vs +30 MiB
 in a fresh process); piped oxlint prints one line per finding.

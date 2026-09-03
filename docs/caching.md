@@ -583,9 +583,11 @@ frame is decoded and the tar read as it arrives — ustar name/prefix,
 pax `path`/`size`, GNU long names, header checksums, truncation — and
 every regular entry is written beside its target as `.vx-tmp-*` and
 renamed into place only after the whole archive has ended cleanly and
-the index's recorded outputs are all present. Memory is bounded by a
-chunk, not the artifact (measured 2026-09-03, 150 MiB incompressible:
-peak +644 MiB through `Bun.Archive`, +49 MiB streamed, same wall
+the index's recorded outputs are all present. vx itself holds one chunk of the tar at a time — a single 400 MiB entry
+restores at +30 MiB RSS, the same as a 150 MiB one — while the per-entry
+buffers of many mid-sized entries are garbage the collector reclaims at
+its own pace (200 × 2 MiB measured +90–180 MiB, never the artifact's
+size).Archive`, +49 MiB streamed, same wall
 time). An artifact up to 4 MiB compressed is decoded in one call
 first — the stream setup costs ~35 µs each, 4% of the headline
 restore row when every artifact is a one-file `dist/` — and then fed
@@ -886,7 +888,7 @@ Files touched: `src/cache/cache.ts` (the constant), this doc (history),
   rather than a miss. Since 2026-09-03 the same layout is written and
   read by vx's own streaming tar code (no bump: the bytes are readable
   either way), and the peak above is history — save, ingest and restore
-  are bounded by a chunk now; see § Artifact container.
+  hold one chunk now; see § Artifact container.
 
 - **v25 → v26**: the same shape as v25 — stored bytes that are wrong
   under a key nothing about the fix changes — reached by a different

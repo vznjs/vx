@@ -234,7 +234,7 @@ make on vx's behalf. Both directions stream (`src/cache/tar-stream.ts`):
 `packArtifactStream` reads each output as it is written, `scanArtifact`
 lists entries for ingest's index rows, `extractArtifactStream` restores
 through one staging extractor (write beside the target, rename after
-the whole archive is read), so memory is bounded by a chunk either way;
+the whole archive is read), so vx holds one chunk at a time either way;
 a small artifact (≤ 4 MiB) is packed and decoded in one call instead.
 
 SQLite stores metadata only:
