@@ -689,6 +689,14 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   cannot be built and the live load fails on the import, never the
   stale value), and the closure index honours the local read/write
   axes like the evaluations do.
+- 2026-09-03 — **the site is generated from the runner's results.**
+  `bench/update-site.ts` rewrites the landing page's rows, tiles and
+  note and `benchmarks.md` § A real monorepo from `bench/results.json`;
+  `--check` exits 1 when the site drifts from the results. Its first run
+  found the drift my session-local scripts had left: the tiles and the
+  note still said 559 ms and 34 s after the vx rows were refreshed to
+  549 ms and 31 s, and the doc heading carried a raw timestamp. The
+  scratchpad scripts are gone; the generator is the only path.
 
 ## In flight
 

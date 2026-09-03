@@ -294,17 +294,17 @@ const footCols = {
             </div>
             <div class="stats">
               <div class="stat">
-                <span class="val"><span class="num">559</span><span class="unit">ms</span></span>
+                <span class="val"><span class="num">549</span><span class="unit">ms</span></span>
                 <span class="label">Full cache replay</span>
                 <span class="sub">3,270 tasks · 1,090 packages</span>
               </div>
               <div class="stat plasma">
-                <span class="val"><span class="num">2.1</span><span class="unit">×</span></span>
+                <span class="val"><span class="num">2.4</span><span class="unit">×</span></span>
                 <span class="label">Less CPU burned</span>
                 <span class="sub">vs Turborepo 2.10</span>
               </div>
               <div class="stat amber">
-                <span class="val"><span class="num">6.4</span><span class="unit">×</span></span>
+                <span class="val"><span class="num">6.5</span><span class="unit">×</span></span>
                 <span class="label">Faster warm runs</span>
                 <span class="sub">vs Nx 23</span>
               </div>
@@ -534,8 +534,8 @@ const footCols = {
               pinned to the same concurrency, daemons on for the others, measured one at a time
               (2026-09-03, Turborepo 2.10.12, Nx 23.2.0, Apple silicon, 10 cores). The tasks are
               <code>sleep 1</code>, so the clock measures the runner and CPU measures its overhead:
-              vx burned 34 s to build the whole graph cold, Turborepo 73 s, Nx 114 minutes. Warm,
-              vx replays 3,270 tasks in 559 ms; Turborepo 760 ms; Nx 3.6 s. Reproduce with
+              vx burned 31 s to build the whole graph cold, Turborepo 73 s, Nx 114 minutes. Warm,
+              vx replays 3,270 tasks in 549ms; Turborepo 760ms; Nx 3.59s. Reproduce with
               <code>bun bench/compare.ts 100 11 1</code>; the committed results are this run. The dashed <em>baseline</em> bar is the theoretical best case: cold is the tasks' own 3m 38s on 10 perfectly parallel workers along the dependency graph, warm is one <code>git status</code> walk (66ms), restore adds a raw copy of every output file, and CPU is the tasks' own shells under <code>xargs</code> (33.93s) — what is left above it is the runner. At this size the CPU floor and a runner's own CPU each vary by about two seconds between runs, so vx's cold CPU sits within the floor's noise.
             </p>
           </div>

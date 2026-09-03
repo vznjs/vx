@@ -108,7 +108,7 @@ opens fastest on the restore path, where vx's per-hit work (one batched
 probe, a stat check, no extraction when the tree is already current) is
 what the others do not do.
 
-## A real monorepo: 3,270 tasks, 100 layers (2026-09-03T10:32:36.417Z)
+## A real monorepo: 3,270 tasks, 100 layers (2026-09-03)
 
 The shape that actually stresses a task runner: **100 dependency layers**,
 ~11 packages per layer, ~30 deps per package, three tasks each
@@ -174,6 +174,7 @@ skips the work.
 bun bench/compare.ts                 # 100 layers × 11 (3,270 nodes) — the full shape (slow)
 bun bench/compare.ts 10 5 1          # 46 packages, 10 layers — quick
 BASELINE_ONLY=1 bun bench/compare.ts # recompute only the baseline floors against the committed rows (~9 min)
+bun bench/update-site.ts             # rewrite the landing page and this doc's stress section from results.json (--check to verify)
 BUILD_SLEEP=0 bun bench/compare.ts 20 11 2   # deep graph, pure framework overhead
 ```
 
