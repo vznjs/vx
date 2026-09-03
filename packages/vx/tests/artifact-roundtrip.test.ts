@@ -334,6 +334,40 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
     expect(await readdir(projectDir)).toEqual([])
   })
 
+  it('ingesting a large artifact cut mid-stream refuses it and leaves no temp file', async () => {
+    // Above the threshold ingest scans the compressed bytes from the temp
+    // file as they decode (the tar never sits in memory beside them); the
+    // failure path must unlink that temp and surface the corrupt-artifact
+    // error, and the final path must never appear.
+    const tar = await new Bun.Archive({ stdout: '', 'outputs/dist/big.bin': big }).bytes()
+    const whole = Bun.zstdCompressSync(tar)
+    expect(whole.byteLength).toBeGreaterThan(4 * 1024 * 1024)
+    await expect(
+      cache.ingest('cutin', whole.subarray(0, whole.byteLength - 4096), {
+        taskId: 'a#build',
+        command: 'build',
+        durationMs: 1,
+      }),
+    ).rejects.toThrow(/corrupt artifact/i)
+    expect(await Bun.file(cache.outputsPath('cutin')).exists()).toBe(false)
+    expect((await readdir(cacheDir)).filter((f) => f.includes('.tmp-'))).toEqual([])
+    expect(await cache.get('cutin')).toBeNull()
+  })
+
+  it('ingesting a large intact artifact indexes it and restores it (control)', async () => {
+    const tar = await new Bun.Archive({ stdout: 'hello', 'outputs/dist/big.bin': big }).bytes()
+    await cache.ingest('bigin', Bun.zstdCompressSync(tar), {
+      taskId: 'a#build',
+      command: 'build',
+      durationMs: 1,
+    })
+    expect((await cache.get('bigin'))?.stdout).toBe('hello')
+    await cache.restoreOutputs('bigin', projectDir)
+    expect(Buffer.from(await Bun.file(path.join(projectDir, 'dist/big.bin')).bytes())).toEqual(
+      Buffer.from(big),
+    )
+  })
+
   it('a poisoned entry AFTER the large one leaves nothing behind', async () => {
     // The staging core renames only once the whole archive has been read,
     // so a traversal at the END of a big artifact cannot leave the benign

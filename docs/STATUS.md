@@ -783,6 +783,23 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   compressed stream cut mid-archive above the threshold surfaces as
   `CorruptArtifactError` through the real cache with the staged temp
   gone. Docs: `docs/caching.md` § container, `docs/modules/cache.md`.
+- 2026-09-03 — **ingest scans from the temp file.** A remote artifact
+  was decoded whole into memory to be indexed; now the compressed bytes
+  are written to the temp first (node's `writeFile` — `Bun.write` copies
+  the buffer, +151 MiB and 33 ms on 150 MiB against +0 and 21) and an
+  artifact above 4 MiB is scanned from that file as it decodes, with
+  the declared-size check on its first 32 bytes; the temp is unlinked
+  on any refusal and the final path is untouched until the archive has
+  passed. Measured with the compressed 150 MiB live (it always is on
+  this path): peak +448 → +318 MiB, wall 68 → 77 ms (the read-back).
+  Two measurement traps recorded: a Blob source is NOT bounded (it
+  copies its bytes and hands the decoder everything at once, +519 MiB);
+  and a single-process memory probe with a large buffer alive reads the
+  collector's pacing, not retention — the same scan is +30 MiB RSS in a
+  fresh process and +315 with 150 MiB of ballast live. Pinned: a large
+  ingest cut mid-stream refuses with no temp left (this would have
+  caught a missing `unlink` import the lint filter hid), and a large
+  intact ingest indexes and restores.
 
 ## In flight
 

@@ -31,7 +31,7 @@
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
-import { lstat, mkdir, readdir, rename, rm, stat } from 'node:fs/promises'
+import { lstat, mkdir, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import {
@@ -39,7 +39,6 @@ import {
   extractArtifactStream,
   scanArtifact,
   packArtifact as packArchive,
-  STDOUT_ENTRY,
 } from './archive.js'
 import { FsCASBackend } from './cas-backend.js'
 
@@ -656,16 +655,7 @@ async function zstdDecompressBounded(
   hash: string,
   trusted: boolean,
 ): Promise<Uint8Array> {
-  const declared = zstdContentSize(compressed)
-  if (declared !== null && declared > BigInt(MAX_DECOMPRESSED_ARTIFACT_BYTES)) {
-    throw new CorruptArtifactError(
-      hash,
-      `declares ${declared} decompressed bytes (> ${MAX_DECOMPRESSED_ARTIFACT_BYTES} cap)`,
-    )
-  }
-  if (declared === null && !trusted) {
-    throw new CorruptArtifactError(hash, 'remote zstd frame carries no declared content size')
-  }
+  assertDeclaredSize(compressed, hash, trusted)
   const out = await Bun.zstdDecompress(compressed)
   if (out.length > MAX_DECOMPRESSED_ARTIFACT_BYTES) {
     throw new CorruptArtifactError(
@@ -676,8 +666,19 @@ async function zstdDecompressBounded(
   return out
 }
 
-/** Compressed artifacts above this size are decoded as a stream on restore. */
-const STREAM_DECODE_FROM = 4 * 1024 * 1024
+/** The pre-decompress half of the ceiling: the frame header's own claim. */
+function assertDeclaredSize(compressed: Uint8Array, hash: string, trusted: boolean): void {
+  const declared = zstdContentSize(compressed)
+  if (declared !== null && declared > BigInt(MAX_DECOMPRESSED_ARTIFACT_BYTES)) {
+    throw new CorruptArtifactError(
+      hash,
+      `declares ${declared} decompressed bytes (> ${MAX_DECOMPRESSED_ARTIFACT_BYTES} cap)`,
+    )
+  }
+  if (declared === null && !trusted) {
+    throw new CorruptArtifactError(hash, 'remote zstd frame carries no declared content size')
+  }
+}
 
 const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
   new ReadableStream({
@@ -687,15 +688,43 @@ const oneChunk = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
     },
   })
 
+/** Compressed artifacts above this size are decoded as a stream, on restore and on ingest. */
+const STREAM_DECODE_FROM = 4 * 1024 * 1024
+
 /**
- * The streaming twin of `zstdDecompressBounded` for a local artifact: the
- * decoded bytes as a stream, refused past the same ceiling. A malicious
- * frame cannot expand past the cap here either — the count runs as bytes
- * are produced, before any of them reach the extractor's next entry.
+ * The decoded tar as a stream: one call for a small artifact, a streamed
+ * decode for a large one — the stream setup is ~35 µs, which matters at
+ * a thousand one-file artifacts and nowhere else. Bytes in memory are
+ * only ever the small case (a large source must be a FILE: a Blob copies
+ * its bytes and hands the decoder everything at once, measured +519 MiB
+ * on 150 MiB against +448 for the plain decode). Both apply the 2 GiB
+ * ceiling; `trusted` is the local artifact validated at ingest (a missing
+ * declared size is allowed), untrusted is the remote boundary.
  */
-function zstdDecodeStream(file: Bun.BunFile, hash: string): ReadableStream<Uint8Array> {
+async function decodedTar(
+  source: Uint8Array | Bun.BunFile,
+  hash: string,
+  trusted: boolean,
+): Promise<ReadableStream<Uint8Array>> {
+  if (source instanceof Uint8Array) {
+    return oneChunk(await zstdDecompressBounded(source, hash, trusted))
+  }
+  if (source.size <= STREAM_DECODE_FROM) {
+    return oneChunk(await zstdDecompressBounded(await source.bytes(), hash, trusted))
+  }
+  assertDeclaredSize(await source.slice(0, 32).bytes(), hash, trusted)
+  return zstdDecodeStream(source, hash)
+}
+
+/**
+ * The streaming twin of `zstdDecompressBounded`: the decoded bytes as a
+ * stream, refused past the same ceiling. A malicious frame cannot expand
+ * past the cap here either — the count runs as bytes are produced, before
+ * any of them reach the reader's next entry.
+ */
+function zstdDecodeStream(source: Blob, hash: string): ReadableStream<Uint8Array> {
   let total = 0
-  return file
+  return source
     .stream()
     .pipeThrough(new DecompressionStream('zstd'))
     .pipeThrough(
@@ -1873,12 +1902,8 @@ export class Cache implements CacheLayer {
     // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
-    const file = Bun.file(src)
-    const tar =
-      file.size <= STREAM_DECODE_FROM
-        ? oneChunk(await zstdDecompressBounded(await file.bytes(), hash, true))
-        : zstdDecodeStream(file, hash)
     try {
+      const tar = await decodedTar(Bun.file(src), hash, true)
       await extractArtifactStream(tar, projectDir, workspaceRoot, verify)
     } catch (err) {
       if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
@@ -2002,30 +2027,6 @@ export class Cache implements CacheLayer {
     // `output_files` rows: same headers the restore will see on
     // restore, so the size/mode/mtime fingerprint we store matches
     // what isOutputsCurrent will compare against post-restore.
-    let tarBytes: Uint8Array
-    try {
-      // ingest() is the UNTRUSTED boundary — `compressed` is bytes just
-      // pulled from a remote. Refuse a bomb (declared or sizeless) before it
-      // can expand into memory.
-      tarBytes = await zstdDecompressBounded(compressed, hash, false)
-    } catch (err) {
-      if (err instanceof CorruptArtifactError) throw err
-      throw new CorruptArtifactError(hash, 'zstd decompression failed', err)
-    }
-    let scanned: Awaited<ReturnType<typeof scanArtifact>>
-    try {
-      scanned = await scanArtifact(oneChunk(tarBytes))
-    } catch (err) {
-      if (err instanceof ArchiveSecurityError) throw err
-      throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
-    }
-    // v17 invariant: every artifact carries a `stdout` entry. Its
-    // absence means the bytes decompressed but aren't a vx artifact.
-    if (scanned.stdout === null) {
-      throw new CorruptArtifactError(hash, 'missing stdout entry')
-    }
-    const { entries } = scanned
-
     const finalPath = this.tarPath(hash)
     // tmp suffix mixes pid + hrtime + a random hex chunk so two saves
     // of the same hash from the same process (or from two forked
@@ -2033,7 +2034,31 @@ export class Cache implements CacheLayer {
     // same tmp filename and race on the rename.
     const tmpPath = `${finalPath}.tmp-${process.pid}-${process.hrtime.bigint()}-${Math.random().toString(36).slice(2, 10)}`
     await mkdir(this.cacheDir, { recursive: true })
-    await Bun.write(tmpPath, compressed)
+    // The temp is written BEFORE validation so a large artifact can be
+    // scanned from the file as it decodes — a file stream reads in
+    // bounded pieces; the bytes in memory would not (see `decodedTar`).
+    // The final path is still untouched until the archive has passed.
+    // node's writeFile, not Bun.write: the latter copies the buffer first
+    // (measured on 150 MiB: +151 MiB and 33 ms against +0 and 21 ms).
+    await writeFile(tmpPath, compressed)
+    let scanned: Awaited<ReturnType<typeof scanArtifact>>
+    try {
+      // ingest() is the UNTRUSTED boundary — `compressed` is bytes just
+      // pulled from a remote. Refuse a bomb (declared or sizeless) before it
+      // can expand into memory.
+      const source = compressed.byteLength <= STREAM_DECODE_FROM ? compressed : Bun.file(tmpPath)
+      scanned = await scanArtifact(await decodedTar(source, hash, false))
+      // v17 invariant: every artifact carries a `stdout` entry. Its
+      // absence means the bytes decompressed but aren't a vx artifact.
+      if (scanned.stdout === null) {
+        throw new CorruptArtifactError(hash, 'missing stdout entry')
+      }
+    } catch (err) {
+      await unlink(tmpPath).catch(() => undefined)
+      if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
+      throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
+    }
+    const { entries } = scanned
     // POSIX rename atomically REPLACES the destination if it exists,
     // so we don't need a pre-rm. The pre-rm was actively harmful —
     // it opened a race window where writer B could delete writer A's
