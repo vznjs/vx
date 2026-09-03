@@ -334,6 +334,37 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
     expect(await readdir(projectDir)).toEqual([])
   })
 
+  it('a streamed save whose output cannot be read leaves no temp and no row', async () => {
+    // The plan stats every output first; an output that is a directory
+    // stats fine and fails on read, mid-stream, after the temp exists.
+    await mkdir(path.join(projectDir, 'dist/not-a-file'), { recursive: true })
+    await Bun.write(path.join(projectDir, 'dist/big.bin'), big)
+    await expect(
+      cache.save({
+        hash: 'broken',
+        entry: { taskId: 'a#build', command: 'build', durationMs: 1, stdout: '' },
+        projectDir,
+        outputFiles: [
+          path.join(projectDir, 'dist/big.bin'),
+          path.join(projectDir, 'dist/not-a-file'),
+        ],
+      }),
+    ).rejects.toThrow()
+    expect((await readdir(cacheDir)).filter((f) => f.includes('.tmp-'))).toEqual([])
+    expect(await Bun.file(cache.outputsPath('broken')).exists()).toBe(false)
+    expect(await cache.get('broken')).toBeNull()
+    // CONTROL: the small path (no big output) fails the same way before a temp exists.
+    await expect(
+      cache.save({
+        hash: 'broken-small',
+        entry: { taskId: 'a#build', command: 'build', durationMs: 1, stdout: '' },
+        projectDir,
+        outputFiles: [path.join(projectDir, 'dist/not-a-file')],
+      }),
+    ).rejects.toThrow()
+    expect((await readdir(cacheDir)).filter((f) => f.includes('.tmp-'))).toEqual([])
+  })
+
   it('ingesting a large artifact cut mid-stream refuses it and leaves no temp file', async () => {
     // Above the threshold ingest scans the compressed bytes from the temp
     // file as they decode (the tar never sits in memory beside them); the

@@ -815,7 +815,11 @@ extracts` guard ran 400 rounds past the 5 s default timeout under the
   and the poisoned entry 2 survives, the staged temp does not, and the
   control without the writer leaves the destination empty (the plant
   waits for the directory to exist, because a stream pulls ahead of its
-  consumer). Two more pins from the audit: a pax `path` record that renames a
+  consumer). And a fix from the same audit: a streamed save whose
+  output cannot be read after the plan's stat (a directory where a file
+  was declared, a file removed in between) left its partial temp in
+  the cache dir; the temp is unlinked on the failure now, pinned with
+  the small-path twin as a control, and the pin fails without the fix. Two more pins from the audit: a pax `path` record that renames a
   benign header to a traversal is refused with nothing written, and a
   compressed stream cut mid-archive above the threshold surfaces as
   `CorruptArtifactError` through the real cache with the staged temp

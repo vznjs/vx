@@ -2062,9 +2062,14 @@ export class Cache implements CacheLayer {
       for await (const chunk of packArtifactStream(plan).pipeThrough(zstdEncoder())) {
         await sink.write(chunk)
       }
-    } finally {
+    } catch (err) {
+      // An output that vanished or changed shape between the plan's stat
+      // and its read: the partial temp must not outlive the failure.
       await sink.end()
+      await unlink(tmpPath).catch(() => undefined)
+      throw err
     }
+    await sink.end()
     return { tmpPath }
   }
 
