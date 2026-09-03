@@ -525,6 +525,13 @@ undeclared-inputs … for a leaky task` returned `ok: true` once — the
   batches them, the lazy `get` attaches them, parity pinned) and the hit
   path reads them without a query: run graph 18 ms, the span 0.07 ms per
   hit and all of it stats.
+- 2026-09-03 — **discovery stats the config names instead of listing
+  each project directory.** Micro-measured on the 1000-project bench,
+  min of 5: a readdir per project 9.6 ms, stats in `CONFIG_FILENAMES`
+  order 6.3 ms — with the bench's `.mjs` at the LAST name (four stats);
+  a `.ts` config pays one. Bench-level the difference sits inside the
+  noise floor, so the micro-measurement is the record. Precedence is
+  unchanged (first name in the list wins, as `find` did).
 
 ## In flight
 
