@@ -70,7 +70,13 @@ false negative costs one evaluation, never a stale key.
 allowed-import set, each impurity token, impurity inside an imported
 file, the literal stripper (strings, templates, comments, the slash
 bail-out), the served-from-store proof (a store row replaced under the
-same key is what the loader returns), and the read/write axes.
+same key is what the loader returns), the read/write axes, the batched
+round (one lookup serves the hit and evaluates the miss; two broken
+configs name the first in the given order), and the warm fast path (a
+load served from the indexed closure with nothing evaluated, a preset
+edit that misses through the fast key, an extensionless import never
+indexed) — with the mutations that fold only the config or drop the
+extension rule each failing exactly their pin.
 
 ## The warm fast path (2026-09-03)
 
