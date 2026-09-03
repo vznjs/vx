@@ -46,8 +46,9 @@ specific project; bare entries follow the usual scope rules
 
 **Every requested name must resolve.** If any positional matches no
 project in scope, the run refuses to start — `no projects declare
-task(s): <name>` on stderr, exit 1 — even when the other names resolved
-fine. A bare name declared by only SOME projects is normal and stays
+task(s): <name>` on stderr, exit 1, with `Did you mean <task>?` when a
+declared task (or, for `pkg#task`, a runnable spec) is within two edits
+— even when the other names resolved fine. A bare name declared by only SOME projects is normal and stays
 green; the guard fires only when a name matched nowhere. So a CI job
 running `vx run lint test typecheck` goes red the day `typecheck` is
 renamed, instead of silently running two of three.
@@ -242,7 +243,9 @@ Mutual exclusion:
 - `--dry` or `--graph` with `--summarize` or `--profile` — the latter
   two need a real run.
 
-Unknown flags are a parse error (`unknown flag: --foo`).
+Unknown flags are a parse error (`unknown flag: --foo`), naming the
+nearest documented `vx run` flag when one is within two edits
+(`unknown flag: --concurency (did you mean --concurrency?)`).
 
 **Optional-value flags take their value with `=` only.** `--affected`,
 `--excludeDependencies`, `--dry`, `--graph`, `--summarize`, `--profile`,
