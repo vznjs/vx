@@ -1152,8 +1152,9 @@ wrong tree for every package that writes elsewhere. `test` / `lint` /
 `preview` become persistent tasks with a TODO to add `readyWhen`.
 
 A run in a root with no `vx.workspace.*` at all fails before any task
-with `no vx.workspace.ts found — run \`vx init\` …`ahead of the usual`no cache plugin declared`snippet; a file that declares no plugins gets
-the plain error, since`init` refuses to overwrite it.
+with `no vx.workspace.ts found — run vx init …` ahead of the usual
+`no cache plugin declared` snippet; a file that declares no plugins gets
+the plain error, since `init` refuses to overwrite it.
 
 Two npm conventions are mapped rather than copied, because copying them
 loses behaviour. `pre<x>` / `post<x>` hooks, which npm runs around `x`
