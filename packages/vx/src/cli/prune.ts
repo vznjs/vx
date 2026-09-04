@@ -41,6 +41,7 @@
 // `import '…'` and `import('…')`, and nothing computed.
 
 import { cp, mkdir, stat, writeFile } from 'node:fs/promises'
+import { seeHelp } from './help.js'
 import path from 'node:path'
 import {
   buildPackageGraph,
@@ -71,7 +72,7 @@ export function parsePruneWorkspaceArgs(args: readonly string[]): PruneWorkspace
       out.docker = true
       continue
     }
-    if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}` }
+    if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('prune')}` }
     if (out.project !== undefined) return { ...out, error: `unexpected argument: ${a}` }
     out.project = a
   }

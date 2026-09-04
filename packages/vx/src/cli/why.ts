@@ -6,6 +6,7 @@
 // no config evaluation, no re-hash.
 
 import { Cache } from '../cache/index.js'
+import { seeHelp } from './help.js'
 import { splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
@@ -51,7 +52,7 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
       out.format = fv
       continue
     }
-    if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}` }
+    if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('why')}` }
     if (out.target !== undefined) return { ...out, error: `unexpected argument: ${a}` }
     out.target = a
   }

@@ -1,4 +1,5 @@
 import { Cache } from '../cache/index.js'
+import { seeHelp } from './help.js'
 import { parseDecimalInt, parseSize } from '../util/index.js'
 import { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from '../workspace/index.js'
 import { formatBytes } from './format.js'
@@ -16,7 +17,7 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
       process.stderr.write('vx cache: missing subcommand. Try `vx cache prune`.\n')
       return 1
     default:
-      process.stderr.write(`vx cache: unknown subcommand: ${sub}\n`)
+      process.stderr.write(`vx cache: unknown subcommand: ${sub}${seeHelp('cache')}\n`)
       return 1
   }
 }
@@ -62,7 +63,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       }
       out.maxBytes = bytes
     } else {
-      return { error: `unknown argument: ${a}` }
+      return { error: `unknown argument: ${a}${seeHelp('cache')}` }
     }
   }
   if (out.olderThanMs === undefined && out.maxBytes === undefined) {

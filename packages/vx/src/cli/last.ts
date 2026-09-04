@@ -5,6 +5,7 @@
 // Read-only — no config evaluation, no re-hash, no cache probe.
 
 import { Cache } from '../cache/index.js'
+import { seeHelp } from './help.js'
 import { getInvocation, getRun, listInvocations } from '../orchestrator/index.js'
 import { UserError } from '../util/index.js'
 import { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from '../workspace/index.js'
@@ -37,7 +38,7 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
       out.format = fv
       continue
     }
-    if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}` }
+    if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('last')}` }
     if (out.runId !== undefined) return { ...out, error: `unexpected argument: ${a}` }
     out.runId = a
   }

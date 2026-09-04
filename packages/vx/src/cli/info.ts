@@ -3,6 +3,7 @@
 // `vx stats` is a deprecated alias (info absorbed it).
 
 import { Cache } from '../cache/index.js'
+import { seeHelp } from './help.js'
 import { VERSION } from '../version.js'
 import {
   findWorkspaceRoot,
@@ -17,7 +18,7 @@ import { formatBytes } from './format.js'
 
 export async function infoCmd(args: readonly string[]): Promise<number> {
   if (args.length > 0) {
-    process.stderr.write(`vx info: unknown argument: ${args[0]}\n`)
+    process.stderr.write(`vx info: unknown argument: ${args[0]}${seeHelp('info')}\n`)
     return 1
   }
   const root = await findWorkspaceRoot(process.cwd())

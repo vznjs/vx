@@ -64,6 +64,31 @@ describe('cli run()', () => {
     expect(stderr).toBe('')
   })
 
+  // Every argument error points at the verb's own help, which is only
+  // useful because `vx <verb> --help` prints something (same day). A verb
+  // that grows a new parser and forgets the pointer fails here.
+  it.each([
+    ['show', ['show', '--json']],
+    ['run', ['run', '--concurency', '2', 'build']],
+    ['last', ['last', '--lst']],
+    ['migrate', ['migrate', '--dyr']],
+    ['why', ['why', '--fmt', 'x']],
+    ['prune', ['prune', '--dockerr', 'app']],
+    ['lock', ['lock', '--chk']],
+    ['info', ['info', 'extra']],
+    ['cache', ['cache', 'bogus']],
+  ])('a bad argument to `%s` points at its help', async (verb, argv) => {
+    // Some verbs print and return non-zero, others throw a UserError that
+    // `bin.ts` prints. Both are the same thing to a user, so accept either.
+    let thrown = ''
+    try {
+      expect(await run(argv)).not.toBe(0)
+    } catch (err) {
+      thrown = err instanceof Error ? err.message : String(err)
+    }
+    expect(`${stdout}${stderr}${thrown}`).toContain(`vx ${verb} --help`)
+  })
+
   it('`-h` works the same, and a `--` forwarded `--help` is the task’s, not ours', async () => {
     expect(await run(['show', '-h'])).toBe(0)
     expect(stdout).toContain('Usage:')
@@ -1052,9 +1077,9 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '-c', '4']).error).toMatch(/unknown flag: -c/)
     // A near miss names the documented flag; a far one gets no guess.
     expect(parseRunArgs(['build', '--concurency', '4']).error).toBe(
-      'unknown flag: --concurency (did you mean --concurrency?)',
+      'unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
     )
-    expect(parseRunArgs(['build', '--zzz']).error).toBe('unknown flag: --zzz')
+    expect(parseRunArgs(['build', '--zzz']).error).toBe('unknown flag: --zzz (see `vx run --help`)')
     // The candidate list itself: run's documented flags come from the help
     // text's `(for run)` sections, and prune's flag is not among them.
     const flags = documentedFlags('run')
@@ -1063,7 +1088,9 @@ describe('parseRunArgs', () => {
     expect(flags).not.toContain('--older-than')
     expect(documentedFlags('no-such-verb')).toEqual([])
     // Another verb's flag is never suggested to `run`.
-    expect(parseRunArgs(['build', '--older-tha', '1d']).error).toBe('unknown flag: --older-tha')
+    expect(parseRunArgs(['build', '--older-tha', '1d']).error).toBe(
+      'unknown flag: --older-tha (see `vx run --help`)',
+    )
   })
 
   it('parses --cache-dir (space + = forms) without colliding with --cache', () => {

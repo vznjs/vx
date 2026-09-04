@@ -1,7 +1,7 @@
 import readline from 'node:readline/promises'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
-import { documentedFlags } from './help.js'
+import { documentedFlags, seeHelp } from './help.js'
 import {
   affectedProjects,
   applyFilters,
@@ -367,7 +367,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       }
       out.report = fmt
     } else if (a !== undefined && a.startsWith('-')) {
-      return { ...out, error: `unknown flag: ${a}${didYouMeanFlag(a)}` }
+      return { ...out, error: `unknown flag: ${a}${didYouMeanFlag(a)}${seeHelp('run')}` }
     } else if (a !== undefined) {
       out.tasks.push(a)
     }

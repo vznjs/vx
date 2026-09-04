@@ -6,6 +6,7 @@
 // guard, and the final report.
 
 import path from 'node:path'
+import { seeHelp } from './help.js'
 import { relPosix, UserError } from '../util/index.js'
 import { findWorkspaceRoot, listProjects, loadWorkspace } from '../workspace/index.js'
 import { quote } from './migrate-emit.js'
@@ -32,7 +33,8 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
         return { ...out, error: `--from must be turbo, nx or scripts` }
       }
       out.from = v
-    } else if (a?.startsWith('-')) return { ...out, error: `unknown flag: ${a}` }
+    } else if (a?.startsWith('-'))
+      return { ...out, error: `unknown flag: ${a}${seeHelp('migrate')}` }
     else return { ...out, error: `unexpected argument: ${a}` }
   }
   return out

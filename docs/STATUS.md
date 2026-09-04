@@ -291,7 +291,10 @@ passed once the load fell.
   the first thing a user types answered `unknown flag: --help` and
   exited 1. Core verbs now print the reference and exit 0; args past a
   `--` still belong to the task, and plugin verbs still own their own.
-  Pinned across every verb in the dispatcher.
+  Pinned across every verb in the dispatcher. Every argument error now
+  ends with `(see \`vx <verb> --help\`)`— there was nowhere to send a
+user before — and`bin.ts`no longer prints`vx: vx why: …`, since it
+owns the `vx: ` prefix and six messages already named the tool.
 - **`vx migrate` walkthroughs, both sources (2026-09-04).** Turbo:
   clean on a realistic `turbo.json` — global fields become the
   imported `vx-preset.ts`, `dist/**` outputs and `env` survive, the

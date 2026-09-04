@@ -151,6 +151,15 @@ export function helpText(pluginCommands: readonly string[] = []): string {
 }
 
 /**
+ * Every argument error ends with this. `vx <verb> --help` prints the
+ * reference (2026-09-04); before that there was nowhere to send a user who
+ * got a flag wrong, so the errors just said no.
+ */
+export function seeHelp(verb: string): string {
+  return ` (see \`vx ${verb} --help\`)`
+}
+
+/**
  * The documented `--flags` of one verb, read from the help text's
  * sections headed `… (for <verb>):` so there is no second list to drift —
  * and no hint that names another verb's flag.

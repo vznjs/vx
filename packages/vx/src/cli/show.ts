@@ -6,6 +6,7 @@
 // "what would a live run see here, now".
 
 import type { ProjectConfig, TaskConfig } from '../config.js'
+import { seeHelp } from './help.js'
 import { relPosix, UserError } from '../util/index.js'
 import {
   findWorkspaceRoot,
@@ -28,7 +29,7 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
     let format: string | undefined
     if (a === '--format') format = args[++i] ?? ''
     else if (a.startsWith('--format=')) format = a.slice('--format='.length)
-    else if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}` }
+    else if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('show')}` }
     else if (out.target !== undefined) return { ...out, error: `unexpected argument: ${a}` }
     else out.target = a
 
