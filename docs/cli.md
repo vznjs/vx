@@ -1139,11 +1139,15 @@ workspace file DOES import `@vzn/vx` at runtime; a run in a workspace
 without it says so and names the install command.
 
 Each script becomes a task with its command verbatim. `build` gets
-`dependsOn: ['^build']` and a cache block whose inputs are the whole
-project and whose outputs are **empty** — under a `TODO(vx-migrate)`
-naming what to fill in, because nothing is cached until outputs are
-declared and a guessed `dist/**` would restore the wrong tree for every
-package that writes elsewhere. `test` / `lint` / `typecheck` wait for
+`dependsOn: ['^build']` and **no cache block** — under a
+`TODO(vx-migrate)` showing the block to add with the package's real
+inputs and outputs. A task without a cache block always runs; a block
+with EMPTY outputs is not "uncached" but a no-output task that hits on
+unchanged inputs and skips the build with nothing to restore (a deleted
+`dist` stays deleted under a green `up-to-date` run — what `init`
+generated until 2026-09-04), and a guessed `dist/**` would restore the
+wrong tree for every package that writes elsewhere. `test` / `lint` /
+`typecheck` wait for
 `build` when the package has one; `dev` / `start` / `serve` / `watch` /
 `preview` become persistent tasks with a TODO to add `readyWhen`.
 

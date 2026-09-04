@@ -830,6 +830,37 @@ async function makeScriptsWorkspace(): Promise<string> {
   return root
 }
 
+describe('vx init — the generated build is not a cached no-op', () => {
+  // Until 2026-09-04 `init` gave `build` a cache block with whole-project
+  // inputs and EMPTY outputs "to fill in". That is not an uncached task: it
+  // hits on unchanged inputs and skips the build with nothing to restore,
+  // so on the init walkthrough a deleted `dist` stayed deleted under a
+  // green `up-to-date` run. The scaffold now emits no cache block; this
+  // pin fails with the old block (verified by stashing the fix).
+  it('a deleted dist is rebuilt on the next run', async () => {
+    const root = await makeRoot('vx-init-rebuild-')
+    await addPackage(root, 'w', { build: 'mkdir -p dist && cp src/a.txt dist/a.txt' })
+    await mkdir(path.join(root, 'packages', 'w', 'src'), { recursive: true })
+    await writeFile(path.join(root, 'packages', 'w', 'src', 'a.txt'), 'a\n')
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    try {
+      expect((await vx(root, ['init'])).code).toBe(0)
+      const dist = path.join(root, 'packages', 'w', 'dist', 'a.txt')
+      for (let i = 0; i < 2; i++) {
+        const r = await vx(root, ['run', 'build', '--all'])
+        expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      }
+      expect(await Bun.file(dist).exists()).toBe(true)
+      await rm(path.join(root, 'packages', 'w', 'dist'), { recursive: true, force: true })
+      const r = await vx(root, ['run', 'build', '--all'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(await Bun.file(dist).exists()).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('vx init on a workspace with no scripts', () => {
   it('writes the workspace file, prints an example config and the next command', async () => {
     const root = await makeRoot('vx-init-empty-')
@@ -923,8 +954,10 @@ describe('vx init (package.json scripts)', () => {
       expect(Object.keys(tasks).sort()).toEqual(['build', 'dev', 'lint', 'test'])
       expect(tasks['build']!.exec?.command).toBe('tsc -b')
       expect(tasks['build']!.dependsOn).toEqual(['^build'])
-      // Caching needs declared outputs; the scaffold says so instead of guessing.
-      expect(tasks['build']!.cache).toEqual({ inputs: { files: ['**/*'] }, outputs: { files: [] } })
+      // Caching needs declared inputs AND outputs; the scaffold shows the
+      // block in a TODO instead of guessing — an EMPTY-outputs block is a
+      // cached no-op, pinned below.
+      expect(tasks['build']!.cache).toBeUndefined()
       expect(tasks['test']!.dependsOn).toEqual(['build'])
       expect(tasks['test']!.cache).toBeUndefined()
       expect(tasks['dev']!.exec?.persistent).toEqual({})
@@ -934,7 +967,7 @@ describe('vx init (package.json scripts)', () => {
       expect(text).toContain("import type { ProjectConfig } from '@vzn/vx'")
       expect(text).toContain('} satisfies ProjectConfig')
       expect(r.out).toContain('next: vx run build --all')
-      expect(text).toContain('TODO(vx-migrate): cache: inputs default')
+      expect(text).toContain('TODO(vx-migrate): cache: add `cache: {')
       expect(text).toContain('TODO(vx-migrate): persistent')
       // The generated workspace runs. Its vx.workspace.ts imports `@vzn/vx`
       // the way a user's does, so give the tmp workspace the package.

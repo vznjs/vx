@@ -157,8 +157,11 @@ floors. Re-measured after waves 6–7, 9 and 10: no regression.
 
 **`vx init` and first-run DX.** `migrate-scripts` maps `package.json`
 scripts to tasks (pre/post hooks folded in npm order, `<pm> run x`
-becomes a group, `build` gets a cache block with empty outputs under a
-TODO). `init` on a workspace with no scripts writes the workspace file
+becomes a group, `build` gets a TODO showing the cache block to add —
+until 2026-09-04 it got a block with EMPTY outputs, which is a cached
+no-op, not an uncached task: the init walkthrough deleted `dist` and
+the next run reported both builds `up-to-date` and rebuilt nothing;
+pinned as a differential in the init suite). `init` on a workspace with no scripts writes the workspace file
 and prints an example config and the next command; generated configs
 carry `import type { ProjectConfig }` + `satisfies` (erased at runtime);
 an unresolved config import is a `UserError` naming the file and, for
@@ -313,16 +316,19 @@ passed once the load fell.
 
 ## Next (ordered)
 
-1. **A live REAPI run of the whole graph.** `vx run ci --all` against a
-   NativeLink worker has not run since the barrel narrowing and the
-   by-name error classification (both 2026-09-03); the plugin's unit
-   half is green, the live files skip without an endpoint, and docker
-   was down on this machine all day. Without docker, `brew install
-bazel-remote` (bottled, 2.6.2) gives the remote-CACHE half a server
-   in one step (`bazel-remote --dir <tmp> --grpc_address :9092`, then
-   `VX_REAPI_TEST_ENDPOINT=grpc://localhost:9092`); execution still
-   needs NativeLink. Left for the owner: it is a download. `tests/helpers/nativelink.md` has
-   the dev config. Expect nothing to change; prove it.
+1. **The live REAPI suites are green again (2026-09-04); the
+   whole-graph run stays optional.** With OrbStack's docker back, the
+   rehosted `vx-nativelink:bun-node` image on
+   `tests/helpers/nativelink-exec.json5` ran all ten `@vzn/vx-reapi`
+   files one process each with both endpoints set: 121 pass, 0 fail —
+   the wire-level execution suite (15), the cache suite (16) and the
+   `execute: true` composition proof (2) included, so the barrel
+   narrowing and the by-name error classification (2026-09-03) changed
+   nothing live. Not done: `vx run ci --all` of THIS repo at a worker —
+   it needs a workspace that wires `reapi({ execute: true })` (none is
+   checked in) and filesystem stores (the memory stores evict under a
+   `node_modules` install, per the helper notes). An exercise, not a
+   gap; do it when a worker-side change needs it.
 2. **The remote seam still moves whole artifacts.** With save, ingest
    and restore bounded, `RemoteCacheLayer` is the last place a large
    artifact sits in memory: `put(hash, body: ArrayBuffer | Uint8Array)`
@@ -376,7 +382,10 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    re-run (see the 2026-09-03 watch entry).
 6. **Re-measure the warm run after each day's work** — the hot path is
    the product. `bun bench/run.ts 100 5` and `1000 5`; an interleaved
-   A/B against an immutable worktree settles any gap. Closing figures
+   A/B against an immutable worktree settles any gap. Closing figures for 2026-09-04 (load 5.7, best of 5): 1000
+   projects 159 ms warm / 538 ms with restore, 100 projects 66 ms /
+   104 ms — the sandbox and CI work touched nothing the warm path
+   runs. Closing figures
    for 2026-09-03, after wave 6 and the discovery change, best of 5:
    1000 projects 193 ms (table says 204, measured before discovery
    changed), 100 projects 81 ms, on a box that had run the gate all day.

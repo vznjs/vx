@@ -6,12 +6,15 @@
 // gets the conventional `dependsOn: ['^build']` and `test` / `lint` /
 // `typecheck` wait for `build` when the package has one; a dev-server
 // shaped script becomes persistent. Caching is opt-in and needs declared
-// inputs AND outputs, which a script cannot tell us — so `build` is
-// emitted with a cache block whose inputs are the whole project and whose
-// outputs are EMPTY, under a TODO naming what to fill in. A cache block
-// that guessed `dist/**` would restore the wrong tree for every package
-// that writes somewhere else, and a wrong restore is the worst failure
-// vx has.
+// inputs AND outputs, which a script cannot tell us — so NO task gets a
+// cache block; `build` carries a TODO showing the block to add. Until
+// 2026-09-04 `build` was emitted with whole-project inputs and EMPTY
+// outputs "to fill in": that is not an uncached task but a no-output one —
+// it hits on unchanged inputs and skips the build with nothing to restore,
+// so a deleted `dist` stayed deleted under a green `up-to-date` run
+// (reproduced on the init walkthrough). A block that guessed `dist/**`
+// would restore the wrong tree for every package that writes somewhere
+// else, and a wrong restore is the worst failure vx has.
 //
 // Two npm conventions are mapped rather than copied, because copying them
 // loses behaviour: `pre<x>` / `post<x>` hooks, which npm runs around `x`
@@ -105,9 +108,8 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
       }
       if (name === 'build') {
         task['dependsOn'] = ['^build']
-        task['cache'] = { inputs: { files: ['**/*'] }, outputs: { files: [] } }
         todos.push(
-          "cache: inputs default to the whole project ('**/*'); narrow them (e.g. 'src/**') and declare outputs (e.g. 'dist/**') — nothing is cached until outputs are declared",
+          "cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs — without it the task always runs; a block with EMPTY outputs would be a cached no-op, not an uncached task",
         )
       } else if (AFTER_BUILD.has(name) && hasBuild) {
         task['dependsOn'] = ['build']
@@ -118,7 +120,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
   }
   return {
     headerNotes: [
-      'each script became a task with its command verbatim; caching needs declared inputs and outputs, so only `build` got a cache block, with empty outputs to fill in',
+      'each script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got a cache block — `build` carries a TODO showing the one to add',
     ],
     projects,
     extraFiles: [],
