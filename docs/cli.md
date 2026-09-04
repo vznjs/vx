@@ -55,6 +55,11 @@ renamed, instead of silently running two of three.
 
 (No `-V` for version; `vx --version` only — matches Turbo.)
 
+`vx <verb> --help` (and `-h`) prints this reference for every core verb.
+Past a `--` the flag belongs to the command being run, so
+`vx run build -- --help` forwards it to the task instead. A plugin verb
+owns its own arguments, `--help` included.
+
 ## `vx run`
 
 ```

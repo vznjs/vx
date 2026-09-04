@@ -287,6 +287,11 @@ passed once the load fell.
   opt in); a Linux pin says available ⇒ a sandboxed `true` exits 0. The
   suite's `expectOk` prints `<task> <status> exit=<code>` and the
   collected output on failure, so the next red names itself.
+- **`vx <verb> --help` works (2026-09-04).** It did not, for any verb:
+  the first thing a user types answered `unknown flag: --help` and
+  exited 1. Core verbs now print the reference and exit 0; args past a
+  `--` still belong to the task, and plugin verbs still own their own.
+  Pinned across every verb in the dispatcher.
 - **`vx migrate` walkthroughs, both sources (2026-09-04).** Turbo:
   clean on a realistic `turbo.json` — global fields become the
   imported `vx-preset.ts`, `dist/**` outputs and `env` survive, the

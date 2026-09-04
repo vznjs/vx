@@ -42,6 +42,41 @@ describe('cli run()', () => {
     expect(stdout).toMatch(/^vx \d/)
   })
 
+  // Every verb answered `unknown flag: --help` and exited 1 until
+  // 2026-09-04 — the one thing every user types first. The list is the
+  // dispatcher's own verbs; a new verb that forgets this fails here.
+  it.each([
+    'run',
+    'watch',
+    'cache',
+    'lock',
+    'migrate',
+    'init',
+    'upgrade',
+    'show',
+    'info',
+    'why',
+    'last',
+    'prune',
+  ])('`vx %s --help` prints help and exits 0', async (verb) => {
+    expect(await run([verb, '--help'])).toBe(0)
+    expect(stdout).toContain('Usage:')
+    expect(stderr).toBe('')
+  })
+
+  it('`-h` works the same, and a `--` forwarded `--help` is the task’s, not ours', async () => {
+    expect(await run(['show', '-h'])).toBe(0)
+    expect(stdout).toContain('Usage:')
+    stdout = ''
+    // Past `--` the flag belongs to the command being run, so vx must NOT
+    // answer it: this reaches task resolution (and fails there) instead of
+    // printing help. A real task name would EXECUTE, which a unit test must
+    // not do in this repo.
+    expect(await run(['run', 'no-such-task-xyz', '--', '--help'])).not.toBe(0)
+    expect(stdout).not.toContain('Usage:')
+    expect(`${stdout}${stderr}`).toContain('no-such-task-xyz')
+  })
+
   it('rejects unknown command', async () => {
     expect(await run(['nope'])).toBe(1)
     expect(stderr).toContain('unknown command')

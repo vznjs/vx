@@ -18,6 +18,16 @@ import { editDistance, UserError } from '../util/index.js'
 export async function run(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv
 
+  // `vx <verb> --help` is the universal reflex, and every verb answered
+  // `unknown flag: --help` and exited 1 (walkthrough, 2026-09-04). Only args
+  // BEFORE a `--` count: `vx run build -- --help` forwards it to the task,
+  // which is the one place `--help` is not being asked of vx. Core verbs
+  // only — a plugin verb owns its own arguments, `--help` included.
+  if (command !== undefined && wantsHelp(command, rest)) {
+    printHelp(await pluginCommandHelp())
+    return 0
+  }
+
   switch (command) {
     case undefined:
     case '--help':
@@ -114,6 +124,17 @@ export { parseWhyArgs } from './why.js'
 export { parseLastArgs } from './last.js'
 export { parsePruneWorkspaceArgs } from './prune.js'
 export { formatBytes } from './format.js'
+
+/**
+ * Is this invocation asking for help rather than work? See the call site for
+ * why the scan stops at `--`, and why plugin verbs are excluded.
+ */
+function wantsHelp(command: string, rest: readonly string[]): boolean {
+  if (!(CORE_VERBS as readonly string[]).includes(command)) return false
+  const sep = rest.indexOf('--')
+  const own = sep === -1 ? rest : rest.slice(0, sep)
+  return own.includes('--help') || own.includes('-h')
+}
 
 /** The verbs the switch above dispatches; `stats` is a deprecated alias and stays out. */
 const CORE_VERBS = [
