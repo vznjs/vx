@@ -647,13 +647,29 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // dirs; literal outputs (`out.txt`) become empty files.
     await prepareOutputsForBind(node.projectDir, outputs)
     await prepareOutputsForBind(args.workspaceRoot, wsOutputs)
+    // Installed dependencies are READABLE, and not an undeclared input.
+    // They are derived state, fully determined by things the key already
+    // folds in: the lockfile and pnpm-workspace.yaml through the workspace
+    // fingerprint, and each project's package.json bytes. So a change to
+    // them changes the key already, and reading them cannot produce a
+    // stale hit — the property `--verify=inputs` exists to protect.
+    // Denying them instead made the check unusable for any task that
+    // imports a dependency: this repo's own `bun build --compile` died
+    // with `Cannot read directory` naming the workspace root, reported to
+    // the user as `error: An unknown error occurred (Unexpected)` and
+    // nothing else (owner call, 2026-09-04). The two directories are the
+    // ones the task's PATH already gets its `.bin` entries from.
+    const depDirs = [
+      path.join(node.projectDir, 'node_modules'),
+      path.join(args.workspaceRoot, 'node_modules'),
+    ]
     // Output paths are read+write — a task that declares `dist/**` as
     // output expects to read what it just wrote (e.g. `touch dist/x`
     // stats the file; `tsc --incremental` re-reads .tsbuildinfo).
     return {
       ...base,
       sandbox: {
-        baseAllowRead: [...resolved.files, ...baseAllowWrite],
+        baseAllowRead: [...resolved.files, ...baseAllowWrite, ...depDirs],
         baseAllowWrite,
         baseDenyRead: [args.workspaceRoot],
         config: resolveSandboxConfig(cfg.sandbox ?? {}, node.projectDir),

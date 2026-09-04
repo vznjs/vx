@@ -243,6 +243,52 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   )
 
   it(
+    'installed dependencies are readable without being declared inputs',
+    async () => {
+      // node_modules is derived state: the lockfile and pnpm-workspace.yaml
+      // (via the workspace fingerprint) and each package.json are already in
+      // the key, so a change to it changes the key and reading it cannot
+      // produce a stale hit. Denying it made `--verify=inputs` unusable for
+      // any task that imports a dependency — this repo's own `bun build
+      // --compile` failed with `Cannot read directory` naming the workspace
+      // root (owner call, 2026-09-04). Both the project's own node_modules
+      // and the workspace root's, which is where a monorepo hoists.
+      await mkdir(path.join(fixture.root, 'node_modules', 'hoisted'), { recursive: true })
+      await writeFile(
+        path.join(fixture.root, 'node_modules', 'hoisted', 'index.js'),
+        'module.exports = 1\n',
+      )
+      const projDir = await addProject(fixture.root, 'importer', {
+        files: { 'src/x.txt': 'hi', 'node_modules/local/index.js': 'module.exports = 2\n' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command:
+                    'cat ../../node_modules/hoisted/index.js node_modules/local/index.js > out.txt',
+                },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                sandbox: {},
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: collectingLogger(fixture),
+      })
+      expectOk(r, fixture)
+      expect(await readFile(path.join(projDir, 'out.txt'), 'utf8')).toBe(
+        'module.exports = 1\nmodule.exports = 2\n',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'allowRead grants a specific extra path → task succeeds',
     async () => {
       await writeFile(path.join(fixture.root, 'shared.txt'), 'shared')

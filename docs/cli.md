@@ -420,6 +420,13 @@ $ vx run build --verify=inputs
   denies the read structurally but can't name the path. On a host where
   the sandbox is unavailable, `--verify=inputs` errors clearly — it never
   silently "passes".
+- **Installed dependencies are readable and need no declaration.**
+  `node_modules`, both the project's own and the workspace root's, is
+  derived state: the lockfile and `pnpm-workspace.yaml` (through the
+  workspace fingerprint) and each project's `package.json` are already
+  folded into the key, so a change to it changes the key and reading it
+  cannot produce a stale hit. Denying it made the check unusable for any
+  task that imports a dependency.
 - Reads _outside_ the workspace (system CA certs, `~/.config` tool state)
   are not flagged — only undeclared reads _inside_ the workspace, which are
   the ones that can change a cached output.
