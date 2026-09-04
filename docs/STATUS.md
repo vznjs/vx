@@ -275,6 +275,19 @@ passed once the load fell.
   opt in); a Linux pin says available ⇒ a sandboxed `true` exits 0. The
   suite's `expectOk` prints `<task> <status> exit=<code>` and the
   collected output on failure, so the next red names itself.
+- **CI's Bun is pinned to 1.4.0 (2026-09-04).** The runners installed
+  `latest` and Bun 1.4.1 landed under the fix above, breaking three
+  things in one run: the darwin-x64 cross-compile in the site build
+  (`bun-darwin-x64-v1.4.1 is not available for download` — 1.4.1's
+  target binaries were not published yet), the descriptor tripwire on
+  macOS (1.4.1 measured exactly 0 pins for 40 imports — the leak is
+  fixed; the pin now reads both sides of the boundary and the isolate
+  hint can go once the minimum Bun is 1.4.1), and the ubuntu job's
+  diagnostic `bun -e` step, which prints the probe's verdict and waits
+  for exit — the probe now initializes SRT on Linux, whose sockets kept
+  the process alive to the 10-minute timeout (step exits explicitly;
+  the probe's doc says so). Pinned in `ci.yml`, `docs.yml`, `npm.yml`;
+  bump deliberately, with the gate.
 
 ## In flight
 

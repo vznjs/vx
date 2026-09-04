@@ -75,6 +75,12 @@ const availabilityCache = new Map<'secure' | 'weaker', SandboxAvailability>()
  * `weakerNested` probes with `enableWeakerNestedSandbox`; the caller
  * passes it only when EVERY sandboxed task opts in, since the secure
  * wrapper is what any other task will run under.
+ *
+ * On Linux the probe INITIALIZES SRT (idempotent — `run()` initializes
+ * right after anyway), and SRT's proxy sockets then keep the event loop
+ * alive: a standalone caller must `resetSandbox()` or exit. CI's
+ * diagnostic `bun -e` step sat on this for its whole 10-minute timeout
+ * (2026-09-04).
  */
 export async function probeSandbox(opts?: {
   weakerNested?: boolean

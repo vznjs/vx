@@ -9,8 +9,9 @@
 // vx cares because a test that loads thousands of configs (scale-graph) then
 // parks the process at the 10 240-descriptor macOS cap and the next spawn in
 // any later file fails with EBADF. tests/helpers/shard.ts gives such a file
-// its own process (`@vx-shard-isolate`). When THIS test fails, Bun has fixed
-// the leak and the isolate hint can go. Scoped to darwin, the platform it
+// its own process (`@vx-shard-isolate`). Bun 1.4.1 fixed the leak (the
+// macOS runner measured 0, 2026-09-04); the pin now reads both sides of that
+// boundary, and the isolate hint can go once the minimum Bun is 1.4.1. Scoped to darwin, the platform it
 // was measured on and where the cap bites; the linux job does not need it.
 
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -35,10 +36,17 @@ describe.skipIf(process.platform !== 'darwin')('bun test import descriptors', ()
       }
       Bun.gc(true)
       const after = readdirSync('/dev/fd').length
-      // A quarter of the measured ~90 for 40 modules: the count per module
-      // is the runner's business, the pin is only that imports are not free
-      // (plain `bun` measures exactly 0).
-      expect(after - before).toBeGreaterThanOrEqual(10)
+      if (Bun.semver.satisfies(Bun.version, '<1.4.1')) {
+        // A quarter of the measured ~90 for 40 modules: the count per module
+        // is the runner's business, the pin is only that imports are not free
+        // (plain `bun` measures exactly 0).
+        expect(after - before).toBeGreaterThanOrEqual(10)
+      } else {
+        // Bun 1.4.1 fixed it: the macOS runner measured exactly 0 for the
+        // same 40 imports (2026-09-04). The isolate hint can go once the
+        // minimum Bun is 1.4.1; until then 1.4.0 users still hit the cap.
+        expect(after - before).toBe(0)
+      }
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

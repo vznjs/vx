@@ -19,7 +19,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.0
 
       - name: Show versions
         run: bun --version
@@ -65,8 +65,8 @@ jobs:
           echo "ok: bwrap exited 0"
           echo "::endgroup::"
           echo "::group::probeSandbox()"
-          bun -e 'import("/home/runner/work/vx/vx/packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => console.log(JSON.stringify(a)))' \
-            || bun -e 'import("./packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => console.log(JSON.stringify(a)))'
+          bun -e 'import("/home/runner/work/vx/vx/packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => { console.log(JSON.stringify(a)); process.exit(0) })' \
+            || bun -e 'import("./packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => { console.log(JSON.stringify(a)); process.exit(0) })'
           echo "::endgroup::"
 
       # Dogfood: vx orchestrates its own gate via vx.config.ts. The `ci`
@@ -162,7 +162,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.0
 
       - run: bun install --frozen-lockfile
 
@@ -259,7 +259,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.0
 
       - run: bun install --frozen-lockfile
 
