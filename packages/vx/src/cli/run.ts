@@ -726,6 +726,7 @@ async function resolveFilters(cwd: string, raw: string[]): Promise<FilterResolut
     }
   }
 
+  const unmatched: string[] = []
   const selected = applyFilters({
     filters: parsed,
     projects,
@@ -735,9 +736,7 @@ async function resolveFilters(cwd: string, raw: string[]): Promise<FilterResolut
     // changed" outcome, reported below; only a name/path pattern that
     // matched nothing is worth flagging as a probable typo.
     onNoMatch: (f) => {
-      if (f.gitSince === undefined) {
-        process.stderr.write(`vx: filter "${f.raw}" matched no projects\n`)
-      }
+      if (f.gitSince === undefined) unmatched.push(f.raw)
     },
   })
   if (selected.size === 0) {
@@ -749,8 +748,16 @@ async function resolveFilters(cwd: string, raw: string[]): Promise<FilterResolut
       const refs = includes.map((f) => f.gitSince).join(', ')
       return { empty: `nothing affected since ${refs}` }
     }
-    return { error: `no projects matched filter(s): ${raw.join(', ')}` }
+    // One line, not a warning per pattern and then an error saying the same:
+    // the patterns are in the error, and the nearest project name is the
+    // hint a typo needs.
+    return {
+      error: `no projects matched filter(s): ${raw.join(', ')}${didYouMeanProject(unmatched, projects)}`,
+    }
   }
+  // Something matched, so the run proceeds; a pattern that matched nothing
+  // alongside it is still worth a line — it is probably a typo.
+  for (const f of unmatched) process.stderr.write(`vx: filter "${f}" matched no projects\n`)
   return { names: [...selected].sort() }
 }
 
@@ -857,6 +864,26 @@ function formatRow(o: OutcomeView): { task: string; status: string; duration: st
     status,
     duration: `${o.durationMs}ms`,
   }
+}
+
+/** `. Did you mean @acme/app?` for the first unmatched pattern within two edits of a project name. */
+function didYouMeanProject(
+  unmatched: readonly string[],
+  projects: Iterable<{ name: string }>,
+): string {
+  let best: string | undefined
+  let bestD = 3
+  for (const pattern of unmatched) {
+    const bare = pattern.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
+    for (const p of projects) {
+      const d = editDistance(bare, p.name)
+      if (d < bestD) {
+        bestD = d
+        best = p.name
+      }
+    }
+  }
+  return best === undefined ? '' : `. Did you mean ${best}?`
 }
 
 /** `(did you mean --concurrency?)` for a flag within two edits of a documented one. */

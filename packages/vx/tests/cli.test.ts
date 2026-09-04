@@ -315,6 +315,21 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stderr).not.toContain('no projects matched')
   })
 
+  it('when nothing matches at all, one error line names the patterns and the nearest project', async () => {
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['run', '--filter', 'oen', 'hello'])
+    expect(code).not.toBe(0)
+    // The per-pattern warning is folded into the error: one line, not two
+    // saying the same thing (the init walkthrough, 2026-09-04).
+    expect(stderr).not.toContain('matched no projects')
+    expect(stderr).toContain('no projects matched filter(s): oen. Did you mean one?')
+  })
+
   it('a filter that matches nothing warns, even when another one matched', async () => {
     let stdout = ''
     let stderr = ''

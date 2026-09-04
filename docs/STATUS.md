@@ -350,7 +350,12 @@ passed once the load fell.
    first. A breaking seam change for plugin authors; do it with the
    plugins guide, the stub layers in the tests and `vx-reapi` in one
    commit, and measure a 150 MiB round trip through the stub before
-   and after. Not started.
+   and after. Not started. Assessed 2026-09-04: the win is gated by the PLUGIN
+   side — `@vzn/vx-reapi`'s wire zstd-compresses the whole body in
+   memory and retries a wedged upload from it, so a core-side Blob alone
+   measures nothing; streaming needs a two-pass digest and a chunked
+   compressed upload through the adaptive-downgrade path. Do it when a
+   real workspace uploads > 100 MiB artifacts, not before.
 3. **Zero-migration adoption as a plugin (candidate, owner's call).**
    The Vite-shaped ecosystem lever: `plugins: [turbo()]` in a Turbo
    repo (or `nx()`) and `vx run build --all` works against `turbo.json`
@@ -438,8 +443,8 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    (`test` / `typecheck` still do, the Turbo starter's convention). (c) watch still pays one redundant cycle on a
    task's first undeclared write (the bytes are unknown until seen);
    hashing what the cycle wrote before re-arming would zero it — only
-   if a real workspace shows the cycle mattering. (d) The unknown-filter
-   error prints two lines saying the same thing.
+   if a real workspace shows the cycle mattering. (d) DONE 2026-09-04: a filter set that matches nothing is one
+   error line naming the patterns and the nearest project name.
 
 ## Decisions (this arc)
 
