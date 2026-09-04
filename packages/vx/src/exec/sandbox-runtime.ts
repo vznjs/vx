@@ -54,62 +54,80 @@ export interface SandboxAvailability {
   reason: string
 }
 
-let availabilityCache: SandboxAvailability | undefined
+/** One verdict per mode: the wrapper the probe runs differs by mode. */
+const availabilityCache = new Map<'secure' | 'weaker', SandboxAvailability>()
 
 /**
- * Probe whether SRT can sandbox on this host. Memoized — the binary
- * presence + platform check doesn't change within a process.
+ * Probe whether SRT can sandbox on this host. Memoized per mode — the
+ * binary presence + platform check doesn't change within a process.
  *
  * In addition to SRT's own `checkDependencies` (which only verifies
- * binary presence on PATH), this runs a minimal bwrap invocation on
- * Linux to catch the "bwrap installed but unprivileged user namespaces
- * blocked by AppArmor / sysctl" case that's the default on stock
- * Ubuntu 24.04. Without this real-execution probe, the unavailability
- * surfaces only at the first task spawn, deep inside the orchestrator.
+ * binary presence on PATH), this runs ONE sandboxed `true` on Linux
+ * through SRT's own wrapper: bwrap with the runtime's namespace flags
+ * plus its vendored seccomp helper, which creates a NESTED user
+ * namespace. A bare `bwrap … /bin/true` (the probe until 2026-09-04)
+ * passed on hosts where every task then failed — as root inside a
+ * container, the helper's `write /proc/self/uid_map` is EPERM under
+ * `--cap-drop ALL`. Without this real-execution probe the
+ * unavailability surfaces only at the first task spawn, deep inside the
+ * orchestrator, as exit 1 with the helper's line in the task's stderr.
+ *
+ * `weakerNested` probes with `enableWeakerNestedSandbox`; the caller
+ * passes it only when EVERY sandboxed task opts in, since the secure
+ * wrapper is what any other task will run under.
  */
-export async function probeSandbox(): Promise<SandboxAvailability> {
-  if (availabilityCache) return availabilityCache
-  const { SandboxManager } = await loadSrt()
-  if (!SandboxManager.isSupportedPlatform()) {
-    availabilityCache = { available: false, reason: `platform ${process.platform} not supported` }
-    return availabilityCache
-  }
-  const deps = SandboxManager.checkDependencies()
-  if (deps.errors.length > 0) {
-    availabilityCache = { available: false, reason: deps.errors.join('; ') }
-    return availabilityCache
-  }
-  // Linux only: real-execution probe. Run `bwrap` with the minimal
-  // user-namespace invocation it'd attempt for a sandboxed task; if
-  // the kernel rejects (AppArmor / sysctl), surface that here.
-  if (process.platform === 'linux') {
-    const ok = await tryBwrapOnce()
-    if (!ok.available) {
-      availabilityCache = ok
-      return availabilityCache
-    }
-  }
-  availabilityCache = { available: true, reason: '' }
-  return availabilityCache
+export async function probeSandbox(opts?: {
+  weakerNested?: boolean
+}): Promise<SandboxAvailability> {
+  const mode = opts?.weakerNested === true ? 'weaker' : 'secure'
+  const cached = availabilityCache.get(mode)
+  if (cached) return cached
+  const verdict = await probeUncached(mode === 'weaker')
+  availabilityCache.set(mode, verdict)
+  return verdict
 }
 
-async function tryBwrapOnce(): Promise<SandboxAvailability> {
+async function probeUncached(weakerNested: boolean): Promise<SandboxAvailability> {
+  const { SandboxManager } = await loadSrt()
+  if (!SandboxManager.isSupportedPlatform()) {
+    return { available: false, reason: `platform ${process.platform} not supported` }
+  }
+  const deps = SandboxManager.checkDependencies()
+  if (deps.errors.length > 0) return { available: false, reason: deps.errors.join('; ') }
+  if (process.platform === 'linux') {
+    await initSandbox()
+    return trySandboxedTrue(SandboxManager, weakerNested)
+  }
+  return { available: true, reason: '' }
+}
+
+async function trySandboxedTrue(
+  SandboxManager: SrtModule['SandboxManager'],
+  weakerNested: boolean,
+): Promise<SandboxAvailability> {
   try {
-    const proc = Bun.spawn(
-      ['bwrap', '--ro-bind', '/', '/', '--proc', '/proc', '--dev', '/dev', '/bin/true'],
-      { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' },
+    const wrapped = await SandboxManager.wrapWithSandbox(
+      'true',
+      undefined,
+      weakerNested ? { enableWeakerNestedSandbox: true } : undefined,
     )
-    const stderr = await new Response(proc.stderr).text()
+    const proc = Bun.spawn(['sh', '-c', wrapped], {
+      stdout: 'ignore',
+      stderr: 'pipe',
+      stdin: 'ignore',
+    })
+    const stderr = (await new Response(proc.stderr).text()).trim()
     await proc.exited
-    if (proc.exitCode !== 0) {
-      return {
-        available: false,
-        reason: `bwrap probe failed (exit ${proc.exitCode}): ${stderr.trim().slice(0, 200)}`,
-      }
+    if (proc.exitCode === 0) return { available: true, reason: '' }
+    const hint = stderr.includes('uid_map')
+      ? " — the runtime's seccomp helper cannot create its nested user namespace here (root inside a container, or a kernel that forbids nested user namespaces): run as a non-root user, or set `sandbox.enableWeakerNestedSandbox: true` on every sandboxed task"
+      : ''
+    return {
+      available: false,
+      reason: `a sandboxed \`true\` failed (exit ${proc.exitCode}): ${stderr.slice(0, 200)}${hint}`,
     }
-    return { available: true, reason: '' }
   } catch (err) {
-    return { available: false, reason: `bwrap probe threw: ${(err as Error).message}` }
+    return { available: false, reason: `sandbox probe threw: ${(err as Error).message}` }
   }
 }
 
@@ -159,7 +177,7 @@ export async function initSandbox(): Promise<void> {
 export async function resetSandbox(): Promise<void> {
   const { SandboxManager } = await loadSrt()
   await SandboxManager.reset()
-  availabilityCache = undefined
+  availabilityCache.clear()
   straceAvailableCache = undefined
 }
 
@@ -434,7 +452,15 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
         line: v.line,
         timestamp: v.timestamp,
       }))
-  let macViolations = readMacViolations()
+  // Darwin only. Since SRT 0.0.75 the store is fed on Linux too, by the
+  // seccomp helper's write observer — but SRT judges those reports against
+  // the GLOBAL `filesystem.allowWrite` from `initialize` (empty here; the
+  // per-task list travels in `customConfig`, which the monitor never sees),
+  // so every write a task makes to its own declared output arrived as
+  // `deny openat <output>` and failed the task (reproduced 2026-09-04 in a
+  // Linux container: exit 1, empty stderr). Linux detection is the strace
+  // pass below, judged against the task's own baselines.
+  let macViolations = process.platform === 'darwin' ? readMacViolations() : []
   // The fail-exit gate keeps the warm path free — EXCEPT when the caller
   // says a clean exit + empty store will be read as PROOF (verify=inputs):
   // a leaky task that swallows its own read error exits 0, so without the

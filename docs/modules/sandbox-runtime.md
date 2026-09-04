@@ -107,7 +107,16 @@ export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult
 
 1. **`probeSandbox`** asks SRT whether the platform is supported and
    whether its runtime deps (bwrap + socat on Linux, sandbox-exec on
-   macOS) are present. Memoized.
+   macOS) are present, then on Linux runs ONE sandboxed `true` through
+   SRT's own wrapper — bwrap with the runtime's namespace flags plus its
+   vendored `apply-seccomp` helper, which creates a nested user
+   namespace. A bare `bwrap … /bin/true` passed on hosts where every
+   task then failed (root inside a container: the helper's
+   `write /proc/self/uid_map` is EPERM under `--cap-drop ALL`); the
+   wrapper probe refuses up front, naming the fix (a non-root user, or
+   `sandbox.enableWeakerNestedSandbox: true` on every sandboxed task —
+   `run()` probes the weaker mode only when every sandboxed task opts
+   in). Memoized per mode.
 2. **`initSandbox`** is called once per `vx run` IF at least one task
    in the graph declares `sandbox`. It calls `SandboxManager.initialize`
    with a deny-all baseline (network blocked, no filesystem allows);
@@ -124,18 +133,20 @@ export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult
      captures stdout/stderr + resource usage exactly like
      `runner.ts:runCommand`.
    - After `proc.exited`, reads back any violations from the macOS
-     log monitor AND (on Linux) from the strace log the spawn wrote,
+     log monitor (macOS only — see the Linux row below for why the
+     store's Linux feed is ignored) AND (on Linux) from the strace log
+     the spawn wrote,
      then calls `SandboxManager.cleanupAfterCommand()`.
 4. **`resetSandbox`** tears down SRT's proxy servers + (on macOS) the
    log monitor at the end of `vx run`.
 
 ## Platform behaviour
 
-| Platform | Behaviour                                                                                                                                                                                                           |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS    | sandbox-exec + Seatbelt. Structured violations land in `SandboxViolationStore` via the system log monitor; we force exit 1 when any are recorded.                                                                   |
-| Linux    | bwrap mount namespaces. Denied paths are structurally invisible → child sees `ENOENT`. SRT has no violation store here, so the spawn is wrapped in `strace -f -e trace=openat` and the trace is parsed for denials. |
-| Windows  | Not supported by SRT. `probeSandbox` reports unavailable; declaring `sandbox: {}` triggers a UserError before the run starts.                                                                                       |
+| Platform | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS    | sandbox-exec + Seatbelt. Structured violations land in `SandboxViolationStore` via the system log monitor; we force exit 1 when any are recorded.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Linux    | bwrap mount namespaces. Denied paths are structurally invisible → child sees `ENOENT`. The spawn is wrapped in `strace -f -e trace=openat` and the trace is parsed for denials against the task's own baselines. SRT ≥ 0.0.75 also feeds its store on Linux from the seccomp helper's write observer, but judges those reports against the GLOBAL `allowWrite` from `initialize` (empty; the per-task list is in `customConfig`, which the monitor never sees), so every declared-output write arrives as `deny openat <output>` — vx reads the store on macOS only. |
+| Windows  | Not supported by SRT. `probeSandbox` reports unavailable; declaring `sandbox: {}` triggers a UserError before the run starts.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 The strace pass closes the silent-swallow gap on Linux (tools that read
 an undeclared path, catch the `ENOENT`, and keep running): the denial is

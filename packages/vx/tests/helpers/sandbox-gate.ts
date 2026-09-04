@@ -16,10 +16,10 @@
 //
 // The CI workflow's own guard is NOT a substitute, and the gap is
 // measured rather than assumed. `probeSandbox` has four failure paths
-// (unsupported platform, SRT's dependency check, the bwrap exec probe,
-// and the SRT import itself); the workflow hard-fails on exactly one of
-// them, the raw `bwrap ... /bin/true` line in "Diagnose sandbox
-// availability". Running both suites with socat off PATH — bwrap intact,
+// (unsupported platform, SRT's dependency check, one sandboxed `true`
+// through SRT's own wrapper, and the SRT import itself); the workflow
+// hard-fails on none of them — its raw `bwrap ... /bin/true` line in
+// "Diagnose sandbox availability" is weaker than the wrapper probe. Running both suites with socat off PATH — bwrap intact,
 // so that guard still exits 0 — reported `35 pass / 21 skip / 0 fail`,
 // exit 0.
 //

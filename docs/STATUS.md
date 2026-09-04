@@ -51,6 +51,7 @@ docs. `bench/` fixed for the `packages/vx` layout.
 
 **Perf waves, warm run 400 → ~172 ms at 1000 projects** (100 projects
 105 → 74–79 ms):
+
 - W1: unscoped runs start git before configs load; config-eval cache
   for provably-pure configs (`config_evals`). 400 → 270 ms.
 - W2: `VX_TIMING=1` stage table; one worktree walk (`ls-files -s -v` +
@@ -252,6 +253,29 @@ gate that failed on every shard was the BOX (load 70–97, `diagnosticd`
 pegged): HEAD failed identically; CI was the arbiter and the full gate
 passed once the load fell.
 
+- **The runtime bump to `@anthropic-ai/sandbox-runtime` 0.0.75 (owner,
+  e924276) reds ubuntu; fixed 2026-09-04.** Six Linux cases failed with
+  exit 1 and an empty stderr — every task that SUCCEEDS. Reproduced in
+  a privileged OrbStack container (`oven/bun` + bwrap/socat/strace/rg,
+  as a non-root user; the suite is the CI signature exactly). Cause:
+  0.0.75 feeds SRT's violation store on Linux from its new seccomp
+  helper's write observer, judged against the GLOBAL `allowWrite` from
+  `initialize` (empty; the per-task list is in `customConfig`, which
+  the monitor never sees), so a task's write to its own declared output
+  arrived as `deny openat <output>` and fail-on-violation turned exit 0
+  into 1. vx reads the store on macOS only now; Linux detection stays
+  the strace pass. 28 pass / 1 darwin skip / 0 fail in the container.
+  Second finding, same bump: as ROOT in a container the helper cannot
+  create its nested user namespace under `--cap-drop ALL`
+  (`write /proc/self/uid_map: EPERM`; a non-root user can), and the
+  old probe's bare `bwrap … /bin/true` passed anyway. The Linux probe
+  now runs ONE sandboxed `true` through SRT's own wrapper and refuses
+  up front naming the fix (non-root, or `enableWeakerNestedSandbox` on
+  every sandboxed task — `run()` probes the weaker mode only when all
+  opt in); a Linux pin says available ⇒ a sandboxed `true` exits 0. The
+  suite's `expectOk` prints `<task> <status> exit=<code>` and the
+  collected output on failure, so the next red names itself.
+
 ## In flight
 
 - **v0.0.18 is fully on npm; one owner step remains before the next
@@ -281,7 +305,7 @@ passed once the load fell.
    by-name error classification (both 2026-09-03); the plugin's unit
    half is green, the live files skip without an endpoint, and docker
    was down on this machine all day. Without docker, `brew install
-   bazel-remote` (bottled, 2.6.2) gives the remote-CACHE half a server
+bazel-remote` (bottled, 2.6.2) gives the remote-CACHE half a server
    in one step (`bazel-remote --dir <tmp> --grpc_address :9092`, then
    `VX_REAPI_TEST_ENDPOINT=grpc://localhost:9092`); execution still
    needs NativeLink. Left for the owner: it is a download. `tests/helpers/nativelink.md` has
@@ -302,19 +326,19 @@ passed once the load fell.
 3. **Zero-migration adoption as a plugin (candidate, owner's call).**
    The Vite-shaped ecosystem lever: `plugins: [turbo()]` in a Turbo
    repo (or `nx()`) and `vx run build --all` works against `turbo.json`
-   + `package.json` scripts with no generated files — a trial that
-   commits nothing. The `project` stage is the right seam, and the
-   mapping already exists in `migrate-turbo.ts` / `migrate-nx.ts`, but
-   ONE seam gap blocks it: `prepareRun` loads only packages that have a
-   config file (`prepare.ts`, the `configPath` filter), so the stage
-   never visits a config-less package. Widening: when any plugin
-   declares `project`, a package without a config is loaded as
-   `{ tasks: {} }` for the stage to fill (zero cost otherwise — the
-   filter stays when no plugin declares it). Then a `@vzn/vx-turbo`
-   package reusing the mapper's IR without the preset splices, ~150
-   lines, with the migrate suite's fixtures as its tests. Not built:
-   `vx migrate` is one command and a second source of task truth is a
-   maintenance surface; decide with the owner.
+   - `package.json` scripts with no generated files — a trial that
+     commits nothing. The `project` stage is the right seam, and the
+     mapping already exists in `migrate-turbo.ts` / `migrate-nx.ts`, but
+     ONE seam gap blocks it: `prepareRun` loads only packages that have a
+     config file (`prepare.ts`, the `configPath` filter), so the stage
+     never visits a config-less package. Widening: when any plugin
+     declares `project`, a package without a config is loaded as
+     `{ tasks: {} }` for the stage to fill (zero cost otherwise — the
+     filter stays when no plugin declares it). Then a `@vzn/vx-turbo`
+     package reusing the mapper's IR without the preset splices, ~150
+     lines, with the migrate suite's fixtures as its tests. Not built:
+     `vx migrate` is one command and a second source of task truth is a
+     maintenance surface; decide with the owner.
 4. **The shipped binary's second core.** A compiled `vx` loading a
    `vx.workspace.ts` that imports `@vzn/vx` pulls a second copy of core
    from `node_modules` (~12 ms) on every run — and makes a binary user

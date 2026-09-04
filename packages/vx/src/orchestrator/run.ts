@@ -508,10 +508,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // platform get a hard error so they don't silently run unsandboxed —
     // `--verify=inputs` in particular must fail loud, never falsely "pass".
     const verifyInputs = options.verify?.inputs === true
-    const anySandboxed =
-      verifyInputs || [...nodes.values()].some((n) => n.config.sandbox !== undefined)
+    const sandboxed = [...nodes.values()].filter((n) => n.config.sandbox !== undefined)
+    const anySandboxed = verifyInputs || sandboxed.length > 0
     if (anySandboxed) {
-      const avail = await probeSandbox()
+      // The probe runs the wrapper the tasks will run under: the weaker
+      // nested mode only when every sandboxed task opts in (the baseline
+      // sandbox `--verify=inputs` forces onto cacheable tasks never does).
+      const weakerNested =
+        !verifyInputs &&
+        sandboxed.every((n) => n.config.sandbox?.enableWeakerNestedSandbox === true)
+      const avail = await probeSandbox({ weakerNested })
       if (!avail.available) {
         throw new UserError(
           verifyInputs

@@ -777,6 +777,40 @@ describe('sandbox probe', () => {
     if (a.available) expect(a.reason).toBe('')
     else expect(a.reason.length).toBeGreaterThan(0)
   })
+
+  // The verdict must be the wrapper's own: until 2026-09-04 the Linux
+  // probe ran a bare `bwrap … /bin/true`, which passed on hosts where the
+  // runtime's seccomp helper then failed every task (root in a container:
+  // EPERM on its nested uid_map). Available ⇒ a sandboxed `true` exits 0.
+  it.skipIf(process.platform !== 'linux')(
+    'linux: an available verdict means a sandboxed `true` exits 0',
+    async () => {
+      const a = await probeSandbox()
+      if (!a.available) {
+        // With VX_REQUIRE_SANDBOX the gate helper has already failed the
+        // file; without it an unavailable host proves nothing here.
+        expect(a.reason.length).toBeGreaterThan(0)
+        return
+      }
+      await initSandbox()
+      const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-probe-'))
+      try {
+        const r = await runSandboxed({
+          command: 'true',
+          cwd: dir,
+          env: process.env,
+          baseAllowRead: [dir],
+          baseAllowWrite: [dir],
+          baseDenyRead: [],
+          config: resolveSandboxConfig({}, dir),
+        })
+        expect([r.exitCode, r.stderr]).toEqual([0, ''])
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
 
 describe.skipIf(!available || process.platform !== 'darwin')(
