@@ -344,13 +344,17 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         policy,
         onRemoteError: (err) => log.status(`[vx] remote cache: ${err.message}`),
       })
-    : await resolveCache(plugins, {
-        workspaceRoot,
-        cacheDir,
-        warn: (m) => log.status(m),
-        localCache,
-        policy,
-      })
+    : await resolveCache(
+        plugins,
+        {
+          workspaceRoot,
+          cacheDir,
+          warn: (m) => log.status(m),
+          localCache,
+          policy,
+        },
+        { workspaceFile: workspaceConfig !== null },
+      )
   // Ask the LAYER, don't infer. Identity against `localCache` answers a
   // DIFFERENT question — "did the plugin hand back something other than the
   // handle I passed in?" — which an ordinary pass-through decorator (a

@@ -46,7 +46,8 @@ import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
 export default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })
 ```
 
-Skip this and your first run stops before any task with
+Skip this and your first run stops before any task: with no
+`vx.workspace.ts` at all it says `run \`vx init\``, then
 `no cache plugin declared`, quoting the snippet above. It is one file,
 once — and it is why a remote cache or a remote executor later is a
 one-line change to this same list rather than a different product.

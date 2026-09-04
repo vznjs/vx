@@ -176,9 +176,29 @@ export async function applyScheduleHooks(
  * that layers over the local handle composes with `localCachePlugin()`
  * instead of writing the local store twice. No layer at all is a named error.
  */
+/** Host-side facts the "no plugin" error reads; never shown to plugins. */
+export interface ResolveOptions {
+  /** `false` when no `vx.workspace.*` exists at the root: the error leads with `vx init`. */
+  workspaceFile?: boolean
+}
+
+function missingPlugin(
+  capability: 'cache' | 'executor',
+  declined: readonly string[],
+  opts: ResolveOptions | undefined,
+): UserError {
+  const noFile =
+    opts?.workspaceFile === false
+      ? 'no vx.workspace.ts found — run `vx init` to write it with the local executor and cache, plus a vx.config.ts per package from its package.json scripts. '
+      : ''
+  const who = declined.length > 0 ? ` (${declined.join(', ')})` : ''
+  return new UserError(`${noFile}no ${capability} plugin declared${who}. ${MISSING_PLUGIN_HINT}`)
+}
+
 export async function resolveCache(
   plugins: readonly VxPlugin[],
   ctx: CacheContext,
+  opts?: ResolveOptions,
 ): Promise<CacheLayer> {
   const layers: CacheLayer[] = []
   for (const plugin of plugins) {
@@ -188,9 +208,7 @@ export async function resolveCache(
   }
   if (layers.length === 0) {
     const declined = plugins.filter((p) => p.cache !== undefined).map((p) => `${p.name} declined`)
-    throw new UserError(
-      `no cache plugin declared${declined.length > 0 ? ` (${declined.join(', ')})` : ''}. ${MISSING_PLUGIN_HINT}`,
-    )
+    throw missingPlugin('cache', declined, opts)
   }
   const wrapsLocal = layers.some((l) => l !== ctx.localCache && l.local === ctx.localCache)
   const distinct = wrapsLocal ? layers.filter((l) => l !== ctx.localCache) : layers
@@ -207,6 +225,7 @@ export async function resolveCache(
 export async function resolveExecutors(
   plugins: readonly VxPlugin[],
   ctx: ExecutorContext,
+  opts?: ResolveOptions,
 ): Promise<TaskExecutor[]> {
   const executors: TaskExecutor[] = []
   for (const plugin of plugins) {
@@ -218,9 +237,7 @@ export async function resolveExecutors(
     const declined = plugins
       .filter((p) => p.executor !== undefined)
       .map((p) => `${p.name} declined`)
-    throw new UserError(
-      `no executor plugin declared${declined.length > 0 ? ` (${declined.join(', ')})` : ''}. ${MISSING_PLUGIN_HINT}`,
-    )
+    throw missingPlugin('executor', declined, opts)
   }
   return executors
 }

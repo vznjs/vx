@@ -57,6 +57,22 @@ describe('local plugins', () => {
     ).rejects.toThrow(/no executor plugin declared[\s\S]*org\/none declined/)
   })
 
+  it('with no workspace file at all, the error leads with `vx init`; with one, it does not', async () => {
+    await expect(
+      resolveExecutors([], { ...baseCtx, concurrency: 1 }, { workspaceFile: false }),
+    ).rejects.toThrow(
+      /^no vx\.workspace\.ts found — run `vx init`[\s\S]*no executor plugin declared/,
+    )
+    await expect(
+      resolveCache([], { ...baseCtx, localCache: {} as never, policy }, { workspaceFile: false }),
+    ).rejects.toThrow(/^no vx\.workspace\.ts found — run `vx init`[\s\S]*no cache plugin declared/)
+    // A workspace file that declares nothing is not an init case (init would
+    // refuse to overwrite it): the plain error, snippet included.
+    await expect(
+      resolveExecutors([], { ...baseCtx, concurrency: 1 }, { workspaceFile: true }),
+    ).rejects.toThrow(/^no executor plugin declared/)
+  })
+
   it('resolveExecutors with the local plugin declared resolves to the local executor (control)', async () => {
     const list = await resolveExecutors([localExecutorPlugin()], { ...baseCtx, concurrency: 1 })
     expect(list.map((e) => e.name)).toEqual(['local'])

@@ -236,12 +236,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // starts.
   let executors: readonly TaskExecutor[]
   try {
-    executors = await resolveExecutors(prepared.plugins, {
-      workspaceRoot: prepared.workspaceRoot,
-      cacheDir: prepared.cacheDir,
-      warn: (m: string) => log.status(m),
-      concurrency,
-    })
+    executors = await resolveExecutors(
+      prepared.plugins,
+      {
+        workspaceRoot: prepared.workspaceRoot,
+        cacheDir: prepared.cacheDir,
+        warn: (m: string) => log.status(m),
+        concurrency,
+      },
+      { workspaceFile: prepared.workspaceConfig !== null },
+    )
   } catch (err) {
     disposePlugins?.()
     prepared.cache.close()
@@ -1240,12 +1244,16 @@ async function planExecutorOf(
 }> {
   let executors: readonly TaskExecutor[]
   try {
-    executors = await resolveExecutors(prepared.plugins, {
-      workspaceRoot: prepared.workspaceRoot,
-      cacheDir: prepared.cacheDir,
-      warn: (m: string) => log.status(m),
-      concurrency: Math.max(1, navigator.hardwareConcurrency),
-    })
+    executors = await resolveExecutors(
+      prepared.plugins,
+      {
+        workspaceRoot: prepared.workspaceRoot,
+        cacheDir: prepared.cacheDir,
+        warn: (m: string) => log.status(m),
+        concurrency: Math.max(1, navigator.hardwareConcurrency),
+      },
+      { workspaceFile: prepared.workspaceConfig !== null },
+    )
   } catch {
     return {}
   }

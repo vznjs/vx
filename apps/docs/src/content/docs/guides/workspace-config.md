@@ -34,7 +34,7 @@ stops before any task, and tells you exactly what to paste:
 
 ```console
 $ vx run build --all
-vx: no cache plugin declared. vx runs nothing it was not told to.
+vx: no vx.workspace.ts found — run `vx init` to write it with the local executor and cache, plus a vx.config.ts per package from its package.json scripts. no cache plugin declared. vx runs nothing it was not told to.
 Declare the plugins in vx.workspace.ts:
 
   import { defineWorkspace } from '@vzn/vx'

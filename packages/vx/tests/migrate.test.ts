@@ -837,6 +837,18 @@ describe('vx init — the generated build is not a cached no-op', () => {
   // so on the init walkthrough a deleted `dist` stayed deleted under a
   // green `up-to-date` run. The scaffold now emits no cache block; this
   // pin fails with the old block (verified by stashing the fix).
+  it('a run before init names `vx init` instead of lecturing about plugins', async () => {
+    const root = await makeRoot('vx-init-first-run-')
+    await addPackage(root, 'w', { build: 'echo hi' })
+    try {
+      const r = await vx(root, ['run', 'build', '--all'])
+      expect(r.code).not.toBe(0)
+      expect(r.err).toContain('no vx.workspace.ts found — run `vx init`')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('a deleted dist is rebuilt on the next run', async () => {
     const root = await makeRoot('vx-init-rebuild-')
     await addPackage(root, 'w', { build: 'mkdir -p dist && cp src/a.txt dist/a.txt' })
