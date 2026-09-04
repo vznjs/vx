@@ -53,6 +53,13 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
      (`cache.outputs.files`, root-relative `workspaceFiles`) — a cycle
      that writes `dist/` is not an edit (`makeWatchIgnore`, pinned in
      `tests/watch-rules.test.ts`).
+   - Catch UNDECLARED writes by content: a task with no `cache` block
+     declares no outputs and still writes into its project, and its
+     own write re-triggered the cycle without end (the init walkthrough,
+     2026-09-04). An event for a file whose bytes equal what the loop
+     last hashed for it is dropped; a real edit, a deletion or a first
+     sighting passes — so a self-write costs one redundant cycle, not an
+     unbounded number (pinned end to end in `tests/cli.test.ts`).
    - Debounce events `~150ms` after the last one before triggering a
      cycle.
    - Reentrancy guard: while a cycle is running, further events set

@@ -933,7 +933,11 @@ run...` precedes it.
    changes. A task's own declared outputs (`cache.outputs.files`,
    `outputs.workspaceFiles`) never trigger a re-run — a cycle that
    writes `dist/` is not an edit — and neither do `node_modules`,
-   `.git` or the cache directory. When any project's config declares
+   `.git` or the cache directory. A write the task did NOT declare (a
+   task with no `cache` block declares nothing) is caught by content:
+   a file whose bytes did not change since the loop last saw it is not
+   an edit, so a task that writes into its own project costs one extra
+   cycle instead of re-running forever. When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so any workspace file can be an input). `vx watch: watching …` is

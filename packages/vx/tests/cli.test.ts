@@ -678,6 +678,45 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
   })
 
   it(
+    'a task with no cache block that writes into its project does not re-trigger itself forever',
+    async () => {
+      const path = await import('node:path')
+      const { writeFile } = await import('node:fs/promises')
+      // No `cache` block ⇒ no declared outputs ⇒ nothing is ignored by path;
+      // the command writes `out.txt` inside the project on every run. Before
+      // the content check the watcher re-ran on its own write without end
+      // (reproduced on the init walkthrough, 2026-09-04).
+      await writeFile(
+        path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
+        `export default {
+          tasks: {
+            hello: { exec: { command: "cat src/index.txt > out.txt" } },
+          },
+        }`,
+      )
+      let stdout = ''
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk)
+        return true
+      })
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      const cmd = startWatch(['watch', '--all', 'hello'])
+      await waitFor(() => stdout.includes('watching 1 project'))
+      await writeFile(path.join(workspaceRoot, 'packages', 'one', 'src', 'index.txt'), 'v1')
+      await waitFor(() => /re-running\.\.\./.test(stdout))
+      // Long enough for a runaway loop (cycles take ~30 ms) to show itself.
+      await new Promise((r) => setTimeout(r, 1500))
+      process.emit('SIGINT')
+      expect(await cmd).toBe(0)
+      const reRuns = (stdout.match(/re-running\.\.\./g) ?? []).length
+      // The edit, plus at most one run its own write re-triggered before
+      // the bytes were known.
+      expect(reRuns).toBeLessThanOrEqual(2)
+    },
+    { timeout: 90_000 },
+  )
+
+  it(
     're-runs the task after a file change, then exits on SIGINT',
     async () => {
       const path = await import('node:path')

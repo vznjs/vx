@@ -14,6 +14,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { xxh3 } from '../util/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
 import {
@@ -373,6 +374,30 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // and vx's own cache writes would trigger a cycle that writes again.
   const isIgnoredPath = makeWatchIgnore(cacheDir, outputs)
 
+  // Declared outputs are ignored by PATH above. A task with no `cache`
+  // block declares none and still writes into its project, and the
+  // watcher sees the write: run 1 writes dist/x, the event re-runs, run 2
+  // writes the same bytes, the event re-runs — forever (the init
+  // walkthrough, 2026-09-04: every fresh workspace, since `init` emits no
+  // cache block). An undeclared write is caught by CONTENT: an event for a
+  // file whose bytes equal what this loop last hashed for it is not a
+  // change. A real edit changes the bytes; a deletion, a directory or a
+  // first sighting passes through (so the loop costs one redundant run,
+  // not an unbounded number).
+  const lastBytes = new Map<string, bigint>()
+  const sameBytes = (abs: string): boolean => {
+    let hash: bigint
+    try {
+      hash = xxh3(fs.readFileSync(abs))
+    } catch {
+      lastBytes.delete(abs)
+      return false
+    }
+    const prev = lastBytes.get(abs)
+    lastBytes.set(abs, hash)
+    return prev === hash
+  }
+
   const watchers: fs.FSWatcher[] = []
   const proofs: Promise<void>[] = []
   const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): void => {
@@ -398,6 +423,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     try {
       arm(workspaceRoot, true, (filename) => {
         if (isIgnoredPath(workspaceRoot, filename)) return
+        if (sameBytes(path.join(workspaceRoot, filename))) return
         trigger(`root ${filename}`)
       })
     } catch (err) {
@@ -412,6 +438,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       try {
         arm(proj.dir, true, (filename) => {
           if (isIgnoredPath(proj.dir, filename)) return
+          if (sameBytes(path.join(proj.dir, filename))) return
           trigger(`${proj.name} ${filename}`)
         })
       } catch (err) {

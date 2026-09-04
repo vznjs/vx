@@ -161,13 +161,18 @@ becomes a group, `build` gets a TODO showing the cache block to add —
 until 2026-09-04 it got a block with EMPTY outputs, which is a cached
 no-op, not an uncached task: the init walkthrough deleted `dist` and
 the next run reported both builds `up-to-date` and rebuilt nothing;
-pinned as a differential in the init suite). `init` on a workspace with no scripts writes the workspace file
+pinned as a differential in the init suite). Same walkthrough, same day: a root with no
+`vx.workspace.*` fails with `run \`vx init\``ahead of the plugin
+snippet (a file that declares nothing keeps the plain error); a task
+with no`cache`block reads`no-cache`on its row, in the legend and
+in the report instead of`miss`(the column is eight wide; the Tally
+and`--summarize`payloads are unchanged);`vx rnu`says`Did you mean
+run?`. `init`on a workspace with no scripts writes the workspace file
 and prints an example config and the next command; generated configs
-carry `import type { ProjectConfig }` + `satisfies` (erased at runtime);
-an unresolved config import is a `UserError` naming the file and, for
-`@vzn/vx`, the install command; a typo says `Did you mean build?`,
+carry`import type { ProjectConfig }`+`satisfies`(erased at runtime);
+an unresolved config import is a`UserError`naming the file and, for`@vzn/vx`, the install command; a typo says `Did you mean build?`,
 and a qualified one is hinted as a runnable spec on either half
-(`ap#build`, `app#buidl` → `app#build`).
+(`ap#build`, `app#buidl`→`app#build`).
 `vx watch` ignores a task's own declared outputs (one cycle per edit)
 and proves each watcher delivers before saying "watching"
 (`.vx-watch-probe`, re-written on a backoff; the e2e flake is NOT
@@ -176,23 +181,23 @@ proven closed — see Next § 4). The cache dir writes its own
 the policy flags, a failing task, a persistent task, `--affected`, the
 plugin author's first plugin from the guide (which gained § Testing
 your plugin), the same first run through the compiled binary, and
-`vx migrate` on a scratch Turborepo (negated outputs and the
-persistent task get exact TODOs, `env` passes through, global inputs
-become `vx-preset.ts`) and on a scratch Nx graph (named inputs expand,
+`vx migrate`on a scratch Turborepo (negated outputs and the
+persistent task get exact TODOs,`env`passes through, global inputs
+become`vx-preset.ts`) and on a scratch Nx graph (named inputs expand,
 `{workspaceRoot}` outputs map, chained commands join) — where the
-common executors (`@nx/vite:*`, `@nx/vitest:test`, `@nx/jest:jest`,
+common executors (`@nx/vite:\*`, `@nx/vitest:test`, `@nx/jest:jest`,
 `@nx/eslint:lint`, `@nx/js:tsc`) now become their CLI under a TODO
 naming the executor instead of an exit-1 placeholder; pinned with the
 unknown-executor control, fails without the table. A mistyped flag
-names the documented one within two edits (`--concurency` → `did you
+names the documented one within two edits (`--concurency`→`did you
 mean --concurrency?`), the candidates read from the help text's
 sections marked for the verb so no second list drifts and no other
-verb's flag is ever suggested (`--older-tha` under `run` gets no hint;
-found by probing); `editDistance` lives in `util/`. And the plugins
+verb's flag is ever suggested (`--older-tha`under`run`gets no hint;
+found by probing);`editDistance`lives in`util/`. And the plugins
 guide's promise that its code is real is pinned:
-`tests/docs-snippets.test.ts` type-checks every block against the
+`tests/docs-snippets.test.ts`type-checks every block against the
 façade (13 of 14; the contract sketch is skipped by rule). The other
-six guides' `ts` blocks are prose excerpts by design — object
+six guides'`ts` blocks are prose excerpts by design — object
 fragments without a wrapper — and stay unchecked.
 
 **Audits with pins (each mutation fails exactly its pin).** Config-eval
