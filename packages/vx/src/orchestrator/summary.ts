@@ -101,8 +101,10 @@ export interface SummaryStats {
   upToDate: number
   restoredLocal: number
   restoredRemote: number
-  /** Tasks that executed (success + failed) — the cache misses. */
+  /** Tasks that executed (success + failed) with a `cache` block — the misses. */
   miss: number
+  /** Executed with no `cache` block: never consulted the cache, not a miss. */
+  noCache?: number
   /** Still to run (live section only; 0 in the final summary) — renders
    *  as a gray ▱ remainder so the live meters FILL toward the final. */
   left?: number
@@ -143,6 +145,7 @@ export function formatSummarySection(
 ): string[] {
   const hits = stats.upToDate + stats.restoredLocal + stats.restoredRemote
   const miss = stats.miss
+  const noCache = stats.noCache ?? 0
   const left = stats.left ?? 0
   const remainder = { n: left, color: '', glyph: '\u25b1', dim: true }
 
@@ -206,10 +209,11 @@ export function formatSummarySection(
 
   // Cache meter + numbers, fixed order: miss · up-to-date · local ·
   // remote.
-  if (miss + hits + left + stats.skipped > 0) {
+  if (miss + noCache + hits + left + stats.skipped > 0) {
     const cacheBar = segmentBar(
       [
         { n: miss, color: ERROR },
+        { n: noCache, color: '', dim: true },
         { n: stats.upToDate, color: SUCCESS },
         { n: stats.restoredLocal, color: LOCAL },
         { n: stats.restoredRemote, color: REMOTE },
@@ -220,6 +224,7 @@ export function formatSummarySection(
     )
     const cacheParts: string[] = []
     if (miss > 0) cacheParts.push(paint(ERROR, `${miss} miss`, colors))
+    if (noCache > 0) cacheParts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
     if (stats.upToDate > 0) cacheParts.push(paint(SUCCESS, `${stats.upToDate} up-to-date`, colors))
     if (stats.restoredLocal > 0)
       cacheParts.push(paint(LOCAL, `${stats.restoredLocal} local`, colors))
@@ -277,6 +282,15 @@ export function formatRunSummary(
   colors: ColorSupport = NO_COLOR,
   context?: RunContext,
 ): string[] {
+  // Counted here, not in the Tally: that object is the `--summarize` payload
+  // (ten documented fields) and a task with no `cache` block is a terminal
+  // distinction — it never consulted the cache, so it is not a miss.
+  const noCache = outcomes.filter(
+    (o) =>
+      !isGroupTask(o.node) &&
+      (o.status === 'success' || o.status === 'failed') &&
+      o.node.config.cache === undefined,
+  ).length
   const t = tallyOutcomes(outcomes)
   // Spread over executed tasks only — `success`/`failed` statuses ran
   // a command; cache-hit statuses replayed one.
@@ -292,7 +306,8 @@ export function formatRunSummary(
       upToDate: t.upToDate,
       restoredLocal: t.restoredLocal,
       restoredRemote: t.restoredRemote,
-      miss: t.total - t.skipped - (t.cachedLocal + t.cachedRemote),
+      miss: t.total - t.skipped - (t.cachedLocal + t.cachedRemote) - noCache,
+      noCache,
       spread:
         durations.length > 0
           ? {

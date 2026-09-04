@@ -89,7 +89,7 @@ function cacheWord(o: OutcomeView): string {
       return o.restored === false ? 'up-to-date' : 'remote'
     case 'success':
     case 'failed':
-      return 'miss'
+      return o.noCache === true ? 'no-cache' : 'miss'
     default:
       return '—'
   }

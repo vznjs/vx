@@ -227,7 +227,26 @@ describe('projectOutcome', () => {
 
   it('omits absent optional fields', () => {
     const view = projectOutcome(mkOutcome(mkNode({ id: 'a#b', command: 'x' })))
-    expect(view).toEqual({ taskId: 'a#b', status: 'success', exitCode: 0, durationMs: 42 })
+    // The fixture node has no `cache` block, so exactly one optional field
+    // is present: the flag that keeps a node-less consumer from calling
+    // this task a cache miss.
+    expect(view).toEqual({
+      taskId: 'a#b',
+      status: 'success',
+      exitCode: 0,
+      durationMs: 42,
+      noCache: true,
+    })
+  })
+
+  it('a task with a cache block carries no noCache flag; a group carries neither', () => {
+    const cached = mkNode({ id: 'a#b', command: 'x' })
+    ;(cached.config as { cache?: unknown }).cache = {
+      inputs: { files: [] },
+      outputs: { files: [] },
+    }
+    expect(projectOutcome(mkOutcome(cached)).noCache).toBeUndefined()
+    expect(projectOutcome(mkOutcome(mkNode({ id: 'pkg#ci' }))).noCache).toBeUndefined()
   })
 
   // A consumer holding only outcomes (the `--report` writer) has no node to

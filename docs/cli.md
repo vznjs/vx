@@ -819,7 +819,8 @@ totals plus a table, one row per task:
 ```
 
 `Status` is the task outcome (`success` / `failed (exit N)` / `skipped`);
-`Cache` is its provenance (`miss` / `local` / `remote` / `up-to-date` /
+`Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
+block, which never consulted it / `local` / `remote` / `up-to-date` /
 `—`). Aborted tasks (a Ctrl-C teardown) are excluded from the totals but
 still get a row and an `N aborted` count, so a red report with no failing
 row still says why. Group tasks (no `exec`) get neither — they are not
@@ -1557,7 +1558,7 @@ footer. A broad run looks like:
             1 affected · 3 total
   tasks     ▰▰▰▰▰… (failed/success/skipped meter)
             2 success · 2 total
-  cache     ▰▰▰▰▰… (miss/up-to-date/local/remote meter)
+  cache     ▰▰▰▰▰… (miss/no-cache/up-to-date/local/remote meter)
             1 miss · 1 local
 
   info      8 workers · local cache

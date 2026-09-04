@@ -216,7 +216,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--all', 'hello'])
     expect(code).toBe(0)
-    expect(stdout).toContain('success miss   one#hello')
+    expect(stdout).toContain('success miss     one#hello')
     expect(stdout).not.toContain('hello-cli')
   })
 
@@ -271,7 +271,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--filter', 'one', 'hello'])
     expect(code).toBe(0)
-    expect(stdout).toContain('success miss   one#hello')
+    expect(stdout).toContain('success miss     one#hello')
     expect(stdout).not.toContain('hello-cli')
   })
 
@@ -329,7 +329,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
 
     const code = await run(['run', '--filter', 'one', '--filter', 'noSuchPkg', 'hello'])
     expect(code).toBe(0)
-    expect(stdout).toContain('success miss   one#hello')
+    expect(stdout).toContain('success miss     one#hello')
     expect(stderr).toContain('noSuchPkg')
     expect(stderr).toContain('matched no projects')
   })

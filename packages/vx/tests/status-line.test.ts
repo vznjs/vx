@@ -268,7 +268,7 @@ describe('defaultLogger status line integration', () => {
     const after = s.chunks[s.chunks.length - 1]!
     // The live section speaks the summary's language as it fills in.
     expect(after).toContain('1 success')
-    expect(after).toContain('1 miss')
+    expect(after).toContain('1 no-cache')
     expect(after).toContain('▱')
     expect(after).toContain('  time  ')
     log.runEnd?.()
@@ -334,7 +334,7 @@ describe('defaultLogger status line integration', () => {
     finish('d#x', 'failed')
     const last = s.chunks[s.chunks.length - 1]!
     expect(last).toContain('1 failed · 3 success')
-    expect(last).toContain('1 miss · 1 up-to-date · 1 local · 1 remote')
+    expect(last).toContain('1 no-cache · 1 up-to-date · 1 local · 1 remote')
     log.runEnd?.()
   })
 
@@ -380,7 +380,7 @@ describe('defaultLogger status line integration', () => {
     log.taskStderr(bad, 'kaput\n')
     log.taskComplete(bad, mkOutcome(bad, 'failed'))
     // ✗ marker is permanent scrollback, not a region pin.
-    expect(s2.text()).toContain('failed  miss   one#boom')
+    expect(s2.text()).toContain('failed  no-cache one#boom')
     expect(s2.text()).not.toContain('┌─ one#boom')
     log.runEnd?.()
     // Full frame replays after the region is gone, above the summary.
@@ -398,7 +398,9 @@ describe('defaultLogger status line integration', () => {
     // running — from here the pin is the visible evidence it's alive.
     log.taskComplete(dev, mkOutcome(dev, 'success'))
     // [0] is the region's leading blank separator; the pin is [1].
-    expect(regionRows(s.chunks[s.chunks.length - 1]!)[1]).toBe(' ▸         running        web#dev')
+    expect(regionRows(s.chunks[s.chunks.length - 1]!)[1]).toBe(
+      ' ▸         running          web#dev',
+    )
     log.runEnd?.()
   })
 
@@ -491,8 +493,8 @@ describe('formatStatusRegion', () => {
       slots: [null],
     })
     expect(lines).toHaveLength(7)
-    expect(lines[1]).toBe(' ▸         running        web#dev')
-    expect(lines[2]).toBe(' ▸         running        api#dev')
+    expect(lines[1]).toBe(' ▸         running          web#dev')
+    expect(lines[2]).toBe(' ▸         running          api#dev')
     expect(lines[3]).toContain('idle')
     expect(lines.slice(4)).toEqual(SUMMARY)
   })
@@ -507,7 +509,7 @@ describe('formatStatusRegion', () => {
   })
 
   it('formatFailureLine: red ◼︎ glyph + exec time + failed + miss + id (no exit code)', () => {
-    expect(formatFailureLine('a#build', 100)).toBe(' ◼︎   100ms failed  miss   a#build')
+    expect(formatFailureLine('a#build', 100)).toBe(' ◼︎   100ms failed  miss     a#build')
     const colored = formatFailureLine('a#build', 100, { enabled: true })
     expect(colored).toContain('◼︎')
     expect(colored).toContain('failed')

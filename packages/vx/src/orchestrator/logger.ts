@@ -124,6 +124,9 @@ function ghaFence(body: string, token: string): string {
   return `::stop-commands::${token}\n${body}::${token}::\n`
 }
 
+const cacheWordOf = (n: TaskNode): 'miss' | 'no-cache' =>
+  n.config.cache === undefined ? 'no-cache' : 'miss'
+
 /** The unified outcome vocabulary word for a non-failed outcome. */
 function outcomeWord(o: TaskOutcome): string {
   switch (o.status) {
@@ -257,6 +260,8 @@ export function defaultLogger(
   let slots: (WorkerSlot | null)[] = []
   const slotQueue: WorkerSlot[] = []
   let succeeded = 0
+  // Executed with no `cache` block: never a miss, counted apart.
+  let noCache = 0
   let upToDate = 0
   let restoredLocal = 0
   let restoredRemote = 0
@@ -311,7 +316,8 @@ export function defaultLogger(
         upToDate,
         restoredLocal,
         restoredRemote,
-        miss: succeeded + failed,
+        miss: succeeded + failed - noCache,
+        noCache,
         left: total - done,
         spread:
           spreadCount > 0
@@ -534,6 +540,7 @@ export function defaultLogger(
         done++
         if (outcome.status === 'failed') {
           failed++
+          if (node.config.cache === undefined) noCache++
         } else if (node.config.exec?.persistent !== undefined && outcome.status === 'success') {
           // A persistent task's outcome arrives at READY; the child
           // keeps running until the orchestrator SIGTERMs it at run
@@ -557,6 +564,7 @@ export function defaultLogger(
         switch (outcome.status) {
           case 'success':
             succeeded++
+            if (node.config.cache === undefined) noCache++
             break
           case 'cache-hit':
             if (outcome.restored === false) upToDate++
@@ -593,7 +601,7 @@ export function defaultLogger(
         }
         case 'errors-only':
           if (outcome.status !== 'failed') return
-          emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
+          emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
           deferredFailures.push(
             formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
           )
@@ -605,7 +613,7 @@ export function defaultLogger(
           // surface in the end-of-run summary.
           if (outcome.status === 'failed') {
             // ✗ marker now; the full frame replays at runEnd.
-            emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
+            emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
             deferredFailures.push(
               formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
             )
@@ -640,7 +648,7 @@ export function defaultLogger(
             // to runEnd like everywhere else; everything else emits
             // ONE atomic block from the buffered output.
             if (outcome.status === 'failed') {
-              emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
+              emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
               deferredFailures.push(
                 formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
               )
@@ -654,7 +662,7 @@ export function defaultLogger(
           // Dependency-pulled nodes: silent on success; failures get
           // the ✗ marker now and their frame replayed at runEnd.
           if (outcome.status === 'failed') {
-            emitLine(formatFailureLine(node.id, outcome.durationMs, colors))
+            emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
             deferredFailures.push(
               formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
             )

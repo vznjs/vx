@@ -248,13 +248,14 @@ export function formatFailureLine(
   id: string,
   durationMs: number | null,
   colors: ColorSupport = NO_COLOR,
+  cacheWord: 'miss' | 'no-cache' = 'miss',
 ): string {
   return formatTaskRow(
     paint(ERROR, '◼\uFE0E', colors),
     durationMs,
     'failed',
     ERROR,
-    'miss',
+    cacheWord,
     '',
     paintPinnedId(id, colors),
     colors,

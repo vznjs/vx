@@ -220,7 +220,7 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
 // the row. All detail (exit code, output) lives in the framed block.
 export const TIME_COL = 7 // "0ms" … "999.99s"
 const STATUS_COL = 7 // "success" / "running" / "skipped"
-const CACHE_COL = 6 // "remote" / "local" / "fresh" / "miss"
+const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
@@ -278,7 +278,8 @@ function cacheOf(o: TaskOutcome): { word: string; color: string } {
   switch (o.status) {
     case 'success':
     case 'failed':
-      return { word: 'miss', color: '' } // dim
+      // A task with no `cache` block never consulted the cache: not a miss.
+      return { word: o.node.config.cache === undefined ? 'no-cache' : 'miss', color: '' } // dim
     case 'cache-hit':
       return o.restored === false
         ? { word: 'fresh', color: SUCCESS }

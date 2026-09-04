@@ -82,7 +82,7 @@ Duration:
 - Mixed-status row (success + failed + skipped + cache).
 - All-success rendering.
 - Empty outcomes (zero-task summary).
-- Stacked state meters (50 cells, largest-remainder allocation, every non-zero bucket gets >= 1 cell): tasks bar = failed/success/skipped, cache bar = miss/up-to-date/local/remote; color-coded legends below each bar.
+- Stacked state meters (50 cells, largest-remainder allocation, every non-zero bucket gets >= 1 cell): tasks bar = failed/success/skipped, cache bar = miss/no-cache (dim: a task with no `cache` block never consulted it)/up-to-date/local/remote; color-coded legends below each bar.
 - Gradient wordmark rule (violet -> pink across the dashes).
 - Failed list capped at 5 ids + '... +N more' (frames above carry the rest).
 - Time row: blank line above, total + dim 'max / avg / min' per-task spread (skipped excluded).

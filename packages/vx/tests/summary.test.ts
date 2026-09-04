@@ -25,7 +25,7 @@ describe('formatRunSummary', () => {
       '  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
       '            2 success · 2 total',
       '  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
-      '            2 miss',
+      '            2 no-cache',
       '',
       '  time      1.23s · max 100ms · avg 100ms · min 100ms',
     ])
@@ -41,7 +41,7 @@ describe('formatRunSummary', () => {
       420,
     )
     expect(lines[3]).toBe('            3 success · 3 total')
-    expect(lines[5]).toBe('            1 miss · 2 up-to-date')
+    expect(lines[5]).toBe('            1 no-cache · 2 up-to-date')
     expect(lines.at(-1)).toBe('  time      420ms' + ' · max 100ms · avg 100ms · min 100ms')
   })
 
@@ -51,7 +51,7 @@ describe('formatRunSummary', () => {
       850,
     )
     expect(lines[3]).toBe('            1 failed · 1 success · 2 total')
-    expect(lines[5]).toBe('            2 miss')
+    expect(lines[5]).toBe('            2 no-cache')
   })
 
   it('never lists failed task ids — count lives in the legend (owner: can be hundreds)', () => {

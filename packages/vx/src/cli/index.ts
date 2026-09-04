@@ -6,7 +6,7 @@ import { VERSION } from '../version.js'
 import { runCmd } from './run.js'
 import { printHelp } from './help.js'
 import { pluginCommandHelp, resolvePluginCommand } from './plugin-commands.js'
-import { UserError } from '../util/index.js'
+import { editDistance, UserError } from '../util/index.js'
 
 // Every verb but `run` is imported when invoked. `vx run` is the hot path
 // and nearly every invocation; the other verbs' modules are code that
@@ -97,7 +97,7 @@ export async function run(argv: readonly string[]): Promise<number> {
         )
         return 1
       }
-      process.stderr.write(`vx: unknown command: ${command}${loadNote}\n`)
+      process.stderr.write(`vx: unknown command: ${command}${didYouMeanVerb(command)}${loadNote}\n`)
       printHelp()
       return 1
     }
@@ -114,3 +114,38 @@ export { parseWhyArgs } from './why.js'
 export { parseLastArgs } from './last.js'
 export { parsePruneWorkspaceArgs } from './prune.js'
 export { formatBytes } from './format.js'
+
+/** The verbs the switch above dispatches; `stats` is a deprecated alias and stays out. */
+const CORE_VERBS = [
+  'run',
+  'watch',
+  'cache',
+  'lock',
+  'migrate',
+  'init',
+  'upgrade',
+  'show',
+  'info',
+  'why',
+  'last',
+  'prune',
+  'help',
+  'version',
+] as const
+
+/** ` Did you mean run?` for a verb within two edits of a core one — the same
+ *  hint a task or flag typo gets. Plugin verbs are not listed: resolving
+ *  them loads the workspace, and this path is reached only when that
+ *  lookup found nothing. */
+function didYouMeanVerb(verb: string): string {
+  let best: string | undefined
+  let bestD = 3
+  for (const v of CORE_VERBS) {
+    const d = editDistance(verb, v)
+    if (d < bestD) {
+      bestD = d
+      best = v
+    }
+  }
+  return best === undefined ? '' : `. Did you mean ${best}?`
+}
