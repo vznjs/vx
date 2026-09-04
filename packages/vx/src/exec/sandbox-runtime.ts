@@ -26,7 +26,7 @@
 import path from 'node:path'
 import os from 'node:os'
 import { realpathSync } from 'node:fs'
-import { unlink } from 'node:fs/promises'
+import { mkdir, unlink } from 'node:fs/promises'
 import type { SandboxConfig, SandboxNetworkConfig } from '../config.js'
 import {
   armTimeout,
@@ -166,7 +166,24 @@ const DEFAULT_IGNORE_VIOLATIONS: Record<string, string[]> = {
  * Per-task wrapping passes a customConfig that re-enables network for
  * tasks with `sandbox.network: true`.
  */
+/**
+ * The temp directory SRT hands every sandboxed task. It overrides `TMPDIR`
+ * so temp-file writers land somewhere its filesystem policy already allows,
+ * and it deliberately does NOT create the directory — its own comment says
+ * "/tmp/claude may not exist". Nobody else does either, so on any machine
+ * that is not Claude Code's own, every sandboxed task that writes a temp
+ * file died with ENOENT: this repo's `bun build --compile` under
+ * `--verify=inputs` reported only `error: An unknown error occurred
+ * (Unexpected)` (2026-09-04). Resolution mirrors SRT's exactly.
+ */
+function sandboxTmpdir(): string {
+  const named = Bun.env['CLAUDE_CODE_TMPDIR'] ?? Bun.env['CLAUDE_TMPDIR']
+  return named !== undefined && named !== '' ? named : '/tmp/claude'
+}
+
 export async function initSandbox(): Promise<void> {
+  // Before SRT starts, so the very first task already has one.
+  await mkdir(sandboxTmpdir(), { recursive: true })
   const { SandboxManager } = await loadSrt()
   await SandboxManager.initialize(
     {

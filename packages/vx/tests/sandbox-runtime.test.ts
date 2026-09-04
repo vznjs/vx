@@ -17,6 +17,7 @@ import {
   deniedCalls,
   initSandbox,
   probeSandbox,
+  resetSandbox,
   resolveSandboxConfig,
   runSandboxed,
 } from '../src/exec/sandbox-runtime.js'
@@ -661,6 +662,39 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       })
       // Task succeeds (|| true), no violations after filter → cache saves.
       expect(r.outcomes[0]?.sandboxViolations).toBeUndefined()
+    },
+    TIMEOUT,
+  )
+})
+
+describe.skipIf(!available)('the sandbox temp directory', () => {
+  // SRT overrides TMPDIR so temp writers land where its filesystem policy
+  // allows, and does not create the directory ("/tmp/claude may not exist",
+  // its own comment). Nobody else did either, so every sandboxed task that
+  // wrote a temp file died. Reproduced 2026-09-04 with this repo's own
+  // build: `bun build --compile` inside the verify sandbox reported
+  // `failed to open temporary file to copy bun into / ENOENT:
+  // /tmp/claude/.<hash>.bun-build`, which reaches the user as the opaque
+  // `error: An unknown error occurred (Unexpected)`. Creating the directory
+  // is the whole fix; resolution mirrors SRT's own order.
+  it(
+    'initSandbox creates the directory SRT points tasks at',
+    async () => {
+      const tmpdir = path.join(os.tmpdir(), `vx-sbx-tmp-${Date.now()}`)
+      const previous = process.env['CLAUDE_CODE_TMPDIR']
+      process.env['CLAUDE_CODE_TMPDIR'] = tmpdir
+      try {
+        expect(existsSync(tmpdir)).toBe(false)
+        await initSandbox()
+        expect(existsSync(tmpdir)).toBe(true)
+        // Idempotent: a second run of the same process must not throw.
+        await initSandbox()
+      } finally {
+        if (previous === undefined) delete process.env['CLAUDE_CODE_TMPDIR']
+        else process.env['CLAUDE_CODE_TMPDIR'] = previous
+        await rm(tmpdir, { recursive: true, force: true })
+        await resetSandbox()
+      }
     },
     TIMEOUT,
   )
