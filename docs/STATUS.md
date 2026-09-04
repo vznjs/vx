@@ -430,6 +430,19 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    all 1,000 configs (repeat loads through the worker) — the sweep is
    35 ms, no visible pause.
 
+7. **First-run DX follow-ups (candidates, from the 2026-09-04
+   walkthrough).** (a) `--summarize` task rows carry no cache word: a
+   consumer computing a hit rate cannot exclude uncached tasks; adding
+   `noCache: true` is additive but the payload is documented — decide,
+   then add with `docs/cli.md` § --summarize. (b) `init` makes `lint`
+   wait for `build` (`AFTER_BUILD`); a lint rarely needs the build and
+   the edge serialises the two — narrow to `test` / `typecheck`, or
+   keep and say why. (c) watch still pays one redundant cycle on a
+   task's first undeclared write (the bytes are unknown until seen);
+   hashing what the cycle wrote before re-arming would zero it — only
+   if a real workspace shows the cycle mattering. (d) The unknown-filter
+   error prints two lines saying the same thing.
+
 ## Decisions (this arc)
 
 - **Gap audit vs Nx 23 / Turbo 2.10 (2026-09-04, owner's ask).** Core
