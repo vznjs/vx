@@ -1252,7 +1252,12 @@ Mapping highlights:
   `@nx/jest:jest` → `jest`, `@nx/eslint:lint` → `eslint .`,
   `@nx/js:tsc` → `tsc -p tsconfig.json`); executor options are not
   carried over, which is what the TODO asks you to check. Any other
-  executor becomes a placeholder that fails loudly.
+  executor becomes a placeholder that fails loudly. The two server
+  executors also become **persistent** tasks, whatever the target is
+  called — a known executor is authoritative about lifetime. A target
+  whose executor says nothing about it (`nx:run-commands`, a custom
+  one) falls back to the target NAME, the same guess the scripts path
+  makes: `dev` / `start` / `serve` / `watch` / `preview`.
 
 Everything unmappable becomes a `// TODO(vx-migrate): …` comment in
 the generated file — TODOs are always comments, never values, so

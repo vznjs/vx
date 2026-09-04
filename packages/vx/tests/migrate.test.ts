@@ -941,6 +941,59 @@ describe('vx migrate (nx) — well-known executors', () => {
   })
 })
 
+describe('vx migrate (nx) — a server target is persistent', () => {
+  // A dev/preview server never exits. Until 2026-09-04 the Nx path mapped
+  // `@nx/vite:dev-server` to `vite` as an ORDINARY task, so `vx run serve`
+  // waited forever for an exit that never comes — while the turbo path
+  // (`persistent: true`) and the scripts path (the task NAME) both got it
+  // right. One rule now, in `migrate-persistent.ts`.
+  it('a server executor wins over the name; a shell wrapper falls back to the name', async () => {
+    const root = await makeRoot('vx-migrate-nx-persistent-')
+    try {
+      await addPackage(root, 'app', {})
+      await mkdir(path.join(root, '.nx', 'workspace-data'), { recursive: true })
+      await Bun.write(
+        path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
+        JSON.stringify({
+          nodes: {
+            app: {
+              name: 'app',
+              type: 'app',
+              data: {
+                root: 'packages/app',
+                targets: {
+                  // The executor says server, whatever the target is called.
+                  ui: { executor: '@nx/vite:dev-server', options: {} },
+                  preview: { executor: '@nx/vite:preview-server', options: {} },
+                  // A shell wrapper says nothing about lifetime → the name does.
+                  serve: { executor: 'nx:run-commands', options: { commands: ['node server.js'] } },
+                  // …and the name alone must not override an executor that
+                  // IS known and is not a server (the control).
+                  watch: { executor: '@nx/vite:build', options: {} },
+                  build: { executor: '@nx/js:tsc', options: {} },
+                },
+              },
+            },
+          },
+          dependencies: { app: [] },
+        }),
+      )
+      const r = await vx(root, ['migrate', '--from', 'nx'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      const tasks = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts')))
+        .tasks!
+      const persistent = Object.keys(tasks)
+        .filter((t) => tasks[t]!.exec?.persistent !== undefined)
+        .sort()
+      expect(persistent).toEqual(['preview', 'serve', 'ui'])
+      expect(tasks['ui']!.exec?.persistent).toEqual({})
+      expect(r.out).toContain('set persistent.readyWhen')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('vx init (package.json scripts)', () => {
   let root: string
   beforeAll(async () => {

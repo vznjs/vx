@@ -9,6 +9,7 @@ import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import { quote } from './migrate-emit.js'
+import { PERSISTENT_TODO } from './migrate-persistent.js'
 import type { GeneratedProject, GeneratedTask, MigrationPlan, RawExpr } from './migrate.js'
 
 interface TurboTask {
@@ -283,10 +284,7 @@ function buildTask(
   if (passThrough.length > 0) exec.env = { passThrough }
   if (persistent) {
     exec.persistent = {}
-    todos.push(
-      'persistent task — set persistent.readyWhen (regex matched against output) so ' +
-        'dependents unblock on readiness, and consider exec.timeout to bound the wait',
-    )
+    todos.push(PERSISTENT_TODO)
   }
 
   const task: Record<string, unknown> = { exec }

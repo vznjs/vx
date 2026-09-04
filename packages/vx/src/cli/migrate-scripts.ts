@@ -25,9 +25,9 @@
 // dependency instead of a package-manager subprocess it cannot cache.
 
 import type { ProjectMeta } from '../workspace/index.js'
+import { PERSISTENT_TASK_NAMES, PERSISTENT_TODO } from './migrate-persistent.js'
 import type { GeneratedProject, GeneratedTask, MigrationPlan } from './migrate.js'
 
-const PERSISTENT = new Set(['dev', 'start', 'serve', 'watch', 'preview'])
 // `lint` is not here: a linter reads sources, and an edge to `build`
 // serialises the two for nothing (the init walkthrough, 2026-09-04).
 const AFTER_BUILD = new Set(['test', 'typecheck', 'check', 'e2e'])
@@ -102,11 +102,9 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
         )
       }
       const task: Record<string, unknown> = { exec: { command } }
-      if (PERSISTENT.has(name)) {
+      if (PERSISTENT_TASK_NAMES.has(name)) {
         task['exec'] = { command, persistent: {} }
-        todos.push(
-          'persistent: add `readyWhen: "<line the server prints when ready>"` so dependents wait for it',
-        )
+        todos.push(PERSISTENT_TODO)
       }
       if (name === 'build') {
         task['dependsOn'] = ['^build']

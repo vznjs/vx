@@ -9,6 +9,7 @@
 import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
+import { PERSISTENT_TASK_NAMES, PERSISTENT_TODO } from './migrate-persistent.js'
 import type { GeneratedProject, GeneratedTask, MigrationPlan } from './migrate.js'
 
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
@@ -356,6 +357,10 @@ function buildTask(
 
   const exec: Record<string, unknown> = { command }
   if (envNames.length > 0) exec.env = { passThrough: envNames }
+  if (persistentTarget(targetName, target.executor)) {
+    exec.persistent = {}
+    todos.push(PERSISTENT_TODO)
+  }
   const task: Record<string, unknown> = { exec }
   if (deps.length > 0) task.dependsOn = deps
   if (cacheEnabled) {
@@ -422,10 +427,10 @@ function mapCommand(
   const known = executor === undefined ? undefined : KNOWN_EXECUTORS[executor]
   if (known !== undefined) {
     todos.push(
-      `command ${JSON.stringify(known)} mapped from executor ${JSON.stringify(executor)} — ` +
+      `command ${JSON.stringify(known.command)} mapped from executor ${JSON.stringify(executor)} — ` +
         `verify it against the executor's options: ${JSON.stringify(options)}`,
     )
-    return known
+    return known.command
   }
   todos.push(
     `executor ${JSON.stringify(executor ?? '(none)')} has no shell equivalent — fill in the ` +
@@ -435,15 +440,29 @@ function mapCommand(
 }
 
 /** Nx executors whose CLI is unambiguous; anything else is a placeholder. */
-const KNOWN_EXECUTORS: Record<string, string> = {
-  '@nx/vite:build': 'vite build',
-  '@nx/vite:dev-server': 'vite',
-  '@nx/vite:preview-server': 'vite preview',
-  '@nx/vite:test': 'vitest run',
-  '@nx/vitest:test': 'vitest run',
-  '@nx/jest:jest': 'jest',
-  '@nx/eslint:lint': 'eslint .',
-  '@nx/js:tsc': 'tsc -p tsconfig.json',
+const KNOWN_EXECUTORS: Record<string, { command: string; persistent?: true }> = {
+  '@nx/vite:build': { command: 'vite build' },
+  '@nx/vite:dev-server': { command: 'vite', persistent: true },
+  '@nx/vite:preview-server': { command: 'vite preview', persistent: true },
+  '@nx/vite:test': { command: 'vitest run' },
+  '@nx/vitest:test': { command: 'vitest run' },
+  '@nx/jest:jest': { command: 'jest' },
+  '@nx/eslint:lint': { command: 'eslint .' },
+  '@nx/js:tsc': { command: 'tsc -p tsconfig.json' },
+}
+
+/**
+ * Does this target run a server that never exits? A known executor is
+ * authoritative — `@nx/vite:dev-server` IS one, whatever the target is
+ * called. Anything else (a shell wrapper, a custom executor) says nothing
+ * about lifetime, so fall back to the target NAME, the same guess the
+ * scripts path makes. Without this a `serve` target became an ordinary
+ * task and `vx run serve` waited forever for an exit that never comes.
+ */
+function persistentTarget(targetName: string, executor: string | undefined): boolean {
+  const known = executor === undefined ? undefined : KNOWN_EXECUTORS[executor]
+  if (known !== undefined) return known.persistent === true
+  return PERSISTENT_TASK_NAMES.has(targetName)
 }
 
 function countImplicitDeps(

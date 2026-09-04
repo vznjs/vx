@@ -287,6 +287,17 @@ passed once the load fell.
   opt in); a Linux pin says available ⇒ a sandboxed `true` exits 0. The
   suite's `expectOk` prints `<task> <status> exit=<code>` and the
   collected output on failure, so the next red names itself.
+- **`vx migrate` walkthroughs, both sources (2026-09-04).** Turbo:
+  clean on a realistic `turbo.json` — global fields become the
+  imported `vx-preset.ts`, `dist/**` outputs and `env` survive, the
+  root task `//#format` is reported as unmigratable, and the warm run
+  is all up-to-date. Nx: correct from the resolved graph, but a
+  dev-server executor became an ORDINARY task, so `vx run serve` would
+  wait forever for an exit that never comes — while the turbo path
+  (`persistent: true`) and the scripts path (the task name) both got it
+  right. One rule now in `migrate-persistent.ts`, imported by all
+  three: a known executor is authoritative about lifetime, anything
+  else falls back to the name. Pinned differentially.
 - **`@vzn/vx-turbo-cache` and `@vzn/vx-nx-cache` (owner's ask,
   2026-09-04).** Two zero-dependency `cache` plugins over the seam
   recipe, each against the OFFICIAL self-hosted API read from its spec:
