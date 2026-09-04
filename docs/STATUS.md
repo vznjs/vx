@@ -167,7 +167,11 @@ snippet (a file that declares nothing keeps the plain error); a task
 with no`cache`block reads`no-cache`on its row, in the legend and
 in the report instead of`miss`(the column is eight wide; the Tally
 and`--summarize`payloads are unchanged);`vx rnu`says`Did you mean
-run?`. `init`on a workspace with no scripts writes the workspace file
+run?`. And `vx watch`on that fresh workspace re-ran forever: with no
+declared outputs the build's own write to`dist/`was an event, and
+each cycle wrote it again — watch now drops an event for a file whose
+bytes did not change since it last hashed it (one redundant cycle, then
+quiet; the e2e pin read 7 re-runs in 1.5 s without it).`init`on a workspace with no scripts writes the workspace file
 and prints an example config and the next command; generated configs
 carry`import type { ProjectConfig }`+`satisfies`(erased at runtime);
 an unresolved config import is a`UserError`naming the file and, for`@vzn/vx`, the install command; a typo says `Did you mean build?`,
