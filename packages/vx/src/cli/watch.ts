@@ -330,11 +330,48 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   let pending = false
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-  const trigger = (label: string): void => {
+  // Declared outputs are ignored by PATH above. A task with no `cache`
+  // block declares none and still writes into its project, and the
+  // watcher sees the write: run 1 writes dist/x, the event re-runs, run 2
+  // writes the same bytes, the event re-runs — forever (the init
+  // walkthrough, 2026-09-04: every fresh workspace, since `init` emits no
+  // cache block). An undeclared write is caught by CONTENT, at debounce
+  // time (see `trigger`): a path whose settled bytes equal what this loop
+  // last hashed for it is not a change. A real edit changes the bytes; a deletion, a directory or a
+  // first sighting passes through (so the loop costs one redundant run,
+  // not an unbounded number).
+  const lastBytes = new Map<string, bigint>()
+  const sameBytes = (abs: string): boolean => {
+    let hash: bigint
+    try {
+      hash = xxh3(fs.readFileSync(abs))
+    } catch {
+      lastBytes.delete(abs)
+      return false
+    }
+    const prev = lastBytes.get(abs)
+    lastBytes.set(abs, hash)
+    return prev === hash
+  }
+
+  // Paths that fired during the debounce window, first label wins. The
+  // content check runs when the timer fires, on SETTLED bytes: per event it
+  // is wrong on Linux, where a shell redirect truncates the file (one event,
+  // empty) and then writes it (another, full), so consecutive events never
+  // agree and a self-write loops anyway (CI, 2026-09-04: 9 re-runs where
+  // macOS, which coalesces the two, saw 2).
+  const pendingPaths = new Map<string, string>()
+  const trigger = (label: string, abs: string): void => {
+    if (!pendingPaths.has(abs)) pendingPaths.set(abs, label)
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       debounceTimer = null
-      void cycle(label)
+      let first: string | undefined
+      for (const [p, l] of pendingPaths) {
+        if (!sameBytes(p)) first ??= l
+      }
+      pendingPaths.clear()
+      if (first !== undefined) void cycle(first)
     }, DEBOUNCE_MS)
   }
 
@@ -374,30 +411,6 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // and vx's own cache writes would trigger a cycle that writes again.
   const isIgnoredPath = makeWatchIgnore(cacheDir, outputs)
 
-  // Declared outputs are ignored by PATH above. A task with no `cache`
-  // block declares none and still writes into its project, and the
-  // watcher sees the write: run 1 writes dist/x, the event re-runs, run 2
-  // writes the same bytes, the event re-runs — forever (the init
-  // walkthrough, 2026-09-04: every fresh workspace, since `init` emits no
-  // cache block). An undeclared write is caught by CONTENT: an event for a
-  // file whose bytes equal what this loop last hashed for it is not a
-  // change. A real edit changes the bytes; a deletion, a directory or a
-  // first sighting passes through (so the loop costs one redundant run,
-  // not an unbounded number).
-  const lastBytes = new Map<string, bigint>()
-  const sameBytes = (abs: string): boolean => {
-    let hash: bigint
-    try {
-      hash = xxh3(fs.readFileSync(abs))
-    } catch {
-      lastBytes.delete(abs)
-      return false
-    }
-    const prev = lastBytes.get(abs)
-    lastBytes.set(abs, hash)
-    return prev === hash
-  }
-
   const watchers: fs.FSWatcher[] = []
   const proofs: Promise<void>[] = []
   const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): void => {
@@ -423,8 +436,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     try {
       arm(workspaceRoot, true, (filename) => {
         if (isIgnoredPath(workspaceRoot, filename)) return
-        if (sameBytes(path.join(workspaceRoot, filename))) return
-        trigger(`root ${filename}`)
+        trigger(`root ${filename}`, path.join(workspaceRoot, filename))
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -438,8 +450,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       try {
         arm(proj.dir, true, (filename) => {
           if (isIgnoredPath(proj.dir, filename)) return
-          if (sameBytes(path.join(proj.dir, filename))) return
-          trigger(`${proj.name} ${filename}`)
+          trigger(`${proj.name} ${filename}`, path.join(proj.dir, filename))
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -452,7 +463,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     // dir saw the change.
     try {
       arm(workspaceRoot, false, (filename) => {
-        if (isWorkspaceFingerprintFile(filename)) trigger(`root ${filename}`)
+        if (isWorkspaceFingerprintFile(filename)) {
+          trigger(`root ${filename}`, path.join(workspaceRoot, filename))
+        }
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
