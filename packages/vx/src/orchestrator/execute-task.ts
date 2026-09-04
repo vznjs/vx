@@ -622,33 +622,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       path.join(node.projectDir, 'node_modules'),
       path.join(args.workspaceRoot, 'node_modules'),
     ]
-    // The sandbox must express the DECLARATION, not vx's enumeration of it.
-    // A task declaring `files: ['**/*']` has declared every file in its
-    // project, but the baseline listed the tracked files one by one, so
-    // nothing could LIST a directory: every tool that resolves modules or
-    // expands a glob died inside the sandbox, `bun build --compile`
-    // included (owner, 2026-09-04). Read prefixes come from the same
-    // `staticPrefix` the write prefixes use, so both mean the same thing:
-    // `**/*` is the project dir, `src/**` is `src`, a literal path is
-    // itself. A negated glob subtracts, so it can never widen the allow.
-    const prefixesOf = (globs: readonly string[] | undefined, anchor: string): string[] =>
-      (globs ?? []).filter((g) => !g.startsWith('!')).map((g) => path.join(anchor, staticPrefix(g)))
-    const inputPrefixes = [
-      ...prefixesOf(cacheCfg?.inputs.files, node.projectDir),
-      ...prefixesOf(cacheCfg?.inputs.workspaceFiles, args.workspaceRoot),
-    ]
     // Output paths are read+write — a task that declares `dist/**` as
     // output expects to read what it just wrote (e.g. `touch dist/x`
     // stats the file; `tsc --incremental` re-reads .tsbuildinfo).
     return {
       ...base,
       sandbox: {
-        baseAllowRead: [...resolved.files, ...baseAllowWrite, ...depDirs, ...inputPrefixes],
+        baseAllowRead: [...resolved.files, ...baseAllowWrite, ...depDirs],
         baseAllowWrite,
-        // Nested projects stay unreadable even when an input prefix covers
-        // their parent: project boundaries are hard, and a task's globs
-        // already never cross into one.
-        baseDenyRead: [args.workspaceRoot, ...args.nestedProjectDirs],
+        baseDenyRead: [args.workspaceRoot],
         config: resolveSandboxConfig(cfg.sandbox ?? {}, node.projectDir),
       },
     }

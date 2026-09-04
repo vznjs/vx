@@ -287,6 +287,22 @@ passed once the load fell.
   opt in); a Linux pin says available ⇒ a sandboxed `true` exits 0. The
   suite's `expectOk` prints `<task> <status> exit=<code>` and the
   collected output on failure, so the next red names itself.
+- **A read grant on a directory shadows a write bind inside it, on
+  Linux only (2026-09-04).** Granting the project directory as a read
+  prefix (the "express the declaration, not vx's enumeration of it"
+  change) made every write to a declared output fail with `Read-only
+file system` under bwrap whenever the workspace root is denied, which
+  is always. Reproduced minimally in a container: `read=[project]`
+  fails, `read=[project/src]` passes, same command, same everything
+  else. macOS never saw it because seatbelt rules are precedence-based
+  rather than mounts, which is why it passed the local gate and failed
+  CI. The grant existed to make `--verify=inputs` work on this repo's
+  build and has no consumer now that verify is gone, so it is REVERTED
+  rather than patched. If a `sandbox: {}` task ever needs to LIST a
+  directory it declared, this is the problem to solve, and the fix
+  belongs in mount ordering (deepest bind last), not in the allow
+  lists.
+
 - **`--verify` is gone (owner, 2026-09-04).** All of it: the
   determinism proof, the input-completeness proof, the cross-machine
   fingerprint feed, `--verify-allow`, the verdict vocabulary and the
