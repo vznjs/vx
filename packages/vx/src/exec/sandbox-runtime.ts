@@ -173,7 +173,7 @@ const DEFAULT_IGNORE_VIOLATIONS: Record<string, string[]> = {
  * "/tmp/claude may not exist". Nobody else does either, so on any machine
  * that is not Claude Code's own, every sandboxed task that writes a temp
  * file died with ENOENT: this repo's `bun build --compile` under
- * `--verify=inputs` reported only `error: An unknown error occurred
+ * a sandboxed `bun build --compile` reported only `error: An unknown error occurred
  * (Unexpected)` (2026-09-04). Resolution mirrors SRT's exactly.
  */
 function sandboxTmpdir(): string {
@@ -577,8 +577,8 @@ async function wantsStraceDetection(): Promise<boolean> {
  *   <pid> <... openat resumed>)             = -1 ENOENT (...)
  * A single-line regex silently drops every one of those, so a task that
  * forks concurrent children reading undeclared files reported an
- * INCOMPLETE violation list — which for `--verify=inputs` reads as
- * `proven-complete`. We pair them by pid instead (a process has at most
+ * INCOMPLETE violation list — a sandboxed task that tripped would look
+ * clean. We pair them by pid instead (a process has at most
  * one syscall in flight, so the pid is a sufficient key).
  *
  * We capture the first quoted-string argument as the path. paths that

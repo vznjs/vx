@@ -398,9 +398,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   // Sandbox is opt-in per task via `sandbox: {}` (or `sandbox: {...}`)
   // in the task config. No CLI flag, no workspace inheritance — the
-  // task config is the single source of truth. EXCEPTION: `--verify=inputs`
-  // forces the declared-input baseline sandbox onto every executed, cacheable
-  // task to prove input-completeness (a read outside the declared inputs is a
+  // task config is the single source of truth (a read outside the declared
+  // inputs is a
   // proof failure, not a task failure — so it flags the RUN via the verdict,
   // it does not flip the task's own exit code the way a user-declared sandbox
   // violation does).
@@ -421,8 +420,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // attempt's partial outputs can't leak into the next; gated on WRITES so a
   // `--no-cache` run leaves the user's tree alone), spawn, and classify the
   // exit (a sandbox violation on a 0 exit → fail; a timeout SIGTERM → the
-  // streamed notice). Shared by the retry loop AND the `--verify` re-run so
-  // the two can never drift on the spawn/clean/classify path.
+  // streamed notice). Shared by every attempt of the retry loop, so they
+  // can never drift on the spawn/clean/classify path.
   async function runAttempt(): Promise<{
     result: ExecuteResult
     exitCode: number
@@ -475,11 +474,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // before the strace pass shipped, false since, and the branch below is
     // live on Linux.) Violations surface via `TaskOutcome.sandboxViolationLines`.
     let code = res.exitCode
-    // A USER-declared sandbox fails the task on any violation (that's its
-    // fail-on-violation contract). A sandbox forced on ONLY by `--verify=inputs`
-    // does NOT — the task ran fine; the incompleteness is surfaced as the
-    // `undeclared-inputs` verdict (which reds the run) so the retry loop
-    // doesn't pointlessly re-run and the task isn't mislabeled failed.
+    // A declared sandbox fails the task on any violation — that is its
+    // whole contract. `userSandbox` is the only way a task is sandboxed,
+    // so this reads as "sandboxed and it tripped".
     if (userSandbox && violations.length > 0 && code === 0) code = 1
     // A child we SIGTERMed for exceeding the timeout is a genuine failure —
     // stream a clear line so the 143 exit reads as a timeout.
@@ -489,9 +486,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // still exited 0 (`trap 'exit 0' TERM`, a common graceful-shutdown
       // pattern). Without this a timed-out task is classified `success` and its
       // PARTIAL outputs are cached + replayed forever — the run even reports
-      // green. The timeout is a real, retryable failure (matches the
-      // `--verify && !result.timedOut` guard); a genuinely-killed child already
-      // reports 143, so this only rewrites the trap-exit-0 case.
+      // green. The timeout is a real, retryable failure; a genuinely-killed
+      // child already reports 143, so this only rewrites the trap-exit-0 case.
       if (code === 0) code = signalExitCode('SIGTERM')
     }
     return { result: res, exitCode: code }
@@ -615,8 +611,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // folds in: the lockfile and pnpm-workspace.yaml through the workspace
     // fingerprint, and each project's package.json bytes. So a change to
     // them changes the key already, and reading them cannot produce a
-    // stale hit — the property `--verify=inputs` exists to protect.
-    // Denying them instead made the check unusable for any task that
+    // stale hit, which is what a declared sandbox is there to prevent.
+    // Denying them instead made the sandbox unusable for any task that
     // imports a dependency: this repo's own `bun build --compile` died
     // with `Cannot read directory` naming the workspace root, reported to
     // the user as `error: An unknown error occurred (Unexpected)` and
@@ -720,9 +716,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         await cache.recordOutputDirs?.(hash, node.projectDir, savedDirPrefixes)
       }
     }
-    // --verify: fingerprint attempt 1's outputs by CONTENT (raw bytes, never
-    // the mtime+size memo). The determinism re-run below compares against it,
-    // and the fingerprinting modes (`--verify`/`=all`/`=fingerprint`) fold it
     // This task just wrote outputs to the project's tree. Record the
     // exact declared-output paths as changed (same as the cache-hit
     // restore path) instead of dropping the whole snapshot: a downstream
