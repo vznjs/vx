@@ -147,6 +147,10 @@ describe('vx last (e2e)', () => {
       expect(r.code).not.toBe(0)
       expect(r.err).toContain('no recorded run no-such-run')
       expect(r.err).toContain('--list')
+      // `bin.ts` owns the `vx: ` prefix, and a message that already names
+      // the tool used to get it twice — `vx: vx last: …` (2026-09-04).
+      expect(r.err).not.toContain('vx: vx ')
+      expect(r.err.trimStart()).toStartWith('vx last: ')
     },
     TIMEOUT,
   )

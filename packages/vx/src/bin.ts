@@ -13,7 +13,11 @@ async function main(): Promise<void> {
     // on. Everything else gets the full stack so internal bugs are
     // debuggable.
     if (isUserError(err)) {
-      process.stderr.write(`vx: ${err.message}\n`)
+      // A message that already names the tool (`vx why: …`, thrown by a verb
+      // that wants its own name in the line) is printed as it is; prefixing
+      // it produced `vx: vx why: …` (walkthrough, 2026-09-04).
+      const m = err.message
+      process.stderr.write(m.startsWith('vx ') ? `${m}\n` : `vx: ${m}\n`)
     } else {
       const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
       process.stderr.write(`vx: ${message}\n`)
