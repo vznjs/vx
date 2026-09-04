@@ -65,6 +65,17 @@
         "@vzn/vx": "*",
       },
     },
+    "packages/vx-nx-cache": {
+      "name": "@vzn/vx-nx-cache",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
     "packages/vx-otel": {
       "name": "@vzn/vx-otel",
       "version": "0.0.0",
@@ -84,6 +95,17 @@
         "@grpc/proto-loader": "^0.7.13",
         "protobufjs": "^7.4.0",
       },
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
+    "packages/vx-turbo-cache": {
+      "name": "@vzn/vx-turbo-cache",
+      "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
@@ -566,9 +588,13 @@
 
     "@vzn/vx-mcp": ["@vzn/vx-mcp@workspace:packages/vx-mcp"],
 
+    "@vzn/vx-nx-cache": ["@vzn/vx-nx-cache@workspace:packages/vx-nx-cache"],
+
     "@vzn/vx-otel": ["@vzn/vx-otel@workspace:packages/vx-otel"],
 
     "@vzn/vx-reapi": ["@vzn/vx-reapi@workspace:packages/vx-reapi"],
+
+    "@vzn/vx-turbo-cache": ["@vzn/vx-turbo-cache@workspace:packages/vx-turbo-cache"],
 
     "acorn": ["acorn@8.18.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ=="],
 

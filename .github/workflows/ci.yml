@@ -172,6 +172,10 @@ jobs:
         run: cd packages/vx-github && bun test
       - name: bun test (packages/vx-mcp)
         run: cd packages/vx-mcp && bun test
+      - name: bun test (packages/vx-turbo-cache)
+        run: cd packages/vx-turbo-cache && bun test
+      - name: bun test (packages/vx-nx-cache)
+        run: cd packages/vx-nx-cache && bun test
 
       # NativeLink gives the EXECUTION half a real scheduler + worker. Its
       # official image is distroless — no /bin/sh — so a worker inside it

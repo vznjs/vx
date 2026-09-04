@@ -164,7 +164,11 @@ Buildbarn or bazel-remote), [`@vzn/vx-otel`](packages/vx-otel)
 (OpenTelemetry traces + metrics + logs, zero SDK deps),
 [`@vzn/vx-github`](packages/vx-github) (Actions job summary + Checks
 API), [`@vzn/vx-mcp`](packages/vx-mcp) (`vx mcp` — a read-only Model
-Context Protocol server for AI coding agents, no SDK), and
+Context Protocol server for AI coding agents, no SDK),
+[`@vzn/vx-turbo-cache`](packages/vx-turbo-cache) and
+[`@vzn/vx-nx-cache`](packages/vx-nx-cache) (remote cache against any
+server speaking Turbo's `/v8/artifacts` API or Nx's self-hosted cache
+spec — the wire is theirs, the artifacts are vx's), and
 `@vzn/vx/plugins/schedule-history` (order by learned critical path). Nothing distributed ships in this repo; the seams are how you
 build it.
 
@@ -293,6 +297,8 @@ is Windows (unsupported).
 | OTel export (`@vzn/vx-otel`)                     | **shippable**        | OTLP traces + metrics + logs, zero SDK deps                                  |
 | GitHub Actions (`@vzn/vx-github`)                | **shippable**        | job summary + Checks API run                                                 |
 | MCP server (`@vzn/vx-mcp`)                       | **shippable**        | `vx mcp` — read-only tools for AI agents, no SDK                             |
+| Turbo-wire cache (`@vzn/vx-turbo-cache`)         | **shippable**        | any `/v8/artifacts` server, Bearer auth, HMAC artifact signatures            |
+| Nx-wire cache (`@vzn/vx-nx-cache`)               | **shippable**        | any Nx self-hosted cache server (`/v1/cache`, immutable records)             |
 
 ## Development
 

@@ -287,6 +287,22 @@ passed once the load fell.
   opt in); a Linux pin says available ⇒ a sandboxed `true` exits 0. The
   suite's `expectOk` prints `<task> <status> exit=<code>` and the
   collected output on failure, so the next red names itself.
+- **`@vzn/vx-turbo-cache` and `@vzn/vx-nx-cache` (owner's ask,
+  2026-09-04).** Two zero-dependency `cache` plugins over the seam
+  recipe, each against the OFFICIAL self-hosted API read from its spec:
+  Turbo's `/v8/artifacts` (Bearer, `teamId`/`slug`, HEAD/GET/PUT, the
+  batch POST for `hasMany`, `x-artifact-duration`, and the v2 artifact
+  signature — HMAC-SHA256 over length-prefixed prefix/hash/team/body,
+  base64 in `x-artifact-tag`, key ≥ 32 bytes raw, transcribed from
+  `signature_authentication.rs`) and Nx's `/v1/cache/{hash}` (GET/PUT,
+  Bearer, 404 miss, 409 = immutable record = done, 401/403). Nothing on
+  by default: declared explicitly, options over the tools' own env
+  vars, decline when unconfigured; a refused token warns once and turns
+  the layer off. Each suite drives a strict in-memory server for its
+  spec and a full `vx run` round trip (miss → upload → local wipe →
+  `cache-hit-remote`): 8 + 6 tests. The wire is theirs; the artifacts
+  are vx's. NOTE for the owner: no plugin package is on npm yet — the
+  publish workflow ships core and the four platform packages only.
 - **CI's Bun is pinned to 1.4.0 (2026-09-04).** The runners installed
   `latest` and Bun 1.4.1 landed under the fix above, breaking three
   things in one run: the darwin-x64 cross-compile in the site build

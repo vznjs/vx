@@ -176,7 +176,9 @@ which is why it is a plugin and not a flag.
 
 The plugins that ship alongside vx are ordinary consumers of these same
 seams: `@vzn/vx-reapi` fills `executor` and `cache` against any Bazel
-REAPI server, `@vzn/vx-otel` and `@vzn/vx-github` fill `telemetry`. None
+REAPI server, `@vzn/vx-turbo-cache` and `@vzn/vx-nx-cache` fill `cache`
+against any server speaking Turbo's or Nx's self-hosted cache API,
+`@vzn/vx-otel` and `@vzn/vx-github` fill `telemetry`. None
 of them is privileged — core depends on none, and yours plugs in the
 same way. Even vx's own `localExecutorPlugin()` and `localCachePlugin()`
 are written against the public contract.
@@ -449,8 +451,10 @@ function myCache(): VxPlugin {
 export default defineWorkspace({ plugins: [myCache()] })
 ```
 
-A **Turbo-wire plugin** is exactly this shape with `/v8/artifacts/:hash`
-URLs and `x-artifact-*` headers inside the class. For a fully custom
+`@vzn/vx-turbo-cache` is exactly this shape with `/v8/artifacts/:hash`
+URLs and `x-artifact-*` headers inside the class, and `@vzn/vx-nx-cache`
+the same with Nx's `/v1/cache/:hash`; both are declared explicitly and
+decline when unconfigured. For a fully custom
 layering (not just a different wire), implement the `CacheLayer` interface
 directly — `key`, `get`, `save`, `has`, `prefetch`, … — and return your own
 object instead of `LayeredCache`. `CacheLayer`, `RemoteCacheLayer`,

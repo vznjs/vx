@@ -53,6 +53,8 @@ packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)
 packages/vx-github      GitHub Actions job summary + Checks API plugin
 packages/vx-mcp         `vx mcp` — MCP server for AI agents (commands seam, no SDK)
+packages/vx-turbo-cache Turbo `/v8/artifacts` remote cache plugin (self-hosted or Vercel)
+packages/vx-nx-cache    Nx self-hosted remote cache plugin (`/v1/cache`)
 apps/docs               Astro Starlight site; docs/ is imported by scripts/import-docs.ts
 bench/                  synthetic workspace generator + runners (vx / turbo / nx)
 docs/                   source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/
