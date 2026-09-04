@@ -414,6 +414,17 @@ then exits on SIGINT` times out again, keep that run's stdout: the
 
 ## Decisions (this arc)
 
+- **Gap audit vs Nx 23 / Turbo 2.10 (2026-09-04, owner's ask).** Core
+  is at parity or ahead on every must-have a developer would miss
+  (graph, filter DSL superset, affected, strict caching, env
+  isolation, persistent readiness, watch, prune, migrate, init, dry /
+  graph / summarize / profile). The one game changer left is
+  zero-config adoption — scripts as tasks with no generated file —
+  whose mapping is a `project`-stage plugin and whose core half is one
+  seam widening (§ Next 3). `.env` loading, configurations, cache caps,
+  graph UI, release, test splitting, boundaries: plugin or the
+  language. Windows is the only must no plugin can supply; parked.
+  Full table in `docs/comparison.md` § Gap audit 2026-09-04.
 - **Agents removed.** `@vzn/vx-agents` (synchronizer + persistent
   workers, Nomad/K8s backends) was an in-repo distributed-execution
   product. It used only public core APIs (`run`, `createEventBus`, the

@@ -146,7 +146,48 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Watch mode                                | `turbo watch`                           | `nx watch`                              | —          | `vx watch <task>`                                                   |
 | Prune workspace (Docker subset)           | `turbo prune`                           | —                                       | —          | — **gap**                                                           |
 
-## Gaps for `@vzn/vx`
+## Gap audit 2026-09-04 — what a developer would miss, core or plugin
+
+The owner's question: which Nx 23 / Turbo 2.10 features are a MUST or
+a game changer for developers, and of those, which belong in core.
+Rule applied: if a plugin can do it through an existing seam, it is
+not core. Every row below was checked against `docs/cli.md`,
+`docs/schema.md` and the source, not remembered.
+
+**Verified present in core** (parity or ahead): the task graph with
+`^task` / wildcards / nearest-holder frontier; `--filter` as a superset
+of Turbo's DSL (`...`, `^...`, `!`, `./dir`, `[git-ref]`) and
+`--affected`; caching with declared inputs, outputs, `inputs.env`,
+workspace files, `--verify=inputs`; strict env isolation (Turbo's
+`--env-mode=strict` is vx's only mode); `persistent` tasks with
+readiness gating (ahead of Turbo's `persistent` and Nx's
+`continuous`); the interactive picker; `watch`, `prune`, `--dry`,
+`--graph`, `--summarize`, `--profile`, `--continue` modes, retries,
+timeouts, `--memory`, `--output-logs` modes; `migrate` from Turbo, Nx
+and scripts; `init`; the cwd-scoped default; `last`, `why`, `show`,
+`info`; remote cache and execution through the seams (`@vzn/vx-reapi`).
+
+**Missing, and where it belongs:**
+
+| Feature                                                                     | Nx / Turbo    | Verdict                                                                                                                                                                                                                                          |
+| --------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Zero-config adoption: `package.json` scripts are tasks, no per-package file | both, in core | The one game changer. The mapping is a `project`-stage PLUGIN (`@vzn/vx-turbo` / `-nx` reusing the migrate mappers); core needs ONE seam widening — visit a config-less package when a plugin declares `project` (STATUS § Next 3). Recommended. |
+| Inferred tasks from tool configs (`vite.config` ⇒ build/serve/test)         | Nx plugins    | Same seam, same plugin family. Not core.                                                                                                                                                                                                         |
+| `.env` files loaded into the task env                                       | Nx            | Tasks read their own `.env` (Vite, Next do); the cache side is `cache.inputs.files: ['.env*']`. A `config`-stage plugin can inject. Not core; a docs footnote.                                                                                   |
+| Configurations (`build:prod` as one task, two modes)                        | Nx            | The language: a TS function returning the task per mode. Not core.                                                                                                                                                                               |
+| Cache size / age caps applied during runs                                   | both          | The local-cache PLUGIN owns storage; an option there. Not core.                                                                                                                                                                                  |
+| Graph UI, TUI, dashboards                                                   | both          | Rejected for core; `--graph` emits the data for a plugin or a site.                                                                                                                                                                              |
+| Versioning and publishing (`nx release`)                                    | Nx            | `commands` seam; changesets already exists. Not core.                                                                                                                                                                                            |
+| Test splitting (Nx atomizer)                                                | Nx            | `graph`-stage plugin. Not core.                                                                                                                                                                                                                  |
+| Import boundaries (`turbo boundaries`)                                      | Turbo         | A lint; out of scope.                                                                                                                                                                                                                            |
+| Shell completions                                                           | both          | Nice, small (~40 lines on the verb table), not a must. Later.                                                                                                                                                                                    |
+| Windows                                                                     | both          | The only must that no plugin can supply; parked by the owner (POSIX shell is the API). Not proposed.                                                                                                                                             |
+
+Net: core is at parity or ahead on the must-haves; the gap that costs
+adoption is the trial with no generated files, and its core half is a
+small seam. Everything else is a plugin or the language.
+
+## Gaps for `@vzn/vx` (the running list)
 
 Ranked by leverage. Cited file paths are inside the respective
 upstream repos.
