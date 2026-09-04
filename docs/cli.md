@@ -1151,9 +1151,9 @@ with EMPTY outputs is not "uncached" but a no-output task that hits on
 unchanged inputs and skips the build with nothing to restore (a deleted
 `dist` stays deleted under a green `up-to-date` run — what `init`
 generated until 2026-09-04), and a guessed `dist/**` would restore the
-wrong tree for every package that writes elsewhere. `test` / `lint` /
-`typecheck` wait for
-`build` when the package has one; `dev` / `start` / `serve` / `watch` /
+wrong tree for every package that writes elsewhere. `test` / `typecheck` wait for
+`build` when the package has one (`lint` reads sources and gets no
+edge); `dev` / `start` / `serve` / `watch` /
 `preview` become persistent tasks with a TODO to add `readyWhen`.
 
 A run in a root with no `vx.workspace.*` at all fails before any task

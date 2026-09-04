@@ -3,8 +3,8 @@
 //
 // Scripts carry a command and nothing else, so the mapping is honest about
 // what it cannot know: every task gets `exec.command` verbatim; `build`
-// gets the conventional `dependsOn: ['^build']` and `test` / `lint` /
-// `typecheck` wait for `build` when the package has one; a dev-server
+// gets the conventional `dependsOn: ['^build']` and `test` / `typecheck`
+// wait for `build` when the package has one (`lint` does not); a dev-server
 // shaped script becomes persistent. Caching is opt-in and needs declared
 // inputs AND outputs, which a script cannot tell us — so NO task gets a
 // cache block; `build` carries a TODO showing the block to add. Until
@@ -28,7 +28,9 @@ import type { ProjectMeta } from '../workspace/index.js'
 import type { GeneratedProject, GeneratedTask, MigrationPlan } from './migrate.js'
 
 const PERSISTENT = new Set(['dev', 'start', 'serve', 'watch', 'preview'])
-const AFTER_BUILD = new Set(['test', 'lint', 'typecheck', 'check', 'e2e'])
+// `lint` is not here: a linter reads sources, and an edge to `build`
+// serialises the two for nothing (the init walkthrough, 2026-09-04).
+const AFTER_BUILD = new Set(['test', 'typecheck', 'check', 'e2e'])
 const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
 
 /**

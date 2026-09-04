@@ -434,10 +434,8 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    walkthrough).** (a) `--summarize` task rows carry no cache word: a
    consumer computing a hit rate cannot exclude uncached tasks; adding
    `noCache: true` is additive but the payload is documented — decide,
-   then add with `docs/cli.md` § --summarize. (b) `init` makes `lint`
-   wait for `build` (`AFTER_BUILD`); a lint rarely needs the build and
-   the edge serialises the two — narrow to `test` / `typecheck`, or
-   keep and say why. (c) watch still pays one redundant cycle on a
+   then add with `docs/cli.md` § --summarize. (b) DONE 2026-09-04: `init` no longer makes `lint` wait for `build`
+   (`test` / `typecheck` still do, the Turbo starter's convention). (c) watch still pays one redundant cycle on a
    task's first undeclared write (the bytes are unknown until seen);
    hashing what the cycle wrote before re-arming would zero it — only
    if a real workspace shows the cycle mattering. (d) The unknown-filter

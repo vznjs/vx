@@ -972,6 +972,8 @@ describe('vx init (package.json scripts)', () => {
       expect(tasks['build']!.cache).toBeUndefined()
       expect(tasks['test']!.dependsOn).toEqual(['build'])
       expect(tasks['test']!.cache).toBeUndefined()
+      // A linter reads sources; an edge to build would only serialise them.
+      expect(tasks['lint']!.dependsOn).toBeUndefined()
       expect(tasks['dev']!.exec?.persistent).toEqual({})
       const text = await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).text()
       // Typed for the editor through a type-only import Bun erases, so the
