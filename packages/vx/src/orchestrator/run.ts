@@ -380,13 +380,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
     const remoteCacheEnabled = prepared.hasRemoteLayer
-    // Normalised ONCE so every consumer — the verify gate, execute-task,
-    // the dedup predicate, the recorded invocation row — reads the policy
-    // that actually governed the run. Reading the raw request here made
-    // tasks clean their outputs before every exec for a save that never
-    // happened, and `--verify` clean them AGAIN and restore an artifact
-    // that was never written (wiping a successful build's tree and
-    // reporting it failed).
+    // Normalised ONCE so every consumer — execute-task, the dedup
+    // predicate, the recorded invocation row — reads the policy that
+    // actually governed the run. Reading the raw request here made tasks
+    // clean their outputs before every exec for a save that never
+    // happened.
     const policy: CachePolicy = effectiveCachePolicy(
       options.cache ?? FULL_CACHE_POLICY,
       prepared.hasRemoteLayer,
@@ -400,16 +398,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       localWrite: policy.localWrite,
     })
 
-    // `--verify` observes the miss-then-save path and then RESTORES attempt
-    // 1 from the artifact that save wrote, so the tree ends byte-identical
-    // to what was cached regardless of the verdict. That restore reads the
-    // LOCAL artifact file — `restoreOutputs` is a local extraction on every
-    // layer, by design — so without the local WRITE axis there is nothing to
-    // restore from: verify cleaned a successful build's declared outputs and
-    // then failed the run on the missing artifact. A remote fallback would
-    // not fix that, only narrow it to "whenever the remote is reachable at
-    // that instant", turning a guarantee into a coin flip with data loss on
-    // the losing side. So the honest gate is the local write axis, and
     // Per-run context for the Tier-3 `invocations` header row. Captured
     // ONCE (git is ONE spawn for commit+branch, behind try/catch; never
     // fails a run). `dirty` reuses the `git status --porcelain` the

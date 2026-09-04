@@ -62,7 +62,7 @@ export interface RunOptions {
    * task in the run actually needs them (Bazel's "build without the
    * bytes").
    * Pure transfer tuning: it can never change what a command produces,
-   * so it is NEVER folded into a cache key (a RunOption, like --verify).
+   * so it is NEVER folded into a cache key: it is a RunOption, not config.
    * Locally-placed tasks always write in place and ignore this.
    */
   download?: 'all' | 'toplevel' | 'none'

@@ -76,8 +76,7 @@ export interface PreparedRun {
    * injected remote layer, or one a plugin's `cache` capability built. The
    * remote axes of the policy only mean anything then: without a remote
    * layer a `remote:w` policy writes NOWHERE, so a task that believed it
-   * would be saved still cleans its outputs before executing and (under
-   * `--verify`) restores an artifact that was never written.
+   * would be saved still cleans its outputs before executing.
    */
   hasRemoteLayer: boolean
   /**
