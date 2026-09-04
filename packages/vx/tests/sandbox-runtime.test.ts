@@ -243,6 +243,74 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   )
 
   it(
+    'a declared glob grants its prefix, so a tool can list the directory it declared',
+    async () => {
+      // The sandbox must express the DECLARATION, not vx's enumeration of
+      // it. `files: ['**/*']` declares every file in the project, but the
+      // baseline used to list the tracked files one by one, so nothing could
+      // LIST a directory and every tool that resolves modules or expands a
+      // glob died inside the sandbox — this repo's own `bun build --compile`
+      // among them (owner, 2026-09-04). An untracked file stands in for
+      // "something the enumeration would have missed".
+      const projDir = await addProject(fixture.root, 'globby', {
+        files: { 'src/x.txt': 'hi', 'src/untracked.txt': 'also me' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: { command: 'ls src > listing.txt && cat src/untracked.txt >> listing.txt' },
+                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['listing.txt'] } },
+                sandbox: {},
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: collectingLogger(fixture),
+      })
+      expectOk(r, fixture)
+      const listing = await readFile(path.join(projDir, 'listing.txt'), 'utf8')
+      expect(listing).toContain('x.txt')
+      expect(listing).toContain('also me')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a deny inside an allowed prefix still wins (the nested-project carve-out relies on it)',
+    async () => {
+      // Project boundaries are hard: an input prefix that covers a nested
+      // project's parent must not make the nested project readable. That
+      // rests on SRT honouring a deny nested inside an allow, which is
+      // asserted here rather than assumed.
+      const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-carveout-'))
+      try {
+        await mkdir(path.join(dir, 'inner'), { recursive: true })
+        await writeFile(path.join(dir, 'mine.txt'), 'mine\n')
+        await writeFile(path.join(dir, 'inner', 'secret.txt'), 'secret\n')
+        await initSandbox()
+        const r = await runSandboxed({
+          command: 'cat mine.txt > out.txt; cat inner/secret.txt >> out.txt',
+          cwd: dir,
+          env: process.env,
+          baseAllowRead: [dir],
+          baseAllowWrite: [path.join(dir, 'out.txt')],
+          baseDenyRead: [path.join(dir, 'inner')],
+          config: resolveSandboxConfig({}, dir),
+        })
+        expect(r.exitCode).not.toBe(0)
+        expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('mine\n')
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'installed dependencies are readable without being declared inputs',
     async () => {
       // node_modules is derived state: the lockfile and pnpm-workspace.yaml

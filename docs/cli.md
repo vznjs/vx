@@ -420,6 +420,18 @@ $ vx run build --verify=inputs
   denies the read structurally but can't name the path. On a host where
   the sandbox is unavailable, `--verify=inputs` errors clearly — it never
   silently "passes".
+- **A declared glob grants its prefix, not its enumeration.**
+  `files: ['**/*']` grants the project directory, `files: ['src/**']`
+  grants `src/`, a literal path grants itself — the same `staticPrefix`
+  rule the write side already uses, so a read prefix and a write prefix
+  mean the same thing. Expressing the enumeration instead meant nothing
+  could LIST a directory, and every tool that resolves modules or
+  expands a glob failed inside the sandbox. A negated glob subtracts and
+  never widens the grant, and a **nested project** stays denied even
+  when a prefix covers its parent, because project boundaries are hard.
+  So the check proves a task reads nothing outside the prefixes it
+  declared; it does not prove that every file inside a declared prefix
+  was individually listed.
 - **Installed dependencies are readable and need no declaration.**
   `node_modules`, both the project's own and the workspace root's, is
   derived state: the lockfile and `pnpm-workspace.yaml` (through the
