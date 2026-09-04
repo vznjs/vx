@@ -16,7 +16,7 @@
 // what or how tasks run. Contrast `cache`/`executor`, which return objects
 // core calls INTO; those are the behavior capabilities, kept separate.
 
-import type { OutputFingerprint, TaskStatus, VerifyVerdict } from '../graph/index.js'
+import type { TaskStatus } from '../graph/index.js'
 import { settleWithin, teardownTimeoutMs } from '../util/index.js'
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
@@ -169,18 +169,6 @@ export interface TaskTelemetry {
    *  / `--retry` produced more than one attempt. A retried-then-passed task is
    *  flaky by definition; this is the telemetry-side flaky signal. */
   attempts?: number
-  /** Cache-correctness verdict — set ONLY on a `--verify` run (absent
-   *  otherwise). A `nondeterministic` verdict means the task's cache entry is
-   *  unsound (its outputs aren't a pure function of its declared inputs); this
-   *  is the telemetry-side hermeticity signal a dashboard surfaces. */
-  verify?: VerifyVerdict
-  /** Output-tree fingerprint — set ONLY under a fingerprinting `--verify*`
-   *  mode (`--verify` / `=all` / `=fingerprint`), executed tasks only. A
-   *  connected serve pairs fingerprints for the SAME `hash` across platforms
-   *  and names diverging outputs (the cross-machine diff). Absent on plain
-   *  runs — additive-optional, no schema bump (the `attempts`/`verify`
-   *  precedent). */
-  outputFp?: OutputFingerprint
   /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
   wallclockStartNs?: string
   wallclockEndNs?: string
@@ -454,8 +442,6 @@ export function createTelemetrySource(args: {
         if (outcome.where !== undefined) rec.where = outcome.where
         if (outcome.outputs !== undefined) rec.outputs = outcome.outputs
         if (outcome.attempts !== undefined) rec.attempts = outcome.attempts
-        if (outcome.verify !== undefined) rec.verify = outcome.verify
-        if (outcome.outputFp !== undefined) rec.outputFp = outcome.outputFp
         if (outcome.wallclockStartNs !== undefined)
           rec.wallclockStartNs = outcome.wallclockStartNs.toString()
         if (outcome.wallclockEndNs !== undefined)

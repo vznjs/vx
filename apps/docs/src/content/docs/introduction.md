@@ -44,10 +44,10 @@ Almost every design decision below is a response to that:
 - **Strict output ownership.** Declared outputs are wiped before every
   build *and* every restore, so your tree ends each run bit-identical
   to the cached snapshot. No stale stragglers, ever.
-- **Explicit inputs, and a way to prove them.** vx never guesses your
+- **Explicit inputs, and a way to enforce them.** vx never guesses your
   inputs by tracing filesystem reads. It asks you to declare them — and
-  then `vx run --verify=inputs` runs the task under an OS sandbox so an
-  *undeclared* read is a reported failure rather than a latent one.
+  a task that adds `sandbox` runs with those declared paths as the only
+  ones it can read, so an *undeclared* read fails instead of lurking.
 - **`vx why` answers the question the hash can't.** A cache key is one
   opaque number. vx persists the per-component fingerprint behind it, so
   it can name the exact file, env var or upstream that moved.

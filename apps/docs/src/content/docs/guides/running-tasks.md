@@ -119,40 +119,6 @@ would run:
 3 task(s) planned, 3 cache hits (3 local).
 ```
 
-## Prove a cache entry is safe: `--verify`
-
-vx is the only runner that can **prove** a cached result is safe to
-reuse instead of hoping. Every other cache trusts that identical inputs
-produce identical outputs; `--verify` *checks* it. It runs the task,
-saves the outputs, runs it **again**, and content-compares — so a build
-that quietly depends on a timestamp, a random seed, or an unlisted file
-is caught before it ever poisons a shared cache:
-
-```mermaid
-flowchart LR
-  run1["Run the task<br/>→ save outputs"] --> run2["Run it again<br/>(same inputs)"]
-  run2 --> cmp{"Outputs<br/>byte-identical?"}
-  cmp -->|"yes"| proven["proven-deterministic ✓<br/>safe to cache & share"]
-  cmp -->|"no"| fail["nondeterministic ✗<br/>run FAILS + names the<br/>files that changed"]
-  classDef step fill:#1e293b,stroke:#38bdf8,color:#e2e8f0
-  classDef decide fill:#1e293b,stroke:#a78bfa,color:#e2e8f0
-  classDef good fill:#12261b,stroke:#34d399,color:#d1fae5
-  classDef bad fill:#2a1416,stroke:#ef4444,color:#fecaca
-  class run1,run2 step
-  class cmp decide
-  class proven good
-  class fail bad
-```
-
-Pair it with `--force` to re-verify a warm graph. It's a CI / merge-queue
-gate, not an every-run default (it costs ~2× because it runs each task
-twice).
-
-See the [CLI reference](../../cli/#provable-cache-correctness---verify) for
-`--verify=inputs` (proves your declared inputs are complete) and
-`--verify=fingerprint` (catches machine-dependent outputs across a CI
-matrix).
-
 ## Useful run flags
 
 | Flag                       | Effect                                                       |

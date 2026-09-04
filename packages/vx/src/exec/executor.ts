@@ -20,15 +20,6 @@ export interface ExecuteSandbox {
   readonly baseAllowWrite: readonly string[]
   readonly baseDenyRead: readonly string[]
   readonly config: ResolvedSandboxConfig
-  /**
-   * True when an EMPTY violation store on a CLEAN exit will be read as
-   * PROOF (`--verify=inputs` treats zero violations as `proven-complete`).
-   * On macOS the store is fed asynchronously from the unified log, so the
-   * runtime must pay the bounded settle window even for a 0-exit — a leaky
-   * task that swallows its own read error exits 0, and without the wait a
-   * merely-late violation record turns into a false pass of the verify.
-   */
-  readonly settleOnCleanExit: boolean
 }
 
 /** One declared input file, as the cache key saw it. */

@@ -14,65 +14,6 @@ export type TaskStatus =
   // are partial.
   | 'aborted'
 
-/**
- * Cache-correctness verdict for a task under `vx run --verify` (Phase 1:
- * determinism; Phase 2: input-completeness). Declared here (structurally)
- * because `graph` can't import `orchestrator` where the verifier lives —
- * same pattern as `inputComponents`. A pure side-channel: never hashed,
- * never persisted in Phase 1/2.
- */
-export type VerifyVerdict =
-  | { kind: 'proven-deterministic' }
-  /** Phase 2: input-completeness proved — the task read nothing outside its
-   *  declared inputs (from `--verify=inputs` when determinism wasn't also
-   *  requested; an `--verify=all` pass reports the stronger deterministic). */
-  | { kind: 'proven-complete' }
-  /** Re-ran; outputs differ from the cached ones. `changed` names the rels. */
-  | { kind: 'nondeterministic'; changed: readonly string[] }
-  /** Phase 2: read a workspace path outside the declared inputs — the declared
-   *  `cache.inputs` are incomplete, so a hit could serve stale bytes. `paths`
-   *  names the undeclared reads (workspace-relative; empty when the sandbox
-   *  denied structurally but strace wasn't available to name them). */
-  | { kind: 'undeclared-inputs'; paths: readonly string[] }
-  /** Diverged but the task is on `--verify-allow` — reported, not failed. */
-  | { kind: 'allowed-nondeterministic'; changed: readonly string[] }
-  /** The verify re-run exited non-zero / timed out (nondeterministic by
-   *  definition — identical inputs, different outcome). */
-  | { kind: 'rerun-failed'; exitCode: number }
-  /** Cacheable + executed but declares no outputs — nothing to replay. */
-  | { kind: 'no-outputs' }
-  /** Didn't execute (cache hit) / not cacheable / group / persistent. */
-  | { kind: 'not-verified' }
-  /** A `remote: 'only'` task under `--verify=inputs`: verify pins placement
-   *  local, so the task no-ops — there is no execution to sandbox, locally
-   *  or anywhere. Reported, not silent: the proof does not cover it. */
-  | { kind: 'unverifiable-remote-only' }
-
-/**
- * Content fingerprint of a task's output tree, computed under a `--verify*`
- * mode on the executed (miss) path. Never hashed into any key; pure telemetry
- * side-channel for the cross-machine diff (a serve pairs fingerprints for the
- * SAME cache key across platforms and names diverging outputs). Declared here
- * (structurally) because `graph` can't import `orchestrator` — the
- * `VerifyVerdict` pattern. See docs/design/verify-cross-machine-2026-07.md.
- */
-export interface OutputFingerprint {
-  /** Roll-up: xxh3hex over the sorted (key, hash) pairs, folded as
-   *  `key \0 hash \n` (\0 boundaries — the v18 lesson). Always present;
-   *  divergence DETECTION never depends on the per-file map. */
-  tree: string
-  /** Total files in the tree (pre-truncation). */
-  fileCount: number
-  /** Per-file map as sorted [outputKey, xxh3hex] pairs, capped at
-   *  FP_MAX_FILES (500). Deterministic truncation — sorted by key,
-   *  first N — so two machines' truncated maps cover the same subset
-   *  and partial diffs still name real rels. */
-  files?: ReadonlyArray<readonly [string, string]>
-  /** Set when `files` was truncated to the cap (or dropped by the
-   *  sink's run budget). */
-  truncated?: boolean
-}
-
 export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus
@@ -146,17 +87,6 @@ export interface TaskOutcome {
    * inline in the task's block instead of as loose status output.
    */
   sandboxViolationLines?: string[]
-  /**
-   * Cache-correctness verdict under `vx run --verify`. Set only in verify
-   * mode; a plain run leaves it undefined. Pure side-channel (never hashed).
-   */
-  verify?: VerifyVerdict
-  /**
-   * Output-tree fingerprint under a fingerprinting `--verify*` mode
-   * (`--verify` / `=all` / `=fingerprint`), executed + cacheable +
-   * output-declaring tasks only. A plain run leaves it undefined.
-   */
-  outputFp?: OutputFingerprint
 }
 
 export type ContinueMode = 'never' | 'deps-ok' | 'always'
@@ -165,7 +95,7 @@ export type ContinueMode = 'never' | 'deps-ok' | 'always'
  * Resolved per-task resource reservation, in absolute units (cpu may be
  * fractional; mem is bytes). Declared here (structurally) because `graph`
  * can't import `orchestrator`, where the resolver lives — same pattern as
- * `VerifyVerdict`. A `0` axis means "reserve nothing, run freely": the
+ * A `0` axis means "reserve nothing, run freely": the
  * task is exempt from that axis entirely (needs no headroom, holds none).
  */
 export interface ResourceCost {

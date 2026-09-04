@@ -83,9 +83,9 @@ Speed by subtraction is still speed:
   traced input set describes what the task read *that time*, on that
   machine, which is not the same as what it depends on; and it cannot be
   known before the task runs, which is exactly when the key is needed.
-  vx asks you to declare inputs and then lets you PROVE the declaration:
-  `vx run --verify=inputs` runs the task under an OS sandbox and reds the
-  run on an undeclared read. Guessing is replaced by checking.
+  vx asks you to declare inputs and then lets you ENFORCE the
+  declaration: a task with `sandbox` runs with the declared paths as the
+  only readable ones. Guessing is replaced by a boundary.
 
 ## Go deeper
 

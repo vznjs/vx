@@ -90,9 +90,6 @@ export type {
   TelemetrySink,
   TelemetrySource,
 } from './telemetry.js'
-// `diffOutputTrees` is the ONE tree-diff implementation — the verify verdict
-// and a serve's cross-machine fingerprint diff must never drift on it.
-export { diffOutputTrees } from './verify.js'
 export { deriveStableKeys } from './stable-keys.js'
 export type { DeriveStableKeysArgs, StableKey } from './stable-keys.js'
 export {

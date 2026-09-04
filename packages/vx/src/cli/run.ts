@@ -75,17 +75,6 @@ export interface RunArgs {
    * os.totalmem() when not passed — pass it in cgroup-limited containers.
    */
   memory: number | undefined
-  /**
-   * `--verify[=determinism|inputs|fingerprint|all]`: cache-correctness
-   * verification. Undefined when not passed. `determinism` re-runs and
-   * content-compares outputs; `inputs` sandboxes with the declared-input
-   * baseline and flags undeclared reads; `fingerprint` ships output-tree
-   * fingerprints for the cross-machine diff (no re-run; the determinism
-   * modes set it too, for free). `allow` (from `--verify-allow=<pkg#task>,…`)
-   * exempts tasks from failing the run on a divergence.
-   */
-  verify: { determinism: boolean; inputs: boolean; fingerprint: boolean } | undefined
-  verifyAllow: string[]
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   forwardArgs: string[]
@@ -126,8 +115,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     retries: undefined,
     timeout: undefined,
     memory: undefined,
-    verify: undefined,
-    verifyAllow: [],
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
@@ -223,34 +210,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         return { ...out, error: `--memory must be a size like 8GB or 512MB, got: ${v}` }
       }
       out.memory = bytes
-    } else if (a === '--verify' || a?.startsWith('--verify=')) {
-      const what = a === '--verify' ? 'determinism' : a.slice('--verify='.length)
-      if (what === 'determinism') {
-        out.verify = { determinism: true, inputs: false, fingerprint: true }
-      } else if (what === 'inputs') {
-        out.verify = { determinism: false, inputs: true, fingerprint: false }
-      } else if (what === 'fingerprint') {
-        out.verify = { determinism: false, inputs: false, fingerprint: true }
-      } else if (what === 'all') {
-        out.verify = { determinism: true, inputs: true, fingerprint: true }
-      } else {
-        return {
-          ...out,
-          error: `--verify must be determinism | inputs | fingerprint | all (or bare --verify), got: ${what}`,
-        }
-      }
-    } else if (a === '--verify-allow' || a?.startsWith('--verify-allow=')) {
-      const v = a === '--verify-allow' ? before[++i] : a.slice('--verify-allow='.length)
-      if (v === undefined) return { ...out, error: `--verify-allow requires a value` }
-      // A flag-shaped space-form value is always a lost flag (task ids
-      // never start with `-`), never a value the user meant.
-      if (a === '--verify-allow' && v.startsWith('-')) {
-        return { ...out, error: `--verify-allow requires a value, got flag: ${v}` }
-      }
-      out.verifyAllow = v
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
     } else if (a === '--output-logs' || a?.startsWith('--output-logs=')) {
       const v = a === '--output-logs' ? before[++i] : a.slice('--output-logs='.length)
       if (v !== 'full' && v !== 'errors-only' && v !== 'none' && v !== 'hash-only') {
@@ -511,14 +470,6 @@ export async function resolveRunOptions(
   if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
   if (parsed.memory !== undefined) opts.memory = parsed.memory
   if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir
-  if (parsed.verify !== undefined) {
-    opts.verify = {
-      determinism: parsed.verify.determinism,
-      inputs: parsed.verify.inputs,
-      fingerprint: parsed.verify.fingerprint,
-      allow: new Set(parsed.verifyAllow),
-    }
-  }
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
   if (parsed.profile !== undefined) opts.profile = parsed.profile

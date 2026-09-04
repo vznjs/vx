@@ -61,9 +61,9 @@ A task's inputs on the worker are exactly what its cache key declares:
 `cache.inputs.files`, resolved env values, and upstream outputs. Ambient
 state — `tsconfig.json` not covered by a glob, `.npmrc`, `node_modules` — is
 deliberately not part of the key and therefore **not on the worker**.
-`vx run --verify=inputs` proves a task's declared inputs are complete before
-you mark it remote-eligible — and a verify-inputs run pins **everything**
-local, because the proof is the OS sandbox and a worker has none: executed
+A task's `sandbox` block confines it to the paths it declared, which is how
+you find the gap before you mark it remote-eligible — and a sandboxed task
+runs local, because the sandbox is local machinery a worker has none of: executed
 remotely, the verify would pass vacuously.
 
 ## node_modules: install as an action
@@ -167,8 +167,7 @@ Two things it deliberately will not do:
   `cache.inputs` globs could match a producer's outputs, that producer
   stays eager; a run declaring any `cache.inputs.runtime` command defers
   nothing at all, because a shell command's reads cannot be bounded.
-  `--dry` names each downgrade. `--verify` likewise forces `all`: a
-  proof has to observe the outputs it is proving.
+  `--dry` names each downgrade.
 
 Repeat runs are cheap even with nothing cached locally: every successful
 remote execution writes a record under the task's key, so a later run
@@ -193,9 +192,9 @@ So when a task fails remotely and passes locally, suspect
 The same gap is a stale hit locally, which is the more expensive half: if a
 task reads a file it does not declare, editing that file does not change the
 task's cache key, and the run you needed is served from cache instead. That
-is the same question [`--verify=inputs`](../trusting-the-cache/) answers with
-an OS sandbox — remote execution just answers it as a side effect of shipping
-the inputs somewhere else.
+is the same question a task's [`sandbox`](../trusting-the-cache/) block
+answers with an OS boundary — remote execution just answers it as a side
+effect of shipping the inputs somewhere else.
 
 ## The worker image
 

@@ -49,8 +49,6 @@ task with no declared `files` counts as reading its whole project.
   key — it is transfer tuning and cannot change what a command produces.
 - `exec.remote: 'only'` is `never` in both directions; `--download`
   cannot override it.
-- Any `--verify` mode forces `all` (run.ts): a proof must observe the
-  outputs it proves.
 
 ## Tests
 

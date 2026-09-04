@@ -78,7 +78,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   root manifests, `node_modules`): the key treats them as environment, not
   input. Same-checkout agents get them from the checkout; an input-shipping
   executor needs them declared or provided by the worker image / an install
-  action. `--verify=inputs` surfaces the gap per task.
+  action.
 
 ## Tests
 

@@ -48,7 +48,6 @@ import {
 } from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
 import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.js'
-import { formatVerifySection } from './verify.js'
 
 const EMPTY_SHORT_CIRCUIT: ShortCircuit = { preProbed: new Map(), restoreTier: new Set() }
 
@@ -255,13 +254,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // can admit a remote-pooled task against its pool instead of a local
   // worker slot. Group tasks run nothing; persistent tasks never reach an
   // executor (local by construction) — both stay off the map.
-  //
-  // `--verify=inputs` pins EVERYTHING local: the input-completeness proof
-  // is the OS sandbox, which is local machinery a remote executor silently
-  // ignores — so a remotely-executed task would pass the verify VACUOUSLY,
-  // leaky or not. A verify run is a local proof procedure by definition;
-  // determinism/fingerprint modes are unaffected (no sandbox involved).
-  const placements = placeTasks(nodes, executors, options.verify?.inputs === true)
+  const placements = placeTasks(nodes, executors, false)
   // A `remote: 'only'` task nobody takes succeeds WITHOUT running. That is
   // deliberate — on a machine with no remote pool the ambient state already
   // is what the task would have produced — but it must not be SILENT: a task
@@ -304,24 +297,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         }
 
   // `--download` (default `all`) decides ONCE per task, here, whether a
-  // remote execution's outputs come home. `--verify` pins every task local
-  // (so nothing defers under a proof) and `all` keeps today's behaviour
-  // byte for byte.
-  // A proof must observe what it proves. `--verify=inputs` already pins
-  // every task LOCAL (so nothing could defer), but determinism and
-  // fingerprint modes do NOT — and a deferred task's outputs are absent
-  // when the verifier looks, which reported `no-outputs` for a task that
-  // declares outputs: an n/a verdict for work the proof never examined.
-  // Deferral is transfer tuning; a verify run is a rare, deliberate
-  // correctness run. Eager wins, and says so when it overrides.
-  const downloadPolicy = options.verify !== undefined ? 'all' : (options.download ?? 'all')
-  if (
-    options.verify !== undefined &&
-    options.download !== undefined &&
-    options.download !== 'all'
-  ) {
-    log.status(`vx: --verify observes outputs on disk — ignoring --download=${options.download}`)
-  }
+  // remote execution's outputs come home.
+  const downloadPolicy = options.download ?? 'all'
   const localPlaced = new Set(
     [...nodes.keys()].filter((id) => placements.executors.get(id)?.remote !== true),
   )
@@ -433,19 +410,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // not fix that, only narrow it to "whenever the remote is reachable at
     // that instant", turning a guarantee into a coin flip with data loss on
     // the losing side. So the honest gate is the local write axis, and
-    // `--no-cache` / `--cache=local:,…` / `--cache=local:r,…` are refused
-    // loudly — silently verifying nothing is the one failure mode
-    // verification must never have (same platform-honesty rule as the
-    // sandbox-unavailable error). `--force --verify` re-verifies a warm graph.
-    if (options.verify !== undefined && !policy.localWrite) {
-      throw new UserError(
-        '--verify needs the LOCAL cache write axis: it re-runs the task, then restores ' +
-          'attempt 1 from the local artifact so the outputs on disk are the ones that were ' +
-          'cached. Enable local writes (e.g. --cache=local:w,remote:rw), drop --no-cache, ' +
-          'or use --force --verify to re-execute and verify a warm graph',
-      )
-    }
-
     // Per-run context for the Tier-3 `invocations` header row. Captured
     // ONCE (git is ONE spawn for commit+branch, behind try/catch; never
     // fails a run). `dirty` reuses the `git status --porcelain` the
@@ -506,29 +470,17 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     }
 
     // Lazy SRT init: fire it up if at least one task opts into sandboxing
-    // via its `sandbox: {...}` block, OR `--verify=inputs`/`=all` is on (it
-    // forces the declared-input baseline sandbox onto every cacheable task to
-    // prove input-completeness). Tasks that need sandboxing on an unsupported
-    // platform get a hard error so they don't silently run unsandboxed —
-    // `--verify=inputs` in particular must fail loud, never falsely "pass".
-    const verifyInputs = options.verify?.inputs === true
+    // via its `sandbox: {...}` block. A task that needs sandboxing on an
+    // unsupported platform gets a hard error so it never silently runs
+    // unsandboxed.
     const sandboxed = [...nodes.values()].filter((n) => n.config.sandbox !== undefined)
-    const anySandboxed = verifyInputs || sandboxed.length > 0
+    const anySandboxed = sandboxed.length > 0
     if (anySandboxed) {
-      // The probe runs the wrapper the tasks will run under: the weaker
-      // nested mode only when every sandboxed task opts in (the baseline
-      // sandbox `--verify=inputs` forces onto cacheable tasks never does).
-      const weakerNested =
-        !verifyInputs &&
-        sandboxed.every((n) => n.config.sandbox?.enableWeakerNestedSandbox === true)
+      const weakerNested = sandboxed.every(
+        (n) => n.config.sandbox?.enableWeakerNestedSandbox === true,
+      )
       const avail = await probeSandbox({ weakerNested })
-      if (!avail.available) {
-        throw new UserError(
-          verifyInputs
-            ? `--verify=inputs needs the sandbox, which is not available: ${avail.reason}`
-            : `sandbox not available: ${avail.reason}`,
-        )
-      }
+      if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
       await initSandbox()
     }
 
@@ -644,7 +596,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         forwardArgs: options.forwardArgs,
         ...(options.retries !== undefined ? { retries: options.retries } : {}),
         ...(taskTimeoutDefault !== undefined ? { timeout: taskTimeoutDefault } : {}),
-        ...(options.verify !== undefined ? { verify: options.verify } : {}),
         log,
         executor: placements.executors.get(node.id) ?? UNPLACED_EXECUTOR,
         ...(download.modeOf.get(node.id) === 'deferred' ? { download: 'deferred' as const } : {}),
@@ -809,17 +760,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     log.runEnd?.()
 
     const list = [...outcomes.values()]
-    const ok =
-      list.every((o) => isPassStatus(o.status)) &&
-      // `--verify`: a provably-unsafe cache entry (non-deterministic outputs, a
-      // re-run that failed, or a read of undeclared inputs) turns the run red so
-      // CI catches it.
-      !list.some(
-        (o) =>
-          o.verify?.kind === 'nondeterministic' ||
-          o.verify?.kind === 'rerun-failed' ||
-          o.verify?.kind === 'undeclared-inputs',
-      )
+    const ok = list.every((o) => isPassStatus(o.status))
 
     // The summary + artifact writers + recordRun pass all exclude group
     // tasks via the shared tallyOutcomes helper. We pass the full
@@ -844,24 +785,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       log.status(
         `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--download=none): ${stillDeferred.join(', ')}`,
       )
-    }
-    if (options.verify !== undefined) {
-      for (const line of formatVerifySection(list)) log.status(line)
-      // A fingerprint-only run attaches no verdicts, so the verdict-driven
-      // section above prints nothing — report what actually happened.
-      if (options.verify.fingerprint && !options.verify.determinism && !options.verify.inputs) {
-        const n = list.filter((o) => o.outputFp !== undefined).length
-        log.status('')
-        log.status(
-          `  Verify:   fingerprinted ${n} task output trees (cross-machine diff via a connected serve)`,
-        )
-        // Only EXECUTED tasks fingerprint — a warm all-hit run reports 0.
-        // A per-platform matrix wired without `--force` produces nothing
-        // forever, so name the cause instead of a bare 0.
-        if (n === 0) {
-          log.status('            (0 executed — cache hits do not fingerprint; pair with --force)')
-        }
-      }
     }
 
     // Optional artifacts. Errors are surfaced to the user but don't
@@ -935,8 +858,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (o.where !== undefined) t.where = o.where
         if (o.outputs !== undefined) t.outputs = o.outputs
         if (o.attempts !== undefined) t.attempts = o.attempts
-        if (o.verify !== undefined) t.verify = o.verify
-        if (o.outputFp !== undefined) t.outputFp = o.outputFp
         if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
         if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
         summaryTasks.push(t)

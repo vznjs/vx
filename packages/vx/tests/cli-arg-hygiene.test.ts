@@ -248,10 +248,6 @@ describe('value flags accept the = form', () => {
     expect(affected.affected).toBe('')
     expect(affected.tasks).toEqual(['build'])
 
-    const verify = parseRunArgs(['--verify', 'build'])
-    expect(verify.verify).toEqual({ determinism: true, inputs: false, fingerprint: true })
-    expect(verify.tasks).toEqual(['build'])
-
     const summarize = parseRunArgs(['--summarize', 'build'])
     expect(summarize.summarize).toBe('')
     expect(summarize.tasks).toEqual(['build'])

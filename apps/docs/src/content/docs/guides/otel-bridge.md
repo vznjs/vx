@@ -93,9 +93,8 @@ it maps cleanly onto Grafana / Tempo / Honeycomb / Datadog / Jaeger:
 - a child **`vx.task`** span per task — `cicd.pipeline.task.name`,
   `cicd.pipeline.task.run.result`, `vx.cache.source`
   (`miss`/`local`/`remote`), `vx.task.hash`, duration, CPU ms, peak RSS,
-  retry count (`vx.task.attempts`), the [`--verify`](/vx/cli/) verdict
-  (`vx.task.verify`, plus the diverging paths) and the output
-  fingerprint (`vx.task.output_fp.*`). A failed task sets the span
+  retry count (`vx.task.attempts`) and the sandbox violation count
+  (`vx.task.sandbox_violations`). A failed task sets the span
   status to `ERROR` — and so does a task that exited 0 but whose verify
   verdict proved its cache entry unsound.
 

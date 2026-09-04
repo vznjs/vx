@@ -287,27 +287,28 @@ passed once the load fell.
   opt in); a Linux pin says available ⇒ a sandboxed `true` exits 0. The
   suite's `expectOk` prints `<task> <status> exit=<code>` and the
   collected output on failure, so the next red names itself.
-- **`--verify=inputs` was broken by two things; one is fixed, one is
-  the owner's call (2026-09-04).** Reported from the owner's own
-  `vx run build --all --verify=all --force`, which failed every
-  `build.bun.*` task with nothing but `error: An unknown error occurred
-(Unexpected)`. (1) FIXED: the sandbox runtime repoints `TMPDIR` at
-  `/tmp/claude` and does not create it, so every sandboxed task that
-  writes a temp file died; `bun build --compile` reported `ENOENT:
-/tmp/claude/.<hash>.bun-build` underneath. `initSandbox` creates it.
-  (2) FIXED, owner-approved: `node_modules` (the project's and the
-  workspace root's) is readable without being declared — it is derived
-  state already folded into the key through the lockfile and the
-  workspace fingerprint, so reading it cannot cause a stale hit, and
-  denying it made the check unusable for any task importing a
-  dependency. (3) OPEN: a tool that SCANS directories still fails,
-  because the baseline allows the declared FILES and never the project
-  directory itself. Measured: allowing the project directory takes the
-  compile from exit 1 to exit 0, but it also makes every file in the
-  project readable, so undeclared reads WITHIN a project stop being
-  detectable — the check would then only prove that a task does not
-  read other projects or workspace files. Decide before promoting
-  `--verify=inputs` as a gate.
+- **`--verify` is gone (owner, 2026-09-04).** All of it: the
+  determinism proof, the input-completeness proof, the cross-machine
+  fingerprint feed, `--verify-allow`, the verdict vocabulary and the
+  telemetry fields. The input half could only work by ENCLOSING a task
+  in the OS sandbox, which means guessing right about everything a task
+  might legitimately do — three separate fixes today and it still broke
+  the docs-site build. Watch-only observation would not have that
+  problem, but the runtime cannot do it: no dry-run, no report-only, no
+  audit mode, and its violation model is denial-based. macOS has no
+  usable alternative either (`sandbox-exec` has no trace flag here, the
+  `(trace)` directive emits nothing, and everything else needs root or
+  an entitlement). Determinism and fingerprint needed no sandbox, but
+  the owner's call was to remove the feature whole rather than keep a
+  flag that means part of what it says. Users get isolation by
+  declaring `sandbox` on a task instead. Removed: 174 lines of
+  orchestrator code, an 861-line suite, two design documents, the CLI
+  flags, the scheduler's verdict types, and the verify prose across the
+  docs and site guides. What survives is the sandbox itself, plus
+  today's three fixes to it, which `sandbox: {}` still needs.
+  NOTE: dated design documents still mention `--verify` as history;
+  they are records of decisions, not current documentation.
+
 - **`vx <verb> --help` works (2026-09-04).** It did not, for any verb:
   the first thing a user types answered `unknown flag: --help` and
   exited 1. Core verbs now print the reference and exit 0; args past a

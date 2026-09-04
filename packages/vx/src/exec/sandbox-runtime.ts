@@ -177,7 +177,10 @@ const DEFAULT_IGNORE_VIOLATIONS: Record<string, string[]> = {
  * (Unexpected)` (2026-09-04). Resolution mirrors SRT's exactly.
  */
 function sandboxTmpdir(): string {
-  const named = Bun.env['CLAUDE_CODE_TMPDIR'] ?? Bun.env['CLAUDE_TMPDIR']
+  // `process.env`, not `Bun.env`: a caller that REPLACES the env object
+  // (two tests here do, and an embedder may) leaves `Bun.env` pointing at
+  // the original, so a late assignment would be invisible.
+  const named = process.env['CLAUDE_CODE_TMPDIR'] ?? process.env['CLAUDE_TMPDIR']
   return named !== undefined && named !== '' ? named : '/tmp/claude'
 }
 
@@ -217,8 +220,8 @@ export interface SandboxedRunArgs {
   timeoutMs?: number
   /** See `CaptureConfig` — which streams are retained on the result. */
   capture?: CaptureConfig
-  /** See `ExecuteSandbox.settleOnCleanExit` — pay the macOS settle window
-   *  even on a 0-exit, because an empty store will be read as proof. */
+  /** Pay the macOS settle window even on a clean exit — a caller that reads
+   *  an EMPTY violation store as meaningful needs it; see the poll below. */
   settleOnCleanExit?: boolean
   /**
    * Baseline reads — paths the sandbox unconditionally allows. The
@@ -470,7 +473,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   const readMacViolations = (): SandboxViolation[] =>
     store
       .getViolationsForCommand(taggedCommand)
-      .filter((v) => !isAncestorTraversal(v.line))
+      .filter((v) => reportableRead(v.line) && !isAncestorTraversal(v.line))
       .map((v) => ({
         line: v.line,
         timestamp: v.timestamp,
@@ -689,6 +692,26 @@ function isUnderAny(abs: string, allow: Set<string>): boolean {
     if (abs === a || abs.startsWith(a + path.sep)) return true
   }
   return false
+}
+
+/**
+ * Is this seatbelt deny line an undeclared INPUT? Only a denied file READ
+ * can be: it is the one thing a user fixes by adding to `cache.inputs`.
+ *
+ * Seatbelt reports much else under the same `deny(1)`, and this repo's own
+ * build produced two kinds that are not inputs at all (2026-09-04):
+ *
+ *   bun(…) deny(1) file-write-create /…/packages/vx/.<hash>.bun-build
+ *   bun(…) deny(1) system-info vfs.disk-space
+ *
+ * The first is a WRITE the task attempted outside its declared outputs —
+ * `bun build` probing for a temp file beside its cwd, which it then wrote
+ * to TMPDIR instead, which is why the build still exited 0. The second
+ * names no path at all; it is a sysctl. Reporting either told the user to
+ * add a file that does not exist to `cache.inputs.files`.
+ */
+export function reportableRead(line: string): boolean {
+  return /deny\(\d+\)\s+file-read-(?:data|metadata)\s+\/\S/.test(line)
 }
 
 /**

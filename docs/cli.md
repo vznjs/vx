@@ -214,34 +214,32 @@ stays clean).
 
 ### Flags
 
-| Flag                              | Type           | Default                            | Description                                                                                                                                                                                                                                                                                                                                                                      |
-| --------------------------------- | -------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--filter <pattern>`              | repeatable     | (none)                             | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                                                                                                                |
-| `--all`                           | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                                                                                                     |
-| `--affected[=<base>]`             | optional value | off                                | Filter to projects changed since `<base>` (default `origin/HEAD`).                                                                                                                                                                                                                                                                                                               |
-| `--excludeDependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those names. An empty `=` value is a parse error (ambiguous — see below).                                                                                                                                                                                                          |
-| `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency`    | Maximum parallel tasks. `1` serializes. `--concurrency=<n>` form too.                                                                                                                                                                                                                                                                                                            |
-| `--no-cache`                      | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                                                                                                    |
-| `--force`                         | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                |
-| `--cache <spec>`                  | value          | all axes on                        | Per-layer read/write control. See below. An EMPTY spec (`--cache=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                         |
-| `--cache-dir <path>`              | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`.                                                                                    |
-| `--retry <n>`                     | value          | `0`                                | Re-run a failed task up to `n` more times. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                    |
-| `--continue[=<mode>]`             | value          | `deps-ok`                          | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                               |
-| `--timeout <ms>`                  | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                          |
-| `--memory <size>`                 | size           | total system RAM                   | Memory budget that per-task `exec.resources.memory` reservations pack against (`8GB`, `512MB`). Pass it in cgroup-limited containers — the default reads the HOST's RAM. Reservations are per-task config, not flags. Never affects cache keys. `--memory=<size>` form too.                                                                                                      |
-| `--verify[=<what>]`               | optional value | off                                | Prove cache correctness. `determinism` (default): re-run + content-compare outputs. `inputs`: sandbox with the declared-input baseline + flag undeclared reads. `fingerprint`: ship output-tree fingerprints for the cross-machine diff (~1× exec, no re-run). `all`: everything. An unsafe task fails the run with the exact paths. See § `--verify`. Never affects cache keys. |
-| `--verify-allow <pkg#task,…>`     | value          | (none)                             | Comma-list of task ids exempt from failing `--verify` (known-nondeterministic; reported `allowed-nondeterministic`). `--verify-allow=<csv>` form too.                                                                                                                                                                                                                            |
-| `--frozen`                        | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI). See § `--frozen`.                                                                                                                                                                                                                                                                                                   |
-| `--output-logs <mode>`            | value          | flow-derived                       | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                             |
-| `--download <mode>`               | value          | `all`                              | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--download`. `--download=<mode>` form too.                                                                                                                  |
-| `--verbosity <n>`                 | int (0+)       | `0`                                | `1` prints a per-task summary table after the framed blocks; `2+` reserved. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                          |
-| `--dry[=text\|json]`              | optional value | off                                | Print the task graph + predicted cache hit/miss; skip execution.                                                                                                                                                                                                                                                                                                                 |
-| `--graph[=<path>]`                | optional value | off                                | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                                                                                                                                                                                                                                                           |
-| `--summarize[=<path>]`            | optional value | off                                | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                    |
-| `--profile[=<path>]`              | optional value | off (`profile.json` when set)      | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                            |
-| `--tag <k=v>`                     | repeatable     | (none)                             | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                              |
-| `--report[=markdown]`             | optional value | off                                | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                         |
-| `--report-file <path>`            | value          | off                                | After the run, APPEND the same markdown report to `<path>`. Use this for `$GITHUB_STEP_SUMMARY` — redirecting stdout captures the whole run log too. `--report-file=<path>` form too.                                                                                                                                                                                            |
+| Flag                              | Type           | Default                            | Description                                                                                                                                                                                                                                                                                   |
+| --------------------------------- | -------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--filter <pattern>`              | repeatable     | (none)                             | pnpm-style filter DSL (see above). `--filter=<pattern>` form too.                                                                                                                                                                                                                             |
+| `--all`                           | boolean        | off                                | Select every project that declares the task.                                                                                                                                                                                                                                                  |
+| `--affected[=<base>]`             | optional value | off                                | Filter to projects changed since `<base>` (default `origin/HEAD`).                                                                                                                                                                                                                            |
+| `--excludeDependencies[=<names>]` | optional value | off                                | Drop `dependsOn` edges. No value = all (just the requested task runs); comma-list = drop only those names. An empty `=` value is a parse error (ambiguous — see below).                                                                                                                       |
+| `--concurrency <n>`               | positive int   | `navigator.hardwareConcurrency`    | Maximum parallel tasks. `1` serializes. `--concurrency=<n>` form too.                                                                                                                                                                                                                         |
+| `--no-cache`                      | boolean        | off                                | Disable caching entirely (no reads, no writes); output globs are NOT cleaned.                                                                                                                                                                                                                 |
+| `--force`                         | boolean        | off                                | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                             |
+| `--cache <spec>`                  | value          | all axes on                        | Per-layer read/write control. See below. An EMPTY spec (`--cache=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                      |
+| `--cache-dir <path>`              | value          | workspace `cacheDir` / `.vx/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats the `defineWorkspace({ cacheDir })` field and the `.vx/cache` default. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. |
+| `--retry <n>`                     | value          | `0`                                | Re-run a failed task up to `n` more times. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                 |
+| `--continue[=<mode>]`             | value          | `deps-ok`                          | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                            |
+| `--timeout <ms>`                  | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                       |
+| `--memory <size>`                 | size           | total system RAM                   | Memory budget that per-task `exec.resources.memory` reservations pack against (`8GB`, `512MB`). Pass it in cgroup-limited containers — the default reads the HOST's RAM. Reservations are per-task config, not flags. Never affects cache keys. `--memory=<size>` form too.                   |
+| `--frozen`                        | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI). See § `--frozen`.                                                                                                                                                                                                                |
+| `--output-logs <mode>`            | value          | flow-derived                       | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                          |
+| `--download <mode>`               | value          | `all`                              | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--download`. `--download=<mode>` form too.                               |
+| `--verbosity <n>`                 | int (0+)       | `0`                                | `1` prints a per-task summary table after the framed blocks; `2+` reserved. `--verbosity=<n>` form too.                                                                                                                                                                                       |
+| `--dry[=text\|json]`              | optional value | off                                | Print the task graph + predicted cache hit/miss; skip execution.                                                                                                                                                                                                                              |
+| `--graph[=<path>]`                | optional value | off                                | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                                                                                                                                                                        |
+| `--summarize[=<path>]`            | optional value | off                                | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                 |
+| `--profile[=<path>]`              | optional value | off (`profile.json` when set)      | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                         |
+| `--tag <k=v>`                     | repeatable     | (none)                             | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                           |
+| `--report[=markdown]`             | optional value | off                                | After the run, print a markdown run report to stdout. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                      |
+| `--report-file <path>`            | value          | off                                | After the run, APPEND the same markdown report to `<path>`. Use this for `$GITHUB_STEP_SUMMARY` — redirecting stdout captures the whole run log too. `--report-file=<path>` form too.                                                                                                         |
 
 Mutual exclusion:
 
@@ -255,11 +253,11 @@ nearest documented `vx run` flag when one is within two edits
 
 **Optional-value flags take their value with `=` only.** `--affected`,
 `--excludeDependencies`, `--dry`, `--graph`, `--summarize`, `--profile`,
-`--verify` and `--report` are all valid bare, so a following word is
+and `--report` are all valid bare, so a following word is
 always read as a task name — `vx run --affected build` means "run
 `build`, affected scope", and there is no way to tell that apart from
-"`build` is the git base". Write `--graph=out.dot`, `--affected=origin/main`,
-`--verify=determinism`. Getting it wrong is loud, not silent: the value
+"`build` is the git base". Write `--graph=out.dot` or
+`--affected=origin/main`. Getting it wrong is loud, not silent: the value
 becomes a positional that matches no project, so the run refuses to
 start (see "Every requested name must resolve" above).
 
@@ -269,9 +267,9 @@ Pass bare `--excludeDependencies` for the first, omit the flag for the
 second.
 
 Value flags (`--filter`, `--concurrency`, `--output-logs`,
-`--verbosity`, `--cache-dir`, `--verify-allow`, `--report-file`, …)
+`--verbosity`, `--cache-dir`, `--report-file`, …)
 accept both `--flag value` and `--flag=value`. In the space form,
-`--cache-dir`, `--report-file` and `--verify-allow` reject a value
+`--cache-dir` and `--report-file` reject a value
 starting with `-`: that is always a swallowed flag (an unquoted empty
 shell variable), never a path or task id. Use the `=` form for a literal
 leading dash.
@@ -336,173 +334,6 @@ Combine with `--force` for "re-execute and refresh only the remote":
 
 Invalid layers/flags are a parse error
 (`invalid --cache layer 'disk'`, `invalid --cache flag 'x'`, …).
-
-#### Provable cache correctness: `--verify`
-
-Every cache built on declared inputs shares one unstated assumption: a
-task run twice on the same inputs produces the same outputs. When it
-doesn't — a timestamp baked into a bundle, an unsorted `Object.keys`
-iteration, a `Math.random()` seed, an absolute path in a sourcemap —
-the cache entry is a lie: a later "hit" replays whichever bytes
-happened to win the race the day it was saved. Turbo and Nx cannot tell
-you which of your tasks are like this; they just cache and hope.
-
-`vx run --verify` proves it. After an executed cacheable task saves its
-artifact, vx **re-runs the same task** and content-compares (git-blob
-OID per output file) the second run's outputs against the first. Same
-bytes ⇒ the task is deterministic on these inputs ⇒ its cache entry is
-provably safe (`proven-deterministic`). Different bytes ⇒ the task is
-non-hermetic ⇒ caching it is unsound, and the run **fails** naming the
-diverging output paths (`nondeterministic`). It is the correctness-first
-inverse of input auto-inference: vx never guesses your inputs, but it
-will prove the ones you declared are complete enough to cache.
-
-```
-$ vx run build --verify
- …
- Verify:  7 proven · 1 nondeterministic · 2 n/a
- ✗ @acme/web#bundle — nondeterministic
-     changed: dist/app.js, dist/app.js.map
-```
-
-Cost: roughly **2× execution** for the verified tasks (each runs
-twice), so it's a CI / pre-merge gate, not an every-run default. Notes:
-
-- **Never changes a cache key.** `--verify` is a pure run-level
-  side-channel; a `--verify` run cache-hits a plain run's entry (and a
-  hit is reported `not-verified` — there's nothing to re-run). Pair it
-  with `--force` to re-execute and verify a warm graph:
-  `vx run build --force --verify`.
-- **Only executed, cacheable, output-declaring tasks are verified.** A
-  cache hit is `not-verified`; a cacheable task with no declared
-  outputs is `no-outputs` (nothing to replay); an uncacheable task is
-  skipped. If the re-run itself fails (flaky failure), the verdict is
-  `rerun-failed` and the run fails.
-- **`--verify-allow <pkg#task,…>`** exempts tasks you know are
-  non-deterministic and can't fix yet — they're reported
-  `allowed-nondeterministic` and don't fail the run, so the gate stays
-  green on the rest while you track the exceptions.
-- **Needs the local cache WRITE axis.** The restore below reads the
-  local artifact, so `--no-cache` and any policy with local writes off
-  (`--cache=local:`, `--cache=local:r,…`) are refused up front, naming
-  the fix — verifying nothing and reporting green would be worse. A
-  remote-only write policy is refused too: `remote:rw` uploads the
-  artifact but leaves nothing on this machine to restore from. Use
-  `--cache=local:w,remote:rw` to verify and still upload.
-
-The run still ends bit-identical to a normal run: after the verify
-re-run, vx restores the first attempt's saved bytes into the project,
-so the on-disk tree matches the artifact that was cached.
-
-##### `--verify=inputs` — proving the declared inputs are complete
-
-Determinism is only half the cache-safety story. The other half: are the
-inputs you declared the _whole_ read set? If a task reads a file you
-didn't list in `cache.inputs`, that file can change without changing the
-key — a silent stale hit. `--verify=inputs` proves it. The task runs once
-through vx's OS sandbox with the declared inputs (`cache.inputs.files` /
-`workspaceFiles` / `runtime`) as the only readable workspace paths; a read
-of any other workspace file is flagged and the run fails naming it:
-
-```
-$ vx run build --verify=inputs
- …
- Verify:   6 proven · 1 unsafe · 0 n/a
- ✗ @acme/api#build — read undeclared inputs
-     src/generated/schema.ts
-     add them to cache.inputs.files / workspaceFiles
-```
-
-- `--verify=all` runs both proofs (input-completeness first; if the inputs
-  are incomplete there's no point re-running for determinism).
-- Needs the OS sandbox (bwrap on Linux, sandbox-exec on macOS). Full path
-  fidelity on Linux needs `strace` on PATH; without it the sandbox still
-  denies the read structurally but can't name the path. On a host where
-  the sandbox is unavailable, `--verify=inputs` errors clearly — it never
-  silently "passes".
-- **A declared glob grants its prefix, not its enumeration.**
-  `files: ['**/*']` grants the project directory, `files: ['src/**']`
-  grants `src/`, a literal path grants itself — the same `staticPrefix`
-  rule the write side already uses, so a read prefix and a write prefix
-  mean the same thing. Expressing the enumeration instead meant nothing
-  could LIST a directory, and every tool that resolves modules or
-  expands a glob failed inside the sandbox. A negated glob subtracts and
-  never widens the grant, and a **nested project** stays denied even
-  when a prefix covers its parent, because project boundaries are hard.
-  So the check proves a task reads nothing outside the prefixes it
-  declared; it does not prove that every file inside a declared prefix
-  was individually listed.
-- **Installed dependencies are readable and need no declaration.**
-  `node_modules`, both the project's own and the workspace root's, is
-  derived state: the lockfile and `pnpm-workspace.yaml` (through the
-  workspace fingerprint) and each project's `package.json` are already
-  folded into the key, so a change to it changes the key and reading it
-  cannot produce a stale hit. Denying it made the check unusable for any
-  task that imports a dependency.
-- Reads _outside_ the workspace (system CA certs, `~/.config` tool state)
-  are not flagged — only undeclared reads _inside_ the workspace, which are
-  the ones that can change a cached output.
-- **macOS caveat**: violation records travel through the unified log,
-  which drops entries under heavy load (~2% measured). vx pays a bounded
-  settle window per verified task so a late record can't become a false
-  `proven-complete`, but a record the OS dropped is unrecoverable —
-  under load, treat a Linux (`bwrap`) run as the authoritative proof.
-
-##### `--verify=fingerprint` — the cross-machine diff feed
-
-Determinism (`--verify`) proves a task reproducible **on one machine**.
-But vx's cache key deliberately folds no os/arch — the same commit on
-`linux-x64` and `darwin-arm64` derives the SAME key (that's what makes a
-shared remote cache work) — so a task that is deterministic per-machine
-but platform-DEPENDENT (embeds `process.arch`, links a mac-only
-toolchain, leaks an absolute build path) poisons a shared cache silently:
-first writer wins, and the other platform restores wrong bytes forever.
-No single-machine proof can see this. Two machines' fingerprints for the
-same key can.
-
-`--verify=fingerprint` fingerprints each executed cacheable task's output
-tree (a roll-up digest + a per-file content map, capped at 500 entries)
-and ships it on the task's telemetry — no re-run, no sandbox. Cost is
-roughly **1× execution plus a hash pass** over just-written, page-cached
-output bytes, so a per-platform CI matrix can afford it on every
-scheduled run. A connected analytics service persists fingerprints keyed
-by `(cache key, os, arch)` and diffs them at read time, naming the exact
-task, key, platforms, and diverging output files.
-
-The per-platform CI recipe — the same matrix that builds your release
-binaries, with a shared cache + analytics service connected so each
-platform reports:
-
-```yaml
-strategy:
-  matrix:
-    os: [ubuntu-latest, macos-latest]
-steps:
-  # connect a shared remote cache here (a `cache` plugin)
-  - run: vx run --all --force --verify=fingerprint
-```
-
-`--force` matters: with a shared remote cache and plain reads, the
-SECOND platform cache-hits and never executes — which is exactly the
-poisoning scenario, so it never produces a fingerprint. Only `--force`
-(reads off, writes on) makes every platform execute and report. Notes:
-
-- The plain `--verify` / `--verify=all` runs ship fingerprints too, for
-  free (the determinism proof already computes them) — a team already
-  running the nightly `--force --verify` recipe gets cross-machine data
-  at zero extra cost. `--verify=inputs` stays fingerprint-free.
-- Fingerprints come only from **executed** tasks. A cache hit's on-disk
-  bytes are the producer's — fingerprinting them would attribute another
-  machine's output to this platform. Hits carry no verdict and no
-  fingerprint under `=fingerprint`.
-- Divergence detection is **advisory and retroactive**: the serve
-  observes completed runs and never fails one. A flagged key means either
-  a hermeticity bug to fix, or a genuinely platform-dependent task whose
-  key should split per platform — declare the axis:
-  `cache.inputs.runtime: ['uname -sm']`.
-- Like every `--verify` mode, it never changes a cache key: a
-  `--verify=fingerprint` run cache-hits a plain run's entry, and a plain
-  run's records are byte-identical (no fingerprint code executes).
 
 ### Output
 
@@ -1438,8 +1269,7 @@ so a run that defers nothing says why. A run in which any task declares a
 `cache.inputs.runtime` / `workspaceRuntime` command defers **nothing**:
 a shell command's reads cannot be bounded, so vx cannot prove it will
 not read a deferred output (the same reason vx refuses to infer inputs
-by tracing). `--verify` also forces `all`, since a proof has to observe
-the outputs it is proving; the run says so if you asked for otherwise. When bytes are fetched later, vx saves an ordinary
+by tracing). When bytes are fetched later, vx saves an ordinary
 cache entry for them, so the next run is a plain local hit.
 
 ## `vx prune`

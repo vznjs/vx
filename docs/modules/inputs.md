@@ -162,9 +162,8 @@ Possible directions:
 
 - **Auto-tracking inputs is NOT one** (vite-task style syscall spying,
   the observed set becoming the next run's inputs): owner-rejected
-  (CLAUDE.md § Rejected). Inputs stay declared; `--verify=inputs` runs
-  the task under the sandbox and reports an undeclared read as a
-  finding, so the declared set is proven rather than inferred.
+  (CLAUDE.md § Rejected). Inputs stay declared. A task that wants its
+  reads confined to what it declared asks for that with `sandbox`.
 - **Cross-project inputs** exist as `cache.inputs.workspaceFiles`
   (root-relative globs, which may reach into another project's
   directory) and, for outputs of an upstream task, through `dependsOn`

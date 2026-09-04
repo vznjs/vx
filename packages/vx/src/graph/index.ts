@@ -10,12 +10,10 @@ export {
 } from './dependency-spec.js'
 export {
   type ContinueMode,
-  type OutputFingerprint,
   type ResourceCost,
   runGraph,
   type TaskOutcome,
   type TaskStatus,
-  type VerifyVerdict,
 } from './scheduler.js'
 export {
   buildTaskGraph,

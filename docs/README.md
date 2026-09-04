@@ -31,10 +31,6 @@ Most of vx's design is a response to this:
   dependency's key cascades to its dependents, so a change anywhere
   upstream re-keys everything downstream, without making a task's key
   depend on bytes that were produced non-deterministically.
-- **`--verify` proves it instead of asserting it.** Re-run the task,
-  compare outputs byte-for-byte, and — with `--verify=inputs` — run it
-  under an OS sandbox so an undeclared file read is a _reported
-  failure_, not a latent one. ([cli.md](./cli.md))
 
 ### 2. Nobody can tell you why it re-ran
 
@@ -60,8 +56,8 @@ through three channels — directory containment, declared
 A project's globs never reach into another project's directory. Inputs
 are declared, never inferred — vx deliberately does not trace
 filesystem reads, because an explicit input set is a correctness
-property, and `--verify=inputs` proves the declared set instead of
-guessing it.
+property. A task that wants its reads confined to the set it declared
+asks for that with `sandbox`.
 
 ### 5. Doing all that without becoming the platform
 

@@ -83,11 +83,6 @@ with the invariant that keeps it valid —
 
 ## Built for trust
 
-- **Provable cache correctness.** `vx run --verify` re-runs each
-  cacheable task and byte-compares outputs (determinism);
-  `--verify=inputs` sandboxes it against the declared inputs and fails
-  loud naming any undeclared read (completeness). No other runner can
-  prove a cache entry safe.
 - **Corruption can't go live.** A remote artifact is verified against
   its content digest and validated before it enters the store
   (zstd-bomb and oversize downloads refused); bad bytes degrade to a
@@ -174,18 +169,17 @@ build it.
 
 ## How it compares
 
-|                           | vx                                                                    | Turborepo                      | Nx               |
-| ------------------------- | --------------------------------------------------------------------- | ------------------------------ | ---------------- |
-| Fully cached, 100 pkgs¹   | **144 ms**                                                            | 279 ms                         | 583+ ms          |
-| Config                    | TypeScript, evaluated into the cache key                              | JSON (static)                  | JSON (static)    |
-| Output ownership          | **Strict** — wiped before exec AND restore                            | Additive (stale files survive) | Additive         |
-| Clean-tree hashing        | **Zero reads** (git index OIDs)                                       | git OIDs                       | re-hash / daemon |
-| Daemon required for speed | **No**                                                                | Optional                       | Yes              |
-| Per-task sandbox          | **Yes** — kernel-level, opt-in                                        | No                             | No               |
-| Provable cache safety     | **Yes** — `--verify` (determinism) + `--verify=inputs` (completeness) | No                             | No               |
-| Plugin API                | **Yes** — executor / cache / telemetry seams                          | No                             | Yes (TS-tied)    |
-| OTel CI/CD spans          | **Yes** — `otel()` plugin, zero OTel-SDK deps                         | No                             | Paid             |
-| Install                   | **Single binary** — npm or 1 curl line, no Node/Bun needed            | npm + Node                     | npm + Node       |
+|                           | vx                                                         | Turborepo                      | Nx               |
+| ------------------------- | ---------------------------------------------------------- | ------------------------------ | ---------------- |
+| Fully cached, 100 pkgs¹   | **144 ms**                                                 | 279 ms                         | 583+ ms          |
+| Config                    | TypeScript, evaluated into the cache key                   | JSON (static)                  | JSON (static)    |
+| Output ownership          | **Strict** — wiped before exec AND restore                 | Additive (stale files survive) | Additive         |
+| Clean-tree hashing        | **Zero reads** (git index OIDs)                            | git OIDs                       | re-hash / daemon |
+| Daemon required for speed | **No**                                                     | Optional                       | Yes              |
+| Per-task sandbox          | **Yes** — kernel-level, opt-in                             | No                             | No               |
+| Plugin API                | **Yes** — executor / cache / telemetry seams               | No                             | Yes (TS-tied)    |
+| OTel CI/CD spans          | **Yes** — `otel()` plugin, zero OTel-SDK deps              | No                             | Paid             |
+| Install                   | **Single binary** — npm or 1 curl line, no Node/Bun needed | npm + Node                     | npm + Node       |
 
 ¹ Wall-clock, direct binaries, same machine and workspace — full
 methodology and more scenarios in
@@ -290,7 +284,6 @@ is Windows (unsupported).
 | Surface                                          | Maturity             | Notes                                                                        |
 | ------------------------------------------------ | -------------------- | ---------------------------------------------------------------------------- |
 | Core task runner + caching                       | **production-ready** | dogfooded continuously; ~2,500 core tests + the package suites, green        |
-| `vx run --verify` (provable cache correctness)   | **shippable**        | determinism + input-completeness proofs; CI-gate recipe in docs              |
 | Plugin pipeline (9 hooks, `commands` included)   | **shippable**        | crash-isolated, re-validated; core's own executor + cache are plugins        |
 | `vx init` / `vx migrate` (scripts, Turbo, Nx)    | **shippable**        | one config per package, TODOs where a source cannot say                      |
 | REAPI remote cache + execution (`@vzn/vx-reapi`) | **shippable**        | Bazel AC + CAS + Execute; NativeLink / BuildBuddy / Buildbarn / bazel-remote |

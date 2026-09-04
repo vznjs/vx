@@ -77,16 +77,7 @@ export {
   markSurfacedDeps,
   splitTaskId,
 } from './graph/index.js'
-export type {
-  OutputFingerprint,
-  TaskNode,
-  TaskOutcome,
-  TaskStatus,
-  VerifyVerdict,
-} from './graph/index.js'
-// The one output-tree diff implementation (verify verdicts + a serve's
-// cross-machine fingerprint diff both name rels through it).
-export { diffOutputTrees } from './orchestrator/index.js'
+export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency)
 // and input-output resolution. The blob-CAS/digest substrate

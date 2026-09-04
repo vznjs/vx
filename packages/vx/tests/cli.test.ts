@@ -1102,65 +1102,6 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--cache-dir']).error).toMatch(/--cache-dir requires a value/)
   })
 
-  it('parses --verify in all five forms + rejects unknown modes', () => {
-    // bare / =determinism → determinism (+ fingerprint for free — fp1 exists anyway)
-    expect(parseRunArgs(['build', '--verify']).verify).toEqual({
-      determinism: true,
-      inputs: false,
-      fingerprint: true,
-    })
-    expect(parseRunArgs(['build', '--verify=determinism']).verify).toEqual({
-      determinism: true,
-      inputs: false,
-      fingerprint: true,
-    })
-    // =inputs → input-completeness only (fingerprint-free by mode clarity)
-    expect(parseRunArgs(['build', '--verify=inputs']).verify).toEqual({
-      determinism: false,
-      inputs: true,
-      fingerprint: false,
-    })
-    // =fingerprint → fingerprint only (no re-run, no sandbox)
-    expect(parseRunArgs(['build', '--verify=fingerprint']).verify).toEqual({
-      determinism: false,
-      inputs: false,
-      fingerprint: true,
-    })
-    // =all → everything
-    expect(parseRunArgs(['build', '--verify=all']).verify).toEqual({
-      determinism: true,
-      inputs: true,
-      fingerprint: true,
-    })
-    // absent → undefined (zero-cost default)
-    expect(parseRunArgs(['build']).verify).toBeUndefined()
-    // unknown mode → loud error naming the valid set (incl. the new mode)
-    expect(parseRunArgs(['build', '--verify=bogus']).error).toMatch(
-      /--verify must be determinism \| inputs \| fingerprint \| all/,
-    )
-  })
-
-  it('parses --verify-allow as a comma list of task ids (space + = forms)', () => {
-    expect(parseRunArgs(['build', '--verify-allow=a#build,b#test']).verifyAllow).toEqual([
-      'a#build',
-      'b#test',
-    ])
-    // The space form is what docs/cli.md documents — it must not be an
-    // unknown flag.
-    const spaced = parseRunArgs(['build', '--verify-allow', 'a#build,b#test'])
-    expect(spaced.error).toBeUndefined()
-    expect(spaced.verifyAllow).toEqual(['a#build', 'b#test'])
-    expect(spaced.tasks).toEqual(['build'])
-    expect(parseRunArgs(['build']).verifyAllow).toEqual([])
-    expect(parseRunArgs(['build', '--verify-allow']).error).toMatch(
-      /--verify-allow requires a value/,
-    )
-    // A swallowed flag is never a task id.
-    expect(parseRunArgs(['build', '--verify-allow', '--force']).error).toMatch(
-      /--verify-allow requires a value, got flag: --force/,
-    )
-  })
-
   it('--cache-dir rejects a flag-shaped value in the space form', () => {
     // `--cache-dir $EMPTY --force` with an unquoted empty var: the arg
     // vanishes and `--force` would become the cache directory.

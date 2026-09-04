@@ -141,7 +141,6 @@ describe('package boundaries', () => {
       'deriveCacheSource',
       'deriveStableKeys',
       'detectCi',
-      'diffOutputTrees',
       'escapeMarkdownCell',
       'expandRequested',
       'explainCacheKeyQuery',
