@@ -2,26 +2,21 @@ import { defineProject } from '@vzn/vx'
 
 export default defineProject({
   tasks: {
-    // The gate for this project. Without it `vx run ci --all` — which is what
-    // CI invokes — covered only core, so a change to `packages/vx` that broke
-    // `astro build` left BOTH workflows green: the ci gate never built the
-    // site, and docs.yml only triggers on `docs/**` / `apps/docs/**` paths.
-    // The breakage would surface on whatever unrelated docs commit came next.
-    // The dependency is real and the cache proves it — editing a core source
-    // file moves this project's build key through `^build`, so this costs a
-    // rebuild exactly when core or the docs actually change.
     ci: {
       dependsOn: ['build', 'site-check'],
     },
 
-    // The landing page's benchmark rows, tiles and note and the benchmarks
-    // doc's stress section are GENERATED from bench/results.json by
-    // bench/update-site.ts; this refuses drift (a hand edit, or a refreshed
-    // results file without a regenerated site). Inputs are the four files
-    // the check reads, named from the workspace root.
     'site-check': {
       description: 'the site matches bench/results.json (bench/update-site.ts --check)',
-      exec: { command: 'bun ../../bench/update-site.ts --check' },
+      exec: {
+        command: 'bun ../../bench/update-site.ts --check',
+        sandbox: {
+          allow: {
+            read: ['**/*', '../../bench/**', '../../docs/**'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
       cache: {
         inputs: {
           files: ['src/pages/index.astro'],
@@ -31,18 +26,20 @@ export default defineProject({
       },
     },
 
-    // Regenerate the Starlight content collection from the repo's `docs/`
-    // tree. Deliberately UNCACHED: it writes generated pages into
-    // `src/content/docs/`, a directory that also holds tracked,
-    // hand-authored pages — declaring it as an output would let
-    // output-cleaning wipe those. The step is idempotent and fast.
     import: {
       description: 'generate Starlight content from docs/ (codegen)',
-      exec: { command: 'bun scripts/import-docs.ts' },
+      exec: {
+        command: 'bun scripts/import-docs.ts',
+        sandbox: {
+          allow: {
+            read: ['**/*', '../../docs/**'],
+            write: ['src/content/docs/**'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
     },
 
-    // install -> build, ordering only. The install itself is the agent
-    // pool's `prepare`, run once against the shared workspace.
     install: {
       dependsOn: ['^build'],
     },
@@ -50,7 +47,18 @@ export default defineProject({
     build: {
       description: 'astro build → dist/',
       dependsOn: ['install', 'import'],
-      exec: { command: 'astro build' },
+      exec: {
+        command: 'astro build',
+        sandbox: {
+          allow: {
+            read: ['**/*', '../../docs/**'],
+            write: ['dist/**', '.astro/**', 'node_modules/.astro/**', 'node_modules/.vite/**'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+            localBinding: true,
+          },
+        },
+      },
       cache: {
         inputs: {
           files: ['**/*'],
@@ -67,6 +75,15 @@ export default defineProject({
         command: 'astro dev',
         persistent: { readyWhen: 'Local' },
         timeout: 120000,
+        sandbox: {
+          allow: {
+            read: ['**/*', '../../docs/**'],
+            write: ['.astro/**', 'node_modules/.astro/**', 'node_modules/.vite/**'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+            localBinding: true,
+          },
+        },
       },
     },
 
@@ -77,6 +94,14 @@ export default defineProject({
         command: 'astro preview',
         persistent: { readyWhen: 'Local' },
         timeout: 120000,
+        sandbox: {
+          allow: {
+            read: ['**/*'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+            localBinding: true,
+          },
+        },
       },
     },
   },

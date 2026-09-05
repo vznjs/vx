@@ -284,10 +284,19 @@ describe('vx prune: what the configs import', () => {
       const r = await vx(root, ['prune', 'app', '--out-dir', out])
       try {
         expect(r.code).toBe(0)
+        // Hermetic install: bun stages into TMPDIR and caches under HOME, and
+        // neither belongs to this test. Both go inside the subset it just
+        // emitted, so the run touches nothing it did not create.
+        const scratch = path.join(out, '.install-scratch')
+        await mkdir(scratch, { recursive: true })
         const install = async (cwd: string): Promise<{ code: number; err: string }> => {
           const proc = Bun.spawn([process.execPath, 'install', '--no-save'], {
             cwd,
-            env: { ...process.env },
+            env: {
+              ...process.env,
+              TMPDIR: scratch,
+              BUN_INSTALL_CACHE_DIR: path.join(scratch, 'cache'),
+            },
             stdout: 'pipe',
             stderr: 'pipe',
           })

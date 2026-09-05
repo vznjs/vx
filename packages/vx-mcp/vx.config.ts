@@ -2,8 +2,6 @@ import { defineProject } from '@vzn/vx'
 
 export default defineProject({
   tasks: {
-    // install -> lint/test, ordering only: this package's dependencies are
-    // built before it is.
     install: {
       dependsOn: ['^build'],
     },
@@ -16,18 +14,12 @@ export default defineProject({
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
     },
 
-    // Both run in THIS package's directory over THIS package's files. The
-    // linters were previously invoked once from core, which since the move
-    // covered 225 of the repo's 426 files — every sibling package went
-    // unchecked. A project lints itself.
     'lint.oxlint': {
-      // Plain oxlint, not --type-aware: the root tsconfig's `include` covers
-      // packages/vx only, so there is no type graph for this package to check
-      // against. Type-aware linting here would be asserting on a program that
-      // does not exist — it passed locally only because the checker silently
-      // fell back to whatever it could resolve by walking up.
       description: 'oxlint',
-      exec: { command: 'oxlint' },
+      exec: {
+        command: 'oxlint',
+        sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
+      },
       dependsOn: ['install'],
       cache: {
         inputs: {
@@ -39,7 +31,10 @@ export default defineProject({
 
     'lint.oxfmt': {
       description: 'oxfmt --check (no rewrite; CI-safe)',
-      exec: { command: 'oxfmt --check .' },
+      exec: {
+        command: 'oxfmt --check .',
+        sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
+      },
       dependsOn: ['install'],
       cache: {
         inputs: {
@@ -51,7 +46,16 @@ export default defineProject({
 
     test: {
       description: 'bun test',
-      exec: { command: 'bun test' },
+      exec: {
+        command: 'bun test',
+        sandbox: {
+          allow: {
+            read: ['**/*'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            localBinding: true,
+          },
+        },
+      },
       dependsOn: ['install'],
       cache: {
         inputs: { files: ['src/**', 'tests/**', 'package.json'] },

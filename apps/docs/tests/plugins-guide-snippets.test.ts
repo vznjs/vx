@@ -4,21 +4,26 @@
 // that moves turns the guide red before an author copies a stale block.
 // Blocks that open with `interface` are contract sketches with untyped
 // parameters and are skipped on purpose.
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
 
-const GUIDE = path.resolve(import.meta.dir, '../../../apps/docs/src/content/docs/guides/plugins.md')
-const OXLINT = path.resolve(import.meta.dir, '../../../node_modules/.bin/oxlint')
+const SITE = path.resolve(import.meta.dir, '..')
+const GUIDE = path.join(SITE, 'src/content/docs/guides/plugins.md')
+const OXLINT = path.join(SITE, 'node_modules/.bin/oxlint')
 
 it('every code block in the plugins guide type-checks against @vzn/vx', async () => {
   const text = await Bun.file(GUIDE).text()
   const blocks = [...text.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1]!)
   expect(blocks.length).toBeGreaterThan(5)
-  // Inside packages/vx so `@vzn/vx` resolves to this package and the
-  // package's tsconfig applies.
-  const dir = await mkdtemp(path.join(import.meta.dir, '.snippets-'))
+  // A tmp dir OUTSIDE the repo — a test writing into its own project would
+  // dirty the tree the cache hashes. `@vzn/vx` resolves through a linked
+  // node_modules, and the tsconfig is written beside the blocks.
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-guide-snippets-'))
   try {
+    await symlink(path.join(SITE, 'node_modules'), path.join(dir, 'node_modules'), 'dir')
+    await writeFile(path.join(dir, 'tsconfig.json'), await Bun.file(path.join(SITE, 'tsconfig.json')).text())
     let checked = 0
     for (const [i, block] of blocks.entries()) {
       const firstCode = block.split('\n').find((l) => l.trim() !== '' && !l.startsWith('import '))

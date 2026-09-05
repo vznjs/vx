@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { run } from '@vzn/vx'
-import { localWorkspaceSource } from '../../vx/tests/helpers/local-workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { nxCache, NxRemoteCache, resolveNxCacheConfig } from '../src/index.js'
 
 const TOKEN = 'rw-token'

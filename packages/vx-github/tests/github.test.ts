@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { run } from '@vzn/vx'
 import type { RunContextRecord, RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
-import { localWorkspaceSource } from '../../vx/tests/helpers/local-workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { github, GithubSummarySink } from '../src/plugin.js'
 import { renderJobSummary } from '../src/summary.js'
 
