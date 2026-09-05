@@ -489,6 +489,57 @@ true` inside a sandbox, which is how a suite that exercises the sandbox
 
 ## In flight
 
+**Open after the sandbox arc (2026-09-05).** Local `vx run ci --all` is
+green, 36/36, no violations. CI is not, and every remaining item is
+either a one-line decision or a known constraint, not a mystery:
+
+1. **`@vzn/vx-docs#build` fails on Linux CI.** Astro's telemetry does
+   `mkdir ~/.config` before anything else, and a sandboxed task may read
+   HOME but not write it, so astro throws at startup — exit 1 in 165 ms
+   with no output. Reproduced in isolation: `EROFS: read-only file
+   system, mkdir '/home/vxu/.config'` at
+   `@astrojs/telemetry/dist/config.js:56`. macOS does not hit it (SRT's
+   default write paths cover it), and this is the FIRST run in which the
+   docs build reached `astro build` on Linux at all — it previously died
+   at the cross-compile download. Fix is one line in that project's
+   config, owner's pick: `env.define.ASTRO_TELEMETRY_DISABLED = '1'`, or
+   `XDG_CONFIG_HOME="$TMPDIR/astro"` in front of the command. Rejected: a
+   core-wide HOME/XDG redirect for sandboxed tasks — it would break the
+   tools that legitimately READ home, including the
+   `~/.bun/install/cache` the cross-compiles now depend on.
+2. **Four perf baselines fail on the Linux job.** `Cache.key` at 100 and
+   1000 files, `hashFile` warm path at 1 KB and 1 MB, and the ~2000
+   project pipeline. They passed at `--shard=i/4` and fail at
+   `--shard=i/8`; the overshoot is 1.2× on a budget already tripled for
+   CI (median 18089µs against 15000µs), and the fixtures are synthetic,
+   so this is contention, not a regression. A measurement taken under
+   eight-way contention is not a measurement: they want a task that runs
+   alone, or fewer shards. Retuning the budgets would only paint it
+   green.
+3. **A sandboxed task cannot expose a port on Linux.** macOS works and is
+   properly gated — measured, a sandboxed consumer reaches a sandboxed
+   server (200) and is refused without `localBinding`. On Linux every
+   sandboxed task gets `--unshare-net`, so nothing sees the port. Opening
+   the netns costs full egress, which is the wrong price; the narrow
+   answer is a per-port unix-socket bridge (socat, the same trick SRT
+   uses for its own proxy), and it is blocked today because SRT reads
+   `allowUnixSockets` off the config given to `initialize()` and never
+   the per-call one — the probe dies on
+   `socket(1, 1, 0): Operation not permitted`. Arming it from the union
+   at `initSandbox`, as `allowedDomains` already is, is the way in.
+4. **Persistent tasks silently ignore `exec.sandbox`.** `runPersistent`
+   has no sandbox path, so `vx-docs`'s `dev` and `preview` declare a
+   block that does nothing — a config claiming a guarantee the code does
+   not provide. Either wrap them (blocked on 3 for anything that serves)
+   or refuse the block at load. Refusing is honest today; wrapping is
+   right once 3 lands.
+5. **macOS violation reporting is lossy while any violation fails the
+   task.** The unified log drops records under load, so the same task can
+   pass or fail run to run. Enforcement is unaffected — the OS denied the
+   operation either way — but the REPORT is not a reliable gate on that
+   platform.
+
+
 - **v0.0.18 is fully on npm; one owner step remains before the next
   release.** npm released the two held packages about ninety minutes
   after the publish: all five serve 0.0.18 as `latest` (2026-09-04
