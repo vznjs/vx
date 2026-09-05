@@ -162,21 +162,11 @@ export default defineProject({
           // and the type checker follows `src/version.ts`'s `../package.json`
           // import and the `@vzn/vx` self-reference into the members' own
           // manifests.
-          files: ['src/**', 'tests/**', 'package.json'],
-          // The command scans the whole tree, but project-relative globs
-          // stop at project boundaries — without these, a change confined to
-          // a sibling package rides a stale lint cache hit. `bench/`, the
-          // linter config and the tsconfig sit at the workspace ROOT and are
-          // root-anchored for the same reason: declared project-relative they
-          // resolved to paths that do not exist, so editing `.oxlintrc.json`
-          // did not invalidate this task — and a remotely executed action got
-          // no tsconfig, which tsgolint reports as ~900 phantom "Cannot find
-          // name 'process'" errors rather than as a missing file.
-          // The linter's config and the tsconfig live at the workspace root,
-          // outside every project-relative glob. Declared as INPUTS — which
-          // is what `workspaceFiles` is for — so editing them invalidates
-          // this task. The command still runs HERE, in this project.
-          workspaceFiles: ['.oxlintrc.json', 'tsconfig.json'],
+          // This project only: `.oxlintrc.json` and `tsconfig.json` live
+          // HERE now, so the linter's own config invalidates the task
+          // through a project-relative glob and nothing reaches the root.
+          // Siblings lint themselves the same way.
+          files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
         },
         outputs: { files: [] },
       },
@@ -190,11 +180,8 @@ export default defineProject({
       dependsOn: ['install'],
       cache: {
         inputs: {
+          // `**/*` already covers `.oxfmtrc.json`, which lives here.
           files: ['**/*'],
-          // Same boundary gap as lint.oxlint: `oxfmt --check .` scans the
-          // workspace-member packages too (ui/deploy are oxfmt-ignored), and
-          // its config lives at the root, outside every project-relative glob.
-          workspaceFiles: ['.oxfmtrc.json'],
         },
         outputs: { files: [] },
       },

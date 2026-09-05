@@ -2,9 +2,7 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2023"
-    ],
+    "lib": ["ES2023"],
     "module": "Preserve",
     "moduleResolution": "bundler",
     "strict": true,
@@ -19,12 +17,7 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "types": [
-      "bun"
-    ]
+    "types": ["bun"]
   },
-  "include": [
-    "bench/**/*",
-    "scripts/**/*"
-  ]
+  "include": ["src/**/*", "tests/**/*"]
 }

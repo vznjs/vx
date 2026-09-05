@@ -32,12 +32,7 @@ export default defineProject({
       dependsOn: ['install'],
       cache: {
         inputs: {
-          files: ['src/**', 'tests/**', 'package.json'],
-          // The linter's config and the tsconfig live at the workspace root,
-          // outside every project-relative glob. Declared as INPUTS — which
-          // is what `workspaceFiles` is for — so editing them invalidates
-          // this task. The command itself still runs here, not there.
-          workspaceFiles: ['.oxlintrc.json', 'tsconfig.json'],
+          files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
         },
         outputs: { files: [] },
       },
@@ -50,7 +45,6 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['**/*'],
-          workspaceFiles: ['.oxfmtrc.json'],
         },
         outputs: { files: [] },
       },

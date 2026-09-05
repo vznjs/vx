@@ -31,8 +31,7 @@ export default defineProject({
       dependsOn: ['install'],
       cache: {
         inputs: {
-          files: ['src/**', 'tests/**', 'package.json'],
-          workspaceFiles: ['.oxlintrc.json', 'tsconfig.json'],
+          files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
         },
         outputs: { files: [] },
       },
@@ -45,7 +44,6 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['**/*'],
-          workspaceFiles: ['.oxfmtrc.json'],
         },
         outputs: { files: [] },
       },
