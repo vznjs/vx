@@ -268,6 +268,36 @@ describe('persistent task framing', () => {
     )
   })
 
+  it('the LIVE frame shows sandbox violations too — a focused run is where they are read', () => {
+    // The focused/live frame omitted the section entirely, so `vx run
+    // <one-task>` — exactly how someone debugging a single task invokes it —
+    // printed a failure with no violations at all (owner, 2026-09-05).
+    const n = node('@vzn/vx#test', 'bun test')
+    const close = formatFrameClose(
+      n,
+      outcome('@vzn/vx#test', 'failed', {
+        durationMs: 1090,
+        exitCode: 1,
+        sandboxViolations: 1,
+        sandboxViolationLines: ['bun(49255) deny(1) file-read-data /repo/packages/vx'],
+      }),
+    )
+    expect(close).toBe(
+      '├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────\n' +
+        '\n' +
+        'bun(49255) deny(1) file-read-data /repo/packages/vx\n' +
+        '\n' +
+        '└─ @vzn/vx#test ── (1.09s) failed (exit 1)',
+    )
+  })
+
+  it('CONTROL: a clean live frame carries no section', () => {
+    const n = node('@vzn/vx#lint', 'oxlint .')
+    expect(formatFrameClose(n, outcome('@vzn/vx#lint', 'success'))).toBe(
+      '└─ @vzn/vx#lint ── (0ms) success',
+    )
+  })
+
   it('formatPersistentList renders one ▸ running row per task', () => {
     const lines = formatPersistentList([
       persistentNode('@vzn/vx-docs#dev', 'astro dev'),

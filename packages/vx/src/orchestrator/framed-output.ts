@@ -109,15 +109,7 @@ export function formatTaskBlock(
   pushStreamSection(lines, stdout, 'STDOUT', SUCCESS, body.droppedStdout ?? 0, colors)
   pushStreamSection(lines, stderr, 'STDERR', ERROR, body.droppedStderr ?? 0, colors)
 
-  // Sandbox violations get a dedicated section inside the frame so the
-  // user sees them in context with the failing task, not as loose
-  // status output above the box.
-  const vlines = outcome.sandboxViolationLines
-  if (vlines && vlines.length > 0) {
-    lines.push(section(`SANDBOX VIOLATIONS (${vlines.length})`, WARN), '')
-    for (const v of vlines) lines.push(v)
-    lines.push('')
-  }
+  lines.push(...violationSection(outcome, colors))
 
   lines.push(`${corner('└─')} ${idPainted} ${corner('──')}${formatBlockFooter(outcome, colors)}`)
   return lines.join('\n') + '\n'
@@ -386,6 +378,20 @@ export function formatFrameOpen(node: TaskNode, colors: ColorSupport = NO_COLOR)
   return `${corner('┌─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('>')} $ ${cmd}`
 }
 
+/**
+ * Sandbox violations get a dedicated section inside the frame so the user
+ * sees them in context with the failing task, not as loose status output
+ * above the box. Shared by BOTH renderers: the focused/live frame used to
+ * omit it, so a single-task run — exactly how someone debugging one task
+ * invokes vx — showed a failure with no violations at all (owner,
+ * 2026-09-05).
+ */
+function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] {
+  const vlines = outcome.sandboxViolationLines
+  if (!vlines || vlines.length === 0) return []
+  return [sectionLine(`SANDBOX VIOLATIONS (${vlines.length})`, WARN, colors), '', ...vlines, '']
+}
+
 export function formatFrameClose(
   node: TaskNode,
   outcome: TaskOutcome,
@@ -401,7 +407,9 @@ export function formatFrameClose(
     persistent && outcome.status === 'success'
       ? ` ${paint('', `(${formatDuration(outcome.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
       : formatBlockFooter(outcome, colors)
-  return `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('──')}${tail}`
+  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('──')}${tail}`
+  const violations = violationSection(outcome, colors)
+  return violations.length === 0 ? close : `${violations.join('\n')}\n${close}`
 }
 
 function isPersistentNode(node: TaskNode): boolean {

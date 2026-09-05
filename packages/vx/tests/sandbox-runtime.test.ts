@@ -17,7 +17,6 @@ import {
   deniedCalls,
   initSandbox,
   probeSandbox,
-  reportableRead,
   resetSandbox,
   resolveSandboxConfig,
   runSandboxed,
@@ -745,30 +744,6 @@ describe.skipIf(!available)('the sandbox temp directory', () => {
     },
     TIMEOUT,
   )
-})
-
-describe('reportableRead (which seatbelt denials are undeclared inputs)', () => {
-  // Every line here is verbatim from this repo's own build under `--verify`
-  // (2026-09-04), where the last two were reported as undeclared inputs and
-  // told the user to add them to cache.inputs.files.
-  it('keeps a denied file read — the only kind a user fixes by declaring an input', () => {
-    expect(reportableRead('bun(1) deny(1) file-read-data /repo/pkg/src/real.ts')).toBe(true)
-    expect(reportableRead('bun(1) deny(1) file-read-metadata /repo/pkg/src/real.ts')).toBe(true)
-  })
-
-  it('drops a denied WRITE — it is not an input, and the task carried on without it', () => {
-    // `bun build` probes for a temp file beside its cwd, is refused, writes
-    // to TMPDIR instead, and exits 0.
-    expect(
-      reportableRead(
-        'bun(54793) deny(1) file-write-create /repo/pkg/.5df3d319968ccbec-00000000.bun-build',
-      ),
-    ).toBe(false)
-  })
-
-  it('drops a deny that names no path — `system-info` is a sysctl, not a file', () => {
-    expect(reportableRead('bun(54793) deny(1) system-info vfs.disk-space')).toBe(false)
-  })
 })
 
 describe('resolveSandboxConfig', () => {

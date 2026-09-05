@@ -294,12 +294,14 @@ function toRealPath(p: string): string {
  * whatever the config, with an error naming an internal path the user has no
  * way to act on. Canonicalizing here is what makes the two halves agree.
  */
-function canonicalBaselines(args: SandboxedRunArgs): {
+interface CanonicalBaselines {
   allowRead: string[]
   allowWrite: string[]
   denyRead: string[]
   cwd: string
-} {
+}
+
+function canonicalBaselines(args: SandboxedRunArgs): CanonicalBaselines {
   return {
     allowRead: args.baseAllowRead.map(toRealPath),
     allowWrite: args.baseAllowWrite.map(toRealPath),
@@ -449,35 +451,15 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // macOS is therefore lossy-by-OS under load; ENFORCEMENT is unaffected
   // (every observed loss still denied the read and failed the child).
   const store = SandboxManager.getSandboxViolationStore()
-  // Ancestor-directory traversal is NOT an input (owner call, 2026-08-24,
-  // closing the recorded false-`undeclared-inputs` item): to reach its cwd
-  // at all, a process stats/opens every directory on the path — macOS
-  // reports those as `deny(1) file-read-data <ancestor-dir>` for dirs the
-  // baseline doesn't list, node survives them, and no file CONTENT flowed.
-  // Dropping them is scoped to exact ancestor-or-self DIRECTORY paths of
-  // the task's cwd — a denied read of any file INSIDE an ancestor still
-  // reports. (These records usually arrived too late to be seen at all;
-  // the settle window made the pre-existing class visible on every clean
-  // verify exit.)
-  const cwdReal = toRealPath(args.cwd)
-  const ancestorDirs = new Set<string>()
-  for (let d = cwdReal; ; d = path.dirname(d)) {
-    ancestorDirs.add(d)
-    if (d === path.dirname(d)) break
-  }
-  const isAncestorTraversal = (line: string): boolean => {
-    const m = /deny\(\d+\)\s+file-read-(?:data|metadata)\s+(\/\S+)\s*$/.exec(line)
-    if (m === null) return false
-    return ancestorDirs.has(toRealPath(m[1]!))
-  }
+  // EVERY record the store holds for this command, unfiltered (owner,
+  // 2026-09-05). A sandboxed task that fails must say what it was denied;
+  // deciding on the user's behalf that a record was "just traversal" is how
+  // a failure ends up with an empty violations section and no explanation.
   const readMacViolations = (): SandboxViolation[] =>
-    store
-      .getViolationsForCommand(taggedCommand)
-      .filter((v) => reportableRead(v.line) && !isAncestorTraversal(v.line))
-      .map((v) => ({
-        line: v.line,
-        timestamp: v.timestamp,
-      }))
+    store.getViolationsForCommand(taggedCommand).map((v) => ({
+      line: v.line,
+      timestamp: v.timestamp,
+    }))
   // Darwin only. Since SRT 0.0.75 the store is fed on Linux too, by the
   // seccomp helper's write observer — but SRT judges those reports against
   // the GLOBAL `filesystem.allowWrite` from `initialize` (empty here; the
@@ -526,6 +508,28 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     userCommand,
   )
 
+  // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
+  // runs differing only in the grant: with the cwd granted a failing task
+  // reports its denials normally; WITHOUT it the store stays empty across
+  // the whole settle window (11 reads, 0 records) and the child reports
+  // whatever it likes — `bun test` says only `error: An unknown error
+  // occurred (Unexpected)`. The process dies before macOS logs anything, so
+  // no amount of un-filtering can surface it.
+  //
+  // Not a guess about the cause: the cwd lying outside every allowRead
+  // prefix is a fact of the resolved baselines. Added only when the task
+  // ALREADY failed with nothing to show, so it can never redden a pass.
+  const grantedRead = [...baselines.allowRead, ...args.config.allowRead]
+  if (exitCode !== 0 && violations.length === 0 && !readableUnder(args.cwd, grantedRead)) {
+    violations.push({
+      timestamp: new Date(),
+      line:
+        `vx: this sandbox grants no read access to the task's own working directory ` +
+        `(${args.cwd}), so a command that reads or lists it fails with whatever error it ` +
+        `reports for that — macOS logs no violation record. Add \`sandbox: { allowRead: ['.'] }\`.`,
+    })
+  }
+
   try {
     SandboxManager.cleanupAfterCommand()
   } catch {
@@ -542,6 +546,18 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...resourceUsageToCpuRss(proc.resourceUsage()),
   }
+}
+
+/**
+ * Is `dir` inside a path the sandbox granted for reading? bwrap binds and
+ * seatbelt rules are both prefix-based, so a grant covers the subtree.
+ */
+function readableUnder(dir: string, granted: readonly string[]): boolean {
+  const target = toRealPath(dir)
+  return granted.some((p) => {
+    const g = toRealPath(p)
+    return target === g || target.startsWith(g.endsWith(path.sep) ? g : g + path.sep)
+  })
 }
 
 /** Memoized check: is `strace` on PATH on a Linux host? */
@@ -692,26 +708,6 @@ function isUnderAny(abs: string, allow: Set<string>): boolean {
     if (abs === a || abs.startsWith(a + path.sep)) return true
   }
   return false
-}
-
-/**
- * Is this seatbelt deny line an undeclared INPUT? Only a denied file READ
- * can be: it is the one thing a user fixes by adding to `cache.inputs`.
- *
- * Seatbelt reports much else under the same `deny(1)`, and this repo's own
- * build produced two kinds that are not inputs at all (2026-09-04):
- *
- *   bun(…) deny(1) file-write-create /…/packages/vx/.<hash>.bun-build
- *   bun(…) deny(1) system-info vfs.disk-space
- *
- * The first is a WRITE the task attempted outside its declared outputs —
- * `bun build` probing for a temp file beside its cwd, which it then wrote
- * to TMPDIR instead, which is why the build still exited 0. The second
- * names no path at all; it is a sysctl. Reporting either told the user to
- * add a file that does not exist to `cache.inputs.files`.
- */
-export function reportableRead(line: string): boolean {
-  return /deny\(\d+\)\s+file-read-(?:data|metadata)\s+\/\S/.test(line)
 }
 
 /**
