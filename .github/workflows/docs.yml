@@ -48,6 +48,22 @@ jobs:
             sudo aa-disable /etc/apparmor.d/unprivileged_userns || true
           fi
 
+      # Warm bun's cross-compile targets BEFORE the sandbox sees them.
+      # `bun build --compile` downloads `@oven/bun-<target>` into
+      # `~/.bun/install/cache` on first use; a sandboxed task may READ that
+      # cache (only the workspace root is denied) but not write it, so on a
+      # cold runner the download fails with a misleading
+      # "Network error … check your proxy settings". Warming it here keeps
+      # the build tasks' grants as tight as they are on a dev machine, where
+      # the cache is already populated. Measured 2026-09-05: cold sandboxed
+      # build fails, same build after this step succeeds.
+      - name: Warm bun cross-compile targets
+        run: |
+          echo 'console.log(0)' > /tmp/warm.ts
+          for t in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+            bun build --compile --target="bun-$t" /tmp/warm.ts --outfile "/tmp/warm-$t" >/dev/null
+          done
+
       # Generating the Starlight collection from `docs/` crosses project
       # boundaries, so it is a workspace step, not an vx-docs task.
       - name: Generate site content from docs/
