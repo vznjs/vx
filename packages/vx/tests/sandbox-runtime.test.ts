@@ -17,6 +17,7 @@ import {
   deniedCalls,
   initSandbox,
   probeSandbox,
+  punchWritePaths,
   resetSandbox,
   resolveSandboxConfig,
   runSandboxed,
@@ -942,3 +943,53 @@ describe.skipIf(!available || process.platform !== 'darwin')(
     )
   },
 )
+
+describe('punchWritePaths — a read grant is never an ancestor of a write grant', () => {
+  // bwrap emits `--bind <out>` then `--ro-bind <readPath>`; when the read
+  // path is an ANCESTOR the read-only mount lands on top and every write
+  // fails with `Read-only file system` (verified in a Linux container,
+  // 2026-09-05: read=[proj] write=[proj/dist] → mkdir fails; read=[proj/src]
+  // → ok). Expanding the ancestor into its children fixes it.
+  let dir: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-punch-'))
+    await mkdir(path.join(dir, 'src'), { recursive: true })
+    await mkdir(path.join(dir, 'dist'), { recursive: true })
+    await mkdir(path.join(dir, 'nested', 'deep'), { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), '{}')
+  })
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('returns the grant untouched when no write path is under it', () => {
+    expect(punchWritePaths(dir, [])).toEqual([dir])
+    expect(punchWritePaths(dir, ['/elsewhere/out'])).toEqual([dir])
+    // a write path EQUAL to the grant is not an ancestor relationship
+    expect(punchWritePaths(dir, [dir])).toEqual([dir])
+  })
+
+  it('replaces the ancestor with its children, dropping the write path', () => {
+    const got = punchWritePaths(dir, [path.join(dir, 'dist')]).sort()
+    expect(got).toEqual(
+      [path.join(dir, 'src'), path.join(dir, 'nested'), path.join(dir, 'package.json')].sort(),
+    )
+  })
+
+  it('recurses only along the branch that contains a write path', () => {
+    const deepOut = path.join(dir, 'nested', 'deep')
+    const got = punchWritePaths(dir, [deepOut])
+    // `nested` is expanded because the write path is under it; `src` and
+    // `package.json` are handed over whole.
+    expect(got).toContain(path.join(dir, 'src'))
+    expect(got).toContain(path.join(dir, 'package.json'))
+    expect(got).not.toContain(path.join(dir, 'nested'))
+    expect(got).not.toContain(deepOut)
+  })
+
+  it('hands over a path it cannot read rather than dropping the grant', () => {
+    const missing = path.join(dir, 'does-not-exist')
+    expect(punchWritePaths(missing, [path.join(missing, 'out')])).toEqual([missing])
+  })
+})

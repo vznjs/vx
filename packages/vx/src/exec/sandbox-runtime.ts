@@ -25,7 +25,7 @@
 
 import path from 'node:path'
 import os from 'node:os'
-import { realpathSync } from 'node:fs'
+import { readdirSync, realpathSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import type { SandboxConfig, SandboxNetworkConfig } from '../config.js'
 import {
@@ -751,6 +751,49 @@ function filterIgnored(
  *   - true                          → allow all (allowedDomains: ['*'])
  *   - object                        → use as-is (no merge with shortcuts)
  */
+/**
+ * Expand a read grant so it is never an ANCESTOR of a write grant.
+ *
+ * bwrap builds the sandbox out of mounts, and SRT emits them write-first:
+ * `--bind <out>` then `--ro-bind <readPath>`. When the read path is an
+ * ancestor of the write path the read-only mount lands ON TOP of the
+ * writable one and every write fails with `Read-only file system`
+ * (`pushReadDenyDirMounts`, SRT 0.0.75 — its skip only covers the reverse
+ * nesting). Verified in a Linux container 2026-09-05:
+ *
+ *   read=[proj]     write=[proj/dist]  → mkdir: Read-only file system
+ *   read=[proj/src] write=[proj/dist]  → ok
+ *   read=[proj]     no writes          → ok
+ *
+ * So punch the write paths out: grant the ancestor's children instead,
+ * recursing only along the branches that actually contain one. Same probe,
+ * same command: `read=[src, lib, package.json] write=[dist]` → ok. macOS
+ * never needed this (seatbelt is precedence-based, not mounts), and it is
+ * harmless there, so both platforms take the same path.
+ *
+ * A grant with no write path under it is returned untouched — the common
+ * case costs nothing, not even a readdir.
+ */
+export function punchWritePaths(readPath: string, writePaths: readonly string[]): string[] {
+  const under = writePaths.filter((w) => w !== readPath && w.startsWith(readPath + path.sep))
+  if (under.length === 0) return [readPath]
+  let entries: string[]
+  try {
+    entries = readdirSync(readPath)
+  } catch {
+    // Unreadable or not a directory: nothing to expand, hand it over as is.
+    return [readPath]
+  }
+  const out: string[] = []
+  for (const entry of entries) {
+    const child = path.join(readPath, entry)
+    // A write path is already bound read-write, which is readable.
+    if (under.includes(child)) continue
+    out.push(...punchWritePaths(child, under))
+  }
+  return out
+}
+
 function buildCustomConfig(
   args: SandboxedRunArgs,
   baselines: {
@@ -760,9 +803,11 @@ function buildCustomConfig(
   },
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const c = args.config
-  const allowRead = unique([...baselines.allowRead, ...c.allowRead])
   const denyRead = unique([...baselines.denyRead])
   const allowWrite = unique([...baselines.allowWrite, ...c.allowWrite])
+  const allowRead = unique(
+    [...baselines.allowRead, ...c.allowRead].flatMap((r) => punchWritePaths(r, allowWrite)),
+  )
 
   const custom: Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] = {
     filesystem: {
