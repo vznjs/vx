@@ -37,6 +37,8 @@ async function vx(root: string, args: string[]): Promise<VxResult> {
   return { code, out, err }
 }
 
+const CORE_PKG = path.resolve(import.meta.dir, '..')
+
 async function makeRoot(prefix: string): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), prefix))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
@@ -44,6 +46,14 @@ async function makeRoot(prefix: string): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
+  // The scaffolded `vx.workspace.ts` imports `@vzn/vx`, and a tmp dir has
+  // no node_modules. This used to resolve through a machine-global
+  // `bun link`, so the suite passed or failed on invisible state outside
+  // the repo — a `bun install` that drops the link turns every fixture
+  // here into `Unexpected while resolving package '@vzn/vx'`. Link it
+  // per fixture instead: the test now carries what it needs.
+  await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
+  await symlink(CORE_PKG, path.join(root, 'node_modules', '@vzn', 'vx'), 'dir')
   return root
 }
 
@@ -1036,13 +1046,6 @@ describe('vx init (package.json scripts)', () => {
       expect(r.out).toContain('next: vx run build --all')
       expect(text).toContain('TODO(vx-migrate): cache: add `cache: {')
       expect(text).toContain('TODO(vx-migrate): persistent')
-      // The generated workspace runs. Its vx.workspace.ts imports `@vzn/vx`
-      // the way a user's does, so give the tmp workspace the package.
-      await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
-      await symlink(
-        path.resolve(import.meta.dir, '..'),
-        path.join(root, 'node_modules', '@vzn', 'vx'),
-      )
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
       const run = await vx(root, ['run', 'build', '--all', '--dry'])
       expect(run.code).toBe(0)
@@ -1137,11 +1140,6 @@ describe('vx init (package.json scripts)', () => {
         expect(tasks['publishit']!.dependsOn).toEqual(['release'])
         expect(tasks['test:unit']!.exec?.command).toBe('vitest run')
         // The generated workspace plans the delegation as two tasks.
-        await mkdir(path.join(del, 'node_modules', '@vzn'), { recursive: true })
-        await symlink(
-          path.resolve(import.meta.dir, '..'),
-          path.join(del, 'node_modules', '@vzn', 'vx'),
-        )
         Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: del })
         const run = await vx(del, ['run', 'test', '--all', '--dry'])
         expect(run.code).toBe(0)
