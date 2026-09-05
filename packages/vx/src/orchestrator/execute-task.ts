@@ -1,4 +1,4 @@
-import { mkdir, readdir, realpath } from 'node:fs/promises'
+import { mkdir, readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import {
@@ -976,15 +976,22 @@ async function prepareOutputsForBind(
   outputs: readonly string[],
 ): Promise<void> {
   for (const g of outputs) {
+    // Only paths INSIDE the project are ours to create. An absolute or
+    // `~` grant names something the user already has (a cache dir, /tmp);
+    // joining it onto the project dir would create a literal `~` there.
+    if (path.isAbsolute(g) || g.startsWith('~')) continue
     const hasWildcard = /[*?[\]]/.test(g)
     if (hasWildcard) {
       const abs = path.join(projectDir, staticPrefix(g))
       await mkdir(abs, { recursive: true })
     } else {
       const abs = path.join(projectDir, g)
+      // Whatever is already there is what the task meant — a grant on the
+      // project dir itself is a directory, and touching it as a file is
+      // an EISDIR, not a missing bind.
+      if (await stat(abs).catch(() => undefined)) continue
       await mkdir(path.dirname(abs), { recursive: true })
-      const f = Bun.file(abs)
-      if (!(await f.exists())) await Bun.write(abs, '')
+      await Bun.write(abs, '')
     }
   }
 }

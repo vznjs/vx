@@ -415,6 +415,25 @@ one, with a single documented exception (below).
   list its own cwd. A read grant that is an ANCESTOR of a write grant is
   punched into its children on Linux, where bwrap's ro-bind would
   otherwise shadow the write.
+- **`network` domain lists were never enforced either, and cannot be
+  per-task.** SRT runs ONE filtering proxy per run and checks every
+  request against `initialize()`'s allowlist, so a per-task list silently
+  allowed nothing (`vx run build` on a cold CI runner could not download
+  its cross-compile target: `Network error … check your proxy settings`).
+  `run()` now arms the proxy with the union of every domain any sandboxed
+  task declared. Per-task enforcement survives where it counts: a task
+  that declares none is never handed the proxy's port.
+- **The report filters were seatbelt-only.** They parsed
+  `deny(1) <op> <path>` and nothing else, so on Linux every strace-shaped
+  denial skipped both the project scope and `ignore` — CI reported the
+  workspace-root `package.json` as a finding and two tests failed for the
+  same reason. Producers now describe their own records (`target`,
+  `path`, which `ignore` lists apply) and `reportableViolations` is one
+  exported, platform-free function with tests driving both shapes.
+- **A `~` write grant created a literal `~` directory in the project.**
+  Write grants are pre-created because bwrap cannot bind a path that does
+  not exist, but only the ones the project owns; absolute and `~` grants
+  are the user's own. Differential test.
 - **Two configs were wrong and are fixed.** `lint.oxfmt.fix` carried a
   build task's grants (`write: ['dist/vx-darwin-arm64']`) and could not
   rewrite a single file; the prune install test staged into the host's

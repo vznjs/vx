@@ -18,7 +18,9 @@ import {
   initSandbox,
   probeSandbox,
   punchWritePaths,
+  reportableViolations,
   resetSandbox,
+  type SandboxViolation,
   resolveSandboxConfig,
   runSandboxed,
 } from '../src/exec/sandbox-runtime.js'
@@ -468,6 +470,41 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   )
 
   it(
+    'a `~` or absolute write grant is never created inside the project',
+    async () => {
+      // Write grants are pre-created because bwrap cannot bind a path that
+      // does not exist — but only the ones the project owns. Joining a `~`
+      // grant onto the project dir made a literal `~` directory there
+      // (2026-09-05), which then dirtied the tree the cache hashes.
+      const projDir = await addProject(fixture.root, 'homewriter', {
+        files: { 'src/x.txt': 'hi' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command: 'echo ok > src/x.txt',
+                  sandbox: { allow: { read: ['.'], write: ['src/**', '~/.vx-never', '/tmp'] } },
+                },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['src/x.txt'] } },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: collectingLogger(fixture),
+      })
+      expectOk(r, fixture)
+      expect(existsSync(path.join(projDir, '~'))).toBe(false)
+      expect(existsSync(path.join(projDir, 'tmp'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a declared write path is readable too (touch stats before it creates)',
     async () => {
       // `touch` stats the file before creating it, so a write grant that
@@ -866,6 +903,86 @@ describe('deniedCalls (strace trace parsing)', () => {
  * (exit 71) no matter how permissive either profile is. If a future macOS
  * or SRT lifts that, this test fails and the shards can be sandboxed.
  */
+/**
+ * The report filters, driven with both platforms' line shapes on
+ * whichever platform is running. macOS violations arrive as seatbelt
+ * records and Linux ones as strace lines; before 2026-09-05 the filters
+ * parsed the seatbelt shape only, so on Linux every out-of-project
+ * denial was reported and no `ignore` pattern ever matched.
+ */
+describe('reportableViolations', () => {
+  // Real-path anchored: both producers canonicalize before they record,
+  // and on macOS `/tmp` is a symlink — a literal `/tmp/...` fixture would
+  // pass or fail for the wrong reason.
+  const ROOT = path.join(realpathSync(os.tmpdir()), 'vx-report-proj')
+  const PROJ = path.join(ROOT, 'packages', 'app')
+  const mac = (op: string, target: string): SandboxViolation => ({
+    line: `bun(1) deny(1) ${op} ${target}`,
+    timestamp: new Date(),
+  })
+  const linux = (abs: string): SandboxViolation => ({
+    line: `openat(x) = -1 ENOENT  [${abs}]`,
+    timestamp: new Date(),
+    target: abs,
+    path: abs,
+    ignorable: ['read', 'write'],
+  })
+
+  const lines = (vs: SandboxViolation[]): string[] => vs.map((v) => v.line)
+
+  it('keeps denials inside the project and drops the ones at the wall', () => {
+    const cfg = resolveSandboxConfig({}, PROJ)
+    const kept = reportableViolations(
+      [
+        mac('file-read-data', `${PROJ}/src/a.ts`),
+        mac('file-read-data', path.join(ROOT, 'packages', 'other', 'b.ts')),
+        linux(`${PROJ}/src/c.ts`),
+        linux(path.join(ROOT, 'package.json')),
+      ],
+      { within: PROJ, config: cfg },
+    )
+    expect(lines(kept)).toEqual([
+      `bun(1) deny(1) file-read-data ${PROJ}/src/a.ts`,
+      `openat(x) = -1 ENOENT  [${PROJ}/src/c.ts]`,
+    ])
+  })
+
+  it('keeps a record with no path at all — the task can grant it', () => {
+    const cfg = resolveSandboxConfig({}, PROJ)
+    const kept = reportableViolations([mac('system-info', 'vfs.disk-space')], {
+      within: PROJ,
+      config: cfg,
+    })
+    expect(lines(kept)).toEqual(['bun(1) deny(1) system-info vfs.disk-space'])
+  })
+
+  it('applies `ignore` to both line shapes', () => {
+    const cfg = resolveSandboxConfig({ ignore: { write: ['*.bun-build'] } }, PROJ)
+    const kept = reportableViolations(
+      [
+        mac('file-write-create', `${PROJ}/.abc-0000.bun-build`),
+        linux(`${PROJ}/.def-0000.bun-build`),
+        linux(`${PROJ}/src/real.ts`),
+      ],
+      { within: PROJ, config: cfg },
+    )
+    expect(lines(kept)).toEqual([`openat(x) = -1 ENOENT  [${PROJ}/src/real.ts]`])
+  })
+
+  it('drops the addressless loopback denial only under localBinding', () => {
+    const v: SandboxViolation = { line: 'bun(1) deny(1) network-outbound', timestamp: new Date() }
+    expect(
+      reportableViolations([v], { within: PROJ, config: resolveSandboxConfig({}, PROJ) }),
+    ).toHaveLength(1)
+    expect(
+      reportableViolations([v], {
+        within: PROJ,
+        config: resolveSandboxConfig({ allow: { localBinding: true } }, PROJ),
+      }),
+    ).toHaveLength(0)
+  })
+})
+
 describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
   it(
     'macOS refuses to apply a policy inside a sandboxed process',

@@ -35,6 +35,19 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Sandbox runtime deps: every task in this repo declares
+      # `exec.sandbox`, so a runner that runs a vx task needs bubblewrap
+      # (isolation), socat (network bridge) and ripgrep. Ubuntu 24's
+      # AppArmor blocks the unprivileged user namespaces bwrap needs.
+      - name: Install sandbox runtime deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap socat strace ripgrep
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          if [ -f /etc/apparmor.d/unprivileged_userns ]; then
+            sudo aa-disable /etc/apparmor.d/unprivileged_userns || true
+          fi
+
       # Dogfood: build the docs site through vx from the repo root, scoped
       # to the docs project. `import` regenerates the Starlight content from
       # docs/, then `astro build` writes apps/docs/dist.

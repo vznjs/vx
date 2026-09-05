@@ -184,13 +184,20 @@ function sandboxTmpdir(): string {
   return named !== undefined && named !== '' ? named : '/tmp/claude'
 }
 
-export async function initSandbox(): Promise<void> {
+/**
+ * @param opts.allowedDomains every domain any sandboxed task in this run
+ * declared. SRT's filtering proxy is per-RUN and reads its allowlist from
+ * this call, never from the per-task config, so the union is the only
+ * place a domain list can take effect. Per-task precision survives where
+ * it matters: a task that declared none is never handed the proxy port.
+ */
+export async function initSandbox(opts?: { allowedDomains?: readonly string[] }): Promise<void> {
   // Before SRT starts, so the very first task already has one.
   await mkdir(sandboxTmpdir(), { recursive: true })
   const { SandboxManager } = await loadSrt()
   await SandboxManager.initialize(
     {
-      network: { allowedDomains: [], deniedDomains: [] },
+      network: { allowedDomains: [...(opts?.allowedDomains ?? [])], deniedDomains: [] },
       filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
       ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
     },
@@ -376,6 +383,17 @@ export interface SandboxViolation {
   /** Raw log line from SRT. Format differs between macOS / Linux. */
   line: string
   timestamp: Date
+  /**
+   * What the denial named, and which `ignore` lists could silence it —
+   * filled in by whichever platform produced the record. The filters read
+   * these instead of re-parsing a line whose shape depends on the OS: a
+   * seatbelt `deny(1) file-read-data /x` and a strace
+   * `openat(../x) = -1 ENOENT  [/x]` say the same thing.
+   */
+  target?: string
+  /** Absolute, when `target` is a path at all. */
+  path?: string
+  ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 
 export interface SandboxedRunResult extends RunResult {
@@ -533,13 +551,10 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // ignoreViolations through to the log monitor — that filter is set
   // once globally at initSandbox time. So per-task user overrides have
   // to be applied here, after read-back.
-  const violations: SandboxViolation[] = filterIgnored(
-    loopbackNoise(
-      withinReported([...macViolations, ...linuxViolations], args.reportWithin),
-      args.config,
-    ),
-    args.config.ignore,
-  )
+  const violations = reportableViolations([...macViolations, ...linuxViolations], {
+    within: args.reportWithin,
+    config: args.config,
+  })
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
   // runs differing only in the grant: with the cwd granted a failing task
@@ -879,6 +894,12 @@ async function parseStraceViolations(
     out.push({
       line: `${syscall}(${rawPath}) = -1 ${errno}  [${abs}]`,
       timestamp: new Date(),
+      target: abs,
+      path: abs,
+      // The trace is `-e trace=openat`, and an openat is a read or a
+      // write depending on flags the trace does not carry — so either
+      // list can silence it.
+      ignorable: ['read', 'write'],
     })
   }
   return out
@@ -919,44 +940,89 @@ function isUnderAny(abs: string, allow: Set<string>): boolean {
  * unparseable is NOT ignored: a record we cannot classify is exactly the
  * one worth seeing.
  */
-function matchesIgnore(line: string, ignore: ResolvedSandboxConfig['ignore']): boolean {
-  if (ignore === undefined) return false
-  const m = /deny\(\d+\)\s+(\S+)\s+(.+?)\s*$/.exec(line)
-  if (m === null) return false
-  const [op, target] = [m[1]!, m[2]!]
-  const patterns = op.startsWith('file-read')
-    ? ignore.read
-    : op.startsWith('file-write')
-      ? ignore.write
-      : op === 'system-info' || op === 'sysctl-read'
-        ? ignore.systemInfo
-        : op.startsWith('network')
-          ? ignore.network
-          : undefined
-  if (patterns === undefined) return false
-  return patterns.some((pat) => pat === target || new Bun.Glob(pat).match(target))
+function matchesIgnore(
+  v: SandboxViolation,
+  ignore: NonNullable<ResolvedSandboxConfig['ignore']>,
+): boolean {
+  if (v.target === undefined || v.ignorable === undefined) return false
+  for (const which of v.ignorable) {
+    const patterns = ignore[which]
+    if (patterns === undefined) continue
+    if (patterns.some((pat) => pat === v.target || new Bun.Glob(pat).match(v.target!))) return true
+  }
+  return false
 }
 
 /**
- * Drop the loopback denial `allow.localBinding` cannot avoid.
+ * Split a seatbelt record into the pieces the filters need. A record with
+ * no path (a `system-info` probe) keeps its target — it is not a boundary
+ * crossing, and the task can grant it.
+ */
+function describeMacViolation(line: string): Partial<SandboxViolation> {
+  const m = /deny\(\d+\)\s+(\S+)\s+(.+?)\s*$/.exec(line)
+  if (m === null) return {}
+  const [op, target] = [m[1]!, m[2]!]
+  const which = op.startsWith('file-read')
+    ? 'read'
+    : op.startsWith('file-write')
+      ? 'write'
+      : op === 'system-info' || op === 'sysctl-read'
+        ? 'systemInfo'
+        : op.startsWith('network')
+          ? 'network'
+          : undefined
+  return {
+    target,
+    ...(target.startsWith('/') ? { path: toRealPath(target) } : {}),
+    ...(which !== undefined ? { ignorable: [which] } : {}),
+  }
+}
+
+/**
+ * The violations a task's report should carry: inside the project,
+ * minus the loopback denial no config can avoid, minus what the task
+ * chose to ignore. Exported so a test can drive it with either
+ * platform's line shape without needing that platform.
+ */
+export function reportableViolations(
+  violations: readonly SandboxViolation[],
+  opts: { within: string; config: ResolvedSandboxConfig },
+): SandboxViolation[] {
+  // A record the producer did not describe is a seatbelt one, straight
+  // from SRT's store — parse it here so the filters below never see a
+  // platform's line format.
+  const described = violations.map((v) =>
+    v.target === undefined ? { ...v, ...describeMacViolation(v.line) } : v,
+  )
+  return filterIgnored(
+    loopbackNoise(withinReported(described, opts.within), opts.config),
+    opts.config.ignore,
+  )
+}
+
+/**
+ * Drop the loopback denial no grant can avoid.
  *
  * A runtime that opens a dual-stack socket reaches 127.0.0.1 as
  * ::ffff:127.0.0.1, and seatbelt's only host tokens are `localhost` and
- * `*` — neither the grant vx emits nor any SRT rule can name that form.
- * Bun's first loopback connect is therefore denied, it retries on AF_INET
- * and succeeds (measured 2026-09-05: `fetch` to its own `Bun.serve` port
- * returns 200 with one `deny(1) network-outbound` logged). The record has
- * no address and no config can silence it, so under `localBinding` it is
- * noise.
+ * `*` — no rule vx or SRT can write names that form. The first connect is
+ * denied, the runtime retries on AF_INET and succeeds (measured
+ * 2026-09-05: `fetch` to its own `Bun.serve` port returns 200 with one
+ * `deny(1) network-outbound` logged). It happens for a task's own server
+ * under `localBinding`, and again for SRT's filtering proxy whenever the
+ * task declared any network at all. The record has no address and no
+ * config can silence it, so under either grant it is noise.
  *
- * It is not a hole: an outbound connection that actually left the machine
- * is reported by SRT's proxy WITH its host and port, which this keeps.
+ * It is not a hole for the traffic that matters: a connection that tried
+ * to leave the machine goes through that proxy, which reports it WITH its
+ * host and port — a line this keeps.
  */
 function loopbackNoise(
   violations: SandboxViolation[],
   config: ResolvedSandboxConfig,
 ): SandboxViolation[] {
-  if (config.localBinding !== true) return violations
+  const loopbackGranted = config.localBinding === true || config.network !== undefined
+  if (!loopbackGranted) return violations
   return violations.filter((v) => !/deny\(\d+\)\s+network-outbound\s*$/.test(v.line))
 }
 
@@ -977,15 +1043,12 @@ function loopbackNoise(
  */
 function withinReported(violations: SandboxViolation[], within: string): SandboxViolation[] {
   const root = toRealPath(within)
-  return violations.filter((v) => {
-    const m = /deny\(\d+\)\s+\S+\s+(\/\S+)\s*$/.exec(v.line)
-    if (m === null) return true
-    const target = toRealPath(m[1]!)
-    // `root === '/'` would otherwise compare against `'//'` and drop
-    // everything — the one prefix that needs no separator appended.
-    const prefix = root.endsWith(path.sep) ? root : root + path.sep
-    return target === root || target.startsWith(prefix)
-  })
+  // `root === '/'` would otherwise compare against `'//'` and drop
+  // everything — the one prefix that needs no separator appended.
+  const prefix = root.endsWith(path.sep) ? root : root + path.sep
+  return violations.filter(
+    (v) => v.path === undefined || v.path === root || v.path.startsWith(prefix),
+  )
 }
 
 function filterIgnored(
@@ -993,7 +1056,7 @@ function filterIgnored(
   ignore: ResolvedSandboxConfig['ignore'],
 ): SandboxViolation[] {
   if (ignore === undefined) return violations
-  return violations.filter((v) => !matchesIgnore(v.line, ignore))
+  return violations.filter((v) => !matchesIgnore(v, ignore))
 }
 
 /**

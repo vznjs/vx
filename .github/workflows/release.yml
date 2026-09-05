@@ -38,6 +38,19 @@ jobs:
           VERSION="${VERSION#v}"
           bun -e 'const f = "packages/vx/package.json"; const p = await Bun.file(f).json(); p.version = process.argv[1]; await Bun.write(f, JSON.stringify(p, null, 2) + "\n")' "$VERSION"
 
+      # Sandbox runtime deps: every task in this repo declares
+      # `exec.sandbox`, so a runner that runs a vx task needs bubblewrap
+      # (isolation), socat (network bridge) and ripgrep. Ubuntu 24's
+      # AppArmor blocks the unprivileged user namespaces bwrap needs.
+      - name: Install sandbox runtime deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap socat strace ripgrep
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          if [ -f /etc/apparmor.d/unprivileged_userns ]; then
+            sudo aa-disable /etc/apparmor.d/unprivileged_userns || true
+          fi
+
       # Dogfood: `build` fans out to `build.bun.<target>`
       # (8 compiles). Each sub-task is individually cached, so re-running this
       # workflow on the same commit is essentially free. --concurrency 2: eight

@@ -463,7 +463,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       const weakerNested = sandboxed.every((n) => n.config.exec?.sandbox?.weakerWhenNested === true)
       const avail = await probeSandbox({ weakerNested })
       if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
-      await initSandbox()
+      // SRT runs ONE filtering proxy per run and checks every request
+      // against the allowlist given to `initialize()` — never the per-call
+      // one (`sandbox-manager.js` 0.0.75). So the run's proxy is armed with
+      // the union of every domain any sandboxed task declared. A task that
+      // declares no domains still reaches nothing: its profile is not given
+      // the proxy's port at all.
+      const domains = new Set<string>()
+      for (const n of sandboxed) {
+        const net = n.config.exec?.sandbox?.allow?.network
+        if (Array.isArray(net)) for (const d of net) domains.add(d)
+      }
+      await initSandbox({ allowedDomains: [...domains] })
     }
 
     // Focused flow: a requested GROUP has no output of its own, so

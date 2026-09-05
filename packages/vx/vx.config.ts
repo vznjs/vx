@@ -159,12 +159,10 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
         sandbox: {
           allow: {
-            systemInfo: ['vfs.disk-space'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
             read: ['.'],
-            write: ['dist/vx-linux-x64'],
-          },
-          ignore: {
-            write: ['*.bun-build'],
+            write: ['.', '~/.bun/install/cache/**'],
+            network: ['registry.npmjs.org'],
           },
         },
       },
@@ -182,12 +180,10 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
         sandbox: {
           allow: {
-            systemInfo: ['vfs.disk-space'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
             read: ['.'],
-            write: ['dist/vx-linux-arm64'],
-          },
-          ignore: {
-            write: ['*.bun-build'],
+            write: ['.', '~/.bun/install/cache/**'],
+            network: ['registry.npmjs.org'],
           },
         },
       },
@@ -205,12 +201,10 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
         sandbox: {
           allow: {
-            systemInfo: ['vfs.disk-space'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
             read: ['.'],
-            write: ['dist/vx-darwin-x64'],
-          },
-          ignore: {
-            write: ['*.bun-build'],
+            write: ['.', '~/.bun/install/cache/**'],
+            network: ['registry.npmjs.org'],
           },
         },
       },
@@ -228,12 +222,10 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
         sandbox: {
           allow: {
-            systemInfo: ['vfs.disk-space'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
             read: ['.'],
-            write: ['dist/vx-darwin-arm64'],
-          },
-          ignore: {
-            write: ['*.bun-build'],
+            write: ['.', '~/.bun/install/cache/**'],
+            network: ['registry.npmjs.org'],
           },
         },
       },

@@ -55,9 +55,11 @@ async function fixture(): Promise<string> {
   await writeFile(
     path.join(root, 'proj', 'vx.config.mjs'),
     `export default { tasks: { leak: {
-       exec: { command: 'cat ../secret.txt > out.txt' },
+       exec: {
+         command: 'cat ../secret.txt > out.txt',
+         sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
+       },
        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-       sandbox: {},
      } } }`,
   )
   await writeFile(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource())

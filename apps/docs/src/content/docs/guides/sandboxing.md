@@ -102,7 +102,11 @@ sandbox: {
   `~`-expanded. A write grant is readable too (`tsc --incremental`
   re-reads its own `.tsbuildinfo`).
 - **`network`** — `true` for anywhere, or an allowlist of domains
-  (wildcards allowed). `deny.network` is evaluated first.
+  (wildcards allowed). `deny.network` is evaluated first. Domain lists
+  are enforced by one filtering proxy per run, so the effective allowlist
+  is the union of what every sandboxed task in the graph declared; a task
+  that declares no network still reaches nothing, because it is never
+  given the proxy's port.
 - **`systemInfo`** — sysctl names a tool probes, like `vfs.disk-space`.
 - **`unixSockets`** — `true`, or the socket paths to allow.
 - **`localBinding`** — bind and reach localhost ports, for a test that

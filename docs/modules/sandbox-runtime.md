@@ -60,7 +60,7 @@ sibling to import what its `package.json` depends on.
 ### What SRT's config cannot carry
 
 `localBinding`, `unixSockets`, `machLookup` and `systemInfo` do not reach
-SRT as config. The first three exist as fields, but `sandbox-manager.js`
+SRT as config, and neither does a `network` domain list. The first three exist as fields, but `sandbox-manager.js`
 (0.0.75) reads them off the config given to `initialize()` and never off
 the per-call one, so a per-task grant is silently dropped; `systemInfo`
 has no field at any level. vx is per-task by definition, so it appends
@@ -69,6 +69,13 @@ generated — last-match-wins is the only position where a rule of ours
 outranks one of SRT's. Measured 2026-09-05: the same rules injected after
 the `(deny default …)` header are inert in both directions. Filesystem
 grants still go through SRT's config, where they also work on Linux.
+
+The `network` case has no such workaround: SRT runs ONE filtering proxy
+per run and checks every request against `config.network.allowedDomains`
+from `initialize()` (`sandbox-manager.js:228`). `run()` therefore arms it
+with the union of every domain any sandboxed task declared. Per-task
+enforcement survives where it counts — a task that declared no domains is
+never handed the proxy's port, so it reaches nothing at all.
 
 ## Public surface
 
@@ -196,12 +203,14 @@ macOS equivalent because there is none to offer.
 
 A runtime that opens a dual-stack socket reaches 127.0.0.1 as
 ::ffff:127.0.0.1, and seatbelt's only host tokens are `localhost` and
-`*` — no rule can name that form. Bun's first loopback connect is
-therefore denied, it retries on AF_INET and succeeds, leaving one
-addressless `deny(1) network-outbound` record behind. Under
-`allow.localBinding` that record is dropped: no config can silence it and
-it carries no information. It is not a hole — a connection that actually
-left the machine is reported by SRT's proxy WITH its host and port.
+`*` — no rule can name that form. The first loopback connect is therefore
+denied, the runtime retries on AF_INET and succeeds, leaving one
+addressless `deny(1) network-outbound` record behind. It happens for a
+task's own server under `localBinding`, and again for SRT's proxy
+whenever the task declared any network at all, so under either grant the
+record is dropped: no config can silence it and it carries no
+information. It is not a hole — a connection that actually left the
+machine goes through that proxy, which reports it WITH host and port.
 
 ## Integration points
 
