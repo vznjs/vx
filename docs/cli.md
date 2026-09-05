@@ -729,7 +729,7 @@ empty key is a parse error. Tags are recorded on the run's
 
 ## Sandbox
 
-Sandbox isolation is opt-in **per task** via a `sandbox: {}` block in
+Sandbox isolation is opt-in **per task** via an `exec.sandbox` block in
 the task's config — there is no `--sandbox` CLI flag. See
 [`modules/sandbox-runtime.md`](./modules/sandbox-runtime.md) for the
 full reference.
@@ -739,25 +739,34 @@ full reference.
 export default {
   tasks: {
     build: {
-      exec: { command: 'tsc' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
-      sandbox: {
-        allowRead: ['../../node_modules'], // workspace-root node_modules
-        allowWrite: ['/tmp'],
+      exec: {
+        command: 'tsc',
+        sandbox: {
+          allow: {
+            read: ['.'],
+            write: ['dist/**'],
+          },
+        },
       },
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
     },
   },
 }
 ```
 
-Policy: **fail on violation.** The sandbox enforces declared inputs
-at the kernel level; any task that tries to read a path it didn't
+The grants are the task's whole permission surface — nothing is derived
+from `cache`, and the only thing core adds is `node_modules` plus the
+workspace packages linked there. Enforcement anchors at the workspace
+root (a task never leaves its project); only denials inside the project
+are reported.
+
+Policy: **fail on violation.** Any task that touches a path it didn't
 declare either fails naturally (Linux: `ENOENT` from bwrap's
 mount-namespace hide) or is flagged via the macOS violation store
 and forced to exit non-zero. No cache is written for a failed task.
 
 `vx run` lazily initialises the sandbox runtime only when at least
-one task in the graph declares `sandbox: {}`. If runtime deps are
+one task in the graph declares `exec.sandbox`. If runtime deps are
 missing (bwrap on Linux, sandbox-exec on macOS) or the platform is
 unsupported, the orchestrator errors out with a clear message before
 any task runs.

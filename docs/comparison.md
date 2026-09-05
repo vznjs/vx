@@ -299,7 +299,7 @@ upstream repos.
   retired Turbo-compatible HMAC signing and the retired native wire).
 - OTel run telemetry — the `otel()` plugin in `@vzn/vx-otel` (declare
   it in `vx.workspace.ts` + set `OTEL_EXPORTER_OTLP_ENDPOINT`).
-- Per-task OS sandboxing (`sandbox: {…}`, SRT-backed,
+- Per-task OS sandboxing (`exec.sandbox`, SRT-backed,
   fail-on-violation).
 - Root-anchored inputs/outputs (`workspaceFiles`) and runtime-command
   inputs (`runtime` / `workspaceRuntime`).

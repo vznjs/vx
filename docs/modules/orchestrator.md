@@ -65,7 +65,7 @@ export interface RunSummary {
 5. **Run-level state.** `runId` (ULID) + `runStartHrTimeNs` anchor +
    `liveChildren` set + `persistentRegistry` map. SIGINT/SIGTERM
    handlers installed here, removed in a `finally`.
-6. **Sandbox init** (lazy — only when some node declares `sandbox`).
+6. **Sandbox init** (lazy — only when some node declares `exec.sandbox`).
 7. **`markSurfacedDeps(nodes)`** — transparent-group display marking;
    the footer run context is built (there is no top-of-run header).
 8. **Cache acceleration.** LayeredCache → `startRemotePrefetch`

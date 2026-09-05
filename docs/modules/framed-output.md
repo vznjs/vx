@@ -51,7 +51,9 @@ The block format is:
   cache hits replay stored output and skip it, skips never ran
 - **`├─ stdout` / `├─ stderr` sections:** present only when the
   stream is non-empty after trim
-- **`├─ sandbox violations (n)` section:** when present
+- **`├─ SANDBOX VIOLATIONS (n)` section:** when present — unique
+  lines, verbatim, with the header in error red. The buffered renderer
+  and the live frame share one builder, so a focused run shows it too
 - **Bottom line:** `└─ <task-id> ── (<duration>) <status tag>`
 
 Section headers and corners render dim; ids keep identity coloring.

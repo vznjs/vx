@@ -57,7 +57,7 @@ A project's globs never reach into another project's directory. Inputs
 are declared, never inferred — vx deliberately does not trace
 filesystem reads, because an explicit input set is a correctness
 property. A task that wants its reads confined to the set it declared
-asks for that with `sandbox`.
+asks for that with `exec.sandbox`.
 
 ### 5. Doing all that without becoming the platform
 

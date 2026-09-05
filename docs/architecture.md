@@ -278,7 +278,7 @@ never branches on layering.
 
 - **`runSandboxed`** (`exec/sandbox-runtime.ts`) — opt-in per-task
   sandboxing via `@anthropic-ai/sandbox-runtime`, activated by a
-  `sandbox: {...}` block in the task config. Fail-on-violation policy.
+  `exec.sandbox` block in the task config. Fail-on-violation policy.
   Without that block, tasks run unsandboxed and under-declared
   `cache.inputs.files` silently produce stale cache hits — the
   standard task-runner tradeoff (Turbo and Nx behave the same).
@@ -640,6 +640,6 @@ architecture:
   linked by `dependsOn`. For chained commands inside one task, use
   shell composition in `exec.command`.
 - **No mandatory sandboxing.** Sandboxing is opt-in per task via
-  `sandbox: {...}` (SRT-backed). Without it, under-declared inputs
+  `exec.sandbox` (SRT-backed). Without it, under-declared inputs
   produce stale cache hits; that's the accepted tradeoff. Turbo and
   Nx behave the same.

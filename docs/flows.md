@@ -213,10 +213,10 @@ stateDiagram-v2
 ## 7. Sandboxed task — violation → failure
 
 Owner: `exec/sandbox-runtime.ts` (SRT wrapper). Activation is
-per-task (`sandbox: {...}`), no workspace inheritance. Baseline
-policy: read = resolved `cache.inputs.files`, write = static prefixes
-of `cache.outputs.files`, deny-read = workspace root; user config
-adds explicit allow/deny lists.
+per-task (`exec.sandbox`), no workspace inheritance. Baseline policy:
+read and write nothing, deny-read = workspace root; core adds
+`node_modules` and the workspace packages linked there, and the task's
+own `allow` grants add the rest. Reporting is scoped to the project.
 
 ```mermaid
 flowchart TD

@@ -212,10 +212,9 @@ dealer and an empty shard refused; sixteen dead `export`s and ten
 test-only barrel names removed; comparison.md re-verified against Turbo
 2.10.12 / Nx 23.2.0; two orphan site pages found and the sidebar
 coverage pinned; generated site pages self-describe. The core suite
-runs as four shards (`tests/helpers/shard.ts`; a file importing
-thousands of modules is `@vx-shard-isolate`d because `bun test` pins
-~2 descriptors per import — tripwire test kept for the day Bun fixes
-it).
+runs as four shards (`bun test --shard=<i>/4` since 2026-09-05; the
+descriptor tripwire test is kept for the day Bun fixes the ~2 pins per
+import that make one process hit the macOS cap).
 
 **Stale-claim sweep (2026-09-03, evening).** Six live docs described
 a removed seam or a rejected approach as current: the fork map and the
@@ -373,6 +372,54 @@ owns the `vx: ` prefix and six messages already named the tool.
   the process alive to the 10-minute timeout (step exits explicitly;
   the probe's doc says so). Pinned in `ci.yml`, `docs.yml`, `npm.yml`;
   bump deliberately, with the gate.
+
+**The sandbox becomes one capability interface (2026-09-05).** `sandbox`
+moved under `exec` and stopped mirroring SRT's config: `allow` / `deny` /
+`ignore` share one shape (`read`, `write`, `network`, `systemInfo`,
+`unixSockets`, `localBinding`, `machLookup`, `pty`, `gitConfig`), and vx
+translates it per platform. Every task in all eight projects now declares
+one, with a single documented exception (below).
+
+- **Cache no longer feeds the sandbox.** `cache.inputs` says what
+  INVALIDATES a task, `allow` says what it may TOUCH; deriving one from
+  the other widened the sandbox silently in one direction and forced
+  paths through the cache key in the other. The only grant core still
+  makes is dependencies — `node_modules` plus the real path of every
+  workspace package symlinked there, so no project names a sibling to
+  import what its `package.json` already depends on.
+- **Enforce at the workspace root, report inside the project.** A task
+  never leaves its project; being stopped at that wall is not a finding
+  (every process walks `/` down to its cwd). Only denials on the
+  project's own files are reported — those are the ones that make a
+  cache key wrong.
+- **Three visibility bugs, one report.** The live/focused frame never
+  rendered the section (`violationSection` is now shared with the
+  buffered renderer, unique lines verbatim, red header); the macOS
+  settle window was removed (owner call — it cost 300 ms on EVERY clean
+  sandboxed task against 26 ms for one that reports, and the store is
+  lossy either way); `localBinding` / `unixSockets` / `machLookup` /
+  `systemInfo` never reached the profile at all — SRT 0.0.75 reads the
+  first three off `initialize()`'s config, never the per-call one, and
+  has no field for the fourth. vx now appends the SBPL rules to the END
+  of the seatbelt profile, the only position where last-match-wins puts
+  a rule of ours above SRT's.
+- **macOS cannot nest, proven.** An inner `sandbox-exec` with
+  `(allow default)` still dies `sandbox_apply: Operation not permitted`
+  (exit 71). `@vzn/vx#test.bun.shard-*` is therefore the one task in the
+  repo with no sandbox block — its suite spawns sandboxes. Pinned by a
+  test so the day macOS or SRT lifts it, the gate says so.
+- **Globs in grants, per platform.** macOS passes the pattern into the
+  policy (matches files created during the run); Linux expands it at task
+  start, because a grant there is a mount. `<d>/**` and `<d>/**/*`
+  collapse to `<d>` on both — without that, `read: ['**/*']` could not
+  list its own cwd. A read grant that is an ANCESTOR of a write grant is
+  punched into its children on Linux, where bwrap's ro-bind would
+  otherwise shadow the write.
+- **Two configs were wrong and are fixed.** `lint.oxfmt.fix` carried a
+  build task's grants (`write: ['dist/vx-darwin-arm64']`) and could not
+  rewrite a single file; the prune install test staged into the host's
+  TMPDIR and cached under HOME, and is now hermetic inside the subset it
+  emits.
 
 ## In flight
 

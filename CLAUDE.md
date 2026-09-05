@@ -71,16 +71,14 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.test.ts`).
   docs build). Then push and confirm the real CI conclusion.
 - `bun test` alone is NOT the gate: it is transpile-only and cannot see a
   type error. Never pipe a gate through `tail`/`grep` — it masks the exit.
-- The core suite runs as four parallel shard tasks (`test.0`–`test.3`,
-  dealt longest-first by `tests/helpers/shard.ts run 4 <i>`; a file that
-  costs far more than its size says carries a `// @vx-shard-cost <s>`
-  hint, and one that imports thousands of modules carries
-  `// @vx-shard-isolate` for a process of its own — `bun test` pins
-  descriptors per import, see the helper's header). A plain
-  `cd packages/vx && bun test --preload ./tests/setup.ts ./tests/` still
-  runs everything in one process; the darwin CI job runs the same runner
-  as ONE shard (`shard.ts run 1 0`), so the isolated file gets its own
-  process there too.
+- The core suite runs as four parallel shard tasks
+  (`test.bun.shard-1`–`shard-4`, `bun test --shard=<i>/4`). Four
+  processes is not only speed: `bun test` pins ~2 descriptors per
+  imported module and macOS caps a process at 10 240, so the whole suite
+  in one process does not clear the cap. The darwin CI job runs the same
+  four shards sequentially. `@vzn/vx#test.bun.shard-*` is the one task in
+  the repo with no `exec.sandbox` — seatbelt cannot nest, and this suite
+  spawns sandboxes.
 - `packages/*` suites are gated by CI's separate job; after touching a
   plugin package run its suite yourself (`vx-reapi` one process per file
   with `VX_REAPI_TEST_ENDPOINT` / `VX_REAPI_EXEC_ENDPOINT` set, or it

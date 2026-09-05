@@ -57,7 +57,6 @@ interface TaskConfig {
   exec?: ExecConfig // omit to declare a group task
   dependsOn?: readonly string[] // Turbo/Nx micro-syntax
   cache?: CacheConfig // caching is opt-in; requires `exec`
-  sandbox?: SandboxConfig // opt-in OS sandbox; requires `exec`
 }
 ```
 
@@ -106,6 +105,7 @@ interface ExecConfig {
   retries?: number // max additional attempts after a failure (see below)
   resources?: ResourcesConfig // CPU/memory reservations for admission (see below)
   persistent?: PersistentConfig // long-running task (dev server, watcher)
+  sandbox?: SandboxConfig // opt-in OS sandbox for this command
 }
 ```
 
@@ -846,54 +846,88 @@ project-relative `files` whenever the task can write inside its own
 dir. Two tasks declaring overlapping workspace outputs is user
 responsibility — vx does not police it; last restore wins.
 
-### `sandbox` (optional)
+### `exec.sandbox` (optional)
 
-Opt a task into an OS-level sandbox. Requires `exec`; silently skipped for
-persistent tasks. **Opt-in per task — omit it and the task runs
+Opt this command into an OS-level sandbox. Silently skipped for
+persistent tasks. **Opt-in per task — omit it and the command runs
 unsandboxed.** Full walkthrough in the
 [sandboxing guide](https://vznjs.github.io/vx/guides/sandboxing/).
 
 ```ts
 interface SandboxConfig {
-  // Filesystem — paths are project-relative / absolute / `~`-expanded.
-  // NO globs (bwrap accepts path prefixes only).
-  allowRead?: string[] // extra readable paths beyond resolved cache.inputs.files
-  allowWrite?: string[] // extra writable paths beyond the cache.outputs.files prefix
-  allowGitConfig?: boolean // permit writes to .git/config (default false)
-
-  // Network — blocked by default.
-  network?: boolean | SandboxNetworkConfig // false (default) | true | fine-grained
-
-  // Process behavior.
-  allowPty?: boolean // acquire a TTY (default false)
-  enableWeakerNestedSandbox?: boolean // Linux: nested sandboxes (default false)
-  enableWeakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
-
-  // Silence known-noisy probes: command-substring → paths to ignore.
-  ignoreViolations?: Record<string, string[]>
+  allow?: SandboxGrants // what the command may do
+  deny?: { network?: string[] } // domains refused before `allow.network`
+  ignore?: SandboxGrants // violations to leave out of the report
+  weakerWhenNested?: boolean // Linux: let a sandboxed task sandbox (default false)
+  weakerNetworkIsolation?: boolean // macOS: host-proxy net, lower isolation (default false)
 }
 
-interface SandboxNetworkConfig {
-  allowedDomains?: string[] // wildcards ok: `*.example.com`, `*`
-  deniedDomains?: string[] // evaluated before allowedDomains
-  allowUnixSockets?: string[]
-  allowAllUnixSockets?: boolean
-  allowLocalBinding?: boolean // bind localhost ports (e.g. a self-querying test server)
-  allowMachLookup?: string[] // macOS only
+interface SandboxGrants {
+  read?: string[] // paths or globs, project-relative or absolute
+  write?: string[] // paths or globs; a write grant is readable too
+  network?: true | string[] // true = anywhere, or an allowlist of domains
+  systemInfo?: string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
+  unixSockets?: true | string[] // AF_UNIX bind/connect, all or by path
+  localBinding?: boolean // bind and reach localhost ports
+  machLookup?: string[] // mach global-names (macOS)
+  pty?: boolean // acquire a TTY
+  gitConfig?: boolean // write .git/config
 }
 ```
 
-**Baseline** (`sandbox: {}`): read only resolved `cache.inputs.files`,
-write only the static prefix of `cache.outputs.files` (a task with empty
-outputs writes nowhere), no network. No inheritance, no workspace
-defaults, no built-in escapes — declare everything explicitly.
+One shape describes what a task may do; vx translates it into a seatbelt
+profile on macOS and bwrap mounts plus seccomp on Linux. The same block
+is the vocabulary for `ignore`, so a noisy probe is silenced with the
+grant that would have permitted it:
 
-**Policy: fail on violation.** An undeclared read/write (macOS log
-monitor) or a child that fails because it couldn't reach a path (Linux
-bwrap structural deny) fails the task; a failed task is never cached.
-Activation is lazy (only when some task declares `sandbox`); on an
-unsupported platform a sandboxed task fails fast rather than running
-unsandboxed. Linux needs `bubblewrap` + `socat` installed.
+```ts
+exec: {
+  command: 'bun build --compile src/bin.ts --outfile dist/vx',
+  sandbox: {
+    allow: {
+      read: ['.'],
+      write: ['dist/vx'],
+      systemInfo: ['vfs.disk-space'],
+    },
+    ignore: { write: ['*.bun-build'] },
+  },
+}
+```
+
+**Globs.** `read` and `write` accept patterns. On macOS the pattern
+reaches the policy and matches files created during the run; on Linux a
+grant is a mount, so the pattern is expanded when the task starts and a
+file created later is not covered — grant its directory instead. On both
+platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
+`read: ['**/*']` lets a task list its own cwd.
+
+**Baseline** (`sandbox: {}`): the task reads nothing, writes nothing and
+reaches no network — not even its own project directory, which is why
+`allow: { read: ['.'] }` is the first line of almost every real block.
+Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a task, `sandbox.allow`
+says what it may TOUCH, and deriving one from the other made a
+declaration added for caching silently widen the sandbox. The one grant
+vx makes for you is dependencies: `node_modules` and, through it, the
+real path of every workspace package linked there. A project never names
+a sibling to import what its `package.json` already depends on.
+
+**The boundary is the workspace root.** A task may not leave its own
+project, so every sibling project and every root file is denied. Being
+stopped at that wall is the sandbox working, not a finding: only
+denials INSIDE the project are reported, because those are the reads
+that make a cache key wrong. To reach a path outside the project —
+`~/.cache`, `/etc`, a workspace-level fixture — declare it.
+
+**Policy: fail on violation.** An undeclared read or write fails the
+task, and a failed task is never cached. Activation is lazy (only when
+some task declares `exec.sandbox`); on an unsupported platform a
+sandboxed task fails fast rather than running unsandboxed. Linux needs
+`bubblewrap` + `socat` installed.
+
+**macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
+process, so a task that itself sandboxes something (vx's own test suite)
+cannot be sandboxed on macOS. `weakerWhenNested` covers the Linux case;
+there is no macOS equivalent to offer.
 
 ## Group tasks (no `exec`)
 
@@ -1256,8 +1290,8 @@ and surfaces `UserError` (clean output, no stack):
 | `description must be a string`                                                      | Non-string description.                            |
 
 **Unknown fields are rejected**, not ignored, at every level that feeds
-the cache key — the task itself, `exec`, `exec.resources`, `cache`,
-`cache.inputs`, `cache.outputs`, and `sandbox`. A silently-dropped
+the cache key — the task itself, `exec`, `exec.resources`, `exec.sandbox`, `cache`,
+`cache.inputs`, and `cache.outputs`. A silently-dropped
 `workspaceFile` (singular) or `timeoutMs` would make the task hash as
 though the field had never been written, so vx would replay an artifact
 built from different inputs. The error names the offending key and lists

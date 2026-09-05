@@ -89,7 +89,7 @@ caches.
      prepend).
    - `wallclockStartNs = process.hrtime.bigint() - runStartHrTimeNs`.
    - The attempt builds an `ExecuteRequest` (command, env, capture,
-     declared outputs, timeout, sandbox baselines) and hands it to
+     declared outputs, timeout, sandbox grants) and hands it to
      `args.executor` — the executor this task was PLACED on by `run.ts`
      before scheduling, so every attempt of a task runs in the same
      place. With only `localExecutorPlugin()` declared that is
@@ -161,7 +161,9 @@ extensions:
   using the observed set as the next run's inputs is a rejected
   approach (CLAUDE.md § Rejected): inputs stay declared and explicit.
   A task that wants its reads confined to the paths it declared asks
-  for that with `sandbox`, which enforces rather than infers.
+  for that with `exec.sandbox`, which enforces rather than infers.
+  The sandbox derives NOTHING from `cache`: `cache.inputs` says what
+  invalidates a task, `exec.sandbox.allow` says what it may touch.
 - **Conditional output capture.** Compress / dedupe before save.
   Hook between `resolveOutputs` and `cache.save`.
 - **Pre-spawn hooks.** Run a setup script (e.g. cgroup/limits
