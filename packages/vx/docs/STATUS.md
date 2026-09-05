@@ -440,6 +440,53 @@ one, with a single documented exception (below).
   TMPDIR and cached under HOME, and is now hermetic inside the subset it
   emits.
 
+**Every project under `packages/`, and every task sandboxed (2026-09-05).**
+`bench/`, `apps/docs/` and `docs/` were top-level trees that code lived in
+and no project owned; they are `packages/vx-bench`, `packages/vx-docs` and
+`packages/vx/docs` now, `scripts/build-npm.ts` moved under
+`packages/vx/scripts`, and `workspaces` is just `packages/*`. 33 exec
+tasks across 9 projects declare `exec.sandbox`; `@vzn/vx#test.bun.unsafe`
+is the only one that does not, and it is named for the reason.
+
+- **A permission is the last resort, not the first.** Four suites failed
+  sandboxed and three needed no grant at all: the remote-cache stub and
+  the upgrade downloader bound localhost ports, and now use an in-process
+  `Request → Response` handler and a stubbed `fetch`; the doc-drift and
+  boundary tests read the workspace, and follow their subject
+  (`packages/vx/docs`) or move to the unsafe suite; the `cli -h` test ran
+  `run()` against this repo and wrote `.vx/cache`, and now builds a
+  throwaway workspace. Only `machLookup: ['com.apple.FSEvents']` was
+  granted, by the owner, after the alternative shipped.
+- **`vx watch` polls when the OS will not talk.** `fs.watch` on macOS is
+  FSEvents; inside a sandbox without that mach-lookup the call SUCCEEDS
+  and never fires — measured, 0 events recursive and 0 plain against 3
+  and 2 for the same writes outside, while `watchFile` polling delivered
+  in both. The loop already probed for delivery; a failed probe now swaps
+  in `pollWatcher` instead of only warning, and `VX_WATCH_POLL=1` forces
+  it. Network mounts and container binds fail the same way.
+- **macOS cannot nest a sandbox, so `probeSandbox` says so.** An inner
+  `sandbox-exec` with `(allow default)` still dies `sandbox_apply:
+  Operation not permitted` (exit 71). The probe answered `available:
+  true` inside a sandbox, which is how a suite that exercises the sandbox
+  came to fail sixteen ways at once. `tests/*.unsafe.test.ts` is that
+  suite plus the cross-project law; the shards exclude it with
+  `--path-ignore-patterns` and `test.bun.unsafe` runs it.
+- **Exposing a port from a sandboxed task: macOS yes, Linux not yet.**
+  Measured — a sandboxed server on macOS is reachable from a DIFFERENT
+  sandboxed task (200), and refused when that consumer has no
+  `localBinding`. On Linux every sandboxed task gets its own netns
+  (`--unshare-net` whenever a network config exists, which vx always
+  sends), so nothing sees the port. Opening the netns works but costs
+  full egress; the narrow answer is a per-port unix-socket bridge, which
+  is blocked today because SRT reads `allowUnixSockets` off the config
+  given to `initialize()` and never the per-call one. Unfinished.
+- **Two bugs the move surfaced.** `${REPOSITORY}` interpolated an object,
+  so every published platform README link, `homepage` and `bugs` URL said
+  `[object Object]` — `scripts/` had never been under a tsconfig. And a
+  LayeredCache test asserted a background upload had started after a
+  fixed 20 ms, which a loaded gate does not respect; it waits on the
+  condition now.
+
 ## In flight
 
 - **v0.0.18 is fully on npm; one owner step remains before the next
