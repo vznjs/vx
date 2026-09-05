@@ -466,8 +466,8 @@ is the only one that does not, and it is named for the reason.
   it. Network mounts and container binds fail the same way.
 - **macOS cannot nest a sandbox, so `probeSandbox` says so.** An inner
   `sandbox-exec` with `(allow default)` still dies `sandbox_apply:
-  Operation not permitted` (exit 71). The probe answered `available:
-  true` inside a sandbox, which is how a suite that exercises the sandbox
+Operation not permitted` (exit 71). The probe answered `available:
+true` inside a sandbox, which is how a suite that exercises the sandbox
   came to fail sixteen ways at once. `tests/*.unsafe.test.ts` is that
   suite plus the cross-project law; the shards exclude it with
   `--path-ignore-patterns` and `test.bun.unsafe` runs it.

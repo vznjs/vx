@@ -25,7 +25,7 @@
 
 import path from 'node:path'
 import os from 'node:os'
-import { readdirSync, realpathSync } from 'node:fs'
+import { readdirSync, realpathSync, statSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import type { SandboxConfig } from '../config.js'
 import {
@@ -1092,6 +1092,38 @@ function filterIgnored(
 }
 
 /**
+ * Write grants as bwrap can actually honour them.
+ *
+ * A grant naming a FILE becomes a bwrap file bind, and you cannot rename
+ * onto an active mount point: any tool that writes its output by staging
+ * beside it and renaming — `bun build --compile`, most compilers, every
+ * atomic writer — dies with EBUSY. Minimal repro, 2026-09-05: under
+ * `bwrap --bind /w/dist/out.bin /w/dist/out.bin`, `mv /w/s /w/dist/out.bin`
+ * is "Device or resource busy"; binding `/w/dist` instead succeeds.
+ *
+ * So on Linux a file-shaped grant is widened to its directory. That IS a
+ * widening — the task may write its siblings — and it is the narrowest
+ * grant the mechanism can express: the alternative is a declared output
+ * the task cannot produce. macOS needs none of this (seatbelt matches
+ * paths, it does not mount), so the grant stays exact there.
+ */
+function bindableWrites(paths: readonly string[]): string[] {
+  if (process.platform !== 'linux') return [...paths]
+  return unique(
+    paths.map((p) => {
+      if (/[*?[\]]/.test(p)) return p
+      try {
+        if (statSync(p).isDirectory()) return p
+      } catch {
+        // Does not exist yet: `prepareOutputsForBind` creates a file for a
+        // file-shaped grant, so treat it as one.
+      }
+      return path.dirname(p)
+    }),
+  )
+}
+
+/**
  * Merge the orchestrator-provided baseline (declared inputs / outputs /
  * workspace-root anchor) with the user's resolved sandbox block to
  * produce the SRT customConfig. Path arrays are unioned and deduped.
@@ -1161,7 +1193,7 @@ function buildCustomConfig(
 ): Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2] {
   const c = args.config
   const denyRead = unique([...baselines.denyRead])
-  const allowWrite = unique([...baselines.allowWrite, ...c.allowWrite])
+  const allowWrite = bindableWrites(unique([...baselines.allowWrite, ...c.allowWrite]))
   const allowRead = unique(
     [...baselines.allowRead, ...c.allowRead].flatMap((r) => punchWritePaths(r, allowWrite)),
   )

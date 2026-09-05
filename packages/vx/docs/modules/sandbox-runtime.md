@@ -188,6 +188,22 @@ express half its policy in link paths and half in real ones. Before this
 was applied to the orchestrator baselines, such a workspace made every
 sandboxed task die with `bwrap: Can't mount tmpfs on /newroot/<link>`.
 
+## A write grant that names a file
+
+On Linux a grant is a bind mount, and a grant naming a FILE binds that
+file — you cannot rename onto an active mount point. Every tool that
+writes its output by staging beside it and renaming (`bun build
+--compile`, most compilers, any atomic writer) then dies with EBUSY.
+Minimal repro, 2026-09-05: under `bwrap --bind /w/dist/out.bin
+/w/dist/out.bin`, `mv /w/s /w/dist/out.bin` is "Device or resource busy";
+binding `/w/dist` instead succeeds.
+
+`bindableWrites` therefore widens a file-shaped write grant to its
+directory ON LINUX ONLY. It is a widening — the task may write that
+file's siblings — and it is the narrowest thing the mechanism can
+express; the alternative is a declared output the task cannot produce.
+macOS matches paths rather than mounting, so the grant stays exact there.
+
 ## macOS cannot nest
 
 `sandbox_apply` is refused inside a sandboxed process, at any permission
