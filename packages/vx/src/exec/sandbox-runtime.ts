@@ -27,7 +27,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { readdirSync, realpathSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
-import type { SandboxConfig, SandboxNetworkConfig } from '../config.js'
+import type { SandboxConfig } from '../config.js'
 import {
   armTimeout,
   drainOrAbort,
@@ -38,7 +38,7 @@ import {
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
-import { xxh3hex } from '../util/index.js'
+import { UserError, xxh3hex } from '../util/index.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
 let srtPromise: Promise<SrtModule> | undefined
@@ -252,13 +252,20 @@ export interface SandboxedRunArgs {
  * but every string in a path list is guaranteed absolute.
  */
 export interface ResolvedSandboxConfig {
+  /** Readable path prefixes, absolute. */
   allowRead: readonly string[]
+  /** Writable path prefixes, absolute. */
   allowWrite: readonly string[]
-  allowGitConfig?: boolean
-  network?: boolean | SandboxNetworkConfig
-  allowPty?: boolean
-  enableWeakerNestedSandbox?: boolean
-  enableWeakerNetworkIsolation?: boolean
+  network?: true | readonly string[]
+  denyNetwork?: readonly string[]
+  systemInfo?: readonly string[]
+  unixSockets?: true | readonly string[]
+  localBinding?: boolean
+  machLookup?: readonly string[]
+  pty?: boolean
+  gitConfig?: boolean
+  weakerWhenNested?: boolean
+  weakerNetworkIsolation?: boolean
   ignoreViolations?: Record<string, string[]>
 }
 
@@ -325,24 +332,38 @@ export function resolveSandboxConfig(
     if (path.isAbsolute(p)) return toRealPath(p)
     return toRealPath(path.resolve(projectDir, p))
   }
+  const a = cfg.allow ?? {}
   const r: ResolvedSandboxConfig = {
-    allowRead: (cfg.allowRead ?? []).map(resolve),
-    allowWrite: (cfg.allowWrite ?? []).map(resolve),
+    allowRead: (a.read ?? []).map(resolve),
+    allowWrite: (a.write ?? []).map(resolve),
   }
-  if (cfg.allowGitConfig !== undefined) r.allowGitConfig = cfg.allowGitConfig
-  if (cfg.network !== undefined) r.network = cfg.network
-  if (cfg.allowPty !== undefined) r.allowPty = cfg.allowPty
-  if (cfg.enableWeakerNestedSandbox !== undefined) {
-    r.enableWeakerNestedSandbox = cfg.enableWeakerNestedSandbox
-  }
-  if (cfg.enableWeakerNetworkIsolation !== undefined) {
-    r.enableWeakerNetworkIsolation = cfg.enableWeakerNetworkIsolation
+  if (a.network !== undefined) r.network = a.network
+  if (cfg.deny?.network !== undefined) r.denyNetwork = cfg.deny.network
+  if (a.systemInfo !== undefined) r.systemInfo = a.systemInfo
+  if (a.unixSockets !== undefined) r.unixSockets = a.unixSockets
+  if (a.localBinding !== undefined) r.localBinding = a.localBinding
+  if (a.machLookup !== undefined) r.machLookup = a.machLookup
+  if (a.pty !== undefined) r.pty = a.pty
+  if (a.gitConfig !== undefined) r.gitConfig = a.gitConfig
+  if (cfg.weakerWhenNested !== undefined) r.weakerWhenNested = cfg.weakerWhenNested
+  if (cfg.weakerNetworkIsolation !== undefined) {
+    r.weakerNetworkIsolation = cfg.weakerNetworkIsolation
   }
   if (cfg.ignoreViolations !== undefined) r.ignoreViolations = cfg.ignoreViolations
   return r
 }
 
 export interface SandboxViolation {
+  /**
+   * Reported, but NOT a reason to fail the task. A process reaches its cwd
+   * by stat-ing every directory on the way, so an ancestor above the
+   * project is denied on every sandboxed run — unavoidable, and impossible
+   * to grant away, since the workspace root IS the deny anchor. If such a
+   * denial actually broke the command, the command's own exit code says so.
+   * Advisory records are shown for exactly that reason: to explain a
+   * failure, never to manufacture one (owner, 2026-09-05).
+   */
+  advisory?: boolean
   /** Raw log line from SRT. Format differs between macOS / Linux. */
   line: string
   timestamp: Date
@@ -376,7 +397,21 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
-  const wrapped = await SandboxManager.wrapWithSandbox(taggedCommand, undefined, customConfig)
+  let wrapped = await SandboxManager.wrapWithSandbox(taggedCommand, undefined, customConfig)
+  // `allow.systemInfo` is the one capability SRT's config cannot express:
+  // its seatbelt profile never mentions `system-info`, and there is no
+  // field for it at any level. It IS expressible as a policy rule, and vx
+  // holds the profile before spawning — so this is where the capability
+  // becomes a rule. Nothing above this line knows that.
+  const systemInfo = args.config.systemInfo ?? []
+  if (systemInfo.length > 0 && process.platform === 'darwin') {
+    wrapped = injectProfileRules(
+      wrapped,
+      systemInfo.map(
+        (t) => `(allow system-info (info-type "${sbplToken(t, 'allow.systemInfo')}"))`,
+      ),
+    )
+  }
 
   // Linux: SRT's SandboxViolationStore is macOS-only, so structured
   // detection on Linux requires us to wrap the spawn with strace and
@@ -502,10 +537,9 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // once globally at initSandbox time. So per-task user overrides have
   // to be applied here, after read-back.
   const userIgnore = args.config.ignoreViolations
-  const violations: SandboxViolation[] = filterIgnored(
-    [...macViolations, ...linuxViolations],
-    userIgnore,
-    userCommand,
+  const violations: SandboxViolation[] = markAdvisory(
+    filterIgnored([...macViolations, ...linuxViolations], userIgnore, userCommand),
+    args.cwd,
   )
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
@@ -558,6 +592,47 @@ function readableUnder(dir: string, granted: readonly string[]): boolean {
     const g = toRealPath(p)
     return target === g || target.startsWith(g.endsWith(path.sep) ? g : g + path.sep)
   })
+}
+
+/**
+ * A token safe to interpolate into a seatbelt profile. The profile travels
+ * inside a shell-quoted `sandbox-exec -p '…'` argument, so a value carrying
+ * a quote, paren or backslash could rewrite the policy or escape the
+ * argument. Refuse rather than escape — every real info type is a plain
+ * dotted name.
+ */
+function sbplToken(value: string, field: string): string {
+  if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+    throw new UserError(`${field}: '${value}' is not a valid name`)
+  }
+  return value
+}
+
+/**
+ * Add rules to the seatbelt profile SRT generated, right after its
+ * `(deny default …)` line.
+ *
+ * This works for operations SRT's profile never mentions — which is what
+ * `allow.systemInfo` is. It is NOT a general override: measured
+ * 2026-09-05, an appended `(allow file-read* …)` does not defeat SRT's
+ * filesystem deny, nor does an appended `(deny file-read* …)` defeat its
+ * allow. Filesystem capabilities therefore go through SRT's config, where
+ * they also work on Linux; only the operations SRT is silent about arrive
+ * here.
+ *
+ * A missing anchor THROWS. Silently running a task without a capability it
+ * asked for is worse than not offering the capability.
+ */
+function injectProfileRules(wrapped: string, rules: readonly string[]): string {
+  const anchor = /sandbox-exec -p '\(version 1\)\n\(deny default[^\n]*\n/.exec(wrapped)
+  if (anchor === null) {
+    throw new UserError(
+      'sandbox: the OS sandbox policy did not have the expected shape, so the ' +
+        'capabilities this task declared could not be applied',
+    )
+  }
+  const at = anchor.index + anchor[0].length
+  return `${wrapped.slice(0, at)}${rules.join('\n')}\n${wrapped.slice(at)}`
 }
 
 /** Memoized check: is `strace` on PATH on a Linux host? */
@@ -722,6 +797,42 @@ function isUnderAny(abs: string, allow: Set<string>): boolean {
  * The defaults installed in `initSandbox` already filter on the macOS
  * side; this pass catches per-task additions + Linux strace results.
  */
+/**
+ * A violation fails the task IFF the task could have declared it away.
+ *
+ * Two classes cannot be, and are marked advisory — reported in full, never
+ * a reason to fail:
+ *
+ *  - a directory at or above the task's cwd. A process reaches its cwd by
+ *    stat-ing every directory on the way, and the workspace root IS the
+ *    deny anchor, so `deny … /repo` and `deny … /repo/packages` appear on
+ *    every sandboxed run and no grant can remove them.
+ *  - `system-info` / `sysctl-read` probes (`vfs.disk-space`,
+ *    `kern.iossupportversion`). No path, no file content, nothing a config
+ *    could name — SRT's seatbelt profile has no knob for them either.
+ *
+ * They used to be dropped from the REPORT, which is how a failing task
+ * ended up with an empty violations section. Reporting them and failing on
+ * them are different questions, and this answers the second one only
+ * (owner, 2026-09-05).
+ */
+function markAdvisory(violations: SandboxViolation[], cwd: string): SandboxViolation[] {
+  const cwdReal = toRealPath(cwd)
+  const ancestors = new Set<string>()
+  for (let d = cwdReal; ; d = path.dirname(d)) {
+    ancestors.add(d)
+    if (d === path.dirname(d)) break
+  }
+  return violations.map((v) => {
+    if (/\bdeny\(\d+\)\s+(?:system-info|sysctl-read)\b/.test(v.line)) {
+      return { ...v, advisory: true }
+    }
+    const m = /deny\(\d+\)\s+file-read-(?:data|metadata)\s+(\/\S+)\s*$/.exec(v.line)
+    if (m !== null && ancestors.has(toRealPath(m[1]!))) return { ...v, advisory: true }
+    return v
+  })
+}
+
 function filterIgnored(
   violations: SandboxViolation[],
   ignore: Record<string, string[]> | undefined,
@@ -815,42 +926,31 @@ function buildCustomConfig(
       allowRead,
       allowWrite,
       denyWrite: [],
-      ...(c.allowGitConfig !== undefined ? { allowGitConfig: c.allowGitConfig } : {}),
+      ...(c.gitConfig !== undefined ? { allowGitConfig: c.gitConfig } : {}),
     },
   }
 
-  // Network coercion. SRT requires allowedDomains + deniedDomains to be
-  // present on any network config; we always supply both.
-  if (c.network === true) {
-    custom.network = { allowedDomains: ['*'], deniedDomains: [] }
-  } else if (c.network && typeof c.network === 'object') {
-    custom.network = {
-      allowedDomains: c.network.allowedDomains ?? [],
-      deniedDomains: c.network.deniedDomains ?? [],
-      ...(c.network.allowUnixSockets !== undefined
-        ? { allowUnixSockets: c.network.allowUnixSockets }
+  // `allow.network` / `deny.network` become SRT's domain lists. SRT requires
+  // both to be present on any network config, so we always supply both;
+  // omitted means no network at all.
+  custom.network = {
+    allowedDomains: c.network === true ? ['*'] : [...(c.network ?? [])],
+    deniedDomains: [...(c.denyNetwork ?? [])],
+    ...(c.unixSockets === true
+      ? { allowAllUnixSockets: true }
+      : c.unixSockets !== undefined
+        ? { allowUnixSockets: [...c.unixSockets] }
         : {}),
-      ...(c.network.allowAllUnixSockets !== undefined
-        ? { allowAllUnixSockets: c.network.allowAllUnixSockets }
-        : {}),
-      ...(c.network.allowLocalBinding !== undefined
-        ? { allowLocalBinding: c.network.allowLocalBinding }
-        : {}),
-      ...(c.network.allowMachLookup !== undefined
-        ? { allowMachLookup: c.network.allowMachLookup }
-        : {}),
-    }
-  } else {
-    // false / undefined → block all
-    custom.network = { allowedDomains: [], deniedDomains: [] }
+    ...(c.localBinding !== undefined ? { allowLocalBinding: c.localBinding } : {}),
+    ...(c.machLookup !== undefined ? { allowMachLookup: [...c.machLookup] } : {}),
   }
 
-  if (c.allowPty !== undefined) custom.allowPty = c.allowPty
-  if (c.enableWeakerNestedSandbox !== undefined) {
-    custom.enableWeakerNestedSandbox = c.enableWeakerNestedSandbox
+  if (c.pty !== undefined) custom.allowPty = c.pty
+  if (c.weakerWhenNested !== undefined) {
+    custom.enableWeakerNestedSandbox = c.weakerWhenNested
   }
-  if (c.enableWeakerNetworkIsolation !== undefined) {
-    custom.enableWeakerNetworkIsolation = c.enableWeakerNetworkIsolation
+  if (c.weakerNetworkIsolation !== undefined) {
+    custom.enableWeakerNetworkIsolation = c.weakerNetworkIsolation
   }
   if (c.ignoreViolations !== undefined) custom.ignoreViolations = c.ignoreViolations
   return custom

@@ -30,7 +30,8 @@ export type {
   CacheOutputs,
   ResourcesConfig,
   SandboxConfig,
-  SandboxNetworkConfig,
+  SandboxGrants,
+  SandboxDenials,
 } from './config.js'
 export { defineProject, defineWorkspace } from './config.js'
 

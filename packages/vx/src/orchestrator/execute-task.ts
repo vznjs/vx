@@ -134,6 +134,30 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
 }
 
 /**
+ * The directories a task's declared input globs cover WHOLE — `**` and
+ * `**\/*` cover the project dir, `<dir>/**` covers `<dir>`. Granting the
+ * directory is equivalent to granting every file the glob matched, plus the
+ * directory listing itself, so it never widens what the task may read.
+ *
+ * A negation anywhere in the set disables this: `['**\/*', '!secret/**']`
+ * takes files OUT of the declared inputs, and a directory grant would put
+ * them back.
+ */
+function wholeDirGrants(globs: readonly string[] | undefined, projectDir: string): string[] {
+  if (globs === undefined || globs.length === 0) return []
+  if (globs.some((g) => g.startsWith('!'))) return []
+  const grants = new Set<string>()
+  for (const g of globs) {
+    if (g === '**' || g === '**/*') grants.add(projectDir)
+    else if (g.endsWith('/**') || g.endsWith('/**/*')) {
+      grants.add(path.join(projectDir, staticPrefix(g)))
+    }
+  }
+  // A grant already covered by a shallower one is redundant.
+  return [...grants].filter((g) => ![...grants].some((o) => o !== g && g.startsWith(o + path.sep)))
+}
+
+/**
  * Group task: no `exec`. The scheduler has already ensured every
  * dependency completed; we just return success with a hash rolled up
  * from upstream outcomes so downstream cache keys still cascade
@@ -474,10 +498,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // before the strace pass shipped, false since, and the branch below is
     // live on Linux.) Violations surface via `TaskOutcome.sandboxViolationLines`.
     let code = res.exitCode
+    // Advisory records explain a failure; they never manufacture one. See
+    // `markAdvisory` — an ancestor directory above the project and a
+    // system-info probe are denied on every sandboxed run and cannot be
+    // granted away, so failing on them would make the sandbox unusable.
+    const blocking = violations.filter((v) => v.advisory !== true)
     // A declared sandbox fails the task on any violation — that is its
     // whole contract. `userSandbox` is the only way a task is sandboxed,
     // so this reads as "sandboxed and it tripped".
-    if (userSandbox && violations.length > 0 && code === 0) code = 1
+    if (userSandbox && blocking.length > 0 && code === 0) code = 1
     // A child we SIGTERMed for exceeding the timeout is a genuine failure —
     // stream a clear line so the 143 exit reads as a timeout.
     if (res.timedOut) {
@@ -622,13 +651,32 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       path.join(node.projectDir, 'node_modules'),
       path.join(args.workspaceRoot, 'node_modules'),
     ]
+    // A glob that covers a directory WHOLE is granted as that directory
+    // rather than as every file under it. `**/*` becomes the project dir,
+    // `src/**` becomes `src`. This is not a widening: the glob already
+    // declared every file there, so the grant adds exactly one thing — the
+    // ability to LIST the directory, which is what a task needs to work in
+    // it at all (`bun test` reading its own cwd, `oxlint` walking the tree).
+    // It also collapses thousands of grants into one.
+    //
+    // Not applied when the set carries a negation: `['**/*', '!secret/**']`
+    // excludes files from the inputs, and granting the parent directory
+    // would hand them back.
+    const dirGrants = wholeDirGrants(cacheCfg?.inputs?.files, node.projectDir)
+    const covered = (f: string): boolean =>
+      dirGrants.some((g) => f === g || f.startsWith(g + path.sep))
     // Output paths are read+write — a task that declares `dist/**` as
     // output expects to read what it just wrote (e.g. `touch dist/x`
     // stats the file; `tsc --incremental` re-reads .tsbuildinfo).
     return {
       ...base,
       sandbox: {
-        baseAllowRead: [...resolved.files, ...baseAllowWrite, ...depDirs],
+        baseAllowRead: [
+          ...dirGrants,
+          ...resolved.files.filter((f) => !covered(f)),
+          ...baseAllowWrite,
+          ...depDirs,
+        ],
         baseAllowWrite,
         baseDenyRead: [args.workspaceRoot],
         config: resolveSandboxConfig(cfg.sandbox ?? {}, node.projectDir),

@@ -460,9 +460,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const sandboxed = [...nodes.values()].filter((n) => n.config.sandbox !== undefined)
     const anySandboxed = sandboxed.length > 0
     if (anySandboxed) {
-      const weakerNested = sandboxed.every(
-        (n) => n.config.sandbox?.enableWeakerNestedSandbox === true,
-      )
+      const weakerNested = sandboxed.every((n) => n.config.sandbox?.weakerWhenNested === true)
       const avail = await probeSandbox({ weakerNested })
       if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
       await initSandbox()

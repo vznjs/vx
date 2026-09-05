@@ -123,94 +123,78 @@ export interface TaskConfig {
 }
 
 /**
- * Per-task sandbox config. Mirrors the user-facing surface of
- * `@anthropic-ai/sandbox-runtime`'s `SandboxRuntimeConfig`, minus
- * deployment-only fields (binary paths, proxy ports, ripgrep config).
+ * What a sandboxed task may do, declared as CAPABILITIES.
  *
- * Path-list fields (`allowRead`, `allowWrite`, `network.allowUnixSockets`)
- * accept:
- *   - relative paths     → resolved against the project dir
- *   - absolute paths     → used as-is (`/etc/passwd`, `/tmp`)
- *   - tilde paths        → expanded against the user's home (`~/.npmrc`)
+ * One shape for the whole policy. You say what the task is allowed to
+ * touch; vx decides how each capability is realised — some become sandbox
+ * runtime config, some become rules in the OS policy, and one the platform
+ * cannot express is an error rather than a silent no-op. None of that
+ * reaches the config.
  *
- * No globs in path lists — bwrap on Linux only accepts path prefixes.
+ * The baseline is always the task's own declarations: it may read its
+ * resolved `cache.inputs.files`, write the prefixes of its
+ * `cache.outputs.files`, and reach nothing else. Everything here is on top
+ * of that.
+ *
+ * Paths are project-relative, absolute, or `~`-expanded — and are path
+ * PREFIXES, never globs (a glob cannot be enforced by a mount).
  */
 export interface SandboxConfig {
-  // === Filesystem ===
+  /** Capabilities granted on top of the task's own declarations. */
+  allow?: SandboxGrants
   /**
-   * Additional read-allowed paths beyond resolved `cache.inputs.files`.
-   * These are unioned with the declared inputs to form the complete
-   * allowRead set passed to the sandbox.
+   * Capabilities taken away. Evaluated before `allow`, so a domain in both
+   * is denied.
    */
-  allowRead?: string[]
+  deny?: SandboxDenials
   /**
-   * Additional write-allowed paths beyond the static prefix of
-   * `cache.outputs.files`. Tasks with no declared outputs and no extra
-   * `allowWrite` can write to nowhere — typical for `lint`/`typecheck`.
-   */
-  allowWrite?: string[]
-  /**
-   * Permit writes to `.git/config` files. Default `false` — most build
-   * tools should not be reconfiguring git.
-   */
-  allowGitConfig?: boolean
-
-  // === Network ===
-  /**
-   * Network policy.
-   *   - `false` (default) — block all outbound traffic.
-   *   - `true`            — allow all outbound traffic.
-   *   - object            — fine-grained control (domains / sockets / etc.).
-   */
-  network?: boolean | SandboxNetworkConfig
-
-  // === Process behavior ===
-  /**
-   * Allow the task to acquire a pseudo-terminal. Default `false`.
-   * Needed by tasks that interact with a TTY (rare in CI).
-   */
-  allowPty?: boolean
-  /**
-   * Linux only. Allow nested sandboxes (a sandboxed task spawning
-   * another sandboxed task). Default `false`.
-   */
-  enableWeakerNestedSandbox?: boolean
-  /**
-   * macOS only. Skip the network namespace; routes traffic via the
-   * host proxy instead of unsharing networking. Lower overhead but
-   * weaker isolation. Default `false`.
-   */
-  enableWeakerNetworkIsolation?: boolean
-
-  // === Violation policy ===
-  /**
-   * Map of command-substring → list of paths to ignore violations on
-   * for that command. Lets you silence known-noisy probes (e.g. a
-   * compiler that statx's many candidate header paths). Per SRT's
-   * own ignoreViolations field.
+   * Map of command-substring → list of substrings to drop from the
+   * violation report for that command. `'*'` matches any command. This
+   * silences the REPORT; it does not permit the operation — prefer
+   * `allow` when the task genuinely needs something.
    */
   ignoreViolations?: Record<string, string[]>
+  /**
+   * Accept a weaker sandbox when vx itself already runs inside one
+   * (a container, another sandbox). Without it, nesting fails fast rather
+   * than pretending to confine.
+   */
+  weakerWhenNested?: boolean
+  /** Accept weaker network isolation (host proxy) for lower overhead. */
+  weakerNetworkIsolation?: boolean
 }
 
-export interface SandboxNetworkConfig {
+export interface SandboxGrants {
+  /** Readable path prefixes, beyond the resolved `cache.inputs.files`. */
+  read?: string[]
+  /** Writable path prefixes, beyond the `cache.outputs.files` prefixes. */
+  write?: string[]
   /**
-   * Domain patterns the task may reach. Wildcards: `*.example.com`,
-   * `*` (allow all).
+   * Reachable domains. `true` allows all, `['*.example.com']` a pattern.
+   * Omitted means no network at all.
    */
-  allowedDomains?: string[]
-  /** Domains explicitly blocked, evaluated before allowedDomains. */
-  deniedDomains?: string[]
-  /** Unix socket paths the task may connect to. */
-  allowUnixSockets?: string[]
-  /** Allow any Unix socket. Use with care. */
-  allowAllUnixSockets?: boolean
+  network?: true | string[]
   /**
-   * Allow binding to local ports (e.g. a test that boots a server on
-   * localhost for itself to query).
+   * Kernel information the task may query, by info type — the name that
+   * appears in a denial, e.g. `vfs.disk-space` (every Bun and git process
+   * probes free space at startup).
    */
-  allowLocalBinding?: boolean
-  /** macOS only. Mach service names the task may look up. */
-  allowMachLookup?: string[]
+  systemInfo?: string[]
+  /** Unix socket paths the task may connect to. `true` allows any. */
+  unixSockets?: true | string[]
+  /** Bind a localhost port — a test that boots a server for itself. */
+  localBinding?: boolean
+  /** macOS: Mach service names the task may look up. */
+  machLookup?: string[]
+  /** Acquire a TTY. Rare outside interactive tools. */
+  pty?: boolean
+  /** Write to `.git/config`. Most build tools should not. */
+  gitConfig?: boolean
+}
+
+export interface SandboxDenials {
+  /** Domains blocked even if `allow.network` would admit them. */
+  network?: string[]
 }
 
 export interface ExecConfig {

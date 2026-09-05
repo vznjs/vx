@@ -728,7 +728,7 @@ describe('loadProjectConfig', () => {
             resources: { cpus: 1, memory: 1024, image: 'vx-toolchain' },
             env: { passThrough: ['CI'], define: { A: 'b' } },
           },
-          sandbox: { network: false },
+          sandbox: { allow: { read: ['../shared'], network: ['registry.npmjs.org'] } },
           cache: {
             inputs: {
               files: ['src/**'],

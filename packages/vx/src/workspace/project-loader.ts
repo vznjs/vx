@@ -805,93 +805,87 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
   if (negation) assertNotNegationOnly(v as string[], where)
 }
 
-const SANDBOX_PATH_FIELDS = ['allowRead', 'allowWrite'] as const
-const SANDBOX_BOOL_FIELDS = [
-  'allowGitConfig',
-  'allowPty',
-  'enableWeakerNestedSandbox',
-  'enableWeakerNetworkIsolation',
-] as const
-const SANDBOX_NETWORK_PATH_FIELDS = [
-  'allowedDomains',
-  'deniedDomains',
-  'allowUnixSockets',
-  'allowMachLookup',
-] as const
-const SANDBOX_NETWORK_BOOL_FIELDS = ['allowAllUnixSockets', 'allowLocalBinding'] as const
-const SANDBOX_FIELDS = new Set<string>([
-  ...SANDBOX_PATH_FIELDS,
-  ...SANDBOX_BOOL_FIELDS,
-  'network',
+const SANDBOX_FIELDS = new Set([
+  'allow',
+  'deny',
   'ignoreViolations',
+  'weakerWhenNested',
+  'weakerNetworkIsolation',
 ])
-const SANDBOX_NETWORK_FIELDS = new Set<string>([
-  ...SANDBOX_NETWORK_PATH_FIELDS,
-  ...SANDBOX_NETWORK_BOOL_FIELDS,
+const GRANT_PATH_FIELDS = ['read', 'write'] as const
+const GRANT_NAME_FIELDS = ['systemInfo', 'machLookup'] as const
+const GRANT_BOOL_FIELDS = ['localBinding', 'pty', 'gitConfig'] as const
+const GRANT_FIELDS = new Set<string>([
+  ...GRANT_PATH_FIELDS,
+  ...GRANT_NAME_FIELDS,
+  ...GRANT_BOOL_FIELDS,
+  'network',
+  'unixSockets',
 ])
+const DENY_FIELDS = new Set(['network'])
 
 /**
- * Validate a `sandbox: {...}` block. The field set mirrors the user-
- * facing surface of SandboxConfig in src/config.ts; this is the only
- * place we enforce shape at runtime (TS users get compile-time checks
- * already).
+ * Validate a `sandbox: {...}` block — one capability shape, whatever the
+ * platform ends up doing with it. Unknown keys are refused rather than
+ * dropped: a silently-ignored `allow.reads` would confine a task more than
+ * its author believed, and the failure reads as a broken build.
  */
 function validateSandbox(sandbox: unknown, where: string, hasExec: boolean): void {
   if (typeof sandbox !== 'object' || sandbox === null || Array.isArray(sandbox)) {
     throw new UserError(
       `${where}.sandbox must be an object (e.g. \`{}\` for the baseline, or ` +
-        `\`{ allowRead: [...], network: true }\`)`,
+        `\`{ allow: { read: [...] } }\`)`,
     )
   }
   if (!hasExec) {
     throw new UserError(`${where}.sandbox requires \`exec\` — a group task has nothing to wrap`)
   }
-  for (const key of Object.keys(sandbox as object)) {
-    if (!SANDBOX_FIELDS.has(key)) {
-      throw new UserError(
-        `${where}.sandbox.${key} is not a known field. Allowed: ` +
-          `${[...SANDBOX_FIELDS].sort().join(', ')}`,
-      )
-    }
-  }
+  assertKnownFields(sandbox, SANDBOX_FIELDS, `${where}.sandbox`)
   const obj = sandbox as Record<string, unknown>
-  for (const field of SANDBOX_PATH_FIELDS) {
-    if (obj[field] === undefined) continue
-    assertPathArray(obj[field], `${where}.sandbox.${field}`)
-  }
-  for (const field of SANDBOX_BOOL_FIELDS) {
-    if (obj[field] !== undefined && typeof obj[field] !== 'boolean') {
-      throw new UserError(`${where}.sandbox.${field} must be a boolean`)
+
+  for (const flag of ['weakerWhenNested', 'weakerNetworkIsolation']) {
+    if (obj[flag] !== undefined && typeof obj[flag] !== 'boolean') {
+      throw new UserError(`${where}.sandbox.${flag} must be a boolean`)
     }
   }
-  const network = obj.network
-  if (network !== undefined && typeof network !== 'boolean') {
-    if (typeof network !== 'object' || network === null || Array.isArray(network)) {
-      throw new UserError(
-        `${where}.sandbox.network must be a boolean or an object (allowedDomains, ` +
-          `deniedDomains, allowUnixSockets, allowAllUnixSockets, allowLocalBinding, allowMachLookup)`,
-      )
+
+  const allow = obj['allow']
+  if (allow !== undefined) {
+    if (typeof allow !== 'object' || allow === null || Array.isArray(allow)) {
+      throw new UserError(`${where}.sandbox.allow must be an object`)
     }
-    for (const key of Object.keys(network)) {
-      if (!SANDBOX_NETWORK_FIELDS.has(key)) {
-        throw new UserError(
-          `${where}.sandbox.network.${key} is not a known field. Allowed: ` +
-            `${[...SANDBOX_NETWORK_FIELDS].sort().join(', ')}`,
-        )
+    assertKnownFields(allow, GRANT_FIELDS, `${where}.sandbox.allow`)
+    const g = allow as Record<string, unknown>
+    for (const f of GRANT_PATH_FIELDS) {
+      if (g[f] !== undefined) assertPathArray(g[f], `${where}.sandbox.allow.${f}`)
+    }
+    for (const f of GRANT_NAME_FIELDS) {
+      if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
+    }
+    for (const f of GRANT_BOOL_FIELDS) {
+      if (g[f] !== undefined && typeof g[f] !== 'boolean') {
+        throw new UserError(`${where}.sandbox.allow.${f} must be a boolean`)
       }
     }
-    const netObj = network as Record<string, unknown>
-    for (const field of SANDBOX_NETWORK_PATH_FIELDS) {
-      if (netObj[field] === undefined) continue
-      assertStringArray(netObj[field], `${where}.sandbox.network.${field}`)
-    }
-    for (const field of SANDBOX_NETWORK_BOOL_FIELDS) {
-      if (netObj[field] !== undefined && typeof netObj[field] !== 'boolean') {
-        throw new UserError(`${where}.sandbox.network.${field} must be a boolean`)
+    // `true` (everything) or an explicit list — nothing in between.
+    for (const f of ['network', 'unixSockets']) {
+      if (g[f] !== undefined && g[f] !== true) {
+        assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
       }
     }
   }
-  const ignoreViolations = obj.ignoreViolations
+
+  const deny = obj['deny']
+  if (deny !== undefined) {
+    if (typeof deny !== 'object' || deny === null || Array.isArray(deny)) {
+      throw new UserError(`${where}.sandbox.deny must be an object`)
+    }
+    assertKnownFields(deny, DENY_FIELDS, `${where}.sandbox.deny`)
+    const d = deny as Record<string, unknown>
+    if (d['network'] !== undefined) assertStringArray(d['network'], `${where}.sandbox.deny.network`)
+  }
+
+  const ignoreViolations = obj['ignoreViolations']
   if (ignoreViolations !== undefined) {
     if (
       typeof ignoreViolations !== 'object' ||
@@ -899,7 +893,7 @@ function validateSandbox(sandbox: unknown, where: string, hasExec: boolean): voi
       Array.isArray(ignoreViolations)
     ) {
       throw new UserError(
-        `${where}.sandbox.ignoreViolations must be a record mapping command patterns to arrays of paths`,
+        `${where}.sandbox.ignoreViolations must be a record mapping command patterns to arrays of strings`,
       )
     }
     for (const [k, v] of Object.entries(ignoreViolations)) {

@@ -301,7 +301,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
               build: {
                 exec: { command: 'cat ../../shared.txt > out.txt' },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                sandbox: { allowRead: ['../../shared.txt'] },
+                sandbox: { allow: { read: ['../../shared.txt'] } },
               },
             },
           }
@@ -344,7 +344,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                 build: {
                   exec: { command: 'cat ../../shared.txt > out.txt' },
                   cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                  sandbox: { allowRead: ['../../shared.txt'] },
+                  sandbox: { allow: { read: ['../../shared.txt'] } },
                 },
               },
             }
@@ -454,7 +454,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
               build: {
                 exec: { command: 'echo ok > /tmp/vx-allowwrite-test.txt' },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['src/x.txt'] } },
-                sandbox: { allowWrite: ['/tmp'] },
+                sandbox: { allow: { write: ['/tmp'] } },
               },
             },
           }
@@ -569,12 +569,12 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       log: collectingLogger(fixture),
     }).catch((e: Error) => e)
     expect(r).toBeInstanceOf(Error)
-    expect((r as Error).message).toContain('sandbox.typo is not a known field')
+    expect((r as Error).message).toContain('sandbox has unknown field "typo"')
   })
 
-  it('rejects denyRead / denyWrite (no longer supported in the public schema)', async () => {
+  it('rejects a capability the schema does not define', async () => {
     await addProject(fixture.root, 'bad', {
-      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: { denyRead: ['/etc'] } } } }`,
+      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: { allow: { execute: ['/bin'] } } } } }`,
     })
     const r = await run({
       cwd: fixture.root,
@@ -582,12 +582,12 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       log: collectingLogger(fixture),
     }).catch((e: Error) => e)
     expect(r).toBeInstanceOf(Error)
-    expect((r as Error).message).toContain('sandbox.denyRead is not a known field')
+    expect((r as Error).message).toContain('sandbox.allow has unknown field "execute"')
   })
 
   it('rejects globs in allowRead', async () => {
     await addProject(fixture.root, 'bad', {
-      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: { allowRead: ['**/*'] } } } }`,
+      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: { allow: { read: ['**/*'] } } } } }`,
     })
     const r = await run({
       cwd: fixture.root,
@@ -611,7 +611,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     expect((r as Error).message).toContain('sandbox requires `exec`')
   })
 
-  it('accepts the full SRT-mirroring shape (parses + runs)', async () => {
+  it('accepts every capability the schema defines (parses + runs)', async () => {
     await addProject(fixture.root, 'full', {
       files: { 'src/x.txt': 'hi' },
       config: `
@@ -621,13 +621,20 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
               exec: { command: 'cat src/x.txt > out.txt' },
               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
               sandbox: {
-                allowRead: ['/etc/hosts'],
-                allowWrite: [],
-                allowGitConfig: false,
-                network: { allowedDomains: ['*.example.com'], deniedDomains: [] },
-                allowPty: false,
-                enableWeakerNestedSandbox: false,
-                enableWeakerNetworkIsolation: false,
+                allow: {
+                  read: ['/etc/hosts'],
+                  write: [],
+                  network: ['*.example.com'],
+                  systemInfo: ['vfs.disk-space'],
+                  unixSockets: ['/var/run/nothing.sock'],
+                  localBinding: false,
+                  machLookup: [],
+                  pty: false,
+                  gitConfig: false,
+                },
+                deny: { network: ['blocked.example.com'] },
+                weakerWhenNested: false,
+                weakerNetworkIsolation: false,
                 ignoreViolations: { 'cat ': ['/tmp/noisy'] },
               },
             },
@@ -758,7 +765,7 @@ describe('resolveSandboxConfig', () => {
       const realTarget = realpathSync(target)
 
       const r = resolveSandboxConfig(
-        { allowRead: [link], allowWrite: [path.join(link, 'not', 'yet')] },
+        { allow: { read: [link], write: [path.join(link, 'not', 'yet')] } },
         root,
       )
       expect(r.allowRead).toEqual([realTarget])
