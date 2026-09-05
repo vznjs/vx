@@ -588,7 +588,7 @@ describe('loadProjectConfig', () => {
   // A typo'd field was silently DROPPED, so the task hashed as if it had
   // never been written — for a cache-key field that is a stale hit, not a
   // config mistake. Every level that feeds the key now rejects unknown
-  // keys, the way `exec.resources` and `sandbox` already did.
+  // keys, the way `exec.resources` and `exec.sandbox` already did.
   describe('unknown fields', () => {
     const cfg = (task: string): string => `export default { tasks: { build: ${task} } }`
 
@@ -727,8 +727,8 @@ describe('loadProjectConfig', () => {
             retries: 1,
             resources: { cpus: 1, memory: 1024, image: 'vx-toolchain' },
             env: { passThrough: ['CI'], define: { A: 'b' } },
+            sandbox: { allow: { read: ['../shared'], network: ['registry.npmjs.org'] } },
           },
-          sandbox: { allow: { read: ['../shared'], network: ['registry.npmjs.org'] } },
           cache: {
             inputs: {
               files: ['src/**'],

@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import {
@@ -9,7 +9,6 @@ import {
   cleanWorkspaceOutputs,
   FULL_CACHE_POLICY,
   type GitFilesCache,
-  resolveInputs,
   resolveOutputs,
   resolveWorkspaceOutputs,
   WORKSPACE_OUTPUT_PREFIX,
@@ -131,30 +130,6 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (isGroupTask(args.node)) return executeGroupTask(args)
   if (args.node.config.exec?.persistent !== undefined) return executePersistentTask(args)
   return executeCachedTask(args)
-}
-
-/**
- * The directories a task's declared input globs cover WHOLE — `**` and
- * `**\/*` cover the project dir, `<dir>/**` covers `<dir>`. Granting the
- * directory is equivalent to granting every file the glob matched, plus the
- * directory listing itself, so it never widens what the task may read.
- *
- * A negation anywhere in the set disables this: `['**\/*', '!secret/**']`
- * takes files OUT of the declared inputs, and a directory grant would put
- * them back.
- */
-function wholeDirGrants(globs: readonly string[] | undefined, projectDir: string): string[] {
-  if (globs === undefined || globs.length === 0) return []
-  if (globs.some((g) => g.startsWith('!'))) return []
-  const grants = new Set<string>()
-  for (const g of globs) {
-    if (g === '**' || g === '**/*') grants.add(projectDir)
-    else if (g.endsWith('/**') || g.endsWith('/**/*')) {
-      grants.add(path.join(projectDir, staticPrefix(g)))
-    }
-  }
-  // A grant already covered by a shallower one is redundant.
-  return [...grants].filter((g) => ![...grants].some((o) => o !== g && g.startsWith(o + path.sep)))
 }
 
 /**
@@ -427,7 +402,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // proof failure, not a task failure — so it flags the RUN via the verdict,
   // it does not flip the task's own exit code the way a user-declared sandbox
   // violation does).
-  const userSandbox = cfg.sandbox !== undefined
+  const userSandbox = cfg.exec?.sandbox !== undefined
   const useSandbox = userSandbox
   let violations: SandboxViolation[] = []
 
@@ -498,15 +473,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // before the strace pass shipped, false since, and the branch below is
     // live on Linux.) Violations surface via `TaskOutcome.sandboxViolationLines`.
     let code = res.exitCode
-    // Advisory records explain a failure; they never manufacture one. See
-    // `markAdvisory` — an ancestor directory above the project and a
-    // system-info probe are denied on every sandboxed run and cannot be
-    // granted away, so failing on them would make the sandbox unusable.
-    const blocking = violations.filter((v) => v.advisory !== true)
+    // ANY violation fails the task (owner, 2026-09-05). A sandboxed task
+    // declares what it touches; a denial means it touched something else,
+    // and an artifact built while reading — or failing to read — something
+    // the cache key never folded is not a safe thing to replay. A task that
+    // survives the denial is the dangerous case, not the harmless one:
+    // that is precisely the run that succeeds and caches a wrong result.
+    if (userSandbox && violations.length > 0 && code === 0) code = 1
     // A declared sandbox fails the task on any violation — that is its
     // whole contract. `userSandbox` is the only way a task is sandboxed,
     // so this reads as "sandboxed and it tripped".
-    if (userSandbox && blocking.length > 0 && code === 0) code = 1
     // A child we SIGTERMed for exceeding the timeout is a genuine failure —
     // stream a clear line so the 143 exit reads as a timeout.
     if (res.timedOut) {
@@ -601,85 +577,55 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       outputs: { files: outputs, workspaceFiles: wsOutputs },
     }
     if (!useSandbox) return base
-    // Baseline allowRead = resolved cache.inputs.files (absolute paths)
-    // Baseline allowWrite = static prefix of every cache.outputs.files glob
-    // Baseline denyRead = the workspace root, so any read outside the
-    //   project's declared inputs trips the deny boundary.
-    // The user's sandbox block extends each list with explicit additions.
-    const resolved = await resolveInputs({
-      projectDir: node.projectDir,
-      workspaceRoot: args.workspaceRoot,
-      envSource: process.env,
-      inputs: cacheCfg?.inputs,
-      ownOutputs: outputs,
-      ownWorkspaceOutputs: wsOutputs,
-      nestedProjectDirs: args.nestedProjectDirs,
-      ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-      ...(args.hashCache !== undefined
-        ? {
-            runtimeCache: args.hashCache.runtime,
-            workspaceRuntimeCache: args.hashCache.workspaceRuntime,
-          }
-        : {}),
-    })
-    const baseAllowWrite = [
-      ...outputs.map((g) => path.join(node.projectDir, staticPrefix(g))),
-      // Workspace outputs anchor their write prefixes at the root.
-      ...wsOutputs.map((g) => path.join(args.workspaceRoot, staticPrefix(g))),
-    ]
-    // bwrap can't --bind a non-existent host path; the bind silently
-    // becomes a no-op (or a tmpfs that evaporates on exit), and writes
-    // to the path appear to succeed inside the sandbox but never land
-    // on the host. Pre-create every output path so the binds resolve
-    // to real fs entries: globbed outputs (`dist/**`) become empty
-    // dirs; literal outputs (`out.txt`) become empty files.
-    await prepareOutputsForBind(node.projectDir, outputs)
-    await prepareOutputsForBind(args.workspaceRoot, wsOutputs)
-    // Installed dependencies are READABLE, and not an undeclared input.
-    // They are derived state, fully determined by things the key already
-    // folds in: the lockfile and pnpm-workspace.yaml through the workspace
-    // fingerprint, and each project's package.json bytes. So a change to
-    // them changes the key already, and reading them cannot produce a
-    // stale hit, which is what a declared sandbox is there to prevent.
-    // Denying them instead made the sandbox unusable for any task that
-    // imports a dependency: this repo's own `bun build --compile` died
-    // with `Cannot read directory` naming the workspace root, reported to
-    // the user as `error: An unknown error occurred (Unexpected)` and
-    // nothing else (owner call, 2026-09-04). The two directories are the
-    // ones the task's PATH already gets its `.bin` entries from.
+    // The sandbox derives NOTHING from `cache` (owner, 2026-09-05). Those
+    // are two different questions: `cache.inputs` says what INVALIDATES the
+    // task, `sandbox.allow` says what it may TOUCH. Deriving one from the
+    // other coupled them in both directions — a declaration added for
+    // caching silently widened the sandbox, and a path the task needed had
+    // to be laundered through the cache key to get it. A sandboxed task
+    // declares its own reads and writes.
+    //
+    // `node_modules` is the one grant core still makes, and it is not
+    // cache-derived: it is where the task's own PATH gets its `.bin`
+    // entries, and denying it made the sandbox unusable for anything that
+    // imports a dependency (`bun build --compile` died with only
+    // `error: An unknown error occurred (Unexpected)`; owner call
+    // 2026-09-04).
     const depDirs = [
       path.join(node.projectDir, 'node_modules'),
       path.join(args.workspaceRoot, 'node_modules'),
     ]
-    // A glob that covers a directory WHOLE is granted as that directory
-    // rather than as every file under it. `**/*` becomes the project dir,
-    // `src/**` becomes `src`. This is not a widening: the glob already
-    // declared every file there, so the grant adds exactly one thing — the
-    // ability to LIST the directory, which is what a task needs to work in
-    // it at all (`bun test` reading its own cwd, `oxlint` walking the tree).
-    // It also collapses thousands of grants into one.
-    //
-    // Not applied when the set carries a negation: `['**/*', '!secret/**']`
-    // excludes files from the inputs, and granting the parent directory
-    // would hand them back.
-    const dirGrants = wholeDirGrants(cacheCfg?.inputs?.files, node.projectDir)
-    const covered = (f: string): boolean =>
-      dirGrants.some((g) => f === g || f.startsWith(g + path.sep))
-    // Output paths are read+write — a task that declares `dist/**` as
-    // output expects to read what it just wrote (e.g. `touch dist/x`
-    // stats the file; `tsc --incremental` re-reads .tsbuildinfo).
+    // A workspace dependency is a SYMLINK in `node_modules` pointing at a
+    // sibling project, so granting `node_modules` grants a link whose
+    // target is outside it. That target is a dependency, not a reach-out:
+    // no project config should have to name a sibling to import what its
+    // own `package.json` depends on (owner, 2026-09-05).
+    depDirs.push(...(await linkedDeps(depDirs)))
+    // bwrap cannot --bind a path that does not exist: the bind silently
+    // becomes a no-op and writes to it appear to succeed but never land.
+    // Pre-create what the task said it will write.
+    await prepareOutputsForBind(node.projectDir, cfg.exec?.sandbox?.allow?.write ?? [])
     return {
       ...base,
       sandbox: {
-        baseAllowRead: [
-          ...dirGrants,
-          ...resolved.files.filter((f) => !covered(f)),
-          ...baseAllowWrite,
-          ...depDirs,
-        ],
-        baseAllowWrite,
+        // Only what the task declared, plus node_modules. Write paths are
+        // readable too: a task that writes `dist/x` expects to read it back
+        // (`tsc --incremental` re-reads .tsbuildinfo).
+        baseAllowRead: depDirs,
+        baseAllowWrite: [],
+        // Enforcement anchors at the WORKSPACE ROOT: a task may not leave
+        // its project, so every sibling and every root file is denied.
+        // Reporting is a different question — see `reportWithin` below.
         baseDenyRead: [args.workspaceRoot],
-        config: resolveSandboxConfig(cfg.sandbox ?? {}, node.projectDir),
+        // …but only denials INSIDE the project are worth reporting. A task
+        // bumping into the wall is the sandbox working, not a finding: the
+        // walk `bun build --compile` makes from `/` down to its cwd lists
+        // every directory on the way (traced 2026-09-05) and no config can
+        // declare that away. What DOES matter is an undeclared touch of the
+        // project's own files — that is the one that breaks the cache key,
+        // because the key folds this project's inputs.
+        reportWithin: node.projectDir,
+        config: resolveSandboxConfig(cfg.exec?.sandbox ?? {}, node.projectDir),
       },
     }
   }
@@ -803,6 +749,36 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         }
       : {}),
   }
+}
+
+/**
+ * Where the workspace links in `dirs` actually point.
+ *
+ * One level deep, plus one level inside a `@scope/` directory — the shape
+ * a package manager writes. Anything already inside a granted directory
+ * is dropped; what is left is a sibling project's real path.
+ */
+async function linkedDeps(dirs: readonly string[]): Promise<string[]> {
+  const out = new Set<string>()
+  const scan = async (dir: string, depth: number): Promise<void> => {
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+    for (const e of entries) {
+      const full = path.join(dir, e.name)
+      if (e.isSymbolicLink()) {
+        const target = await realpath(full).catch(() => undefined)
+        if (
+          target !== undefined &&
+          !dirs.some((d) => target === d || target.startsWith(d + path.sep))
+        ) {
+          out.add(target)
+        }
+      } else if (depth === 0 && e.isDirectory() && e.name.startsWith('@')) {
+        await scan(full, 1)
+      }
+    }
+  }
+  await Promise.all(dirs.map((d) => scan(d, 0)))
+  return [...out]
 }
 
 export interface RestoreHitArgs {

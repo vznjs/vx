@@ -15,9 +15,6 @@ import { resolveCache, resolveExecutors, type VxPlugin } from '../src/orchestrat
 import type { TaskExecutor, TaskInputs } from '../src/exec/index.js'
 import { Cache, ChainedCache } from '../src/cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
-import { sandboxAvailable } from './helpers/sandbox-gate.js'
-
-const sandboxOk = await sandboxAvailable('plugin-capabilities settle plumbing')
 
 async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => void }> {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'vx-plugin-cap-'))

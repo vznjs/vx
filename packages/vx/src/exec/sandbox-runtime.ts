@@ -220,9 +220,6 @@ export interface SandboxedRunArgs {
   timeoutMs?: number
   /** See `CaptureConfig` — which streams are retained on the result. */
   capture?: CaptureConfig
-  /** Pay the macOS settle window even on a clean exit — a caller that reads
-   *  an EMPTY violation store as meaningful needs it; see the poll below. */
-  settleOnCleanExit?: boolean
   /**
    * Baseline reads — paths the sandbox unconditionally allows. The
    * caller builds this from resolved `cache.inputs.files`.
@@ -239,6 +236,12 @@ export interface SandboxedRunArgs {
    * is forbidden. Pass `[workspaceRoot]` to enforce project boundaries.
    */
   baseDenyRead: readonly string[]
+  /**
+   * Only denials on a path under this directory are reported. A denial
+   * outside it is still ENFORCED — the task cannot leave its project — but
+   * that is the wall doing its job, not a finding to fail a run over.
+   */
+  readonly reportWithin: string
   /**
    * User-declared sandbox block (after path-resolution). Path lists are
    * unioned with the baselines; bool/object fields fall through to SRT.
@@ -266,7 +269,12 @@ export interface ResolvedSandboxConfig {
   gitConfig?: boolean
   weakerWhenNested?: boolean
   weakerNetworkIsolation?: boolean
-  ignoreViolations?: Record<string, string[]>
+  ignore?: {
+    read?: readonly string[]
+    write?: readonly string[]
+    systemInfo?: readonly string[]
+    network?: readonly string[]
+  }
 }
 
 /**
@@ -334,8 +342,8 @@ export function resolveSandboxConfig(
   }
   const a = cfg.allow ?? {}
   const r: ResolvedSandboxConfig = {
-    allowRead: (a.read ?? []).map(resolve),
-    allowWrite: (a.write ?? []).map(resolve),
+    allowRead: expandGrants((a.read ?? []).map(resolve)),
+    allowWrite: expandGrants((a.write ?? []).map(resolve)),
   }
   if (a.network !== undefined) r.network = a.network
   if (cfg.deny?.network !== undefined) r.denyNetwork = cfg.deny.network
@@ -349,21 +357,22 @@ export function resolveSandboxConfig(
   if (cfg.weakerNetworkIsolation !== undefined) {
     r.weakerNetworkIsolation = cfg.weakerNetworkIsolation
   }
-  if (cfg.ignoreViolations !== undefined) r.ignoreViolations = cfg.ignoreViolations
+  if (cfg.ignore !== undefined) {
+    // Relative patterns anchor at the project dir; absolute and `~` ones
+    // are taken as written. NOT realpath'd — a pattern is not a path.
+    const anchor = (pat: string): string =>
+      pat.startsWith('~') || path.isAbsolute(pat) ? pat : path.join(projectDir, pat)
+    r.ignore = {
+      ...(cfg.ignore.read ? { read: cfg.ignore.read.map(anchor) } : {}),
+      ...(cfg.ignore.write ? { write: cfg.ignore.write.map(anchor) } : {}),
+      ...(cfg.ignore.systemInfo ? { systemInfo: [...cfg.ignore.systemInfo] } : {}),
+      ...(cfg.ignore.network ? { network: [...(cfg.ignore.network as string[])] } : {}),
+    }
+  }
   return r
 }
 
 export interface SandboxViolation {
-  /**
-   * Reported, but NOT a reason to fail the task. A process reaches its cwd
-   * by stat-ing every directory on the way, so an ancestor above the
-   * project is denied on every sandboxed run — unavoidable, and impossible
-   * to grant away, since the workspace root IS the deny anchor. If such a
-   * denial actually broke the command, the command's own exit code says so.
-   * Advisory records are shown for exactly that reason: to explain a
-   * failure, never to manufacture one (owner, 2026-09-05).
-   */
-  advisory?: boolean
   /** Raw log line from SRT. Format differs between macOS / Linux. */
   line: string
   timestamp: Date
@@ -398,19 +407,9 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
   let wrapped = await SandboxManager.wrapWithSandbox(taggedCommand, undefined, customConfig)
-  // `allow.systemInfo` is the one capability SRT's config cannot express:
-  // its seatbelt profile never mentions `system-info`, and there is no
-  // field for it at any level. It IS expressible as a policy rule, and vx
-  // holds the profile before spawning — so this is where the capability
-  // becomes a rule. Nothing above this line knows that.
-  const systemInfo = args.config.systemInfo ?? []
-  if (systemInfo.length > 0 && process.platform === 'darwin') {
-    wrapped = injectProfileRules(
-      wrapped,
-      systemInfo.map(
-        (t) => `(allow system-info (info-type "${sbplToken(t, 'allow.systemInfo')}"))`,
-      ),
-    )
+  if (process.platform === 'darwin') {
+    const rules = macProfileRules(args.config)
+    if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
   }
 
   // Linux: SRT's SandboxViolationStore is macOS-only, so structured
@@ -510,18 +509,16 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // settle window a late unified-log record becomes a FALSE PASS of the
   // verify (measured locally 2026-08-24: 1/30 at idle, the same lossy
   // channel as the fail-exit case).
-  const emptyStoreIsProof = args.settleOnCleanExit === true
-  if (
-    process.platform === 'darwin' &&
-    (exitCode !== 0 || emptyStoreIsProof) &&
-    macViolations.length === 0
-  ) {
-    for (let i = 0; i < 10 && macViolations.length === 0; i++) {
-      await Bun.sleep(100)
-      macViolations = readMacViolations()
-    }
-  }
-
+  // No settle window: the store is read once, right after the child exits
+  // (owner, 2026-09-05). It cost 300ms on EVERY clean sandboxed task — the
+  // full budget, since a task with nothing to report can only prove that by
+  // waiting — against 26ms for one that reports something and breaks out
+  // early. Measured: clean `echo` 331ms sandboxed vs 16ms plain.
+  //
+  // The price is that macOS feeds this store asynchronously, so a record
+  // that has not arrived yet is not reported. Enforcement is unaffected —
+  // the OS denied the operation either way, and a command that could not
+  // proceed still fails on its own exit code.
   // Linux: parse the strace log and emit one violation per denied
   // syscall on a path inside denyRead that wasn't unconditionally
   // allowed. Best-effort — if parsing fails we surface no Linux
@@ -536,10 +533,12 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   // ignoreViolations through to the log monitor — that filter is set
   // once globally at initSandbox time. So per-task user overrides have
   // to be applied here, after read-back.
-  const userIgnore = args.config.ignoreViolations
-  const violations: SandboxViolation[] = markAdvisory(
-    filterIgnored([...macViolations, ...linuxViolations], userIgnore, userCommand),
-    args.cwd,
+  const violations: SandboxViolation[] = filterIgnored(
+    loopbackNoise(
+      withinReported([...macViolations, ...linuxViolations], args.reportWithin),
+      args.config,
+    ),
+    args.config.ignore,
   )
 
   // The one denial macOS never logs. MEASURED 2026-09-05, same machine, two
@@ -560,7 +559,8 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
       line:
         `vx: this sandbox grants no read access to the task's own working directory ` +
         `(${args.cwd}), so a command that reads or lists it fails with whatever error it ` +
-        `reports for that — macOS logs no violation record. Add \`sandbox: { allowRead: ['.'] }\`.`,
+        `reports for that — macOS logs no violation record. Add ` +
+        "`sandbox: { allow: { read: ['.'] } }`.",
     })
   }
 
@@ -609,19 +609,76 @@ function sbplToken(value: string, field: string): string {
 }
 
 /**
- * Add rules to the seatbelt profile SRT generated, right after its
- * `(deny default …)` line.
+ * The capabilities that reach the macOS profile as rules rather than
+ * through SRT's config.
  *
- * This works for operations SRT's profile never mentions — which is what
- * `allow.systemInfo` is. It is NOT a general override: measured
- * 2026-09-05, an appended `(allow file-read* …)` does not defeat SRT's
- * filesystem deny, nor does an appended `(deny file-read* …)` defeat its
- * allow. Filesystem capabilities therefore go through SRT's config, where
- * they also work on Linux; only the operations SRT is silent about arrive
- * here.
+ * `systemInfo` has no SRT field at any level. The rest DO have fields,
+ * but SRT reads `network.allowLocalBinding` / `allowUnixSockets` /
+ * `allowMachLookup` off the config given to `initialize()` and never off
+ * the per-call one (`sandbox-manager.js` getters, 0.0.75) — so a per-task
+ * grant passed there is silently dropped. vx is per-task by definition,
+ * so it emits them itself. The rule text mirrors SRT's own.
+ */
+function macProfileRules(c: ResolvedSandboxConfig): string[] {
+  const rules: string[] = []
+  for (const t of c.systemInfo ?? []) {
+    rules.push(`(allow system-info (info-type "${sbplToken(t, 'allow.systemInfo')}"))`)
+  }
+  if (c.localBinding === true) {
+    // `*:*`, not `localhost:*`: a dual-stack socket bound to 127.0.0.1 is
+    // ::ffff:127.0.0.1 in the kernel, which seatbelt's `localhost` does
+    // not match. bind and inbound carry no remote endpoint, so this is
+    // not egress. Egress stays pinned to loopback.
+    rules.push('(allow network-bind (local ip "*:*"))')
+    rules.push('(allow network-inbound (local ip "*:*"))')
+    rules.push('(allow network-outbound (remote ip "localhost:*"))')
+  }
+  if (c.unixSockets === true) {
+    rules.push('(allow system-socket (socket-domain AF_UNIX))')
+    rules.push('(allow network-bind (local unix-socket (path-regex #"^/")))')
+    rules.push('(allow network-outbound (remote unix-socket (path-regex #"^/")))')
+  } else if (c.unixSockets !== undefined && c.unixSockets.length > 0) {
+    rules.push('(allow system-socket (socket-domain AF_UNIX))')
+    for (const sock of c.unixSockets) {
+      // Both the declared path and what it resolves to: seatbelt matches the
+      // path the kernel sees, and on macOS `/tmp` is a symlink to
+      // `/private/tmp` — a grant on the former alone never matches.
+      for (const p of unique([sbplPath(sock, 'allow.unixSockets'), toRealPath(sock)])) {
+        rules.push(`(allow network-bind (local unix-socket (subpath "${p}")))`)
+        rules.push(`(allow network-outbound (remote unix-socket (subpath "${p}")))`)
+      }
+    }
+  }
+  for (const name of c.machLookup ?? []) {
+    rules.push(`(allow mach-lookup (global-name "${sbplToken(name, 'allow.machLookup')}"))`)
+  }
+  return rules
+}
+
+/**
+ * A path safe to interpolate into a seatbelt profile. Same reasoning as
+ * {@link sbplToken}, with the separators a path needs.
+ */
+function sbplPath(value: string, field: string): string {
+  if (!/^[A-Za-z0-9._\-/@+]+$/.test(value) || value.includes('..')) {
+    throw new UserError(`${field}: '${value}' is not a valid path`)
+  }
+  return value
+}
+
+/**
+ * Add rules to the END of the seatbelt profile SRT generated.
  *
- * A missing anchor THROWS. Silently running a task without a capability it
- * asked for is worse than not offering the capability.
+ * SBPL is last-match-wins, so the tail is the only place a rule of ours
+ * outranks one of SRT's. Measured 2026-09-05: the same rules injected
+ * after the `(deny default …)` header were inert in both directions —
+ * SRT's own later clauses won. Filesystem capabilities still go through
+ * SRT's config, where they also work on Linux; what arrives here is what
+ * SRT's per-call config CANNOT carry.
+ *
+ * A profile that does not have the expected shape THROWS. Silently
+ * running a task without a capability it asked for is worse than not
+ * offering the capability.
  */
 function injectProfileRules(wrapped: string, rules: readonly string[]): string {
   const anchor = /sandbox-exec -p '\(version 1\)\n\(deny default[^\n]*\n/.exec(wrapped)
@@ -631,8 +688,64 @@ function injectProfileRules(wrapped: string, rules: readonly string[]): string {
         'capabilities this task declared could not be applied',
     )
   }
-  const at = anchor.index + anchor[0].length
-  return `${wrapped.slice(0, at)}${rules.join('\n')}\n${wrapped.slice(at)}`
+  // The profile is a single-quoted shell argument; SRT escapes a literal
+  // quote inside it as `'"'"'` (5 chars). The first bare `'` after the
+  // header therefore closes the profile.
+  let i = anchor.index + anchor[0].length
+  for (;;) {
+    const q = wrapped.indexOf("'", i)
+    if (q === -1) {
+      throw new UserError(
+        'sandbox: the OS sandbox policy was not quoted as expected, so the ' +
+          'capabilities this task declared could not be applied',
+      )
+    }
+    if (wrapped.startsWith(`'"'"'`, q)) {
+      i = q + 5
+      continue
+    }
+    return `${wrapped.slice(0, q)}\n${rules.join('\n')}\n${wrapped.slice(q)}`
+  }
+}
+
+/**
+ * Grant paths, with globs handled per platform.
+ *
+ * macOS: SRT's own `pathFilter` turns a glob into `(regex …)` and a literal
+ * into `(subpath …)`, so a pattern is passed through and seatbelt matches
+ * it — including files created DURING the run.
+ *
+ * Linux: a grant is a bwrap bind mount, and you cannot mount a pattern.
+ * The glob is expanded against the filesystem here, which means it covers
+ * what exists when the task STARTS. A pattern matching a file the task
+ * creates later grants nothing there — declare its directory instead.
+ */
+function expandGrants(paths: readonly string[]): string[] {
+  // A pattern covering a directory WHOLE is that directory. `<d>/**/*` and
+  // `<d>/**` match everything UNDER `<d>` and never `<d>` itself, so a task
+  // granted `read: ['**/*']` still could not list its own cwd — the exact
+  // shape `bun test` and `oxlint` need. Collapsing is not a widening: the
+  // pattern already covered every file there; it adds the directory entry.
+  const collapsed = paths.map((p) => {
+    const m = /^(.*?)\/\*\*(?:\/\*)?$/.exec(p)
+    return m === null ? p : m[1]!
+  })
+  if (process.platform !== 'linux') return collapsed
+  const out: string[] = []
+  for (const p of collapsed) {
+    if (!/[*?[\]]/.test(p)) {
+      out.push(p)
+      continue
+    }
+    // Anchor the scan at the longest literal prefix so a pattern does not
+    // walk the whole filesystem to find its matches.
+    const base = path.dirname(p.slice(0, p.search(/[*?[\]]/)))
+    const pattern = path.relative(base, p)
+    for (const hit of new Bun.Glob(pattern).scanSync({ cwd: base, onlyFiles: false, dot: true })) {
+      out.push(path.join(base, hit))
+    }
+  }
+  return out
 }
 
 /** Memoized check: is `strace` on PATH on a Linux host? */
@@ -798,58 +911,89 @@ function isUnderAny(abs: string, allow: Set<string>): boolean {
  * side; this pass catches per-task additions + Linux strace results.
  */
 /**
- * A violation fails the task IFF the task could have declared it away.
+ * Does a violation line match something the task said to ignore?
  *
- * Two classes cannot be, and are marked advisory — reported in full, never
- * a reason to fail:
- *
- *  - a directory at or above the task's cwd. A process reaches its cwd by
- *    stat-ing every directory on the way, and the workspace root IS the
- *    deny anchor, so `deny … /repo` and `deny … /repo/packages` appear on
- *    every sandboxed run and no grant can remove them.
- *  - `system-info` / `sysctl-read` probes (`vfs.disk-space`,
- *    `kern.iossupportversion`). No path, no file content, nothing a config
- *    could name — SRT's seatbelt profile has no knob for them either.
- *
- * They used to be dropped from the REPORT, which is how a failing task
- * ended up with an empty violations section. Reporting them and failing on
- * them are different questions, and this answers the second one only
- * (owner, 2026-09-05).
+ * The line names an operation and a target — `deny(1) file-write-create
+ * /path/x`, `deny(1) system-info vfs.disk-space` — so the operation picks
+ * the list and the target is matched against its patterns. Anything
+ * unparseable is NOT ignored: a record we cannot classify is exactly the
+ * one worth seeing.
  */
-function markAdvisory(violations: SandboxViolation[], cwd: string): SandboxViolation[] {
-  const cwdReal = toRealPath(cwd)
-  const ancestors = new Set<string>()
-  for (let d = cwdReal; ; d = path.dirname(d)) {
-    ancestors.add(d)
-    if (d === path.dirname(d)) break
-  }
-  return violations.map((v) => {
-    if (/\bdeny\(\d+\)\s+(?:system-info|sysctl-read)\b/.test(v.line)) {
-      return { ...v, advisory: true }
-    }
-    const m = /deny\(\d+\)\s+file-read-(?:data|metadata)\s+(\/\S+)\s*$/.exec(v.line)
-    if (m !== null && ancestors.has(toRealPath(m[1]!))) return { ...v, advisory: true }
-    return v
+function matchesIgnore(line: string, ignore: ResolvedSandboxConfig['ignore']): boolean {
+  if (ignore === undefined) return false
+  const m = /deny\(\d+\)\s+(\S+)\s+(.+?)\s*$/.exec(line)
+  if (m === null) return false
+  const [op, target] = [m[1]!, m[2]!]
+  const patterns = op.startsWith('file-read')
+    ? ignore.read
+    : op.startsWith('file-write')
+      ? ignore.write
+      : op === 'system-info' || op === 'sysctl-read'
+        ? ignore.systemInfo
+        : op.startsWith('network')
+          ? ignore.network
+          : undefined
+  if (patterns === undefined) return false
+  return patterns.some((pat) => pat === target || new Bun.Glob(pat).match(target))
+}
+
+/**
+ * Drop the loopback denial `allow.localBinding` cannot avoid.
+ *
+ * A runtime that opens a dual-stack socket reaches 127.0.0.1 as
+ * ::ffff:127.0.0.1, and seatbelt's only host tokens are `localhost` and
+ * `*` — neither the grant vx emits nor any SRT rule can name that form.
+ * Bun's first loopback connect is therefore denied, it retries on AF_INET
+ * and succeeds (measured 2026-09-05: `fetch` to its own `Bun.serve` port
+ * returns 200 with one `deny(1) network-outbound` logged). The record has
+ * no address and no config can silence it, so under `localBinding` it is
+ * noise.
+ *
+ * It is not a hole: an outbound connection that actually left the machine
+ * is reported by SRT's proxy WITH its host and port, which this keeps.
+ */
+function loopbackNoise(
+  violations: SandboxViolation[],
+  config: ResolvedSandboxConfig,
+): SandboxViolation[] {
+  if (config.localBinding !== true) return violations
+  return violations.filter((v) => !/deny\(\d+\)\s+network-outbound\s*$/.test(v.line))
+}
+
+/**
+ * Keep only denials on a path inside `within`.
+ *
+ * A task may not leave its project — that is enforced by the deny anchor at
+ * the workspace root — but being STOPPED at the wall is the sandbox
+ * working, not a finding. Every process walks from `/` down to its own cwd
+ * (`bun build --compile` lists each directory on the way; traced
+ * 2026-09-05), and no configuration can declare that away.
+ *
+ * What is worth reporting is an undeclared touch of the project's OWN
+ * files: the cache key folds this project's inputs, so that is the read
+ * that makes a cached artifact wrong. A record with no path at all — a
+ * `system-info` probe — is kept, since it is not a boundary crossing and
+ * the task can grant it.
+ */
+function withinReported(violations: SandboxViolation[], within: string): SandboxViolation[] {
+  const root = toRealPath(within)
+  return violations.filter((v) => {
+    const m = /deny\(\d+\)\s+\S+\s+(\/\S+)\s*$/.exec(v.line)
+    if (m === null) return true
+    const target = toRealPath(m[1]!)
+    // `root === '/'` would otherwise compare against `'//'` and drop
+    // everything — the one prefix that needs no separator appended.
+    const prefix = root.endsWith(path.sep) ? root : root + path.sep
+    return target === root || target.startsWith(prefix)
   })
 }
 
 function filterIgnored(
   violations: SandboxViolation[],
-  ignore: Record<string, string[]> | undefined,
-  userCommand: string,
+  ignore: ResolvedSandboxConfig['ignore'],
 ): SandboxViolation[] {
-  if (!ignore) return violations
-  const wildcard = ignore['*'] ?? []
-  const cmdEntries = Object.entries(ignore).filter(([k]) => k !== '*')
-  return violations.filter((v) => {
-    if (wildcard.some((s) => v.line.includes(s))) return false
-    for (const [pattern, needles] of cmdEntries) {
-      if (userCommand.includes(pattern) && needles.some((s) => v.line.includes(s))) {
-        return false
-      }
-    }
-    return true
-  })
+  if (ignore === undefined) return violations
+  return violations.filter((v) => !matchesIgnore(v.line, ignore))
 }
 
 /**
@@ -886,6 +1030,13 @@ function filterIgnored(
  * case costs nothing, not even a readdir.
  */
 export function punchWritePaths(readPath: string, writePaths: readonly string[]): string[] {
+  // Linux only. The shadowing is a property of bwrap MOUNTS; macOS seatbelt
+  // evaluates rules by precedence, so a read grant on a directory and a
+  // write grant inside it coexist. Punching there costs the directory
+  // ENTRY: granting every child is not granting the dir, so a command that
+  // stats its own cwd — `bun build` — is denied it and dies with
+  // `error: An unknown error occurred (Unexpected)` (2026-09-05).
+  if (process.platform !== 'linux') return [readPath]
   const under = writePaths.filter((w) => w !== readPath && w.startsWith(readPath + path.sep))
   if (under.length === 0) return [readPath]
   let entries: string[]
@@ -952,7 +1103,6 @@ function buildCustomConfig(
   if (c.weakerNetworkIsolation !== undefined) {
     custom.enableWeakerNetworkIsolation = c.weakerNetworkIsolation
   }
-  if (c.ignoreViolations !== undefined) custom.ignoreViolations = c.ignoreViolations
   return custom
 }
 

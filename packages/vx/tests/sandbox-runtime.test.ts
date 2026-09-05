@@ -23,7 +23,7 @@ import {
   runSandboxed,
 } from '../src/exec/sandbox-runtime.js'
 import { run, type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
-import { sandboxAvailable, sandboxReportingReliable } from './helpers/sandbox-gate.js'
+import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const TIMEOUT = 60_000
 
@@ -103,7 +103,6 @@ async function addProject(
 }
 
 const available = await sandboxAvailable('sandbox-runtime tests')
-const reportingReliable = await sandboxReportingReliable('sandbox-runtime tests')
 
 describe.skipIf(!available)(`sandbox-runtime`, () => {
   let fixture: Fixture
@@ -149,7 +148,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   )
 
   it(
-    'sandbox: {} (baseline) caches a clean task whose reads stay inside inputs',
+    'a task that declares its reads and writes runs clean and caches',
     async () => {
       await addProject(fixture.root, 'clean', {
         files: { 'src/x.txt': 'hello' },
@@ -157,9 +156,11 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           export default {
             tasks: {
               build: {
-                exec: { command: 'cat src/x.txt > out.txt' },
+                exec: {
+                  command: 'cat src/x.txt > out.txt',
+                  sandbox: { allow: { read: ['.', 'src/**'], write: ['out.txt'] } },
+                },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                sandbox: {},
               },
             },
           }
@@ -196,9 +197,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           export default {
             tasks: {
               leak: {
-                exec: { command: 'cat ../secret/token.txt' },
+                exec: { command: 'cat ../secret/token.txt', sandbox: {} },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                sandbox: {},
               },
             },
           }
@@ -225,9 +225,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           export default {
             tasks: {
               leak: {
-                exec: { command: 'cat ../../root-secret.txt' },
+                exec: { command: 'cat ../../root-secret.txt', sandbox: {} },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                sandbox: {},
               },
             },
           }
@@ -246,14 +245,12 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   it(
     'installed dependencies are readable without being declared inputs',
     async () => {
-      // node_modules is derived state: the lockfile and pnpm-workspace.yaml
-      // (via the workspace fingerprint) and each package.json are already in
-      // the key, so a change to it changes the key and reading it cannot
-      // produce a stale hit. Denying it made `--verify=inputs` unusable for
-      // any task that imports a dependency — this repo's own `bun build
-      // --compile` failed with `Cannot read directory` naming the workspace
-      // root (owner call, 2026-09-04). Both the project's own node_modules
-      // and the workspace root's, which is where a monorepo hoists.
+      // The one grant core still makes on its own. It is not derived from
+      // `cache` — the sandbox derives nothing from cache — it is where the
+      // task's PATH finds its `.bin` entries, and denying it left anything
+      // that imports a dependency dead with only `error: An unknown error
+      // occurred (Unexpected)` (owner call, 2026-09-04). Both the project's
+      // own node_modules and the workspace root's, where a monorepo hoists.
       await mkdir(path.join(fixture.root, 'node_modules', 'hoisted'), { recursive: true })
       await writeFile(
         path.join(fixture.root, 'node_modules', 'hoisted', 'index.js'),
@@ -268,9 +265,9 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                 exec: {
                   command:
                     'cat ../../node_modules/hoisted/index.js node_modules/local/index.js > out.txt',
+                  sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
                 },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                sandbox: {},
               },
             },
           }
@@ -299,9 +296,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           export default {
             tasks: {
               build: {
-                exec: { command: 'cat ../../shared.txt > out.txt' },
+                exec: { command: 'cat ../../shared.txt > out.txt', sandbox: { allow: { read: ['.', '../../shared.txt'], write: ['out.txt'] } } },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                sandbox: { allow: { read: ['../../shared.txt'] } },
               },
             },
           }
@@ -342,9 +338,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             export default {
               tasks: {
                 build: {
-                  exec: { command: 'cat ../../shared.txt > out.txt' },
+                  exec: { command: 'cat ../../shared.txt > out.txt', sandbox: { allow: { read: ['.', '../../shared.txt'], write: ['out.txt'] } } },
                   cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                  sandbox: { allow: { read: ['../../shared.txt'] } },
                 },
               },
             }
@@ -382,27 +377,28 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             export default {
               tasks: {
                 leak: {
-                  exec: { command: 'cat ../secret/token.txt > out.txt' },
+                  exec: {
+                    command: 'cat ../secret/token.txt > out.txt',
+                    sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
+                  },
                   cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                  sandbox: {},
                 },
               },
             }
           `,
         })
         const r = await run({ cwd: link, tasks: ['leak'], log: collectingLogger(fixture) })
-        // ENFORCEMENT — artifact-based, so reporting loss cannot move it:
-        // the task failed and the secret never landed in its output.
-        expect(r.ok).toBe(false)
+        // ENFORCEMENT is the whole assertion here, and it is artifact-based
+        // so no reporting loss can move it: the secret never landed.
+        //
+        // It is deliberately NOT asserted as a violation. `token.txt` lives
+        // in a SIBLING project, and a denial outside the task's own project
+        // is not reported — being stopped at the wall is the sandbox
+        // working, not a finding. Canonicalizing the baselines through the
+        // symlink must not degenerate into "allow everything", and the
+        // absent file is what proves it did not.
         expect(existsSync(path.join(link, 'packages', 'app', 'out.txt'))).toBe(false)
-        // REPORTING — the bwrap mount failure this pin was written for named
-        // an internal `/newroot/…` path and left ZERO violations, so a real
-        // denial naming the file is the discriminating signal. Withheld where
-        // the unified log drops records under load; see the gate helper.
-        if (reportingReliable) {
-          const lines = (r.outcomes[0]?.sandboxViolationLines ?? []).join('\n')
-          expect(lines).toContain('token.txt')
-        }
+        expect((r.outcomes[0]?.sandboxViolationLines ?? []).join('\n')).not.toContain('token.txt')
       } finally {
         await rm(link, { force: true })
       }
@@ -425,9 +421,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           export default {
             tasks: {
               build: {
-                exec: { command: 'echo bad > ../../escaped.txt' },
+                exec: { command: 'echo bad > ../../escaped.txt', sandbox: {} },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                sandbox: {},
               },
             },
           }
@@ -452,9 +447,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           export default {
             tasks: {
               build: {
-                exec: { command: 'echo ok > /tmp/vx-allowwrite-test.txt' },
+                exec: { command: 'echo ok > /tmp/vx-allowwrite-test.txt', sandbox: { allow: { write: ['/tmp'] } } },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['src/x.txt'] } },
-                sandbox: { allow: { write: ['/tmp'] } },
               },
             },
           }
@@ -474,20 +468,22 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   )
 
   it(
-    'output paths are read+write (touch on a declared output works)',
+    'a declared write path is readable too (touch stats before it creates)',
     async () => {
-      // `touch` stats the file before creating it. Without auto-read
-      // of declared outputs, this fails on macOS with file-read-metadata.
-      // (On Linux, bwrap binds outputs writable AND visible.)
+      // `touch` stats the file before creating it, so a write grant that
+      // did not also permit reading would fail on macOS with
+      // file-read-metadata. Writable implies readable.
       const projDir = await addProject(fixture.root, 'toucher', {
         files: { 'src/x.txt': 'hi' },
         config: `
           export default {
             tasks: {
               build: {
-                exec: { command: 'mkdir -p dist && touch dist/marker.txt' },
+                exec: {
+                  command: 'mkdir -p dist && touch dist/marker.txt',
+                  sandbox: { allow: { read: ['.'], write: ['dist/**'] } },
+                },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
-                sandbox: {},
               },
             },
           }
@@ -521,9 +517,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           export default {
             tasks: {
               leak: {
-                exec: { command: 'cat ../secret/token.txt' },
+                exec: { command: 'cat ../secret/token.txt', sandbox: {} },
                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                sandbox: {},
               },
             },
           }
@@ -546,9 +541,9 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
 
   // ─── Validation ─────────────────────────────────────────────────
 
-  it('rejects sandbox: [] (must be an object)', async () => {
+  it('rejects exec.sandbox: [] (must be an object)', async () => {
     await addProject(fixture.root, 'bad', {
-      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: [] } } }`,
+      config: `export default { tasks: { x: { exec: { command: 'true', sandbox: [] } } } }`,
     })
     const r = await run({
       cwd: fixture.root,
@@ -556,12 +551,12 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       log: collectingLogger(fixture),
     }).catch((e: Error) => e)
     expect(r).toBeInstanceOf(Error)
-    expect((r as Error).message).toContain('sandbox must be an object')
+    expect((r as Error).message).toContain('exec.sandbox must be an object')
   })
 
   it('rejects unknown sandbox fields', async () => {
     await addProject(fixture.root, 'bad', {
-      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: { typo: true } } } }`,
+      config: `export default { tasks: { x: { exec: { command: 'true', sandbox: { typo: true } } } } }`,
     })
     const r = await run({
       cwd: fixture.root,
@@ -569,12 +564,12 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       log: collectingLogger(fixture),
     }).catch((e: Error) => e)
     expect(r).toBeInstanceOf(Error)
-    expect((r as Error).message).toContain('sandbox has unknown field "typo"')
+    expect((r as Error).message).toContain('exec.sandbox has unknown field "typo"')
   })
 
   it('rejects a capability the schema does not define', async () => {
     await addProject(fixture.root, 'bad', {
-      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: { allow: { execute: ['/bin'] } } } } }`,
+      config: `export default { tasks: { x: { exec: { command: 'true', sandbox: { allow: { execute: ['/bin'] } } } } } }`,
     })
     const r = await run({
       cwd: fixture.root,
@@ -582,23 +577,28 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       log: collectingLogger(fixture),
     }).catch((e: Error) => e)
     expect(r).toBeInstanceOf(Error)
-    expect((r as Error).message).toContain('sandbox.allow has unknown field "execute"')
+    expect((r as Error).message).toContain('exec.sandbox.allow has unknown field "execute"')
   })
 
-  it('rejects globs in allowRead', async () => {
-    await addProject(fixture.root, 'bad', {
-      config: `export default { tasks: { x: { exec: { command: 'true' }, sandbox: { allow: { read: ['**/*'] } } } } }`,
+  it('a whole-directory pattern grants the directory, so a task can list its cwd', async () => {
+    // `<dir>/**` matches everything UNDER `<dir>` and never `<dir>` itself,
+    // so before the collapse a task granted `read: ['**/*']` still could
+    // not `ls` its own cwd — the shape `bun test` and `oxlint` need.
+    await addProject(fixture.root, 'globbed', {
+      files: { 'src/x.txt': 'hi' },
+      config: `export default { tasks: { x: {
+        exec: { command: 'ls > /dev/null && cat src/x.txt > /dev/null', sandbox: { allow: { read: ['**/*'] } } },
+        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      } } }`,
     })
-    const r = await run({
-      cwd: fixture.root,
-      tasks: ['x'],
-      log: collectingLogger(fixture),
-    }).catch((e: Error) => e)
-    expect(r).toBeInstanceOf(Error)
-    expect((r as Error).message).toContain('must be path prefixes')
+    const r = await run({ cwd: fixture.root, tasks: ['x'], log: collectingLogger(fixture) })
+    expectOk(r, fixture)
   })
 
-  it('rejects sandbox on group tasks (no exec)', async () => {
+  it('a task-level sandbox is refused — it belongs to exec, which a group has none of', async () => {
+    // The old runtime check ("sandbox requires `exec`") is gone: the field
+    // lives inside `exec`, so a group task has nowhere to write one and the
+    // invalid state is unrepresentable rather than validated.
     await addProject(fixture.root, 'bad', {
       config: `export default { tasks: { x: { dependsOn: ['^build'], sandbox: {} } } }`,
     })
@@ -608,7 +608,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       log: collectingLogger(fixture),
     }).catch((e: Error) => e)
     expect(r).toBeInstanceOf(Error)
-    expect((r as Error).message).toContain('sandbox requires `exec`')
+    expect((r as Error).message).toContain('unknown field "sandbox"')
   })
 
   it('accepts every capability the schema defines (parses + runs)', async () => {
@@ -618,12 +618,12 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         export default {
           tasks: {
             x: {
-              exec: { command: 'cat src/x.txt > out.txt' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-              sandbox: {
+              exec: {
+                command: 'cat src/x.txt > out.txt',
+                sandbox: {
                 allow: {
-                  read: ['/etc/hosts'],
-                  write: [],
+                  read: ['.', 'src/**', '/etc/hosts'],
+                  write: ['out.txt'],
                   network: ['*.example.com'],
                   systemInfo: ['vfs.disk-space'],
                   unixSockets: ['/var/run/nothing.sock'],
@@ -635,8 +635,10 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                 deny: { network: ['blocked.example.com'] },
                 weakerWhenNested: false,
                 weakerNetworkIsolation: false,
-                ignoreViolations: { 'cat ': ['/tmp/noisy'] },
+                ignore: { read: ['/tmp/noisy'] },
+                },
               },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
             },
           },
         }
@@ -663,9 +665,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
               // into bash and doesn't depend on external binaries. We
               // try to connect to a public IP that's allowed via DNS.
               // Network is blocked → connect fails → exit != 0.
-              exec: { command: 'bash -c "exec 3<>/dev/tcp/1.1.1.1/80" 2>&1' },
+              exec: { command: 'bash -c "exec 3<>/dev/tcp/1.1.1.1/80" 2>&1', sandbox: {} },
               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-              sandbox: {},
             },
           },
         }
@@ -699,11 +700,11 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           export default {
             tasks: {
               leak: {
-                exec: { command: 'cat ../secret/token.txt 2>&1 || true' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-                sandbox: {
-                  ignoreViolations: { '*': ['secret/token.txt'] },
+                exec: {
+                  command: 'cat ../secret/token.txt 2>&1 || true',
+                  sandbox: { ignore: { read: ['../secret/token.txt'] } },
                 },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -857,6 +858,44 @@ describe('deniedCalls (strace trace parsing)', () => {
   })
 })
 
+/**
+ * Why `@vzn/vx#test.bun.shard-*` is the one task in this repo with no
+ * `sandbox` block: this suite spawns sandboxes, and on macOS a seatbelt
+ * policy cannot be applied from inside one. Measured 2026-09-05 — the
+ * inner `sandbox-exec` dies with `sandbox_apply: Operation not permitted`
+ * (exit 71) no matter how permissive either profile is. If a future macOS
+ * or SRT lifts that, this test fails and the shards can be sandboxed.
+ */
+describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
+  it(
+    'macOS refuses to apply a policy inside a sandboxed process',
+    async () => {
+      if (!(await sandboxAvailable('nested seatbelt'))) return
+      await initSandbox()
+      const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-nest-'))
+      try {
+        await writeFile(path.join(dir, 'hello.txt'), 'hi')
+        const permissive = '(version 1)(allow default)'
+        const r = await runSandboxed({
+          command: `sandbox-exec -p '${permissive}' /bin/cat hello.txt`,
+          cwd: dir,
+          env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
+          baseAllowRead: [dir],
+          baseAllowWrite: [dir],
+          baseDenyRead: [],
+          reportWithin: dir,
+          config: resolveSandboxConfig({ allow: { read: ['.'] } }, dir),
+        })
+        expect(r.stdout).toBe('')
+        expect(r.stderr).toContain('sandbox_apply: Operation not permitted')
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('sandbox probe', () => {
   it('returns a stable shape', async () => {
     const a = await probeSandbox()
@@ -890,6 +929,7 @@ describe('sandbox probe', () => {
           baseAllowRead: [dir],
           baseAllowWrite: [dir],
           baseDenyRead: [],
+          reportWithin: dir,
           config: resolveSandboxConfig({}, dir),
         })
         expect([r.exitCode, r.stderr]).toEqual([0, ''])
@@ -901,102 +941,55 @@ describe('sandbox probe', () => {
   )
 })
 
-describe.skipIf(!available || process.platform !== 'darwin')(
-  'settleOnCleanExit (darwin) — the verify-shaped settle window',
+describe.skipIf(process.platform !== 'linux')(
+  'punchWritePaths — a read grant is never an ancestor of a write grant (linux)',
   () => {
-    // The settle-poll originally gated on a FAIL exit, so a leaky task that
-    // swallows its own read error (exit 0) never got the window — exactly
-    // the case where --verify=inputs reads an empty store as PROOF over the
-    // lossy unified-log channel (measured 1/30 false passes at idle). A
-    // clean task with the flag pays the FULL 10×100 ms window — no
-    // violations ever arrive to end it early — so the lower bound is
-    // deterministic; the control is a RELATIVE comparison so absolute load
-    // cannot flake it.
-    it(
-      'pays the full settle window on a clean exit; without the flag it returns fast',
-      async () => {
-        await initSandbox()
-        const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-settle-'))
-        try {
-          const base = {
-            cwd: dir,
-            env: process.env,
-            baseAllowRead: [dir],
-            baseAllowWrite: [dir],
-            baseDenyRead: [],
-            config: resolveSandboxConfig({}, dir),
-          }
-          const t0 = performance.now()
-          const settled = await runSandboxed({
-            ...base,
-            command: 'echo ok > out.txt',
-            settleOnCleanExit: true,
-          })
-          const settledMs = performance.now() - t0
-          const t1 = performance.now()
-          const plain = await runSandboxed({ ...base, command: 'echo ok > out.txt' })
-          const plainMs = performance.now() - t1
-          expect(settled.exitCode).toBe(0)
-          expect(plain.exitCode).toBe(0)
-          expect(settledMs).toBeGreaterThanOrEqual(1000)
-          // The flagless run must NOT pay the window: the poll costs ~1000ms,
-          // so a >700ms gap discriminates while surviving load noise.
-          expect(settledMs - plainMs).toBeGreaterThanOrEqual(700)
-        } finally {
-          await rm(dir, { recursive: true, force: true })
-        }
-      },
-      TIMEOUT,
-    )
+    // bwrap emits `--bind <out>` then `--ro-bind <readPath>`; when the read
+    // path is an ANCESTOR the read-only mount lands on top and every write
+    // fails with `Read-only file system` (verified in a Linux container,
+    // 2026-09-05: read=[proj] write=[proj/dist] → mkdir fails; read=[proj/src]
+    // → ok). Expanding the ancestor into its children fixes it.
+    let dir: string
+
+    beforeEach(async () => {
+      dir = await mkdtemp(path.join(os.tmpdir(), 'vx-punch-'))
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await mkdir(path.join(dir, 'dist'), { recursive: true })
+      await mkdir(path.join(dir, 'nested', 'deep'), { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), '{}')
+    })
+    afterEach(async () => {
+      await rm(dir, { recursive: true, force: true })
+    })
+
+    it('returns the grant untouched when no write path is under it', () => {
+      expect(punchWritePaths(dir, [])).toEqual([dir])
+      expect(punchWritePaths(dir, ['/elsewhere/out'])).toEqual([dir])
+      // a write path EQUAL to the grant is not an ancestor relationship
+      expect(punchWritePaths(dir, [dir])).toEqual([dir])
+    })
+
+    it('replaces the ancestor with its children, dropping the write path', () => {
+      const got = punchWritePaths(dir, [path.join(dir, 'dist')]).sort()
+      expect(got).toEqual(
+        [path.join(dir, 'src'), path.join(dir, 'nested'), path.join(dir, 'package.json')].sort(),
+      )
+    })
+
+    it('recurses only along the branch that contains a write path', () => {
+      const deepOut = path.join(dir, 'nested', 'deep')
+      const got = punchWritePaths(dir, [deepOut])
+      // `nested` is expanded because the write path is under it; `src` and
+      // `package.json` are handed over whole.
+      expect(got).toContain(path.join(dir, 'src'))
+      expect(got).toContain(path.join(dir, 'package.json'))
+      expect(got).not.toContain(path.join(dir, 'nested'))
+      expect(got).not.toContain(deepOut)
+    })
+
+    it('hands over a path it cannot read rather than dropping the grant', () => {
+      const missing = path.join(dir, 'does-not-exist')
+      expect(punchWritePaths(missing, [path.join(missing, 'out')])).toEqual([missing])
+    })
   },
 )
-
-describe('punchWritePaths — a read grant is never an ancestor of a write grant', () => {
-  // bwrap emits `--bind <out>` then `--ro-bind <readPath>`; when the read
-  // path is an ANCESTOR the read-only mount lands on top and every write
-  // fails with `Read-only file system` (verified in a Linux container,
-  // 2026-09-05: read=[proj] write=[proj/dist] → mkdir fails; read=[proj/src]
-  // → ok). Expanding the ancestor into its children fixes it.
-  let dir: string
-
-  beforeEach(async () => {
-    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-punch-'))
-    await mkdir(path.join(dir, 'src'), { recursive: true })
-    await mkdir(path.join(dir, 'dist'), { recursive: true })
-    await mkdir(path.join(dir, 'nested', 'deep'), { recursive: true })
-    await writeFile(path.join(dir, 'package.json'), '{}')
-  })
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true })
-  })
-
-  it('returns the grant untouched when no write path is under it', () => {
-    expect(punchWritePaths(dir, [])).toEqual([dir])
-    expect(punchWritePaths(dir, ['/elsewhere/out'])).toEqual([dir])
-    // a write path EQUAL to the grant is not an ancestor relationship
-    expect(punchWritePaths(dir, [dir])).toEqual([dir])
-  })
-
-  it('replaces the ancestor with its children, dropping the write path', () => {
-    const got = punchWritePaths(dir, [path.join(dir, 'dist')]).sort()
-    expect(got).toEqual(
-      [path.join(dir, 'src'), path.join(dir, 'nested'), path.join(dir, 'package.json')].sort(),
-    )
-  })
-
-  it('recurses only along the branch that contains a write path', () => {
-    const deepOut = path.join(dir, 'nested', 'deep')
-    const got = punchWritePaths(dir, [deepOut])
-    // `nested` is expanded because the write path is under it; `src` and
-    // `package.json` are handed over whole.
-    expect(got).toContain(path.join(dir, 'src'))
-    expect(got).toContain(path.join(dir, 'package.json'))
-    expect(got).not.toContain(path.join(dir, 'nested'))
-    expect(got).not.toContain(deepOut)
-  })
-
-  it('hands over a path it cannot read rather than dropping the grant', () => {
-    const missing = path.join(dir, 'does-not-exist')
-    expect(punchWritePaths(missing, [path.join(missing, 'out')])).toEqual([missing])
-  })
-})

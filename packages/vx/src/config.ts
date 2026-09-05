@@ -94,32 +94,6 @@ export interface TaskConfig {
    * runs.
    */
   cache?: CacheConfig
-  /**
-   * Sandbox configuration. **Sandbox is opt-in per task.**
-   *   - omitted entirely → task runs unsandboxed.
-   *   - `sandbox: {}`    → opts in with the minimum baseline (only
-   *     resolved inputs readable, only static-prefix of outputs
-   *     writable, network blocked).
-   *   - `sandbox: { ... }` → opts in with the explicit options below.
-   *
-   * No inheritance, no workspace defaults, no built-in escapes. The
-   * sandbox sees STRICTLY the union of resolved `cache.inputs.files`
-   * + this block's `allowRead` (for reads) and the static prefix of
-   * `cache.outputs.files` + this block's `allowWrite` (for writes).
-   * If a task needs `node_modules` or `/tmp`, declare them here
-   * explicitly.
-   *
-   * **Policy: fail on violation.** If the sandbox detects an
-   * undeclared read/write (macOS log monitor) or the child returns
-   * non-zero because it couldn't reach a path it expected (Linux
-   * structural deny), the task fails. No cache is written for a
-   * failed task.
-   *
-   * Activation requires `exec` (group tasks have no command to wrap)
-   * and is silently skipped for persistent tasks (dev servers need
-   * unrestricted network + an indefinite process).
-   */
-  sandbox?: SandboxConfig
 }
 
 /**
@@ -148,12 +122,25 @@ export interface SandboxConfig {
    */
   deny?: SandboxDenials
   /**
-   * Map of command-substring → list of substrings to drop from the
-   * violation report for that command. `'*'` matches any command. This
-   * silences the REPORT; it does not permit the operation — prefer
-   * `allow` when the task genuinely needs something.
+   * Denials to leave out of the report, in the same shape as `allow`.
+   *
+   * This does NOT permit anything: the OS still denies the operation, and
+   * a command that cannot proceed without it still fails. It says "I know,
+   * and it does not affect this task's output" — for a denial you cannot
+   * grant away and do not want failing the run.
+   *
+   * Unlike `allow`, the values are GLOB PATTERNS, and they work the same
+   * on every platform: `allow` has to be expressible by the OS sandbox
+   * (bwrap mounts a path; it cannot mount a pattern), while `ignore` only
+   * has to match a line vx already holds. Relative patterns anchor at the
+   * project dir.
+   *
+   * ```ts
+   * ignore: { write: ['*.bun-build'] }   // bun --compile stages a random
+   *                                      // temp name in the cwd
+   * ```
    */
-  ignoreViolations?: Record<string, string[]>
+  ignore?: SandboxGrants
   /**
    * Accept a weaker sandbox when vx itself already runs inside one
    * (a container, another sandbox). Without it, nesting fails fast rather
@@ -266,6 +253,24 @@ export interface ExecConfig {
    * of "done".
    */
   persistent?: PersistentConfig
+  /**
+   * Confine this task's process: what it may read, write and reach.
+   * Nothing is confined unless this is present.
+   *
+   * It sits in `exec` because it constrains the same spawn `env` and
+   * `resources` do — the environment the child gets, the CPU and memory it
+   * gets, the filesystem and network it gets. A group task has no process,
+   * so the field cannot be reached from one.
+   *
+   * **Policy: fail on violation.** An undeclared touch of the project's own
+   * files fails the task, and a failed task is never cached. Reaching
+   * OUTSIDE the project is denied but not reported — that is the wall
+   * doing its job, not a finding.
+   *
+   * Silently skipped for persistent tasks: a dev server needs unrestricted
+   * network and an indefinite process.
+   */
+  sandbox?: SandboxConfig
 }
 
 /**

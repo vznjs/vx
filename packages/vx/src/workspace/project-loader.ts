@@ -374,6 +374,8 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         throw new UserError(`${where}.exec must be an object with a \`command\` string`)
       }
       assertKnownFields(exec, EXEC_FIELDS, `${where}.exec`)
+      const sandbox = (exec as { sandbox?: unknown }).sandbox
+      if (sandbox !== undefined) validateSandbox(sandbox, `${where}.exec`)
       const command = (exec as { command?: unknown }).command
       if (typeof command !== 'string' || command.length === 0) {
         throw new UserError(`${where}.exec.command must be a non-empty string`)
@@ -636,8 +638,6 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         validateWorkspaceGlobs(wsOutputs, `${where}.cache.outputs.workspaceFiles`, false)
       }
     }
-    const sandbox = (task as { sandbox?: unknown }).sandbox
-    if (sandbox !== undefined) validateSandbox(sandbox, where, exec !== undefined)
   }
 }
 
@@ -647,7 +647,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
 // discarded, so the task hashes as if the field were never written and vx
 // serves a stale artifact — the same reasoning `exec.resources` and
 // `sandbox` already encode. A new field must be added here deliberately.
-const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'cache', 'sandbox'])
+const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'cache'])
 const EXEC_FIELDS = new Set([
   'command',
   'env',
@@ -656,6 +656,7 @@ const EXEC_FIELDS = new Set([
   'resources',
   'persistent',
   'remote',
+  'sandbox',
 ])
 const PERSISTENT_FIELDS = new Set(['readyWhen'])
 const CACHE_FIELDS = new Set(['inputs', 'outputs'])
@@ -808,7 +809,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
 const SANDBOX_FIELDS = new Set([
   'allow',
   'deny',
-  'ignoreViolations',
+  'ignore',
   'weakerWhenNested',
   'weakerNetworkIsolation',
 ])
@@ -824,21 +825,24 @@ const GRANT_FIELDS = new Set<string>([
 ])
 const DENY_FIELDS = new Set(['network'])
 
+function assertStringArray(v: unknown, where: string): void {
+  if (!Array.isArray(v) || v.some((s) => typeof s !== 'string' || s.length === 0)) {
+    throw new UserError(`${where} must be an array of non-empty strings`)
+  }
+}
+
 /**
  * Validate a `sandbox: {...}` block — one capability shape, whatever the
  * platform ends up doing with it. Unknown keys are refused rather than
  * dropped: a silently-ignored `allow.reads` would confine a task more than
  * its author believed, and the failure reads as a broken build.
  */
-function validateSandbox(sandbox: unknown, where: string, hasExec: boolean): void {
+function validateSandbox(sandbox: unknown, where: string): void {
   if (typeof sandbox !== 'object' || sandbox === null || Array.isArray(sandbox)) {
     throw new UserError(
       `${where}.sandbox must be an object (e.g. \`{}\` for the baseline, or ` +
         `\`{ allow: { read: [...] } }\`)`,
     )
-  }
-  if (!hasExec) {
-    throw new UserError(`${where}.sandbox requires \`exec\` — a group task has nothing to wrap`)
   }
   assertKnownFields(sandbox, SANDBOX_FIELDS, `${where}.sandbox`)
   const obj = sandbox as Record<string, unknown>
@@ -857,7 +861,9 @@ function validateSandbox(sandbox: unknown, where: string, hasExec: boolean): voi
     assertKnownFields(allow, GRANT_FIELDS, `${where}.sandbox.allow`)
     const g = allow as Record<string, unknown>
     for (const f of GRANT_PATH_FIELDS) {
-      if (g[f] !== undefined) assertPathArray(g[f], `${where}.sandbox.allow.${f}`)
+      // Patterns are allowed here: macOS matches them natively, Linux
+      // expands them against the filesystem at resolve time.
+      if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
     }
     for (const f of GRANT_NAME_FIELDS) {
       if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
@@ -885,19 +891,22 @@ function validateSandbox(sandbox: unknown, where: string, hasExec: boolean): voi
     if (d['network'] !== undefined) assertStringArray(d['network'], `${where}.sandbox.deny.network`)
   }
 
-  const ignoreViolations = obj['ignoreViolations']
-  if (ignoreViolations !== undefined) {
-    if (
-      typeof ignoreViolations !== 'object' ||
-      ignoreViolations === null ||
-      Array.isArray(ignoreViolations)
-    ) {
-      throw new UserError(
-        `${where}.sandbox.ignoreViolations must be a record mapping command patterns to arrays of strings`,
-      )
+  const ignore = obj['ignore']
+  if (ignore !== undefined) {
+    if (typeof ignore !== 'object' || ignore === null || Array.isArray(ignore)) {
+      throw new UserError(`${where}.sandbox.ignore must be an object`)
     }
-    for (const [k, v] of Object.entries(ignoreViolations)) {
-      assertStringArray(v, `${where}.sandbox.ignoreViolations[${JSON.stringify(k)}]`)
+    assertKnownFields(ignore, GRANT_FIELDS, `${where}.sandbox.ignore`)
+    const g = ignore as Record<string, unknown>
+    // Patterns, not prefixes — `ignore` is vx's own filter over lines it
+    // already holds, so a glob costs nothing and works on every platform.
+    for (const f of [...GRANT_PATH_FIELDS, ...GRANT_NAME_FIELDS, 'network', 'unixSockets']) {
+      if (g[f] !== undefined) assertStringArray(g[f], `${where}.sandbox.ignore.${f}`)
+    }
+    for (const f of GRANT_BOOL_FIELDS) {
+      if (g[f] !== undefined) {
+        throw new UserError(`${where}.sandbox.ignore.${f} is a flag, not something to ignore`)
+      }
     }
   }
 }
@@ -931,20 +940,5 @@ function validateResources(resources: unknown, where: string): void {
   }
   if (image !== undefined && (typeof image !== 'string' || image === '')) {
     throw new UserError(`${where}.image must be a non-empty string (or omitted)`)
-  }
-}
-
-function assertStringArray(v: unknown, where: string): void {
-  if (!Array.isArray(v) || v.some((s) => typeof s !== 'string' || s.length === 0)) {
-    throw new UserError(`${where} must be an array of non-empty strings`)
-  }
-}
-
-function assertPathArray(v: unknown, where: string): void {
-  assertStringArray(v, where)
-  if ((v as string[]).some((s) => /[*?[\]]/.test(s))) {
-    throw new UserError(
-      `${where} entries must be path prefixes (no globs — bwrap on Linux can't enforce them)`,
-    )
   }
 }

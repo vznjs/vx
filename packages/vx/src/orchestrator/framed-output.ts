@@ -92,7 +92,6 @@ export function formatTaskBlock(
 
   const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('', s, colors, { dim: true })
-  const section = (title: string, color?: string) => sectionLine(title, color ?? '', colors)
   const header = formatBlockHeader(outcome, colors)
   const lines: string[] = [`${corner('┌─')} ${idPainted} ${corner('>')} ${header}`]
 
@@ -389,7 +388,14 @@ export function formatFrameOpen(node: TaskNode, colors: ColorSupport = NO_COLOR)
 function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] {
   const vlines = outcome.sandboxViolationLines
   if (!vlines || vlines.length === 0) return []
-  return [sectionLine(`SANDBOX VIOLATIONS (${vlines.length})`, WARN, colors), '', ...vlines, '']
+  // Unique lines only — a task's children trip the same denial many times
+  // and the repeats bury everything else. The lines themselves are printed
+  // VERBATIM: a violation is evidence, and evidence that has been rewritten
+  // for display is not the thing the sandbox reported. The outcome keeps
+  // every record for telemetry.
+  const body = [...new Set(vlines)]
+  // Red, not amber: a violation fails the task, so it reads as a failure.
+  return [sectionLine(`SANDBOX VIOLATIONS (${body.length})`, ERROR, colors), '', ...body, '']
 }
 
 export function formatFrameClose(

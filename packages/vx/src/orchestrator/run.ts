@@ -457,10 +457,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // via its `sandbox: {...}` block. A task that needs sandboxing on an
     // unsupported platform gets a hard error so it never silently runs
     // unsandboxed.
-    const sandboxed = [...nodes.values()].filter((n) => n.config.sandbox !== undefined)
+    const sandboxed = [...nodes.values()].filter((n) => n.config.exec?.sandbox !== undefined)
     const anySandboxed = sandboxed.length > 0
     if (anySandboxed) {
-      const weakerNested = sandboxed.every((n) => n.config.sandbox?.weakerWhenNested === true)
+      const weakerNested = sandboxed.every((n) => n.config.exec?.sandbox?.weakerWhenNested === true)
       const avail = await probeSandbox({ weakerNested })
       if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
       await initSandbox()

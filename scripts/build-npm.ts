@@ -147,7 +147,7 @@ async function main(): Promise<void> {
   // the very binary this package ships (see packages/vx/index.ts).
   await cp(join(CORE, 'index.ts'), join(mainDir, 'index.ts'))
   await cp(join(CORE, 'plugins'), join(mainDir, 'plugins'), { recursive: true })
-  await cp(join(ROOT, 'scripts', 'npm-launcher.mjs'), join(mainDir, 'launcher.mjs'))
+  await cp(join(ROOT, 'packages', 'vx', 'npm-launcher.mjs'), join(mainDir, 'launcher.mjs'))
   await cp(join(ROOT, 'README.md'), join(mainDir, 'README.md'))
   await cp(join(ROOT, 'LICENSE'), join(mainDir, 'LICENSE'))
 

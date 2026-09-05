@@ -1,4 +1,4 @@
-// scripts/npm-launcher.mjs is the `bin` of the published @vzn/vx package: a
+// npm-launcher.mjs is the `bin` of the published @vzn/vx package: a
 // Node script that execs the platform package's binary, falls back to
 // `bun <sourceEntry>`, and otherwise fails with an actionable message. It
 // had no pin; the distribution path is exercised only on a release. Driven
@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 
-const LAUNCHER = path.resolve(import.meta.dir, '../../../scripts/npm-launcher.mjs')
+const LAUNCHER = path.resolve(import.meta.dir, '..', 'npm-launcher.mjs')
 const KEY = `${process.platform}-${process.arch}`
 const NODE = Bun.which('node')
 

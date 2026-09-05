@@ -33,6 +33,7 @@ export function localExecutor(): TaskExecutor {
         baseAllowRead: req.sandbox.baseAllowRead,
         baseAllowWrite: req.sandbox.baseAllowWrite,
         baseDenyRead: req.sandbox.baseDenyRead,
+        reportWithin: req.sandbox.reportWithin,
         config: req.sandbox.config,
       })
     },

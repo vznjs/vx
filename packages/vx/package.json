@@ -20,6 +20,7 @@
   },
   "files": [
     "plugins",
+    "npm-launcher.mjs",
     "index.ts",
     "src",
     "README.md"

@@ -268,6 +268,26 @@ describe('persistent task framing', () => {
     )
   })
 
+  it('collapses repeated records to unique lines, verbatim', () => {
+    // A task's children trip the same denial many times. Only unique lines
+    // are printed, and printed UNCHANGED — a violation is evidence, and the
+    // count in the header is what is shown, not what was collapsed.
+    const n = node('@vzn/vx#test', 'bun test')
+    const line = 'bun(1) deny(1) file-read-data /repo'
+    const close = formatFrameClose(
+      n,
+      outcome('@vzn/vx#test', 'failed', {
+        durationMs: 10,
+        exitCode: 1,
+        sandboxViolations: 3,
+        sandboxViolationLines: [line, line, 'bun(2) deny(1) file-read-data /repo'],
+      }),
+    )
+    expect(close).toContain('SANDBOX VIOLATIONS (2)')
+    expect(close).toContain(line)
+    expect(close).toContain('bun(2) deny(1) file-read-data /repo')
+  })
+
   it('the LIVE frame shows sandbox violations too — a focused run is where they are read', () => {
     // The focused/live frame omitted the section entirely, so `vx run
     // <one-task>` — exactly how someone debugging a single task invokes it —

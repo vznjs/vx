@@ -19,6 +19,12 @@ export interface ExecuteSandbox {
   readonly baseAllowRead: readonly string[]
   readonly baseAllowWrite: readonly string[]
   readonly baseDenyRead: readonly string[]
+  /**
+   * Only denials on a path under this directory are reported. A denial
+   * outside it is still ENFORCED — the task cannot leave its project — but
+   * that is the wall doing its job, not a finding to fail a run over.
+   */
+  readonly reportWithin: string
   readonly config: ResolvedSandboxConfig
 }
 
