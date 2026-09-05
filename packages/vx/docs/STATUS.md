@@ -496,8 +496,8 @@ either a one-line decision or a known constraint, not a mystery:
 1. **`@vzn/vx-docs#build` fails on Linux CI.** Astro's telemetry does
    `mkdir ~/.config` before anything else, and a sandboxed task may read
    HOME but not write it, so astro throws at startup — exit 1 in 165 ms
-   with no output. Reproduced in isolation: `EROFS: read-only file
-   system, mkdir '/home/vxu/.config'` at
+   with no output. Reproduced in isolation — the throw is an `EROFS` on
+   `mkdir` of that directory, from
    `@astrojs/telemetry/dist/config.js:56`. macOS does not hit it (SRT's
    default write paths cover it), and this is the FIRST run in which the
    docs build reached `astro build` on Linux at all — it previously died
@@ -538,7 +538,6 @@ either a one-line decision or a known constraint, not a mystery:
    pass or fail run to run. Enforcement is unaffected — the OS denied the
    operation either way — but the REPORT is not a reliable gate on that
    platform.
-
 
 - **v0.0.18 is fully on npm; one owner step remains before the next
   release.** npm released the two held packages about ninety minutes
