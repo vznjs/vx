@@ -1037,16 +1037,15 @@ interface WorkspaceConfig {
   edges), `key` (per-task `{ name: value }` material folded into the
   cache key), `schedule` (task id → priority, merged over the
   scheduler's baseline), CLI `commands` (`{ verb: { description,
-  run(argv, ctx) } }`, consulted for a verb core does not know) — and the run-level
+run(argv, ctx) } }`, consulted for a verb core does not know) — and the run-level
   capabilities `cache` (which cache
   layer is used), `executor
-  (`executor(ctx)` — return a `TaskExecutor` (where one task's command
-  runs) or decline), `telemetry` (observe-only data export — the
-  canonical path for OTel, a self-hosted dashboard, or custom sinks),
-  plus optional `setup`/`teardown`.
-  First-party plugins include `otel()` from `@vzn/vx-otel` and
-  `@vzn/vx-reapi`. A plugin
-  that declines every capability (e.g. `otel()` with no OTLP
+(`executor(ctx)`— return a`TaskExecutor`(where one task's command
+runs) or decline),`telemetry`(observe-only data export — the
+canonical path for OTel, a self-hosted dashboard, or custom sinks),
+plus optional`setup`/`teardown`.
+First-party plugins include `otel()`from`@vzn/vx-otel`and`@vzn/vx-reapi`. A plugin
+that declines every capability (e.g. `otel()` with no OTLP
   endpoint configured) costs nothing — a run with no active plugin
   is byte-identical to one with none declared. Plugins observe, route
   and execute; they never change what a task is.
@@ -1316,13 +1315,13 @@ Workspace-discovery errors (`src/workspace/workspace.ts`):
 
 Workspace-config errors:
 
-| Symptom                                                                                          | Cause                                                    |
-| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| `concurrency must be a positive integer`                                                         | `concurrency` is negative, zero, NaN, ...                |
-| `timeout must be a positive integer (milliseconds)`                                              | Workspace `timeout` is ≤ 0, NaN, or not an int.          |
-| `cacheDir must be a string`                                                                      | Wrong shape.                                             |
-| `plugins must be an array of plugin objects`                                                     | Wrong shape.                                             |
-| `plugins[<i>] must be an object`                                                                 | A non-object entry in `plugins`.                         |
-| `plugins[<i>].name must be a non-empty string`                                                   | Missing / empty plugin name.                             |
-| `plugins[<i>].<capability> must be a function`                                                   | A capability key holding something that is not callable. |
+| Symptom                                                                                                                           | Cause                                                    |
+| --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `concurrency must be a positive integer`                                                                                          | `concurrency` is negative, zero, NaN, ...                |
+| `timeout must be a positive integer (milliseconds)`                                                                               | Workspace `timeout` is ≤ 0, NaN, or not an int.          |
+| `cacheDir must be a string`                                                                                                       | Wrong shape.                                             |
+| `plugins must be an array of plugin objects`                                                                                      | Wrong shape.                                             |
+| `plugins[<i>] must be an object`                                                                                                  | A non-object entry in `plugins`.                         |
+| `plugins[<i>].name must be a non-empty string`                                                                                    | Missing / empty plugin name.                             |
+| `plugins[<i>].<capability> must be a function`                                                                                    | A capability key holding something that is not callable. |
 | `plugins[<i>] must contribute at least one of config/project/graph/key/schedule/setup/cache/executor/telemetry/teardown/commands` | A plugin object with no capability.                      |

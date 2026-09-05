@@ -104,7 +104,39 @@ async function probeUncached(weakerNested: boolean): Promise<SandboxAvailability
     await initSandbox()
     return trySandboxedTrue(SandboxManager, weakerNested)
   }
-  return { available: true, reason: '' }
+  return applyPolicyHere()
+}
+
+/**
+ * Can a seatbelt policy be applied in THIS process at all?
+ *
+ * Not if one already is: macOS refuses `sandbox_apply` inside a sandbox,
+ * at any permission level — an inner profile of `(allow default)` still
+ * dies `sandbox_apply: Operation not permitted` (exit 71, measured
+ * 2026-09-05). No grant fixes it, so the honest verdict is "unavailable",
+ * which is what stops a sandboxed task from spawning tasks that report
+ * a sandbox they never got. Answering `available: true` here is how a
+ * suite that exercises the sandbox came to fail sixteen ways at once.
+ *
+ * The probe costs one `/usr/bin/true` and is memoized with the rest.
+ */
+function applyPolicyHere(): SandboxAvailability {
+  const proc = Bun.spawnSync({
+    cmd: ['sandbox-exec', '-p', '(version 1)(allow default)', '/usr/bin/true'],
+    stdout: 'ignore',
+    stderr: 'pipe',
+  })
+  if (proc.exitCode === 0) return { available: true, reason: '' }
+  const stderr = proc.stderr.toString().trim()
+  if (stderr.includes('sandbox_apply')) {
+    return {
+      available: false,
+      reason:
+        'this process is already sandboxed and macOS cannot nest one — a task that ' +
+        'itself sandboxes has to run without `exec.sandbox` of its own',
+    }
+  }
+  return { available: false, reason: `sandbox-exec failed: ${stderr || `exit ${proc.exitCode}`}` }
 }
 
 async function trySandboxedTrue(

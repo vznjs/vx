@@ -30,7 +30,13 @@ function median(xs: number[]): number {
 async function vxRun(cwd: string): Promise<number> {
   const t0 = Bun.nanoseconds()
   const p = Bun.spawn({
-    cmd: [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts'), 'run', 'build', '--all'],
+    cmd: [
+      process.execPath,
+      path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts'),
+      'run',
+      'build',
+      '--all',
+    ],
     cwd,
     stdout: 'pipe',
     stderr: 'pipe',

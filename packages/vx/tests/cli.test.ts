@@ -95,11 +95,46 @@ describe('cli run()', () => {
     stdout = ''
     // Past `--` the flag belongs to the command being run, so vx must NOT
     // answer it: this reaches task resolution (and fails there) instead of
-    // printing help. A real task name would EXECUTE, which a unit test must
-    // not do in this repo.
-    expect(await run(['run', 'no-such-task-xyz', '--', '--help'])).not.toBe(0)
-    expect(stdout).not.toContain('Usage:')
-    expect(`${stdout}${stderr}`).toContain('no-such-task-xyz')
+    // printing help.
+    //
+    // In a throwaway workspace, never this repo. `run` loads the workspace it
+    // is standing in and memoizes each config evaluation in `.vx/cache` — a
+    // WRITE, which the suite's own sandbox refuses (`SQLITE_READONLY`), and
+    // which would dirty the tree the cache hashes even when it succeeds.
+    const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-cli-help-'))
+    const origCwd = process.cwd()
+    try {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'fixture', workspaces: ['p'] }),
+      )
+      await writeLocalWorkspace(root)
+      await mkdir(path.join(root, 'p'), { recursive: true })
+      await writeFile(path.join(root, 'p', 'package.json'), JSON.stringify({ name: 'p' }))
+      await writeFile(
+        path.join(root, 'p', 'vx.config.mjs'),
+        `export default { tasks: { hello: { exec: { command: 'true' } } } }\n`,
+      )
+      for (const args of [
+        ['init', '-q'],
+        ['config', 'user.email', 'c@vx'],
+        ['config', 'user.name', 'c'],
+        ['add', '-A'],
+        ['-c', 'commit.gpgsign=false', 'commit', '-qm', 'init'],
+      ]) {
+        Bun.spawnSync({ cmd: ['git', ...args], cwd: root })
+      }
+      process.chdir(path.join(root, 'p'))
+      expect(await run(['run', 'no-such-task-xyz', '--', '--help'])).not.toBe(0)
+      expect(stdout).not.toContain('Usage:')
+      expect(`${stdout}${stderr}`).toContain('no-such-task-xyz')
+    } finally {
+      process.chdir(origCwd)
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('rejects unknown command', async () => {

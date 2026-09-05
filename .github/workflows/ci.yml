@@ -98,6 +98,17 @@ jobs:
       # substitute: it hard-fails on the raw bwrap exec, one of probeSandbox's
       # four failure paths. `vx run` isolates the child env, so this is
       # forwarded via the test task's exec.env.passThrough.
+      # Workspace-level steps, deliberately NOT vx tasks: each one reads
+      # across project boundaries (the site is generated from `docs/`, the
+      # check compares it against `bench/`), and a project may only use its
+      # own directory. They belong to the workspace, so the workspace runs
+      # them.
+      - name: Generate site content from docs/
+        run: bun run docs:generate
+
+      - name: Site matches bench/results.json
+        run: bun run site:check
+
       - name: vx run ci
         env:
           VX_REQUIRE_SANDBOX: '1'

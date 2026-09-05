@@ -1,4 +1,5 @@
 import { mkdir, readdir, realpath, stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig } from '../config.js'
 import {
@@ -976,11 +977,21 @@ async function prepareOutputsForBind(
   outputs: readonly string[],
 ): Promise<void> {
   for (const g of outputs) {
-    // Only paths INSIDE the project are ours to create. An absolute or
-    // `~` grant names something the user already has (a cache dir, /tmp);
-    // joining it onto the project dir would create a literal `~` there.
-    if (path.isAbsolute(g) || g.startsWith('~')) continue
     const hasWildcard = /[*?[\]]/.test(g)
+    // A grant OUTSIDE the project is the user's own path — never joined
+    // onto the project dir, which would create a literal `~` there. Its
+    // directory is still created when the grant is a glob, because then
+    // the static prefix is unambiguously a directory and bwrap cannot
+    // bind one that does not exist: `~/.bun/install/cache/**` on a runner
+    // that has never populated it silently granted nothing, and the task
+    // failed with the tool's own confusing message (`bun build --compile`
+    // reported a network error for an unwritable cache; 2026-09-05).
+    if (path.isAbsolute(g) || g.startsWith('~')) {
+      if (!hasWildcard) continue
+      const abs = expandHome(staticPrefix(g))
+      await mkdir(abs, { recursive: true }).catch(() => undefined)
+      continue
+    }
     if (hasWildcard) {
       const abs = path.join(projectDir, staticPrefix(g))
       await mkdir(abs, { recursive: true })
@@ -994,6 +1005,11 @@ async function prepareOutputsForBind(
       await Bun.write(abs, '')
     }
   }
+}
+
+/** `~/x` against the user's home; anything else unchanged. */
+function expandHome(p: string): string {
+  return p.startsWith('~') ? path.join(homedir(), p.slice(1)) : p
 }
 
 /**

@@ -26,7 +26,7 @@ async function parserFlags(): Promise<Set<string>> {
 
 /** Flag names in the `### Flags` table of docs/cli.md, one per row. */
 async function documentedFlags(): Promise<Set<string>> {
-  const doc = await Bun.file(new URL('../../../docs/cli.md', import.meta.url).pathname).text()
+  const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
   const start = doc.indexOf('### Flags')
   expect(start).toBeGreaterThan(-1)
   const names = new Set<string>()

@@ -2,7 +2,7 @@
 // against a local server; the CLI path pins the source-mode refusal
 // (the compiled-binary path needs a real release and stays manual).
 
-import { readFile, rm } from 'node:fs/promises'
+import { readFile, rm, stat } from 'node:fs/promises'
 import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -33,35 +33,51 @@ describe('isBunfsPath', () => {
 })
 
 describe('replaceBinary', () => {
-  it('downloads and atomically replaces the destination, executable', async () => {
-    const server = Bun.serve({
-      port: 0,
-      fetch: () => new Response('#!/bin/sh\necho fake-vx\n'),
-    })
+  // The downloader is driven through a stubbed global `fetch`, not a
+  // localhost server. `replaceBinary` takes a URL and calls `fetch`, so
+  // the response IS the whole input — binding a port would only add a
+  // socket this suite has no reason to open, and a task in this repo has
+  // no reason to serve the network.
+  const withFetch = async (impl: typeof fetch, body: () => Promise<void>): Promise<void> => {
+    const real = globalThis.fetch
+    globalThis.fetch = impl
     try {
-      const dest = path.join(dir, 'vx')
-      await Bun.write(dest, 'old')
-      await replaceBinary(dest, `http://localhost:${server.port}/asset`)
-      expect(await readFile(dest, 'utf8')).toContain('fake-vx')
-      const mode = (await import('node:fs/promises')).stat(dest)
-      expect(((await mode).mode & 0o111) !== 0).toBe(true)
+      await body()
     } finally {
-      await server.stop(true)
+      globalThis.fetch = real
     }
+  }
+
+  it('downloads and atomically replaces the destination, executable', async () => {
+    const seen: string[] = []
+    await withFetch(
+      ((input: string | URL | Request) => {
+        seen.push(input instanceof Request ? input.url : String(input))
+        return Promise.resolve(new Response('#!/bin/sh\necho fake-vx\n'))
+      }) as unknown as typeof fetch,
+      async () => {
+        const dest = path.join(dir, 'vx')
+        await Bun.write(dest, 'old')
+        await replaceBinary(dest, 'https://example.invalid/asset')
+        expect(seen).toEqual(['https://example.invalid/asset'])
+        expect(await readFile(dest, 'utf8')).toContain('fake-vx')
+        expect((await stat(dest)).mode & 0o111).not.toBe(0)
+      },
+    )
   })
 
   it('404 leaves the destination untouched', async () => {
-    const server = Bun.serve({ port: 0, fetch: () => new Response('nope', { status: 404 }) })
-    try {
-      const dest = path.join(dir, 'vx2')
-      await Bun.write(dest, 'old')
-      await expect(replaceBinary(dest, `http://localhost:${server.port}/asset`)).rejects.toThrow(
-        /download failed \(404\)/,
-      )
-      expect(await readFile(dest, 'utf8')).toBe('old')
-    } finally {
-      await server.stop(true)
-    }
+    await withFetch(
+      (() => Promise.resolve(new Response('nope', { status: 404 }))) as unknown as typeof fetch,
+      async () => {
+        const dest = path.join(dir, 'vx2')
+        await Bun.write(dest, 'old')
+        await expect(replaceBinary(dest, 'https://example.invalid/asset')).rejects.toThrow(
+          /download failed \(404\)/,
+        )
+        expect(await readFile(dest, 'utf8')).toBe('old')
+      },
+    )
   })
 })
 

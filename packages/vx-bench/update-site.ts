@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-const ROOT = path.resolve(import.meta.dir, '..')
+const ROOT = path.resolve(import.meta.dir, '../..')
 const CHECK = process.argv.includes('--check')
 
 type Row = {
@@ -39,7 +39,9 @@ type Results = {
   }
 }
 
-const d = JSON.parse(readFileSync(path.join(ROOT, 'bench/results.json'), 'utf8')) as Results
+const d = JSON.parse(
+  readFileSync(path.join(ROOT, 'packages/vx-bench/results.json'), 'utf8'),
+) as Results
 const rows = new Map(d.rows.map((r) => [r.runner, r]))
 const vx = rows.get('vx')!
 const turbo = rows.get('turbo')!
@@ -100,7 +102,7 @@ const rowsBlock =
   ].join('\n') +
   '\n]\n'
 
-const landingPath = path.join(ROOT, 'apps/docs/src/pages/index.astro')
+const landingPath = path.join(ROOT, 'packages/vx-docs/src/pages/index.astro')
 let landing = readFileSync(landingPath, 'utf8')
 landing = landing.replace(/const benchRows = \[\n[\s\S]*?\n\]\n/, rowsBlock)
 landing = landing.replace(
@@ -134,7 +136,7 @@ landing = landing.replace(
 )
 
 // ---- benchmarks.md stress section ----
-const docPath = path.join(ROOT, 'docs/benchmarks.md')
+const docPath = path.join(ROOT, 'packages/vx/docs/benchmarks.md')
 let doc = readFileSync(docPath, 'utf8')
 const cell = (r: Row, key: keyof Row) => `${disp(Number(r[key]))} (${x(r, key)})`
 const section = `## A real monorepo: ${nodes.toLocaleString('en-US')} tasks, 100 layers (${d.date.slice(0, 10)})
@@ -214,7 +216,7 @@ const changed = before[0] !== landingOut || before[1] !== docOut
 if (CHECK) {
   if (changed) {
     process.stderr.write(
-      'bench/update-site.ts --check: the site does not match bench/results.json\n',
+      'packages/vx-bench/update-site.ts --check: the site does not match results.json\n',
     )
     process.exit(1)
   }

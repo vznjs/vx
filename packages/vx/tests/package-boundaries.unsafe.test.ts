@@ -23,7 +23,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
-const CORE = path.join(import.meta.dir, '..')
+const CORE = path.resolve(import.meta.dir, '..')
 const CORE_SRC = path.join(CORE, 'src')
 // The plugin packages are core's SIBLINGS under the workspace root, which is
 // two levels above core now that core is `packages/vx` rather than the root.

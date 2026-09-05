@@ -8,9 +8,9 @@ The owner's direction (2026-09-02): vx is the Vite of task orchestration.
 Core is a pipeline; plugins decide what happens at each stage. Today core
 has three seams — `executor`, `cache`, `telemetry` — plus a raw event-bus
 `setup` hook and a deprecated `eventSink`. That is enough to move a task
-to a remote worker and to export a run, and not enough to *add a task*,
-*reshape the graph*, *fold extra material into a key*, *choose an
-order*, or *add a verb*. Each of those is something a workspace has had
+to a remote worker and to export a run, and not enough to _add a task_,
+_reshape the graph_, _fold extra material into a key_, _choose an
+order_, or _add a verb_. Each of those is something a workspace has had
 to hand-write in every config, or something core had to grow a flag for.
 
 The test of the design: every feature core removed on 2026-09-02 —
@@ -23,18 +23,18 @@ one consumer.
 One `VxPlugin` object, hooks named by the pipeline stage they run in,
 in pipeline order:
 
-| Stage       | Hook                                  | Runs                       | Can change                                        |
-| ----------- | ------------------------------------- | -------------------------- | ------------------------------------------------- |
-| workspace   | `config(ws, ctx)`                     | once, before discovery     | the workspace config (concurrency, cacheDir, …)   |
-| project     | `project(config, meta, ctx)`          | once per loaded project    | the project's tasks (add, remove, edit)           |
-| graph       | `graph(nodes, ctx)`                   | once, after the task graph | edges, `requested`, resources                     |
-| key         | `key(task, ctx)`                      | once per task, at hash     | extra key material (folded, never replaces)       |
-| schedule    | `schedule(nodes, ctx)`                | once, before scheduling    | per-task priorities (the two-tier scheduler input) |
-| execute     | `executor(ctx)`                       | once per run               | WHERE one task's command runs (existing)          |
-| store       | `cache(ctx)`                          | once per run               | WHERE artifacts live (existing)                   |
-| observe     | `telemetry(ctx)`                      | once per run               | nothing — records out (existing)                  |
-| observe     | `setup(ctx)` / `teardown()`           | once per run               | nothing — raw bus subscription (existing)         |
-| cli         | `commands`                            | on an unknown verb         | which verbs exist                                 |
+| Stage     | Hook                         | Runs                       | Can change                                         |
+| --------- | ---------------------------- | -------------------------- | -------------------------------------------------- |
+| workspace | `config(ws, ctx)`            | once, before discovery     | the workspace config (concurrency, cacheDir, …)    |
+| project   | `project(config, meta, ctx)` | once per loaded project    | the project's tasks (add, remove, edit)            |
+| graph     | `graph(nodes, ctx)`          | once, after the task graph | edges, `requested`, resources                      |
+| key       | `key(task, ctx)`             | once per task, at hash     | extra key material (folded, never replaces)        |
+| schedule  | `schedule(nodes, ctx)`       | once, before scheduling    | per-task priorities (the two-tier scheduler input) |
+| execute   | `executor(ctx)`              | once per run               | WHERE one task's command runs (existing)           |
+| store     | `cache(ctx)`                 | once per run               | WHERE artifacts live (existing)                    |
+| observe   | `telemetry(ctx)`             | once per run               | nothing — records out (existing)                   |
+| observe   | `setup(ctx)` / `teardown()`  | once per run               | nothing — raw bus subscription (existing)          |
+| cli       | `commands`                   | on an unknown verb         | which verbs exist                                  |
 
 Rules that keep it a pipeline and not a soup:
 
@@ -48,7 +48,7 @@ Rules that keep it a pipeline and not a soup:
    re-validates after the last plugin, so a plugin cannot produce a
    config the loader would refuse from a user. Same for `graph`.
 3. **Everything a hook changes reaches the cache key by construction.**
-   Resolved-config hashing (principle #4) hashes the task config *after*
+   Resolved-config hashing (principle #4) hashes the task config _after_
    `project` ran, so an injected task or edited command re-keys exactly
    like a hand edit. `key` material is folded as one more part. `graph`
    edits change `dependsOn` closure, which changes upstream folding.
@@ -72,12 +72,12 @@ interface PluginContext {
   warn(message: string): void
 }
 interface ProjectContext extends PluginContext {
-  readonly name: string      // package name
-  readonly dir: string       // absolute
+  readonly name: string // package name
+  readonly dir: string // absolute
   readonly packageJson: Record<string, unknown>
 }
 interface GraphContext extends PluginContext {
-  readonly requested: readonly string[]   // task ids the user asked for
+  readonly requested: readonly string[] // task ids the user asked for
 }
 interface KeyContext extends PluginContext {
   readonly task: TaskNode

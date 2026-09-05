@@ -6,13 +6,14 @@
 // time could never help), and the config-worker deadline that exists because a
 // worker the OS kills fires no `error` event and its caller waits forever.
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import fs, { chmodSync, existsSync } from 'node:fs'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import path from 'node:path'
 import {
   armWatcher,
+  pollWatcher,
   isIgnoredWatchPath,
   makeWatchIgnore,
   WATCH_PROBE,
@@ -222,6 +223,85 @@ describe('armWatcher', () => {
       }
     })
   }
+})
+
+/**
+ * The fallback the loop swaps in when `armWatcher` cannot prove delivery.
+ * It is the only watcher that works where `fs.watch` is answered by an OS
+ * service the process may not reach — a sandbox without `machLookup` on
+ * `com.apple.FSEvents`, a network mount — and there the native call
+ * SUCCEEDS and then never fires, so nothing but a positive test catches a
+ * regression here.
+ */
+describe('pollWatcher', () => {
+  const settle = async (seen: string[], want: string): Promise<void> => {
+    const start = Date.now()
+    while (!seen.includes(want) && Date.now() - start < 3000) await Bun.sleep(10)
+  }
+
+  it('reports a modification, a creation and a deletion, and never the probe', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-'))
+    await writeFile(path.join(dir, 'a.txt'), '1')
+    const seen: string[] = []
+    const w = pollWatcher(dir, true, (f) => seen.push(f), 20)
+    try {
+      await Bun.sleep(30)
+      await writeFile(path.join(dir, 'a.txt'), '2')
+      await settle(seen, 'a.txt')
+      expect(seen).toContain('a.txt')
+
+      await mkdir(path.join(dir, 'sub'), { recursive: true })
+      await writeFile(path.join(dir, 'sub', 'b.txt'), 'x')
+      await settle(seen, 'sub/b.txt')
+      expect(seen).toContain('sub/b.txt')
+
+      const before = seen.filter((f) => f === 'a.txt').length
+      await writeFile(path.join(dir, WATCH_PROBE), 'p')
+      await rm(path.join(dir, 'a.txt'))
+      const start = Date.now()
+      while (seen.filter((f) => f === 'a.txt').length === before && Date.now() - start < 3000) {
+        await Bun.sleep(10)
+      }
+      expect(seen.filter((f) => f === 'a.txt').length).toBeGreaterThan(before)
+      expect(seen).not.toContain(WATCH_PROBE)
+    } finally {
+      w.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not walk node_modules — the cost that makes polling viable', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-nm-'))
+    await mkdir(path.join(dir, 'node_modules', 'pkg'), { recursive: true })
+    await writeFile(path.join(dir, 'node_modules', 'pkg', 'index.js'), '1')
+    const seen: string[] = []
+    const w = pollWatcher(dir, true, (f) => seen.push(f), 20)
+    try {
+      await Bun.sleep(30)
+      await writeFile(path.join(dir, 'node_modules', 'pkg', 'index.js'), '2')
+      await writeFile(path.join(dir, 'real.txt'), 'x')
+      await settle(seen, 'real.txt')
+      expect(seen).toEqual(['real.txt'])
+    } finally {
+      w.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('stops reporting once closed', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-close-'))
+    await writeFile(path.join(dir, 'a.txt'), '1')
+    const seen: string[] = []
+    const w = pollWatcher(dir, true, (f) => seen.push(f), 20)
+    w.close()
+    try {
+      await writeFile(path.join(dir, 'a.txt'), '2')
+      await Bun.sleep(120)
+      expect(seen).toEqual([])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 // The differential for the proof itself: a watcher that never speaks must

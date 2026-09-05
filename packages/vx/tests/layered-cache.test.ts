@@ -406,8 +406,11 @@ describe('LayeredCache', () => {
       outputFiles: [outFile],
       entry: { taskId: 'pkg#build', command: 'c', durationMs: 1, stdout: '' },
     })
-    // Give the background job a beat to fire the request.
-    await Bun.sleep(20)
+    // Wait for the background job to fire the request rather than assuming
+    // it fits in a fixed pause: under a loaded gate 20 ms did not, and the
+    // assertion read as "the upload never started" (2026-09-05).
+    const deadline = Date.now() + 5_000
+    while (!remote.putStarted && Date.now() < deadline) await Bun.sleep(5)
     expect(remote.putStarted).toBe(true)
     expect(remote.putFinished).toBe(false)
     // Local landed synchronously regardless of the in-flight upload.

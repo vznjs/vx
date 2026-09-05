@@ -105,8 +105,8 @@ jobs:
           test "$GOT" = "vx ${{ steps.version.outputs.version }}" || { echo "binary reports '$GOT', expected 'vx ${{ steps.version.outputs.version }}'"; exit 1; }
       - name: Assemble the darwin platform packages
         run: |
-          bun scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=darwin-x64 --out=dist/npm
-          bun scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=darwin-arm64 --out=dist/npm-arm64
+          bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=darwin-x64 --out=dist/npm
+          bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=darwin-arm64 --out=dist/npm-arm64
           cp -r dist/npm-arm64/@vzn/vx-darwin-arm64 dist/npm/@vzn/
       - name: Publish darwin platform packages
         if: ${{ github.event.inputs.dry_run != 'true' }}
@@ -228,8 +228,8 @@ jobs:
           test "$GOT" = "vx ${{ steps.version.outputs.version }}" || { echo "binary reports '$GOT', expected 'vx ${{ steps.version.outputs.version }}' — the stamp missed the manifest the binary inlines"; exit 1; }
       - name: Assemble npm tree (linux platform packages + @vzn/vx)
         run: |
-          bun scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-x64 --out=dist/npm
-          bun scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-arm64 --out=dist/npm-arm64
+          bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-x64 --out=dist/npm
+          bun packages/vx/scripts/build-npm.ts "${{ steps.version.outputs.version }}" --only=linux-arm64 --out=dist/npm-arm64
           cp -r dist/npm-arm64/@vzn/vx-linux-arm64 dist/npm/@vzn/
       - name: Publish
         if: ${{ github.event.inputs.dry_run != 'true' }}

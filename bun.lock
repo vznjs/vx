@@ -16,20 +16,6 @@
         "oxlint-tsgolint": "^0.23.0",
       },
     },
-    "apps/docs": {
-      "name": "@vzn/vx-docs",
-      "version": "0.0.0",
-      "dependencies": {
-        "@astrojs/starlight": "^0.40.0",
-        "astro": "^6.4.8",
-        "mermaid": "^11.15.0",
-        "sharp": "^0.35.2",
-        "unist-util-visit": "^5.1.0",
-      },
-      "devDependencies": {
-        "@vzn/vx": "workspace:*",
-      },
-    },
     "packages/vx": {
       "name": "@vzn/vx",
       "version": "0.0.0",
@@ -41,6 +27,28 @@
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",
+      },
+    },
+    "packages/vx-bench": {
+      "name": "@vzn/vx-bench",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+    },
+    "packages/vx-docs": {
+      "name": "@vzn/vx-docs",
+      "version": "0.0.0",
+      "dependencies": {
+        "@astrojs/starlight": "^0.40.0",
+        "astro": "^6.4.8",
+        "mermaid": "^11.15.0",
+        "sharp": "^0.35.2",
+        "unist-util-visit": "^5.1.0",
+      },
+      "devDependencies": {
+        "@vzn/vx": "workspace:*",
       },
     },
     "packages/vx-github": {
@@ -582,7 +590,9 @@
 
     "@vzn/vx": ["@vzn/vx@workspace:packages/vx"],
 
-    "@vzn/vx-docs": ["@vzn/vx-docs@workspace:apps/docs"],
+    "@vzn/vx-bench": ["@vzn/vx-bench@workspace:packages/vx-bench"],
+
+    "@vzn/vx-docs": ["@vzn/vx-docs@workspace:packages/vx-docs"],
 
     "@vzn/vx-github": ["@vzn/vx-github@workspace:packages/vx-github"],
 

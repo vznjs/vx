@@ -47,9 +47,12 @@ for (const [id, us] of selfUs) {
   byFile.set(url, (byFile.get(url) ?? 0) + us)
 }
 
-const fmt = (us: number) => `${(us / 1000).toFixed(1).padStart(7)} ms ${((100 * us) / totalUs).toFixed(1).padStart(5)}%`
+const fmt = (us: number) =>
+  `${(us / 1000).toFixed(1).padStart(7)} ms ${((100 * us) / totalUs).toFixed(1).padStart(5)}%`
 console.log(`total sampled: ${(totalUs / 1000).toFixed(1)} ms\n`)
 console.log('— self time by function —')
-for (const [l, us] of [...byFn].sort((a, b) => b[1] - a[1]).slice(0, top)) console.log(`${fmt(us)}  ${l}`)
+for (const [l, us] of [...byFn].sort((a, b) => b[1] - a[1]).slice(0, top))
+  console.log(`${fmt(us)}  ${l}`)
 console.log('\n— self time by file —')
-for (const [f, us] of [...byFile].sort((a, b) => b[1] - a[1]).slice(0, top)) console.log(`${fmt(us)}  ${f.replace(/^file:\/\//, '')}`)
+for (const [f, us] of [...byFile].sort((a, b) => b[1] - a[1]).slice(0, top))
+  console.log(`${fmt(us)}  ${f.replace(/^file:\/\//, '')}`)

@@ -27,17 +27,17 @@ For the high-level data flow, read
 
 ## CLI
 
-| File                                 | Topic                                                                    |
-| ------------------------------------ | ------------------------------------------------------------------------ |
-| [`cli.md`](./cli.md)                 | `src/cli/index.ts` — module contract: dispatcher + re-exports for tests. |
-| [`cli-run.md`](./cli-run.md)         | `src/cli/run.ts` — the `vx run` parser, scope resolver, picker.          |
-| [`cli-watch.md`](./cli-watch.md)     | `src/cli/watch.ts` — `vx watch <task>`: re-run on FS change.             |
-| [`cli-cache.md`](./cli-cache.md)     | `src/cli/cache.ts` — `vx cache prune`, duration / size parsers.          |
-| [`cli-help.md`](./cli-help.md)       | `src/cli/help.ts` — static help text.                                    |
+| File                                         | Topic                                                                          |
+| -------------------------------------------- | ------------------------------------------------------------------------------ |
+| [`cli.md`](./cli.md)                         | `src/cli/index.ts` — module contract: dispatcher + re-exports for tests.       |
+| [`cli-run.md`](./cli-run.md)                 | `src/cli/run.ts` — the `vx run` parser, scope resolver, picker.                |
+| [`cli-watch.md`](./cli-watch.md)             | `src/cli/watch.ts` — `vx watch <task>`: re-run on FS change.                   |
+| [`cli-cache.md`](./cli-cache.md)             | `src/cli/cache.ts` — `vx cache prune`, duration / size parsers.                |
+| [`cli-help.md`](./cli-help.md)               | `src/cli/help.ts` — static help text.                                          |
 | [`plugin-commands.md`](./plugin-commands.md) | `src/cli/plugin-commands.ts` — plugin-contributed verbs (`VxPlugin.commands`). |
-| [`cli-format.md`](./cli-format.md)   | `src/cli/format.ts` — `formatBytes` and other shared formatters.         |
-| [`plan-format.md`](./plan-format.md) | `src/cli/plan-format.ts` — plan → text / JSON / DOT.                     |
-| [`upgrade.md`](./upgrade.md)         | `src/cli/upgrade.ts` — `vx upgrade` binary self-update.                  |
+| [`cli-format.md`](./cli-format.md)           | `src/cli/format.ts` — `formatBytes` and other shared formatters.               |
+| [`plan-format.md`](./plan-format.md)         | `src/cli/plan-format.ts` — plan → text / JSON / DOT.                           |
+| [`upgrade.md`](./upgrade.md)                 | `src/cli/upgrade.ts` — `vx upgrade` binary self-update.                        |
 
 The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 `info.ts`, `cache.ts`) are user-facing commands documented in
@@ -72,7 +72,7 @@ The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 | [`deferred-outputs.md`](./deferred-outputs.md)     | `src/orchestrator/deferred-outputs.ts` — deferred-output registry + lazy materialise/converge. |
 | [`local-shortcircuit.md`](./local-shortcircuit.md) | `src/orchestrator/local-shortcircuit.ts` — restore-ahead classify (two-tier schedule).         |
 | [`remote-prefetch.md`](./remote-prefetch.md)       | `src/orchestrator/remote-prefetch.ts` — background remote GETs (LayeredCache only).            |
-| [`history.md`](./history.md)                       | `src/orchestrator/history.ts` — per-task duration history behind `--dry` predictions.        |
+| [`history.md`](./history.md)                       | `src/orchestrator/history.ts` — per-task duration history behind `--dry` predictions.          |
 | [`run-report.md`](./run-report.md)                 | `src/orchestrator/run-report.ts` — `--report=markdown` table.                                  |
 
 ## Workspace + discovery
@@ -118,10 +118,10 @@ The remaining subcommand parsers (`lock.ts`, `migrate*.ts`, `show.ts`,
 
 ## Plugins (`src/plugins/`)
 
-| File                                     | Topic                                                                                  |
-| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| File                                     | Topic                                                                                                       |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | [`plugins.md`](./plugins.md)             | `src/plugins/<name>/` — core's executor, cache and history scheduler as isolated, subpath-exported plugins. |
-| [`chained-cache.md`](./chained-cache.md) | `src/cache/chained-cache.ts` — several declared cache layers, chained in order.        |
+| [`chained-cache.md`](./chained-cache.md) | `src/cache/chained-cache.ts` — several declared cache layers, chained in order.                             |
 
 ## Utilities
 

@@ -103,13 +103,19 @@ async function addProject(
 }
 
 /**
- * A stub HTTP artifact server + the RemoteCacheLayer speaking to it — for
- * the cases where observing the WIRE matters (per-hash GET/HEAD counts,
- * concurrency overlap, a 500ing remote). The layer is deliberately thin:
- * LayeredCache owns dedup/degradation, so the stub just translates.
+ * A stub HTTP artifact ENDPOINT + the RemoteCacheLayer speaking to it —
+ * for the cases where observing the WIRE matters (per-hash GET/HEAD
+ * counts, concurrency overlap, a 500ing remote). The layer is
+ * deliberately thin: LayeredCache owns dedup/degradation, so the stub
+ * just translates.
+ *
+ * The endpoint is a `Request → Response` handler the layer calls
+ * directly, NOT a listening socket. It is the same wire — methods,
+ * statuses, headers, JSON bodies — with nothing to bind: a test that
+ * opens a localhost port needs a sandbox grant that says a task in this
+ * repo may serve the network, and nothing here actually needs one.
  */
-interface ArtifactServer {
-  server: ReturnType<typeof Bun.serve>
+interface ArtifactEndpoint {
   layer: RemoteCacheLayer
   store: Map<string, Uint8Array>
   /** Per-hash GET counts — pins at-most-once probing across prefetch + get. */
@@ -122,64 +128,66 @@ interface ArtifactServer {
   batchCalls: () => number
 }
 
-function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }): ArtifactServer {
+function startArtifactEndpoint(opts?: {
+  getLatencyMs?: number
+  failAll?: boolean
+}): ArtifactEndpoint {
   const store = new Map<string, Uint8Array>()
   const getCounts = new Map<string, number>()
   const headCounts = new Map<string, number>()
   let inFlight = 0
   let maxInFlight = 0
   let batchCalls = 0
-  const server = Bun.serve({
-    port: 0,
-    async fetch(req) {
-      // Simulate a fully-broken remote: every request 500s. The run
-      // must still succeed — remote cache is optional, errors degrade
-      // to a miss.
-      if (opts?.failAll) return new Response('boom', { status: 500 })
-      const url = new URL(req.url)
-      // Batch existence probe — one round-trip for many hashes.
-      if (url.pathname === '/artifacts/batch' && req.method === 'POST') {
-        batchCalls++
-        const { hashes } = (await req.json()) as { hashes: string[] }
-        return Response.json({ present: hashes.filter((h) => store.has(h)) })
+  const handle = async (req: Request): Promise<Response> => {
+    // Simulate a fully-broken remote: every request 500s. The run
+    // must still succeed — remote cache is optional, errors degrade
+    // to a miss.
+    if (opts?.failAll) return new Response('boom', { status: 500 })
+    const url = new URL(req.url)
+    // Batch existence probe — one round-trip for many hashes.
+    if (url.pathname === '/artifacts/batch' && req.method === 'POST') {
+      batchCalls++
+      const { hashes } = (await req.json()) as { hashes: string[] }
+      return Response.json({ present: hashes.filter((h) => store.has(h)) })
+    }
+    const m = url.pathname.match(/^\/artifacts\/([0-9a-f]+)$/)
+    if (!m) return new Response('not found', { status: 404 })
+    const hash = m[1]!
+    if (req.method === 'PUT') {
+      store.set(hash, new Uint8Array(await req.arrayBuffer()))
+      return new Response(null, { status: 200 })
+    }
+    if (req.method === 'HEAD') {
+      headCounts.set(hash, (headCounts.get(hash) ?? 0) + 1)
+      return new Response(null, { status: store.has(hash) ? 200 : 404 })
+    }
+    if (req.method === 'GET') {
+      getCounts.set(hash, (getCounts.get(hash) ?? 0) + 1)
+      inFlight++
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      try {
+        if (opts?.getLatencyMs) await Bun.sleep(opts.getLatencyMs)
+        const body = store.get(hash)
+        if (!body) return new Response('not found', { status: 404 })
+        return new Response(body, { status: 200, headers: { 'x-duration': '12' } })
+      } finally {
+        inFlight--
       }
-      const m = url.pathname.match(/^\/artifacts\/([0-9a-f]+)$/)
-      if (!m) return new Response('not found', { status: 404 })
-      const hash = m[1]!
-      if (req.method === 'PUT') {
-        store.set(hash, new Uint8Array(await req.arrayBuffer()))
-        return new Response(null, { status: 200 })
-      }
-      if (req.method === 'HEAD') {
-        headCounts.set(hash, (headCounts.get(hash) ?? 0) + 1)
-        return new Response(null, { status: store.has(hash) ? 200 : 404 })
-      }
-      if (req.method === 'GET') {
-        getCounts.set(hash, (getCounts.get(hash) ?? 0) + 1)
-        inFlight++
-        maxInFlight = Math.max(maxInFlight, inFlight)
-        try {
-          if (opts?.getLatencyMs) await Bun.sleep(opts.getLatencyMs)
-          const body = store.get(hash)
-          if (!body) return new Response('not found', { status: 404 })
-          return new Response(body, { status: 200, headers: { 'x-duration': '12' } })
-        } finally {
-          inFlight--
-        }
-      }
-      return new Response('method not allowed', { status: 405 })
-    },
-  })
-  const baseUrl = `http://localhost:${server.port}`
+    }
+    return new Response('method not allowed', { status: 405 })
+  }
+  const baseUrl = 'http://artifacts.invalid'
+  const call = (url: string, init?: RequestInit): Promise<Response> =>
+    handle(new Request(url, init))
   const layer: RemoteCacheLayer = {
     async has(hash) {
-      const res = await fetch(`${baseUrl}/artifacts/${hash}`, { method: 'HEAD' })
+      const res = await call(`${baseUrl}/artifacts/${hash}`, { method: 'HEAD' })
       if (res.status === 404) return false
       if (!res.ok) throw new Error(`HEAD ${hash} → ${res.status}`)
       return true
     },
     async hasMany(hashes) {
-      const res = await fetch(`${baseUrl}/artifacts/batch`, {
+      const res = await call(`${baseUrl}/artifacts/batch`, {
         method: 'POST',
         body: JSON.stringify({ hashes }),
       })
@@ -188,7 +196,7 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
       return new Set(present)
     },
     async get(hash) {
-      const res = await fetch(`${baseUrl}/artifacts/${hash}`)
+      const res = await call(`${baseUrl}/artifacts/${hash}`)
       if (res.status === 404) return null
       if (!res.ok) throw new Error(`GET ${hash} → ${res.status}`)
       const durationRaw = res.headers.get('x-duration')
@@ -198,12 +206,11 @@ function startArtifactServer(opts?: { getLatencyMs?: number; failAll?: boolean }
       }
     },
     async put(hash, body) {
-      const res = await fetch(`${baseUrl}/artifacts/${hash}`, { method: 'PUT', body })
+      const res = await call(`${baseUrl}/artifacts/${hash}`, { method: 'PUT', body })
       if (!res.ok) throw new Error(`PUT ${hash} → ${res.status}`)
     },
   }
   return {
-    server,
     layer,
     store,
     getCounts,
@@ -229,7 +236,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     'a run served entirely from the remote layer reports ok: true',
     async () => {
       const fixture = await makeWorkspace()
-      const remote = startArtifactServer()
+      const remote = startArtifactEndpoint()
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
@@ -259,7 +266,6 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
         expect(second.ok).toBe(true)
       } finally {
-        await remote.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
@@ -270,7 +276,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     'planRun (--dry) predicts hit-remote via HEAD — no artifact download, no local ingest',
     async () => {
       const fixture = await makeWorkspace()
-      const remote = startArtifactServer()
+      const remote = startArtifactEndpoint()
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
@@ -307,7 +313,6 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         const artifacts = [...glob.scanSync({ cwd: cacheDir })]
         expect(artifacts).toEqual([])
       } finally {
-        await remote.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
@@ -320,7 +325,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
       // Point at a fully-broken remote: GET, PUT, and the prefetch
       // probe all 500. Nothing may escalate to a run failure.
       const fixture = await makeWorkspace()
-      const broken = startArtifactServer({ failAll: true })
+      const broken = startArtifactEndpoint({ failAll: true })
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
@@ -345,7 +350,6 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         })
         expect(second.ok).toBe(true)
       } finally {
-        await broken.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
@@ -364,7 +368,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           config: BUILD_CONFIG,
         })
       }
-      const seed = startArtifactServer()
+      const seed = startArtifactEndpoint()
       try {
         // Warm the remote (and wipe local) so the second run is fully
         // remote-served — both prefetch AND execute-task want each key.
@@ -377,7 +381,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(seed.store.size).toBe(2)
         await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
 
-        const remote = startArtifactServer({ getLatencyMs: 40 })
+        const remote = startArtifactEndpoint({ getLatencyMs: 40 })
         // Carry over the warmed artifacts to the latency server.
         for (const [h, b] of seed.store) remote.store.set(h, b)
         try {
@@ -398,10 +402,8 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           // their latency overlapped instead of serializing.
           expect(remote.getsInFlight()).toBeGreaterThanOrEqual(2)
         } finally {
-          await remote.server.stop(true)
         }
       } finally {
-        await seed.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
@@ -420,7 +422,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           config: BUILD_CONFIG,
         })
       }
-      const seed = startArtifactServer()
+      const seed = startArtifactEndpoint()
       try {
         await run({
           cwd: fixture.root,
@@ -432,7 +434,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         const [presentHash, absentHash] = [...seed.store.keys()] as [string, string]
         await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
 
-        const remote = startArtifactServer()
+        const remote = startArtifactEndpoint()
         // Carry over ONLY one artifact — the other stays a remote miss.
         remote.store.set(presentHash, seed.store.get(presentHash)!)
         try {
@@ -455,10 +457,8 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           expect(remote.getCounts.get(presentHash)).toBe(1)
           expect(remote.getCounts.get(absentHash) ?? 0).toBeLessThanOrEqual(1)
         } finally {
-          await remote.server.stop(true)
         }
       } finally {
-        await seed.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
@@ -473,7 +473,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
       // runs — it must NOT be prefetched, but the lazy read-through must
       // still produce a correct remote hit on the warm run.
       const fixture = await makeWorkspace()
-      const remote = startArtifactServer()
+      const remote = startArtifactEndpoint()
       try {
         await addProject(fixture.root, 'pkg', {
           files: { 'src/seed.txt': 'seed' },
@@ -516,7 +516,6 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         const statuses = second.outcomes.map((o) => `${o.node.taskName}:${o.status}`).sort()
         expect(statuses).toEqual(['build:cache-hit-remote', 'codegen:cache-hit-remote'])
       } finally {
-        await remote.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
@@ -527,7 +526,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     '--no-cache issues no remote GET (no prefetch, no read-through)',
     async () => {
       const fixture = await makeWorkspace()
-      const remote = startArtifactServer()
+      const remote = startArtifactEndpoint()
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
@@ -545,7 +544,6 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(res.outcomes[0]!.status).toBe('success')
         expect([...remote.getCounts.values()]).toHaveLength(0)
       } finally {
-        await remote.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
@@ -556,7 +554,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     '--dry reads the same clamped policy the run will use',
     async () => {
       const fixture = await makeWorkspace()
-      const remote = startArtifactServer()
+      const remote = startArtifactEndpoint()
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
@@ -591,7 +589,6 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         })
         expect(withRemote.tasks.map((t) => t.cacheStatus)).toEqual(['miss'])
       } finally {
-        await remote.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
@@ -602,7 +599,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     'closes the cache handle when the run throws mid-way',
     async () => {
       const fixture = await makeWorkspace()
-      const remote = startArtifactServer()
+      const remote = startArtifactEndpoint()
       // `recordRunBundle` is the one unguarded call between the last task
       // finishing and the normal close. A throw there (SQLITE_BUSY past the
       // busy_timeout, disk-full) used to skip close() entirely — leaking the
@@ -629,7 +626,6 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
       } finally {
         recordSpy.mockRestore()
         closeSpy.mockRestore()
-        await remote.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
@@ -640,7 +636,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     'local:,remote:rw uploads to remote even with local writes disabled (packs bytes in memory)',
     async () => {
       const fixture = await makeWorkspace()
-      const remote = startArtifactServer()
+      const remote = startArtifactEndpoint()
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
@@ -673,7 +669,6 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         })
         expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
       } finally {
-        await remote.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },
@@ -691,7 +686,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
       // hits from the PRE-EXISTING local cache", not "discard what you just
       // downloaded".
       const fixture = await makeWorkspace()
-      const remote = startArtifactServer()
+      const remote = startArtifactEndpoint()
       const policy = { localRead: false, localWrite: false, remoteRead: true, remoteWrite: true }
       try {
         await addProject(fixture.root, 'app', {
@@ -723,7 +718,6 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         // …and therefore no second upload of bytes the remote already holds.
         expect([...remote.store.keys()]).toEqual(putsAfterFirst)
       } finally {
-        await remote.server.stop(true)
         await rm(fixture.root, { recursive: true, force: true })
       }
     },

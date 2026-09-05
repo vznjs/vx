@@ -1,13 +1,13 @@
 name: Deploy docs
 
-# Builds the Starlight docs site (apps/docs) and publishes it to GitHub
+# Builds the Starlight docs site (packages/vx-docs) and publishes it to GitHub
 # Pages. Enable once under Settings → Pages → Source: "GitHub Actions".
 on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
-      - 'apps/docs/**'
+      - 'packages/vx/docs/**'
+      - 'packages/vx-docs/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -48,15 +48,20 @@ jobs:
             sudo aa-disable /etc/apparmor.d/unprivileged_userns || true
           fi
 
+      # Generating the Starlight collection from `docs/` crosses project
+      # boundaries, so it is a workspace step, not an vx-docs task.
+      - name: Generate site content from docs/
+        run: bun run docs:generate
+
       # Dogfood: build the docs site through vx from the repo root, scoped
       # to the docs project. `import` regenerates the Starlight content from
-      # docs/, then `astro build` writes apps/docs/dist.
+      # docs/, then `astro build` writes packages/vx-docs/dist.
       - name: vx run build
         run: bun packages/vx/src/bin.ts run build --filter @vzn/vx-docs
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/docs/dist
+          path: packages/vx-docs/dist
 
   deploy:
     name: deploy

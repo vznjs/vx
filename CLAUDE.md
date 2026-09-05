@@ -1,6 +1,6 @@
 # `@vzn/vx` — project memory for Claude
 
-**Start every session by reading `docs/STATUS.md`.** It is the living
+**Start every session by reading `packages/vx/docs/STATUS.md`.** It is the living
 handoff: direction, what shipped, what is in flight, what is next. Update
 it in the same commit as the work. This file holds only what does not
 change week to week.
@@ -35,9 +35,9 @@ hard dependencies). `bun test`. `oxlint --type-aware --type-check` +
 ## Layout
 
 ```
-packages/vx/            @vzn/vx core (src/ + tests/); paths below relative to it
+packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relative to it
   src/bin.ts            shebang → cli
-  src/index.ts          public façade (snapshot-pinned by tests/package-boundaries.test.ts)
+  src/index.ts          public façade (snapshot-pinned by tests/package-boundaries.unsafe.test.ts)
   src/config.ts         user schema: defineProject / defineWorkspace
   src/cli/              verbs: run watch cache lock init migrate show info why last prune upgrade;
                         plugin-commands.ts resolves plugin verbs (`commands` seam)
@@ -55,9 +55,9 @@ packages/vx-github      GitHub Actions job summary + Checks API plugin
 packages/vx-mcp         `vx mcp` — MCP server for AI agents (commands seam, no SDK)
 packages/vx-turbo-cache Turbo `/v8/artifacts` remote cache plugin (self-hosted or Vercel)
 packages/vx-nx-cache    Nx self-hosted remote cache plugin (`/v1/cache`)
-apps/docs               Astro Starlight site; docs/ is imported by scripts/import-docs.ts
-bench/                  synthetic workspace generator + runners (vx / turbo / nx)
-docs/                   source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/
+packages/vx-docs        Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
+packages/vx-bench       synthetic workspace generator + runners (vx / turbo / nx)
+packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/
 ```
 
 Module boundaries: each `src/<module>/index.ts` is the contract; cross-module
@@ -71,14 +71,16 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.test.ts`).
   docs build). Then push and confirm the real CI conclusion.
 - `bun test` alone is NOT the gate: it is transpile-only and cannot see a
   type error. Never pipe a gate through `tail`/`grep` — it masks the exit.
-- The core suite runs as four parallel shard tasks
-  (`test.bun.shard-1`–`shard-4`, `bun test --shard=<i>/4`). Four
+- The core suite runs as eight parallel shard tasks
+  (`test.bun.shard-1`–`shard-8`, `bun test --shard=<i>/8`). Many
   processes is not only speed: `bun test` pins ~2 descriptors per
   imported module and macOS caps a process at 10 240, so the whole suite
-  in one process does not clear the cap. The darwin CI job runs the same
-  four shards sequentially. `@vzn/vx#test.bun.shard-*` is the one task in
-  the repo with no `exec.sandbox` — seatbelt cannot nest, and this suite
-  spawns sandboxes.
+  in one process does not clear the cap.
+- `tests/*.unsafe.test.ts` is the suite a sandbox cannot host — the
+  sandbox's own tests (seatbelt cannot nest) and the cross-project law
+  (a project may read only its own directory). The shards exclude them
+  with `--path-ignore-patterns`; `test.bun.unsafe` runs them, and it is
+  the ONLY task in the whole repo with no `exec.sandbox`.
 - `packages/*` suites are gated by CI's separate job; after touching a
   plugin package run its suite yourself (`vx-reapi` one process per file
   with `VX_REAPI_TEST_ENDPOINT` / `VX_REAPI_EXEC_ENDPOINT` set, or it
@@ -163,5 +165,6 @@ Turbo remote-cache wire in core; HTTP/3.
 ## Operating directive
 
 You own this project. Each turn: pick the next valuable thing from
-`docs/STATUS.md`, do it, gate, push, update STATUS in the same commit, and
+`packages/vx/docs/STATUS.md`, do it, gate, push, update STATUS in the same
+commit, and
 say what you are doing next. Never end with "what next?".

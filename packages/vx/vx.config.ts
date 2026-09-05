@@ -23,16 +23,47 @@ export default defineProject({
     },
 
     'test.bun': {
-      description: 'bun test against the tests/ tree (four shards)',
-      dependsOn: ['test.bun.shard-1', 'test.bun.shard-2', 'test.bun.shard-3', 'test.bun.shard-4'],
+      description: 'bun test',
+      dependsOn: [
+        'test.bun.shard-1',
+        'test.bun.shard-2',
+        'test.bun.shard-3',
+        'test.bun.shard-4',
+        'test.bun.shard-5',
+        'test.bun.shard-6',
+        'test.bun.shard-7',
+        'test.bun.shard-8',
+        'test.bun.unsafe',
+      ],
+    },
+
+    'test.bun.unsafe': {
+      description: 'bun test — the files a sandbox cannot host',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun test ./tests/*.unsafe.test.ts',
+        env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+      },
+      cache: {
+        inputs: {
+          files: ['**/*'],
+        },
+        outputs: { files: [] },
+      },
     },
 
     'test.bun.shard-1': {
-      description: 'bun test, shard 1 of 4',
+      description: 'bun test',
       dependsOn: ['install'],
       exec: {
-        command: 'bun test --shard=1/4',
+        command: 'bun test --shard=1/8 --path-ignore-patterns="**/*.unsafe.test.ts"',
         env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+        sandbox: {
+          allow: {
+            systemInfo: ['vfs.disk-space'],
+            machLookup: ['com.apple.FSEvents'],
+          },
+        },
       },
       cache: {
         inputs: {
@@ -43,11 +74,17 @@ export default defineProject({
     },
 
     'test.bun.shard-2': {
-      description: 'bun test, shard 2 of 4',
+      description: 'bun test',
       dependsOn: ['install'],
       exec: {
-        command: 'bun test --shard=2/4',
+        command: 'bun test --shard=2/8 --path-ignore-patterns="**/*.unsafe.test.ts"',
         env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+        sandbox: {
+          allow: {
+            systemInfo: ['vfs.disk-space'],
+            machLookup: ['com.apple.FSEvents'],
+          },
+        },
       },
       cache: {
         inputs: {
@@ -58,11 +95,17 @@ export default defineProject({
     },
 
     'test.bun.shard-3': {
-      description: 'bun test, shard 3 of 4',
+      description: 'bun test',
       dependsOn: ['install'],
       exec: {
-        command: 'bun test --shard=3/4',
+        command: 'bun test --shard=3/8 --path-ignore-patterns="**/*.unsafe.test.ts"',
         env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+        sandbox: {
+          allow: {
+            systemInfo: ['vfs.disk-space'],
+            machLookup: ['com.apple.FSEvents'],
+          },
+        },
       },
       cache: {
         inputs: {
@@ -73,11 +116,101 @@ export default defineProject({
     },
 
     'test.bun.shard-4': {
-      description: 'bun test, shard 4 of 4',
+      description: 'bun test',
       dependsOn: ['install'],
       exec: {
-        command: 'bun test --shard=4/4',
+        command: 'bun test --shard=4/8 --path-ignore-patterns="**/*.unsafe.test.ts"',
         env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+        sandbox: {
+          allow: {
+            systemInfo: ['vfs.disk-space'],
+            machLookup: ['com.apple.FSEvents'],
+          },
+        },
+      },
+      cache: {
+        inputs: {
+          files: ['**/*'],
+        },
+        outputs: { files: [] },
+      },
+    },
+
+    'test.bun.shard-5': {
+      description: 'bun test',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun test --shard=5/8 --path-ignore-patterns="**/*.unsafe.test.ts"',
+        env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+        sandbox: {
+          allow: {
+            systemInfo: ['vfs.disk-space'],
+            machLookup: ['com.apple.FSEvents'],
+          },
+        },
+      },
+      cache: {
+        inputs: {
+          files: ['**/*'],
+        },
+        outputs: { files: [] },
+      },
+    },
+
+    'test.bun.shard-6': {
+      description: 'bun test',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun test --shard=6/8 --path-ignore-patterns="**/*.unsafe.test.ts"',
+        env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+        sandbox: {
+          allow: {
+            systemInfo: ['vfs.disk-space'],
+            machLookup: ['com.apple.FSEvents'],
+          },
+        },
+      },
+      cache: {
+        inputs: {
+          files: ['**/*'],
+        },
+        outputs: { files: [] },
+      },
+    },
+
+    'test.bun.shard-7': {
+      description: 'bun test',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun test --shard=7/8 --path-ignore-patterns="**/*.unsafe.test.ts"',
+        env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+        sandbox: {
+          allow: {
+            systemInfo: ['vfs.disk-space'],
+            machLookup: ['com.apple.FSEvents'],
+          },
+        },
+      },
+      cache: {
+        inputs: {
+          files: ['**/*'],
+        },
+        outputs: { files: [] },
+      },
+    },
+
+    'test.bun.shard-8': {
+      description: 'bun test',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun test --shard=8/8 --path-ignore-patterns="**/*.unsafe.test.ts"',
+        env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+        sandbox: {
+          allow: {
+            systemInfo: ['vfs.disk-space'],
+            machLookup: ['com.apple.FSEvents'],
+          },
+        },
       },
       cache: {
         inputs: {
@@ -95,7 +228,7 @@ export default defineProject({
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],
-            read: ['.', '../../bench/**'],
+            read: ['.'],
           },
         },
       },
@@ -135,7 +268,7 @@ export default defineProject({
           allow: {
             systemInfo: ['vfs.disk-space'],
             read: ['.'],
-            write: ['**/*'],
+            write: ['.'],
           },
         },
       },
@@ -159,10 +292,12 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64',
         sandbox: {
           allow: {
-            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            systemInfo: ['vfs.disk-space'],
             read: ['.'],
-            write: ['.', '~/.bun/install/cache/**'],
-            network: ['registry.npmjs.org'],
+            write: ['dist/vx-linux-x64'],
+          },
+          ignore: {
+            write: ['*.bun-build'],
           },
         },
       },
@@ -180,10 +315,12 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64',
         sandbox: {
           allow: {
-            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            systemInfo: ['vfs.disk-space'],
             read: ['.'],
-            write: ['.', '~/.bun/install/cache/**'],
-            network: ['registry.npmjs.org'],
+            write: ['dist/vx-linux-arm64'],
+          },
+          ignore: {
+            write: ['*.bun-build'],
           },
         },
       },
@@ -201,10 +338,12 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64',
         sandbox: {
           allow: {
-            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            systemInfo: ['vfs.disk-space'],
             read: ['.'],
-            write: ['.', '~/.bun/install/cache/**'],
-            network: ['registry.npmjs.org'],
+            write: ['dist/vx-darwin-x64'],
+          },
+          ignore: {
+            write: ['*.bun-build'],
           },
         },
       },
@@ -222,10 +361,12 @@ export default defineProject({
           'bun build --compile --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64',
         sandbox: {
           allow: {
-            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            systemInfo: ['vfs.disk-space'],
             read: ['.'],
-            write: ['.', '~/.bun/install/cache/**'],
-            network: ['registry.npmjs.org'],
+            write: ['dist/vx-darwin-arm64'],
+          },
+          ignore: {
+            write: ['*.bun-build'],
           },
         },
       },

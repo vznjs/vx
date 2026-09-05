@@ -1,0 +1,14 @@
+{
+  "name": "@vzn/vx-bench",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Synthetic-workspace generator, runners and the ideal-schedule baseline behind the published benchmarks.",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@vzn/vx": "workspace:*"
+  }
+}

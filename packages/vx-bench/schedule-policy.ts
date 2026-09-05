@@ -472,7 +472,7 @@ async function main(): Promise<void> {
       report,
       '```',
     ].join('\n')
-    await Bun.write('bench/schedule-policy.md', md + '\n')
+    await Bun.write('packages/vx-bench/schedule-policy.md', md + '\n')
     console.log('\nwrote bench/schedule-policy.md')
   }
 }

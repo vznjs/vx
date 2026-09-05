@@ -218,7 +218,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
  * against the wrong surface.
  */
 async function documentedRows(anchor: string): Promise<string[]> {
-  const doc = await Bun.file(new URL('../../../docs/schema.md', import.meta.url).pathname).text()
+  const doc = await Bun.file(new URL('../docs/schema.md', import.meta.url).pathname).text()
   const at = doc.indexOf(anchor)
   expect(at).toBeGreaterThan(-1)
   const rows: string[] = []
@@ -360,7 +360,7 @@ describe('docs/schema.md env allowlist matches src/exec/env.ts', () => {
     // A reader asking "what does my build script actually see?" gets this
     // list, so an incomplete copy answers wrongly. It had drifted: USER,
     // LOGNAME, TEMP and TMP were passed to every task and named nowhere.
-    const doc = await Bun.file(path.resolve(import.meta.dir, '../../../docs/schema.md')).text()
+    const doc = await Bun.file(path.resolve(import.meta.dir, '../docs/schema.md')).text()
     const start = doc.indexOf('**Essential allowlist**')
     expect(start).toBeGreaterThan(-1)
     const section = doc.slice(start, start + 1200)

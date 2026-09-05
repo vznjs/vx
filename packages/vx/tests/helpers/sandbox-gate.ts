@@ -115,3 +115,18 @@ export async function sandboxAvailable(label: string): Promise<boolean> {
   console.warn(`[${label}] skipping — the OS sandbox is unavailable: ${availability.reason}`)
   return false
 }
+
+/**
+ * True when THIS process is itself sandboxed.
+ *
+ * Facilities a task's grants did not include then fail silently rather
+ * than loudly: `fs.watch` on macOS is FSEvents, which needs a mach-lookup
+ * — denied, the call still succeeds and never fires (measured 2026-09-05:
+ * 0 events against 3 for the same writes outside). A test of the OS
+ * watcher has nothing to assert here, and attempting it only records a
+ * denial the suite cannot grant away.
+ */
+export async function insideSandbox(): Promise<boolean> {
+  const p = await probeSandbox()
+  return !p.available && p.reason.includes('already sandboxed')
+}

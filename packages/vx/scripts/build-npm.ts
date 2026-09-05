@@ -15,10 +15,10 @@
 // Publishing is done by the workflow (`npm publish` in each emitted dir); this
 // script only builds the tree.
 //
-//   bun scripts/build-npm.ts <version> [--out=dist/npm] [--only=linux-x64]
+//   bun packages/vx/scripts/build-npm.ts <version> [--out=dist/npm] [--only=linux-x64]
 
 import { chmod, cp, mkdir, rm } from 'node:fs/promises'
-import { dirname, isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 interface Target {
   target: string
@@ -33,12 +33,15 @@ const TARGETS: readonly Target[] = [
   { target: 'darwin-arm64', os: 'darwin', cpu: 'arm64' },
 ]
 
-const ROOT = dirname(import.meta.dir) // scripts/ -> repo root
+const ROOT = resolve(import.meta.dir, '..', '..', '..') // packages/vx/scripts -> repo root
 // Core is a workspace member now, so its sources, manifest and compiled
 // binaries live under packages/vx — only README/LICENSE stay repo-wide.
 const CORE = join(ROOT, 'packages', 'vx')
 /** Object form: npm rewrites a string on publish and warns about it each time. */
-const REPOSITORY = { type: 'git', url: 'git+https://github.com/vznjs/vx.git' } as const
+const REPO_URL = 'https://github.com/vznjs/vx'
+// npm rewrites a bare string into this object, so it is written out already
+// in the shape npm stores — see the workflow's note on `repository`.
+const REPOSITORY = { type: 'git', url: `git+${REPO_URL}.git` } as const
 
 function parseArgs(argv: readonly string[]): { version: string; out: string; only?: string } {
   let version: string | undefined
@@ -50,7 +53,9 @@ function parseArgs(argv: readonly string[]): { version: string; out: string; onl
     else if (!a.startsWith('--')) version = a
   }
   if (version === undefined) {
-    throw new Error('usage: bun scripts/build-npm.ts <version> [--out=dir] [--only=target]')
+    throw new Error(
+      'usage: bun packages/vx/scripts/build-npm.ts <version> [--out=dir] [--only=target]',
+    )
   }
   // Accept a leading `v` (a git tag like v1.2.3) and strip it.
   version = version.replace(/^v/, '')
@@ -109,7 +114,7 @@ async function emitPlatformPackages(args: {
     })
     await Bun.write(
       join(pkgDir, 'README.md'),
-      `# ${pkgName}\n\nThe ${t.os}-${t.cpu} prebuilt binary for [\`${mainName}\`](${REPOSITORY}).\n\nYou don't install this directly — it's an optionalDependency of \`${mainName}\`, which npm installs automatically on a matching platform.\n`,
+      `# ${pkgName}\n\nThe ${t.os}-${t.cpu} prebuilt binary for [\`${mainName}\`](${REPO_URL}).\n\nYou don't install this directly — it's an optionalDependency of \`${mainName}\`, which npm installs automatically on a matching platform.\n`,
     )
   }
 }
@@ -171,8 +176,8 @@ async function main(): Promise<void> {
     dependencies: corePkg.dependencies ?? {},
     files: ['index.ts', 'plugins', 'src', 'launcher.mjs', 'README.md', 'LICENSE'],
     repository: REPOSITORY,
-    homepage: `${REPOSITORY}#readme`,
-    bugs: `${REPOSITORY}/issues`,
+    homepage: `${REPO_URL}#readme`,
+    bugs: `${REPO_URL}/issues`,
     license: 'MIT',
     keywords: ['monorepo', 'task-runner', 'build', 'cache', 'bun', 'turborepo', 'nx'],
   })

@@ -5,7 +5,7 @@
 // computable by hand.
 
 import { describe, expect, it } from 'bun:test'
-import { listSchedule, type GraphNode } from '../../../bench/ideal.js'
+import { listSchedule, type GraphNode } from '../ideal.js'
 
 const s = 1000
 describe('listSchedule', () => {

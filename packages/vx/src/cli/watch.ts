@@ -101,10 +101,93 @@ export const WATCH_PROBE = '.vx-watch-probe'
 /** How long a watcher gets to report its own probe before the loop goes on without proof. */
 const WATCH_PROBE_TIMEOUT_MS = 2_000
 
+/** Anything the loop needs to shut down at exit. */
+export interface WatchHandle {
+  close(): void
+}
+
 export interface ArmedWatcher {
   watcher: fs.FSWatcher
   /** Resolves `true` once the watcher reported the probe, `false` on timeout. */
   ready: Promise<boolean>
+}
+
+/** How often the fallback re-walks a watched tree. */
+const POLL_INTERVAL_MS = 250
+
+/**
+ * Directory names the fallback never descends into. `makeWatchIgnore`
+ * already drops their EVENTS, but a poller pays for the walk itself, and
+ * `node_modules` is the difference between a cheap fallback and one that
+ * re-stats 40 000 files four times a second.
+ */
+const POLL_SKIP = new Set(['node_modules', '.git', '.vx', 'dist'])
+
+/**
+ * A watcher built from `stat`, for when the OS one cannot deliver.
+ *
+ * `fs.watch` on macOS is FSEvents, which needs `mach-lookup` on
+ * `com.apple.FSEvents`; inside a sandbox that does not grant it the call
+ * SUCCEEDS and then never fires (measured 2026-09-05: 0 events recursive,
+ * 0 non-recursive, against 3 and 2 for the same writes outside — while
+ * `fs.watchFile` polling delivered in both). A network filesystem or a
+ * container bind mount fails the same way. Polling is slower and coarser,
+ * and it is the difference between `vx watch` working there and silently
+ * doing nothing.
+ */
+export function pollWatcher(
+  dir: string,
+  recursive: boolean,
+  onEvent: (filename: string) => void,
+  intervalMs = POLL_INTERVAL_MS,
+): WatchHandle {
+  let previous = new Map<string, number>()
+  let first = true
+  const scan = (): void => {
+    const current = new Map<string, number>()
+    const walk = (abs: string, rel: string): void => {
+      let entries: fs.Dirent[]
+      try {
+        entries = fs.readdirSync(abs, { withFileTypes: true })
+      } catch {
+        return // vanished or unreadable: its files simply stop appearing
+      }
+      for (const e of entries) {
+        if (e.name === WATCH_PROBE) continue
+        const childRel = rel === '' ? e.name : `${rel}/${e.name}`
+        if (e.isDirectory()) {
+          if (recursive && !POLL_SKIP.has(e.name)) walk(path.join(abs, e.name), childRel)
+          continue
+        }
+        if (!e.isFile()) continue
+        try {
+          current.set(childRel, fs.statSync(path.join(abs, e.name)).mtimeMs)
+        } catch {
+          // raced with a delete; the next scan settles it
+        }
+      }
+    }
+    walk(dir, '')
+    if (!first) {
+      for (const [rel, mtime] of current) {
+        if (previous.get(rel) !== mtime) onEvent(rel)
+      }
+      for (const rel of previous.keys()) {
+        if (!current.has(rel)) onEvent(rel)
+      }
+    }
+    previous = current
+    first = false
+  }
+  scan()
+  // Deliberately NOT unref'd: once the native watcher is closed this timer
+  // is the only thing keeping `vx watch` alive.
+  const timer = setInterval(scan, intervalMs)
+  return {
+    close(): void {
+      clearInterval(timer)
+    },
+  }
 }
 
 /**
@@ -411,18 +494,31 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // and vx's own cache writes would trigger a cycle that writes again.
   const isIgnoredPath = makeWatchIgnore(cacheDir, outputs)
 
-  const watchers: fs.FSWatcher[] = []
+  const watchers: WatchHandle[] = []
   const proofs: Promise<void>[] = []
+  // `VX_WATCH_POLL=1` skips the OS watcher entirely. Where it is known not
+  // to work — a sandbox with no `machLookup` for `com.apple.FSEvents`, a
+  // network mount, a container bind — the attempt costs a denied syscall
+  // and a two-second wait before the fallback takes over anyway.
+  const forcePoll = (process.env['VX_WATCH_POLL'] ?? '') !== ''
   const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): void => {
+    if (forcePoll) {
+      watchers.push(pollWatcher(dir, recursive, onEvent))
+      return
+    }
     const armed = armWatcher(dir, recursive, onEvent)
     watchers.push(armed.watcher)
     proofs.push(
       armed.ready.then((ok) => {
-        if (!ok) {
-          process.stderr.write(
-            `vx watch: ${dir}: the watcher gave no sign of life within ${WATCH_PROBE_TIMEOUT_MS} ms; early edits there may be missed\n`,
-          )
-        }
+        if (ok) return
+        // The watcher never proved delivery, so it is not one: an FSEvents
+        // stream the OS refused, a filesystem that reports nothing. Swap in
+        // the poller rather than run a loop that silently never fires.
+        armed.watcher.close()
+        watchers[watchers.indexOf(armed.watcher)] = pollWatcher(dir, recursive, onEvent)
+        process.stderr.write(
+          `vx watch: ${dir}: no OS watch events within ${WATCH_PROBE_TIMEOUT_MS} ms; polling every ${POLL_INTERVAL_MS} ms instead\n`,
+        )
       }),
     )
   }

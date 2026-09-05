@@ -19,7 +19,7 @@ by `tests/package-boundaries.test.ts`):
 | `packages/vx-github`      | `@vzn/vx-github` — `github()` telemetry plugin: the GitHub Actions job summary                       |
 | `packages/vx-turbo-cache` | `@vzn/vx-turbo-cache` — `turboCache()` cache plugin: any server speaking Turbo's `/v8/artifacts` API |
 | `packages/vx-nx-cache`    | `@vzn/vx-nx-cache` — `nxCache()` cache plugin: any server implementing Nx's self-hosted cache spec   |
-| `apps/docs`               | Astro Starlight docs site; imports `docs/**` at build time                                           |
+| `packages/vx-docs`        | Astro Starlight docs site; imports `packages/vx/docs/**` at build time                               |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the ~80-symbol public API and the plugin
