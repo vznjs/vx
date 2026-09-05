@@ -16,7 +16,6 @@
 // Hostile fixtures are still hand-built byte by byte, because a writer
 // that refuses to emit the attack cannot produce the input under test.
 
-// @vx-shard-cost 6  (the 400-round concurrent-restore guard, measured 2026-09-03 under load)
 import { existsSync } from 'node:fs'
 import {
   link,

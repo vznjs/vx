@@ -8,11 +8,11 @@
 //
 // vx cares because a test that loads thousands of configs (scale-graph) then
 // parks the process at the 10 240-descriptor macOS cap and the next spawn in
-// any later file fails with EBADF. tests/helpers/shard.ts gives such a file
-// its own process (`@vx-shard-isolate`). Bun 1.4.1 fixed the leak (the
-// macOS runner measured 0, 2026-09-04); the pin now reads both sides of that
-// boundary, and the isolate hint can go once the minimum Bun is 1.4.1. Scoped to darwin, the platform it
-// was measured on and where the cap bites; the linux job does not need it.
+// any later file fails with EBADF. `bun test --shard` splits the suite across
+// four processes, which is what keeps that file from taking the rest down.
+// Bun 1.4.1 fixed the leak (the macOS runner measured 0, 2026-09-04); the pin
+// reads both sides of that boundary. Scoped to darwin, the platform it was
+// measured on and where the cap bites; the linux job does not need it.
 
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'

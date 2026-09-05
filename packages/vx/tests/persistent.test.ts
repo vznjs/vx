@@ -10,7 +10,6 @@
 // and perturbs whatever runs next. `exec` makes the sleeper the tracked child,
 // so it takes the signal and dies with the task.
 
-// @vx-shard-cost 4  (measured 2026-09-03; see tests/helpers/shard.ts)
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
