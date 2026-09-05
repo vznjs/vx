@@ -19,6 +19,7 @@ export {
   type ResolvedSandboxConfig,
   type SandboxViolation,
 } from './sandbox-runtime.js'
+export { localExecutor } from './local-executor.js'
 export {
   selectExecutor,
   type ExecuteRequest,

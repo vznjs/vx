@@ -40,13 +40,10 @@ await writeFile(path.join(root, '.gitignore'), 'dist\n.vx\n')
 // node_modules (the same shape tests/helpers/local-workspace.ts emits).
 // Benches are not in CI, so this comment is the tripwire: if this file ever
 // fails with the missing-plugin hint, the workspace contract changed under it.
-const vxSrc = path.resolve(import.meta.dir, '..', 'packages', 'vx', 'src')
-await writeFile(
-  path.join(root, 'vx.workspace.mjs'),
-  `import { localExecutorPlugin } from ${JSON.stringify(path.join(vxSrc, 'plugins/local-executor/index.ts'))}\n` +
-    `import { localCachePlugin } from ${JSON.stringify(path.join(vxSrc, 'plugins/local-cache/index.ts'))}\n` +
-    `export default { plugins: [localExecutorPlugin(), localCachePlugin()] }\n`,
-)
+// The bench measures core on its own fallbacks: run here, cache in
+// .vx/cache. No plugin is declared, so nothing it measures is a plugin's
+// cost.
+await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
 await writeFile(
   path.join(root, 'package.json'),
   JSON.stringify({ name: 'bench-root', private: true }, null, 2),

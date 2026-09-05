@@ -1,17 +1,17 @@
 // Plugin consultation for the run-level extension points (cache / executor).
-// Each function asks the plugins in order. Nothing is applied by default:
-// core's own executor and cache are plugins under src/plugins/ that a
-// workspace declares like any other, so a list with no provider for a
-// load-bearing capability fails fast with MISSING_PLUGIN_HINT.
+// Each function asks the plugins in order, and CORE IS THE TAIL: running
+// here and caching here are what those words mean in the absence of a
+// plugin placing work elsewhere or storing it somewhere else. A plugin
+// goes in front — it takes what it accepts, and what it declines lands on
+// the floor. No plugin is required for a plain local run.
 //
 // See docs/design/core-cloud-split-2026-06.md §5.1.
 
 import { ChainedCache, type CacheLayer } from '../cache/index.js'
-import type { TaskExecutor } from '../exec/index.js'
+import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import { settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { detectCycle, type TaskNode } from '../graph/index.js'
-import { MISSING_PLUGIN_HINT } from './missing-plugin.js'
 import type {
   CacheContext,
   ExecutorContext,
@@ -173,32 +173,12 @@ export async function applyScheduleHooks(
  * used as is; two or more are chained (lookup walks them, save reaches all;
  * see ChainedCache). A bare local layer that another declared layer already
  * wraps (`layer.local === ctx.localCache`) is dropped, so a remote plugin
- * that layers over the local handle composes with `localCachePlugin()`
- * instead of writing the local store twice. No layer at all is a named error.
+ * that layers over the local handle does not also write the local store
+ * directly. A plugin declaring nothing leaves that store, unwrapped.
  */
-/** Host-side facts the "no plugin" error reads; never shown to plugins. */
-export interface ResolveOptions {
-  /** `false` when no `vx.workspace.*` exists at the root: the error leads with `vx init`. */
-  workspaceFile?: boolean
-}
-
-function missingPlugin(
-  capability: 'cache' | 'executor',
-  declined: readonly string[],
-  opts: ResolveOptions | undefined,
-): UserError {
-  const noFile =
-    opts?.workspaceFile === false
-      ? 'no vx.workspace.ts found — run `vx init` to write it with the local executor and cache, plus a vx.config.ts per package from its package.json scripts. '
-      : ''
-  const who = declined.length > 0 ? ` (${declined.join(', ')})` : ''
-  return new UserError(`${noFile}no ${capability} plugin declared${who}. ${MISSING_PLUGIN_HINT}`)
-}
-
 export async function resolveCache(
   plugins: readonly VxPlugin[],
   ctx: CacheContext,
-  opts?: ResolveOptions,
 ): Promise<CacheLayer> {
   const layers: CacheLayer[] = []
   for (const plugin of plugins) {
@@ -206,26 +186,25 @@ export async function resolveCache(
     const layer = await safe(plugin, 'cache', () => plugin.cache!(ctx))
     if (layer !== undefined) layers.push(layer)
   }
-  if (layers.length === 0) {
-    const declined = plugins.filter((p) => p.cache !== undefined).map((p) => `${p.name} declined`)
-    throw missingPlugin('cache', declined, opts)
-  }
+  // Core's own store is the TAIL of the chain — the floor under every
+  // lookup, not a plugin a workspace has to declare. A layer that WRAPS
+  // the local handle subsumes it below, so a remote plugin does not write
+  // the local store twice.
+  if (!layers.includes(ctx.localCache)) layers.push(ctx.localCache)
   const wrapsLocal = layers.some((l) => l !== ctx.localCache && l.local === ctx.localCache)
   const distinct = wrapsLocal ? layers.filter((l) => l !== ctx.localCache) : layers
   return distinct.length === 1 ? distinct[0]! : new ChainedCache(distinct)
 }
 
 /**
- * Collect every plugin's `executor`, in declaration order. Unlike
- * `cache` this is a LIST: per task, `selectExecutor` takes the first
- * that accepts. An empty list is the same authoring error as a missing
- * cache provider and fails the same way. A broken factory aborts — an
- * executor is load-bearing, not observational.
+ * Collect every plugin's `executor`, in declaration order, with core's
+ * own appended at the tail: per task, `selectExecutor` takes the first
+ * that accepts, and what every plugin declines runs here. A broken
+ * factory aborts — an executor is load-bearing, not observational.
  */
 export async function resolveExecutors(
   plugins: readonly VxPlugin[],
   ctx: ExecutorContext,
-  opts?: ResolveOptions,
 ): Promise<TaskExecutor[]> {
   const executors: TaskExecutor[] = []
   for (const plugin of plugins) {
@@ -233,12 +212,10 @@ export async function resolveExecutors(
     const executor = await safe(plugin, 'executor', () => plugin.executor!(ctx))
     if (executor !== undefined) executors.push(executor)
   }
-  if (executors.length === 0) {
-    const declined = plugins
-      .filter((p) => p.executor !== undefined)
-      .map((p) => `${p.name} declined`)
-    throw missingPlugin('executor', declined, opts)
-  }
+  // Core's own executor is the TAIL of every list, so a plugin executor
+  // that declines a task hands it back to this machine rather than
+  // failing the run.
+  executors.push(localExecutor())
   return executors
 }
 

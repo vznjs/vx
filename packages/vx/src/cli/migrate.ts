@@ -254,12 +254,10 @@ export default {
 // ─── TS emission ──────────────────────────────────────────────────────
 
 const WORKSPACE_FILE = `import { defineWorkspace } from '@vzn/vx'
-import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
-import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
 
 // Nothing runs that is not declared here. Put a remote executor or cache
 // plugin BEFORE the local one to prefer it.
-export default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })
+export default defineWorkspace({ plugins: [] })
 `
 
 const IDENT = /^[A-Za-z_$][\w$]*$/

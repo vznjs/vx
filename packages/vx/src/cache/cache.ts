@@ -764,7 +764,8 @@ export interface CacheLayer {
   /**
    * The local handle this layer wraps, when it wraps one (`LayeredCache`).
    * `resolveCache` uses it to drop a bare local layer another declared layer
-   * already contains, so `[cloud(), localCachePlugin()]` does not write the
+   * already contains, so a plugin that layers over the local handle does
+   * not write the
    * local store twice.
    */
   readonly local?: Cache | undefined

@@ -14,7 +14,6 @@ import { planRun, run } from '../src/index.js'
 import { resolveCache, resolveExecutors, type VxPlugin } from '../src/orchestrator/index.js'
 import type { TaskExecutor, TaskInputs } from '../src/exec/index.js'
 import { Cache, ChainedCache } from '../src/cache/index.js'
-import { localCachePlugin } from '../src/plugins/local-cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
@@ -100,28 +99,11 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     }
   })
 
-  it('resolveCache: with no contributing plugin there is NO hidden fallback', async () => {
+  it('resolveCache: a plugin that declines leaves the local handle unwrapped', async () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
     try {
-      await expect(
-        resolveCache([{ name: 'org/none', cache: () => undefined }], {
-          ...baseCtx,
-          localCache: local,
-          policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
-        }),
-      ).rejects.toThrow(/no cache plugin declared \(org\/none declined\)/)
-    } finally {
-      local.close()
-      rmSync(cacheDir, { recursive: true, force: true })
-    }
-  })
-
-  it('resolveCache: the declared local-cache plugin resolves to the local cache handle', async () => {
-    const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
-    const local = new Cache(cacheDir, { read: true, write: true })
-    try {
-      const resolved = await resolveCache([localCachePlugin()], {
+      const resolved = await resolveCache([{ name: 'org/none', cache: () => undefined }], {
         ...baseCtx,
         localCache: local,
         policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
@@ -142,7 +124,9 @@ describe('plugin-host — capability consultation + fallbacks', () => {
       { name: 'org/b', executor: async () => b },
     ]
     const resolved = await resolveExecutors(plugins, { ...baseCtx, concurrency: 4 })
-    expect(resolved).toEqual([a, b])
+    // core's local executor is the tail of every list, never the head
+    expect(resolved.slice(0, 2)).toEqual([a, b])
+    expect(resolved.map((e) => e.name)).toEqual(['a', 'b', 'local'])
   })
 
   it('resolveExecutors: a throwing executor factory aborts with a named UserError', async () => {
@@ -1064,19 +1048,18 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
-  it('NO DEFAULTS: a workspace with no plugins fails before any task runs and names the fix', async () => {
+  it('NO PLUGINS: a workspace with no workspace file at all runs on the fallbacks', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await gitInit(workspaceRoot)
-      await expect(runHello(workspaceRoot)).rejects.toThrow(
-        /no cache plugin declared[\s\S]*localExecutorPlugin\(\), localCachePlugin\(\)/,
-      )
+      const summary = await runHello(workspaceRoot)
+      expect(summary.ok).toBe(true)
     } finally {
       cleanup()
     }
   })
 
-  it('CONTROL: the same workspace with the local plugins declared runs', async () => {
+  it('CONTROL: the same workspace with an empty declared plugin list runs too', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await writeLocalWorkspace(workspaceRoot)

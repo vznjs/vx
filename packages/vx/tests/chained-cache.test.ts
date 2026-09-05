@@ -128,7 +128,7 @@ describe('resolveCache — chaining', () => {
   )
 
   it(
-    'a layer that WRAPS the local handle subsumes the bare local layer (cloud + localCachePlugin)',
+    'a layer that WRAPS the local handle subsumes a bare local layer beside it',
     withTwo(async (a) => {
       const layered = new LayeredCache(a, noRemote)
       const plugins: VxPlugin[] = [

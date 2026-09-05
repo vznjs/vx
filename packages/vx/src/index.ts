@@ -130,7 +130,8 @@ export type {
   WorkspaceHookContext,
   PluginSetupContext,
 } from './orchestrator/index.js'
-// Process primitives — what an executor plugin builds on. `@vzn/vx/plugins/local-executor`
+// Process primitives — what an executor plugin builds on. Core's own
+// local executor (`src/exec/local-executor.ts`)
 // is the reference implementation and imports exactly these.
 export { runCommand, runSandboxed } from './exec/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.

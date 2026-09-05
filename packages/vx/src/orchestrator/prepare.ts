@@ -95,6 +95,12 @@ export interface PreparedRun {
   unresolvedTasks: readonly string[]
   /** Every discovered project — the declared task names a typo is measured against. */
   projects: ReadonlyMap<string, ProjectEntry>
+  /**
+   * True iff at least one package in the workspace has a `vx.config.*` at
+   * all — regardless of scope, so a `--filter` that matched nothing is not
+   * mistaken for a workspace vx was never set up in.
+   */
+  anyProjectConfig: boolean
   workspaceFingerprint: string
   nestedDirsByProject: Map<string, string[]>
   /**
@@ -343,17 +349,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         policy,
         onRemoteError: (err) => log.status(`[vx] remote cache: ${err.message}`),
       })
-    : await resolveCache(
-        plugins,
-        {
-          workspaceRoot,
-          cacheDir,
-          warn: (m) => log.status(m),
-          localCache,
-          policy,
-        },
-        { workspaceFile: workspaceConfig !== null },
-      )
+    : await resolveCache(plugins, {
+        workspaceRoot,
+        cacheDir,
+        warn: (m) => log.status(m),
+        localCache,
+        policy,
+      })
   // Ask the LAYER, don't infer. Identity against `localCache` answers a
   // DIFFERENT question — "did the plugin hand back something other than the
   // handle I passed in?" — which an ordinary pass-through decorator (a
@@ -400,6 +402,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       nodes: new Map(),
       unresolvedTasks,
       projects,
+      anyProjectConfig: haveConfig.size > 0,
       workspaceFingerprint,
       nestedDirsByProject,
       gitFilesCache,
@@ -450,6 +453,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     nodes,
     unresolvedTasks,
     projects,
+    anyProjectConfig: haveConfig.size > 0,
     workspaceFingerprint,
     nestedDirsByProject,
     gitFilesCache,

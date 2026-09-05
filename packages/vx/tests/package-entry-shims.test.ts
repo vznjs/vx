@@ -12,8 +12,6 @@ const PACKAGES = path.resolve(import.meta.dir, '../..')
 
 const SHIMS: ReadonlyArray<[pkg: string, shim: string, real: string]> = [
   ['vx', 'index.ts', 'src/index.ts'],
-  ['vx', 'plugins/local-cache/index.ts', 'src/plugins/local-cache/index.ts'],
-  ['vx', 'plugins/local-executor/index.ts', 'src/plugins/local-executor/index.ts'],
   ['vx', 'plugins/schedule-history/index.ts', 'src/plugins/schedule-history/index.ts'],
   ['vx-otel', 'index.ts', 'src/index.ts'],
   ['vx-github', 'index.ts', 'src/index.ts'],

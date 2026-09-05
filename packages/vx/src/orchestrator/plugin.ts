@@ -110,8 +110,9 @@ export interface VxPlugin {
    * Contribute a cache layer. Returns a CacheLayer wrapping (or replacing)
    * the local Cache, or undefined to decline. Consulted ONCE per prepareRun.
    * Precedence: first non-undefined plugin cache wins, in declaration
-   * order. `@vzn/vx/plugins/local-cache` hands back the bare local Cache;
-   * a list with no provider fails the run before any task starts.
+   * order, ahead of core's own `.vx/cache` handle at the tail. A layer
+   * that WRAPS the local handle subsumes that tail, so it is not written
+   * twice.
    */
   cache?(ctx: CacheContext): CacheLayer | undefined | Promise<CacheLayer | undefined>
 
@@ -119,10 +120,10 @@ export interface VxPlugin {
    * Contribute a task executor — WHERE one task's command runs. Consulted
    * ONCE per run; every contributed executor is kept, in declaration order,
    * and per task the first whose `accepts()` passes executes it. Nothing is
-   * appended: a workspace declares `localExecutorPlugin()` (from
-   * `@vzn/vx/plugins/local-executor`) like any other, and a run with no
-   * executor at all fails before any task runs. Persistent tasks never
-   * reach an executor (local by construction).
+   * appended in front: core's own local executor is always the TAIL, so
+   * declining a task hands it back to this machine rather than failing
+   * the run. Persistent tasks never reach an executor (local by
+   * construction).
    */
   executor?(ctx: ExecutorContext): TaskExecutor | undefined | Promise<TaskExecutor | undefined>
 

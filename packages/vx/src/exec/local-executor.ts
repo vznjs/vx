@@ -1,13 +1,14 @@
-// Core's executor as a plugin: spawn the task's command in-process, exactly
-// the `runCommand` / `runSandboxed` call the orchestrator used to make
-// directly. Imports core only through the public `@vzn/vx` surface so this
-// directory can become its own package unchanged.
+// Core's own local executor: spawn the task's command here, in this
+// process. Not a plugin — "run it on this machine" is not a capability
+// someone else supplies differently, it is what running MEANS when no
+// plugin claims the task, so it sits at the TAIL of every executor list
+// (owner, 2026-09-05). An executor plugin places work ELSEWHERE; its
+// absence is "here".
+import { runCommand } from './runner.js'
+import { runSandboxed } from './sandbox-runtime.js'
+import type { TaskExecutor } from './executor.js'
 
-import { runCommand, runSandboxed, type TaskExecutor, type VxPlugin } from '@vzn/vx'
-
-export const LOCAL_EXECUTOR_PLUGIN = 'vx/local-executor'
-
-/** The executor itself — for tests and for plugins that wrap local execution. */
+/** The local executor. Accepts every task. */
 export function localExecutor(): TaskExecutor {
   return {
     name: 'local',
@@ -36,9 +37,4 @@ export function localExecutor(): TaskExecutor {
       })
     },
   }
-}
-
-/** Declare in vx.workspace.ts: `plugins: [localExecutorPlugin(), …]`. Accepts every task. */
-export function localExecutorPlugin(): VxPlugin {
-  return { name: LOCAL_EXECUTOR_PLUGIN, executor: () => localExecutor() }
 }

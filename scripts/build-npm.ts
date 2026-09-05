@@ -158,8 +158,8 @@ async function main(): Promise<void> {
     type: 'module',
     // The library surface — plugin authors `import { defineProject } from '@vzn/vx'`.
     // The same exports map the workspace package declares — the plugin
-    // subpaths (`@vzn/vx/plugins/local-executor`, …) are what every
-    // vx.workspace.ts imports; a map with only "." shipped once.
+    // subpath (`@vzn/vx/plugins/schedule-history`) is importable only if
+    // it is here; a map with only "." shipped once.
     exports: corePkg.exports,
     types: './src/index.ts',
     // The CLI — a Node launcher that execs the matching platform binary.

@@ -3,11 +3,7 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import {
-  LOCAL_CACHE_PLUGIN_PATH,
-  LOCAL_EXECUTOR_PLUGIN_PATH,
-  writeLocalWorkspace,
-} from './helpers/local-workspace.js'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 
@@ -2035,10 +2031,7 @@ describe('orchestrator e2e', () => {
     async () => {
       await writeFile(
         path.join(fixture.root, 'vx.workspace.mjs'),
-        `import { localExecutorPlugin } from ${JSON.stringify(LOCAL_EXECUTOR_PLUGIN_PATH)}
-import { localCachePlugin } from ${JSON.stringify(LOCAL_CACHE_PLUGIN_PATH)}
-export default { cacheDir: 'build/.vx-cache', plugins: [localExecutorPlugin(), localCachePlugin()] }
-`,
+        `export default { cacheDir: 'build/.vx-cache', plugins: [] }\n`,
       )
       await addProject(fixture.root, 'app-x', {
         files: { 'src/index.txt': 'hello' },

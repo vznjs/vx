@@ -327,7 +327,7 @@ jobs:
           echo '{"name":"a"}' > packages/a/package.json
           echo x > packages/a/src/x.js
           printf "import { defineProject } from '@vzn/vx'\nexport default defineProject({ tasks: { build: { exec: { command: 'echo built > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } })\n" > packages/a/vx.config.mjs
-          printf "import { defineWorkspace } from '@vzn/vx'\nimport { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'\nimport { localCachePlugin } from '@vzn/vx/plugins/local-cache'\nexport default defineWorkspace({ plugins: [localExecutorPlugin(), localCachePlugin()] })\n" > vx.workspace.mjs
+          printf "import { defineWorkspace } from '@vzn/vx'\nexport default defineWorkspace({ plugins: [] })\n" > vx.workspace.mjs
           printf 'node_modules\n.vx\n' > .gitignore
           git init -q && git add -A && git -c user.email=ci@vx -c user.name=ci commit -qm init
           /tmp/vx-ci run build --all

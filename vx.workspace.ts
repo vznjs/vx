@@ -1,6 +1,4 @@
 import { defineWorkspace } from '@vzn/vx'
-import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'
-import { localCachePlugin } from '@vzn/vx/plugins/local-cache'
 import { otel } from '@vzn/vx-otel'
 import { github } from '@vzn/vx-github'
 import { mcp } from '@vzn/vx-mcp'
@@ -17,5 +15,5 @@ import { mcp } from '@vzn/vx-mcp'
 //              own plugins so their decline paths run on every laptop run.
 //   mcp()    — adds `vx mcp`, the read-only MCP server AI agents talk to.
 export default defineWorkspace({
-  plugins: [otel(), github(), mcp(), localExecutorPlugin(), localCachePlugin()],
+  plugins: [otel(), github(), mcp()],
 })

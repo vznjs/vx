@@ -150,12 +150,8 @@ async function generate(dir: string): Promise<void> {
   // path into this checkout, since the tmp dir has no `@vzn/vx` in
   // node_modules; the plugin files' own `@vzn/vx` import resolves through
   // the checkout's node_modules (the self-link), for the binary as well.
-  await writeFile(
-    path.join(dir, 'vx.workspace.mjs'),
-    `import { localExecutorPlugin } from ${JSON.stringify(path.join(vxRoot, 'packages/vx/src/plugins/local-executor/index.ts'))}\n` +
-      `import { localCachePlugin } from ${JSON.stringify(path.join(vxRoot, 'packages/vx/src/plugins/local-cache/index.ts'))}\n` +
-      `export default { plugins: [localExecutorPlugin(), localCachePlugin()] }\n`,
-  )
+  // Core's fallbacks only — the arms compare runners, not plugin stacks.
+  await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
   await json('turbo.json', {
     $schema: 'https://turborepo.com/schema.json',
     tasks: { build: {}, installDeps: {}, test: {} },

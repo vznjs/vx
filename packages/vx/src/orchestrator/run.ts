@@ -175,7 +175,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // case too; the message is identical, so that branch stays below.
   if (prepared.unresolvedTasks.length > 0) {
     log.status(
-      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${didYouMean(prepared.unresolvedTasks, prepared.projects)}`,
+      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${didYouMean(prepared.unresolvedTasks, prepared.projects)}${initHint(prepared)}`,
     )
     prepared.cache.close()
     return { ok: false, outcomes: [] }
@@ -187,7 +187,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // buildTaskGraph semantics but logged just in case.
     const msg =
       prepared.empty === 'no-tasks-declared'
-        ? `No projects declare task(s): ${options.tasks.join(', ')}.`
+        ? `No projects declare task(s): ${options.tasks.join(', ')}.${initHint(prepared)}`
         : 'No tasks to run.'
     log.status(msg)
     prepared.cache.close()
@@ -235,16 +235,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // starts.
   let executors: readonly TaskExecutor[]
   try {
-    executors = await resolveExecutors(
-      prepared.plugins,
-      {
-        workspaceRoot: prepared.workspaceRoot,
-        cacheDir: prepared.cacheDir,
-        warn: (m: string) => log.status(m),
-        concurrency,
-      },
-      { workspaceFile: prepared.workspaceConfig !== null },
-    )
+    executors = await resolveExecutors(prepared.plugins, {
+      workspaceRoot: prepared.workspaceRoot,
+      cacheDir: prepared.cacheDir,
+      warn: (m: string) => log.status(m),
+      concurrency,
+    })
   } catch (err) {
     disposePlugins?.()
     prepared.cache.close()
@@ -1153,16 +1149,12 @@ async function planExecutorOf(
 }> {
   let executors: readonly TaskExecutor[]
   try {
-    executors = await resolveExecutors(
-      prepared.plugins,
-      {
-        workspaceRoot: prepared.workspaceRoot,
-        cacheDir: prepared.cacheDir,
-        warn: (m: string) => log.status(m),
-        concurrency: Math.max(1, navigator.hardwareConcurrency),
-      },
-      { workspaceFile: prepared.workspaceConfig !== null },
-    )
+    executors = await resolveExecutors(prepared.plugins, {
+      workspaceRoot: prepared.workspaceRoot,
+      cacheDir: prepared.cacheDir,
+      warn: (m: string) => log.status(m),
+      concurrency: Math.max(1, navigator.hardwareConcurrency),
+    })
   } catch {
     return {}
   }
@@ -1238,6 +1230,17 @@ function poolOfPlacement(
  * names first (the task kept) and then against that project's tasks, so
  * the hint is a spec the user can run.
  */
+/**
+ * The first-run case, told apart from a typo: no package in the workspace
+ * has a `vx.config.*` at all, so no name could have resolved. Reached only
+ * on the error path.
+ */
+function initHint(prepared: { anyProjectConfig: boolean }): string {
+  return prepared.anyProjectConfig
+    ? ''
+    : ' No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.'
+}
+
 function didYouMean(
   unresolved: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,

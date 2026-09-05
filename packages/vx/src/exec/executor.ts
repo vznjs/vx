@@ -1,9 +1,9 @@
 // The per-task execution contract. `execute-task.ts` decides WHAT to run
 // (command, env, sandbox baselines, capture) and hands a fully-resolved
-// request here; an executor decides WHERE/HOW the process runs. Core ships
-// no executor of its own: `@vzn/vx/plugins/local-executor` is the
-// in-process spawn, declared in vx.workspace.ts like any other. Persistent
-// tasks (`exec.persistent`) never reach an executor: they are local by
+// request here; an executor decides WHERE/HOW the process runs. Core's own
+// `local-executor.ts` is the in-process spawn, and it sits at the TAIL of
+// every executor list — what a plugin executor declines runs here.
+// Persistent tasks (`exec.persistent`) never reach an executor: they are local by
 // construction (a worker cannot hand the submitter a listening port) and
 // stay on `runPersistent`.
 //
@@ -225,6 +225,6 @@ export function selectExecutor(
     if (executor.accepts === undefined || executor.accepts(task)) return executor
   }
   throw new Error(
-    `no executor accepted ${task.taskId} (declared: ${executors.map((e) => e.name).join(', ')}). Declare localExecutorPlugin() after the executor that declined to run such tasks locally.`,
+    `no executor accepted ${task.taskId} (declared: ${executors.map((e) => e.name).join(', ')}). Core's local executor accepts every task, so this means it is missing from the list.`,
   )
 }

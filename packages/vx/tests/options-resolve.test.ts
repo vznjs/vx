@@ -32,11 +32,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import {
-  LOCAL_CACHE_PLUGIN_PATH,
-  LOCAL_EXECUTOR_PLUGIN_PATH,
-  writeLocalWorkspace,
-} from './helpers/local-workspace.js'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { MAX_TIMEOUT_MS } from '../src/util/index.js'
@@ -107,10 +103,7 @@ async function addProject(root: string, name: string, config: string): Promise<s
 async function setWorkspace(root: string, fields: string): Promise<void> {
   await writeFile(
     path.join(root, 'vx.workspace.mjs'),
-    `import { localExecutorPlugin } from ${JSON.stringify(LOCAL_EXECUTOR_PLUGIN_PATH)}
-import { localCachePlugin } from ${JSON.stringify(LOCAL_CACHE_PLUGIN_PATH)}
-export default { ${fields}, plugins: [localExecutorPlugin(), localCachePlugin()] }
-`,
+    `export default { ${fields}, plugins: [] }\n`,
   )
 }
 

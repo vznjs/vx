@@ -98,6 +98,8 @@ describe('task selection', () => {
       expect(log.lines.join('\n')).toContain(
         'No projects declare task(s): buidl. Did you mean build?',
       )
+      // a workspace that HAS configs is a typo, not a first run
+      expect(log.lines.join('\n')).not.toContain('vx init')
     },
     TIMEOUT,
   )

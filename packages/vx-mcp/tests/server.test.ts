@@ -11,8 +11,6 @@ import { handleMessage, PROTOCOL_VERSION, serve } from '../src/server.js'
 
 const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
 const PLUGIN_ENTRY = path.resolve(import.meta.dir, '../src/index.ts')
-const LOCAL_EXECUTOR = path.resolve(import.meta.dir, '../../vx/src/plugins/local-executor/index.ts')
-const LOCAL_CACHE = path.resolve(import.meta.dir, '../../vx/src/plugins/local-cache/index.ts')
 
 let root: string
 let ctx: { cacheDir: string; workspaceRoot: string }
@@ -31,10 +29,8 @@ beforeAll(async () => {
   )
   await writeFile(
     path.join(root, 'vx.workspace.mjs'),
-    `import { localExecutorPlugin } from ${JSON.stringify(LOCAL_EXECUTOR)}\n` +
-      `import { localCachePlugin } from ${JSON.stringify(LOCAL_CACHE)}\n` +
-      `import { mcp } from ${JSON.stringify(PLUGIN_ENTRY)}\n` +
-      `export default { plugins: [mcp(), localExecutorPlugin(), localCachePlugin()] }\n`,
+    `import { mcp } from ${JSON.stringify(PLUGIN_ENTRY)}\n` +
+      `export default { plugins: [mcp()] }\n`,
   )
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   // One real run, so the cache has an entry and the history a row.
@@ -187,10 +183,8 @@ describe('the command context carries the workspace’s declared cacheDir', () =
       await writeFile(path.join(ws, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
       await writeFile(
         path.join(ws, 'vx.workspace.mjs'),
-        `import { localExecutorPlugin } from ${JSON.stringify(LOCAL_EXECUTOR)}\n` +
-          `import { localCachePlugin } from ${JSON.stringify(LOCAL_CACHE)}\n` +
-          `import { mcp } from ${JSON.stringify(PLUGIN_ENTRY)}\n` +
-          `export default { cacheDir: 'build/.vx-cache', plugins: [mcp(), localExecutorPlugin(), localCachePlugin()] }\n`,
+        `import { mcp } from ${JSON.stringify(PLUGIN_ENTRY)}\n` +
+          `export default { cacheDir: 'build/.vx-cache', plugins: [mcp()] }\n`,
       )
       const cache = new Cache(path.join(ws, 'build', '.vx-cache'))
       cache.recordRun({

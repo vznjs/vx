@@ -212,9 +212,8 @@ describe('vx migrate (turbo)', () => {
   it('emits vx.workspace.ts declaring the local plugins when none exists', async () => {
     expect(result.out).toContain('vx.workspace.ts')
     const ws = await Bun.file(path.join(root, 'vx.workspace.ts')).text()
-    expect(ws).toContain("import { localExecutorPlugin } from '@vzn/vx/plugins/local-executor'")
-    expect(ws).toContain("import { localCachePlugin } from '@vzn/vx/plugins/local-cache'")
-    expect(ws).toContain('plugins: [localExecutorPlugin(), localCachePlugin()]')
+    expect(ws).toContain("import { defineWorkspace } from '@vzn/vx'")
+    expect(ws).toContain('plugins: []')
   })
 
   it('does not emit vx.workspace.ts when one already exists', async () => {
@@ -847,13 +846,14 @@ describe('vx init — the generated build is not a cached no-op', () => {
   // so on the init walkthrough a deleted `dist` stayed deleted under a
   // green `up-to-date` run. The scaffold now emits no cache block; this
   // pin fails with the old block (verified by stashing the fix).
-  it('a run before init names `vx init` instead of lecturing about plugins', async () => {
+  it('a run in a workspace with no vx config at all names `vx init`', async () => {
     const root = await makeRoot('vx-init-first-run-')
     await addPackage(root, 'w', { build: 'echo hi' })
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     try {
       const r = await vx(root, ['run', 'build', '--all'])
       expect(r.code).not.toBe(0)
-      expect(r.err).toContain('no vx.workspace.ts found — run `vx init`')
+      expect(`${r.out}${r.err}`).toContain('No package declares a vx.config — run `vx init`')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
