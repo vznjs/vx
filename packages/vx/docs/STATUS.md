@@ -952,6 +952,15 @@ before · 2 attempts this run`), `--summarize`'s per-task
       No live defect on the filename side. The 2026-07 parity doc's
       remaining rows are cycle topologies (Nx M1), watch timing (M7, M8)
       and the LOW list; none names a wrong result.
+101.  DONE (2026-09-10, late night — Nx's cycle matrix): six topologies
+      pinned where vx had two — a task cycle through every project and
+      one bridging a project without the task are refused; a package
+      cycle wrapping back through pass-through projects and one between
+      projects that makes no task cycle build; two disjoint package
+      cycles resolve independently in one graph; a two-task same-project
+      cycle is refused. No defect: the walk seeded with the declaring
+      project (the 2026-07-26 fix) holds on every shape. What the
+      2026-07 doc still lists is watch timing (M7, M8) and the LOW rows.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
