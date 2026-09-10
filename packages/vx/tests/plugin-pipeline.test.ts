@@ -646,3 +646,37 @@ describe('zero cost when absent', () => {
     TIMEOUT,
   )
 })
+
+describe('project stage context', () => {
+  it(
+    'ctx.projects is every package core discovered — config file or not, in the scope or out of it',
+    async () => {
+      // `b` has no config and is outside the scope, so the stage never
+      // visits it; a plugin whose mapping needs the whole workspace still
+      // sees it here, so it does not walk the workspace a second time.
+      await pkg('a', build)
+      const bDir = path.join(root, 'packages', 'b')
+      await mkdir(bDir, { recursive: true })
+      await writeFile(
+        path.join(bDir, 'package.json'),
+        JSON.stringify({ name: 'b', version: '1.0.0', scripts: { build: 'echo b' } }),
+      )
+      await workspace([
+        pluginSource(
+          'org/census',
+          `{ project(config, ctx) {
+            if (ctx.name !== 'a') return
+            config.tasks.build.description = ctx.projects
+              .map((p) => p.name + ':' + (p.configPath === null ? 'none' : 'config') + ':' + (p.dir === ctx.dir))
+              .sort()
+              .join(',')
+          } }`,
+        ),
+      ])
+      const plan = await planRun({ cwd: root, tasks: ['build'], projects: ['a'], log: silent() })
+      expect(plan.tasks.map((t) => t.node.id)).toEqual(['a#build'])
+      expect(plan.tasks[0]!.node.config.description).toBe('a:config:true,b:none:false')
+    },
+    TIMEOUT,
+  )
+})

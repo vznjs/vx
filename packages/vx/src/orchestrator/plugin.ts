@@ -16,6 +16,7 @@ import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../con
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { UserError } from '../util/index.js'
+import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, RunStartInfo } from './events.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 
@@ -214,6 +215,15 @@ export interface ProjectHookContext extends BaseContext {
   readonly dir: string
   /** The parsed `package.json`, read-only. */
   readonly packageJson: Readonly<Record<string, unknown>>
+  /**
+   * Every package the workspace discovered — the one being visited, the
+   * rest of the run's scope and the packages outside it, config file or
+   * not — as core read them at startup. A plugin whose mapping needs the
+   * whole workspace (a `dependsOn` is only valid against every package's
+   * scripts at once) reads it here instead of walking the workspace a
+   * second time; the same array is handed to every visit of a run.
+   */
+  readonly projects: readonly ProjectMeta[]
 }
 
 export interface GraphHookContext extends BaseContext {

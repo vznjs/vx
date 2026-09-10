@@ -5,7 +5,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { planRun, run, type Logger } from '@vzn/vx'
+import { planRun, run, type Logger, type ProjectConfig, type ProjectMeta } from '@vzn/vx'
+import { turbo } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -248,4 +249,27 @@ describe('@vzn/vx-turbo', () => {
     },
     TIMEOUT,
   )
+})
+
+describe('the mapping reads the packages core discovered', () => {
+  it('maps a package that is in ctx.projects and not on disk — the plugin never walks the workspace itself', async () => {
+    const plugin = turbo()
+    const ghost = {
+      name: 'ghost',
+      dir: path.join(root, 'packages', 'ghost'),
+      packageJson: { name: 'ghost', version: '1.0.0', scripts: { build: 'echo ghost' } },
+      configPath: null,
+    } as unknown as ProjectMeta
+    const config: ProjectConfig = { tasks: {} }
+    await plugin.project!(config, {
+      workspaceRoot: root,
+      cacheDir: path.join(root, '.vx'),
+      warn() {},
+      name: ghost.name,
+      dir: ghost.dir,
+      packageJson: ghost.packageJson as unknown as Readonly<Record<string, unknown>>,
+      projects: [ghost],
+    })
+    expect(config.tasks?.build?.exec?.command).toBe('echo ghost')
+  })
 })

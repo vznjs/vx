@@ -1443,6 +1443,36 @@ equivalent — map it manually` on every run, for the value every
       monolith's "off the chart" label sat inside the clip mask that
       cuts the tower (the label lives outside the mask).
 
+126.  DONE (2026-09-10, late night — the `project` stage names the
+      workspace): `ProjectHookContext.projects` is every package core
+      discovered — config file or not, in the scope or out of it — as
+      the one array every visit of a run receives. `@vzn/vx-turbo` was
+      walking the workspace a second time inside the stage
+      (`loadWorkspace` + `listProjectMetas` on the first visit) because
+      the context named only the package being visited, and Turbo's
+      `dependsOn` is only valid against every package's scripts at
+      once; it reads the array now and imports neither. Interleaved
+      A/B, six rounds, the 1,000-project bench under `turbo()` (each
+      package with its own `vx.config.mjs`, so every fill is a no-op
+      and the mapping's cost is all that differs), the old plugin from
+      an immutable copy: `load configs` 52.8 min / 55 median → 41.2 /
+      43 ms, the warm run ~200 → ~190. What is left of the stage's
+      cost under the plugin (41 ms against 22 without it) is the
+      1,000 per-package `turbo.json` probes, the mapping and the clone
+      per fill; probing the overlays in flight at once instead of one
+      await per package was measured (41.4–45.4 against 41.2–47.8 ms,
+      six rounds) and does nothing — `Bun.file().exists()` on a
+      warm inode is microseconds — so it is not in. Pinned twice:
+      core, a `project` plugin visiting `a` under `projects: ['a']`
+      lists `b` (no config, out of scope) in `ctx.projects`; the
+      plugin, its `project` hook called with a context whose
+      `projects` names a package that is not on disk maps it (the old
+      plugin's re-discovery could not have seen it). Both fail without
+      the change. Recorded on the way: a cold `vx run build --all` on
+      solid (`VX_TIMING=1`, the compiled binary) spends 57 ms before
+      the graph and 32 ms across its four saves inside 37.7 s of
+      tasks — the miss path is at its floor there, nothing to take.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so

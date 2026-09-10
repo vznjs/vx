@@ -9,7 +9,7 @@
 // overwrites a user's hand.
 
 import type { ProjectConfig, TaskConfig, VxPlugin } from '@vzn/vx'
-import { definePlugin, listProjectMetas, loadWorkspace, type ProjectMeta } from '@vzn/vx'
+import { definePlugin, type ProjectMeta } from '@vzn/vx'
 import { mapTurboWorkspace, type TurboMapping } from './turbo-map.js'
 
 /** The TODO a persistent task carries in `vx migrate`'s report, in the plugin's voice. */
@@ -29,7 +29,9 @@ export interface TurboPluginOptions {
  * The plugin. One mapping per run, computed on the first project the stage
  * visits and shared by the rest — turbo.json is one file for the whole
  * workspace, and a task's `dependsOn` is only valid against every package's
- * scripts at once.
+ * scripts at once. The packages are the ones core discovered
+ * (`ctx.projects`): walking the workspace again here cost a 1,000-package
+ * run a second discovery every time (2026-09-10).
  */
 export function turbo(options: TurboPluginOptions = {}): VxPlugin {
   let mapping: Promise<TurboMapping> | undefined
@@ -37,7 +39,7 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
   const plugin = definePlugin(import.meta, {
     async project(config: ProjectConfig, ctx) {
       const root = options.root ?? ctx.workspaceRoot
-      mapping ??= mapAll(root)
+      mapping ??= mapAll(root, ctx.projects)
       const mapped = await mapping
       if (!warned) {
         warned = true
@@ -59,9 +61,7 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
   return plugin
 }
 
-async function mapAll(root: string): Promise<TurboMapping> {
-  const workspace = await loadWorkspace(root)
-  const metas: ProjectMeta[] = await listProjectMetas(workspace)
+async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<TurboMapping> {
   return await mapTurboWorkspace(root, metas, {
     // Inline: the values themselves, where `vx migrate` splices a preset import.
     splice: (_kind, values) => values,
