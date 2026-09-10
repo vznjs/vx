@@ -221,6 +221,9 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['packages/other/src/index.ts', false],
     ['tsconfig.json', false],
     ['nested/pnpm-lock.yaml', false], // a fingerprint NAME below the root is not the fingerprint
+    ['vx.workspace.ts', true], // the one root file that shapes a run without being an input
+    ['vx.workspace.mjs', true],
+    ['nested/vx.workspace.ts', false],
   ])('%s → %s', (rel, kept) => {
     expect({ rel, kept: matters(rel.split('/').join(path.sep)) }).toEqual({ rel, kept })
   })

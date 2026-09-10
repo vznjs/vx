@@ -1491,6 +1491,30 @@ equivalent — map it manually` on every run, for the value every
       change. The README says it: the mapping is read once per run,
       never once per process.
 
+128.  DONE (2026-09-10, late night — found reading the watch arms for
+      item 127): an edit to `vx.workspace.*` under `vx watch` was no
+      event. The non-recursive root arm listened for fingerprint files
+      only and the recursive one (`makeRootEventFilter`) for project
+      trees, fingerprint files and `workspaceFiles` globs — the
+      workspace config is no task's input, so nothing named it, while
+      it shapes every cycle (plugins, the `config` stage, concurrency,
+      the cache dir) and a cycle re-evaluates it for free (its import
+      is keyed on its bytes). A plugin added under a running watch
+      waited for a restart while the loop looked alive. Both arms take
+      `WORKSPACE_CONFIG_FILENAMES` at the root now (exported from the
+      workspace module; a name below the root is not it). Pinned: the
+      filter table (`vx.workspace.ts` kept, `nested/vx.workspace.ts`
+      dropped) and end to end — the workspace file rewritten under a
+      running watch with a `config` plugin that warns a marker; the
+      cycle prints it, is one cycle, and executes nothing (the config
+      is not key material). Both fail without the change. What is
+      still no event at the root: a `project` plugin's own source
+      (`turbo.json` for `@vzn/vx-turbo` — a per-package overlay lives
+      in a project dir and is; a root edit needs a restart). No seam
+      names a plugin's root files, and inventing one for one consumer
+      is the special case the seams exist to avoid; a second consumer
+      makes it a seam.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so

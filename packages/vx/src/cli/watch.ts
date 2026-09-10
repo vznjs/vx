@@ -24,6 +24,7 @@ import {
   listProjects,
   loadProjectConfig,
   loadWorkspace,
+  WORKSPACE_CONFIG_FILENAMES,
   WORKSPACE_FINGERPRINT_FILES,
   type ProjectEntry,
   type ProjectMeta,
@@ -540,7 +541,9 @@ export function makeRootEventFilter(
     .map((g) => new Bun.Glob(g))
   return (filename: string): boolean => {
     const rel = filename.split(path.sep).join('/')
-    if (!rel.includes('/') && isWorkspaceFingerprintFile(rel)) return true
+    if (!rel.includes('/') && (isWorkspaceFingerprintFile(rel) || isWorkspaceConfigFile(rel))) {
+      return true
+    }
     const abs = path.resolve(workspaceRoot, filename)
     for (const d of dirs) if (abs === d || abs.startsWith(d + path.sep)) return true
     for (const g of globs) if (g.match(rel)) return true
@@ -789,7 +792,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     // dir saw the change.
     try {
       arm(workspaceRoot, false, (filename) => {
-        if (isWorkspaceFingerprintFile(filename)) {
+        if (isWorkspaceFingerprintFile(filename) || isWorkspaceConfigFile(filename)) {
           trigger(`root ${filename}`, path.join(workspaceRoot, filename))
         }
       })
@@ -851,4 +854,17 @@ const FINGERPRINT_FILES: ReadonlySet<string> = new Set(WORKSPACE_FINGERPRINT_FIL
 
 function isWorkspaceFingerprintFile(name: string): boolean {
   return FINGERPRINT_FILES.has(name)
+}
+
+/**
+ * The workspace config is the one root file that shapes a run without
+ * being any task's input — its plugins, `config` stage, concurrency, cache
+ * dir — and a cycle re-evaluates it (its import is keyed on its bytes).
+ * Until 2026-09-10 neither root arm listened for it: a plugin added under
+ * `vx watch` waited for a restart while the loop looked alive.
+ */
+const WORKSPACE_CONFIGS: ReadonlySet<string> = new Set(WORKSPACE_CONFIG_FILENAMES)
+
+function isWorkspaceConfigFile(name: string): boolean {
+  return WORKSPACE_CONFIGS.has(name)
 }
