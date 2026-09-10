@@ -761,6 +761,26 @@ run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
     `@vzn/vx-turbo` stays as the adoption plugin it is. The recipe
     lives in the plugins guide; the comparison row records the
     decision. Recorded in Decisions.
+92. DONE (owner's ask, 2026-09-10, night): Bun, every dependency and
+    every CI action brought current in one commit. Bun 1.4.0 → 1.4.2
+    (`packageManager`, `bun-version` in ci/docs/npm); root dev deps
+    `@types/bun` 1.4.2, `oxlint` 1.82.0, `oxfmt` 0.67.0 (its new
+    reflow touched eight files — three design docs, scheduler.md,
+    plugin.ts, tally.test.ts, README, comparison), `oxlint-tsgolint`
+    7.0.2001; the site on astro 7.3.2, starlight 0.42.0, mermaid
+    12.0.0 (152 pages build). Every workflow action now pins a commit
+    SHA with its tag beside it: checkout v7.0.1, setup-bun v2.2.0,
+    setup-node v7.0.0, upload-artifact v7.0.1, download-artifact
+    v8.0.1, upload-pages-artifact v5.0.0, deploy-pages v5.0.1,
+    action-gh-release v3.0.3. Dev-dep versions are exact now, not
+    caret ranges: the lockfile already froze them, so a range only
+    said less than the lock. Proven under 1.4.2 before the push: the
+    twelve core shards and the unsafe suite, all twelve package
+    suites, docs import/test/build. One refutation: shard 9 reddened
+    once on `Cache.key` scaling ratio (51× against the 30× guard) —
+    thirteen shards side by side on this four-core box, not the
+    upgrade: the guard passes alone under 1.4.2 and 1.4.0 alike,
+    interleaved twice each, and the shard alone reruns 203/203.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

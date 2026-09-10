@@ -336,7 +336,7 @@ const packageNameByDir = new Map<string, string>()
 function pluginPackageName(dir: string): string {
   const memo = packageNameByDir.get(dir)
   if (memo !== undefined) return memo
-  for (let d = dir; ; ) {
+  for (let d = dir; ;) {
     let text: string | undefined
     try {
       text = readFileSync(path.join(d, 'package.json'), 'utf8')

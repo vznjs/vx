@@ -104,35 +104,35 @@ without re-reading this doc.
 
 ### 2.2 File enumeration without git
 
-|       | What                                   | vx               | Test                                 |
+| | What | vx | Test |
 | ----- | -------------------------------------- | ---------------- | ------------------------------------ | --------------------------------- |
 | Turbo | `walkdir` + `.gitignore` filter (Rust) | Native Rust walk | `Bun.Glob` walker + `ignore` library | ✅ `inputs.test.ts` fallback path |
 
 ### 2.3 Per-file content hash
 
-|       | What                                                                                            | vx                                | Test                                                                                  |
+| | What | vx | Test |
 | ----- | ----------------------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------- | ----------------------- |
 | Turbo | xxh64 in Rust, batched via rayon. Reuses git-blob OID when entry is clean in index (no re-read) | Native Rust xxh3 via `hashFile()` | `Bun.hash.xxHash3` with `(path, mtime, size, content_hash)` SQLite fast-path (PR #87) | ✅ `cache-perf.test.ts` |
 
 ### 2.4 Racy-git detection
 
-|       | What                                                                                                                                 | vx                           | Test                                                                                                                           |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --- |
-| Turbo | Files whose mtime is `>=` index timestamp deferred to per-package hash (`repo_index.rs:129-131`) — avoids false-positive "unchanged" | Same pattern via `gix-index` | **GAP** — we trust mtime+size as fingerprint; theoretically vulnerable to "modified within the same second as the cached read" | ❌  |
+| Turbo | Files whose mtime is `>=` index timestamp deferred to per-package hash (`repo_index.rs:129-131`) — avoids false-positive "unchanged" | Same pattern via `gix-index` | **GAP** — we trust mtime+size as fingerprint; theoretically vulnerable to "modified within the same second as the cached read" | ❌ |
 
 **GAP — medium severity.** Concrete attack: edit file, save, run task within same second → we treat as unchanged, cache stale hash. Add test that does `writeFile + Bun.sleep(50) + writeFile (same size) + hashFile`, expect new content_hash. Document the precision tradeoff.
 
 ### 2.5 CRLF normalization
 
-|       | What                                                                                                                                                | vx   | Test                                                                                                                          |
+| | What | vx | Test |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------- | --- |
-| Turbo | `GitAttrs::load()` parses `.gitattributes`, applies CRLF filters before hashing (`turborepo-scm/src/crlf.rs`) — cross-platform deterministic hashes | Same | **GAP** — we hash raw bytes; same file checked out with `core.autocrlf=true` on Windows produces different hash than on Linux | ❌  |
+| Turbo | `GitAttrs::load()` parses `.gitattributes`, applies CRLF filters before hashing (`turborepo-scm/src/crlf.rs`) — cross-platform deterministic hashes | Same | **GAP** — we hash raw bytes; same file checked out with `core.autocrlf=true` on Windows produces different hash than on Linux | ❌ |
 
 **GAP — medium for cross-platform monorepos.** Defer for now (we ship Bun-only and Bun runs same on all platforms — but if a user shares cache across Windows/Linux dev boxes, they'll see misses).
 
 ### 2.6 Cache key derivation
 
-|       | What                                                                                                     | vx                                           | Test                                              |
+| | What | vx | Test |
 | ----- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------- | --------------------------------------------------- |
 | Turbo | xxh64 over Cap'n Proto-serialized `TaskHashable` struct (`turborepo-hash`) — deterministic byte-for-byte | xxh3 native — deterministic via Rust's serde | xxh3 seed-chain (PR #87) — `cache.ts:Cache.key()` | ✅ `cache.test.ts` (42 tests, includes determinism) |
 
@@ -140,21 +140,21 @@ without re-reading this doc.
 
 The set of things that should bust the cache key. Verified our set against theirs:
 
-| Trigger                                         | Turbo                                                                                | Nx                                                             | vx                                                                                                                                                                           |
+| Trigger | Turbo | Nx | vx |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
-| Schema version (`CACHE_VERSION`)                | ✅                                                                                   | ✅                                                             | ✅                                                                                                                                                                           |
-| Task id                                         | ✅                                                                                   | ✅                                                             | ✅                                                                                                                                                                           |
-| Workspace fingerprint                           | lockfile + workspace defs                                                            | lockfile + nx.json + .gitignore + .nxignore                    | lockfile + pnpm-workspace.yaml (`fingerprint.ts`)                                                                                                                            |
-| Project package.json                            | implicit via lockfile-derived dep graph                                              | hashed per project                                             | ✅ explicit (PR #42)                                                                                                                                                         |
-| Task config                                     | turbo.json subset                                                                    | resolved `project.json` target                                 | `hashTaskConfig` over resolved `TaskConfig`                                                                                                                                  |
-| Forwarded CLI args                              | ✅                                                                                   | `task.overrides`                                               | ✅ (PR #17, scoped to requested tasks)                                                                                                                                       |
-| Env values                                      | `env` + `passThroughEnv` whitelists, `globalEnv` fallback                            | per-task env via `inputs.env`; `.env.{target}` loaded per task | ✅ `cache.inputs.env` list                                                                                                                                                   |
-| Upstream hashes                                 | ✅ filtered by `dependsOn`                                                           | ✅ filtered by `inputs.tasks`                                  | ✅ `filterUpstreamHashes` (PR #56)                                                                                                                                           |
-| Input file hashes                               | sorted (path, hash) pairs                                                            | same                                                           | ✅ same                                                                                                                                                                      |
-| tsconfig contents                               | selective: removes `compilerOptions.paths` to avoid noise (`task_hasher.rs:460-511`) | same                                                           | **GAP** — we don't read tsconfig at all. Tasks that use ts-aliases don't get path-table hash                                                                                 | ❌  |
-| `.gitignore` / `.nxignore`                      | folded into `WorkspaceFileSet`                                                       | folded by Nx                                                   | **GAP** — not folded                                                                                                                                                         | ❌  |
-| `NX_CLOUD_ENCRYPTION_KEY` (Nx-specific)         | n/a                                                                                  | always folded                                                  | n/a                                                                                                                                                                          |
-| External deps hash (lockfile lines per package) | precomputed parallel via rayon                                                       | per-project transitive deps hash                               | **GAP** — we only fold whole-lockfile fingerprint, not per-project transitive deps slice. Cache hits cascade more than they should when an unrelated package's version bumps | ⚠️  |
+| Schema version (`CACHE_VERSION`) | ✅ | ✅ | ✅ |
+| Task id | ✅ | ✅ | ✅ |
+| Workspace fingerprint | lockfile + workspace defs | lockfile + nx.json + .gitignore + .nxignore | lockfile + pnpm-workspace.yaml (`fingerprint.ts`) |
+| Project package.json | implicit via lockfile-derived dep graph | hashed per project | ✅ explicit (PR #42) |
+| Task config | turbo.json subset | resolved `project.json` target | `hashTaskConfig` over resolved `TaskConfig` |
+| Forwarded CLI args | ✅ | `task.overrides` | ✅ (PR #17, scoped to requested tasks) |
+| Env values | `env` + `passThroughEnv` whitelists, `globalEnv` fallback | per-task env via `inputs.env`; `.env.{target}` loaded per task | ✅ `cache.inputs.env` list |
+| Upstream hashes | ✅ filtered by `dependsOn` | ✅ filtered by `inputs.tasks` | ✅ `filterUpstreamHashes` (PR #56) |
+| Input file hashes | sorted (path, hash) pairs | same | ✅ same |
+| tsconfig contents | selective: removes `compilerOptions.paths` to avoid noise (`task_hasher.rs:460-511`) | same | **GAP** — we don't read tsconfig at all. Tasks that use ts-aliases don't get path-table hash | ❌ |
+| `.gitignore` / `.nxignore` | folded into `WorkspaceFileSet` | folded by Nx | **GAP** — not folded | ❌ |
+| `NX_CLOUD_ENCRYPTION_KEY` (Nx-specific) | n/a | always folded | n/a |
+| External deps hash (lockfile lines per package) | precomputed parallel via rayon | per-project transitive deps hash | **GAP** — we only fold whole-lockfile fingerprint, not per-project transitive deps slice. Cache hits cascade more than they should when an unrelated package's version bumps | ⚠️ |
 
 **Two GAPs worth a small change:**
 
@@ -215,9 +215,9 @@ The set of things that should bust the cache key. Verified our set against their
 
 ### 4.2 Symlink restore + cycle detection + escape-prevention
 
-|       | What                                                                                                                                                                                                                                                                      | vx     | Test                                                                                                                                                                                              |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
-| Turbo | Topologically sorted via petgraph (`restore.rs:131-176`); `CycleDetected` error on cycle. Lexical target validation rejects Windows absolute paths, paths escaping anchor (`restore_symlink.rs:53-189`). On Windows tries both `symlink_to_file()` and `symlink_to_dir()` | Native | **GAP** — we don't restore symlinks at all. If a build produces a symlink in `dist/`, our tar packs it (subprocess tar) but our extract treats it as a regular file → wrong content / broken link | ❌  |
+| Turbo | Topologically sorted via petgraph (`restore.rs:131-176`); `CycleDetected` error on cycle. Lexical target validation rejects Windows absolute paths, paths escaping anchor (`restore_symlink.rs:53-189`). On Windows tries both `symlink_to_file()` and `symlink_to_dir()` | Native | **GAP** — we don't restore symlinks at all. If a build produces a symlink in `dist/`, our tar packs it (subprocess tar) but our extract treats it as a regular file → wrong content / broken link | ❌ |
 
 **GAP — low severity, but real correctness hole.** Tar entries with typeflag `2` (symlink) — we don't check for them in `parseTarHeaders`. Add test: save a project with a symlink output, restore, verify it's still a symlink.
 
@@ -232,9 +232,9 @@ The set of things that should bust the cache key. Verified our set against their
 
 ### 4.4 Path traversal prevention
 
-|       | What                                                                                                                                               | vx           | Test                                                                                                                  |
+| | What | vx | Test |
 | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------- | --- |
-| Turbo | Via `AnchoredSystemPath` type discipline + `categorize()` in `turborepo-paths` — every path in the tar pipeline is type-tagged "inside the anchor" | Native trust | **GAP** — audit doc item #2. `tar.ts:174` does `path.join(destDir, rel)` without checking the result stays in destDir | ❌  |
+| Turbo | Via `AnchoredSystemPath` type discipline + `categorize()` in `turborepo-paths` — every path in the tar pipeline is type-tagged "inside the anchor" | Native trust | **GAP** — audit doc item #2. `tar.ts:174` does `path.join(destDir, rel)` without checking the result stays in destDir | ❌ |
 
 **GAP — medium severity, ~5 LOC fix.** Already documented in `integrity-audit-2026-05.md` item #2. **Ship.**
 
@@ -247,9 +247,9 @@ The set of things that should bust the cache key. Verified our set against their
 
 ### 4.6 Content checksum verification
 
-|       | What                                                                      | vx                               | Test                              |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------- | -------------------------------- | --------------------------------- | --- |
-| Turbo | None on local; HMAC-SHA256 on remote (`signature_authentication.rs:1-80`) | None on local; no HMAC on remote | **GAP** — audit doc items #3 + #4 | ❌  |
+| Turbo | None on local; HMAC-SHA256 on remote (`signature_authentication.rs:1-80`) | None on local; no HMAC on remote | **GAP** — audit doc items #3 + #4 | ❌ |
 
 ---
 
@@ -273,54 +273,54 @@ The set of things that should bust the cache key. Verified our set against their
 
 ### 5.3 Signal forwarding
 
-|       | What                                                                                        | vx                                                              | Test                  |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | --------------------- | --- |
-| Turbo | Async cancellation token + SIGTERM to child PIDs via tokio. Two-Ctrl+C escalates to SIGKILL | IPC signal forwarding (`forked-process-task-runner.ts:411-444`) | **GAP** — same as 5.2 | ❌  |
-| Nx    | Same                                                                                        |                                                                 |                       |
+| Turbo | Async cancellation token + SIGTERM to child PIDs via tokio. Two-Ctrl+C escalates to SIGKILL | IPC signal forwarding (`forked-process-task-runner.ts:411-444`) | **GAP** — same as 5.2 | ❌ |
+| Nx | Same | | |
 
 ### 5.4 PATH augmentation per task
 
-|       | What                                                         | vx   | Test                                          |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------ | ---- | --------------------------------------------- | ------------------- |
 | Turbo | Workspace `.bin` + per-package `node_modules/.bin` prepended | Same | ✅ project's own `node_modules/.bin` (PR #46) | ✅ `runner.test.ts` |
-| Nx    | Same                                                         |      |                                               |
+| Nx | Same | | |
 
 ### 5.5 Recursive turbo/nx detection
 
-|       | What                                                                      | vx                                                                                                                                                                                  | Test                                                                                           |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | --- |
-| Turbo | Pre-spawn check: regex match command for "turbo run", reject if root task | DB-backed `task_invocations` table with unique constraint; child registers `(pid, taskId)`; ancestor already-registered → throw with chain printed (`task-orchestrator.ts:432-459`) | **GAP** — we'd happily run `vx run foo` that invokes `vx run foo`. Probably rare but a footgun | ❌  |
-| Nx    | (per Nx column)                                                           |                                                                                                                                                                                     |                                                                                                |
+| Turbo | Pre-spawn check: regex match command for "turbo run", reject if root task | DB-backed `task_invocations` table with unique constraint; child registers `(pid, taskId)`; ancestor already-registered → throw with chain printed (`task-orchestrator.ts:432-459`) | **GAP** — we'd happily run `vx run foo` that invokes `vx run foo`. Probably rare but a footgun | ❌ |
+| Nx | (per Nx column) | | |
 
 ### 5.6 Resource accounting per task
 
-|       | What                                                                                 | vx                        | Test                                                                                      |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------------------ | ------------------------- | ----------------------------------------------------------------------------------------- | ------------------- |
 | Turbo | OOM detection (`exit 137` on Unix, `0xC0000017` on Windows) → distinct error message | OOM handled via exit code | `Bun.spawn().resourceUsage()` records `cpu_ms`, `peak_rss_bytes` to `runs` table (PR #20) | ✅ `runner.test.ts` |
-| Nx    | Process metrics via DB                                                               |                           |                                                                                           |
+| Nx | Process metrics via DB | | |
 
 ### 5.7 Failure cascade
 
-|       | What                                                                                                                                             | vx                           | Test                                                                                |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- | ----------------------------------------------------------------------------------- | --- |
-| Turbo | `ContinueMode::{Never \| DependenciesSuccessful \| Always}` (3 modes); failure → walker cancel or subtree-skip (`engine/src/execute.rs:132-145`) | Three modes via `--continue` | **GAP** — we have one mode only (always continue siblings; cascade-skip dependents) | ⚠️  |
-| Nx    | `--bail` flag; dependent skip cascades via `reverseTaskDeps` precomputed at init                                                                 |                              |                                                                                     |
+| Turbo | `ContinueMode::{Never \| DependenciesSuccessful \| Always}` (3 modes); failure → walker cancel or subtree-skip (`engine/src/execute.rs:132-145`) | Three modes via `--continue` | **GAP** — we have one mode only (always continue siblings; cascade-skip dependents) | ⚠️ |
+| Nx | `--bail` flag; dependent skip cascades via `reverseTaskDeps` precomputed at init | | |
 
 **GAP — feature, not integrity. Already in `comparison.md` backlog as `--continue=<mode>`.**
 
 ### 5.8 Persistent tasks
 
-|       | What                                                                                    | vx                                                                                                                                                                                                                           | Test                                                                                                                  |
+| | What | vx | Test |
 | ----- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | Turbo | Watch mode handles. Non-watch: persistent task without `dependsOn` is success-immediate | `runningContinuousTasks` Map; `SharedRunningTask` wrapper detects "task already running in another process" via DB and polls instead of spawning. `cleanUpUnneededContinuousTasks()` kills continuous tasks no longer needed | ✅ `exec.persistent` with `readyWhen` regex (PR persistent-tasks); SIGTERM all at end-of-run via `persistentRegistry` | ✅ `persistent.test.ts` (10 tests) |
-| Nx    | (per Nx column)                                                                         |                                                                                                                                                                                                                              |                                                                                                                       |
+| Nx | (per Nx column) | | |
 
 ### 5.9 OOM / exit-code 137 special handling
 
-|       | What                                                            | vx                       | Test                                            |
+| | What | vx | Test |
 | ----- | --------------------------------------------------------------- | ------------------------ | ----------------------------------------------- | --- |
-| Turbo | Distinct error message: "Process killed by OOM (exit code 137)" | Exit code surfaced as-is | **GAP** — we surface "exit 137" without context | ❌  |
-| Nx    | Same as Turbo                                                   |                          |                                                 |
+| Turbo | Distinct error message: "Process killed by OOM (exit code 137)" | Exit code surfaced as-is | **GAP** — we surface "exit 137" without context | ❌ |
+| Nx | Same as Turbo | | |
 
 **GAP — small UX win.** Add: when child exit code is 137 (Linux SIGKILL → typically OOM), print a hint.
 
@@ -330,33 +330,33 @@ The set of things that should bust the cache key. Verified our set against their
 
 ### 6.1 Output discovery
 
-|       | What                             | vx                 | Test                                                                |
+| | What | vx | Test |
 | ----- | -------------------------------- | ------------------ | ------------------------------------------------------------------- | ------------------- |
 | Turbo | Glob walk per declared `outputs` | Glob walk via Rust | `resolveOutputs(globs)` — `Bun.Glob` with project-boundary excludes | ✅ `inputs.test.ts` |
-| Nx    | Native `expandOutputs()` glob    |                    |                                                                     |
+| Nx | Native `expandOutputs()` glob | | |
 
 ### 6.2 Stage + tar.zst build
 
-|       | What                                                                                                                          | vx     | Test                                                                            |
+| | What | vx | Test |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------- | --- |
-| Turbo | Stage to temp dir; tar via Rust `tar` crate streaming + zstd encoder (`cache_archive/create.rs:137-165`). 1MB buffered writer | Native | `mkdtemp` + `Bun.write` per output; subprocess `tar -cf -` + `Bun.zstdCompress` | ✅  |
-| Nx    | Native                                                                                                                        |        |                                                                                 |
+| Turbo | Stage to temp dir; tar via Rust `tar` crate streaming + zstd encoder (`cache_archive/create.rs:137-165`). 1MB buffered writer | Native | `mkdtemp` + `Bun.write` per output; subprocess `tar -cf -` + `Bun.zstdCompress` | ✅ |
+| Nx | Native | | |
 
 ### 6.3 Atomic publish
 
-|       | What                                                                                                                                                                                                | vx           | Test                                      |
+| | What | vx | Test |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------- | ---------------------------------------------------------- |
 | Turbo | Per-PID temp file `.{hash}.{pid}.{counter}.tmp`; atomic `rename()` to final (`create.rs:23-31, 93-111`). Concurrent writers race; one wins. Eviction sweeps stale `.tmp` after 1h (`fs.rs:317-333`) | tmp + rename | ✅ `tmp-${pid}-${ts}` + `rename` (PR #86) | ⚠️ concurrent-write test exists for the DB but not for tar |
-| Nx    | Same                                                                                                                                                                                                |              |                                           |
+| Nx | Same | | |
 
 **GAP — minor.** Add test: spawn 3 concurrent `cache.save(sameHash, ...)` calls, assert exactly one tar.zst remains, no orphan `.tmp` files.
 
 ### 6.4 Metadata + manifest persistence
 
-|       | What                                                                                                                         | vx                      | Test                                                                                                   |
+| | What | vx | Test |
 | ----- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------ | --- |
-| Turbo | 3 sidecars: `<hash>.tar.zst`, `<hash>-manifest.json`, `<hash>-meta.json` (`fs.rs:206-268`). Each written tmp + atomic rename | Single file `.db` + tar | Single SQLite `entries` row + `output_files` rows in **one transaction** alongside tar rename (PR #95) | ✅  |
-| Nx    | Native                                                                                                                       |                         |                                                                                                        |
+| Turbo | 3 sidecars: `<hash>.tar.zst`, `<hash>-manifest.json`, `<hash>-meta.json` (`fs.rs:206-268`). Each written tmp + atomic rename | Single file `.db` + tar | Single SQLite `entries` row + `output_files` rows in **one transaction** alongside tar rename (PR #95) | ✅ |
+| Nx | Native | | |
 
 ### 6.5 Eviction (TTL + LRU by size)
 
@@ -376,19 +376,19 @@ The set of things that should bust the cache key. Verified our set against their
 
 ### 6.7 Retry on transient FS failures
 
-|       | What                                                                                                                                                            | vx   | Test                        |
+| | What | vx | Test |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------- | --- |
-| Turbo | None at cache layer                                                                                                                                             | None | **GAP** — audit doc item #6 | ❌  |
-| Nx    | `tryAndRetry()` (`tasks-runner/cache.ts:660-682`) wraps every put / copyFilesFromCache call. Base 15ms, exponent 2–4 random jitter, 6 attempts max (~20s total) |      |                             |
+| Turbo | None at cache layer | None | **GAP** — audit doc item #6 | ❌ |
+| Nx | `tryAndRetry()` (`tasks-runner/cache.ts:660-682`) wraps every put / copyFilesFromCache call. Base 15ms, exponent 2–4 random jitter, 6 attempts max (~20s total) | | |
 
 **GAP — audit doc item #6, ship.** Single helper `withRetry()` in `src/util/retry.ts`, wrap `cache.save`'s file ops + `cache.get`'s tar read. Skip SQLite (has its own `busy_timeout`). Skip remote HTTP (has its own timeout semantics).
 
 ### 6.8 Concurrent writers to same hash
 
-|       | What                                                                      | vx   | Test                                                                                                                                                                        |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
-| Turbo | Per-PID temp file; atomic rename race — one wins. Test at `fs.rs:543-610` | Same | ✅ tar atomic rename + SQLite `busy_timeout = 5000` (PR #17) for DB. Concurrent-tar test exists in `cache.test.ts` ("two concurrent writers do not crash with SQLITE_BUSY") | ✅  |
-| Nx    | DB transaction handles concurrency                                        |      |                                                                                                                                                                             |
+| Turbo | Per-PID temp file; atomic rename race — one wins. Test at `fs.rs:543-610` | Same | ✅ tar atomic rename + SQLite `busy_timeout = 5000` (PR #17) for DB. Concurrent-tar test exists in `cache.test.ts` ("two concurrent writers do not crash with SQLITE_BUSY") | ✅ |
+| Nx | DB transaction handles concurrency | | |
 
 ---
 
@@ -396,17 +396,17 @@ The set of things that should bust the cache key. Verified our set against their
 
 ### 7.1 HTTP GET artifact
 
-|       | What                                                                                                                                                                                                                                          | vx   | Test                                                                                   |
+| | What | vx | Test |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | Turbo | `HTTPCache::fetch()` (`http.rs:337-399`). Token refresh on 403. HMAC-SHA256 validation: extract `x-artifact-tag` header, validate against `HMAC-SHA256(key, hash ‖ team_id ‖ body)`. Rejects mismatch (`signature_authentication.rs:122-135`) | None | ✅ `RemoteCache.get(hash)` in `src/cache/remote-cache.ts` (PR #10). No HMAC validation | ✅ `remote-cache.test.ts` (10 tests) — but no HMAC test |
-| Nx    | DB + nx-cloud client                                                                                                                                                                                                                          |      |                                                                                        |
+| Nx | DB + nx-cloud client | | |
 
 ### 7.2 HTTP PUT artifact
 
-|       | What                                                                                                                                | vx                                            | Test     |
+| | What | vx | Test |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------- | --- |
-| Turbo | `HTTPCache::put()` (`http.rs:178-248`). Computes HMAC, sends as `x-artifact-tag`. Chunked 256KB upload. Tracks via `UploadProgress` | `RemoteCache.put(hash, bytes, meta)` (PR #10) | ✅ basic | ✅  |
-| Nx    | Same                                                                                                                                |                                               |          |
+| Turbo | `HTTPCache::put()` (`http.rs:178-248`). Computes HMAC, sends as `x-artifact-tag`. Chunked 256KB upload. Tracks via `UploadProgress` | `RemoteCache.put(hash, bytes, meta)` (PR #10) | ✅ basic | ✅ |
+| Nx | Same | | |
 
 ### 7.3 HMAC signature on remote artifacts
 
@@ -453,35 +453,35 @@ The set of things that should bust the cache key. Verified our set against their
 
 ### 8.3 Output-mode flags
 
-|       | What                                                                                                                                                                | vx                                | Test                                         |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | -------------------------------------------- | --- |
-| Turbo | `--output-logs={full,hash-only,new-only,errors-only,none}` (`turborepo-run-cache:136-150`). Per-task `outputLogs` in turbo.json merged with CLI override (CLI wins) | `--output-style {static,dynamic}` | **GAP** — already in `comparison.md` backlog | ❌  |
-| Nx    | (per Nx column)                                                                                                                                                     |                                   |                                              |
+| Turbo | `--output-logs={full,hash-only,new-only,errors-only,none}` (`turborepo-run-cache:136-150`). Per-task `outputLogs` in turbo.json merged with CLI override (CLI wins) | `--output-style {static,dynamic}` | **GAP** — already in `comparison.md` backlog | ❌ |
+| Nx | (per Nx column) | | |
 
 ### 8.4 CI log-grouping (GitHub Actions `::group::`)
 
-|       | What                                                                                                                     | vx   | Test                                                  |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------------------------------------------------------ | ---- | ----------------------------------------------------- | --- |
-| Turbo | When `is_github_actions`, grouping layer emits `::group::<task>` + `::endgroup::` markers and redirects stderr to stdout | None | **GAP** — free CI UX win (10-line addition to logger) | ❌  |
-| Nx    | Has equivalent                                                                                                           |      |                                                       |
+| Turbo | When `is_github_actions`, grouping layer emits `::group::<task>` + `::endgroup::` markers and redirects stderr to stdout | None | **GAP** — free CI UX win (10-line addition to logger) | ❌ |
+| Nx | Has equivalent | | |
 
 **Ship.** Detect `GITHUB_ACTIONS=true`, wrap each `formatTaskBlock` in `::group::name` / `::endgroup::`. Test: set env, assert markers in output.
 
 ### 8.5 Log timestamps
 
-|       | What                                                       | vx   | Test |
+| | What | vx | Test |
 | ----- | ---------------------------------------------------------- | ---- | ---- | --- |
-| Turbo | `--log-timestamps` prefixes each line with wall-clock time | None | None | ❌  |
-| Nx    | None                                                       |      |      |
+| Turbo | `--log-timestamps` prefixes each line with wall-clock time | None | None | ❌ |
+| Nx | None | | |
 
 Defer.
 
 ### 8.6 ANSI handling
 
-|       | What                                                               | vx                                  | Test                                                                     |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------ | ----------------------------- |
 | Turbo | Color forwarding controlled by `--color` flag; stripped if not TTY | `FORCE_COLOR` env injected per task | `colors.ts` honors `NO_COLOR` / `FORCE_COLOR` / TTY auto-detect (PR #46) | ✅ `colors.test.ts` (8 tests) |
-| Nx    | Same; TUI strips ANSI for static output                            |                                     |                                                                          |
+| Nx | Same; TUI strips ANSI for static output | | |
 
 ---
 
@@ -500,24 +500,24 @@ GAP: no affected-task subset (always re-runs all requested). Documented in `runn
 
 ### 10.1 Graceful shutdown
 
-|       | What                                                                                                                                                                                      | vx                                                                                                                                                                                                     | Test                                                          |
+| | What | vx | Test |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- | --- |
-| Turbo | Two-phase: SIGTERM all → 3s grace → name slow tasks → second Ctrl+C escalates to SIGKILL. `RunCache::shutdown_cache()` flushes pending uploads concurrently with own 2s timeout + spinner | `cleanup()` performs DB removal of persistent tasks → snapshots `runningContinuousTasks` → SIGTERM tree → await all discrete-task exits → exit with signal code. Idempotent via `cleanupPromise` guard | **GAP** — no signal handler; finally blocks skipped on SIGINT | ❌  |
-| Nx    | (per Nx column)                                                                                                                                                                           |                                                                                                                                                                                                        |                                                               |
+| Turbo | Two-phase: SIGTERM all → 3s grace → name slow tasks → second Ctrl+C escalates to SIGKILL. `RunCache::shutdown_cache()` flushes pending uploads concurrently with own 2s timeout + spinner | `cleanup()` performs DB removal of persistent tasks → snapshots `runningContinuousTasks` → SIGTERM tree → await all discrete-task exits → exit with signal code. Idempotent via `cleanupPromise` guard | **GAP** — no signal handler; finally blocks skipped on SIGINT | ❌ |
+| Nx | (per Nx column) | | |
 
 ### 10.2 ProcessManager Drop safety net
 
-|       | What                                                                            | vx                                                      | Test |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------------------------- | ------------------------------------------------------- | ---- | --- |
-| Turbo | `ProcessManager::Drop` kills any lingering registered child as a final fallback | None — `Bun.spawn` children don't have a Drop guarantee | None | ❌  |
-| Nx    | Same: exit handler reaps                                                        |                                                         |      |
+| Turbo | `ProcessManager::Drop` kills any lingering registered child as a final fallback | None — `Bun.spawn` children don't have a Drop guarantee | None | ❌ |
+| Nx | Same: exit handler reaps | | |
 
 ### 10.3 Stop-requested debouncing
 
-|       | What                                                         | vx                                                                                                       | Test    |
+| | What | vx | Test |
 | ----- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- | ------- | --- |
-| Turbo | `select!` race; second signal during cleanup → force SIGKILL | `stopRequested` flag on `setupSignalHandlers` debounces — multiple Ctrl+C collapse into one cleanup pass | **GAP** | ❌  |
-| Nx    | (per Nx column)                                              |                                                                                                          |         |
+| Turbo | `select!` race; second signal during cleanup → force SIGKILL | `stopRequested` flag on `setupSignalHandlers` debounces — multiple Ctrl+C collapse into one cleanup pass | **GAP** | ❌ |
+| Nx | (per Nx column) | | |
 
 ---
 

@@ -17,12 +17,7 @@ the slot at the outcome and unblocks the dependents at the settle.
 
 ```ts
 export type TaskStatus =
-  | 'success'
-  | 'cache-hit'
-  | 'cache-hit-remote'
-  | 'failed'
-  | 'skipped'
-  | 'aborted' // child killed by a shutdown signal (Ctrl-C teardown)
+  'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped' | 'aborted' // child killed by a shutdown signal (Ctrl-C teardown)
 
 export interface TaskOutcome {
   node: TaskNode
