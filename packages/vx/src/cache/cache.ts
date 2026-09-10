@@ -834,9 +834,13 @@ export class Cache implements CacheLayer {
     // an emptied output tree. The artifact existed when `get()` probed it, so
     // its absence now means something removed it underneath us (a concurrent
     // `vx cache prune` is the documented way) — fail loud; the task re-runs.
-    if (!(await Bun.file(src).exists())) {
+    const endExists = span('restore: exists')
+    const exists = await Bun.file(src).exists()
+    endExists()
+    if (!exists) {
       throw new CorruptArtifactError(hash, 'artifact file vanished before restore')
     }
+    const endRows = span('restore: rows')
     // The index says exactly which files this entry materializes. If the
     // archive cannot produce one of them, restoring "successfully" leaves a
     // hole that no later run detects: the skip-restore check compares the
@@ -847,6 +851,7 @@ export class Cache implements CacheLayer {
     const expected = rows
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
+    endRows()
     const verify = (provided: ReadonlySet<string>): void => {
       const missing = expected.filter((name) => !provided.has(name))
       if (missing.length > 0) {
@@ -866,12 +871,20 @@ export class Cache implements CacheLayer {
     // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
+    const endExtract = span('restore: extract')
     try {
+      // Every step here is an async filesystem call on purpose: a
+      // synchronous restore of a small artifact is 2× faster ALONE (1.25 →
+      // 0.62 ms sequential, 2026-09-10) and 30% slower in the run, where
+      // four workers overlap their round trips and a blocking one stalls
+      // the other three (1,000-project restore row 1.1–1.2 s → 1.5 s).
       const tar = await decodedTar(Bun.file(src), hash)
       await extractArtifactStream(tar, projectDir, workspaceRoot, verify)
     } catch (err) {
       if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
+    } finally {
+      endExtract()
     }
   }
 

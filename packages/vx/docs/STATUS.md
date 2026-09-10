@@ -713,6 +713,21 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    the product. `bun packages/vx-bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap
    (`scratchpad/ab.ts`-style: alternate arms, min and median of N).
+   REFUTED 2026-09-10 (afternoon), recorded so nobody re-runs it: a
+   synchronous restore for small artifacts. The restore path makes
+   ~8 `node:fs/promises` round trips per one-file artifact (exists,
+   read, realpath, mkdir, write, chmod, utimes, rename), and a
+   `restore: exists / rows / extract` span set (kept) showed the
+   extract as the whole cost; the sync form measured 2× faster ALONE
+   (sequential in-process restore of a 40-byte `dist/out.js`, median
+   1.25 → 0.62 ms against 0.52 for the bare syscalls) and 30% SLOWER
+   in the run (compiled binaries, three interleaved rounds on the
+   1,000-project bench: `warm, restore` 1,176 / 1,110 / 1,218 ms →
+   1,539 / 1,506 / 1,493), because four workers overlap their round
+   trips and a blocking one stalls the other three. The lead left:
+   `restore: rows` re-selects the output rows the batched probe
+   already loaded (21 ms per 1,000, ~2%); threading `hit.outputRows`
+   through needs a contract change for a row nobody sees.
    Closing figures for 2026-09-10, afternoon (the same container,
    `run.ts` medians of 5, after items 70–80): source form 100
    projects 115 ms warm / 197 restore / 408 cold; 1,000 projects 265 /
