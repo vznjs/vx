@@ -1,0 +1,44 @@
+#!/bin/bash
+# vx (compiled binary + @vzn/vx-turbo on the repo's own turbo.json) against
+# the repo's own Turbo, on a real Turbo monorepo. Three arms per tool,
+# interleaved (vx, turbo, vx, turbo …) so box noise lands on both:
+#   cold     caches AND outputs wiped — every task executes
+#   restore  outputs wiped, caches intact — every task a hit, outputs come back
+#   noop     nothing wiped — every task a hit over intact outputs
+#
+#   real/turbo-repo.sh <repo> <vx-binary> "<tasks>" [reps] [output-dir-names]
+#
+# The repo must already have `vx.workspace.mjs` with `plugins: [turbo()]`
+# and its dependencies installed. `output-dir-names` is what the wipe
+# removes under packages/*/ (default: dist types coverage). Rows print as
+# `<tool> <arm> <ms> exit=<code>`; run each tool's last log is kept beside
+# the repo as .vx-bench-<tool>.log. First run: solidjs/solid, 2026-09-10,
+# recorded in packages/vx/docs/benchmarks.md.
+set -u
+R=$1; VX=$2; TASKS=$3; REPS=${4:-3}; DIRS=${5:-"dist types coverage"}
+cd "$R"
+outputs() {
+  local args=()
+  for d in $DIRS; do args+=(-o -name "$d"); done
+  find packages -path '*/node_modules' -prune -o \( -type d \( -false "${args[@]}" \) \) -print
+}
+wipe_outputs() { outputs | xargs -r rm -rf; }
+wipe_turbo_cache() { rm -rf node_modules/.cache/turbo .turbo packages/*/.turbo; }
+wipe_vx_cache() { rm -rf .vx; }
+ms() { date +%s%N; }
+run_vx() { "$VX" run $TASKS --all > .vx-bench-vx.log 2>&1; echo $?; }
+run_turbo() { node_modules/.bin/turbo run $TASKS --no-daemon > .vx-bench-turbo.log 2>&1; echo $?; }
+time_arm() {
+  local t0 t1 code
+  t0=$(ms); code=$(run_"$1"); t1=$(ms)
+  echo "$1 $2 $(( (t1 - t0) / 1000000 )) ms exit=$code"
+}
+for _ in $(seq 1 "$REPS"); do
+  for tool in vx turbo; do
+    wipe_outputs; wipe_turbo_cache; wipe_vx_cache
+    time_arm $tool cold
+    wipe_outputs
+    time_arm $tool restore
+    time_arm $tool noop
+  done
+done

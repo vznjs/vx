@@ -1176,6 +1176,26 @@ signal` (an `AbortSignal`) runs the one teardown the process
       unchanged), both failing without. Rejected in the same breath: a
       workspace default base for `--affected` — one flag in CI, and
       `origin/HEAD` covers the rest.
+114.  DONE (2026-09-10, late night — owner's ask: "clone solid, put vx
+      on it with turbo, how much faster, cold and restore"): the first
+      real-repo head-to-head. `solidjs/solid` (b25c557, 5 packages,
+      pnpm 9, Turbo 2.10.10, Node 22) with a two-line
+      `vx.workspace.mjs` (`plugins: [turbo()]`) over the repo's own
+      turbo.json; same executed graph both sides (4 `build` tasks, 7
+      for `test test-types`; the dry runs compared), the identical 64
+      output files restored by both. Interleaved, compiled vx, Turbo
+      without its daemon, this four-core box: `build` cold 40.6 s vs
+      45.5 s, restore 66 ms vs 127 ms, no-op 51 ms vs 95 ms; `test
+test-types` cold 53.6 s vs 58.2 s, restore 80 ms vs 166 ms,
+      no-op 59 ms vs 93 ms. Warm rows 1.6–2.1× in vx's favour; the
+      cold rows are the toolchain, with a 4–5 s (9–12%) gap that is
+      Turbo's per-task work around the same commands — observed, not
+      root-caused. `packages/vx-bench/real/turbo-repo.sh` reproduces
+      it on any Turbo repo; `docs/benchmarks.md` § A real Turbo repo.
+      The mapper found nothing to fix on this repo: `pkg#task` keys,
+      cross-package `dependsOn`, `**/dist/**` outputs all mapped; the
+      only warnings are `outputLogs: "new-only"`, which has no vx
+      spelling.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

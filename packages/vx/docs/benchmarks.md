@@ -208,6 +208,44 @@ frozen `vx-lock.json` graph with **zero per-run config evaluation**, which
 trims another ~10% off the warm path (117 ms here) and is the recommended
 CI configuration. In your repo: `vx lock`, then commit `vx-lock.json`.
 
+## A real Turbo repo: solidjs/solid (2026-09-10)
+
+Not a synthetic workspace: `solidjs/solid` at b25c557 (5 packages,
+pnpm 9, Turbo 2.10.10 as the repo's own devDependency, Node 22), with
+vx put on top of the repo's own `turbo.json` through `@vzn/vx-turbo` —
+a two-line `vx.workspace.mjs`, no config rewritten. Both tools see the
+same graph: `build` is four executed tasks (`solid-js#types`, `#link`,
+`#build`, `solid-element#build`; Turbo lists three more `build` nodes
+for packages with no such script and runs nothing for them), and
+`test test-types` is seven. Both restore the identical 64 output files.
+vx as its compiled binary, Turbo without its daemon (`--no-daemon`, so
+every run pays its own discovery — the same footing vx is on), four
+cores, Linux, arms interleaved. Medians (3 reps for `build`, 2 for
+`test`); the script is `packages/vx-bench/real/turbo-repo.sh`.
+
+| `build` (4 tasks)             | vx         | Turbo 2.10.10  |
+| ----------------------------- | ---------- | -------------- |
+| cold (caches + outputs wiped) | **40.6 s** | 45.5 s (1.12×) |
+| warm, outputs wiped (restore) | **66 ms**  | 127 ms (1.9×)  |
+| warm, nothing wiped (no-op)   | **51 ms**  | 95 ms (1.9×)   |
+
+| `test test-types` (7 tasks) | vx         | Turbo 2.10.10  |
+| --------------------------- | ---------- | -------------- |
+| cold                        | **53.6 s** | 58.2 s (1.09×) |
+| warm, restore               | **80 ms**  | 166 ms (2.1×)  |
+| warm, no-op                 | **59 ms**  | 93 ms (1.6×)   |
+
+Read it honestly: the cold rows are rollup, tsc and vitest — the
+runner is a few percent of them, and the 4–5 s gap is Turbo's per-task
+work around the same commands (its `**` default inputs hashed per
+package, its log capture, its cache write), not measured to the frame
+here. The warm rows are the product: with everything cached, vx
+answers in 50–80 ms where Turbo takes 95–170 ms, and the restore case
+— what a CI job or a fresh checkout does — is where the ratio is
+widest. Turbo with its daemon on would close part of the no-op gap
+(the daemon answers "what changed" without a walk); vx has no daemon
+to turn on.
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
