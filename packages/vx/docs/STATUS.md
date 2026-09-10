@@ -1232,11 +1232,13 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    port bridge, completions) merged as 61d9392 at 13:50Z. PR #271
    (items 81–82, the restore lane and the save lane) merged as b71008b
    at 14:24Z. PR #272 holds item 83 — the `fingerprint` seam and
-   the pnpm plugin, the owner's lockfile ask — item 84 (the shell in
-   core, the bun claimant, dogfooded) and item 85 (one
-   `@vzn/vx-lockfile` package: pnpm, bun, npm, yarn) on the same
-   branch with main merged back in; it merges on the owner's word,
-   never on ours.
+   the pnpm plugin, the owner's lockfile ask — with items 84–86 (the
+   shell in core, one `@vzn/vx-lockfile` package for pnpm / bun / npm
+   / yarn, CI on vx tasks only) merged as 9f762cc at 15:52Z on the
+   owner's "merge all". PR #273 holds items 87–90 (core's explicit
+   empty `build`, `@vzn/vx-infer`, the hosted cache in three commands)
+   on the same branch with main merged back in; it merges on the
+   owner's word, never on ours.
    What a fresh session should know: (a) the warm floor is measured
    and recorded three ways in items 76–77 — module load and the git
    walk are what remain, and the compile flags are the right ones;
