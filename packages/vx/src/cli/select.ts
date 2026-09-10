@@ -21,6 +21,7 @@ import {
   workspaceGlobsMatch,
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
+import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { nearest, UserError } from '../util/index.js'
 import { claimedAffected, fingerprintClaims } from '../orchestrator/index.js'
@@ -119,7 +120,14 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
   return best?.name ?? null
 }
 
-export type FilterResolution = { names: string[] } | { error: string } | { empty: string }
+export type FilterResolution =
+  | {
+      names: string[]
+      /** The staged load the graph walk needed, for the run to reuse (`RunOptions.staged`). */
+      staged?: ReadonlyMap<string, ProjectEntry>
+    }
+  | { error: string }
+  | { empty: string }
 
 /**
  * The cross-project `dependsOn` edges the configs declare, project → the
@@ -132,8 +140,13 @@ export async function taskEdges(
   root: string,
   projects: readonly ProjectMeta[],
   load: CliLoadOptions,
-): Promise<Map<string, string[]>> {
+): Promise<{ edges: Map<string, string[]>; staged: Map<string, ProjectEntry> }> {
   const staged = await loadCliProjects(root, projects, 'all', load)
+  return { edges: taskEdgesFrom(staged), staged }
+}
+
+/** The same edges, read from a load the caller already has. */
+export function taskEdgesFrom(staged: ReadonlyMap<string, ProjectEntry>): Map<string, string[]> {
   const out = new Map<string, string[]>()
   for (const p of staged.values()) {
     const targets = new Set<string>()
@@ -165,9 +178,10 @@ export async function resolveFilters(
   const parsed = raw.map((r) => parseFilter(r, root))
   const walksGraph = parsed.some((f) => f.withDeps || f.withDependents || f.onlyDeps)
   let edges: Map<string, string[]> | undefined
+  let staged: Map<string, ProjectEntry> | undefined
   if (walksGraph) {
     try {
-      edges = await taskEdges(root, projects, load)
+      ;({ edges, staged } = await taskEdges(root, projects, load))
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
     }
@@ -227,7 +241,7 @@ export async function resolveFilters(
   // Something matched, so the run proceeds; a pattern that matched nothing
   // alongside it is still worth a line — it is probably a typo.
   for (const f of unmatched) process.stderr.write(`vx: filter "${f}" matched no projects\n`)
-  return { names: [...selected].sort() }
+  return { names: [...selected].sort(), ...(staged !== undefined ? { staged } : {}) }
 }
 
 export interface PickedTask {

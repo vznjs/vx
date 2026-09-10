@@ -72,7 +72,11 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
      output a `project` plugin gave a config-less package is ignored
      like a declared one, and a pure config is served from its cached
      evaluation; a config that fails to load drops the sweep to the
-     files that do load.
+     files that do load. The sweep's load is also what
+     `watchedProjects` reads the cross edges from, so a watch start is
+     the initial run's scoped load plus one sweep, not a third load;
+     and the options every cycle re-runs carry no `staged` map — a
+     cycle after an edit evaluates live (`tests/staged-once.test.ts`).
    - Catch UNDECLARED writes by content: a task with no `cache` block
      declares no outputs and still writes into its project, and its
      own write re-triggered the cycle without end (the init walkthrough,

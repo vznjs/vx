@@ -237,6 +237,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       lock,
       evalCache: { store: localCache, workspaceFingerprint: fingerprints.all },
       warn: (m) => log.status(m),
+      ...(options.staged !== undefined ? { staged: options.staged } : {}),
     })
   } catch (err) {
     // The cache opened before the configs loaded (it holds their cached

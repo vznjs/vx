@@ -65,6 +65,16 @@ export interface LoadProjectsArgs {
   lock: Lockfile | null
   evalCache: LoadProjectConfigOptions['evalCache']
   warn: (message: string) => void
+  /**
+   * Entries a load in this same process already produced with the same
+   * cache dir and lock (the CLI's selection pass, which stages every
+   * config to walk `pkg#task` edges). Seeding and scoping run exactly as
+   * without it; a project found here is taken as is instead of being
+   * evaluated and put through the `project` stage a second time — the
+   * stage's cost, and its warnings, once per run. Never carried across
+   * runs: a config can change between them.
+   */
+  staged?: ReadonlyMap<string, ProjectEntry>
 }
 
 export interface LoadedProjects {
@@ -133,9 +143,11 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   while (pending.length > 0) {
     const round = pending.splice(0, pending.length)
     // Only a config FILE is evaluated (or read from the lock); a
-    // config-less project in the round starts from an empty task table.
+    // config-less project in the round starts from an empty task table,
+    // and a project the caller already staged is neither.
     const withFile = round.filter(
-      (m): m is ProjectMeta & { configPath: string } => typeof m.configPath === 'string',
+      (m): m is ProjectMeta & { configPath: string } =>
+        typeof m.configPath === 'string' && args.staged?.get(m.name) === undefined,
     )
     const loaded = lock
       ? await Promise.all(withFile.map((m) => frozenProjectConfig(lock, m, workspaceRoot)))
@@ -145,6 +157,15 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         )
     let next = 0
     for (const meta of round) {
+      const pre = args.staged?.get(meta.name)
+      if (pre !== undefined) {
+        projects.set(meta.name, pre)
+        for (const name of crossDepProjects(pre.config)) {
+          if (args.closure) considerWithDeps(name)
+          else consider(name)
+        }
+        continue
+      }
       const config: ProjectConfig =
         meta.configPath === null ? { tasks: {} } : (loaded[next++] as ProjectConfig)
       if (projectStage) {

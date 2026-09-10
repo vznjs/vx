@@ -27,6 +27,7 @@ export interface LoadProjectsArgs {
   lock: Lockfile | null // read from the lock instead of evaluating
   evalCache: LoadProjectConfigOptions['evalCache']
   warn: (m: string) => void
+  staged?: ReadonlyMap<string, ProjectEntry> // entries a load in this process already produced
 }
 export interface LoadedProjects {
   projects: Map<string, ProjectEntry>
@@ -50,7 +51,12 @@ export function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjects>
    applies the `project` stage per project, re-validating after EACH
    plugin under an `(after plugin '<name>')` label, then queues any project a
    `pkg#task` dependsOn entry names — the package graph cannot see
-   the cross form. No cross deps → one round.
+   the cross form. No cross deps → one round. A project present in
+   `staged` is taken as is — no evaluation, no stage — and still
+   contributes its cross deps; seeding and scoping do not change. The
+   CLI's selection pass (`resolveFilters` → `taskEdges`) is the
+   producer: before it, a graph-walking filter put every config through
+   the `project` stage twice per run (`tests/staged-once.test.ts`).
 
 `prepareRun` passes `closure: true` and the run's lock and eval cache;
 `vx show` passes `closure: false`, no lock, and a local cache opened

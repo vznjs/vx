@@ -9,7 +9,10 @@ run — the `--filter` resolution, `--affected`'s orphan-path owners, the
 cwd project and the interactive picker — is `src/cli/select.ts`
 (split 2026-09-09, pure code motion), which run.ts calls from
 `resolveRunOptions`; every read of the workspace there goes through
-the staged load (`loadCliProjects`), so the selection is the run's.
+the staged load (`loadCliProjects`), so the selection is the run's —
+and when the selection had to stage every config (a filter that walks
+the graph), that load travels into the run as `RunOptions.staged`, so
+the `project` stage runs once per project per run.
 
 ## Public surface
 
