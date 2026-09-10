@@ -2296,7 +2296,11 @@ app` never re-runs on a `lib` edit while `vx run` would rebuild
     `why` reads the run's history and explains the key with the
     changed input, `show` lists the task as "from plugins" (probed in
     the scratchpad, 2026-09-10; nothing to pin, the read verbs never
-    load the config `why` would need). Left: the zero-migration
+    load the config `why` would need). Learned on PR #295's red:
+    `oxfmt --check <file>` passes what `oxfmt --check .` rejects (a
+    code span wrapped across an indented line), so the gate's format
+    check is the directory scan from the package, never a named file
+    (CLAUDE.md). Left: the zero-migration
     stage's remaining 20 ms per 1,000 (the overlay probes, two clones
     per fill, a re-validation per plugin) if a workspace that size
     ever runs without configs. Never end with "what next?".
