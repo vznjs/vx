@@ -133,6 +133,26 @@ describe('applyFilters', () => {
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['app', 'ui', 'utils'])
   })
 
+  it('a cross-project dependsOn edge counts as a dependency for ... and ^... (task edges)', () => {
+    // e2e names app#build in dependsOn but has no package.json dep on app:
+    // the task graph knows the edge, so selection does too.
+    const withE2e = [...projects, mkProject('e2e', `${ROOT}/packages/e2e`)]
+    const g = buildPackageGraph(withE2e, new Map([['e2e', ['app']]]))
+    const sel = (raw: string) =>
+      [...applyFilters({ filters: [parseFilter(raw, ROOT)], projects: withE2e, graph: g })].sort()
+    expect(sel('...utils')).toEqual(['app', 'e2e', 'ui', 'utils'])
+    expect(sel('...app')).toEqual(['app', 'e2e'])
+    expect(sel('e2e...')).toEqual(['app', 'e2e', 'ui', 'utils'])
+    expect(sel('e2e^...')).toEqual(['app', 'ui', 'utils'])
+    // an edge to a project that is not a member, or to itself, is nothing
+    const g2 = buildPackageGraph(withE2e, new Map([['e2e', ['e2e', 'ghost']]]))
+    expect(
+      [
+        ...applyFilters({ filters: [parseFilter('...app', ROOT)], projects: withE2e, graph: g2 }),
+      ].sort(),
+    ).toEqual(['app'])
+  })
+
   it('pkg^... includes only the deps, not the package itself', () => {
     const filters = [parseFilter('app^...', ROOT)]
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['ui', 'utils'])
