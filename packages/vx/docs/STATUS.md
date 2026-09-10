@@ -1543,8 +1543,7 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    walkthrough).** (a) DONE 2026-09-09: `--summarize` task rows carry
    `noCache: true` for a task with no `cache` block (present only when
    true; documented in `docs/cli.md` § --summarize). (b) DONE 2026-09-04: `init` no longer makes `lint` wait for `build`
-   (`test` / `typecheck` still do, the Turbo starter's convention). (c) watch still pays one redundant cycle on a
-   task's first undeclared write (the bytes are unknown until seen);
+   (`test` / `typecheck` still do, the Turbo starter's convention). (c) CLOSED 2026-09-10 (measured on the watch-loop harness, pinned in `tests/watch-loop.test.ts`): an uncached task that writes into its project costs exactly one extra execution per edit and nothing after the initial run — the task's write and a user's edit during the run are the same FS event, so without the task's write set the loop cannot drop one and keep the other; the price of an undeclared output is one cycle, the fix is to declare it. Was: watch still pays one redundant cycle on a task's first undeclared write (the bytes are unknown until seen);
    hashing what the cycle wrote before re-arming would zero it — only
    if a real workspace shows the cycle mattering. (d) DONE 2026-09-04: a filter set that matches nothing is one
    error line naming the patterns and the nearest project name.

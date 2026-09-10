@@ -121,6 +121,37 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(2)
   }, 40_000)
 
+  it('an UNCACHED task that writes into its project costs exactly one extra execution per edit, then quiet', async () => {
+    // No cache block declares no outputs, so the task's own `dist/out.txt`
+    // is an undeclared write the watcher sees. Its bytes are unknown until
+    // seen, and a user's edit during the run is indistinguishable from the
+    // task's write without the task's write set — so the price is one
+    // redundant cycle per edit (the second run writes the same bytes and
+    // the content gate stops it), never a loop. Measured 2026-09-10; the
+    // fix is to declare the output. Nothing after the initial run: its
+    // write landed before the watchers were armed.
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${log}' } } } }\n`,
+    )
+    watch = startWatch(root)
+    const w = watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await Bun.sleep(SETTLE_MS)
+    expect(await executions(log)).toBe(1)
+    expect(w.cycles()).toBe(0)
+
+    await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
+    await until(
+      async () => (await executions(log)) === 3,
+      'the edit cycle and its one redundant follower',
+    )
+    await Bun.sleep(SETTLE_MS)
+    expect(await executions(log)).toBe(3)
+    expect(w.cycles()).toBe(2)
+    expect(w.out()).toContain('vx watch: app dist/out.txt; re-running...')
+  }, 40_000)
+
   it('a git checkout that rewrites twenty inputs is one cycle with the new content (L5)', async () => {
     const git = gitIn(root)
     const names = Array.from({ length: 20 }, (_, i) => `f${String(i).padStart(2, '0')}.txt`)
