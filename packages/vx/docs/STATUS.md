@@ -1753,29 +1753,36 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     (the seams are in place: `inflight`, `remoteCache`,
     `telemetrySinks`, the wire event form).
 
-12. **Handoff after item 110 (2026-09-10, late night).** PR #275
-    (items 102–105) merged by this loop at 17:56Z (main 1c7a6a5);
-    PR #276 carries 106–110 — signal escalation and the recursion
-    refusal, the parity doc's LOW rows, the enumeration equivalence
-    property, the `RunOptions.signal` abort seam with the watch loop
-    on it, and the watch-loop e2e that found the `dist`-container
-    double cycle — every commit gated here as shards + package suites
-    - oxlint + oxfmt + the docs build (this container cannot host the
-      sandbox: root, no nested user namespaces; `vx run ci --all` fails
-      every sandboxed task at the probe, so the gate ran piecewise).
-      Merge #276 once CI is green (the loop's own directive since the
-      owner's "merge whenever you own the project"), then fast-forward
-      the branch from main. Open leads, in order: (a) `tests/
-shard-weights.json` has no rows for the eight suites added tonight
-      (abort, watch-loop, watch-signals, keep-alive, recursive-run,
-      replay-fidelity, enumeration-equivalence, caching-doc-drift) —
-      refresh with `scripts/test-shard.ts --weigh <junit-dir>` from one
-      CI run; (b) Next 7(c), the redundant first-write cycle, is now
-      measurable on the watch-loop harness (count cycles, not sleeps);
-      (c) the surveys' deferred rows and Next 2 stay deferred with their
-      reasons; (d) the parity docs carry a status line per row — the
-      2026-07 doc's only open row is M7, by choice. Nothing is owed to
-      the owner's last message. (a) DONE the same night: weighed from a twelve-shard JUnit run on this box — 15 files had no row, seven of them older than tonight (completions, core-alias, lockfile-claim, output-dirs-snapshot, output-shape, plugin-name, save-lane); the absolute numbers are this loaded box's, the dealing only reads their ratios.
+12. **Handoff after item 112 (2026-09-10, late night).** Everything
+    this loop shipped tonight is on main (8e8210c): PR #275 (102–105),
+    #276 (106–110 — signal escalation and the recursion refusal, the
+    parity doc's LOW rows, the enumeration-equivalence property, the
+    `RunOptions.signal` abort seam with the watch loop on it, the
+    watch-loop e2e that found the `dist`-container double cycle, the
+    shard-weight refresh, Next 7(c) closed by measurement), #277 (111,
+    the keep-alive exit line), #278 (docs), #279 (112 — the `./src/**`
+    stale hit and the rest of the glob-spelling class, one normalizer
+    in util read by the resolver, the workspace member globs, the
+    subtree short-circuit, the watch container and the schema; a brace
+    set is a wildcard to `staticPrefix`). Every commit was gated here
+    as shards + package suites + oxlint + oxfmt + the docs build — this
+    container cannot host the sandbox (root, no nested user namespaces;
+    `vx run ci --all` fails every sandboxed task at the probe), so the
+    gate ran piecewise and CI's sandboxed jobs were the real proof;
+    every head was green. No PR is open. What a fresh session finds:
+    the STATUS backlog holds nothing this container can act on (Next 2
+    and the surveys' deferred rows are parked with reasons; In-flight
+    item 5 is a macOS constraint; the release step is the owner's npm
+    trusted-publisher setup); the 2026-07 parity doc's only open row
+    is M7, by choice. Tonight's method paid twice — a probe of the
+    obvious spelling (`SIGTERM` to `vx watch`, `./src/**` as an input)
+    against the documented contract — so start there: candidates are
+    `exec.sandbox.allow` paths spelled with `./` (needs a host that can
+    sandbox), the vx-turbo mapper handing `./`-spelled turbo.json globs
+    through (now normalized downstream, unpinned at the mapper), and
+    `vx init`'s emitted config on a fresh workspace under `vx watch`
+    (an uncached task costs one extra execution per edit, item 110's
+    pin). Never end with "what next?".
 
 ## Decisions (this arc)
 
