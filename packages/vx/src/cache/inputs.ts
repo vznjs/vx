@@ -174,8 +174,12 @@ async function resolveWorkspaceFiles(args: {
   }
   if (positive.length === 0) return []
 
-  const excludeGlobs = [...ALWAYS_IGNORE, ...args.ownWorkspaceOutputs, ...negative].map(globFor)
-  const positiveGlobs = positive.map(globFor)
+  const excludeGlobs = [
+    ...ALWAYS_IGNORE,
+    ...asTrees(args.ownWorkspaceOutputs),
+    ...asTrees(negative),
+  ].map(globFor)
+  const positiveGlobs = asTrees(positive).map(globFor)
   // Workspace-wide partition, keyed by the workspace root. Populated
   // up-front by `populateGitFilesCache(..., workspaceWide: true)` when
   // any loaded task declares workspaceFiles; a missing/invalidated
@@ -189,10 +193,10 @@ async function resolveWorkspaceFiles(args: {
   // carries its own copy of the filter-over-git-set design, so the same
   // silently-folds-nothing hazard exists here — and a fix applied only to the
   // project half would pass that half's tests while leaving this one live.
-  const unmatchedLiterals = new Set(positive.filter(isLiteralPath))
+  const unmatchedLiterals = new Set(positive.filter(isLiteralPath).map(stripTrailingSlash))
   const candidates: string[] = []
   for (const rel of gitFiles) {
-    if (unmatchedLiterals.size > 0) unmatchedLiterals.delete(rel)
+    if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
     if (!positiveGlobs.some((g) => g.match(rel))) continue
     if (excludeGlobs.some((g) => g.match(rel))) continue
     candidates.push(path.resolve(args.workspaceRoot, rel))
@@ -308,7 +312,9 @@ export async function resolveOutputs(args: {
 }): Promise<string[]> {
   if (args.outputs.length === 0) return []
   const excludeGlobs = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs).map(globFor)
-  const scanned = [...(await scanUnion(args.outputs, excludeGlobs, args.projectDir, 'outputs'))]
+  const scanned = [
+    ...(await scanUnion(asTrees(args.outputs), excludeGlobs, args.projectDir, 'outputs')),
+  ]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
   // DELETES whatever this returns, and `Bun.Glob.scan` happily walks `..` out
   // of its cwd — so the loader's `..`/absolute rejection alone was a single
@@ -441,7 +447,7 @@ export async function resolveWorkspaceOutputs(args: {
   outputs: string[]
 }): Promise<string[]> {
   if (args.outputs.length === 0) return []
-  const scanned = [...(await scanUnion(args.outputs, [], args.workspaceRoot, 'outputs'))]
+  const scanned = [...(await scanUnion(asTrees(args.outputs), [], args.workspaceRoot, 'outputs'))]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
   // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
@@ -469,6 +475,41 @@ export async function cleanWorkspaceOutputs(args: {
 
 function isLiteralPath(glob: string): boolean {
   return !/[*?[\]{}]/.test(glob)
+}
+
+function stripTrailingSlash(p: string): string {
+  return p.replace(/\/+$/, '')
+}
+
+/**
+ * A literal entry names a file OR a directory tree: `src/` and `src` both
+ * mean everything under `src`, as they do in Turbo and every `.gitignore`.
+ * A glob matcher sees only the literal path, so `['src/']` folded ZERO
+ * files — a key that never moves with its source, and the most common
+ * turbo.json shape (`"outputs": ["dist"]`) captured nothing. Every
+ * literal therefore compiles to itself plus its subtree; a literal that
+ * names a file still matches exactly that file, since `x/**` matches
+ * nothing under a file.
+ */
+function asTrees(patterns: readonly string[]): string[] {
+  const out: string[] = []
+  for (const p of patterns) {
+    if (!isLiteralPath(p)) {
+      out.push(p)
+      continue
+    }
+    const lit = stripTrailingSlash(p)
+    if (lit.length === 0) continue
+    out.push(lit, `${lit}/**`)
+  }
+  return out
+}
+
+/** A literal is answered by the path itself or by anything under it. */
+function settleLiterals(unmatched: Set<string>, rel: string): void {
+  for (const lit of unmatched) {
+    if (rel === lit || rel.startsWith(`${lit}/`)) unmatched.delete(lit)
+  }
 }
 
 /**
@@ -536,9 +577,12 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   if (positive.length === 0) return []
 
   const boundaryIgnores = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs)
-  const excludeGlobs = [...ALWAYS_IGNORE, ...boundaryIgnores, ...args.ownOutputs, ...negative].map(
-    globFor,
-  )
+  const excludeGlobs = [
+    ...ALWAYS_IGNORE,
+    ...boundaryIgnores,
+    ...asTrees(args.ownOutputs),
+    ...asTrees(negative),
+  ].map(globFor)
 
   // Defer to git for the file set (Turbo / Nx parity). Nested .gitignore
   // files, .git/info/exclude, and global excludes all participate
@@ -548,7 +592,7 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // per task (build + test + lint + …). Spawning git N times for the
   // same project per run is wasteful; we cache the result for the
   // duration of one orchestrator run.
-  const positiveGlobs = positive.map(globFor)
+  const positiveGlobs = asTrees(positive).map(globFor)
   let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
   if (gitFiles === undefined) {
     // Mid-run re-enumeration. The OIDs this spawn could yield are NOT
@@ -571,11 +615,11 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // an artifact built from an older version of a file the config explicitly
   // claims as an input. See the refusal below for why this is not simply
   // honoured instead.
-  const unmatchedLiterals = new Set(positive.filter(isLiteralPath))
+  const unmatchedLiterals = new Set(positive.filter(isLiteralPath).map(stripTrailingSlash))
   // First pass: glob-filter to candidate absolute paths (no I/O).
   const candidates: string[] = []
   for (const rel of gitFiles) {
-    if (unmatchedLiterals.size > 0) unmatchedLiterals.delete(rel)
+    if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
     let matched = false
     for (const g of positiveGlobs) {
       if (g.match(rel)) {

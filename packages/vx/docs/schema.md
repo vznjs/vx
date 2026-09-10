@@ -573,13 +573,17 @@ interface CacheInputs {
 
 ##### `inputs.files` (required)
 
-Project-relative globs. `!`-prefix negates.
+Project-relative globs. `!`-prefix negates. A **literal** entry (no
+glob character) names a file or a whole directory tree — `src` and
+`src/` both mean everything under `src`, as in Turbo and `.gitignore`;
+`!src` subtracts the tree.
 
 ```ts
 files: ['**/*'] // all project files
 files: ['src/**', '!**/*.test.ts'] // narrow with exclusion
 files: [] // no file inputs at all
 files: ['src/**', 'tsconfig.json', 'package.json'] // specific paths
+files: ['src', 'package.json'] // a directory literal is its tree
 ```
 
 Empty array is valid — the cache key still incorporates command, env,
@@ -803,7 +807,9 @@ interface CacheOutputs {
 Project-relative globs of files the task produces. Captured on cache
 write, restored on cache hit (overwriting any local modifications),
 and **wiped before exec AND before restore** so the project dir ends
-every run bit-identical to the cached snapshot.
+every run bit-identical to the cached snapshot. A literal entry names
+a file or a whole directory tree: `dist` and `dist/` are `dist/**`
+(the turbo.json shape `"outputs": ["dist"]` migrates as it is).
 
 ```ts
 outputs: {
