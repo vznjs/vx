@@ -149,6 +149,53 @@ describe('vx watch loop (e2e)', () => {
     expect(await executions(log)).toBe(1)
   }, 40_000)
 
+  it('a package added under a running watch is a cycle that runs it, and its edits are cycles from then on', async () => {
+    // Its directory appears as one entry under `packages/` — the glob's
+    // directory, watched non-recursively — and the cycle that follows
+    // re-reads the workspace and arms the new dir. Before 2026-09-10 the
+    // watched set was fixed when the loop armed: nothing ran until some
+    // other edit, and every edit inside the new package was silence.
+    watch = startWatch(root)
+    const w = watch
+    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    expect(await executions(log)).toBe(1)
+
+    const bDir = await addProject(
+      root,
+      'b',
+      `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${log}' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+            },
+          },
+        }
+      `,
+    )
+    await mkdir(path.join(bDir, 'src'), { recursive: true })
+    await writeFile(path.join(bDir, 'src', 'b.txt'), 'b1\n')
+    await until(async () => (await executions(log)) === 2, 'the cycle after the package was added')
+    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'the re-armed set')
+    await Bun.sleep(SETTLE_MS)
+    expect(await readFile(path.join(bDir, 'dist', 'out.txt'), 'utf8')).toBe('b1\n')
+
+    await writeFile(path.join(bDir, 'src', 'b.txt'), 'b2\n')
+    await until(
+      async () => (await executions(log)) === 3,
+      'the cycle after an edit in the new package',
+    )
+    await Bun.sleep(SETTLE_MS)
+    expect(await readFile(path.join(bDir, 'dist', 'out.txt'), 'utf8')).toBe('b2\n')
+
+    // Gone again: the member's departure is a cycle too, and its arm is dropped.
+    await rm(bDir, { recursive: true, force: true })
+    await until(() => w.out().includes('vx watch: watching 1 project(s)'), 'the set without b')
+    await Bun.sleep(SETTLE_MS)
+    expect(await executions(log)).toBe(3)
+  }, 40_000)
+
   it('under the root watcher, a root file no key can see is not a cycle; a declared one is', async () => {
     // A `workspaceFiles` input puts the loop on ONE recursive root watcher.
     // Before the filter, that watcher triggered on every write in the tree:

@@ -1515,6 +1515,85 @@ equivalent — map it manually` on every run, for the value every
       is the special case the seams exist to avoid; a second consumer
       makes it a seam.
 
+129.  DONE (2026-09-10, late night — the zero-migration stage, timed by
+      piece): a config-less 1,000-package Turbo workspace (scripts in
+      every `package.json`, no `vx.config`, `bench1000-bare` in the
+      scratchpad) loads in 42 ms under `turbo()` where 1,000 cached
+      config evaluations take 22, and the run is otherwise the same
+      ~200 ms. The pieces, in one process: the first visit's mapping
+      9–18 ms (the 1,000 overlay probes and the mapper's 3–7 ms
+      warm), the 999 other visits 10–22 ms, the 1,000 re-validations
+      2–3. Each visit looked its package up with `Array.find` over the
+      mapping — a million comparisons per run at this size, and the
+      square of it at any other — so the mapping is indexed by name
+      once per run: the visits read 8.8–11.8 ms after. At the run
+      level the interleaved A/B (six rounds, the linear-scan plugin
+      from an immutable copy) ties inside the box's jitter:
+      `load configs` 41.2 min / 44.9 median → 41.8 / 44.0 ms. Kept for
+      the shape, not the number, and the number is recorded as a tie. What
+      is left is the overlay probes (sequential or in flight, the same
+      — item 126), two `structuredClone`s per fill and core's
+      per-plugin re-validation; none is a lever at this size.
+
+130.  DONE (2026-09-10, late night — probed after item 128): a package
+      added while `vx watch` runs. The watched set was fixed when the
+      loop armed: the new directory was no event (the per-project arms
+      never saw it, the root arm is non-recursive), the next cycle any
+      other edit caused ran the new package (a run re-discovers), and
+      every edit inside it after that was silence. Now the directory
+      each `<dir>/*` package glob names (`memberBaseDirs`, exported by
+      the workspace module — `packages/` for `packages/*`) has one
+      non-recursive watcher: a member coming or going there is a cycle,
+      and that cycle's end re-reads the workspace (`rediscover`:
+      discovery, the sweep, the watched closure under the scope
+      resolved at start) and `rearm`s — new project dirs get an arm
+      that proves delivery before the loop goes on, dropped ones are
+      closed by slot (an OS watcher that never proved delivery is a
+      poller in its slot), and the root filter and the ignore filter
+      are rebuilt on the new set. Pinned end to end: `packages/b`
+      added under a running `--all` watch is a cycle that executes it,
+      the loop reports two projects watched, and an edit in `b/src` is
+      a cycle that rebuilds it; fails without the change. Not done, by
+      choice: a glob of another shape (`apps/**`) has no such
+      directory and a package added under it waits for a restart; and
+      the watcher shape is not re-decided — a new package declaring
+      the first `workspaceFiles` input keeps the per-project arms until
+      a restart. Both in the docs.
+
+131.  DONE (2026-09-10, late night — owner: "Remove no node no bun — no
+      one cares. Warm run is also minor. Focus on overhead, flexibility,
+      plugins, openness, no paywalls, performance and modularity,
+      compatibility, test coverage, correctness, sandboxing etc.,
+      differentiators. And use the same unit — not 44% then 9.6×. Also
+      don't focus on 4%: I don't want people to think this scales; the
+      overhead is on a very big example. Focus on how vx scales with
+      the codebase and that it does its job in seconds, not minutes"):
+      the film reframed. One unit for every runner everywhere the
+      three overheads appear — clock time over the ideal schedule,
+      `+0:08` / `+1:35` / `+31:06` — and the per-package figure (8 ms /
+      88 ms / 1,712 ms, the same overhead over 1,090 packages) as the
+      scaling number; no percentage, no multiple, on the site, in the
+      README's bench block, in `benchmarks.md`, in the two posts and
+      the concept page that quoted them. The generator prints both
+      (`plus`, `perPkg`; `over`/`overPct` gone) and its three stat
+      tiles are now the per-package tiles, one per runner, in the
+      runner's lane colour. Scenes: the open lede ("adds seconds where
+      others add minutes"), the wall's plates in `+m:ss` with the
+      per-package line, the warm scene replaced by the scale scene
+      (3,270 tasks counted over the dot sweep, "grow the graph and the
+      runner grows in milliseconds per package"), the strikes gained
+      "No paywall." and the line under them is "Open, all the way
+      down." (MIT, open protocols, every seam a hook) with the
+      Node/Bun sentence gone, the cards rewritten to the nine
+      differentiators the owner named (overhead at any size,
+      sandboxing, a plugin at every stage, open with no paywall,
+      correct by construction, compatible, modular, 2,700+ tests, a
+      cache you can interrogate), the proof panel titled "Seconds, not
+      minutes." with the cold row's badges in `+m:ss` and the
+      multiples gone. The warm number stays as one clause in the note
+      and one line in the README. `update-site.ts --check` passes on
+      the regenerated site.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
@@ -2190,6 +2269,37 @@ app` never re-runs on a `lib` edit while `vx run` would rebuild
     that for `--filter 'app...'`). Pin it e2e with a two-project
     workspace and `--filter app`: a `lib/src` edit is one cycle that
     re-executes `lib#build` and `app#build`.
+
+14. **Handoff after item 130 (2026-09-10, late night).** PR #293
+    merged the landing page's first delivery (a layer over the old
+    page); the owner asked for a full redesign, and PR #294 carries it
+    (item 125, the film) with the loop that followed: the `project`
+    stage's context names every package core discovered (126, the
+    Turbo plugin's second discovery gone, −12 ms per 1,000), one Turbo
+    mapping per run so a watch cycle sees a script edit (127),
+    `vx watch` on a `vx.workspace.*` edit (128), the mapping indexed by
+    name (129, a tie at the run level, recorded as one), and a package
+    added or removed under a running watch (130, the glob's directory
+    watched, the set re-armed). Every one is pinned with a
+    differential; the piecewise gate ran here (this container cannot
+    host the sandbox) and CI was green on every head it had run by
+    the time of writing. Method that paid tonight: read one arm of a
+    feature for the file it cannot see (the workspace config, the
+    package directory, a plugin's memo), probe it end to end in the
+    scratchpad, then pin. What is still no event under `vx watch`, by
+    choice and in the docs: a root `turbo.json` edit (no seam names a
+    plugin's root files — a second consumer makes it one), a package
+    added under a glob of another shape than `<dir>/*`, and the
+    watcher shape when a new package declares the first
+    `workspaceFiles` input. Refuted on the way: `vx why` and `vx show`
+    on a config-less package whose task a `project` plugin gave it —
+    `why` reads the run's history and explains the key with the
+    changed input, `show` lists the task as "from plugins" (probed in
+    the scratchpad, 2026-09-10; nothing to pin, the read verbs never
+    load the config `why` would need). Left: the zero-migration
+    stage's remaining 20 ms per 1,000 (the overlay probes, two clones
+    per fill, a re-validation per plugin) if a workspace that size
+    ever runs without configs. Never end with "what next?".
 
 ## Decisions (this arc)
 

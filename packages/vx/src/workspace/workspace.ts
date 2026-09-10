@@ -222,6 +222,23 @@ export async function loadWorkspace(root: string): Promise<Workspace> {
 const SIMPLE_STAR_RE = /^[^*?{}[\]!]+\/\*$/
 
 /**
+ * The directory each `<dir>/*` package glob names — where a member comes
+ * and goes as one directory entry, so `vx watch` can hear a package added
+ * or removed without walking anything. A glob of another shape (`apps/**`)
+ * has no such directory and contributes none.
+ */
+export function memberBaseDirs(workspace: Workspace): string[] {
+  const bases = new Set<string>()
+  for (const pattern of splitPackageGlobs(workspace.packageGlobs).positive) {
+    const normalized = pattern === '.' ? '' : pattern.replace(/\/$/, '')
+    if (SIMPLE_STAR_RE.test(normalized)) {
+      bases.add(path.resolve(workspace.root, normalized.slice(0, -2)))
+    }
+  }
+  return [...bases]
+}
+
+/**
  * The directories a workspace glob names. For the `<dir>/*` shape this is
  * one readdir of `<dir>` — the same answer `Bun.Glob` gives, at a third of
  * the cost (measured 2026-09-02: 25 ms → ~2 ms for 1000 members). A

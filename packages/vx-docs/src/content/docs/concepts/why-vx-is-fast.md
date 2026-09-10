@@ -14,9 +14,11 @@ These are reproducible on your own machine, not marketing figures:
 
 - **The runner's overhead on a cold build**, the number to read first.
   On the 3,270-task workspace the tasks alone take 3m 38s under an ideal
-  schedule; vx finishes in 3m 46s (+4%), Turborepo in 5m 13s (+44%), Nx
-  in 34m 44s (9.6× the schedule). A runner that doubles a three-minute
-  build is a different tool from one that adds a few percent.
+  schedule; vx finishes in 3m 46s (+0:08), Turborepo in 5m 13s (+1:35),
+  Nx in 34m 44s (+31:06) — one unit for every runner. A runner that adds
+  seconds to a three-minute build is a different tool from one that adds
+  half an hour, and the per-package figure (8 ms, 88 ms, 1.7 s) is how
+  each grows with the codebase.
 
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across
   fresh / warm-no-restore / warm-restore. A 100-project workspace

@@ -35,52 +35,58 @@ const termTasks = [
 // which both competitors already ship).
 const features = [
   {
-    icon: 'cache',
-    tone: 'var(--phosphor)',
-    title: 'The cache understands your config',
-    body: 'vx.config.ts is evaluated before hashing, so imports, shared presets and computed values all participate in the cache key. Change a preset and exactly the right tasks re-run. Turbo and Nx hash static JSON — they can’t see this.',
-  },
-  {
-    icon: 'box',
-    tone: 'var(--plasma)',
-    title: 'Outputs are owned',
-    body: 'Declared outputs are wiped before every run and every restore, so your tree ends bit-identical to the cache — stale files cannot survive. Turbo and Nx are additive: leftovers linger.',
-  },
-  {
     icon: 'bolt',
-    tone: 'var(--amber)',
-    title: 'No daemon to babysit',
-    body: 'One self-contained binary — no Node, no Bun, nothing long-lived. On a clean tree, every cache key comes from the git index with zero file reads — 3.2× faster warm at 15k files. Nx needs a daemon for this; vx doesn’t.',
-  },
-  {
-    icon: 'mesh',
-    tone: 'var(--plasma)',
-    title: 'The lockfile, keyed per project',
-    body: 'pnpm(), bun(), npm() or yarn() from @vzn/vx-lockfile key every task on its own project’s dependency closure. One `pnpm update foo` re-keys the projects that reach foo — and --affected selects the same set. Turbo folds the whole file; Nx needs its daemon.',
-  },
-  {
-    icon: 'spark',
-    tone: 'var(--amber)',
-    title: 'Flaky tasks, from your own history',
-    body: 'The same inputs both passing and failing is the definition of flaky, and vx already knows every hash and every outcome. A run names them in its footer, --summarize types them, vx info lists them. Nx sells this as Nx Cloud; Turbo has nothing.',
+    tone: 'var(--phosphor)',
+    title: 'Overhead in seconds, at any size',
+    body: 'On 1,090 packages and 3,270 tasks, vx adds eight seconds to the cold build — 8 ms per package. Turborepo adds a minute and a half, Nx half an hour. The graph grows; the runner stays in seconds.',
   },
   {
     icon: 'shield',
     tone: 'var(--phosphor)',
-    title: 'Per-task kernel sandbox',
-    body: 'Run any task under an OS-level file + network allow-list with sandbox: {}. An undeclared read or a phone-home fails the build instead of hiding it. No other runner has it.',
+    title: 'Sandboxed, per task',
+    body: 'exec.sandbox runs a task under an OS-level file and network allow-list — bwrap on Linux, seatbelt on macOS. A read outside the declared inputs or a phone-home fails the build instead of hiding in it. A task proves what it touches; nothing is inferred.',
+  },
+  {
+    icon: 'plug',
+    tone: 'var(--amber)',
+    title: 'A plugin at every stage',
+    body: 'One VxPlugin object: project() gives packages tasks, graph() edits the edges, key() folds material into the key, schedule() picks what runs next, executor and cache decide where, telemetry watches, commands adds verbs. Core applies none by default.',
   },
   {
     icon: 'lock',
     tone: 'var(--plasma)',
-    title: 'A cache you can interrogate',
-    body: 'vx why names the exact file, env var or upstream that moved a task’s key instead of “miss”; vx last replays any run’s outcome, and every key component is recorded at save time so the diff is exact. No other runner can tell you why it re-ran.',
+    title: 'Open, with no paywall behind it',
+    body: 'MIT. Remote cache and remote execution are plugins on open protocols — Bazel’s Remote Execution API, Turborepo’s and Nx’s own cache wires — so a NativeLink, a bazel-remote or your own server is the “cloud”. Flaky-task detection, run history, why-a-miss: in the binary, not a tier.',
+  },
+  {
+    icon: 'cache',
+    tone: 'var(--phosphor)',
+    title: 'Correct by construction',
+    body: 'Keys are content-addressed: git blob ids for clean files, the evaluated config object (imports and presets included), the project’s own dependency closure from the lockfile, upstream input keys folded through the graph. Declared outputs are wiped before every run and restore, so a stale file cannot survive.',
+  },
+  {
+    icon: 'mesh',
+    tone: 'var(--plasma)',
+    title: 'Compatible with what you have',
+    body: 'A Turborepo workspace runs as it is through @vzn/vx-turbo; @vzn/vx-migrate writes vx.config.ts from turbo.json or an Nx graph; pnpm, bun, npm and yarn lockfiles are each a plugin; Turbo and Nx remote caches are wires you can keep.',
+  },
+  {
+    icon: 'wire',
+    tone: 'var(--amber)',
+    title: 'Modular to the core',
+    body: 'Core is a pipeline with seams — config, project, graph, key, schedule, executor, cache, telemetry, commands — and every module’s index.ts is its contract, enforced by tests. Nothing distributed ships in core; the seams exist so someone can build it on top.',
+  },
+  {
+    icon: 'box',
+    tone: 'var(--plasma)',
+    title: 'Tested like infrastructure',
+    body: '2,700+ tests across core and the plugins, every fix pinned with a test that fails without it, parity suites that run Turborepo’s and Nx’s behaviours under vx, and cache correctness treated as the worst failure class: a stale hit is a bug before anything else is.',
   },
   {
     icon: 'graph',
     tone: 'var(--amber)',
-    title: 'Reproducible when you want',
-    body: 'vx lock freezes the fully-resolved task graph into vx-lock.json; --frozen runs skip evaluation entirely and run exactly that graph. No other runner has an equivalent.',
+    title: 'A cache you can interrogate',
+    body: 'vx why names the exact file, env var or upstream that moved a task’s key instead of “miss”; vx last replays any run; vx lock freezes the resolved graph so --frozen runs exactly that. Every key component is recorded at save time, so the answer is exact.',
   },
 ]
 
@@ -178,17 +184,23 @@ const benchRows = [
 
 // The race: the cold-build row, played back on real numbers. The track is
 // scaled to Turbo's time; Nx runs off the end and keeps going. Overhead
-// reads as the generator prints it: a percentage under 2×, a multiple above.
+// reads in ONE unit for every runner — clock time over the ideal schedule,
+// `+m:ss` — as the generator prints it (owner, 2026-09-10: never a
+// percentage for one runner and a multiple for another).
 const cold = benchRows[0]!
 const raceBar = (name: string) => cold.bars.find((b) => b.name === name)!
 const raceBase = raceBar('baseline')
 const raceVx = raceBar('vx')
 const raceTurbo = raceBar('turbo')
 const raceNx = raceBar('nx')
-const over = (val: number): string => {
-  const ratio = val / raceBase.val
-  return ratio < 2 ? `+${Math.round((ratio - 1) * 100)}%` : `${ratio.toFixed(1)}×`
+const clock = (ms: number): string => {
+  const m = Math.floor(ms / 60_000)
+  const sec = Math.round((ms - m * 60_000) / 1000)
+  return `${m}:${String(sec).padStart(2, '0')}`
 }
+const plus = (val: number): string => `+${clock(val - raceBase.val)}`
+const PACKAGES = 1090
+const perPkg = (val: number): string => Math.round((val - raceBase.val) / PACKAGES).toLocaleString('en-US')
 const lanes = [
   { name: 'vx', label: 'vx', bar: raceVx, tone: 'var(--phosphor)' },
   { name: 'turbo', label: 'Turborepo', bar: raceTurbo, tone: 'var(--c-turbo)' },
@@ -227,7 +239,7 @@ const footCols = {
     <title>vx — Bend time. Not the rules.</title>
     <meta
       name="description"
-      content="vx runs and caches a JavaScript monorepo's task graph from one self-contained binary and adds 4% to a cold build where Turborepo adds 44% and Nx multiplies it by 9.6. No daemon, no cloud, no account. Everything distributed is a plugin on a documented seam."
+      content="vx runs, sandboxes and caches a JavaScript monorepo's task graph from one binary and adds eight seconds of overhead to a 3,270-task cold build where Turborepo adds a minute and a half and Nx half an hour. No daemon, no cloud, no account, no paywall. Every seam is a documented plugin hook."
     />
     <link rel="icon" href={href('logo-mark.svg')} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -297,8 +309,8 @@ const footCols = {
               <span class="w phosphor chroma" data-text="rules." style="--i:4">rules.</span>
             </h1>
             <p class="open-lede">
-              The task runner that adds four percent to a cold build. One binary, no daemon, no
-              cloud, no account — and everything distributed a plugin on a documented seam.
+              The task runner that adds seconds where others add minutes — at a thousand packages
+              and beyond. Sandboxed, pluggable, open. One binary, no daemon, no cloud, no paywall.
             </p>
             <div class="open-actions">
               <a class="btn btn-primary btn-lg" href={href('quickstart/')}
@@ -355,17 +367,17 @@ const footCols = {
               <b>One lap</b> is your tasks on their own — {raceBase.disp} across 3,270 of them.
             </p>
             <p class="cap" data-at={raceVx.val} style="--c:var(--phosphor)">
-              <b>vx crosses the line</b> eight seconds later. {raceVx.disp} · {over(raceVx.val)}
+              <b>vx crosses the line</b> eight seconds later. {raceVx.disp} · {plus(raceVx.val)}
             </p>
             <p class="cap" data-at={raceTurbo.val} style="--c:var(--c-turbo)">
               <b>Turborepo crosses</b> a minute and a half after that. {raceTurbo.disp} ·{' '}
-              {over(raceTurbo.val)}
+              {plus(raceTurbo.val)}
             </p>
             <p class="cap" data-at={raceTurbo.val + 1} style="--c:var(--c-nx)">
               <b>Nx keeps lapping.</b> Time compresses tenfold so you can watch it finish.
             </p>
             <p class="cap" data-at={raceNx.val} style="--c:var(--c-nx)">
-              <b>Nx crosses</b> after nine and a half more laps. {raceNx.disp} · {over(raceNx.val)}
+              <b>Nx crosses</b> after nine and a half more laps. {raceNx.disp} · {plus(raceNx.val)}
             </p>
           </div>
           <div class="legend-lanes">
@@ -385,7 +397,7 @@ const footCols = {
       <section class="scene pin wall" data-scene="wall" style="--len:2.6">
         <div class="stage">
           <div class="wall-copy">
-            <p class="vx-kicker">// every second above the floor is the runner</p>
+            <p class="vx-kicker">// seconds, not minutes · the same 3,270 tasks, the same clock</p>
             <h2 class="huge">Your tasks are the floor.<br /><span class="phosphor">Everything above it is overhead.</span></h2>
           </div>
           <div class="monoliths" aria-label="Runner overhead over the ideal schedule">
@@ -394,19 +406,17 @@ const footCols = {
                 const extra = l.bar.val - raceBase.val
                 const clipped = extra > (raceTurbo.val - raceBase.val) * 2.4
                 const h = clipped ? 100 : (extra / ((raceTurbo.val - raceBase.val) * 1.15)) * 100
-                const secs = Math.round(extra / 1000)
-                const disp = secs >= 60 ? `${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, '0')}s` : `${secs} s`
                 return (
                   <div class={`mono mono-${l.name}${clipped ? ' clipped' : ''}`} style={`--c:${l.tone};--h:${h.toFixed(1)}%`}>
                     <div class="tower">
                       <i class="fill"></i>
-                      <span class="cap-lbl">{clipped ? `off the chart · ${over(l.bar.val)}` : `+${disp}`}</span>
+                      <span class="cap-lbl">{clipped ? `off the chart · ${plus(l.bar.val)}` : plus(l.bar.val)}</span>
                     </div>
                     <div class="reflect"></div>
                     <div class="plate">
                       <span class="name">{l.label}</span>
-                      <span class="over">{over(l.bar.val)}</span>
-                      <span class="fin">+{disp} over {raceBase.disp}</span>
+                      <span class="over">{plus(l.bar.val)}</span>
+                      <span class="fin">{perPkg(l.bar.val)} ms per package</span>
                     </div>
                   </div>
                 )
@@ -417,33 +427,33 @@ const footCols = {
         </div>
       </section>
 
-      <!-- ===================== Scene 3 · warm ===================== -->
-      <section class="scene pin warm" data-scene="warm" style="--len:2.4">
+      <!-- ===================== Scene 3 · scale ===================== -->
+      <section class="scene pin scale" data-scene="scale" style="--len:2.4">
         <div class="stage">
           <canvas class="grid" aria-hidden="true"></canvas>
-          <div class="warm-copy">
-            <p class="vx-kicker">// fully cached · 3,270 tasks · 1,090 packages</p>
-            <div class="warm-num"><span data-warm>0</span><span class="u">ms</span></div>
-            <p class="warm-lede">
-              Every task's key comes straight from git's index — no file reads on a clean tree — and
-              every key is known before anything runs. Turborepo replays the same graph in 760 ms.
-              Nx in 3.59 s.
+          <div class="scale-copy">
+            <p class="vx-kicker">// 1,090 packages · 100 dependency layers · one cold build</p>
+            <div class="scale-num"><span data-count>0</span><span class="u">tasks</span></div>
+            <p class="scale-lede">
+              keyed, scheduled, sandboxed and cached for eight seconds of overhead in all. Grow the
+              graph and the runner grows with it in milliseconds per package — and stays in seconds
+              where the others go to minutes.
             </p>
             <div class="stats">
               <div class="stat">
-                <span class="val"><span class="num">4</span><span class="unit">%</span></span>
-                <span class="label">Cold-run overhead</span>
-                <span class="sub">Turborepo +44% · Nx 9.6×</span>
+                <span class="val"><span class="num">8</span><span class="unit">ms</span></span>
+                <span class="label">per package · vx</span>
+                <span class="sub">+0:08 on 1,090 packages</span>
               </div>
-              <div class="stat plasma">
-                <span class="val"><span class="num">510</span><span class="unit">ms</span></span>
-                <span class="label">Full cache replay</span>
-                <span class="sub">3,270 tasks · 1,090 packages</span>
+              <div class="stat turbo">
+                <span class="val"><span class="num">88</span><span class="unit">ms</span></span>
+                <span class="label">per package · Turborepo</span>
+                <span class="sub">+1:35 on 1,090 packages</span>
               </div>
-              <div class="stat amber">
-                <span class="val"><span class="num">2.1</span><span class="unit">×</span></span>
-                <span class="label">Less CPU burned</span>
-                <span class="sub">vs Turborepo 2.10</span>
+              <div class="stat nx">
+                <span class="val"><span class="num">1,712</span><span class="unit">ms</span></span>
+                <span class="label">per package · Nx</span>
+                <span class="sub">+31:06 on 1,090 packages</span>
               </div>
             </div>
           </div>
@@ -459,12 +469,13 @@ const footCols = {
               <li class="strike" data-k="0"><span>No daemon.</span></li>
               <li class="strike" data-k="1"><span>No cloud.</span></li>
               <li class="strike" data-k="2"><span>No account.</span></li>
+              <li class="strike" data-k="3"><span>No paywall.</span></li>
             </ul>
-            <p class="one giant-2"><span class="phosphor chroma" data-text="One binary.">One binary.</span></p>
+            <p class="one giant-2"><span class="phosphor chroma" data-text="Open. All of it.">Open. All of it.</span></p>
             <p class="none-lede">
-              Linux and macOS, x64 and arm64, nothing to install underneath — not Node, not Bun.
-              A workspace with no plugins runs and caches; a plugin that declines a task hands it
-              back to this machine.
+              MIT, one binary for Linux and macOS. Remote cache and remote execution speak open
+              protocols — Bazel's Remote Execution API, Turborepo's and Nx's own cache wires — and
+              every seam a cloud would sit on is a documented hook you can fill yourself.
             </p>
           </div>
         </div>
@@ -474,8 +485,8 @@ const footCols = {
       <section class="flow only">
         <div class="container">
           <div class="flow-head reveal">
-            <p class="vx-kicker">// only in vx</p>
-            <h2 class="huge">What no other runner does.</h2>
+            <p class="vx-kicker">// built different, on purpose</p>
+            <h2 class="huge">What sets it apart.</h2>
           </div>
           <div class="cards">
             {
@@ -679,7 +690,7 @@ const footCols = {
           <div class="bench-head">
             <div>
               <p class="vx-kicker">// the receipts · 3,270 tasks · 1,090 packages</p>
-              <h2>Your tasks, plus a few percent.</h2>
+              <h2>Seconds, not minutes.</h2>
             </div>
             <div class="bench-legend">
               <span class="legend"><span class="sw" style="background:var(--phosphor)"></span>vx</span>
@@ -695,7 +706,6 @@ const footCols = {
                 const sorted = [...r.bars.map((b) => b.val)].sort((a, b) => b - a)
                 const outlier = sorted.length > 1 && sorted[0]! > 10 * sorted[1]!
                 const rowMax = (outlier ? sorted[1]! : sorted[0]!) * 1.05
-                const best = r.bars.find((x) => x.best)?.val ?? 1
                 return (
                   <div class="bench-row">
                     <p class="task">{r.task}</p>
@@ -712,7 +722,7 @@ const footCols = {
                             <span class="fill" />
                           </span>
                           <span class="disp">{b.disp}</span>
-                          <span class="ratio">{b.name === 'baseline' || b.best ? '' : `${(b.val / best).toFixed(1)}×`}</span>
+                          <span class="ratio">{r === cold && b.name !== 'baseline' ? plus(b.val) : ''}</span>
                         </div>
                       )
                     })}
@@ -724,9 +734,9 @@ const footCols = {
           <div class="bench-note">
             <p>
               Your tasks alone take 3m 38s on this graph — the ideal schedule, 10 perfectly parallel workers
-              along the dependency graph. vx finishes the cold build in 3m 46s (+4%), Turborepo in
-              5m 13s (+44%), Nx in 34m 44s (9.6× the schedule). Everything above the
-              baseline is the runner.
+              along the dependency graph. vx finishes the cold build in 3m 46s (+0:08), Turborepo in
+              5m 13s (+1:35), Nx in 34m 44s (+31:06). Everything above the
+              baseline is the runner: 8 ms per package for vx, 88 ms for Turborepo, 1,712 ms for Nx.
             </p>
             <p>
               1,090 packages, 3,270 tasks, 100 dependency layers, identical commands, every runner
@@ -1040,10 +1050,10 @@ const footCols = {
         })
       }
 
-      // ---- warm: 3,270 dots lit in a 510 ms sweep ----
-      const warm = document.querySelector<HTMLElement>('[data-scene="warm"]')
-      const gridCanvas = warm?.querySelector<HTMLCanvasElement>('canvas.grid') ?? null
-      const warmNum = warm?.querySelector<HTMLElement>('[data-warm]') ?? null
+      // ---- scale: 3,270 dots lit in one sweep, the counter naming each ----
+      const scale = document.querySelector<HTMLElement>('[data-scene="scale"]')
+      const gridCanvas = scale?.querySelector<HTMLCanvasElement>('canvas.grid') ?? null
+      const countNum = scale?.querySelector<HTMLElement>('[data-count]') ?? null
       let gridSize = gridCanvas ? fit(gridCanvas) : null
       const drawGrid = (p: number) => {
         if (!gridCanvas || !gridSize) return
@@ -1056,7 +1066,7 @@ const footCols = {
         const cw = w / cols
         const ch = h / rows
         const front = ease(p / 0.55) * (cols + rows)
-        if (warmNum) warmNum.textContent = String(Math.round(Math.min(1, p / 0.55) * 510))
+        if (countNum) countNum.textContent = Math.round(Math.min(1, p / 0.55) * 3270).toLocaleString('en-US')
         for (let i = 0; i < 3270; i++) {
           const c = i % cols
           const r = Math.floor(i / cols)
@@ -1089,9 +1099,9 @@ const footCols = {
           scene.classList.toggle('live', onScreen)
           const kind = scene.dataset.scene
           if (kind === 'clocks' && onScreen) drawOrbit(p)
-          if (kind === 'warm' && onScreen) drawGrid(p)
+          if (kind === 'scale' && onScreen) drawGrid(p)
           if (kind === 'none') {
-            scene.querySelectorAll<HTMLElement>('.strike').forEach((s, k) => s.classList.toggle('gone', p > 0.12 + k * 0.18))
+            scene.querySelectorAll<HTMLElement>('.strike').forEach((s, k) => s.classList.toggle('gone', p > 0.1 + k * 0.14))
             scene.classList.toggle('one-in', p > 0.66)
           }
         }

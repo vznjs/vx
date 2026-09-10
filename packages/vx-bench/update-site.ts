@@ -60,16 +60,19 @@ function disp(ms: number): string {
 }
 const x = (a: Row, key: keyof Row): string => `${(Number(a[key]) / Number(vx[key])).toFixed(1)}×`
 // The number the site leads with (owner, 2026-09-10): what the runner ADDS
-// to a cold build over the ideal schedule of the tasks themselves. A
-// runner that doubles a three-minute build is a different tool from one
-// that adds a few percent, and the wall-clock rows say which is which.
-// Under 2× it reads as a percentage over the schedule; above, as a
-// multiple of it.
-const over = (r: Row): string => {
-  const ratio = Number(r.fresh) / B.fresh
-  return ratio < 2 ? `+${Math.round((ratio - 1) * 100)}%` : `${ratio.toFixed(1)}×`
+// to a cold build over the ideal schedule of the tasks themselves, in ONE
+// unit for every runner — clock time, `+m:ss` — never a percentage for one
+// and a multiple for another (owner, 2026-09-10, late night: a percentage
+// of a big example reads as "this scales"; seconds against minutes reads
+// as what it is). `perPkg` is the same overhead per package, in ms, the
+// number that says how the runner grows with the codebase.
+const clock = (ms: number): string => {
+  const m = Math.floor(ms / 60_000)
+  const s = Math.round((ms - m * 60_000) / 1000)
+  return `${m}:${String(s).padStart(2, '0')}`
 }
-const overPct = (r: Row): number => Math.round((Number(r.fresh) / B.fresh - 1) * 100)
+const plus = (r: Row): string => `+${clock(Number(r.fresh) - B.fresh)}`
+const perPkg = (r: Row): number => Math.round((Number(r.fresh) - B.fresh) / d.packages)
 
 // ---- landing page ----
 const bar = (name: string, val: number, c: string, best = false): string =>
@@ -116,27 +119,26 @@ const rowsBlock =
 const landingPath = path.join(ROOT, 'packages/vx-docs/src/pages/index.astro')
 let landing = readFileSync(landingPath, 'utf8')
 landing = landing.replace(/const benchRows = \[\n[\s\S]*?\n\]\n/, rowsBlock)
-landing = landing.replace(
-  /<span class="num">\d+<\/span><span class="unit">%<\/span><\/span>\n(\s*)<span class="label">Cold-run overhead<\/span>\n(\s*)<span class="sub">[^<]*<\/span>/,
-  `<span class="num">${overPct(vx)}</span><span class="unit">%</span></span>\n$1<span class="label">Cold-run overhead</span>\n$2<span class="sub">Turborepo ${over(turbo)} · Nx ${over(nx)}</span>`,
-)
-landing = landing.replace(
-  /<span class="num">\d+<\/span><span class="unit">ms<\/span><\/span>\n(\s*)<span class="label">Full cache replay<\/span>/,
-  `<span class="num">${Math.round(vx.warmNoRestore)}</span><span class="unit">ms</span></span>\n$1<span class="label">Full cache replay</span>`,
-)
-landing = landing.replace(
-  /<span class="sub">[\d,]+ tasks · [\d,]+ packages<\/span>/,
-  `<span class="sub">${nodes.toLocaleString('en-US')} tasks · ${d.packages.toLocaleString('en-US')} packages</span>`,
-)
-landing = landing.replace(
-  /<span class="num">[\d.]+<\/span><span class="unit">×<\/span><\/span>\n(\s*)<span class="label">Less CPU burned<\/span>/,
-  `<span class="num">${(turbo.freshCpu / vx.freshCpu).toFixed(1)}</span><span class="unit">×</span></span>\n$1<span class="label">Less CPU burned</span>`,
-)
+// The three stat tiles: the same overhead per package for every runner.
+for (const [label, r] of [
+  ['vx', vx],
+  ['Turborepo', turbo],
+  ['Nx', nx],
+] as const) {
+  const re = new RegExp(
+    `<span class="num">[\\d,]+</span><span class="unit">ms</span></span>\\n(\\s*)<span class="label">per package · ${label}</span>\\n(\\s*)<span class="sub">[^<]*</span>`,
+  )
+  if (!re.test(landing)) throw new Error(`index.astro: stat tile for ${label} not found`)
+  landing = landing.replace(
+    re,
+    `<span class="num">${perPkg(r).toLocaleString('en-US')}</span><span class="unit">ms</span></span>\n$1<span class="label">per package · ${label}</span>\n$2<span class="sub">${plus(r)} on ${d.packages.toLocaleString('en-US')} packages</span>`,
+  )
+}
 const note = `<p>
               Your tasks alone take ${disp(B.fresh)} on this graph — the ideal schedule, ${d.concurrency} perfectly parallel workers
-              along the dependency graph. vx finishes the cold build in ${disp(vx.fresh)} (${over(vx)}), Turborepo in
-              ${disp(turbo.fresh)} (${over(turbo)}), Nx in ${disp(nx.fresh)} (${over(nx)} the schedule). Everything above the
-              baseline is the runner.
+              along the dependency graph. vx finishes the cold build in ${disp(vx.fresh)} (${plus(vx)}), Turborepo in
+              ${disp(turbo.fresh)} (${plus(turbo)}), Nx in ${disp(nx.fresh)} (${plus(nx)}). Everything above the
+              baseline is the runner: ${perPkg(vx)} ms per package for vx, ${perPkg(turbo)} ms for Turborepo, ${perPkg(nx).toLocaleString('en-US')} ms for Nx.
             </p>
             <p>
               ${d.packages.toLocaleString('en-US')} packages, ${nodes.toLocaleString('en-US')} tasks, 100 dependency layers, identical commands, every runner
@@ -158,13 +160,13 @@ landing = landing.replace(
 // committed run said 510, 2026-09-10). Rendered here, checked with the rest.
 const readmePath = path.join(ROOT, 'README.md')
 const readmeBlock = `<!-- bench:start — generated by packages/vx-bench/update-site.ts from results.json; do not hand-edit -->
-The runner adds almost nothing to a cold build. On a ${d.packages.toLocaleString('en-US')}-package graph
-of ${nodes.toLocaleString('en-US')} tasks whose ideal schedule is ${disp(B.fresh)}, vx finishes in ${disp(vx.fresh)}
-(${over(vx)}), Turborepo in ${disp(turbo.fresh)} (${over(turbo)}) and Nx in ${disp(nx.fresh)} (${over(nx)} the
-schedule). Fully cached runs finish in milliseconds: ${Math.round(vx.warmNoRestore)} ms across that
-graph, where Turborepo takes ${disp(turbo.warmNoRestore)} and Nx ${disp(nx.warmNoRestore)} on the identical
-workspace, and the cold build burns ${Math.round(vx.freshCpu / 1000)} s of CPU in vx, ${Math.round(turbo.freshCpu / 1000)} s in
-Turborepo and ${Math.round(nx.freshCpu / 60_000)} minutes in Nx.
+The runner adds seconds to a cold build where others add minutes. On a
+${d.packages.toLocaleString('en-US')}-package graph of ${nodes.toLocaleString('en-US')} tasks whose ideal schedule is ${disp(B.fresh)},
+vx finishes in ${disp(vx.fresh)} (${plus(vx)}), Turborepo in ${disp(turbo.fresh)} (${plus(turbo)}) and Nx in
+${disp(nx.fresh)} (${plus(nx)}) — ${perPkg(vx)} ms of overhead per package against ${perPkg(turbo)} ms and
+${perPkg(nx).toLocaleString('en-US')} ms, so the graph can grow and the runner stays in seconds. The cold build
+burns ${Math.round(vx.freshCpu / 1000)} s of CPU in vx, ${Math.round(turbo.freshCpu / 1000)} s in Turborepo and ${Math.round(nx.freshCpu / 60_000)} minutes in Nx; a
+fully cached run replays the graph in ${Math.round(vx.warmNoRestore)} ms.
 <!-- bench:end -->`
 const readmeIn = readFileSync(readmePath, 'utf8')
 const readmeOut = readmeIn.replace(/<!-- bench:start[\s\S]*?<!-- bench:end -->/, readmeBlock)
@@ -200,11 +202,11 @@ exact dependency graph (critical path ${disp(B.criticalPathMs)}, total work ÷
 workers ${disp(B.workBoundMs)}); a cached run, a restore and the CPU a
 runner burns are 0 in theory, so every measured number in those rows is
 the runner. vx's cold overhead over the ideal schedule is
-${Math.round((vx.fresh - B.fresh) / 1000)} s on ${nodes.toLocaleString('en-US')} tasks (${over(vx)}); Turborepo's is
-${disp(turbo.fresh - B.fresh)} (${over(turbo)}) and Nx's ${disp(nx.fresh - B.fresh)} (${over(nx)} the
-schedule) — the number to read first: a runner that doubles a
-three-minute build is a different tool from one that adds a few
-percent. For context, the
+${disp(vx.fresh - B.fresh)} on ${nodes.toLocaleString('en-US')} tasks (${perPkg(vx)} ms per package); Turborepo's is
+${disp(turbo.fresh - B.fresh)} (${perPkg(turbo)} ms per package) and Nx's ${disp(nx.fresh - B.fresh)}
+(${perPkg(nx).toLocaleString('en-US')} ms per package) — the number to read first, in one unit for every
+runner: a runner that adds seconds to a three-minute build is a
+different tool from one that adds half an hour. For context, the
 **measured floors** row gives what the cheapest possible implementation
 of each step costs on this machine: one \`git status -uall\` walk (the
 cost of asking what changed), that walk plus a raw copy of every output

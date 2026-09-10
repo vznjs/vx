@@ -909,7 +909,14 @@ run...` precedes it.
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
    changes and for an edit to `vx.workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
-   task's input; the cycle after it re-evaluates the file. A task's own declared outputs (`cache.outputs.files`,
+   task's input; the cycle after it re-evaluates the file. The directory
+   each `<dir>/*` package glob names (`packages/` for `packages/*`) is
+   watched for members coming and going: a package added while the watch
+   runs is a cycle that runs it, and its directory is watched from then
+   on; a removed one is dropped. Under `--filter` the scope is the one
+   resolved at start, and a new package joins it only as a dependency of
+   it; a glob of another shape (`apps/**`) has no such directory, so a
+   package added under it waits for a restart. A task's own declared outputs (`cache.outputs.files`,
    `outputs.workspaceFiles`; a plugin's `project` stage counts, as in
    a run) never trigger a re-run — a cycle that writes `dist/` is not
    an edit, nor is the `dist` directory itself coming and going (a
