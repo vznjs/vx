@@ -24,7 +24,7 @@ declares costs nothing, and declaration order is the order everywhere.
 import type { VxPlugin } from '@vzn/vx'
 
 interface VxPlugin {
-  readonly name: string // 'org/plugin-name'
+  readonly name: string // your package's name — definePlugin reads it, you never set it
 
   // PIPELINE stages — shape the run before it executes:
   config?(workspace, ctx): void // the workspace config, before it is used
@@ -55,11 +55,10 @@ nothing can shadow `vx run` — and a plugin verb runs only when the cwd
 is inside a workspace that declares the plugin. `vx help` lists them.
 
 ```ts
-import { Cache, type VxPlugin } from '@vzn/vx'
+import { Cache, definePlugin, type VxPlugin } from '@vzn/vx'
 
 export function mcp(): VxPlugin {
-  return {
-    name: 'org/mcp',
+  return definePlugin(import.meta, {
     commands: {
       mcp: {
         description: 'serve run history to an AI agent over stdio',
@@ -72,7 +71,7 @@ export function mcp(): VxPlugin {
         },
       },
     },
-  }
+  })
 }
 ```
 
@@ -88,11 +87,10 @@ wrote by hand.
 A plugin that gives every TypeScript package a `typecheck` task:
 
 ```ts
-import type { VxPlugin } from '@vzn/vx'
+import { definePlugin, type VxPlugin } from '@vzn/vx'
 
 export function typecheck(): VxPlugin {
-  return {
-    name: 'org/typecheck',
+  return definePlugin(import.meta, {
     project(config, ctx) {
       const dev = ctx.packageJson['devDependencies'] as Record<string, string> | undefined
       if (!dev?.['typescript']) return
@@ -102,18 +100,17 @@ export function typecheck(): VxPlugin {
         cache: { inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: [] } },
       }
     },
-  }
+  })
 }
 ```
 
 A plugin that makes every `test` wait for its project's `build`:
 
 ```ts
-import type { VxPlugin } from '@vzn/vx'
+import { definePlugin, type VxPlugin } from '@vzn/vx'
 
 export function testAfterBuild(): VxPlugin {
-  return {
-    name: 'org/test-after-build',
+  return definePlugin(import.meta, {
     graph(nodes) {
       for (const node of nodes.values()) {
         if (node.taskName !== 'test') continue
@@ -121,12 +118,12 @@ export function testAfterBuild(): VxPlugin {
         if (nodes.has(build) && !node.deps.includes(build)) node.deps.push(build)
       }
     },
-  }
+  })
 }
 ```
 
 A dep naming a task that is not in the run, or a cycle, is refused with
-the plugin's name and the stage: `plugin 'org/test-after-build' failed in
+the plugin's name and the stage: `plugin '@org/test-after-build' failed in
 graph: …`. `config` runs first and sees the workspace config before
 `concurrency` or `cacheDir` are read from it.
 
@@ -138,11 +135,11 @@ plugin contributes something, so keys without it are unchanged, and
 `vx why` names it as a `plugin` component:
 
 ```ts
-import type { VxPlugin } from '@vzn/vx'
+import { definePlugin, type VxPlugin } from '@vzn/vx'
 
 export function nodeMajor(): VxPlugin {
   const major = process.versions.node.split('.')[0]!
-  return { name: 'org/node-major', key: () => ({ 'node-major': major }) }
+  return definePlugin(import.meta, { key: () => ({ 'node-major': major }) })
 }
 ```
 
@@ -260,14 +257,15 @@ interface RunSummaryRecord {
 ## Hello, telemetry
 
 The smallest useful plugin: print a one-line summary after every run.
+Defined in the workspace file, it is named after the workspace package;
+a plugin of its own gets its own package's name.
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace, type VxPlugin } from '@vzn/vx'
+import { definePlugin, defineWorkspace, type VxPlugin } from '@vzn/vx'
 
 function hello(): VxPlugin {
-  return {
-    name: 'org/hello',
+  return definePlugin(import.meta, {
     telemetry() {
       return {
         name: 'org/hello',
@@ -279,7 +277,7 @@ function hello(): VxPlugin {
         },
       }
     },
-  }
+  })
 }
 
 export default defineWorkspace({ plugins: [hello()] })
@@ -295,12 +293,11 @@ in one place — no per-task event wiring.
 ```ts
 // plugins/sentry.ts
 import * as Sentry from '@sentry/node'
-import type { VxPlugin } from '@vzn/vx'
+import { definePlugin, type VxPlugin } from '@vzn/vx'
 
 export function sentryPlugin(opts: { dsn: string }): VxPlugin {
   Sentry.init({ dsn: opts.dsn })
-  return {
-    name: 'org/sentry',
+  return definePlugin(import.meta, {
     telemetry() {
       return {
         name: 'org/sentry',
@@ -322,7 +319,7 @@ export function sentryPlugin(opts: { dsn: string }): VxPlugin {
         flush: () => Sentry.flush(2000).then(() => undefined),
       }
     },
-  }
+  })
 }
 
 // vx.workspace.ts — `import { sentryPlugin } from './plugins/sentry'`
@@ -341,11 +338,10 @@ split is the pattern for any sink that talks to the network.
 
 ```ts
 // plugins/slack-summary.ts
-import type { VxPlugin } from '@vzn/vx'
+import { definePlugin, type VxPlugin } from '@vzn/vx'
 
 export function slackSummary(opts: { webhookUrl: string }): VxPlugin {
-  return {
-    name: 'org/slack-summary',
+  return definePlugin(import.meta, {
     telemetry() {
       let text: string | undefined
       return {
@@ -368,7 +364,7 @@ export function slackSummary(opts: { webhookUrl: string }): VxPlugin {
         },
       }
     },
-  }
+  })
 }
 ```
 
@@ -380,11 +376,10 @@ stream) at the source, so you pay nothing for what you don't read.
 
 ```ts
 // plugins/timeseries.ts
-import type { VxPlugin, TelemetryRecord } from '@vzn/vx'
+import { definePlugin, type VxPlugin, type TelemetryRecord } from '@vzn/vx'
 
 export function timeseriesPlugin(opts: { url: string }): VxPlugin {
-  return {
-    name: 'org/timeseries',
+  return definePlugin(import.meta, {
     telemetry() {
       const points: Array<Record<string, unknown>> = []
       return {
@@ -413,7 +408,7 @@ export function timeseriesPlugin(opts: { url: string }): VxPlugin {
         },
       }
     },
-  }
+  })
 }
 ```
 
@@ -431,7 +426,7 @@ degradation for you:
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
+import { definePlugin, defineWorkspace, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
 class AcmeRemote implements RemoteCacheLayer {
   constructor(private url: string) {}
@@ -450,8 +445,7 @@ class AcmeRemote implements RemoteCacheLayer {
 }
 
 function myCache(): VxPlugin {
-  return {
-    name: 'acme/cache',
+  return definePlugin(import.meta, {
     cache(ctx) {
       const url = process.env.ACME_CACHE_URL
       if (!url) return undefined // decline → core falls back to the local cache
@@ -462,7 +456,7 @@ function myCache(): VxPlugin {
         onRemoteError: (e) => ctx.warn(`acme cache: ${e.message}`),
       })
     },
-  }
+  })
 }
 
 export default defineWorkspace({ plugins: [myCache()] })
@@ -492,11 +486,11 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { run, type RunSummaryRecord, type VxPlugin } from '@vzn/vx'
+import { definePlugin, run, type RunSummaryRecord, type VxPlugin } from '@vzn/vx'
 
 const summaries: RunSummaryRecord[] = []
 export function myPlugin(): VxPlugin {
-  return { name: 'me/first', telemetry: () => ({ onRunSummary: (s) => summaries.push(s) }) }
+  return definePlugin(import.meta, { telemetry: () => ({ onRunSummary: (s) => summaries.push(s) }) })
 }
 
 let root: string
@@ -562,10 +556,13 @@ the first-party packages do that yours should too:
 export * from './src/index.js'
 ```
 
-- **Name it `<scope>/<thing>`** (`acme/thing`). The name heads every
+- **The name is the package name.** `definePlugin(import.meta, { … })`
+  reads it from the nearest `package.json` above your module; there is
+  no field to set, and a `name` on the hooks object — or one spread over
+  the result — is refused when the workspace loads. It heads every
   warning core prints about the plugin and every `vx info` line, and a
-  `key` part is folded into the cache key under it — so it is part of
-  your plugin's contract, not decoration.
+  `key` part is folded into the cache key under it. A plugin defined
+  inside `vx.workspace.ts` itself carries the workspace package's name.
 - **Import core only from `@vzn/vx`.** Everything a plugin needs is on
   the façade; a deep import into `@vzn/vx/src/...` breaks on the next
   file move and never resolves through a compiled binary at all.

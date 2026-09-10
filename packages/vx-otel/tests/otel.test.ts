@@ -428,7 +428,7 @@ describe('otel() plugin', () => {
       warn: () => undefined,
     }) as TelemetrySink | undefined
     expect(sink).toBeDefined()
-    expect(sink!.name).toBe('vx/otel')
+    expect(sink!.name).toBe('@vzn/vx-otel')
   })
 })
 

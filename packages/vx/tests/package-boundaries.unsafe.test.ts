@@ -122,6 +122,7 @@ describe('package boundaries', () => {
       'createEventBus',
       'createHashCache',
       'defaultLogger',
+      'definePlugin',
       'defineProject',
       'defineWorkspace',
       'deriveCacheSource',

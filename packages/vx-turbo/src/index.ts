@@ -9,10 +9,8 @@
 // overwrites a user's hand.
 
 import type { ProjectConfig, TaskConfig, VxPlugin } from '@vzn/vx'
-import { listProjectMetas, loadWorkspace, type ProjectMeta } from '@vzn/vx'
+import { definePlugin, listProjectMetas, loadWorkspace, type ProjectMeta } from '@vzn/vx'
 import { mapTurboWorkspace, type TurboMapping } from './turbo-map.js'
-
-const PLUGIN_NAME = 'vx/turbo'
 
 /** The TODO a persistent task carries in `vx migrate`'s report, in the plugin's voice. */
 const PERSISTENT_NOTE =
@@ -36,21 +34,20 @@ export interface TurboPluginOptions {
 export function turbo(options: TurboPluginOptions = {}): VxPlugin {
   let mapping: Promise<TurboMapping> | undefined
   let warned = false
-  return {
-    name: PLUGIN_NAME,
+  const plugin = definePlugin(import.meta, {
     async project(config: ProjectConfig, ctx) {
       const root = options.root ?? ctx.workspaceRoot
       mapping ??= mapAll(root)
       const mapped = await mapping
       if (!warned) {
         warned = true
-        for (const note of mapped.notes) ctx.warn(`[${PLUGIN_NAME}] ${note}`)
+        for (const note of mapped.notes) ctx.warn(`[${plugin.name}] ${note}`)
       }
       const project = mapped.projects.find((p) => p.name === ctx.name)
       if (project === undefined) return
       config.tasks ??= {}
       for (const t of project.tasks) {
-        for (const todo of t.todos) ctx.warn(`[${PLUGIN_NAME}] ${ctx.name}#${t.name}: ${todo}`)
+        for (const todo of t.todos) ctx.warn(`[${plugin.name}] ${ctx.name}#${t.name}: ${todo}`)
         if (t.task === null) continue
         // The user's own declaration wins — the plugin fills, never overwrites.
         // A copy per fill: the stage hands core an object it owns and edits
@@ -58,7 +55,8 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
         config.tasks[t.name] ??= structuredClone(t.task) as unknown as TaskConfig
       }
     },
-  }
+  })
+  return plugin
 }
 
 async function mapAll(root: string): Promise<TurboMapping> {

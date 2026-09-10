@@ -10,6 +10,7 @@ import { describe, expect, it } from 'bun:test'
 import { Cache, ChainedCache } from '../src/cache/index.js'
 import { CACHE_LAYER_METHODS, resolveCache, resolveExecutors } from '../src/orchestrator/index.js'
 import { localExecutor } from '../src/exec/local-executor.js'
+import { testPlugin } from './helpers/plugin.js'
 
 const baseCtx = { workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', warn: () => undefined }
 const policy = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
@@ -35,7 +36,7 @@ describe('local fallbacks', () => {
   })
 
   it('a plugin that declines is the same as no plugin — the fallback, not an error', async () => {
-    const list = await resolveExecutors([{ name: 'org/none', executor: () => undefined }], {
+    const list = await resolveExecutors([testPlugin('org/none', { executor: () => undefined })], {
       ...baseCtx,
       concurrency: 1,
     })
@@ -44,7 +45,7 @@ describe('local fallbacks', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'vx-local-fallbacks-'))
     const local = new Cache(dir, { read: true, write: true })
     try {
-      const layer = await resolveCache([{ name: 'org/none', cache: () => undefined }], {
+      const layer = await resolveCache([testPlugin('org/none', { cache: () => undefined })], {
         ...baseCtx,
         localCache: local,
         policy,
@@ -58,7 +59,7 @@ describe('local fallbacks', () => {
 
   it('a declared executor goes IN FRONT of the fallback, not instead of it', async () => {
     const remote = { name: 'remote', execute: () => Promise.reject(new Error('unused')) }
-    const list = await resolveExecutors([{ name: 'org/remote', executor: () => remote }], {
+    const list = await resolveExecutors([testPlugin('org/remote', { executor: () => remote })], {
       ...baseCtx,
       concurrency: 1,
     })
@@ -69,7 +70,7 @@ describe('local fallbacks', () => {
   it('a declared cache layer chains AHEAD of the local handle, which still gets the save', async () => {
     const local = stubLayer({ hasRemote: false })
     const layer = stubLayer({ hasRemote: true })
-    const got = await resolveCache([{ name: 'org/remote', cache: () => layer }], {
+    const got = await resolveCache([testPlugin('org/remote', { cache: () => layer })], {
       ...baseCtx,
       localCache: local,
       policy,
@@ -81,7 +82,7 @@ describe('local fallbacks', () => {
   it('a layer that WRAPS the local handle subsumes the tail: no double write', async () => {
     const local = stubLayer({ hasRemote: false })
     const layer = stubLayer({ hasRemote: true, local })
-    const got = await resolveCache([{ name: 'org/remote', cache: () => layer }], {
+    const got = await resolveCache([testPlugin('org/remote', { cache: () => layer })], {
       ...baseCtx,
       localCache: local,
       policy,

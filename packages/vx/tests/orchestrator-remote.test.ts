@@ -20,6 +20,7 @@ import {
 } from './helpers/orchestrator-fixture.js'
 import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import { planRun, prepareRun, run } from '../src/orchestrator/index.js'
+import { pluginSource } from './helpers/plugin.js'
 
 /**
  * Absolute specifier for the cache module, so a fixture's generated
@@ -762,12 +763,13 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
         await writeFile(
           path.join(fixture.root, 'vx.workspace.mjs'),
           localWorkspaceSource([
-            `{
-              name: 'test/poison-cache',
-              cache: () => {
+            pluginSource(
+              'test/poison-cache',
+              `{ cache: () => {
                 throw new Error('plugin cache must not be consulted when remoteCache is injected')
               },
             }`,
+            ),
           ]),
         )
         await addProject(fixture.root, 'app', {
@@ -802,9 +804,9 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
 describe('cache layer: hasRemote is the remote-layer signal', () => {
   /** A pass-through decorator with NO remote — e.g. a metrics wrapper. */
   const PASSTHROUGH_PLUGIN = localWorkspaceSource([
-    `{
-      name: 'test/passthrough',
-      cache(ctx) {
+    pluginSource(
+      'test/passthrough',
+      `{ cache(ctx) {
         const inner = ctx.localCache
         return new Proxy(inner, {
           get(t, p, r) {
@@ -814,6 +816,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
         })
       },
     }`,
+    ),
   ])
 
   it('a bare local Cache reports no remote; a LayeredCache reports one', async () => {
@@ -918,9 +921,9 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
           path.join(fixture.root, 'vx.workspace.mjs'),
           localWorkspaceSource(
             [
-              `                {
-                  name: 'test/thirdparty',
-                  cache(ctx) {
+              `                ${pluginSource(
+                'test/thirdparty',
+                `{ cache(ctx) {
                     const inner = new LayeredCache(ctx.localCache, alwaysMiss, {
                       policy: ctx.policy,
                     })
@@ -962,6 +965,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
                     globalThis.__vxTornDown = true
                   },
                 }`,
+              )}`,
             ],
             `
             import { LayeredCache } from ${JSON.stringify(cacheModuleSpecifier)}

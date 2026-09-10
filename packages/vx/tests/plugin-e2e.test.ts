@@ -9,6 +9,7 @@ import { describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import { run } from '../src/index.js'
+import { pluginSource } from './helpers/plugin.js'
 
 async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => void }> {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'vx-plugin-e2e-'))
@@ -33,14 +34,15 @@ describe('Plugin API — end-to-end via run()', () => {
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource(
           [
-            `{
-             name: 'org/test',
-             setup(ctx) {
+            pluginSource(
+              'org/test',
+              `{ setup(ctx) {
                ctx.on('onRunStart', () => globalThis.__vxPluginEvents.push('run:start'))
                ctx.on('onTaskComplete', (n) => globalThis.__vxPluginEvents.push('done:' + n.id))
                ctx.on('onRunEnd', () => globalThis.__vxPluginEvents.push('run:end'))
              },
            }`,
+            ),
           ],
           `globalThis.__vxPluginEvents = []
 `,
@@ -72,9 +74,9 @@ describe('Plugin API — end-to-end via run()', () => {
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource(
           [
-            `{
-             name: 'org/lifecycle',
-             telemetry() {
+            pluginSource(
+              'org/lifecycle',
+              `{ telemetry() {
                return {
                  onRecord() {},
                  async flush() { globalThis.__vxLifecycle.flush++ },
@@ -82,6 +84,7 @@ describe('Plugin API — end-to-end via run()', () => {
              },
              async teardown() { globalThis.__vxLifecycle.teardown++ },
            }`,
+            ),
           ],
           `globalThis.__vxLifecycle = { teardown: 0, flush: 0 }
 `,
@@ -113,14 +116,15 @@ describe('Plugin API — end-to-end via run()', () => {
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource(
           [
-            `{
-             name: 'org/bad-teardown',
-             setup() {},
+            pluginSource(
+              'org/bad-teardown',
+              `{ setup() {},
              teardown() {
                globalThis.__vxTeardownCalls++
                throw new Error('teardown boom')
              },
            }`,
+            ),
           ],
           `globalThis.__vxTeardownCalls = 0
 `,
@@ -152,10 +156,11 @@ describe('Plugin API — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/bad',
-             setup() { throw new Error('boom') },
+          pluginSource(
+            'org/bad',
+            `{ setup() { throw new Error('boom') },
            }`,
+          ),
         ]),
       )
       gitInitCommit(workspaceRoot)

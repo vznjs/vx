@@ -9,6 +9,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 
 const TIMEOUT = 20_000
 let root: string
@@ -63,7 +64,7 @@ describe('config stage', () => {
     'a plugin edits the workspace config before it is used',
     async () => {
       await pkg('a', build)
-      await workspace([`{ name: 'org/conc', config(ws) { ws.concurrency = 3 } }`])
+      await workspace([pluginSource('org/conc', `{ config(ws) { ws.concurrency = 3 } }`)])
       const log = silent()
       const summary = await run({ cwd: root, tasks: ['build'], log, handleSignals: false })
       expect(summary.ok).toBe(true)
@@ -84,9 +85,9 @@ describe('project stage', () => {
       await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
       await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
       await workspace([
-        `{
-          name: 'org/lint-everywhere',
-          project(config, ctx) {
+        pluginSource(
+          'org/lint-everywhere',
+          `{ project(config, ctx) {
             config.tasks ??= {}
             config.tasks.lint = {
               exec: { command: 'echo lint ' + ctx.name },
@@ -94,6 +95,7 @@ describe('project stage', () => {
             }
           },
         }`,
+        ),
       ])
       const injected = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect(injected.tasks.map((t) => t.node.id)).toEqual(['a#lint'])
@@ -129,9 +131,9 @@ describe('project stage', () => {
         JSON.stringify({ name: 'b', version: '1.0.0', scripts: { build: 'echo from-scripts' } }),
       )
       await workspace([
-        `{
-          name: 'org/scripts',
-          project(config, ctx) {
+        pluginSource(
+          'org/scripts',
+          `{ project(config, ctx) {
             const scripts = ctx.packageJson.scripts ?? {}
             config.tasks ??= {}
             for (const [name, command] of Object.entries(scripts)) {
@@ -139,6 +141,7 @@ describe('project stage', () => {
             }
           },
         }`,
+        ),
       ])
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['a#build', 'b#build'])
@@ -168,8 +171,14 @@ describe('project stage', () => {
     async () => {
       await pkg('a', build)
       await workspace([
-        `{ name: 'org/first', project(config) { config.tasks.build.description = 'first' } }`,
-        `{ name: 'org/second', project(config) { config.tasks.build.description += '+second' } }`,
+        pluginSource(
+          'org/first',
+          `{ project(config) { config.tasks.build.description = 'first' } }`,
+        ),
+        pluginSource(
+          'org/second',
+          `{ project(config) { config.tasks.build.description += '+second' } }`,
+        ),
       ])
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       expect(plan.tasks[0]!.node.config.description).toBe('first+second')
@@ -186,7 +195,10 @@ describe('project stage', () => {
       // edit must land exactly once per run, never twice on the second.
       await pkg('a', build)
       await workspace([
-        `{ name: 'org/suffix', project(config) { config.tasks.build.description = (config.tasks.build.description ?? '') + '+x' } }`,
+        pluginSource(
+          'org/suffix',
+          `{ project(config) { config.tasks.build.description = (config.tasks.build.description ?? '') + '+x' } }`,
+        ),
       ])
       const one = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const two = await planRun({ cwd: root, tasks: ['build'], log: silent() })
@@ -203,8 +215,8 @@ describe('project stage', () => {
       // Two plugins in the stage: the refusal names the one whose edit broke
       // the task, not "plugins" — the fix is in THAT plugin.
       await workspace([
-        `{ name: 'org/fine', project(config) { config.tasks.build.description = 'ok' } }`,
-        `{ name: 'org/broken', project(config) { config.tasks.build.exec = 5 } }`,
+        pluginSource('org/fine', `{ project(config) { config.tasks.build.description = 'ok' } }`),
+        pluginSource('org/broken', `{ project(config) { config.tasks.build.exec = 5 } }`),
       ])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         /vx\.config\.mjs \(after plugin 'org\/broken'\): tasks\.build\.exec must be an object/,
@@ -217,7 +229,7 @@ describe('project stage', () => {
     'a throwing hook aborts with the plugin and stage named',
     async () => {
       await pkg('a', build)
-      await workspace([`{ name: 'org/boom', project() { throw new Error('nope') } }`])
+      await workspace([pluginSource('org/boom', `{ project() { throw new Error('nope') } }`)])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         /plugin 'org\/boom' failed in project: nope/,
       )
@@ -235,7 +247,7 @@ describe('graph stage', () => {
       // Insertion order would run b#build first at concurrency 1 only if it
       // sorted that way; the added edge makes the order a contract.
       await workspace([
-        `{ name: 'org/edge', graph(nodes) { nodes.get('b#build').deps.push('a#build') } }`,
+        pluginSource('org/edge', `{ graph(nodes) { nodes.get('b#build').deps.push('a#build') } }`),
       ])
       const log = silent()
       const summary = await run({
@@ -259,7 +271,10 @@ describe('graph stage', () => {
     async () => {
       await pkg('a', build)
       await workspace([
-        `{ name: 'org/dangling', graph(nodes) { nodes.get('a#build').deps.push('zz#nope') } }`,
+        pluginSource(
+          'org/dangling',
+          `{ graph(nodes) { nodes.get('a#build').deps.push('zz#nope') } }`,
+        ),
       ])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         /plugin 'org\/dangling' failed in graph: .*zz#nope/,
@@ -274,10 +289,13 @@ describe('graph stage', () => {
       await pkg('a', build)
       await pkg('b', build)
       await workspace([
-        `{ name: 'org/loop', graph(nodes) {
+        pluginSource(
+          'org/loop',
+          `{ graph(nodes) {
           nodes.get('a#build').deps.push('b#build')
           nodes.get('b#build').deps.push('a#build')
         } }`,
+        ),
       ])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         /plugin 'org\/loop' failed in graph: Cycle detected/,
@@ -295,7 +313,10 @@ describe('graph stage', () => {
       )
       await workspace(
         [
-          `{ name: 'org/see', graph(nodes, ctx) { globalThis.__vxRequested = [...ctx.requested] } }`,
+          pluginSource(
+            'org/see',
+            `{ graph(nodes, ctx) { globalThis.__vxRequested = [...ctx.requested] } }`,
+          ),
         ],
         'globalThis.__vxRequested = null\n',
       )
@@ -320,7 +341,7 @@ describe('key stage', () => {
       await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
       await workspace([])
       const bare = (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!.hash
-      await workspace([`{ name: 'org/tool', key() { return { 'node-major': '22' } } }`])
+      await workspace([pluginSource('org/tool', `{ key() { return { 'node-major': '22' } } }`)])
       const withKey = (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!.hash
       expect(withKey).not.toBe(bare)
       // Deterministic material → the same key on the next derivation.
@@ -328,18 +349,18 @@ describe('key stage', () => {
         withKey,
       )
       // A different value is a different key.
-      await workspace([`{ name: 'org/tool', key() { return { 'node-major': '24' } } }`])
+      await workspace([pluginSource('org/tool', `{ key() { return { 'node-major': '24' } } }`)])
       expect(
         (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!.hash,
       ).not.toBe(withKey)
       // A non-string value is refused, naming plugin and stage.
-      await workspace([`{ name: 'org/tool', key() { return { n: 22 } } }`])
+      await workspace([pluginSource('org/tool', `{ key() { return { n: 22 } } }`)])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         /plugin 'org\/tool' failed in key: value for 'n'/,
       )
       // A non-record return is refused too: a string used to fold its
       // characters into the key as parts named '0', '1', '2'.
-      await workspace([`{ name: 'org/tool', key() { return 'v22' } }`])
+      await workspace([pluginSource('org/tool', `{ key() { return 'v22' } }`)])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         "plugin 'org/tool' failed in key: returned a string, not a record of string values",
       )
@@ -360,9 +381,9 @@ describe('key stage — explainability', () => {
       )
       await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
       await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
-      await workspace([`{ name: 'org/tool', key() { return { 'node-major': '22' } } }`])
+      await workspace([pluginSource('org/tool', `{ key() { return { 'node-major': '22' } } }`)])
       await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
-      await workspace([`{ name: 'org/tool', key() { return { 'node-major': '24' } } }`])
+      await workspace([pluginSource('org/tool', `{ key() { return { 'node-major': '24' } } }`)])
       await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const why = Bun.spawnSync({
         cmd: [process.execPath, path.resolve(import.meta.dir, '../src/bin.ts'), 'why', 'a#build'],
@@ -398,7 +419,10 @@ describe('schedule stage', () => {
       await pkg('a', build)
       await pkg('b', build)
       await workspace([
-        `{ name: 'org/order', schedule() { return new Map([['a#build', 1], ['b#build', 100]]) } }`,
+        pluginSource(
+          'org/order',
+          `{ schedule() { return new Map([['a#build', 1], ['b#build', 100]]) } }`,
+        ),
       ])
       const log = silent()
       const summary = await run({
@@ -425,19 +449,24 @@ describe('schedule stage', () => {
       await pkg('a', build)
       await pkg('b', build)
       await workspace([
-        `{ name: 'org/first', schedule() { return new Map([['a#build', 100]]) } }`,
-        `{ name: 'org/second', schedule() { return new Map([['a#build', 1], ['b#build', 50]]) } }`,
+        pluginSource('org/first', `{ schedule() { return new Map([['a#build', 100]]) } }`),
+        pluginSource(
+          'org/second',
+          `{ schedule() { return new Map([['a#build', 1], ['b#build', 50]]) } }`,
+        ),
       ])
       const log = silent()
       await run({ cwd: root, tasks: ['build'], concurrency: 1, log, handleSignals: false })
       expect(log.started).toEqual(['b#build', 'a#build'])
-      await workspace([`{ name: 'org/nan', schedule() { return new Map([['a#build', NaN]]) } }`])
+      await workspace([
+        pluginSource('org/nan', `{ schedule() { return new Map([['a#build', NaN]]) } }`),
+      ])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         /plugin 'org\/nan' failed in schedule/,
       )
       // Not a Map: a string's characters matched no task and the plugin was
       // a silent no-op.
-      await workspace([`{ name: 'org/str', schedule() { return 'fast' } }`])
+      await workspace([pluginSource('org/str', `{ schedule() { return 'fast' } }`)])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
         "plugin 'org/str' failed in schedule: returned a string, not a Map of task id → weight",
       )
@@ -453,7 +482,7 @@ describe('telemetry stage', () => {
       // Every handler is optional, so `{ nope: true }` used to be a valid
       // sink: subscribed, silent, "on".
       await pkg('a', build)
-      await workspace([`{ name: 'org/deaf', telemetry() { return { nope: true } } }`])
+      await workspace([pluginSource('org/deaf', `{ telemetry() { return { nope: true } } }`)])
       const lines: string[] = []
       const log = Object.assign(silent(), { status: (line: string) => lines.push(line) })
       const summary = await run({ cwd: root, tasks: ['build'], log, handleSignals: false })

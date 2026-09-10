@@ -11,9 +11,13 @@
 // hit is backfill, never a critical-path task). The estimate here is "what
 // if everything ran", which is exactly the case where order matters.
 
-import { LocalHistoryProvider, type HistoryTable, type TaskNode, type VxPlugin } from '@vzn/vx'
-
-const SCHEDULE_HISTORY_PLUGIN = 'vx/schedule-history'
+import {
+  definePlugin,
+  LocalHistoryProvider,
+  type HistoryTable,
+  type TaskNode,
+  type VxPlugin,
+} from '@vzn/vx'
 
 /** Default duration when neither task history nor a workspace median exists. */
 const DEFAULT_DURATION_MS = 1000
@@ -37,8 +41,7 @@ export interface ScheduleHistoryOptions {
 const DEFAULT_WINDOW = 20
 
 export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin {
-  return {
-    name: SCHEDULE_HISTORY_PLUGIN,
+  return definePlugin(import.meta, {
     async schedule(nodes, ctx) {
       const provider = new LocalHistoryProvider(
         ctx.localCache.dbHandle(),
@@ -56,7 +59,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
       }
       return criticalPathPriorities([...nodes.values()], table, options.assume)
     },
-  }
+  })
 }
 
 /**

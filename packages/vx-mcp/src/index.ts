@@ -15,15 +15,12 @@
 // pulls in nothing, where the reference SDK pulls in an HTTP stack this
 // transport never uses.
 
-import type { VxPlugin } from '@vzn/vx'
+import { definePlugin, type VxPlugin } from '@vzn/vx'
 import { serveStdio } from './server.js'
 import { listTools } from './tools.js'
 
-export const MCP_PLUGIN = 'vx/mcp'
-
 export function mcp(): VxPlugin {
-  return {
-    name: MCP_PLUGIN,
+  return definePlugin(import.meta, {
     commands: {
       mcp: {
         description: 'serve cache stats + run history to AI agents (MCP over stdio)',
@@ -39,7 +36,7 @@ export function mcp(): VxPlugin {
         },
       },
     },
-  }
+  })
 }
 
 export { handleToolCall, listTools, type ToolContext, type ToolDef } from './tools.js'

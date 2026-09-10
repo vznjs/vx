@@ -14,6 +14,7 @@ import { planRun, run } from '../src/index.js'
 import { formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
 import { deferralEligibility, resolveDownloadModes } from '../src/orchestrator/download-policy.js'
 import type { TaskNode } from '../src/graph/index.js'
+import { pluginSource } from './helpers/plugin.js'
 
 // ── unit: the eligibility gate ──────────────────────────────────────
 
@@ -302,9 +303,9 @@ async function fixture(
   await Bun.write(
     path.join(root, 'vx.workspace.mjs'),
     localWorkspaceSource([
-      `{
-         name: 'org/fake-remote',
-         executor() {
+      pluginSource(
+        'org/fake-remote',
+        `{ executor() {
            return {
              name: 'fake-remote',
              remote: true,
@@ -335,6 +336,7 @@ async function fixture(
            }
          },
        }`,
+      ),
     ]),
   )
   await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited

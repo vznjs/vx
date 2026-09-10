@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { loadProjectConfig, loadWorkspaceConfig } from '../src/workspace/project-loader.js'
+import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 describe('loadProjectConfig', () => {
   let dir: string
@@ -720,7 +721,7 @@ describe('loadProjectConfig', () => {
       const file = path.join(dir, 'vx.workspace.mjs')
       await writeFile(
         file,
-        `export default { plugins: [{ name: 'org/old', backend() { return {} } }] }\n`,
+        `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('org/old', `{ backend() { return {} } }`)}] }\n`,
       )
       await expect(loadWorkspaceConfig(dir)).rejects.toThrow(
         /backend` is no longer a capability[\s\S]*Use `executor`/,
@@ -731,10 +732,10 @@ describe('loadProjectConfig', () => {
       const file = path.join(dir, 'vx.workspace.mjs')
       await writeFile(
         file,
-        `export default { plugins: [
-           { name: 'org/c', cache() { return undefined } },
-           { name: 'org/e', executor() { return undefined } },
-           { name: 'org/t', telemetry() { return undefined } },
+        `${PLUGIN_IMPORT}export default { plugins: [
+           ${pluginSource('org/c', `{ cache() { return undefined } }`)},
+           ${pluginSource('org/e', `{ executor() { return undefined } }`)},
+           ${pluginSource('org/t', `{ telemetry() { return undefined } }`)},
          ] }\n`,
       )
       await expect(loadWorkspaceConfig(dir)).resolves.toBeDefined()

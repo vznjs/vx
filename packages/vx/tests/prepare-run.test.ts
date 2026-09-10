@@ -18,6 +18,7 @@ import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-works
 import { Cache, type RemoteCacheLayer } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun } from '../src/orchestrator/index.js'
+import { pluginSource } from './helpers/plugin.js'
 
 const TIMEOUT = 30_000
 
@@ -388,7 +389,7 @@ describe('hasRemoteLayer asks the layer instead of comparing handles', () => {
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{ name: 'passthrough', cache: (ctx) => new Proxy(ctx.localCache, {}) }`,
+          pluginSource('passthrough', `{ cache: (ctx) => new Proxy(ctx.localCache, {}) }`),
         ]),
       )
       const p = await prepare()
@@ -410,12 +411,15 @@ describe('hasRemoteLayer asks the layer instead of comparing handles', () => {
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{ name: 'declares', cache: (ctx) => {
+          pluginSource(
+            'declares',
+            `{ cache: (ctx) => {
          const l = Object.create(Object.getPrototypeOf(ctx.localCache))
          Object.assign(l, ctx.localCache)
          l.hasRemote = true
          return l
        } }`,
+          ),
         ]),
       )
       const p = await prepare()
@@ -433,7 +437,7 @@ describe('a refused cache plugin leaks nothing', () => {
       await pkg('app', cfg(task('build')))
       await writeFile(
         path.join(root, 'vx.workspace.mjs'),
-        localWorkspaceSource([`{ name: 'org/junk', cache: () => ({ nope: true }) }`]),
+        localWorkspaceSource([pluginSource('org/junk', `{ cache: () => ({ nope: true }) }`)]),
       )
       const closes = spyOn(Cache.prototype, 'close')
       try {

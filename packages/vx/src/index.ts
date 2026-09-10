@@ -37,6 +37,7 @@ export type {
   SandboxDenials,
 } from './config.js'
 export { defineProject, defineWorkspace } from './config.js'
+export { definePlugin } from './orchestrator/index.js'
 
 // Programmatic engine API (run / plan / prepare) + the graph primitives a
 // distribution submitter/agent reasons over + the cache-key hashing seam.
@@ -150,6 +151,8 @@ export type {
 // See docs/design/observability-architecture-2026-06.md.
 export type {
   VxPlugin,
+  PluginHooks,
+  PluginOrigin,
   CacheContext,
   ExecutorContext,
   CommandContext,

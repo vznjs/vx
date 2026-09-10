@@ -20,6 +20,7 @@ import {
 } from '../src/orchestrator/index.js'
 import { createEventBus } from '../src/orchestrator/events.js'
 import { run } from '../src/index.js'
+import { pluginSource, testPlugin } from './helpers/plugin.js'
 
 const RUN: RunContextRecord = {
   runId: 'run-1',
@@ -144,8 +145,10 @@ describe('telemetry flush is time-bounded', () => {
     await Bun.write(
       path.join(root, 'vx.workspace.mjs'),
       localWorkspaceSource([
-        `{ name: 'org/hang',
-         telemetry() { return { flush() { return new Promise(() => {}) } } } }`,
+        pluginSource(
+          'org/hang',
+          `{ telemetry() { return { flush() { return new Promise(() => {}) } } } }`,
+        ),
       ]),
     )
     gitInitCommit(root)
@@ -243,7 +246,7 @@ describe('a malformed telemetry() return is rejected at the boundary', () => {
 
   async function subscribeWith(result: unknown): Promise<{ handle: unknown; warnings: string[] }> {
     const warnings: string[] = []
-    const plugin = { name: 'org/bad', telemetry: () => result } as unknown as VxPlugin
+    const plugin = testPlugin('org/bad', { telemetry: (() => result) as never })
     const handle = await subscribeTelemetry(
       [plugin],
       createEventBus(),
@@ -301,7 +304,7 @@ describe('a malformed telemetry() return is rejected at the boundary', () => {
     )
     await Bun.write(
       path.join(root, 'vx.workspace.mjs'),
-      localWorkspaceSource([`{ name: 'org/bad', telemetry() { return null } }`]),
+      localWorkspaceSource([pluginSource('org/bad', `{ telemetry() { return null } }`)]),
     )
     gitInitCommit(root)
     const summary = await run({
@@ -352,7 +355,7 @@ describe('the zero-cost gate keys on the telemetry capability', () => {
     // loader started refusing it by name. The property under test is
     // unchanged: a plugin that contributes no telemetry costs nothing.
     const root = await runWith(
-      localWorkspaceSource([`{ name: 'org/ex', executor() { return undefined } }`]),
+      localWorkspaceSource([pluginSource('org/ex', `{ executor() { return undefined } }`)]),
     )
     expect(idFile(root)).toBe(false)
   }, 30_000)
@@ -365,7 +368,7 @@ describe('the zero-cost gate keys on the telemetry capability', () => {
     // Declining is only knowable by asking, so this cost is irreducible —
     // the gate is about plugins with no telemetry hook at all.
     const root = await runWith(
-      localWorkspaceSource([`{ name: 'org/tel', telemetry() { return undefined } }`]),
+      localWorkspaceSource([pluginSource('org/tel', `{ telemetry() { return undefined } }`)]),
     )
     expect(idFile(root)).toBe(true)
   }, 30_000)

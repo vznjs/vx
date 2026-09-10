@@ -5,7 +5,7 @@
 // it accepts, and `validateProjectConfig` is the one boundary the loader,
 // the lockfile's frozen path and the plugin `project` stage all cross.
 
-import type { ProjectConfig, WorkspaceConfig } from '../config.js'
+import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import { DISPATCHED_VERBS, MAX_TIMEOUT_MS, nearest, UserError } from '../util/index.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
@@ -63,8 +63,20 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         commands?: unknown
         teardown?: unknown
       }
-      if (typeof plug.name !== 'string' || plug.name.length === 0) {
-        throw new UserError(`${configPath}: \`plugins[${i}].name\` must be a non-empty string`)
+      // A plugin's name is its package name and nothing else. `definePlugin`
+      // reads it and stamps it under a registry symbol; a plain object, or
+      // one whose `name` was overwritten after the stamp, is refused here —
+      // the one boundary every plugin crosses.
+      const pkg = (p as Record<symbol, unknown>)[PLUGIN_PACKAGE]
+      if (typeof pkg !== 'string' || pkg.length === 0) {
+        throw new UserError(
+          `${configPath}: \`plugins[${i}]\` must come from definePlugin(import.meta, { … }) — a plugin's name is its package name`,
+        )
+      }
+      if (plug.name !== pkg) {
+        throw new UserError(
+          `${configPath}: \`plugins[${i}].name\` overrides the package name ('${String(plug.name)}' over '${pkg}') — a plugin's name is its package name; drop the field`,
+        )
       }
       // The whole-run `backend` seam was REMOVED on 2026-08-23 with vx
       // cloud: a run always executes in the `vx run` process. Nothing

@@ -9,7 +9,13 @@
 // Imports core only through the public `@vzn/vx` specifier, like every other
 // plugin, so nothing here depends on core's internal layout.
 
-import { LayeredCache, type CacheLayer, type TaskExecutor, type VxPlugin } from '@vzn/vx'
+import {
+  definePlugin,
+  LayeredCache,
+  type CacheLayer,
+  type TaskExecutor,
+  type VxPlugin,
+} from '@vzn/vx'
 import { ReapiRemoteCache } from './cache.js'
 import { reapiExecutor } from './executor.js'
 import { ReapiClient, type ReapiOptions } from './wire.js'
@@ -58,8 +64,6 @@ export {
   type Digest,
   type ReapiOptions,
 } from './wire.js'
-
-export const REAPI_PLUGIN = 'vx/reapi'
 
 export interface ReapiPluginOptions extends Partial<ReapiOptions> {
   /**
@@ -111,8 +115,7 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
 export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
   let executorClient: ReapiClient | undefined
   let remoteCache: ReapiRemoteCache | undefined
-  return {
-    name: REAPI_PLUGIN,
+  return definePlugin(import.meta, {
     async executor(ctx): Promise<TaskExecutor | undefined> {
       const wanted = options.execute === true || Bun.env['VX_REAPI_EXECUTE'] === '1'
       const conn = connection(options)
@@ -183,5 +186,5 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
         onRemoteError: (err) => ctx.warn(`vx/reapi: ${err.message}`),
       })
     },
-  }
+  })
 }

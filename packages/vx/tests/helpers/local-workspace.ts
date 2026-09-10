@@ -16,10 +16,17 @@ export const CORE_INDEX = path.resolve(here, '../../src/index.ts')
  * `src/index.ts` instance the test imports.
  */
 export function localWorkspaceSource(extra: readonly string[] = [], prelude = ''): string {
-  return `${prelude}
+  return `${PLUGIN_IMPORT}${prelude}
 export default { plugins: [${extra.join(', ')}] }
 `
 }
+
+/**
+ * The import every fixture workspace file carries: a plugin is made by
+ * `definePlugin` and nothing else (`tests/helpers/plugin.ts` builds the
+ * `pluginSource` entries that call it).
+ */
+export const PLUGIN_IMPORT = `import { definePlugin } from ${JSON.stringify(CORE_INDEX)}\n`
 
 export async function writeLocalWorkspace(root: string): Promise<void> {
   await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource())
