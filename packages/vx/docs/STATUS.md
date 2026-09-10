@@ -405,7 +405,12 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
    import (the second copy) and the `schedule` hook it fills run
    through the compiled binary on every push — probed first by hand
    on Linux with a native `--compile` build, 12 sandboxed tasks as an
-   unprivileged user.
+   unprivileged user. The plugins guide's "Publishing a plugin
+   package" section (2026-09-10) was proven the same way before it
+   shipped: a scratch `@acme/vx-thing` laid out exactly as it says
+   loads and runs its sink through `bun bin.ts` and through the
+   binary; delete its root `index.ts` and the binary says `cannot
+find '@acme/vx-thing'` while `bun` still loads it.
 5. **The watch e2e flake** — if `re-runs the task after a file change,
 then exits on SIGINT` times out again, keep that run's stdout: the
    presence of `re-running...` separates a lost event from a slow
