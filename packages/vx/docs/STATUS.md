@@ -962,6 +962,21 @@ before · 2 attempts this run`), `--summarize`'s per-task
       project (the 2026-07-26 fix) holds on every shape. What the
       2026-07 doc still lists is watch timing (M7, M8) and the LOW rows.
 
+**The restore arm is at its floor (2026-09-10, late night).** The
+1,000-project warm-restore run spends its wall in `restore: extract`
+(2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
+one artifact was timed alone, sequentially, 200 reps: `restoreOutputs`
+0.375 ms min / 0.75 avg, of which the five file syscalls the extractor
+needs (mkdir, write temp, chmod, utimes, rename) are 0.18–0.26 ms,
+zstd decode 0.02 ms, the artifact read 0.01 ms, the rows lookup
+0.003 ms, `realpath` 0.01 ms. The run's 393 ms `run graph` over 1,000
+restores is 0.39 ms per task — the sequential floor, overlapped. What
+is left is syscall round trips on the thread pool; folding chmod into
+the write (mode at open is umask-dependent, so the chmod stays for
+exactness) or skipping utimes would buy ~0.05 ms each, 15–25 ms of a
+434 ms run, on the stale-hit-critical path. Not worth the risk;
+recorded so the next reader does not re-derive it.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
