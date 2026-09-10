@@ -20,6 +20,7 @@ by `tests/package-boundaries.unsafe.test.ts`):
 | `packages/vx-turbo-cache` | `@vzn/vx-turbo-cache` — `turboCache()` cache plugin: any server speaking Turbo's `/v8/artifacts` API                 |
 | `packages/vx-nx-cache`    | `@vzn/vx-nx-cache` — `nxCache()` cache plugin: any server implementing Nx's self-hosted cache spec                   |
 | `packages/vx-pnpm`        | `@vzn/vx-pnpm` — `pnpm()` plugin: claims `pnpm-lock.yaml` and keys each task on its project's own dependency closure |
+| `packages/vx-bun`         | `@vzn/vx-bun` — `bun()` plugin: the same for `bun.lock`; both are parsers over core's `lockfileClaim`                |
 | `packages/vx-docs`        | Astro Starlight docs site; imports `packages/vx/docs/**` at build time                                               |
 
 Core never imports a sibling package. The integrations reach core

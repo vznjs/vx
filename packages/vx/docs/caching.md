@@ -54,7 +54,8 @@ over (in order):
    leaves it out of this digest, and the plugin's `key` hook folds what
    the file means for each project instead (`@vzn/vx-pnpm` folds the
    project's own resolved dependency closure, so `pnpm update foo`
-   re-keys only the projects that depend on `foo`). The
+   re-keys only the projects that depend on `foo`; `@vzn/vx-bun` is the
+   same for `bun.lock`, and this repo declares it). The
    config-evaluation cache still keys on every file: a config may import
    a dependency the lockfile resolved.
 4. **Project `package.json` hash** — xxh3 of the project's

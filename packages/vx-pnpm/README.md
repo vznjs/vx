@@ -33,7 +33,7 @@ A project the lockfile has no importer for (outside `pnpm-workspace.yaml`'s `pac
 
 ## Cost
 
-The lockfile is parsed once per content. The digests are memoised under the cache dir (`vx-pnpm/digests.json`) by the file's xxh3, so a warm run pays one read and one hash of the file and one small JSON read — not a YAML parse. Within one process (a run, a `vx watch` cycle) the file's size and mtime gate even that read. The digest itself is one hash per strongly connected component of the dependency graph (pnpm writes cycles), children first, so a 1000-importer / 3000-package lockfile digests in ~20 ms when it does change.
+The lockfile is parsed once per content. The digests are memoised under the cache dir (`lockfile-claims/pnpm-lock.yaml.json`, by core's `lockfileClaim`) by the file's xxh3, so a warm run pays one read and one hash of the file and one small JSON read — not a YAML parse. Within one process (a run, a `vx watch` cycle) the file's size and mtime gate even that read. The digest itself is one hash per strongly connected component of the dependency graph (pnpm writes cycles), children first, so a 1000-importer / 3000-package lockfile digests in ~20 ms when it does change.
 
 ## `--affected`
 

@@ -11,6 +11,8 @@
 //
 // Bun.YAML is the parser: no dependency, and the file is plain YAML.
 
+import { reachDigests } from '@vzn/vx'
+
 export interface Lockfile {
   readonly version: string
   /** importer path (`.`, `packages/a`) → dependency name → version or `link:…` */
@@ -159,21 +161,16 @@ function packageName(lock: Lockfile, snapshot: string): string {
 }
 
 /**
- * Every importer's digest, Merkle-style: one hash per node of the graph
- * (importers and snapshots alike) over the node's own material and its
- * children's hashes, so a change anywhere in what an importer reaches
- * moves its digest and a change elsewhere does not. pnpm writes
- * dependency cycles, so the unit is the strongly connected component:
- * Tarjan's walk emits components children-first, each folds its members
- * (sorted) and its child components' hashes (sorted), and the whole file
- * costs O(nodes + edges) — 1000 importers over 3000 packages digest in
- * single-digit milliseconds where one traversal per importer took 400.
- * A `link:` dependency is an edge to the linked importer's node, so what
- * project A can import through workspace package B is B's whole reach.
+ * Every importer's digest: the lockfile as one graph (importers and
+ * snapshots alike), each node's material its identity, and core's
+ * `reachDigests` folding what every node reaches (components, so pnpm's
+ * cycles terminate). A `link:` dependency is an edge to the linked
+ * importer's node, so what project A can import through workspace
+ * package B is B's whole reach.
  */
 export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
   const g = buildGraph(lock)
-  const hashes = componentHashes(g)
+  const hashes = reachDigests(g)
   const out = new Map<string, string>()
   const globalSeed = Bun.hash.xxHash3(lock.global)
   for (const dir of lock.importers.keys()) {
@@ -238,75 +235,6 @@ function buildGraph(lock: Lockfile): Graph {
     for (const [name, version] of deps) link(from, '.', name, version)
   }
   return { index, material, edges }
-}
-
-/**
- * Tarjan's SCC, iterative (a pnpm graph can be thousands deep), emitting
- * components children-first; each is hashed as it is emitted, so every
- * child hash exists by the time a parent folds it. Returns one hash per
- * node (its component's).
- */
-function componentHashes(g: Graph): string[] {
-  const n = g.material.length
-  const idx = new Int32Array(n).fill(-1)
-  const low = new Int32Array(n)
-  const onStack = new Uint8Array(n)
-  const stack: number[] = []
-  const comp = new Int32Array(n).fill(-1)
-  const compHash: string[] = []
-  let counter = 0
-  for (let root = 0; root < n; root++) {
-    if (idx[root] !== -1) continue
-    // Frames of [node, next edge position]; the explicit stack replaces
-    // recursion.
-    const frames: Array<[number, number]> = [[root, 0]]
-    idx[root] = low[root] = counter++
-    stack.push(root)
-    onStack[root] = 1
-    while (frames.length > 0) {
-      const frame = frames[frames.length - 1]!
-      const v = frame[0]
-      const out = g.edges[v]!
-      if (frame[1] < out.length) {
-        const w = out[frame[1]++]!
-        if (idx[w] === -1) {
-          idx[w] = low[w] = counter++
-          stack.push(w)
-          onStack[w] = 1
-          frames.push([w, 0])
-        } else if (onStack[w] === 1) {
-          low[v] = Math.min(low[v]!, idx[w]!)
-        }
-        continue
-      }
-      frames.pop()
-      if (frames.length > 0) {
-        const u = frames[frames.length - 1]![0]
-        low[u] = Math.min(low[u]!, low[v]!)
-      }
-      if (low[v] !== idx[v]) continue
-      // v is a component root: pop its members and hash the component.
-      const members: number[] = []
-      for (;;) {
-        const w = stack.pop()!
-        onStack[w] = 0
-        comp[w] = compHash.length
-        members.push(w)
-        if (w === v) break
-      }
-      const id = compHash.length
-      const children = new Set<string>()
-      for (const m of members) {
-        for (const w of g.edges[m]!) if (comp[w] !== id) children.add(compHash[comp[w]!]!)
-      }
-      let h = Bun.hash.xxHash3(`members:${members.length}`)
-      for (const m of members.map((m) => g.material[m]!).sort()) h = Bun.hash.xxHash3(`${m}\n`, h)
-      h = Bun.hash.xxHash3(`children:${children.size}`, h)
-      for (const c of [...children].sort()) h = Bun.hash.xxHash3(`${c}\n`, h)
-      compHash.push(h.toString(16).padStart(16, '0'))
-    }
-  }
-  return Array.from({ length: n }, (_, i) => compHash[comp[i]!]!)
 }
 
 /** `packages/a` + `../b` → `packages/b`; `.` + `packages/a` → `packages/a`. POSIX, as the lockfile writes paths. */

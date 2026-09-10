@@ -56,6 +56,7 @@ plugin, the `TaskExecutor` contract for an executor.
 | `@vzn/vx-mcp`              | `commands`           | `vx mcp`, an MCP server for AI agents                                              |
 | `@vzn/vx-turbo`            | `project`            | a Turbo repo under vx with nothing written                                         |
 | `@vzn/vx-pnpm`             | `fingerprint`, `key` | pnpm-lock.yaml keyed per project: one install re-keys only the projects it reaches |
+| `@vzn/vx-bun`              | `fingerprint`, `key` | the same for bun.lock, through Bun's hoisted layout                                |
 
 ## Tests
 

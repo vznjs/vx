@@ -152,8 +152,8 @@ claims the file — `fingerprint: { files: ['pnpm-lock.yaml'], affected }`
 the file means for each project instead. `affected` is the other half
 of the same promise: `--affected` asks it which projects a change to the
 file touches (with the bytes at the base ref and in the working tree)
-rather than selecting every project. [`@vzn/vx-pnpm`](../pnpm/) is the
-reference: each project's own resolved dependency closure, so
+rather than selecting every project. [`@vzn/vx-pnpm`](../lockfiles/) is the
+reference (`@vzn/vx-bun` is the second, over core's `lockfileClaim`): each project's own resolved dependency closure, so
 `pnpm update foo` re-keys only the projects that depend on `foo`.
 
 `schedule` decides which READY task runs first when more are ready than

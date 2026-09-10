@@ -558,6 +558,42 @@ foo` invalidated the whole workspace and `--affected` selected every
     (`bun.lock`, `yarn.lock`, `package-lock.json`) — the seam is the
     same, each is a package when someone needs it.
 
+84. DONE (the seam is not a special case: a second claimant, and the
+    shell moves into core): `@vzn/vx-pnpm` carried the claim, the
+    per-project key, the memo and the `--affected` diff around its
+    parser, and a `bun.lock` plugin would have copied all of it. Core's
+    `lockfileClaim({ file, digest, version, scope })` (orchestrator/
+    lockfile-claim.ts, on the façade with `reachDigests`, the
+    Merkle-over-components digest both parsers use) is that shell; the
+    pnpm package is its parser now, and `@vzn/vx-bun` is the second:
+    `bun.lock` through `Bun.JSONC`, resolved the way Bun lays
+    `node_modules` out (`p/d` under the package at `p`, else the nearest
+    ancestor's, else the root's — a nested version counts for the
+    package it is nested under and no other), a `workspace:` entry
+    pointing at its importer so a dependant folds the linked package's
+    whole reach, install-wide knobs (overrides, patches, catalogs) into
+    every project. This repo declares `bun()` in its own
+    `vx.workspace.ts`. Measured here, `run ci --all --dry` hashes
+    before and after bumping astro's resolved version in `bun.lock`:
+    59 of the gate's 61 tasks re-keyed without the plugin, 2 with it
+    (`@vzn/vx-docs#build`, `#test`). Warm `run lint.oxfmt --all`,
+    interleaved min-of-7: wall 372 → 367 ms (noise), `prepare (graph)`
+    3.2 → 5.3 ms — the one read + hash + memo. Also fixed in the same
+    push: `@vzn/vx-pnpm`'s own lint tasks were red on PR #272's first
+    CI run for want of the per-package `.oxfmtrc.json` /
+    `.oxlintrc.json` (without the ignore list oxlint reads
+    `node_modules/@types/bun` and reports TS2688); both packages carry
+    them now, and the package-level run (`cd packages/<p> && oxlint
+--type-aware --type-check`, `oxfmt --check .`) is part of what a
+    new package must pass before it is pushed. Pinned: the shell in
+    core with a fake digest (memo served across instances, a planted
+    memo keys the task, a changed file or version ignores it, one
+    parse for two tasks of one run, the root fallback, `scope:
+'workspace'`, the `--affected` diff, `reachDigests` reach /
+    numbering / cycle); the bun parser (hoisted bump, nested version,
+    workspace link, install-wide knob, scoped nesting, refusal) and
+    `vx run` / `--affected` end to end.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
@@ -1025,8 +1061,9 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    port bridge, completions) merged as 61d9392 at 13:50Z. PR #271
    (items 81–82, the restore lane and the save lane) merged as b71008b
    at 14:24Z. PR #272 holds item 83 — the `fingerprint` seam and
-   `@vzn/vx-pnpm`, the owner's lockfile ask — on the same branch with
-   main merged back in; it merges on the owner's word, never on ours.
+   `@vzn/vx-pnpm`, the owner's lockfile ask — and item 84 (the shell
+   in core, `@vzn/vx-bun`, dogfooded) on the same branch with main
+   merged back in; it merges on the owner's word, never on ours.
    What a fresh session should know: (a) the warm floor is measured
    and recorded three ways in items 76–77 — module load and the git
    walk are what remain, and the compile flags are the right ones;

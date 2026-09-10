@@ -495,7 +495,7 @@ describe('vx run with pnpm() declared', () => {
 
   it('a warm run reads the memo instead of parsing', async () => {
     await hashes()
-    const memoFile = path.join(root, '.vx', 'cache', 'vx-pnpm', 'digests.json')
+    const memoFile = path.join(root, '.vx', 'cache', 'lockfile-claims', 'pnpm-lock.yaml.json')
     const memo = JSON.parse(await readFile(memoFile, 'utf8')) as {
       version: number
       lock: string

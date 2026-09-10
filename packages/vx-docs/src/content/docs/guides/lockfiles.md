@@ -1,6 +1,6 @@
 ---
-title: pnpm lockfile-aware caching
-description: Declare pnpm() from @vzn/vx-pnpm and a pnpm-lock.yaml change re-keys only the projects whose dependencies it reaches — --affected selects the same set.
+title: Lockfile-aware caching
+description: Declare pnpm() from @vzn/vx-pnpm or bun() from @vzn/vx-bun and a lockfile change re-keys only the projects whose dependencies it reaches — --affected selects the same set.
 ---
 
 Out of the box, vx folds every lockfile at the workspace root into the
@@ -8,30 +8,33 @@ Out of the box, vx folds every lockfile at the workspace root into the
 is coarse but correct: any `pnpm install` that changes the file
 invalidates every task, and `--affected` selects every project.
 
-`@vzn/vx-pnpm` makes that precise. It reads `pnpm-lock.yaml` and keys
-each task on its **own project's resolved dependency closure**, so
-`pnpm update foo` re-keys exactly the projects that reach `foo` and
-nothing else.
+`@vzn/vx-pnpm` and `@vzn/vx-bun` make that precise. Each reads its
+package manager's lockfile and keys every task on its **own project's
+resolved dependency closure**, so `pnpm update foo` (or `bun add foo`)
+re-keys exactly the projects that reach `foo` and nothing else.
 
 ## Turn it on
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'
-import { pnpm } from '@vzn/vx-pnpm'
+import { pnpm } from '@vzn/vx-pnpm' // or: import { bun } from '@vzn/vx-bun'
 
 export default defineWorkspace({
-  plugins: [pnpm()],
+  plugins: [pnpm()], // or [bun()]
 })
 ```
 
 Nothing else changes. `vx why <task>` names the material as
-`plugin @vzn/vx-pnpm/deps`, and the `workspace fingerprint` line no
-longer moves on a lockfile edit.
+`plugin @vzn/vx-pnpm/deps` (or `@vzn/vx-bun/deps`), and the
+`workspace fingerprint` line no longer moves on a lockfile edit. vx's
+own repository declares `bun()`: bumping one package's resolved
+version in its `bun.lock` re-keys 2 of the gate's 61 tasks instead of
+59.
 
 ## What counts as a project's dependencies
 
-A project's digest covers every package it can reach:
+A project's digest covers every package it can reach. With pnpm:
 
 - its `dependencies`, `devDependencies` and `optionalDependencies`,
   transitively — through the lockfile's `snapshots` (pnpm 9) or
@@ -46,10 +49,18 @@ A project's digest covers every package it can reach:
   `settings`, `overrides`, `packageExtensionsChecksum`,
   `pnpmfileChecksum`.
 
-A project the lockfile has no importer for (outside
-`pnpm-workspace.yaml`'s `packages`) folds the root importer's digest —
-the only `node_modules` it can resolve from. A phantom dependency
-(imported, never declared) is not in any closure; declare it.
+With Bun, the same through Bun's hoisted layout: a dependency `d` of the
+package at `node_modules` path `p` is `p/d` when the lockfile has that
+key, else the nearest ancestor's, else the root's — so a nested version
+counts for the package it is nested under and no other; each package by
+its resolved id and integrity; a `workspace:` dependency folds the
+linked package's reach; and `overrides`, `patchedDependencies` and
+catalogs fold into every project.
+
+A project the lockfile has no entry for (outside the workspace's
+`packages`) folds the root's digest — the only `node_modules` it can
+resolve from. A phantom dependency (imported, never declared) is not in
+any closure; declare it.
 
 ## `--affected` follows
 
@@ -78,13 +89,15 @@ connected component of the dependency graph, children first: a
 
 ## How it fits core
 
-The plugin uses two seams. `key` folds the per-project digest, like any
-plugin adding key material. `fingerprint` **claims** `pnpm-lock.yaml`:
-core takes the file out of the digest every task key folds (the
+Each plugin uses two seams. `key` folds the per-project digest, like any
+plugin adding key material. `fingerprint` **claims** the lockfile: core
+takes the file out of the digest every task key folds (the
 config-evaluation cache still keys on it — a config may import a
 dependency), and asks the plugin the `--affected` question instead of
-widening. The same shape fits any lockfile a plugin can read per project.
-See [Writing a vx plugin](../plugins/) for the seam.
+widening. Both plugins are a parser over core's `lockfileClaim`, which
+owns the memo, the per-run read and the `--affected` diff — a third
+lockfile is a parser and nothing else. See
+[Writing a vx plugin](../plugins/) for the seam.
 
 ## Next steps
 
