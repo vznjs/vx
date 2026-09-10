@@ -103,6 +103,30 @@ dependency is for *ordering*, not output identity. See
   no exit code to cache and no well-defined moment to capture outputs.
   The config loader rejects `persistent` + `cache`.
 
+## A sandboxed dev server
+
+A persistent task runs inside its `exec.sandbox` like any other — the same
+grants, the same walls. What a dev server adds is a port the outside has
+to reach: the developer's browser, the `e2e` task that fetches it. Declare
+the port, and the host sees it on every platform:
+
+```ts
+dev: {
+  exec: {
+    command: 'vite',
+    persistent: { readyWhen: 'Local:' },
+    sandbox: { allow: { read: ['.'], localBinding: [5173] } },
+  },
+},
+```
+
+`localBinding: true` alone lets the server bind loopback, which on macOS is
+already reachable from the host but on Linux is not — a sandboxed task
+there lives in its own network namespace. A port **list** bridges each
+listed port out to the host's loopback on Linux (and means `true` on
+macOS), for exactly as long as the server runs. See
+[Sandboxing](../sandboxing/#capabilities) for the rest of the block.
+
 ## Watchers: persistent vs. `vx watch`
 
 These are two different things:

@@ -713,7 +713,20 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    the product. `bun packages/vx-bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap
    (`scratchpad/ab.ts`-style: alternate arms, min and median of N).
-   Closing figures for 2026-09-10 (the same container, `run.ts`
+   Closing figures for 2026-09-10, afternoon (the same container,
+   `run.ts` medians of 5, after items 70–80): source form 100
+   projects 115 ms warm / 197 restore / 408 cold; 1,000 projects 265 /
+   1,381 / 2,988 — the 1,000 warm read high against the morning's
+   229, so it was settled as the A/B the box needs: main before this
+   session (264f01a) against the head, BOTH as compiled binaries
+   through `VX_BIN`, three interleaved rounds — warm no-restore
+   246 / 251 / 235 vs 250 / 212 / 201 ms, restore 1,510 / 1,297 /
+   1,186 vs 1,241 / 1,230 / 1,308, cold 3,423 / 3,128 / 3,432 vs
+   3,465 / 3,180 / 3,157. A tie or a win in every column; the lone
+   265 was the box. (Items 70, 71 and 77 moved surfaces this bench
+   does not exercise — a sandboxed gate, the first warm run after a
+   cold one, a plugin-bearing binary — and each carries its own A/B.)
+   Closing figures for 2026-09-10, morning (the same container, `run.ts`
    medians of 5, after the three package moves and the CI work): 100
    projects 118 ms warm / 182 restore / 394 cold; 1,000 projects 229 /
    1,206 / 2,758. No core warm-path change landed today — the moves
