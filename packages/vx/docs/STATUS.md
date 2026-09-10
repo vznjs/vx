@@ -1230,6 +1230,17 @@ test-types` cold 53.6 s vs 58.2 s, restore 80 ms vs 166 ms,
       not the root README — declared as a read and a `workspaceFiles`
       input (the same shape as the other two; this container cannot
       host the sandbox, CI is the proof).
+117.  DONE (2026-09-10, night — perf, from the real-repo stage table):
+      a hit on a task with no declared outputs extracted its logs-only
+      artifact anyway — an `exists` and a tar read per hit for nothing
+      (1.7 ms each on solid's `link` and `element`, `VX_TIMING`); its
+      stdout replays from the row. `restoreHit` now skips clean and
+      restore when nothing is declared (`tests/no-output-hit.test.ts`,
+      fails without; the control with outputs still extracts).
+      Measured on solid, seven interleaved no-op runs against the
+      previous binary: 53 → 52 ms median, 49 → 46 min — at the noise
+      floor, as 3.4 ms of 51 predicts.
+
 118.  DONE (2026-09-10, night — owner's ask: "20+ blog posts about
       technicals, what vx is, why it is fast, its methodologies and
       values, migration, no choice on the market, the mechanics"):
@@ -1251,16 +1262,6 @@ test-types` cold 53.6 s vs 58.2 s, restore 80 ms vs 166 ms,
       the owner re-dates or drafts them to stage an announcement
       cadence. Built with the site (all thirty render; every relative
       link resolved in the built HTML), site tests pass.
-117.  DONE (2026-09-10, night — perf, from the real-repo stage table):
-      a hit on a task with no declared outputs extracted its logs-only
-      artifact anyway — an `exists` and a tar read per hit for nothing
-      (1.7 ms each on solid's `link` and `element`, `VX_TIMING`); its
-      stdout replays from the row. `restoreHit` now skips clean and
-      restore when nothing is declared (`tests/no-output-hit.test.ts`,
-      fails without; the control with outputs still extracts).
-      Measured on solid, seven interleaved no-op runs against the
-      previous binary: 53 → 52 ms median, 49 → 46 min — at the noise
-      floor, as 3.4 ms of 51 predicts.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
