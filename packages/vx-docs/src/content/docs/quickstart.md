@@ -51,8 +51,8 @@ export default defineWorkspace({
 ```
 
 Let vx write it: `vx init` scaffolds this file and one `vx.config.ts`
-per package from your `package.json` scripts (`vx migrate` does the same
-from a `turbo.json` or an Nx graph). Steps 3–5 show what it generates —
+per package from your `package.json` scripts (`bunx @vzn/vx-migrate` does
+the same from a `turbo.json` or an Nx graph). Steps 3–5 show what it generates —
 the generated files type themselves with `satisfies ProjectConfig` /
 `satisfies WorkspaceConfig` and a type-only import instead of
 `defineProject` / `defineWorkspace`, which is the same checking without
