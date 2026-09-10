@@ -103,7 +103,7 @@ const platform = [
     icon: 'brain',
     tone: 'var(--amber)',
     title: 'Scheduling that learns — as a plugin',
-    body: '@vzn/vx/plugins/schedule-history orders ready tasks by the expected remaining critical path learned from your own run history. It is the reference schedule() plugin: a policy core exposes a hook for, not a flag core carries.',
+    body: '@vzn/vx-schedule-history orders ready tasks by the expected remaining critical path learned from your own run history. It is the reference schedule() plugin, its own package: a policy core exposes a hook for, not a flag core carries — core ships no plugin at all.',
   },
 ]
 
@@ -578,13 +578,13 @@ const footCols = {
           <p class="vx-kicker">// migrate</p>
           <h2>Switch in an <span class="phosphor">afternoon</span>.</h2>
           <p>
-            <code>vx migrate</code> converts your <code class="turbo">turbo.json</code> or{' '}
+            <code>bunx @vzn/vx-migrate</code> converts your <code class="turbo">turbo.json</code> or{' '}
             <code class="nx">Nx project graph</code> into a real <code>vx.config.ts</code>. The
             mapping is mechanical — keep your task graph and your speed, drop the daemon and the
             plugins.
           </p>
           <div class="row">
-            <div class="cmd-pill"><span class="dollar">$</span> vx migrate</div>
+            <div class="cmd-pill"><span class="dollar">$</span> bunx @vzn/vx-migrate</div>
             <a class="btn btn-primary btn-lg" href={href('migrate/from-turborepo/')}
               >Read migration guide <span class="arr">→</span></a
             >

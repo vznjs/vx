@@ -1,44 +1,47 @@
-// `vx migrate [--dry] [--force]` — generate per-package vx.config.ts
-// from an existing Turbo or Nx setup. Source auto-detect: turbo.json →
-// Turbo; .nx/workspace-data/project-graph.json → Nx (the resolved
-// snapshot). Mappers live in migrate-turbo.ts / migrate-nx.ts and
-// return an IR; this file owns detection, TS emission, the overwrite
-// guard, and the final report.
+// The migration seam: what any adoption tool needs once it has a plan —
+// the plan's shape, TS emission, the overwrite guard, the writes and the
+// report. `vx init` (package.json scripts, in core) and `@vzn/vx-migrate`
+// (Turbo, Nx) share it, so a generated config reads the same whichever
+// tool wrote it. Core knows no source format here: a mapper returns a
+// `MigrationPlan` and this file does the rest.
 
 import path from 'node:path'
-import { seeHelp } from './help.js'
 import { relPosix, UserError } from '../util/index.js'
-import { findWorkspaceRoot, listProjects, loadWorkspace } from '../workspace/index.js'
-import { quote } from './migrate-emit.js'
-import { migrateNx } from './migrate-nx.js'
-import { migrateScripts } from './migrate-scripts.js'
-import { migrateTurbo } from './migrate-turbo.js'
+import type { ProjectMeta } from './workspace.js'
 
-export interface MigrateArgs {
-  dry: boolean
-  force: boolean
-  from?: 'turbo' | 'nx' | 'scripts'
-  error?: string
+/**
+ * Escape an arbitrary string into a single-quoted TS literal. Escapes
+ * backslash + quote AND raw newlines/CR — a value with an embedded newline
+ * (legal JSON, e.g. a script `"echo a\necho b"`, or a glob with a `'`) would
+ * otherwise splice into a single-quoted literal as an unterminated / malformed
+ * string that fails to load (generated files must round-trip through the
+ * loader).
+ */
+export function quoteTsLiteral(s: string): string {
+  return `'${s
+    .replaceAll('\\', '\\\\')
+    .replaceAll("'", "\\'")
+    .replaceAll('\n', '\\n')
+    .replaceAll('\r', '\\r')}'`
 }
 
-export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
-  const out: MigrateArgs = { dry: false, force: false }
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i]
-    if (a === '--dry') out.dry = true
-    else if (a === '--force') out.force = true
-    else if (a === '--from' || a?.startsWith('--from=')) {
-      const v = a === '--from' ? args[++i] : a.slice('--from='.length)
-      if (v !== 'turbo' && v !== 'nx' && v !== 'scripts') {
-        return { ...out, error: `--from must be turbo, nx or scripts` }
-      }
-      out.from = v
-    } else if (a?.startsWith('-'))
-      return { ...out, error: `unknown flag: ${a}${seeHelp('migrate')}` }
-    else return { ...out, error: `unexpected argument: ${a}` }
-  }
-  return out
-}
+/**
+ * Task names that conventionally never exit. Every mapper guesses the same
+ * way from a name — a source that SAYS a task is long-running (turbo's
+ * `persistent: true`, an Nx dev-server executor) is believed instead.
+ */
+export const PERSISTENT_TASK_NAMES: ReadonlySet<string> = new Set([
+  'dev',
+  'start',
+  'serve',
+  'watch',
+  'preview',
+])
+
+/** The one wording every mapper emits for a task it made persistent. */
+export const PERSISTENT_TODO =
+  'persistent task — set persistent.readyWhen (regex matched against output) so ' +
+  'dependents unblock on readiness, and consider exec.timeout to bound the wait'
 
 /** Verbatim TS expression spliced into a generated array (preset spreads). */
 export interface RawExpr {
@@ -73,65 +76,35 @@ export interface MigrationPlan {
   notes: string[]
 }
 
-export async function migrateCmd(
-  args: readonly string[],
-  opts: { init?: boolean } = {},
-): Promise<number> {
-  const parsed = parseMigrateArgs(args)
-  if (parsed.error) {
-    process.stderr.write(`${opts.init ? 'vx init' : 'vx migrate'}: ${parsed.error}\n`)
-    return 1
-  }
-  const root = await findWorkspaceRoot(process.cwd())
-  const metas = await listProjects(await loadWorkspace(root))
+export interface ApplyMigrationArgs {
+  root: string
+  metas: readonly ProjectMeta[]
+  plan: MigrationPlan
+  /** Named in the report and the generated header, e.g. `turbo.json`. */
+  source: string
+  /** The command the user typed, e.g. `vx init` — named in the report. */
+  verb: string
+  dry: boolean
+  force: boolean
+  /**
+   * `vx init` on a workspace with no scripts still has a job (the workspace
+   * file, and a worked example); a migration with nothing to convert is an
+   * error. Default false.
+   */
+  init?: boolean
+  /** Report lines printed under the source line (e.g. "turbo.json found and not read"). */
+  notes?: readonly string[]
+}
 
-  const hasTurbo = await Bun.file(path.join(root, 'turbo.json')).exists()
-  const graphRel = path.join('.nx', 'workspace-data', 'project-graph.json')
-  const hasGraph = await Bun.file(path.join(root, graphRel)).exists()
-  const hasNxJson = await Bun.file(path.join(root, 'nx.json')).exists()
-
-  // Evaluating teams routinely have both runners checked in — never
-  // ask anyone to delete anything; --from disambiguates.
-  if (parsed.from === undefined && hasTurbo && (hasGraph || hasNxJson)) {
-    throw new UserError(
-      'both turbo.json and an nx workspace are present — pass --from turbo or --from nx',
-    )
-  }
-  if (parsed.from === 'turbo' && !hasTurbo) {
-    throw new UserError('--from turbo, but no turbo.json at the workspace root')
-  }
-
-  let source: string
-  let plan: MigrationPlan
-  if (parsed.from === 'scripts') {
-    source = 'package.json scripts'
-    plan = migrateScripts(metas)
-  } else if (parsed.from === 'nx' || (parsed.from === undefined && !hasTurbo)) {
-    if (hasGraph) {
-      source = '.nx/workspace-data/project-graph.json'
-      plan = await migrateNx(root, metas)
-    } else if (hasNxJson || parsed.from === 'nx') {
-      // Modern Nx stores the graph in SQLite — the JSON snapshot only
-      // exists when exported explicitly.
-      throw new UserError(
-        'no resolved Nx graph found — export one with ' +
-          '`nx graph --file=.nx/workspace-data/project-graph.json`, then re-run vx migrate',
-      )
-    } else {
-      // A workspace from nowhere: the scripts are the source (`vx init`).
-      source = 'package.json scripts'
-      plan = migrateScripts(metas)
-    }
-  } else {
-    source = 'turbo.json'
-    plan = await migrateTurbo(root, metas)
-  }
-  // `vx init` on a workspace with no scripts still has a job: the
-  // workspace file, which every run needs, and a worked example of the
-  // config the user writes next. `vx migrate` with nothing to convert is
-  // an error: the user asked for a conversion that has no input.
+/**
+ * Render a plan to files, refuse to overwrite without `force`, write (or
+ * print, under `dry`), and report. Returns the process exit code.
+ */
+export async function applyMigration(args: ApplyMigrationArgs): Promise<number> {
+  const { root, metas, plan, source, verb, dry, force } = args
+  const init = args.init === true
   const empty = plan.projects.length === 0
-  if (empty && opts.init !== true) {
+  if (empty && !init) {
     throw new UserError(
       `nothing to migrate: no ${source === 'package.json scripts' ? 'package.json scripts in any workspace member' : 'tasks in ' + source}`,
     )
@@ -141,11 +114,7 @@ export async function migrateCmd(
   for (const p of plan.projects) {
     if (p.tasks.length === 0) continue
     const abs = path.join(p.dir, 'vx.config.ts')
-    files.push({
-      relPath: relPosix(root, abs),
-      abs,
-      contents: renderConfigFile(source, p, opts.init ? 'vx init' : 'vx migrate'),
-    })
+    files.push({ relPath: relPosix(root, abs), abs, contents: renderConfigFile(source, p, verb) })
   }
   for (const f of plan.extraFiles) {
     files.push({ relPath: f.relPath, abs: path.join(root, f.relPath), contents: f.contents })
@@ -165,7 +134,7 @@ export async function migrateCmd(
     files.push({ relPath: relPosix(root, abs), abs, contents: WORKSPACE_FILE })
   }
 
-  if (!parsed.dry && !parsed.force) {
+  if (!dry && !force) {
     const conflicts = new Set<string>()
     // A discovered project with ANY existing vx config (.ts/.mjs/.js) — refuse
     // so we never shadow a hand-written config with a fresh .ts.
@@ -189,7 +158,7 @@ export async function migrateCmd(
     }
   }
 
-  if (parsed.dry) {
+  if (dry) {
     for (const f of files) {
       process.stdout.write(`── ${f.relPath} ──\n${f.contents}\n`)
     }
@@ -208,10 +177,10 @@ export async function migrateCmd(
   const report: string[] = []
   if (empty) {
     report.push(
-      'vx init: no package.json scripts to turn into tasks.',
+      `${verb}: no package.json scripts to turn into tasks.`,
       hasWorkspaceFile
         ? 'vx.workspace.ts already exists.'
-        : parsed.dry
+        : dry
           ? 'would write vx.workspace.ts (dry run, nothing written).'
           : 'wrote vx.workspace.ts.',
       'Declare tasks in a vx.config.ts beside a package.json — your own command, for example:',
@@ -221,26 +190,8 @@ export async function migrateCmd(
         .map((l) => `  ${l}`),
     )
   } else {
-    // Name the verb the user typed: `vx init` is this command with the
-    // scripts source, and a report that says `migrate` reads as a mistake.
-    report.push(`${opts.init ? 'vx init' : 'vx migrate'}: ${source} → vx.config.ts`)
-    // `init` reads scripts only; a runner's own config beside them is the
-    // richer source (dependsOn, inputs, outputs) and was ignored without a
-    // word — the walkthrough on a Turbo repo (2026-09-09) got the scripts'
-    // TODOs and none of the edges turbo.json already declared.
-    if (opts.init === true && source === 'package.json scripts') {
-      if (hasTurbo) {
-        report.push(
-          'note: turbo.json found and not read — `vx migrate` maps it (dependsOn, inputs, ' +
-            'outputs), or `plugins: [turbo()]` from @vzn/vx-turbo runs it with nothing written',
-        )
-      } else if (hasGraph || hasNxJson) {
-        report.push(
-          'note: an Nx workspace found and not read — `vx migrate --from nx` maps its ' +
-            'exported project graph',
-        )
-      }
-    }
+    report.push(`${verb}: ${source} → vx.config.ts`)
+    for (const n of args.notes ?? []) report.push(`note: ${n}`)
     for (const n of plan.headerNotes) report.push(`note: ${n}`)
     report.push(
       '',
@@ -249,7 +200,7 @@ export async function migrateCmd(
     )
     for (const line of todoList) report.push(`  ${line}`)
     report.push(...plan.notes)
-    report.push(parsed.dry ? 'files (dry run, nothing written):' : 'files written:')
+    report.push(dry ? 'files (dry run, nothing written):' : 'files written:')
     for (const f of files) report.push(`  ${f.relPath}`)
   }
   const firstTask =
@@ -301,19 +252,19 @@ function renderValue(v: unknown, indent: string): string {
   // with a raw stack mid-write. Mappers no longer produce a null, but a
   // literal is a readable thing to leave behind if one ever does.
   if (v === null) return 'null'
-  if (typeof v === 'string') return quote(v)
+  if (typeof v === 'string') return quoteTsLiteral(v)
   if (typeof v === 'number' || typeof v === 'boolean') return String(v)
   if (Array.isArray(v)) return `[${v.map((x) => renderValue(x, indent)).join(', ')}]`
   const entries = Object.entries(v as Record<string, unknown>).filter(([, x]) => x !== undefined)
   if (entries.length === 0) return '{}'
   const inner = `${indent}  `
   const body = entries.map(
-    ([k, x]) => `${inner}${IDENT.test(k) ? k : quote(k)}: ${renderValue(x, inner)},`,
+    ([k, x]) => `${inner}${IDENT.test(k) ? k : quoteTsLiteral(k)}: ${renderValue(x, inner)},`,
   )
   return `{\n${body.join('\n')}\n${indent}}`
 }
 
-function renderConfigFile(source: string, p: GeneratedProject, verb = 'vx migrate'): string {
+function renderConfigFile(source: string, p: GeneratedProject, verb: string): string {
   // A type-only import: the editor type-checks against the installed
   // package, and Bun erases it, so the config loads in a workspace that
   // runs the vx binary without the package installed.
@@ -326,7 +277,7 @@ function renderConfigFile(source: string, p: GeneratedProject, verb = 'vx migrat
   for (const t of p.tasks) {
     for (const todo of t.todos) lines.push(`    // TODO(vx-migrate): ${todo}`)
     if (t.task === null) continue // skipped target — the TODO above explains
-    const key = IDENT.test(t.name) ? t.name : quote(t.name)
+    const key = IDENT.test(t.name) ? t.name : quoteTsLiteral(t.name)
     lines.push(`    ${key}: ${renderValue(t.task, '    ')},`)
   }
   lines.push('  },', '} satisfies ProjectConfig', '')

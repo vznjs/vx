@@ -7,10 +7,20 @@
 // with no manifest counterpart.
 
 import path from 'node:path'
-import { relPosix, UserError } from '../util/index.js'
-import type { ProjectMeta } from '../workspace/index.js'
-import { PERSISTENT_TASK_NAMES, PERSISTENT_TODO } from './migrate-persistent.js'
-import type { GeneratedProject, GeneratedTask, MigrationPlan } from './migrate.js'
+import {
+  type GeneratedProject,
+  type GeneratedTask,
+  type MigrationPlan,
+  PERSISTENT_TASK_NAMES,
+  PERSISTENT_TODO,
+  type ProjectMeta,
+  UserError,
+} from '@vzn/vx'
+
+/** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
+function relPosix(from: string, to: string): string {
+  return path.relative(from, to).split(path.sep).join('/')
+}
 
 const PLACEHOLDER = "echo 'TODO(vx-migrate): fill in' && exit 1"
 const GRAPH_REL = '.nx/workspace-data/project-graph.json'

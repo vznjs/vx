@@ -8,15 +8,12 @@
 // Rule 2: core (src/**) never imports a sibling @vzn/vx-* package or any
 //         packages/* path — the dependency direction is sibling → core, never
 //         the reverse. The OTel/HTTP SDK closures stay out of core's budget.
-//         The bare '@vzn/vx' specifier is legal under src/plugins/** ONLY:
-//         each core-provided plugin is package-shaped and reaches core the
-//         way a sibling does (Rule 4).
 // Rule 3: the exact runtime export set of src/index.ts is pinned. A
 //         narrowing (a sibling-needed symbol silently un-exported) fails; a
 //         widening is a deliberate decision that updates the snapshot.
-// Rule 4: every src/plugins/<name>/index.ts imports from '@vzn/vx' and from
-//         no other non-relative specifier — so the directory can be lifted
-//         into its own package with zero edits.
+// Rule 4: core ships no plugin — src/plugins does not exist. The last one
+//         (schedule-history) is @vzn/vx-schedule-history since 2026-09-10;
+//         a new plugin starts life as a package.
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -83,18 +80,8 @@ describe('package boundaries', () => {
     expect(violations.map((v) => `${v.file} → ${v.specifier}`)).toEqual([])
   })
 
-  it('every src/plugins/<name>/index.ts imports core only via the bare @vzn/vx specifier', async () => {
-    const pluginsDir = path.join(CORE_SRC, 'plugins')
-    const glob = new Bun.Glob('*/index.ts')
-    const entries: string[] = []
-    for await (const rel of glob.scan({ cwd: pluginsDir })) entries.push(rel)
-    expect(entries.sort()).toEqual(['schedule-history/index.ts'])
-    for (const rel of entries) {
-      const imports = await importsOf(path.join(pluginsDir, path.dirname(rel)))
-      const bare = imports.filter((i) => !i.specifier.startsWith('.')).map((i) => i.specifier)
-      expect(bare).toContain('@vzn/vx')
-      expect(new Set(bare)).toEqual(new Set(['@vzn/vx']))
-    }
+  it('core ships no plugin: src/plugins does not exist', () => {
+    expect(existsSync(path.join(CORE_SRC, 'plugins'))).toBe(false)
   })
 
   it('keeps the packages dir present (guards the scan)', () => {
@@ -113,12 +100,16 @@ describe('package boundaries', () => {
       'LOG_WIRE_VERSION',
       'LayeredCache',
       'LocalHistoryProvider',
+      'PERSISTENT_TASK_NAMES',
+      'PERSISTENT_TODO',
       'TASK_STATUSES',
       'TELEMETRY_SCHEMA_VERSION',
       'TaskLogBuffer',
       'UserError',
       'VERSION',
+      'applyMigration',
       'assembleRunSummary',
+      'buildPackageGraph',
       'buildTaskGraph',
       'cacheKeyDiff',
       'captureDefaultBranch',
@@ -155,8 +146,9 @@ describe('package boundaries', () => {
       'loadResolvedProjects',
       'loadWorkspace',
       'loadWorkspaceConfig',
-      'mapTurboWorkspace',
       'markSurfacedDeps',
+      'migrateScripts',
+      'nearMatches',
       'parseCachePolicy',
       'parseDecimalInt',
       'parseSize',
@@ -164,6 +156,7 @@ describe('package boundaries', () => {
       'prepareRun',
       'projectNode',
       'projectOutcome',
+      'quoteTsLiteral',
       'readLockfile',
       'resolveCacheDir',
       'resolveInputs',

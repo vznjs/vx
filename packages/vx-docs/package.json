@@ -11,6 +11,7 @@
     "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
-    "@vzn/vx": "workspace:*"
+    "@vzn/vx": "workspace:*",
+    "@vzn/vx-schedule-history": "workspace:*"
   }
 }

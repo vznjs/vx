@@ -1,19 +1,19 @@
 ---
 title: Migrate from Turborepo
-description: Move a Turborepo monorepo to vx. What maps 1:1, what's better, and how vx migrate converts your turbo.json into vx.config.ts files automatically.
+description: Move a Turborepo monorepo to vx. What maps 1:1, what's better, and how `bunx @vzn/vx-migrate` converts your turbo.json into vx.config.ts files automatically.
 ---
 
 vx is shaped like Turborepo on purpose, so this is the easy migration.
 Same per-package model, same `dependsOn` micro-syntax, same `--filter`
 DSL, same `--affected` selection. The main change
 is that config moves from one `turbo.json` to per-package `vx.config.ts`
-files — and `vx migrate` writes them for you.
+files — and `bunx @vzn/vx-migrate` writes them for you.
 
 ## Try it first, without writing a file
 
 `@vzn/vx-turbo` runs a `turbo.json` workspace under vx as it is: the
 plugin fills vx's `project` stage from your `turbo.json` and each
-package's scripts, using the same mapper `vx migrate` renders files from.
+package's scripts, using the same mapper `@vzn/vx-migrate` renders files from.
 One file, and the repo runs:
 
 ```ts
@@ -30,19 +30,19 @@ vx run build --all
 ```
 
 Whatever the mapping cannot express is a warning on every run — the same
-list `vx migrate --dry` prints once. A package that writes its own
+list `bunx @vzn/vx-migrate --dry` prints once. A package that writes its own
 `vx.config.ts` keeps it (the plugin fills, never overwrites), so you can
 migrate one package at a time and leave the rest on `turbo.json`.
 
-## Let `vx migrate` do it
+## Let `@vzn/vx-migrate` do it
 
 ```bash
 bun add -d @vzn/vx
-vx migrate --dry        # preview the generated files + a report
-vx migrate              # write them (won't overwrite without --force)
+bunx @vzn/vx-migrate --dry   # preview the generated files + a report
+bunx @vzn/vx-migrate         # write them (won't overwrite without --force)
 ```
 
-`vx migrate` detects your `turbo.json`, reads the root pipeline and any
+`vx-migrate` is its own package, so it runs before any vx file exists. It detects your `turbo.json`, reads the root pipeline and any
 per-package `extends`, inlines the matching `package.json` scripts as task
 commands, and emits a `vx.config.ts` per package. It only emits a task
 where the script actually exists, and any value it can't infer becomes a
@@ -69,7 +69,7 @@ the script of the same name; vx makes the command explicit in `exec`).
 
 ### Before / after
 
-`vx migrate` reads your `turbo.json` and writes a `vx.config.ts` per
+`bunx @vzn/vx-migrate` reads your `turbo.json` and writes a `vx.config.ts` per
 package — scripts inlined as `exec.command`, everything it can't infer
 left as a `TODO` comment. Here's the same `build`/`test` pipeline before
 and after:
@@ -154,7 +154,7 @@ Turbo-wire server through a small cache plugin (see
 - **Caching is opt-in and explicit.** Where Turborepo caches by default,
   vx requires a `cache` block with both `inputs` and `outputs`. This is
   deliberate: a forgotten cache miss costs a re-run; a stale hit ships a
-  broken artifact. `vx migrate` fills these in from your `turbo.json`.
+  broken artifact. `bunx @vzn/vx-migrate` fills these in from your `turbo.json`.
 - **One command per task.** No `commands` array — chain with `&&` or split
   into `dependsOn`-linked tasks (which also lets each step cache).
 - **Default scope is the current package**, not the whole workspace. A bare

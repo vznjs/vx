@@ -44,11 +44,9 @@ For the high-level data flow, read
 | [`upgrade.md`](./upgrade.md)                 | `src/cli/upgrade.ts` — `vx upgrade` binary self-update.                                                                             |
 
 The remaining subcommand parsers —
-`src/cli/{lock,show,info,last,why,prune,migrate,migrate-turbo,migrate-nx,migrate-scripts}.ts`
+`src/cli/{lock,show,info,last,why,init}.ts`
 — are user-facing commands documented in [`docs/cli.md`](../cli.md)
-rather than as module pages; `src/cli/{migrate-emit,migrate-persistent}.ts`
-are the two leaf rules (literal quoting, the persistent-name guess)
-every migrator shares. `tests/doc-references.test.ts` holds this index
+rather than as module pages. `tests/doc-references.test.ts` holds this index
 to the tree: every `src/**/*.ts` is named here, itself or in a brace
 group.
 
@@ -99,21 +97,21 @@ group.
 
 ## Workspace + discovery
 
-| File                                       | Topic                                                                                     |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| [`workspace.md`](./workspace.md)           | `src/workspace/workspace.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir.             |
-| [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `vx.workspace.*` evaluation.          |
-| [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.    |
-| [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — workspace dep graph from package.json.                 |
-| [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.                   |
-| [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                             |
-| [`config-imports.md`](./config-imports.md) | `src/workspace/config-imports.ts` — the config-import selection channel.                  |
-| [`config-cache.md`](./config-cache.md)     | `src/workspace/config-cache.ts` — cached evaluations of provably-pure configs.            |
-| [`nested-dirs.md`](./nested-dirs.md)       | `src/workspace/nested-dirs.ts` — boundary set (other projects rooted under each).         |
-| [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — workspace fingerprint (lockfile + workspace yaml).       |
-| [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `vx-lock.json` freeze / trust / audit.                      |
-| [`turbo.md`](./turbo.md)                   | `src/workspace/turbo.ts` — the Turbo → vx mapping `vx migrate` and `@vzn/vx-turbo` share. |
-|                                            | `src/workspace/config-eval.ts` — fresh re-evaluation in a Worker (see project-loader.md). |
+| File                                       | Topic                                                                                                                             |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| [`workspace.md`](./workspace.md)           | `src/workspace/workspace.ts` — `findWorkspaceRoot`, `listProjects`, cacheDir.                                                     |
+| [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `vx.workspace.*` evaluation.                                                  |
+| [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                            |
+| [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — workspace dep graph from package.json.                                                         |
+| [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.                                                           |
+| [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                                                                     |
+| [`config-imports.md`](./config-imports.md) | `src/workspace/config-imports.ts` — the config-import selection channel.                                                          |
+| [`config-cache.md`](./config-cache.md)     | `src/workspace/config-cache.ts` — cached evaluations of provably-pure configs.                                                    |
+| [`nested-dirs.md`](./nested-dirs.md)       | `src/workspace/nested-dirs.ts` — boundary set (other projects rooted under each).                                                 |
+| [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — workspace fingerprint (lockfile + workspace yaml).                                               |
+| [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `vx-lock.json` freeze / trust / audit.                                                              |
+| [`migration.md`](./migration.md)           | `src/workspace/{migration,migrate-scripts}.ts` — the plan → files seam `vx init` and `@vzn/vx-migrate` share; the scripts mapper. |
+|                                            | `src/workspace/config-eval.ts` — fresh re-evaluation in a Worker (see project-loader.md).                                         |
 
 ## Graph + scheduler
 
@@ -147,12 +145,12 @@ group.
 | [`executor.md`](./executor.md)               | `src/exec/executor.ts` — `TaskExecutor` contract + `selectExecutor`.                                                  |
 |                                              | `src/exec/local-executor.ts` — the floor: run it here (see executor.md, plugins.md).                                  |
 
-## Plugins (`src/plugins/`)
+## Plugins
 
-| File                                     | Topic                                                                                                       |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| [`plugins.md`](./plugins.md)             | `src/plugins/<name>/` — core's executor, cache and history scheduler as isolated, subpath-exported plugins. |
-| [`chained-cache.md`](./chained-cache.md) | `src/cache/chained-cache.ts` — several declared cache layers, chained in order.                             |
+| File                                     | Topic                                                                                            |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [`plugins.md`](./plugins.md)             | Core ships no plugin: the floor (run here, cache here) and where plugins live (`packages/vx-*`). |
+| [`chained-cache.md`](./chained-cache.md) | `src/cache/chained-cache.ts` — several declared cache layers, chained in order.                  |
 
 ## Utilities
 

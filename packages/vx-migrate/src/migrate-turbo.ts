@@ -1,15 +1,22 @@
 // Turbo → vx migration: the RENDERING half. The mapping itself lives in
-// workspace/turbo.ts (shared with `@vzn/vx-turbo`, which runs it live);
-// this file turns turbo's global fields into a root vx-preset.ts that each
-// generated config imports and spreads — TypeScript composition replaces
-// turbo's global config.
+// `@vzn/vx-turbo` (which runs it live); this file turns turbo's global
+// fields into a root vx-preset.ts that each generated config imports and
+// spreads — TypeScript composition replaces turbo's global config.
 
 import path from 'node:path'
-import { relPosix } from '../util/index.js'
-import { mapTurboWorkspace, type ProjectMeta, type TurboGlobal } from '../workspace/index.js'
-import { quote } from './migrate-emit.js'
-import { PERSISTENT_TODO } from './migrate-persistent.js'
-import type { GeneratedProject, MigrationPlan } from './migrate.js'
+import {
+  type GeneratedProject,
+  type MigrationPlan,
+  PERSISTENT_TODO,
+  type ProjectMeta,
+  quoteTsLiteral as quote,
+} from '@vzn/vx'
+import { mapTurboWorkspace, type TurboGlobal } from '@vzn/vx-turbo'
+
+/** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
+function relPosix(from: string, to: string): string {
+  return path.relative(from, to).split(path.sep).join('/')
+}
 
 const PRESET_FILE = 'vx-preset.ts'
 

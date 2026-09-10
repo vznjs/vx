@@ -54,7 +54,7 @@ See:
 - [`cli-cache.md`](./cli-cache.md) — `vx cache prune`
 - [`cli-help.md`](./cli-help.md) — `vx help`
 - [`cli-format.md`](./cli-format.md) — shared formatters
-- `vx lock`, `vx migrate` / `vx init`, `vx show` / `vx info`, `vx why`,
+- `vx lock`, `vx init`, `vx show` / `vx info`, `vx why`,
   `vx last`, `vx prune`, `vx upgrade`: documented in
   [`../cli.md`](../cli.md); no separate module doc.
 

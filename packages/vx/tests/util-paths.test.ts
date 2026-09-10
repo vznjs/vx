@@ -207,7 +207,7 @@ describe('toPosix — it converts, it does not normalise', () => {
 
 describe('relPosix — shape of the result', () => {
   it('is the empty string when the two paths are the same', () => {
-    // Load-bearing: src/cli/migrate-nx.ts:34 exists purely to map this '' to
+    // Load-bearing: packages/vx-migrate/src/migrate-nx.ts (the Nx mapper) exists purely to map this '' to
     // '.', so a change to 'to itself is "."' would double-map there.
     expect(relPosix('/root', '/root')).toBe('')
     expect(relPosix('/', '/')).toBe('')
@@ -386,7 +386,7 @@ describe('relPosix — call-site contracts', () => {
     expect(new Bun.Glob('packages/*').match(slashifyBackslashes(rel))).toBe(false)
   })
 
-  // src/cli/migrate-turbo.ts:361 — the rel becomes an ESM import specifier,
+  // packages/vx-migrate/src/migrate-turbo.ts (the preset import) — the rel becomes an ESM import specifier,
   // prefixed with './' only when it does not already start with '.'.
   it('gives migrate-turbo a rel it can turn into a valid import specifier', () => {
     const spec = (dir: string): string => {

@@ -1,56 +1,64 @@
-# `src/plugins/` — core-provided plugins, each isolated
+# Plugins — core ships none
 
 ## Purpose
 
-Core applies NO plugin on its own. Running a command here and caching it in
-`.vx/cache` are not plugins but core's FLOOR: `resolveExecutors` appends
-`localExecutor()` (`src/exec/local-executor.ts`) to the tail of every
-executor list and `resolveCache` appends the host's local `Cache` to the
-tail of every chain (`src/orchestrator/plugin-host.ts`). A workspace with no
-`vx.workspace.ts` therefore runs and caches, and a plugin executor whose
-`accepts()` declines hands the task back to this machine.
+Core applies NO plugin on its own and ships none. Running a command
+here and caching it in `.vx/cache` are not plugins but core's FLOOR:
+`resolveExecutors` appends `localExecutor()` (`src/exec/local-executor.ts`)
+to the tail of every executor list and `resolveCache` appends the host's
+local `Cache` to the tail of every chain (`src/orchestrator/plugin-host.ts`).
+A workspace with no `vx.workspace.ts` therefore runs and caches, and a
+plugin executor whose `accepts()` declines hands the task back to this
+machine.
 
-What lives under `src/plugins/<name>/` is a complete plugin a workspace
-declares like any third-party one:
+Every plugin is a package a workspace declares:
 
 ```ts
 // vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx'
-import { scheduleHistoryPlugin } from '@vzn/vx/plugins/schedule-history'
+import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
-export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
+export default { plugins: [scheduleHistoryPlugin()] }
 ```
+
+`src/plugins/` no longer exists. Its last occupant, the history-based
+scheduler, moved to `@vzn/vx-schedule-history` on 2026-09-10; it had been
+core's opt-in `predictive` mode until 2026-09-02 and a subpath export of
+core until the move. What core keeps is what a plugin needs from the
+façade: `LocalHistoryProvider` and the `HistoryTable` types for a
+`schedule` plugin, `LayeredCache` and `RemoteCacheLayer` for a cache
+plugin, the `TaskExecutor` contract for an executor.
 
 ## Isolation contract
 
-- A plugin imports core ONLY through the bare public specifier `'@vzn/vx'`
-  (resolved inside this repo by the workspace link, exactly as `packages/*`
-  do) and never reaches relatively outside its own directory.
-- `src/index.ts` does not re-export them; they are published as subpath
-  exports (`package.json` `exports`: `./plugins/<name>`), with a root shim
-  under `plugins/<name>/index.ts` for the compiled binary, which resolves
-  packages by directory convention and ignores `exports`.
-- Consequence: any directory can be moved into its own package with zero
-  edits. Pinned by `tests/module-boundaries.test.ts` (`plugins` module: no
-  relative cross-module import) and `tests/package-boundaries.unsafe.test.ts`
-  (each plugin imports from `'@vzn/vx'` and nothing else non-relative).
+- A plugin package imports core ONLY through the bare public specifier
+  `'@vzn/vx'` (resolved inside this repo by the workspace link), never a
+  `packages/*` path, never a sibling `@vzn/vx-*` — pinned by
+  `tests/package-boundaries.unsafe.test.ts`.
+- Core never imports a sibling package or any `packages/*` path: the
+  dependency direction is plugin → core, never the reverse (same pin).
+- `src/plugins/` stays absent: `tests/module-boundaries.test.ts` and
+  `tests/package-boundaries.unsafe.test.ts` fail the day a directory
+  appears there, so a new plugin starts life as a package.
+- Every package carries a root `index.ts` shim for Bun's compiled binary,
+  which resolves packages by directory convention and ignores `exports`
+  (`tests/package-entry-shims.unsafe.test.ts`).
 
-## `schedule-history` — `@vzn/vx/plugins/schedule-history`
+## The packages
 
-`scheduleHistoryPlugin({ window? })` → `vx/schedule-history`. The
-reference `schedule` stage: orders ready tasks by their expected
-REMAINING critical-path duration (own p50 + the longest chain of
-dependents), learned from the last `window` invocations (default 20) of
-the local run history through
-`LocalHistoryProvider(ctx.localCache.dbHandle(), window)`. Fails open — a broken
-history read warns and leaves the baseline order. This was core's
-opt-in `predictive` mode until 2026-09-02; as a plugin its history read
-is paid only by the workspaces that declare it. `criticalPathPriorities`
-is exported for tests and for policies that want the same scoring over
-another history source.
+| Package                    | Seam                | What it does                                                    |
+| -------------------------- | ------------------- | --------------------------------------------------------------- |
+| `@vzn/vx-schedule-history` | `schedule`          | order ready tasks by the critical path learned from run history |
+| `@vzn/vx-reapi`            | `executor`, `cache` | Bazel REAPI: remote execution and remote cache                  |
+| `@vzn/vx-turbo-cache`      | `cache`             | Turbo `/v8/artifacts` remote cache (self-hosted or Vercel)      |
+| `@vzn/vx-nx-cache`         | `cache`             | Nx self-hosted remote cache (`/v1/cache`)                       |
+| `@vzn/vx-otel`             | `telemetry`         | OpenTelemetry export, no SDK dependency                         |
+| `@vzn/vx-github`           | `telemetry`         | GitHub Actions job summary and Checks API                       |
+| `@vzn/vx-mcp`              | `commands`          | `vx mcp`, an MCP server for AI agents                           |
+| `@vzn/vx-turbo`            | `project`           | a Turbo repo under vx with nothing written                      |
 
 ## Tests
 
 `tests/local-fallbacks.test.ts` (the floor: a workspace with no workspace
-file runs and caches; a declining executor falls back), `tests/schedule-history.test.ts`,
-the `NO PLUGINS` / `CONTROL` e2e pins in `tests/plugin-capabilities.test.ts`.
+file runs and caches; a declining executor falls back), the `NO PLUGINS` /
+`CONTROL` e2e pins in `tests/plugin-capabilities.test.ts`, and each
+package's own suite (CI's plugin-packages job).

@@ -127,7 +127,7 @@ export default defineProject({
 ```
 
 Optionally declare plugins — a remote cache, a remote executor,
-telemetry — in `vx.workspace.ts` (`vx init` and `vx migrate` emit it).
+telemetry — in `vx.workspace.ts` (`vx init` and `@vzn/vx-migrate` emit it).
 Core applies none by default; running here and caching in `.vx/cache`
 are its floor, so the file can be absent:
 

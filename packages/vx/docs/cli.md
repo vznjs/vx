@@ -21,10 +21,9 @@ bun src/bin.ts --version
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
-vx cache prune [--older-than <duration>] [--max-size <bytes>]
+vx cache prune [--older-than <duration>] [--max-size <size>]
 vx lock [--check]
 vx init [--dry] [--force]
-vx migrate [--from turbo|nx|scripts] [--dry] [--force]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info
 vx stats              # deprecated alias of vx info
@@ -973,7 +972,9 @@ Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
 **Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive.
 Optional `B` suffix is accepted. Examples: `500M`, `1G`, `100K`, `2T`,
-`500MB`, `1gb`.
+`500MB`, `1gb`. A bare number is refused here: `--max-size 10` would
+read as ten bytes and evict nearly everything, and nobody means that —
+write `10G`, or `10B` when bytes really are the unit.
 
 **A zero bound is rejected.** `--max-size 0` and `--older-than 0d` would
 evict every entry in the cache, which is far more often a
@@ -1079,7 +1080,7 @@ updates with `npm update -g @vzn/vx` instead.)
 
 Scaffold a workspace that comes from nowhere: one `vx.config.ts` per
 package from its `package.json` scripts, plus `vx.workspace.ts`
-declaring the local executor and cache. The same mapping as `vx migrate
+declaring the local executor and cache. The same mapping as `@vzn/vx-migrate
 --from scripts`, with the same `--dry` / `--force` flags; the one
 difference is a workspace with no scripts at all, which `init` still
 scaffolds (the workspace file, a printed example config, and the next
@@ -1110,7 +1111,7 @@ edge); `dev` / `start` / `serve` / `watch` /
 
 On a repo that already has `turbo.json` or an Nx workspace, `init`
 still maps scripts only and says so, naming the richer path:
-`vx migrate` (which auto-detects the source) or `plugins: [turbo()]`
+`bunx @vzn/vx-migrate` (which auto-detects the source) or `plugins: [turbo()]`
 from `@vzn/vx-turbo`.
 
 A run in a root with no `vx.workspace.*` at all fails before any task
@@ -1133,97 +1134,22 @@ it is left verbatim.
 
 ## `vx migrate`
 
-Generate one `vx.config.ts` per workspace package from an existing
-Turbo or Nx setup — or, with neither present, from `package.json`
-scripts (see `vx init`). The source is auto-detected at the workspace
-root:
-
-- `turbo.json` → **Turbo path**. Reads the root pipeline (`tasks` in
-  turbo 2, `pipeline` in turbo 1), per-package `turbo.json` `extends`
-  overlays (per-key merge over the root task), and each package's
-  `package.json` scripts. A task is emitted for a package only when
-  the package declares the matching script (turbo semantics); the
-  script body is inlined as `exec.command`.
-- `.nx/workspace-data/project-graph.json` → **Nx path**. Migrates
-  from the resolved graph snapshot ONLY — plugin-inferred targets are
-  frozen as static config (noted in the report header). When `nx.json`
-  exists but the graph file is missing, the error tells you to run any
-  nx command once (or `nx graph --file=.nx/workspace-data/project-graph.json`).
-- Both present → pass `--from turbo` or `--from nx` to disambiguate
-  from.
-- Neither present → **scripts path**: `package.json` scripts, the
-  `vx init` mapping. `--from scripts` selects it explicitly even when
-  a `turbo.json` exists.
+Moved out of core on 2026-09-10: the Turbo and Nx mappers are
+`@vzn/vx-migrate`, their own package, run without a workspace file —
 
 ```
-vx migrate           # write vx.config.ts files (and vx-preset.ts when needed)
-vx migrate --dry     # print the generated file contents instead of writing
-vx migrate --force   # overwrite existing vx.config.* / vx-preset.ts
+bunx @vzn/vx-migrate           # turbo.json or .nx/workspace-data/project-graph.json → vx.config.ts
+bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
+bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
+bunx @vzn/vx-migrate --from nx # disambiguate when both runners are checked in
 ```
 
-Existing `vx.config.*` files are **never** overwritten without
-`--force` — conflicts abort the whole run before anything is written.
-
-Mapping highlights:
-
-- **Turbo**: `dependsOn` copies verbatim (same micro-syntax);
-  `inputs` → `cache.inputs.files` (`$TURBO_DEFAULT$` expands to
-  `'**/*'` in place, `!` negation passes through); `outputs` →
-  `cache.outputs.files` (vx outputs have no negation — negated
-  entries become TODOs); `env` → `cache.inputs.env` AND
-  `exec.env.passThrough` (vx child envs are isolated, so a hashed
-  env var must also be forwarded); `passThroughEnv` → passThrough
-  only; `cache: false` omits the cache block; `persistent: true` →
-  `exec.persistent: {}` plus a TODO suggesting `readyWhen`.
-  `globalEnv` / `globalPassThroughEnv` / `globalDependencies` become
-  exported arrays in a generated root `vx-preset.ts` that each config
-  imports and spreads — TypeScript composition replaces turbo's
-  global fields (`globalDependencies` spread into
-  `cache.inputs.workspaceFiles`: they are root-relative by
-  definition). `$TURBO_ROOT$/<path>` inputs map to
-  `cache.inputs.workspaceFiles` (negation keeps `!`), outputs to
-  `cache.outputs.workspaceFiles`; `$TURBO_ROOT$` in `dependsOn` (and
-  non-prefix forms) stays a TODO — vx has no workspace-root tasks.
-- **Nx**: `nx:run-commands` joins `commands` with `' && '` (a `cwd`
-  differing from the project root is a TODO); `nx:run-script` inlines
-  the package.json script body; any other executor emits a valid
-  placeholder command (`echo 'TODO(vx-migrate): fill in' && exit 1`)
-  with a TODO carrying the executor + its options JSON. Inputs strip
-  `{projectRoot}/`, map `{workspaceRoot}/<path>` to
-  `cache.inputs.workspaceFiles` (negation keeps `!`), expand named
-  inputs from `nx.json`, route `{env: X}` to `cache.inputs.env` +
-  passThrough, and TODO the rest (`^deps-inputs`,
-  `externalDependencies`, `dependentTasksOutputFiles` — vx folds
-  upstream via `dependsOn` already). Outputs strip `{projectRoot}/`,
-  map `{workspaceRoot}/<path>` to `cache.outputs.workspaceFiles`,
-  resolve literal `{options.x}` tokens, and append `/**` to bare
-  directory paths.
-  `dependsOn` objects map `projects: 'dependencies'` → `'^target'`,
-  `'self'`/absent → `'target'`, project lists → `'proj#target'`.
-  The graph's dependency edges are ignored (vx derives package edges
-  from manifests); edges with no manifest counterpart produce one
-  report line ("N implicit Nx deps not representable"). The executors whose CLI is unambiguous become that command under a
-  TODO naming the executor (`@nx/vite:build` → `vite build`,
-  `@nx/vite:dev-server` → `vite`, `@nx/vite:preview-server` →
-  `vite preview`, `@nx/vite:test` / `@nx/vitest:test` → `vitest run`,
-  `@nx/jest:jest` → `jest`, `@nx/eslint:lint` → `eslint .`,
-  `@nx/js:tsc` → `tsc -p tsconfig.json`); executor options are not
-  carried over, which is what the TODO asks you to check. Any other
-  executor becomes a placeholder that fails loudly. The two server
-  executors also become **persistent** tasks, whatever the target is
-  called — a known executor is authoritative about lifetime. A target
-  whose executor says nothing about it (`nx:run-commands`, a custom
-  one) falls back to the target NAME, the same guess the scripts path
-  makes: `dev` / `start` / `serve` / `watch` / `preview`.
-
-Everything unmappable becomes a `// TODO(vx-migrate): …` comment in
-the generated file — TODOs are always comments, never values, so
-every generated config loads and validates as-is. The run ends with a
-report: tasks migrated clean, TODO count with `project#task: reason`
-lines, and the files written.
-
-Exit codes: `0` success (TODOs don't fail the run); `1` parse error,
-detection error, or overwrite conflict without `--force`.
+— and `package.json` scripts are `vx init` (above). Typing `vx migrate`
+prints that pointer and exits 1. What the package writes reads exactly
+like what `vx init` writes: both hand a plan to core's migration seam
+(`applyMigration`, exported from `@vzn/vx`), which renders, guards
+against overwriting, writes and reports. The mapping rules live in the
+package's README.
 
 ## `vx show`
 
@@ -1380,61 +1306,28 @@ why, diff }`).
 
 ## `vx prune`
 
-Emit a self-contained SUBSET of the workspace for Docker builds
-(Turbo `turbo prune` parity): one project plus its transitive
-workspace dependencies, with root manifests, any `vx.workspace.*`, and
-the lockfile.
+Moved out of core on 2026-09-10: `@vzn/vx-prune` emits a self-contained
+SUBSET of the workspace for Docker builds (Turbo `turbo prune` parity)
+— one project plus its transitive workspace dependencies, the root
+manifests rewritten to the subset, any `vx.workspace.*`, and the
+lockfile (unpruned). Two ways in, one body:
 
 ```
-vx prune <project> [--out-dir <dir>] [--docker]
+bunx @vzn/vx-prune <project> [--out-dir <dir>] [--docker]   # no workspace file needed
+vx prune <project> [--out-dir <dir>] [--docker]             # when vx.workspace.ts declares prune()
 ```
 
-`pnpm-workspace.yaml` is REWRITTEN to the exact subset dirs (a glob
-matching absent dirs breaks installs), and so is `package.json`'s
-`workspaces` field — that is where bun, npm and yarn read membership.
-The distinction matters: a glob that matches nothing is tolerated, but
-an entry naming an exact directory the subset does not contain is
-fatal, and `bun install` exits 1 with `Workspace not found "…"` before
-anything is installed. Both array and `{ packages: [...] }` forms are
-rewritten, a `"."` entry is preserved, and the rest of the manifest is
-carried through untouched. The lockfile is copied
-**unpruned** — every package manager tolerates a superset lockfile,
-and a wrongly-pruned one is worse than a big correct one; per-format
-lockfile pruning is deliberately out of phase 1. `node_modules`,
-`.git`, `.vx` and `.turbo` are excluded from the copy.
-
-### What the configs pull in
-
-The subset is the package graph plus one thing the package graph does
-not know about: a workspace package that `vx.workspace.*` **imports**.
-The workspace config loads before any task, so a plugin living in a
-workspace package is as load-bearing as a dependency — without it
-`vx run` inside the container cannot load the config at all. Those
-packages (and their own dependency closure) are added to the subset.
-
-Runnability is otherwise **not** guaranteed, and prune says so rather
-than pretending. A config may import any path; only imports naming a
-workspace package can be resolved and carried. Two shapes get a warning
-on stderr instead:
-
-- a relative import escaping its own package (`../../shared/util.ts`) —
-  it reaches a file no subset short of the whole tree would contain;
-- an import of the workspace ROOT package, which cannot be copied into
-  a subset because it _is_ the workspace.
-
-The scan is static — `from '…'`, `import '…'`, `import('…')` — so a
-computed specifier is invisible to it.
-
-`--docker` splits the output into `json/` (root files + each package's
-`package.json` only — `COPY` this first so the install layer caches
-independently of source edits) and `full/` (the sources):
-
-```dockerfile
-COPY out/json/ .
-RUN pnpm install --frozen-lockfile
-COPY out/full/ .
-RUN pnpm vx run build
+```ts
+// vx.workspace.ts
+import { prune } from '@vzn/vx-prune'
+export default { plugins: [prune()] }
 ```
+
+Typing `vx prune` in a workspace that does not declare it prints that
+pointer and exits 1. The rules (what is rewritten, what is excluded,
+what `--docker` splits, what the config scan warns about) live in the
+package's README. This is the `commands` seam in use: a verb core does
+not know, owned by a plugin the workspace declares.
 
 ## `vx last`
 
@@ -1597,7 +1490,7 @@ The schema is documented in
 ## What's still missing vs Turbo
 
 Tracked in [`comparison.md`](./comparison.md). Nothing visible from the
-CLI is open: `--output-logs hash-only`, `vx prune`, `--continue=<mode>`
+CLI is open: `--output-logs hash-only`, `@vzn/vx-prune`, `--continue=<mode>`
 and `--cache-dir <path>` all shipped and are documented above.
 Remote-cache credentials are not core CLI flags at all: core carries no
 HTTP cache client — a remote cache arrives through a plugin's `cache`

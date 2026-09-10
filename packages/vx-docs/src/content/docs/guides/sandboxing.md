@@ -186,7 +186,13 @@ fails fast with a clear message (it never runs unsandboxed by accident).
 - **Linux** — needs `bubblewrap` (`bwrap`) and `socat` installed; some
   hosts (Ubuntu 24+) restrict unprivileged user namespaces and need an
   AppArmor/sysctl tweak. See `.github/workflows/ci.yml` for the exact CI
-  setup.
+  setup. **Not as root inside a container**: the runtime's seccomp
+  helper needs a nested user namespace, which root in a container
+  (a devcontainer, a CI image, an agent sandbox) usually cannot create,
+  and vx refuses every sandboxed task with `write /proc/self/uid_map:
+  Operation not permitted`. Run vx as an unprivileged user there —
+  `bwrap` works for one — or set `weakerWhenNested: true` on every
+  sandboxed task and accept the weaker wall.
 - **macOS** — uses the system sandbox (seatbelt) plus a log monitor. The
   unified log feeding that monitor is lossy under load, so a violation
   can go unreported; enforcement is unaffected, since the OS denied the

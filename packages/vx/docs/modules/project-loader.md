@@ -51,7 +51,7 @@ an evaluated module by its **resolved** specifier, so an
 matter what query the entry carries — a busted entry re-evaluates
 against a **stale preset**.
 
-Shared presets are the documented composition mechanism (`vx migrate`
+Shared presets are the documented composition mechanism (`@vzn/vx-migrate`
 generates a `vx-preset.ts`), so through a whole `vx watch` session a
 preset edit was invisible; and because the resolved config feeds the
 cache key, vx answered `up-to-date` for a command that had changed on

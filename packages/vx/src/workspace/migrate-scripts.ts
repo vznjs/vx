@@ -24,9 +24,14 @@
 // `<pm> run <other>` becomes a GROUP over `<other>`, so the graph sees the
 // dependency instead of a package-manager subprocess it cannot cache.
 
-import type { ProjectMeta } from '../workspace/index.js'
-import { PERSISTENT_TASK_NAMES, PERSISTENT_TODO } from './migrate-persistent.js'
-import type { GeneratedProject, GeneratedTask, MigrationPlan } from './migrate.js'
+import type { ProjectMeta } from './workspace.js'
+import {
+  type GeneratedProject,
+  type GeneratedTask,
+  type MigrationPlan,
+  PERSISTENT_TASK_NAMES,
+  PERSISTENT_TODO,
+} from './migration.js'
 
 // `lint` is not here: a linter reads sources, and an edge to `build`
 // serialises the two for nothing (the init walkthrough, 2026-09-04).

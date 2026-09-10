@@ -17,6 +17,9 @@ export { VERSION } from './version.js'
 // parser, whose entire purpose is that `Number()` silently accepts `0x10` and
 // `1e3` at a boundary where a typo must be an error, not a different number.
 export { clampInt, parseDecimalInt, parseSize, UserError, isUserError } from './util/index.js'
+// "Did you mean": the hint core's own verbs give for a near-miss name, for a
+// plugin verb to give the same one.
+export { nearMatches } from './util/index.js'
 
 // Schema types and helpers (used by user vx.config files and presets).
 export type {
@@ -42,9 +45,9 @@ export { defineProject, defineWorkspace } from './config.js'
 // on the stability gate); `captureGitContext`/`captureWorkspaceIdentity`
 // give agents + the submitter identity before/without a telemetry run.
 export { run, planRun, prepareRun } from './orchestrator/index.js'
-// The per-task duration history a `schedule` plugin learns from (see
-// src/plugins/schedule-history — core's own plugins import core only via
-// this façade, which is what put these here).
+// The per-task duration history a `schedule` plugin learns from
+// (`@vzn/vx-schedule-history` does; a plugin package reaches core only
+// through this façade, which is what put these here).
 export { EmptyHistoryProvider, LocalHistoryProvider } from './orchestrator/index.js'
 export type { HistoryProvider, HistoryTable, TaskHistory } from './orchestrator/index.js'
 export type { PreparedRun } from './orchestrator/index.js'
@@ -113,21 +116,31 @@ export {
   listProjects as listProjectMetas,
 } from './workspace/index.js'
 export type { ProjectMeta } from './workspace/index.js'
+// The package graph as a run sees it (workspace deps by manifest), for a tool
+// that needs a project's transitive closure the way `vx run` computes it.
+export { buildPackageGraph } from './workspace/index.js'
 // The run path's RESOLVED view — plugin `config` and `project` stages
 // applied, cached evaluations served — for a reader outside the CLI (the
 // MCP server's `listTasks`, an embedder's task catalog). What `vx show`
 // prints.
 export { loadResolvedProjects } from './orchestrator/index.js'
 export type { ProjectEntry } from './workspace/index.js'
-// The Turbo mapper `vx migrate` renders from and `@vzn/vx-turbo` runs live —
-// one mapping, so a repo reads the same under either.
-export { mapTurboWorkspace } from './workspace/index.js'
+// The migration seam: how a generated config is planned, rendered, guarded
+// and written. `vx init` (package.json scripts) uses it in core;
+// `@vzn/vx-migrate` (Turbo, Nx) and any other adoption tool use it from here.
+export {
+  applyMigration,
+  migrateScripts,
+  PERSISTENT_TASK_NAMES,
+  PERSISTENT_TODO,
+  quoteTsLiteral,
+} from './workspace/index.js'
 export type {
-  MapTurboOptions,
-  TurboGlobal,
-  TurboMappedProject,
-  TurboMappedTask,
-  TurboMapping,
+  ApplyMigrationArgs,
+  GeneratedProject,
+  GeneratedTask,
+  MigrationPlan,
+  RawExpr,
 } from './workspace/index.js'
 
 // Plugin API — the run-level extension points. Behavior capabilities

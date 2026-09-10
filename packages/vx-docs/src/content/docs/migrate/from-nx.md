@@ -1,6 +1,6 @@
 ---
 title: Migrate from Nx
-description: Move from Nx to vx — drop the daemon, the plugins, and the executors, keep the affected graph and the speed. How vx migrate reads your Nx project graph.
+description: Move from Nx to vx — drop the daemon, the plugins, and the executors, keep the affected graph and the speed. How `bunx @vzn/vx-migrate` reads your Nx project graph.
 ---
 
 Leaving Nx means trading a large, plugin-driven platform for a small,
@@ -32,16 +32,16 @@ build: {
 
 This is more explicit and more portable — the command is right there, no
 plugin indirection — but it does mean executor-backed targets need a real
-command. `vx migrate` infers it for the common executors — `@nx/vite:*`
+command. `bunx @vzn/vx-migrate` infers it for the common executors — `@nx/vite:*`
 (`vite build`, `vite`, `vite preview`, `vitest run`), `@nx/vitest:test`,
 `@nx/jest:jest`, `@nx/eslint:lint`, `@nx/js:tsc` — under a TODO that
 asks you to check it against the executor's options, and leaves a
 `TODO(vx-migrate)` placeholder where it can't infer one, so nothing is
 silently wrong.
 
-## Let `vx migrate` do the mechanical part
+## Let `@vzn/vx-migrate` do the mechanical part
 
-`vx migrate` reads Nx's **resolved project graph** (the source of truth,
+`bunx @vzn/vx-migrate` reads Nx's **resolved project graph** (the source of truth,
 including plugin-inferred targets) rather than guessing from `nx.json`:
 
 ```bash
@@ -49,11 +49,11 @@ including plugin-inferred targets) rather than guessing from `nx.json`:
 nx graph --file=.nx/workspace-data/project-graph.json
 
 bun add -d @vzn/vx
-vx migrate --dry        # preview generated vx.config.ts files + report
-vx migrate              # write them (won't overwrite without --force)
+bunx @vzn/vx-migrate --dry   # preview generated vx.config.ts files + report
+bunx @vzn/vx-migrate         # write them (won't overwrite without --force)
 ```
 
-If only `nx.json` is present (no resolved graph), `vx migrate` tells you
+If only `nx.json` is present (no resolved graph), `bunx @vzn/vx-migrate` tells you
 to run the `nx graph` command above — it won't guess at plugin-inferred
 targets. The generated configs freeze that resolved snapshot as static
 config; review them, replace executor placeholders with the real
@@ -75,7 +75,7 @@ commands, and fill the TODOs.
 
 `namedInputs` (Nx's reusable input sets) don't have a schema equivalent
 in vx — but because the config is TypeScript, you express the same thing
-with a shared array you import and spread. `vx migrate` resolves them
+with a shared array you import and spread. `bunx @vzn/vx-migrate` resolves them
 inline for you.
 
 ## What you gain

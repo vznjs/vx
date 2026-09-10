@@ -149,12 +149,13 @@ export function nodeMajor(): VxPlugin {
 `schedule` decides which READY task runs first when more are ready than
 there are workers. Return `Map<taskId, weight>`; higher runs first, and
 the scheduler's structural baseline (how many tasks a task unblocks)
-stays the tie-break. Core ships one reference policy — the expected
-remaining critical path learned from your own run history:
+stays the tie-break. Core ships no policy; the reference one is its own
+package — the expected remaining critical path learned from your own run
+history:
 
 ```ts
 import { defineWorkspace } from '@vzn/vx'
-import { scheduleHistoryPlugin } from '@vzn/vx/plugins/schedule-history'
+import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
 export default defineWorkspace({
   plugins: [scheduleHistoryPlugin()],
@@ -162,7 +163,10 @@ export default defineWorkspace({
 ```
 
 It costs one history read per run, in the workspaces that declare it —
-which is why it is a plugin and not a flag.
+which is why it is a plugin and not a flag. A fresh CI runner has no
+history, and there the structural order starts a long leaf task last;
+`scheduleHistoryPlugin({ assume: { 'docs#build': 30_000 } })` names the
+durations the cold run should assume until the history has its own.
 
 - **`executor`** returns a `TaskExecutor` — the thing that actually runs
   one task's command — or `undefined` to decline. Executors form a
@@ -189,9 +193,12 @@ seams: `@vzn/vx-reapi` fills `executor` and `cache` against any Bazel
 REAPI server, `@vzn/vx-turbo-cache` and `@vzn/vx-nx-cache` fill `cache`
 against any server speaking Turbo's or Nx's self-hosted cache API,
 `@vzn/vx-turbo` fills `project` so a `turbo.json` workspace runs with no
-`vx.config` written, `@vzn/vx-otel` and `@vzn/vx-github` fill `telemetry`. None
-of them is privileged — core depends on none, and yours plugs in the
-same way. What a plugin declines lands on core's floor: the local
+`vx.config` written, `@vzn/vx-schedule-history` fills `schedule` with
+critical-path priorities learned from past runs, `@vzn/vx-otel` and
+`@vzn/vx-github` fill `telemetry`, and `@vzn/vx-prune` adds a verb through
+`commands` (`@vzn/vx-migrate` is a bin, not a plugin — it runs before a
+workspace file exists). None of them is privileged — core depends on
+none, and yours plugs in the same way. What a plugin declines lands on core's floor: the local
 executor and the local cache, which sit behind every declared list.
 
 ## The telemetry sink

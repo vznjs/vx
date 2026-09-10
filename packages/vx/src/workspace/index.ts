@@ -34,11 +34,16 @@ export {
   type ProjectEntry,
   type ProjectMeta,
 } from './workspace.js'
+// The migration seam (see migration.ts) and core's own mapper, the scripts one.
 export {
-  mapTurboWorkspace,
-  type MapTurboOptions,
-  type TurboGlobal,
-  type TurboMappedProject,
-  type TurboMappedTask,
-  type TurboMapping,
-} from './turbo.js'
+  applyMigration,
+  PERSISTENT_TASK_NAMES,
+  PERSISTENT_TODO,
+  quoteTsLiteral,
+  type ApplyMigrationArgs,
+  type GeneratedProject,
+  type GeneratedTask,
+  type MigrationPlan,
+  type RawExpr,
+} from './migration.js'
+export { delegatedScript, migrateScripts } from './migrate-scripts.js'

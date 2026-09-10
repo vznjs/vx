@@ -41,7 +41,7 @@ strict validation against the schema). It has zero runtime effect.
 The same typing without a runtime import is
 `import type { ProjectConfig } from '@vzn/vx'` plus
 `export default { … } satisfies ProjectConfig` — the form `vx init`
-and `vx migrate` generate, because Bun erases the type import and the
+and `@vzn/vx-migrate` generate, because Bun erases the type import and the
 file then loads in a workspace that runs the `vx` binary without the
 package installed. Either form is fine; the object is what vx reads.
 
@@ -1084,7 +1084,7 @@ They cost one runtime import of `@vzn/vx` per config file — a second
 copy of core loaded into every run (~17 ms on a two-package workspace,
 measured 2026-09-09; the `vx` process already holds the first). The
 type-only form gives the same editor checking for free, and is what
-`vx init` / `vx migrate` write:
+`vx init` / `@vzn/vx-migrate` write:
 
 ```ts
 import type { ProjectConfig, WorkspaceConfig } from '@vzn/vx'

@@ -209,7 +209,7 @@ describe('vx cache prune value parsing', () => {
     expect(parsePruneArgs(['--older-than=0s']).error).toMatch(/every entry/)
 
     // The smallest meaningful bounds still parse.
-    expect(parsePruneArgs(['--max-size', '1']).maxBytes).toBe(1)
+    expect(parsePruneArgs(['--max-size', '1B']).maxBytes).toBe(1)
     expect(parsePruneArgs(['--older-than', '1s']).error).toBeUndefined()
   })
 })

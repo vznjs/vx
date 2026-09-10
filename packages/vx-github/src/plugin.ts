@@ -91,7 +91,7 @@ export class GithubSummarySink implements TelemetrySink {
 
 export function github(options: GithubPluginOptions = {}): VxPlugin {
   return {
-    name: '@vzn/vx-github',
+    name: 'vx/github',
     telemetry(ctx) {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']
       if (file === undefined || file === '') return undefined

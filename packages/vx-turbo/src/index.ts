@@ -9,15 +9,10 @@
 // overwrites a user's hand.
 
 import type { ProjectConfig, TaskConfig, VxPlugin } from '@vzn/vx'
-import {
-  listProjectMetas,
-  loadWorkspace,
-  mapTurboWorkspace,
-  type ProjectMeta,
-  type TurboMapping,
-} from '@vzn/vx'
+import { listProjectMetas, loadWorkspace, type ProjectMeta } from '@vzn/vx'
+import { mapTurboWorkspace, type TurboMapping } from './turbo-map.js'
 
-const PLUGIN_NAME = 'vzn/turbo'
+const PLUGIN_NAME = 'vx/turbo'
 
 /** The TODO a persistent task carries in `vx migrate`'s report, in the plugin's voice. */
 const PERSISTENT_NOTE =
@@ -75,3 +70,14 @@ async function mapAll(root: string): Promise<TurboMapping> {
     persistentTodo: PERSISTENT_NOTE,
   })
 }
+
+// The mapper itself, for tools that render what this plugin runs live
+// (`@vzn/vx-migrate` writes it to files).
+export {
+  mapTurboWorkspace,
+  type MapTurboOptions,
+  type TurboGlobal,
+  type TurboMappedProject,
+  type TurboMappedTask,
+  type TurboMapping,
+} from './turbo-map.js'

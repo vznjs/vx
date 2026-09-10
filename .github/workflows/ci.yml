@@ -211,6 +211,12 @@ jobs:
         run: cd packages/vx-nx-cache && bun test
       - name: bun test (packages/vx-turbo)
         run: cd packages/vx-turbo && bun test
+      - name: bun test (packages/vx-schedule-history)
+        run: cd packages/vx-schedule-history && bun test
+      - name: bun test (packages/vx-migrate)
+        run: cd packages/vx-migrate && bun test
+      - name: bun test (packages/vx-prune)
+        run: cd packages/vx-prune && bun test
 
       # NativeLink gives the EXECUTION half a real scheduler + worker. Its
       # official image is distroless — no /bin/sh — so a worker inside it
@@ -302,16 +308,33 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # The whole core suite in four sequential slices (Bun's own dealer; the
-      # `test.bun.shard-*` tasks deal twelve by weight, but sequential slices
-      # sum to the same time whatever the deal). Several processes, not one,
-      # is the point on macOS: `bun test` pins descriptors per imported
-      # module and the process cap is 10 240, which the whole suite in one
-      # process does not clear.
+      # The whole core suite in four slices, run SIDE BY SIDE (Bun's own
+      # dealer; the `test.bun.shard-*` tasks deal twelve by weight, but four
+      # slices on a three-core runner sum to the same work whatever the
+      # deal). Several processes, not one, is the point on macOS: `bun test`
+      # pins descriptors per imported module and the process cap is 10 240,
+      # which the whole suite in one process does not clear. Sequential,
+      # the four slices took 3 min 8 s (2026-09-10); the sandbox suites are
+      # class-gated here and the canary below runs after this step, so the
+      # load lands on nothing that sandbox-exec enforces. Each slice writes
+      # its own log and the logs print in order once all four are done, so
+      # a failure reads as one suite's output, not four interleaved.
       - name: bun test (core, darwin)
         run: |
           cd packages/vx
-          for i in 1 2 3 4; do bun test --shard=$i/4 || exit 1; done
+          pids=()
+          for i in 1 2 3 4; do
+            bun test --shard=$i/4 > "$RUNNER_TEMP/slice-$i.log" 2>&1 &
+            pids+=($!)
+          done
+          fail=0
+          for i in 1 2 3 4; do
+            wait "${pids[$((i - 1))]}" || fail=1
+            echo "::group::bun test --shard=$i/4"
+            cat "$RUNNER_TEMP/slice-$i.log"
+            echo "::endgroup::"
+          done
+          exit $fail
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
       # darwin CI because sandbox-exec misbehaves under load here — including
@@ -348,23 +371,27 @@ jobs:
           test "$GOT" = "$WANT" || { echo "binary reports '$GOT', expected '$WANT'"; exit 1; }
 
       # …and runs a workspace written the way the docs show it: bare
-      # `@vzn/vx` / `@vzn/vx/plugins/*` imports resolved through node_modules.
+      # `@vzn/vx` and plugin-package imports resolved through node_modules.
       # A compiled Bun 1.4.0 binary ignores package.json `exports` for on-disk
       # packages and only finds `<pkg>/index.ts` (measured 2026-09-03), which
       # is why the packages ship root shims — this is the end-to-end proof
-      # that a binary user's config loads.
+      # that a binary user's config loads. The workspace declares a plugin
+      # package too: its own `@vzn/vx` import is a SECOND copy of core beside
+      # the binary's, and the `schedule` hook it fills runs across the two
+      # (probed by hand 2026-09-10 on Linux; pinned here since).
       - name: compiled binary runs a bare-specifier workspace
         run: |
           W=$(mktemp -d)
           mkdir -p "$W/packages/a/src" "$W/node_modules/@vzn"
           ln -s "$GITHUB_WORKSPACE/packages/vx" "$W/node_modules/@vzn/vx"
+          ln -s "$GITHUB_WORKSPACE/packages/vx-schedule-history" "$W/node_modules/@vzn/vx-schedule-history"
           cd "$W"
           echo '{"name":"ws","private":true}' > package.json
           printf 'packages:\n  - "packages/*"\n' > pnpm-workspace.yaml
           echo '{"name":"a"}' > packages/a/package.json
           echo x > packages/a/src/x.js
           printf "import { defineProject } from '@vzn/vx'\nexport default defineProject({ tasks: { build: { exec: { command: 'echo built > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } })\n" > packages/a/vx.config.mjs
-          printf "import { defineWorkspace } from '@vzn/vx'\nexport default defineWorkspace({ plugins: [] })\n" > vx.workspace.mjs
+          printf "import { defineWorkspace } from '@vzn/vx'\nimport { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'\nexport default defineWorkspace({ plugins: [scheduleHistoryPlugin({ assume: { 'a#build': 1000 } })] })\n" > vx.workspace.mjs
           printf 'node_modules\n.vx\n' > .gitignore
           git init -q && git add -A && git -c user.email=ci@vx -c user.name=ci commit -qm init
           /tmp/vx-ci run build --all

@@ -12,7 +12,7 @@ aggregate over a rowid slice of `cache.db.runs`.
 - `plan.ts` (`--dry` / `--graph`): attaches each would-run task's p50 and
   predicts the run's wall-clock. Explicit inspection commands, so the
   read's cost is fine there.
-- `@vzn/vx/plugins/schedule-history` (opt-in): the `schedule` stage's
+- `@vzn/vx-schedule-history` (opt-in): the `schedule` stage's
   priorities, over a 20-invocation window by default.
 - Nothing on the default `vx run` path.
 

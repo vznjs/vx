@@ -138,7 +138,7 @@ the command string is the task (principle #3). Five capabilities:
 | `project`   | pipeline stage | edits one loaded project's tasks in place (add / remove / edit) — a package with no config file is visited as `{ tasks: {} }`; core re-validates after EACH plugin (the refusal names it), and the key hashes the result. Every reader goes through the same staged load (`loadProjects`): `vx show`, `vx info`, the watch sweep, `--affected`, the picker, the MCP catalog                                                                                                 |
 | `graph`     | pipeline stage | edits the task graph in place (`deps`, `requested`, resources); a dangling dep or a cycle is refused naming the plugin                                                                                                                                                                                                                                                                                                                                                      |
 | `key`       | pipeline stage | per task: `{ name: value }` material folded into the cache key (only when non-empty, so keys without it are unchanged) and named in `vx why` as `plugin` components                                                                                                                                                                                                                                                                                                         |
-| `schedule`  | pipeline stage | once per run: task id → weight, merged over the scheduler's structural baseline; `@vzn/vx/plugins/schedule-history` is the reference (expected remaining critical path from the local run history)                                                                                                                                                                                                                                                                          |
+| `schedule`  | pipeline stage | once per run: task id → weight, merged over the scheduler's structural baseline; `@vzn/vx-schedule-history` is the reference (expected remaining critical path from the local run history)                                                                                                                                                                                                                                                                                  |
 | `commands`  | CLI            | `{ verb: { description, run(argv, ctx) } }` — consulted for a verb core does not know, when the cwd is inside a workspace declaring the plugin; `vx help` lists them                                                                                                                                                                                                                                                                                                        |
 | `cache`     | behavior       | returns a `CacheLayer` or declines. ALL kept in declaration order and CHAINED (lookup walks, save reaches all, the first owns the run index); the host's local store is appended at the TAIL, and a layer wrapping that handle subsumes it                                                                                                                                                                                                                                  |
 | `telemetry` | observe-only   | returns `TelemetrySink`(s) or declines. ALL plugins' sinks are additive; a sink receives immutable records and holds no run handle                                                                                                                                                                                                                                                                                                                                          |
@@ -147,10 +147,12 @@ Plus optional `setup` (fail-fast with a clean `UserError` naming the
 plugin) and `teardown`. Consultation lives in `plugin-host.ts`
 (executor/cache) and `telemetry-host.ts` (telemetry). Every
 capability is resolved inside `prepareRun`/`run()` from the declared list
-(`prepared.plugins`). **No defaults:** core applies no plugin on its own —
-its executor and cache are plugins under `src/plugins/` (see
-`docs/modules/plugins.md`), declared like any other; a workspace that
-declares none fails before any task runs, naming the fix. The hard
+(`prepared.plugins`). **No defaults:** core applies no plugin on its own
+and ships none — running here (`src/exec/local-executor.ts`) and caching
+here (the local `Cache`) are its FLOOR, not plugins, appended at the tail
+of every executor list and cache chain (see `docs/modules/plugins.md`);
+a workspace that declares none runs and caches, and every plugin is a
+package (`packages/vx-*`) declared in `vx.workspace.ts`. The hard
 invariant for observe-only plugins: **a workspace whose telemetry plugins
 all decline is byte-identical to one with none declared.** `subscribeTelemetry` returns `undefined` when zero
 sinks are contributed, so no bus subscriber is added and no summary
@@ -288,7 +290,7 @@ never branches on layering.
 1. **`bin.ts`** spawns with the user's argv. Forwards everything
    after the binary name to the cli module's `run`.
 2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`,
-   `cache`, `lock`, `migrate`, `upgrade`, `show`, `info` (+ `stats`
+   `cache`, `lock`, `init`, `upgrade`, `show`, `info` (+ `stats`
    alias), `mcp`, `help`, `version`.
 3. **`cli/run.ts:parseRunArgs`** parses the argv into a `RunArgs`
    object (including the 4-axis cache policy from `--cache` /

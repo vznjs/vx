@@ -116,7 +116,7 @@ This maps cleanly:
 | `passThroughEnv`     | `exec.env.passThrough`      |
 | `globalEnv`          | a shared TS array you spread into each task's `inputs.env` |
 
-`vx migrate` translates these for you — see
+`bunx @vzn/vx-migrate` translates these for you — see
 [Migrate from Turborepo](../../migrate/from-turborepo/).
 
 ## Next steps

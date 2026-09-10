@@ -11,6 +11,7 @@
         "@vzn/vx-mcp": "workspace:*",
         "@vzn/vx-otel": "workspace:*",
         "@vzn/vx-reapi": "workspace:*",
+        "@vzn/vx-schedule-history": "workspace:*",
         "oxfmt": "^0.55.0",
         "oxlint": "^1.70.0",
         "oxlint-tsgolint": "^0.23.0",
@@ -49,6 +50,7 @@
       },
       "devDependencies": {
         "@vzn/vx": "workspace:*",
+        "@vzn/vx-schedule-history": "workspace:*",
       },
     },
     "packages/vx-github": {
@@ -65,6 +67,23 @@
     "packages/vx-mcp": {
       "name": "@vzn/vx-mcp",
       "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
+    "packages/vx-migrate": {
+      "name": "@vzn/vx-migrate",
+      "version": "0.0.0",
+      "bin": {
+        "vx-migrate": "./src/bin.ts",
+      },
+      "dependencies": {
+        "@vzn/vx-turbo": "workspace:*",
+      },
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
@@ -95,6 +114,20 @@
         "@vzn/vx": "*",
       },
     },
+    "packages/vx-prune": {
+      "name": "@vzn/vx-prune",
+      "version": "0.0.0",
+      "bin": {
+        "vx-prune": "./src/bin.ts",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
     "packages/vx-reapi": {
       "name": "@vzn/vx-reapi",
       "version": "0.0.0",
@@ -103,6 +136,17 @@
         "@grpc/proto-loader": "^0.7.13",
         "protobufjs": "^7.4.0",
       },
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
+    "packages/vx-schedule-history": {
+      "name": "@vzn/vx-schedule-history",
+      "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
@@ -609,11 +653,17 @@
 
     "@vzn/vx-mcp": ["@vzn/vx-mcp@workspace:packages/vx-mcp"],
 
+    "@vzn/vx-migrate": ["@vzn/vx-migrate@workspace:packages/vx-migrate"],
+
     "@vzn/vx-nx-cache": ["@vzn/vx-nx-cache@workspace:packages/vx-nx-cache"],
 
     "@vzn/vx-otel": ["@vzn/vx-otel@workspace:packages/vx-otel"],
 
+    "@vzn/vx-prune": ["@vzn/vx-prune@workspace:packages/vx-prune"],
+
     "@vzn/vx-reapi": ["@vzn/vx-reapi@workspace:packages/vx-reapi"],
+
+    "@vzn/vx-schedule-history": ["@vzn/vx-schedule-history@workspace:packages/vx-schedule-history"],
 
     "@vzn/vx-turbo": ["@vzn/vx-turbo@workspace:packages/vx-turbo"],
 

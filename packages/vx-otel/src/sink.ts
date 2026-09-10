@@ -65,7 +65,7 @@ function nanos(ms: number): string {
 }
 
 export class OtelSink implements TelemetrySink {
-  readonly name = 'vzn/otel'
+  readonly name = 'vx/otel'
   /**
    * Which record kinds this sink takes. `task.log` is included ONLY when the
    * logs signal is on: core checks this before it projects a chunk at all, so

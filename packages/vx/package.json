@@ -9,17 +9,12 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
-    },
-    "./plugins/schedule-history": {
-      "types": "./src/plugins/schedule-history/index.ts",
-      "import": "./src/plugins/schedule-history/index.ts"
     }
   },
   "bin": {
     "vx": "./src/bin.ts"
   },
   "files": [
-    "plugins",
     "npm-launcher.mjs",
     "index.ts",
     "src",

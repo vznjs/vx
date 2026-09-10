@@ -1,65 +1,64 @@
 // `vx prune <project> [--out-dir <dir>] [--docker]` — emit a self-contained
 // SUBSET of the workspace containing one project and its transitive
-// workspace dependencies, for Docker builds (Turbo `turbo prune` parity,
-// comparison gap #10).
+// workspace dependencies, for Docker builds (Turbo `turbo prune` parity).
+// Two ways in, one body: `bunx @vzn/vx-prune` (its own bin, no workspace
+// file needed) and the `prune` verb a workspace gets by declaring the
+// plugin (the `commands` seam). Core's own verb until 2026-09-10.
 //
 // What lands in the output:
 //   <out>/               the pruned workspace (or <out>/full/ with --docker)
-//     package.json         root manifest, copied as-is
+//     package.json         root manifest, `workspaces` rewritten to the subset
 //     pnpm-workspace.yaml  REWRITTEN to the exact subset dirs (a glob that
 //                          matches dirs absent from the subset would make
 //                          pnpm error on install)
 //     <lockfile>           copied UNPRUNED — pnpm/bun/npm/yarn all tolerate
-//                          a superset lockfile; real lockfile pruning is a
-//                          per-format project (Turbo ships a crate per
-//                          format) and a wrong pruned lockfile is worse
-//                          than a big correct one. Documented, deliberate.
-//     vx.workspace.*       copied when present, together with any WORKSPACE
-//                          package it imports (a plugin lives in the subset
-//                          or `vx run` cannot load the config at all)
-//     .npmrc / .nvmrc      copied when present
-//     <pkg dirs>           full source of the project + every transitive
-//                          workspace dep (node_modules / .git / .vx / .turbo
-//                          excluded)
-//   <out>/json/          with --docker: manifests only (root files + each
-//                          package's package.json) — COPY this layer first
-//                          so `pnpm install` caches independently of source
-//                          edits, then COPY full/ and build.
-//
-// Boundaries note: a package dir is copied WHOLE (minus the exclusions).
-// vx's own nested-project input exclusions do not apply here — prune
-// reproduces the tree, it does not hash it.
-//
-// RUNNABILITY IS NOT GUARANTEED, and this deliberately does not claim it.
-// A config may import any path it likes; only imports that name a workspace
-// PACKAGE can be resolved and pulled in. A relative import escaping its own
-// package dir (`../../src/index.ts`, the shape this repo's own dogfooding
-// configs use) reaches a file prune never copies, and no subset short of the
-// whole tree would contain it. Those are reported at prune time — a warning
-// the user reads now beats a module-not-found inside a docker build.
-// The import scan is STATIC and deliberately simple: it sees `from '…'`,
-// `import '…'` and `import('…')`, and nothing computed.
+//                          a superset lockfile, and a wrongly pruned one is
+//                          worse than a big correct one
+//     vx.workspace.*       copied when present
+//     <pkg dirs>           each subset package, node_modules/.git/.vx/.turbo
+//                          excluded
+//   <out>/json/          (--docker) root files + each package's package.json
+//                          only — the cacheable install layer
 
 import { cp, mkdir, stat, writeFile } from 'node:fs/promises'
-import { seeHelp } from './help.js'
 import path from 'node:path'
 import {
   buildPackageGraph,
   findWorkspaceRoot,
+  listProjectMetas,
   loadWorkspace,
-  listProjects,
-} from '../workspace/index.js'
-import { nearMatches, UserError } from '../util/index.js'
+  nearMatches,
+  UserError,
+  type VxPlugin,
+} from '@vzn/vx'
 
-interface PruneWorkspaceArgs {
+const USAGE = 'usage: vx prune <project> [--out-dir <dir>] [--docker]'
+export const PRUNE_PLUGIN = 'vx/prune'
+
+/** The plugin: a workspace that declares it gets `vx prune` from the vx CLI. */
+export function prune(): VxPlugin {
+  return {
+    name: PRUNE_PLUGIN,
+    commands: {
+      prune: {
+        description: 'emit a workspace subset (one project + its deps) for Docker builds',
+        run(argv) {
+          return pruneWorkspace(argv)
+        },
+      },
+    },
+  }
+}
+
+export interface PruneArgs {
   project?: string
   outDir: string
   docker: boolean
   error?: string
 }
 
-export function parsePruneWorkspaceArgs(args: readonly string[]): PruneWorkspaceArgs {
-  const out: PruneWorkspaceArgs = { outDir: 'out', docker: false }
+export function parsePruneArgs(args: readonly string[]): PruneArgs {
+  const out: PruneArgs = { outDir: 'out', docker: false }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
     if (a === '--out-dir' || a.startsWith('--out-dir=')) {
@@ -72,7 +71,7 @@ export function parsePruneWorkspaceArgs(args: readonly string[]): PruneWorkspace
       out.docker = true
       continue
     }
-    if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('prune')}` }
+    if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}\n${USAGE}` }
     if (out.project !== undefined) return { ...out, error: `unexpected argument: ${a}` }
     out.project = a
   }
@@ -119,16 +118,20 @@ async function readImports(dir: string, names: readonly string[]): Promise<strin
   return []
 }
 
-export async function pruneWorkspaceCmd(args: readonly string[]): Promise<number> {
-  const parsed = parsePruneWorkspaceArgs(args)
+/** The verb: one project and its closure, copied to `--out-dir` relative to `cwd`. */
+export async function pruneWorkspace(
+  args: readonly string[],
+  cwd = process.cwd(),
+): Promise<number> {
+  const parsed = parsePruneArgs(args)
   if (parsed.error !== undefined) throw new UserError(`vx prune: ${parsed.error}`)
   if (parsed.project === undefined) {
     throw new UserError('vx prune: <project> required (e.g. vx prune @acme/api)')
   }
 
-  const root = await findWorkspaceRoot(process.cwd())
+  const root = await findWorkspaceRoot(cwd)
   const workspace = await loadWorkspace(root)
-  const projects = await listProjects(workspace)
+  const projects = await listProjectMetas(workspace)
   const byName = new Map(projects.map((p) => [p.name, p]))
 
   const target = byName.get(parsed.project)
@@ -164,7 +167,7 @@ export async function pruneWorkspaceCmd(args: readonly string[]): Promise<number
 
   const subset = [...names].map((n) => byName.get(n)!).sort((a, b) => a.name.localeCompare(b.name))
 
-  const outAbs = path.resolve(process.cwd(), parsed.outDir)
+  const outAbs = path.resolve(cwd, parsed.outDir)
   // Three shapes that would eat their own tail: the out dir IS the root
   // (overwrites the workspace), CONTAINS the root (copies land above the
   // repo), or sits INSIDE a package being copied (cp would recurse into

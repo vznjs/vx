@@ -62,6 +62,16 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
           error: `--max-size 0 would evict every entry — delete the cache directory instead`,
         }
       }
+      // A bare number is bytes to `parseSize` (a computed `--memory` budget
+      // needs that), but nobody caps a cache at 10 bytes: `--max-size 10`
+      // meant 10G or 10M and would evict everything, the same class of
+      // destructive typo the zero bound above refuses. An explicit `10B`
+      // still passes.
+      if (/^\d+$/.test(v)) {
+        return {
+          error: `--max-size ${v} would read as ${v} bytes and evict nearly everything — give a unit (e.g. ${v}M, ${v}G)`,
+        }
+      }
       out.maxBytes = bytes
     } else {
       return { error: `unknown argument: ${a}${seeHelp('cache')}` }

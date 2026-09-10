@@ -1,10 +1,9 @@
-// The reference schedule plugin's priority function — recovered from core's
+// The schedule plugin's priority function — recovered from core's
 // removed predictive mode (2026-09-02); the seam it now proves is
 // `VxPlugin.schedule`.
 import { describe, expect, it } from 'bun:test'
-import type { TaskNode } from '../src/graph/index.js'
-import type { HistoryTable, TaskHistory } from '../src/orchestrator/index.js'
-import { criticalPathPriorities } from '../src/plugins/schedule-history/index.js'
+import type { HistoryTable, TaskHistory, TaskNode } from '@vzn/vx'
+import { criticalPathPriorities } from '../src/index.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
   const [projectName, taskName] = id.split('#') as [string, string]
@@ -122,5 +121,43 @@ describe('criticalPathPriorities', () => {
     // base's priority = own + the SLOW branch chain — the lookahead LPT
     // ordering exists for. Own-duration collapse would report 10.
     expect(out.get('pkg#base')).toBe(1020)
+  })
+})
+
+describe('criticalPathPriorities — assumed durations for the cold run', () => {
+  // The CI shape: a long leaf (the docs build) beside a chain of short
+  // tasks. With no history at all every node weighs the flat default, so
+  // the chain's head outranks the leaf by chain length alone.
+  const shape = [
+    node('docs#build'),
+    node('vx#shard'),
+    node('vx#test', ['vx#shard']),
+    node('vx#ci', ['vx#test', 'docs#build']),
+  ]
+
+  it('CONTROL: with no history and no assumption the chain head outranks the long leaf', () => {
+    const p = criticalPathPriorities(shape, new Map())
+    expect(p.get('vx#shard')).toBeGreaterThan(p.get('docs#build')!)
+  })
+
+  it('an assumed duration lifts a history-less leaf above the chain', () => {
+    const p = criticalPathPriorities(shape, new Map(), { 'docs#build': 30_000 })
+    expect(p.get('docs#build')).toBe(30_000 + 1000)
+    expect(p.get('docs#build')).toBeGreaterThan(p.get('vx#shard')!)
+  })
+
+  it('a recorded p50 wins over an assumption', () => {
+    const history: HistoryTable = new Map([['docs#build', hist(500)]])
+    const p = criticalPathPriorities(shape, history, { 'docs#build': 30_000 })
+    // 500 own + the median (500, the only p50) for `ci` behind it.
+    expect(p.get('docs#build')).toBe(1000)
+  })
+
+  it('assumptions never feed the workspace median', () => {
+    const history: HistoryTable = new Map([['vx#shard', hist(100)]])
+    const p = criticalPathPriorities(shape, history, { 'docs#build': 30_000 })
+    // `test` and `ci` have no history and no assumption: the median of the
+    // one recorded p50 (100), not the 30 s assumed for the docs build.
+    expect(p.get('vx#test')).toBe(200)
   })
 })

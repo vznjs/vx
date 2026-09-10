@@ -127,9 +127,9 @@ watch mode · `--dry` / `--graph` plans · persistent dev servers ·
 retries, timeouts, `--continue` modes · per-layer cache control
 (`--cache=local:r,remote:`) · `vx why` explains a re-run from the
 persisted input fingerprints · `vx last` replays a recorded run ·
-`vx prune` cuts a Docker-ready workspace subset · `vx info`,
+`@vzn/vx-prune` cuts a Docker-ready workspace subset · `vx info`,
 `--summarize`, `--profile` Chrome traces, `--report` · `vx cache prune`
-with TTL and size caps · `vx migrate` from turbo.json or an Nx graph.
+with TTL and size caps · `bunx @vzn/vx-migrate` from turbo.json or an Nx graph.
 
 ## A pipeline with seams — plugins decide what happens
 
@@ -166,9 +166,12 @@ server speaking Turbo's `/v8/artifacts` API or Nx's self-hosted cache
 spec — the wire is theirs, the artifacts are vx's),
 [`@vzn/vx-turbo`](packages/vx-turbo) (a Turbo repo under vx with
 nothing written: `turbo.json` + scripts become tasks through the
-`project` stage), and `@vzn/vx/plugins/schedule-history` (order by
-learned critical path). Nothing distributed ships in this repo; the seams are how you
-build it.
+`project` stage), and [`@vzn/vx-schedule-history`](packages/vx-schedule-history)
+(order by learned critical path) and [`@vzn/vx-migrate`](packages/vx-migrate)
+(`bunx @vzn/vx-migrate`: turbo.json or an Nx graph → vx.config.ts, through
+core's migration seam). Core ships no plugin and reads no other runner's
+format; nothing
+distributed ships in this repo; the seams are how you build it.
 
 ## How it compares
 
@@ -284,18 +287,18 @@ Production readiness for the **core task runner**: the semantics are
 solid; it is dogfooded continuously. The main operational rough edge
 is Windows (unsupported).
 
-| Surface                                          | Maturity             | Notes                                                                                     |
-| ------------------------------------------------ | -------------------- | ----------------------------------------------------------------------------------------- |
-| Core task runner + caching                       | **production-ready** | dogfooded continuously; ~2,500 core tests + the package suites, green                     |
-| Plugin pipeline (9 hooks, `commands` included)   | **shippable**        | crash-isolated, re-validated; the local executor + cache are the floor under every plugin |
-| `vx init` / `vx migrate` (scripts, Turbo, Nx)    | **shippable**        | one config per package, TODOs where a source cannot say                                   |
-| REAPI remote cache + execution (`@vzn/vx-reapi`) | **shippable**        | Bazel AC + CAS + Execute; NativeLink / BuildBuddy / Buildbarn / bazel-remote              |
-| OTel export (`@vzn/vx-otel`)                     | **shippable**        | OTLP traces + metrics + logs, zero SDK deps                                               |
-| GitHub Actions (`@vzn/vx-github`)                | **shippable**        | job summary + Checks API run                                                              |
-| MCP server (`@vzn/vx-mcp`)                       | **shippable**        | `vx mcp` — read-only tools for AI agents, no SDK                                          |
-| Turbo-wire cache (`@vzn/vx-turbo-cache`)         | **shippable**        | any `/v8/artifacts` server, Bearer auth, HMAC artifact signatures                         |
-| Nx-wire cache (`@vzn/vx-nx-cache`)               | **shippable**        | any Nx self-hosted cache server (`/v1/cache`, immutable records)                          |
-| Zero-migration Turbo (`@vzn/vx-turbo`)           | **shippable**        | a `turbo.json` workspace runs under vx with no `vx.config` written; a written config wins |
+| Surface                                            | Maturity             | Notes                                                                                     |
+| -------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------- |
+| Core task runner + caching                         | **production-ready** | dogfooded continuously; ~2,500 core tests + the package suites, green                     |
+| Plugin pipeline (9 hooks, `commands` included)     | **shippable**        | crash-isolated, re-validated; the local executor + cache are the floor under every plugin |
+| `vx init` / `@vzn/vx-migrate` (scripts; Turbo, Nx) | **shippable**        | one config per package, TODOs where a source cannot say                                   |
+| REAPI remote cache + execution (`@vzn/vx-reapi`)   | **shippable**        | Bazel AC + CAS + Execute; NativeLink / BuildBuddy / Buildbarn / bazel-remote              |
+| OTel export (`@vzn/vx-otel`)                       | **shippable**        | OTLP traces + metrics + logs, zero SDK deps                                               |
+| GitHub Actions (`@vzn/vx-github`)                  | **shippable**        | job summary + Checks API run                                                              |
+| MCP server (`@vzn/vx-mcp`)                         | **shippable**        | `vx mcp` — read-only tools for AI agents, no SDK                                          |
+| Turbo-wire cache (`@vzn/vx-turbo-cache`)           | **shippable**        | any `/v8/artifacts` server, Bearer auth, HMAC artifact signatures                         |
+| Nx-wire cache (`@vzn/vx-nx-cache`)                 | **shippable**        | any Nx self-hosted cache server (`/v1/cache`, immutable records)                          |
+| Zero-migration Turbo (`@vzn/vx-turbo`)             | **shippable**        | a `turbo.json` workspace runs under vx with no `vx.config` written; a written config wins |
 
 ## Development
 

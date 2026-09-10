@@ -3,16 +3,20 @@
 // scripts, and emits one TaskConfig-shaped object per (package, task) — a
 // task exists for a package only when the package declares the script,
 // turbo's own rule. Two consumers, one mapper, so they cannot drift:
-//   - `vx migrate` renders these to vx.config.ts files, splicing turbo's
-//     global fields in as imports of a generated preset;
+//   - `@vzn/vx-migrate` renders these to vx.config.ts files, splicing
+//     turbo's global fields in as imports of a generated preset;
 //   - `@vzn/vx-turbo` hands them to the `project` stage live, with the
 //     global values inlined, so a Turbo repo runs under vx with no file
 //     written.
 // The consumer decides what a global becomes through `splice`.
 
 import path from 'node:path'
-import { relPosix, UserError } from '../util/index.js'
-import type { ProjectMeta } from './workspace.js'
+import { type ProjectMeta, UserError } from '@vzn/vx'
+
+/** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
+function relPosix(from: string, to: string): string {
+  return path.relative(from, to).split(path.sep).join('/')
+}
 
 export interface TurboTask {
   dependsOn?: string[]

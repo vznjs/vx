@@ -27,7 +27,10 @@ function walk(dir: string, ext: string, out: string[] = []): string[] {
  */
 function proseFiles(): string[] {
   return walk(path.join(pkg, 'docs'), '.md').filter(
-    (p) => !p.includes(`${path.sep}design${path.sep}`) && !p.endsWith('STATUS.md'),
+    (p) =>
+      !p.includes(`${path.sep}design${path.sep}`) &&
+      !p.includes(`${path.sep}history${path.sep}`) &&
+      !p.endsWith('STATUS.md'),
   )
 }
 

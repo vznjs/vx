@@ -1,14 +1,16 @@
-// `vx prune <project>` — the workspace-subset emitter (Turbo parity).
-// E2e via bin.ts subprocesses, in the last.test.ts / why.test.ts pattern.
+// `vx-prune` end to end through its own bin, and once through the vx CLI in a
+// workspace that declares the plugin (the `commands` seam).
 
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
-import { parsePruneWorkspaceArgs } from '../src/cli/index.js'
+import { parsePruneArgs } from '../src/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const VX_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const TIMEOUT = 30_000
 
 async function makeWorkspace(): Promise<string> {
@@ -78,7 +80,7 @@ describe('vx prune (e2e)', () => {
   it(
     'emits the target + its transitive workspace deps, and nothing else',
     async () => {
-      const r = await vx(root, ['prune', 'app'])
+      const r = await vx(root, ['app'])
       expect(r.code).toBe(0)
       expect(r.out).toContain('pruned 2 packages for app')
       const out = path.join(root, 'out')
@@ -105,7 +107,7 @@ describe('vx prune (e2e)', () => {
   it(
     '--docker splits json/ (manifests only) from full/ (sources)',
     async () => {
-      const r = await vx(root, ['prune', 'app', '--docker', '--out-dir', 'out-docker'])
+      const r = await vx(root, ['app', '--docker', '--out-dir', 'out-docker'])
       expect(r.code).toBe(0)
       const out = path.join(root, 'out-docker')
       expect(await exists(path.join(out, 'json', 'packages', 'app', 'package.json'))).toBe(true)
@@ -120,7 +122,7 @@ describe('vx prune (e2e)', () => {
   it(
     'a leaf project prunes to just itself',
     async () => {
-      const r = await vx(root, ['prune', 'lib', '--out-dir', 'out-lib'])
+      const r = await vx(root, ['lib', '--out-dir', 'out-lib'])
       expect(r.code).toBe(0)
       expect(r.out).toContain('pruned 1 package for lib')
       expect(await exists(path.join(root, 'out-lib', 'packages', 'app'))).toBe(false)
@@ -131,7 +133,7 @@ describe('vx prune (e2e)', () => {
   it(
     'an unknown project fails loud with a suggestion',
     async () => {
-      const r = await vx(root, ['prune', 'ap'])
+      const r = await vx(root, ['ap'])
       expect(r.code).not.toBe(0)
       expect(r.err).toContain('no project named "ap"')
       expect(r.err).toContain('did you mean app')
@@ -142,7 +144,7 @@ describe('vx prune (e2e)', () => {
   it(
     'an out dir inside a pruned package is refused',
     async () => {
-      const r = await vx(root, ['prune', 'app', '--out-dir', 'packages/app/out'])
+      const r = await vx(root, ['app', '--out-dir', 'packages/app/out'])
       expect(r.code).not.toBe(0)
       expect(r.err).toContain('inside app')
     },
@@ -150,16 +152,16 @@ describe('vx prune (e2e)', () => {
   )
 })
 
-describe('parsePruneWorkspaceArgs', () => {
+describe('parsePruneArgs', () => {
   it('parses project, --out-dir in both forms, --docker; rejects garbage', () => {
-    expect(parsePruneWorkspaceArgs(['app']).project).toBe('app')
-    expect(parsePruneWorkspaceArgs(['app']).outDir).toBe('out')
-    expect(parsePruneWorkspaceArgs(['app', '--out-dir', 'x']).outDir).toBe('x')
-    expect(parsePruneWorkspaceArgs(['app', '--out-dir=y']).outDir).toBe('y')
-    expect(parsePruneWorkspaceArgs(['app', '--docker']).docker).toBe(true)
-    expect(parsePruneWorkspaceArgs(['--out-dir=']).error).toMatch(/empty/)
-    expect(parsePruneWorkspaceArgs(['--wat']).error).toMatch(/unknown flag/)
-    expect(parsePruneWorkspaceArgs(['a', 'b']).error).toMatch(/unexpected argument/)
+    expect(parsePruneArgs(['app']).project).toBe('app')
+    expect(parsePruneArgs(['app']).outDir).toBe('out')
+    expect(parsePruneArgs(['app', '--out-dir', 'x']).outDir).toBe('x')
+    expect(parsePruneArgs(['app', '--out-dir=y']).outDir).toBe('y')
+    expect(parsePruneArgs(['app', '--docker']).docker).toBe(true)
+    expect(parsePruneArgs(['--out-dir=']).error).toMatch(/empty/)
+    expect(parsePruneArgs(['--wat']).error).toMatch(/unknown flag/)
+    expect(parsePruneArgs(['a', 'b']).error).toMatch(/unexpected argument/)
   })
 })
 
@@ -224,7 +226,7 @@ describe('vx prune: what the configs import', () => {
     'carries a workspace package the workspace config imports, and nothing else',
     async () => {
       const out = path.join(root, '..', `prune-cfg-${process.pid}`)
-      const r = await vx(root, ['prune', 'app', '--out-dir', out])
+      const r = await vx(root, ['app', '--out-dir', out])
       try {
         expect(r.code).toBe(0)
         // `plug` is in NO package.json dependency — only the workspace config
@@ -249,7 +251,7 @@ describe('vx prune: what the configs import', () => {
       // `Workspace not found "packages/unrelated"`, so the emitted build
       // context would not install at all.
       const out = path.join(root, '..', `prune-ws-${process.pid}`)
-      const r = await vx(root, ['prune', 'app', '--out-dir', out])
+      const r = await vx(root, ['app', '--out-dir', out])
       try {
         expect(r.code).toBe(0)
         const pkg = JSON.parse(await readFile(path.join(out, 'package.json'), 'utf8')) as {
@@ -281,7 +283,7 @@ describe('vx prune: what the configs import', () => {
       // fatal. If bun ever stops caring, this fails and the rewrite can be
       // reconsidered on evidence.
       const out = path.join(root, '..', `prune-inst-${process.pid}`)
-      const r = await vx(root, ['prune', 'app', '--out-dir', out])
+      const r = await vx(root, ['app', '--out-dir', out])
       try {
         expect(r.code).toBe(0)
         // Hermetic install: bun stages into TMPDIR and caches under HOME, and
@@ -327,7 +329,7 @@ describe('vx prune: what the configs import', () => {
     'reports a project config importing outside the subset',
     async () => {
       const out = path.join(root, '..', `prune-esc-${process.pid}`)
-      const r = await vx(root, ['prune', 'app', '--out-dir', out])
+      const r = await vx(root, ['app', '--out-dir', out])
       try {
         expect(r.err).toContain('../../shared/util.ts')
         expect(r.err).toContain('outside the pruned subset')
@@ -335,6 +337,48 @@ describe('vx prune: what the configs import', () => {
         expect(r.err).not.toContain('lib:')
       } finally {
         await rm(out, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+describe('the `prune` verb through the vx CLI (commands seam)', () => {
+  it(
+    'a workspace declaring the plugin gets `vx prune`; one without it gets the pointer',
+    async () => {
+      const root = await makeWorkspace()
+      try {
+        const spawn = async (args: string[]): Promise<VxResult> => {
+          const proc = Bun.spawn([process.execPath, VX_BIN, ...args], {
+            cwd: root,
+            env: { ...process.env },
+            stdout: 'pipe',
+            stderr: 'pipe',
+          })
+          const [out, err, code] = await Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+            proc.exited,
+          ])
+          return { code, out, err }
+        }
+        const without = await spawn(['prune', 'app'])
+        expect(without.code).toBe(1)
+        expect(without.err).toContain('@vzn/vx-prune')
+        await Bun.write(
+          path.join(root, 'vx.workspace.mjs'),
+          `import { prune } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+            localWorkspaceSource(['prune()']),
+        )
+        const withPlugin = await spawn(['prune', 'app', '--out-dir', 'out-verb'])
+        expect(`${withPlugin.code}\n${withPlugin.err}`).toStartWith('0\n')
+        expect(withPlugin.out).toContain('pruned 2 packages for app')
+        expect(
+          await Bun.file(path.join(root, 'out-verb', 'packages', 'lib', 'package.json')).exists(),
+        ).toBe(true)
+      } finally {
+        await rm(root, { recursive: true, force: true })
       }
     },
     TIMEOUT,

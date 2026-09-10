@@ -123,7 +123,7 @@ export function resolveOtelConfig(
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
   return {
-    name: 'vzn/otel',
+    name: 'vx/otel',
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))
       if (config === undefined) return undefined

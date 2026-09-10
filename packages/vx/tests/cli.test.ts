@@ -45,24 +45,14 @@ describe('cli run()', () => {
   // Every verb answered `unknown flag: --help` and exited 1 until
   // 2026-09-04 — the one thing every user types first. The list is the
   // dispatcher's own verbs; a new verb that forgets this fails here.
-  it.each([
-    'run',
-    'watch',
-    'cache',
-    'lock',
-    'migrate',
-    'init',
-    'upgrade',
-    'show',
-    'info',
-    'why',
-    'last',
-    'prune',
-  ])('`vx %s --help` prints help and exits 0', async (verb) => {
-    expect(await run([verb, '--help'])).toBe(0)
-    expect(stdout).toContain('Usage:')
-    expect(stderr).toBe('')
-  })
+  it.each(['run', 'watch', 'cache', 'lock', 'init', 'upgrade', 'show', 'info', 'why', 'last'])(
+    '`vx %s --help` prints help and exits 0',
+    async (verb) => {
+      expect(await run([verb, '--help'])).toBe(0)
+      expect(stdout).toContain('Usage:')
+      expect(stderr).toBe('')
+    },
+  )
 
   // Every argument error points at the verb's own help, which is only
   // useful because `vx <verb> --help` prints something (same day). A verb
@@ -71,9 +61,8 @@ describe('cli run()', () => {
     ['show', ['show', '--json']],
     ['run', ['run', '--concurency', '2', 'build']],
     ['last', ['last', '--lst']],
-    ['migrate', ['migrate', '--dyr']],
+    ['init', ['init', '--dyr']],
     ['why', ['why', '--fmt', 'x']],
-    ['prune', ['prune', '--dockerr', 'app']],
     ['lock', ['lock', '--chk']],
     ['info', ['info', 'extra']],
     ['cache', ['cache', 'bogus']],
@@ -1525,6 +1514,16 @@ describe('parsePruneArgs', () => {
     expect(r.olderThanMs).toBeDefined()
     expect(r.olderThanMs!).toBeLessThanOrEqual(Date.now() - 7 * 86_400_000 + 5)
     expect(r.olderThanMs!).toBeGreaterThanOrEqual(before - 7 * 86_400_000 - 5)
+  })
+
+  it('refuses a bare number for --max-size: it would read as bytes and evict the cache', () => {
+    // `parseSize('10')` is 10 bytes — right for a computed `--memory`
+    // budget, catastrophic as a cache cap. The explicit `10B` still passes.
+    const r = parsePruneArgs(['--max-size', '10'])
+    expect(r.error).toMatch(/10 bytes/)
+    expect(r.error).toMatch(/10M, 10G/)
+    expect(parsePruneArgs(['--max-size', '10B']).maxBytes).toBe(10)
+    expect(parsePruneArgs(['--max-size', '10M']).maxBytes).toBe(10 * 1024 * 1024)
   })
 
   it('parses --max-size', () => {

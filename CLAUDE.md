@@ -42,7 +42,7 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
   src/bin.ts            shebang → cli
   src/index.ts          public façade (snapshot-pinned by tests/package-boundaries.unsafe.test.ts)
   src/config.ts         user schema: defineProject / defineWorkspace
-  src/cli/              verbs: run watch cache lock init migrate show info why last prune upgrade;
+  src/cli/              verbs: run watch cache lock init show info why last upgrade;
                         plugin-commands.ts resolves plugin verbs (`commands` seam);
                         workspace-config.ts is the workspace as every verb sees it (config
                         stage applied, cache dir, staged projects); select.ts is what a run
@@ -53,24 +53,29 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         projects.ts (the staged config load every reader shares), plugin
                         stages + seams, events, logger
   src/workspace/        discovery, config eval (+ config-cache.ts), config-schema.ts (what a config
-                        may say), package graph, --filter/--affected, lockfile
+                        may say), package graph, --filter/--affected, lockfile, migration.ts (the
+                        plan → files seam `vx init` and @vzn/vx-migrate share)
   src/graph/            task graph + two-tier scheduler
   src/cache/            local SQLite+archive cache, layered/chained remote seam, inputs (glob
                         resolution, boundaries) + git-inputs (the git enumeration it trusts)
   src/exec/             runner (Bun.spawn), env isolation, sandbox, local-executor (the floor)
-  src/plugins/          core's own plugins: schedule-history
   src/util/             incl. timing.ts (`VX_TIMING=1` stage table)
-  index.ts, plugins/*/index.ts  root shims (Bun's compiled binary ignores the exports map)
+  index.ts              root shim (Bun's compiled binary ignores the exports map)
 packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)
 packages/vx-github      GitHub Actions job summary + Checks API plugin
 packages/vx-mcp         `vx mcp` — MCP server for AI agents (commands seam, no SDK)
 packages/vx-turbo-cache Turbo `/v8/artifacts` remote cache plugin (self-hosted or Vercel)
 packages/vx-nx-cache    Nx self-hosted remote cache plugin (`/v1/cache`)
-packages/vx-turbo       zero-migration Turbo plugin: turbo.json + scripts → tasks via the `project` stage
+packages/vx-turbo       zero-migration Turbo plugin: turbo.json + scripts → tasks via the `project` stage;
+                        owns the Turbo mapper @vzn/vx-migrate renders from
+packages/vx-migrate     `bunx @vzn/vx-migrate`: turbo.json or an Nx graph → vx.config.ts (core keeps `vx init`)
+packages/vx-prune       `bunx @vzn/vx-prune` / the `prune` verb via the commands seam: a workspace subset for Docker
+packages/vx-schedule-history  `schedule` plugin: order by the critical path learned from run history
 packages/vx-docs        Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-bench       synthetic workspace generator + runners (vx / turbo / nx)
-packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/
+packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/;
+                        history/ holds the shipped record STATUS moved out (read it only when an item's why matters)
 ```
 
 Module boundaries: each `src/<module>/index.ts` is the contract; cross-module
