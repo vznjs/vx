@@ -585,7 +585,12 @@ foo` invalidated the whole workspace and `--affected` selected every
     `node_modules/@types/bun` and reports TS2688); both packages carry
     them now, and the package-level run (`cd packages/<p> && oxlint
 --type-aware --type-check`, `oxfmt --check .`) is part of what a
-    new package must pass before it is pushed. Pinned: the shell in
+    new package must pass before it is pushed. And the `VX_TIMING`
+    table now ends `prepareRun` with two rows, `build graph` and
+    `plugin stages` (the graph, key and schedule hooks), where one
+    `prepare (graph)` row hid the key stage's cost all day: on this
+    repo warm, 1.5 and 4–7 ms (the lockfile memo read plus the history
+    plugin's read). Pinned: the shell in
     core with a fake digest (memo served across instances, a planted
     memo keys the task, a changed file or version ignores it, one
     parse for two tasks of one run, the root fallback, `scope:
