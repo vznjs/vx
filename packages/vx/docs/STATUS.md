@@ -2236,6 +2236,34 @@ app` never re-runs on a `lib` edit while `vx run` would rebuild
     workspace and `--filter app`: a `lib/src` edit is one cycle that
     re-executes `lib#build` and `app#build`.
 
+14. **Handoff after item 130 (2026-09-10, late night).** PR #293
+    merged the landing page's first delivery (a layer over the old
+    page); the owner asked for a full redesign, and PR #294 carries it
+    (item 125, the film) with the loop that followed: the `project`
+    stage's context names every package core discovered (126, the
+    Turbo plugin's second discovery gone, −12 ms per 1,000), one Turbo
+    mapping per run so a watch cycle sees a script edit (127), `vx
+    watch` on a `vx.workspace.*` edit (128), the mapping indexed by
+    name (129, a tie at the run level, recorded as one), and a package
+    added or removed under a running watch (130, the glob's directory
+    watched, the set re-armed). Every one is pinned with a
+    differential; the piecewise gate ran here (this container cannot
+    host the sandbox) and CI was green on every head it had run by
+    the time of writing. Method that paid tonight: read one arm of a
+    feature for the file it cannot see (the workspace config, the
+    package directory, a plugin's memo), probe it end to end in the
+    scratchpad, then pin. What is still no event under `vx watch`, by
+    choice and in the docs: a root `turbo.json` edit (no seam names a
+    plugin's root files — a second consumer makes it one), a package
+    added under a glob of another shape than `<dir>/*`, and the
+    watcher shape when a new package declares the first
+    `workspaceFiles` input. Candidates next: the same reading for `vx
+    show`/`why` under a project plugin (they share `loadProjects`, so
+    the stage applies — unpinned for the read verbs), and the zero-
+    migration stage's remaining 20 ms per 1,000 (the overlay probes,
+    two clones per fill, a re-validation per plugin) if a workspace
+    that size ever runs without configs. Never end with "what next?".
+
 ## Decisions (this arc)
 
 - **No first-party technology plugins (owner, 2026-09-10).** A plugin

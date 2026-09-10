@@ -188,6 +188,12 @@ describe('vx watch loop (e2e)', () => {
     )
     await Bun.sleep(SETTLE_MS)
     expect(await readFile(path.join(bDir, 'dist', 'out.txt'), 'utf8')).toBe('b2\n')
+
+    // Gone again: the member's departure is a cycle too, and its arm is dropped.
+    await rm(bDir, { recursive: true, force: true })
+    await until(() => w.out().includes('vx watch: watching 1 project(s)'), 'the set without b')
+    await Bun.sleep(SETTLE_MS)
+    expect(await executions(log)).toBe(3)
   }, 40_000)
 
   it('under the root watcher, a root file no key can see is not a cycle; a declared one is', async () => {
