@@ -1383,6 +1383,26 @@ watch` (a `readyWhen`-gated dependent, two edits, then Ctrl-C)
       spawns one server per cycle with the previous one dead before the
       next starts, and none survive the stop — nothing to fix there.
 
+124.  DONE (2026-09-10, late night — DX, from every solid run): the Turbo
+      mapper warned `turbo key "outputLogs" ("new-only") has no vx
+equivalent — map it manually` on every run, for the value every
+      Vercel template carries. `new-only` — frames for the tasks that
+      ran, a one-liner per cache hit — is vx's default flow already, so
+      it now maps to nothing and warns about nothing; the other values
+      (`full`, `hash-only`, `errors-only`, `none`) have no per-task knob
+      in vx, so their todo names the run flag (`--output-logs
+<mode>`), and an unknown value names the four. Pinned in
+      `packages/vx-turbo/tests/turbo.test.ts`; the README and the
+      Turbo migration table carry the row. Also refuted the same night,
+      on solid: `vx lock` on a plugin-filled workspace locks 0 projects
+      and `--frozen` derives the same four keys as live; `vx last`,
+      `vx info`, `vx why` disambiguation, `--report=markdown` and
+      `--summarize` all read right; and the warm no-op's largest span,
+      `output glob` at 10 ms for the two `**/dist/**`-shaped tasks, is
+      wall time across four concurrently classified tasks — called
+      directly, `resolveOutputs` is 0.9 and 1.0 ms — so there is no
+      restore-side lead in the globstar idiom.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
