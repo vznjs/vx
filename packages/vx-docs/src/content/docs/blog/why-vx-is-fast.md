@@ -9,12 +9,16 @@ tags:
 excerpt: 'A fully cached run of 3,270 tasks finishes in about half a second with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
 ---
 
-The headline number: on a synthetic workspace of 1,090 packages and
-3,270 tasks, a fully cached `vx run build test --all` finishes in about
-510 ms. Turborepo takes 760 ms on the identical workspace and Nx
-3.59 s. A cold build of the same graph burns 35 s of CPU in vx, 73 s
-in Turborepo and 114 minutes in Nx. On a real Turbo repository
-(solidjs/solid) the warm restore is 66 ms against Turbo's 127 ms.
+The headline number is the one you pay on every uncached build: what
+the runner adds on top of your tasks. On a synthetic workspace of
+1,090 packages and 3,270 tasks whose ideal schedule is 3m 38s, vx
+finishes the cold build in 3m 46s, 4% over the schedule. Turborepo
+finishes in 5m 13s (44% over) and Nx in 34m 44s (9.6× the schedule).
+Warm, a fully cached `vx run build test --all` finishes in about
+510 ms, Turborepo in 760 ms and Nx in 3.59 s; the cold build burns
+35 s of CPU in vx, 73 s in Turborepo and 114 minutes in Nx. On a real
+Turbo repository (solidjs/solid) the warm restore is 66 ms against
+Turbo's 127 ms.
 
 None of that comes from a microbenchmark trick. It comes from five
 decisions, and every one of them is also a reason to trust the cache
