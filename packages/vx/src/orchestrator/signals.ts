@@ -24,6 +24,36 @@ export const SIGNAL_SHUTDOWN_GRACE_MS = 2000
 
 type Child = ReturnType<typeof Bun.spawn>
 
+/**
+ * SIGTERM every child `live()` returns, wait the grace for them to go,
+ * then SIGKILL whatever `live()` returns NOW — re-read, because the run
+ * loop may still be dispatching during the grace and a child spawned
+ * after the first sweep must not survive the second. Resolves once the
+ * survivors are reaped. The one teardown behind the process-signal
+ * handler below, `RunOptions.signal`, and the foreground keep-alive.
+ */
+export async function terminateChildren(
+  live: () => Child[],
+  graceMs: number = killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS),
+): Promise<void> {
+  const children = live()
+  for (const child of children) child.kill('SIGTERM')
+  const allExited = Promise.allSettled(children.map((c) => c.exited))
+  let graceTimer: ReturnType<typeof setTimeout> | undefined
+  // Not unref'd: it is what guarantees progress when every other handle
+  // has drained, and the grace is bounded either way.
+  await Promise.race([
+    allExited,
+    new Promise<void>((resolve) => {
+      graceTimer = setTimeout(resolve, graceMs)
+    }),
+  ])
+  if (graceTimer !== undefined) clearTimeout(graceTimer)
+  const survivors = live()
+  for (const child of survivors) child.kill('SIGKILL')
+  await Promise.allSettled(survivors.map((c) => c.exited))
+}
+
 export interface SignalForwarding {
   /** Detach the handlers — in `run()`'s finally, so repeated runs never stack listeners. */
   remove(): void
@@ -39,9 +69,6 @@ export function forwardSignals(args: {
   /** Ready persistent tasks the orchestrator owns until the graph finishes. */
   persistentRegistry: ReadonlyMap<string, Child>
 }): SignalForwarding {
-  // Both registries, read fresh each time: the run loop is still live
-  // during the grace, so a child spawned after the first sweep is caught
-  // by the last one.
   const everyChild = (): Child[] => [...args.liveChildren, ...args.persistentRegistry.values()]
   const exit = (signal: 'SIGINT' | 'SIGTERM'): never => {
     for (const child of everyChild()) child.kill('SIGKILL')
@@ -67,21 +94,7 @@ export function forwardSignals(args: {
     } catch {
       // teardown must not throw on the way out
     }
-    const children = everyChild()
-    for (const child of children) child.kill('SIGTERM')
-    const allExited = Promise.allSettled(children.map((c) => c.exited))
-    let graceTimer: ReturnType<typeof setTimeout> | undefined
-    // The timer is NOT unref'd: it is what guarantees the exit when every
-    // other handle has drained, and the grace is bounded either way.
-    void Promise.race([
-      allExited,
-      new Promise<void>((resolve) => {
-        graceTimer = setTimeout(resolve, killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS))
-      }),
-    ]).then(() => {
-      if (graceTimer !== undefined) clearTimeout(graceTimer)
-      exit(signal)
-    })
+    void terminateChildren(everyChild).then(() => exit(signal))
   }
   const onSigint = (): void => onSignal('SIGINT')
   const onSigterm = (): void => onSignal('SIGTERM')

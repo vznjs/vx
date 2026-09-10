@@ -1066,6 +1066,31 @@ before · 2 attempts this run`), `--summarize`'s per-task
       trusted OIDs for exactly the clean tracked ones. Holds on every
       seed; the pin catches the prefix-bleed mutation (`dir` without
       its slash) on every seed too. No defect.
+109.  DONE (2026-09-10, night — item 106's class, grepped): a run can be
+      aborted from outside, and every SIGTERM vx sends escalates. A
+      probe (`SIGTERM` to `vx watch` during its initial run) refuted
+      the watch loop's contract — the handlers went in AFTER the
+      initial run, so Bun's default exited 143 and the cycle's `sleep`
+      lived on under init; mid-cycle the handlers resolved 0 over the
+      same orphan. Fix as a seam, not a special case: `RunOptions.
+signal` (an `AbortSignal`) runs the one teardown the process
+      handler now shares — `terminateChildren` in `signals.ts`: SIGTERM,
+      grace, re-read the registries, SIGKILL, reap — and the scheduler
+      reads the signal so nothing further dispatches, every
+      never-started task completing `aborted`; run() returns to its
+      caller. `vx watch` installs its handlers before the initial run,
+      aborts one controller on either signal, drains the cycle and
+      resolves 0 (`tests/watch-signals.test.ts`, the probe made a pin;
+      `tests/abort.test.ts` for the seam itself). Two more sites in the
+      class: the persistent readiness timeout's SIGTERM now escalates
+      like the run timeout's (a never-ready server is in no registry;
+      `trap '' TERM` pin), and the foreground keep-alive waited for
+      EVERY requested server with a dead SIGTERM loop after it — now
+      the first exit ends the session, the others are torn down and a
+      non-zero exit fails the run (`tests/keep-alive.test.ts`, both
+      exit codes; the old code hangs it 20 s). Docs: cli (watch exit
+      codes, the foreground rule), execution, modules/signals,
+      cli-watch, orchestrator, options, scheduler, runner.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

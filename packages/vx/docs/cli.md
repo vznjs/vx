@@ -458,7 +458,11 @@ tracks the run live. Top to bottom:
    from the completed-task scrollback above it.
 2. **Pinned persistent tasks** — `▸ <id> running` for every persistent
    task that became ready. The pin lives until run end, so it is the
-   visible evidence the dev server is still alive.
+   visible evidence the dev server is still alive. After the summary,
+   a requested persistent task keeps vx in the foreground until it —
+   or, with several, the first of them — exits; the rest are then torn
+   down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL) and a non-zero exit
+   makes the run exit 1.
 3. **Worker rows** — one per worker slot (sized
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
@@ -960,7 +964,10 @@ across changes, use the dev tool's own watch (`vite`, `tsc -b -w`,
 
 ### Exit codes
 
-- `0` — clean Ctrl+C / SIGTERM exit.
+- `0` — clean Ctrl+C / SIGTERM exit. A cycle in flight is torn down
+  first — its children get SIGTERM, `VX_KILL_GRACE_MS` (2 s), then
+  SIGKILL — and the process leaves only once it has returned, so a CI
+  cancellation never orphans a task.
 - `1` — parser error or missing scope.
 
 Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit

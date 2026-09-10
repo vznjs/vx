@@ -109,6 +109,12 @@ export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
   /**
+   * An aborted run dispatches nothing further: every task not yet
+   * started completes `aborted` (the ones in flight are being killed by
+   * the orchestrator and report `aborted` through the runner's signal).
+   */
+  signal?: AbortSignal
+  /**
    * Failure propagation (default 'deps-ok' — the historical behavior):
    *   - 'deps-ok': a failed/skipped/aborted upstream skips its
    *     dependents; independent siblings keep running.
@@ -553,8 +559,9 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     // cached output is reported `cache-hit` even if a dep failed — and
     // they're dep-independent, so they typically restore before a dep
     // could fail anyway.
+    const aborted = (): boolean => options.signal?.aborted === true
     const willSkip = (id: string): boolean => {
-      if (failFastTripped) return true
+      if (failFastTripped || aborted()) return true
       if (restoreTier?.has(id)) return false
       if (continueMode === 'always') return false
       const node = nodes.get(id) as TaskNode
@@ -622,7 +629,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // because dependents are pushed when `pending` hits 0 regardless
         // of outcome — keeps the propagation logic in one place.
         if (willSkip(id)) {
-          finishOne(id, { node, status: 'skipped', exitCode: 1, durationMs: 0 })
+          finishOne(id, {
+            node,
+            status: aborted() ? 'aborted' : 'skipped',
+            exitCode: 1,
+            durationMs: 0,
+          })
           continue
         }
 

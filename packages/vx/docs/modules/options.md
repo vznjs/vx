@@ -12,7 +12,7 @@ live in a leaf file (not the module entry) so internals like
 ```ts
 export interface RunOptions {
   /* cwd, tasks, projects?, concurrency?, cache? (CachePolicy), forwardArgs?,
-     excludeDependencies?, summarize?, profile?, log?, handleSignals? */
+     excludeDependencies?, summarize?, profile?, log?, handleSignals?, signal? */
 }
 export interface RunSummary {
   ok: boolean

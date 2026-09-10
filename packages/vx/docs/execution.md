@@ -242,10 +242,13 @@ terminal and a task succeeding or failing. Read it alongside
        sandbox teardown when any task was sandboxed.
     7. Return { ok, outcomes }; ok = every real task ended success
        or cache-hit (any failed/skipped → ok = false → exit 1).
-    8. FOREGROUND ONLY: if the user requested a persistent task (a dev
-       server), the process now blocks on its exit — the summary is
-       already printed, `▸ <id> running` rows list what's alive, and
-       Ctrl-C reaps the process group.
+    8. FOREGROUND ONLY: if the user requested persistent tasks (dev
+       servers), the process now blocks until ONE of them exits — the
+       summary is already printed, `▸ <id> running` rows list what's
+       alive, Ctrl-C reaps the process group. That first exit ends the
+       session: the others are torn down (SIGTERM, grace, SIGKILL) and
+       a non-zero exit makes the run exit 1, so a script's `vx run dev`
+       fails when the server it started fell over.
 ```
 
 ## One command per task
@@ -302,22 +305,22 @@ broader access has cache-stability implications).
 
 ## Failure handling
 
-| Failure                                                  | Behavior                                                                                                                                                                |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Exec exits non-zero                                      | Task is `failed`; cache NOT written; output streamed live + the failure frame replays at run end                                                                        |
-| `exec.timeout` overrun                                   | SIGTERM; task is `failed` (timed out), exit 143, never cached                                                                                                           |
-| Child killed by Ctrl-C teardown (SIGINT/SIGTERM)         | Task is `aborted` — not counted, not shown, not recorded                                                                                                                |
-| `execute()` throws (internal error)                      | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly)                                                                      |
-| Persistent task exits before ready                       | Task marked `failed`; the captured output is surfaced                                                                                                                   |
-| Upstream task fails                                      | Dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent) |
-| Sandbox violation (macOS monitor / Linux structural)     | Task is `failed`; violations render in the frame; nothing cached                                                                                                        |
-| Remote-cache error (500, timeout, corrupt artifact)      | Degrades to a cache miss; never fails the run                                                                                                                           |
-| Workspace yaml missing                                   | `findWorkspaceRoot` throws (UserError); `vx run` exits 1                                                                                                                |
-| Same-project task referenced in `dependsOn` not declared | `buildTaskGraph` throws with the offending edge                                                                                                                         |
-| Duplicate workspace package name                         | `listProjects` throws with both paths                                                                                                                                   |
-| Cycle in task graph                                      | `detectCycle` throws with the cycle path                                                                                                                                |
-| Malformed config                                         | `loadProjectConfig` throws (UserError) with file + field                                                                                                                |
-| `cache.inputs.runtime` command exits non-zero            | Hard UserError naming the command + exit code                                                                                                                           |
+| Failure                                                                                                                                                   | Behavior                                                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Exec exits non-zero                                                                                                                                       | Task is `failed`; cache NOT written; output streamed live + the failure frame replays at run end                                                                        |
+| `exec.timeout` overrun                                                                                                                                    | SIGTERM; task is `failed` (timed out), exit 143, never cached                                                                                                           |
+| Child killed by Ctrl-C teardown (SIGINT/SIGTERM), or by an embedder's `RunOptions.signal` abort — which also completes every never-started task `aborted` | Task is `aborted` — not counted, not shown, not recorded                                                                                                                |
+| `execute()` throws (internal error)                                                                                                                       | Task marked `failed`; stderr written `[vx] internal error in <id>` (a `UserError` reports plainly)                                                                      |
+| Persistent task exits before ready                                                                                                                        | Task marked `failed`; the captured output is surfaced                                                                                                                   |
+| Upstream task fails                                                                                                                                       | Dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent) |
+| Sandbox violation (macOS monitor / Linux structural)                                                                                                      | Task is `failed`; violations render in the frame; nothing cached                                                                                                        |
+| Remote-cache error (500, timeout, corrupt artifact)                                                                                                       | Degrades to a cache miss; never fails the run                                                                                                                           |
+| Workspace yaml missing                                                                                                                                    | `findWorkspaceRoot` throws (UserError); `vx run` exits 1                                                                                                                |
+| Same-project task referenced in `dependsOn` not declared                                                                                                  | `buildTaskGraph` throws with the offending edge                                                                                                                         |
+| Duplicate workspace package name                                                                                                                          | `listProjects` throws with both paths                                                                                                                                   |
+| Cycle in task graph                                                                                                                                       | `detectCycle` throws with the cycle path                                                                                                                                |
+| Malformed config                                                                                                                                          | `loadProjectConfig` throws (UserError) with file + field                                                                                                                |
+| `cache.inputs.runtime` command exits non-zero                                                                                                             | Hard UserError naming the command + exit code                                                                                                                           |
 
 Failures don't kill the scheduler — independent tasks already in
 flight finish, and unrelated tasks not yet started still run. The

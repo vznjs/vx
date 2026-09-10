@@ -75,8 +75,16 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
    - Reentrancy guard: while a cycle is running, further events set
      a `pending` flag; the loop drains it after the current cycle
      finishes. Two events can collapse into one re-run.
-6. **Exit.** `process.once('SIGINT', cleanup)` resolves the loop
-   promise after closing all watchers. Returns 0.
+6. **Exit.** `watchCmd` installs `process.once('SIGINT' | 'SIGTERM')`
+   BEFORE the initial run; both abort one `AbortController` whose
+   signal every cycle's `run()` carries (`RunOptions.signal`,
+   `handleSignals: false`). The in-flight cycle tears its children down
+   (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL) and returns; the loop closes
+   its watchers, waits for that cycle, and resolves 0. SIGINT also
+   prints `vx watch: stopped`. Until 2026-09-10 the handlers went in
+   with the loop, so a SIGTERM during the initial run took Bun's
+   default (exit 143) and orphaned the cycle's child
+   (`tests/watch-signals.test.ts`).
 
 ## Why not filter by `cache.inputs.files`
 

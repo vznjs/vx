@@ -396,6 +396,14 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
           ),
         )
         child.kill('SIGTERM')
+        // Same escalation as `armTimeout`: a server that traps TERM and
+        // never became ready is not in the persistent registry, so nothing
+        // else would ever kill it — it outlived the run under init.
+        const killTimer = setTimeout(
+          () => child.kill('SIGKILL'),
+          killGraceMs(TIMEOUT_SIGKILL_GRACE_MS),
+        )
+        killTimer.unref?.()
       }
     }, opts.timeoutMs)
   }

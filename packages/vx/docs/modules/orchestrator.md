@@ -40,7 +40,7 @@ export function shouldShortCircuit(nodes, policy, cache): boolean
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy, frozen?,
 //   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
 //   summarize?, profile?, tags?, command?, report?, log?, bus?,
-//   inflight?, handleSignals?
+//   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return)
 
 export interface RunSummary {
   ok: boolean
@@ -91,6 +91,12 @@ export interface RunSummary {
 && handleSignals !== false`); `shutdownPersistent` SIGTERMs every
     other persistent child and waits, SIGKILLing stragglers after a
     2 s grace (`VX_KILL_GRACE_MS` shortens it; see util-settle.md).
+    The foreground then blocks until ONE kept-alive server exits, tears
+    the others down the same way (`terminateChildren`, signals.md) and
+    returns `ok && exit === 0` — a crashed dev server fails the run.
+    `RunOptions.signal` aborts a run from outside through the same
+    teardown: the scheduler dispatches nothing further (never-started
+    tasks complete `aborted`) and run() returns to its caller.
 11. **Summary.** `formatPersistentList` rows for kept-alive tasks,
     then `formatRunSummary(list, totalMs, colors, runContext)` — the
     footer carries the run banner (wordmark rule + projects/tasks/
