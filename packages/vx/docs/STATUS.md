@@ -1509,7 +1509,7 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     whole-process scale, as its 0.55 ms for 1,000 candidates said it
     would be. Open from the owner's last message: nothing; the
     2026-07 parity design doc's edge-case lists and § Next 5–8 remain
-    the backlog. #273 was merged by the owner at 17:03Z (main 891eba5, green); items 96–99 followed the same night, 96–98 inside #273 and 99 as PR #274. Never merge a PR without the owner's word.
+    the backlog. #273 was merged by the owner at 17:03Z (main 891eba5, green); items 96–101 followed the same night, 96–98 inside #273 and 99–101 as PR #274 (green, mergeable, awaiting the owner). Never merge a PR without the owner's word.
 
 11. **Handoff after item 67 (2026-09-10, night).** The loop's Next
     items are spent; what a fresh session should know, in order:
