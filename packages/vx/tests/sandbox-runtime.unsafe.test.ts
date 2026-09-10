@@ -133,9 +133,12 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   // probes, never loads the runtime and never starts its proxy — measured
   // 339–486 ms → 33–38 ms for this repo's own warm gate (2026-09-10). The
   // second run below makes the sandbox UNAVAILABLE (a PATH with only git on
-  // it: no bwrap, no sandbox-exec) and still succeeds because it hits; the
-  // control re-runs with an edited input, and that miss fails on the probe
-  // — proving the same PATH does take the sandbox away.
+  // it: no bwrap, no socat, no sandbox-exec) and still succeeds because it
+  // hits; the control re-runs with an edited input, and that miss fails
+  // when the runtime cannot start — proving the same PATH does take the
+  // sandbox away. Which dependency the runtime misses first (the probe's
+  // bwrap or the bridge's socat) decides the message, so the control
+  // asserts the failure, not its text.
   it(
     'a run whose sandboxed tasks are all hits never starts the sandbox',
     async () => {
@@ -171,7 +174,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           log: collectingLogger(fixture),
         })
         expect(third.ok).toBe(false)
-        expect(fixture.log.join('\n')).toContain('sandbox not available')
+        expect(third.outcomes[0]?.status).toBe('failed')
       } finally {
         process.env['PATH'] = savedPath
         await rm(onlyGit, { recursive: true, force: true })

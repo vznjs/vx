@@ -68,9 +68,19 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
     },
     arm() {
       pending ??= (async () => {
-        const avail = await probeSandbox({ weakerNested })
-        if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
-        await initSandbox({ allowedDomains: [...domains] })
+        try {
+          const avail = await probeSandbox({ weakerNested })
+          if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
+          await initSandbox({ allowedDomains: [...domains] })
+        } catch (err) {
+          // A throw from the runtime itself (its bridge needs socat, which
+          // the dependency check does not cover) gets the same one-line
+          // verdict as a refused probe, not an internal error with a stack.
+          if (err instanceof UserError) throw err
+          throw new UserError(
+            `sandbox not available: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
         armed = true
       })()
       return pending
