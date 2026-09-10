@@ -1195,6 +1195,77 @@ describe('inputs.files can only ever narrow the git file set', () => {
     expect(got.files).toEqual([])
   })
 
+  // Turbo's `globs_test.rs test_input_directory_glob_causes_cache_miss`:
+  // `"inputs": ["src/"]` and `"outputs": ["dist"]` are the most common
+  // turbo.json shapes, and a glob matcher sees only the literal path — so
+  // `['src/']` folded ZERO files, a key that never moved with its source.
+  // A literal names the file or the whole tree under it, as in .gitignore.
+  it('a literal directory — with or without a trailing slash — means its whole tree', async () => {
+    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    await write(path.join(projectDir, 'src', 'deep', 'b.ts'), 'b')
+    await write(path.join(projectDir, 'other.ts'), 'o')
+    for (const spelling of ['src', 'src/']) {
+      const got = await resolveInputs({
+        projectDir,
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files: [spelling] },
+        ownOutputs: [],
+        nestedProjectDirs: [],
+      })
+      expect(got.files.map((f) => path.relative(projectDir, f)).sort()).toEqual([
+        path.join('src', 'a.ts'),
+        path.join('src', 'deep', 'b.ts'),
+      ])
+    }
+    // A literal negation subtracts the tree the same way; a literal FILE is
+    // still exactly that file.
+    const minus = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*', '!src'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(minus.files.map((f) => path.relative(projectDir, f))).toEqual(['other.ts'])
+    const one = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/a.ts'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(one.files.map((f) => path.relative(projectDir, f))).toEqual([path.join('src', 'a.ts')])
+  })
+
+  it('a literal output directory captures and cleans its whole tree', async () => {
+    await write(path.join(projectDir, 'dist', 'a.js'), 'a')
+    await write(path.join(projectDir, 'dist', 'deep', 'b.js'), 'b')
+    await write(path.join(projectDir, 'src', 'a.ts'), 'a')
+    const resolved = await resolveOutputs({ projectDir, outputs: ['dist'], nestedProjectDirs: [] })
+    expect(resolved.map((f) => path.relative(projectDir, f)).sort()).toEqual([
+      path.join('dist', 'a.js'),
+      path.join('dist', 'deep', 'b.js'),
+    ])
+    // …and the declared output tree is excluded from the inputs, literal or not.
+    const inputs = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['**/*'] },
+      ownOutputs: ['dist'],
+      nestedProjectDirs: [],
+    })
+    expect(inputs.files.map((f) => path.relative(projectDir, f))).toEqual([
+      path.join('src', 'a.ts'),
+    ])
+    await cleanOutputs({ projectDir, outputs: ['dist/'], nestedProjectDirs: [] })
+    expect(existsSync(path.join(projectDir, 'dist', 'a.js'))).toBe(false)
+    expect(existsSync(path.join(projectDir, 'dist', 'deep'))).toBe(false)
+  })
+
   it('a literal naming a file that does not exist stays silent', async () => {
     // An ordinary stale declaration, not a stale hit — nothing on disk is being
     // missed. Refusing it would break every config that lists an optional file,

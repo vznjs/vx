@@ -106,6 +106,26 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual(['a'])
   })
 
+  it('diffs from the merge base: a base branch that moved on does not select its own changes', async () => {
+    // Turbo's `test_affected_merge_base_diverged`: the branch changes `a`,
+    // `main` separately changes `b`. Since main, only `a` is this branch's
+    // work — a two-dot diff against `main` would select `b` too, and would
+    // HIDE `a` if main later landed the same bytes.
+    await git(root, 'branch', '-m', 'main')
+    await git(root, 'checkout', '-q', '-b', 'feature')
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a-on-feature')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'feature: a')
+    await git(root, 'checkout', '-q', 'main')
+    await writeFile(path.join(root, 'packages/b/file.txt'), 'b-on-main')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'main: b')
+    await git(root, 'checkout', '-q', 'feature')
+
+    const out = await affectedProjects({ workspaceRoot: root, since: 'main', projects })
+    expect([...out]).toEqual(['a'])
+  })
+
   it('throws UserError when the ref does not resolve', async () => {
     expect(
       affectedProjects({ workspaceRoot: root, since: 'no-such-branch', projects }),

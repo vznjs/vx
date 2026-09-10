@@ -191,6 +191,28 @@ describe('applyFilters', () => {
     })
   })
 
+  it('a path form with a glob selects by root-relative dir (`./packages/*`, `{apps/**}`)', () => {
+    // Turbo's `test_glob_filter_packages_dir`; pnpm's spelling too. The
+    // glob is matched against the project's own dir: `*` is the direct
+    // children, `**` reaches a nested package.
+    const projects = [
+      mkProject('ui', '/ws/packages/ui'),
+      mkProject('core', '/ws/packages/core'),
+      mkProject('inner', '/ws/packages/core/inner'),
+      mkProject('web', '/ws/apps/web'),
+      mkProject('docs', '/ws/docs'),
+    ]
+    const graph = buildPackageGraph(projects)
+    const pick = (raw: string) =>
+      [...applyFilters({ filters: [parseFilter(raw, ROOT)], projects, graph })].sort()
+    expect(pick('./packages/*')).toEqual(['core', 'ui'])
+    expect(pick('./packages/**')).toEqual(['core', 'inner', 'ui'])
+    expect(pick('{apps/**}')).toEqual(['web'])
+    expect(pick('./*')).toEqual(['docs'])
+    expect(pick('./packages/c*')).toEqual(['core'])
+    expect(pick('./nothing/*')).toEqual([])
+  })
+
   it('path filter selects packages under the directory', () => {
     const filters = [parseFilter('./packages/ui', ROOT)]
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['ui'])

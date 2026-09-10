@@ -147,6 +147,43 @@ describe('listProjects', () => {
     expect(projects.map((p) => p.name)).toEqual(['b'])
   })
 
+  // pnpm, npm, yarn and Bun all take `!packages/fixtures` in the list. Handed
+  // to Bun.Glob raw, the `!` negated the WHOLE pattern — every manifest in
+  // the tree matched, so the excluded package ran under --all and any
+  // fixture repeating a name killed the run with "Duplicate package name".
+  it('a negated package glob excludes, never inverts — pnpm, npm and glob spellings', async () => {
+    for (const manifest of [
+      {
+        file: 'pnpm-workspace.yaml',
+        body: 'packages:\n  - "packages/*"\n  - "!packages/legacy"\n',
+      },
+      {
+        file: 'package.json',
+        body: JSON.stringify({ name: 'root', workspaces: ['packages/*', '!packages/legacy/'] }),
+      },
+      {
+        file: 'pnpm-workspace.yaml',
+        body: 'packages:\n  - "packages/**"\n  - "!**/fixtures/**"\n  - "!packages/legacy"\n',
+      },
+    ]) {
+      await rm(dir, { recursive: true, force: true })
+      await mkdir(dir, { recursive: true })
+      await writeFile(path.join(dir, manifest.file), manifest.body)
+      for (const [rel, name] of [
+        ['packages/a', 'a'],
+        ['packages/legacy', 'legacy'],
+        ['packages/a/fixtures/demo', 'a'], // a fixture repeating a name: fatal if it were a member
+        ['examples/demo', 'demo'],
+      ] as const) {
+        await mkdir(path.join(dir, rel), { recursive: true })
+        await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
+      }
+      const ws = await loadWorkspace(dir)
+      const projects = await listProjects(ws)
+      expect(projects.map((p) => p.name).sort()).toEqual(['a'])
+    }
+  })
+
   it('warns when a skipped package declares vx tasks (otherwise it vanishes silently)', async () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await mkdir(path.join(dir, 'packages/noname'), { recursive: true })

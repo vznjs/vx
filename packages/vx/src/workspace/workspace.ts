@@ -90,13 +90,42 @@ export async function findWorkspaceRoot(start: string): Promise<string> {
 /** True when one of `below` (dirs under `root`, toward `start`) is a member. */
 function claimsMember(root: string, below: readonly string[], globs: readonly string[]): boolean {
   if (below.length === 0 || globs.length === 0) return false
-  const rels = below.map((d) => relPosix(root, d))
-  for (const pattern of globs) {
+  const { positive, negative } = splitPackageGlobs(globs)
+  const rels = below.map((d) => relPosix(root, d)).filter((rel) => !excludedBy(rel, negative))
+  for (const pattern of positive) {
     const normalized = pattern.replace(/\/+$/, '')
     // `.` means the root itself is the project — never a directory below it.
     if (normalized === '' || normalized === '.') continue
     const glob = new Bun.Glob(normalized)
     if (rels.some((rel) => glob.match(rel))) return true
+  }
+  return false
+}
+
+/**
+ * pnpm, npm, yarn and Bun all take `!packages/fixtures` in the package
+ * list. Handed to `Bun.Glob` raw, a leading `!` negates the WHOLE pattern,
+ * so `!packages/fixtures/package.json` matched every manifest in the tree
+ * and every directory holding one became a project — the excluded package
+ * ran under `--all`, and a fixture repeating a name killed the run with
+ * "Duplicate package name". Negations subtract from what the positive
+ * globs found; a literal one excludes its tree.
+ */
+function splitPackageGlobs(globs: readonly string[]): { positive: string[]; negative: string[] } {
+  const positive: string[] = []
+  const negative: string[] = []
+  for (const g of globs) {
+    if (g.startsWith('!')) negative.push(g.slice(1).replace(/\/+$/, ''))
+    else positive.push(g)
+  }
+  return { positive, negative }
+}
+
+function excludedBy(rel: string, negative: readonly string[]): boolean {
+  for (const neg of negative) {
+    if (neg.length === 0) continue
+    if (rel === neg || rel.startsWith(`${neg}/`)) return true
+    if (/[*?[\]{}]/.test(neg) && new Bun.Glob(neg).match(rel)) return true
   }
   return false
 }
@@ -287,11 +316,17 @@ async function isFile(p: string): Promise<boolean> {
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]> {
   // Run all package globs concurrently. Disk-bound walks parallelize
   // well; serializing them just stretches the discovery phase by N×.
+  const { positive, negative } = splitPackageGlobs(workspace.packageGlobs)
   const perPattern = await Promise.all(
-    workspace.packageGlobs.map((pattern) => memberDirs(workspace.root, pattern)),
+    positive.map((pattern) => memberDirs(workspace.root, pattern)),
   )
   const matches = new Set<string>()
-  for (const arr of perPattern) for (const m of arr) matches.add(m)
+  for (const arr of perPattern) {
+    for (const m of arr) {
+      if (negative.length > 0 && excludedBy(relPosix(workspace.root, m), negative)) continue
+      matches.add(m)
+    }
+  }
 
   // Per-project discovery: the manifest read answers "is there a
   // package.json" (an ENOENT is the "not a member" answer, at the cost of

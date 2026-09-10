@@ -1098,6 +1098,15 @@ describe('parseRunArgs', () => {
 
   it('parses --concurrency (no short alias)', () => {
     expect(parseRunArgs(['build', '--concurrency', '2']).concurrency).toBe(2)
+    // The percent form resolves against this machine, never below one
+    // worker, and over 100% is allowed for I/O-bound work.
+    const cores = navigator.hardwareConcurrency
+    expect(parseRunArgs(['build', '--concurrency', '50%']).concurrency).toBe(
+      Math.max(1, Math.round(cores * 0.5)),
+    )
+    expect(parseRunArgs(['build', '--concurrency=200%']).concurrency).toBe(cores * 2)
+    expect(parseRunArgs(['build', '--concurrency', '1%']).concurrency).toBeGreaterThanOrEqual(1)
+    expect(parseRunArgs(['build', '--concurrency', '%']).error).toBeDefined()
     expect(parseRunArgs(['build', '-c', '4']).error).toMatch(/unknown flag: -c/)
     // A near miss names the documented flag; a far one gets no guess.
     expect(parseRunArgs(['build', '--concurency', '4']).error).toBe(

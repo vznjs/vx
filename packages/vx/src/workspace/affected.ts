@@ -1,13 +1,10 @@
 // `--affected` — git-relative project selection.
 //
 // Resolves the set of project names whose files have changed since a
-// given git ref. The diff is `<since>...HEAD` plus working-tree
-// changes (uncommitted edits), so it captures everything you've
-// touched on the current branch.
-//
-// We use `git diff --name-only <since>` which by default compares the
-// `<since>` commit to the working tree — i.e. commits-from-`<since>`
-// + index + unstaged. Matches Turbo's `[<since>]` filter semantics.
+// given git ref: `git diff --name-only <merge-base(since, HEAD)>`, which
+// compares that commit to the working tree — commits on this branch +
+// index + unstaged — so it captures everything you touched and nothing
+// the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
 import path from 'node:path'
 import { UserError } from '../util/index.js'
@@ -74,6 +71,14 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
     )
   }
   await verifyRef(args.workspaceRoot, args.since)
+  // Diff from the MERGE BASE of `since` and HEAD, not from `since` itself:
+  // on a branch whose base has moved on, `git diff <base>` reports every
+  // file OTHER people changed on the base (over-selection that defeats a
+  // CI `--affected`), and hides your own edit when the base later landed
+  // byte-identical content. Turbo and Nx both diff from the merge base;
+  // when there is none (unrelated histories, a detached probe) the ref
+  // itself is the base, as before.
+  const base = await mergeBase(args.workspaceRoot, args.since)
 
   const [diffed, untracked] = await Promise.all([
     // `--no-renames` is crucial for project-affected detection: with
@@ -102,7 +107,7 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
       '--name-only',
       '-z',
       '--end-of-options',
-      args.since,
+      base,
     ]),
     // `git diff` never reports untracked-but-not-ignored files, but input
     // enumeration does (`git ls-files --cached --others --exclude-standard`),
@@ -140,7 +145,7 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
       }
       const answer = await claims.affected({
         file,
-        before: await gitBytesAt(args.workspaceRoot, args.since, file),
+        before: await gitBytesAt(args.workspaceRoot, base, file),
         after: await bytesOrNull(path.join(args.workspaceRoot, file)),
       })
       if (answer === undefined) return new Set(args.projects.map((p) => p.name))
@@ -264,6 +269,19 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
   const out = new TextDecoder().decode(probe.stdout).trim()
   if (probe.exitCode === 0 && out.length > 0) return out
   return 'HEAD~1'
+}
+
+/** `git merge-base <ref> HEAD`, or `ref` itself when the two share no ancestor. */
+async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
+  const proc = Bun.spawn({
+    cmd: ['git', 'merge-base', '--end-of-options', ref, 'HEAD'],
+    cwd: workspaceRoot,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  const sha = out.trim()
+  return exit === 0 && sha.length > 0 ? sha : ref
 }
 
 async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {

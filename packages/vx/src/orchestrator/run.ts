@@ -364,6 +364,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       options.cache ?? FULL_CACHE_POLICY,
       prepared.hasRemoteLayer,
     )
+    if (options.remoteRequested === true && !prepared.hasRemoteLayer) {
+      log.status(
+        'vx: --cache named the remote cache, but no cache plugin in vx.workspace.* supplies one — the remote axes are off for this run',
+      )
+    }
     const deferredOutputs = new DeferredOutputs({
       nodes,
       cache,
