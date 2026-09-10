@@ -688,7 +688,13 @@ run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
     `build.bun.*` task; `run test --filter @vzn/vx-lockfile --dry`
     selects the package's own tasks and nothing of core's. Cold gate on
     the unprivileged clone, `rm -rf .vx/cache` then `vx run ci --all`:
-    GATE_NUMBERS.
+    121.2 s → 99.8 s wall (−18%); the four compiles took 4.9 / 12.5 /
+    13.7 / 13.8 s under the gate's contention, `check.binary` takes
+    1.0 s. (Both runs' one red task is `@vzn/vx-docs#build` refusing
+    that box's Node 20 — environment, green in CI.) The `install →
+    ^build` chain itself is untouched and right: a dependant's tasks
+    wait for what its deps BUILD, and core builds nothing a dependant
+    consumes — it is consumed as source.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
