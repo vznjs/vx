@@ -1406,37 +1406,114 @@ equivalent — map it manually` on every run, for the value every
 125.  DONE (2026-09-10, late night — owner: "make the landing page a
       visual masterpiece … a tool from the future, cinematic, bending
       time and space, crushing competitors, really good visual
-      effects"): a cinematic layer over the same page, every number
-      still server-rendered from `results.json` and every generator
-      hook intact (`check.site` passes; the stat tiles, the bench data
-      block and the note paragraphs are what `update-site.ts` still
-      rewrites). Hero: a canvas warp field (up to 520 streaks in the
-      three accents, leaning toward the cursor, paused off screen), a
-      perspective grid floor running toward the viewer, a cursor
-      spotlight, "Bend time. / Not the rules." with a chromatic-aberration
-      second line, staggered rises, count-up stat tiles, and the
-      terminal typing its command before its rows land. New "Same
-      code. Different clocks." race: three ships on real cold-build
-      times at sixty times speed (vx done at +4% just past the ideal
-      line, Turbo done at the track's end, Nx running off it, "still
-      running"), a replay button, and the overhead read the generator's
-      way (`over()`: a percentage under 2×, a multiple above). Cards
-      tilt toward the cursor with a light that follows it; sections
-      reveal on entry; the bench bars grow on reveal with a ratio badge
-      per competitor; a scroll-progress beam in the nav; film grain and
-      a vignette over everything; a beam sweeping the migrate CTA. No
-      dependency; `prefers-reduced-motion` holds every piece still, and
-      the DOM reads complete without the script. Verified in a real
-      Chromium (playwright-core in the session scratchpad against
-      `/opt/pw-browsers`, never in the repo): the document is exactly
-      390 px wide on a phone, the reveals fire on scroll, the race
-      resolves; the first captures with Chrome's `--screenshot` flag
-      froze mid-animation and clipped the phone at a narrower viewport
-      than the layout — capture artefacts, not page bugs. Two real
-      regressions found and fixed on the way: the hero as a flex column
-      let the terminal's preformatted rows set its min width (the grid
-      may shrink now), and the appended stat rules outranked the phone
-      media query by cascade order (the phone block sits after them).
+      effects", then "I asked for complete cinematic breath taking
+      redesign … not just improved design"): the landing page rewritten
+      from scratch as a scroll-driven film. The first delivery layered
+      effects over the old page and was rejected; the second is a new
+      `index.astro` and `landing.css`. Five pinned scenes, each
+      `section.scene.pin` `--len` viewports tall with a sticky stage
+      the script scrubs by a scroll progress `--p`: the cold open (a
+      warp field of streaks toward the viewer, `vx run build --all`
+      typing itself, "Bend time. / Not the rules." rising in), the
+      clocks (three runners on one orbit at real cold-build times, ×60
+      then ×600 after vx and Turbo finish, captions at T+3:46, T+5:13,
+      T+34:44, the HUD reading the lap and the rate), the wall (the
+      three overheads as monoliths that rotate with the scroll, vx +8 s,
+      Turbo +1m 35s, Nx clipped "off the chart · 9.6×"), the warm replay
+      (510 ms over a diagonal dot sweep, the three stat tiles beneath
+      it), and "One binary." (daemon, cloud, walled features, rewrite
+      struck through with a glitch, the line blurring in); then the
+      flowing sections — the cards, the ten-stage pipeline rail with a
+      pulse, the live terminal and config, the proof panel with bars
+      and ratio badges — and the outro ("Warp in.", the install pill,
+      the migrate CTA). Every number is still server-rendered from
+      `results.json` and every generator hook intact (`check.site`
+      passes: the stat tiles, the bench data block and the note
+      paragraphs are what `update-site.ts` rewrites; the clocks and the
+      wall read the same `over()` constants, so a re-benchmark reshapes
+      every scene). No dependency; one `<script>`; the DOM reads
+      complete without it; `prefers-reduced-motion` unpins every scene
+      and holds each on its final frame. Verified in a real Chromium
+      (playwright-core in the session scratchpad, never in the repo):
+      every scene captured at several progresses at 1440 and at 390,
+      `scrollWidth` equal to the viewport at both. Two fixes found by
+      looking: the warm dot grid covered only the top of the stage and
+      fought the number (a full-bleed sweep under a dark backdrop now,
+      widened on a phone where the copy is centred), and the Nx
+      monolith's "off the chart" label sat inside the clip mask that
+      cuts the tower (the label lives outside the mask).
+
+126.  DONE (2026-09-10, late night — the `project` stage names the
+      workspace): `ProjectHookContext.projects` is every package core
+      discovered — config file or not, in the scope or out of it — as
+      the one array every visit of a run receives. `@vzn/vx-turbo` was
+      walking the workspace a second time inside the stage
+      (`loadWorkspace` + `listProjectMetas` on the first visit) because
+      the context named only the package being visited, and Turbo's
+      `dependsOn` is only valid against every package's scripts at
+      once; it reads the array now and imports neither. Interleaved
+      A/B, six rounds, the 1,000-project bench under `turbo()` (each
+      package with its own `vx.config.mjs`, so every fill is a no-op
+      and the mapping's cost is all that differs), the old plugin from
+      an immutable copy: `load configs` 52.8 min / 55 median → 41.2 /
+      43 ms, the warm run ~200 → ~190. What is left of the stage's
+      cost under the plugin (41 ms against 22 without it) is the
+      1,000 per-package `turbo.json` probes, the mapping and the clone
+      per fill; probing the overlays in flight at once instead of one
+      await per package was measured (41.4–45.4 against 41.2–47.8 ms,
+      six rounds) and does nothing — `Bun.file().exists()` on a
+      warm inode is microseconds — so it is not in. Pinned twice:
+      core, a `project` plugin visiting `a` under `projects: ['a']`
+      lists `b` (no config, out of scope) in `ctx.projects`; the
+      plugin, its `project` hook called with a context whose
+      `projects` names a package that is not on disk maps it (the old
+      plugin's re-discovery could not have seen it). Both fail without
+      the change. Recorded on the way: a cold `vx run build --all` on
+      solid (`VX_TIMING=1`, the compiled binary) spends 57 ms before
+      the graph and 32 ms across its four saves inside 37.7 s of
+      tasks — the miss path is at its floor there, nothing to take.
+
+127.  DONE (2026-09-10, late night — found by item 126's seam): under
+      `vx watch`, a `package.json` script edit in a Turbo-mapped package
+      re-ran the task (the bytes are in the key) on the OLD command.
+      The workspace module is imported keyed on its bytes, so one
+      process reuses it across runs and the plugin instance with it,
+      and `@vzn/vx-turbo` memoized its mapping for the instance's
+      life — right for one run, stale for every cycle after an edit;
+      the same for a `turbo.json` edit. Probed end to end (a watch on
+      a one-package Turbo workspace, the script switched from writing
+      `v1` to `v2`: the cycle ran, `dist/out` still read `v1`), fixed
+      by keying the memo on `ctx.projects` — one array per run, so its
+      identity is the run's, which the context now documents — and
+      the probe reads `v2`. Pinned in the plugin's suite as two
+      `planRun`s in one process with the script edited between
+      (`echo lib-v2` is the second plan's command); fails without the
+      change. The README says it: the mapping is read once per run,
+      never once per process.
+
+128.  DONE (2026-09-10, late night — found reading the watch arms for
+      item 127): an edit to `vx.workspace.*` under `vx watch` was no
+      event. The non-recursive root arm listened for fingerprint files
+      only and the recursive one (`makeRootEventFilter`) for project
+      trees, fingerprint files and `workspaceFiles` globs — the
+      workspace config is no task's input, so nothing named it, while
+      it shapes every cycle (plugins, the `config` stage, concurrency,
+      the cache dir) and a cycle re-evaluates it for free (its import
+      is keyed on its bytes). A plugin added under a running watch
+      waited for a restart while the loop looked alive. Both arms take
+      `WORKSPACE_CONFIG_FILENAMES` at the root now (exported from the
+      workspace module; a name below the root is not it). Pinned: the
+      filter table (`vx.workspace.ts` kept, `nested/vx.workspace.ts`
+      dropped) and end to end — the workspace file rewritten under a
+      running watch with a `config` plugin that warns a marker; the
+      cycle prints it, is one cycle, and executes nothing (the config
+      is not key material). Both fail without the change. What is
+      still no event at the root: a `project` plugin's own source
+      (`turbo.json` for `@vzn/vx-turbo` — a per-package overlay lives
+      in a project dir and is; a root edit needs a restart). No seam
+      names a plugin's root files, and inventing one for one consumer
+      is the special case the seams exist to avoid; a second consumer
+      makes it a seam.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

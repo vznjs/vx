@@ -76,6 +76,7 @@ interface ProjectContext extends PluginContext {
   readonly name: string // package name
   readonly dir: string // absolute
   readonly packageJson: Record<string, unknown>
+  readonly projects: readonly ProjectMeta[] // every package core discovered, config file or not
 }
 interface GraphContext extends PluginContext {
   readonly requested: readonly string[] // task ids the user asked for

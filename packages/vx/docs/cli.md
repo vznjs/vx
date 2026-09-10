@@ -907,7 +907,9 @@ run...` precedes it.
    dependencies, the closure `--filter 'app...'` walks, cross-project
    `dependsOn` edges included — is watched recursively. The workspace root is
    watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
-   changes. A task's own declared outputs (`cache.outputs.files`,
+   changes and for an edit to `vx.workspace.*` — the one root file that
+   shapes a run (plugins, `config` stage, concurrency) without being any
+   task's input; the cycle after it re-evaluates the file. A task's own declared outputs (`cache.outputs.files`,
    `outputs.workspaceFiles`; a plugin's `project` stage counts, as in
    a run) never trigger a re-run — a cycle that writes `dist/` is not
    an edit, nor is the `dist` directory itself coming and going (a

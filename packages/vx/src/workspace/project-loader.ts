@@ -9,7 +9,8 @@ import { configEvalKey, configEvalKeyFromClosure, type ConfigEvalStore } from '.
 // reaches the loader for it (the tests do) keeps working.
 export { validateProjectConfig }
 
-const WORKSPACE_CONFIG_FILENAMES = [
+/** The workspace config's filenames at the root, in lookup order. `vx watch` re-runs on an edit to whichever exists. */
+export const WORKSPACE_CONFIG_FILENAMES = [
   'vx.workspace.ts',
   'vx.workspace.mts',
   'vx.workspace.js',

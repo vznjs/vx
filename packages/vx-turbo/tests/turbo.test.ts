@@ -5,7 +5,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { planRun, run, type Logger } from '@vzn/vx'
+import { planRun, run, type Logger, type ProjectConfig, type ProjectMeta } from '@vzn/vx'
+import { turbo } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -245,6 +246,57 @@ describe('@vzn/vx-turbo', () => {
       expect(text).toContain('[@vzn/vx-turbo] note: root task //#root not migrated')
       // Once for the workspace note, once per (package, task) for the gap.
       expect(text.split('root task //#root').length - 1).toBe(1)
+    },
+    TIMEOUT,
+  )
+})
+
+describe('the mapping reads the packages core discovered', () => {
+  it('maps a package that is in ctx.projects and not on disk — the plugin never walks the workspace itself', async () => {
+    const plugin = turbo()
+    const ghost = {
+      name: 'ghost',
+      dir: path.join(root, 'packages', 'ghost'),
+      packageJson: { name: 'ghost', version: '1.0.0', scripts: { build: 'echo ghost' } },
+      configPath: null,
+    } as unknown as ProjectMeta
+    const config: ProjectConfig = { tasks: {} }
+    await plugin.project!(config, {
+      workspaceRoot: root,
+      cacheDir: path.join(root, '.vx'),
+      warn() {},
+      name: ghost.name,
+      dir: ghost.dir,
+      packageJson: ghost.packageJson as unknown as Readonly<Record<string, unknown>>,
+      projects: [ghost],
+    })
+    expect(config.tasks?.build?.exec?.command).toBe('echo ghost')
+  })
+})
+
+describe('one mapping per run', () => {
+  it(
+    "a package.json script edited between two runs in one process is the second run's command (the vx watch shape)",
+    async () => {
+      // The workspace module is reused across runs in a process (its import
+      // is keyed on the file's bytes), so the plugin instance is too; a
+      // mapping memoized for the process ran the cycle after this edit on
+      // the old command.
+      const first = await planRun({ cwd: root, tasks: ['build'], projects: ['lib'], log: silent() })
+      expect(first.tasks[0]!.node.config.exec?.command).toBe(
+        'mkdir -p dist && echo lib > dist/lib.js',
+      )
+      await writeFile(
+        path.join(root, 'packages', 'lib', 'package.json'),
+        JSON.stringify({ name: 'lib', version: '1.0.0', scripts: { build: 'echo lib-v2' } }),
+      )
+      const second = await planRun({
+        cwd: root,
+        tasks: ['build'],
+        projects: ['lib'],
+        log: silent(),
+      })
+      expect(second.tasks[0]!.node.config.exec?.command).toBe('echo lib-v2')
     },
     TIMEOUT,
   )
