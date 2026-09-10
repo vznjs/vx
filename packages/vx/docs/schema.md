@@ -873,7 +873,7 @@ interface SandboxGrants {
   network?: true | string[] // true = anywhere, or an allowlist of domains
   systemInfo?: string[] // sysctl names, e.g. 'vfs.disk-space' (macOS)
   unixSockets?: true | string[] // AF_UNIX bind/connect, all or by path
-  localBinding?: boolean // bind and reach localhost ports
+  localBinding?: boolean | number[] // bind and reach localhost ports; a list also exposes them to the host
   machLookup?: string[] // mach global-names (macOS)
   pty?: boolean // acquire a TTY
   gitConfig?: boolean // write .git/config

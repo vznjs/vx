@@ -182,8 +182,15 @@ export interface SandboxGrants {
   systemInfo?: string[]
   /** Unix socket paths the task may connect to. `true` allows any. */
   unixSockets?: true | string[]
-  /** Bind a localhost port — a test that boots a server for itself. */
-  localBinding?: boolean
+  /**
+   * Bind and reach localhost ports — a test that boots a server for
+   * itself. A port LIST additionally makes those ports reachable from
+   * outside the sandbox (a dev server another task or the developer
+   * talks to): on Linux, where a sandboxed task lives in its own network
+   * namespace, each listed port is bridged out to the host's loopback;
+   * on macOS the host already sees them and the list means `true`.
+   */
+  localBinding?: boolean | number[]
   /** macOS: Mach service names the task may look up. */
   machLookup?: string[]
   /** Acquire a TTY. Rare outside interactive tools. */

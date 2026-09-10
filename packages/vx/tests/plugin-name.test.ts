@@ -9,7 +9,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'bun:test'
-import { definePlugin, loadWorkspaceConfig } from '../src/index.js'
+import { definePlugin } from '../src/index.js'
+import { loadWorkspaceConfig } from '../src/workspace/index.js'
 import { PLUGIN_IMPORT, pluginOrigin, pluginSource, testPlugin } from './helpers/plugin.js'
 
 describe('definePlugin — the name is the package name', () => {

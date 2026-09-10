@@ -48,7 +48,7 @@ exec: {
       network?: true | string[]
       systemInfo?: string[]   // sysctl names, macOS
       unixSockets?: true | string[]
-      localBinding?: boolean
+      localBinding?: boolean | readonly number[]
       machLookup?: string[]   // macOS
       pty?: boolean
       gitConfig?: boolean
@@ -270,3 +270,23 @@ cache would store output as if no undeclared read happened. Failing
 the task surfaces the problem early so users can update their
 `sandbox.allow.read` (or accept the leak by adding the path) before
 shipping a build that depended on it.
+
+## Port bridge (Linux)
+
+A `localBinding` port LIST is bridged out of the task's network namespace
+(`bwrap --unshare-net` sees no host port either way). `wrapSandboxedCommand`
+prefixes the sandboxed command with `portBridgeInner`: one
+`socat UNIX-LISTEN:<tmpdir>/vx-port-<tag>-<port>.sock,fork TCP:127.0.0.1:<port>`
+per port, backgrounded and reaped with the shell (as SRT starts its own
+proxy bridges), and spawns the host side, `portBridgeHostArgv`: one
+`socat TCP-LISTEN:<port>,bind=127.0.0.1,fork UNIX-CONNECT:<sock>,retry=…`
+per port. The unix socket lives in the sandbox tmpdir, bound read-write on
+both sides. The task's side has to CREATE a unix socket under SRT's seccomp
+filter, so `prepareSandbox` arms `allowAllUnixSockets` for the run whenever
+a task declares a port list (or `unixSockets`) — per run, like the proxy
+allowlist, because SRT reads it at `initialize()` only. `releaseBridges(tag)`
+stops the host side: `runSandboxed` calls it after the child exits, the
+persistent path on the server's exit, `resetSandbox` for whatever is left.
+Pinned in the unsafe suite on Linux: a sandboxed server on a listed port
+answers a downstream task's fetch and the host's, and after the run the
+port is closed; the control with `localBinding: true` is refused.

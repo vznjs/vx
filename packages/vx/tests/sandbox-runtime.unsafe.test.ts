@@ -22,9 +22,17 @@ import {
   runSandboxed,
 } from '../src/exec/sandbox-runtime.js'
 import { punchWritePaths } from '../src/exec/sandbox-binds.js'
+import {
+  bridgedPorts,
+  portBridgeHostArgv,
+  portBridgeInner,
+  portBridgeSocket,
+} from '../src/exec/sandbox-runtime.js'
+import { localBindingOn } from '../src/exec/sandbox-paths.js'
 import { deniedCalls, reportableViolations } from '../src/exec/sandbox-violations.js'
 import { run, type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { validateProjectConfig } from '../src/workspace/index.js'
 
 const TIMEOUT = 60_000
 
@@ -1174,5 +1182,148 @@ describe.skipIf(process.platform !== 'linux')(
       const missing = path.join(dir, 'does-not-exist')
       expect(punchWritePaths(missing, [path.join(missing, 'out')])).toEqual([missing])
     })
+  },
+)
+
+describe('localBinding accepts a boolean or a port list', () => {
+  const cfg = (localBinding: unknown) => ({
+    tasks: { t: { exec: { command: 'true', sandbox: { allow: { localBinding } } } } },
+  })
+  const where = 'x'
+  it('accepts true, false and a non-empty list of TCP ports', () => {
+    for (const v of [true, false, [3000], [1, 65535, 8080]]) {
+      expect(() => validateProjectConfig(cfg(v) as never, where)).not.toThrow()
+    }
+  })
+  it('refuses an empty list, a non-integer, an out-of-range port and a string', () => {
+    for (const v of [[], [0], [65536], [3000.5], ['3000'], 'true', 3000]) {
+      expect(() => validateProjectConfig(cfg(v) as never, where)).toThrow(
+        /localBinding must be a boolean or a non-empty list of ports/,
+      )
+    }
+  })
+})
+
+describe('localBinding port list — the pure halves', () => {
+  it('a list grants loopback like `true`; an empty list and `false` do not', () => {
+    expect(localBindingOn({ localBinding: true })).toBe(true)
+    expect(localBindingOn({ localBinding: [3000] })).toBe(true)
+    expect(localBindingOn({ localBinding: [] })).toBe(false)
+    expect(localBindingOn({ localBinding: false })).toBe(false)
+    expect(localBindingOn({})).toBe(false)
+  })
+
+  it('bridges the listed ports once each; `true` bridges nothing', () => {
+    expect(bridgedPorts({ localBinding: [3000, 3001, 3000] })).toEqual([3000, 3001])
+    expect(bridgedPorts({ localBinding: true })).toEqual([])
+    expect(bridgedPorts({})).toEqual([])
+  })
+
+  it("the task's side listens on the unix socket and relays into loopback; the host's side the reverse, with a retry", () => {
+    const sock = portBridgeSocket('t1', 3000)
+    expect(sock.endsWith('/vx-port-t1-3000.sock')).toBe(true)
+    const inner = portBridgeInner([3000, 3001], 't1')
+    expect(inner).toContain(
+      `socat UNIX-LISTEN:${sock},fork,unlink-early TCP:127.0.0.1:3000 >/dev/null 2>&1 &`,
+    )
+    expect(inner).toContain('TCP:127.0.0.1:3001')
+    // Backgrounded socats are reaped with the shell, as SRT reaps its own.
+    expect(inner.endsWith("trap 'kill $(jobs -p) 2>/dev/null' EXIT;")).toBe(true)
+    expect(portBridgeHostArgv('t1', 3000)).toEqual([
+      'socat',
+      'TCP-LISTEN:3000,bind=127.0.0.1,fork,reuseaddr',
+      `UNIX-CONNECT:${sock},retry=40,interval=0.25`,
+    ])
+  })
+})
+
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a sandboxed task exposes a port on Linux (localBinding port list)',
+  () => {
+    let fixture: Fixture
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+    })
+    afterEach(async () => {
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+
+    /** A port nothing on this box listens on: bind it, read it, release it. */
+    function freePort(): number {
+      const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
+      const port = l.port
+      l.stop(true)
+      return port
+    }
+
+    const files = (port: number) => ({
+      'serve.ts':
+        `Bun.serve({ port: ${port}, hostname: '127.0.0.1', fetch: () => new Response('hi') })\n` +
+        `console.log('serving')\n`,
+      'client.ts':
+        `const r = await fetch('http://127.0.0.1:${port}/')\n` +
+        `await Bun.write('out.txt', await r.text())\n`,
+    })
+    const serverConfig = (localBinding: string): string => `
+      export default {
+        tasks: {
+          serve: {
+            exec: {
+              command: 'bun serve.ts',
+              persistent: { readyWhen: 'serving' },
+              sandbox: { allow: { read: ['.'], localBinding: ${localBinding} } },
+            },
+          },
+          // NOT sandboxed: the host's loopback is what a developer's browser
+          // or a sibling task sees, and that is the claim.
+          client: {
+            dependsOn: ['serve'],
+            exec: { command: 'bun client.ts' },
+          },
+        },
+      }
+    `
+
+    it(
+      'a listed port is reachable from outside the sandbox while the server runs, and closed after the run',
+      async () => {
+        const port = freePort()
+        await addProject(fixture.root, 'srv', {
+          files: files(port),
+          config: serverConfig(`[${port}]`),
+        })
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['client'],
+          log: collectingLogger(fixture),
+        })
+        expectOk(r, fixture)
+        expect(await readFile(path.join(fixture.root, 'packages', 'srv', 'out.txt'), 'utf8')).toBe(
+          'hi',
+        )
+        // The bridge lives exactly as long as the server: the run tore the
+        // server down, so the host's side is gone and the port is closed.
+        await expect(fetch(`http://127.0.0.1:${port}/`)).rejects.toThrow()
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'control: `localBinding: true` binds inside the namespace and the host sees nothing',
+      async () => {
+        const port = freePort()
+        await addProject(fixture.root, 'srv', { files: files(port), config: serverConfig('true') })
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['client'],
+          log: collectingLogger(fixture),
+        })
+        expect(r.ok).toBe(false)
+        const client = r.outcomes.find((o) => o.node.id === 'srv#client')
+        expect(client?.status).toBe('failed')
+        expect(fixture.log.join('\n')).toMatch(/ECONNREFUSED|Unable to connect|ConnectionRefused/)
+      },
+      TIMEOUT,
+    )
   },
 )

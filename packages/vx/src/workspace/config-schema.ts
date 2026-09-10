@@ -640,11 +640,12 @@ const SANDBOX_FIELDS = new Set([
 ])
 const GRANT_PATH_FIELDS = ['read', 'write'] as const
 const GRANT_NAME_FIELDS = ['systemInfo', 'machLookup'] as const
-const GRANT_BOOL_FIELDS = ['localBinding', 'pty', 'gitConfig'] as const
+const GRANT_BOOL_FIELDS = ['pty', 'gitConfig'] as const
 const GRANT_FIELDS = new Set<string>([
   ...GRANT_PATH_FIELDS,
   ...GRANT_NAME_FIELDS,
   ...GRANT_BOOL_FIELDS,
+  'localBinding',
   'network',
   'unixSockets',
 ])
@@ -702,6 +703,21 @@ function validateSandbox(sandbox: unknown, where: string): void {
     for (const f of ['network', 'unixSockets']) {
       if (g[f] !== undefined && g[f] !== true) {
         assertStringArray(g[f], `${where}.sandbox.allow.${f}`)
+      }
+    }
+    // A boolean, or the ports to bridge out of the sandbox: a non-empty
+    // list of integers in the TCP range. An empty list would read as "no
+    // port" while granting loopback, which is `true` with extra steps.
+    const lb = g['localBinding']
+    if (lb !== undefined && typeof lb !== 'boolean') {
+      if (
+        !Array.isArray(lb) ||
+        lb.length === 0 ||
+        lb.some((p) => !Number.isInteger(p) || (p as number) < 1 || (p as number) > 65535)
+      ) {
+        throw new UserError(
+          `${where}.sandbox.allow.localBinding must be a boolean or a non-empty list of ports (1–65535)`,
+        )
       }
     }
   }

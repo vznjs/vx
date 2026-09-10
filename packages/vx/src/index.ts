@@ -9,14 +9,12 @@
 export { VERSION } from './version.js'
 
 // Clean error type — user-input failures print a message without a stack.
-// `clampInt` and `parseDecimalInt` ride along for the same reason the status
-// predicates do: without them on the façade an integration package writes its
-// own, and both had already happened. A bounds helper whose floor is
-// load-bearing (a fractional SQL LIMIT is a datatype mismatch, not a smaller
-// page) should have one implementation — and so should the ONE strict integer
-// parser, whose entire purpose is that `Number()` silently accepts `0x10` and
-// `1e3` at a boundary where a typo must be an error, not a different number.
-export { clampInt, parseDecimalInt, parseSize, UserError, isUserError } from './util/index.js'
+// `clampInt` rides along for the same reason the status predicates do:
+// without it on the façade an integration package writes its own, and that
+// had already happened. A bounds helper whose floor is load-bearing (a
+// fractional SQL LIMIT is a datatype mismatch, not a smaller page) should
+// have one implementation.
+export { clampInt, UserError, isUserError } from './util/index.js'
 // "Did you mean": the hint core's own verbs give for a near-miss name, for a
 // plugin verb to give the same one.
 export { nearMatches } from './util/index.js'
@@ -39,30 +37,19 @@ export type {
 export { defineProject, defineWorkspace } from './config.js'
 export { definePlugin } from './orchestrator/index.js'
 
-// Programmatic engine API (run / plan / prepare) + the graph primitives a
-// distribution submitter/agent reasons over + the cache-key hashing seam.
-// `deriveStableKeys` is THE shared stable-key derivation (remote-prefetch,
-// the local short-circuit, and the distributed submitter must never drift
-// on the stability gate); `captureGitContext`/`captureWorkspaceIdentity`
-// give agents + the submitter identity before/without a telemetry run.
+// Programmatic engine API: run / plan / prepare (docs/cli.md § Programmatic
+// API). The graph primitives, the cache-key hashing seam and the git / host
+// context capture used to sit beside these for a distributed submitter that
+// left the repo (2026-08); they went with it (2026-09-10) — a seam with no
+// consumer is re-added when one appears, shaped by its use.
 export { run, planRun, prepareRun } from './orchestrator/index.js'
 // The per-task duration history a `schedule` plugin learns from
 // (`@vzn/vx-schedule-history` does; a plugin package reaches core only
 // through this façade, which is what put these here).
-export { EmptyHistoryProvider, LocalHistoryProvider } from './orchestrator/index.js'
+export { LocalHistoryProvider } from './orchestrator/index.js'
 export type { HistoryProvider, HistoryTable, TaskHistory } from './orchestrator/index.js'
 export type { PreparedRun } from './orchestrator/index.js'
-export { computeTaskHash, createHashCache, deriveStableKeys } from './orchestrator/index.js'
-export type { DeriveStableKeysArgs, HashCache, StableKey } from './orchestrator/index.js'
-export {
-  captureDefaultBranch,
-  captureGitContext,
-  captureHostContext,
-  captureWorkspaceIdentity,
-  detectCi,
-} from './orchestrator/index.js'
 export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './orchestrator/index.js'
-export { FULL_CACHE_POLICY, parseCachePolicy } from './orchestrator/index.js'
 export type {
   CachePolicy,
   Logger,
@@ -70,45 +57,24 @@ export type {
   RunOptions,
   RunSummary,
 } from './orchestrator/index.js'
-export { defaultLogger, resolveOutputView } from './orchestrator/index.js'
 // `splitTaskId` is on the façade because the alternative is what happened:
 // with only `taskId()` to JOIN an id and nothing exported to SPLIT one,
 // consumers roll their own `split('#', 2)` and drift from the graph, which
 // splits on the FIRST '#'.
-export {
-  buildTaskGraph,
-  expandRequested,
-  isGroupTask,
-  markSurfacedDeps,
-  splitTaskId,
-} from './graph/index.js'
+export { splitTaskId } from './graph/index.js'
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 
-// Cache classes + the layer interface (the `cache` capability's currency)
-// and input-output resolution. `cleanOutputs` is public for the
-// distributed submitter's targeted output materialization (wipe declared
-// outputs, then `restoreOutputs` the artifact — never a naive re-run).
-export {
-  Cache,
-  LayeredCache,
-  GitFilesCache,
-  cleanOutputs,
-  resolveInputs,
-  resolveOutputs,
-} from './cache/index.js'
+// Cache classes + the layer interface (the `cache` capability's currency).
+export { Cache, LayeredCache } from './cache/index.js'
 export type { CacheLayer, RemoteCacheLayer, RunRecord, InvocationRecord } from './cache/index.js'
 
 // Workspace discovery + the project/config catalog surface — an
-// out-of-process service/CLI needs these. `readLockfile` is THE one reader
-// of vx-lock.json (the format carries its own version sentinel; a second
-// parser in a sibling package would drift). `loadProjectConfig` is the RAW
+// out-of-process service/CLI needs these. `loadProjectConfig` is the RAW
 // per-file load (`vx lock` freezes exactly that); the resolved view a run
 // or `vx show` sees — plugin stages applied — is `loadResolvedProjects`
 // below. Workspace's `listProjects` re-exports as `listProjectMetas` (the
 // bare name once belonged to a metrics query).
-export { findWorkspaceRoot, loadWorkspaceConfig, resolveCacheDir } from './workspace/index.js'
-export { readLockfile, LOCKFILE_NAME } from './workspace/index.js'
-export type { Lockfile, LockfileEntry } from './workspace/index.js'
+export { findWorkspaceRoot } from './workspace/index.js'
 export {
   loadWorkspace,
   loadProjectConfig,
@@ -129,7 +95,6 @@ export type { ProjectEntry } from './workspace/index.js'
 // `@vzn/vx-migrate` (Turbo, Nx) and any other adoption tool use it from here.
 export {
   applyMigration,
-  migrateScripts,
   PERSISTENT_TASK_NAMES,
   PERSISTENT_TODO,
   quoteTsLiteral,
@@ -162,11 +127,10 @@ export type {
   WorkspaceHookContext,
   PluginSetupContext,
 } from './orchestrator/index.js'
-// Process primitives — what an executor plugin builds on. Core's own
-// local executor (`src/exec/local-executor.ts`)
-// is the reference implementation and imports exactly these.
-export { runCommand, runSandboxed } from './exec/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.
+// (`runCommand` / `runSandboxed`, the local executor's own primitives, left
+// the façade 2026-09-10: no executor plugin built on them — `@vzn/vx-reapi`
+// speaks a wire — and a seam with no consumer is a special case in waiting.)
 export type {
   ExecuteRequest,
   ExecuteResult,
@@ -190,7 +154,6 @@ export type {
 // plugin that renders a run as a markdown table takes the same unvalidated
 // task names core does, and the cloud job summary shipped without the escape.
 export {
-  assembleRunSummary,
   escapeMarkdownCell,
   TELEMETRY_SCHEMA_VERSION,
   deriveCacheSource,
@@ -216,29 +179,11 @@ export type {
   TelemetrySink,
 } from './orchestrator/index.js'
 
-// The serializable event projection.
-export { projectNode, projectOutcome } from './orchestrator/index.js'
-export type { RunResult } from './orchestrator/index.js'
+// The serializable run result and its per-task views (what `run()` returns).
+export type { RunResult, TaskView, OutcomeView } from './orchestrator/index.js'
 
-// Event bus + wire form — adapters (otel-bridge, custom subscribers) ride this.
-export { createEventBus, wireForwarder, toWireEvent } from './orchestrator/index.js'
-export type {
-  EventBus,
-  RunEvent,
-  RunEventSubscriber,
-  WireEvent,
-  TaskView,
-  OutcomeView,
-} from './orchestrator/index.js'
-
-// Run-history queries over cache.db — what `vx why` / `vx last` read. An
-// out-of-process surface (an MCP server, a dashboard plugin) reads the same.
-export {
-  cacheKeyDiff,
-  explainCacheKeyQuery,
-  getInvocation,
-  getRun,
-  listInvocations,
-  listRuns,
-  whyDidThisRerunQuery,
-} from './orchestrator/index.js'
+// The one run-history query a reader outside the CLI takes today: `vx why`'s
+// answer, which `@vzn/vx-mcp` serves. The event bus / wire form and the
+// other history readers (`listRuns`, `getRun`, …) left the façade 2026-09-10
+// with no consumer; the telemetry seam above is the canonical export path.
+export { whyDidThisRerunQuery } from './orchestrator/index.js'

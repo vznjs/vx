@@ -5,7 +5,7 @@
 
 import { lstatSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { unique } from './sandbox-paths.js'
+import { localBindingOn, unique } from './sandbox-paths.js'
 import type { SandboxedRunArgs } from './sandbox-runtime.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
@@ -167,7 +167,7 @@ export function buildCustomConfig(
       : c.unixSockets !== undefined
         ? { allowUnixSockets: [...c.unixSockets] }
         : {}),
-    ...(c.localBinding !== undefined ? { allowLocalBinding: c.localBinding } : {}),
+    ...(c.localBinding !== undefined ? { allowLocalBinding: localBindingOn(c) } : {}),
     ...(c.machLookup !== undefined ? { allowMachLookup: [...c.machLookup] } : {}),
   }
 

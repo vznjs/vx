@@ -111,7 +111,15 @@ sandbox: {
 - **`systemInfo`** — sysctl names a tool probes, like `vfs.disk-space`.
 - **`unixSockets`** — `true`, or the socket paths to allow.
 - **`localBinding`** — bind and reach localhost ports, for a test that
-  boots its own server.
+  boots its own server. A port **list** (`localBinding: [3000]`) also
+  makes those ports reachable from outside the sandbox — the developer's
+  browser, a downstream task's fetch. On Linux a sandboxed task lives in
+  its own network namespace, so each listed port is bridged out to the
+  host's loopback (a `socat` pair over a unix socket, the same mechanism
+  the runtime's own proxy uses; the run lifts the unix-socket filter for
+  its sandboxed tasks to allow it). On macOS the host already sees the
+  ports and the list means `true`. `true` alone binds ports the host
+  cannot reach on Linux.
 - **`machLookup`** — macOS mach global-names, e.g. `com.apple.FSEvents`
   for a watcher.
 - **`pty`** — the task needs a TTY (rare in CI).

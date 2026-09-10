@@ -5,7 +5,7 @@
 import { VERSION } from '../version.js'
 import { runCmd } from './run.js'
 import { CORE_VERBS, printHelp } from './help.js'
-import { pluginCommandHelp, resolvePluginCommand } from './plugin-commands.js'
+import { pluginCommandHelp, resolvePluginCommand, pluginVerbs } from './plugin-commands.js'
 import { MOVED_VERBS, nearest, UserError } from '../util/index.js'
 
 // Every verb but `run` is imported when invoked. `vx run` is the hot path
@@ -60,6 +60,8 @@ export async function run(argv: readonly string[]): Promise<number> {
       return await (await import('./why.js')).whyCmd(rest)
     case 'last':
       return await (await import('./last.js')).lastCmd(rest)
+    case 'completions':
+      return await (await import('./completions.js')).completionsCmd(rest, await pluginVerbs())
     default: {
       // Not a core verb: a plugin declared in the workspace around the cwd
       // may own it (`VxPlugin.commands`). Core verbs were matched above, so

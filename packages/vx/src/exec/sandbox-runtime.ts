@@ -39,7 +39,7 @@ import {
 } from './runner.js'
 import { UserError, xxh3hex } from '../util/index.js'
 import { buildCustomConfig } from './sandbox-binds.js'
-import { toRealPath, unique } from './sandbox-paths.js'
+import { localBindingOn, toRealPath, unique } from './sandbox-paths.js'
 import { parseStraceViolations, reportableViolations } from './sandbox-violations.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
@@ -234,23 +234,47 @@ function sandboxTmpdir(): string {
  * place a domain list can take effect. Per-task precision survives where
  * it matters: a task that declared none is never handed the proxy port.
  */
-export async function initSandbox(opts?: { allowedDomains?: readonly string[] }): Promise<void> {
+export async function initSandbox(opts?: {
+  allowedDomains?: readonly string[]
+  /**
+   * Lift SRT's seccomp block on `socket(AF_UNIX)` for every sandboxed
+   * task of the run (Linux; per-run like the proxy allowlist, since SRT
+   * reads it at `initialize()` only). Armed when any task declares
+   * `unixSockets` or a `localBinding` port list — the port bridge is a
+   * unix socket the task's side has to create.
+   */
+  allowAllUnixSockets?: boolean
+}): Promise<void> {
   // Before SRT starts, so the very first task already has one.
   await mkdir(sandboxTmpdir(), { recursive: true })
   const { SandboxManager } = await loadSrt()
-  await SandboxManager.initialize(
-    {
-      network: { allowedDomains: [...(opts?.allowedDomains ?? [])], deniedDomains: [] },
-      filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
-      ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
+  const config: Parameters<typeof SandboxManager.initialize>[0] = {
+    network: {
+      allowedDomains: [...(opts?.allowedDomains ?? [])],
+      deniedDomains: [],
+      ...(opts?.allowAllUnixSockets === true ? { allowAllUnixSockets: true } : {}),
     },
+    filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
+    ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
+  }
+  await SandboxManager.initialize(
+    config,
     undefined,
     // enableLogMonitor — macOS-only; populates the SandboxViolationStore.
     true,
   )
+  // `initialize()` returns early once SRT is up, and on Linux the
+  // availability probe brought it up with an EMPTY config before the run's
+  // own call — so the run's allowlist and unix-socket allowance never
+  // reached it (found 2026-09-10 by the port bridge: the task's side died
+  // on `socket(AF_UNIX)` with the flag set). `updateConfig` is SRT's hot
+  // reload of exactly these fields; the proxy and the wrapper read them
+  // through getters, so the run's config is what every task sees.
+  SandboxManager.updateConfig(config)
 }
 
 export async function resetSandbox(): Promise<void> {
+  for (const tag of [...hostBridges.keys()]) releaseBridges(tag)
   const { SandboxManager } = await loadSrt()
   await SandboxManager.reset()
   availabilityCache.clear()
@@ -313,7 +337,7 @@ export interface ResolvedSandboxConfig {
   denyNetwork?: readonly string[]
   systemInfo?: readonly string[]
   unixSockets?: true | readonly string[]
-  localBinding?: boolean
+  localBinding?: boolean | readonly number[]
   machLookup?: readonly string[]
   pty?: boolean
   gitConfig?: boolean
@@ -464,12 +488,94 @@ export async function wrapSandboxedCommand(
 
   const baselines = canonicalBaselines(args)
   const customConfig = buildCustomConfig(args, baselines)
-  let wrapped = await SandboxManager.wrapWithSandbox(taggedCommand, undefined, customConfig)
+  // Linux: the ports a list grants are bridged out of the task's network
+  // namespace. The task's side of each bridge is a socat in front of the
+  // user command, so it goes INTO the sandboxed command; the host side is
+  // spawned here and released when the task's process ends.
+  const ports = process.platform === 'linux' ? bridgedPorts(args.config) : []
+  const inner = ports.length > 0 ? `${portBridgeInner(ports, tag)} ${taggedCommand}` : taggedCommand
+  let wrapped = await SandboxManager.wrapWithSandbox(inner, undefined, customConfig)
   if (process.platform === 'darwin') {
     const rules = macProfileRules(args.config)
     if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
   }
+  if (ports.length > 0) spawnHostBridges(ports, tag)
   return { wrapped, tag, taggedCommand, baselines }
+}
+
+/** The ports a list grants, deduped; `true` bridges nothing (the host sees no port on Linux). */
+export function bridgedPorts(c: Pick<ResolvedSandboxConfig, 'localBinding'>): number[] {
+  return Array.isArray(c.localBinding) ? [...new Set(c.localBinding)] : []
+}
+
+/** Where a bridge's unix socket lives: the sandbox tmpdir, bound read-write on both sides. */
+export function portBridgeSocket(tag: string, port: number): string {
+  return path.join(sandboxTmpdir(), `vx-port-${tag}-${port}.sock`)
+}
+
+/**
+ * The task's side of the bridge, in front of the user command inside the
+ * sandbox: one socat per port, listening on the unix socket and relaying
+ * into the namespace's loopback. Backgrounded and reaped with the shell,
+ * exactly as SRT starts its own proxy bridges. `unlink-early` clears a
+ * socket a killed task left behind; `>/dev/null` keeps its chatter out
+ * of the task's frame.
+ */
+export function portBridgeInner(ports: readonly number[], tag: string): string {
+  const cmds = ports.map(
+    (p) =>
+      `socat UNIX-LISTEN:${shellQuote(portBridgeSocket(tag, p))},fork,unlink-early TCP:127.0.0.1:${p} >/dev/null 2>&1 &`,
+  )
+  return `${cmds.join(' ')} trap 'kill $(jobs -p) 2>/dev/null' EXIT;`
+}
+
+/**
+ * The host's side: one socat per port, listening on the host's loopback
+ * and connecting into the unix socket per client — with a retry, since a
+ * client can arrive before the task's side has bound the socket.
+ */
+export function portBridgeHostArgv(tag: string, port: number): string[] {
+  return [
+    'socat',
+    `TCP-LISTEN:${port},bind=127.0.0.1,fork,reuseaddr`,
+    `UNIX-CONNECT:${portBridgeSocket(tag, port)},retry=40,interval=0.25`,
+  ]
+}
+
+const hostBridges = new Map<string, Array<ReturnType<typeof Bun.spawn>>>()
+
+function spawnHostBridges(ports: readonly number[], tag: string): void {
+  const procs: Array<ReturnType<typeof Bun.spawn>> = []
+  for (const p of ports) {
+    // A spawn failure (no socat on the host) is the task's to report:
+    // its own side dies the same way, in its frame.
+    try {
+      procs.push(
+        Bun.spawn(portBridgeHostArgv(tag, p), {
+          stdin: 'ignore',
+          stdout: 'ignore',
+          stderr: 'ignore',
+        }),
+      )
+    } catch {
+      // see above
+    }
+  }
+  if (procs.length > 0) hostBridges.set(tag, procs)
+}
+
+/** Stop the host side of a task's port bridges; idempotent. */
+export function releaseBridges(tag: string): void {
+  const procs = hostBridges.get(tag)
+  if (procs === undefined) return
+  hostBridges.delete(tag)
+  for (const p of procs) {
+    try {
+      p.kill('SIGTERM')
+    } catch {
+      // already gone
+    }
+  }
 }
 
 export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult> {
@@ -553,6 +659,7 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
   else await drainOrAbort(streams, ac)
   const [stdout, stderr] = await streams
   args.liveChildren?.delete(proc)
+  releaseBridges(tag)
   const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
 
   // macOS: read the violation store keyed by our tagged command.
@@ -703,7 +810,7 @@ function macProfileRules(c: ResolvedSandboxConfig): string[] {
   for (const t of c.systemInfo ?? []) {
     rules.push(`(allow system-info (info-type "${sbplToken(t, 'allow.systemInfo')}"))`)
   }
-  if (c.localBinding === true) {
+  if (localBindingOn(c)) {
     // `*:*`, not `localhost:*`: a dual-stack socket bound to 127.0.0.1 is
     // ::ffff:127.0.0.1 in the kernel, which seatbelt's `localhost` does
     // not match. bind and inbound carry no remote endpoint, so this is

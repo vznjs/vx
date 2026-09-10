@@ -352,7 +352,93 @@ lint.oxfmt` gate as an unprivileged user, three warm reps each:
     ms of `load configs`); it imports `@vzn/vx` now and is served from
     the cache (1.1–1.5 ms). The registry-symbol brand on plugins
     (item 69) stays: a plugin compiled against another copy is still
-    possible outside this alias, and the symbol costs nothing.
+    possible outside this alias, and the symbol costs nothing. Walked
+    end to end on the head binary as an unprivileged user: a fresh
+    workspace, `vx init`, the scaffold's workspace file replaced by a
+    runtime `import { defineWorkspace } from '@vzn/vx'` with NO
+    `node_modules` at all, two runs and `vx info --format json` — all
+    green, nothing installed beside the binary.
+    Compile flags re-probed the same day, so nobody re-runs it: `vx
+    version` through the binary is 32 ms with `--bytecode` and 75–82
+    ms without it (`--minify` alone, plain), min of five; a compiled
+    hello-world is 8 ms, bare `bun -e` 8 ms, `bun src/bin.ts version`
+    49 ms. The release flags stand; the ~24 ms above the floor is the
+    bundle's own module graph, the same on every verb.
+78. DONE (the façade is the contract, so it names only what has a
+    consumer): `src/index.ts` exported 155 names, 75 of them runtime;
+    an audit against every plugin package, the site and the docs found
+    41 runtime exports used by core's own tests alone, most of them put
+    for "the distributed submitter / agent" — a consumer that left the
+    repo in August (Decisions: agents removed). Gone from the façade,
+    not from core: the graph primitives (`buildTaskGraph`,
+    `expandRequested`, `markSurfacedDeps`, `isGroupTask`), the hashing
+    seam (`computeTaskHash`, `createHashCache`, `deriveStableKeys`),
+    the context capture (`capture*`, `detectCi`), input / output
+    resolution and `cleanOutputs`, `GitFilesCache`, the lockfile
+    reader, `loadWorkspaceConfig` / `resolveCacheDir`, `migrateScripts`
+    (core's own `vx init` half; `applyMigration` stays for
+    `@vzn/vx-migrate`), `parseSize` / `parseDecimalInt`, the cache
+    policy parser, `EmptyHistoryProvider`, the logger and its view
+    resolver, `assembleRunSummary`, the event bus and wire form, and
+    every history reader but `whyDidThisRerunQuery` (which
+    `@vzn/vx-mcp` serves). `runCommand` / `runSandboxed` went too: no
+    executor plugin built on them — `@vzn/vx-reapi` speaks a wire. 34
+    runtime exports remain, each with a consumer or a documented
+    reason (the telemetry-sink helpers keep theirs). The pin in
+    `tests/package-boundaries.unsafe.test.ts` is regenerated from the
+    module; one core test moved its import to the workspace module.
+    Nothing in the site's guides imported a removed name from
+    `@vzn/vx`; the module docs that name these functions describe
+    modules, not the façade, and stand.
+79. DONE (a sandboxed task exposes a port on Linux — § In flight 3,
+    the last capability gap in this file): `allow.localBinding` takes a
+    port list beside `true`. On Linux a sandboxed task lives in its own
+    network namespace (`bwrap --unshare-net`), so a dev server bound
+    inside was invisible to the developer's browser and to a downstream
+    task; each listed port is now bridged out the way SRT bridges its
+    own proxy in: the task's side is a `socat UNIX-LISTEN:<tmpdir>/vx-
+port-<tag>-<port>.sock … TCP:127.0.0.1:<port>` in front of the
+    command inside the sandbox (reaped with the shell), the host's side
+    a `socat TCP-LISTEN:<port>,bind=127.0.0.1 … UNIX-CONNECT:…,retry`
+    spawned by `wrapSandboxedCommand` and released when the task's
+    process exits (`releaseBridges`: the one-shot path after the child,
+    the persistent path on the server's exit, `resetSandbox` for the
+    rest). The task's side has to CREATE a unix socket under SRT's
+    seccomp filter, so `prepareSandbox` arms `allowAllUnixSockets` for
+    the run whenever a task declares a port list or `unixSockets` —
+    per run, like the proxy allowlist. macOS: the host already sees
+    the ports; a list means `true` there, and the per-task seatbelt
+    rules are unchanged. The first probe still died on `socket(AF_UNIX)`
+    with the flag set, which exposed a defect older than this item: on
+    Linux `probeSandbox` initializes SRT with an empty config, SRT's
+    `initialize()` returns early ever after, and the run's own call —
+    the DOMAIN UNION of the earlier item included — never reached it.
+    `initSandbox` now follows `initialize` with `updateConfig`, SRT's
+    hot reload of exactly these fields. Probed end to end as an
+    unprivileged user under the real sandbox: a sandboxed `Bun.serve`
+    on a listed port answers `curl` from the host twice, its unix
+    socket sits in `/tmp/claude`, and after the task exits the host
+    bridge is gone and the port refuses. Pinned in the unsafe suite on
+    Linux: a persistent sandboxed server on a listed port answers a
+    downstream (unsandboxed) task's fetch, and the port is closed after
+    the run; the control with `localBinding: true` fails the client on
+    connection refused. The pure halves (grant, port dedup, both socat
+    forms) and the schema (a boolean or a non-empty list of TCP ports;
+    an empty list, `0`, `65536`, a fraction, a string refused) have
+    their own units.
+80. DONE (`vx completions bash|zsh|fish`, the gap audit's "later"):
+    a script over the verb table and each verb's help cut — the verbs
+    (the workspace's plugin verbs included at generation time) and
+    every flag of each, read from the one text `vx <verb> --help`
+    prints, so a flag cannot be documented and not completed; task and
+    project names are not completed on purpose (evaluating configs on
+    every Tab is the wrong price). `completions` joins `CORE_VERBS`,
+    so a plugin may not claim the name. Pinned: the bash script parses
+    (`bash -n`) and names every documented run flag, the zsh and fish
+    scripts name every verb and run flag, an unknown shell is refused
+    naming the three. The module page's verb table still listed
+    `migrate` and `prune` as core verbs with files that left in item
+    67; corrected in the same commit.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
@@ -488,17 +574,18 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
    flag is on (strace ≥ 5.3; older gets the slow form), which also
    takes that tax off every other sandboxed task on Linux — the gate's
    `time 138s · max 89s` on the last run is the number to compare.
-3. **A sandboxed task cannot expose a port on Linux.** macOS works and is
-   properly gated — measured, a sandboxed consumer reaches a sandboxed
-   server (200) and is refused without `localBinding`. On Linux every
-   sandboxed task gets `--unshare-net`, so nothing sees the port. Opening
-   the netns costs full egress, which is the wrong price; the narrow
-   answer is a per-port unix-socket bridge (socat, the same trick SRT
-   uses for its own proxy), and it is blocked today because SRT reads
-   `allowUnixSockets` off the config given to `initialize()` and never
-   the per-call one — the probe dies on
-   `socket(1, 1, 0): Operation not permitted`. Arming it from the union
-   at `initSandbox`, as `allowedDomains` already is, is the way in.
+3. DONE 2026-09-10 (item 79): a sandboxed task exposes a port on Linux
+   through `allow.localBinding: [port, …]` — a per-port socat pair over
+   a unix socket in the sandbox tmpdir, the task's side in front of the
+   command, the host's side released when the task exits. The arming
+   went as this entry said (the unix-socket allowance from the run's
+   union at `initSandbox`), and found the reason the first probe still
+   died: on Linux the availability probe initializes SRT with an EMPTY
+   config and `initialize()` returns early ever after, so the run's own
+   call — the domain union included — never reached the runtime.
+   `initSandbox` now hot-reloads the run's config (`updateConfig`).
+   Was: macOS works and is properly gated; on Linux every sandboxed task
+   gets `--unshare-net`, so nothing saw the port.
 4. DONE 2026-09-09: persistent tasks run inside their `exec.sandbox`.
    `wrapSandboxedCommand` is the enforcement half of `runSandboxed` on
    its own and the persistent path spawns through it; the violation
@@ -626,7 +713,35 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    the product. `bun packages/vx-bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap
    (`scratchpad/ab.ts`-style: alternate arms, min and median of N).
-   Closing figures for 2026-09-10 (the same container, `run.ts`
+   REFUTED 2026-09-10 (afternoon), recorded so nobody re-runs it: a
+   synchronous restore for small artifacts. The restore path makes
+   ~8 `node:fs/promises` round trips per one-file artifact (exists,
+   read, realpath, mkdir, write, chmod, utimes, rename), and a
+   `restore: exists / rows / extract` span set (kept) showed the
+   extract as the whole cost; the sync form measured 2× faster ALONE
+   (sequential in-process restore of a 40-byte `dist/out.js`, median
+   1.25 → 0.62 ms against 0.52 for the bare syscalls) and 30% SLOWER
+   in the run (compiled binaries, three interleaved rounds on the
+   1,000-project bench: `warm, restore` 1,176 / 1,110 / 1,218 ms →
+   1,539 / 1,506 / 1,493), because four workers overlap their round
+   trips and a blocking one stalls the other three. The lead left:
+   `restore: rows` re-selects the output rows the batched probe
+   already loaded (21 ms per 1,000, ~2%); threading `hit.outputRows`
+   through needs a contract change for a row nobody sees.
+   Closing figures for 2026-09-10, afternoon (the same container,
+   `run.ts` medians of 5, after items 70–80): source form 100
+   projects 115 ms warm / 197 restore / 408 cold; 1,000 projects 265 /
+   1,381 / 2,988 — the 1,000 warm read high against the morning's
+   229, so it was settled as the A/B the box needs: main before this
+   session (264f01a) against the head, BOTH as compiled binaries
+   through `VX_BIN`, three interleaved rounds — warm no-restore
+   246 / 251 / 235 vs 250 / 212 / 201 ms, restore 1,510 / 1,297 /
+   1,186 vs 1,241 / 1,230 / 1,308, cold 3,423 / 3,128 / 3,432 vs
+   3,465 / 3,180 / 3,157. A tie or a win in every column; the lone
+   265 was the box. (Items 70, 71 and 77 moved surfaces this bench
+   does not exercise — a sandboxed gate, the first warm run after a
+   cold one, a plugin-bearing binary — and each carries its own A/B.)
+   Closing figures for 2026-09-10, morning (the same container, `run.ts`
    medians of 5, after the three package moves and the CI work): 100
    projects 118 ms warm / 182 restore / 394 cold; 1,000 projects 229 /
    1,206 / 2,758. No core warm-path change landed today — the moves
@@ -745,11 +860,10 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    rows from SQLite (~1 ms). Net ≈ 3–4 ms of a 230 ms run for a second
    staleness surface (directory mtimes across platforms). REFUTED as
    not worth it; revisit only if discovery's share grows.
-   (f) `--cache-dir` is a `vx run` flag only: a run under it leaves
-   `vx last` / `vx why` / `vx cache prune` reading the default
-   directory. `defineWorkspace({ cacheDir })` is the durable way and
-   the docs call the flag per-run; add it to the reading verbs only if
-   someone hits it.
+   (f) DONE 2026-09-10 as item 75: `--cache-dir` on `vx why`, `vx
+   last`, `vx info` and `vx cache prune`, through one parser and one
+   resolver. Was: a `vx run` flag only, leaving the reading verbs on
+   the default directory.
    (g) `vx why` names a plugin `key` part but shows its digests
    (`plugin tool/node-major a2d9… → e893…`), because `entry_inputs`
    rows reduce every value to a digest — right for env values, which
@@ -778,49 +892,70 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    ~17 ms gain would buy ~2 s of suite for a build step in every test
    run. The spawns stay on source.
 
-9. **Handoff after item 67 (2026-09-10, night).** The loop's Next
-   items are spent; what a fresh session should know, in order:
-   (a) PR #265 merged into main (d96a06f) and PR #266 (items 65–68
-   and the day's follow-ups) merged as e099265, both by merge commit —
-   the branch cannot be rebase-merged, and it restarts from main after
-   each merge (a fast-forward; the next work opens a new PR).
-   Schedule-history, migrate and prune left core, which went from 125
-   files / 1,225,063 bytes under `src` to 119 / 1,172,583. Core's
-   verbs are run, watch, cache, lock, init, upgrade, show, info, why,
-   last; `src` holds no plugin.
-   (b) The suite's floor is processes, not timers (the paragraph after
-   item 58). The one lever left is converting the nineteen
-   CLI-spawning suites (~250 cases at 91 ms) to in-process calls where
-   process semantics are not the claim — about 14 s of file time,
-   ~1 s of wall on twelve shards; do it only if a box with many cores
-   shows the wall pinned by them. The gate on four cores is 15.7 s;
-   the whole test graph under the REAL sandbox as an unprivileged user
-   (twelve shards, the unsafe suite, eleven package suites) reads
-   44 s, three reps 24/24 on 1bce329 — no flake at twelve-way
-   concurrency behind bwrap.
-   (c) DONE 2026-09-10: the darwin CI job's four slices run side by
-   side (3 min 8 s sequential before). The canary step runs AFTER the
-   test step and the sandbox suites are class-gated there, so the load
-   lands on nothing `sandbox-exec` enforces; the canary stays the gate
-   that would say otherwise. Measured on 2a2e693: the test step 73 s,
-   the job 1 min 36 s, the canary 20/20 — the PR's CI wall went from
-   ~3 min 10 s to under 2 min, and the Linux gate is the longest job
-   again.
-   (d) `executeCachedTask` (execute-task.ts, ~440 lines) is dense
-   policy — probe, hash, clean, exec, save — with no clean seam left
-   after the hit and miss paths moved out; leave it whole.
-   (e) `run()` is 895 lines; the run-context record (25 lines of
-   literal assembly) is the last cohesive block, and moving it buys
-   nothing a reader needs. Stop slicing there.
-   (f) Warm path: no lead in the stage table (the two refuted probes
-   after item 61); the discovery memo and pre-bundling stay refuted.
-   The next gain is a Bun change (config-eval worker start, `bun
-bin.ts` load), not a vx change.
-   (g) Capabilities worth a design before code: streaming artifacts
-   through the remote seam (Next 2, gated by the plugin side), and a
-   `serve`-shaped embedder built OUTSIDE this repo on the façade
-   (the seams are in place: `inflight`, `remoteCache`,
-   `telemetrySinks`, the wire event form).
+9. **Handoff after item 79 (2026-09-10, afternoon).** PR #269 (items
+   70–77: perf — lazy sandbox, run-end snapshots, one core per process;
+   complexity — the layer contract, the outcome vocabulary, the CAS
+   substrate; DX — six CLI asks) merged into main as dba8f49 by the
+   owner at 13:10Z. PR #270 holds items 78–79 (the façade trim, the
+   Linux port bridge) on the same branch with main merged back in; it
+   merges on the owner's word, never on ours.
+   What a fresh session should know: (a) the warm floor is measured
+   and recorded three ways in items 76–77 — module load and the git
+   walk are what remain, and the compile flags are the right ones;
+   (b) the façade is 34 runtime exports and a consumer widens it with
+   the pin; (c) § In flight 3 — a sandboxed task exposing a port on
+   Linux — closed as item 79 (`localBinding: [port]`, a socat pair per
+   port), and the same item fixed the run's config never reaching SRT
+   after the Linux probe; what remains in § In flight is a platform
+   limit (macOS violation reporting is lossy, item 5); (d) the
+   sandboxed check-in clone at `/home/user/sandbox-home/vx` is the
+   way to measure this repo's own gate as an unprivileged user, and
+   every A/B in items 70–77 ran there.
+10. **Handoff after item 67 (2026-09-10, night).** The loop's Next
+    items are spent; what a fresh session should know, in order:
+    (a) PR #265 merged into main (d96a06f) and PR #266 (items 65–68
+    and the day's follow-ups) merged as e099265, both by merge commit —
+    the branch cannot be rebase-merged, and it restarts from main after
+    each merge (a fast-forward; the next work opens a new PR).
+    Schedule-history, migrate and prune left core, which went from 125
+    files / 1,225,063 bytes under `src` to 119 / 1,172,583. Core's
+    verbs are run, watch, cache, lock, init, upgrade, show, info, why,
+    last; `src` holds no plugin.
+    (b) The suite's floor is processes, not timers (the paragraph after
+    item 58). The one lever left is converting the nineteen
+    CLI-spawning suites (~250 cases at 91 ms) to in-process calls where
+    process semantics are not the claim — about 14 s of file time,
+    ~1 s of wall on twelve shards; do it only if a box with many cores
+    shows the wall pinned by them. The gate on four cores is 15.7 s;
+    the whole test graph under the REAL sandbox as an unprivileged user
+    (twelve shards, the unsafe suite, eleven package suites) reads
+    44 s, three reps 24/24 on 1bce329 — no flake at twelve-way
+    concurrency behind bwrap.
+    (c) DONE 2026-09-10: the darwin CI job's four slices run side by
+    side (3 min 8 s sequential before). The canary step runs AFTER the
+    test step and the sandbox suites are class-gated there, so the load
+    lands on nothing `sandbox-exec` enforces; the canary stays the gate
+    that would say otherwise. Measured on 2a2e693: the test step 73 s,
+    the job 1 min 36 s, the canary 20/20 — the PR's CI wall went from
+    ~3 min 10 s to under 2 min, and the Linux gate is the longest job
+    again.
+    (d) `executeCachedTask` (execute-task.ts, ~440 lines) is dense
+    policy — probe, hash, clean, exec, save — with no clean seam left
+    after the hit and miss paths moved out; leave it whole.
+    (e) `run()` is 895 lines; the run-context record (25 lines of
+    literal assembly) is the last cohesive block, and moving it buys
+    nothing a reader needs. Stop slicing there.
+    (f) Warm path: no lead in the stage table (the two refuted probes
+    after item 61); the discovery memo and pre-bundling stay refuted.
+    Superseded 2026-09-10 by items 70, 71 and 77: the lazy sandbox, the
+    run-end snapshots and the core alias were all vx changes the stage
+    table did show once read on the right workspace (this repo's own
+    gate under the real sandbox, the binary rather than `bun bin.ts`).
+    (g) Capabilities worth a design before code: streaming artifacts
+    through the remote seam (Next 2, gated by the plugin side), and a
+    `serve`-shaped embedder built OUTSIDE this repo on the façade
+    (the seams are in place: `inflight`, `remoteCache`,
+    `telemetrySinks`, the wire event form).
 
 ## Decisions (this arc)
 
@@ -828,6 +963,11 @@ bin.ts` load), not a vx change.
   own façade to every `@vzn/vx` import it evaluates. A plugin package
   never carries its own copy of core into a run; the host decides the
   runtime, as any host does. Item 77.
+- **The façade names only what has a consumer (2026-09-10).** An
+  export written for a consumer that no longer exists is a promise
+  nobody collects and a surface nobody may change; item 78 took 41
+  of them off. Core keeps every function behind its module contract;
+  a new consumer widens the façade deliberately, with the pin.
 - **No seam without a consumer (2026-09-10).** The `CASBackend` /
   `Digest` substrate left core after three months with zero callers
   (item 74). A content-addressed view of the artifacts directory comes
