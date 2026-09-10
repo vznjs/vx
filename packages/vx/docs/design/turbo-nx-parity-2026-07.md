@@ -1327,6 +1327,8 @@ tests/` → hits only in `tests/colors.test.ts`, about vx's OWN terminal output.
 
 ### M1. Cycle topologies: vx pins 2, Nx pins 8 — the untested ones are the sparse and multi-cycle shapes
 
+> Closed 2026-09-10 (STATUS item 101): six shapes pinned in `tests/task-graph.test.ts` — full and bridged task cycles refused, wrap-back and package-only cycles built, two disjoint cycles, a two-task self cycle.
+
 - **Nx behaviour**: `packages/nx/src/tasks-runner/create-task-graph.spec.ts` has a named
   cycle matrix, each a separate `it`:
   - `:1644` `should handle cycles within the same project`

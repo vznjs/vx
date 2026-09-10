@@ -708,3 +708,128 @@ describe('buildTaskGraph — order invariance (Nx parity)', () => {
     expect(a.ids).toEqual(['app1#lint', 'app1#test', 'lib2#lint', 'lib2#test', 'lib3#lint'])
   })
 })
+
+// Nx's cycle matrix (create-task-graph.spec.ts): the shapes where a
+// package cycle, a pass-through project and a task cycle meet. vx's rule is
+// one line — a TASK cycle is refused at build, a PACKAGE cycle that makes no
+// task cycle is not — and the nearest-holder walk seeded with the declaring
+// project is what keeps the second from being reported as the first. The
+// 2026-07-26 wrap-back bug lived in exactly this family.
+describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
+  const holder = (deps: string[] = ['^build']) => ({ build: { ...cmd('b'), dependsOn: deps } })
+  const build = (name: string) => ({ project: name, task: 'build' })
+
+  it('a task cycle through every project is refused', () => {
+    expect(() =>
+      buildTaskGraph({
+        projects: projects(
+          project('lib1', holder()),
+          project('lib2', holder()),
+          project('lib3', holder()),
+          project('lib4', holder()),
+        ),
+        packageGraph: packageGraph({
+          lib1: ['lib2'],
+          lib2: ['lib3'],
+          lib3: ['lib4'],
+          lib4: ['lib1'],
+        }),
+        requested: [build('lib1')],
+      }),
+    ).toThrow(/Cycle detected/)
+  })
+
+  it('a task cycle that bridges a project without the task is still refused', () => {
+    expect(() =>
+      buildTaskGraph({
+        projects: projects(
+          project('lib1', holder()),
+          project('lib2', holder()),
+          project('lib3', {}),
+          project('lib4', holder()),
+        ),
+        packageGraph: packageGraph({
+          lib1: ['lib2'],
+          lib2: ['lib3'],
+          lib3: ['lib4'],
+          lib4: ['lib1'],
+        }),
+        requested: [build('lib1')],
+      }),
+    ).toThrow(/Cycle detected/)
+  })
+
+  it('a package cycle that wraps back through pass-through projects is no task cycle', () => {
+    // lib1:build → lib2 → lib3 → lib1: the walk from lib1 passes through both
+    // and meets lib1 again, which it seeded — no edge, no self-dependency.
+    const nodes = buildTaskGraph({
+      projects: projects(project('lib1', holder()), project('lib2', {}), project('lib3', {})),
+      packageGraph: packageGraph({ lib1: ['lib2'], lib2: ['lib3'], lib3: ['lib1'] }),
+      requested: [build('lib1')],
+    })
+    expect([...nodes.keys()]).toEqual(['lib1#build'])
+    expect(nodes.get('lib1#build')?.deps).toEqual([])
+  })
+
+  it('a package cycle between projects that makes no task cycle builds', () => {
+    // app1:build → app2 ↔ app3:build — app2 declares nothing.
+    const nodes = buildTaskGraph({
+      projects: projects(project('app1', holder()), project('app2', {}), project('app3', holder())),
+      packageGraph: packageGraph({ app1: ['app2'], app2: ['app3'], app3: ['app2'] }),
+      requested: [build('app1')],
+    })
+    expect([...nodes.keys()].sort()).toEqual(['app1#build', 'app3#build'])
+    expect(nodes.get('app1#build')?.deps).toEqual(['app3#build'])
+    expect(nodes.get('app3#build')?.deps).toEqual([])
+  })
+
+  it('two disjoint package cycles in one graph build, each resolved on its own', () => {
+    // app1 → app2 ↔ app3 → app4 and app5 → app6 ↔ app7 → app8; app2 and
+    // app6 declare nothing.
+    const nodes = buildTaskGraph({
+      projects: projects(
+        project('app1', holder()),
+        project('app2', {}),
+        project('app3', holder()),
+        project('app4', holder()),
+        project('app5', holder()),
+        project('app6', {}),
+        project('app7', holder()),
+        project('app8', holder()),
+      ),
+      packageGraph: packageGraph({
+        app1: ['app2'],
+        app2: ['app3'],
+        app3: ['app2', 'app4'],
+        app5: ['app6'],
+        app6: ['app7'],
+        app7: ['app6', 'app8'],
+      }),
+      requested: [build('app1'), build('app5')],
+    })
+    const deps = Object.fromEntries([...nodes.values()].map((n) => [n.id, [...n.deps].sort()]))
+    expect(deps).toEqual({
+      'app1#build': ['app3#build'],
+      'app3#build': ['app4#build'],
+      'app4#build': [],
+      'app5#build': ['app7#build'],
+      'app7#build': ['app8#build'],
+      'app8#build': [],
+    })
+  })
+
+  it('a same-project cycle through two tasks is refused', () => {
+    expect(() =>
+      buildTaskGraph({
+        projects: projects(
+          project('a', {
+            build: { ...cmd('b'), dependsOn: ['test'] },
+            test: { ...cmd('t'), dependsOn: ['build'] },
+          }),
+        ),
+        packageGraph: packageGraph({}),
+        requested: [build('a')],
+      }),
+    ).toThrow(/Cycle detected/)
+  })
+})
