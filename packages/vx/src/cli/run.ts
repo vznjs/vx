@@ -443,6 +443,7 @@ export async function resolveRunOptions(
   const bareTasks = tasks.filter((t) => !t.includes('#'))
   const anchoredTasks = tasks.filter((t) => t.includes('#'))
   let projects: string[] | undefined
+  let staged: RunOptions['staged']
   if (bareTasks.length === 0) {
     projects = undefined
   } else if (filterStrings.length > 0) {
@@ -462,6 +463,9 @@ export async function resolveRunOptions(
       projects = []
     } else {
       projects = resolved.names
+      // The graph walk staged every config; the run reuses those entries
+      // instead of evaluating and staging them a second time.
+      staged = resolved.staged
     }
   } else if (parsed.all) {
     projects = undefined
@@ -494,6 +498,7 @@ export async function resolveRunOptions(
     opts.excludeDependencies = parsed.excludeDependencies
   }
   if (projects !== undefined) opts.projects = projects
+  if (staged !== undefined) opts.staged = staged
   if (parsed.retries !== undefined) opts.retries = parsed.retries
   if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
   if (parsed.memory !== undefined) opts.memory = parsed.memory

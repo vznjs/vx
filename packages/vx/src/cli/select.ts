@@ -21,6 +21,7 @@ import {
   workspaceGlobsMatch,
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
+import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { nearest, UserError } from '../util/index.js'
 import { claimedAffected, fingerprintClaims } from '../orchestrator/index.js'
@@ -41,6 +42,8 @@ export async function workspaceGlobOwners(
   projects: readonly ProjectMeta[],
   orphans: readonly string[],
   load: CliLoadOptions = {},
+  stagedLoad: () => Promise<ReadonlyMap<string, ProjectEntry>> = () =>
+    loadCliProjects(root, projects, 'all', load),
 ): Promise<string[]> {
   const declaresMatch = (config: ProjectConfig): boolean => {
     for (const task of Object.values(config.tasks ?? {})) {
@@ -57,7 +60,7 @@ export async function workspaceGlobOwners(
     throw new UserError(FROZEN_WITHOUT_LOCK)
   }
   try {
-    const staged = await loadCliProjects(root, projects, 'all', load)
+    const staged = await stagedLoad()
     return [...staged.values()].filter((p) => declaresMatch(p.config)).map((p) => p.name)
   } catch {
     // Fall through to the per-file sweep.
@@ -119,7 +122,14 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
   return best?.name ?? null
 }
 
-export type FilterResolution = { names: string[] } | { error: string } | { empty: string }
+export type FilterResolution =
+  | {
+      names: string[]
+      /** The staged load the graph walk needed, for the run to reuse (`RunOptions.staged`). */
+      staged?: ReadonlyMap<string, ProjectEntry>
+    }
+  | { error: string }
+  | { empty: string }
 
 /**
  * The cross-project `dependsOn` edges the configs declare, project → the
@@ -132,8 +142,13 @@ export async function taskEdges(
   root: string,
   projects: readonly ProjectMeta[],
   load: CliLoadOptions,
-): Promise<Map<string, string[]>> {
+): Promise<{ edges: Map<string, string[]>; staged: Map<string, ProjectEntry> }> {
   const staged = await loadCliProjects(root, projects, 'all', load)
+  return { edges: taskEdgesFrom(staged), staged }
+}
+
+/** The same edges, read from a load the caller already has. */
+export function taskEdgesFrom(staged: ReadonlyMap<string, ProjectEntry>): Map<string, string[]> {
   const out = new Map<string, string[]>()
   for (const p of staged.values()) {
     const targets = new Set<string>()
@@ -164,10 +179,17 @@ export async function resolveFilters(
   const projects = await loadWorkspaceProjects(cwd)
   const parsed = raw.map((r) => parseFilter(r, root))
   const walksGraph = parsed.some((f) => f.withDeps || f.withDependents || f.onlyDeps)
+  // Every reader of the staged configs in this pass — the `pkg#task`
+  // edge walk, the `workspaceFiles` owners of an orphan path — shares
+  // ONE load, and the run reuses it (`RunOptions.staged`): the `project`
+  // stage runs once per project per run.
+  let stagedPromise: Promise<Map<string, ProjectEntry>> | undefined
+  const stagedOnce = (): Promise<Map<string, ProjectEntry>> =>
+    (stagedPromise ??= loadCliProjects(root, projects, 'all', load))
   let edges: Map<string, string[]> | undefined
   if (walksGraph) {
     try {
-      edges = await taskEdges(root, projects, load)
+      edges = taskEdgesFrom(await stagedOnce())
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
     }
@@ -185,7 +207,8 @@ export async function resolveFilters(
         workspaceRoot: root,
         since: f.gitSince,
         projects,
-        workspaceGlobOwners: (orphans) => workspaceGlobOwners(root, projects, orphans, load),
+        workspaceGlobOwners: (orphans) =>
+          workspaceGlobOwners(root, projects, orphans, load, stagedOnce),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
       })
       affectedByFilter.set(f, names)
@@ -227,7 +250,16 @@ export async function resolveFilters(
   // Something matched, so the run proceeds; a pattern that matched nothing
   // alongside it is still worth a line — it is probably a typo.
   for (const f of unmatched) process.stderr.write(`vx: filter "${f}" matched no projects\n`)
-  return { names: [...selected].sort() }
+  let staged: Map<string, ProjectEntry> | undefined
+  if (stagedPromise !== undefined) {
+    try {
+      staged = await stagedPromise
+    } catch {
+      // The owners walk fell through to its per-file sweep; the run loads for itself.
+      staged = undefined
+    }
+  }
+  return { names: [...selected].sort(), ...(staged !== undefined ? { staged } : {}) }
 }
 
 export interface PickedTask {

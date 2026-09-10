@@ -8,6 +8,7 @@ import type { TaskOutcome } from '../graph/index.js'
 import type { EventBus } from './events.js'
 import type { TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
+import type { ProjectEntry } from '../workspace/index.js'
 
 export interface RunOptions {
   cwd: string
@@ -19,6 +20,16 @@ export interface RunOptions {
    */
   tasks: readonly string[]
   projects?: string[]
+  /**
+   * Configs a selection pass in this same process already loaded and
+   * staged with the same `cacheDir` and `frozen` (the CLI walks every
+   * `pkg#task` edge for `--filter 'app...'` and `--affected`). The run
+   * seeds and scopes as it always does and reuses these entries instead
+   * of evaluating and staging them again. One run only — never carry a
+   * map across runs, a config can change between them (`vx watch` drops
+   * it per cycle).
+   */
+  staged?: ReadonlyMap<string, ProjectEntry>
   concurrency?: number
   /**
    * Cache directory override (`--cache-dir <path>`). Absolute, or relative

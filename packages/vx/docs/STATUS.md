@@ -1327,6 +1327,38 @@ app`, "watching 2 project(s)", a `lib/src` edit is one cycle that
       post (a cold-build column in its table) and the why-fast post's
       opening. `check.site` guards the three generated files as before.
 
+122.  DONE (2026-09-10, late night — bug hunt on solid with
+      `@vzn/vx-lockfile`): the lockfile claims held end to end (a
+      whitespace edit to `pnpm-lock.yaml` is four hits; an integrity
+      bump on `component-register`, which only `solid-element` reaches,
+      is one miss, `vx why` names `plugin @vzn/vx-lockfile/pnpm`, and
+      `--affected --exclude-dependencies` selects that one task) — and
+      the probe showed every `@vzn/vx-turbo` warning printed TWICE under
+      `--affected` with a diff and under `--filter 'solid-element...'`,
+      once under `--filter solid-element`. Root cause: a filter that
+      walks the graph stages every config in `resolveFilters` →
+      `taskEdges` to read the `pkg#task` edges, and the run loaded them
+      all again — the `project` stage's cost paid twice per run, its
+      warnings doubled. The selection load now travels into the run
+      (`RunOptions.staged`; `loadProjects` takes a staged entry as is,
+      seeding and scoping unchanged) and `vx watch` hands its sweep's
+      load to the watched-set walk while deleting `staged` from the
+      options a cycle re-runs. Pinned in `tests/staged-once.test.ts`
+      with a counting `project` plugin: a graph-walking filter stages
+      each config once (differential: not handing the load on, each
+      twice); a plain scope once (control); a watch start is four stage
+      calls, not six, and the cycle after an edit stages live (six).
+      The second half, found when solid still doubled under
+      `--affected` after the first fix: a changed root file is an
+      orphan path even when a plugin claims it, and the owners walk
+      (`workspaceGlobOwners`, which project's `workspaceFiles` glob
+      covers it) staged every config on its own. `resolveFilters` now
+      has ONE memoized load that the edge walk, the owners walk and the
+      run all read (pinned: `--affected=HEAD` with an orphan root file
+      and a `lib` edit stages each config once; differential, the owners
+      walk loading for itself: twice). On solid, `--affected --dry`
+      with a lockfile diff prints each Turbo warning once.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so

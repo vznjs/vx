@@ -30,7 +30,7 @@ import {
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
 import { type CliLoadOptions, loadCliProjects, loadCliWorkspace } from './workspace-config.js'
-import { taskEdges } from './select.js'
+import { taskEdges, taskEdgesFrom } from './select.js'
 
 /** Wait this long after the last filesystem event before re-running. */
 const DEBOUNCE_MS = 150
@@ -342,6 +342,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // default (exit 143) and left the cycle's children running under init.
   const stop = new AbortController()
   const opts: RunOptions = { ...resolved, handleSignals: false, signal: stop.signal }
+  // A staged load from the selection pass is one run's worth of configs;
+  // every cycle after an edit must evaluate live.
+  delete opts.staged
   process.once('SIGINT', () => {
     process.stdout.write('\nvx watch: stopped\n')
     stop.abort()
@@ -388,7 +391,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     ...(opts.frozen === true ? { frozen: true } : {}),
   }
   const swept = await sweepConfigs(allProjects, workspaceRoot, load)
-  const watched = await watchedProjects(workspaceRoot, allProjects, scope, load)
+  const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
   return await runWatchLoop({
     opts,
     stop: stop.signal,
@@ -419,11 +422,15 @@ export async function watchedProjects(
   allProjects: readonly ProjectMeta[],
   scope: readonly ProjectMeta[],
   load: CliLoadOptions = {},
+  staged: ReadonlyMap<string, ProjectEntry> | null = null,
 ): Promise<ProjectMeta[]> {
   if (scope.length === allProjects.length) return [...allProjects]
   let edges: Map<string, string[]> | undefined
   try {
-    edges = await taskEdges(workspaceRoot, allProjects, load)
+    edges =
+      staged !== null
+        ? taskEdgesFrom(staged)
+        : (await taskEdges(workspaceRoot, allProjects, load)).edges
   } catch {
     edges = undefined
   }
@@ -449,7 +456,13 @@ export async function sweepConfigs(
   projects: readonly ProjectMeta[],
   workspaceRoot: string,
   load: CliLoadOptions = {},
-): Promise<{ workspaceWide: boolean; workspaceInputs: string[]; outputs: Map<string, string[]> }> {
+): Promise<{
+  workspaceWide: boolean
+  workspaceInputs: string[]
+  outputs: Map<string, string[]>
+  /** The staged load the sweep read, when the run path's load succeeded; `watchedProjects` reads the same one. */
+  staged: Map<string, ProjectEntry> | null
+}> {
   const outputs = new Map<string, string[]>()
   const add = (dir: string, globs: readonly string[] | undefined): void => {
     if (globs === undefined || globs.length === 0) return
@@ -463,14 +476,18 @@ export async function sweepConfigs(
       add(workspaceRoot, task.cache?.outputs?.workspaceFiles)
     }
   }
-  const result = (): {
+  const result = (
+    staged: Map<string, ProjectEntry> | null,
+  ): {
     workspaceWide: boolean
     workspaceInputs: string[]
     outputs: Map<string, string[]>
+    staged: Map<string, ProjectEntry> | null
   } => ({
     workspaceWide: workspaceInputs.size > 0,
     workspaceInputs: [...workspaceInputs],
     outputs,
+    staged,
   })
   let staged: Map<string, ProjectEntry> | null = null
   try {
@@ -480,7 +497,7 @@ export async function sweepConfigs(
   }
   if (staged !== null) {
     for (const p of staged.values()) fold(p.dir, p.config)
-    return result()
+    return result(staged)
   }
   await Promise.all(
     projects.map(async (p) => {
@@ -492,7 +509,7 @@ export async function sweepConfigs(
       }
     }),
   )
-  return result()
+  return result(null)
 }
 
 /**
