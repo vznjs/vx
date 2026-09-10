@@ -27,53 +27,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Sandbox runtime deps: bubblewrap (kernel-level isolation) +
-      # socat (network bridge) on Linux, plus strace (per-task
-      # violation detection). Ubuntu 24's default AppArmor profile
-      # blocks unprivileged user namespaces — that breaks bwrap. We
-      # disable the restriction via sysctl so the sandbox tests can
-      # actually exercise bwrap end-to-end in CI.
-      - name: Install sandbox runtime deps
-        run: |
-          # Only Ubuntu's own index is needed. The image also carries
-          # third-party sources (Chrome, Microsoft) whose mirrors can serve
-          # a stale index — `apt-get update` then exits 100 on a hash-sum
-          # mismatch before a single vx step runs (two heads on 2026-09-09).
-          # Drop them so the gate depends on the one repository it uses.
-          sudo find /etc/apt/sources.list.d -type f ! -name 'ubuntu.sources' -delete
-          sudo apt-get update
-          sudo apt-get install -y bubblewrap socat strace ripgrep
-          # Ubuntu 24+ ships with AppArmor restricting unprivileged
-          # user namespaces. bwrap needs them; without this sysctl
-          # tweak it exits non-zero on first use.
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-          # AppArmor profile-based restriction (Ubuntu 24.04+): some
-          # builds also enforce via the unprivileged_userns profile.
-          if [ -f /etc/apparmor.d/unprivileged_userns ]; then
-            sudo aa-disable /etc/apparmor.d/unprivileged_userns || true
-          fi
-
-      # Diagnose: confirm bwrap actually runs on this host before
-      # firing the test suite. Surfaces install / namespace issues
-      # directly in CI logs instead of as opaque "tests skipped".
-      - name: Diagnose sandbox availability
-        run: |
-          echo "::group::which bwrap"
-          which bwrap || echo "MISSING"
-          bwrap --version || true
-          echo "::endgroup::"
-          echo "::group::sysctl userns"
-          sysctl kernel.unprivileged_userns_clone 2>&1 || true
-          sysctl kernel.apparmor_restrict_unprivileged_userns 2>&1 || true
-          echo "::endgroup::"
-          echo "::group::bwrap minimal exec"
-          bwrap --ro-bind / / --proc /proc --dev /dev /bin/true
-          echo "ok: bwrap exited 0"
-          echo "::endgroup::"
-          echo "::group::probeSandbox()"
-          bun -e 'import("/home/runner/work/vx/vx/packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => { console.log(JSON.stringify(a)); process.exit(0) })' \
-            || bun -e 'import("./packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => { console.log(JSON.stringify(a)); process.exit(0) })'
-          echo "::endgroup::"
+      - uses: ./.github/actions/vx-runner
 
       # Dogfood: vx orchestrates its own gate via vx.config.ts. The `ci`
       # task is a group fanning out to `lint` (→ lint.oxlint +
@@ -97,29 +51,13 @@ jobs:
       # the step's exit code still gates the job.
       #
       # VX_REQUIRE_SANDBOX turns an unavailable OS sandbox into a test FAILURE
-      # instead of a skip. The step above installs bwrap + socat + strace, so
+      # instead of a skip. The runner action installs bwrap + socat + strace, so
       # unavailable here means the install broke — and `describe.skipIf` would
       # otherwise delete the tests covering the isolation boundary under a
       # green check. The diagnose step is not a
       # substitute: it hard-fails on the raw bwrap exec, one of probeSandbox's
       # four failure paths. `vx run` isolates the child env, so this is
       # forwarded via the test task's exec.env.passThrough.
-      # Warm bun's cross-compile targets BEFORE the sandbox sees them.
-      # `bun build --compile` downloads `@oven/bun-<target>` into
-      # `~/.bun/install/cache` on first use; a sandboxed task may READ that
-      # cache (only the workspace root is denied) but not write it, so on a
-      # cold runner the download fails with a misleading
-      # "Network error … check your proxy settings". Warming it here keeps
-      # the build tasks' grants as tight as they are on a dev machine, where
-      # the cache is already populated. Measured 2026-09-05: cold sandboxed
-      # build fails, same build after this step succeeds.
-      - name: Warm bun cross-compile targets
-        run: |
-          echo 'console.log(0)' > /tmp/warm.ts
-          for t in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
-            bun build --compile --target="bun-$t" /tmp/warm.ts --outfile "/tmp/warm-$t" >/dev/null
-          done
-
       # Everything the gate checks is a vx task — the site's generated
       # collection (`@vzn/vx-docs#import`), the site-vs-results check
       # (`@vzn/vx-bench#check.site`), every package's suite (each
@@ -193,6 +131,11 @@ jobs:
           bun-version: 1.4.0
 
       - run: bun install --frozen-lockfile
+
+      # `@vzn/vx-reapi#test` reaches core's compile tasks through
+      # `install → ^build`, and those run sandboxed; the runner action is
+      # what lets them.
+      - uses: ./.github/actions/vx-runner
 
       # NativeLink gives the EXECUTION half a real scheduler + worker. Its
       # official image is distroless — no /bin/sh — so a worker inside it

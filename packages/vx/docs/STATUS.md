@@ -663,7 +663,12 @@ foo` invalidated the whole workspace and `--affected` selected every
     `import` 287 ms success with the sibling read granted, `check.site`
     824 ms success, `@vzn/vx-reapi#test` 28 s success in skip mode; and
     `run test --filter @vzn/vx --dry` selects the thirteen core test
-    tasks and nothing else.
+    tasks and nothing else. The first CI run of the change had the service job
+    red in 24 s: `@vzn/vx-reapi#test` reaches core's four compile tasks
+    through `install → ^build`, they run sandboxed, and that job had no
+    sandbox runtime — so the Linux runner setup (sandbox deps, the
+    probe, the cross-compile warm-up) is one composite action
+    (`.github/actions/vx-runner`) that every Linux job uses.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
@@ -846,6 +851,22 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
   `docs/cli.md` § Releasing.
 
 ## Next (ordered)
+
+0. **Dependants build core's release binaries for nothing.** Every
+   package's `install` depends on `^build`, and core's `build` is the
+   four `bun build --compile` targets — so `vx run test --filter
+@vzn/vx-lockfile` on a fresh checkout compiles four binaries first,
+   the service job in CI needs the whole sandbox runtime to run one
+   test suite, and a root container that cannot sandbox fails every
+   package's tasks at the compile step (seen all day, 2026-09-10). A
+   dependant needs core's SOURCE, which needs no build. Decide what
+   `build` means for core (nothing — the binaries are a release
+   artifact, `release`/`build.bun` — or a no-op group the binaries hang
+   off) and what `install` means for a package that consumes source;
+   then the ci.yml "compiled binary reports the manifest version" step
+   names its build explicitly instead of riding the `^build` chain.
+   Measure the gate's wall before and after; the four compiles are the
+   longest tasks in it.
 
 1. **The live REAPI suites are green again (2026-09-04); the
    whole-graph run stays optional.** With OrbStack's docker back, the
