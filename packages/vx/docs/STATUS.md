@@ -882,6 +882,22 @@ before · 2 attempts this run`), `--summarize`'s per-task
     the ambient value — and the comments at the memo key and the spawn
     say why (Nx pins the same regression). Both closed in the design
     doc.
+97. DONE (2026-09-10, late night — parity finding M11): an exact
+    `cache.inputs.tasks` entry that no `dependsOn` entry names
+    (`['buidl']` for `['build']`) matched nothing at hash time and
+    folded no upstream hash — the task silently decoupled from its
+    dependencies, a stale hit waiting for the next upstream change.
+    The loader refuses it now, naming the entry and the task's
+    `dependsOn`; an entry a `dependsOn` pattern matches (`build.*`
+    names `build.bun`) passes, and patterns, wildcards and negations
+    stay silent, as the 2026-07-10 wildcard decision requires (a
+    preset-spread pattern legitimately matches nothing in some
+    projects). A config-level rule on purpose: the graph's edge set
+    bends under `--exclude-dependencies`, the declaration does not.
+    The pattern glob is mirrored from the graph module (workspace may
+    not import it); the runtime filter is unchanged. Pinned in the
+    loader suite with the pattern case and a control for every silent
+    form. Closed in the design doc.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

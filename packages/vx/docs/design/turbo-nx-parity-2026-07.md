@@ -663,6 +663,8 @@ have locally.` Both fail loudly and correctly (verified).
 
 ### M11. `cache.inputs.tasks` entries that match no upstream silently decouple the task
 
+> Closed 2026-09-10 (STATUS item 97): an exact entry no `dependsOn` entry names is refused at load; patterns stay silent per the 2026-07-10 decision.
+
 - **Turbo behaviour**: no direct analogue (Turbo has no upstream-hash filter);
   the closest contract is `run_caching.rs:1600`
   `test_dependency_outputs_globs_cannot_select_undeclared_outputs` and `:1667`

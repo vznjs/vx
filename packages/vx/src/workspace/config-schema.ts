@@ -472,6 +472,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name', '*', '^*', '!name')`,
           )
         }
+        assertFilterNamesDeclaredDeps(taskFilters, task.dependsOn, where)
       }
       for (const field of ['runtime', 'workspaceRuntime'] as const) {
         const list = (inputs as Record<string, unknown>)[field]
@@ -607,6 +608,48 @@ function assertNotDoubleNegated(glob: string, where: string): void {
       `the task folds only that. Use ${JSON.stringify(`!${inner}`)} to subtract it, or ` +
       `${JSON.stringify(inner)} to include it.`,
   )
+}
+
+/**
+ * An exact `cache.inputs.tasks` entry that no `dependsOn` entry names would
+ * match nothing at hash time and fold no upstream hash — the task silently
+ * decoupled from its dependencies, which is a stale hit waiting for the
+ * next upstream change. `['buidl']` for `['build']` is the shape. Patterns,
+ * wildcards and negations stay silent (a preset-spread pattern legitimately
+ * matches nothing in some projects; excluding what is absent is harmless);
+ * an exact name must be named by some `dependsOn` entry, exactly or by that
+ * entry's own `*` pattern. `[]` is the explicit way to decouple.
+ */
+function assertFilterNamesDeclaredDeps(
+  filters: readonly string[],
+  dependsOn: readonly string[] | undefined,
+  where: string,
+): void {
+  const taskHalf = (spec: string): string => {
+    const body = spec.startsWith('^') ? spec.slice(1) : spec
+    const hash = body.lastIndexOf('#')
+    return hash === -1 ? body : body.slice(hash + 1)
+  }
+  const declared = (dependsOn ?? []).map(taskHalf)
+  const named = (task: string): boolean =>
+    declared.some((d) => (d.includes('*') ? taskPatternRegExp(d).test(task) : d === task))
+  for (const raw of filters) {
+    if (raw.startsWith('!') || raw === '*' || raw === '^*') continue
+    const task = taskHalf(raw)
+    if (task.length === 0 || task.includes('*') || named(task)) continue
+    throw new UserError(
+      `${where}.cache.inputs.tasks: "${raw}" names no task in ${where}.dependsOn ` +
+        `(${declared.length === 0 ? 'none declared' : dependsOn!.map((d) => `'${d}'`).join(', ')}) — ` +
+        `it would match nothing and fold no upstream hash, decoupling the task from its ` +
+        `dependencies. Fix the name, or use [] to decouple on purpose.`,
+    )
+  }
+}
+
+/** The graph's `*`-only task glob (`compileTaskPattern`), mirrored: `*` is the sole metacharacter. */
+function taskPatternRegExp(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
+  return new RegExp(`^${escaped}$`)
 }
 
 /**
