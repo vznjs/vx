@@ -195,6 +195,39 @@ describe('@vzn/vx-turbo', () => {
   )
 
   it(
+    "outputLogs: new-only is vx's default and warns about nothing; other values name the run flag",
+    async () => {
+      // `new-only` — frames for what ran, a one-liner per hit — is what vx
+      // does by default, and it is the value in every Vercel template; on
+      // solidjs/solid every run warned "no vx equivalent" for it twice.
+      // The other values have no per-task knob in vx: the todo says which
+      // run flag carries them instead of asking for a manual mapping.
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            build: { outputLogs: 'new-only' },
+            test: { outputLogs: 'hash-only' },
+            lint: { outputLogs: 'loud' },
+          },
+        }),
+      )
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['build', 'test', 'lint'], log })
+      const text = log.lines.join('\n')
+      expect(text).not.toContain('outputLogs" ("new-only")')
+      expect(text).not.toContain('has no vx equivalent')
+      expect(text).toContain(
+        '[@vzn/vx-turbo] app#test: turbo key "outputLogs" ("hash-only") is a per-run setting in vx — run with --output-logs hash-only',
+      )
+      expect(text).toContain(
+        '[@vzn/vx-turbo] app#lint: turbo key "outputLogs" ("loud") is not a value vx knows — run with --output-logs full|hash-only|errors-only|none',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task that does not map is reported once, as a warning, not written',
     async () => {
       await writeFile(

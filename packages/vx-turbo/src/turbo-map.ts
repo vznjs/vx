@@ -46,7 +46,17 @@ const KNOWN_TASK_KEYS = new Set([
   'cache',
   'persistent',
   'extends',
+  'outputLogs',
 ])
+
+// Turbo's per-task `outputLogs` against vx's per-run `--output-logs`.
+// `new-only` — frames for the tasks that ran, a one-liner per cache hit —
+// is what vx's default flow already does, so the most common value in
+// the wild (every Vercel template) maps to nothing and warns about
+// nothing. The other values have no per-task knob in vx; the todo names
+// the run flag that carries them.
+const OUTPUT_LOGS_DEFAULT = 'new-only'
+const OUTPUT_LOGS_RUN_FLAG = new Set(['full', 'hash-only', 'errors-only', 'none'])
 
 /** The three global fields of turbo.json a task may draw on. */
 export type TurboGlobal = 'inputs' | 'env' | 'pass'
@@ -267,6 +277,16 @@ function buildTask(
     todos.push(
       `turbo key ${JSON.stringify(key)} (${JSON.stringify(value)}) has no vx equivalent — ` +
         'map it manually',
+    )
+  }
+  const outputLogs = (def as { outputLogs?: unknown }).outputLogs
+  if (outputLogs !== undefined && outputLogs !== OUTPUT_LOGS_DEFAULT) {
+    todos.push(
+      typeof outputLogs === 'string' && OUTPUT_LOGS_RUN_FLAG.has(outputLogs)
+        ? `turbo key "outputLogs" (${JSON.stringify(outputLogs)}) is a per-run setting in vx — ` +
+            `run with --output-logs ${outputLogs}`
+        : `turbo key "outputLogs" (${JSON.stringify(outputLogs)}) is not a value vx knows — ` +
+            'run with --output-logs full|hash-only|errors-only|none',
     )
   }
 

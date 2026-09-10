@@ -25,7 +25,7 @@ truth, committed like one.
 ## What it does not do
 
 - A task the package's own `vx.config` already declares is left alone — the plugin fills, it never overwrites. Migrate a package by writing its config; the rest of the repo keeps running from `turbo.json`.
-- The mapping's gaps are the migration's gaps, reported as warnings on every run instead of `TODO(vx-migrate)` comments: `$TURBO_ROOT$` tasks, wildcard env names, negated outputs, unknown turbo keys. `vx migrate --dry` lists the same set once.
+- The mapping's gaps are the migration's gaps, reported as warnings on every run instead of `TODO(vx-migrate)` comments: `$TURBO_ROOT$` tasks, wildcard env names, negated outputs, unknown turbo keys. `bunx @vzn/vx-migrate --dry` lists the same set once.
 - Nothing is cached, run or resolved differently from a written config: the key a task derives here equals the key the written config would derive.
 
 ## Options
@@ -69,5 +69,9 @@ drew on. Before 2026-09-10 the mapper lived in `@vzn/vx` itself.
 - `cache: false` or `persistent: true` → no `cache` block; a
   persistent task gets `exec.persistent: {}` and the consumer's
   `persistentTodo`.
+- `outputLogs: "new-only"` maps to nothing: frames for the tasks that
+  ran and a one-liner per cache hit is vx's default flow already. The
+  other values are per-run in vx, so they are a todo naming the flag
+  (`vx run … --output-logs hash-only`).
 - An unknown Turbo key is a todo naming it; `extends` is accepted and
   ignored (the overlay order above is what it means).
