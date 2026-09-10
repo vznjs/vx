@@ -352,6 +352,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       ? { excludeDependencies: options.excludeDependencies }
       : {}),
   })
+  // The graph is built; what follows is the plugins' (graph, key,
+  // schedule). Two rows, so a plugin's key stage reads as its own cost
+  // and not as graph building — a lockfile plugin's 1000 stats per run
+  // hid inside one `prepare (graph)` row until 2026-09-10.
+  mark('build graph')
   if (hasHook(plugins, 'graph')) {
     await applyGraphHooks(plugins, nodes, {
       workspaceRoot,

@@ -5,8 +5,9 @@
 Answer "where did the warm run go?" without a profiler. With
 `VX_TIMING=1`, `mark(label)` records the end of each stage
 (`prepareRun`: startup, workspace config, discovery, cache open, config
-load, git enumeration; `run()`: graph, classify + probe, run graph,
-history, close) and `span(label)` accumulates repeated per-task
+load, git enumeration, build graph, plugin stages — the graph, key and
+schedule hooks, so a plugin's cost is its own row; `run()`: classify +
+probe, run graph, history, close) and `span(label)` accumulates repeated per-task
 operations (`cache.get`, `output glob`, `output stat`, `task hash`).
 `printTimings()` writes the table to stderr at the end of the run.
 

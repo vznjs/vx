@@ -38,7 +38,7 @@ Both are on the `@vzn/vx` façade.
 - **Once per run.** Core hands every `key` call of one run the same
   context object; a `WeakMap` on it makes the stat + read happen once
   per run, not once per task (1000 tasks cost 1000 stats, 47 ms in
-  `prepare (graph)`, before this).
+  the plugin-stages row, before this).
 - **Once per process.** The file's size + mtime gate the read within a
   process (a `vx watch` cycle); the content hash decides whether the
   digests are current.

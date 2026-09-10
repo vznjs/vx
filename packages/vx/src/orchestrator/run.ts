@@ -167,7 +167,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   const log = busLogger(bus)
 
   const prepared = await prepareRun(options, log)
-  mark('prepare (graph)')
+  mark('plugin stages')
   // A requested name that matched no project is a typo (or a stray
   // positional from an `=`-only flag written with a space). Failing the
   // whole run — even when OTHER requested tasks resolved — is the point:
