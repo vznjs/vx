@@ -1707,7 +1707,7 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     (the seams are in place: `inflight`, `remoteCache`,
     `telemetrySinks`, the wire event form).
 
-12. DONE (2026-09-11, small): the foreground keep-alive's ending is
+12. DONE (2026-09-10, late night): the foreground keep-alive's ending is
     said, not just coded — `vx: app#dev exited with code 1; stopping
 1 other persistent task` on the status stream before the
     teardown, since the summary above had already reported the
