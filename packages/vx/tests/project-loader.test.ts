@@ -155,6 +155,16 @@ describe('loadProjectConfig', () => {
       expect(cfg.tasks?.install?.dependsOn).toEqual(['^build'])
     })
 
+    it('accepts an explicit empty group — dependsOn: [] is a deliberate no-op', async () => {
+      // A package consumed as source declares `build: { dependsOn: [] }` so
+      // a dependant's `^build` finds it and waits on nothing; only the
+      // OMITTED field is the typo guard below.
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, `export default { tasks: { build: { dependsOn: [] } } }`)
+      const cfg = await loadProjectConfig(file)
+      expect(cfg.tasks?.build?.dependsOn).toEqual([])
+    })
+
     it('rejects a task with no exec and no dependsOn', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(file, `export default { tasks: { empty: {} } }`)
@@ -864,9 +874,48 @@ describe('loadProjectConfig', () => {
       }
     })
 
+    const withDeps = (deps: string, literal: string): string =>
+      `export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ${deps}, cache: {
+        inputs: { files: [], tasks: ${literal} }, outputs: { files: [] } } } } }`
+
     it('accepts the documented filter forms', async () => {
       const file = path.join(dir, 'vx.config.mjs')
-      await writeFile(file, withTasks(`['*', '^*', 'lint', '^build', 'pkg#gen', '!^noisy']`))
+      await writeFile(
+        file,
+        withDeps(
+          `['lint', '^build', '^gen']`,
+          `['*', '^*', 'lint', '^build', 'pkg#gen', '!^noisy']`,
+        ),
+      )
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+    })
+
+    // An exact entry no dependsOn names matches nothing at hash time and
+    // folds no upstream hash: the task decouples silently — a stale hit
+    // waiting for the next upstream change. The typo is the shape.
+    it('rejects an exact name that no dependsOn entry names (the typo that decouples)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withDeps(`['build', '^build']`, `['buidl']`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(
+        /cache\.inputs\.tasks: "buidl" names no task in .*dependsOn \('build', '\^build'\)/,
+      )
+      await writeFile(file, withTasks(`['codegen']`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(/names no task in .*\(none declared\)/)
+    })
+
+    it('a dependsOn pattern names every exact entry it matches', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withDeps(`['build.*']`, `['build.bun', 'other#build.linux']`))
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+      await writeFile(file, withDeps(`['build.*']`, `['buildx']`))
+      await expect(loadProjectConfig(file)).rejects.toThrow(/"buildx" names no task/)
+    })
+
+    it('patterns, wildcards, negations and [] stay silent (CONTROL)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, withTasks(`['*', '^*', 'build.*', '^lint.*', '!codegen', '!^noisy']`))
+      await expect(loadProjectConfig(file)).resolves.toBeDefined()
+      await writeFile(file, withTasks(`[]`))
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
     })
 

@@ -112,6 +112,35 @@ describe('affectedProjects', () => {
     ).rejects.toThrow(/did not resolve/)
   })
 
+  // The base reaches git as an argument, never a shell — but an option-like
+  // value is a real option: `git diff … --output=<path>` writes the diff to
+  // <path>. The guard is a check that knows it is a security boundary, not
+  // an exit-code side effect of `verifyRef`; the second assertion is the one
+  // that survives a refactor of that function.
+  it.each(['--output=OUT', '-', '--', '--upload-pack=OUT', ''])(
+    'refuses an option-like or empty base (%j) before git sees it',
+    async (shape) => {
+      const out = path.join(root, 'injected')
+      const since = shape.replace('OUT', out)
+      await expect(affectedProjects({ workspaceRoot: root, since, projects })).rejects.toThrow(
+        /is not a ref/,
+      )
+      expect(existsSync(out)).toBe(false)
+    },
+  )
+
+  it('CONTROL: the injection the guard refuses is real — git honours --output as an option', async () => {
+    const out = path.join(root, 'injected')
+    const proc = Bun.spawn({
+      cmd: ['git', 'diff', '--no-renames', '--name-only', `--output=${out}`],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(await proc.exited).toBe(0)
+    expect(existsSync(out)).toBe(true)
+  })
+
   it('reports a git failure as a git failure, not as a missing ref', async () => {
     // `git rev-parse --verify --quiet` exits 1 for an absent ref but 128 when
     // git cannot operate here at all. Blaming the ref for the second sends the

@@ -89,8 +89,12 @@ inline for you.
 - **Caching that's stricter.** Resolved-config hashing (your imports and
   computed values are in the cache key) and outputs wiped before every
   restore (no stale files survive) — neither of which Nx does.
-- **A tiny surface.** One binary, shell commands, TypeScript config. The
-  whole model fits in your head in an afternoon.
+- **A tiny surface.** One binary — no Node, no Bun — shell commands,
+  TypeScript config. The whole model fits in your head in an afternoon.
+- **Nx Cloud's answers, locally.** Flaky-task detection reads your own
+  run history (`vx run` footer, `--summarize`, `vx info`); lockfile-aware
+  hashing is `@vzn/vx-lockfile`; remote caching and remote execution are
+  plugins against servers you run.
 
 ## What you give up (be honest)
 
@@ -114,10 +118,13 @@ running and caching without the platform.
 | ----------------------------- | --------------------------- |
 | `nx build app`                | `vx run app#build`          |
 | `nx run-many -t build`        | `vx run build --all`        |
-| `nx affected -t test`         | `vx run test --affected`    |
+| `nx affected -t test`         | `vx run test --filter '...[origin/main]'` (changed + dependents; `--affected` alone is the changed set) |
 | `nx run app:build --verbose`  | `vx run app#build --verbosity 2`       |
 | `nx graph`                    | `vx run build --graph`      |
 | `nx reset`                    | *(no daemon — nothing to reset)* |
+
+Every row a Nx user relies on, spelled in vx and pinned by a test, is
+the [parity map](../../parity/).
 
 ## Next steps
 

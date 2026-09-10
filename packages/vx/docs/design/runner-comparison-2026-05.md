@@ -189,13 +189,13 @@ does; vx additionally hard-fails on a missing tag).
 
 ## 10. Log replay (cache hit)
 
-| Step                | Turbo                              | Nx                          | vx                                                                                        |
+| Step | Turbo | Nx | vx |
 | ------------------- | ---------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------- | ----- | ---------------------------- | ----------------------------------------------------- |
-| Capture during exec | Streamed, per-line buffered        | Streamed, per-line buffered | Streamed chunks appended to per-task buffer in `defaultLogger`                            |
-| Replay on hit       | Whole-block write to terminal      | Whole-block write           | One `process.stdout.write` per task in `taskComplete()` (already optimal — same as Turbo) |
-| Output mode flag    | `--output-logs=full                | errors-only                 | hash-only                                                                                 | none` | Similar via `--output-style` | **Missing** — `comparison.md` calls this out as a gap |
-| Color preservation  | Yes — raw ANSI buffered + replayed | Yes (with TUI strip option) | Yes — colors via `colors.ts`, no strip                                                    |
-| Per-task framing    | Block headers + indent             | Block headers + indent      | `formatTaskBlock` framed output                                                           |
+| Capture during exec | Streamed, per-line buffered | Streamed, per-line buffered | Streamed chunks appended to per-task buffer in `defaultLogger` |
+| Replay on hit | Whole-block write to terminal | Whole-block write | One `process.stdout.write` per task in `taskComplete()` (already optimal — same as Turbo) |
+| Output mode flag | `--output-logs=full                | errors-only                 | hash-only                                                                                 | none` | Similar via `--output-style` | **Missing** — `comparison.md` calls this out as a gap |
+| Color preservation | Yes — raw ANSI buffered + replayed | Yes (with TUI strip option) | Yes — colors via `colors.ts`, no strip |
+| Per-task framing | Block headers + indent | Block headers + indent | `formatTaskBlock` framed output |
 
 **vx gap:** `--output-logs` flag missing — already in `comparison.md` backlog.
 

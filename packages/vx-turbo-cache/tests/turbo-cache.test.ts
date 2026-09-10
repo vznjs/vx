@@ -89,6 +89,11 @@ describe('resolveTurboCacheConfig', () => {
   it('reads options over Turbo’s environment, strips a trailing slash, declines without url+token', () => {
     expect(resolveTurboCacheConfig({}, {})).toBeUndefined()
     expect(resolveTurboCacheConfig({ apiUrl: 'https://c.example' }, {})).toBeUndefined()
+    // A token alone is Vercel's hosted cache, as it is for `turbo`.
+    expect(resolveTurboCacheConfig({ token: 't' }, {})?.apiUrl).toBe('https://vercel.com/api')
+    expect(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't', TURBO_TEAM: 'acme' })?.apiUrl).toBe(
+      'https://vercel.com/api',
+    )
     expect(
       resolveTurboCacheConfig(
         {},

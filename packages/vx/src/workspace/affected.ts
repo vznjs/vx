@@ -62,6 +62,17 @@ export interface FingerprintClaims {
  * or `<since>` doesn't resolve to a commit.
  */
 export async function affectedProjects(args: AffectedArgs): Promise<Set<string>> {
+  // The base reaches git as an argument, never through a shell, so `$(…)`
+  // is opaque — but an option-like value is not: `--output=<path>` is a
+  // real `git diff` option and an arbitrary file write. This is a security
+  // boundary, so it is a check that knows it is one, before any spawn, and
+  // every git call below also ends its options (`--end-of-options`) so a
+  // second caller cannot lose the guard by accident.
+  if (args.since.length === 0 || args.since.startsWith('-')) {
+    throw new UserError(
+      `git ref "${args.since}" is not a ref: a base cannot be empty or start with "-".`,
+    )
+  }
   await verifyRef(args.workspaceRoot, args.since)
 
   const [diffed, untracked] = await Promise.all([
@@ -90,6 +101,7 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
       '--relative',
       '--name-only',
       '-z',
+      '--end-of-options',
       args.since,
     ]),
     // `git diff` never reports untracked-but-not-ignored files, but input
@@ -197,7 +209,7 @@ async function gitBytesAt(
   file: string,
 ): Promise<Uint8Array | null> {
   const proc = Bun.spawn({
-    cmd: ['git', 'show', `${ref}:./${file}`],
+    cmd: ['git', 'show', '--end-of-options', `${ref}:./${file}`],
     cwd: workspaceRoot,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -256,7 +268,7 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
 
 async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   const proc = Bun.spawnSync({
-    cmd: ['git', 'rev-parse', '--verify', '--quiet', ref],
+    cmd: ['git', 'rev-parse', '--verify', '--quiet', '--end-of-options', ref],
     cwd: workspaceRoot,
     stdout: 'pipe',
     stderr: 'pipe',

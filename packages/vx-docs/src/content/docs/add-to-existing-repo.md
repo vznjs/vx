@@ -12,13 +12,17 @@ Migrating *from* a specific tool? Those guides generate config for you:
 [from Nx](../migrate/from-nx/). No tool at all? `vx init` writes the
 workspace file and one config per package from its `package.json`
 scripts; the hand-written path below is the same result, one package at
-a time.
+a time. A plugin on the `project` stage can give a package its tasks
+from the tools it uses, with the hand-written config still winning
+wherever you add one — that is the seam
+[Writing a vx plugin](../guides/plugins/) describes, and such plugins
+are the community's to write: core names no tool.
 
 ## 1. Install at the workspace root
 
 ```bash
-bun add -d @vzn/vx
-# …or globally, as the prebuilt standalone binary:
+npm install -D @vzn/vx     # or pnpm add -D · yarn add -D · bun add -d — the prebuilt binary, no Node or Bun to run it
+# …or globally, so `vx` is on your PATH everywhere:
 npm install -g @vzn/vx
 ```
 
@@ -89,7 +93,10 @@ build: {
 vx derives the cross-package edges from your `package.json`
 `dependencies` — you don't redeclare the graph. A package that doesn't
 declare `build` is transparently bridged to the nearest dependency that
-does, so sparse task coverage is fine.
+does, so sparse task coverage is fine. A package that is consumed as
+source and has nothing to build can say so with an explicit empty
+group, `build: { dependsOn: [] }`, so a dependant's `^build` finds it
+and waits on nothing.
 
 ## 5. Optional: workspace-wide settings
 

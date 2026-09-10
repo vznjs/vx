@@ -405,7 +405,7 @@ export class Cache implements CacheLayer {
         -- time by design; NULL on rows older than the column.
         cached              INTEGER
       );
-      -- Two indexes only, and both APPEND: every row of a run carries the
+      -- Two whole-table indexes only, and both APPEND: every row of a run carries the
       -- same run_id and a started_at newer than everything before it, so
       -- 1,000 inserts touch a handful of leaf pages. The dropped ones did
       -- not — the DROPs shed them from existing databases (a schema-meta
@@ -425,6 +425,12 @@ export class Cache implements CacheLayer {
       DROP INDEX IF EXISTS runs_ended;
       CREATE INDEX IF NOT EXISTS runs_started_at ON runs(started_at);
       CREATE INDEX IF NOT EXISTS runs_run_id     ON runs(run_id);
+      -- The one keyed index, PARTIAL over failed rows: a green run's
+      -- inserts only evaluate its predicate, so the append-only cost above
+      -- holds, and the flakiness probe after a miss (failure-mode.ts,
+      -- "did this key ever fail?") reads a handful of leaves instead of
+      -- scanning the table (2026-09-10: 10–95 ms at 170k rows without it).
+      CREATE INDEX IF NOT EXISTS runs_failed ON runs(hash) WHERE status = 'failed';
       -- Per-file (mtime, size, content_hash) cache. Lets Cache.key()
       -- skip the content-hash on inputs whose stat hasn't changed
       -- since the last run. Pure performance optimization; the stored

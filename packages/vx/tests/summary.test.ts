@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test'
-import { formatDuration, formatRunSummary } from '../src/orchestrator/summary.js'
+import {
+  formatDuration,
+  formatFlakySection,
+  formatRunSummary,
+} from '../src/orchestrator/summary.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -175,5 +179,41 @@ describe('formatDuration', () => {
     expect(formatDuration(1000)).toBe('1.00s')
     expect(formatDuration(1234)).toBe('1.23s')
     expect(formatDuration(60_000)).toBe('60.00s')
+  })
+})
+
+describe('formatFlakySection', () => {
+  const finding = (
+    taskId: string,
+    status: 'success' | 'failed',
+    passes: number,
+    failures: number,
+    attempts = 1,
+  ) => {
+    const [project, task] = taskId.split('#') as [string, string]
+    return { taskId, project, task, hash: 'k', status, passes, failures, attempts }
+  }
+
+  it('is empty when the run proved nothing flaky', () => {
+    expect(formatFlakySection([])).toEqual([])
+  })
+
+  it('names each task with what this run did against what the key did before', () => {
+    expect(
+      formatFlakySection([
+        finding('app#test', 'failed', 3, 1),
+        finding('api#e2e', 'success', 1, 2, 2),
+        finding('web#build', 'success', 1, 0, 2),
+      ]),
+    ).toEqual([
+      '',
+      '  Flaky:    3 tasks with the same inputs both passing and failing on record',
+      '    ✗ app#test — failed on inputs that passed 3× before',
+      '    ✓ api#e2e — passed on inputs that failed 2× before · 2 attempts this run',
+      '    ✓ web#build — passed · 2 attempts this run',
+    ])
+    expect(formatFlakySection([finding('app#test', 'failed', 1, 1)])[1]).toBe(
+      '  Flaky:    1 task with the same inputs both passing and failing on record',
+    )
   })
 })

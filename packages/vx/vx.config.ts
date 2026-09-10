@@ -35,15 +35,47 @@ export default defineProject({
   tasks: {
     ...shardTasks,
     ci: {
-      dependsOn: ['lint', 'test'],
+      dependsOn: ['lint', 'test', 'check.binary'],
     },
 
     install: {
       dependsOn: ['^build'],
     },
 
+    // Core is consumed as source: what a dependant's `install` pulls
+    // through `^build` is what it needs from its deps, and for core that
+    // is nothing — an explicit empty group says so, and keeps the
+    // convention visible. The four release targets are `build.bun`
+    // (release.yml), and `check.binary` proves the one this host can run.
     build: {
-      dependsOn: ['build.bun'],
+      description:
+        'nothing to build — core is consumed as source; the release binaries are build.bun',
+      dependsOn: [],
+    },
+
+    'check.binary': {
+      description:
+        'compile the host binary the way release.yml does; it must launch and report the manifest version',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun scripts/check-binary.ts',
+        sandbox: {
+          allow: {
+            read: ['**/*'],
+            write: ['dist/**'],
+            systemInfo: ['vfs.disk-space'],
+          },
+          ignore: {
+            write: ['*.bun-build'],
+          },
+        },
+      },
+      cache: {
+        inputs: {
+          files: ['src/**', 'package.json', 'scripts/check-binary.ts'],
+        },
+        outputs: { files: [] },
+      },
     },
 
     lint: {

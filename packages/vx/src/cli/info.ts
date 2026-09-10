@@ -3,7 +3,7 @@
 // `vx stats` is a deprecated alias (info absorbed it).
 
 import { Cache, CACHE_VERSION, noteSchemaReset, SCHEMA_VERSION } from '../cache/index.js'
-import type { VxPlugin } from '../orchestrator/index.js'
+import { flakyTasks, type FlakyTask, type VxPlugin } from '../orchestrator/index.js'
 import { seeHelp } from './help.js'
 import { VERSION } from '../version.js'
 import {
@@ -73,6 +73,8 @@ export interface InfoFacts {
   orphans: { artifacts: number; bytes: number }
   runs24h: number
   hits24h: number
+  /** Tasks the retained history shows both passing and failing on unchanged inputs. */
+  flakyTasks: FlakyTask[]
   lockfile: boolean
 }
 
@@ -100,10 +102,12 @@ export async function collectInfo(cwd: string, cacheDirOverride?: string): Promi
   noteSchemaReset(cache, warnToStderr)
   let stats
   let orphans
+  let flaky: FlakyTask[]
   let taskCount = 0
   try {
     stats = cache.stats()
     orphans = await cache.orphanStats()
+    flaky = flakyTasks(cache.dbHandle())
     // The run path's load — a plugin's `project` stage counts — so the
     // doctor's task count is the number a run would see. A broken config
     // must not take the doctor down with it: the count then falls back to
@@ -150,6 +154,10 @@ export async function collectInfo(cwd: string, cacheDirOverride?: string): Promi
     orphans: { artifacts: orphans.orphans, bytes: orphans.orphanBytes },
     runs24h: stats.runCountLast24h,
     hits24h: stats.hitCountLast24h,
+    // Same inputs, both outcomes — the history's definition of flaky, over
+    // the 30 days it keeps. A run names its own findings in its footer;
+    // this is the workspace's standing list.
+    flakyTasks: flaky,
     lockfile: lockPresent,
   }
 }
@@ -176,6 +184,7 @@ export function renderInfo(f: InfoFacts): string {
         ] as [string, string][])
       : []),
     ['runs (24h)', `${f.runs24h} (${f.hits24h} cache hits)`],
+    ['flaky tasks', describeFlakyTasks(f.flakyTasks)],
     ['vx-lock.json', f.lockfile ? 'yes' : 'no'],
   ]
   const labelW = Math.max(...rows.map(([label]) => label.length))
@@ -199,6 +208,16 @@ const SEAMS = [
 
 function filledSeams(p: VxPlugin): string[] {
   return SEAMS.filter((s) => p[s as keyof VxPlugin] !== undefined)
+}
+
+/** `2 — app#test (3 of 7 runs failed on unchanged inputs); api#e2e (1 of 4)`, or `none`. */
+export function describeFlakyTasks(tasks: readonly FlakyTask[]): string {
+  if (tasks.length === 0) return 'none'
+  const parts = tasks.map(
+    (t, i) =>
+      `${t.taskId} (${t.failures} of ${t.passes + t.failures} runs failed${i === 0 ? ' on unchanged inputs' : ''})`,
+  )
+  return `${tasks.length} — ${parts.join('; ')}`
 }
 
 export function describePlugins(

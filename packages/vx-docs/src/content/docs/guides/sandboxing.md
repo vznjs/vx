@@ -206,7 +206,7 @@ fails fast with a clear message (it never runs unsandboxed by accident).
   unified log feeding that monitor is lossy under load, so a violation
   can go unreported; enforcement is unaffected, since the OS denied the
   operation either way.
-- **Windows** — unsupported.
+- **Windows** — under WSL, where the Linux sandbox applies. There is no native Windows build.
 
 ## What can't be sandboxed
 

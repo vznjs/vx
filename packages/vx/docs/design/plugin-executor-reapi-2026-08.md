@@ -143,9 +143,7 @@ interface ExecuteResult {
    *               this task's key (same-checkout agents: the §6.3 induction law); core
    *               restores it through the ordinary hit path and skips its own save. */
   readonly outputs:
-    | { kind: 'disk' }
-    | { kind: 'deferred'; materialize(): Promise<void> }
-    | { kind: 'cache' }
+    { kind: 'disk' } | { kind: 'deferred'; materialize(): Promise<void> } | { kind: 'cache' }
   readonly resourceUsage?: { cpuTimeMs: number; maxRssBytes: number }
   readonly where: 'local' | string // executor-reported label; rides telemetry
 }

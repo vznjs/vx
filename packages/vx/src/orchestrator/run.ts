@@ -56,7 +56,8 @@ import { assembleRunRecords } from './run-records.js'
 import { selectKeepAlive, shutdownPersistent } from './persistent.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
-import { formatAbortedSection, formatRunSummary } from './summary.js'
+import { formatAbortedSection, formatFlakySection, formatRunSummary } from './summary.js'
+import { detectFlaky, type FlakyCandidate } from './failure-mode.js'
 import type { RunOptions, RunSummary } from './options.js'
 
 // Per run, never shared: a `vx watch` process runs many, and a shared map
@@ -653,6 +654,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // A task killed by a shutdown signal is in no bucket above, yet it makes
     // `ok` false — name it, or the red exit is undiagnosable.
     for (const line of formatAbortedSection(list)) log.status(line)
+    // Judged against the history BEFORE this run's rows land, so the query
+    // is one scan over the executed tasks' keys and nothing at all on a run
+    // that executed none (every hit, every skip).
+    const flaky = detectFlaky(prepared.localCache.dbHandle(), flakyCandidates(list))
+    for (const line of formatFlakySection(flaky)) log.status(line)
     // Outputs that never came home are not an error, but a silent `dist/`
     // that is empty-or-stale would be: name every task whose bytes are
     // still remote.
@@ -678,6 +684,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
           totalMs,
           ok,
           outcomes: list,
+          flaky,
         })
         log.status(`vx: summary written to ${wrote}`)
       } catch (err) {
@@ -926,4 +933,25 @@ function didYouMean(
     if (t !== undefined) hints.add(`${proj}#${t}`)
   }
   return hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`
+}
+
+/** The executed, keyed outcomes of a run — what flakiness is judged on. */
+function flakyCandidates(outcomes: readonly TaskOutcome[]): FlakyCandidate[] {
+  const out: FlakyCandidate[] = []
+  for (const o of outcomes) {
+    if (o.status !== 'success' && o.status !== 'failed') continue
+    // "Same inputs, different outcome" is a claim only a task with declared
+    // inputs can make: a task with no `cache` block keys on its config alone
+    // and runs every time, so one bad network day would read as a flake for
+    // thirty days. Groups do no work.
+    if (o.hash === undefined || o.node.config.cache === undefined || isGroupTask(o.node)) continue
+    out.push({
+      project: o.node.projectName,
+      task: o.node.taskName,
+      hash: o.hash,
+      status: o.status,
+      attempts: o.attempts ?? 1,
+    })
+  }
+  return out
 }

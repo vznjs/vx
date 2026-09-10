@@ -88,7 +88,11 @@ export interface ResolveInputsArgs {
    * Run-scoped memo for `cache.inputs.runtime` command execution, keyed
    * by `projectDir + '\0' + command`. Shared across a run's tasks so a
    * project's command runs once even across build/test/lint and across
-   * the hash + sandbox-baseline resolveInputs calls.
+   * the hash + sandbox-baseline resolveInputs calls. The key is sound
+   * ONLY because the probe runs in vx's own ambient environment, never a
+   * task's `exec.env` (`runRuntimeCommand`): two tasks with different
+   * `define`s share one value. Threading the task env in would have to
+   * widen this key too, or task A's probe becomes task B's key component.
    */
   runtimeCache?: Map<string, Promise<string>>
   /**
@@ -233,6 +237,11 @@ function resolveEnvValues(
  * Run one runtime-input command via `sh -c` (so pipelines / redirects
  * work — "shell is the API"). Returns trimmed stdout+stderr. A non-zero
  * exit is a hard UserError naming the command (fail-loud, like git).
+ *
+ * The probe inherits vx's AMBIENT environment on purpose — not the task's
+ * `exec.env.define` / `passThrough`, which describe the command's
+ * environment, not the machine's. That is what lets the run-scoped memo
+ * key on (projectDir, command) alone; see `runtimeCache`.
  */
 async function runRuntimeCommand(command: string, cwd: string): Promise<string> {
   let proc

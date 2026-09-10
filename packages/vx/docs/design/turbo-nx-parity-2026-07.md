@@ -663,6 +663,8 @@ have locally.` Both fail loudly and correctly (verified).
 
 ### M11. `cache.inputs.tasks` entries that match no upstream silently decouple the task
 
+> Closed 2026-09-10 (STATUS item 97): an exact entry no `dependsOn` entry names is refused at load; patterns stay silent per the 2026-07-10 decision.
+
 - **Turbo behaviour**: no direct analogue (Turbo has no upstream-hash filter);
   the closest contract is `run_caching.rs:1600`
   `test_dependency_outputs_globs_cannot_select_undeclared_outputs` and `:1667`
@@ -950,6 +952,8 @@ patterns)`** (`packages/nx/src/hasher/task-hasher.spec.ts:272`) passes ONLY nega
 
 ### H2. A `runtime` input is memoized per `(projectDir, command)` but never sees the task's `exec.env`
 
+> Closed 2026-09-10 (STATUS item 96): the contract is pinned end to end in `tests/runtime-inputs.test.ts` and stated at the memo key and the spawn.
+
 - **Nx behaviour**: Nx has a dedicated regression test — **`should hash a shared
 runtime input against each task env`**
   (`packages/nx/src/hasher/native-task-hasher-impl.spec.ts:229`). Two tasks in two
@@ -1189,6 +1193,8 @@ graph`**, and its in-test comment names the scenario verbatim:
 
 ### H8. An option-like `--affected=<base>` is passed to `git diff` as an OPTION — arbitrary file write, blocked only incidentally
 
+> Closed 2026-09-10 (STATUS item 96): refused before any spawn, `--end-of-options` on every git call, pinned with the file-absent assertion and a control that proves the injection is real.
+
 - **Nx behaviour**: Nx hardened this explicitly, with a dedicated describe block
   `resolving the affected base against git` in
   `packages/nx/src/utils/command-line-utils.spec.ts:507`. Six pinned properties:
@@ -1351,6 +1357,8 @@ package cycle`), `:155` (the pattern form), `:260` (`detects a cross-project cyc
   direct-wrap shape; the sparse and multi-cycle shapes are where the same class hides.
 
 ### M2. Nothing asserts the task graph or any cache key is invariant to declaration / request order
+
+> Closed 2026-09-10 (STATUS item 98): `tests/task-graph.test.ts` builds the sparse fixture under two request orders and a reversed discovery order and asserts one shape (ids, sorted deps, requested flags, surfaced count).
 
 - **Nx behaviour**: `create-task-graph.spec.ts:2656`
   **`should create deterministic task graphs regardless of target order`**, with a comment

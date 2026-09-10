@@ -16,6 +16,7 @@
 import path from 'node:path'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { tallyOutcomes } from './tally.js'
+import type { FlakyFinding } from './failure-mode.js'
 
 export interface SummarizeArgs {
   /** Empty string → default path; otherwise the explicit file path. */
@@ -29,10 +30,12 @@ export interface SummarizeArgs {
   /** The run's verdict — the same value the CLI turns into the exit code. */
   ok: boolean
   outcomes: readonly TaskOutcome[]
+  /** What `detectFlaky` found this run; the footer's Flaky section, typed. */
+  flaky?: readonly FlakyFinding[]
 }
 
 /** One task's entry. Shared by `tasks` and `aborted` so they read alike. */
-function taskEntry(o: TaskOutcome): Record<string, unknown> {
+function taskEntry(o: TaskOutcome, flaky?: FlakyFinding): Record<string, unknown> {
   return {
     id: o.node.id,
     project: o.node.projectName,
@@ -46,6 +49,13 @@ function taskEntry(o: TaskOutcome): Record<string, unknown> {
     // task that could never hit (its `hash` is still set — dependents fold
     // it). Present only when true, so every other row is byte-identical.
     ...(o.node.config.cache === undefined ? { noCache: true } : {}),
+    // Present only when the run proved the task flaky: this exact key has
+    // both passed and failed on record (this run counted), or the task
+    // needed a retry. A consumer gating on `failed` can tell a break from a
+    // flake without the history; every other row is byte-identical.
+    ...(flaky !== undefined
+      ? { flaky: { passes: flaky.passes, failures: flaky.failures, attempts: flaky.attempts } }
+      : {}),
     ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
     ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
     // hrtime spans are bigints → emit as strings so JSON.parse on
@@ -70,6 +80,7 @@ export async function writeRunSummary(args: SummarizeArgs): Promise<string> {
   // exit — the terminal has said so in its Aborted section all along, and a
   // parser must not be told less than a human is.
   const aborted = args.outcomes.filter((o) => !isGroupTask(o.node) && o.status === 'aborted')
+  const flakyById = new Map((args.flaky ?? []).map((f) => [f.taskId, f]))
   const payload = {
     runId: args.runId,
     // The run-level verdict, first: a consumer gating on this artifact must
@@ -79,8 +90,8 @@ export async function writeRunSummary(args: SummarizeArgs): Promise<string> {
     startedAt: new Date(args.startedAtMs).toISOString(),
     endedAt: new Date(args.endedAtMs).toISOString(),
     totalMs: args.totalMs,
-    tasks: counted.map(taskEntry),
-    aborted: aborted.map(taskEntry),
+    tasks: counted.map((o) => taskEntry(o, flakyById.get(o.node.id))),
+    aborted: aborted.map((o) => taskEntry(o)),
     // The FULL list: `tallyOutcomes` applies the same group/aborted
     // exclusions internally, so every counted bucket is unchanged by passing
     // it — but `summary.aborted` is only non-zero if it sees them.

@@ -29,15 +29,22 @@ and `voidzero-dev/vite-task` `main` (now the engine behind Vite+'s
   every hit — gives early cutoff, but the key isn't derivable before
   execution, which is why it has no remote cache). _Reference repo:_
   `voidzero-dev/vite-task`.
-- **`@vzn/vx`** — TypeScript-native config, opt-in caching, Turbo-shape
-  cache key with two extensions (project package.json folded in;
-  resolved-config hash captures TS imports). Bun-only. Smallest CLI
-  surface; deliberately no daemon and no JS-function tasks. The core is
-  a Vite-style pipeline: plugins hook each stage (`config` → `project`
-  → `graph` → `key` → `schedule`), supply the executor (WHERE a command
+- **`@vzn/vx`** — one thing, built to be built on. TypeScript-native
+  config, opt-in caching, Turbo-shape cache key with two extensions
+  (project package.json folded in; resolved-config hash captures TS
+  imports). One self-contained binary per platform (Linux and macOS,
+  x64 and arm64; Windows under WSL) — no Node or Bun to run it.
+  Smallest CLI surface; deliberately no daemon, no cloud, no account
+  and no JS-function tasks. The core is a Vite-style pipeline: plugins
+  hook each stage (`config` → `project` → `graph` → `key` →
+  `fingerprint` → `schedule`), supply the executor (WHERE a command
   runs, never what it is), the cache layers and the telemetry sinks,
-  and add verbs — core applies none of them by default. Strict output
-  ownership.
+  and add verbs — core applies none of them by default and names none.
+  Strict output ownership. What Nx would be if it were not a product.
+
+Every row a Turbo or Nx user would look for, spelled in vx and pinned by
+a test that runs the real CLI, is [`parity.md`](./parity.md); this page
+is the wider matrix and the reasoning.
 
 ## Quick CLI flag map
 
@@ -128,6 +135,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Cache pruning (CLI)      | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `vx cache prune --older-than / --max-size`                                                                                                      |
 | Stats / run history      | `--summarize` JSON files                   | Nx Cloud dashboard     | `--last-details`             | `runs` + `invocations` tables in `cache.db` (direct SQL); `vx info`; `vx last`                                                                  |
 | Per-run JSON summary     | `--summarize`                              | `--outputStyle`        | `--last-details`             | `--summarize[=<path>]`                                                                                                                          |
+| Flaky task detection     | —                                          | Nx Cloud (paid)        | —                            | **local** — same key, both outcomes on record: the run's footer, `--summarize` (`flaky`), `vx info`                                             |
 | Chrome-trace profile     | `--profile`                                | (Nx Cloud)             | —                            | `--profile[=<path>]`                                                                                                                            |
 | Async remote prefetch    | —                                          | —                      | —                            | **yes** — stable-key GETs overlap execution                                                                                                     |
 | Restore-ahead scheduling | —                                          | —                      | —                            | **yes** — two-tier scheduler restores warm hits ahead of their deps                                                                             |
@@ -172,7 +180,7 @@ and scripts; `init`; the cwd-scoped default; `last`, `why`, `show`,
 | Feature                                                                     | Nx / Turbo    | Verdict                                                                                                                                                                                                                                                                                                                                                                                                       |
 | --------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Zero-config adoption: `package.json` scripts are tasks, no per-package file | both, in core | SHIPPED 2026-09-09 as `@vzn/vx-turbo`: a `project`-stage plugin over the same mapper `vx migrate` renders from, so a `turbo.json` repo runs with only a `vx.workspace.ts`; the seam widening core needed (visit a config-less package when a plugin declares `project`) landed with it. Nx stays a migration: its mapper reads a generated graph snapshot and executor-backed targets have no command to run. |
-| Inferred tasks from tool configs (`vite.config` ⇒ build/serve/test)         | Nx plugins    | Same seam, same plugin family. Not core.                                                                                                                                                                                                                                                                                                                                                                      |
+| Inferred tasks from tool configs (`vite.config` ⇒ build/serve/test)         | Nx plugins    | The `project` stage is the seam (a plugin visits every package, a config-less one as `{ tasks: {} }`, and fills what the package did not declare); a first-party family was built and RETIRED the same day (2026-09-10, owner): technology plugins are the community's, core names no tool. The recipe is in the plugins guide.                                                                               |
 | `.env` files loaded into the task env                                       | Nx            | Tasks read their own `.env` (Vite, Next do); the cache side is `cache.inputs.files: ['.env*']`. A `config`-stage plugin can inject. Not core; a docs footnote.                                                                                                                                                                                                                                                |
 | Configurations (`build:prod` as one task, two modes)                        | Nx            | The language: a TS function returning the task per mode. Not core.                                                                                                                                                                                                                                                                                                                                            |
 | Cache size / age caps applied during runs                                   | both          | The local-cache PLUGIN owns storage; an option there. Not core.                                                                                                                                                                                                                                                                                                                                               |
@@ -181,7 +189,7 @@ and scripts; `init`; the cwd-scoped default; `last`, `why`, `show`,
 | Test splitting (Nx atomizer)                                                | Nx            | `graph`-stage plugin. Not core.                                                                                                                                                                                                                                                                                                                                                                               |
 | Import boundaries (`turbo boundaries`)                                      | Turbo         | A lint; out of scope.                                                                                                                                                                                                                                                                                                                                                                                         |
 | Shell completions                                                           | both          | SHIPPED 2026-09-10: `vx completions bash\|zsh\|fish` over the verb table and each verb's help cut.                                                                                                                                                                                                                                                                                                            |
-| Windows                                                                     | both          | The only must that no plugin can supply; parked by the owner (POSIX shell is the API). Not proposed.                                                                                                                                                                                                                                                                                                          |
+| Windows                                                                     | both          | Under WSL (owner, 2026-09-10): POSIX shell is the API, and WSL is where it is on Windows. A native port is not proposed.                                                                                                                                                                                                                                                                                      |
 
 Net: core is at parity or ahead on the must-haves; the gap that costs
 adoption is the trial with no generated files, and its core half is a
@@ -358,8 +366,9 @@ deliberate design pass.
   task runner.
 - **Non-JS executor plugins.** Rust / .NET / Gradle projects use their
   own runners. vx is a JS-monorepo runner.
-- **Windows.** vx spawns POSIX shell. Cross-target binaries are built
-  for linux/darwin × x64/arm64; Windows is not on the matrix.
+- **Native Windows.** vx spawns POSIX shell. Binaries are built for
+  linux/darwin × x64/arm64, and Windows runs the Linux one under WSL; a
+  native port is not on the matrix.
 
 ## Where vx is ahead
 
@@ -424,11 +433,12 @@ Things `@vzn/vx` does that the others don't:
   export shape every sink reads — OTel (`@vzn/vx-otel`), the GitHub
   job summary and check run (`@vzn/vx-github`), or a custom sink —
   observe-only by construction, zero cost when unused.
-- **Bun-native everything.** `Bun.spawn` for child rusage capture,
-  `bun:sqlite`, `Bun.YAML`, `Bun.Glob`, `Bun.hash.xxHash3`,
-  `Bun.zstdCompress`, native `await import()` with a content-hash
-  query string for config cache-busting. No native-binary build step
-  on install.
+- **Bun-native everything, and none of it the user's concern.**
+  `Bun.spawn` for child rusage capture, `bun:sqlite`, `Bun.YAML`,
+  `Bun.Glob`, `Bun.hash.xxHash3`, `Bun.zstdCompress`, native `await
+import()` with a content-hash query string for config cache-busting.
+  The binary embeds the runtime: no native-binary build step on install,
+  no Node or Bun on the machine.
 - **One-binary distribution.** `bun build --compile` produces a
   single self-contained executable per platform target, published as
   per-platform npm packages behind a tiny launcher (the esbuild model)

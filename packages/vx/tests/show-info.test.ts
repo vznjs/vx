@@ -375,6 +375,7 @@ describe('vx info (e2e)', () => {
       )
       expect(r.out).toMatch(row('cache entries', '0 (0 B)'))
       expect(r.out).toMatch(row('runs (24h)', '0'))
+      expect(r.out).toMatch(row('flaky tasks', 'none'))
       expect(r.out).toMatch(row('vx-lock.json', 'no'))
       // Control for the orphans row below: nothing on disk the index does
       // not know, so the doctor says nothing about it.
@@ -435,6 +436,7 @@ describe('vx info (e2e)', () => {
       expect(facts.orphans).toEqual({ artifacts: 0, bytes: 0 })
       expect(facts.runs24h).toBe(0)
       expect(facts.hits24h).toBe(0)
+      expect(facts.flakyTasks).toEqual([])
       expect(facts.lockfile).toBe(false)
       // Same facts either way: the pretty rows render this object.
       const pretty = await vx(root, ['info'])

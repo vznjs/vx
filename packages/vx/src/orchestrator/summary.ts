@@ -4,6 +4,7 @@
 // aren't real work and would inflate "N total" misleadingly.
 
 import type { TaskOutcome } from '../graph/index.js'
+import type { FlakyFinding } from './failure-mode.js'
 import { paint, type ColorSupport } from './colors.js'
 import { tallyOutcomes } from './tally.js'
 import { isGroupTask } from '../graph/index.js'
@@ -342,6 +343,36 @@ export function formatAbortedSection(outcomes: readonly TaskOutcome[]): string[]
     `  Aborted:  ${aborted.length} task${aborted.length === 1 ? '' : 's'} killed by a shutdown signal — not counted above`,
   ]
   for (const o of aborted) lines.push(`    ✗ ${o.node.id} — exit ${o.exitCode}, nothing cached`)
+  return lines
+}
+
+/**
+ * Post-summary section naming the tasks this run proved flaky: identical
+ * inputs, both outcomes on record (or a retry within the run). A red run
+ * whose failure has passed on these exact inputs before is not a break to
+ * bisect, and a green run that only passed on the second attempt is not
+ * green — either way the footer's counts alone would say nothing. Empty
+ * when nothing was.
+ */
+export function formatFlakySection(findings: readonly FlakyFinding[]): string[] {
+  if (findings.length === 0) return []
+  const lines = [
+    '',
+    `  Flaky:    ${findings.length} task${findings.length === 1 ? '' : 's'} with the same inputs both passing and failing on record`,
+  ]
+  for (const f of findings) {
+    const times = (n: number): string => `${n}\u00d7`
+    const history =
+      f.status === 'failed'
+        ? `failed on inputs that passed ${times(f.passes)} before`
+        : f.failures > 0
+          ? `passed on inputs that failed ${times(f.failures)} before`
+          : 'passed'
+    const retried = f.attempts > 1 ? ` \u00b7 ${f.attempts} attempts this run` : ''
+    lines.push(
+      `    ${f.status === 'failed' ? '\u2717' : '\u2713'} ${f.taskId} \u2014 ${history}${retried}`,
+    )
+  }
   return lines
 }
 

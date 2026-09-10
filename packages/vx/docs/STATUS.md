@@ -296,7 +296,7 @@ dryRun` on the contract, so a layer that delegates gets it for
     silent hits, and `full` frames both. A sixth column needs a user
     who cannot get there with `broad`. Warm check on this head as an
     unprivileged user under the real sandbox (`run lint.oxlint
-    lint.oxfmt` scoped to core, three warm reps): run 26–29 ms, whole
+lint.oxfmt` scoped to core, three warm reps): run 26–29 ms, whole
     process 94–100 ms, classify + probe 17–20 ms, the sandbox never
     armed — items 70 and 71 hold after the two DX batches.
 76. DONE (`vx <verb> --help` is the reference cut to the verb): since
@@ -359,7 +359,7 @@ lint.oxfmt` gate as an unprivileged user, three warm reps each:
     `node_modules` at all, two runs and `vx info --format json` — all
     green, nothing installed beside the binary.
     Compile flags re-probed the same day, so nobody re-runs it: `vx
-    version` through the binary is 32 ms with `--bytecode` and 75–82
+version` through the binary is 32 ms with `--bytecode` and 75–82
     ms without it (`--minify` alone, plain), min of five; a compiled
     hello-world is 8 ms, bare `bun -e` 8 ms, `bun src/bin.ts version`
     49 ms. The release flags stand; the ~24 ms above the floor is the
@@ -670,6 +670,246 @@ foo` invalidated the whole workspace and `--affected` selected every
     probe, the cross-compile warm-up) is one composite action
     (`.github/actions/vx-runner`) that every Linux job uses.
 
+87. DONE (core has no `build`; dependants stop compiling the release
+    binaries): every package's `install` depends on `^build`, and
+    core's `build` was the four `bun build --compile` targets, so `vx
+run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
+    four binaries first, the CI service job needed the whole sandbox
+    runtime to run one suite, and a root container that cannot sandbox
+    failed every package's tasks at the compile step (all day,
+    2026-09-10). What a dependant needs from core is its source, which
+    needs no build — so core has no `build` task at all: the four
+    release targets stay `build.bun` (release.yml calls it by name),
+    and `check.binary`, new in core's `ci`, compiles THIS host's target
+    the way release.yml does (re-signed ad hoc on macOS, as the release
+    does), runs it and asserts `--version` reports the manifest version
+    — the check ci.yml carried as a step, now a task that every gate
+    runs, on a laptop too. `vx run ci --all --dry` lists no
+    `build.bun.*` task; `run test --filter @vzn/vx-lockfile --dry`
+    selects the package's own tasks and nothing of core's. Cold gate on
+    the unprivileged clone, `rm -rf .vx/cache` then `vx run ci --all`:
+    121.2 s → 99.8 s wall (−18%); the four compiles took 4.9 / 12.5 /
+    13.7 / 13.8 s under the gate's contention, `check.binary` takes
+    1.0 s. (Both runs' one red task is `@vzn/vx-docs#build` refusing
+    that box's Node 20 — environment, green in CI.) The `install →
+^build` chain itself is untouched and right: a dependant's tasks
+    wait for what its deps BUILD, and core builds nothing a dependant
+    consumes — it is consumed as source.
+
+88. DONE (tasks a package does not have to write): the gap analysis
+    the owner asked for (2026-09-10) put task inference first among
+    what is closable — Nx gives a package its tasks from `vite.config`
+    / `next.config` / `jest.config` with no config file, and vx had the
+    seam (the `project` stage) with one plugin on it, the Turbo one.
+    `@vzn/vx-infer` is the family: `vite()` (`build` cached on sources,
+    `public/`, `index.html`, the config, `.env*`, output `dist/**`;
+    `dev` and `preview` persistent, ready on `Local:`), `vitest()`
+    (`test`, from its own config or `vite.config` when vitest is a
+    dependency), `next()` (`build` with outputs listed as what `.next/`
+    holds besides Next's own `cache/` — the schema refuses a negated
+    output glob, rightly, and `.next/cache` must survive between
+    builds; `dev` and `start` persistent), `tsc()` (`typecheck`,
+    `--noEmit`, only with `typescript` in the manifest) and `scripts()`
+    (every `package.json` script an UNCACHED task — a script says
+    nothing about what it reads, and a guessed key is a stale hit;
+    `build` waits on `^build`, `dev`/`start`/`serve`/`watch` are
+    persistent, lifecycle scripts skipped, `exclude` for more). Each
+    fills what the package did not declare and never overwrites;
+    order is precedence, so tool plugins go before `scripts()`. The
+    sandbox is never inferred. Pinned through `planRun` over
+    config-less packages: each shape, the package's own declaration
+    winning, a package without the tool getting nothing, `exclude`,
+    and the plugins composing. Docs: the package README, the site
+    guide (`guides/inferred-tasks`), the comparison row, the listings.
+
+89. DONE (a hosted cache in three commands): the gap analysis' third
+    row — Turbo's `turbo login && turbo link` gives a team a remote
+    cache in a minute, and vx said nothing about it — was mostly a
+    doc gap and one default. `@vzn/vx-turbo-cache` already speaks
+    Vercel's wire; it now treats a token with no `apiUrl` as Vercel's
+    hosted Remote Cache (`https://vercel.com/api`), exactly as `turbo`
+    does, so `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set is the
+    whole hosted setup; no token still declines. Pinned in the config
+    resolver. The remote-caching guide leads with the three commands
+    and names the Nx wire beside it.
+
+90. DONE (the `^build` convention stays visible on a package with
+    nothing to build): the owner's point on item 87 — deps must be
+    built before a project uses them — is the `install → ^build`
+    chain, which item 87 kept; what it removed was core's `build`
+    group, so core's config no longer said what it means. It does
+    now: `build: { dependsOn: [] }`, an explicit empty group with a
+    description ("nothing to build — core is consumed as source; the
+    release binaries are build.bun"). The schema already accepted the
+    form (only the OMITTED field is the typo guard), the graph runs
+    nothing for it, and a dependant's plan carries nothing of core's;
+    schema.md says so in both places group tasks are described.
+    Pinned: the loader accepts it, and through `planRun` a dependant
+    whose `^build` reaches an empty group runs only its own task
+    (control: a `build` that does work is pulled in).
+
+91. DONE (owner's decision, 2026-09-10, night — technology plugins
+    are the community's): `@vzn/vx-infer` (item 88: `vite()`,
+    `vitest()`, `next()`, `tsc()`, `scripts()`) is retired the day it
+    shipped. The point stands and the seam stays — the `project`
+    stage visits every package, a config-less one as `{ tasks: {} }`,
+    and a plugin fills what the package did not declare, with the
+    package's own config always winning — but core's authors name no
+    tool: people write configs and import what they need, plugins may
+    auto-configure on top and modify project configs, and a plugin
+    for a given framework is for whoever uses that framework to write.
+    `@vzn/vx-turbo` stays as the adoption plugin it is. The recipe
+    lives in the plugins guide; the comparison row records the
+    decision. Recorded in Decisions.
+92. DONE (owner's ask, 2026-09-10, night): Bun, every dependency and
+    every CI action brought current in one commit. Bun 1.4.0 → 1.4.2
+    (`packageManager`, `bun-version` in ci/docs/npm); root dev deps
+    `@types/bun` 1.4.2, `oxlint` 1.82.0, `oxfmt` 0.67.0 (its new
+    reflow touched eight files — three design docs, scheduler.md,
+    plugin.ts, tally.test.ts, README, comparison), `oxlint-tsgolint`
+    7.0.2001; the site on astro 7.3.2, starlight 0.42.0, mermaid
+    12.0.0 (152 pages build). Every workflow action now pins a commit
+    SHA with its tag beside it: checkout v7.0.1, setup-bun v2.2.0,
+    setup-node v7.0.0, upload-artifact v7.0.1, download-artifact
+    v8.0.1, upload-pages-artifact v5.0.0, deploy-pages v5.0.1,
+    action-gh-release v3.0.3. Dev-dep versions are exact now, not
+    caret ranges: the lockfile already froze them, so a range only
+    said less than the lock. Proven under 1.4.2 before the push: the
+    twelve core shards and the unsafe suite, all twelve package
+    suites, docs import/test/build. One refutation: shard 9 reddened
+    once on `Cache.key` scaling ratio (51× against the 30× guard) —
+    thirteen shards side by side on this four-core box, not the
+    upgrade: the guard passes alone under 1.4.2 and 1.4.0 alike,
+    interleaved twice each, and the shard alone reruns 203/203.
+    One thing the local gate missed and CI caught (run 34503612332):
+    astro 7 makes `@astrojs/markdown-remark` an optional peer, and
+    `markdown.remarkPlugins` refuses to run without it — the local
+    build passed only because two stale 7.2 copies still sat in the
+    store. Moving them aside reproduced CI's failure; the site now
+    declares `@astrojs/markdown-remark ^7.3.0` and builds 153 pages.
+93. DONE (owner's ask, 2026-09-10, night — "we know hashes and past
+    runs"): local flaky-task detection, three surfaces over the one
+    rule `failure-mode.ts` already held. A task is flaky when its
+    exact cache key has both passed and failed on record (a hit is a
+    pass) or it needed a retry this run; a failure on a key that never
+    passed is a break, and a task with no `cache` block is never
+    judged (its key says nothing about inputs — one bad network day
+    would read as a month of flakes). `detectFlaky` judges the run's
+    executed keyed outcomes BEFORE its rows land: the footer's
+    `Flaky:` section (`✓ app#test — passed on inputs that failed 1×
+before · 2 attempts this run`), `--summarize`'s per-task
+    `flaky: { passes, failures, attempts }` (present only then), and
+    `vx info`'s `flaky tasks` row (`flakyTasks` in JSON: the standing
+    list over the 30-day history, most failures first). Cost follows
+    the run's colour: no candidate, no query; a green miss probes
+    `runs_failed`, a new PARTIAL index over failed rows (a green run's
+    inserts only evaluate its predicate — 3.2 ms per 1,000 rows either
+    way), so the common case is 0.01 ms at 170k rows against 10 ms
+    scanning; only a key that failed before or a task failing now pays
+    the ~10 ms projection scan. Pinned: the rule at the unit (probe
+    served `USING INDEX runs_failed`, no scan on green keys, chunking
+    past 500, the index created on an older database) and end to end
+    (`tests/flaky.test.ts`: red then green on one key names it in all
+    three surfaces; a hit and a changed-key break are the controls).
+    Comparison row: Nx has this behind Nx Cloud, Turbo not at all.
+94. DONE (owner's ask, 2026-09-10, night — "confidence that what
+    works with nx turbo will work with vx"): two parity suites over
+    the real CLI, `tests/parity-turbo.test.ts` (26 cases) and
+    `tests/parity-nx.test.ts` (19), on one four-package fixture
+    (`tests/helpers/parity.ts`: `app → ui → lib`, `app → lib`, `docs`
+    alone), every case named for the upstream contract it stands in
+    for — `dependsOn` in its four forms, the filter DSL, `[ref]` and
+    `--affected`, hits/restore/replay, inputs narrowing and the
+    cascade, `env` vs `passThrough`, `cache: false`, `--force` /
+    `--no-cache`, forwarded args in the hash, the lockfile and the
+    manifest in the hash, `--continue` modes, failures never cached,
+    `--output-logs`, `--summarize`, wildcards, groups, runtime and
+    root-file inputs, `nx show` / `vx show`, and Nx Cloud's flaky
+    flag answered locally (item 93). Selection cases read
+    `--dry=json`, so most of the 45 never execute; the two suites
+    run in ~9 s. `docs/parity.md` is the map: upstream → vx spelling
+    → the deep pin, with the three divergences that change what a
+    command selects or leaves on disk marked and pointed at the
+    reasoning (union not intersection, changed-not-dependents,
+    cleaned-not-additive). Two things the suites caught in the
+    writing, both mine: DOT edges point dependency → dependent, and
+    `--summarize` after `--` is the task's argument. The 2026-07
+    parity design doc's gap lists stay the backlog for edge cases;
+    this is the front door.
+95. DONE (owner's ask, 2026-09-10, night — "redo website and docs;
+    focus on what vx can do and why it's better; vx compiles, it
+    should not require node or bun; one thing, build on top; what Nx
+    should be if it weren't a product"): the positioning surfaces
+    rewritten on that sentence. Landing page: title, hero, badges
+    (`One binary · no Node, no Bun`), install pill (`npm install -g`),
+    two new feature cards (the lockfile keyed per project; flaky tasks
+    from your own history), the platform section renamed to the seams
+    ("built to be built on"), the migrate CTA and footer point at the
+    parity map; the stale "even vx's own local executor and cache are
+    plugins" claim replaced by the floor (README too). Introduction
+    rewritten: one thing built to be built on, the ten seams (the
+    `fingerprint` seam included) and every first-party package on
+    them, community owns technology plugins, flaky detection, the
+    parity map, requirements that say what is true — one self-
+    contained binary, git, a workspace, Linux/macOS with Windows under
+    WSL. Quickstart and the adoption page stop assuming Bun; the
+    sandboxing guide and the comparison's three Windows rows say WSL;
+    the REAPI guide's "requires Bun" names the runtime the binary
+    embeds; the extensibility guide's "declares the local executor and
+    cache" is the floor; the CI guide's stale "planned as
+    `@vzn/vx-github`" says what ships and gains a "Flaky tasks,
+    without a service" section; the Nx migration guide's `nx affected`
+    row maps to `...[ref]` (Nx includes dependents) and both migration
+    guides link the parity map. The comparison's vx paragraph, the
+    docs overview and the README carry the same positioning. Not
+    touched on purpose: the module and design pages (internals), and
+    the benchmark figures (item 6 re-measures those).
+96. DONE (2026-09-10, late night — two 2026-07 parity findings that
+    were still live): (a) an option-like `--affected=<base>` reached
+    `git diff` as an option — `--output=<path>` is an arbitrary file
+    write from a CI-supplied string, stopped only by `verifyRef`'s
+    exit-1 branch. `affectedProjects` now refuses an empty or
+    `-`-leading base before any spawn, and every git call in the
+    module ends its options (`--end-of-options`) before the ref, so a
+    second caller cannot lose the guard. Pinned for five shapes with
+    the assertion that survives a refactor (the file does not exist
+    afterwards) and a control that proves the injection is real
+    (bare `git diff --output=` writes the file). (b) The runtime-input
+    probe reads vx's ambient env, never a task's `exec.env`, and the
+    per-run memo keyed on (projectDir, command) is sound only because
+    of that; nothing pinned it. Now an e2e does — two tasks, one
+    probe, different `define`s, one line in the probe's log carrying
+    the ambient value — and the comments at the memo key and the spawn
+    say why (Nx pins the same regression). Both closed in the design
+    doc.
+97. DONE (2026-09-10, late night — parity finding M11): an exact
+    `cache.inputs.tasks` entry that no `dependsOn` entry names
+    (`['buidl']` for `['build']`) matched nothing at hash time and
+    folded no upstream hash — the task silently decoupled from its
+    dependencies, a stale hit waiting for the next upstream change.
+    The loader refuses it now, naming the entry and the task's
+    `dependsOn`; an entry a `dependsOn` pattern matches (`build.*`
+    names `build.bun`) passes, and patterns, wildcards and negations
+    stay silent, as the 2026-07-10 wildcard decision requires (a
+    preset-spread pattern legitimately matches nothing in some
+    projects). A config-level rule on purpose: the graph's edge set
+    bends under `--exclude-dependencies`, the declaration does not.
+    The pattern glob is mirrored from the graph module (workspace may
+    not import it); the runtime filter is unchanged. Pinned in the
+    loader suite with the pattern case and a control for every silent
+    form. Closed in the design doc.
+98. DONE (2026-09-10, late night — parity finding M2): nothing said
+    the task graph a key is derived from is invariant to the order
+    tasks are requested or projects are discovered; Nx pins it after
+    its pass-through nodes once took shape from target order. The
+    sparse fixture (an app whose dependency declares no task at all,
+    bridging `^test` and `^lint` to the holders behind it) now builds
+    under two request orders and a reversed discovery order and
+    asserts one shape: ids, sorted deps, requested flags, surfaced
+    count. Closed in the design doc. What the 2026-07 doc still lists
+    is edge-case coverage (cycle topologies, odd filenames, watch
+    timing), none a live defect after items 96–98's sweep.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
@@ -852,7 +1092,8 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
 
 ## Next (ordered)
 
-0. **Dependants build core's release binaries for nothing.** Every
+0. **DONE 2026-09-10 as item 87 — dependants build core's release
+   binaries for nothing.** (Kept for the reasoning.) Every
    package's `install` depends on `^build`, and core's `build` is the
    four `bun build --compile` targets — so `vx run test --filter
 @vzn/vx-lockfile` on a fresh checkout compiles four binaries first,
@@ -1071,6 +1312,15 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    all 1,000 configs (repeat loads through the worker) — the sweep is
    35 ms, no visible pause.
 
+   Closing figures for 2026-09-10, night (the same container, source
+   form, medians of 5, after items 83–90 — the lockfile plugins, CI on
+   vx tasks, the empty `build`, `@vzn/vx-infer`; none touched the hot
+   path): 100 projects 126 ms warm / 205 restore / 427 cold; 1,000
+   projects 244 / 1,006 / 2,567 — against the evening's 123 / 181 /
+   369 and 240 / 1,163 / 2,519: the 1,000-project restore row −14%
+   (the save-lane and restore-lane changes of the evening under a
+   quieter box), every other row within its own spread.
+
 7. **First-run DX follow-ups (candidates, from the 2026-09-04
    walkthrough).** (a) DONE 2026-09-09: `--summarize` task rows carry
    `noCache: true` for a task with no `cache` block (present only when
@@ -1114,7 +1364,7 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    staleness surface (directory mtimes across platforms). REFUTED as
    not worth it; revisit only if discovery's share grows.
    (f) DONE 2026-09-10 as item 75: `--cache-dir` on `vx why`, `vx
-   last`, `vx info` and `vx cache prune`, through one parser and one
+last`, `vx info` and `vx cache prune`, through one parser and one
    resolver. Was: a `vx run` flag only, leaving the reading verbs on
    the default directory.
    (g) `vx why` names a plugin `key` part but shows its digests
@@ -1140,7 +1390,7 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    lands in the same shard, not before. Refuted alongside: pre-bundling
    the CLI for the ~130 end-to-end spawns. One `bun bin.ts --version`
    costs 45–47 ms (bun's own start is 4 ms); a `bun build
-   --target=bun` bundle of the same entry costs 83–90 ms, slower, as
+--target=bun` bundle of the same entry costs 83–90 ms, slower, as
    the flag-less compile was in item 32, and the `--bytecode` form's
    ~17 ms gain would buy ~2 s of suite for a build step in every test
    run. The spawns stay on source.
@@ -1153,11 +1403,13 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    port bridge, completions) merged as 61d9392 at 13:50Z. PR #271
    (items 81–82, the restore lane and the save lane) merged as b71008b
    at 14:24Z. PR #272 holds item 83 — the `fingerprint` seam and
-   the pnpm plugin, the owner's lockfile ask — item 84 (the shell in
-   core, the bun claimant, dogfooded) and item 85 (one
-   `@vzn/vx-lockfile` package: pnpm, bun, npm, yarn) on the same
-   branch with main merged back in; it merges on the owner's word,
-   never on ours.
+   the pnpm plugin, the owner's lockfile ask — with items 84–86 (the
+   shell in core, one `@vzn/vx-lockfile` package for pnpm / bun / npm
+   / yarn, CI on vx tasks only) merged as 9f762cc at 15:52Z on the
+   owner's "merge all". PR #273 holds items 87–90 (core's explicit
+   empty `build`, `@vzn/vx-infer`, the hosted cache in three commands)
+   on the same branch with main merged back in; it merges on the
+   owner's word, never on ours.
    What a fresh session should know: (a) the warm floor is measured
    and recorded three ways in items 76–77 — module load and the git
    walk are what remain, and the compile flags are the right ones;
@@ -1170,7 +1422,29 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    sandboxed check-in clone at `/home/user/sandbox-home/vx` is the
    way to measure this repo's own gate as an unprivileged user, and
    every A/B in items 70–77 ran there.
-10. **Handoff after item 67 (2026-09-10, night).** The loop's Next
+10. **Handoff after item 95 (2026-09-10, late night).** PR #273
+    carries items 87–95: core's empty `build` group and
+    `check.binary`, the hosted-cache path, `@vzn/vx-infer` shipped
+    and retired the same day (technology plugins are the
+    community's), Bun 1.4.2 with every dependency and action current,
+    local flaky-task detection (three surfaces, one rule, a partial
+    index that keeps a green run at 0.01 ms), the Turbo / Nx parity
+    suites with `docs/parity.md`, and the positioning redo (one
+    thing, built to be built on; one binary, no Node or Bun; Windows
+    under WSL). Every head from 9622ba6 to d81d9e7 was red on one
+    task, `@vzn/vx-docs#build` — astro 7's optional peer, hidden
+    locally by stale store copies (item 92's note); af01500 declares
+    it. Re-measured after the day's work (`run.ts 100 5` / `1000 5`,
+    medians, this four-core box): 100 projects 117 / 164 / 359 ms
+    and 1000 projects 227 / 1,049 / 2,488 ms for warm-no-restore /
+    warm-restore / no-cache, against the night's 126 / 205 / 427 and
+    244 / 1,006 / 2,567 — the detector's probe is invisible at the
+    whole-process scale, as its 0.55 ms for 1,000 candidates said it
+    would be. Open from the owner's last message: nothing; the
+    2026-07 parity design doc's edge-case lists and § Next 5–8 remain
+    the backlog. Never merge #273 without the owner's word.
+
+11. **Handoff after item 67 (2026-09-10, night).** The loop's Next
     items are spent; what a fresh session should know, in order:
     (a) PR #265 merged into main (d96a06f) and PR #266 (items 65–68
     and the day's follow-ups) merged as e099265, both by merge commit —
@@ -1218,6 +1492,14 @@ then exits on SIGINT` times out again, keep that run's stdout: the
 
 ## Decisions (this arc)
 
+- **No first-party technology plugins (owner, 2026-09-10).** A plugin
+  that gives packages tasks from a framework's config (`vite()`,
+  `next()`, …) is the community's to write on the `project` stage; core
+  names no tool, and this repo ships no such plugin. `@vzn/vx-turbo` is an
+  adoption plugin, not a technology plugin, and stays.
+- **Windows is WSL (owner, 2026-09-10).** vx spawns POSIX shell and ships
+  linux / darwin binaries; a Windows developer runs it under WSL, and the
+  docs say so instead of listing Windows as a gap.
 - **One core per process (2026-09-10).** The running `vx` serves its
   own façade to every `@vzn/vx` import it evaluates. A plugin package
   never carries its own copy of core into a run; the host decides the

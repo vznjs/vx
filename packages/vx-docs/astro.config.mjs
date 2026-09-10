@@ -16,10 +16,10 @@ export default defineConfig({
   site,
   base,
   trailingSlash: 'always',
-  // `remarkPlugins` is deprecated in Astro 6 in favor of a `unified()`
-  // processor from `@astrojs/markdown-remark`, but that package isn't
-  // resolvable from the config and pinning its version against Astro is
-  // fragile. The array form still works and only logs a future-major notice.
+  // `remarkPlugins` runs on the `unified()` processor from
+  // `@astrojs/markdown-remark`, an optional peer since Astro 7 that the
+  // site declares itself: without it the build refuses to start (CI,
+  // 2026-09-10), and a stale copy in the store hid that locally.
   markdown: {
     remarkPlugins: [remarkMermaid],
   },
@@ -95,6 +95,7 @@ export default defineConfig({
             { label: 'Caching deep dive', link: '/caching/' },
             { label: 'Execution lifecycle', link: '/execution/' },
             { label: 'vx vs Turborepo vs Nx', link: '/comparison/' },
+            { label: 'Turbo / Nx parity map', link: '/parity/' },
           ],
         },
         {

@@ -152,6 +152,21 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }),
   ],
   [
+    // An exact filter entry no dependsOn names would fold nothing and decouple
+    // the task silently — refused at load, naming the entry and the edges.
+    'cache.inputs.tasks: "<name>" names no task in <task>.dependsOn',
+    () =>
+      validated({
+        tasks: {
+          b: {
+            ...ok,
+            dependsOn: ['build'],
+            cache: { inputs: { files: [], tasks: ['buidl'] }, outputs: { files: [] } },
+          },
+        },
+      }),
+  ],
+  [
     'cache.outputs is required when cache is set',
     () => validated({ tasks: { b: { ...ok, cache: { inputs: { files: [] } } } } }),
   ],

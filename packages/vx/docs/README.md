@@ -1,8 +1,10 @@
 # `@vzn/vx` — technical documentation
 
 vx is a task runner and content-addressed build cache for JavaScript
-monorepos, built Bun-native. It runs your task graph in parallel,
-caches every result by content, and replays work it has already done.
+monorepos, shipped as one self-contained binary. It runs your task
+graph in parallel, caches every result by content, and replays work it
+has already done — and it stops there: everything beyond running and
+caching is a plugin on a documented seam.
 
 That description fits several tools. What follows is the part that
 doesn't: the problems vx treats as the hard ones, and what it actually
@@ -161,20 +163,21 @@ seam in a plugin.
 
 ## Where to start
 
-| You want to…                               | Read                                                                     |
-| ------------------------------------------ | ------------------------------------------------------------------------ |
-| The pitch: what vx does that others don't  | [`comparison.md` § Where vx is ahead](./comparison.md#where-vx-is-ahead) |
-| Understand the overall shape               | [`architecture.md`](./architecture.md)                                   |
-| Author a `vx.config.ts`                    | [`schema.md`](./schema.md)                                               |
-| Reason about caching                       | [`caching.md`](./caching.md)                                             |
-| Trace what `vx run` actually does          | [`execution.md`](./execution.md)                                         |
-| See each scenario as a diagram             | [`flows.md`](./flows.md)                                                 |
-| See every perf decision + invariant        | [`optimizations.md`](./optimizations.md)                                 |
-| Use the CLI from a shell                   | [`cli.md`](./cli.md)                                                     |
-| Write a plugin / replace a seam            | [`modules/plugin.md`](./modules/plugin.md)                               |
-| Benchmarks + side-by-side vs other runners | [`benchmarks.md`](./benchmarks.md), [`comparison.md`](./comparison.md)   |
-| Modify, fork, or replace a module          | [`modules/`](./modules/) (one page per source module)                    |
-| Read forward-looking design notes          | [`design/`](./design/)                                                   |
+| You want to…                                                          | Read                                                                     |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| The pitch: what vx does that others don't                             | [`comparison.md` § Where vx is ahead](./comparison.md#where-vx-is-ahead) |
+| Understand the overall shape                                          | [`architecture.md`](./architecture.md)                                   |
+| Author a `vx.config.ts`                                               | [`schema.md`](./schema.md)                                               |
+| Reason about caching                                                  | [`caching.md`](./caching.md)                                             |
+| Trace what `vx run` actually does                                     | [`execution.md`](./execution.md)                                         |
+| See each scenario as a diagram                                        | [`flows.md`](./flows.md)                                                 |
+| See every perf decision + invariant                                   | [`optimizations.md`](./optimizations.md)                                 |
+| Use the CLI from a shell                                              | [`cli.md`](./cli.md)                                                     |
+| Write a plugin / replace a seam                                       | [`modules/plugin.md`](./modules/plugin.md)                               |
+| Benchmarks + side-by-side vs other runners                            | [`benchmarks.md`](./benchmarks.md), [`comparison.md`](./comparison.md)   |
+| Coming from Turbo or Nx: the same thing, spelled in vx, with its test | [`parity.md`](./parity.md)                                               |
+| Modify, fork, or replace a module                                     | [`modules/`](./modules/) (one page per source module)                    |
+| Read forward-looking design notes                                     | [`design/`](./design/)                                                   |
 
 If you have ten minutes: read `comparison.md` § Where vx is ahead, then
 `architecture.md`. Together they cover the why and the shape.

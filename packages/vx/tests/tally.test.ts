@@ -108,9 +108,11 @@ const STATUSES = Object.keys(BUCKETS) as TaskStatus[]
  *  legally be handed. */
 const MATRIX: readonly Shape[] = STATUSES.flatMap((status) =>
   [true, false, undefined].flatMap((restored) =>
-    [false, true].map(
-      (group): Shape => ({ status, group, ...(restored === undefined ? {} : { restored }) }),
-    ),
+    [false, true].map((group): Shape => ({
+      status,
+      group,
+      ...(restored === undefined ? {} : { restored }),
+    })),
   ),
 )
 

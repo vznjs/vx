@@ -63,7 +63,11 @@ interface TaskConfig {
 A task either has an `exec` (it does work) or omits `exec` and declares
 `dependsOn` (it's a **group task**, a pure aggregator). The loader
 rejects a task that has neither — a no-op standalone task is almost
-always a config mistake.
+always a config mistake. `dependsOn: []` is the deliberate form: an
+explicit empty group, for a package that wants a task by that name to
+exist and do nothing — a package consumed as source declares
+`build: { dependsOn: [] }` so a dependant's `^build` finds it and waits
+on nothing.
 
 ### `description` (optional)
 
@@ -694,11 +698,14 @@ Semantics:
   command and exit code) — fail-loud, like a missing git binary. A
   flaky probe should not silently degrade to a stale hit.
 - The command **inherits vx's full environment**, _not_ the isolated
-  env that task `exec` commands get. This is deliberate — `node -v` /
-  `rustc --version` need the real `PATH` and toolchain env. The flip
-  side (same as `inputs.env`): an env var that differs between machines
-  silently changes the key; declare such inputs explicitly if you want
-  them visible.
+  env that task `exec` commands get — `exec.env.define` and
+  `passThrough` describe the command's environment, not the probe's.
+  This is deliberate — `node -v` / `rustc --version` need the real
+  `PATH` and toolchain env, and it is what lets two tasks sharing a
+  probe share one spawn (the per-run dedup above). The flip side (same
+  as `inputs.env`): an env var that differs between machines silently
+  changes the key; declare such inputs explicitly if you want them
+  visible.
 - The command **runs whenever a task's key is derived** — that's every
   run (warm runs included, since the key decides hit vs miss), plus
   `vx run --dry` / `--graph` (which predict the key) and `vx run
@@ -757,6 +764,16 @@ task". Defaults:
 
 - **Omitted** → all upstream contribute (`['*', '^*']`). Most common.
 - **`[]`** → fully decoupled; no upstream contributes.
+
+An **exact** entry (`'codegen'`, `'^build'`, `'lib#build'`) must be
+named by some `dependsOn` entry of the same task — exactly, or by that
+entry's own `*` pattern (`dependsOn: ['build.*']` names
+`tasks: ['build.bun']`). One that is not (`['buidl']`) is refused at
+load: it would match nothing at hash time and fold no upstream hash,
+decoupling the task from its dependencies with no diagnostic — a stale
+hit waiting for the next upstream change. Patterns, wildcards and
+negations stay silent (a preset-spread pattern legitimately matches
+nothing in some projects); `[]` is the explicit way to decouple.
 
 Examples:
 
@@ -944,10 +961,11 @@ there is no macOS equivalent to offer.
 
 ## Group tasks (no `exec`)
 
-A task with no `exec` and a non-empty `dependsOn` is a **group task**
-— a pure aggregator. Running a group is equivalent to running its
-dependencies; nothing else happens (no spawn, no I/O, no cache
-read/write).
+A task with no `exec` and a `dependsOn` is a **group task** — a pure
+aggregator. Running a group is equivalent to running its dependencies;
+nothing else happens (no spawn, no I/O, no cache read/write). An empty
+`dependsOn: []` is an explicit no-op group: it exists to be named — by a
+dependant's `^build`, by `vx run build --all` — and runs nothing.
 
 ```ts
 // `vx run install --all`  →  fans out to `build` in every workspace dep
@@ -1283,32 +1301,33 @@ the `cache` block).
 The loader (`src/workspace/project-loader.ts`) validates at load time
 and surfaces `UserError` (clean output, no stack):
 
-| Symptom                                                                             | Cause                                              |
-| ----------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `did not export a default object`                                                   | Forgot `export default`, or exported a non-object. |
-| `tasks must be an object keyed by task name`                                        | `tasks` is not an object — an ARRAY included.      |
-| `<level> has unknown field "<key>"`                                                 | Typo'd / unsupported key (see below).              |
-| `tasks.<name> must be an object`                                                    | The task value is null / a string / etc.           |
-| `exec must be an object with a command string`                                      | `exec` is malformed.                               |
-| `exec.command must be a non-empty string`                                           | Forgot `command`, or empty string.                 |
-| `exec.persistent must be an object (or omitted)`                                    | Wrong shape.                                       |
-| `exec.persistent.readyWhen must be a string regex`                                  | Non-string `readyWhen`.                            |
-| `cache is not allowed on a persistent task`                                         | persistent + cache combined.                       |
-| `a task with no exec must declare dependsOn`                                        | Group task with no edges.                          |
-| `cache requires exec`                                                               | Group task with `cache`.                           |
-| `dependsOn must be an array of strings`                                             | Wrong shape.                                       |
-| `cache.inputs is required when cache is set`                                        | Forgot `inputs`.                                   |
-| `cache.inputs.files must be an array`                                               | Wrong shape.                                       |
-| `cache.inputs.runtime must be an array of non-empty shell command strings`          | Non-string / empty entry.                          |
-| `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings` | Non-string / empty entry.                          |
-| `cache.inputs.tasks must be an array of non-empty strings`                          | Non-string / empty entry, or a bare string.        |
-| `cache.outputs is required when cache is set`                                       | Forgot `outputs`.                                  |
-| `cache.outputs.files must be an array`                                              | Wrong shape.                                       |
-| `cache.inputs.files: every entry is a negation, which selects NOTHING`              | Only `!` globs — nothing to subtract from.         |
-| `cache.outputs.files: negation is not supported`                                    | Output globs are never split on `!`.               |
-| `cache.inputs.files: '!!' is not a double negation`                                 | `!!x` inverts the set — it folds only `x`.         |
-| `exec.timeout: <n> ms exceeds the maximum timer delay`                              | Past 2^31-1 ms a timer fires at once, not never.   |
-| `description must be a string`                                                      | Non-string description.                            |
+| Symptom                                                                             | Cause                                               |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `did not export a default object`                                                   | Forgot `export default`, or exported a non-object.  |
+| `tasks must be an object keyed by task name`                                        | `tasks` is not an object — an ARRAY included.       |
+| `<level> has unknown field "<key>"`                                                 | Typo'd / unsupported key (see below).               |
+| `tasks.<name> must be an object`                                                    | The task value is null / a string / etc.            |
+| `exec must be an object with a command string`                                      | `exec` is malformed.                                |
+| `exec.command must be a non-empty string`                                           | Forgot `command`, or empty string.                  |
+| `exec.persistent must be an object (or omitted)`                                    | Wrong shape.                                        |
+| `exec.persistent.readyWhen must be a string regex`                                  | Non-string `readyWhen`.                             |
+| `cache is not allowed on a persistent task`                                         | persistent + cache combined.                        |
+| `a task with no exec must declare dependsOn`                                        | Group task with no edges.                           |
+| `cache requires exec`                                                               | Group task with `cache`.                            |
+| `dependsOn must be an array of strings`                                             | Wrong shape.                                        |
+| `cache.inputs is required when cache is set`                                        | Forgot `inputs`.                                    |
+| `cache.inputs.files must be an array`                                               | Wrong shape.                                        |
+| `cache.inputs.runtime must be an array of non-empty shell command strings`          | Non-string / empty entry.                           |
+| `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings` | Non-string / empty entry.                           |
+| `cache.inputs.tasks must be an array of non-empty strings`                          | Non-string / empty entry, or a bare string.         |
+| `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                    | An exact entry no `dependsOn` entry names (a typo). |
+| `cache.outputs is required when cache is set`                                       | Forgot `outputs`.                                   |
+| `cache.outputs.files must be an array`                                              | Wrong shape.                                        |
+| `cache.inputs.files: every entry is a negation, which selects NOTHING`              | Only `!` globs — nothing to subtract from.          |
+| `cache.outputs.files: negation is not supported`                                    | Output globs are never split on `!`.                |
+| `cache.inputs.files: '!!' is not a double negation`                                 | `!!x` inverts the set — it folds only `x`.          |
+| `exec.timeout: <n> ms exceeds the maximum timer delay`                              | Past 2^31-1 ms a timer fires at once, not never.    |
+| `description must be a string`                                                      | Non-string description.                             |
 
 **Unknown fields are rejected**, not ignored, at every object level —
 the project's top level (`tasks`), the task itself, `exec`, `exec.env`,

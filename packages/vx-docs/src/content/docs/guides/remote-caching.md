@@ -89,9 +89,35 @@ output file points at the artifact blob. The version prefix keeps vx keys out
 of the address space of real Bazel actions on a shared server, and makes a
 future change to the mapping miss cleanly instead of misreading.
 
-**It requires Bun ≥ 1.4**, and says so rather than misbehaving if it is not.
+**It needs the Bun runtime the vx binary embeds (≥ 1.4)**, and says so rather than misbehaving on an older one.
 Bun's HTTP/2 client hangs on chunked uploads above a version-dependent size;
 the plugin chunks at 128 KB and refuses to start on a Bun where that is unsafe.
+
+## A hosted cache in three commands
+
+You do not have to run a server to share a cache. `@vzn/vx-turbo-cache`
+speaks Turborepo's `/v8/artifacts` wire, and Vercel's hosted Remote
+Cache serves that wire to any client with a token — vx included. The
+artifacts are vx's own, under vx's own keys; the service is storage.
+
+```sh
+bun add -d @vzn/vx-turbo-cache
+npx turbo login && npx turbo link        # a token and a team, stored by Turbo's CLI
+export TURBO_TOKEN=… TURBO_TEAM=…        # the plugin reads Turbo's own variables
+```
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { turboCache } from '@vzn/vx-turbo-cache'
+
+export default defineWorkspace({ plugins: [turboCache()] })
+```
+
+With `TURBO_TOKEN` and `TURBO_TEAM` set, `turboCache()` points at
+Vercel's cache by default; a self-hosted `/v8/artifacts` server is
+`apiUrl`. `@vzn/vx-nx-cache` does the same for any Nx-wire server. Both
+wires, the options and the signature key are in each package's README.
 
 ## Bring your own backend
 

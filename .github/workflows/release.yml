@@ -1,7 +1,7 @@
 name: Release assets
 
 # Triggered when a maintainer publishes a release in the GitHub UI
-# (or via `gh release create`). Runs `vx run build` (which fans out
+# (or via `gh release create`). Runs `vx run build.bun` (which fans out
 # to one task per target with per-binary caching), then attaches the
 # four vx-<target> binaries (for the curl installer + `vx upgrade`)
 # to the release.
@@ -19,11 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.release.tag_name }}
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
 
       # Stamp the release version into packages/vx/package.json BEFORE
@@ -67,12 +67,12 @@ jobs:
             bun build --compile --target="bun-$t" /tmp/warm.ts --outfile "/tmp/warm-$t" >/dev/null
           done
 
-      # Dogfood: `build` fans out to `build.bun.<target>`
-      # (8 compiles). Each sub-task is individually cached, so re-running this
-      # workflow on the same commit is essentially free. --concurrency 2: eight
+      # Dogfood: `build.bun` fans out to `build.bun.<target>` (four
+      # compiles). Each sub-task is individually cached, so re-running this
+      # workflow on the same commit is essentially free. --concurrency 2:
       # concurrent `--compile --minify --bytecode` builds OOM a 7 GB runner
       # (this workflow OOM'd before with only four).
-      - run: bun packages/vx/src/bin.ts run build --filter @vzn/vx --concurrency 2
+      - run: bun packages/vx/src/bin.ts run build.bun --filter @vzn/vx --concurrency 2
 
       # The darwin binaries are RE-SIGNED before they ship. Bun 1.4.0's
       # `--compile` writes an ad-hoc signature that macOS rejects ("code or
@@ -80,13 +80,13 @@ jobs:
       # every build flavour, cross-compiled or native (measured 2026-09-02 on
       # Darwin 27). An ad-hoc `codesign -s - --force` repairs it, and only a
       # macOS runner has codesign, so the two darwin targets take a detour.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: darwin-unsigned
           path: packages/vx/dist/vx-darwin-*
           retention-days: 1
 
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3.0.3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: packages/vx/dist/vx-linux-*
@@ -96,7 +96,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: darwin-unsigned
           path: dist
@@ -108,7 +108,7 @@ jobs:
           VERSION="${VERSION#v}"
           GOT="$(./dist/vx-darwin-arm64 --version)"
           test "$GOT" = "vx $VERSION" || { echo "binary reports '$GOT', expected 'vx $VERSION' — the version stamp missed the manifest the binary inlines"; exit 1; }
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3.0.3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: dist/vx-darwin-*

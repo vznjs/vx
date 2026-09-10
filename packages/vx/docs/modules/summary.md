@@ -28,8 +28,16 @@ export function formatRunSummary(
   context?: RunContext,
 ): string[]
 
+export function formatFlakySection(findings: readonly FlakyFinding[]): string[]
+
 export function formatDuration(ms: number): string
 ```
+
+`formatFlakySection` is the post-footer section naming the tasks this
+run proved flaky (`detectFlaky`, history.md): `✗ id — failed on inputs
+that passed N× before`, `✓ id — passed on inputs that failed N× before`,
+with ` · N attempts this run` when the run retried; empty when nothing
+was. It prints beside `formatAbortedSection`, after the footer.
 
 `formatRunSummary` returns an array of lines (caller writes one per
 `log.status`). Leading blank line is included so the summary stands
@@ -87,3 +95,6 @@ Duration:
 - Failed list capped at 5 ids + '... +N more' (frames above carry the rest).
 - Time row: blank line above, total + dim 'max / avg / min' per-task spread (skipped excluded).
 - Duration formatting (sub-second vs second+).
+- The Flaky section: exact lines for a failure that passed before, a
+  pass that failed before with a retry, and a retry with no history;
+  empty for no findings.
