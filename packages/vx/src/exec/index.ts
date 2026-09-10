@@ -16,6 +16,7 @@ export {
   resetSandbox,
   resolveSandboxConfig,
   runSandboxed,
+  releaseBridges,
   wrapSandboxedCommand,
   type ResolvedSandboxConfig,
   type SandboxViolation,

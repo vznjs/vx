@@ -13,6 +13,7 @@ import {
   buildIsolatedEnv,
   runPersistent,
   shellQuote,
+  releaseBridges,
   wrapSandboxedCommand,
   signalExitCode,
   type CaptureConfig,
@@ -219,11 +220,17 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // server exits when the run tears it down. Enforced, not reported.
   // (Until 2026-09-09 the block was accepted and silently ignored.)
   let command = plainCommand
+  let bridgeTag: string | undefined
   if (step.sandbox !== undefined) {
     await args.armSandbox?.()
     const sb = await sandboxRequestFor(node, step.sandbox, args.workspaceRoot)
-    command = (await wrapSandboxedCommand({ command: plainCommand, cwd: node.projectDir, ...sb }))
-      .wrapped
+    const wrapped = await wrapSandboxedCommand({
+      command: plainCommand,
+      cwd: node.projectDir,
+      ...sb,
+    })
+    command = wrapped.wrapped
+    bridgeTag = wrapped.tag
   }
   const persistentOpts: Parameters<typeof runPersistent>[0] = {
     command,
@@ -244,6 +251,15 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   const spawn = runPersistent(persistentOpts)
+  // The host side of a port bridge lives exactly as long as the server:
+  // released on the child's exit, whether the run tore it down or it died.
+  if (bridgeTag !== undefined) {
+    const tag = bridgeTag
+    void spawn.child?.exited?.then(
+      () => releaseBridges(tag),
+      () => releaseBridges(tag),
+    )
+  }
   try {
     await spawn.ready
   } catch (err) {

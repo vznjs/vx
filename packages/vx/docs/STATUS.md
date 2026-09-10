@@ -390,6 +390,42 @@ lint.oxfmt` gate as an unprivileged user, three warm reps each:
     Nothing in the site's guides imported a removed name from
     `@vzn/vx`; the module docs that name these functions describe
     modules, not the façade, and stand.
+79. DONE (a sandboxed task exposes a port on Linux — § In flight 3,
+    the last capability gap in this file): `allow.localBinding` takes a
+    port list beside `true`. On Linux a sandboxed task lives in its own
+    network namespace (`bwrap --unshare-net`), so a dev server bound
+    inside was invisible to the developer's browser and to a downstream
+    task; each listed port is now bridged out the way SRT bridges its
+    own proxy in: the task's side is a `socat UNIX-LISTEN:<tmpdir>/vx-
+port-<tag>-<port>.sock … TCP:127.0.0.1:<port>` in front of the
+    command inside the sandbox (reaped with the shell), the host's side
+    a `socat TCP-LISTEN:<port>,bind=127.0.0.1 … UNIX-CONNECT:…,retry`
+    spawned by `wrapSandboxedCommand` and released when the task's
+    process exits (`releaseBridges`: the one-shot path after the child,
+    the persistent path on the server's exit, `resetSandbox` for the
+    rest). The task's side has to CREATE a unix socket under SRT's
+    seccomp filter, so `prepareSandbox` arms `allowAllUnixSockets` for
+    the run whenever a task declares a port list or `unixSockets` —
+    per run, like the proxy allowlist. macOS: the host already sees
+    the ports; a list means `true` there, and the per-task seatbelt
+    rules are unchanged. The first probe still died on `socket(AF_UNIX)`
+    with the flag set, which exposed a defect older than this item: on
+    Linux `probeSandbox` initializes SRT with an empty config, SRT's
+    `initialize()` returns early ever after, and the run's own call —
+    the DOMAIN UNION of the earlier item included — never reached it.
+    `initSandbox` now follows `initialize` with `updateConfig`, SRT's
+    hot reload of exactly these fields. Probed end to end as an
+    unprivileged user under the real sandbox: a sandboxed `Bun.serve`
+    on a listed port answers `curl` from the host twice, its unix
+    socket sits in `/tmp/claude`, and after the task exits the host
+    bridge is gone and the port refuses. Pinned in the unsafe suite on
+    Linux: a persistent sandboxed server on a listed port answers a
+    downstream (unsandboxed) task's fetch, and the port is closed after
+    the run; the control with `localBinding: true` fails the client on
+    connection refused. The pure halves (grant, port dedup, both socat
+    forms) and the schema (a boolean or a non-empty list of TCP ports;
+    an empty list, `0`, `65536`, a fraction, a string refused) have
+    their own units.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
@@ -525,17 +561,18 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
    flag is on (strace ≥ 5.3; older gets the slow form), which also
    takes that tax off every other sandboxed task on Linux — the gate's
    `time 138s · max 89s` on the last run is the number to compare.
-3. **A sandboxed task cannot expose a port on Linux.** macOS works and is
-   properly gated — measured, a sandboxed consumer reaches a sandboxed
-   server (200) and is refused without `localBinding`. On Linux every
-   sandboxed task gets `--unshare-net`, so nothing sees the port. Opening
-   the netns costs full egress, which is the wrong price; the narrow
-   answer is a per-port unix-socket bridge (socat, the same trick SRT
-   uses for its own proxy), and it is blocked today because SRT reads
-   `allowUnixSockets` off the config given to `initialize()` and never
-   the per-call one — the probe dies on
-   `socket(1, 1, 0): Operation not permitted`. Arming it from the union
-   at `initSandbox`, as `allowedDomains` already is, is the way in.
+3. DONE 2026-09-10 (item 79): a sandboxed task exposes a port on Linux
+   through `allow.localBinding: [port, …]` — a per-port socat pair over
+   a unix socket in the sandbox tmpdir, the task's side in front of the
+   command, the host's side released when the task exits. The arming
+   went as this entry said (the unix-socket allowance from the run's
+   union at `initSandbox`), and found the reason the first probe still
+   died: on Linux the availability probe initializes SRT with an EMPTY
+   config and `initialize()` returns early ever after, so the run's own
+   call — the domain union included — never reached the runtime.
+   `initSandbox` now hot-reloads the run's config (`updateConfig`).
+   Was: macOS works and is properly gated; on Linux every sandboxed task
+   gets `--unshare-net`, so nothing saw the port.
 4. DONE 2026-09-09: persistent tasks run inside their `exec.sandbox`.
    `wrapSandboxedCommand` is the enforcement half of `runSandboxed` on
    its own and the persistent path spawns through it; the violation

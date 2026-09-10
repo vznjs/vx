@@ -5,7 +5,7 @@
 // no grant can avoid, minus what the task chose to ignore.
 
 import path from 'node:path'
-import { absolutize, isUnderAny, toRealPath } from './sandbox-paths.js'
+import { absolutize, isUnderAny, localBindingOn, toRealPath } from './sandbox-paths.js'
 import type {
   ResolvedSandboxConfig,
   SandboxedRunArgs,
@@ -241,7 +241,7 @@ function loopbackNoise(
   violations: SandboxViolation[],
   config: ResolvedSandboxConfig,
 ): SandboxViolation[] {
-  const loopbackGranted = config.localBinding === true || config.network !== undefined
+  const loopbackGranted = localBindingOn(config) || config.network !== undefined
   if (!loopbackGranted) return violations
   return violations.filter((v) => !/deny\(\d+\)\s+network-outbound\s*$/.test(v.line))
 }

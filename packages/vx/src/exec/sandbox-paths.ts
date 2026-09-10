@@ -43,3 +43,8 @@ export function isUnderAny(abs: string, allow: Set<string>): boolean {
 export function unique(arr: readonly string[]): string[] {
   return [...new Set(arr)]
 }
+
+/** `allow.localBinding` grants loopback: `true`, or a non-empty port list. */
+export function localBindingOn(c: { localBinding?: boolean | readonly number[] }): boolean {
+  return c.localBinding === true || (Array.isArray(c.localBinding) && c.localBinding.length > 0)
+}

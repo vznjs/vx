@@ -17,6 +17,9 @@ concern has no cache-key or save logic in it.
 // executes inside a sandbox and memoized — a run of cache hits never probes
 // or starts anything. `arm()` refuses (UserError) when a task needs a
 // sandbox the platform lacks. The proxy allowlist is the union of every
+// sandboxed task's domains, and the unix-socket allowance (a `localBinding`
+// port list, or `unixSockets`) is armed for the run the same way — the
+// runtime reads both at `initialize()` only. The union of every
 // task's `allow.network`, computed up front.
 export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null
 

@@ -50,15 +50,26 @@ export interface SandboxArmer {
  * the allowlist given to `initialize()` — never the per-call one
  * (`sandbox-manager.js` 0.0.75). A task that declares no domains still
  * reaches nothing: its profile is not given the proxy's port at all.
+ * The unix-socket allowance is per run the same way: SRT's Linux seccomp
+ * filter on `socket(AF_UNIX)` is all-or-nothing and read at
+ * `initialize()`, so a task declaring `unixSockets`, or a `localBinding`
+ * port list (its bridge is a unix socket the task's side creates), lifts
+ * it for the run. macOS keeps per-task precision through vx's own rules.
  */
 export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
   const sandboxed = [...nodes].filter((n) => n.config.exec?.sandbox !== undefined)
   if (sandboxed.length === 0) return null
   const weakerNested = sandboxed.every((n) => n.config.exec?.sandbox?.weakerWhenNested === true)
   const domains = new Set<string>()
+  let unixSockets = false
   for (const n of sandboxed) {
-    const net = n.config.exec?.sandbox?.allow?.network
+    const allow = n.config.exec?.sandbox?.allow
+    const net = allow?.network
     if (Array.isArray(net)) for (const d of net) domains.add(d)
+    const sockets = allow?.unixSockets
+    if (sockets === true || (Array.isArray(sockets) && sockets.length > 0)) unixSockets = true
+    const lb = allow?.localBinding
+    if (Array.isArray(lb) && lb.length > 0 && process.platform === 'linux') unixSockets = true
   }
   let pending: Promise<void> | undefined
   let armed = false
@@ -71,7 +82,10 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
         try {
           const avail = await probeSandbox({ weakerNested })
           if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
-          await initSandbox({ allowedDomains: [...domains] })
+          await initSandbox({
+            allowedDomains: [...domains],
+            ...(unixSockets ? { allowAllUnixSockets: true } : {}),
+          })
         } catch (err) {
           // A throw from the runtime itself (its bridge needs socat, which
           // the dependency check does not cover) gets the same one-line
