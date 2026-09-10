@@ -14,8 +14,8 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { xxh3 } from '../util/index.js'
-import { asTrees, normalizeGlob } from '../cache/index.js'
+import { normalizeGlob, staticPrefix, xxh3 } from '../util/index.js'
+import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
 import {
@@ -108,17 +108,19 @@ export function makeWatchIgnore(
   }
 }
 
-/** The literal directory a glob's matches live under (`''` when the glob starts with a pattern). */
+/**
+ * The literal directory a glob's matches live under (`''` when the glob
+ * starts with a pattern, or negates). A literal entry is a file or its
+ * whole tree (schema: literal → tree), so the entry itself is the
+ * container; a pattern's is `staticPrefix` — the same rule the sandbox
+ * baseline and the deferral gate read.
+ */
 export function outputContainer(raw: string): string {
   const glob = normalizeGlob(raw)
-  const meta = glob.search(/[*?[\]{}!]/)
-  const literal = meta === -1 ? glob : glob.slice(0, meta)
-  // A literal entry is a file or its whole tree (schema: literal → tree),
-  // so the entry itself is the container; a pattern's container is the
-  // directory part before the first metacharacter.
-  const cut =
-    meta === -1 ? literal.replace(/\/+$/, '') : literal.slice(0, literal.lastIndexOf('/') + 1)
-  return cut.replace(/\/+$/, '')
+  if (glob.startsWith('!')) return ''
+  if (!/[*?[\]{}]/.test(glob)) return glob.replace(/\/+$/, '')
+  const prefix = staticPrefix(glob)
+  return prefix === '.' || prefix === '/' ? '' : prefix
 }
 
 /**

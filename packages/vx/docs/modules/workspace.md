@@ -7,7 +7,9 @@ full grammar: a negated entry (`!packages/fixtures`, `!**/test/**`)
 subtracts from what the positive globs found — a literal one excludes
 its tree — in both discovery and the root-claim walk. Handed to the
 glob engine raw, a leading `!` negated the whole pattern and made every
-manifest in the tree a member (2026-09-10).
+manifest in the tree a member (2026-09-10). Every entry goes through
+`normalizeGlob` first: `!./packages/legacy` and `!packages//legacy`
+excluded nothing until they did (same day).
 
 Find the workspace root, enumerate its projects, and resolve the
 cache directory. Supports pnpm / npm / yarn / Bun workspaces, plus a

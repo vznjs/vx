@@ -1147,6 +1147,17 @@ signal` (an `AbortSignal`) runs the one teardown the process
       a trailing `/` on a PATTERN (`src/*/` is the trees under `src`,
       so `src/*/**`; a literal's trailing slash stays `asTrees`' job).
       `src\a.ts` stays nothing — Windows is WSL.
+      The rule then moved to `util/paths.ts` and found its other
+      readers: workspace member globs (`!./packages/legacy` and
+      `!packages//legacy` excluded nothing — `legacy` stayed a member,
+      pinned in `tests/workspace.test.ts`, fails without),
+      `wholeSubtreePrefixes` (a `./dist/**` output lost the dir-mtime
+      short-circuit), and the watch loop's `outputContainer`, which is
+      now `staticPrefix` over the normalized glob instead of a second
+      copy of the prefix rule. `staticPrefix` itself learned that a
+      brace set is a wildcard: `{dist,build}/**` read as the literal
+      directory `{dist,build}` gave the sandbox baseline a prefix that
+      exists nowhere (pinned in `tests/util-paths.test.ts`).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

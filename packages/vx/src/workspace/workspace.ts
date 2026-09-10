@@ -2,7 +2,7 @@ import type { Dirent } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { relPosix, UserError } from '../util/index.js'
+import { relPosix, UserError, normalizeGlob } from '../util/index.js'
 
 export interface PackageJson {
   name: string
@@ -114,7 +114,10 @@ function claimsMember(root: string, below: readonly string[], globs: readonly st
 function splitPackageGlobs(globs: readonly string[]): { positive: string[]; negative: string[] } {
   const positive: string[] = []
   const negative: string[] = []
-  for (const g of globs) {
+  // `!./packages/legacy` and `!packages//legacy` excluded nothing, silently
+  // (2026-09-10): the same spellings the input globs normalize.
+  for (const raw of globs) {
+    const g = normalizeGlob(raw)
     if (g.startsWith('!')) negative.push(g.slice(1).replace(/\/+$/, ''))
     else positive.push(g)
   }

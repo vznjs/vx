@@ -12,7 +12,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
 import { loadProjectConfig } from '../src/workspace/index.js'
-import { asTrees, normalizeGlob } from '../src/cache/index.js'
+import { asTrees } from '../src/cache/index.js'
+import { normalizeGlob } from '../src/util/index.js'
 
 const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 

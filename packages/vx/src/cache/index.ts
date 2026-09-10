@@ -34,7 +34,6 @@ export {
   resolveOutputs,
   resolveWorkspaceOutputs,
   asTrees,
-  normalizeGlob,
 } from './inputs.js'
 export {
   GitFilesCache,

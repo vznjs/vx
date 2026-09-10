@@ -26,7 +26,10 @@ export function relPosix(from: string, to: string): string {
  * how the two would disagree about what a prefix is.
  */
 export function staticPrefix(glob: string): string {
-  const wildcardIdx = glob.search(/[*?[\]]/)
+  // A brace set is a wildcard too: `{dist,build}/**` reaches either dir,
+  // and reading it as the literal directory `{dist,build}` gave the
+  // sandbox baseline a prefix that exists nowhere (2026-09-10).
+  const wildcardIdx = glob.search(/[*?[\]{}]/)
   if (wildcardIdx === -1) return glob
   const head = glob.slice(0, wildcardIdx)
   const lastSep = head.lastIndexOf('/')
@@ -47,7 +50,7 @@ export function staticPrefix(glob: string): string {
 export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null {
   if (globs.length === 0) return null
   const out: string[] = []
-  for (const g of globs) {
+  for (const g of globs.map(normalizeGlob)) {
     const m = /^([^*?[\]{}!]+?)\/\*\*$/.exec(g)
     if (m === null) return null
     const dir = m[1]!.replace(/\/+$/, '')
@@ -56,4 +59,22 @@ export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null 
     out.push(dir)
   }
   return [...new Set(out)]
+}
+
+/**
+ * The spellings a reader, Turbo and `.gitignore` all accept but a matcher
+ * fed the raw string turns into NOTHING — and a task keyed on nothing
+ * replays old outputs as a green hit (2026-09-10, probed one by one):
+ * a leading `./`, an inner `/./` segment, a doubled `//`, and a trailing
+ * `/` on a pattern (`src/*\/` means the trees under `src`, so it becomes
+ * `src/*\/**`; a trailing slash on a LITERAL is `asTrees`' job). Applied
+ * after an optional `!`; a bare `.` is the empty entry the schema refuses.
+ */
+export function normalizeGlob(glob: string): string {
+  const neg = glob.startsWith('!')
+  let g = neg ? glob.slice(1) : glob
+  g = g.replace(/\/{2,}/g, '/').replace(/(^|\/)(\.\/)+/g, '$1')
+  if (g === '.') g = ''
+  if (/[*?[\]{}]/.test(g) && g.endsWith('/')) g = `${g.replace(/\/+$/, '')}/**`
+  return neg ? `!${g}` : g
 }

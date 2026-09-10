@@ -6,7 +6,13 @@
 // the lockfile's frozen path and the plugin `project` stage all cross.
 
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
-import { DISPATCHED_VERBS, MAX_TIMEOUT_MS, nearest, UserError } from '../util/index.js'
+import {
+  DISPATCHED_VERBS,
+  MAX_TIMEOUT_MS,
+  nearest,
+  normalizeGlob,
+  UserError,
+} from '../util/index.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
@@ -589,10 +595,8 @@ function assertTimeoutInRange(ms: number, where: string): void {
  * `./src/**` is fine — the resolver strips the `./` (`normalizeGlob`).
  */
 function namesDirItself(glob: string): boolean {
-  const g = (glob.startsWith('!') ? glob.slice(1) : glob)
-    .replace(/\/{2,}/g, '/')
-    .replace(/(^|\/)(\.\/)+/g, '$1')
-  return g === '' || g === '.' || g === '/'
+  const g = normalizeGlob(glob.startsWith('!') ? glob.slice(1) : glob)
+  return g === '' || g === '/'
 }
 
 function hasParentSegment(glob: string): boolean {

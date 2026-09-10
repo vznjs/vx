@@ -165,6 +165,23 @@ describe('listProjects', () => {
         file: 'pnpm-workspace.yaml',
         body: 'packages:\n  - "packages/**"\n  - "!**/fixtures/**"\n  - "!packages/legacy"\n',
       },
+      // spellings a matcher turned into nothing (2026-09-10): the negation
+      // silently excluded nothing and `legacy` stayed a member
+      {
+        file: 'pnpm-workspace.yaml',
+        body: 'packages:\n  - "./packages/*"\n  - "!./packages/legacy"\n  - "!**/fixtures/**"\n',
+      },
+      {
+        file: 'package.json',
+        body: JSON.stringify({
+          name: 'root',
+          workspaces: ['packages/*', '!packages//legacy', '!./packages/*/fixtures/**'],
+        }),
+      },
+      {
+        file: 'pnpm-workspace.yaml',
+        body: 'packages:\n  - "packages/*"\n  - "!./packages/leg*"\n  - "!**/fixtures/**"\n',
+      },
     ]) {
       await rm(dir, { recursive: true, force: true })
       await mkdir(dir, { recursive: true })

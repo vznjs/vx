@@ -21,6 +21,7 @@ import { realpath, rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import { UserError } from '../util/index.js'
 import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
+import { normalizeGlob } from '../util/index.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
 // re-exported here so a reader that reaches the resolver for it (the
@@ -473,24 +474,6 @@ export async function cleanWorkspaceOutputs(args: {
   await Promise.all(files.map((f) => rm(f, { force: true })))
   await pruneEmptiedDirs(args.workspaceRoot, files)
   return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
-}
-
-/**
- * The spellings a reader, Turbo and `.gitignore` all accept but a matcher
- * fed the raw string turns into NOTHING — and a task keyed on nothing
- * replays old outputs as a green hit (2026-09-10, probed one by one):
- * a leading `./`, an inner `/./` segment, a doubled `//`, and a trailing
- * `/` on a pattern (`src/*\/` means the trees under `src`, so it becomes
- * `src/*\/**`; a trailing slash on a LITERAL is `asTrees`' job). Applied
- * after an optional `!`; a bare `.` is the empty entry the schema refuses.
- */
-export function normalizeGlob(glob: string): string {
-  const neg = glob.startsWith('!')
-  let g = neg ? glob.slice(1) : glob
-  g = g.replace(/\/{2,}/g, '/').replace(/(^|\/)(\.\/)+/g, '$1')
-  if (g === '.') g = ''
-  if (!isLiteralPath(g) && g.endsWith('/')) g = `${g.replace(/\/+$/, '')}/**`
-  return neg ? `!${g}` : g
 }
 
 function isLiteralPath(glob: string): boolean {
