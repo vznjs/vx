@@ -221,7 +221,10 @@ export interface ProjectHookContext extends BaseContext {
    * not — as core read them at startup. A plugin whose mapping needs the
    * whole workspace (a `dependsOn` is only valid against every package's
    * scripts at once) reads it here instead of walking the workspace a
-   * second time; the same array is handed to every visit of a run.
+   * second time. The same array is handed to every visit of a run and a
+   * new one to the next run — a plugin instance outlives a run under `vx
+   * watch`, so a per-run memo keys on this array's identity, never on the
+   * process.
    */
   readonly projects: readonly ProjectMeta[]
 }

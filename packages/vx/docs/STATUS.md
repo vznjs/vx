@@ -1473,6 +1473,24 @@ equivalent — map it manually` on every run, for the value every
       the graph and 32 ms across its four saves inside 37.7 s of
       tasks — the miss path is at its floor there, nothing to take.
 
+127.  DONE (2026-09-10, late night — found by item 126's seam): under
+      `vx watch`, a `package.json` script edit in a Turbo-mapped package
+      re-ran the task (the bytes are in the key) on the OLD command.
+      The workspace module is imported keyed on its bytes, so one
+      process reuses it across runs and the plugin instance with it,
+      and `@vzn/vx-turbo` memoized its mapping for the instance's
+      life — right for one run, stale for every cycle after an edit;
+      the same for a `turbo.json` edit. Probed end to end (a watch on
+      a one-package Turbo workspace, the script switched from writing
+      `v1` to `v2`: the cycle ran, `dist/out` still read `v1`), fixed
+      by keying the memo on `ctx.projects` — one array per run, so its
+      identity is the run's, which the context now documents — and
+      the probe reads `v2`. Pinned in the plugin's suite as two
+      `planRun`s in one process with the script edited between
+      (`echo lib-v2` is the second plan's command); fails without the
+      change. The README says it: the mapping is read once per run,
+      never once per process.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so

@@ -273,3 +273,31 @@ describe('the mapping reads the packages core discovered', () => {
     expect(config.tasks?.build?.exec?.command).toBe('echo ghost')
   })
 })
+
+describe('one mapping per run', () => {
+  it(
+    "a package.json script edited between two runs in one process is the second run's command (the vx watch shape)",
+    async () => {
+      // The workspace module is reused across runs in a process (its import
+      // is keyed on the file's bytes), so the plugin instance is too; a
+      // mapping memoized for the process ran the cycle after this edit on
+      // the old command.
+      const first = await planRun({ cwd: root, tasks: ['build'], projects: ['lib'], log: silent() })
+      expect(first.tasks[0]!.node.config.exec?.command).toBe(
+        'mkdir -p dist && echo lib > dist/lib.js',
+      )
+      await writeFile(
+        path.join(root, 'packages', 'lib', 'package.json'),
+        JSON.stringify({ name: 'lib', version: '1.0.0', scripts: { build: 'echo lib-v2' } }),
+      )
+      const second = await planRun({
+        cwd: root,
+        tasks: ['build'],
+        projects: ['lib'],
+        log: silent(),
+      })
+      expect(second.tasks[0]!.node.config.exec?.command).toBe('echo lib-v2')
+    },
+    TIMEOUT,
+  )
+})

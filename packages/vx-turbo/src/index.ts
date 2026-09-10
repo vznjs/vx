@@ -34,13 +34,23 @@ export interface TurboPluginOptions {
  * run a second discovery every time (2026-09-10).
  */
 export function turbo(options: TurboPluginOptions = {}): VxPlugin {
+  // One mapping per RUN, not per process: the workspace module — and so
+  // this plugin instance — outlives a run under `vx watch`, and a mapping
+  // memoized for the process ran the cycle after a package.json script
+  // edit on the old command (2026-09-10). `ctx.projects` is one array per
+  // run, so its identity is the run's.
+  let mappedFor: readonly ProjectMeta[] | undefined
   let mapping: Promise<TurboMapping> | undefined
   let warned = false
   const plugin = definePlugin(import.meta, {
     async project(config: ProjectConfig, ctx) {
       const root = options.root ?? ctx.workspaceRoot
-      mapping ??= mapAll(root, ctx.projects)
-      const mapped = await mapping
+      if (mappedFor !== ctx.projects) {
+        mappedFor = ctx.projects
+        mapping = mapAll(root, ctx.projects)
+        warned = false
+      }
+      const mapped = await mapping!
       if (!warned) {
         warned = true
         for (const note of mapped.notes) ctx.warn(`[${plugin.name}] ${note}`)
