@@ -1730,7 +1730,7 @@ shard-weights.json` has no rows for the eight suites added tonight
       (c) the surveys' deferred rows and Next 2 stay deferred with their
       reasons; (d) the parity docs carry a status line per row — the
       2026-07 doc's only open row is M7, by choice. Nothing is owed to
-      the owner's last message.
+      the owner's last message. (a) DONE the same night: weighed from a twelve-shard JUnit run on this box — 15 files had no row, seven of them older than tonight (completions, core-alias, lockfile-claim, output-dirs-snapshot, output-shape, plugin-name, save-lane); the absolute numbers are this loaded box's, the dealing only reads their ratios.
 
 ## Decisions (this arc)
 
