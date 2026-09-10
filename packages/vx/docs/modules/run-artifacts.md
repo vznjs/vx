@@ -23,7 +23,9 @@ export interface SummarizeArgs {
   startedAtMs: number
   endedAtMs: number
   totalMs: number
+  ok: boolean // the run's verdict, the CLI's exit code
   outcomes: readonly TaskOutcome[]
+  flaky?: readonly FlakyFinding[] // detectFlaky's findings → per-task `flaky`
 }
 
 export interface ProfileArgs {
@@ -48,7 +50,9 @@ DTRT).
 Output shape — see [`cli.md` § `--summarize`](../cli.md#--summarize-path).
 hrtime fields are stringified bigints (preserves ns precision through
 JSON). `summary` block aggregates totals (successful / failed /
-skipped / cachedLocal / cachedRemote / total).
+skipped / cachedLocal / cachedRemote / total). A task the run proved
+flaky carries `flaky: { passes, failures, attempts }` (present only
+then, like `noCache`).
 
 ## `writeRunProfile`
 

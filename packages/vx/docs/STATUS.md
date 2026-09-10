@@ -781,6 +781,31 @@ run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
     thirteen shards side by side on this four-core box, not the
     upgrade: the guard passes alone under 1.4.2 and 1.4.0 alike,
     interleaved twice each, and the shard alone reruns 203/203.
+93. DONE (owner's ask, 2026-09-10, night — "we know hashes and past
+    runs"): local flaky-task detection, three surfaces over the one
+    rule `failure-mode.ts` already held. A task is flaky when its
+    exact cache key has both passed and failed on record (a hit is a
+    pass) or it needed a retry this run; a failure on a key that never
+    passed is a break, and a task with no `cache` block is never
+    judged (its key says nothing about inputs — one bad network day
+    would read as a month of flakes). `detectFlaky` judges the run's
+    executed keyed outcomes BEFORE its rows land: the footer's
+    `Flaky:` section (`✓ app#test — passed on inputs that failed 1×
+before · 2 attempts this run`), `--summarize`'s per-task
+    `flaky: { passes, failures, attempts }` (present only then), and
+    `vx info`'s `flaky tasks` row (`flakyTasks` in JSON: the standing
+    list over the 30-day history, most failures first). Cost follows
+    the run's colour: no candidate, no query; a green miss probes
+    `runs_failed`, a new PARTIAL index over failed rows (a green run's
+    inserts only evaluate its predicate — 3.2 ms per 1,000 rows either
+    way), so the common case is 0.01 ms at 170k rows against 10 ms
+    scanning; only a key that failed before or a task failing now pays
+    the ~10 ms projection scan. Pinned: the rule at the unit (probe
+    served `USING INDEX runs_failed`, no scan on green keys, chunking
+    past 500, the index created on an older database) and end to end
+    (`tests/flaky.test.ts`: red then green on one key names it in all
+    three surfaces; a hit and a changed-key break are the controls).
+    Comparison row: Nx has this behind Nx Cloud, Turbo not at all.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

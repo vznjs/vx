@@ -688,6 +688,13 @@ executes every run by design, so a hit rate should leave it out of the
 denominator. The key is present only when true; every other row is
 unchanged. Its `hash` is still set: dependents fold it.
 
+**`flaky: { passes, failures, attempts }`** is present only on a task
+this run proved flaky (the footer's Flaky section, typed): `passes` and
+`failures` count the outcomes on record for this exact `hash`, this run
+included, and `attempts` is what this run took. A consumer gating on
+`status: "failed"` can tell a break (no `flaky` key) from a flake
+without reading the history. Every other row is byte-identical.
+
 **`durationMs` is always what THIS run spent on the task.** For a cache
 hit that is the probe + restore, not the exec time the entry was stored
 with — so it is small even for an expensive task. The work a hit
@@ -1258,6 +1265,7 @@ cache versions: keys vx-cache-v27 · index schema v25
 cache entries:  42 (1.3 GB)
 orphans:        3 artifacts (12.4 MB) the index does not know — `vx cache prune` reaps them
 runs (24h):     7 (5 cache hits)
+flaky tasks:    1 — web#test (3 of 11 runs failed on unchanged inputs)
 vx-lock.json:   yes
 ```
 
@@ -1274,6 +1282,11 @@ vx-lock.json:   yes
   `schedule`, `executor`, `cache`, `telemetry`, `setup`, `commands`),
   or `none`. It reads the declarations: a plugin that declines a task
   at run time still lists its seam here.
+- `flaky tasks` is the standing list a run's Flaky section adds to:
+  every task whose history (30 days, what the cache keeps) holds a
+  cache key that both passed and failed, most failures first, with
+  the outcomes over those keys. A cache hit counts as a pass (it
+  replayed one). `none` when the history never mixed.
 - `cache versions` are the two constants a bug report needs and the
   reset notice names: the key prefix (`CACHE_VERSION`; a bump orphans
   every entry) and the index schema (`SCHEMA_VERSION`; a mismatch drops
@@ -1290,8 +1303,9 @@ vx-lock.json:   yes
   `plugins` (`[{ name, seams }]`), `cacheDir`, `cacheVersion`,
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `orphans`
   (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h`,
-  `lockfile`. The pretty rows render this object; there is no second
-  source.
+  `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
+  empty when none), `lockfile`. The pretty rows render this object;
+  there is no second source.
 - `vx stats` is a **deprecated alias** of `vx info` (info absorbed
   it); it prints byte-identical output.
 
@@ -1490,6 +1504,27 @@ footer. A broad run looks like:
 
 Group tasks emit no framed block by design (they aren't real tasks);
 running a group focused surfaces its real member tasks instead.
+
+**Flaky section.** After the footer, a run names the tasks it just
+proved nondeterministic — from the local run history alone, no
+service:
+
+```
+  Flaky:    2 tasks with the same inputs both passing and failing on record
+    ✗ app#test — failed on inputs that passed 3× before
+    ✓ api#e2e — passed on inputs that failed 1× before · 2 attempts this run
+```
+
+A task is flaky when its exact cache key has BOTH passed and failed on
+record (this run counted; a cache hit is a pass, it replayed one), or
+when it needed a retry (`exec.retries` / `--retry`) this run. A failure
+on a key that never passed is a break and is not listed — a changed
+input that fails is what a red run usually means. Only tasks with a
+`cache` block are judged: "same inputs, different outcome" is a claim
+only declared inputs can back, and a task without them keys on its
+config alone. The section is empty (not printed) when nothing was
+flaky. Zero cost on a run that executed nothing; a green miss costs one
+probe of the failed-row index; `vx info` keeps the standing list.
 
 ### Colors
 

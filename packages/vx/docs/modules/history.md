@@ -42,10 +42,40 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
   pairs that failed without a retry already proving nondeterminism.
 - Skipped rows (`status = 'skipped'`) are excluded from the window
   (`EXECUTED_RUNS_SQL`), so a run of skips cannot dilute the numbers.
+
+## The per-run surfaces (`failure-mode.ts`)
+
+The same rule, applied at the end of every run and by the doctor:
+
+- `detectFlaky(db, candidates)` — the run's executed, keyed,
+  cache-declaring outcomes (`run.ts` builds the list; a hit, a skip, a
+  group or a task with no `cache` block is not one), judged BEFORE the
+  run's own rows land. A pass on a key that failed before, a failure on
+  a key that passed before, or a within-run retry is a `FlakyFinding`
+  with the key's outcome counts, this run folded in. The footer prints
+  them (`formatFlakySection`) and `--summarize` types them (`flaky`).
+- `flakyTasks(db)` — every task with a mixed-outcome key in the whole
+  retained history, most failures first: the `vx info` row.
+- Cost follows the run's colour. No candidate: no query. A green miss:
+  one probe of `runs_failed`, a PARTIAL index over failed rows (the
+  rare ones, so a green run's 1,000 inserts only evaluate its
+  predicate: 3.2 ms per 1,000 with and without it), which answers "did
+  this key ever fail?" in microseconds at any history size. Only a key
+  that did fail before, or a task failing now, pays the projection scan
+  over its own keys (~10 ms at 170k rows). Measured 2026-09-10, 170k
+  rows: 1 / 12 / 1,000 green candidates 0.01 / 0.02 / 0.55 ms with the
+  index against 10.4 / 10.3 / 21.6 ms scanning.
+- Every reader is a filter over one projection, `keyOutcomesSql`, so
+  the definition of "mixed" cannot fork between the window, the
+  all-time count, the run's findings and the doctor's list.
 - Percentiles are over the slice's executed-success rows; rates count
   every executed row.
 
 ## Tests
 
 `tests/history.test.ts`, `tests/plan-predict.test.ts`,
-`tests/run-record-completeness.test.ts`.
+`tests/run-record-completeness.test.ts`; `tests/failure-mode.test.ts`
+(the rule, `detectFlaky`, `flakyTasks`, the partial index's plan and
+its creation on an older database); `tests/flaky.test.ts` (end to end:
+footer, `--summarize`, `vx info`, with a hit and a changed-key break as
+controls).

@@ -46,6 +46,14 @@ export {
   type TaskHistory,
 } from './history.js'
 export {
+  detectFlaky,
+  type FailureMode,
+  type FlakyCandidate,
+  type FlakyFinding,
+  type FlakyTask,
+  flakyTasks,
+} from './failure-mode.js'
+export {
   installPlugins,
   type CacheContext,
   type ExecutorContext,

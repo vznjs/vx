@@ -17,7 +17,12 @@ import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'bun:test'
 import { Cache, KEYED_RUNS_SQL, type RunRecord } from '../src/cache/index.js'
-import { classifyFailureMode, mixedOutcomeKeyCount } from '../src/orchestrator/failure-mode.js'
+import {
+  classifyFailureMode,
+  detectFlaky,
+  flakyTasks,
+  mixedOutcomeKeyCount,
+} from '../src/orchestrator/failure-mode.js'
 
 /** Monotonic `started_at` so row ordering is deterministic across a file run. */
 let seq = 0
@@ -494,3 +499,170 @@ describe('classifyFailureMode', () => {
 // ---------------------------------------------------------------------------
 // The two core consumers must not fork again
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// detectFlaky — the per-run surface, judged before the run's rows land
+// ---------------------------------------------------------------------------
+
+describe('detectFlaky', () => {
+  const cand = (
+    hash: string,
+    status: 'success' | 'failed' = 'success',
+    attempts = 1,
+    project = 'pkg',
+    task = 'test',
+  ) => ({ project, task, hash, status, attempts })
+
+  it('asks nothing with no candidate (a run of hits and skips)', async () => {
+    await withRuns(
+      [mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' })],
+      (real) => {
+        const { db, queries } = countingDb(real)
+        expect(detectFlaky(db, [])).toEqual([])
+        expect(queries).toEqual([])
+      },
+    )
+  })
+
+  it('a green miss on keys that never failed is ONE probe of the failed rows, no scan', async () => {
+    const rows = [
+      mkRun({ hash: 'A', project: 'pkg', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'B', project: 'pkg', task: 'test' }),
+    ]
+    await withRuns(rows, (real) => {
+      const { db, queries } = countingDb(real)
+      expect(detectFlaky(db, [cand('B'), cand('C')])).toEqual([])
+      expect(queries).toHaveLength(1)
+      expect(queries[0]).toContain("status = 'failed'")
+      expect(queries[0]).not.toContain('passes')
+      // The probe is served by the partial index, not a table scan.
+      const plan = real.query(`EXPLAIN QUERY PLAN ${queries[0]}`).all('B', 'C') as {
+        detail: string
+      }[]
+      expect(plan.map((p) => p.detail).join(' | ')).toContain('USING INDEX runs_failed')
+    })
+  })
+
+  it('names a failure on a key that passed before, counting this run', async () => {
+    const rows = [
+      mkRun({ hash: 'K', project: 'pkg', task: 'test' }),
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', cacheHit: true }),
+    ]
+    await withRuns(rows, (db) => {
+      expect(detectFlaky(db, [cand('K', 'failed')])).toEqual([
+        { ...cand('K', 'failed'), taskId: 'pkg#test', passes: 2, failures: 1 },
+      ])
+    })
+  })
+
+  it('a failure on a key that never passed is a break, not a flake (control)', async () => {
+    const rows = [
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'J', project: 'pkg', task: 'test' }),
+    ]
+    await withRuns(rows, (db) => {
+      expect(detectFlaky(db, [cand('K', 'failed')])).toEqual([])
+      expect(detectFlaky(db, [cand('N', 'failed')])).toEqual([])
+    })
+  })
+
+  it('names a pass on a key that failed before', async () => {
+    const rows = [
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'K', project: 'pkg', task: 'test', status: 'failed' }),
+    ]
+    await withRuns(rows, (db) => {
+      expect(detectFlaky(db, [cand('K')])).toEqual([
+        { ...cand('K'), taskId: 'pkg#test', passes: 1, failures: 2 },
+      ])
+    })
+  })
+
+  it('a within-run retry is flaky with no history at all, either way it ended', async () => {
+    await withRuns([], (db) => {
+      expect(detectFlaky(db, [cand('K', 'success', 2)])).toEqual([
+        { ...cand('K', 'success', 2), taskId: 'pkg#test', passes: 1, failures: 0 },
+      ])
+      expect(detectFlaky(db, [cand('K', 'failed', 3)])).toEqual([
+        { ...cand('K', 'failed', 3), taskId: 'pkg#test', passes: 0, failures: 1 },
+      ])
+    })
+  })
+
+  it('scopes to the (project, task) pair even when another pair shares the key string', async () => {
+    const rows = [mkRun({ hash: 'K', project: 'other', task: 'test', status: 'failed' })]
+    await withRuns(rows, (db) => {
+      expect(detectFlaky(db, [cand('K')])).toEqual([])
+      expect(detectFlaky(db, [cand('K', 'success', 1, 'other')])).toHaveLength(1)
+    })
+  })
+
+  it('judges every candidate past the first chunk of 500', async () => {
+    const rows = [mkRun({ hash: 'K1100', project: 'pkg', task: 'test', status: 'failed' })]
+    await withRuns(rows, (db) => {
+      const many = Array.from({ length: 1200 }, (_, i) => cand(`K${i}`))
+      expect(detectFlaky(db, many).map((f) => f.hash)).toEqual(['K1100'])
+    })
+  })
+})
+
+describe('flakyTasks', () => {
+  it('is empty with no history and with a history that never mixed', async () => {
+    await withRuns([], (db) => expect(flakyTasks(db)).toEqual([]))
+    const rows = [
+      mkRun({ hash: 'A', project: 'pkg', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'B', project: 'pkg', task: 'test' }),
+      mkRun({ hash: 'C', project: 'pkg', task: 'lint', status: 'failed' }),
+      mkRun({ hash: 'C', project: 'pkg', task: 'lint', status: 'failed' }),
+    ]
+    await withRuns(rows, (db) => expect(flakyTasks(db)).toEqual([]))
+  })
+
+  it('lists each task with a mixed key, most failures first, with its keys and counts', async () => {
+    const rows = [
+      // web#test: two mixed keys, 3 failures / 3 passes.
+      mkRun({ hash: 'A', project: 'web', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'A', project: 'web', task: 'test' }),
+      mkRun({ hash: 'B', project: 'web', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'B', project: 'web', task: 'test', status: 'failed' }),
+      mkRun({ hash: 'B', project: 'web', task: 'test', cacheHit: true }),
+      mkRun({ hash: 'B', project: 'web', task: 'test' }),
+      // A clean key beside them is not counted.
+      mkRun({ hash: 'C', project: 'web', task: 'test' }),
+      // api#e2e: one mixed key.
+      mkRun({ hash: 'D', project: 'api', task: 'e2e', status: 'failed' }),
+      mkRun({ hash: 'D', project: 'api', task: 'e2e' }),
+      // A deterministic break stays out.
+      mkRun({ hash: 'E', project: 'api', task: 'build', status: 'failed' }),
+    ]
+    await withRuns(rows, (db) => {
+      expect(flakyTasks(db)).toEqual([
+        { taskId: 'web#test', project: 'web', task: 'test', keys: 2, passes: 3, failures: 3 },
+        { taskId: 'api#e2e', project: 'api', task: 'e2e', keys: 1, passes: 1, failures: 1 },
+      ])
+    })
+  })
+})
+
+describe('runs_failed index', () => {
+  it('is created on open for a database that predates it, and only over failed rows', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'vx-failure-mode-'))
+    try {
+      const first = new Cache(dir)
+      first.dbHandle().exec('DROP INDEX runs_failed')
+      first.close()
+      const reopened = new Cache(dir)
+      try {
+        const row = reopened
+          .dbHandle()
+          .query("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'runs_failed'")
+          .get() as { sql: string } | null
+        expect(row?.sql).toContain("WHERE status = 'failed'")
+      } finally {
+        reopened.close()
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
