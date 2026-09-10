@@ -1150,6 +1150,15 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    all 1,000 configs (repeat loads through the worker) — the sweep is
    35 ms, no visible pause.
 
+   Closing figures for 2026-09-10, night (the same container, source
+   form, medians of 5, after items 83–90 — the lockfile plugins, CI on
+   vx tasks, the empty `build`, `@vzn/vx-infer`; none touched the hot
+   path): 100 projects 126 ms warm / 205 restore / 427 cold; 1,000
+   projects 244 / 1,006 / 2,567 — against the evening's 123 / 181 /
+   369 and 240 / 1,163 / 2,519: the 1,000-project restore row −14%
+   (the save-lane and restore-lane changes of the evening under a
+   quieter box), every other row within its own spread.
+
 7. **First-run DX follow-ups (candidates, from the 2026-09-04
    walkthrough).** (a) DONE 2026-09-09: `--summarize` task rows carry
    `noCache: true` for a task with no `cache` block (present only when
