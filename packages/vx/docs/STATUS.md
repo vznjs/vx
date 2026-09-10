@@ -1023,10 +1023,10 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    substrate; DX — six CLI asks) merged into main as dba8f49 by the
    owner at 13:10Z; PR #270 (items 78–80: the façade trim, the Linux
    port bridge, completions) merged as 61d9392 at 13:50Z. PR #271
-   holds the two perf items after it — 81 the restore lane, 82 the
-   save lane — on the same branch with main merged back in; it merges
-   on the owner's word, never on ours. Item 83 (the `fingerprint` seam
-   and `@vzn/vx-pnpm`) is on the same branch after them.
+   (items 81–82, the restore lane and the save lane) merged as b71008b
+   at 14:24Z. PR #272 holds item 83 — the `fingerprint` seam and
+   `@vzn/vx-pnpm`, the owner's lockfile ask — on the same branch with
+   main merged back in; it merges on the owner's word, never on ours.
    What a fresh session should know: (a) the warm floor is measured
    and recorded three ways in items 76–77 — module load and the git
    walk are what remain, and the compile flags are the right ones;
