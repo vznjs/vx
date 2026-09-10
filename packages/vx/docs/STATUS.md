@@ -1119,7 +1119,7 @@ signal` (an `AbortSignal`) runs the one teardown the process
       server `success` and an exit 1 with no word about why is a
       mystery in a CI log. Pinned in `tests/keep-alive.test.ts` on
       both exit codes. PR #276 (106–110) merged at 18:38Z, main
-      fb97a97; 111 is PR #277.
+      fb97a97; 111 merged as PR #277 at 18:43Z, main 7878582.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

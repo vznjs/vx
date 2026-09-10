@@ -338,9 +338,12 @@ never branches on layering.
 restoreTier })` runs the DAG two-tier. Each ready node invokes
       `executeTask({ node, upstream, preProbed?, … })`.
    7. After the graph drains, dependency-only persistent subprocesses
-      are `SIGTERM`ed; persistent tasks the user REQUESTED are kept
-      alive and the process blocks on them at the very end (after the
-      summary), so Ctrl-C reaps them.
+      are `SIGTERM`ed (SIGKILL after the kill grace); persistent tasks
+      the user REQUESTED are kept alive and the process blocks at the
+      very end (after the summary) until the first of them exits — then
+      one status line names it and its code, the others are torn down
+      the same way, and a non-zero exit fails the run. Ctrl-C reaps
+      them; an embedder aborts through `RunOptions.signal`.
    8. Summary + optional artifacts: `--summarize` (per-run JSON),
       `--profile` (Chrome-trace JSON), `--report=markdown` (CLI-side,
       after `run()` returns).
