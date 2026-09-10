@@ -1225,7 +1225,32 @@ test-types` cold 53.6 s vs 58.2 s, restore 80 ms vs 166 ms,
       `LICENSE` said "nxt contributors" — the project's old name.
       `SECURITY.md` (private reporting, what is in scope) and
       `CONTRIBUTING.md` (the gate, the pin rule, the number rule)
-      added at the root.
+      added at the root. CI then refused the README read: `check.site`
+      runs sandboxed and its allow-list named the two sibling files but
+      not the root README — declared as a read and a `workspaceFiles`
+      input (the same shape as the other two; this container cannot
+      host the sandbox, CI is the proof).
+118.  DONE (2026-09-10, night — owner's ask: "20+ blog posts about
+      technicals, what vx is, why it is fast, its methodologies and
+      values, migration, no choice on the market, the mechanics"):
+      thirty posts under `packages/vx-docs/src/content/docs/blog/`,
+      every claim taken from the docs and verified against source
+      where the docs were silent (three drafts were corrected on the
+      way: output overlap is refused only when provable, a clean-filter
+      path loses its index OID rather than trusting it, the purity gate
+      denies globals not `Math.random`). Series: what vx is · why fast ·
+      keys from git · resolved-config hashing · strict output ownership
+      · no daemon · pipeline with seams · the local floor · cascade
+      through inputs · `vx why` · explicit over magical · the sandbox ·
+      lockfile-aware keys · dev servers in the graph · Ctrl-C · watch ·
+      bitsets and the scheduler · no choice on the market · from
+      Turborepo · from Nx · honest benchmarks · remote execution ·
+      agents and MCP · values · one binary · config in TypeScript ·
+      `vx lock` · telemetry never breaks a run · one command per task ·
+      flaky tasks. All dated today and published (not `draft: true`);
+      the owner re-dates or drafts them to stage an announcement
+      cadence. Built with the site (all thirty render; every relative
+      link resolved in the built HTML), site tests pass.
 117.  DONE (2026-09-10, night — perf, from the real-repo stage table):
       a hit on a task with no declared outputs extracted its logs-only
       artifact anyway — an `exists` and a tar read per hit for nothing
@@ -1454,7 +1479,8 @@ state of each:
    custom domain is a DNS record plus `SITE_URL` / `BASE_PATH` env in
    that workflow (`astro.config.mjs` reads both); every internal link is
    base-relative, so nothing else moves.
-4. DONE tonight: the blog (item 115), README and site numbers generated
+4. DONE tonight: the blog (item 115) with thirty posts for the
+   announcement series (item 118), README and site numbers generated
    and checked, "Edit page" links that open the right file, LICENSE
    holder, SECURITY.md, CONTRIBUTING.md (item 116).
 5. OWNER, optional: enable GitHub private vulnerability reporting
