@@ -30,15 +30,17 @@ whose height is `--len` viewports and whose sticky `.stage` is drawn
 from a scroll progress `--p` (0..1) the script writes on every frame —
 the cold open (a warp field and the command typing itself), the clocks
 (three real cold-build times on one orbit, sixty times speed, then six
-hundred), the wall (the three overheads as monoliths, Nx clipped off
-the chart), the warm replay (the 510 ms over a dot sweep, with the
-three stat tiles), and "One binary." (the strikes) — then flowing
+hundred), the wall (the three overheads as monoliths in one unit,
+`+m:ss`, Nx clipped off the chart), the scale (3,270 tasks counted over
+a dot sweep, with the three per-package stat tiles), and "Open, all the
+way down." (the strikes) — then flowing
 sections (the cards, the pipeline rail, the live terminal, the proof
 panel) and the outro. Two rules hold across it:
 
 - **The numbers** are generated: `packages/vx-bench/update-site.ts`
-  rewrites the `benchRows` block, the three stat tiles in the warm
-  scene and the two benchmark note paragraphs from `results.json`, and
+  rewrites the `benchRows` block, the three per-package stat tiles in
+  the scale scene and the two benchmark note paragraphs from
+  `results.json`, and
   `check.site` fails when they drift. Edit the generator, not those
   regions. The clocks and the wall read the same constants
   (`raceBase`, `raceVx`, `raceTurbo`, `raceNx`, `over()`), so a

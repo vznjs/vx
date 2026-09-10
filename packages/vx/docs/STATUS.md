@@ -1560,6 +1560,40 @@ equivalent — map it manually` on every run, for the value every
       the first `workspaceFiles` input keeps the per-project arms until
       a restart. Both in the docs.
 
+131.  DONE (2026-09-10, late night — owner: "Remove no node no bun — no
+      one cares. Warm run is also minor. Focus on overhead, flexibility,
+      plugins, openness, no paywalls, performance and modularity,
+      compatibility, test coverage, correctness, sandboxing etc.,
+      differentiators. And use the same unit — not 44% then 9.6×. Also
+      don't focus on 4%: I don't want people to think this scales; the
+      overhead is on a very big example. Focus on how vx scales with
+      the codebase and that it does its job in seconds, not minutes"):
+      the film reframed. One unit for every runner everywhere the
+      three overheads appear — clock time over the ideal schedule,
+      `+0:08` / `+1:35` / `+31:06` — and the per-package figure (8 ms /
+      88 ms / 1,712 ms, the same overhead over 1,090 packages) as the
+      scaling number; no percentage, no multiple, on the site, in the
+      README's bench block, in `benchmarks.md`, in the two posts and
+      the concept page that quoted them. The generator prints both
+      (`plus`, `perPkg`; `over`/`overPct` gone) and its three stat
+      tiles are now the per-package tiles, one per runner, in the
+      runner's lane colour. Scenes: the open lede ("adds seconds where
+      others add minutes"), the wall's plates in `+m:ss` with the
+      per-package line, the warm scene replaced by the scale scene
+      (3,270 tasks counted over the dot sweep, "grow the graph and the
+      runner grows in milliseconds per package"), the strikes gained
+      "No paywall." and the line under them is "Open, all the way
+      down." (MIT, open protocols, every seam a hook) with the
+      Node/Bun sentence gone, the cards rewritten to the nine
+      differentiators the owner named (overhead at any size,
+      sandboxing, a plugin at every stage, open with no paywall,
+      correct by construction, compatible, modular, 2,700+ tests, a
+      cache you can interrogate), the proof panel titled "Seconds, not
+      minutes." with the cold row's badges in `+m:ss` and the
+      multiples gone. The warm number stays as one clause in the note
+      and one line in the README. `update-site.ts --check` passes on
+      the regenerated site.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so

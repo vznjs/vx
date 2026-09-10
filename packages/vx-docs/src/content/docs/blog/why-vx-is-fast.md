@@ -12,8 +12,9 @@ excerpt: 'A fully cached run of 3,270 tasks finishes in about half a second with
 The headline number is the one you pay on every uncached build: what
 the runner adds on top of your tasks. On a synthetic workspace of
 1,090 packages and 3,270 tasks whose ideal schedule is 3m 38s, vx
-finishes the cold build in 3m 46s, 4% over the schedule. Turborepo
-finishes in 5m 13s (44% over) and Nx in 34m 44s (9.6× the schedule).
+finishes the cold build in 3m 46s, eight seconds over the schedule.
+Turborepo finishes in 5m 13s (a minute and a half over) and Nx in
+34m 44s (half an hour over).
 Warm, a fully cached `vx run build test --all` finishes in about
 510 ms, Turborepo in 760 ms and Nx in 3.59 s; the cold build burns
 35 s of CPU in vx, 73 s in Turborepo and 114 minutes in Nx. On a real

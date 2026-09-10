@@ -282,6 +282,17 @@ body:has(.vx-landing) {
 .stat.amber .unit {
   color: var(--amber-bright);
 }
+/* the competitors' tiles in their lane colours — the same unit, a different runner */
+.stat.turbo .num,
+.stat.turbo .unit {
+  color: var(--c-turbo);
+  text-shadow: none;
+}
+.stat.nx .num,
+.stat.nx .unit {
+  color: var(--c-nx);
+  text-shadow: none;
+}
 .stat .label {
   font: var(--type-label);
   text-transform: uppercase;
@@ -1246,8 +1257,8 @@ body:has(.vx-landing) {
   pointer-events: none;
 }
 
-/* ---- scene 3 · warm ---- */
-.warm .stage::before {
+/* ---- scene 3 · scale ---- */
+.scale .stage::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -1255,43 +1266,44 @@ body:has(.vx-landing) {
   pointer-events: none;
   background: radial-gradient(ellipse 60% 70% at 32% 50%, rgba(10, 11, 13, 0.92), rgba(10, 11, 13, 0.55) 55%, transparent 80%);
 }
-.warm-copy {
+.scale-copy {
   position: relative;
   z-index: 1;
   padding: 0 var(--gutter);
   max-width: 1100px;
   width: 100%;
 }
-.warm-num {
+.scale-num {
   display: flex;
   align-items: baseline;
   gap: 8px;
   margin: 8px 0 14px;
 }
-.warm-num span:first-child {
+.scale-num span:first-child {
   font: var(--fw-bold) clamp(72px, 16vw, 220px) / 0.9 var(--font-display);
   letter-spacing: -0.06em;
   color: var(--phosphor-bright);
   text-shadow: 0 0 40px color-mix(in srgb, var(--phosphor) 55%, transparent);
   font-variant-numeric: tabular-nums;
 }
-.warm-num .u {
-  font: var(--fw-semibold) clamp(22px, 3vw, 44px) / 1 var(--font-display);
+.scale-num .u {
+  font: var(--fw-semibold) clamp(20px, 2.6vw, 40px) / 1 var(--font-display);
   color: var(--phosphor);
+  letter-spacing: -0.01em;
 }
-.warm-lede {
+.scale-lede {
   font: var(--type-body);
   color: var(--text-mut);
   max-width: 560px;
   margin: 0 0 30px;
 }
-.warm .stats {
+.scale .stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, auto));
   gap: 24px 36px;
   justify-content: start;
 }
-.warm .stat .sub {
+.scale .stat .sub {
   white-space: nowrap;
 }
 
@@ -1651,11 +1663,11 @@ body:has(.vx-landing) {
     flex-direction: column;
     gap: 8px;
   }
-  .warm .stats {
+  .scale .stats {
     grid-template-columns: 1fr 1fr;
     gap: 20px;
   }
-  .warm .stat .sub {
+  .scale .stat .sub {
     white-space: normal;
   }
   .stat .num {
@@ -1671,8 +1683,13 @@ body:has(.vx-landing) {
   .mono .plate .fin {
     display: none;
   }
+  /* a line that wraps on a phone: the chromatic copies are positioned against the paragraph, so they would wrap elsewhere */
+  .none .one .chroma::before,
+  .none .one .chroma::after {
+    display: none;
+  }
   /* the copy is centred on a phone, so the backdrop that keeps it legible over the dot field is too */
-  .warm .stage::before {
+  .scale .stage::before {
     background: radial-gradient(ellipse 90% 70% at 50% 50%, rgba(10, 11, 13, 0.94), rgba(10, 11, 13, 0.6) 60%, transparent 85%);
   }
 }
