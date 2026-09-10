@@ -20,7 +20,7 @@ import {
 } from '@vzn/vx'
 
 export interface TurboCacheOptions {
-  /** Base URL of the cache server (`https://cache.example.com`), or `TURBO_API`. */
+  /** Base URL of the cache server (`https://cache.example.com`), or `TURBO_API`; with a token and neither, Vercel's hosted cache, as for `turbo`. */
   apiUrl?: string
   /** Bearer token every request carries, or `TURBO_TOKEN`. */
   token?: string
@@ -87,13 +87,22 @@ function tagsEqual(expected: string, actual: string): boolean {
   return a.byteLength === b.byteLength && timingSafeEqual(a, b)
 }
 
+/** Where `turbo` itself sends a token with no `apiUrl`: Vercel's hosted Remote Cache. */
+export const VERCEL_API = 'https://vercel.com/api'
+
 /** Resolve options over Turbo's environment; `undefined` = not configured. */
 export function resolveTurboCacheConfig(
   options: TurboCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
 ): TurboCacheConfig | undefined {
-  const apiUrl = (options.apiUrl ?? env['TURBO_API'])?.replace(/\/+$/, '')
   const token = options.token ?? env['TURBO_TOKEN']
+  // Turbo's own default when a token is set and no `apiUrl` is: Vercel's
+  // hosted Remote Cache. A token alone is a configured cache, as it is for
+  // `turbo`; no token at all is the declined, local run.
+  const apiUrl = (options.apiUrl ?? env['TURBO_API'] ?? (token ? VERCEL_API : undefined))?.replace(
+    /\/+$/,
+    '',
+  )
   if (!apiUrl || !token) return undefined
   const teamId = options.teamId ?? env['TURBO_TEAMID']
   const teamSlug = options.teamSlug ?? env['TURBO_TEAM']

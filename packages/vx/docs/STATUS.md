@@ -722,6 +722,17 @@ run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
     and the plugins composing. Docs: the package README, the site
     guide (`guides/inferred-tasks`), the comparison row, the listings.
 
+89. DONE (a hosted cache in three commands): the gap analysis' third
+    row — Turbo's `turbo login && turbo link` gives a team a remote
+    cache in a minute, and vx said nothing about it — was mostly a
+    doc gap and one default. `@vzn/vx-turbo-cache` already speaks
+    Vercel's wire; it now treats a token with no `apiUrl` as Vercel's
+    hosted Remote Cache (`https://vercel.com/api`), exactly as `turbo`
+    does, so `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set is the
+    whole hosted setup; no token still declines. Pinned in the config
+    resolver. The remote-caching guide leads with the three commands
+    and names the Nx wire beside it.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
