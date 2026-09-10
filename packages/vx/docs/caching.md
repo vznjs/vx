@@ -49,7 +49,14 @@ over (in order):
    `yarn.lock`, `bun.lock`, `bun.lockb`, `pnpm-workspace.yaml`. Any
    install-resolved change (a `bun install` that bumps `bun.lock`) or
    any workspace-shape change invalidates _every_ cache entry. This is
-   the single global "the world changed" lever.
+   the single global "the world changed" lever — and a plugin can take
+   one file off it: `VxPlugin.fingerprint` claims a lockfile, core
+   leaves it out of this digest, and the plugin's `key` hook folds what
+   the file means for each project instead (`@vzn/vx-pnpm` folds the
+   project's own resolved dependency closure, so `pnpm update foo`
+   re-keys only the projects that depend on `foo`). The
+   config-evaluation cache still keys on every file: a config may import
+   a dependency the lockfile resolved.
 4. **Project `package.json` hash** — xxh3 of the project's
    `package.json` bytes. Folded in implicitly (Turbo / Nx parity).
    Covers the case where `cache.inputs.files: ['src/**']` is narrow
@@ -455,7 +462,7 @@ A task's cache becomes invalid when any of these change:
 | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Edit a file in the task's `inputs.files` set                                                                                             | step 11 of key derivation                                                                                                 |
 | Edit a file in the task's `inputs.workspaceFiles` set (root-anchored; may live in ANY project's dir — the documented boundary exception) | step 11 — resolved workspace files join the same input-file list                                                          |
-| Any package manager updates a lockfile (`pnpm`, `npm`, `yarn`, `bun`)                                                                    | step 3 (workspace fingerprint)                                                                                            |
+| Any package manager updates a lockfile (`pnpm`, `npm`, `yarn`, `bun`)                                                                    | step 3 (workspace fingerprint) — or, for a lockfile a plugin claims, that plugin's `key` material (`@vzn/vx-pnpm`: only the projects whose dependency closure moved) |
 | Edit `pnpm-workspace.yaml` or `package.json`'s `workspaces` field                                                                        | step 3                                                                                                                    |
 | Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 4 (project package.json hash)                                                                                        |
 | Edit the task's `vx.config.ts`                                                                                                           | step 5 (task config hash)                                                                                                 |

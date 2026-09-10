@@ -10,6 +10,7 @@ import {
   applyFilters,
   buildPackageGraph,
   findWorkspaceRoot,
+  type FingerprintClaims,
   FROZEN_WITHOUT_LOCK,
   listProjects,
   loadProjectConfig,
@@ -21,7 +22,8 @@ import {
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
 import { nearest, UserError } from '../util/index.js'
-import { type CliLoadOptions, loadCliProjects } from './workspace-config.js'
+import { claimedAffected, fingerprintClaims } from '../orchestrator/index.js'
+import { type CliLoadOptions, loadCliProjects, loadCliWorkspace } from './workspace-config.js'
 
 /**
  * The projects whose tasks declare a `cache.inputs.workspaceFiles` glob
@@ -74,6 +76,30 @@ export async function workspaceGlobOwners(
   return owners
 }
 
+/**
+ * The fingerprint files the workspace's plugins claim, with each claimant
+ * asked through the same host the run uses — so a bad answer is refused by
+ * the plugin's name here exactly as it would be at key time.
+ */
+async function workspaceFingerprintClaims(
+  root: string,
+  projects: readonly ProjectMeta[],
+  load: CliLoadOptions,
+): Promise<FingerprintClaims> {
+  const ws = await loadCliWorkspace(root)
+  const claims = fingerprintClaims(ws.plugins)
+  const ctx = {
+    workspaceRoot: root,
+    cacheDir: load.cacheDir ?? ws.cacheDir,
+    warn: (m: string) => process.stderr.write(`${m}\n`),
+    projects: projects.map((p) => ({ name: p.name, dir: p.dir })),
+  }
+  return {
+    files: new Set(claims.keys()),
+    affected: (change) => claimedAffected(claims.get(change.file)!, change, ctx),
+  }
+}
+
 export async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
   const root = await findWorkspaceRoot(cwd)
   const ws = await loadWorkspace(root)
@@ -116,6 +142,7 @@ export async function resolveFilters(
         since: f.gitSince,
         projects,
         workspaceGlobOwners: (orphans) => workspaceGlobOwners(root, projects, orphans, load),
+        fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
       })
       affectedByFilter.set(f, names)
     } catch (err) {

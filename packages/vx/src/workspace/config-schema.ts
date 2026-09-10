@@ -7,6 +7,7 @@
 
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import { DISPATCHED_VERBS, MAX_TIMEOUT_MS, nearest, UserError } from '../util/index.js'
+import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
 // the same reason the task levels reject them: `plugin: [...]` (singular)
@@ -44,6 +45,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       throw new UserError(`${configPath}: \`plugins\` must be an array of plugin objects`)
     }
     const verbOwners = new Map<string, string>()
+    const fileClaimants = new Map<string, string>()
     for (const [i, p] of config.plugins.entries()) {
       if (p === null || typeof p !== 'object') {
         throw new UserError(`${configPath}: \`plugins[${i}]\` must be an object`)
@@ -62,6 +64,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         schedule?: unknown
         commands?: unknown
         teardown?: unknown
+        fingerprint?: unknown
       }
       // A plugin's name is its package name and nothing else. `definePlugin`
       // reads it and stamps it under a registry symbol; a plain object, or
@@ -145,11 +148,45 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           verbOwners.set(verb, plug.name)
         }
       }
+      if (plug.fingerprint !== undefined) {
+        const claim = plug.fingerprint as { files?: unknown; affected?: unknown } | null
+        if (
+          claim === null ||
+          typeof claim !== 'object' ||
+          !Array.isArray(claim.files) ||
+          claim.files.length === 0 ||
+          typeof claim.affected !== 'function'
+        ) {
+          throw new UserError(
+            `${configPath}: \`plugins[${i}].fingerprint\` must be { files: [name, …], affected: function }`,
+          )
+        }
+        for (const file of claim.files as unknown[]) {
+          // A name core never folds has nothing to take out; claiming it
+          // would read as covered while the plugin's material is all there is.
+          if (typeof file !== 'string' || !WORKSPACE_FINGERPRINT_FILES.includes(file)) {
+            throw new UserError(
+              `${configPath}: plugin '${plug.name}' claims fingerprint file ${JSON.stringify(file)}, which core does not fold — one of ${WORKSPACE_FINGERPRINT_FILES.join(', ')}`,
+            )
+          }
+          const owner = fileClaimants.get(file)
+          if (owner !== undefined) {
+            throw new UserError(
+              `${configPath}: plugins '${owner}' and '${plug.name}' both claim fingerprint file '${file}' — a file has one claimant`,
+            )
+          }
+          fileClaimants.set(file, plug.name)
+        }
+      }
       // A plugin must contribute at least one capability or lifecycle hook
       // — an empty `{ name }` object is a no-op authoring mistake.
-      if (caps.every((cap) => plug[cap] === undefined) && plug.commands === undefined) {
+      if (
+        caps.every((cap) => plug[cap] === undefined) &&
+        plug.commands === undefined &&
+        plug.fingerprint === undefined
+      ) {
         throw new UserError(
-          `${configPath}: \`plugins[${i}]\` must contribute at least one of ${[...caps, 'commands'].join('/')}`,
+          `${configPath}: \`plugins[${i}]\` must contribute at least one of ${[...caps, 'commands', 'fingerprint'].join('/')}`,
         )
       }
     }

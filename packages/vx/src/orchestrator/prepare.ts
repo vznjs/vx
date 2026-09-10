@@ -26,7 +26,7 @@ import {
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
-  computeWorkspaceFingerprint,
+  computeWorkspaceFingerprints,
   findWorkspaceRoot,
   listProjects,
   loadWorkspace,
@@ -45,6 +45,7 @@ import {
   applyGraphHooks,
   applyKeyHooks,
   applyScheduleHooks,
+  fingerprintClaims,
   hasHook,
   resolveCache,
 } from './plugin-host.js'
@@ -201,7 +202,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     : resolveCacheDir(workspaceRoot, workspaceConfig)
   const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
   noteSchemaReset(localCache, (m) => log.status(m))
-  const workspaceFingerprint = await computeWorkspaceFingerprint(workspaceRoot)
+  // Two digests from one read: the config-evaluation cache keys on every
+  // file (a config may import a dependency), the task keys on the files no
+  // plugin claims (`VxPlugin.fingerprint`).
+  const fingerprints = await computeWorkspaceFingerprints(
+    workspaceRoot,
+    new Set(fingerprintClaims(plugins).keys()),
+  )
+  const workspaceFingerprint = fingerprints.unclaimed
   mark('open cache')
 
   // Frozen mode (--frozen, CI): configs load FROM vx-lock.json after a
@@ -227,7 +235,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       seeds,
       closure: true,
       lock,
-      evalCache: { store: localCache, workspaceFingerprint },
+      evalCache: { store: localCache, workspaceFingerprint: fingerprints.all },
       warn: (m) => log.status(m),
     })
   } catch (err) {

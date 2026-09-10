@@ -168,7 +168,12 @@ files sit at the workspace root and belong to no project, so mapping
 changed paths to project directories would select nothing; `--affected`
 widens to every project instead, for the same reason it unions in
 untracked files. Only the ROOT copies count: a lockfile vendored inside
-a package is not hashed and selects just that package.
+a package is not hashed and selects just that package. A lockfile a
+plugin CLAIMS (`VxPlugin.fingerprint`, e.g. `pnpm-lock.yaml` under
+`@vzn/vx-pnpm`) is the exception on both sides: the key folds what the
+plugin says per project, so `--affected` asks the plugin which projects
+the change touches — given the bytes at the base ref and in the working
+tree — and selects those; only a plugin that cannot tell widens.
 
 **A file your config IMPORTS selects that project.** vx hashes the
 resolved config, so a shared preset a `vx.config.*` imports is part of
@@ -912,7 +917,8 @@ Edits to a lockfile (`pnpm-lock.yaml`, `bun.lock`, …) or
 `pnpm-workspace.yaml` at the root invalidate every task's cache key
 via the [workspace fingerprint](./caching.md#cache-key-derivation).
 Watch mode hears those because it watches the workspace root
-(non-recursively).
+(non-recursively). A lockfile a plugin claims still triggers a cycle;
+the keys then decide which projects actually re-run.
 
 ### Constraints
 

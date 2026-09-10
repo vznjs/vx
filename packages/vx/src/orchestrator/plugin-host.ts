@@ -15,6 +15,8 @@ import { detectCycle, type TaskNode } from '../graph/index.js'
 import type {
   CacheContext,
   ExecutorContext,
+  FingerprintChange,
+  FingerprintContext,
   GraphHookContext,
   KeyHookContext,
   ProjectHookContext,
@@ -198,6 +200,50 @@ export async function applyKeyHooks(
       node.keyParts = parts
     }
   }
+}
+
+/**
+ * The fingerprint files the plugins claim (`VxPlugin.fingerprint`), each
+ * with its one claimant. The schema refused a second claimant and an
+ * unknown name, so this only indexes.
+ */
+export function fingerprintClaims(plugins: readonly VxPlugin[]): ReadonlyMap<string, VxPlugin> {
+  const claims = new Map<string, VxPlugin>()
+  for (const p of plugins) {
+    if (p.fingerprint === undefined) continue
+    for (const f of p.fingerprint.files) claims.set(f, p)
+  }
+  return claims
+}
+
+/**
+ * Ask a claimed file's plugin which projects a change to it affects.
+ * `undefined` is "every project" — the claimant could not tell — and a
+ * non-iterable answer is refused by name, so a plugin returning `'all'`
+ * cannot select the projects spelled a, l, l.
+ */
+export async function claimedAffected(
+  plugin: VxPlugin,
+  change: FingerprintChange,
+  ctx: FingerprintContext,
+): Promise<Set<string> | undefined> {
+  const answer = await safe(plugin, 'fingerprint', () => plugin.fingerprint!.affected(change, ctx))
+  if (answer === undefined) return undefined
+  if (typeof answer === 'string' || typeof answer !== 'object' || answer === null) {
+    throw new UserError(
+      `plugin '${plugin.name}' failed in fingerprint: returned ${describeValue(answer)}, not a list of project names`,
+    )
+  }
+  const names = new Set<string>()
+  for (const name of answer as Iterable<unknown>) {
+    if (typeof name !== 'string') {
+      throw new UserError(
+        `plugin '${plugin.name}' failed in fingerprint: affected project ${describeValue(name)} is not a name`,
+      )
+    }
+    names.add(name)
+  }
+  return names
 }
 
 /**

@@ -369,6 +369,95 @@ describe('key stage', () => {
   )
 })
 
+describe('fingerprint claim — a plugin keys a lockfile per project', () => {
+  const BUILD =
+    "export default { tasks: { build: { exec: { command: 'echo b' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n"
+  const CLAIM = (deps: string) =>
+    pluginSource(
+      'org/pm',
+      `{ fingerprint: { files: ['pnpm-lock.yaml'], affected() { return [] } }, key(task) { return { deps: ${deps} } } }`,
+    )
+
+  it(
+    'a claimed lockfile edit leaves the key alone; the plugin material is what moves it',
+    async () => {
+      await pkg('a', BUILD)
+      await mkdir(path.join(root, 'packages', 'a', 'src'), { recursive: true })
+      await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
+      await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv1\n')
+      const hash = async () =>
+        (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks[0]!.hash
+
+      await workspace([CLAIM("'closure-1'")])
+      const claimed = await hash()
+      await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv2\n')
+      expect(await hash()).toBe(claimed)
+      // The plugin's per-project material moves it.
+      await workspace([CLAIM("'closure-2'")])
+      expect(await hash()).not.toBe(claimed)
+      // CONTROL: without the claim the same lockfile edit re-keys the task.
+      await workspace([])
+      const bare = await hash()
+      await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv3\n')
+      expect(await hash()).not.toBe(bare)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the claim reaches `--affected` through the CLI',
+    async () => {
+      // `vx run build --affected=HEAD` after a lockfile edit ran EVERY task
+      // before; a claimant names the projects, and the run selects them.
+      await pkg('a', BUILD)
+      await pkg('b', BUILD)
+      await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v1\n')
+      await workspace([
+        pluginSource(
+          'org/pm',
+          `{ fingerprint: { files: ['pnpm-lock.yaml'], affected(c) { return c.after !== null && new TextDecoder().decode(c.after).includes('v2') ? ['b'] : undefined } }, key() { return undefined } }`,
+        ),
+      ])
+      const git = (...args: string[]) => {
+        const r = Bun.spawnSync({
+          cmd: [
+            'git',
+            '-c',
+            'commit.gpgsign=false',
+            '-c',
+            'user.email=t@vx',
+            '-c',
+            'user.name=t',
+            ...args,
+          ],
+          cwd: root,
+        })
+        if (r.exitCode !== 0) throw new Error(new TextDecoder().decode(r.stderr))
+      }
+      git('add', '.')
+      git('commit', '-q', '-m', 'init')
+      await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v2\n')
+      const vx = (...args: string[]) => {
+        const r = Bun.spawnSync({
+          cmd: [process.execPath, path.resolve(import.meta.dir, '../src/bin.ts'), ...args],
+          cwd: root,
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+        })
+        return new TextDecoder().decode(r.stdout) + new TextDecoder().decode(r.stderr)
+      }
+      const scoped = vx('run', 'build', '--affected=HEAD')
+      expect(scoped).toContain('b#build')
+      expect(scoped).not.toContain('a#build')
+      expect(scoped).toContain('1 affected · 2 total')
+      // CONTROL: bytes the plugin cannot read ("cannot tell") select both.
+      await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v3\n')
+      const widened = vx('run', 'build', '--affected=HEAD')
+      expect(widened).toContain('2 affected · 2 total')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('key stage — explainability', () => {
   it(
     'a changed plugin part is what `vx why` names',
