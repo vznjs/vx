@@ -37,6 +37,23 @@ export interface AffectedArgs {
    * — never invokes it and pays nothing.
    */
   workspaceGlobOwners?: (orphanPaths: readonly string[]) => Promise<Iterable<string>>
+  /**
+   * The fingerprint files a plugin claims (`VxPlugin.fingerprint`) and its
+   * answer for a change to one. Resolved lazily: loading the workspace
+   * file costs an evaluation, and a diff that touches no fingerprint file
+   * — the common one — never needs it.
+   */
+  fingerprintClaims?: () => Promise<FingerprintClaims>
+}
+
+export interface FingerprintClaims {
+  readonly files: ReadonlySet<string>
+  /** Project names a change to a claimed file affects; `undefined` = all. */
+  affected(change: {
+    file: string
+    before: Uint8Array | null
+    after: Uint8Array | null
+  }): Promise<ReadonlySet<string> | undefined>
 }
 
 /**
@@ -96,11 +113,31 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
   // principle: "input hashing sees it, so `--affected` must too."
   //
   // Selection is not hashed, so widening it here changes no cache key.
-  if (changed.some((p) => FINGERPRINT_SET.has(p))) {
-    return new Set(args.projects.map((p) => p.name))
+  //
+  // A file a plugin CLAIMS is the exception: the key folds what the plugin
+  // says per project, so selection asks the plugin the same question, with
+  // the bytes at the base ref and in the working tree. Its answer is
+  // unioned with the path-owned projects below; only "cannot tell" widens.
+  const fingerprintChanged = changed.filter((p) => FINGERPRINT_SET.has(p))
+  const claimedOwned = new Set<string>()
+  if (fingerprintChanged.length > 0) {
+    const claims = args.fingerprintClaims === undefined ? undefined : await args.fingerprintClaims()
+    for (const file of fingerprintChanged) {
+      if (claims === undefined || !claims.files.has(file)) {
+        return new Set(args.projects.map((p) => p.name))
+      }
+      const answer = await claims.affected({
+        file,
+        before: await gitBytesAt(args.workspaceRoot, args.since, file),
+        after: await bytesOrNull(path.join(args.workspaceRoot, file)),
+      })
+      if (answer === undefined) return new Set(args.projects.map((p) => p.name))
+      for (const name of answer) claimedOwned.add(name)
+    }
   }
 
   const { owned, orphans } = projectsContaining(args.workspaceRoot, changed, args.projects)
+  for (const name of claimedOwned) owned.add(name)
 
   // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
   // Resolved-config hashing folds those values into the key, so the same
@@ -148,6 +185,39 @@ export function workspaceGlobsMatch(globs: readonly string[], rel: string): bool
  * taught to one surface and not the other.
  */
 const FINGERPRINT_SET: ReadonlySet<string> = new Set(WORKSPACE_FINGERPRINT_FILES)
+
+/**
+ * A root file's bytes at `ref`, or null when the ref has no such file.
+ * `./` anchors the path to the cwd (the workspace root) rather than the
+ * repository root, for a workspace that is a subdirectory of its repo.
+ */
+async function gitBytesAt(
+  workspaceRoot: string,
+  ref: string,
+  file: string,
+): Promise<Uint8Array | null> {
+  const proc = Bun.spawn({
+    cmd: ['git', 'show', `${ref}:./${file}`],
+    cwd: workspaceRoot,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [bytes, stderr, exit] = await Promise.all([
+    new Response(proc.stdout).bytes(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exit === 0) return bytes
+  // "exists on disk but not in <ref>" and "path does not exist in <ref>"
+  // are the file being absent at the ref; anything else is git failing.
+  if (/does not exist in|exists on disk, but not in/.test(stderr)) return null
+  throw new UserError(`git show ${ref}:./${file} failed (exit ${exit}): ${stderr.trim()}`)
+}
+
+async function bytesOrNull(file: string): Promise<Uint8Array | null> {
+  const f = Bun.file(file)
+  return (await f.exists()) ? await f.bytes() : null
+}
 
 /** Run a NUL-separated path-listing git command from the workspace root. */
 async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]> {

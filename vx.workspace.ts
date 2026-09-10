@@ -3,6 +3,7 @@ import { otel } from '@vzn/vx-otel'
 import { github } from '@vzn/vx-github'
 import { mcp } from '@vzn/vx-mcp'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { bun } from '@vzn/vx-lockfile'
 
 // Nothing runs that is not declared here — including core's own executor
 // and cache. Order is precedence: a plugin listed earlier is consulted
@@ -15,6 +16,9 @@ import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 //              GITHUB_STEP_SUMMARY, declines everywhere else. We dogfood our
 //              own plugins so their decline paths run on every laptop run.
 //   mcp()    — adds `vx mcp`, the read-only MCP server AI agents talk to.
+//   bun()    — keys each package's tasks on its own dependency closure
+//              from bun.lock, so a `bun add` in one package re-keys that
+//              package and its dependants, not the whole repo.
 //   scheduleHistoryPlugin() — orders ready tasks by the critical path this
 //              workspace's own history recorded. `assume` covers the run
 //              with no history, a fresh CI runner: the docs build is a
@@ -26,6 +30,7 @@ export default defineWorkspace({
     otel(),
     github(),
     mcp(),
+    bun(),
     scheduleHistoryPlugin({ assume: { '@vzn/vx-docs#build': 30_000 } }),
   ],
 })

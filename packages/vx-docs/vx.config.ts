@@ -6,9 +6,56 @@ export default defineProject({
       dependsOn: ['build', 'test'],
     },
 
+    // The Starlight collection is generated from `packages/vx/docs`. That is
+    // a read across a project boundary, which the sandbox denies unless the
+    // task declares it — so the task declares it: the read grant names the
+    // sibling's docs directory, and `workspaceFiles` makes the same files
+    // the task's inputs, so an edit there re-keys this task and, through
+    // `dependsOn`, `build` and `test`. Every generated page carries a
+    // marker and lives beside the hand-written ones, so the outputs are the
+    // generated set by name — a hit restores exactly them and never wipes
+    // a tracked page.
+    import: {
+      description: 'generate src/content/docs from packages/vx/docs',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun scripts/import-docs.ts',
+        sandbox: {
+          allow: {
+            read: ['**/*', '../vx/docs/**'],
+            write: ['src/content/docs/**'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
+      cache: {
+        inputs: {
+          files: ['scripts/import-docs.ts'],
+          workspaceFiles: ['packages/vx/docs/**'],
+        },
+        outputs: {
+          files: [
+            'src/content/docs/architecture.md',
+            'src/content/docs/benchmarks.md',
+            'src/content/docs/caching.md',
+            'src/content/docs/cli.md',
+            'src/content/docs/comparison.md',
+            'src/content/docs/execution.md',
+            'src/content/docs/flows.md',
+            'src/content/docs/optimizations.md',
+            'src/content/docs/overview.md',
+            'src/content/docs/patterns.md',
+            'src/content/docs/schema.md',
+            'src/content/docs/modules/**',
+            'src/content/docs/design/**',
+          ],
+        },
+      },
+    },
+
     test: {
       description: 'bun test — the guide and sidebar pins (needs the imported content)',
-      dependsOn: ['install'],
+      dependsOn: ['install', 'import'],
       exec: {
         command: 'bun test',
         sandbox: {
@@ -38,7 +85,7 @@ export default defineProject({
 
     build: {
       description: 'astro build → dist/',
-      dependsOn: ['install'],
+      dependsOn: ['install', 'import'],
       exec: {
         // Under Bun, not the host's Node: `bun --bun` runs astro's bin on
         // Bun's runtime, which builds the same 133 pages in half the time
@@ -69,9 +116,13 @@ export default defineProject({
         },
       },
       cache: {
+        // The generated pages are gitignored, so `**/*` does not see them;
+        // `import`'s key does (its inputs are the docs), and it cascades
+        // through `dependsOn`. This used to name `docs/**` at the workspace
+        // root — a path that stopped existing when core moved under
+        // `packages/`, so a docs edit never re-keyed the build.
         inputs: {
           files: ['**/*'],
-          workspaceFiles: ['docs/**'],
         },
         outputs: { files: ['dist/**'] },
       },

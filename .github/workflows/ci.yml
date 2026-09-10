@@ -27,53 +27,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Sandbox runtime deps: bubblewrap (kernel-level isolation) +
-      # socat (network bridge) on Linux, plus strace (per-task
-      # violation detection). Ubuntu 24's default AppArmor profile
-      # blocks unprivileged user namespaces — that breaks bwrap. We
-      # disable the restriction via sysctl so the sandbox tests can
-      # actually exercise bwrap end-to-end in CI.
-      - name: Install sandbox runtime deps
-        run: |
-          # Only Ubuntu's own index is needed. The image also carries
-          # third-party sources (Chrome, Microsoft) whose mirrors can serve
-          # a stale index — `apt-get update` then exits 100 on a hash-sum
-          # mismatch before a single vx step runs (two heads on 2026-09-09).
-          # Drop them so the gate depends on the one repository it uses.
-          sudo find /etc/apt/sources.list.d -type f ! -name 'ubuntu.sources' -delete
-          sudo apt-get update
-          sudo apt-get install -y bubblewrap socat strace ripgrep
-          # Ubuntu 24+ ships with AppArmor restricting unprivileged
-          # user namespaces. bwrap needs them; without this sysctl
-          # tweak it exits non-zero on first use.
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-          # AppArmor profile-based restriction (Ubuntu 24.04+): some
-          # builds also enforce via the unprivileged_userns profile.
-          if [ -f /etc/apparmor.d/unprivileged_userns ]; then
-            sudo aa-disable /etc/apparmor.d/unprivileged_userns || true
-          fi
-
-      # Diagnose: confirm bwrap actually runs on this host before
-      # firing the test suite. Surfaces install / namespace issues
-      # directly in CI logs instead of as opaque "tests skipped".
-      - name: Diagnose sandbox availability
-        run: |
-          echo "::group::which bwrap"
-          which bwrap || echo "MISSING"
-          bwrap --version || true
-          echo "::endgroup::"
-          echo "::group::sysctl userns"
-          sysctl kernel.unprivileged_userns_clone 2>&1 || true
-          sysctl kernel.apparmor_restrict_unprivileged_userns 2>&1 || true
-          echo "::endgroup::"
-          echo "::group::bwrap minimal exec"
-          bwrap --ro-bind / / --proc /proc --dev /dev /bin/true
-          echo "ok: bwrap exited 0"
-          echo "::endgroup::"
-          echo "::group::probeSandbox()"
-          bun -e 'import("/home/runner/work/vx/vx/packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => { console.log(JSON.stringify(a)); process.exit(0) })' \
-            || bun -e 'import("./packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => { console.log(JSON.stringify(a)); process.exit(0) })'
-          echo "::endgroup::"
+      - uses: ./.github/actions/vx-runner
 
       # Dogfood: vx orchestrates its own gate via vx.config.ts. The `ci`
       # task is a group fanning out to `lint` (→ lint.oxlint +
@@ -97,40 +51,19 @@ jobs:
       # the step's exit code still gates the job.
       #
       # VX_REQUIRE_SANDBOX turns an unavailable OS sandbox into a test FAILURE
-      # instead of a skip. The step above installs bwrap + socat + strace, so
+      # instead of a skip. The runner action installs bwrap + socat + strace, so
       # unavailable here means the install broke — and `describe.skipIf` would
       # otherwise delete the tests covering the isolation boundary under a
       # green check. The diagnose step is not a
       # substitute: it hard-fails on the raw bwrap exec, one of probeSandbox's
       # four failure paths. `vx run` isolates the child env, so this is
       # forwarded via the test task's exec.env.passThrough.
-      # Warm bun's cross-compile targets BEFORE the sandbox sees them.
-      # `bun build --compile` downloads `@oven/bun-<target>` into
-      # `~/.bun/install/cache` on first use; a sandboxed task may READ that
-      # cache (only the workspace root is denied) but not write it, so on a
-      # cold runner the download fails with a misleading
-      # "Network error … check your proxy settings". Warming it here keeps
-      # the build tasks' grants as tight as they are on a dev machine, where
-      # the cache is already populated. Measured 2026-09-05: cold sandboxed
-      # build fails, same build after this step succeeds.
-      - name: Warm bun cross-compile targets
-        run: |
-          echo 'console.log(0)' > /tmp/warm.ts
-          for t in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
-            bun build --compile --target="bun-$t" /tmp/warm.ts --outfile "/tmp/warm-$t" >/dev/null
-          done
-
-      # Workspace-level steps, deliberately NOT vx tasks: each one reads
-      # across project boundaries (the site is generated from `docs/`, the
-      # check compares it against `bench/`), and a project may only use its
-      # own directory. They belong to the workspace, so the workspace runs
-      # them.
-      - name: Generate site content from docs/
-        run: bun run docs:generate
-
-      - name: Site matches bench/results.json
-        run: bun run site:check
-
+      # Everything the gate checks is a vx task — the site's generated
+      # collection (`@vzn/vx-docs#import`), the site-vs-results check
+      # (`@vzn/vx-bench#check.site`), every package's suite (each
+      # package's `ci` → `test`) — so the same command is the gate here
+      # and on a laptop. A read across a project boundary is declared on
+      # the task that needs it, never worked around with a workspace step.
       - name: vx run ci
         env:
           VX_REQUIRE_SANDBOX: '1'
@@ -165,9 +98,9 @@ jobs:
           GOT="$(packages/vx/dist/vx-linux-x64 --version)"
           test "$GOT" = "$WANT" || { echo "::error::binary reports '$GOT', expected '$WANT'"; exit 1; }
 
-  # The `ci` job above is scoped to ./tests (core). Workspace-member tests ran
-  # only inside the removed cloud job, so `packages/*/tests/` has been
-  # unguarded since — this job is what makes a plugin's suite gate a push.
+  # The `ci` job above runs every package's suite through `vx run ci --all`;
+  # this job exists for the one suite that needs live services — the REAPI
+  # wire against a real cache server and a real execution worker.
   #
   # bazel-remote is a real REAPI server (a single static binary, hence a cheap
   # service container). VX_REQUIRE_REAPI turns an absent endpoint into a
@@ -199,24 +132,10 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: bun test (packages/vx-otel)
-        run: cd packages/vx-otel && bun test
-      - name: bun test (packages/vx-github)
-        run: cd packages/vx-github && bun test
-      - name: bun test (packages/vx-mcp)
-        run: cd packages/vx-mcp && bun test
-      - name: bun test (packages/vx-turbo-cache)
-        run: cd packages/vx-turbo-cache && bun test
-      - name: bun test (packages/vx-nx-cache)
-        run: cd packages/vx-nx-cache && bun test
-      - name: bun test (packages/vx-turbo)
-        run: cd packages/vx-turbo && bun test
-      - name: bun test (packages/vx-schedule-history)
-        run: cd packages/vx-schedule-history && bun test
-      - name: bun test (packages/vx-migrate)
-        run: cd packages/vx-migrate && bun test
-      - name: bun test (packages/vx-prune)
-        run: cd packages/vx-prune && bun test
+      # `@vzn/vx-reapi#test` reaches core's compile tasks through
+      # `install → ^build`, and those run sandboxed; the runner action is
+      # what lets them.
+      - uses: ./.github/actions/vx-runner
 
       # NativeLink gives the EXECUTION half a real scheduler + worker. Its
       # official image is distroless — no /bin/sh — so a worker inside it
@@ -245,40 +164,20 @@ jobs:
           sleep 5
           docker ps --filter name=vx-nl --format '{{.Status}}' | grep -q Up
 
-      # ONE bun PROCESS PER TEST FILE, not one for the suite. Bun 1.4.0's
-      # node:http2 client stalls inbound frames under load (oven-sh/bun#39796,
-      # open) and the stall compounds with accumulated gRPC sessions in a
-      # single process — the whole suite in one process timed out at 90s on
-      # this runner (2026-08-23) while every file passes alone, here and on an
-      # emulation-slowed arm64 host. Per-file processes are the shape the
-      # evidence says works; --timeout 90000 still covers a single ~28s stall.
-      #
-      # `bun test --isolate` (Bun 1.4) looks like the way to delete this loop
-      # — fresh globalThis + closed resources per file is exactly why the loop
-      # exists — and it was MEASURED against real bazel-remote + NativeLink
-      # rather than assumed: six interleaved rounds, all 92 tests passing in
-      # every run, stalls counted by wall clock. Plain one process 0/6, this
-      # loop 1/6, --isolate 3/6, each stall a single multi-chunk ByteStream
-      # test taking 30.07s (the gRPC deadline) instead of ~0.1s. Isolation
-      # gives every FILE its own gRPC client and http2 session, so the suite
-      # pays the session-setup race nine times instead of once. Do not
-      # re-propose it without new numbers.
-      #
-      # BOTH require flags are set: a skip is a silent pass, and these suites
-      # are the only proof the cache wire and the execution wire work.
-      - name: bun test (packages/vx-reapi, per-file)
+      # The suite is `@vzn/vx-reapi#test`, one bun process per file (the
+      # task's own comment says why), run through vx with the endpoints in
+      # its environment; the task passes them through and folds them into
+      # its key, so this live-mode run never hits the plain gate's skip-mode
+      # entry. BOTH require flags are set: a skip is a silent pass, and
+      # these suites are the only proof the cache wire and the execution
+      # wire work.
+      - name: vx run test (@vzn/vx-reapi, live)
         env:
           VX_REAPI_TEST_ENDPOINT: 127.0.0.1:19092
           VX_REQUIRE_REAPI: '1'
           VX_REAPI_EXEC_ENDPOINT: 127.0.0.1:51051
           VX_REQUIRE_REAPI_EXEC: '1'
-        run: |
-          cd packages/vx-reapi
-          for f in tests/*.test.ts; do
-            echo "::group::$f"
-            bun test "$f" --timeout 90000
-            echo "::endgroup::"
-          done
+        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx-reapi
 
   # The darwin job exists because THREE macOS-only defects reached main
   # unseen on an ubuntu-only matrix (2026-08-22: bsdtar refusing --format=gnu
@@ -308,33 +207,15 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # The whole core suite in four slices, run SIDE BY SIDE (Bun's own
-      # dealer; the `test.bun.shard-*` tasks deal twelve by weight, but four
-      # slices on a three-core runner sum to the same work whatever the
-      # deal). Several processes, not one, is the point on macOS: `bun test`
-      # pins descriptors per imported module and the process cap is 10 240,
-      # which the whole suite in one process does not clear. Sequential,
-      # the four slices took 3 min 8 s (2026-09-10); the sandbox suites are
-      # class-gated here and the canary below runs after this step, so the
-      # load lands on nothing that sandbox-exec enforces. Each slice writes
-      # its own log and the logs print in order once all four are done, so
-      # a failure reads as one suite's output, not four interleaved.
-      - name: bun test (core, darwin)
-        run: |
-          cd packages/vx
-          pids=()
-          for i in 1 2 3 4; do
-            bun test --shard=$i/4 > "$RUNNER_TEMP/slice-$i.log" 2>&1 &
-            pids+=($!)
-          done
-          fail=0
-          for i in 1 2 3 4; do
-            wait "${pids[$((i - 1))]}" || fail=1
-            echo "::group::bun test --shard=$i/4"
-            cat "$RUNNER_TEMP/slice-$i.log"
-            echo "::endgroup::"
-          done
-          exit $fail
+      # The core suite through vx, as on Linux: the twelve shard tasks plus
+      # the unsafe suite, dealt by weight, run side by side under the
+      # scheduler's cap. Several processes, not one, is the point on macOS:
+      # `bun test` pins descriptors per imported module and the process
+      # cap is 10 240, which the whole suite in one process does not clear.
+      # No VX_REQUIRE_SANDBOX here (see the job comment), so the sandbox
+      # suites skip; the canary below is what watches enforcement.
+      - name: vx run test (core, darwin)
+        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
       # darwin CI because sandbox-exec misbehaves under load here — including

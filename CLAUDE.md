@@ -72,6 +72,10 @@ packages/vx-turbo       zero-migration Turbo plugin: turbo.json + scripts → ta
 packages/vx-migrate     `bunx @vzn/vx-migrate`: turbo.json or an Nx graph → vx.config.ts (core keeps `vx init`)
 packages/vx-prune       `bunx @vzn/vx-prune` / the `prune` verb via the commands seam: a workspace subset for Docker
 packages/vx-schedule-history  `schedule` plugin: order by the critical path learned from run history
+packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fingerprint` seam) and keys each
+                        task on its project's own dependency closure; --affected follows. Parsers over core's
+                        `lockfileClaim` (orchestrator/lockfile-claim.ts: memo, per-run gate, --affected diff).
+                        This repo declares bun()
 packages/vx-docs        Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-bench       synthetic workspace generator + runners (vx / turbo / nx)
 packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/;
@@ -100,12 +104,16 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - `tests/*.unsafe.test.ts` is the suite a sandbox cannot host — the
   sandbox's own tests (seatbelt cannot nest) and the cross-project law
   (a project may read only its own directory). The shards exclude them
-  with `--path-ignore-patterns`; `test.bun.unsafe` runs them, and it is
-  the ONLY task in the whole repo with no `exec.sandbox`.
-- `packages/*` suites are gated by CI's separate job; after touching a
-  plugin package run its suite yourself (`vx-reapi` one process per file
-  with `VX_REAPI_TEST_ENDPOINT` / `VX_REAPI_EXEC_ENDPOINT` set, or it
-  proves nothing).
+  with `--path-ignore-patterns`; `test.bun.unsafe` runs them. It and
+  `@vzn/vx-reapi#test` (which dials service containers on the host's
+  loopback, unreachable from a Linux sandbox's network namespace) are
+  the ONLY two tasks in the whole repo with no `exec.sandbox`.
+- Every package's suite is its `test` task, so `vx run ci --all` gates
+  them all; CI runs nothing but vx tasks (a workspace step is a design
+  smell — declare the cross-project read on the task instead). The one
+  suite that needs live services, `@vzn/vx-reapi#test`, runs skip-mode
+  in the gate and live in CI's service job with `VX_REAPI_TEST_ENDPOINT`
+  / `VX_REAPI_EXEC_ENDPOINT` set (the values are key inputs).
 - Sandbox tests skip without `bwrap`/`socat`/`strace`; `VX_REQUIRE_SANDBOX=1`
   (CI) makes an unavailable sandbox a failure.
 - Format: `bun packages/vx/src/bin.ts run lint.oxfmt.fix`.

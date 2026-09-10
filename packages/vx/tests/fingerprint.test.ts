@@ -20,7 +20,10 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { computeWorkspaceFingerprint } from '../src/workspace/index.js'
+import {
+  computeWorkspaceFingerprint,
+  computeWorkspaceFingerprints,
+} from '../src/workspace/index.js'
 
 const dirs: string[] = []
 
@@ -267,5 +270,57 @@ describe('degenerate roots', () => {
     const dir = workspace()
     mkdirSync(path.join(dir, 'bun.lock'))
     expect(await computeWorkspaceFingerprint(dir)).toMatch(/^[0-9a-f]{16}$/)
+  })
+})
+
+describe('a claimed file — `VxPlugin.fingerprint` takes it out of the key digest', () => {
+  // A plugin that keys a lockfile per project claims it; the digest every
+  // task key folds must then not move on that file, while the digest the
+  // config-evaluation cache keys on still must (a config may import a
+  // dependency the lockfile resolved).
+  it('leaves `unclaimed` alone and moves `all` when the claimed file changes', async () => {
+    const claimed = new Set(['pnpm-lock.yaml'])
+    const v1 = await computeWorkspaceFingerprints(
+      workspace({ 'pnpm-lock.yaml': 'v1', 'pnpm-workspace.yaml': 'p' }),
+      claimed,
+    )
+    const v2 = await computeWorkspaceFingerprints(
+      workspace({ 'pnpm-lock.yaml': 'v2', 'pnpm-workspace.yaml': 'p' }),
+      claimed,
+    )
+    expect(v2.unclaimed).toBe(v1.unclaimed)
+    expect(v2.all).not.toBe(v1.all)
+    // Control: the same edit with nothing claimed moves both.
+    const bare = await computeWorkspaceFingerprints(
+      workspace({ 'pnpm-lock.yaml': 'v2', 'pnpm-workspace.yaml': 'p' }),
+      new Set(),
+    )
+    expect(bare.unclaimed).not.toBe(v1.unclaimed)
+    expect(bare.unclaimed).toBe(bare.all)
+  })
+
+  it('a claimed file that appears does not move `unclaimed` either', async () => {
+    // The name leaves the fold with the bytes: a fold of "present" would
+    // still re-key the workspace on the first `pnpm install`.
+    const claimed = new Set(['pnpm-lock.yaml'])
+    const without = await computeWorkspaceFingerprints(workspace({ 'bun.lock': 'b' }), claimed)
+    const withLock = await computeWorkspaceFingerprints(
+      workspace({ 'bun.lock': 'b', 'pnpm-lock.yaml': 'v1' }),
+      claimed,
+    )
+    expect(withLock.unclaimed).toBe(without.unclaimed)
+    expect(withLock.all).not.toBe(without.all)
+  })
+
+  it('`all` is the single-digest function, byte for byte', async () => {
+    const dir = workspace({ 'pnpm-lock.yaml': 'v1', 'yarn.lock': 'y' })
+    const both = await computeWorkspaceFingerprints(dir, new Set(['pnpm-lock.yaml']))
+    expect(both.all).toBe(await computeWorkspaceFingerprint(dir))
+    // An unclaimed file still moves the key digest.
+    const yarnBumped = await computeWorkspaceFingerprints(
+      workspace({ 'pnpm-lock.yaml': 'v1', 'yarn.lock': 'y2' }),
+      new Set(['pnpm-lock.yaml']),
+    )
+    expect(yarnBumped.unclaimed).not.toBe(both.unclaimed)
   })
 })

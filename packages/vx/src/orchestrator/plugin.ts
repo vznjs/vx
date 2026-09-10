@@ -94,6 +94,20 @@ export interface VxPlugin {
     | Promise<Readonly<Record<string, string>> | undefined>
 
   /**
+   * Workspace-root files this plugin keys on its own, taken OUT of the
+   * workspace fingerprint. Core folds every lockfile it knows into every
+   * task's key, so one `pnpm install` re-keys the whole workspace. A plugin
+   * that reads the lockfile and folds each project's own dependency
+   * closure through `key` claims the file here: core leaves it out of the
+   * fingerprint every key sees (the config-evaluation cache still keys on
+   * it — a config may import a dependency), and `--affected` asks
+   * `affected` which projects a change to it touches instead of selecting
+   * every project. A file has one claimant; a name core does not fold is
+   * refused, since there is nothing to take out.
+   */
+  readonly fingerprint?: FingerprintClaim
+
+  /**
    * Scheduling priorities: task id → weight, higher runs first among READY
    * tasks (merged over the structural baseline, which stays the tie-break).
    * Runs once, after the graph is final. A later plugin's weight for a task
@@ -208,6 +222,35 @@ export interface GraphHookContext extends BaseContext {
 }
 
 export interface KeyHookContext extends BaseContext {}
+
+/** A plugin's claim on workspace fingerprint files — see `VxPlugin.fingerprint`. */
+export interface FingerprintClaim {
+  /** Root-relative names from `WORKSPACE_FINGERPRINT_FILES`, e.g. `['pnpm-lock.yaml']`. */
+  readonly files: readonly string[]
+  /**
+   * The projects (package names) a change to a claimed file affects. Called
+   * by `--affected` with the file's bytes at the base ref and in the
+   * working tree (`null` where it does not exist). Return `undefined` to
+   * select every project — the answer a claimant gives when it cannot
+   * tell, and what core does for an unclaimed file.
+   */
+  affected(
+    change: FingerprintChange,
+    ctx: FingerprintContext,
+  ): Iterable<string> | undefined | Promise<Iterable<string> | undefined>
+}
+
+export interface FingerprintChange {
+  /** The claimed file's root-relative name. */
+  readonly file: string
+  readonly before: Uint8Array | null
+  readonly after: Uint8Array | null
+}
+
+export interface FingerprintContext extends BaseContext {
+  /** Every project in the workspace: package name and absolute directory. */
+  readonly projects: ReadonlyArray<{ readonly name: string; readonly dir: string }>
+}
 
 export interface ScheduleHookContext extends BaseContext {
   /** The run's local cache handle — its `dbHandle()` holds the run history a policy can learn from. */

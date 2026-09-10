@@ -317,8 +317,25 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(`{ plugins: [${plugin('p', '{ setup: 1 }')}] }`),
   ],
   [
-    'plugins[<i>] must contribute at least one of config/project/graph/key/schedule/setup/cache/executor/telemetry/teardown/commands',
+    'plugins[<i>] must contribute at least one of config/project/graph/key/schedule/setup/cache/executor/telemetry/teardown/commands/fingerprint',
     workspaceConfig(`{ plugins: [${plugin('p', '{}')}] }`),
+  ],
+  [
+    'plugins[<i>].fingerprint must be { files: [name, …], affected: function }',
+    workspaceConfig(`{ plugins: [${plugin('p', '{ fingerprint: { files: [] } }')}] }`),
+  ],
+  [
+    'plugin \'<name>\' claims fingerprint file "<file>", which core does not fold',
+    workspaceConfig(
+      `{ plugins: [${plugin('p', '{ fingerprint: { files: ["Cargo.lock"], affected() {} } }')}] }`,
+    ),
+  ],
+  [
+    "plugins '<a>' and '<b>' both claim fingerprint file '<file>' — a file has one claimant",
+    workspaceConfig(
+      `{ plugins: [${plugin('a', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}, ` +
+        `${plugin('b', '{ fingerprint: { files: ["pnpm-lock.yaml"], affected() {} } }')}] }`,
+    ),
   ],
 ]
 

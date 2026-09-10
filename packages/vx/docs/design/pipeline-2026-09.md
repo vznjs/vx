@@ -23,18 +23,19 @@ one consumer.
 One `VxPlugin` object, hooks named by the pipeline stage they run in,
 in pipeline order:
 
-| Stage     | Hook                         | Runs                       | Can change                                         |
-| --------- | ---------------------------- | -------------------------- | -------------------------------------------------- |
-| workspace | `config(ws, ctx)`            | once, before discovery     | the workspace config (concurrency, cacheDir, …)    |
-| project   | `project(config, meta, ctx)` | once per loaded project    | the project's tasks (add, remove, edit)            |
-| graph     | `graph(nodes, ctx)`          | once, after the task graph | edges, `requested`, resources                      |
-| key       | `key(task, ctx)`             | once per task, at hash     | extra key material (folded, never replaces)        |
-| schedule  | `schedule(nodes, ctx)`       | once, before scheduling    | per-task priorities (the two-tier scheduler input) |
-| execute   | `executor(ctx)`              | once per run               | WHERE one task's command runs (existing)           |
-| store     | `cache(ctx)`                 | once per run               | WHERE artifacts live (existing)                    |
-| observe   | `telemetry(ctx)`             | once per run               | nothing — records out (existing)                   |
-| observe   | `setup(ctx)` / `teardown()`  | once per run               | nothing — raw bus subscription (existing)          |
-| cli       | `commands`                   | on an unknown verb         | which verbs exist                                  |
+| Stage       | Hook                               | Runs                                      | Can change                                                                                    |
+| ----------- | ---------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------- |
+| workspace   | `config(ws, ctx)`                  | once, before discovery                    | the workspace config (concurrency, cacheDir, …)                                               |
+| project     | `project(config, meta, ctx)`       | once per loaded project                   | the project's tasks (add, remove, edit)                                                       |
+| graph       | `graph(nodes, ctx)`                | once, after the task graph                | edges, `requested`, resources                                                                 |
+| key         | `key(task, ctx)`                   | once per task, at hash                    | extra key material (folded, never replaces)                                                   |
+| fingerprint | `{ files, affected(change, ctx) }` | claim, static; `affected` at `--affected` | takes named lockfiles out of the workspace fingerprint; `key` folds their meaning per project |
+| schedule    | `schedule(nodes, ctx)`             | once, before scheduling                   | per-task priorities (the two-tier scheduler input)                                            |
+| execute     | `executor(ctx)`                    | once per run                              | WHERE one task's command runs (existing)                                                      |
+| store       | `cache(ctx)`                       | once per run                              | WHERE artifacts live (existing)                                                               |
+| observe     | `telemetry(ctx)`                   | once per run                              | nothing — records out (existing)                                                              |
+| observe     | `setup(ctx)` / `teardown()`        | once per run                              | nothing — raw bus subscription (existing)                                                     |
+| cli         | `commands`                         | on an unknown verb                        | which verbs exist                                                                             |
 
 Rules that keep it a pipeline and not a soup:
 

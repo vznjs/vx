@@ -10,9 +10,34 @@ invalidate every cached entry at once.
 
 ```ts
 export function computeWorkspaceFingerprint(workspaceRoot: string): Promise<string>
+export function computeWorkspaceFingerprints(
+  workspaceRoot: string,
+  claimed: ReadonlySet<string>,
+): Promise<{ all: string; unclaimed: string }>
 ```
 
-Returns a hex sha256.
+Both return 16 hex characters of seed-chained xxh3. The second reads each
+file once and folds two digests: `all` over every file present, and
+`unclaimed` over the files no plugin claims. `prepareRun` keys the
+config-evaluation cache on `all` (a config may import a dependency the
+lockfile resolved) and every task key on `unclaimed`. A claimed file
+leaves the key digest entirely, name included — a fold of "present"
+would still re-key the workspace the first time the file appeared.
+
+## Claiming a file (`VxPlugin.fingerprint`)
+
+A plugin that reads a lockfile and keys each project on its own
+dependency closure declares `fingerprint: { files: ['pnpm-lock.yaml'],
+affected(change, ctx) }`. The schema refuses a name this module does
+not fold (nothing to take out) and a second claimant for one file.
+`fingerprintClaims(plugins)` in `plugin-host.ts` indexes the claims;
+`--affected` (`workspace/affected.ts`) asks the claimant's `affected`
+with the file's bytes at the base ref and in the working tree, and
+selects the projects it names instead of every project — `undefined`
+("cannot tell") widens exactly as an unclaimed file does. `vx watch`
+needs nothing: it still re-runs on the file, and the keys decide.
+`@vzn/vx-lockfile` (`pnpm()`, `bun()`, `npm()`, `yarn()`) are the claimants, both over the shell in
+[`lockfile-claim.md`](./lockfile-claim.md).
 
 ## Files folded in
 
@@ -40,15 +65,14 @@ of `CacheKeyInput`).
 ## Algorithm
 
 ```ts
-const h = new Bun.CryptoHasher('sha256')
+let h = 0n
 for (const f of FILES) {
   if (file at <root>/<f> exists) {
-    h.update(`${f}\0`)
-    h.update(<bytes>)
-    h.update('\n')
+    h = xxh3(`${f}\0`, h)
+    h = xxh3(<bytes>, h)
   }
 }
-return h.digest('hex')
+return h.toString(16).padStart(16, '0')
 ```
 
 The filename prefix prevents collisions between two files that happen
@@ -66,9 +90,11 @@ to have the same byte content but different roles.
 
 ## Tests
 
-`tests/orchestrator.test.ts` indirectly covers this — a lockfile edit
-invalidates every cached entry in the e2e fixtures. The fingerprint
-itself doesn't have a dedicated unit-test file.
+`tests/fingerprint.test.ts` pins stability, sensitivity per file, and
+the claim (a claimed edit moves `all` and not `unclaimed`; nothing
+claimed folds both the same). `tests/affected.test.ts` pins the
+`--affected` half of a claim, `tests/plugin-pipeline.test.ts` the key
+half through `planRun` and the CLI.
 
 ## Adding a new fingerprint source
 

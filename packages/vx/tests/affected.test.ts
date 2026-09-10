@@ -368,6 +368,142 @@ describe('affectedProjects', () => {
       expect([...out].sort()).toEqual(['a', 'b'])
     })
 
+    describe('a CLAIMED file asks its plugin instead of widening', () => {
+      // `VxPlugin.fingerprint` takes a lockfile out of the digest every key
+      // folds, and the plugin folds what the file means per project. So the
+      // selection question is the plugin's too: it sees the bytes at the base
+      // ref and in the working tree, and names the projects — only "cannot
+      // tell" (undefined) widens as an unclaimed file does.
+      type Change = { file: string; before: Uint8Array | null; after: Uint8Array | null }
+      const asked: Change[] = []
+      const claimOf = (
+        answer: readonly string[] | undefined,
+        loaded = { count: 0 },
+      ): (() => Promise<{
+        files: ReadonlySet<string>
+        affected: (c: Change) => Promise<ReadonlySet<string> | undefined>
+      }>) => {
+        return async () => {
+          loaded.count += 1
+          return {
+            files: new Set(['pnpm-lock.yaml']),
+            affected: async (c: Change) => {
+              asked.push(c)
+              return answer === undefined ? undefined : new Set(answer)
+            },
+          }
+        }
+      }
+      beforeEach(() => asked.splice(0))
+
+      it("selects the plugin's projects, given the base-ref and working-tree bytes", async () => {
+        await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv1\n')
+        await git(root, 'add', '.')
+        await git(root, 'commit', '-q', '-m', 'add lockfile')
+        await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv2\n')
+
+        const out = await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: claimOf(['b']),
+        })
+        expect([...out]).toEqual(['b'])
+        expect(asked).toHaveLength(1)
+        expect(asked[0]!.file).toBe('pnpm-lock.yaml')
+        expect(new TextDecoder().decode(asked[0]!.before!)).toBe('lockfileVersion: 9\nv1\n')
+        expect(new TextDecoder().decode(asked[0]!.after!)).toBe('lockfileVersion: 9\nv2\n')
+        // CONTROL: the same edit with no claim still selects everything.
+        const bare = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
+        expect([...bare].sort()).toEqual(['a', 'b'])
+      })
+
+      it('unions the answer with the path-owned projects', async () => {
+        await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v1')
+        await git(root, 'add', '.')
+        await git(root, 'commit', '-q', '-m', 'add lockfile')
+        await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v2')
+        await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
+        const out = await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: claimOf(['b']),
+        })
+        expect([...out].sort()).toEqual(['a', 'b'])
+        // And an empty answer selects only the path-owned project.
+        const none = await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: claimOf([]),
+        })
+        expect([...none]).toEqual(['a'])
+      })
+
+      it('"cannot tell" (undefined) widens exactly as an unclaimed file does', async () => {
+        await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v1')
+        const out = await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: claimOf(undefined),
+        })
+        expect([...out].sort()).toEqual(['a', 'b'])
+      })
+
+      it('a NEW claimed file has no base-ref bytes; a DELETED one no working-tree bytes', async () => {
+        await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v1')
+        await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: claimOf([]),
+        })
+        expect(asked[0]!.before).toBeNull()
+        expect(asked[0]!.after).not.toBeNull()
+        await git(root, 'add', '.')
+        await git(root, 'commit', '-q', '-m', 'add lockfile')
+        await rm(path.join(root, 'pnpm-lock.yaml'))
+        asked.splice(0)
+        await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: claimOf([]),
+        })
+        expect(asked[0]!.before).not.toBeNull()
+        expect(asked[0]!.after).toBeNull()
+      })
+
+      it('an UNCLAIMED lockfile changing alongside still widens', async () => {
+        await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v1')
+        await writeFile(path.join(root, 'bun.lock'), '{}')
+        const out = await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: claimOf([]),
+        })
+        expect([...out].sort()).toEqual(['a', 'b'])
+      })
+
+      it('the claims are never loaded when no fingerprint file changed', async () => {
+        // Loading them evaluates the workspace file; the diff that touches
+        // no lockfile — nearly every one — must not pay for it.
+        const loaded = { count: 0 }
+        await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
+        const out = await affectedProjects({
+          workspaceRoot: root,
+          since: 'HEAD',
+          projects,
+          fingerprintClaims: claimOf(['b'], loaded),
+        })
+        expect([...out]).toEqual(['a'])
+        expect(loaded.count).toBe(0)
+      })
+    })
+
     it('an ordinary source change still selects only its own project', async () => {
       // The control that stops "select everything, always" from passing this
       // block. `--affected` exists to run less; a widening that fires on any

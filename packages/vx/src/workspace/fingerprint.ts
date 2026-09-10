@@ -44,13 +44,47 @@ export const WORKSPACE_FINGERPRINT_FILES = [
  * invalidates every cached entry. Coarse but correct.
  */
 export async function computeWorkspaceFingerprint(workspaceRoot: string): Promise<string> {
-  let h = 0n
+  return (await computeWorkspaceFingerprints(workspaceRoot, NONE)).all
+}
+
+const NONE: ReadonlySet<string> = new Set()
+
+export interface WorkspaceFingerprints {
+  /** Every file folded — what the config-evaluation cache keys on. */
+  readonly all: string
+  /**
+   * The same fold minus the files a plugin claims (`VxPlugin.fingerprint`)
+   * — what every task key folds. Identical to `all` with nothing claimed.
+   */
+  readonly unclaimed: string
+}
+
+/**
+ * Both digests from one read of each file. A claimed file leaves the key
+ * digest entirely (its name too): the claimant folds what it means per
+ * project, and a fold of "present" would still re-key the workspace when
+ * the file appeared.
+ */
+export async function computeWorkspaceFingerprints(
+  workspaceRoot: string,
+  claimed: ReadonlySet<string>,
+): Promise<WorkspaceFingerprints> {
+  let all = 0n
+  let unclaimed = 0n
   for (const f of WORKSPACE_FINGERPRINT_FILES) {
     const full = path.join(workspaceRoot, f)
     const file = Bun.file(full)
     if (!(await file.exists())) continue
-    h = xxh3(`${f}\0`, h)
-    h = xxh3(await file.bytes(), h)
+    const bytes = await file.bytes()
+    all = xxh3(`${f}\0`, all)
+    all = xxh3(bytes, all)
+    if (claimed.has(f)) continue
+    unclaimed = xxh3(`${f}\0`, unclaimed)
+    unclaimed = xxh3(bytes, unclaimed)
   }
+  return { all: hex(all), unclaimed: hex(unclaimed) }
+}
+
+function hex(h: bigint): string {
   return h.toString(16).padStart(16, '0')
 }

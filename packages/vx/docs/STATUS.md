@@ -507,6 +507,169 @@ port-<tag>-<port>.sock … TCP:127.0.0.1:<port>` in front of the
     work at once; the bench's independent tasks lose nothing, a chain
     waits for the save as it always did.
 
+83. DONE (a lockfile change re-keys only the projects it reaches;
+    owner's ask, 2026-09-10): every lockfile at the root was folded into
+    the workspace fingerprint every task key sees, so one `pnpm update
+foo` invalidated the whole workspace and `--affected` selected every
+    project. Two halves. Core grew its ninth seam, `VxPlugin.fingerprint
+= { files, affected(change, ctx) }`: a plugin CLAIMS a lockfile,
+    core leaves it out of the digest every task key folds (the
+    config-evaluation cache still keys on every file — a config may
+    import a dependency), and `--affected` asks the claimant which
+    projects a change touches, handing it the bytes at the base ref and
+    in the working tree, unioned with the path-owned projects; only
+    "cannot tell" widens as before. The claims load lazily, so a diff
+    with no lockfile in it never evaluates the workspace file for them;
+    the schema refuses a claim on a name core never folds and a second
+    claimant per file. `@vzn/vx-pnpm` (`pnpm()`) is the claimant: one
+    digest per importer over everything it reaches — name, version and
+    resolved-peer suffix (`foo@1(react@18)` is not `foo@1(react@19)`),
+    resolution, patch, `link:` followed into the linked importer's
+    reach, install-wide knobs (pnpmfile, package extensions, overrides,
+    settings) into every one — for lockfile v5, v6 and v9, parsed by
+    `Bun.YAML` with no dependency. The digest is Merkle over strongly
+    connected components (pnpm writes cycles), Tarjan iterative,
+    children first: the first cut walked one closure per importer and
+    took 405 ms on 1000 importers × 3000 packages; the SCC pass takes
+    20 (parse 42). Memoised on disk under the cache dir by the file's
+    xxh3, so a warm run pays one read + hash + a small JSON, never a
+    parse; per run the read happens once (a `WeakMap` on the key
+    context — per task it was 1000 stats, 47 ms in `prepare (graph)`).
+    Measured on the 1000-project bench with a synthetic 810 KB v9
+    lockfile (1000 importers, 3000 packages, fan-out 2): bump one
+    top-layer package → `plugins: []` 2,567 ms / 1000 miss, `pnpm()`
+    551 ms / 12 miss · 988 up-to-date; bump one bottom-layer package
+    (the whole fan-in reaches it) → 2,676 / 1000 miss vs 1,242 / 336
+    miss. Warm `run build --all`, interleaved min-of-7: in-run `time` 464 →
+    485 ms, `prepare (graph)` 2.5 → 9.6 ms — the read, the hash and the
+    memo once, then a map lookup per task — inside the run's own noise
+    (the bare arm spread 464–612).
+    Pinned: the two digests (a claimed edit moves `all`, not
+    `unclaimed`; a claimed file appearing moves neither), `--affected`
+    (answer used, both sides' bytes, undefined widens, an unclaimed
+    sibling widens, no load without a lockfile change), the claim
+    through `planRun` and the CLI, the three schema refusals via the
+    doc-drift table; and in the package: transitive bump, link, peer
+    suffix, patch, install-wide knob, YAML key order, v6, alias, a
+    cycle, `affected` (names, root-importer fallback, cannot-tell),
+    `vx run` / `vx why` / `--affected` end to end, `scope: 'workspace'`,
+    no lockfile, and the memo read instead of parsed (a planted
+    sentinel keys the task). Not done, by design: other lockfiles
+    (`bun.lock`, `yarn.lock`, `package-lock.json`) — the seam is the
+    same, each is a package when someone needs it.
+
+84. DONE (the seam is not a special case: a second claimant, and the
+    shell moves into core): `@vzn/vx-pnpm` carried the claim, the
+    per-project key, the memo and the `--affected` diff around its
+    parser, and a `bun.lock` plugin would have copied all of it. Core's
+    `lockfileClaim({ file, digest, version, scope })` (orchestrator/
+    lockfile-claim.ts, on the façade with `reachDigests`, the
+    Merkle-over-components digest both parsers use) is that shell; the
+    pnpm package is its parser now, and `@vzn/vx-bun` is the second:
+    `bun.lock` through `Bun.JSONC`, resolved the way Bun lays
+    `node_modules` out (`p/d` under the package at `p`, else the nearest
+    ancestor's, else the root's — a nested version counts for the
+    package it is nested under and no other), a `workspace:` entry
+    pointing at its importer so a dependant folds the linked package's
+    whole reach, install-wide knobs (overrides, patches, catalogs) into
+    every project. This repo declares `bun()` in its own
+    `vx.workspace.ts`. Measured here, `run ci --all --dry` hashes
+    before and after bumping astro's resolved version in `bun.lock`:
+    59 of the gate's 61 tasks re-keyed without the plugin, 2 with it
+    (`@vzn/vx-docs#build`, `#test`). Warm `run lint.oxfmt --all`,
+    interleaved min-of-7: wall 372 → 367 ms (noise), `prepare (graph)`
+    3.2 → 5.3 ms — the one read + hash + memo. Also fixed in the same
+    push: `@vzn/vx-pnpm`'s own lint tasks were red on PR #272's first
+    CI run for want of the per-package `.oxfmtrc.json` /
+    `.oxlintrc.json` (without the ignore list oxlint reads
+    `node_modules/@types/bun` and reports TS2688); both packages carry
+    them now, and the package-level run (`cd packages/<p> && oxlint
+--type-aware --type-check`, `oxfmt --check .`) is part of what a
+    new package must pass before it is pushed. And the `VX_TIMING`
+    table now ends `prepareRun` with two rows, `build graph` and
+    `plugin stages` (the graph, key and schedule hooks), where one
+    `prepare (graph)` row hid the key stage's cost all day: on this
+    repo warm, 1.5 and 4–7 ms (the lockfile memo read plus the history
+    plugin's read). Pinned: the shell in
+    core with a fake digest (memo served across instances, a planted
+    memo keys the task, a changed file or version ignores it, one
+    parse for two tasks of one run, the root fallback, `scope:
+'workspace'`, the `--affected` diff, `reachDigests` reach /
+    numbering / cycle); the bun parser (hoisted bump, nested version,
+    workspace link, install-wide knob, scoped nesting, refusal) and
+    `vx run` / `--affected` end to end.
+
+85. DONE (one package for every package manager; owner's ask,
+    2026-09-10): `@vzn/vx-pnpm` and `@vzn/vx-bun` merged into
+    `@vzn/vx-lockfile`, which exports `pnpm()`, `bun()`, `npm()` and
+    `yarn()` — one plugin per manager, each a parser over core's
+    `lockfileClaim` with the same two modes (`scope: 'project'`, the
+    default, one digest per project; `scope: 'workspace'`, the whole
+    file's hash through the plugin) and the same once-per-content /
+    once-per-run cost. The claim's key part is named after the manager
+    (`lockfileClaim` grew `part`), so `vx why` reads `plugin
+@vzn/vx-lockfile/pnpm`. New parsers: `package-lock.json`
+    (lockfileVersion 2 and 3: the `packages` map, `p/node_modules/d`
+    then the ancestors then the root, `link: true` entries pointing at
+    their workspace, root `overrides` into every project; version 1 is
+    refused by name) and `yarn.lock` (berry: `name@npm:range`
+    descriptors to entries, `workspace:` ranges by name, `__metadata`
+    into every project; classic yarn 1: its own text format read
+    line-wise, one root digest since the file records no workspaces —
+    coarse and honest). This repo imports `bun()` from the merged
+    package. Pinned per manager (hoisted / transitive bump, nested
+    version, workspace link, install-wide knob, refusals) and `npm()`
+    / `yarn()` through `planRun`; the pnpm and bun suites moved whole.
+    Not done: yarn classic per-workspace precision — the file has no
+    workspace entries to key on, and reading each `package.json` to
+    seed the walk is a design for when a classic-yarn workspace asks.
+
+86. DONE (CI runs vx tasks only; owner's ask, 2026-09-10): the
+    workflows had grown steps that ran what vx should run — one
+    `cd packages/<p> && bun test` per plugin package (all of them
+    already inside `vx run ci --all`, so the job ran every suite
+    twice), a per-file `bun test` loop for `@vzn/vx-reapi`, four
+    hand-dealt `bun test --shard` slices on macOS, and two root
+    `package.json` scripts (`docs:generate`, `site:check`) excused as
+    "workspace steps" because they read across a project boundary.
+    "If it won't work for us it won't work for anyone": each is a task
+    now. `@vzn/vx-docs#import` generates the Starlight collection from
+    `packages/vx/docs` with the sibling read declared on the task
+    (`read: ['../vx/docs/**']`) and the same files as `workspaceFiles`
+    inputs, outputs the generated set by name (every generated page is
+    gitignored and marked; the tracked pages beside them are never
+    wiped), and `build` / `test` depend on it — which also fixed a real
+    stale-hit bug: `build`'s `workspaceFiles: ['docs/**']` named a
+    workspace-root path that stopped existing when core moved under
+    `packages/`, so a docs edit never re-keyed the site build.
+    `@vzn/vx-bench#check.site` runs `update-site.ts --check` with its
+    two sibling reads declared and folded. `@vzn/vx-reapi#test` is the
+    per-file loop as a task, the four endpoint / require variables
+    passed through AND folded as key inputs (a skip-mode pass never
+    serves the live run), and no sandbox — the suites dial service
+    containers on the host loopback, unreachable from a Linux sandbox's
+    network namespace — so it joins `test.bun.unsafe` as the second
+    unsandboxed task in the repo. The workflows now call `vx run ci
+--all` (Linux), `vx run test --filter @vzn/vx-reapi` with the
+    endpoints (the service job), `vx run test --filter @vzn/vx`
+    (macOS) and `vx run build --filter @vzn/vx-docs` (the site deploy);
+    the root scripts are gone. Still steps, on purpose: runner setup
+    (bwrap, the cross-compile warm-up, the service containers) and the
+    checks of vx's own artifacts as a user meets them — the compiled
+    binary's version and launch, the bare-specifier workspace through
+    the binary, the macOS enforcement canary — which run outside any
+    sandbox by design. Verified on the unprivileged clone before the
+    push, under the real Linux sandbox (`VX_REQUIRE_SANDBOX=1`):
+    `import` 287 ms success with the sibling read granted, `check.site`
+    824 ms success, `@vzn/vx-reapi#test` 28 s success in skip mode; and
+    `run test --filter @vzn/vx --dry` selects the thirteen core test
+    tasks and nothing else. The first CI run of the change had the service job
+    red in 24 s: `@vzn/vx-reapi#test` reaches core's four compile tasks
+    through `install → ^build`, they run sandboxed, and that job had no
+    sandbox runtime — so the Linux runner setup (sandbox deps, the
+    probe, the cross-compile warm-up) is one composite action
+    (`.github/actions/vx-runner`) that every Linux job uses.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
@@ -688,6 +851,22 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
   `docs/cli.md` § Releasing.
 
 ## Next (ordered)
+
+0. **Dependants build core's release binaries for nothing.** Every
+   package's `install` depends on `^build`, and core's `build` is the
+   four `bun build --compile` targets — so `vx run test --filter
+@vzn/vx-lockfile` on a fresh checkout compiles four binaries first,
+   the service job in CI needs the whole sandbox runtime to run one
+   test suite, and a root container that cannot sandbox fails every
+   package's tasks at the compile step (seen all day, 2026-09-10). A
+   dependant needs core's SOURCE, which needs no build. Decide what
+   `build` means for core (nothing — the binaries are a release
+   artifact, `release`/`build.bun` — or a no-op group the binaries hang
+   off) and what `install` means for a package that consumes source;
+   then the ci.yml "compiled binary reports the manifest version" step
+   names its build explicitly instead of riding the `^build` chain.
+   Measure the gate's wall before and after; the four compiles are the
+   longest tasks in it.
 
 1. **The live REAPI suites are green again (2026-09-04); the
    whole-graph run stays optional.** With OrbStack's docker back, the
@@ -972,9 +1151,13 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    substrate; DX — six CLI asks) merged into main as dba8f49 by the
    owner at 13:10Z; PR #270 (items 78–80: the façade trim, the Linux
    port bridge, completions) merged as 61d9392 at 13:50Z. PR #271
-   holds the two perf items after it — 81 the restore lane, 82 the
-   save lane — on the same branch with main merged back in; it merges
-   on the owner's word, never on ours.
+   (items 81–82, the restore lane and the save lane) merged as b71008b
+   at 14:24Z. PR #272 holds item 83 — the `fingerprint` seam and
+   the pnpm plugin, the owner's lockfile ask — item 84 (the shell in
+   core, the bun claimant, dogfooded) and item 85 (one
+   `@vzn/vx-lockfile` package: pnpm, bun, npm, yarn) on the same
+   branch with main merged back in; it merges on the owner's word,
+   never on ours.
    What a fresh session should know: (a) the warm floor is measured
    and recorded three ways in items 76–77 — module load and the git
    walk are what remain, and the compile flags are the right ones;

@@ -35,43 +35,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Sandbox runtime deps: every task in this repo declares
-      # `exec.sandbox`, so a runner that runs a vx task needs bubblewrap
-      # (isolation), socat (network bridge) and ripgrep. Ubuntu 24's
-      # AppArmor blocks the unprivileged user namespaces bwrap needs.
-      - name: Install sandbox runtime deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bubblewrap socat strace ripgrep
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-          if [ -f /etc/apparmor.d/unprivileged_userns ]; then
-            sudo aa-disable /etc/apparmor.d/unprivileged_userns || true
-          fi
-
-      # Warm bun's cross-compile targets BEFORE the sandbox sees them.
-      # `bun build --compile` downloads `@oven/bun-<target>` into
-      # `~/.bun/install/cache` on first use; a sandboxed task may READ that
-      # cache (only the workspace root is denied) but not write it, so on a
-      # cold runner the download fails with a misleading
-      # "Network error … check your proxy settings". Warming it here keeps
-      # the build tasks' grants as tight as they are on a dev machine, where
-      # the cache is already populated. Measured 2026-09-05: cold sandboxed
-      # build fails, same build after this step succeeds.
-      - name: Warm bun cross-compile targets
-        run: |
-          echo 'console.log(0)' > /tmp/warm.ts
-          for t in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
-            bun build --compile --target="bun-$t" /tmp/warm.ts --outfile "/tmp/warm-$t" >/dev/null
-          done
-
-      # Generating the Starlight collection from `docs/` crosses project
-      # boundaries, so it is a workspace step, not an vx-docs task.
-      - name: Generate site content from docs/
-        run: bun run docs:generate
+      - uses: ./.github/actions/vx-runner
 
       # Dogfood: build the docs site through vx from the repo root, scoped
-      # to the docs project. `import` regenerates the Starlight content from
-      # docs/, then `astro build` writes packages/vx-docs/dist.
+      # to the docs project. `build` depends on `import`, which regenerates
+      # the Starlight collection from packages/vx/docs (a declared
+      # cross-project read), then `astro build` writes packages/vx-docs/dist.
       - name: vx run build
         run: bun packages/vx/src/bin.ts run build --filter @vzn/vx-docs
 

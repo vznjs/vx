@@ -62,6 +62,9 @@ export {
   type PluginHookHandlers,
   type PluginHookName,
   type PluginSetupContext,
+  type FingerprintChange,
+  type FingerprintClaim,
+  type FingerprintContext,
   type VxPlugin,
   definePlugin,
   type PluginHooks,
@@ -73,11 +76,20 @@ export {
   applyKeyHooks,
   applyProjectHooks,
   applyScheduleHooks,
+  claimedAffected,
+  fingerprintClaims,
   hasHook,
   CACHE_LAYER_METHODS,
   resolveCache,
   resolveExecutors,
 } from './plugin-host.js'
+export {
+  lockfileClaim,
+  reachDigests,
+  type LockfileClaimHooks,
+  type LockfileClaimOptions,
+  type ReachGraph,
+} from './lockfile-claim.js'
 export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 // The bounded log-capture buffer every telemetry sink shares — see the
 // module header for why one implementation, not one per sink.

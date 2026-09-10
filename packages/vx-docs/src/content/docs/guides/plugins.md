@@ -31,6 +31,7 @@ interface VxPlugin {
   project?(config, ctx): void // one loaded project's tasks: add / remove / edit
   graph?(nodes, ctx): void // the task graph: edges, requested, resources
   key?(task, ctx): Record<string, string> // extra cache-key material per task
+  fingerprint?: { files; affected(change, ctx) } // claim a lockfile: key it per project, not per workspace
   schedule?(nodes, ctx): Map<string, number> // task id → priority among ready tasks
 
   // BEHAVIOR capabilities — decide WHERE work runs and where artifacts live:
@@ -142,6 +143,19 @@ export function nodeMajor(): VxPlugin {
   return definePlugin(import.meta, { key: () => ({ 'node-major': major }) })
 }
 ```
+
+A `key` hook can also take a lockfile OVER from core. Every lockfile at
+the root is folded into the workspace fingerprint that every task's key
+sees, so one `pnpm install` re-keys the whole workspace. A plugin that
+claims the file — `fingerprint: { files: ['pnpm-lock.yaml'], affected }`
+— makes core leave it out of that digest, and folds through `key` what
+the file means for each project instead. `affected` is the other half
+of the same promise: `--affected` asks it which projects a change to the
+file touches (with the bytes at the base ref and in the working tree)
+rather than selecting every project. [`@vzn/vx-lockfile`](../lockfiles/) is the
+reference — `pnpm()`, `bun()`, `npm()`, `yarn()`, each a parser over core's
+`lockfileClaim`: each project's own resolved dependency closure, so
+`pnpm update foo` re-keys only the projects that depend on `foo`.
 
 `schedule` decides which READY task runs first when more are ready than
 there are workers. Return `Map<taskId, weight>`; higher runs first, and
