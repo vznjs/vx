@@ -1358,6 +1358,8 @@ package cycle`), `:155` (the pattern form), `:260` (`detects a cross-project cyc
 
 ### M2. Nothing asserts the task graph or any cache key is invariant to declaration / request order
 
+> Closed 2026-09-10 (STATUS item 98): `tests/task-graph.test.ts` builds the sparse fixture under two request orders and a reversed discovery order and asserts one shape (ids, sorted deps, requested flags, surfaced count).
+
 - **Nx behaviour**: `create-task-graph.spec.ts:2656`
   **`should create deterministic task graphs regardless of target order`**, with a comment
   naming the regression it locks: _"dummy tasks (created when a dependency project doesn't

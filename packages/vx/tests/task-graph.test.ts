@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
 import type { PackageGraph } from '../src/workspace/package-graph.js'
-import { buildTaskGraph, markSurfacedDeps, type ProjectEntry } from '../src/graph/task-graph.js'
+import {
+  buildTaskGraph,
+  expandRequested,
+  markSurfacedDeps,
+  type ProjectEntry,
+} from '../src/graph/task-graph.js'
 
 function project(name: string, tasks: Record<string, TaskConfig>): ProjectEntry {
   return { name, dir: `/ws/${name}`, config: { tasks } }
@@ -651,5 +656,55 @@ describe('markSurfacedDeps', () => {
       requested: [{ project: 'app', task: 'build' }],
     })
     expect(markSurfacedDeps(nodes)).toBe(0)
+  })
+})
+
+// Nx pins `should create deterministic task graphs regardless of target
+// order` because its pass-through nodes (a dependency without the target)
+// once took a different shape depending on which target was processed
+// first. vx's frontier walk has no such node, but nothing said so: the
+// graph a cache key is derived from must not depend on the order tasks
+// were requested or projects were discovered.
+describe('buildTaskGraph — order invariance (Nx parity)', () => {
+  const app1 = project('app1', {
+    test: { ...cmd('t'), dependsOn: ['^test', '^lint'] },
+    lint: { ...cmd('l'), dependsOn: ['^lint'] },
+  })
+  const lib1 = project('lib1', {}) // no tasks at all: the pass-through
+  const lib2 = project('lib2', { test: cmd('t'), lint: cmd('l') })
+  const lib3 = project('lib3', { lint: cmd('l') })
+  const graph = packageGraph({ app1: ['lib1'], lib1: ['lib2', 'lib3'] })
+
+  const shape = (
+    entries: ProjectEntry[],
+    tasks: string[],
+  ): { ids: string[]; deps: Record<string, string[]>; requested: string[]; surfaced: number } => {
+    const ps = projects(...entries)
+    const requested = expandRequested(tasks, [...ps.keys()], ps)
+    const nodes = buildTaskGraph({ projects: ps, packageGraph: graph, requested })
+    const surfaced = markSurfacedDeps(nodes)
+    const ids = [...nodes.keys()].sort()
+    const deps: Record<string, string[]> = {}
+    for (const id of ids) deps[id] = [...nodes.get(id)!.deps].sort()
+    return {
+      ids,
+      deps,
+      requested: ids.filter((id) => nodes.get(id)!.requested),
+      surfaced,
+    }
+  }
+
+  it('the same graph regardless of request order and discovery order', () => {
+    const a = shape([app1, lib1, lib2, lib3], ['test', 'lint'])
+    const b = shape([app1, lib1, lib2, lib3], ['lint', 'test'])
+    const c = shape([lib3, lib2, lib1, app1], ['test', 'lint'])
+    expect(b).toEqual(a)
+    expect(c).toEqual(a)
+    // And the shape is the sparse one Nx's fixture exercises: lib1 declares
+    // nothing, so app1's `^test` bridges through it to lib2 and its `^lint`
+    // to lib2 and lib3.
+    expect(a.deps['app1#test']).toEqual(['lib2#lint', 'lib2#test', 'lib3#lint'])
+    expect(a.deps['app1#lint']).toEqual(['lib2#lint', 'lib3#lint'])
+    expect(a.ids).toEqual(['app1#lint', 'app1#test', 'lib2#lint', 'lib2#test', 'lib3#lint'])
   })
 })

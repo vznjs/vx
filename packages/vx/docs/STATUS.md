@@ -898,6 +898,17 @@ before · 2 attempts this run`), `--summarize`'s per-task
     not import it); the runtime filter is unchanged. Pinned in the
     loader suite with the pattern case and a control for every silent
     form. Closed in the design doc.
+98. DONE (2026-09-10, late night — parity finding M2): nothing said
+    the task graph a key is derived from is invariant to the order
+    tasks are requested or projects are discovered; Nx pins it after
+    its pass-through nodes once took shape from target order. The
+    sparse fixture (an app whose dependency declares no task at all,
+    bridging `^test` and `^lint` to the holders behind it) now builds
+    under two request orders and a reversed discovery order and
+    asserts one shape: ids, sorted deps, requested flags, surfaced
+    count. Closed in the design doc. What the 2026-07 doc still lists
+    is edge-case coverage (cycle topologies, odd filenames, watch
+    timing), none a live defect after items 96–98's sweep.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
