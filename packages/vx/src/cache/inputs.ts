@@ -491,7 +491,7 @@ function stripTrailingSlash(p: string): string {
  * names a file still matches exactly that file, since `x/**` matches
  * nothing under a file.
  */
-function asTrees(patterns: readonly string[]): string[] {
+export function asTrees(patterns: readonly string[]): string[] {
   const out: string[] = []
   for (const p of patterns) {
     if (!isLiteralPath(p)) {

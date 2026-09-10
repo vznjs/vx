@@ -15,6 +15,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { xxh3 } from '../util/index.js'
+import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
 import {
@@ -80,16 +81,13 @@ export function makeWatchIgnore(
   // reporting "up-to-date". The literal prefix of each glob (`dist` for
   // `dist/**`, `build/out` for `build/out/*.js`; nothing for `*.js`) and
   // every ancestor of it under the dir are output containers.
-  // A literal entry means the file or its whole tree (schema.md), so a
-  // literal `gen` also matches `gen/**` here — the same rule the resolver
-  // applies, or the tree's files would count as edits.
-  const asTrees = (g: string): string[] =>
-    /[*?[\]{}!]/.test(g) ? [g] : [g.replace(/\/+$/, ''), `${g.replace(/\/+$/, '')}/**`]
+  // A literal entry means the file or its whole tree — the resolver's own
+  // rule (`asTrees`), so the tree's files never count as edits.
   const declared = [...outputs].map(
     ([dir, globs]) =>
       [
         path.resolve(dir),
-        globs.flatMap(asTrees).map((g) => new Bun.Glob(g)),
+        asTrees(globs).map((g) => new Bun.Glob(g)),
         globs.map(outputContainer).filter((c) => c !== ''),
       ] as const,
   )

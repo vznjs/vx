@@ -33,6 +33,7 @@ export {
   resolveInputs,
   resolveOutputs,
   resolveWorkspaceOutputs,
+  asTrees,
 } from './inputs.js'
 export {
   GitFilesCache,
