@@ -1003,6 +1003,115 @@ before · 2 attempts this run`), `--summarize`'s per-task
       reasons in the design note: implicit project edges, project
       selectors in `dependsOn`, a default base setting, `FORCE_COLOR`
       for children, a structured log stream, richer dry/summarize JSON.
+106.  DONE (same night — the survey's second tier): a signal mid-run
+      now escalates. SIGINT/SIGTERM SIGTERMs every live and persistent
+      child, waits `VX_KILL_GRACE_MS` (2 s, shared with the persistent
+      shutdown), SIGKILLs the survivors — the registries are re-read on
+      the way out so a child the still-live scheduler spawned during the
+      grace goes too — closes the cache and exits 130/143; a second
+      signal skips the grace. Before, `process.exit` followed the
+      SIGTERM at once and a child that trapped TERM (`trap '' TERM`,
+      which `exec` preserves) outlived the run under init; the pin
+      fails that way without the fix. And a task that shells out to
+      `vx run` in its own workspace is refused: every child carries
+      `VX_RUN_WORKSPACE` / `VX_RUN_TASK` (set over the isolated env in
+      `taskEnv`, documented in schema.md) and `run()` throws a UserError
+      naming the task when the root it resolved is the one running it —
+      on the root, not the task, because a nested run that terminates
+      (`ci` shelling out to `vx run lint`) is still a run the outer
+      graph cannot see: its tasks escape the schedule, the concurrency
+      budget and the cache key. A task driving another workspace (the
+      control) is untouched. `tests/signal-handling.test.ts`,
+      `tests/recursive-run.test.ts`, parity rows, `docs/cli.md` exit
+      codes. Measured (interleaved, 7 reps, 100 projects, against a
+      worktree at main 1c7a6a5): restore arm 186 → 180 ms median (min
+      178 → 173), no-restore 129 → 126 (125 → 122) — no cost, as two
+      env assignments on the miss path and one env read per run
+      predict. The day's `run.ts 1000 5`: 2,642 / 227 / 916 ms
+      no-cache / warm-no-restore / warm-restore against last night's
+      2,488 / 227 / 1,049.
+107.  DONE (2026-09-10, night — the 2026-07 parity doc's LOW rows,
+      closed): L7 pinned — a NUL, `\r` progress rewrites and raw ANSI
+      replay byte-identical from the SQLite row on a hit
+      (`tests/replay-fidelity.test.ts`; bun:sqlite binds and reads
+      TEXT with an explicit length, and nothing calls SQL `length()` on
+      `stdout`). L4 fixed — `docs/caching.md`'s invalidation table sent
+      `package.json`'s `workspaces` field to the fingerprint, which
+      has never hashed it; the row now names the real mechanism
+      (membership, step 1; the file per project, step 4) and
+      `tests/caching-doc-drift.test.ts` pins the fingerprint
+      enumeration and every step-3 row against
+      `WORKSPACE_FINGERPRINT_FILES`. L2 pinned — `../packages/*` is
+      refused loud naming the pattern; not made a path form, `./` being
+      root-relative by documented choice. L1 (symlinks fold as the
+      target string: code and doc already agree), L3 (root member
+      affected) and L6 (prune racing a restore, orphan grace) were
+      already true and pinned; the doc rows now say where. L5 (watch
+      across a checkout) stays open with M7/M8 until the watch harness
+      stops being flaky. M2 marked done with a `vx show`-in-a-task
+      control added.
+108.  DONE (2026-09-10, night — the survey's last candidate): scoped and
+      whole-repo git enumeration are property-tested equal. A run that
+      loads few projects lets git scan only their dirs (`gitPathspecs`);
+      one that loads more, or declares `workspaceFiles`, scans the tree
+      and partitions it — both feed the key, so a divergence would key
+      one task two ways depending on which OTHER projects a run loaded.
+      `tests/enumeration-equivalence.test.ts` draws twelve seeded trees
+      (a clean, a modified, a deleted, a staged, an untracked, an
+      ignored file and an untracked directory, in random mixes, across
+      a project whose dir is a prefix of a sibling's, a nested project,
+      a space and a non-ASCII name) and asserts, per partition, the two
+      modes equal AND equal the plan's own expectation: every
+      non-ignored file of the project and its nested projects, and
+      trusted OIDs for exactly the clean tracked ones. Holds on every
+      seed; the pin catches the prefix-bleed mutation (`dir` without
+      its slash) on every seed too. No defect.
+109.  DONE (2026-09-10, night — item 106's class, grepped): a run can be
+      aborted from outside, and every SIGTERM vx sends escalates. A
+      probe (`SIGTERM` to `vx watch` during its initial run) refuted
+      the watch loop's contract — the handlers went in AFTER the
+      initial run, so Bun's default exited 143 and the cycle's `sleep`
+      lived on under init; mid-cycle the handlers resolved 0 over the
+      same orphan. Fix as a seam, not a special case: `RunOptions.
+signal` (an `AbortSignal`) runs the one teardown the process
+      handler now shares — `terminateChildren` in `signals.ts`: SIGTERM,
+      grace, re-read the registries, SIGKILL, reap — and the scheduler
+      reads the signal so nothing further dispatches, every
+      never-started task completing `aborted`; run() returns to its
+      caller. `vx watch` installs its handlers before the initial run,
+      aborts one controller on either signal, drains the cycle and
+      resolves 0 (`tests/watch-signals.test.ts`, the probe made a pin;
+      `tests/abort.test.ts` for the seam itself). Two more sites in the
+      class: the persistent readiness timeout's SIGTERM now escalates
+      like the run timeout's (a never-ready server is in no registry;
+      `trap '' TERM` pin), and the foreground keep-alive waited for
+      EVERY requested server with a dead SIGTERM loop after it — now
+      the first exit ends the session, the others are torn down and a
+      non-zero exit fails the run (`tests/keep-alive.test.ts`, both
+      exit codes; the old code hangs it 20 s). Docs: cli (watch exit
+      codes, the foreground rule), execution, modules/signals,
+      cli-watch, orchestrator, options, scheduler, runner.
+110.  DONE (2026-09-10, night — the watch loop end to end, and a
+      regression it found): `tests/watch-loop.test.ts` pins the loop on
+      markers, not sleeps — "watching" means every watcher proved
+      delivery, an execution count kept OUTSIDE the workspace says what
+      actually ran — for the three claims the 2026-07 doc left unpinned:
+      an edit re-runs exactly once, the same bytes written again cost
+      no cycle and no execution (M8), a `git checkout` rewriting twenty
+      inputs is one cycle with the new content (L5). The first claim
+      was false: every edit cost TWO cycles, the second labelled `dist`
+      and reporting up-to-date, since item 99's clean prunes an emptied
+      `dist` and the task re-creates it — a change to `dist` itself,
+      which `dist/**` never matched. `makeWatchIgnore` now also drops
+      the directory holding an output tree and its ancestors
+      (`outputContainer`: `dist` for `dist/**`, `build/out` and `build`
+      for `build/out/*.js`, nothing for `*.js`), and treats a literal
+      entry as its tree like the resolver does (item 102 had not
+      reached the watch side: a literal `gen`'s files counted as
+      edits). Unit pins in `tests/watch-rules.test.ts`; the e2e fails
+      with two cycles without the fix, three runs in a row green with
+      it. M7 (an edit during the initial run is dropped) stays as
+      documented, deliberately.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1434,8 +1543,7 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    walkthrough).** (a) DONE 2026-09-09: `--summarize` task rows carry
    `noCache: true` for a task with no `cache` block (present only when
    true; documented in `docs/cli.md` § --summarize). (b) DONE 2026-09-04: `init` no longer makes `lint` wait for `build`
-   (`test` / `typecheck` still do, the Turbo starter's convention). (c) watch still pays one redundant cycle on a
-   task's first undeclared write (the bytes are unknown until seen);
+   (`test` / `typecheck` still do, the Turbo starter's convention). (c) CLOSED 2026-09-10 (measured on the watch-loop harness, pinned in `tests/watch-loop.test.ts`): an uncached task that writes into its project costs exactly one extra execution per edit and nothing after the initial run — the task's write and a user's edit during the run are the same FS event, so without the task's write set the loop cannot drop one and keep the other; the price of an undeclared output is one cycle, the fix is to declare it. Was: watch still pays one redundant cycle on a task's first undeclared write (the bytes are unknown until seen);
    hashing what the cycle wrote before re-arming would zero it — only
    if a real workspace shows the cycle mattering. (d) DONE 2026-09-04: a filter set that matches nothing is one
    error line naming the patterns and the nearest project name.
@@ -1551,7 +1659,7 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     whole-process scale, as its 0.55 ms for 1,000 candidates said it
     would be. Open from the owner's last message: nothing; the
     2026-07 parity design doc's edge-case lists and § Next 5–8 remain
-    the backlog. #273 was merged by the owner at 17:03Z (main 891eba5, green); items 96–101 followed the same night, 96–98 inside #273 and 99–101 as PR #274 (green, mergeable, awaiting the owner). Never merge a PR without the owner's word.
+    the backlog. #273 was merged by the owner at 17:03Z (main 891eba5, green); items 96–101 followed the same night, 96–98 inside #273 and 99–101 as PR #274 (green, mergeable, awaiting the owner). "Never merge without the owner's word" held until the owner's 2026-09-10 message "Merge whenever you own the project": #274 was merged by this loop (main 4e4ff81), items 102–105 are PR #275, and 106 follows it.
 
 11. **Handoff after item 67 (2026-09-10, night).** The loop's Next
     items are spent; what a fresh session should know, in order:
@@ -1598,6 +1706,30 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     `serve`-shaped embedder built OUTSIDE this repo on the façade
     (the seams are in place: `inflight`, `remoteCache`,
     `telemetrySinks`, the wire event form).
+
+12. **Handoff after item 110 (2026-09-10, late night).** PR #275
+    (items 102–105) merged by this loop at 17:56Z (main 1c7a6a5);
+    PR #276 carries 106–110 — signal escalation and the recursion
+    refusal, the parity doc's LOW rows, the enumeration equivalence
+    property, the `RunOptions.signal` abort seam with the watch loop
+    on it, and the watch-loop e2e that found the `dist`-container
+    double cycle — every commit gated here as shards + package suites
+    - oxlint + oxfmt + the docs build (this container cannot host the
+      sandbox: root, no nested user namespaces; `vx run ci --all` fails
+      every sandboxed task at the probe, so the gate ran piecewise).
+      Merge #276 once CI is green (the loop's own directive since the
+      owner's "merge whenever you own the project"), then fast-forward
+      the branch from main. Open leads, in order: (a) `tests/
+shard-weights.json` has no rows for the eight suites added tonight
+      (abort, watch-loop, watch-signals, keep-alive, recursive-run,
+      replay-fidelity, enumeration-equivalence, caching-doc-drift) —
+      refresh with `scripts/test-shard.ts --weigh <junit-dir>` from one
+      CI run; (b) Next 7(c), the redundant first-write cycle, is now
+      measurable on the watch-loop harness (count cycles, not sleeps);
+      (c) the surveys' deferred rows and Next 2 stay deferred with their
+      reasons; (d) the parity docs carry a status line per row — the
+      2026-07 doc's only open row is M7, by choice. Nothing is owed to
+      the owner's last message. (a) DONE the same night: weighed from a twelve-shard JUnit run on this box — 15 files had no row, seven of them older than tonight (completions, core-alias, lockfile-claim, output-dirs-snapshot, output-shape, plugin-name, save-lane); the absolute numbers are this loaded box's, the dealing only reads their ratios.
 
 ## Decisions (this arc)
 

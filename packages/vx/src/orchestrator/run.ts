@@ -4,9 +4,10 @@
 
 import type { ProjectEntry } from '../workspace/index.js'
 import os from 'node:os'
+import path from 'node:path'
 import { type CacheLayer, type CachePolicy, FULL_CACHE_POLICY } from '../cache/index.js'
 import { VERSION } from '../version.js'
-import { resetSandbox } from '../exec/index.js'
+import { resetSandbox, VX_RUN_TASK_ENV, VX_RUN_WORKSPACE_ENV } from '../exec/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
 import { resolveDownloadModes } from './download-policy.js'
 import type { TaskExecutor } from '../exec/index.js'
@@ -17,7 +18,7 @@ import {
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
-import { mark, MAX_TIMEOUT_MS, printTimings, ulid, nearest } from '../util/index.js'
+import { mark, MAX_TIMEOUT_MS, printTimings, ulid, nearest, UserError } from '../util/index.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
@@ -34,7 +35,7 @@ import { formatPersistentList } from './framed-output.js'
 import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
-import { forwardSignals } from './signals.js'
+import { forwardSignals, terminateChildren } from './signals.js'
 import {
   hasPooledExecutor,
   placeTasks,
@@ -169,6 +170,20 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
   const prepared = await prepareRun(options, log)
   mark('plugin stages')
+  // A task whose command re-enters `vx run` in the workspace running it
+  // is refused. When the inner run reaches this task again it forks a run
+  // per run until the machine gives out; when it does not (`ci` shelling
+  // out to `vx run lint`) it is a nested run the outer graph cannot see —
+  // its tasks escape the schedule, the concurrency budget and this task's
+  // cache key. The markers `taskEnv` sets on every child (exec/env.ts)
+  // name the task; the check is on the root so both shapes are caught.
+  const outerRoot = process.env[VX_RUN_WORKSPACE_ENV]
+  if (outerRoot !== undefined && path.resolve(outerRoot) === path.resolve(prepared.workspaceRoot)) {
+    prepared.cache.close()
+    throw new UserError(
+      `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`vx run\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
+    )
+  }
   // A requested name that matched no project is a typo (or a stray
   // positional from an `=`-only flag written with a space). Failing the
   // whole run — even when OTHER requested tasks resolved — is the point:
@@ -333,6 +348,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     liveChildren,
     persistentRegistry,
   })
+  // `RunOptions.signal`: the same teardown the process handler runs, minus
+  // the exit — the scheduler stops dispatching (it reads the signal) and
+  // run() returns to its caller. Detached in the finally below.
+  const onAbort = (): void => {
+    void terminateChildren(() => [...liveChildren, ...persistentRegistry.values()])
+  }
+  options.signal?.addEventListener('abort', onAbort, { once: true })
   // The cache handle must be released on EVERY exit path, not just the
   // happy one: `close()` is also where the run's deferred `accessed_at`
   // bumps are flushed, so a throw between opening the cache and the
@@ -611,6 +633,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(resourceCosts.size > 0 ? { resourceCosts, cpuBudget: concurrency, memBudget } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
       onStart: (node) => {
         log.taskStart?.(node)
       },
@@ -813,12 +836,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // persistent task (dev server / watcher). The run is "done" in every
     // bookkeeping sense — summary printed, history recorded — but the
     // server is still up and that's the point. Stay in the foreground
-    // until it exits: Ctrl-C hits the whole process group (the server
-    // dies; our SIGINT handler also exits 130), and a crash resolves the
-    // wait so the run returns. Nothing here prints — the UI is unchanged.
+    // until ONE of them exits: Ctrl-C hits the whole process group (the
+    // server dies; our SIGINT handler also exits 130), and a crash ends
+    // the session — the others are torn down (SIGTERM, grace, SIGKILL)
+    // and a non-zero exit makes the run not ok, so `vx run dev` in a
+    // script fails when the server it started fell over. Until
+    // 2026-09-10 this waited for EVERY server, so the SIGTERM after it
+    // was dead code and a crashed server left the rest running under a
+    // run that never returned. Nothing here prints — the UI is unchanged.
     if (keepAlive.children.length > 0) {
-      await Promise.allSettled(keepAlive.children.map((c) => c.exited))
-      for (const child of keepAlive.children) child.kill('SIGTERM')
+      const firstExit = await Promise.race(keepAlive.children.map((c) => c.exited))
+      await terminateChildren(() => keepAlive.children)
+      return { ok: ok && firstExit === 0, outcomes: list }
     }
 
     return { ok, outcomes: list }
@@ -827,6 +856,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // can't leave a live status-line ticker behind.
     log.runEnd?.()
     signals.remove()
+    options.signal?.removeEventListener('abort', onAbort)
     // Plugins installed at the top of run() get their bus subscriptions
     // released here. Idempotent; safe even if installPlugins threw.
     disposePlugins?.()

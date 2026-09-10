@@ -9,11 +9,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
-import { isAlive } from './helpers/alive.js'
+import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from '../src/orchestrator/index.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
+
+process.env['VX_KILL_GRACE_MS'] = '200'
 
 const TIMEOUT = 15_000
 
@@ -116,6 +118,37 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
   afterEach(async () => {
     await rm(fixture.root, { recursive: true, force: true })
   })
+
+  it(
+    'a never-ready server that ignores SIGTERM is SIGKILLed after the grace',
+    async () => {
+      // `trap '' TERM` survives exec, so the readiness timeout's SIGTERM
+      // lands on a sleeper that shrugs it off; not in the persistent
+      // registry (never ready), nothing else would ever kill it. Fails
+      // without the escalation: the child outlives the run by 30 s.
+      const dir = await addProject(
+        fixture.root,
+        'srv',
+        `export default {
+          tasks: {
+            dev: {
+              exec: {
+                command: "trap '' TERM; echo $$ > pid.txt && echo wrong-banner && exec sleep 30",
+                timeout: 300,
+                persistent: { readyWhen: 'Listening' },
+              },
+            },
+          },
+        }
+        `,
+      )
+      const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
+      expect(r.ok).toBe(false)
+      const pid = Number(readFileSync(path.join(dir, 'pid.txt'), 'utf8').trim())
+      expect(await waitForDead(pid, 1_000)).toBe(true)
+    },
+    TIMEOUT,
+  )
 
   it(
     'never-matching readyWhen + timeout → run fails fast, child is killed',

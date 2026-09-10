@@ -37,6 +37,8 @@ export interface TaskOutcome {
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
+  /** Aborted → nothing further dispatches; every task not yet started completes `aborted`. */
+  signal?: AbortSignal
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void

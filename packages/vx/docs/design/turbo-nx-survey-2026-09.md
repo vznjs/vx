@@ -44,13 +44,18 @@ has no vx spelling, on purpose).
    cross-product; `parallelism: false` maps to a whole-budget
    `exec.resources` reservation.
 
-## Fixed next (STATUS 106)
+## Fixed (STATUS 106, same night)
 
 - SIGINT/SIGTERM: SIGTERM then `process.exit` with no grace and no
-  SIGKILL escalation, so a child that traps TERM is orphaned by a CI
-  cancellation (Turbo `graceful_shutdown_test.rs`).
-- A task whose command re-enters `vx run` forks without bound (Turbo
-  `recursive_turbo_test.rs`).
+  SIGKILL escalation, so a child that trapped TERM was orphaned by a CI
+  cancellation (Turbo `graceful_shutdown_test.rs`). Now: SIGTERM, a
+  `VX_KILL_GRACE_MS` wait (2 s, the persistent shutdown's grace),
+  SIGKILL, exit 130/143; a second signal skips the grace.
+- A task whose command re-entered `vx run` forked without bound (Turbo
+  `recursive_turbo_test.rs`). Now every child carries
+  `VX_RUN_WORKSPACE` / `VX_RUN_TASK` and `run()` refuses its own root,
+  naming the task — the terminating shape too, since a nested run is
+  invisible to the outer graph; a different workspace is still fine.
 
 ## Deferred, with the reasoning
 
@@ -78,5 +83,6 @@ has no vx spelling, on purpose).
   a pre-execution file listing is a candidate, not a gap.
 - **watch + persistent** divergence (documented, unpinned): a pin
   needs a watch harness that is not flaky; on the list with M7/M8.
-- **Scoped vs whole-repo enumeration equivalence** for untracked files:
-  a property test over `gitFilesCache`'s two partitions; candidate.
+- **Scoped vs whole-repo enumeration equivalence**: DONE (STATUS 108),
+  `tests/enumeration-equivalence.test.ts` — twelve seeded trees, every
+  worktree state, exact partitions and trusted OIDs in both modes.

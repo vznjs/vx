@@ -414,6 +414,22 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(stderr).toContain('no projects matched filter(s): oen. Did you mean one?')
   })
 
+  it('a `../` path filter is not a path form — refused loud, naming the pattern (parity L2)', async () => {
+    // `./` is root-relative in vx by documented choice, so `../apps/*`
+    // (Turbo's cwd-relative sibling form) has no meaning here; it falls
+    // through to the name matcher and must say so, not select nothing
+    // quietly.
+    let stderr = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    const code = await run(['run', '--filter', '../packages/*', 'hello'])
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('no projects matched filter(s): ../packages/*')
+  })
+
   it('a filter that matches nothing warns, even when another one matched', async () => {
     let stdout = ''
     let stderr = ''

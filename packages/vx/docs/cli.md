@@ -82,10 +82,11 @@ If no task name is given:
 
 Exit codes:
 
-| Code | When                                                                 |
-| ---- | -------------------------------------------------------------------- |
-| `0`  | Every task finished `success` or `cache-hit` (local or remote).      |
-| `1`  | At least one task ended `failed` or `skipped`; or parse/setup error. |
+| Code          | When                                                                                                                                                  |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`           | Every task finished `success` or `cache-hit` (local or remote).                                                                                       |
+| `1`           | At least one task ended `failed` or `skipped`; or parse/setup error.                                                                                  |
+| `130` / `143` | Interrupted (SIGINT / SIGTERM): every live child is SIGTERMed, given `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILLed; a second signal skips the grace. |
 
 ### Selection
 
@@ -457,7 +458,11 @@ tracks the run live. Top to bottom:
    from the completed-task scrollback above it.
 2. **Pinned persistent tasks** — `▸ <id> running` for every persistent
    task that became ready. The pin lives until run end, so it is the
-   visible evidence the dev server is still alive.
+   visible evidence the dev server is still alive. After the summary,
+   a requested persistent task keeps vx in the foreground until it —
+   or, with several, the first of them — exits; the rest are then torn
+   down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL) and a non-zero exit
+   makes the run exit 1.
 3. **Worker rows** — one per worker slot (sized
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
@@ -891,7 +896,8 @@ run...` precedes it.
    changes. A task's own declared outputs (`cache.outputs.files`,
    `outputs.workspaceFiles`; a plugin's `project` stage counts, as in
    a run) never trigger a re-run — a cycle that writes `dist/` is not
-   an edit — and neither do `node_modules`,
+   an edit, nor is the `dist` directory itself coming and going (a
+   literal entry covers its whole tree, as in the schema) — and neither do `node_modules`,
    `.git` or the cache directory. A write the task did NOT declare (a
    task with no `cache` block declares nothing) is caught by content:
    a file whose bytes did not change since the loop last saw it is not
@@ -959,7 +965,10 @@ across changes, use the dev tool's own watch (`vite`, `tsc -b -w`,
 
 ### Exit codes
 
-- `0` — clean Ctrl+C / SIGTERM exit.
+- `0` — clean Ctrl+C / SIGTERM exit. A cycle in flight is torn down
+  first — its children get SIGTERM, `VX_KILL_GRACE_MS` (2 s), then
+  SIGKILL — and the process leaves only once it has returned, so a CI
+  cancellation never orphans a task.
 - `1` — parser error or missing scope.
 
 Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit

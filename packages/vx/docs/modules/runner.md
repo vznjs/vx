@@ -148,6 +148,9 @@ and rejects `ready` with a clear timeout message once the window
 passes. The timer is cleared the moment ready fires, so a healthy
 server is never killed late. No default — opting into a readiness
 signal is explicit, and so is bounding it.
+The SIGTERM escalates to SIGKILL after the kill grace, as the run
+timeout's does: a never-ready server is not in the persistent
+registry, so nothing else would kill one that traps TERM.
 
 Stream readers run for the child's lifetime; the caller owns the
 `child` handle and is responsible for SIGTERMing it. The orchestrator

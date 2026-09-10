@@ -416,7 +416,16 @@ highest priority:
    and the Windows set `SYSTEMROOT`, `APPDATA`, `LOCALAPPDATA`,
    `PROGRAMDATA`, `PROGRAMFILES`, `PROGRAMFILES(X86)`, `COMSPEC`,
    `PATHEXT`. Nothing else from the parent environment reaches a task —
-   that is the whole list. Without these, typical CLI tools break. **_NOT_ folded into the cache key** — the
+   that is the whole list. Without these, typical CLI tools break. vx
+   adds two markers of its own on top, `VX_RUN_WORKSPACE` (the root of
+   the workspace running the task) and `VX_RUN_TASK` (`project#task`):
+   a task whose command shells out to `vx run` in that same workspace
+   is refused — a loop back to itself forks a run per run without
+   bound, and a nested run that terminates is still invisible to the
+   outer graph (its tasks escape the schedule, the concurrency budget
+   and the cache key); declare it with `dependsOn`. Driving a
+   _different_ workspace from a task (a fixture suite, a benchmark) is
+   fine. **_NOT_ folded into the cache key** — the
    same rule `passThrough` states below, and for the same reason.
 
    Read that carefully if your build's _output_ depends on one of

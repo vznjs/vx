@@ -73,23 +73,53 @@ export function makeWatchIgnore(
   // writes `dist/` (or `out.txt`) re-runs once more, reporting
   // "up-to-date" for the trouble. Matched under the directory the globs
   // are relative to, whichever watcher delivered the event.
+  // The directory that HOLDS an output tree is the task's too: `dist/**`
+  // does not match `dist`, and since the clean before a miss prunes an
+  // emptied `dist` (2026-09-10) the task re-creates it, which the watcher
+  // reports as a change to `dist` itself — a second cycle per edit,
+  // reporting "up-to-date". The literal prefix of each glob (`dist` for
+  // `dist/**`, `build/out` for `build/out/*.js`; nothing for `*.js`) and
+  // every ancestor of it under the dir are output containers.
+  // A literal entry means the file or its whole tree (schema.md), so a
+  // literal `gen` also matches `gen/**` here — the same rule the resolver
+  // applies, or the tree's files would count as edits.
+  const asTrees = (g: string): string[] =>
+    /[*?[\]{}!]/.test(g) ? [g] : [g.replace(/\/+$/, ''), `${g.replace(/\/+$/, '')}/**`]
   const declared = [...outputs].map(
-    ([dir, globs]) => [path.resolve(dir), globs.map((g) => new Bun.Glob(g))] as const,
+    ([dir, globs]) =>
+      [
+        path.resolve(dir),
+        globs.flatMap(asTrees).map((g) => new Bun.Glob(g)),
+        globs.map(outputContainer).filter((c) => c !== ''),
+      ] as const,
   )
   return (base, filename) => {
     if (isIgnoredWatchPath(filename)) return true
     const abs = path.resolve(base, filename)
     if (abs === cacheAbs || abs.startsWith(cacheAbs + path.sep)) return true
-    for (const [dir, globs] of declared) {
+    for (const [dir, globs, containers] of declared) {
       if (!abs.startsWith(dir + path.sep)) continue
       const rel = abs
         .slice(dir.length + 1)
         .split(path.sep)
         .join('/')
       if (globs.some((g) => g.match(rel))) return true
+      if (containers.some((c) => c === rel || c.startsWith(`${rel}/`))) return true
     }
     return false
   }
+}
+
+/** The literal directory a glob's matches live under (`''` when the glob starts with a pattern). */
+export function outputContainer(glob: string): string {
+  const meta = glob.search(/[*?[\]{}!]/)
+  const literal = meta === -1 ? glob : glob.slice(0, meta)
+  // A literal entry is a file or its whole tree (schema: literal → tree),
+  // so the entry itself is the container; a pattern's container is the
+  // directory part before the first metacharacter.
+  const cut =
+    meta === -1 ? literal.replace(/\/+$/, '') : literal.slice(0, literal.lastIndexOf('/') + 1)
+  return cut.replace(/\/+$/, '')
 }
 
 /**
@@ -298,12 +328,22 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx watch: ${resolved.nothingSelected}\n`)
     return 0
   }
-  // The watch loop owns SIGINT/SIGTERM for its whole lifetime (the
-  // process.once handlers below close watchers and resolve 0). A
-  // cycle's run() must not install its exit-the-process handlers —
-  // Ctrl-C mid-cycle would kill the loop with 130 instead of the
-  // loop's own clean shutdown.
-  const opts: RunOptions = { ...resolved, handleSignals: false }
+  // The watch loop owns SIGINT/SIGTERM for its whole lifetime. A cycle's
+  // run() must not install its exit-the-process handlers — Ctrl-C
+  // mid-cycle would kill the loop with 130 instead of the loop's own
+  // clean shutdown — so it gets `signal` instead: on SIGINT/SIGTERM the
+  // controller aborts, the in-flight cycle tears its children down
+  // (SIGTERM, grace, SIGKILL) and returns, and the loop resolves 0.
+  // Installed BEFORE the initial run: until 2026-09-10 the handlers went
+  // in with the loop, so a SIGTERM during the initial run took Bun's
+  // default (exit 143) and left the cycle's children running under init.
+  const stop = new AbortController()
+  const opts: RunOptions = { ...resolved, handleSignals: false, signal: stop.signal }
+  process.once('SIGINT', () => {
+    process.stdout.write('\nvx watch: stopped\n')
+    stop.abort()
+  })
+  process.once('SIGTERM', () => stop.abort())
 
   // Enumerate projects-in-scope so we know what dirs to watch.
   // `opts.projects` is the resolved scope; undefined means "every
@@ -334,6 +374,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // configs.
   process.stdout.write('vx watch: initial run...\n\n')
   await runOrchestrator(opts)
+  if (stop.signal.aborted) return 0
 
   const swept = await sweepConfigs(allProjects, workspaceRoot, {
     ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
@@ -341,6 +382,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   })
   return await runWatchLoop({
     opts,
+    stop: stop.signal,
     workspaceRoot,
     projects: scope,
     workspaceWide: swept.workspaceWide,
@@ -405,6 +447,8 @@ export async function sweepConfigs(
 
 interface WatchLoopArgs {
   opts: RunOptions
+  /** Aborted by the SIGINT/SIGTERM handlers `watchCmd` installed; the loop drains its cycle and resolves. */
+  stop: AbortSignal
   workspaceRoot: string
   projects: readonly ProjectMeta[]
   workspaceWide: boolean
@@ -415,13 +459,15 @@ interface WatchLoopArgs {
 }
 
 async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
-  const { opts, workspaceRoot, projects, workspaceWide, cacheDir, outputs } = args
+  const { opts, stop, workspaceRoot, projects, workspaceWide, cacheDir, outputs } = args
 
   // Reentrancy guard — never two orchestrator runs in flight. While
   // one is running, any further events set `pending = true` and the
   // loop drains it after the current run finishes.
   let running = false
   let pending = false
+  /** The cycle in flight, so the stop path can wait for its teardown before resolving. */
+  let inFlight: Promise<void> = Promise.resolve()
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
   // Declared outputs are ignored by PATH above. A task with no `cache`
@@ -470,11 +516,16 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   }
 
   const cycle = async (label: string): Promise<void> => {
+    if (stop.aborted) return
     if (running) {
       pending = true
       return
     }
     running = true
+    const done = (inFlight = runCycle(label))
+    await done
+  }
+  const runCycle = async (label: string): Promise<void> => {
     try {
       do {
         pending = false
@@ -493,7 +544,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           process.stderr.write(`vx watch: cycle failed: ${message}\n`)
         }
         // If a change arrived mid-run, loop again immediately.
-      } while (pending)
+      } while (pending && !stop.aborted)
     } finally {
       running = false
     }
@@ -595,7 +646,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   )
 
   return await new Promise<number>((resolve) => {
-    const cleanup = (): void => {
+    const cleanup = async (): Promise<void> => {
       for (const w of watchers) {
         try {
           w.close()
@@ -604,13 +655,16 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         }
       }
       if (debounceTimer) clearTimeout(debounceTimer)
+      // The aborted cycle is tearing its children down; resolve only once
+      // it has returned, so the process never exits over a live child.
+      await inFlight
       resolve(0)
     }
-    process.once('SIGINT', () => {
-      process.stdout.write('\nvx watch: stopped\n')
-      cleanup()
-    })
-    process.once('SIGTERM', cleanup)
+    if (stop.aborted) {
+      void cleanup()
+      return
+    }
+    stop.addEventListener('abort', () => void cleanup(), { once: true })
   })
 }
 

@@ -143,6 +143,16 @@ export interface RunOptions {
    * exit the process out from under it.
    */
   handleSignals?: boolean
+  /**
+   * Abort the run from outside. On `abort` every live and persistent
+   * child is SIGTERMed, given the kill grace, then SIGKILLed; nothing
+   * further is dispatched; run() returns with the killed tasks and the
+   * never-started ones `aborted`. The seam for an embedder that owns its
+   * process's lifetime instead of `handleSignals` — the watch loop aborts
+   * its in-flight cycle on SIGINT/SIGTERM this way, so a cancellation
+   * never orphans a cycle's children.
+   */
+  signal?: AbortSignal
   log?: Logger
   /**
    * Inject the run's event bus. When provided, the orchestrator emits

@@ -11,6 +11,8 @@ import {
 } from '../cache/index.js'
 import {
   buildIsolatedEnv,
+  VX_RUN_TASK_ENV,
+  VX_RUN_WORKSPACE_ENV,
   runPersistent,
   shellQuote,
   releaseBridges,
@@ -746,10 +748,13 @@ function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJ
   // Identical when the root is itself a project — dedupe rather than list it
   // twice, so PATH reads the same either way.
   if (rootBin !== bins[0]) bins.push(rootBin)
-  return buildIsolatedEnv({
+  const env = buildIsolatedEnv({
     passThrough: step.env?.passThrough ?? [],
     define: step.env?.define ?? {},
     source: process.env,
     binPaths: bins,
   })
+  env[VX_RUN_WORKSPACE_ENV] = workspaceRoot
+  env[VX_RUN_TASK_ENV] = node.id
+  return env
 }
