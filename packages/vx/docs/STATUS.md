@@ -1348,6 +1348,16 @@ app`, "watching 2 project(s)", a `lib/src` edit is one cycle that
       each config once (differential: not handing the load on, each
       twice); a plain scope once (control); a watch start is four stage
       calls, not six, and the cycle after an edit stages live (six).
+      The second half, found when solid still doubled under
+      `--affected` after the first fix: a changed root file is an
+      orphan path even when a plugin claims it, and the owners walk
+      (`workspaceGlobOwners`, which project's `workspaceFiles` glob
+      covers it) staged every config on its own. `resolveFilters` now
+      has ONE memoized load that the edge walk, the owners walk and the
+      run all read (pinned: `--affected=HEAD` with an orphan root file
+      and a `lib` edit stages each config once; differential, the owners
+      walk loading for itself: twice). On solid, `--affected --dry`
+      with a lockfile diff prints each Turbo warning once.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

@@ -42,6 +42,8 @@ export async function workspaceGlobOwners(
   projects: readonly ProjectMeta[],
   orphans: readonly string[],
   load: CliLoadOptions = {},
+  stagedLoad: () => Promise<ReadonlyMap<string, ProjectEntry>> = () =>
+    loadCliProjects(root, projects, 'all', load),
 ): Promise<string[]> {
   const declaresMatch = (config: ProjectConfig): boolean => {
     for (const task of Object.values(config.tasks ?? {})) {
@@ -58,7 +60,7 @@ export async function workspaceGlobOwners(
     throw new UserError(FROZEN_WITHOUT_LOCK)
   }
   try {
-    const staged = await loadCliProjects(root, projects, 'all', load)
+    const staged = await stagedLoad()
     return [...staged.values()].filter((p) => declaresMatch(p.config)).map((p) => p.name)
   } catch {
     // Fall through to the per-file sweep.
@@ -177,11 +179,17 @@ export async function resolveFilters(
   const projects = await loadWorkspaceProjects(cwd)
   const parsed = raw.map((r) => parseFilter(r, root))
   const walksGraph = parsed.some((f) => f.withDeps || f.withDependents || f.onlyDeps)
+  // Every reader of the staged configs in this pass — the `pkg#task`
+  // edge walk, the `workspaceFiles` owners of an orphan path — shares
+  // ONE load, and the run reuses it (`RunOptions.staged`): the `project`
+  // stage runs once per project per run.
+  let stagedPromise: Promise<Map<string, ProjectEntry>> | undefined
+  const stagedOnce = (): Promise<Map<string, ProjectEntry>> =>
+    (stagedPromise ??= loadCliProjects(root, projects, 'all', load))
   let edges: Map<string, string[]> | undefined
-  let staged: Map<string, ProjectEntry> | undefined
   if (walksGraph) {
     try {
-      ;({ edges, staged } = await taskEdges(root, projects, load))
+      edges = taskEdgesFrom(await stagedOnce())
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
     }
@@ -199,7 +207,8 @@ export async function resolveFilters(
         workspaceRoot: root,
         since: f.gitSince,
         projects,
-        workspaceGlobOwners: (orphans) => workspaceGlobOwners(root, projects, orphans, load),
+        workspaceGlobOwners: (orphans) =>
+          workspaceGlobOwners(root, projects, orphans, load, stagedOnce),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
       })
       affectedByFilter.set(f, names)
@@ -241,6 +250,15 @@ export async function resolveFilters(
   // Something matched, so the run proceeds; a pattern that matched nothing
   // alongside it is still worth a line — it is probably a typo.
   for (const f of unmatched) process.stderr.write(`vx: filter "${f}" matched no projects\n`)
+  let staged: Map<string, ProjectEntry> | undefined
+  if (stagedPromise !== undefined) {
+    try {
+      staged = await stagedPromise
+    } catch {
+      // The owners walk fell through to its per-file sweep; the run loads for itself.
+      staged = undefined
+    }
+  }
   return { names: [...selected].sort(), ...(staged !== undefined ? { staged } : {}) }
 }
 

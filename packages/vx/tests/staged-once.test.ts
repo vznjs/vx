@@ -8,11 +8,11 @@
 // shares its sweep with the watched-set walk, while every cycle after an
 // edit still evaluates live. The counter is a `project` plugin that
 // appends the project's name to a file outside the workspace.
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { PLUGIN_IMPORT } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 
@@ -94,6 +94,23 @@ export default { plugins: [${pluginSource(
     // Differential: with `staged` not handed from resolveFilters to the
     // run, each name appears twice.
     const r = await vx('run', 'build', '--filter', 'app...')
+    expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+    expect(await stageCalls(counter)).toEqual(['app', 'lib'])
+  }, 30_000)
+
+  it('--affected with a root path no project owns stages each config once: the owners walk and the run share the load', async () => {
+    // A changed file outside every project is an orphan, and finding
+    // which project's `workspaceFiles` glob covers it needs every config
+    // staged (`workspaceGlobOwners`); before this, that was a second load
+    // — the run did not reuse it. Seen on solidjs/solid: a lockfile edit
+    // is an orphan even when a plugin claims it, so every `@vzn/vx-turbo`
+    // warning printed twice under `--affected`.
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-qm', 'base')
+    await writeFile(path.join(root, 'notes.md'), 'orphan\n')
+    await writeFile(path.join(lib, 'src', 'l.txt'), 'l2\n')
+    const r = await vx('run', 'build', '--affected=HEAD')
     expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
     expect(await stageCalls(counter)).toEqual(['app', 'lib'])
   }, 30_000)
