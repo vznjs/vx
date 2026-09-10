@@ -10,10 +10,11 @@ export default defineProject({
       dependsOn: ['lint', 'test', 'check.site'],
     },
 
-    // The landing page's benchmark rows and the benchmarks doc's stress
-    // section are generated from results.json by update-site.ts; `--check`
-    // fails when either drifted. Both live in sibling projects, so the task
-    // declares the two reads and folds the two files as inputs.
+    // The landing page's benchmark rows, the benchmarks doc's stress
+    // section and the README's benchmark sentence are generated from
+    // results.json by update-site.ts; `--check` fails when any drifted.
+    // All three live outside this project, so the task declares the
+    // three reads and folds the three files as inputs.
     'check.site': {
       description: 'update-site.ts --check: the site matches results.json',
       dependsOn: ['install'],
@@ -21,7 +22,12 @@ export default defineProject({
         command: 'bun update-site.ts --check',
         sandbox: {
           allow: {
-            read: ['**/*', '../vx-docs/src/pages/index.astro', '../vx/docs/benchmarks.md'],
+            read: [
+              '**/*',
+              '../vx-docs/src/pages/index.astro',
+              '../vx/docs/benchmarks.md',
+              '../../README.md',
+            ],
             systemInfo: ['vfs.disk-space'],
           },
         },
@@ -32,6 +38,7 @@ export default defineProject({
           workspaceFiles: [
             'packages/vx-docs/src/pages/index.astro',
             'packages/vx/docs/benchmarks.md',
+            'README.md',
           ],
         },
         outputs: { files: [] },
