@@ -8,7 +8,10 @@ keeping unrelated tasks moving — with a second, low-priority ready
 queue for confirmed local cache hits (the restore tier) that may run
 ahead of their dependencies, on its own lane: restores are disk I/O,
 so up to twice `N` run at once while exec-tier work keeps the cap
-(`--concurrency 1` stays serial for both).
+(`--concurrency 1` stays serial for both). An outcome may still owe
+something before its dependents start — `settledOf(outcome)`, the
+orchestrator's off-slot cache save landing — and the scheduler frees
+the slot at the outcome and unblocks the dependents at the settle.
 
 ## Public surface
 

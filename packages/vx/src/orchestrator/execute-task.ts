@@ -134,6 +134,14 @@ export interface ExecuteArgs {
    * window and would be refused, and the next hit would walk the tree.
    */
   outputDirSnapshots?: OutputDirSnapshot[]
+  /** The run's save lane: a miss's cache save runs off the execution slot (save-lane.ts). */
+  deferSave?: (save: () => Promise<void>) => Promise<void>
+  /**
+   * Where a deferred save's `landed` promise is parked by task id, for the
+   * in-flight join (admission.ts): a duplicate of this task in another run
+   * must not probe the cache before the entry is there.
+   */
+  deferredSaves?: Map<string, Promise<void>>
   /**
    * `continueMode: 'always'` let this task run although an upstream —
    * directly or through a chain of successes — failed or aborted. It still
@@ -670,7 +678,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       })
     }
   } else if (effectiveExitCode === 0 && willSave) {
-    await saveMiss({
+    const { landed } = await saveMiss({
       node,
       hash,
       cache,
@@ -685,7 +693,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       durationMs: result.durationMs,
       stdout: result.stdout,
       outputDirSnapshots: args.outputDirSnapshots,
+      deferSave: args.deferSave,
     })
+    args.deferredSaves?.set(node.id, landed)
   }
 
   const finalViolations = violations

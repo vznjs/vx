@@ -468,6 +468,44 @@ port-<tag>-<port>.sock … TCP:127.0.0.1:<port>` in front of the
     832 / 765 / 794 / 805 / 969 → 558 / 845 / 693 / 684 / 701 / 804 ms
     — five wins of six, 10–17%, on a box whose baseline drifted 630 →
     969 across the rounds.
+82. DONE (a miss's save runs off the execution slot): the cold profile
+    of the 1,000-project bench put ~2.5 ms of `miss: save` (pack, write
+    temp, scan, rename, index) and 0.6 of `miss: resolve outputs`
+    inside every ~8.7 ms execution slot — a third of the slot was I/O
+    holding a CPU-shaped cap, and 8 workers on 4 CPUs ran the cold row
+    12–17% faster than 4, the same signature as item 81. The save now
+    goes to a save lane (`orchestrator/save-lane.ts`): `saveMiss`
+    keeps the slot-bound half in the slot — resolve the outputs, warn
+    on an empty match, mark the git snapshot, which a same-project
+    downstream task reads — and hands the pack + write + index +
+    snapshot request to the lane, at most `2 × concurrency` in flight
+    (each pack holds an artifact's bytes), drained by `run()` before
+    the upload drain (the uploads are what the saves queued) and the
+    snapshot loop (which reads what the saves pushed). A save that
+    fails is one status line and a miss next time — the task's work
+    ran; a cache error degrades to a miss like a remote one. An
+    embedder that passes no lane gets the entry before the outcome, as
+    before. Interleaved A/B, binary against binary, three cold rounds:
+    `run graph` 2,543 / 2,379 / 2,414 → 2,071 / 2,070 / 2,350 ms
+    (−19 / −13 / −3%), the drain at run end 1.5–2 ms. Pinned: the lane
+    caps and orders saves, drains what a save deferred mid-drain, and
+    reports a failed save without rejecting; and a run whose cache
+    layer sleeps 300 ms per save starts the next task's execution while
+    a save is in flight (an order log, not a clock, so it holds under
+    any load) and still hits on the next run. One reader had relied on
+    "outcome resolved ⇒ entry saved": admission's in-flight join, where
+    a duplicate of the task in another run waits on a barrier and then
+    probes — released at the outcome it probed a miss and ran the task
+    twice (its two pins caught it). The barrier now lifts when the
+    save has LANDED (`deferredSaves`, the lane's settled promise per
+    task); the executor's own return is not held, only the joiners.
+    The other reader is a DEPENDENT: its execute request carries the
+    upstream's output rows, which the save writes (the executor
+    capability pin caught a dependent reading `outputs: []`). The
+    scheduler takes `settledOf(outcome)` — the same landed promise —
+    and unblocks dependents on it while the freed slot admits other
+    work at once; the bench's independent tasks lose nothing, a chain
+    waits for the save as it always did.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

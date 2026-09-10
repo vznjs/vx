@@ -55,6 +55,7 @@ import { startLocalShortCircuit, type ShortCircuit } from './local-shortcircuit.
 import { assembleRunRecords } from './run-records.js'
 import { selectKeepAlive, shutdownPersistent } from './persistent.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
+import { createSaveLane } from './save-lane.js'
 import { formatAbortedSection, formatRunSummary } from './summary.js'
 import type { RunOptions, RunSummary } from './options.js'
 
@@ -432,6 +433,13 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
     const sandboxArmer = prepareSandbox(nodes.values())
     const outputDirSnapshots: OutputDirSnapshot[] = []
+    // Saves run off the execution slot, twice the cap at once (memory:
+    // each pack holds an artifact's bytes); a failed save is a miss next
+    // time, said once — the task's work ran.
+    const saveLane = createSaveLane(2 * concurrency, (err) =>
+      log.status(`[vx] cache save failed: ${err instanceof Error ? err.message : String(err)}`),
+    )
+    const deferredSaves = new Map<string, Promise<void>>()
 
     // Focused flow: a requested GROUP has no output of its own, so
     // surface the same-project, non-group tasks it chains (one level)
@@ -568,6 +576,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         ...(taint ? { taintedUpstream: true } : {}),
         ...(sandboxArmer !== null ? { armSandbox: () => sandboxArmer.arm() } : {}),
         outputDirSnapshots,
+        deferSave: saveLane.defer,
+        deferredSaves,
       }
     }
 
@@ -591,6 +601,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     const outcomes = await runGraph({
       nodes,
       concurrency,
+      settledOf: (o) => deferredSaves.get(o.node.id),
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(resourceCosts.size > 0 ? { resourceCosts, cpuBudget: concurrency, memBudget } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
@@ -751,6 +762,11 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // write with nothing but a warning. The seam's contract is that a
     // cache layer stays usable until the run's uploads have settled.
     await prefetchDone
+    // Every deferred save settles first: the upload drain below carries
+    // the entries the saves queued, and the snapshot loop after it reads
+    // what the saves pushed.
+    await saveLane.drain()
+    mark('save lane')
     await cache.drainUploads?.()
     // The miss path's output-directory snapshots, taken now that the
     // directories are old enough for the snapshot's racy window (see

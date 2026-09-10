@@ -114,13 +114,24 @@ export function admitTasks(
         release = resolve
       }),
     )
+    const execArgs = buildExecuteArgs(node, upstream)
     try {
       // `return await`, deliberately: the finally must run after the task
       // settles, not when its promise is handed back.
-      return await executeTask(buildExecuteArgs(node, upstream))
+      return await executeTask(execArgs)
     } finally {
-      inflight.delete(hash)
-      release()
+      // The barrier lifts when the ENTRY is there, not when the task is:
+      // the save runs off the slot (save-lane.ts), and a sibling released
+      // before it landed would probe a miss and run the task again. The
+      // executor's own return is not held — only the joiners wait.
+      const landed = execArgs.deferredSaves?.get(node.id)
+      const lift = (): void => {
+        execArgs.deferredSaves?.delete(node.id)
+        inflight.delete(hash)
+        release()
+      }
+      if (landed !== undefined) void landed.then(lift, lift)
+      else lift()
     }
   }
 }

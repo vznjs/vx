@@ -61,6 +61,7 @@ group.
 | [`execute-task.md`](./execute-task.md)             | `src/orchestrator/execute-task.ts` — per-task: hash → cache lookup → spawn → save.                                             |
 | [`sandbox-request.md`](./sandbox-request.md)       | `src/orchestrator/sandbox-request.ts` — arming the runtime for a run; the sandbox half of an ExecuteRequest: grants, binds.    |
 | [`miss-save.md`](./miss-save.md)                   | `src/orchestrator/miss-save.ts` — what a miss leaves behind: resolve outputs, save, mark git.                                  |
+| [`miss-save.md`](./miss-save.md) § The save lane   | `src/orchestrator/save-lane.ts` — the bounded off-slot save queue `run()` drains before the upload drain.                      |
 | [`hit-restore.md`](./hit-restore.md)               | `src/orchestrator/hit-restore.ts` — what a hit leaves behind: the two proofs, clean + restore, mark git, replay stdout.        |
 | [`task-hash.md`](./task-hash.md)                   | `src/orchestrator/task-hash.ts` — cache-key derivation (`computeTaskHash` & co.).                                              |
 | [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — filter upstream cache hashes by `cache.inputs.tasks`.                                         |

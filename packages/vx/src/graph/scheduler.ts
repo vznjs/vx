@@ -128,6 +128,14 @@ export interface ScheduleOptions {
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
   /**
+   * What an outcome still owes before its dependents may start — a cache
+   * save that runs off the execution slot (the orchestrator's save lane):
+   * a dependent reads the upstream's entry (its output rows travel in the
+   * execute request), so it waits for the save to land, while the freed
+   * slot admits other work at once. Undefined: nothing owed.
+   */
+  settledOf?: (outcome: TaskOutcome) => Promise<void> | undefined
+  /**
    * Optional priority override: callers pass their own per-node weight
    * (e.g. `computePredictedPriorities` from the orchestrator's history
    * data). The scheduler picks the highest-weight ready task next.
@@ -642,8 +650,20 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           (outcome) => {
             leave()
             release(cost)
-            finishOne(id, outcome)
+            // The slot is free now; the dependents wait for what the
+            // outcome still owes (a save landing), if anything.
+            const settled = options.settledOf?.(outcome)
+            if (settled === undefined) {
+              finishOne(id, outcome)
+              tick()
+              return
+            }
             tick()
+            const done = (): void => {
+              finishOne(id, outcome)
+              tick()
+            }
+            void settled.then(done, done)
           },
           (err: unknown) => {
             const message = err instanceof Error ? err.message : String(err)

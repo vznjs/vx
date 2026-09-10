@@ -31,9 +31,34 @@ export interface SaveMissArgs {
   command: string
   durationMs: number
   stdout: string
+  outputDirSnapshots?: OutputDirSnapshot[] // queued for run end when present
+  deferSave?: (save: () => Promise<void>) => void // the run's save lane when present
 }
 export function saveMiss(a: SaveMissArgs): Promise<void>
 ```
+
+## The save lane (2026-09-10)
+
+The execution slot is CPU-shaped (`--concurrency`) and the save is not:
+pack, write, rename and one index transaction, ~2.5 ms of mostly I/O per
+one-file artifact against ~5 ms of execution on the 1,000-project bench.
+So when the run passes `deferSave`, only the slot-bound half runs in the
+slot — resolve the outputs, warn on an empty match, mark the git
+snapshot (a same-project downstream task reads both) — and the pack +
+write + index + snapshot request go to `save-lane.ts`: at most
+`2 × concurrency` saves in flight (each pack holds an artifact's bytes),
+drained by `run()` before the upload drain (the uploads are what the
+saves queued) and the snapshot loop (which reads what the saves pushed).
+A save that fails is one status line and a miss next time — the task's
+work ran, and a cache error degrades to a miss like a remote one. An
+embedder that passes no lane gets the entry before the outcome, as
+before. The one reader that must wait for the entry is admission's
+in-flight join (a duplicate of the task in another run): `saveMiss`
+returns the lane's `landed` promise, `execute-task` parks it in
+`deferredSaves` by task id, and admission lifts its barrier on it —
+the executor's own return is never held. Dependents wait on the same
+promise (the scheduler's `settledOf`): their execute request carries
+the upstream's output rows, which the save writes.
 
 ## Order, and why it is the order
 

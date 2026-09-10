@@ -490,6 +490,40 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     expect(peak).toBe(1)
   })
 
+  it('a dependent waits for what its upstream still owes, while the freed slot admits other work', async () => {
+    // One slot. `up` resolves at once but owes a settle (a save landing,
+    // 30 ms later); `other` is independent; `down` depends on `up`. The
+    // slot must go to `other` right away, and `down` must start only
+    // after the settle.
+    const order: string[] = []
+    let settleAt = 0
+    const settles = new Map<string, Promise<void>>()
+    const out = await runGraph({
+      nodes: nodes(node('up#run'), node('other#run'), node('down#run', ['up#run'])),
+      concurrency: 1,
+      settledOf: (o) => settles.get(o.node.id),
+      execute: async (n) => {
+        order.push(n.id)
+        if (n.id === 'up#run') {
+          settles.set(
+            n.id,
+            new Promise((r) =>
+              setTimeout(() => {
+                settleAt = performance.now()
+                r()
+              }, 30),
+            ),
+          )
+        }
+        if (n.id === 'down#run') expect(performance.now()).toBeGreaterThanOrEqual(settleAt)
+        return success(n)
+      },
+    })
+    expect(out.size).toBe(3)
+    expect(order).toEqual(['up#run', 'other#run', 'down#run'])
+    expect(settleAt).toBeGreaterThan(0)
+  })
+
   it('restore-tier task reports cache-hit even when a dep FAILED', async () => {
     // up#prep fails; down#build depends on it but is restore-tier.
     // It must NOT be skipped — its key is dep-success-independent.
