@@ -83,5 +83,6 @@ has no vx spelling, on purpose).
   a pre-execution file listing is a candidate, not a gap.
 - **watch + persistent** divergence (documented, unpinned): a pin
   needs a watch harness that is not flaky; on the list with M7/M8.
-- **Scoped vs whole-repo enumeration equivalence** for untracked files:
-  a property test over `gitFilesCache`'s two partitions; candidate.
+- **Scoped vs whole-repo enumeration equivalence**: DONE (STATUS 108),
+  `tests/enumeration-equivalence.test.ts` — twelve seeded trees, every
+  worktree state, exact partitions and trusted OIDs in both modes.

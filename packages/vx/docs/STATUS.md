@@ -1050,6 +1050,22 @@ before · 2 attempts this run`), `--summarize`'s per-task
       across a checkout) stays open with M7/M8 until the watch harness
       stops being flaky. M2 marked done with a `vx show`-in-a-task
       control added.
+108.  DONE (2026-09-10, night — the survey's last candidate): scoped and
+      whole-repo git enumeration are property-tested equal. A run that
+      loads few projects lets git scan only their dirs (`gitPathspecs`);
+      one that loads more, or declares `workspaceFiles`, scans the tree
+      and partitions it — both feed the key, so a divergence would key
+      one task two ways depending on which OTHER projects a run loaded.
+      `tests/enumeration-equivalence.test.ts` draws twelve seeded trees
+      (a clean, a modified, a deleted, a staged, an untracked, an
+      ignored file and an untracked directory, in random mixes, across
+      a project whose dir is a prefix of a sibling's, a nested project,
+      a space and a non-ASCII name) and asserts, per partition, the two
+      modes equal AND equal the plan's own expectation: every
+      non-ignored file of the project and its nested projects, and
+      trusted OIDs for exactly the clean tracked ones. Holds on every
+      seed; the pin catches the prefix-bleed mutation (`dir` without
+      its slash) on every seed too. No defect.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
