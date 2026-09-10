@@ -3,8 +3,8 @@
 ## Purpose
 
 What every lockfile plugin needs around its parser. A plugin that keys
-each project on its own dependency closure (`@vzn/vx-pnpm`,
-`@vzn/vx-bun`) claims the file (`VxPlugin.fingerprint`), folds one digest
+each project on its own dependency closure (`@vzn/vx-lockfile`,
+`@vzn/vx-lockfile`) claims the file (`VxPlugin.fingerprint`), folds one digest
 per project through `key`, and answers `--affected` by digesting both
 sides of a change. Only the parser differs per package manager; the
 memo, the per-run gate, the fallback for a project the file does not
@@ -73,4 +73,4 @@ planted memo keys the task, a changed file or version ignores it), the
 per-run gate (one parse for two tasks), the root fallback, `scope:
 'workspace'`, the `affected` diff, and `reachDigests` (reach moves a
 digest, numbering does not, a cycle shares a component). The formats
-are pinned in `packages/vx-pnpm/tests` and `packages/vx-bun/tests`.
+are pinned in `packages/vx-lockfile/tests`, one file per manager.

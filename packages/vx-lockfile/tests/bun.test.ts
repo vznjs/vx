@@ -7,7 +7,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { bun, importerDigests, parseLockfile } from '../src/index.js'
+import { bun } from '../src/index.js'
+import { importerDigests, parseLockfile } from '../src/bun.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
@@ -136,7 +137,9 @@ describe('workspace digests', () => {
 
 describe('bun()', () => {
   it('refuses an unknown scope', () => {
-    expect(() => bun({ scope: 'file' as never })).toThrow(/scope must be 'project' or 'workspace'/)
+    expect(() => bun({ scope: 'file' as never })).toThrow(
+      /bun\(\) scope must be 'project' or 'workspace'/,
+    )
   })
 })
 

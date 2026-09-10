@@ -599,6 +599,31 @@ foo` invalidated the whole workspace and `--affected` selected every
     workspace link, install-wide knob, scoped nesting, refusal) and
     `vx run` / `--affected` end to end.
 
+85. DONE (one package for every package manager; owner's ask,
+    2026-09-10): `@vzn/vx-pnpm` and `@vzn/vx-bun` merged into
+    `@vzn/vx-lockfile`, which exports `pnpm()`, `bun()`, `npm()` and
+    `yarn()` — one plugin per manager, each a parser over core's
+    `lockfileClaim` with the same two modes (`scope: 'project'`, the
+    default, one digest per project; `scope: 'workspace'`, the whole
+    file's hash through the plugin) and the same once-per-content /
+    once-per-run cost. The claim's key part is named after the manager
+    (`lockfileClaim` grew `part`), so `vx why` reads `plugin
+@vzn/vx-lockfile/pnpm`. New parsers: `package-lock.json`
+    (lockfileVersion 2 and 3: the `packages` map, `p/node_modules/d`
+    then the ancestors then the root, `link: true` entries pointing at
+    their workspace, root `overrides` into every project; version 1 is
+    refused by name) and `yarn.lock` (berry: `name@npm:range`
+    descriptors to entries, `workspace:` ranges by name, `__metadata`
+    into every project; classic yarn 1: its own text format read
+    line-wise, one root digest since the file records no workspaces —
+    coarse and honest). This repo imports `bun()` from the merged
+    package. Pinned per manager (hoisted / transitive bump, nested
+    version, workspace link, install-wide knob, refusals) and `npm()`
+    / `yarn()` through `planRun`; the pnpm and bun suites moved whole.
+    Not done: yarn classic per-workspace precision — the file has no
+    workspace entries to key on, and reading each `package.json` to
+    seed the walk is a design for when a classic-yarn workspace asks.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
@@ -1066,9 +1091,11 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    port bridge, completions) merged as 61d9392 at 13:50Z. PR #271
    (items 81–82, the restore lane and the save lane) merged as b71008b
    at 14:24Z. PR #272 holds item 83 — the `fingerprint` seam and
-   `@vzn/vx-pnpm`, the owner's lockfile ask — and item 84 (the shell
-   in core, `@vzn/vx-bun`, dogfooded) on the same branch with main
-   merged back in; it merges on the owner's word, never on ours.
+   the pnpm plugin, the owner's lockfile ask — item 84 (the shell in
+   core, the bun claimant, dogfooded) and item 85 (one
+   `@vzn/vx-lockfile` package: pnpm, bun, npm, yarn) on the same
+   branch with main merged back in; it merges on the owner's word,
+   never on ours.
    What a fresh session should know: (a) the warm floor is measured
    and recorded three ways in items 76–77 — module load and the git
    walk are what remain, and the compile flags are the right ones;

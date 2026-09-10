@@ -3,7 +3,7 @@ import { otel } from '@vzn/vx-otel'
 import { github } from '@vzn/vx-github'
 import { mcp } from '@vzn/vx-mcp'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
-import { bun } from '@vzn/vx-bun'
+import { bun } from '@vzn/vx-lockfile'
 
 // Nothing runs that is not declared here — including core's own executor
 // and cache. Order is precedence: a plugin listed earlier is consulted

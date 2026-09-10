@@ -112,7 +112,7 @@ export type {
 // capability is the canonical data-export path and cannot change behavior.
 // A plugin is declared in vx.workspace.ts via defineWorkspace({ plugins }).
 // See docs/design/observability-architecture-2026-06.md.
-// The claimant's shell for a lockfile plugin (`@vzn/vx-pnpm`, `@vzn/vx-bun`):
+// The claimant's shell for a lockfile plugin (`@vzn/vx-lockfile`):
 // the claim, the per-project key, the memo and the `--affected` diff around
 // a parser; `reachDigests` is the Merkle-over-components digest both use.
 export {

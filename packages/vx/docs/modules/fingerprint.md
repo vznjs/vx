@@ -36,7 +36,7 @@ with the file's bytes at the base ref and in the working tree, and
 selects the projects it names instead of every project — `undefined`
 ("cannot tell") widens exactly as an unclaimed file does. `vx watch`
 needs nothing: it still re-runs on the file, and the keys decide.
-`@vzn/vx-pnpm` and `@vzn/vx-bun` are the claimants, both over the shell in
+`@vzn/vx-lockfile` (`pnpm()`, `bun()`, `npm()`, `yarn()`) are the claimants, both over the shell in
 [`lockfile-claim.md`](./lockfile-claim.md).
 
 ## Files folded in

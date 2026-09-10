@@ -72,10 +72,10 @@ packages/vx-turbo       zero-migration Turbo plugin: turbo.json + scripts → ta
 packages/vx-migrate     `bunx @vzn/vx-migrate`: turbo.json or an Nx graph → vx.config.ts (core keeps `vx init`)
 packages/vx-prune       `bunx @vzn/vx-prune` / the `prune` verb via the commands seam: a workspace subset for Docker
 packages/vx-schedule-history  `schedule` plugin: order by the critical path learned from run history
-packages/vx-pnpm        pnpm plugin: claims pnpm-lock.yaml (`fingerprint` seam) and keys each task on its
-                        project's own dependency closure; --affected follows the same digests
-packages/vx-bun         the same for bun.lock (this repo declares it); both are parsers over core's
-                        `lockfileClaim` (orchestrator/lockfile-claim.ts: memo, per-run gate, --affected diff)
+packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fingerprint` seam) and keys each
+                        task on its project's own dependency closure; --affected follows. Parsers over core's
+                        `lockfileClaim` (orchestrator/lockfile-claim.ts: memo, per-run gate, --affected diff).
+                        This repo declares bun()
 packages/vx-docs        Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-bench       synthetic workspace generator + runners (vx / turbo / nx)
 packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/;

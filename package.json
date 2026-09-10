@@ -14,8 +14,8 @@
   "devDependencies": {
     "@types/bun": "^1.4.0",
     "@vzn/vx": "workspace:*",
-    "@vzn/vx-bun": "workspace:*",
     "@vzn/vx-github": "workspace:*",
+    "@vzn/vx-lockfile": "workspace:*",
     "@vzn/vx-mcp": "workspace:*",
     "@vzn/vx-otel": "workspace:*",
     "@vzn/vx-reapi": "workspace:*",

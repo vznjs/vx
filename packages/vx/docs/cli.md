@@ -170,7 +170,7 @@ widens to every project instead, for the same reason it unions in
 untracked files. Only the ROOT copies count: a lockfile vendored inside
 a package is not hashed and selects just that package. A lockfile a
 plugin CLAIMS (`VxPlugin.fingerprint`, e.g. `pnpm-lock.yaml` under
-`@vzn/vx-pnpm`) is the exception on both sides: the key folds what the
+`@vzn/vx-lockfile`) is the exception on both sides: the key folds what the
 plugin says per project, so `--affected` asks the plugin which projects
 the change touches — given the bytes at the base ref and in the working
 tree — and selects those; only a plugin that cannot tell widens.

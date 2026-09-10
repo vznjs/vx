@@ -1,6 +1,6 @@
 // The claimant's shell: what every lockfile plugin needs around its
 // parser. A plugin that keys each project on its own dependency closure
-// from a lockfile (`@vzn/vx-pnpm`, `@vzn/vx-bun`) claims the file
+// from a lockfile (`@vzn/vx-lockfile`) claims the file
 // (`VxPlugin.fingerprint`), folds one digest per project through `key`,
 // and answers `--affected` by digesting both sides of a change. Only the
 // parser differs per package manager; the memo, the per-run gate, the
@@ -42,6 +42,11 @@ export interface LockfileClaimOptions {
    * core would fold, through the plugin.
    */
   readonly scope?: 'project' | 'workspace'
+  /**
+   * The key part's name, as `vx why` shows it under the plugin's name
+   * (`@vzn/vx-lockfile/pnpm`). Default `'deps'`.
+   */
+  readonly part?: string
 }
 
 /** The two hooks a lockfile plugin spreads into `definePlugin`. */
@@ -65,6 +70,7 @@ interface Memo {
 export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks {
   const { file, digest, version } = options
   const scope = options.scope ?? 'project'
+  const part = options.part ?? 'deps'
   if (scope !== 'project' && scope !== 'workspace') {
     throw new Error(`scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`)
   }
@@ -134,8 +140,10 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     async key(task, ctx) {
       const digests = await loadOnce(ctx)
       if (digests.lock === '') return undefined
-      if (scope === 'workspace') return { lockfile: digests.lock }
-      return { deps: digestFor(digests.importers, importerOf(ctx.workspaceRoot, task.projectDir)) }
+      if (scope === 'workspace') return { [part]: digests.lock }
+      return {
+        [part]: digestFor(digests.importers, importerOf(ctx.workspaceRoot, task.projectDir)),
+      }
     },
   }
 }

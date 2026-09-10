@@ -1,7 +1,7 @@
 // The claimant's shell (`lockfileClaim`): the memo, the per-run gate, the
 // fallback for an unlisted project and the `--affected` diff, with a fake
 // digest so the pins are about the shell and not a lockfile format. The
-// real formats are pinned in their packages (@vzn/vx-pnpm, @vzn/vx-bun).
+// real formats are pinned in @vzn/vx-lockfile, one file per manager.
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -99,10 +99,21 @@ describe('key', () => {
     const a = await hooks.key(task('packages/a'), ctx())
     const b = await hooks.key(task('packages/b'), ctx())
     expect(a).toEqual(b)
-    expect(a).toHaveProperty('lockfile')
+    expect(a).toHaveProperty('deps')
     expect(calls).toHaveLength(0)
     await lock('.=root1\npackages/a=a2\n')
     expect(await hooks.key(task('packages/b'), ctx())).not.toEqual(b)
+  })
+
+  it('names the part as asked', async () => {
+    await lock('.=root1\n')
+    const hooks = lockfileClaim({
+      file: 'bun.lock',
+      version: 1,
+      part: 'bun',
+      digest: () => new Map([['.', 'r']]),
+    })
+    expect(await hooks.key(task('.'), ctx())).toEqual({ bun: 'r' })
   })
 
   it('refuses an unknown scope', () => {

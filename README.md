@@ -164,9 +164,9 @@ Context Protocol server for AI coding agents, no SDK),
 [`@vzn/vx-nx-cache`](packages/vx-nx-cache) (remote cache against any
 server speaking Turbo's `/v8/artifacts` API or Nx's self-hosted cache
 spec — the wire is theirs, the artifacts are vx's),
-[`@vzn/vx-pnpm`](packages/vx-pnpm) and [`@vzn/vx-bun`](packages/vx-bun)
-(the lockfile keyed per project: one install re-keys only the projects it
-reaches, and `--affected` follows), [`@vzn/vx-turbo`](packages/vx-turbo) (a Turbo repo under vx with
+[`@vzn/vx-lockfile`](packages/vx-lockfile) (`pnpm()`, `bun()`, `npm()`,
+`yarn()`: the lockfile keyed per project, so one install re-keys only the
+projects it reaches, and `--affected` follows), [`@vzn/vx-turbo`](packages/vx-turbo) (a Turbo repo under vx with
 nothing written: `turbo.json` + scripts become tasks through the
 `project` stage), and [`@vzn/vx-schedule-history`](packages/vx-schedule-history)
 (order by learned critical path) and [`@vzn/vx-migrate`](packages/vx-migrate)
@@ -301,7 +301,7 @@ is Windows (unsupported).
 | Turbo-wire cache (`@vzn/vx-turbo-cache`)           | **shippable**        | any `/v8/artifacts` server, Bearer auth, HMAC artifact signatures                            |
 | Nx-wire cache (`@vzn/vx-nx-cache`)                 | **shippable**        | any Nx self-hosted cache server (`/v1/cache`, immutable records)                             |
 | Zero-migration Turbo (`@vzn/vx-turbo`)             | **shippable**        | a `turbo.json` workspace runs under vx with no `vx.config` written; a written config wins    |
-| Lockfile keys (`@vzn/vx-pnpm`, `@vzn/vx-bun`)      | **shippable**        | per-project dependency-closure keys from `pnpm-lock.yaml` / `bun.lock`; `--affected` follows |
+| Lockfile keys (`@vzn/vx-lockfile`)                 | **shippable**        | `pnpm()` `bun()` `npm()` `yarn()`: per-project dependency-closure keys; `--affected` follows |
 
 ## Development
 

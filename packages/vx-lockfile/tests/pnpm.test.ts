@@ -8,7 +8,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { planRun, run, type Logger } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { importerDigests, parseLockfile, pnpm } from '../src/index.js'
+import { pnpm } from '../src/index.js'
+import { importerDigests, parseLockfile } from '../src/pnpm.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 
@@ -302,7 +303,9 @@ snapshots:
 
 describe('pnpm()', () => {
   it('refuses an unknown scope', () => {
-    expect(() => pnpm({ scope: 'file' as never })).toThrow(/scope must be 'project' or 'workspace'/)
+    expect(() => pnpm({ scope: 'file' as never })).toThrow(
+      /pnpm\(\) scope must be 'project' or 'workspace'/,
+    )
   })
 
   describe('affected', () => {
@@ -440,7 +443,7 @@ describe('vx run with pnpm() declared', () => {
     })
     const out = new TextDecoder().decode(why.stdout)
     expect(why.exitCode).toBe(0)
-    expect(out).toMatch(/changed +plugin +@vzn\/vx-pnpm\/deps/)
+    expect(out).toMatch(/changed +plugin +@vzn\/vx-lockfile\/pnpm/)
     expect(out).not.toMatch(/changed +workspace +fingerprint/)
   })
 

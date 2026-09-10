@@ -107,7 +107,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Output declarations                                                         | `outputs: [...]`                                     | `outputs: [...]`                                         | `output: glob` or `{pattern,base}` | `cache.outputs.files: string[]`                                                                                        |
 | Output cleaning before exec / restore                                       | (no — additive)                                      | (no — additive)                                          | (via materialized artifacts)       | **yes** — strict                                                                                                       |
 | Implicit-dependency hash (project `package.json`)                           | (via lockfile)                                       | `externalDependencies`                                   | (via lockfile)                     | **yes** — folded directly (v12)                                                                                        |
-| Lockfile-aware invalidation (only the projects a dependency change reaches) | (whole lockfile in the global hash)                  | yes — pruned lockfile per project, in the daemon's graph | (whole lockfile)                   | **`@vzn/vx-pnpm`**, **`@vzn/vx-bun`** — per-project closure digest, memoised by lockfile hash; `--affected` follows it |
+| Lockfile-aware invalidation (only the projects a dependency change reaches) | (whole lockfile in the global hash)                  | yes — pruned lockfile per project, in the daemon's graph | (whole lockfile)                   | **`@vzn/vx-lockfile`**, **`@vzn/vx-lockfile`** — per-project closure digest, memoised by lockfile hash; `--affected` follows it |
 | Resolved-config hash (captures TS imports)                                  | —                                                    | —                                                        | —                                  | **yes** — `node.config` JSON hashed                                                                                    |
 | Persistent / long-running tasks (dev servers)                               | `persistent`, `interruptible`, `interactive`, `with` | `continuous`                                             | (handled outside graph)            | `exec.persistent.readyWhen`                                                                                            |
 | Configurations (named option sets)                                          | —                                                    | `configurations` + `-c`                                  | —                                  | — **gap**                                                                                                              |
@@ -389,7 +389,7 @@ Things `@vzn/vx` does that the others don't:
   Nx get this transitively via the lockfile; vx folds the per-project
   bytes directly, so narrow `inputs.files` like `['src/**']` doesn't
   miss dep / version-bump invalidation.
-- **Lockfile-aware invalidation as a plugin.** `@vzn/vx-pnpm` claims
+- **Lockfile-aware invalidation as a plugin.** `@vzn/vx-lockfile` claims
   `pnpm-lock.yaml` and keys each project on its own resolved closure
   (name, version, peers, integrity, patches, `link:` reach), so
   `pnpm update foo` re-keys only the projects that reach `foo` and
