@@ -176,6 +176,27 @@ const benchRows = [
   },
 ]
 
+// The race: the cold-build row, played back on real numbers. The track is
+// scaled to Turbo's time; Nx runs off the end and keeps going. Overhead
+// reads as the generator prints it: a percentage under 2×, a multiple above.
+const cold = benchRows[0]!
+const raceBar = (name: string) => cold.bars.find((b) => b.name === name)!
+const raceBase = raceBar('baseline')
+const raceVx = raceBar('vx')
+const raceTurbo = raceBar('turbo')
+const raceNx = raceBar('nx')
+const over = (val: number): string => {
+  const ratio = val / raceBase.val
+  return ratio < 2 ? `+${Math.round((ratio - 1) * 100)}%` : `${ratio.toFixed(1)}×`
+}
+const lanes = [
+  { name: 'vx', label: 'vx', bar: raceVx, tone: 'var(--phosphor)' },
+  { name: 'turbo', label: 'Turborepo', bar: raceTurbo, tone: 'var(--c-turbo)' },
+  { name: 'nx', label: 'Nx', bar: raceNx, tone: 'var(--c-nx)' },
+]
+const trackMax = raceTurbo.val * 1.04
+const pct = (ms: number) => Math.min(100, (ms / trackMax) * 100)
+
 const footCols = {
   product: [
     { t: 'Benchmarks', h: href('benchmarks/') },
@@ -227,8 +248,11 @@ const footCols = {
   </head>
   <body>
     <div class="vx-landing">
+      <div class="grain" aria-hidden="true"></div>
+      <div class="vignette" aria-hidden="true"></div>
       <!-- ===================== Nav ===================== -->
       <header class="nav">
+        <span class="progress" aria-hidden="true"></span>
         <div class="nav-left">
           <a class="brand" href={base}>
             <img src={href('logo-mark.svg')} width="26" height="26" alt="vx" />
@@ -257,23 +281,31 @@ const footCols = {
       </header>
 
       <!-- ===================== Hero ===================== -->
-      <section class="hero vx-grid-bg">
+      <section class="hero">
+        <canvas class="warp" aria-hidden="true"></canvas>
+        <div class="floor" aria-hidden="true"></div>
+        <div class="spotlight" aria-hidden="true"></div>
         <div class="bloom"></div>
         <div class="fade"></div>
         <div class="hero-grid container">
-          <div>
+          <div class="hero-copy">
             <div class="badges">
               <span class="badge badge-phosphor"><span class="dot"></span>One binary · no Node, no Bun</span>
               <span class="badge">No daemon</span>
               <span class="badge">MIT licensed</span>
             </div>
-            <h1>One thing, done right.<br /><span class="phosphor">Build the rest on top.</span></h1>
+            <p class="vx-kicker hero-kicker">// the task runner from the future</p>
+            <h1 class="hero-title">
+              <span class="line">Bend time.</span><br /><span
+                class="line phosphor chroma"
+                data-text="Not the rules.">Not the rules.</span
+              >
+            </h1>
             <p class="lede">
-              vx runs and caches your monorepo's task graph — correctly, in milliseconds, from one
-              self-contained binary — and stops there. Remote caches, remote execution, telemetry,
-              AI agents, learned scheduling and your own verbs are plugins on documented seams, not
-              features inside. It is what Nx would be if it were not a product: no daemon, no cloud,
-              no account, nothing to lock you in.
+              vx runs and caches your monorepo's task graph from one self-contained binary — and
+              adds 4% to a cold build where Turborepo adds 44% and Nx multiplies it by 9.6. No
+              daemon, no cloud, no account. Remote caches, remote execution, telemetry and AI agents
+              are plugins on documented seams, never features inside.
             </p>
             <div class="actions">
               <a class="btn btn-primary btn-lg" href={href('quickstart/')}
@@ -326,7 +358,7 @@ const footCols = {
           </div>
 
           <!-- Terminal -->
-          <div class="term">
+          <div class="term reveal" data-term>
             <div class="term-bar-top">
               <span class="tdot" style="background:#ff5f57"></span>
               <span class="tdot" style="background:#febc2e"></span>
@@ -417,16 +449,66 @@ const footCols = {
         </div>
       </section>
 
+      <!-- ===================== Race ===================== -->
+      <section class="race" id="race">
+        <div class="race-inner container reveal">
+          <div class="race-head">
+            <p class="vx-kicker">// time dilation · cold build · same graph, same tasks</p>
+            <h2>Same code. <span class="phosphor">Different clocks.</span></h2>
+            <p class="vx-sub">
+              Your tasks alone need {raceBase.disp} on this graph. Everything after that is the
+              runner. Real numbers, played back at sixty times speed.
+            </p>
+          </div>
+          <div
+            class="race-track"
+            data-race
+            data-base={raceBase.val}
+            data-max={Math.round(trackMax)}
+          >
+            <div class="race-clock">
+              <span class="t" data-clock>T+00:00</span>
+              <span class="lbl">build time</span>
+              <button class="replay" type="button" data-replay>↻ replay</button>
+            </div>
+            <div class="race-baseline" style={`--at:${(pct(raceBase.val) / 100).toFixed(4)}`}>
+              <span>ideal schedule · {raceBase.disp}</span>
+            </div>
+            {
+              lanes.map((l) => (
+                <div class={`lane lane-${l.name}`} style={`--c:${l.tone};--end:${pct(l.bar.val)}%`} data-ms={l.bar.val}>
+                  <div class="lane-head">
+                    <span class="name">{l.label}</span>
+                    <span class="over">{over(l.bar.val)}</span>
+                    <span class="fin">{l.bar.disp}</span>
+                  </div>
+                  <div class="lane-track">
+                    <span class="trail" />
+                    <span class="ship" />
+                    <span class="stamp">{l.bar.val > trackMax ? 'still running' : 'done'}</span>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+          <p class="race-foot">
+            Cold build of {benchRows[0] && '3,270'} tasks across 1,090 packages, every runner on the
+            same commands and the same concurrency. The <a href="#bench">full table</a> is below;
+            the harness is in the <a href={href('benchmarks/')}>benchmarks</a>.
+          </p>
+        </div>
+      </section>
+
       <!-- ===================== Features ===================== -->
       <section class="section container">
-        <div class="section-head">
+        <div class="section-head reveal">
           <p class="vx-kicker">// only in vx</p>
           <h2>What sets vx apart.</h2>
         </div>
         <div class="feat-grid">
           {
-            features.map((f) => (
-              <div class="feat-card" style={`--c:${f.tone}`}>
+            features.map((f, i) => (
+              <div class="feat-card tilt reveal" style={`--c:${f.tone};--i:${i}`}>
                 <span class="ico">
                   <svg
                     width="21"
@@ -450,7 +532,7 @@ const footCols = {
 
       <!-- ===================== Platform layer ===================== -->
       <section class="section container">
-        <div class="section-head">
+        <div class="section-head reveal">
           <p class="vx-kicker">// built to be built on</p>
           <h2>The seams, not the platform.</h2>
           <p class="vx-sub">
@@ -462,10 +544,10 @@ const footCols = {
         </div>
         <div class="feat-grid">
           {
-            platform.map((f) => (
+            platform.map((f, i) => (
               <a
-                class="feat-card platform-card"
-                style={`--c:${f.tone}`}
+                class="feat-card platform-card tilt reveal"
+                style={`--c:${f.tone};--i:${i}`}
                 href={
                   f.icon === 'spark'
                     ? href('guides/mcp/')
@@ -501,8 +583,8 @@ const footCols = {
       </section>
 
       <!-- ===================== Benchmark ===================== -->
-      <section class="bench">
-        <div class="bench-panel container vx-scanlines">
+      <section class="bench" id="bench">
+        <div class="bench-panel container vx-scanlines reveal">
           <div class="bench-head">
             <div>
               <p class="vx-kicker">// runner overhead · 3,270 tasks · 1,090 packages</p>
@@ -542,6 +624,11 @@ const footCols = {
                             <span class="fill" />
                           </span>
                           <span class="disp">{b.disp}</span>
+                          <span class="ratio">
+                            {b.name === 'baseline' || b.best
+                              ? ''
+                              : `${(b.val / (r.bars.find((x) => x.best)?.val ?? 1)).toFixed(1)}×`}
+                          </span>
                         </div>
                       )
                     })}
@@ -579,7 +666,7 @@ const footCols = {
 
       <!-- ===================== Config ===================== -->
       <section class="config">
-        <div class="config-grid container">
+        <div class="config-grid container reveal">
           <div>
             <p class="vx-kicker">// configuration</p>
             <h2>Config is just<br />TypeScript.</h2>
@@ -602,9 +689,10 @@ const footCols = {
       <!-- ===================== Migrate CTA ===================== -->
       <section class="migrate vx-grid-bg">
         <div class="glow"></div>
-        <div class="inner">
+        <div class="beam" aria-hidden="true"></div>
+        <div class="inner reveal">
           <p class="vx-kicker">// migrate</p>
-          <h2>Switch in an <span class="phosphor">afternoon</span>.</h2>
+          <h2>Warp in from Turbo or Nx.<br /><span class="phosphor">In an afternoon.</span></h2>
           <p>
             <code>bunx @vzn/vx-migrate</code> converts your <code class="turbo">turbo.json</code> or{' '}
             <code class="nx">Nx project graph</code> into a real <code>vx.config.ts</code>. The
@@ -654,6 +742,12 @@ const footCols = {
     </div>
 
     <script>
+      // Every effect below is decoration over a page that reads fine without
+      // it: the DOM ships complete, the numbers are server-rendered, and a
+      // reduced-motion preference turns the motion off at the source.
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+      const fine = matchMedia('(hover: hover) and (pointer: fine)').matches
+
       // Install-pill: copy the command, flip to a checkmark briefly.
       document.querySelectorAll<HTMLButtonElement>('.install-pill').forEach((pill) => {
         pill.addEventListener('click', () => {
@@ -663,6 +757,253 @@ const footCols = {
           setTimeout(() => pill.classList.remove('copied'), 1400)
         })
       })
+
+      // Scroll progress beam in the nav.
+      const progress = document.querySelector<HTMLElement>('.nav .progress')
+      const onScroll = () => {
+        const max = document.documentElement.scrollHeight - innerHeight
+        if (progress) progress.style.width = `${max > 0 ? (scrollY / max) * 100 : 0}%`
+      }
+      addEventListener('scroll', onScroll, { passive: true })
+      onScroll()
+
+      // Reveal on entry, once. Cards stagger by their --i.
+      const revealed = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (!e.isIntersecting) continue
+            e.target.classList.add('in')
+            revealed.unobserve(e.target)
+          }
+        },
+        { rootMargin: '0px 0px -6% 0px', threshold: 0.01 },
+      )
+      document.querySelectorAll('.reveal').forEach((el) => revealed.observe(el))
+
+      // Stat tiles count up from zero when the hero is in view.
+      const countUp = (num: HTMLElement) => {
+        const target = num.textContent ?? ''
+        const value = Number(target)
+        if (!Number.isFinite(value) || reduced) return
+        const decimals = (target.split('.')[1] ?? '').length
+        const start = performance.now()
+        const dur = 1400
+        const tick = (now: number) => {
+          const t = Math.min(1, (now - start) / dur)
+          const eased = 1 - Math.pow(1 - t, 3)
+          num.textContent = (value * eased).toFixed(decimals)
+          if (t < 1) requestAnimationFrame(tick)
+          else num.textContent = target
+        }
+        requestAnimationFrame(tick)
+      }
+      const stats = document.querySelector('.hero .stats')
+      if (stats) {
+        const once = new IntersectionObserver((entries) => {
+          if (!entries.some((e) => e.isIntersecting)) return
+          stats.querySelectorAll<HTMLElement>('.num').forEach(countUp)
+          once.disconnect()
+        })
+        once.observe(stats)
+      }
+
+      // The hero's warp field: a starfield streaming past the camera, tinted
+      // in the page's three accents, leaning toward the cursor. Paused while
+      // the hero is off screen; a single still frame under reduced motion.
+      const canvas = document.querySelector<HTMLCanvasElement>('canvas.warp')
+      const hero = document.querySelector<HTMLElement>('.hero')
+      if (canvas && hero) {
+        const ctx = canvas.getContext('2d')!
+        const tints = ['198,248,78', '94,224,255', '255,157,66', '242,245,239']
+        type Star = { x: number; y: number; z: number; pz: number; c: string }
+        let stars: Star[] = []
+        let w = 0
+        let h = 0
+        let dpr = 1
+        let mx = 0
+        let my = 0
+        let raf = 0
+        let visible = true
+        const size = () => {
+          dpr = Math.min(devicePixelRatio || 1, 2)
+          w = hero.clientWidth
+          h = hero.clientHeight
+          canvas.width = Math.floor(w * dpr)
+          canvas.height = Math.floor(h * dpr)
+          canvas.style.width = `${w}px`
+          canvas.style.height = `${h}px`
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+          const n = Math.min(520, Math.floor((w * h) / 2600))
+          stars = Array.from({ length: n }, () => spawn(true))
+        }
+        const spawn = (anywhere = false): Star => {
+          const z = anywhere ? Math.random() * 1 + 0.05 : 1
+          return {
+            x: (Math.random() * 2 - 1) * 1.6,
+            y: (Math.random() * 2 - 1) * 1.0,
+            z,
+            pz: z,
+            c: tints[Math.floor(Math.random() * tints.length)]!,
+          }
+        }
+        const frame = () => {
+          const cx = w * 0.62 + mx * 28
+          const cy = h * 0.42 + my * 18
+          const f = Math.min(w, h) * 0.9
+          ctx.fillStyle = 'rgba(10, 11, 13, 0.32)'
+          ctx.fillRect(0, 0, w, h)
+          ctx.lineCap = 'round'
+          const speed = reduced ? 0 : 0.0075
+          for (const s of stars) {
+            s.pz = s.z
+            s.z -= speed
+            if (s.z <= 0.03) {
+              Object.assign(s, spawn())
+              continue
+            }
+            const sx = cx + (s.x / s.z) * f
+            const sy = cy + (s.y / s.z) * f
+            const px = cx + (s.x / s.pz) * f
+            const py = cy + (s.y / s.pz) * f
+            if (sx < -50 || sx > w + 50 || sy < -50 || sy > h + 50) {
+              Object.assign(s, spawn())
+              continue
+            }
+            const depth = 1 - s.z
+            ctx.strokeStyle = `rgba(${s.c}, ${0.08 + depth * 0.6})`
+            ctx.lineWidth = 0.6 + depth * 2.2
+            ctx.beginPath()
+            ctx.moveTo(px, py)
+            ctx.lineTo(sx, sy)
+            ctx.stroke()
+          }
+          if (!reduced && visible) raf = requestAnimationFrame(frame)
+        }
+        size()
+        addEventListener('resize', () => size(), { passive: true })
+        if (fine) {
+          hero.addEventListener('pointermove', (e) => {
+            const r = hero.getBoundingClientRect()
+            mx = ((e.clientX - r.left) / r.width - 0.5) * 2
+            my = ((e.clientY - r.top) / r.height - 0.5) * 2
+            hero.style.setProperty('--sx', `${e.clientX - r.left}px`)
+            hero.style.setProperty('--sy', `${e.clientY - r.top}px`)
+          })
+        }
+        new IntersectionObserver((entries) => {
+          visible = entries.some((e) => e.isIntersecting)
+          if (visible && !reduced && raf === 0) raf = requestAnimationFrame(frame)
+          if (!visible && raf) {
+            cancelAnimationFrame(raf)
+            raf = 0
+          }
+        }).observe(hero)
+        if (reduced) frame()
+        else raf = requestAnimationFrame(frame)
+      }
+
+      // Cards tilt toward the cursor and carry a light that follows it.
+      if (fine && !reduced) {
+        document.querySelectorAll<HTMLElement>('.tilt').forEach((card) => {
+          card.addEventListener('pointermove', (e) => {
+            const r = card.getBoundingClientRect()
+            const px = (e.clientX - r.left) / r.width
+            const py = (e.clientY - r.top) / r.height
+            card.style.setProperty('--mx', `${px * 100}%`)
+            card.style.setProperty('--my', `${py * 100}%`)
+            card.style.setProperty('--rx', `${(0.5 - py) * 7}deg`)
+            card.style.setProperty('--ry', `${(px - 0.5) * 9}deg`)
+          })
+          card.addEventListener('pointerleave', () => {
+            card.style.setProperty('--rx', '0deg')
+            card.style.setProperty('--ry', '0deg')
+          })
+        })
+      }
+
+      // The terminal types its command, then its rows land one by one.
+      const term = document.querySelector<HTMLElement>('[data-term]')
+      if (term && !reduced) {
+        const cmd = term.querySelector<HTMLElement>('.term-prompt .cmd')
+        const rows = [...term.querySelectorAll<HTMLElement>('.term-task, .term-rule, .term-row')]
+        const text = cmd?.textContent ?? ''
+        term.classList.add('playing')
+        rows.forEach((r) => r.classList.add('pending'))
+        if (cmd) cmd.textContent = ''
+        const play = () => {
+          let i = 0
+          const type = () => {
+            if (!cmd) return
+            cmd.textContent = text.slice(0, ++i)
+            if (i < text.length) setTimeout(type, 34 + Math.random() * 40)
+            else {
+              rows.forEach((r, k) => setTimeout(() => r.classList.remove('pending'), 260 + k * 70))
+              setTimeout(() => term.classList.remove('playing'), 260 + rows.length * 70 + 200)
+            }
+          }
+          setTimeout(type, 500)
+        }
+        const once = new IntersectionObserver((entries) => {
+          if (!entries.some((e) => e.isIntersecting)) return
+          once.disconnect()
+          play()
+        })
+        once.observe(term)
+      }
+
+      // The race: three ships cross the same graph at sixty times real
+      // speed. Positions are the real cold-build times against a track
+      // scaled to Turbo's; Nx runs off the end and keeps running.
+      const race = document.querySelector<HTMLElement>('[data-race]')
+      if (race) {
+        const clock = race.querySelector<HTMLElement>('[data-clock]')
+        const lanes = [...race.querySelectorAll<HTMLElement>('.lane')]
+        const max = Number(race.dataset.max)
+        const speed = 60
+        let raf = 0
+        let start = 0
+        const fmt = (ms: number) => {
+          const s = Math.floor(ms / 1000)
+          return `T+${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+        }
+        const set = (elapsed: number) => {
+          if (clock) clock.textContent = fmt(Math.min(elapsed, max * 1.15))
+          for (const lane of lanes) {
+            const ms = Number(lane.dataset.ms)
+            const at = Math.min(elapsed, ms)
+            lane.style.setProperty('--pos', `${Math.min(100, (at / max) * 100)}%`)
+            lane.classList.toggle('done', elapsed >= ms)
+            lane.classList.toggle('offtrack', ms > max && elapsed >= max)
+          }
+        }
+        const run = () => {
+          cancelAnimationFrame(raf)
+          if (reduced) {
+            set(max * 1.15)
+            lanes.forEach((l) => l.classList.add('done'))
+            return
+          }
+          race.classList.add('running')
+          start = performance.now()
+          const tick = (now: number) => {
+            const elapsed = (now - start) * speed
+            set(elapsed)
+            if (elapsed < max * 1.15) raf = requestAnimationFrame(tick)
+            else race.classList.remove('running')
+          }
+          raf = requestAnimationFrame(tick)
+        }
+        race.querySelector('[data-replay]')?.addEventListener('click', run)
+        const once = new IntersectionObserver(
+          (entries) => {
+            if (!entries.some((e) => e.isIntersecting)) return
+            once.disconnect()
+            run()
+          },
+          { threshold: 0.35 },
+        )
+        once.observe(race)
+      }
     </script>
   </body>
 </html>

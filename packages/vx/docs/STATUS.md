@@ -1403,6 +1403,41 @@ equivalent — map it manually` on every run, for the value every
       directly, `resolveOutputs` is 0.9 and 1.0 ms — so there is no
       restore-side lead in the globstar idiom.
 
+125.  DONE (2026-09-10, late night — owner: "make the landing page a
+      visual masterpiece … a tool from the future, cinematic, bending
+      time and space, crushing competitors, really good visual
+      effects"): a cinematic layer over the same page, every number
+      still server-rendered from `results.json` and every generator
+      hook intact (`check.site` passes; the stat tiles, the bench data
+      block and the note paragraphs are what `update-site.ts` still
+      rewrites). Hero: a canvas warp field (up to 520 streaks in the
+      three accents, leaning toward the cursor, paused off screen), a
+      perspective grid floor running toward the viewer, a cursor
+      spotlight, "Bend time. / Not the rules." with a chromatic-aberration
+      second line, staggered rises, count-up stat tiles, and the
+      terminal typing its command before its rows land. New "Same
+      code. Different clocks." race: three ships on real cold-build
+      times at sixty times speed (vx done at +4% just past the ideal
+      line, Turbo done at the track's end, Nx running off it, "still
+      running"), a replay button, and the overhead read the generator's
+      way (`over()`: a percentage under 2×, a multiple above). Cards
+      tilt toward the cursor with a light that follows it; sections
+      reveal on entry; the bench bars grow on reveal with a ratio badge
+      per competitor; a scroll-progress beam in the nav; film grain and
+      a vignette over everything; a beam sweeping the migrate CTA. No
+      dependency; `prefers-reduced-motion` holds every piece still, and
+      the DOM reads complete without the script. Verified in a real
+      Chromium (playwright-core in the session scratchpad against
+      `/opt/pw-browsers`, never in the repo): the document is exactly
+      390 px wide on a phone, the reveals fire on scroll, the race
+      resolves; the first captures with Chrome's `--screenshot` flag
+      froze mid-animation and clipped the phone at a narrower viewport
+      than the layout — capture artefacts, not page bugs. Two real
+      regressions found and fixed on the way: the hero as a flex column
+      let the terminal's preformatted rows set its min width (the grid
+      may shrink now), and the appended stat rules outranked the phone
+      media query by cascade order (the phone block sits after them).
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
