@@ -62,6 +62,18 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
      consulted: a `!` only narrows, and a spurious event is one
      cache-hit cycle) — and drops the rest of the tree, so a log
      written at the root or a `coverage/` run is not a cycle.
+   - For the directory each `<dir>/*` package glob names
+     (`memberBaseDirs`), `fs.watch(base, { recursive: false })`: a
+     member coming or going there is a cycle, and the cycle's end
+     re-reads the workspace (`rediscover`: discovery, the sweep, the
+     watched closure) and `rearm`s — new project dirs get an arm that
+     proves delivery before the loop goes on, dropped ones are closed,
+     the root filter and the ignore filter are rebuilt on the new set.
+     Until 2026-09-10 the set was fixed when the loop armed: the next
+     cycle ran the new package and every edit inside it was silence
+     (`tests/watch-loop.test.ts`, the added-package pair). The scope
+     is the one resolved at start; a glob of another shape has no
+     such directory.
    - Filter out `node_modules` / `.git` / `.vx` path segments,
      `.tsbuildinfo` / `~` suffixes (editor swap files), the RESOLVED
      cache directory (a relocated `cacheDir` would otherwise re-trigger
@@ -151,6 +163,9 @@ non-persistent tasks where each cycle should re-run cleanly.
 - Doesn't filter events through declared input globs.
 - Doesn't dedupe events by project — every file change triggers a
   re-run of the user's specified task across the entire scope.
+- Doesn't re-decide the watcher shape: a package added under a running
+  watch that declares the first `workspaceFiles` input keeps the
+  per-project arms until a restart.
 - Doesn't manage persistent tasks across cycles (they re-spawn).
 - Doesn't react to lockfile changes _during_ a cycle (the cache key
   is computed once per cycle; mid-cycle lockfile bumps land in the

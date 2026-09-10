@@ -45,6 +45,7 @@ export {
   findWorkspaceRoot,
   listProjects,
   loadWorkspace,
+  memberBaseDirs,
   resolveCacheDir,
   type ProjectEntry,
   type ProjectMeta,

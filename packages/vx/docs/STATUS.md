@@ -1535,6 +1535,31 @@ equivalent — map it manually` on every run, for the value every
       — item 126), two `structuredClone`s per fill and core's
       per-plugin re-validation; none is a lever at this size.
 
+130.  DONE (2026-09-10, late night — probed after item 128): a package
+      added while `vx watch` runs. The watched set was fixed when the
+      loop armed: the new directory was no event (the per-project arms
+      never saw it, the root arm is non-recursive), the next cycle any
+      other edit caused ran the new package (a run re-discovers), and
+      every edit inside it after that was silence. Now the directory
+      each `<dir>/*` package glob names (`memberBaseDirs`, exported by
+      the workspace module — `packages/` for `packages/*`) has one
+      non-recursive watcher: a member coming or going there is a cycle,
+      and that cycle's end re-reads the workspace (`rediscover`:
+      discovery, the sweep, the watched closure under the scope
+      resolved at start) and `rearm`s — new project dirs get an arm
+      that proves delivery before the loop goes on, dropped ones are
+      closed by slot (an OS watcher that never proved delivery is a
+      poller in its slot), and the root filter and the ignore filter
+      are rebuilt on the new set. Pinned end to end: `packages/b`
+      added under a running `--all` watch is a cycle that executes it,
+      the loop reports two projects watched, and an edit in `b/src` is
+      a cycle that rebuilds it; fails without the change. Not done, by
+      choice: a glob of another shape (`apps/**`) has no such
+      directory and a package added under it waits for a restart; and
+      the watcher shape is not re-decided — a new package declaring
+      the first `workspaceFiles` input keeps the per-project arms until
+      a restart. Both in the docs.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
