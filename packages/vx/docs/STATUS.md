@@ -353,6 +353,38 @@ lint.oxfmt` gate as an unprivileged user, three warm reps each:
     the cache (1.1–1.5 ms). The registry-symbol brand on plugins
     (item 69) stays: a plugin compiled against another copy is still
     possible outside this alias, and the symbol costs nothing.
+    Compile flags re-probed the same day, so nobody re-runs it: `vx
+    version` through the binary is 32 ms with `--bytecode` and 75–82
+    ms without it (`--minify` alone, plain), min of five; a compiled
+    hello-world is 8 ms, bare `bun -e` 8 ms, `bun src/bin.ts version`
+    49 ms. The release flags stand; the ~24 ms above the floor is the
+    bundle's own module graph, the same on every verb.
+78. DONE (the façade is the contract, so it names only what has a
+    consumer): `src/index.ts` exported 155 names, 75 of them runtime;
+    an audit against every plugin package, the site and the docs found
+    41 runtime exports used by core's own tests alone, most of them put
+    for "the distributed submitter / agent" — a consumer that left the
+    repo in August (Decisions: agents removed). Gone from the façade,
+    not from core: the graph primitives (`buildTaskGraph`,
+    `expandRequested`, `markSurfacedDeps`, `isGroupTask`), the hashing
+    seam (`computeTaskHash`, `createHashCache`, `deriveStableKeys`),
+    the context capture (`capture*`, `detectCi`), input / output
+    resolution and `cleanOutputs`, `GitFilesCache`, the lockfile
+    reader, `loadWorkspaceConfig` / `resolveCacheDir`, `migrateScripts`
+    (core's own `vx init` half; `applyMigration` stays for
+    `@vzn/vx-migrate`), `parseSize` / `parseDecimalInt`, the cache
+    policy parser, `EmptyHistoryProvider`, the logger and its view
+    resolver, `assembleRunSummary`, the event bus and wire form, and
+    every history reader but `whyDidThisRerunQuery` (which
+    `@vzn/vx-mcp` serves). `runCommand` / `runSandboxed` went too: no
+    executor plugin built on them — `@vzn/vx-reapi` speaks a wire. 34
+    runtime exports remain, each with a consumer or a documented
+    reason (the telemetry-sink helpers keep theirs). The pin in
+    `tests/package-boundaries.unsafe.test.ts` is regenerated from the
+    module; one core test moved its import to the workspace module.
+    Nothing in the site's guides imported a removed name from
+    `@vzn/vx`; the module docs that name these functions describe
+    modules, not the façade, and stand.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
@@ -745,11 +777,10 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    rows from SQLite (~1 ms). Net ≈ 3–4 ms of a 230 ms run for a second
    staleness surface (directory mtimes across platforms). REFUTED as
    not worth it; revisit only if discovery's share grows.
-   (f) `--cache-dir` is a `vx run` flag only: a run under it leaves
-   `vx last` / `vx why` / `vx cache prune` reading the default
-   directory. `defineWorkspace({ cacheDir })` is the durable way and
-   the docs call the flag per-run; add it to the reading verbs only if
-   someone hits it.
+   (f) DONE 2026-09-10 as item 75: `--cache-dir` on `vx why`, `vx
+   last`, `vx info` and `vx cache prune`, through one parser and one
+   resolver. Was: a `vx run` flag only, leaving the reading verbs on
+   the default directory.
    (g) `vx why` names a plugin `key` part but shows its digests
    (`plugin tool/node-major a2d9… → e893…`), because `entry_inputs`
    rows reduce every value to a digest — right for env values, which
@@ -814,8 +845,10 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    nothing a reader needs. Stop slicing there.
    (f) Warm path: no lead in the stage table (the two refuted probes
    after item 61); the discovery memo and pre-bundling stay refuted.
-   The next gain is a Bun change (config-eval worker start, `bun
-bin.ts` load), not a vx change.
+   Superseded 2026-09-10 by items 70, 71 and 77: the lazy sandbox, the
+   run-end snapshots and the core alias were all vx changes the stage
+   table did show once read on the right workspace (this repo's own
+   gate under the real sandbox, the binary rather than `bun bin.ts`).
    (g) Capabilities worth a design before code: streaming artifacts
    through the remote seam (Next 2, gated by the plugin side), and a
    `serve`-shaped embedder built OUTSIDE this repo on the façade
@@ -828,6 +861,11 @@ bin.ts` load), not a vx change.
   own façade to every `@vzn/vx` import it evaluates. A plugin package
   never carries its own copy of core into a run; the host decides the
   runtime, as any host does. Item 77.
+- **The façade names only what has a consumer (2026-09-10).** An
+  export written for a consumer that no longer exists is a promise
+  nobody collects and a surface nobody may change; item 78 took 41
+  of them off. Core keeps every function behind its module contract;
+  a new consumer widens the façade deliberately, with the pin.
 - **No seam without a consumer (2026-09-10).** The `CASBackend` /
   `Digest` substrate left core after three months with zero callers
   (item 74). A content-addressed view of the artifacts directory comes
