@@ -174,6 +174,10 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   (a zombie counts); "the task has started" is a marker file, never a
   sleep.
 - Use the session scratchpad, never bare `/tmp`.
+- Format-check by directory scan (`cd packages/vx && bunx oxfmt --check .`,
+  what CI runs), never by naming the file: `oxfmt --check <file>` passed a
+  STATUS.md that the scan rejected (a code span wrapped across an indented
+  line; proven both ways, 2026-09-10).
 - Correct wrong entries in place; never write a plausible cause you have
   not proven.
 
