@@ -77,6 +77,15 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
      the initial run's scoped load plus one sweep, not a third load;
      and the options every cycle re-runs carry no `staged` map — a
      cycle after an edit evaluates live (`tests/staged-once.test.ts`).
+   - Catch UNDECLARED writes by settled state — a file's bytes, a
+     directory's entry names and sizes, absence — judged one debounce
+     window after events stop, and never while a cycle runs (its own
+     writes are mid-flight; what landed is judged together once it
+     ends, under the label of what arrived). Before 2026-09-10 a
+     deletion and a directory passed unconditionally and a mid-run
+     judgement saw a half-rebuilt `dist`: `rm -rf dist && tsc` with no
+     outputs declared looped forever (`tests/watch-loop.test.ts`, the
+     delete-and-recreate pair). The prior text:
    - Catch UNDECLARED writes by content: a task with no `cache` block
      declares no outputs and still writes into its project, and its
      own write re-triggered the cycle without end (the init walkthrough,
