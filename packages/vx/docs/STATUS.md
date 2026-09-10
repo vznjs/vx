@@ -439,6 +439,31 @@ port-<tag>-<port>.sock … TCP:127.0.0.1:<port>` in front of the
     naming the three. The module page's verb table still listed
     `migrate` and `prune` as core verbs with files that left in item
     67; corrected in the same commit.
+81. DONE (restores on their own lane): the scheduler admitted a
+    confirmed cache hit's restore against the same `concurrency` cap as
+    an execution, and a restore is disk I/O — ~8 filesystem round trips
+    and no CPU — so a restore-heavy run was capped by the CPU count for
+    no reason. Found by the refuted sync-restore probe (§ Next 6): the
+    async round trips overlap across workers, so MORE workers is the
+    lever, not fewer hops. Measured first on one binary: the
+    1,000-project bench with every task a restore, `run graph` 683–754
+    ms at `--concurrency 4` → 556–595 at 8, 571 at 16. Restore-tier
+    tasks now count against their own lane, twice the exec cap
+    (`--concurrency 1` stays serial for both); exec-tier work keeps the
+    CPU-shaped cap and neither lane waits on the other. Interleaved
+    A/B, binary against binary, four rounds of the restore-heavy run:
+    `run graph` 813 / 1,101 / 1,041 / 1,095 → 554 / 968 / 870 / 854 ms
+    (−12 to −32%, every round a win on a box that drifted up as it
+    went); the bench's `warm, restore` row 1,363 / 1,224 / 1,386 →
+    1,012 / 1,229 / 1,213. The all-hits-current run is unchanged
+    (35–40 ms of `run graph` at any cap — nothing to overlap). Pinned:
+    six misses and six restores on two workers peak at 2 and 4 with the
+    lanes overlapping, and `--concurrency 1` keeps restores serial. The
+    first cut let the exec-queue scan run past a full exec lane — pop
+    and re-park every ready exec task on every tick, O(R²) on a wide
+    frontier — and the 6,000-task scale pin caught it (0.5 s → 28 s);
+    the scan now runs only when the exec lane can admit, the legacy
+    O(1) gate kept per lane.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

@@ -440,6 +440,56 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     expect(starts.indexOf('e2#run')).toBeLessThan(starts.indexOf('r1#run'))
   })
 
+  it('restores run on their own lane: up to 2× the cap, while exec-tier stays capped', async () => {
+    // 2 workers. Six exec misses and six restore hits, all independent and
+    // all slow: the misses may never exceed 2 in flight, the restores may
+    // reach 4, and the two lanes overlap (a restore starts while both
+    // exec slots are busy — the win).
+    let activeExec = 0
+    let activeRestore = 0
+    let peakExec = 0
+    let peakRestore = 0
+    let overlapped = false
+    const execIds = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6'].map((s) => `${s}#run`)
+    const restoreIds = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map((s) => `${s}#run`)
+    await runGraph({
+      nodes: nodes(...[...execIds, ...restoreIds].map((id) => node(id))),
+      concurrency: 2,
+      restoreTier: new Set(restoreIds),
+      execute: async (n) => {
+        const isExec = execIds.includes(n.id)
+        if (isExec) peakExec = Math.max(peakExec, ++activeExec)
+        else peakRestore = Math.max(peakRestore, ++activeRestore)
+        if (activeExec === 2 && activeRestore > 0) overlapped = true
+        await new Promise((r) => setTimeout(r, 15))
+        if (isExec) activeExec--
+        else activeRestore--
+        return isExec ? success(n) : hit(n)
+      },
+    })
+    expect(peakExec).toBe(2)
+    expect(peakRestore).toBe(4)
+    expect(overlapped).toBe(true)
+  })
+
+  it('--concurrency 1 serializes restores too', async () => {
+    let active = 0
+    let peak = 0
+    const ids = ['r1', 'r2', 'r3'].map((s) => `${s}#run`)
+    await runGraph({
+      nodes: nodes(...ids.map((id) => node(id))),
+      concurrency: 1,
+      restoreTier: new Set(ids),
+      execute: async (n) => {
+        peak = Math.max(peak, ++active)
+        await new Promise((r) => setTimeout(r, 10))
+        active--
+        return hit(n)
+      },
+    })
+    expect(peak).toBe(1)
+  })
+
   it('restore-tier task reports cache-hit even when a dep FAILED', async () => {
     // up#prep fails; down#build depends on it but is restore-tier.
     // It must NOT be skipped — its key is dep-success-independent.

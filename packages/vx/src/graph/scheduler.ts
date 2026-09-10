@@ -395,6 +395,14 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   }
 
   let active = 0
+  // Restore-tier work is disk I/O — a confirmed hit's tar extract is ~8
+  // filesystem round trips and no CPU — so it gets its own lane, twice
+  // the exec cap: on the 1,000-project bench with every task a restore,
+  // 4 → 8 workers cut the run-graph stage 683–754 → 556–595 ms and 16 was
+  // no better (2026-09-10). Exec-tier work keeps the CPU-shaped cap; the
+  // two lanes never wait on each other. `--concurrency 1` stays serial.
+  let activeRestore = 0
+  const restoreConcurrency = concurrency === 1 ? 1 : 2 * concurrency
   let resolved = false
 
   // Resource admission (2-D bin packing over the count limit). Inactive
@@ -433,12 +441,22 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // against `concurrency`; pooled tasks reserve no local resources.
   const hasRoom = (id: string): boolean => {
     const pool = poolOf?.(id)
-    if (pool === undefined) return active < concurrency
+    if (pool === undefined) {
+      return options.restoreTier?.has(id)
+        ? activeRestore < restoreConcurrency
+        : active < concurrency
+    }
     return (poolActive.get(pool.name) ?? 0) < pool.capacity
   }
   const admit = (id: string): (() => void) => {
     const pool = poolOf?.(id)
     if (pool === undefined) {
+      if (options.restoreTier?.has(id)) {
+        activeRestore++
+        return () => {
+          activeRestore--
+        }
+      }
       active++
       return () => {
         active--
@@ -560,17 +578,24 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // task returns without a fit check (finishing it is free); restore
       // tasks cost zero by construction, so they never park.
       const takeFitting = (): string | undefined => {
-        // No pools declared (the common case): a full local pool admits
-        // nothing, so do not scan — this is the legacy O(1) gate.
-        if (poolOf === undefined && active >= concurrency) return undefined
-        while (execReady.size > 0) {
-          const seq = execReady.peekSeq()
-          const id = execReady.pop() as string
-          if (willSkip(id) || ((!resourcesActive || fits(id)) && hasRoom(id))) return id
-          parked.push([id, seq])
+        // No pools, no reservations and a full exec lane: nothing on the
+        // exec queue can be admitted, so it is not scanned — scanning it
+        // would pop and re-park every ready exec task on every tick, and
+        // with a wide frontier that is O(R) per tick, O(R²) per run (the
+        // 6,000-task scale pin went 0.5 s → 28 s when the restore lane's
+        // first cut let the scan run past a full exec lane, 2026-09-10).
+        // This is the legacy O(1) gate, kept per lane.
+        const execAdmissible = poolOf !== undefined || resourcesActive || active < concurrency
+        if (execAdmissible) {
+          while (execReady.size > 0) {
+            const seq = execReady.peekSeq()
+            const id = execReady.pop() as string
+            if (willSkip(id) || ((!resourcesActive || fits(id)) && hasRoom(id))) return id
+            parked.push([id, seq])
+          }
         }
-        // Restore-tier tasks are local work (a cache restore on this disk).
-        return active < concurrency ? restoreReady.pop() : undefined
+        // Restore-tier tasks are local disk work, on their own lane.
+        return activeRestore < restoreConcurrency ? restoreReady.pop() : undefined
       }
 
       for (;;) {
@@ -651,7 +676,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // is exactly preserved for the next tick's admission pass.
       for (const [id, seq] of parked) execReady.push(id, seq)
 
-      if (outcomes.size === nodes.size && active === 0) {
+      if (outcomes.size === nodes.size && active === 0 && activeRestore === 0) {
         resolved = true
         resolve(outcomes)
       }
