@@ -114,6 +114,36 @@ describe('@vzn/vx-turbo', () => {
   )
 
   it(
+    'a turbo.json spelled with ./ (inputs and outputs) keys the mapped task on its files',
+    async () => {
+      // The mapper hands globs through as written; core normalizes the
+      // spellings a matcher would turn into nothing (`./src/**` folded
+      // zero inputs until 2026-09-10). Pinned at this boundary too, since a
+      // turbo.json is where the spelling comes from.
+      const turbo = structuredClone(TURBO_JSON) as typeof TURBO_JSON & {
+        tasks: { build: { inputs: string[]; outputs: string[] } }
+      }
+      turbo.tasks.build.inputs = ['./src/**']
+      turbo.tasks.build.outputs = ['./dist/**']
+      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo, null, 2))
+      const opts = { cwd: root, tasks: ['build'], log: silent(), handleSignals: false }
+      const status = (r: Awaited<ReturnType<typeof run>>, id: string) =>
+        r.outcomes.find((o) => o.node.id === id)!.status
+      const first = await run(opts)
+      expect(first.ok).toBe(true)
+      expect(status(first, 'lib#build')).toBe('success')
+      expect(status(await run(opts), 'lib#build')).toBe('cache-hit')
+      await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), '// lib v2\n')
+      const third = await run(opts)
+      expect(status(third, 'lib#build')).toBe('success')
+      expect(await Bun.file(path.join(root, 'packages', 'lib', 'dist', 'lib.js')).text()).toBe(
+        'lib\n',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'runs the graph, caches by the mapped blocks, and leaves `cache: false` tasks uncached',
     async () => {
       const first = await run({
