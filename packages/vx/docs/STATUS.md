@@ -352,7 +352,12 @@ lint.oxfmt` gate as an unprivileged user, three warm reps each:
     ms of `load configs`); it imports `@vzn/vx` now and is served from
     the cache (1.1–1.5 ms). The registry-symbol brand on plugins
     (item 69) stays: a plugin compiled against another copy is still
-    possible outside this alias, and the symbol costs nothing.
+    possible outside this alias, and the symbol costs nothing. Walked
+    end to end on the head binary as an unprivileged user: a fresh
+    workspace, `vx init`, the scaffold's workspace file replaced by a
+    runtime `import { defineWorkspace } from '@vzn/vx'` with NO
+    `node_modules` at all, two runs and `vx info --format json` — all
+    green, nothing installed beside the binary.
     Compile flags re-probed the same day, so nobody re-runs it: `vx
     version` through the binary is 32 ms with `--bytecode` and 75–82
     ms without it (`--minify` alone, plain), min of five; a compiled
@@ -809,51 +814,67 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    ~17 ms gain would buy ~2 s of suite for a build step in every test
    run. The spawns stay on source.
 
-9. **Handoff after item 67 (2026-09-10, night).** The loop's Next
-   items are spent; what a fresh session should know, in order:
-   (a) PR #265 merged into main (d96a06f) and PR #266 (items 65–68
-   and the day's follow-ups) merged as e099265, both by merge commit —
-   the branch cannot be rebase-merged, and it restarts from main after
-   each merge (a fast-forward; the next work opens a new PR).
-   Schedule-history, migrate and prune left core, which went from 125
-   files / 1,225,063 bytes under `src` to 119 / 1,172,583. Core's
-   verbs are run, watch, cache, lock, init, upgrade, show, info, why,
-   last; `src` holds no plugin.
-   (b) The suite's floor is processes, not timers (the paragraph after
-   item 58). The one lever left is converting the nineteen
-   CLI-spawning suites (~250 cases at 91 ms) to in-process calls where
-   process semantics are not the claim — about 14 s of file time,
-   ~1 s of wall on twelve shards; do it only if a box with many cores
-   shows the wall pinned by them. The gate on four cores is 15.7 s;
-   the whole test graph under the REAL sandbox as an unprivileged user
-   (twelve shards, the unsafe suite, eleven package suites) reads
-   44 s, three reps 24/24 on 1bce329 — no flake at twelve-way
-   concurrency behind bwrap.
-   (c) DONE 2026-09-10: the darwin CI job's four slices run side by
-   side (3 min 8 s sequential before). The canary step runs AFTER the
-   test step and the sandbox suites are class-gated there, so the load
-   lands on nothing `sandbox-exec` enforces; the canary stays the gate
-   that would say otherwise. Measured on 2a2e693: the test step 73 s,
-   the job 1 min 36 s, the canary 20/20 — the PR's CI wall went from
-   ~3 min 10 s to under 2 min, and the Linux gate is the longest job
-   again.
-   (d) `executeCachedTask` (execute-task.ts, ~440 lines) is dense
-   policy — probe, hash, clean, exec, save — with no clean seam left
-   after the hit and miss paths moved out; leave it whole.
-   (e) `run()` is 895 lines; the run-context record (25 lines of
-   literal assembly) is the last cohesive block, and moving it buys
-   nothing a reader needs. Stop slicing there.
-   (f) Warm path: no lead in the stage table (the two refuted probes
-   after item 61); the discovery memo and pre-bundling stay refuted.
-   Superseded 2026-09-10 by items 70, 71 and 77: the lazy sandbox, the
-   run-end snapshots and the core alias were all vx changes the stage
-   table did show once read on the right workspace (this repo's own
-   gate under the real sandbox, the binary rather than `bun bin.ts`).
-   (g) Capabilities worth a design before code: streaming artifacts
-   through the remote seam (Next 2, gated by the plugin side), and a
-   `serve`-shaped embedder built OUTSIDE this repo on the façade
-   (the seams are in place: `inflight`, `remoteCache`,
-   `telemetrySinks`, the wire event form).
+9. **Handoff after item 78 (2026-09-10, afternoon).** PR #269 holds
+   items 70–78 (perf: lazy sandbox, run-end snapshots, one core per
+   process; complexity: the layer contract, the outcome vocabulary,
+   the CAS substrate, the façade; DX: six CLI asks) and is green on
+   CI through 2c599e3; it merges on the owner's word, never on ours.
+   What a fresh session should know: (a) the warm floor is measured
+   and recorded three ways in items 76–77 — module load and the git
+   walk are what remain, and the compile flags are the right ones;
+   (b) the façade is 34 runtime exports and a consumer widens it with
+   the pin; (c) the one capability gap still open in this file is § In
+   flight 3, a sandboxed task exposing a port on Linux — it needs a
+   port declaration (the persistent `readiness` block is the natural
+   place) and a per-port bridge, which is a design, not a fix; (d) the
+   sandboxed check-in clone at `/home/user/sandbox-home/vx` is the
+   way to measure this repo's own gate as an unprivileged user, and
+   every A/B in items 70–77 ran there.
+10. **Handoff after item 67 (2026-09-10, night).** The loop's Next
+    items are spent; what a fresh session should know, in order:
+    (a) PR #265 merged into main (d96a06f) and PR #266 (items 65–68
+    and the day's follow-ups) merged as e099265, both by merge commit —
+    the branch cannot be rebase-merged, and it restarts from main after
+    each merge (a fast-forward; the next work opens a new PR).
+    Schedule-history, migrate and prune left core, which went from 125
+    files / 1,225,063 bytes under `src` to 119 / 1,172,583. Core's
+    verbs are run, watch, cache, lock, init, upgrade, show, info, why,
+    last; `src` holds no plugin.
+    (b) The suite's floor is processes, not timers (the paragraph after
+    item 58). The one lever left is converting the nineteen
+    CLI-spawning suites (~250 cases at 91 ms) to in-process calls where
+    process semantics are not the claim — about 14 s of file time,
+    ~1 s of wall on twelve shards; do it only if a box with many cores
+    shows the wall pinned by them. The gate on four cores is 15.7 s;
+    the whole test graph under the REAL sandbox as an unprivileged user
+    (twelve shards, the unsafe suite, eleven package suites) reads
+    44 s, three reps 24/24 on 1bce329 — no flake at twelve-way
+    concurrency behind bwrap.
+    (c) DONE 2026-09-10: the darwin CI job's four slices run side by
+    side (3 min 8 s sequential before). The canary step runs AFTER the
+    test step and the sandbox suites are class-gated there, so the load
+    lands on nothing `sandbox-exec` enforces; the canary stays the gate
+    that would say otherwise. Measured on 2a2e693: the test step 73 s,
+    the job 1 min 36 s, the canary 20/20 — the PR's CI wall went from
+    ~3 min 10 s to under 2 min, and the Linux gate is the longest job
+    again.
+    (d) `executeCachedTask` (execute-task.ts, ~440 lines) is dense
+    policy — probe, hash, clean, exec, save — with no clean seam left
+    after the hit and miss paths moved out; leave it whole.
+    (e) `run()` is 895 lines; the run-context record (25 lines of
+    literal assembly) is the last cohesive block, and moving it buys
+    nothing a reader needs. Stop slicing there.
+    (f) Warm path: no lead in the stage table (the two refuted probes
+    after item 61); the discovery memo and pre-bundling stay refuted.
+    Superseded 2026-09-10 by items 70, 71 and 77: the lazy sandbox, the
+    run-end snapshots and the core alias were all vx changes the stage
+    table did show once read on the right workspace (this repo's own
+    gate under the real sandbox, the binary rather than `bun bin.ts`).
+    (g) Capabilities worth a design before code: streaming artifacts
+    through the remote seam (Next 2, gated by the plugin side), and a
+    `serve`-shaped embedder built OUTSIDE this repo on the façade
+    (the seams are in place: `inflight`, `remoteCache`,
+    `telemetrySinks`, the wire event form).
 
 ## Decisions (this arc)
 
