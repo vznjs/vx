@@ -6,7 +6,12 @@ Walk the task graph honoring dependencies, running up to `N` tasks
 concurrently, propagating failure as `skipped` to dependents while
 keeping unrelated tasks moving — with a second, low-priority ready
 queue for confirmed local cache hits (the restore tier) that may run
-ahead of their dependencies.
+ahead of their dependencies, on its own lane: restores are disk I/O,
+so up to twice `N` run at once while exec-tier work keeps the cap
+(`--concurrency 1` stays serial for both). An outcome may still owe
+something before its dependents start — `settledOf(outcome)`, the
+orchestrator's off-slot cache save landing — and the scheduler frees
+the slot at the outcome and unblocks the dependents at the settle.
 
 ## Public surface
 
@@ -72,8 +77,13 @@ whole run (the old scan-everything-per-completion tick was O(N²)):
    local worker slot and reserves ZERO local resources: work running on
    another machine spends none of this one's CPU or RAM. Restore-tier
    nodes are always local (a restore is a tar extract on this disk). With
-   no `poolOf` passed the admission gate is the byte-identical legacy
-   `active < concurrency` check — including its O(1) early-out. With pools
+   no `poolOf` passed the admission gate is the legacy `active <
+concurrency` check for exec-tier nodes — including its O(1) early-out
+   — and `activeRestore < 2 × concurrency` for restore-tier nodes, a
+   separate counter so neither lane waits on the other (measured
+   2026-09-10 on the 1,000-project bench with every task a restore: 4 → 8
+   workers cut the run-graph stage 683–754 → 556–595 ms, 16 no better).
+   With pools
    (or with `resourceCosts`) a saturated tick instead SCANS the ready
    queue, parking what does not fit and repushing it with its original
    seq; that is the same cost the resource-admission path already pays and

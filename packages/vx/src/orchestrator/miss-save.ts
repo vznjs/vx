@@ -44,9 +44,17 @@ export interface SaveMissArgs {
   stdout: string
   /** When present, the directory snapshot is queued here instead of taken now. */
   outputDirSnapshots?: OutputDirSnapshot[] | undefined
+  /**
+   * When present, the cache save itself runs off the execution slot: the
+   * outputs are resolved and the git snapshot marked here, in the slot
+   * (a same-project downstream task reads both), and the pack + write +
+   * index go to the run's save lane (save-lane.ts).
+   */
+  deferSave?: ((save: () => Promise<void>) => Promise<void>) | undefined
 }
 
-export async function saveMiss(a: SaveMissArgs): Promise<void> {
+/** `landed` settles when the entry is in the cache — at once without a lane. */
+export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void> }> {
   const { node, cache, log } = a
   const endResolve = span('miss: resolve outputs')
   const outputFiles = await resolveOutputs({
@@ -73,30 +81,30 @@ export async function saveMiss(a: SaveMissArgs): Promise<void> {
         `an empty artifact is saved; a later hit restores nothing`,
     )
   }
-  const endSave = span('miss: save')
-  // Tier-3 input fingerprint: the digest rows captured by the pre-exec
-  // describe above, persisted with the entry inside `cache.save`'s
-  // transaction. Miss path only — the warm/hit path never reaches here.
-  await cache.save({
-    hash: a.hash,
-    projectDir: node.projectDir,
-    outputFiles,
-    ...(wsOutputFiles.length > 0
-      ? { workspaceOutputFiles: wsOutputFiles, workspaceRoot: a.workspaceRoot }
-      : {}),
-    inputComponents: a.captured.map((c) => ({ entryHash: a.hash, ...c })),
-    // No `exitCode`: the save only runs under `effectiveExitCode === 0`, and
-    // the contract no longer accepts one — so the invariant is enforced by
-    // the type rather than by every call site remembering the gate.
-    entry: {
-      taskId: node.id,
-      command: a.command,
-      durationMs: a.durationMs,
-      stdout: a.stdout,
-    },
-  })
-  endSave()
-  {
+  const save = async (): Promise<void> => {
+    const endSave = span('miss: save')
+    // Tier-3 input fingerprint: the digest rows captured by the pre-exec
+    // describe above, persisted with the entry inside `cache.save`'s
+    // transaction. Miss path only — the warm/hit path never reaches here.
+    await cache.save({
+      hash: a.hash,
+      projectDir: node.projectDir,
+      outputFiles,
+      ...(wsOutputFiles.length > 0
+        ? { workspaceOutputFiles: wsOutputFiles, workspaceRoot: a.workspaceRoot }
+        : {}),
+      inputComponents: a.captured.map((c) => ({ entryHash: a.hash, ...c })),
+      // No `exitCode`: the save only runs under `effectiveExitCode === 0`, and
+      // the contract no longer accepts one — so the invariant is enforced by
+      // the type rather than by every call site remembering the gate.
+      entry: {
+        taskId: node.id,
+        command: a.command,
+        durationMs: a.durationMs,
+        stdout: a.stdout,
+      },
+    })
+    endSave()
     // The directory snapshot behind the next hit's skip-restore. Taken at
     // run end when the run keeps a list: the task wrote these directories
     // milliseconds ago, inside the snapshot's racy window, so a snapshot
@@ -147,4 +155,10 @@ export async function saveMiss(a: SaveMissArgs): Promise<void> {
   if (outputFiles.length + wsOutputFiles.length > 0) {
     a.gitFilesCache?.invalidateWorkspacePartition()
   }
+  // Off the slot when the run keeps a lane (the save lane bounds and
+  // drains it); in the slot otherwise — an embedder without a lane gets
+  // the entry before the outcome.
+  if (a.deferSave !== undefined) return { landed: a.deferSave(save) }
+  await save()
+  return { landed: Promise.resolve() }
 }

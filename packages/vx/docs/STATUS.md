@@ -439,6 +439,73 @@ port-<tag>-<port>.sock … TCP:127.0.0.1:<port>` in front of the
     naming the three. The module page's verb table still listed
     `migrate` and `prune` as core verbs with files that left in item
     67; corrected in the same commit.
+81. DONE (restores on their own lane): the scheduler admitted a
+    confirmed cache hit's restore against the same `concurrency` cap as
+    an execution, and a restore is disk I/O — ~8 filesystem round trips
+    and no CPU — so a restore-heavy run was capped by the CPU count for
+    no reason. Found by the refuted sync-restore probe (§ Next 6): the
+    async round trips overlap across workers, so MORE workers is the
+    lever, not fewer hops. Measured first on one binary: the
+    1,000-project bench with every task a restore, `run graph` 683–754
+    ms at `--concurrency 4` → 556–595 at 8, 571 at 16. Restore-tier
+    tasks now count against their own lane, twice the exec cap
+    (`--concurrency 1` stays serial for both); exec-tier work keeps the
+    CPU-shaped cap and neither lane waits on the other. Interleaved
+    A/B, binary against binary, four rounds of the restore-heavy run:
+    `run graph` 813 / 1,101 / 1,041 / 1,095 → 554 / 968 / 870 / 854 ms
+    (−12 to −32%, every round a win on a box that drifted up as it
+    went); the bench's `warm, restore` row 1,363 / 1,224 / 1,386 →
+    1,012 / 1,229 / 1,213. The all-hits-current run is unchanged
+    (35–40 ms of `run graph` at any cap — nothing to overlap). Pinned:
+    six misses and six restores on two workers peak at 2 and 4 with the
+    lanes overlapping, and `--concurrency 1` keeps restores serial. The
+    first cut let the exec-queue scan run past a full exec lane — pop
+    and re-park every ready exec task on every tick, O(R²) on a wide
+    frontier — and the 6,000-task scale pin caught it (0.5 s → 28 s);
+    the scan now runs only when the exec lane can admit, the legacy
+    O(1) gate kept per lane. Re-measured on that final cut, six
+    interleaved rounds against the pre-lane binary: `run graph` 630 /
+    832 / 765 / 794 / 805 / 969 → 558 / 845 / 693 / 684 / 701 / 804 ms
+    — five wins of six, 10–17%, on a box whose baseline drifted 630 →
+    969 across the rounds.
+82. DONE (a miss's save runs off the execution slot): the cold profile
+    of the 1,000-project bench put ~2.5 ms of `miss: save` (pack, write
+    temp, scan, rename, index) and 0.6 of `miss: resolve outputs`
+    inside every ~8.7 ms execution slot — a third of the slot was I/O
+    holding a CPU-shaped cap, and 8 workers on 4 CPUs ran the cold row
+    12–17% faster than 4, the same signature as item 81. The save now
+    goes to a save lane (`orchestrator/save-lane.ts`): `saveMiss`
+    keeps the slot-bound half in the slot — resolve the outputs, warn
+    on an empty match, mark the git snapshot, which a same-project
+    downstream task reads — and hands the pack + write + index +
+    snapshot request to the lane, at most `2 × concurrency` in flight
+    (each pack holds an artifact's bytes), drained by `run()` before
+    the upload drain (the uploads are what the saves queued) and the
+    snapshot loop (which reads what the saves pushed). A save that
+    fails is one status line and a miss next time — the task's work
+    ran; a cache error degrades to a miss like a remote one. An
+    embedder that passes no lane gets the entry before the outcome, as
+    before. Interleaved A/B, binary against binary, three cold rounds:
+    `run graph` 2,543 / 2,379 / 2,414 → 2,071 / 2,070 / 2,350 ms
+    (−19 / −13 / −3%), the drain at run end 1.5–2 ms. Pinned: the lane
+    caps and orders saves, drains what a save deferred mid-drain, and
+    reports a failed save without rejecting; and a run whose cache
+    layer sleeps 300 ms per save starts the next task's execution while
+    a save is in flight (an order log, not a clock, so it holds under
+    any load) and still hits on the next run. One reader had relied on
+    "outcome resolved ⇒ entry saved": admission's in-flight join, where
+    a duplicate of the task in another run waits on a barrier and then
+    probes — released at the outcome it probed a miss and ran the task
+    twice (its two pins caught it). The barrier now lifts when the
+    save has LANDED (`deferredSaves`, the lane's settled promise per
+    task); the executor's own return is not held, only the joiners.
+    The other reader is a DEPENDENT: its execute request carries the
+    upstream's output rows, which the save writes (the executor
+    capability pin caught a dependent reading `outputs: []`). The
+    scheduler takes `settledOf(outcome)` — the same landed promise —
+    and unblocks dependents on it while the freed slot admits other
+    work at once; the bench's independent tasks lose nothing, a chain
+    waits for the save as it always did.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
@@ -728,6 +795,13 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    `restore: rows` re-selects the output rows the batched probe
    already loaded (21 ms per 1,000, ~2%); threading `hit.outputRows`
    through needs a contract change for a row nobody sees.
+   Closing figures for 2026-09-10, evening (the same container,
+   `run.ts` medians of 5, after items 81–82): source form 100 projects
+   123 ms warm / 181 restore / 369 cold; 1,000 projects 240 / 1,163 /
+   2,519 — against the afternoon's 115 / 197 / 408 and 265 / 1,381 /
+   2,988: the restore row −16% and the cold row −16% at 1,000, which
+   is the restore lane and the save lane on the headline bench, and
+   the warm row within the box's jitter (nothing touched it).
    Closing figures for 2026-09-10, afternoon (the same container,
    `run.ts` medians of 5, after items 70–80): source form 100
    projects 115 ms warm / 197 restore / 408 cold; 1,000 projects 265 /
@@ -896,9 +970,11 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    70–77: perf — lazy sandbox, run-end snapshots, one core per process;
    complexity — the layer contract, the outcome vocabulary, the CAS
    substrate; DX — six CLI asks) merged into main as dba8f49 by the
-   owner at 13:10Z. PR #270 holds items 78–79 (the façade trim, the
-   Linux port bridge) on the same branch with main merged back in; it
-   merges on the owner's word, never on ours.
+   owner at 13:10Z; PR #270 (items 78–80: the façade trim, the Linux
+   port bridge, completions) merged as 61d9392 at 13:50Z. PR #271
+   holds the two perf items after it — 81 the restore lane, 82 the
+   save lane — on the same branch with main merged back in; it merges
+   on the owner's word, never on ours.
    What a fresh session should know: (a) the warm floor is measured
    and recorded three ways in items 76–77 — module load and the git
    walk are what remain, and the compile flags are the right ones;
