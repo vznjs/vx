@@ -527,9 +527,9 @@ There is no first-party wire: core ships the seam and nothing else.
 every blob it reads against the digest it was requested under. The **tar
 interior** is the local cache's own format — one `stdout` entry plus
 `outputs/<rel>` — shipped verbatim; local and remote layers transport
-the same tar.zst bytes end-to-end. A Turbo-wire (or any other) cache
-is a third-party plugin against the same seam — the recipe lives in
-the extensibility guide.
+the same tar.zst bytes end-to-end. The Turbo wire (`@vzn/vx-turbo-cache`)
+and the Nx wire (`@vzn/vx-nx-cache`) are plugins against the same seam,
+as is any other — the recipe lives in the extensibility guide.
 
 ## Run-history analytics
 

@@ -1136,12 +1136,12 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--cache-dir=-weird']).cacheDir).toBe('-weird')
   })
 
-  it('--excludeDependencies= (empty value) is rejected, not read as "exclude nothing"', () => {
-    const r = parseRunArgs(['build', '--excludeDependencies='])
-    expect(r.error).toMatch(/--excludeDependencies= needs a value/)
+  it('--exclude-dependencies= (empty value) is rejected, not read as "exclude nothing"', () => {
+    const r = parseRunArgs(['build', '--exclude-dependencies='])
+    expect(r.error).toMatch(/--exclude-dependencies= needs a value/)
     // Both unambiguous forms keep working.
-    expect(parseRunArgs(['build', '--excludeDependencies']).excludeDependencies).toBe('all')
-    expect(parseRunArgs(['build', '--excludeDependencies=a,b']).excludeDependencies).toEqual([
+    expect(parseRunArgs(['build', '--exclude-dependencies']).excludeDependencies).toBe('all')
+    expect(parseRunArgs(['build', '--exclude-dependencies=a,b']).excludeDependencies).toEqual([
       'a',
       'b',
     ])
@@ -1238,17 +1238,27 @@ describe('parseRunArgs', () => {
     expect(bad.error).toContain('--output-logs must be')
   })
 
-  it('parses --excludeDependencies as "all" with no value', () => {
-    expect(parseRunArgs(['build', '--excludeDependencies']).excludeDependencies).toBe('all')
+  it('parses --exclude-dependencies as "all" with no value', () => {
+    expect(parseRunArgs(['build', '--exclude-dependencies']).excludeDependencies).toBe('all')
     expect(parseRunArgs(['build', '--ignore-depends-on']).error).toMatch(/unknown flag/)
     expect(parseRunArgs(['build', '--only']).error).toMatch(/unknown flag/)
   })
 
-  it('parses --excludeDependencies=name1,name2 as a name list', () => {
-    expect(parseRunArgs(['build', '--excludeDependencies=lint,test']).excludeDependencies).toEqual([
-      'lint',
-      'test',
-    ])
+  it('the camelCase spelling the flag shipped with names the kebab-case one', () => {
+    // Every other flag is kebab-case; the old spelling is two edits past
+    // the suggester's reach, so the error says it outright.
+    expect(parseRunArgs(['build', '--excludeDependencies']).error).toMatch(
+      /unknown flag: --excludeDependencies \(the flag is --exclude-dependencies\)/,
+    )
+    expect(parseRunArgs(['build', '--excludeDependencies=lint']).error).toMatch(
+      /the flag is --exclude-dependencies/,
+    )
+  })
+
+  it('parses --exclude-dependencies=name1,name2 as a name list', () => {
+    expect(parseRunArgs(['build', '--exclude-dependencies=lint,test']).excludeDependencies).toEqual(
+      ['lint', 'test'],
+    )
   })
 
   it('parses --affected (no value) and --affected=<ref>', () => {

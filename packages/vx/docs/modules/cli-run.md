@@ -56,7 +56,7 @@ export async function resolveRunOptions(
 1. Split on the first `--` — everything after is `forwardArgs`.
 2. Loop the prefix: recognize each flag form. Optional-value flags
    (`--dry`, `--graph`, `--summarize`, `--profile`, `--affected`,
-   `--excludeDependencies`) accept either the bare form or `=<value>`.
+   `--exclude-dependencies`) accept either the bare form or `=<value>`.
 3. Unknown flags + missing values + invalid integers → returned via
    `RunArgs.error`. The handler short-circuits to exit 1. An unknown
    flag names the nearest documented `vx run` flag within two edits

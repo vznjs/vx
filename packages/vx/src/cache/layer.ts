@@ -264,6 +264,11 @@ export interface PruneOptions {
    * bytes, evict LRU (smallest `accessed_at` first) until under it.
    */
   maxBytes?: number
+  /**
+   * Pick the victims and count the orphans, delete nothing: the result
+   * says what a real prune with the same policy would reap right now.
+   */
+  dryRun?: boolean
 }
 
 export interface PruneResult {

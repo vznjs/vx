@@ -1263,7 +1263,7 @@ export class Cache implements CacheLayer {
 
   async prune(options: PruneOptions): Promise<PruneResult> {
     this.flushAccessed()
-    const { olderThanMs, maxBytes } = options
+    const { olderThanMs, maxBytes, dryRun = false } = options
     if (olderThanMs === undefined && maxBytes === undefined) {
       throw new Error('prune: pass at least one of `olderThanMs` or `maxBytes`')
     }
@@ -1310,6 +1310,15 @@ export class Cache implements CacheLayer {
     // Promise.all over the unlinks. The IN-list is chunked at 900 like
     // flushAccessed so a huge eviction stays under any build's
     // bound-parameter ceiling.
+    if (dryRun) {
+      const orphans = await this.orphanStats()
+      return {
+        evicted: victims.size,
+        bytesFreed,
+        orphans: orphans.orphans,
+        orphanBytes: orphans.orphanBytes,
+      }
+    }
     if (victims.size > 0) {
       const hashes = [...victims]
       this.db.transaction(() => {

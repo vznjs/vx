@@ -116,7 +116,13 @@ export async function run(argv: readonly string[]): Promise<number> {
 }
 
 // Re-exports for tests + programmatic embedders.
-export { detectFlow, parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
+export {
+  detectFlow,
+  parseConcurrency,
+  parseRunArgs,
+  resolveRunOptions,
+  type RunArgs,
+} from './run.js'
 export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
 export { parseLockArgs, type LockArgs } from './lock.js'
 export { parseInitArgs, type InitArgs } from './init.js'

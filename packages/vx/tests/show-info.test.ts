@@ -411,6 +411,42 @@ describe('vx info (e2e)', () => {
   )
 
   it(
+    '--format json prints the same facts typed, for a script or a bug report',
+    async () => {
+      const r = await vx(root, ['info', '--format', 'json'])
+      expect(r.code).toBe(0)
+      const facts = JSON.parse(r.out)
+      expect(facts.vx).toBe(VERSION)
+      expect(facts.bun).toBe(Bun.version)
+      expect(typeof facts.git).toBe('string')
+      expect(facts.gitStatusCache).toEqual({
+        fsmonitor: expect.any(Boolean),
+        untrackedCache: expect.any(Boolean),
+      })
+      expect(path.basename(facts.workspaceRoot)).toBe(path.basename(root))
+      expect(facts.projects).toBe(2)
+      expect(facts.tasks).toBe(4)
+      expect(facts.plugins).toEqual([])
+      expect(facts.cacheDir).toContain('.vx')
+      expect(facts.cacheVersion).toBe(CACHE_VERSION)
+      expect(facts.schemaVersion).toBe(SCHEMA_VERSION)
+      expect(facts.cacheEntries).toBe(0)
+      expect(facts.cacheBytes).toBe(0)
+      expect(facts.orphans).toEqual({ artifacts: 0, bytes: 0 })
+      expect(facts.runs24h).toBe(0)
+      expect(facts.hits24h).toBe(0)
+      expect(facts.lockfile).toBe(false)
+      // Same facts either way: the pretty rows render this object.
+      const pretty = await vx(root, ['info'])
+      expect(pretty.out).toContain(`cache entries:`)
+      expect(pretty.out).toContain(facts.cacheDir.split(path.sep).slice(-2).join(path.sep))
+      // The value forms are checked, not the spelling.
+      expect((await vx(root, ['info', '--format=yaml'])).code).toBe(1)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'vx stats is an alias: byte-identical output',
     async () => {
       const info = await vx(root, ['info'])

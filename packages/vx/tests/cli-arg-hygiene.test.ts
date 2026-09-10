@@ -11,7 +11,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { parseDuration, parsePruneArgs, parseRunArgs, parseSize, run } from '../src/cli/index.js'
+import {
+  parseConcurrency,
+  parseDuration,
+  parsePruneArgs,
+  parseRunArgs,
+  parseSize,
+  run,
+} from '../src/cli/index.js'
 
 describe('--cache spec validation', () => {
   it('rejects an empty spec instead of silently leaving caching FULL', () => {
@@ -133,6 +140,20 @@ describe('numeric flags take a plain decimal integer only', () => {
     expect(parseRunArgs(['build', '--concurrency', '4']).concurrency).toBe(4)
   })
 
+  it('--concurrency <n>% is that share of the CPUs, never below 1', () => {
+    expect(parseConcurrency('50%', 8)).toBe(4)
+    expect(parseConcurrency('25%', 2)).toBe(1)
+    expect(parseConcurrency('200%', 4)).toBe(8)
+    expect(parseConcurrency('33%', 4)).toBe(1)
+    for (const v of ['0%', '%', '50 %', '0x10%', '1.5%', '-50%'])
+      expect(parseConcurrency(v, 8)).toBeNull()
+    const cpus = Math.max(1, navigator.hardwareConcurrency)
+    expect(parseRunArgs(['build', '--concurrency', '100%']).concurrency).toBe(cpus)
+    expect(parseRunArgs(['build', '--concurrency=50%']).concurrency).toBe(
+      Math.max(1, Math.round(cpus / 2)),
+    )
+  })
+
   it('--timeout rejects the same forms and values past 2^53', () => {
     for (const v of ['0x10', '1e3', '2.5', ' 5 ', '+5']) {
       expect(parseRunArgs([`--timeout=${v}`, 'build']).error).toMatch(/--timeout must be/)
@@ -193,6 +214,13 @@ describe('vx cache prune value parsing', () => {
     // Space form unchanged.
     expect(parsePruneArgs(['--max-size', '1gb']).maxBytes).toBe(1024 ** 3)
     expect(parsePruneArgs(['--older-than', '30D']).error).toBeUndefined()
+  })
+
+  it('--dry-run rides along either policy flag and is still no policy on its own', () => {
+    expect(parsePruneArgs(['--older-than=30d', '--dry-run']).dryRun).toBe(true)
+    expect(parsePruneArgs(['--dry-run', '--max-size', '1G']).dryRun).toBe(true)
+    expect(parsePruneArgs(['--older-than=30d']).dryRun).toBeUndefined()
+    expect(parsePruneArgs(['--dry-run']).error).toMatch(/must pass --older-than/)
   })
 
   it('rejects an empty = value rather than reading it as "prune nothing"', () => {

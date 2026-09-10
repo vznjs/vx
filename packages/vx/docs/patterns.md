@@ -114,8 +114,8 @@ The remote cache is **plugin-driven** (owner directive 2026-07-10): core keeps t
 plugin capability), and a plugin ships the wire — `@vzn/vx-reapi` speaks
 Bazel's ActionCache + CAS, so any REAPI server works as a remote cache.
 Turbo `/v8/artifacts` compatibility was
-dropped from core — a Turbo-wire cache is a third-party plugin story;
-the recipe lives in the extensibility guide.
+dropped from core — `@vzn/vx-turbo-cache` is that wire as a plugin;
+the recipe for any other lives in the extensibility guide.
 
 ### Tar artifact format
 

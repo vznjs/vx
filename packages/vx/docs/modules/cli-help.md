@@ -19,7 +19,7 @@ is hard-coded and matches the documented surface.
 - Usage line per subcommand.
 - `Selection (for run)` — default / `--all` / `--filter` / `--affected`
   / `pkg#task`.
-- `Execution (for run)` — concurrency, `--excludeDependencies`,
+- `Execution (for run)` — concurrency, `--exclude-dependencies`,
   `--no-cache` / `--force`, `--cache`, `--verbosity`.
 - `Planning (for run — skips execution)` — `--dry`, `--graph`.
 - `Artifacts (for run)` — `--summarize`, `--profile`.

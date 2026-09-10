@@ -88,6 +88,28 @@ export interface RunArgs {
   error?: string
 }
 
+// The camelCase spelling the flag shipped with (retired 2026-09-10): two
+// edits past the suggester's reach, so it is named outright. A regex, not a
+// quoted literal, so the doc-drift test does not count it as an accepted flag.
+const RETIRED_EXCLUDE_DEPENDENCIES = /^--excludeDependencies(=|$)/
+
+/**
+ * `--concurrency <n>` is a positive decimal integer, or `<n>%` of the
+ * CPU count (`50%` on eight cores is 4, never below 1; over 100% is
+ * allowed for I/O-bound work). The percent form resolves here, at parse
+ * time, so the run sees one number and the summary says what it ran with.
+ */
+export function parseConcurrency(v: string, cpus = navigator.hardwareConcurrency): number | null {
+  const pct = /^(\d+)%$/.exec(v)
+  if (pct) {
+    const n = parseDecimalInt(pct[1]!)
+    if (n === null || n < 1) return null
+    return Math.max(1, Math.round((Math.max(1, cpus) * n) / 100))
+  }
+  const n = parseDecimalInt(v)
+  return n === null || n < 1 ? null : n
+}
+
 export function parseRunArgs(args: readonly string[]): RunArgs {
   const out: RunArgs = {
     tasks: [],
@@ -135,15 +157,20 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     } else if (a === '--concurrency' || a?.startsWith('--concurrency=')) {
       const v = a === '--concurrency' ? before[++i] : a.slice('--concurrency='.length)
       if (v === undefined) return { ...out, error: `--concurrency requires a value` }
-      const n = parseDecimalInt(v)
-      if (n === null || n < 1) return { ...out, error: `invalid concurrency: ${v}` }
+      const n = parseConcurrency(v)
+      if (n === null) return { ...out, error: `invalid concurrency: ${v}` }
       out.concurrency = n
     } else if (a === '--all') {
       out.all = true
-    } else if (a === '--excludeDependencies') {
+    } else if (RETIRED_EXCLUDE_DEPENDENCIES.test(a ?? '')) {
+      return {
+        ...out,
+        error: `unknown flag: ${a} (the flag is --exclude-dependencies)${seeHelp('run')}`,
+      }
+    } else if (a === '--exclude-dependencies') {
       out.excludeDependencies = 'all'
-    } else if (a?.startsWith('--excludeDependencies=')) {
-      const raw = a.slice('--excludeDependencies='.length)
+    } else if (a?.startsWith('--exclude-dependencies=')) {
+      const raw = a.slice('--exclude-dependencies='.length)
       // An empty value is genuinely ambiguous — "drop every edge" (the
       // bare flag) and "drop none" (an empty list) are equally defensible
       // readings, and silently picking either does the opposite of what
@@ -153,7 +180,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       if (raw === '') {
         return {
           ...out,
-          error: `--excludeDependencies= needs a value — pass bare --excludeDependencies to drop every dependsOn edge, or omit the flag to keep them`,
+          error: `--exclude-dependencies= needs a value — pass bare --exclude-dependencies to drop every dependsOn edge, or omit the flag to keep them`,
         }
       }
       out.excludeDependencies = raw

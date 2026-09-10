@@ -228,6 +228,29 @@ migrate` was 1,475 lines of core that knew Turbo's and Nx's file
     (download-policy.test.ts pins it). Net −71 lines in src; the
     contract docs (modules/cache.md, layered-cache.md, chained-cache.md,
     caching.md, git-inputs.md) follow in the same commit.
+73. DONE (DX batch from the feature-gap audit — four small asks and the
+    stale rows): `--excludeDependencies` was the one camelCase flag in
+    a kebab-case CLI; it is `--exclude-dependencies` now, and the old
+    spelling — two edits past the suggester's reach — errors with the
+    new name outright. `--concurrency <n>%` is that share of the CPUs
+    (`50%` on eight cores is 4, never below 1, over 100% allowed for
+    I/O-bound work), resolved at parse time so the run and its summary
+    see one number. `vx cache prune --dry-run` picks the victims under
+    the same policy and counts the orphans the sweep would take, then
+    returns without touching the index or the directory (`PruneOptions.
+dryRun` on the contract, so a layer that delegates gets it for
+    free); pinned against the real prune with the same flags, which
+    reaps exactly what the dry run named. `vx info --format json` prints
+    the doctor's facts as one typed object (`InfoFacts`) that the pretty
+    rows render — one source, no second list; `git` is null when not
+    found and `gitStatusCache` null when git could not answer, where the
+    pretty form says `(not found)` / `(unknown)`. Docs: comparison.md,
+    architecture.md and patterns.md still called a Turbo-wire cache "a
+    third-party plugin story" while `@vzn/vx-turbo-cache` and
+    `@vzn/vx-nx-cache` sit in this repo; the rows name them now. Two
+    audit items refuted on reading: `vx <verb> --help` has printed the
+    reference since 2026-09-04, and cli.md's `vx migrate` / `vx prune`
+    sections are the pointers to the packages, not stale verbs.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

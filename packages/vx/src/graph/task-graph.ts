@@ -289,7 +289,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
           `Task ${id}: dependsOn patterns are not supported in the "pkg#task" form (got "${raw}")`,
         )
       }
-      // CLI `--excludeDependencies=name1,name2` drops edges whose target
+      // CLI `--exclude-dependencies=name1,name2` drops edges whose target
       // task name matches, regardless of bucket (self / deps / cross).
       // Pattern specs re-apply the filter per EXPANDED name below.
       if (skipNames?.has(spec.task)) continue
@@ -331,7 +331,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         // With a pattern (`^build.*`), a holder is a package declaring
         // AT LEAST ONE matching task and it receives edges to ALL its
         // matches — holder-ness is about declaration, so a holder still
-        // stops the walk even when every match is --excludeDependencies'd.
+        // stops the walk even when every match is --exclude-dependencies'd.
         //
         // The declaring project seeds `visited`: package graphs may legally
         // contain cycles (the common "b devDepends on a for its tests"

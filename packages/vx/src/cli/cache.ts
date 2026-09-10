@@ -26,6 +26,7 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
 interface PruneArgs {
   olderThanMs?: number
   maxBytes?: number
+  dryRun?: boolean
   error?: string
 }
 
@@ -73,6 +74,8 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
         }
       }
       out.maxBytes = bytes
+    } else if (a === '--dry-run') {
+      out.dryRun = true
     } else {
       return { error: `unknown argument: ${a}${seeHelp('cache')}` }
     }
@@ -103,16 +106,18 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   const cache = new Cache((await loadCliWorkspace(root)).cacheDir)
   noteSchemaReset(cache, warnToStderr)
   try {
-    const opts: { olderThanMs?: number; maxBytes?: number } = {}
+    const opts: { olderThanMs?: number; maxBytes?: number; dryRun?: boolean } = {}
     if (parsed.olderThanMs !== undefined) opts.olderThanMs = parsed.olderThanMs
     if (parsed.maxBytes !== undefined) opts.maxBytes = parsed.maxBytes
+    if (parsed.dryRun) opts.dryRun = true
     const result = await cache.prune(opts)
+    const dry = parsed.dryRun === true
     const orphans =
       result.orphans > 0
-        ? `, reaped ${result.orphans} orphaned artifact${result.orphans === 1 ? '' : 's'} (${formatBytes(result.orphanBytes)})`
+        ? `, ${dry ? 'would reap' : 'reaped'} ${result.orphans} orphaned artifact${result.orphans === 1 ? '' : 's'} (${formatBytes(result.orphanBytes)})`
         : ''
     process.stdout.write(
-      `Pruned ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)} freed)${orphans}\n`,
+      `${dry ? 'Would prune' : 'Pruned'} ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)}${dry ? '' : ' freed'})${orphans}\n`,
     )
   } finally {
     cache.close()
