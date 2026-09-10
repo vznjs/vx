@@ -461,8 +461,9 @@ tracks the run live. Top to bottom:
    visible evidence the dev server is still alive. After the summary,
    a requested persistent task keeps vx in the foreground until it —
    or, with several, the first of them — exits; the rest are then torn
-   down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL) and a non-zero exit
-   makes the run exit 1.
+   down (SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL), one status line names
+   the task and its code (`vx: app#dev exited with code 1; stopping 1
+other persistent task`), and a non-zero exit makes the run exit 1.
 3. **Worker rows** — one per worker slot (sized
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in

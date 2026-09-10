@@ -843,11 +843,23 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // script fails when the server it started fell over. Until
     // 2026-09-10 this waited for EVERY server, so the SIGTERM after it
     // was dead code and a crashed server left the rest running under a
-    // run that never returned. Nothing here prints — the UI is unchanged.
+    // run that never returned. One status line names the server that
+    // ended the session and its code — the summary above said `success`
+    // for it, and an exit 1 with no word about why is a mystery in a log.
     if (keepAlive.children.length > 0) {
-      const firstExit = await Promise.race(keepAlive.children.map((c) => c.exited))
+      const first = await Promise.race(
+        keepAlive.children.map((c, i) => c.exited.then((code) => ({ code, i }))),
+      )
+      const node = keepAlive.nodes[first.i]!
+      const others = keepAlive.nodes.length - 1
+      log.status(
+        `vx: ${node.id} exited with code ${first.code}` +
+          (others > 0
+            ? `; stopping ${others} other persistent task${others === 1 ? '' : 's'}`
+            : ''),
+      )
       await terminateChildren(() => keepAlive.children)
-      return { ok: ok && firstExit === 0, outcomes: list }
+      return { ok: ok && first.code === 0, outcomes: list }
     }
 
     return { ok, outcomes: list }
