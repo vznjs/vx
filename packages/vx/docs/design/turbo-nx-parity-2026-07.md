@@ -459,6 +459,8 @@ root)` / the resolved selection from inside a package dir. Whatever the chosen
 
 ### M1. `--graph` DOT output does not escape task ids
 
+> Closed 2026-09-10 (STATUS item 100): ids and labels go through one DOT quoter (`\`, `"`, newline); pinned with a balanced-quotes check per line.
+
 - **Turbo behaviour**: `crates/turborepo/tests/graph_test.rs`
   `test_graph_to_html_escapes_task_names` — a fixture declaring tasks literally
   named ``back`tick``, `interpolate${globalThis.alert(1)}` and
@@ -545,6 +547,8 @@ root)` / the resolved selection from inside a package dir. Whatever the chosen
   `turbo run build web#lint` invocation.
 
 ### M5. Input hashing has no coverage for filenames with spaces / quotes / non-ASCII
+
+> Closed 2026-09-10 (STATUS item 100): pinned on the enumeration side (`tests/inputs.test.ts`) and the tar round-trip (`tests/artifact-roundtrip.test.ts`); no live defect.
 
 - **Turbo behaviour**: `crates/turborepo/tests/path_with_spaces_test.rs`
   `test_files_with_spaces_can_be_hashed` — creating `packages/util/with

@@ -939,6 +939,19 @@ before · 2 attempts this run`), `--summarize`'s per-task
     loaded box's noise; the arm's own standalone median was 2,501),
     warm arms identical. One `lstat` per output entry, twice per
     miss, is invisible at this scale.
+100.  DONE (2026-09-10, late night — parity findings M1 and M5): the
+      `--graph` DOT writer interpolated task ids and labels raw, and a
+      task name is any config key, so a quote, a backslash or a newline
+      ended the string early and broke the document (the third sibling
+      formatter to ship this class). One DOT quoter now, pinned by a
+      per-line balanced-quotes check over a name carrying all three.
+      Odd filenames — a space, a quote, a backslash, non-ASCII — were
+      never pinned through hashing or the artifact: they are now, on the
+      enumeration side (git's `-z`, tracked and untracked) and the tar
+      round-trip (name- and byte-identical after a wipe and restore).
+      No live defect on the filename side. The 2026-07 parity doc's
+      remaining rows are cycle topologies (Nx M1), watch timing (M7, M8)
+      and the LOW list; none names a wrong result.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

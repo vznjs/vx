@@ -381,6 +381,31 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     await rm(root, { recursive: true, force: true })
   })
 
+  // Turbo pins `test_files_with_spaces_can_be_hashed`; git's `-z` is what
+  // keeps a space, a quote, a backslash or a non-ASCII name intact here
+  // (without it git C-quotes and octal-escapes the path, which then names
+  // no file). Tracked and untracked alike, since the two travel different
+  // columns of the same listing.
+  it('names with spaces, quotes, backslashes and non-ASCII enter the input set intact', async () => {
+    const odd = ['with spaces.txt', 'café.ts', 'quo"te.txt', 'back\\slash.txt']
+    await write(path.join(projectDir, 'src', 'with spaces.txt'))
+    await write(path.join(projectDir, 'src', 'café.ts'))
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'init')
+    await write(path.join(projectDir, 'src', 'quo"te.txt'))
+    await write(path.join(projectDir, 'src', 'back\\slash.txt'))
+
+    const got = await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: ['src/**'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+    })
+    expect(got.files.sort()).toEqual(odd.map((n) => path.join(projectDir, 'src', n)).sort())
+  })
+
   it('nested .gitignore patterns are correctly anchored (the v13 footgun)', async () => {
     // Pre-v14, a project-level pattern like `src/skip.ts` was anchored
     // to the workspace root, not the project — so it never matched.
