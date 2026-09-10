@@ -1377,7 +1377,29 @@ last`, `vx info` and `vx cache prune`, through one parser and one
    sandboxed check-in clone at `/home/user/sandbox-home/vx` is the
    way to measure this repo's own gate as an unprivileged user, and
    every A/B in items 70–77 ran there.
-10. **Handoff after item 67 (2026-09-10, night).** The loop's Next
+10. **Handoff after item 95 (2026-09-10, late night).** PR #273
+    carries items 87–95: core's empty `build` group and
+    `check.binary`, the hosted-cache path, `@vzn/vx-infer` shipped
+    and retired the same day (technology plugins are the
+    community's), Bun 1.4.2 with every dependency and action current,
+    local flaky-task detection (three surfaces, one rule, a partial
+    index that keeps a green run at 0.01 ms), the Turbo / Nx parity
+    suites with `docs/parity.md`, and the positioning redo (one
+    thing, built to be built on; one binary, no Node or Bun; Windows
+    under WSL). Every head from 9622ba6 to d81d9e7 was red on one
+    task, `@vzn/vx-docs#build` — astro 7's optional peer, hidden
+    locally by stale store copies (item 92's note); af01500 declares
+    it. Re-measured after the day's work (`run.ts 100 5` / `1000 5`,
+    medians, this four-core box): 100 projects 117 / 164 / 359 ms
+    and 1000 projects 227 / 1,049 / 2,488 ms for warm-no-restore /
+    warm-restore / no-cache, against the night's 126 / 205 / 427 and
+    244 / 1,006 / 2,567 — the detector's probe is invisible at the
+    whole-process scale, as its 0.55 ms for 1,000 candidates said it
+    would be. Open from the owner's last message: nothing; the
+    2026-07 parity design doc's edge-case lists and § Next 5–8 remain
+    the backlog. Never merge #273 without the owner's word.
+
+11. **Handoff after item 67 (2026-09-10, night).** The loop's Next
     items are spent; what a fresh session should know, in order:
     (a) PR #265 merged into main (d96a06f) and PR #266 (items 65–68
     and the day's follow-ups) merged as e099265, both by merge commit —
