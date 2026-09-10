@@ -16,7 +16,10 @@ export interface PackageGraph {
   transitiveDependents: (name: string) => string[] // all transitive dependents
 }
 
-export function buildPackageGraph(projects: ProjectMeta[]): PackageGraph
+export function buildPackageGraph(
+  projects: ProjectMeta[],
+  taskEdges?: ReadonlyMap<string, readonly string[]>, // project → projects its tasks name in a cross-project dependsOn
+): PackageGraph
 ```
 
 `directDeps` is the adjacency `buildTaskGraph` walks for `'^name'`

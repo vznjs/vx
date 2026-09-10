@@ -60,11 +60,13 @@ has no vx spelling, on purpose).
 ## Deferred, with the reasoning
 
 - **Project edges outside `package.json`** (Nx `implicitDependencies`;
-  an e2e package that tests `app` without depending on it is invisible
-  to `...[ref]`). vx's graph IS the manifest, on purpose: declare the
-  dependency (`devDependencies: { app: 'workspace:*' }`) and every
-  surface agrees. Whether a cross-project `dependsOn` edge should also
-  count for selection is the open question; not decided here.
+  an e2e package that tests `app` without depending on it was invisible
+  to `...[ref]`). DECIDED 2026-09-10 (STATUS 113): no new field — a
+  cross-project `dependsOn` edge (`e2e`'s `dependsOn: ['app#build']`)
+  now counts for `...` / `^...` selection, since the task graph already
+  knows it; every surface agrees without a second declaration. A
+  workspace-level default base stays rejected: `--affected=<ref>` is
+  one flag and the `origin/HEAD` fallback covers the rest.
 - **Project-selector `dependsOn`** (`lib*#build`, `!lib1`). vx
   materialises concrete edges and rejects a pattern in the `pkg#task`
   form; task-name patterns (`^build.*`) cover the common case. Revisit

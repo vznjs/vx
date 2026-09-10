@@ -21,6 +21,7 @@ import {
   workspaceGlobsMatch,
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
+import { parseDependencySpec } from '../graph/index.js'
 import { nearest, UserError } from '../util/index.js'
 import { claimedAffected, fingerprintClaims } from '../orchestrator/index.js'
 import { type CliLoadOptions, loadCliProjects, loadCliWorkspace } from './workspace-config.js'
@@ -120,6 +121,40 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
 
 export type FilterResolution = { names: string[] } | { error: string } | { empty: string }
 
+/**
+ * The cross-project `dependsOn` edges the configs declare, project → the
+ * projects it names (`dependsOn: ['app#build']` makes `app` a dependency
+ * of the declaring project). Read from the staged load — the same configs
+ * the run will use — only when a filter walks the graph (`...`, `^...`).
+ * A spec the loader will reject is skipped here; the run reports it.
+ */
+async function taskEdges(
+  root: string,
+  projects: readonly ProjectMeta[],
+  load: CliLoadOptions,
+): Promise<Map<string, string[]>> {
+  const staged = await loadCliProjects(root, projects, 'all', load)
+  const out = new Map<string, string[]>()
+  for (const p of staged.values()) {
+    const targets = new Set<string>()
+    for (const task of Object.values(p.config.tasks ?? {})) {
+      for (const raw of task.dependsOn ?? []) {
+        let spec
+        try {
+          spec = parseDependencySpec(raw)
+        } catch {
+          continue
+        }
+        if (spec.kind === 'cross' && !spec.negated && spec.project !== p.name) {
+          targets.add(spec.project)
+        }
+      }
+    }
+    if (targets.size > 0) out.set(p.name, [...targets].sort())
+  }
+  return out
+}
+
 export async function resolveFilters(
   cwd: string,
   raw: string[],
@@ -127,8 +162,17 @@ export async function resolveFilters(
 ): Promise<FilterResolution> {
   const root = await findWorkspaceRoot(cwd)
   const projects = await loadWorkspaceProjects(cwd)
-  const graph = buildPackageGraph(projects)
   const parsed = raw.map((r) => parseFilter(r, root))
+  const walksGraph = parsed.some((f) => f.withDeps || f.withDependents || f.onlyDeps)
+  let edges: Map<string, string[]> | undefined
+  if (walksGraph) {
+    try {
+      edges = await taskEdges(root, projects, load)
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+  const graph = buildPackageGraph(projects, edges)
 
   // Resolve every `[<since>]` filter against git before the pure
   // applyFilters pass runs. One spawn per distinct ref — usually

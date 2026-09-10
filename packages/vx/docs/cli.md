@@ -114,12 +114,21 @@ facing summary.
 | `{<dir>}`       | Same as `./<dir>`.                                                                                  |
 | `./<glob>`      | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too). |
 | `.`             | The workspace root — i.e. EVERY package, not the one you are standing in.                           |
-| `<pattern>...`  | Match + all transitive workspace dependencies.                                                      |
-| `...<pattern>`  | Match + all transitive workspace dependents.                                                        |
+| `<pattern>...`  | Match + all transitive dependencies (see below what an edge is).                                    |
+| `...<pattern>`  | Match + all transitive dependents.                                                                  |
 | `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.                             |
 | `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.                               |
-| `!<pattern>`    | Exclude packages matching `<pattern>`.                                                              |
-| `[<git-ref>]`   | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                               |
+
+An edge is a `package.json` workspace dependency (`dependencies`,
+`devDependencies`, `peerDependencies`, `optionalDependencies`) OR a
+cross-project `dependsOn` entry (`e2e`'s `test: { dependsOn:
+['app#build'] }` makes `e2e` a dependent of `app`). The task graph knows
+both, so selection follows both: `vx run test --filter '...app'` runs
+`e2e#test` even though `e2e` has no manifest dependency on `app`. There
+is no `implicitDependencies` field — declare the edge where the task
+needs it.
+| `!<pattern>` | Exclude packages matching `<pattern>`. |
+| `[<git-ref>]` | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …). |
 
 Examples:
 
@@ -161,7 +170,9 @@ vx run test --filter '...[main]'    # what changed + everything depending on it
 ```
 
 The task graph does not close this gap for you: `dependsOn` pulls a
-task's DEPENDENCIES in, never its dependents.
+task's DEPENDENCIES in, never its dependents. The `...` walk does follow
+a cross-project `dependsOn` edge, though, so `...[main]` reaches an
+`e2e` that depends on `app#build` without a manifest dependency.
 
 It's a pure sugar for `--filter '[<base>]'`; both are resolved by
 `src/workspace/affected.ts`, which unions `git diff` against `<base>`

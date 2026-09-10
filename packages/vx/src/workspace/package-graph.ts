@@ -9,13 +9,28 @@ export interface PackageGraph {
   transitiveDependents: (name: string) => string[]
 }
 
-export function buildPackageGraph(projects: ProjectMeta[]): PackageGraph {
+/**
+ * `taskEdges`: project → the projects its tasks name in a cross-project
+ * `dependsOn` (`e2e` → `app` from `dependsOn: ['app#build']`). A dependent
+ * the manifest does not know but the task graph does; without it
+ * `--filter '...app'` never selected `e2e`, and a CI that runs "what
+ * changed and everything depending on it" silently left it out
+ * (2026-09-10). The `^task` walk still reads `directDeps`, which carries
+ * both — a task edge IS a dependency.
+ */
+export function buildPackageGraph(
+  projects: ProjectMeta[],
+  taskEdges?: ReadonlyMap<string, readonly string[]>,
+): PackageGraph {
   const byName = new Map<string, ProjectMeta>()
   for (const p of projects) byName.set(p.name, p)
 
   const directDeps = new Map<string, string[]>()
   for (const p of projects) {
     const seen = new Set<string>()
+    for (const name of taskEdges?.get(p.name) ?? []) {
+      if (name !== p.name && byName.has(name)) seen.add(name)
+    }
     for (const field of [
       'dependencies',
       'devDependencies',

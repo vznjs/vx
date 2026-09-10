@@ -1158,6 +1158,24 @@ signal` (an `AbortSignal`) runs the one teardown the process
       brace set is a wildcard: `{dist,build}/**` read as the literal
       directory `{dist,build}` gave the sandbox baseline a prefix that
       exists nowhere (pinned in `tests/util-paths.test.ts`).
+113.  DONE (2026-09-10, late night — the survey's open question,
+      decided as owner): `--filter '...app'` follows cross-project
+      `dependsOn` edges. An `e2e` whose `test` declares `dependsOn:
+['app#build']` and no manifest dependency was invisible to the
+      dependents walk, so a CI running "what changed and everything
+      depending on it" silently left it out — the flagship use case
+      under-tested. No new field (Nx's `implicitDependencies` stays
+      unspelled): the task graph already knows the edge, so the
+      selector reads it from the staged configs (`taskEdges` in
+      `cli/select.ts`, only when a filter walks the graph) and
+      `buildPackageGraph` merges it into `directDeps` — `^task` walks
+      and `...` / `^...` agree. `tests/filter.test.ts` (unit, a ghost
+      target and a self edge are nothing) and
+      `tests/task-edge-selection.test.ts` (e2e: `...lib` runs
+      `e2e#test`; `e2e^...` reaches app and lib; a plain name is
+      unchanged), both failing without. Rejected in the same breath: a
+      workspace default base for `--affected` — one flag in CI, and
+      `origin/HEAD` covers the rest.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
