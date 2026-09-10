@@ -63,7 +63,11 @@ interface TaskConfig {
 A task either has an `exec` (it does work) or omits `exec` and declares
 `dependsOn` (it's a **group task**, a pure aggregator). The loader
 rejects a task that has neither — a no-op standalone task is almost
-always a config mistake.
+always a config mistake. `dependsOn: []` is the deliberate form: an
+explicit empty group, for a package that wants a task by that name to
+exist and do nothing — a package consumed as source declares
+`build: { dependsOn: [] }` so a dependant's `^build` finds it and waits
+on nothing.
 
 ### `description` (optional)
 
@@ -944,10 +948,11 @@ there is no macOS equivalent to offer.
 
 ## Group tasks (no `exec`)
 
-A task with no `exec` and a non-empty `dependsOn` is a **group task**
-— a pure aggregator. Running a group is equivalent to running its
-dependencies; nothing else happens (no spawn, no I/O, no cache
-read/write).
+A task with no `exec` and a `dependsOn` is a **group task** — a pure
+aggregator. Running a group is equivalent to running its dependencies;
+nothing else happens (no spawn, no I/O, no cache read/write). An empty
+`dependsOn: []` is an explicit no-op group: it exists to be named — by a
+dependant's `^build`, by `vx run build --all` — and runs nothing.
 
 ```ts
 // `vx run install --all`  →  fans out to `build` in every workspace dep

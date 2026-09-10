@@ -59,6 +59,46 @@ function silent(): Logger & { status: string[]; started: string[]; concurrency?:
 
 const build = "export default { tasks: { build: { exec: { command: 'echo build' } } } }\n"
 
+describe('an explicit empty group', () => {
+  it(
+    "a dependant's ^build finds it and runs nothing of the dependency",
+    async () => {
+      // The shape core itself uses: consumed as source, `build` is an
+      // explicit empty group. A dependant's `install → ^build` resolves
+      // to it and the plan carries nothing of the dependency's.
+      await pkg('core', 'export default { tasks: { build: { dependsOn: [] } } }\n')
+      const dir = path.join(root, 'packages', 'app')
+      await mkdir(dir, { recursive: true })
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'app', version: '1.0.0', dependencies: { core: 'workspace:*' } }),
+      )
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        "export default { tasks: { install: { dependsOn: ['^build'] }, test: { dependsOn: ['install'], exec: { command: 'echo t' } } } }\n",
+      )
+      await workspace([])
+      const plan = await planRun({ cwd: root, tasks: ['test'], log: silent() })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual([
+        'app#install',
+        'app#test',
+        'core#build',
+      ])
+      // The group is in the graph and does nothing: no exec, no work.
+      const group = plan.tasks.find((t) => t.node.id === 'core#build')!
+      expect(group.node.config.exec).toBeUndefined()
+      expect(group.deps).toEqual([])
+      // CONTROL: a build that does work is the same edge with a command.
+      await pkg('core', "export default { tasks: { build: { exec: { command: 'echo b' } } } }\n")
+      const withWork = await planRun({ cwd: root, tasks: ['test'], log: silent() })
+      expect(
+        withWork.tasks.find((t) => t.node.id === 'core#build')!.node.config.exec?.command,
+      ).toBe('echo b')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('config stage', () => {
   it(
     'a plugin edits the workspace config before it is used',

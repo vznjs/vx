@@ -155,6 +155,16 @@ describe('loadProjectConfig', () => {
       expect(cfg.tasks?.install?.dependsOn).toEqual(['^build'])
     })
 
+    it('accepts an explicit empty group — dependsOn: [] is a deliberate no-op', async () => {
+      // A package consumed as source declares `build: { dependsOn: [] }` so
+      // a dependant's `^build` finds it and waits on nothing; only the
+      // OMITTED field is the typo guard below.
+      const file = path.join(dir, 'vx.config.mjs')
+      await writeFile(file, `export default { tasks: { build: { dependsOn: [] } } }`)
+      const cfg = await loadProjectConfig(file)
+      expect(cfg.tasks?.build?.dependsOn).toEqual([])
+    })
+
     it('rejects a task with no exec and no dependsOn', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(file, `export default { tasks: { empty: {} } }`)

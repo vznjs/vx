@@ -733,6 +733,21 @@ run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
     resolver. The remote-caching guide leads with the three commands
     and names the Nx wire beside it.
 
+90. DONE (the `^build` convention stays visible on a package with
+    nothing to build): the owner's point on item 87 — deps must be
+    built before a project uses them — is the `install → ^build`
+    chain, which item 87 kept; what it removed was core's `build`
+    group, so core's config no longer said what it means. It does
+    now: `build: { dependsOn: [] }`, an explicit empty group with a
+    description ("nothing to build — core is consumed as source; the
+    release binaries are build.bun"). The schema already accepted the
+    form (only the OMITTED field is the typo guard), the graph runs
+    nothing for it, and a dependant's plan carries nothing of core's;
+    schema.md says so in both places group tasks are described.
+    Pinned: the loader accepts it, and through `planRun` a dependant
+    whose `^build` reaches an empty group runs only its own task
+    (control: a `build` that does work is pulled in).
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
