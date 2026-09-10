@@ -12,7 +12,11 @@ Migrating *from* a specific tool? Those guides generate config for you:
 [from Nx](../migrate/from-nx/). No tool at all? `vx init` writes the
 workspace file and one config per package from its `package.json`
 scripts; the hand-written path below is the same result, one package at
-a time.
+a time. Rather write nothing per package? Declare
+[`@vzn/vx-infer`](../guides/inferred-tasks/) in the workspace file and
+a package gets its tasks from the tools it uses — `vite()`, `vitest()`,
+`next()`, `tsc()`, `scripts()` — with the hand-written config still
+winning wherever you add one.
 
 ## 1. Install at the workspace root
 
@@ -89,7 +93,10 @@ build: {
 vx derives the cross-package edges from your `package.json`
 `dependencies` — you don't redeclare the graph. A package that doesn't
 declare `build` is transparently bridged to the nearest dependency that
-does, so sparse task coverage is fine.
+does, so sparse task coverage is fine. A package that is consumed as
+source and has nothing to build can say so with an explicit empty
+group, `build: { dependsOn: [] }`, so a dependant's `^build` finds it
+and waits on nothing.
 
 ## 5. Optional: workspace-wide settings
 
