@@ -1091,6 +1091,27 @@ signal` (an `AbortSignal`) runs the one teardown the process
       exit codes; the old code hangs it 20 s). Docs: cli (watch exit
       codes, the foreground rule), execution, modules/signals,
       cli-watch, orchestrator, options, scheduler, runner.
+110.  DONE (2026-09-10, night — the watch loop end to end, and a
+      regression it found): `tests/watch-loop.test.ts` pins the loop on
+      markers, not sleeps — "watching" means every watcher proved
+      delivery, an execution count kept OUTSIDE the workspace says what
+      actually ran — for the three claims the 2026-07 doc left unpinned:
+      an edit re-runs exactly once, the same bytes written again cost
+      no cycle and no execution (M8), a `git checkout` rewriting twenty
+      inputs is one cycle with the new content (L5). The first claim
+      was false: every edit cost TWO cycles, the second labelled `dist`
+      and reporting up-to-date, since item 99's clean prunes an emptied
+      `dist` and the task re-creates it — a change to `dist` itself,
+      which `dist/**` never matched. `makeWatchIgnore` now also drops
+      the directory holding an output tree and its ancestors
+      (`outputContainer`: `dist` for `dist/**`, `build/out` and `build`
+      for `build/out/*.js`, nothing for `*.js`), and treats a literal
+      entry as its tree like the resolver does (item 102 had not
+      reached the watch side: a literal `gen`'s files counted as
+      edits). Unit pins in `tests/watch-rules.test.ts`; the e2e fails
+      with two cycles without the fix, three runs in a row green with
+      it. M7 (an edit during the initial run is dropped) stays as
+      documented, deliberately.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

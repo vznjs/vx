@@ -73,23 +73,53 @@ export function makeWatchIgnore(
   // writes `dist/` (or `out.txt`) re-runs once more, reporting
   // "up-to-date" for the trouble. Matched under the directory the globs
   // are relative to, whichever watcher delivered the event.
+  // The directory that HOLDS an output tree is the task's too: `dist/**`
+  // does not match `dist`, and since the clean before a miss prunes an
+  // emptied `dist` (2026-09-10) the task re-creates it, which the watcher
+  // reports as a change to `dist` itself — a second cycle per edit,
+  // reporting "up-to-date". The literal prefix of each glob (`dist` for
+  // `dist/**`, `build/out` for `build/out/*.js`; nothing for `*.js`) and
+  // every ancestor of it under the dir are output containers.
+  // A literal entry means the file or its whole tree (schema.md), so a
+  // literal `gen` also matches `gen/**` here — the same rule the resolver
+  // applies, or the tree's files would count as edits.
+  const asTrees = (g: string): string[] =>
+    /[*?[\]{}!]/.test(g) ? [g] : [g.replace(/\/+$/, ''), `${g.replace(/\/+$/, '')}/**`]
   const declared = [...outputs].map(
-    ([dir, globs]) => [path.resolve(dir), globs.map((g) => new Bun.Glob(g))] as const,
+    ([dir, globs]) =>
+      [
+        path.resolve(dir),
+        globs.flatMap(asTrees).map((g) => new Bun.Glob(g)),
+        globs.map(outputContainer).filter((c) => c !== ''),
+      ] as const,
   )
   return (base, filename) => {
     if (isIgnoredWatchPath(filename)) return true
     const abs = path.resolve(base, filename)
     if (abs === cacheAbs || abs.startsWith(cacheAbs + path.sep)) return true
-    for (const [dir, globs] of declared) {
+    for (const [dir, globs, containers] of declared) {
       if (!abs.startsWith(dir + path.sep)) continue
       const rel = abs
         .slice(dir.length + 1)
         .split(path.sep)
         .join('/')
       if (globs.some((g) => g.match(rel))) return true
+      if (containers.some((c) => c === rel || c.startsWith(`${rel}/`))) return true
     }
     return false
   }
+}
+
+/** The literal directory a glob's matches live under (`''` when the glob starts with a pattern). */
+export function outputContainer(glob: string): string {
+  const meta = glob.search(/[*?[\]{}!]/)
+  const literal = meta === -1 ? glob : glob.slice(0, meta)
+  // A literal entry is a file or its whole tree (schema: literal → tree),
+  // so the entry itself is the container; a pattern's container is the
+  // directory part before the first metacharacter.
+  const cut =
+    meta === -1 ? literal.replace(/\/+$/, '') : literal.slice(0, literal.lastIndexOf('/') + 1)
+  return cut.replace(/\/+$/, '')
 }
 
 /**

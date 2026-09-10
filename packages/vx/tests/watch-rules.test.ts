@@ -98,6 +98,29 @@ describe('the ignore filter follows the RESOLVED cache dir, not the .vx literal'
     expect(ignore(root, path.join('packages', 'lib', 'dist', 'index.js'))).toBe(false)
   })
 
+  it('drops the directory that holds an output tree, and its ancestors, but not a sibling', () => {
+    // The clean before a miss prunes an emptied `dist`; the task re-creates
+    // it and the watcher reports `dist` itself, which `dist/**` never
+    // matched — a second cycle per edit (2026-09-10, watch-loop e2e).
+    const proj = path.join(root, 'packages', 'app')
+    const ignore = makeWatchIgnore(
+      path.join(root, '.vx', 'cache'),
+      new Map([[proj, ['dist/**', 'build/out/*.js', 'gen', '*.tsbuildinfo']]]),
+    )
+    expect(ignore(proj, 'dist')).toBe(true)
+    expect(ignore(proj, 'build')).toBe(true)
+    expect(ignore(proj, path.join('build', 'out'))).toBe(true)
+    expect(ignore(proj, 'gen')).toBe(true)
+    expect(ignore(proj, path.join('gen', 'a.js'))).toBe(true)
+    expect(ignore(root, path.join('packages', 'app', 'dist'))).toBe(true)
+    // siblings that merely share a prefix, and sources under `build`
+    expect(ignore(proj, 'distro')).toBe(false)
+    expect(ignore(proj, path.join('build', 'src.ts'))).toBe(false)
+    expect(ignore(proj, 'src')).toBe(false)
+    // a glob that starts with a pattern has no container: the project dir is not an output
+    expect(ignore(root, path.join('packages', 'app'))).toBe(false)
+  })
+
   it('still ignores the .vx default when no override is set', () => {
     const ignore = makeWatchIgnore(path.join(root, '.vx', 'cache'))
     expect(ignore(root, path.join('.vx', 'cache', 'cache.db'))).toBe(true)

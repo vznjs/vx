@@ -596,6 +596,8 @@ spaces.txt` must not break hashing or the dry run.
 
 ### M7. `vx watch` — an edit landing during the INITIAL run is dropped, and nothing pins it
 
+- **Status 2026-09-10**: documented as deliberate in `cli/watch.ts` (installing watchers first would mark every config loaded and cost the initial run a worker round-trip per config); the harness that could pin it now exists (`tests/watch-loop.test.ts`), the behaviour is unchanged by choice.
+
 - **Turbo behaviour**: `crates/turborepo/tests/watch_test.rs`
   `watch_edit_during_build_triggers_rebuild` (an edit while a build is in flight
   must produce a rebuild) and `watch_rapid_edits_produce_single_rebuild`,
@@ -617,6 +619,8 @@ spaces.txt` must not break hashing or the dry run.
   nothing happened") is the single most confusing thing a watcher can do.
 
 ### M8. `vx watch` — a same-content write should not re-execute
+
+- **Status 2026-09-10**: DONE (STATUS 110) — `tests/watch-loop.test.ts`: the same bytes written again cost no cycle and no execution; a real edit re-runs once (which found the `dist`-container double cycle, fixed there).
 
 - **Turbo behaviour**: `watch_test.rs` `watch_same_content_write_does_not_rebuild`.
 - **vx equivalent**: vx re-runs the whole orchestrator on every debounced event
@@ -805,7 +809,7 @@ contributes (fully decoupled)` at the unit level. What is missing is the
 
 ### L5. `vx watch` and a git branch switch
 
-- **Status 2026-09-10**: open, with M7/M8 — needs the watch harness that is not flaky.
+- **Status 2026-09-10**: DONE (STATUS 110) — `tests/watch-loop.test.ts`: a checkout rewriting twenty inputs is one cycle with the new content.
 
 - **Turbo behaviour**: `crates/turborepo-filewatch/src/hash_watcher.rs`
   `test_switch_branch` / `test_switch_branch_with_inputs` — a `git checkout`

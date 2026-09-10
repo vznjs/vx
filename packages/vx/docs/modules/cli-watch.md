@@ -51,8 +51,12 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
      cache directory (a relocated `cacheDir` would otherwise re-trigger
      every cycle), and each project's declared outputs
      (`cache.outputs.files`, root-relative `workspaceFiles`) — a cycle
-     that writes `dist/` is not an edit (`makeWatchIgnore`, pinned in
-     `tests/watch-rules.test.ts`). The outputs come from the run
+     that writes `dist/` is not an edit, and neither is `dist` itself —
+     the directory holding an output tree, `outputContainer`, which the
+     clean before a miss prunes and the task re-creates; a literal entry
+     is its whole tree, as in the schema (`makeWatchIgnore`, pinned in
+     `tests/watch-rules.test.ts`; end to end in
+     `tests/watch-loop.test.ts`). The outputs come from the run
      path's staged load (`sweepConfigs` → `loadProjects`), so an
      output a `project` plugin gave a config-less package is ignored
      like a declared one, and a pure config is served from its cached

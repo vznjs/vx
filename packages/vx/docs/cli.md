@@ -896,7 +896,8 @@ run...` precedes it.
    changes. A task's own declared outputs (`cache.outputs.files`,
    `outputs.workspaceFiles`; a plugin's `project` stage counts, as in
    a run) never trigger a re-run — a cycle that writes `dist/` is not
-   an edit — and neither do `node_modules`,
+   an edit, nor is the `dist` directory itself coming and going (a
+   literal entry covers its whole tree, as in the schema) — and neither do `node_modules`,
    `.git` or the cache directory. A write the task did NOT declare (a
    task with no `cache` block declares nothing) is caught by content:
    a file whose bytes did not change since the loop last saw it is not
