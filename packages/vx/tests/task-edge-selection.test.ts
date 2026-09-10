@@ -4,7 +4,8 @@
 // alone, so a CI that ran "what changed and everything depending on it"
 // silently left `e2e` out. Fails without the task edges.
 
-import { rm } from 'node:fs/promises'
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -28,12 +29,18 @@ async function vx(root: string, args: string[]): Promise<{ code: number; text: s
 
 describe('selection follows cross-project dependsOn edges', () => {
   let root: string
+  let ran: string
+  // Every task drops a marker named after itself OUTSIDE the workspace;
+  // the set of markers is what ran — never the terminal's row format.
+  const executed = async (): Promise<string[]> =>
+    (await readdir(ran)).sort((a, b) => (a < b ? -1 : 1))
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-task-edge-' })
+    ran = await mkdtemp(path.join(os.tmpdir(), 'vx-task-edge-ran-'))
     const task = (name: string) => `
       export default { tasks: {
-        build: { exec: { command: 'echo build ${name}' } },
-        test: { exec: { command: 'echo test ${name}' } },
+        build: { exec: { command: 'touch ${ran}/${name}#build' } },
+        test: { exec: { command: 'touch ${ran}/${name}#test' } },
       } }
     `
     await addProject(root, 'lib', task('lib'))
@@ -43,39 +50,31 @@ describe('selection follows cross-project dependsOn edges', () => {
       'e2e',
       `
         export default { tasks: {
-          test: { dependsOn: ['app#build'], exec: { command: 'echo test e2e' } },
+          test: { dependsOn: ['app#build'], exec: { command: 'touch ${ran}/e2e#test' } },
         } }
       `,
     )
   })
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
+    await rm(ran, { recursive: true, force: true })
   })
 
   it("...lib selects app (package.json) AND e2e (dependsOn: ['app#build'])", async () => {
     const r = await vx(root, ['run', 'test', '--filter', '...lib'])
     expect(r.code).toBe(0)
-    const ran = [...r.text.matchAll(/success no-cache\s+(\S+)/g)]
-      .map((m) => m[1]!)
-      .sort((a, b) => (a < b ? -1 : 1))
-    expect(ran).toEqual(['app#build', 'app#test', 'e2e#test', 'lib#test'])
+    expect(await executed()).toEqual(['app#build', 'app#test', 'e2e#test', 'lib#test'])
   }, 30_000)
 
   it('e2e... reaches app and lib through the task edge; e2e^... excludes e2e', async () => {
     const r = await vx(root, ['run', 'test', '--filter', 'e2e^...'])
     expect(r.code).toBe(0)
-    const ran = [...r.text.matchAll(/success no-cache\s+(\S+)/g)]
-      .map((m) => m[1]!)
-      .sort((a, b) => (a < b ? -1 : 1))
-    expect(ran).toEqual(['app#test', 'lib#test'])
+    expect(await executed()).toEqual(['app#test', 'lib#test'])
   }, 30_000)
 
   it('a plain name filter still selects only the name (control)', async () => {
     const r = await vx(root, ['run', 'test', '--filter', 'lib'])
     expect(r.code).toBe(0)
-    const ran = [...r.text.matchAll(/success no-cache\s+(\S+)/g)]
-      .map((m) => m[1]!)
-      .sort((a, b) => (a < b ? -1 : 1))
-    expect(ran).toEqual(['lib#test'])
+    expect(await executed()).toEqual(['lib#test'])
   }, 30_000)
 })
