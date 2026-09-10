@@ -29,11 +29,14 @@ jobs:
 
       - uses: ./.github/actions/vx-runner
 
-      # Dogfood: vx orchestrates its own gate via vx.config.ts. The `ci`
-      # task is a group fanning out to `lint` (→ lint.oxlint +
-      # lint.oxfmt) and `test`. The release binaries are built separately
-      # in release.yml (`vx run build`) — cross-compiling all four here
-      # alongside lint+test starves the runner. vx prepends each
+      # Dogfood: vx orchestrates its own gate via vx.config.ts. Core's
+      # `ci` task is a group fanning out to `lint` (→ lint.oxlint +
+      # lint.oxfmt), `test` and `check.binary` (the host binary, compiled
+      # the way release.yml does, must launch and report the manifest
+      # version — a layout move broke that stamp unseen for a week once).
+      # The four release targets are `build.bun`, built only by
+      # release.yml: core has no `build`, so no dependant's `install →
+      # ^build` compiles them, here or on a laptop. vx prepends each
       # project's node_modules/.bin to PATH per task, so oxlint / oxfmt
       # resolve from a raw shell.
       #
@@ -86,17 +89,6 @@ jobs:
           test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-github decline?"; exit 1; }
           grep -q 'vx run' "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is not the vx one"; exit 1; }
           exit $code
-
-      # The gate above compiles the four binaries. The one this runner can
-      # execute must report the version packages/vx/package.json carries —
-      # the manifest src/version.ts inlines and the release workflows stamp.
-      # Asserting it on every push means a layout move cannot break the
-      # stamp unseen again (it did, 2026-08-26 → 2026-09-03).
-      - name: compiled binary reports the manifest version
-        run: |
-          WANT="vx $(bun -e 'console.log((await Bun.file(process.argv[1]).json()).version)' "$GITHUB_WORKSPACE/packages/vx/package.json")"
-          GOT="$(packages/vx/dist/vx-linux-x64 --version)"
-          test "$GOT" = "$WANT" || { echo "::error::binary reports '$GOT', expected '$WANT'"; exit 1; }
 
   # The `ci` job above runs every package's suite through `vx run ci --all`;
   # this job exists for the one suite that needs live services — the REAPI

@@ -1,7 +1,7 @@
 name: Release assets
 
 # Triggered when a maintainer publishes a release in the GitHub UI
-# (or via `gh release create`). Runs `vx run build` (which fans out
+# (or via `gh release create`). Runs `vx run build.bun` (which fans out
 # to one task per target with per-binary caching), then attaches the
 # four vx-<target> binaries (for the curl installer + `vx upgrade`)
 # to the release.
@@ -67,12 +67,12 @@ jobs:
             bun build --compile --target="bun-$t" /tmp/warm.ts --outfile "/tmp/warm-$t" >/dev/null
           done
 
-      # Dogfood: `build` fans out to `build.bun.<target>`
-      # (8 compiles). Each sub-task is individually cached, so re-running this
-      # workflow on the same commit is essentially free. --concurrency 2: eight
+      # Dogfood: `build.bun` fans out to `build.bun.<target>` (four
+      # compiles). Each sub-task is individually cached, so re-running this
+      # workflow on the same commit is essentially free. --concurrency 2:
       # concurrent `--compile --minify --bytecode` builds OOM a 7 GB runner
       # (this workflow OOM'd before with only four).
-      - run: bun packages/vx/src/bin.ts run build --filter @vzn/vx --concurrency 2
+      - run: bun packages/vx/src/bin.ts run build.bun --filter @vzn/vx --concurrency 2
 
       # The darwin binaries are RE-SIGNED before they ship. Bun 1.4.0's
       # `--compile` writes an ad-hoc signature that macOS rejects ("code or

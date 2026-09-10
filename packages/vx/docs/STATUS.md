@@ -670,6 +670,26 @@ foo` invalidated the whole workspace and `--affected` selected every
     probe, the cross-compile warm-up) is one composite action
     (`.github/actions/vx-runner`) that every Linux job uses.
 
+87. DONE (core has no `build`; dependants stop compiling the release
+    binaries): every package's `install` depends on `^build`, and
+    core's `build` was the four `bun build --compile` targets, so `vx
+run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
+    four binaries first, the CI service job needed the whole sandbox
+    runtime to run one suite, and a root container that cannot sandbox
+    failed every package's tasks at the compile step (all day,
+    2026-09-10). What a dependant needs from core is its source, which
+    needs no build — so core has no `build` task at all: the four
+    release targets stay `build.bun` (release.yml calls it by name),
+    and `check.binary`, new in core's `ci`, compiles THIS host's target
+    the way release.yml does (re-signed ad hoc on macOS, as the release
+    does), runs it and asserts `--version` reports the manifest version
+    — the check ci.yml carried as a step, now a task that every gate
+    runs, on a laptop too. `vx run ci --all --dry` lists no
+    `build.bun.*` task; `run test --filter @vzn/vx-lockfile --dry`
+    selects the package's own tasks and nothing of core's. Cold gate on
+    the unprivileged clone, `rm -rf .vx/cache` then `vx run ci --all`:
+    GATE_NUMBERS.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
@@ -852,7 +872,8 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
 
 ## Next (ordered)
 
-0. **Dependants build core's release binaries for nothing.** Every
+0. **DONE 2026-09-10 as item 87 — dependants build core's release
+   binaries for nothing.** (Kept for the reasoning.) Every
    package's `install` depends on `^build`, and core's `build` is the
    four `bun build --compile` targets — so `vx run test --filter
 @vzn/vx-lockfile` on a fresh checkout compiles four binaries first,
