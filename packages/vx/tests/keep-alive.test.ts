@@ -70,8 +70,18 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       })
       const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
       expect(isAlive(pid)).toBe(true)
-      expect(await proc.exited).toBe(expected)
+      const [out, err, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ])
+      expect(code).toBe(expected)
       expect(await waitForDead(pid, 1_000)).toBe(true)
+      // The line that explains the exit code: which server ended the
+      // session, with what, and that the other was stopped for it.
+      expect(out + err).toContain(
+        `vx: app#other exited with code ${exitCode}; stopping 1 other persistent task`,
+      )
     }, 20_000)
   }
 })
