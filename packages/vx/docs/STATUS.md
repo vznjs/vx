@@ -1378,7 +1378,10 @@ app`, "watching 2 project(s)", a `lib/src` edit is one cycle that
       one edit is exactly three executions and two cycles, the follower
       labelled `app dist`; differential, a directory passing the gate:
       executions climb past three. On solid the same edit is two
-      cycles.
+      cycles. Refuted the same night: a persistent task under `vx
+watch` (a `readyWhen`-gated dependent, two edits, then Ctrl-C)
+      spawns one server per cycle with the previous one dead before the
+      next starts, and none survive the stop — nothing to fix there.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
