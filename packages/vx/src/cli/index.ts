@@ -24,7 +24,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   // which is the one place `--help` is not being asked of vx. Core verbs
   // only — a plugin verb owns its own arguments, `--help` included.
   if (command !== undefined && wantsHelp(command, rest)) {
-    printHelp(await pluginCommandHelp())
+    printHelp(await pluginCommandHelp(), command)
     return 0
   }
 

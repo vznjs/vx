@@ -1,5 +1,32 @@
-export function printHelp(pluginCommands: readonly string[] = []): void {
-  process.stdout.write(helpText(pluginCommands))
+export function printHelp(pluginCommands: readonly string[] = [], verb?: string): void {
+  process.stdout.write(verb === undefined ? helpText(pluginCommands) : verbHelpText(verb))
+}
+
+/**
+ * `vx <verb> --help`: the reference cut to one verb — the title, the Usage
+ * lines that name it, and every section that is `(for <verb>)` or lists a
+ * `vx <verb>` form — read from the same text, so nothing can drift. A verb
+ * the reference does not know gets the whole thing.
+ */
+export function verbHelpText(verb: string): string {
+  const blocks = helpText().split('\n\n')
+  const title = blocks[0]!
+  const names = (line: string): boolean =>
+    new RegExp(`^\\s*vx ${verb}( |$)`).test(line) ||
+    line.includes(`(for ${verb})`) ||
+    line.includes(`(for ${verb} `)
+  const kept: string[] = []
+  for (const block of blocks.slice(1)) {
+    const lines = block.split('\n')
+    if (lines[0] === 'Usage:') {
+      const own = lines.slice(1).filter(names)
+      if (own.length > 0) kept.push(['Usage:', ...own].join('\n'))
+      continue
+    }
+    if (lines.some(names)) kept.push(block)
+  }
+  if (kept.length === 0) return helpText()
+  return [title, ...kept, 'Full reference: vx help', ''].join('\n\n')
 }
 
 export function helpText(pluginCommands: readonly string[] = []): string {

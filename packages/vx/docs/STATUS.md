@@ -299,6 +299,30 @@ dryRun` on the contract, so a layer that delegates gets it for
     lint.oxfmt` scoped to core, three warm reps): run 26–29 ms, whole
     process 94–100 ms, classify + probe 17–20 ms, the sandbox never
     armed — items 70 and 71 hold after the two DX batches.
+76. DONE (`vx <verb> --help` is the reference cut to the verb): since
+    2026-09-04 every core verb's `--help` printed the whole reference —
+    120 lines to find `--older-than`. `verbHelpText(verb)` keeps the
+    title, the `Usage:` lines that name the verb and every
+    blank-line-delimited section that is `(for <verb>)` or lists a
+    `vx <verb>` form, then `Full reference: vx help`; it reads the one
+    text (as `documentedFlags` does), so there is no second list to
+    drift, and an unknown verb gets the whole reference. Pinned: the
+    run cut carries every flag `documentedFlags('run')` names and no
+    other verb's section; the cache and last cuts carry their own
+    examples only. Two probes on the warm floor, recorded so nobody
+    re-runs them: (a) the `workspace config` stage (13–17 ms on this
+    repo) is not core's — `findWorkspaceRoot` + `loadWorkspace` are
+    under 2 ms in a fresh process and `loadWorkspacePlugins` is 9–11
+    ms, the four plugin packages this workspace declares transpiling
+    and importing; a workspace with no plugins pays nothing there, and
+    an evaluation cache cannot hold plugin objects. (b) the compiled
+    binary against `bun src/bin.ts` on the same warm scoped gate as an
+    unprivileged user, three reps each: wall 101–109 ms vs 121–134 ms,
+    run 13–15 vs 23–29 ms, classify + probe 10–12 vs 15–18 ms — the
+    release form is ~20 ms faster end to end, and both are under the
+    130 ms a process that loads ~200 modules costs before any graph.
+    The remaining warm floor is module load and the git status walk,
+    not orchestration.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
