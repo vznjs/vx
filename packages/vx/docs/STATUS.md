@@ -1582,6 +1582,10 @@ last`, `vx info` and `vx cache prune`, through one parser and one
   back when a plugin needs it, shaped by that plugin's use — not
   before. The same rule retired `recordRun` / `recordRuns` from the
   layer contract (item 72).
+- **Merge your own PR once it is green (owner, 2026-09-10, "Merge
+  whenever you own the project").** The session's PR flow stays
+  (branch, PR, CI), but a green, mergeable PR no longer waits for the
+  owner's word; the next PR starts from the merged main.
 - **A plugin's name is its package name; no overrides (owner,
   2026-09-10).** `definePlugin(import.meta, hooks)` reads it and stamps
   it; the workspace loader refuses anything else. Item 69.
