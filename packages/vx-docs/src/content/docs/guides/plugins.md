@@ -535,6 +535,41 @@ cache, and the task outcomes are the real thing; a second `run()` in
 the same fixture is a cache hit, which is how you test what your sink
 sees on one.
 
+## Publishing a plugin package
+
+A plugin is an ordinary package with a peer on `@vzn/vx`. Three things
+the first-party packages do that yours should too:
+
+- **Ship source, name it in `exports`, and add a root shim.** vx runs on
+  Bun, so `src/index.ts` is the published entry — no build step. A
+  compiled `vx` binary (the release download) resolves an on-disk
+  package by `<pkg>/index.ts` and ignores `exports` and `main`
+  (Bun 1.4.0, measured), so a root `index.ts` that re-exports the same
+  module is what makes your package load for binary users:
+
+```json
+{
+  "name": "@acme/vx-thing",
+  "type": "module",
+  "exports": { ".": { "types": "./src/index.ts", "import": "./src/index.ts" } },
+  "files": ["index.ts", "src", "README.md"],
+  "peerDependencies": { "@vzn/vx": "*" }
+}
+```
+
+```js
+// index.ts — the root shim, one line, same module as `exports` names
+export * from './src/index.js'
+```
+
+- **Name it `<scope>/<thing>`** (`acme/thing`). The name heads every
+  warning core prints about the plugin and every `vx info` line, and a
+  `key` part is folded into the cache key under it — so it is part of
+  your plugin's contract, not decoration.
+- **Import core only from `@vzn/vx`.** Everything a plugin needs is on
+  the façade; a deep import into `@vzn/vx/src/...` breaks on the next
+  file move and never resolves through a compiled binary at all.
+
 ## Crash isolation
 
 Plugins are **isolated from execution by design**:

@@ -405,7 +405,12 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
    import (the second copy) and the `schedule` hook it fills run
    through the compiled binary on every push — probed first by hand
    on Linux with a native `--compile` build, 12 sandboxed tasks as an
-   unprivileged user.
+   unprivileged user. The plugins guide's "Publishing a plugin
+   package" section (2026-09-10) was proven the same way before it
+   shipped: a scratch `@acme/vx-thing` laid out exactly as it says
+   loads and runs its sink through `bun bin.ts` and through the
+   binary; delete its root `index.ts` and the binary says `cannot
+find '@acme/vx-thing'` while `bun` still loads it.
 5. **The watch e2e flake** — if `re-runs the task after a file change,
 then exits on SIGINT` times out again, keep that run's stdout: the
    presence of `re-running...` separates a lost event from a slow
@@ -568,13 +573,14 @@ then exits on SIGINT` times out again, keep that run's stdout: the
 
 9. **Handoff after item 67 (2026-09-10, night).** The loop's Next
    items are spent; what a fresh session should know, in order:
-   (a) PR #265 merged into main (d96a06f) by a merge commit — the
-   branch cannot be rebase-merged. PR #266 carries items 65–67 on
-   `claude/review-improve-codebase-waarsg`: schedule-history, migrate
-   and prune left core, which went from 125 files / 1,225,063 bytes
-   under `src` at the merge to 119 / 1,172,583. Core's verbs are run,
-   watch, cache, lock, init, upgrade, show, info, why, last; `src`
-   holds no plugin. The hourly check-in re-arms itself until merge.
+   (a) PR #265 merged into main (d96a06f) and PR #266 (items 65–68
+   and the day's follow-ups) merged as e099265, both by merge commit —
+   the branch cannot be rebase-merged, and it restarts from main after
+   each merge (a fast-forward; the next work opens a new PR).
+   Schedule-history, migrate and prune left core, which went from 125
+   files / 1,225,063 bytes under `src` to 119 / 1,172,583. Core's
+   verbs are run, watch, cache, lock, init, upgrade, show, info, why,
+   last; `src` holds no plugin.
    (b) The suite's floor is processes, not timers (the paragraph after
    item 58). The one lever left is converting the nineteen
    CLI-spawning suites (~250 cases at 91 ms) to in-process calls where
