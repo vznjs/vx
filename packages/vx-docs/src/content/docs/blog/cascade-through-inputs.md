@@ -1,6 +1,6 @@
 ---
 title: 'Cascade through dependencies by folding input keys, never outputs'
-date: 2026-09-10
+date: 2026-09-10T23:52:00Z
 authors:
   - vzn
 tags:

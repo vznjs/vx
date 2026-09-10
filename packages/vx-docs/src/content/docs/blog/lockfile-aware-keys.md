@@ -1,6 +1,6 @@
 ---
 title: 'A lockfile bump should re-key two tasks, not sixty'
-date: 2026-09-10
+date: 2026-09-10T23:46:00Z
 authors:
   - vzn
 tags:

@@ -1,6 +1,6 @@
 ---
 title: 'From Turborepo: run it as it is, then migrate at your pace'
-date: 2026-09-10
+date: 2026-09-10T23:32:00Z
 authors:
   - vzn
 tags:

@@ -1,6 +1,6 @@
 ---
 title: "Give your coding agent the build's memory"
-date: 2026-09-10
+date: 2026-09-10T23:37:00Z
 authors:
   - vzn
 tags:

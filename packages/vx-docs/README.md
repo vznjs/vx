@@ -47,7 +47,12 @@ Body in Markdown. Internal links are relative to the post's own URL
 quickstart](../../quickstart/).
 ```
 
-`date` orders the index; `excerpt` is the summary (the first paragraph
+`date` orders the index, newest first, and two posts on the same day
+tie-break by title — so a series that should read in order carries a
+time (`2026-09-10T23:59:00Z`, a YAML timestamp), later for the post
+that should be read first; the page still shows only the day. The
+launch series is timed that way: `what-vx-is` at 23:59, one minute
+less per post. `excerpt` is the summary (the first paragraph
 otherwise). Add an author once under `plugins: [starlightBlog({ authors })]`
 in `astro.config.mjs` and reference the key. `bun packages/vx/src/bin.ts
 run dev --filter @vzn/vx-docs` previews at `/vx/blog/`; a `draft: true`

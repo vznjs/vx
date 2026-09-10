@@ -1,6 +1,6 @@
 ---
 title: 'Configs are programs. Hash what they evaluate to.'
-date: 2026-09-10
+date: 2026-09-10T23:54:00Z
 authors:
   - vzn
 tags:

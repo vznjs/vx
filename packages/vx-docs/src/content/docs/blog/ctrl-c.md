@@ -1,6 +1,6 @@
 ---
 title: 'Ctrl-C leaves nothing running'
-date: 2026-09-10
+date: 2026-09-10T23:35:00Z
 authors:
   - vzn
 tags:

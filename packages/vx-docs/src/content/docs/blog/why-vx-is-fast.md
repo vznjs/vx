@@ -1,6 +1,6 @@
 ---
 title: 'Why vx is fast: five decisions, not a trick'
-date: 2026-09-10
+date: 2026-09-10T23:58:00Z
 authors:
   - vzn
 tags:

@@ -1,6 +1,6 @@
 ---
 title: 'From Nx: keep the graph, drop the platform'
-date: 2026-09-10
+date: 2026-09-10T23:31:00Z
 authors:
   - vzn
 tags:

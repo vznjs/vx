@@ -1,6 +1,6 @@
 ---
 title: "Your cache key is already in git's index"
-date: 2026-09-10
+date: 2026-09-10T23:55:00Z
 authors:
   - vzn
 tags:
