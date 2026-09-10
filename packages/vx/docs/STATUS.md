@@ -1594,6 +1594,21 @@ equivalent — map it manually` on every run, for the value every
       and one line in the README. `update-site.ts --check` passes on
       the regenerated site.
 
+132.  DONE (2026-09-10, late night — the scaling claim gets a table):
+      the site says the runner grows with the graph in milliseconds
+      per package; `benchmarks.md` now shows it at three sizes. vx
+      alone, the generator's shape, one trivial `build` per package,
+      the compiled Linux binary at 1a35ec3, `run.ts` medians of 3 on
+      this 4-core container: 100 / 300 / 1,000 packages cold 310 /
+      762 / 2,091 ms (3.1 → 2.5 → 2.1 ms per package), warm 56 / 100 /
+      178 ms (0.56 → 0.33 → 0.18), restore 126 / 269 / 808 ms (1.26 →
+      0.90 → 0.81). Ten times the packages is 6.7× the cold time and
+      3.2× the warm: sub-linear, the fixed cost amortized, nothing
+      growing faster than the graph. The source form read 338 / 794 ms
+      cold at 100 / 300 — the ~40 ms transpile the binary does not pay,
+      as the harness's header says. The head-to-head per-package
+      figures on the site stay the owner's committed run.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so

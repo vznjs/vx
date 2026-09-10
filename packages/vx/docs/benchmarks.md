@@ -212,6 +212,30 @@ frozen `vx-lock.json` graph with **zero per-run config evaluation**, which
 trims another ~10% off the warm path (117 ms here) and is the recommended
 CI configuration. In your repo: `vx lock`, then commit `vx-lock.json`.
 
+## How the overhead scales with the workspace (2026-09-10)
+
+The per-package figure above is one size. This is vx alone at three
+sizes of the same synthetic shape (`packages/vx-bench/run.ts`, the
+generator's workspace, one `build` per package whose command is a
+`mkdir` and a `cp`, so the clock is the runner and almost nothing else),
+the compiled Linux binary at commit 1a35ec3, median of 3 on a 4-core
+Intel Xeon container:
+
+| Packages | Cold (nothing cached) | per package | Warm, nothing to rebuild | per package | Warm, restore outputs | per package |
+| -------- | --------------------- | ----------- | ------------------------ | ----------- | --------------------- | ----------- |
+| 100      | 310 ms                | 3.1 ms      | 56 ms                    | 0.56 ms     | 126 ms                | 1.26 ms     |
+| 300      | 762 ms                | 2.5 ms      | 100 ms                   | 0.33 ms     | 269 ms                | 0.90 ms     |
+| 1,000    | 2,091 ms              | 2.1 ms      | 178 ms                   | 0.18 ms     | 808 ms                | 0.81 ms     |
+
+Ten times the packages costs 6.7× the cold time and 3.2× the warm time:
+the per-package cost falls as the fixed cost (process start, the
+workspace read, the cache open) is spread over more of them, and nothing
+in the run grows faster than the graph. A cold run at 1,000 packages is
+two seconds; a warm one is under two hundred milliseconds. These are the
+runner's own costs on a trivial task; the 3,270-task table at the top,
+where each task sleeps a second and every runner is scheduled the same
+way, is where the same shape is compared against Turborepo and Nx.
+
 ## A real Turbo repo: solidjs/solid (2026-09-10)
 
 Not a synthetic workspace: `solidjs/solid` at b25c557 (5 packages,
