@@ -4,9 +4,10 @@
 
 import type { ProjectEntry } from '../workspace/index.js'
 import os from 'node:os'
+import path from 'node:path'
 import { type CacheLayer, type CachePolicy, FULL_CACHE_POLICY } from '../cache/index.js'
 import { VERSION } from '../version.js'
-import { resetSandbox } from '../exec/index.js'
+import { resetSandbox, VX_RUN_TASK_ENV, VX_RUN_WORKSPACE_ENV } from '../exec/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
 import { resolveDownloadModes } from './download-policy.js'
 import type { TaskExecutor } from '../exec/index.js'
@@ -17,7 +18,7 @@ import {
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
-import { mark, MAX_TIMEOUT_MS, printTimings, ulid, nearest } from '../util/index.js'
+import { mark, MAX_TIMEOUT_MS, printTimings, ulid, nearest, UserError } from '../util/index.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
@@ -169,6 +170,20 @@ export async function run(options: RunOptions): Promise<RunSummary> {
 
   const prepared = await prepareRun(options, log)
   mark('plugin stages')
+  // A task whose command re-enters `vx run` in the workspace running it
+  // is refused. When the inner run reaches this task again it forks a run
+  // per run until the machine gives out; when it does not (`ci` shelling
+  // out to `vx run lint`) it is a nested run the outer graph cannot see —
+  // its tasks escape the schedule, the concurrency budget and this task's
+  // cache key. The markers `taskEnv` sets on every child (exec/env.ts)
+  // name the task; the check is on the root so both shapes are caught.
+  const outerRoot = process.env[VX_RUN_WORKSPACE_ENV]
+  if (outerRoot !== undefined && path.resolve(outerRoot) === path.resolve(prepared.workspaceRoot)) {
+    prepared.cache.close()
+    throw new UserError(
+      `task ${process.env[VX_RUN_TASK_ENV] ?? '<unknown>'} runs \`vx run\` inside its own workspace: a nested run is invisible to the outer graph (its tasks escape the schedule, the concurrency budget and the cache key) and a loop back to this task forks without bound. Declare what it needs with dependsOn instead.`,
+    )
+  }
   // A requested name that matched no project is a typo (or a stray
   // positional from an `=`-only flag written with a space). Failing the
   // whole run — even when OTHER requested tasks resolved — is the point:

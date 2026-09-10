@@ -109,8 +109,10 @@ terminal and a task succeeding or failing. Read it alongside
  │                runner adds/removes each around its spawn.
  │    • SIGINT/SIGTERM handlers (removed in a finally): on signal,
  │                SIGTERM everything in liveChildren +
- │                persistentRegistry, close the cache, exit 128+signo
- │                (SIGINT → 130, SIGTERM → 143).
+ │                persistentRegistry, wait VX_KILL_GRACE_MS (2 s) for
+ │                them, SIGKILL what is still there, close the cache,
+ │                exit 128+signo (SIGINT → 130, SIGTERM → 143). A second
+ │                signal during the grace SIGKILLs at once.
  │
  ├─ Cache acceleration (before scheduling)
  │    • REMOTE PREFETCH (LayeredCache runs only) — derive every

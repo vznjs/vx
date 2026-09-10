@@ -1003,6 +1003,27 @@ before · 2 attempts this run`), `--summarize`'s per-task
       reasons in the design note: implicit project edges, project
       selectors in `dependsOn`, a default base setting, `FORCE_COLOR`
       for children, a structured log stream, richer dry/summarize JSON.
+106.  DONE (same night — the survey's second tier): a signal mid-run
+      now escalates. SIGINT/SIGTERM SIGTERMs every live and persistent
+      child, waits `VX_KILL_GRACE_MS` (2 s, shared with the persistent
+      shutdown), SIGKILLs the survivors — the registries are re-read on
+      the way out so a child the still-live scheduler spawned during the
+      grace goes too — closes the cache and exits 130/143; a second
+      signal skips the grace. Before, `process.exit` followed the
+      SIGTERM at once and a child that trapped TERM (`trap '' TERM`,
+      which `exec` preserves) outlived the run under init; the pin
+      fails that way without the fix. And a task that shells out to
+      `vx run` in its own workspace is refused: every child carries
+      `VX_RUN_WORKSPACE` / `VX_RUN_TASK` (set over the isolated env in
+      `taskEnv`, documented in schema.md) and `run()` throws a UserError
+      naming the task when the root it resolved is the one running it —
+      on the root, not the task, because a nested run that terminates
+      (`ci` shelling out to `vx run lint`) is still a run the outer
+      graph cannot see: its tasks escape the schedule, the concurrency
+      budget and the cache key. A task driving another workspace (the
+      control) is untouched. `tests/signal-handling.test.ts`,
+      `tests/recursive-run.test.ts`, parity rows, `docs/cli.md` exit
+      codes.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1551,7 +1572,7 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     whole-process scale, as its 0.55 ms for 1,000 candidates said it
     would be. Open from the owner's last message: nothing; the
     2026-07 parity design doc's edge-case lists and § Next 5–8 remain
-    the backlog. #273 was merged by the owner at 17:03Z (main 891eba5, green); items 96–101 followed the same night, 96–98 inside #273 and 99–101 as PR #274 (green, mergeable, awaiting the owner). Never merge a PR without the owner's word.
+    the backlog. #273 was merged by the owner at 17:03Z (main 891eba5, green); items 96–101 followed the same night, 96–98 inside #273 and 99–101 as PR #274 (green, mergeable, awaiting the owner). "Never merge without the owner's word" held until the owner's 2026-09-10 message "Merge whenever you own the project": #274 was merged by this loop (main 4e4ff81), items 102–105 are PR #275, and 106 follows it.
 
 11. **Handoff after item 67 (2026-09-10, night).** The loop's Next
     items are spent; what a fresh session should know, in order:

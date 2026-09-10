@@ -41,6 +41,8 @@ deliberate divergence is marked **≠** and explained.
 | `--continue=dependencies-successful` (default)                     | `--continue=deps-ok` (default)                                              | `tests/continue-taint.test.ts`                              |
 | `--continue=always`                                                | `--continue` (a task built on a failure runs but is never saved)            | `tests/continue-taint.test.ts`                              |
 | `--continue=never`                                                 | `--continue=never`                                                          | `tests/scheduler.test.ts`                                   |
+| graceful shutdown (`graceful_shutdown_test.rs`)                    | SIGTERM, `VX_KILL_GRACE_MS`, SIGKILL; second signal skips the grace         | `tests/signal-handling.test.ts`                             |
+| recursive `turbo run` refused (`recursive_turbo_test.rs`)          | `VX_RUN_WORKSPACE` marker; `vx run` in its own workspace is refused         | `tests/recursive-run.test.ts`                               |
 | failures are never cached                                          | the same                                                                    | `tests/execute-task.test.ts`                                |
 | `--output-logs=errors-only`, `hash-only`, `none`                   | the same (`full` too; the default follows the run's flow)                   | `tests/output-flow.test.ts`                                 |
 | `--summarize`                                                      | `--summarize[=<path>]`                                                      | `tests/run-artifacts.test.ts`                               |

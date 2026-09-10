@@ -1,6 +1,6 @@
 // SIGINT/SIGTERM during `run()`: every live child (one-shot AND
-// persistent) gets SIGTERM, the cache handle closes, and vx exits
-// with 128+signo (130/143). The e2e tests spawn the real CLI as a
+// persistent) gets SIGTERM, a survivor is SIGKILLed after the grace, the
+// cache handle closes, and vx exits with 128+signo (130/143). The e2e tests spawn the real CLI as a
 // subprocess because signal delivery + process exit can't be
 // asserted in-process; the listener-leak test runs in-process
 // because that's exactly where stacking handlers would hurt
@@ -136,6 +136,81 @@ describe('signal handling during vx run (e2e)', () => {
       proc.kill('SIGTERM')
       const code = await proc.exited
       expect(code).toBe(143)
+      expect(await waitForDead(pid, 3_000)).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a child that ignores SIGTERM is SIGKILLed after the grace; vx still exits 143',
+    async () => {
+      // SIG_IGN survives exec, so the `sleep` vx SIGTERMs shrugs it off —
+      // exactly a dev server mid-cleanup or a runner that traps TERM.
+      // Before the escalation vx exited 143 and left it running under
+      // init; this pin fails that way without the fix.
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              stubborn: {
+                exec: { command: "trap '' TERM; echo $$ > pid.txt; exec sleep 30" },
+              },
+            },
+          }
+        `,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'stubborn', '--all'], {
+        cwd: fixture.root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      expect(isAlive(pid)).toBe(true)
+
+      proc.kill('SIGTERM')
+      const code = await proc.exited
+      expect(code).toBe(143)
+      expect(await waitForDead(pid, 3_000)).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a second signal during the grace SIGKILLs at once',
+    async () => {
+      // Grace long enough that only the second signal can explain a fast
+      // exit: 5 s of grace versus a 2.5 s bound on the whole teardown.
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              stubborn: {
+                exec: { command: "trap '' TERM; echo $$ > pid.txt; exec sleep 30" },
+              },
+            },
+          }
+        `,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'stubborn', '--all'], {
+        cwd: fixture.root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_KILL_GRACE_MS: '5000' },
+      })
+      const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      expect(isAlive(pid)).toBe(true)
+
+      const started = Date.now()
+      proc.kill('SIGINT')
+      await Bun.sleep(100)
+      proc.kill('SIGINT')
+      const code = await proc.exited
+      expect(code).toBe(130)
+      expect(Date.now() - started).toBeLessThan(2_500)
       expect(await waitForDead(pid, 3_000)).toBe(true)
     },
     TIMEOUT,

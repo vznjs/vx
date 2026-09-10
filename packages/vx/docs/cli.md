@@ -82,10 +82,11 @@ If no task name is given:
 
 Exit codes:
 
-| Code | When                                                                 |
-| ---- | -------------------------------------------------------------------- |
-| `0`  | Every task finished `success` or `cache-hit` (local or remote).      |
-| `1`  | At least one task ended `failed` or `skipped`; or parse/setup error. |
+| Code          | When                                                                                                                                                  |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`           | Every task finished `success` or `cache-hit` (local or remote).                                                                                       |
+| `1`           | At least one task ended `failed` or `skipped`; or parse/setup error.                                                                                  |
+| `130` / `143` | Interrupted (SIGINT / SIGTERM): every live child is SIGTERMed, given `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILLed; a second signal skips the grace. |
 
 ### Selection
 

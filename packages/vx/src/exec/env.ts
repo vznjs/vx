@@ -42,6 +42,17 @@ export const ESSENTIAL_ENV: readonly string[] = [
   'PATHEXT',
 ]
 
+/**
+ * The two variables vx sets on every task it spawns, over the layers
+ * above: the workspace root the run is in and the `project#task` running.
+ * `run()` reads them back so a task that shells out to `vx run` in its OWN
+ * workspace is refused before it forks without bound (a different
+ * workspace — a fixture, a benchmark — is fine). Not in the allowlist:
+ * they come from this run, never from the parent environment.
+ */
+export const VX_RUN_WORKSPACE_ENV = 'VX_RUN_WORKSPACE'
+export const VX_RUN_TASK_ENV = 'VX_RUN_TASK'
+
 export interface BuildEnvOptions {
   passThrough: readonly string[]
   define: Readonly<Record<string, string>>
