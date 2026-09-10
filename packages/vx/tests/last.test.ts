@@ -121,7 +121,11 @@ describe('vx last (e2e)', () => {
         // The same directory, spelled with `=` and read by `vx info`.
         const info = await vx(other, ['info', '--format=json', '--cache-dir=elsewhere'])
         expect(info.code).toBe(0)
-        expect(JSON.parse(info.out).cacheDir).toBe(path.join(other, 'elsewhere'))
+        // macOS realpaths /var → /private/var inside the child; pin the
+        // unique tail, not the absolute prefix.
+        expect(
+          JSON.parse(info.out).cacheDir.endsWith(path.join(path.basename(other), 'elsewhere')),
+        ).toBe(true)
         expect(JSON.parse(info.out).runs24h).toBe(1)
       } finally {
         await rm(other, { recursive: true, force: true })

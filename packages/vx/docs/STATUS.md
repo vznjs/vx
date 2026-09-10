@@ -294,7 +294,11 @@ dryRun` on the contract, so a layer that delegates gets it for
     (frames for executed work, silence for hits) is a sixth mode over a
     matrix five wide; `broad` already prints executed one-liners and
     silent hits, and `full` frames both. A sixth column needs a user
-    who cannot get there with `broad`.
+    who cannot get there with `broad`. Warm check on this head as an
+    unprivileged user under the real sandbox (`run lint.oxlint
+    lint.oxfmt` scoped to core, three warm reps): run 26–29 ms, whole
+    process 94–100 ms, classify + probe 17–20 ms, the sandbox never
+    armed — items 70 and 71 hold after the two DX batches.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
