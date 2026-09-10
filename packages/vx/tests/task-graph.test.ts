@@ -276,7 +276,17 @@ describe('buildTaskGraph', () => {
         packageGraph: packageGraph({ a: ['b'], b: ['a'] }),
         requested: [{ project: 'a', task: 'build' }],
       }),
-    ).toThrow(/Cycle detected/)
+    ).toThrow(/Cycle detected in task graph: a#build -> b#build -> a#build$/)
+  })
+
+  it('names an unknown pkg#task target as such, not as a missing same-project task', () => {
+    expect(() =>
+      buildTaskGraph({
+        projects: projects(project('a', { build: { ...cmd('a'), dependsOn: ['nope#build'] } })),
+        packageGraph: packageGraph({}),
+        requested: [{ project: 'a', task: 'build' }],
+      }),
+    ).toThrow(/a#build depends on nope#build but no such project or task is declared/)
   })
 
   it('detects a same-project task self-cycle', () => {

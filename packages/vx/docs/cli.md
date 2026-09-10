@@ -106,18 +106,19 @@ full workspace.
 The full DSL lives in `src/workspace/filter.ts`; this is the user-
 facing summary.
 
-| Form            | Meaning                                                                       |
-| --------------- | ----------------------------------------------------------------------------- |
-| `<pattern>`     | Match by package name. `*` matches any characters, including `/`.             |
-| `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root). |
-| `{<dir>}`       | Same as `./<dir>`.                                                            |
-| `.`             | The workspace root — i.e. EVERY package, not the one you are standing in.     |
-| `<pattern>...`  | Match + all transitive workspace dependencies.                                |
-| `...<pattern>`  | Match + all transitive workspace dependents.                                  |
-| `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.       |
-| `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.         |
-| `!<pattern>`    | Exclude packages matching `<pattern>`.                                        |
-| `[<git-ref>]`   | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).         |
+| Form            | Meaning                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| `<pattern>`     | Match by package name. `*` matches any characters, including `/`.                                   |
+| `./<dir>`       | Match packages whose dir is at or under `<dir>` (relative to workspace root).                       |
+| `{<dir>}`       | Same as `./<dir>`.                                                                                  |
+| `./<glob>`      | A glob over root-relative project dirs: `./packages/*` (direct children), `{apps/**}` (nested too). |
+| `.`             | The workspace root — i.e. EVERY package, not the one you are standing in.                           |
+| `<pattern>...`  | Match + all transitive workspace dependencies.                                                      |
+| `...<pattern>`  | Match + all transitive workspace dependents.                                                        |
+| `<pattern>^...` | Only the transitive dependencies, excluding the matched package itself.                             |
+| `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.                               |
+| `!<pattern>`    | Exclude packages matching `<pattern>`.                                                              |
+| `[<git-ref>]`   | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                               |
 
 Examples:
 
@@ -140,6 +141,11 @@ Run the task only in projects whose files changed since `<base>`.
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)
   would be a real `git diff` option.
+- The diff runs from the **merge base** of the ref and `HEAD`, not from
+  the ref itself, so a branch whose base has moved on sees only its own
+  changes — never the files other people landed on `main` since it
+  forked (Turbo and Nx do the same). Refs with no common ancestor diff
+  from the ref.
 
 **It selects the CHANGED projects, not their dependents.** A change in
 `utils` runs `utils`' task; it does not run `app`'s, even when `app`
@@ -307,8 +313,12 @@ them in this precedence order:
 1. Start with every axis **on** (the default).
 2. Apply each `--cache=<spec>` segment (the base).
 3. If `--no-cache` was passed, force **all four off**.
-4. If `--force` was passed, force **both reads off** (writes stay
-   whatever the base / `--cache` left them).
+
+A spec that names a remote axis (`remote:r`, `remote:w`, `remote:rw`)
+in a workspace whose plugins supply no remote layer gets one status
+line saying so — the axes are inert without a layer to serve them, and
+a CI job that believes it is filling a shared cache should be told. 4. If `--force` was passed, force **both reads off** (writes stay
+whatever the base / `--cache` left them).
 
 So `--no-cache` always wins over `--force`. The common cases:
 

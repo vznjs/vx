@@ -961,6 +961,48 @@ before · 2 attempts this run`), `--summarize`'s per-task
       cycle is refused. No defect: the walk seeded with the declaring
       project (the 2026-07-26 fix) holds on every shape. What the
       2026-07 doc still lists is watch timing (M7, M8) and the LOW rows.
+102.  DONE (2026-09-10, night — owner's ask: "go through all tests of nx
+      and turbo"): two survey passes over fresh sparse clones, every
+      upstream test classified with grep evidence — Turbo 568 tests, 10
+      core gaps; Nx ~380 cases, 7 — recorded with the decisions in
+      `docs/design/turbo-nx-survey-2026-09.md`. The first fix, and the
+      one that mattered: a LITERAL directory in `cache.inputs.files` or
+      `outputs.files` (`src/`, `dist`) matched nothing — a glob matcher
+      sees only the literal path — so the most common turbo.json shape
+      migrated into a config that folded zero inputs (a key that never
+      moved) and cached an empty artifact. A literal is the file or its
+      whole tree now, in inputs, workspace files, outputs and their
+      negations (`asTrees` in inputs.ts); the literal-input guard
+      settles on the tree too. Self-healing: only a key that was already
+      wrong changes. Pinned on both sides.
+103.  DONE (same night — Nx's top gap): a negated workspace package glob
+      (`!packages/fixtures`, which pnpm, npm, yarn and Bun all take) was
+      handed to `Bun.Glob` raw, where a leading `!` negates the WHOLE
+      pattern — every manifest in the tree matched, the excluded package
+      ran under `--all`, and a fixture repeating a name killed the run
+      with "Duplicate package name". Negations subtract now, in
+      discovery and in the root-claim walk, a literal one as its tree;
+      pinned across three manifest spellings.
+104.  DONE (same night): `--affected` / `[<ref>]` diffed from the ref,
+      not from the merge base of ref and HEAD — on a branch off a moved
+      trunk it selected everyone else's changes and would hide your own
+      when trunk later landed identical bytes; the module's own header
+      claimed the three-dot form the code never used. One
+      `git merge-base --end-of-options <ref> HEAD` (the ref itself when
+      there is no ancestor) feeds the diff and the claimed-file bytes;
+      pinned with Turbo's diverged-base fixture.
+105.  DONE (same night — the rest of the survey's first tier): path
+      filters take a glob (`./packages/*`, `{apps/**}`), matched against
+      the project's own root-relative dir as pnpm and Turbo do; a
+      `--cache` spec naming a remote axis with no remote layer prints
+      one line saying so; pins for the cycle message's path, an unknown
+      `pkg#task` target, `--concurrency <n>%`, and `pkg#task` running
+      under `--filter '!pkg'`; comparison rows for the bare-task
+      cross-product vx does not do and the `parallelism: false` mapping
+      (`exec.resources` reserving the whole budget). Deferred with
+      reasons in the design note: implicit project edges, project
+      selectors in `dependsOn`, a default base setting, `FORCE_COLOR`
+      for children, a structured log stream, richer dry/summarize JSON.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

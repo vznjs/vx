@@ -192,6 +192,21 @@ describe('Turbo parity — `--filter` (package selection)', () => {
   )
 
   it(
+    '`pkg#task` is anchored: it runs even when `--filter=!pkg` excludes the package from bare names',
+    async () => {
+      // Turbo's `pkg_task_syntax_filter_exclusion_overridden`. The filter
+      // scopes the BARE task; the anchored one names its package.
+      expect(await planned(root, ['docs#lint', 'lint', '--all', '--filter', '!docs'])).toEqual([
+        'app#lint',
+        'docs#lint',
+        'lib#lint',
+        'ui#lint',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a `--filter` that matches no package refuses the run (Turbo: exits 1 too)',
     async () => {
       const r = await vx(root, ['run', 'lint', '--filter', 'nope'])
@@ -316,6 +331,19 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
       expect(after.tasks.get('lib#lint')?.['status']).toBe('cache-hit')
       const none = await summarized(root, ['lib#lint', '--no-cache'])
       expect(none.tasks.get('lib#lint')?.['status']).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a remote axis requested with no remote layer is said out loud (Turbo: "Remote caching disabled")',
+    async () => {
+      const asked = await vx(root, ['run', 'lib#lint', '--cache=local:rw,remote:rw'])
+      expect(asked.code).toBe(0)
+      expect(asked.out + asked.err).toContain('no cache plugin')
+      // Control: the default policy has the axes on too, but nobody asked.
+      const plain = await vx(root, ['run', 'lib#lint'])
+      expect(plain.out + plain.err).not.toContain('no cache plugin')
     },
     TIMEOUT,
   )

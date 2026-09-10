@@ -34,6 +34,10 @@ export interface ParsedFilter {
    * to a concrete set of project names before calling applyFilters.
    */
   gitSince?: string
+  /** A path form carrying a glob (`./packages/*`): matched over the root-relative project dir. */
+  pathGlob?: Bun.Glob
+  /** The workspace root `pathGlob` is relative to. */
+  pathRoot?: string
 }
 
 export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
@@ -71,15 +75,35 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
 
   let isPath = false
   let matcher = s
-  if (s.startsWith('./') || s === '.') {
+  let pathGlob: Bun.Glob | undefined
+  const pathForm =
+    s.startsWith('./') || s === '.'
+      ? s
+      : s.startsWith('{') && s.endsWith('}')
+        ? s.slice(1, -1)
+        : undefined
+  if (pathForm !== undefined) {
     isPath = true
-    matcher = path.resolve(workspaceRoot, s)
-  } else if (s.startsWith('{') && s.endsWith('}')) {
-    isPath = true
-    matcher = path.resolve(workspaceRoot, s.slice(1, -1))
+    matcher = path.resolve(workspaceRoot, pathForm)
+    // `./packages/*` — pnpm's and Turbo's spelling for "every package under
+    // packages": a glob over the root-relative project dir. Resolved
+    // against the workspace root like the literal form.
+    if (/[*?[\]{}]/.test(pathForm)) {
+      const rel = path.relative(workspaceRoot, matcher).split(path.sep).join('/')
+      pathGlob = new Bun.Glob(rel.replace(/\/+$/, ''))
+    }
   }
 
-  return { raw, negate, withDeps, withDependents, onlyDeps, isPath, matcher }
+  return {
+    raw,
+    negate,
+    withDeps,
+    withDependents,
+    onlyDeps,
+    isPath,
+    matcher,
+    ...(pathGlob !== undefined ? { pathGlob, pathRoot: workspaceRoot } : {}),
+  }
 }
 
 function matchProjects(
@@ -95,6 +119,19 @@ function matchProjects(
   }
   const out: string[] = []
   if (filter.isPath) {
+    if (filter.pathGlob !== undefined) {
+      // The glob is matched against the project's own dir, as pnpm and
+      // Turbo do: `./packages/*` is the packages directly under `packages`,
+      // `./packages/**` reaches the nested ones too.
+      for (const p of projects) {
+        const rel = path
+          .relative(filter.pathRoot ?? '', p.dir)
+          .split(path.sep)
+          .join('/')
+        if (filter.pathGlob.match(rel)) out.push(p.name)
+      }
+      return out
+    }
     const prefix = filter.matcher + path.sep
     for (const p of projects) {
       if (p.dir === filter.matcher || p.dir.startsWith(prefix)) out.push(p.name)

@@ -42,6 +42,8 @@ export interface RunArgs {
    * / `--force` in precedence order. Defaults to all-on.
    */
   cache: CachePolicy
+  /** `--cache` named a remote axis (`remote:r`, `:w`, `:rw`): the run says so when no plugin serves one. */
+  remoteRequested?: boolean
   /** `--cache-dir <path>`: override the cache directory (cwd-relative). */
   cacheDir: string | undefined
   frozen: boolean
@@ -264,6 +266,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       }
       try {
         cachePolicy = parseCachePolicy(v, cachePolicy)
+        if (/remote:[rw]/.test(v)) out.remoteRequested = true
       } catch (err) {
         cacheSpecError = err instanceof Error ? err.message : String(err)
       }
@@ -477,6 +480,7 @@ export async function resolveRunOptions(
     cwd,
     tasks: [...tasks],
     cache: parsed.cache,
+    ...(parsed.remoteRequested ? { remoteRequested: true } : {}),
     flow: detectFlow(parsed),
     ...(parsed.frozen ? { frozen: true } : {}),
     ...(parsed.outputLogs !== undefined ? { outputLogs: parsed.outputLogs } : {}),

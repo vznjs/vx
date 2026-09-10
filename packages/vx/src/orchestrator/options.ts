@@ -35,6 +35,13 @@ export interface RunOptions {
    */
   cache?: CachePolicy
   /**
+   * The caller asked for a remote axis by name (`--cache=remote:rw`). With
+   * no cache plugin supplying a remote layer the axes are inert, and a CI
+   * job that believes it is filling a shared cache deserves one line
+   * saying it is not.
+   */
+  remoteRequested?: boolean
+  /**
    * CI mode: load configs FROM the committed vx-lock.json instead of
    * evaluating them (frozen-env reproducibility). Requires the lock
    * to exist and pass its content-hash tripwire. Local runs default
