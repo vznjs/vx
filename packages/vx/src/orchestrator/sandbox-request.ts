@@ -23,27 +23,59 @@ import { staticPrefix, UserError } from '../util/index.js'
  * unsandboxed. Returns whether the runtime was armed — the run resets it
  * at the end (`resetSandbox`), or the next run inits on top of stale
  * proxy state.
+ */
+export interface SandboxArmer {
+  /**
+   * Probe availability and start the runtime, once; every later call
+   * shares the same promise. Throws the `sandbox not available` UserError
+   * when the platform cannot host it.
+   */
+  arm(): Promise<void>
+  /** True once `arm()` has completed — the run then owns a runtime to reset. */
+  readonly armed: boolean
+}
+
+/**
+ * Prepare the sandbox for a run WITHOUT starting it. Starting is
+ * `arm()`, and it happens on the first task that actually executes inside
+ * a sandbox — not up front. Up front, every run of a sandboxed workspace
+ * paid the probe (a sandboxed `true` through the runtime, ~300–400 ms on
+ * Linux, the runtime module's own load included) even when every task was
+ * a cache hit and nothing executed; measured 2026-09-10 on this repo's
+ * own warm gate: `classify + probe` 288 ms of a 798 ms run. A hit needs
+ * no sandbox, so a hit pays nothing.
  *
+ * The domain union is computed here from every sandboxed node, because
  * SRT runs ONE filtering proxy per run and checks every request against
  * the allowlist given to `initialize()` — never the per-call one
- * (`sandbox-manager.js` 0.0.75). So the proxy is armed with the union of
- * every domain any sandboxed task declared. A task that declares no
- * domains still reaches nothing: its profile is not given the proxy's
- * port at all.
+ * (`sandbox-manager.js` 0.0.75). A task that declares no domains still
+ * reaches nothing: its profile is not given the proxy's port at all.
  */
-export async function armSandbox(nodes: Iterable<TaskNode>): Promise<boolean> {
+export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
   const sandboxed = [...nodes].filter((n) => n.config.exec?.sandbox !== undefined)
-  if (sandboxed.length === 0) return false
+  if (sandboxed.length === 0) return null
   const weakerNested = sandboxed.every((n) => n.config.exec?.sandbox?.weakerWhenNested === true)
-  const avail = await probeSandbox({ weakerNested })
-  if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
   const domains = new Set<string>()
   for (const n of sandboxed) {
     const net = n.config.exec?.sandbox?.allow?.network
     if (Array.isArray(net)) for (const d of net) domains.add(d)
   }
-  await initSandbox({ allowedDomains: [...domains] })
-  return true
+  let pending: Promise<void> | undefined
+  let armed = false
+  return {
+    get armed() {
+      return armed
+    },
+    arm() {
+      pending ??= (async () => {
+        const avail = await probeSandbox({ weakerNested })
+        if (!avail.available) throw new UserError(`sandbox not available: ${avail.reason}`)
+        await initSandbox({ allowedDomains: [...domains] })
+        armed = true
+      })()
+      return pending
+    },
+  }
 }
 
 /**

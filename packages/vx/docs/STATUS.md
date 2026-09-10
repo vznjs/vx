@@ -168,6 +168,36 @@ migrate` was 1,475 lines of core that knew Turbo's and Nx's file
     now lists `@vzn/vx-otel`, `@vzn/vx-github`, `@vzn/vx-mcp`,
     `@vzn/vx-schedule-history`.
 
+70. DONE (the sandbox starts on the first task that executes, not up
+    front): `armSandbox(nodes)` ran before classify + probe on every run
+    with a sandboxed task — a sandboxed `true` through the runtime, the
+    runtime module's own load, the proxy — 288 ms of this repo's 798 ms
+    warm gate, paid when every task was a hit and nothing executed.
+    `prepareSandbox(nodes)` now computes the domain union up front and
+    hands `ExecuteArgs.armSandbox` a memoized `arm()` that execute-task
+    calls before the first sandboxed spawn (both the cached path and the
+    persistent path); `resetSandbox` runs at the end only when it armed.
+    Interleaved A/B on this repo's warm `lint --all` as an unprivileged
+    user, three reps each: 339–486 ms → 33–38 ms (classify + probe
+    320–459 → 19–20 ms). An unavailable sandbox now fails the first
+    sandboxed task instead of the run's first millisecond; a run of hits
+    on a box without one succeeds, which is right — nothing ran. Pinned
+    in the unsafe suite: the second run of a sandboxed workspace with a
+    PATH that has only `git` on it (no bwrap, no sandbox-exec) hits and
+    succeeds; the control edits an input and that miss fails on the probe.
+71. DONE (the first warm run after a cold build no longer walks every
+    output tree): the miss path took its output-directory snapshot right
+    after the save, when the directories were milliseconds old — inside
+    `OUTPUT_DIRS_RACY_MS` — so the snapshot was refused every time, and
+    the next hit walked: on the 1,000-project bench, cold → warm read
+    `run graph` 181 ms with 1,000 `output glob` walks (296 ms
+    accumulated), and only the run after that 45 ms. The miss path now
+    queues the request on `ExecuteArgs.outputDirSnapshots` and run.ts
+    takes them at run end, 32 at a time, after the upload drain (a new
+    `output dir snapshots` stage row). Pinned differentially: a cold run
+    with a second task holding the run past the window leaves the
+    `dist` row behind; with the run-end loop disabled the row is absent.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core

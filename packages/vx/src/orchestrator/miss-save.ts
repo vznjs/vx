@@ -19,6 +19,13 @@ import { span, wholeSubtreePrefixes } from '../util/index.js'
 import type { Logger } from './logger.js'
 import type { TaskInputComponent } from './task-hash.js'
 
+/** A snapshot request for `recordOutputDirs`, taken at run end. */
+export interface OutputDirSnapshot {
+  hash: string
+  projectDir: string
+  prefixes: readonly string[]
+}
+
 export interface SaveMissArgs {
   node: TaskNode
   hash: string
@@ -35,6 +42,8 @@ export interface SaveMissArgs {
   command: string
   durationMs: number
   stdout: string
+  /** When present, the directory snapshot is queued here instead of taken now. */
+  outputDirSnapshots?: OutputDirSnapshot[] | undefined
 }
 
 export async function saveMiss(a: SaveMissArgs): Promise<void> {
@@ -88,9 +97,23 @@ export async function saveMiss(a: SaveMissArgs): Promise<void> {
   })
   endSave()
   {
+    // The directory snapshot behind the next hit's skip-restore. Taken at
+    // run end when the run keeps a list: the task wrote these directories
+    // milliseconds ago, inside the snapshot's racy window, so a snapshot
+    // taken here was refused and the next hit walked every output tree —
+    // 1,000 walks, 296 ms accumulated, on the first warm run after a cold
+    // build of the 1,000-project bench (2026-09-10).
     const savedDirPrefixes = wholeSubtreePrefixes(a.outputs)
     if (savedDirPrefixes !== null) {
-      await cache.recordOutputDirs?.(a.hash, node.projectDir, savedDirPrefixes)
+      if (a.outputDirSnapshots !== undefined) {
+        a.outputDirSnapshots.push({
+          hash: a.hash,
+          projectDir: node.projectDir,
+          prefixes: savedDirPrefixes,
+        })
+      } else {
+        await cache.recordOutputDirs?.(a.hash, node.projectDir, savedDirPrefixes)
+      }
     }
   }
   // This task just wrote outputs to the project's tree. Record the
