@@ -585,7 +585,9 @@ interface CacheInputs {
 Project-relative globs. `!`-prefix negates. A **literal** entry (no
 glob character) names a file or a whole directory tree — `src` and
 `src/` both mean everything under `src`, as in Turbo and `.gitignore`;
-`!src` subtracts the tree.
+`!src` subtracts the tree. A leading `./` is accepted and means nothing:
+`./src/**` is `src/**`, `!./gen` is `!gen`. A bare `.` or `./` names the
+project directory itself and is refused at load — write `**`.
 
 ```ts
 files: ['**/*'] // all project files
@@ -818,7 +820,8 @@ write, restored on cache hit (overwriting any local modifications),
 and **wiped before exec AND before restore** so the project dir ends
 every run bit-identical to the cached snapshot. A literal entry names
 a file or a whole directory tree: `dist` and `dist/` are `dist/**`
-(the turbo.json shape `"outputs": ["dist"]` migrates as it is).
+(the turbo.json shape `"outputs": ["dist"]` migrates as it is); a
+leading `./` is accepted and dropped; `.` alone is refused.
 
 ```ts
 outputs: {

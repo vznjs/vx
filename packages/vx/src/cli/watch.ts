@@ -15,7 +15,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { xxh3 } from '../util/index.js'
-import { asTrees } from '../cache/index.js'
+import { asTrees, normalizeGlob } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
 import {
@@ -109,7 +109,8 @@ export function makeWatchIgnore(
 }
 
 /** The literal directory a glob's matches live under (`''` when the glob starts with a pattern). */
-export function outputContainer(glob: string): string {
+export function outputContainer(raw: string): string {
+  const glob = normalizeGlob(raw)
   const meta = glob.search(/[*?[\]{}!]/)
   const literal = meta === -1 ? glob : glob.slice(0, meta)
   // A literal entry is a file or its whole tree (schema: literal → tree),

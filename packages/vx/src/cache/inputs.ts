@@ -193,7 +193,9 @@ async function resolveWorkspaceFiles(args: {
   // carries its own copy of the filter-over-git-set design, so the same
   // silently-folds-nothing hazard exists here — and a fix applied only to the
   // project half would pass that half's tests while leaving this one live.
-  const unmatchedLiterals = new Set(positive.filter(isLiteralPath).map(stripTrailingSlash))
+  const unmatchedLiterals = new Set(
+    positive.map(normalizeGlob).filter(isLiteralPath).map(stripTrailingSlash),
+  )
   const candidates: string[] = []
   for (const rel of gitFiles) {
     if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
@@ -473,6 +475,21 @@ export async function cleanWorkspaceOutputs(args: {
   return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
 }
 
+/**
+ * `./src/**` and `src/**` name the same files; a matcher fed the literal
+ * `./` matched nothing, so a task keyed on `./src/**` folded ZERO inputs and
+ * an edit under it replayed the old outputs as a green hit (2026-09-10).
+ * Every leading `./` goes, after a `!`; a bare `.` is the empty entry the
+ * schema refuses.
+ */
+export function normalizeGlob(glob: string): string {
+  const neg = glob.startsWith('!')
+  let g = neg ? glob.slice(1) : glob
+  while (g.startsWith('./')) g = g.slice(2)
+  if (g === '.') g = ''
+  return neg ? `!${g}` : g
+}
+
 function isLiteralPath(glob: string): boolean {
   return !/[*?[\]{}]/.test(glob)
 }
@@ -493,7 +510,8 @@ function stripTrailingSlash(p: string): string {
  */
 export function asTrees(patterns: readonly string[]): string[] {
   const out: string[] = []
-  for (const p of patterns) {
+  for (const raw of patterns) {
+    const p = normalizeGlob(raw)
     if (!isLiteralPath(p)) {
       out.push(p)
       continue
@@ -615,7 +633,9 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // an artifact built from an older version of a file the config explicitly
   // claims as an input. See the refusal below for why this is not simply
   // honoured instead.
-  const unmatchedLiterals = new Set(positive.filter(isLiteralPath).map(stripTrailingSlash))
+  const unmatchedLiterals = new Set(
+    positive.map(normalizeGlob).filter(isLiteralPath).map(stripTrailingSlash),
+  )
   // First pass: glob-filter to candidate absolute paths (no I/O).
   const candidates: string[] = []
   for (const rel of gitFiles) {
