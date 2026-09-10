@@ -121,6 +121,50 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(2)
   }, 40_000)
 
+  it('under the root watcher, a root file no key can see is not a cycle; a declared one is', async () => {
+    // A `workspaceFiles` input puts the loop on ONE recursive root watcher.
+    // Before the filter, that watcher triggered on every write in the tree:
+    // `vx watch … > build.log` inside the repo never settled (each cycle
+    // grew the log, the log was an event, the event was a cycle), and a
+    // coverage run at the root cost a cycle per file. Differential: with the
+    // filter removed from the arm, the `build.log` write below is a cycle.
+    await writeFile(path.join(root, 'tsconfig.base.json'), '{"a":1}\n')
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `export default {
+        tasks: {
+          build: {
+            exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${log}' },
+            cache: { inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: ['dist/**'] } },
+          },
+        },
+      }\n`,
+    )
+    watch = startWatch(root)
+    const w = watch
+    await until(
+      () => w.out().includes('vx watch: watching the workspace root'),
+      'the root-watcher marker',
+    )
+    expect(await executions(log)).toBe(1)
+
+    await writeFile(path.join(root, 'build.log'), 'vx watch: initial run...\n')
+    await mkdir(path.join(root, 'coverage'), { recursive: true })
+    await writeFile(path.join(root, 'coverage', 'lcov.info'), 'TN:\n')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(0)
+    expect(await executions(log)).toBe(1)
+
+    // The control: the declared root file is an edit, and the watcher was alive all along.
+    await writeFile(path.join(root, 'tsconfig.base.json'), '{"a":2}\n')
+    await until(
+      async () => (await executions(log)) === 2,
+      'the re-run after the declared root file changed',
+    )
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(1)
+  }, 40_000)
+
   it('an UNCACHED task that writes into its project costs exactly one extra execution per edit, then quiet', async () => {
     // No cache block declares no outputs, so the task's own `dist/out.txt`
     // is an undeclared write the watcher sees. Its bytes are unknown until

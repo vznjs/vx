@@ -917,7 +917,14 @@ run...` precedes it.
    cycle instead of re-running forever. When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
-   so any workspace file can be an input). `vx watch: watching …` is
+   so a root-relative glob can name a file anywhere). That watcher
+   hears every write in the tree and keeps only the ones a key can
+   see: a path inside a project's directory, a fingerprint file at the
+   root, or a match of a declared `workspaceFiles` glob. A log written
+   at the root, a `coverage/` or `.turbo/` tree, an editor's scratch
+   file are dropped before the trigger — so `vx watch … > build.log`
+   inside the repo settles instead of feeding itself a cycle per line
+   of its own output. `vx watch: watching …` is
    printed only after every watcher has reported a probe file written
    under it (`.vx-watch-probe`, re-written on a short backoff until its
    event arrives, then removed): on macOS a directory watcher can return
