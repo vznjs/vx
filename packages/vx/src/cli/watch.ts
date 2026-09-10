@@ -869,9 +869,18 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // fixed when the loop armed: the next cycle ran the new package, and
   // every edit inside it after that was silence.
   for (const base of memberBases) {
+    let members = memberEntries(base)
     try {
       arm(base, false, (filename) => {
         if (isIgnoredWatchPath(filename)) return
+        // Only a member coming or going. On macOS a non-recursive watcher
+        // also reports a member whose CONTENTS changed (FSEvents names the
+        // directory a write landed in), so a task writing into its own
+        // project — or the arm's own probe file — read as a member event and
+        // cost an uncached task one execution per cycle (CI, 2026-09-10).
+        const now = memberEntries(base)
+        if (sameMembers(members, now)) return
+        members = now
         membersChanged = true
         trigger(`${path.relative(workspaceRoot, base)}/${filename}`, path.join(base, filename))
       })
@@ -916,6 +925,33 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     }
     stop.addEventListener('abort', () => void cleanup(), { once: true })
   })
+}
+
+/**
+ * The directory entries under a package glob's directory that can be
+ * members: directories (or links) whose name is not dotted and not
+ * `node_modules`, the same rule discovery applies. A watcher on that
+ * directory reacts only when this set changes.
+ */
+export function memberEntries(base: string): ReadonlySet<string> {
+  const out = new Set<string>()
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(base, { withFileTypes: true })
+  } catch {
+    return out
+  }
+  for (const e of entries) {
+    if (e.name.startsWith('.') || e.name === 'node_modules') continue
+    if (e.isDirectory() || e.isSymbolicLink()) out.add(e.name)
+  }
+  return out
+}
+
+function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false
+  for (const name of a) if (!b.has(name)) return false
+  return true
 }
 
 /**

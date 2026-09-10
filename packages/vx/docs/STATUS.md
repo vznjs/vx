@@ -1558,7 +1558,18 @@ equivalent — map it manually` on every run, for the value every
       directory and a package added under it waits for a restart; and
       the watcher shape is not re-decided — a new package declaring
       the first `workspaceFiles` input keeps the per-project arms until
-      a restart. Both in the docs.
+      a restart. Both in the docs. CI's macOS job then failed the
+      uncached-task pin (PR #297, a docs-only head): on macOS a
+      non-recursive watcher on `packages/` also reports a member whose
+      CONTENTS changed — FSEvents names the directory a write landed
+      in — so the arm's own probe file and a task's write into its
+      project read as a member event and cost the uncached task one
+      execution per cycle; Linux's inotify never reports a child's
+      contents on the parent, so the container could not see it. The
+      watcher reacts only when the member SET changes now
+      (`memberEntries`: directories and links, not dotted, not
+      `node_modules` — discovery's rule), pinned in
+      `tests/watch-rules.test.ts`.
 
 131.  DONE (2026-09-10, late night — owner: "Remove no node no bun — no
       one cares. Warm run is also minor. Focus on overhead, flexibility,
