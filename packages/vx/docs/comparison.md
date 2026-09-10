@@ -29,15 +29,22 @@ and `voidzero-dev/vite-task` `main` (now the engine behind Vite+'s
   every hit — gives early cutoff, but the key isn't derivable before
   execution, which is why it has no remote cache). _Reference repo:_
   `voidzero-dev/vite-task`.
-- **`@vzn/vx`** — TypeScript-native config, opt-in caching, Turbo-shape
-  cache key with two extensions (project package.json folded in;
-  resolved-config hash captures TS imports). Bun-only. Smallest CLI
-  surface; deliberately no daemon and no JS-function tasks. The core is
-  a Vite-style pipeline: plugins hook each stage (`config` → `project`
-  → `graph` → `key` → `schedule`), supply the executor (WHERE a command
+- **`@vzn/vx`** — one thing, built to be built on. TypeScript-native
+  config, opt-in caching, Turbo-shape cache key with two extensions
+  (project package.json folded in; resolved-config hash captures TS
+  imports). One self-contained binary per platform (Linux and macOS,
+  x64 and arm64; Windows under WSL) — no Node or Bun to run it.
+  Smallest CLI surface; deliberately no daemon, no cloud, no account
+  and no JS-function tasks. The core is a Vite-style pipeline: plugins
+  hook each stage (`config` → `project` → `graph` → `key` →
+  `fingerprint` → `schedule`), supply the executor (WHERE a command
   runs, never what it is), the cache layers and the telemetry sinks,
-  and add verbs — core applies none of them by default. Strict output
-  ownership.
+  and add verbs — core applies none of them by default and names none.
+  Strict output ownership. What Nx would be if it were not a product.
+
+Every row a Turbo or Nx user would look for, spelled in vx and pinned by
+a test that runs the real CLI, is [`parity.md`](./parity.md); this page
+is the wider matrix and the reasoning.
 
 ## Quick CLI flag map
 
@@ -182,7 +189,7 @@ and scripts; `init`; the cwd-scoped default; `last`, `why`, `show`,
 | Test splitting (Nx atomizer)                                                | Nx            | `graph`-stage plugin. Not core.                                                                                                                                                                                                                                                                                                                                                                               |
 | Import boundaries (`turbo boundaries`)                                      | Turbo         | A lint; out of scope.                                                                                                                                                                                                                                                                                                                                                                                         |
 | Shell completions                                                           | both          | SHIPPED 2026-09-10: `vx completions bash\|zsh\|fish` over the verb table and each verb's help cut.                                                                                                                                                                                                                                                                                                            |
-| Windows                                                                     | both          | The only must that no plugin can supply; parked by the owner (POSIX shell is the API). Not proposed.                                                                                                                                                                                                                                                                                                          |
+| Windows                                                                     | both          | Under WSL (owner, 2026-09-10): POSIX shell is the API, and WSL is where it is on Windows. A native port is not proposed.                                                                                                                                                                                                                                                                                      |
 
 Net: core is at parity or ahead on the must-haves; the gap that costs
 adoption is the trial with no generated files, and its core half is a
@@ -359,8 +366,9 @@ deliberate design pass.
   task runner.
 - **Non-JS executor plugins.** Rust / .NET / Gradle projects use their
   own runners. vx is a JS-monorepo runner.
-- **Windows.** vx spawns POSIX shell. Cross-target binaries are built
-  for linux/darwin × x64/arm64; Windows is not on the matrix.
+- **Native Windows.** vx spawns POSIX shell. Binaries are built for
+  linux/darwin × x64/arm64, and Windows runs the Linux one under WSL; a
+  native port is not on the matrix.
 
 ## Where vx is ahead
 
@@ -425,11 +433,12 @@ Things `@vzn/vx` does that the others don't:
   export shape every sink reads — OTel (`@vzn/vx-otel`), the GitHub
   job summary and check run (`@vzn/vx-github`), or a custom sink —
   observe-only by construction, zero cost when unused.
-- **Bun-native everything.** `Bun.spawn` for child rusage capture,
-  `bun:sqlite`, `Bun.YAML`, `Bun.Glob`, `Bun.hash.xxHash3`,
-  `Bun.zstdCompress`, native `await import()` with a content-hash
-  query string for config cache-busting. No native-binary build step
-  on install.
+- **Bun-native everything, and none of it the user's concern.**
+  `Bun.spawn` for child rusage capture, `bun:sqlite`, `Bun.YAML`,
+  `Bun.Glob`, `Bun.hash.xxHash3`, `Bun.zstdCompress`, native `await
+import()` with a content-hash query string for config cache-busting.
+  The binary embeds the runtime: no native-binary build step on install,
+  no Node or Bun on the machine.
 - **One-binary distribution.** `bun build --compile` produces a
   single self-contained executable per platform target, published as
   per-platform npm packages behind a tiny launcher (the esbuild model)

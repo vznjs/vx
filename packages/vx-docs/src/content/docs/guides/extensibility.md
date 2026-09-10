@@ -25,9 +25,9 @@ task graph, derive keys, schedule, execute, cache, observe — and a plugin
 is a small object in `vx.workspace.ts` that hooks any of those stages.
 Each hook is independent and opt-in, and declaration order is the order
 everywhere. **Nothing is applied by default** — a workspace declares
-every plugin it uses, including the local executor and cache; one that
-declares neither fails before any task runs, naming the exact lines to
-add.
+every plugin it uses, and core names none. Running here and caching
+here are the floor, so a workspace with no plugins runs and caches;
+what a plugin declines lands back on this machine.
 
 ```mermaid
 flowchart LR

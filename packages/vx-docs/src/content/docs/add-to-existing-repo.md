@@ -21,8 +21,8 @@ are the community's to write: core names no tool.
 ## 1. Install at the workspace root
 
 ```bash
-bun add -d @vzn/vx
-# …or globally, as the prebuilt standalone binary:
+npm install -D @vzn/vx     # or pnpm add -D · yarn add -D · bun add -d — the prebuilt binary, no Node or Bun to run it
+# …or globally, so `vx` is on your PATH everywhere:
 npm install -g @vzn/vx
 ```
 

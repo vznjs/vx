@@ -164,6 +164,9 @@ Turbo-wire server through a small cache plugin (see
 - **No Bun needed to run vx** — `npm install -g @vzn/vx` ships a standalone
   binary. Bun (≥ 1.3) is only required when running vx from source.
 
+Every row a Turbo user relies on, spelled in vx and pinned by a test, is
+the [parity map](../../parity/).
+
 ## Next steps
 
 - **[Quickstart](../../quickstart/)** — verify a cached run works.

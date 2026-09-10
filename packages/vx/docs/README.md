@@ -1,8 +1,10 @@
 # `@vzn/vx` — technical documentation
 
 vx is a task runner and content-addressed build cache for JavaScript
-monorepos, built Bun-native. It runs your task graph in parallel,
-caches every result by content, and replays work it has already done.
+monorepos, shipped as one self-contained binary. It runs your task
+graph in parallel, caches every result by content, and replays work it
+has already done — and it stops there: everything beyond running and
+caching is a plugin on a documented seam.
 
 That description fits several tools. What follows is the part that
 doesn't: the problems vx treats as the hard ones, and what it actually

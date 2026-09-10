@@ -192,19 +192,35 @@ Two ways to get it:
   Use `--report-file`, not `--report=markdown >> …`: the report is
   machine-clean but stdout is shared with vx's own run output, so a
   redirect puts the whole log in the summary above the table.
-The automatic variant — a telemetry plugin that appended the summary on
-every `vx run` inside Actions with no extra workflow step — shipped in the
-removed cloud package. `@vzn/vx-github` will carry it; until then
-`--report-file` is the supported path and needs no plugin at all.
+- **A plugin, no workflow step.** [`@vzn/vx-github`](../../introduction/)
+  is a telemetry plugin that appends a richer summary (verdict, stats,
+  failures first) on every `vx run` inside Actions and declines
+  everywhere else, so `plugins: [github()]` is safe to declare
+  unconditionally.
 
 ## PR checks (GitHub Checks API)
 
-A `vx run` result as a real check run on the PR — with per-task
-annotations and failure triage (**🎲 flaky** / **📌 already broken on the
-default branch** / **🆕 new failure**) — shipped as part of the removed
-cloud package. It is planned as `@vzn/vx-github`, a telemetry plugin
-needing only `GITHUB_TOKEN` and `checks: write`. Until it lands, the job
-summary above is the PR-visible surface.
+`@vzn/vx-github` also posts the run as a check run on the PR when the
+job grants `checks: write` and `GITHUB_TOKEN` is set; without the token
+the check is skipped and the job summary stays.
+
+## Flaky tasks, without a service
+
+vx knows every task's cache key and every outcome, so it finds flaky
+tasks itself: the same key both passing and failing on record, or a
+retry within a run. A red CI run whose failure has passed on these exact
+inputs before says so under its footer —
+
+```
+  Flaky:    1 task with the same inputs both passing and failing on record
+    ✗ web#test — failed on inputs that passed 3× before
+```
+
+— `--summarize` types it per task (`flaky: { passes, failures,
+attempts }`, present only then), and `vx info` keeps the standing list
+over the last 30 days of history. A failure on a key that never passed
+is a break, not a flake, and is not listed. Nx sells this as Nx Cloud;
+here it is a query over `.vx/cache`.
 
 ## Next steps
 

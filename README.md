@@ -11,7 +11,12 @@ and 114 minutes in Nx.
 Measured, reproducible, on hardware you own
 ([benchmarks](packages/vx/docs/benchmarks.md)).
 
-One binary. No daemon. No Node. Nothing to babysit.
+One binary. No daemon. No Node, no Bun. Nothing to babysit.
+
+vx does one thing — run and cache a task graph, correctly — and stops
+there. Remote caches, remote execution, telemetry, AI agents, learned
+scheduling and your own verbs are plugins on documented seams, not
+features inside: what Nx would be if it weren't a product.
 
 📖 **[Documentation site →](https://vznjs.github.io/vx/)** — guides,
 architecture, caching, and the full CLI / config reference.
@@ -92,7 +97,11 @@ with the invariant that keeps it valid —
 - **Readiness you can bound.** Persistent tasks gate downstream work
   on a `readyWhen` signal; `exec.timeout` bounds any task (with
   `--timeout` / workspace defaults), `exec.retries` + `--retry` absorb
-  flakes — and retried-then-passed tasks are flagged flaky.
+  flakes.
+- **Flaky tasks are found, not guessed.** The same inputs both passing
+  and failing is the definition, and vx holds every hash and outcome
+  locally: a run names them under its footer, `--summarize` types them
+  per task, `vx info` lists them. No service.
 - **Kernel-level sandboxing**, opt-in per task, that fails the build
   on violation instead of hiding it.
 
@@ -150,9 +159,11 @@ declared in `vx.workspace.ts` hook each stage, Vite-style, on one
 | observe   | `telemetry(ctx)` / `setup` | receive every run record, or the raw event bus              |
 | cli       | `commands`                 | add verbs to `vx`                                           |
 
-Core applies **no plugin by default** — even its own local executor and
-cache are plugins your workspace declares, which is what makes "replace
-any part" real rather than promised. First-party plugins:
+Core applies **no plugin by default** and names none. Running here and
+caching here are its floor — the tail of every executor list and cache
+chain — so a workspace with no `vx.workspace.ts` runs and caches, and a
+plugin that declines a task hands it back to this machine. First-party
+plugins:
 [`@vzn/vx-reapi`](packages/vx-reapi) (Bazel Remote Execution API —
 remote cache and remote execution against NativeLink, BuildBuddy,
 Buildbarn or bazel-remote), [`@vzn/vx-otel`](packages/vx-otel)
@@ -240,6 +251,8 @@ Differences to know:
 - Remote caching is a plugin, not a built-in — connect one and every `vx run` reads through it.
 
 Side-by-side feature matrix + every known gap: [`packages/vx/docs/comparison.md`](packages/vx/docs/comparison.md).
+What a Turbo or Nx user relies on, spelled in vx and pinned by a test:
+[`packages/vx/docs/parity.md`](packages/vx/docs/parity.md).
 
 ## Architecture (one paragraph)
 
@@ -286,8 +299,9 @@ the project dogfoods itself (`vx run ci`). Published on npm:
 binary).
 
 Production readiness for the **core task runner**: the semantics are
-solid; it is dogfooded continuously. The main operational rough edge
-is Windows (unsupported).
+solid; it is dogfooded continuously. Linux and macOS, x64 and arm64;
+Windows runs vx under WSL (POSIX shell is the API), with no native
+build.
 
 | Surface                                            | Maturity             | Notes                                                                                        |
 | -------------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------- |

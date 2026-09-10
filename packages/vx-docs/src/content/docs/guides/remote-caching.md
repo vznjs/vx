@@ -89,7 +89,7 @@ output file points at the artifact blob. The version prefix keeps vx keys out
 of the address space of real Bazel actions on a shared server, and makes a
 future change to the mapping miss cleanly instead of misreading.
 
-**It requires Bun ≥ 1.4**, and says so rather than misbehaving if it is not.
+**It needs the Bun runtime the vx binary embeds (≥ 1.4)**, and says so rather than misbehaving on an older one.
 Bun's HTTP/2 client hangs on chunked uploads above a version-dependent size;
 the plugin chunks at 128 KB and refuses to start on a Bun where that is unsafe.
 

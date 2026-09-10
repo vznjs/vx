@@ -4,8 +4,9 @@ description: Install vx, write your first vx.config.ts, and run a cached, parall
 ---
 
 This guide takes you from nothing to a cached, parallel task graph. It
-assumes **Bun ≥ 1.4** and a workspace under **git** (vx hashes inputs via
-git's index, so a repo is required).
+assumes a workspace under **git** (vx hashes inputs via git's index, so
+a repo is required) on Linux or macOS (Windows: under WSL). vx itself
+is one self-contained binary — no Node, no Bun to install.
 
 Already have a monorepo with Turborepo or Nx? Jump to
 [Add vx to an existing repo](../add-to-existing-repo/) or the migration

@@ -830,6 +830,34 @@ before · 2 attempts this run`), `--summarize`'s per-task
     `--summarize` after `--` is the task's argument. The 2026-07
     parity design doc's gap lists stay the backlog for edge cases;
     this is the front door.
+95. DONE (owner's ask, 2026-09-10, night — "redo website and docs;
+    focus on what vx can do and why it's better; vx compiles, it
+    should not require node or bun; one thing, build on top; what Nx
+    should be if it weren't a product"): the positioning surfaces
+    rewritten on that sentence. Landing page: title, hero, badges
+    (`One binary · no Node, no Bun`), install pill (`npm install -g`),
+    two new feature cards (the lockfile keyed per project; flaky tasks
+    from your own history), the platform section renamed to the seams
+    ("built to be built on"), the migrate CTA and footer point at the
+    parity map; the stale "even vx's own local executor and cache are
+    plugins" claim replaced by the floor (README too). Introduction
+    rewritten: one thing built to be built on, the ten seams (the
+    `fingerprint` seam included) and every first-party package on
+    them, community owns technology plugins, flaky detection, the
+    parity map, requirements that say what is true — one self-
+    contained binary, git, a workspace, Linux/macOS with Windows under
+    WSL. Quickstart and the adoption page stop assuming Bun; the
+    sandboxing guide and the comparison's three Windows rows say WSL;
+    the REAPI guide's "requires Bun" names the runtime the binary
+    embeds; the extensibility guide's "declares the local executor and
+    cache" is the floor; the CI guide's stale "planned as
+    `@vzn/vx-github`" says what ships and gains a "Flaky tasks,
+    without a service" section; the Nx migration guide's `nx affected`
+    row maps to `...[ref]` (Nx includes dependents) and both migration
+    guides link the parity map. The comparison's vx paragraph, the
+    docs overview and the README carry the same positioning. Not
+    touched on purpose: the module and design pages (internals), and
+    the benchmark figures (item 6 re-measures those).
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

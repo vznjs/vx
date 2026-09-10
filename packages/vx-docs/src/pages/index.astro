@@ -50,7 +50,19 @@ const features = [
     icon: 'bolt',
     tone: 'var(--amber)',
     title: 'No daemon to babysit',
-    body: 'One binary, no Node, nothing long-lived. On a clean tree, every cache key comes from the git index with zero file reads — 3.2× faster warm at 15k files. Nx needs a daemon for this; vx doesn’t.',
+    body: 'One self-contained binary — no Node, no Bun, nothing long-lived. On a clean tree, every cache key comes from the git index with zero file reads — 3.2× faster warm at 15k files. Nx needs a daemon for this; vx doesn’t.',
+  },
+  {
+    icon: 'mesh',
+    tone: 'var(--plasma)',
+    title: 'The lockfile, keyed per project',
+    body: 'pnpm(), bun(), npm() or yarn() from @vzn/vx-lockfile key every task on its own project’s dependency closure. One `pnpm update foo` re-keys the projects that reach foo — and --affected selects the same set. Turbo folds the whole file; Nx needs its daemon.',
+  },
+  {
+    icon: 'spark',
+    tone: 'var(--amber)',
+    title: 'Flaky tasks, from your own history',
+    body: 'The same inputs both passing and failing is the definition of flaky, and vx already knows every hash and every outcome. A run names them in its footer, --summarize types them, vx info lists them. Nx sells this as Nx Cloud; Turbo has nothing.',
   },
   {
     icon: 'shield',
@@ -85,7 +97,7 @@ const platform = [
     icon: 'wire',
     tone: 'var(--phosphor)',
     title: 'Nothing applied by default',
-    body: 'Core is only the pipeline — fully offline, no account, no service. Where a task runs (executor), where artifacts live (cache) and where run records go (telemetry) are plugins you declare in vx.workspace.ts. Even vx’s own local executor and cache are plugins, so “replace any part” is pinned, not promised.',
+    body: 'Core is only the pipeline — fully offline, no account, no service, and it names no plugin. Where a task runs (executor), where artifacts live (cache) and where run records go (telemetry) are plugins you declare in vx.workspace.ts; running here and caching here are the floor under them, so a workspace with no plugins runs, and a plugin that declines a task hands it back to this machine.',
   },
   {
     icon: 'cloud',
@@ -176,6 +188,7 @@ const footCols = {
     { t: 'Config', h: href('schema/') },
     { t: 'CLI reference', h: href('cli/') },
     { t: 'Sandboxing', h: href('guides/sandboxing/') },
+    { t: 'Turbo / Nx parity map', h: href('parity/') },
   ],
   migrate: [
     { t: 'From package.json scripts (vx init)', h: href('cli/') + '#vx-init' },
@@ -191,10 +204,10 @@ const footCols = {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>vx — End the Nx-or-Turbo compromise</title>
+    <title>vx — One task runner. Build the rest on top.</title>
     <meta
       name="description"
-      content="vx is a Bun-native task runner and build cache for JavaScript monorepos. Nx-scale power, Turbo-grade simplicity — faster than both, with the tradeoffs of neither."
+      content="vx runs and caches a JavaScript monorepo's task graph — correctly, in milliseconds, from one self-contained binary — and stops there. Remote caches, remote execution, telemetry and AI agents are plugins on documented seams. What Nx would be if it were not a product."
     />
     <link rel="icon" href={href('logo-mark.svg')} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -250,24 +263,25 @@ const footCols = {
         <div class="hero-grid container">
           <div>
             <div class="badges">
-              <span class="badge badge-phosphor"><span class="dot"></span>Bun-native</span>
+              <span class="badge badge-phosphor"><span class="dot"></span>One binary · no Node, no Bun</span>
               <span class="badge">No daemon</span>
               <span class="badge">MIT licensed</span>
             </div>
-            <h1>The monorepo orchestrator<br /><span class="phosphor">you were waiting for</span></h1>
+            <h1>One thing, done right.<br /><span class="phosphor">Build the rest on top.</span></h1>
             <p class="lede">
-              A build tool shouldn't make you choose between fast and flexible, or between powerful
-              and free. vx is fast and simple from the first task, fully extensible in real
-              TypeScript as you scale, and yours to keep — no daemon, no proprietary cloud, nothing
-              to lock you in.
+              vx runs and caches your monorepo's task graph — correctly, in milliseconds, from one
+              self-contained binary — and stops there. Remote caches, remote execution, telemetry,
+              AI agents, learned scheduling and your own verbs are plugins on documented seams, not
+              features inside. It is what Nx would be if it were not a product: no daemon, no cloud,
+              no account, nothing to lock you in.
             </p>
             <div class="actions">
               <a class="btn btn-primary btn-lg" href={href('quickstart/')}
                 >Get started <span class="arr">→</span></a
               >
-              <button class="install-pill" data-copy="bun add -d @vzn/vx" type="button">
+              <button class="install-pill" data-copy="npm install -g @vzn/vx" type="button">
                 <span class="dollar">$</span>
-                <span class="cmd">bun add -d @vzn/vx</span>
+                <span class="cmd">npm install -g @vzn/vx</span>
                 <span class="copy">
                   <svg
                     class="icon-copy"
@@ -437,12 +451,13 @@ const footCols = {
       <!-- ===================== Platform layer ===================== -->
       <section class="section container">
         <div class="section-head">
-          <p class="vx-kicker">// beyond a task runner</p>
-          <h2>The open platform layer.</h2>
+          <p class="vx-kicker">// built to be built on</p>
+          <h2>The seams, not the platform.</h2>
           <p class="vx-sub">
-            One binary. Eight surfaces. Every contract is documented; every wire
-            is JSON-RPC 2.0. Subscribe, query, drive, extend — your stack, your
-            tools, your data.
+            One binary, nine seams, no service. Every contract is documented and
+            every hook is optional; remote caches, remote execution, telemetry,
+            AI agents, learned scheduling and your own verbs are packages on top —
+            first-party or yours — never features inside. Core ships none of them.
           </p>
         </div>
         <div class="feat-grid">
@@ -581,7 +596,8 @@ const footCols = {
             <code>bunx @vzn/vx-migrate</code> converts your <code class="turbo">turbo.json</code> or{' '}
             <code class="nx">Nx project graph</code> into a real <code>vx.config.ts</code>. The
             mapping is mechanical — keep your task graph and your speed, drop the daemon and the
-            plugins.
+            platform. What works there works here: the parity map names every behaviour a Turbo or
+            Nx user relies on and the test that proves it.
           </p>
           <div class="row">
             <div class="cmd-pill"><span class="dollar">$</span> bunx @vzn/vx-migrate</div>
@@ -601,7 +617,7 @@ const footCols = {
               <span class="word">vx</span>
             </div>
             <p>
-              The monorepo build engine that ends the Nx-or-Turbo compromise. Bun-native · MIT licensed.
+              One task runner, built to be built on. One binary · MIT licensed.
             </p>
           </div>
           {
