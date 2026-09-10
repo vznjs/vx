@@ -41,8 +41,12 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
 4. **Initial run.** Print `vx watch: initial run...`; call
    `orchestrator.run(opts)`.
 5. **Watch loop** (`runWatchLoop`):
-   - For each project, `fs.watch(dir, { recursive: true })`. Bun
-     supports recursive watch on every platform.
+   - For each project a cycle can run (`watchedProjects`: the scope
+     plus its transitive dependencies through `buildPackageGraph` with
+     the cross-project `dependsOn` edges `taskEdges` collects — what
+     `vx run` would run for the same filter), `fs.watch(dir,
+{ recursive: true })`. Bun supports recursive watch on every
+     platform.
    - For the workspace root, `fs.watch(root, { recursive: false })`
      — only fingerprint files (`pnpm-lock.yaml` / `bun.lock` / …)
      trigger. When any task declares `inputs.workspaceFiles`, ONE

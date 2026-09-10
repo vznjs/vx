@@ -128,7 +128,7 @@ export type FilterResolution = { names: string[] } | { error: string } | { empty
  * the run will use — only when a filter walks the graph (`...`, `^...`).
  * A spec the loader will reject is skipped here; the run reports it.
  */
-async function taskEdges(
+export async function taskEdges(
   root: string,
   projects: readonly ProjectMeta[],
   load: CliLoadOptions,

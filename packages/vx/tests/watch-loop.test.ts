@@ -40,8 +40,8 @@ async function executions(log: string): Promise<number> {
   return (await f.text()).split('\n').filter((l) => l === 'run').length
 }
 
-function startWatch(root: string): Watch {
-  const proc = Bun.spawn([process.execPath, BIN, 'watch', 'build', '--all'], {
+function startWatch(root: string, select: readonly string[] = ['--all']): Watch {
+  const proc = Bun.spawn([process.execPath, BIN, 'watch', 'build', ...select], {
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -163,6 +163,58 @@ describe('vx watch loop (e2e)', () => {
     )
     await Bun.sleep(SETTLE_MS)
     expect(w.cycles()).toBe(1)
+  }, 40_000)
+
+  it('a --filter scope watches its upstream dependencies too: a lib edit is one cycle that rebuilds both', async () => {
+    // A cycle runs what `vx run` runs — the scope plus its dependencies —
+    // so the watched dirs must be the same set. Before `watchedProjects`
+    // the per-project arm watched the filter's answer only, and this edit
+    // was never an event: the loop printed "watching 1 project(s)" and
+    // sat there. Differential: with the closure removed, the wait below
+    // times out.
+    const lib = await addProject(root, 'lib', {
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo lib >> ${log}' },
+              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+            },
+          },
+        }
+      `,
+      files: { 'src/l.txt': 'l1\n' },
+    })
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      `export default {
+        tasks: {
+          build: {
+            dependsOn: ['^build'],
+            exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${log}' },
+            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+          },
+        },
+      }\n`,
+    )
+    const pkg = JSON.parse(await readFile(path.join(dir, 'package.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >
+    pkg['dependencies'] = { lib: '0.0.0' }
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2))
+
+    watch = startWatch(root, ['--filter', 'app'])
+    const w = watch
+    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'both projects watched')
+    const lines = async () => (await readFile(log, 'utf8')).split('\n').filter((l) => l !== '')
+    expect(await lines()).toEqual(['lib', 'run'])
+
+    await writeFile(path.join(lib, 'src', 'l.txt'), 'l2\n')
+    await until(async () => (await lines()).length === 4, 'the cycle after the upstream edit')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(1)
+    expect(await lines()).toEqual(['lib', 'run', 'lib', 'run'])
   }, 40_000)
 
   it('an UNCACHED task that writes into its project costs exactly one extra execution per edit, then quiet', async () => {

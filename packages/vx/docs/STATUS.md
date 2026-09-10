@@ -1294,6 +1294,20 @@ watch` on a Turbo-plugin workspace): with any
       `--filter` is not a cycle there, while the root arm accepts any
       project's dir (Next 13).
 
+120.  DONE (2026-09-10, late night — Next 13, the gap item 119 made
+      visible): `vx watch build --filter app` watched `app` only, so an
+      edit to `lib` — which every cycle rebuilt for `app#build`'s
+      `^build` — was never an event; the loop printed "watching 1
+      project(s)" and sat there. `watchedProjects` is now one rule for
+      both arms: the scope plus its transitive dependencies through
+      `buildPackageGraph` with the cross-project `dependsOn` edges
+      `taskEdges` (now exported from `select.ts`) collects — the closure
+      `--filter 'app...'` walks. A whole-workspace scope walks nothing.
+      Pinned e2e in `tests/watch-loop.test.ts`: two projects, `--filter
+app`, "watching 2 project(s)", a `lib/src` edit is one cycle that
+      re-executes `lib#build` and `app#build`; with the closure removed
+      the marker never appears (timed out at "both projects watched").
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
@@ -1955,8 +1969,9 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     (an uncached task costs one extra execution per edit, item 110's
     pin). Never end with "what next?".
 
-13. **`vx watch` scope vs. what a cycle runs (found with item 119).**
-    The per-project arm watches the dirs of the projects in
+13. **DONE 2026-09-10 as item 120 — `vx watch` scope vs. what a cycle
+    runs (found with item 119).** (Kept for the reasoning.)
+    The per-project arm watched the dirs of the projects in
     `opts.projects` — the filter's answer — but a cycle also runs those
     projects' upstream dependencies, and an edit to one of them
     outside the filter is not an event, so `vx watch build --filter
