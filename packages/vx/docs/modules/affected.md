@@ -26,8 +26,15 @@ export function defaultAffectedBase(workspaceRoot: string): Promise<string>
 
 ## Algorithm
 
+0. The base is refused before any spawn when it is empty or starts
+   with `-`: it reaches git as an argument (never a shell, so `$(…)` is
+   opaque), but an option-like value is a real option — `--output=<path>`
+   is an arbitrary file write from a CI-supplied string. Every git call
+   in the module also ends its options (`--end-of-options`) before the
+   ref, so a new caller cannot lose the guard by accident.
 1. `verifyRef(workspaceRoot, since)` — `git rev-parse --verify --quiet
-<ref>`. Throws `UserError` if the ref doesn't resolve locally.
+--end-of-options <ref>`. Throws `UserError` if the ref doesn't resolve
+   locally.
 2. `git diff --name-only <since>` — emits the union of committed +
    staged + unstaged changes. Matches Turbo's `[<since>]` semantics.
 3. Untracked files (`git ls-files --others --exclude-standard`) are

@@ -158,4 +158,44 @@ describe('runtime inputs — e2e', () => {
     // global dedup → exactly one spawn for the whole run.
     expect((await readFile(counter, 'utf8')).length).toBe(1)
   })
+
+  it("the probe reads the AMBIENT env, never a task's exec.env — which is what makes the memo sound", async () => {
+    // Two tasks in one project, the same probe, different `define`s. The
+    // memo is keyed on (projectDir, command), so the probe runs ONCE and
+    // both tasks fold the one value — sound only because the value comes
+    // from vx's own environment. A change that threads the task env into
+    // the probe without widening the memo would hand task A's value to
+    // task B (one line, 'a' or 'b'); one that widens the memo would spawn
+    // twice (two lines). Both fail here; Nx pins the same regression.
+    const log = path.join(root, 'probe.log')
+    await addProject(
+      root,
+      'a',
+      `export default {
+        tasks: {
+          build: {
+            exec: { command: 'true', env: { define: { MY_PROBE: 'a' } } },
+            cache: {
+              inputs: { files: [], runtime: ['printenv MY_PROBE >> ${log} || echo unset >> ${log}'] },
+              outputs: { files: [] },
+            },
+          },
+          test: {
+            exec: { command: 'true', env: { define: { MY_PROBE: 'b' } } },
+            cache: {
+              inputs: { files: [], runtime: ['printenv MY_PROBE >> ${log} || echo unset >> ${log}'] },
+              outputs: { files: [] },
+            },
+          },
+        },
+      }
+      `,
+    )
+    // `--dry` derives every key, so the probe runs without executing a task.
+    const r = await vx(root, ['run', 'build', 'test', '--filter', 'a', '--dry'], {
+      MY_PROBE: 'ambient',
+    })
+    expect(r.code).toBe(0)
+    expect(await readFile(log, 'utf8')).toBe('ambient\n')
+  })
 })

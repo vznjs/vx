@@ -136,7 +136,10 @@ Run the task only in projects whose files changed since `<base>`.
 
 - `--affected` (no value) uses `origin/HEAD`, falling back to
   `HEAD~1` if `origin/HEAD` isn't resolvable.
-- `--affected=<ref>` uses the given git ref.
+- `--affected=<ref>` uses the given git ref. A value that is empty or
+  starts with `-` is refused before git sees it: the ref is an argument,
+  never a shell command, and an option-like one (`--output=<path>`)
+  would be a real `git diff` option.
 
 **It selects the CHANGED projects, not their dependents.** A change in
 `utils` runs `utils`' task; it does not run `app`'s, even when `app`

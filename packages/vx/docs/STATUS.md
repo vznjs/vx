@@ -864,6 +864,24 @@ before · 2 attempts this run`), `--summarize`'s per-task
     docs overview and the README carry the same positioning. Not
     touched on purpose: the module and design pages (internals), and
     the benchmark figures (item 6 re-measures those).
+96. DONE (2026-09-10, late night — two 2026-07 parity findings that
+    were still live): (a) an option-like `--affected=<base>` reached
+    `git diff` as an option — `--output=<path>` is an arbitrary file
+    write from a CI-supplied string, stopped only by `verifyRef`'s
+    exit-1 branch. `affectedProjects` now refuses an empty or
+    `-`-leading base before any spawn, and every git call in the
+    module ends its options (`--end-of-options`) before the ref, so a
+    second caller cannot lose the guard. Pinned for five shapes with
+    the assertion that survives a refactor (the file does not exist
+    afterwards) and a control that proves the injection is real
+    (bare `git diff --output=` writes the file). (b) The runtime-input
+    probe reads vx's ambient env, never a task's `exec.env`, and the
+    per-run memo keyed on (projectDir, command) is sound only because
+    of that; nothing pinned it. Now an e2e does — two tasks, one
+    probe, different `define`s, one line in the probe's log carrying
+    the ambient value — and the comments at the memo key and the spawn
+    say why (Nx pins the same regression). Both closed in the design
+    doc.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

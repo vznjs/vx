@@ -698,11 +698,14 @@ Semantics:
   command and exit code) — fail-loud, like a missing git binary. A
   flaky probe should not silently degrade to a stale hit.
 - The command **inherits vx's full environment**, _not_ the isolated
-  env that task `exec` commands get. This is deliberate — `node -v` /
-  `rustc --version` need the real `PATH` and toolchain env. The flip
-  side (same as `inputs.env`): an env var that differs between machines
-  silently changes the key; declare such inputs explicitly if you want
-  them visible.
+  env that task `exec` commands get — `exec.env.define` and
+  `passThrough` describe the command's environment, not the probe's.
+  This is deliberate — `node -v` / `rustc --version` need the real
+  `PATH` and toolchain env, and it is what lets two tasks sharing a
+  probe share one spawn (the per-run dedup above). The flip side (same
+  as `inputs.env`): an env var that differs between machines silently
+  changes the key; declare such inputs explicitly if you want them
+  visible.
 - The command **runs whenever a task's key is derived** — that's every
   run (warm runs included, since the key decides hit vs miss), plus
   `vx run --dry` / `--graph` (which predict the key) and `vx run

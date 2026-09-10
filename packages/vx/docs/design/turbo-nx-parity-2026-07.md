@@ -950,6 +950,8 @@ patterns)`** (`packages/nx/src/hasher/task-hasher.spec.ts:272`) passes ONLY nega
 
 ### H2. A `runtime` input is memoized per `(projectDir, command)` but never sees the task's `exec.env`
 
+> Closed 2026-09-10 (STATUS item 96): the contract is pinned end to end in `tests/runtime-inputs.test.ts` and stated at the memo key and the spawn.
+
 - **Nx behaviour**: Nx has a dedicated regression test — **`should hash a shared
 runtime input against each task env`**
   (`packages/nx/src/hasher/native-task-hasher-impl.spec.ts:229`). Two tasks in two
@@ -1188,6 +1190,8 @@ graph`**, and its in-test comment names the scenario verbatim:
   tells a user to use it.
 
 ### H8. An option-like `--affected=<base>` is passed to `git diff` as an OPTION — arbitrary file write, blocked only incidentally
+
+> Closed 2026-09-10 (STATUS item 96): refused before any spawn, `--end-of-options` on every git call, pinned with the file-absent assertion and a control that proves the injection is real.
 
 - **Nx behaviour**: Nx hardened this explicitly, with a dedicated describe block
   `resolving the affected base against git` in
