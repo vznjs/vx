@@ -795,6 +795,13 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    `restore: rows` re-selects the output rows the batched probe
    already loaded (21 ms per 1,000, ~2%); threading `hit.outputRows`
    through needs a contract change for a row nobody sees.
+   Closing figures for 2026-09-10, evening (the same container,
+   `run.ts` medians of 5, after items 81–82): source form 100 projects
+   123 ms warm / 181 restore / 369 cold; 1,000 projects 240 / 1,163 /
+   2,519 — against the afternoon's 115 / 197 / 408 and 265 / 1,381 /
+   2,988: the restore row −16% and the cold row −16% at 1,000, which
+   is the restore lane and the save lane on the headline bench, and
+   the warm row within the box's jitter (nothing touched it).
    Closing figures for 2026-09-10, afternoon (the same container,
    `run.ts` medians of 5, after items 70–80): source form 100
    projects 115 ms warm / 197 restore / 408 cold; 1,000 projects 265 /
