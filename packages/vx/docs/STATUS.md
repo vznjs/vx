@@ -1112,6 +1112,14 @@ signal` (an `AbortSignal`) runs the one teardown the process
       with two cycles without the fix, three runs in a row green with
       it. M7 (an edit during the initial run is dropped) stays as
       documented, deliberately.
+111.  DONE (2026-09-10, late night): the foreground keep-alive's
+      ending is said, not just coded — `vx: app#dev exited with code
+1; stopping 1 other persistent task` on the status stream before
+      the teardown, since the summary above had already reported the
+      server `success` and an exit 1 with no word about why is a
+      mystery in a CI log. Pinned in `tests/keep-alive.test.ts` on
+      both exit codes. PR #276 (106–110) merged at 18:38Z, main
+      fb97a97; 111 is PR #277.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1707,16 +1715,7 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     (the seams are in place: `inflight`, `remoteCache`,
     `telemetrySinks`, the wire event form).
 
-12. DONE (2026-09-10, late night): the foreground keep-alive's ending is
-    said, not just coded — `vx: app#dev exited with code 1; stopping
-1 other persistent task` on the status stream before the
-    teardown, since the summary above had already reported the
-    server `success` and an exit 1 with no word about why is a
-    mystery in a CI log. Pinned in `tests/keep-alive.test.ts` on
-    both exit codes. PR #276 (106–110) merged at 18:38Z, main
-    fb97a97.
-
-13. **Handoff after item 110 (2026-09-10, late night).** PR #275
+12. **Handoff after item 110 (2026-09-10, late night).** PR #275
     (items 102–105) merged by this loop at 17:56Z (main 1c7a6a5);
     PR #276 carries 106–110 — signal escalation and the recursion
     refusal, the parity doc's LOW rows, the enumeration equivalence
