@@ -12,9 +12,12 @@ Defines every interface the rest of the codebase consumes:
 
 Exports two helpers — `defineProject` and `defineWorkspace` — that
 exist purely so TypeScript can narrow the user's literal types via the
-generic parameter. A config that imports them at runtime loads a
-second copy of core into the run (~17 ms measured); the scaffolds use
-the type-only `satisfies` form instead, which types the same.
+generic parameter. A config that imports them at runtime gets the
+running core's own copy — bin.ts aliases the `@vzn/vx` specifier to
+its façade (cli/core-alias.ts), so the compiled binary no longer loads
+a second core for an identity function (22 → 2 ms per live-evaluated
+config, measured 2026-09-10). The scaffolds still write the type-only
+`satisfies` form, which types the same with nothing to resolve.
 
 ## Public surface
 

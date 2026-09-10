@@ -323,6 +323,36 @@ dryRun` on the contract, so a layer that delegates gets it for
     130 ms a process that loads ~200 modules costs before any graph.
     The remaining warm floor is module load and the git status walk,
     not orchestration.
+77. DONE (one core per process — the shipped binary's second core is
+    gone): every `import … from '@vzn/vx'` a run evaluates — a plugin
+    package, the workspace file, a project config — resolved through
+    `node_modules`, and in the compiled binary that was core's whole
+    source transpiled AGAIN, per process: `@vzn/vx-otel` alone 20–25 ms
+    (probe binary, three reps), this repo's four plugins 30–41 ms of
+    `workspace config`, a live-evaluated config 22 ms for the identity
+    `defineProject`. The 2026-09-03 refutation (§ Next 4) was of
+    `Bun.plugin`'s `onResolve`, which never fires for a bare specifier
+    from a dynamically imported user file; `build.module` — a VIRTUAL
+    module for the exact specifier — does. `registerCoreAlias` in
+    bin.ts serves `@vzn/vx` from this process's façade, loaded lazily
+    on the first such import (cli/core-alias.ts). Interleaved A/B,
+    binary against binary on the warm sandboxed `lint.oxlint
+lint.oxfmt` gate as an unprivileged user, three warm reps each:
+    wall 107–125 → 77–91 ms, `workspace config` 30–41 → 6.5–7.6 ms;
+    the impure-config probe 22 → 2 ms; the 1,000-project bench (no
+    `@vzn/vx` imports) equal both ways, as it should be. A workspace
+    file with no `@vzn/vx` installed anywhere now loads through the
+    binary (probed), so a binary user installs plugin packages only.
+    Pinned differentially in `tests/core-alias.test.ts`: a fixture
+    whose `node_modules/@vzn/vx` is a fake sees core's `definePlugin`
+    with the alias and the fake without. Fallout in this repo: core's
+    own `vx.config.ts` imported `./src/index.ts` relatively, which the
+    alias cannot serve AND which made the config impure for the
+    evaluation cache (the closure hashed core's source every run: 12
+    ms of `load configs`); it imports `@vzn/vx` now and is served from
+    the cache (1.1–1.5 ms). The registry-symbol brand on plugins
+    (item 69) stays: a plugin compiled against another copy is still
+    possible outside this alias, and the symbol costs nothing.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
@@ -558,24 +588,25 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
      config wins, gaps warned once. The maintenance-surface worry is
      answered by the shared mapper: there is one source of task truth
      for Turbo, and the plugin is 90 lines over it.
-4. **The shipped binary's second core.** A compiled `vx` loading a
-   `vx.workspace.ts` that imports `@vzn/vx` pulls a second copy of core
-   from `node_modules` (~12 ms) on every run — and makes a binary user
-   install the package at all. REFUTED 2026-09-03 as a runtime fix: a
-   `Bun.plugin` `onResolve` hook registered by the binary never fires
-   for a bare specifier imported by a dynamically imported user file
-   (Bun 1.4.0, probed in plain `bun` with a `.ts` and a `.mjs` user
-   file), so the binary cannot serve its bundled core to the workspace
-   file that way. The user-visible half is
-   closed (`isUserError` classifies by name across copies); what remains
-   is the cost and the duplicate module state — and the cost is NOT
-   measurable as an A/B from a workspace file (2026-09-03): a workspace
-   importing plugins by absolute source path also loads source, since the
-   binary cannot expose its bundled core to a workspace import, so both
-   arms read equal (77 vs 74–81 ms at 100 projects). REFUTED as a
-   runtime-plugin fix (Bun 1.4.0's `Bun.plugin` hooks never fire for
-   bare specifiers or `.ts`); options left are rewriting the config
-   source before import or a Bun fix. Parked. What IS pinned since
+4. **DONE 2026-09-10 — the shipped binary's second core (item 77).**
+   A compiled `vx` loading a `vx.workspace.ts` that imports `@vzn/vx`
+   pulled a second copy of core from `node_modules` on every run — and
+   made a binary user install the package at all. The 2026-09-03
+   refutation was of `Bun.plugin`'s `onResolve` hook, which indeed
+   never fires for a bare specifier imported by a dynamically imported
+   user file; `build.module` — a VIRTUAL module for the exact specifier
+   — does fire there (probed 2026-09-10 in a `--compile` binary: a
+   plugin package's `@vzn/vx` import served from the bundled façade,
+   and a workspace file with NO `@vzn/vx` installed anywhere loads).
+   `registerCoreAlias` in bin.ts is that virtual module, lazy on the
+   façade. The user-visible half was already
+   closed (`isUserError` classifies by name across copies); the earlier
+   note that the cost is NOT measurable as an A/B from a workspace file
+   (2026-09-03: a workspace importing plugins by absolute source path
+   also loads source, so both arms read equal, 77 vs 74–81 ms at 100
+   projects) was measuring the wrong pair — the A/B is binary against
+   binary, with and without the alias, on one workspace (item 77 has
+   the numbers). What IS pinned since
    2026-09-10: the darwin job's bare-specifier workspace declares
    `@vzn/vx-schedule-history`, so a plugin package's own `@vzn/vx`
    import (the second copy) and the `schedule` hook it fills run
@@ -793,6 +824,10 @@ bin.ts` load), not a vx change.
 
 ## Decisions (this arc)
 
+- **One core per process (2026-09-10).** The running `vx` serves its
+  own façade to every `@vzn/vx` import it evaluates. A plugin package
+  never carries its own copy of core into a run; the host decides the
+  runtime, as any host does. Item 77.
 - **No seam without a consumer (2026-09-10).** The `CASBackend` /
   `Digest` substrate left core after three months with zero callers
   (item 74). A content-addressed view of the artifacts directory comes

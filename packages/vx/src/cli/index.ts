@@ -130,6 +130,7 @@ export { parseShowArgs, type ShowArgs } from './show.js'
 export { parseWhyArgs } from './why.js'
 export { parseLastArgs } from './last.js'
 export { formatBytes } from './format.js'
+export { registerCoreAlias } from './core-alias.js'
 
 /**
  * Is this invocation asking for help rather than work? See the call site for

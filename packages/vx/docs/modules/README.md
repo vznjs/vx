@@ -37,7 +37,7 @@ For the high-level data flow, read
 | [`cli-run.md`](./cli-run.md)                 | `src/cli/run.ts` — the `vx run` parser and verb; `src/cli/select.ts` — scope, affected owners, picker.                              |
 | [`cli-watch.md`](./cli-watch.md)             | `src/cli/watch.ts` — `vx watch <task>`: re-run on FS change.                                                                        |
 | [`cli-cache.md`](./cli-cache.md)             | `src/cli/cache.ts` — `vx cache prune`, duration / size parsers.                                                                     |
-| [`cli-help.md`](./cli-help.md)               | `src/cli/help.ts` — static help text.                                                                                               |
+| [`cli-help.md`](./cli-help.md)               | `src/cli/help.ts` — static help text; `src/cli/core-alias.ts` — the `@vzn/vx` virtual module bin.ts registers (see `bin.md`).       |
 | [`plugin-commands.md`](./plugin-commands.md) | `src/cli/plugin-commands.ts` — plugin-contributed verbs (`VxPlugin.commands`).                                                      |
 | [`cli-format.md`](./cli-format.md)           | `src/cli/format.ts` — `formatBytes` and other shared formatters.                                                                    |
 | [`plan-format.md`](./plan-format.md)         | `src/cli/plan-format.ts` — plan → text / JSON / DOT.                                                                                |
