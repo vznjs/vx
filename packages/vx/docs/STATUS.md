@@ -624,6 +624,47 @@ foo` invalidated the whole workspace and `--affected` selected every
     workspace entries to key on, and reading each `package.json` to
     seed the walk is a design for when a classic-yarn workspace asks.
 
+86. DONE (CI runs vx tasks only; owner's ask, 2026-09-10): the
+    workflows had grown steps that ran what vx should run — one
+    `cd packages/<p> && bun test` per plugin package (all of them
+    already inside `vx run ci --all`, so the job ran every suite
+    twice), a per-file `bun test` loop for `@vzn/vx-reapi`, four
+    hand-dealt `bun test --shard` slices on macOS, and two root
+    `package.json` scripts (`docs:generate`, `site:check`) excused as
+    "workspace steps" because they read across a project boundary.
+    "If it won't work for us it won't work for anyone": each is a task
+    now. `@vzn/vx-docs#import` generates the Starlight collection from
+    `packages/vx/docs` with the sibling read declared on the task
+    (`read: ['../vx/docs/**']`) and the same files as `workspaceFiles`
+    inputs, outputs the generated set by name (every generated page is
+    gitignored and marked; the tracked pages beside them are never
+    wiped), and `build` / `test` depend on it — which also fixed a real
+    stale-hit bug: `build`'s `workspaceFiles: ['docs/**']` named a
+    workspace-root path that stopped existing when core moved under
+    `packages/`, so a docs edit never re-keyed the site build.
+    `@vzn/vx-bench#check.site` runs `update-site.ts --check` with its
+    two sibling reads declared and folded. `@vzn/vx-reapi#test` is the
+    per-file loop as a task, the four endpoint / require variables
+    passed through AND folded as key inputs (a skip-mode pass never
+    serves the live run), and no sandbox — the suites dial service
+    containers on the host loopback, unreachable from a Linux sandbox's
+    network namespace — so it joins `test.bun.unsafe` as the second
+    unsandboxed task in the repo. The workflows now call `vx run ci
+--all` (Linux), `vx run test --filter @vzn/vx-reapi` with the
+    endpoints (the service job), `vx run test --filter @vzn/vx`
+    (macOS) and `vx run build --filter @vzn/vx-docs` (the site deploy);
+    the root scripts are gone. Still steps, on purpose: runner setup
+    (bwrap, the cross-compile warm-up, the service containers) and the
+    checks of vx's own artifacts as a user meets them — the compiled
+    binary's version and launch, the bare-specifier workspace through
+    the binary, the macOS enforcement canary — which run outside any
+    sandbox by design. Verified on the unprivileged clone before the
+    push, under the real Linux sandbox (`VX_REQUIRE_SANDBOX=1`):
+    `import` 287 ms success with the sibling read granted, `check.site`
+    824 ms success, `@vzn/vx-reapi#test` 28 s success in skip mode; and
+    `run test --filter @vzn/vx --dry` selects the thirteen core test
+    tasks and nothing else.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core

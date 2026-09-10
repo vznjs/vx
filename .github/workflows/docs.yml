@@ -64,14 +64,10 @@ jobs:
             bun build --compile --target="bun-$t" /tmp/warm.ts --outfile "/tmp/warm-$t" >/dev/null
           done
 
-      # Generating the Starlight collection from `docs/` crosses project
-      # boundaries, so it is a workspace step, not an vx-docs task.
-      - name: Generate site content from docs/
-        run: bun run docs:generate
-
       # Dogfood: build the docs site through vx from the repo root, scoped
-      # to the docs project. `import` regenerates the Starlight content from
-      # docs/, then `astro build` writes packages/vx-docs/dist.
+      # to the docs project. `build` depends on `import`, which regenerates
+      # the Starlight collection from packages/vx/docs (a declared
+      # cross-project read), then `astro build` writes packages/vx-docs/dist.
       - name: vx run build
         run: bun packages/vx/src/bin.ts run build --filter @vzn/vx-docs
 

@@ -120,17 +120,12 @@ jobs:
             bun build --compile --target="bun-$t" /tmp/warm.ts --outfile "/tmp/warm-$t" >/dev/null
           done
 
-      # Workspace-level steps, deliberately NOT vx tasks: each one reads
-      # across project boundaries (the site is generated from `docs/`, the
-      # check compares it against `bench/`), and a project may only use its
-      # own directory. They belong to the workspace, so the workspace runs
-      # them.
-      - name: Generate site content from docs/
-        run: bun run docs:generate
-
-      - name: Site matches bench/results.json
-        run: bun run site:check
-
+      # Everything the gate checks is a vx task — the site's generated
+      # collection (`@vzn/vx-docs#import`), the site-vs-results check
+      # (`@vzn/vx-bench#check.site`), every package's suite (each
+      # package's `ci` → `test`) — so the same command is the gate here
+      # and on a laptop. A read across a project boundary is declared on
+      # the task that needs it, never worked around with a workspace step.
       - name: vx run ci
         env:
           VX_REQUIRE_SANDBOX: '1'
@@ -165,9 +160,9 @@ jobs:
           GOT="$(packages/vx/dist/vx-linux-x64 --version)"
           test "$GOT" = "$WANT" || { echo "::error::binary reports '$GOT', expected '$WANT'"; exit 1; }
 
-  # The `ci` job above is scoped to ./tests (core). Workspace-member tests ran
-  # only inside the removed cloud job, so `packages/*/tests/` has been
-  # unguarded since — this job is what makes a plugin's suite gate a push.
+  # The `ci` job above runs every package's suite through `vx run ci --all`;
+  # this job exists for the one suite that needs live services — the REAPI
+  # wire against a real cache server and a real execution worker.
   #
   # bazel-remote is a real REAPI server (a single static binary, hence a cheap
   # service container). VX_REQUIRE_REAPI turns an absent endpoint into a
@@ -199,27 +194,6 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: bun test (packages/vx-otel)
-        run: cd packages/vx-otel && bun test
-      - name: bun test (packages/vx-github)
-        run: cd packages/vx-github && bun test
-      - name: bun test (packages/vx-mcp)
-        run: cd packages/vx-mcp && bun test
-      - name: bun test (packages/vx-turbo-cache)
-        run: cd packages/vx-turbo-cache && bun test
-      - name: bun test (packages/vx-nx-cache)
-        run: cd packages/vx-nx-cache && bun test
-      - name: bun test (packages/vx-turbo)
-        run: cd packages/vx-turbo && bun test
-      - name: bun test (packages/vx-schedule-history)
-        run: cd packages/vx-schedule-history && bun test
-      - name: bun test (packages/vx-migrate)
-        run: cd packages/vx-migrate && bun test
-      - name: bun test (packages/vx-prune)
-        run: cd packages/vx-prune && bun test
-      - name: bun test (packages/vx-lockfile)
-        run: cd packages/vx-lockfile && bun test
-
       # NativeLink gives the EXECUTION half a real scheduler + worker. Its
       # official image is distroless — no /bin/sh — so a worker inside it
       # cannot run any REAPI Command that starts with a shell (every vx task
@@ -247,40 +221,20 @@ jobs:
           sleep 5
           docker ps --filter name=vx-nl --format '{{.Status}}' | grep -q Up
 
-      # ONE bun PROCESS PER TEST FILE, not one for the suite. Bun 1.4.0's
-      # node:http2 client stalls inbound frames under load (oven-sh/bun#39796,
-      # open) and the stall compounds with accumulated gRPC sessions in a
-      # single process — the whole suite in one process timed out at 90s on
-      # this runner (2026-08-23) while every file passes alone, here and on an
-      # emulation-slowed arm64 host. Per-file processes are the shape the
-      # evidence says works; --timeout 90000 still covers a single ~28s stall.
-      #
-      # `bun test --isolate` (Bun 1.4) looks like the way to delete this loop
-      # — fresh globalThis + closed resources per file is exactly why the loop
-      # exists — and it was MEASURED against real bazel-remote + NativeLink
-      # rather than assumed: six interleaved rounds, all 92 tests passing in
-      # every run, stalls counted by wall clock. Plain one process 0/6, this
-      # loop 1/6, --isolate 3/6, each stall a single multi-chunk ByteStream
-      # test taking 30.07s (the gRPC deadline) instead of ~0.1s. Isolation
-      # gives every FILE its own gRPC client and http2 session, so the suite
-      # pays the session-setup race nine times instead of once. Do not
-      # re-propose it without new numbers.
-      #
-      # BOTH require flags are set: a skip is a silent pass, and these suites
-      # are the only proof the cache wire and the execution wire work.
-      - name: bun test (packages/vx-reapi, per-file)
+      # The suite is `@vzn/vx-reapi#test`, one bun process per file (the
+      # task's own comment says why), run through vx with the endpoints in
+      # its environment; the task passes them through and folds them into
+      # its key, so this live-mode run never hits the plain gate's skip-mode
+      # entry. BOTH require flags are set: a skip is a silent pass, and
+      # these suites are the only proof the cache wire and the execution
+      # wire work.
+      - name: vx run test (@vzn/vx-reapi, live)
         env:
           VX_REAPI_TEST_ENDPOINT: 127.0.0.1:19092
           VX_REQUIRE_REAPI: '1'
           VX_REAPI_EXEC_ENDPOINT: 127.0.0.1:51051
           VX_REQUIRE_REAPI_EXEC: '1'
-        run: |
-          cd packages/vx-reapi
-          for f in tests/*.test.ts; do
-            echo "::group::$f"
-            bun test "$f" --timeout 90000
-            echo "::endgroup::"
-          done
+        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx-reapi
 
   # The darwin job exists because THREE macOS-only defects reached main
   # unseen on an ubuntu-only matrix (2026-08-22: bsdtar refusing --format=gnu
@@ -310,33 +264,15 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # The whole core suite in four slices, run SIDE BY SIDE (Bun's own
-      # dealer; the `test.bun.shard-*` tasks deal twelve by weight, but four
-      # slices on a three-core runner sum to the same work whatever the
-      # deal). Several processes, not one, is the point on macOS: `bun test`
-      # pins descriptors per imported module and the process cap is 10 240,
-      # which the whole suite in one process does not clear. Sequential,
-      # the four slices took 3 min 8 s (2026-09-10); the sandbox suites are
-      # class-gated here and the canary below runs after this step, so the
-      # load lands on nothing that sandbox-exec enforces. Each slice writes
-      # its own log and the logs print in order once all four are done, so
-      # a failure reads as one suite's output, not four interleaved.
-      - name: bun test (core, darwin)
-        run: |
-          cd packages/vx
-          pids=()
-          for i in 1 2 3 4; do
-            bun test --shard=$i/4 > "$RUNNER_TEMP/slice-$i.log" 2>&1 &
-            pids+=($!)
-          done
-          fail=0
-          for i in 1 2 3 4; do
-            wait "${pids[$((i - 1))]}" || fail=1
-            echo "::group::bun test --shard=$i/4"
-            cat "$RUNNER_TEMP/slice-$i.log"
-            echo "::endgroup::"
-          done
-          exit $fail
+      # The core suite through vx, as on Linux: the twelve shard tasks plus
+      # the unsafe suite, dealt by weight, run side by side under the
+      # scheduler's cap. Several processes, not one, is the point on macOS:
+      # `bun test` pins descriptors per imported module and the process
+      # cap is 10 240, which the whole suite in one process does not clear.
+      # No VX_REQUIRE_SANDBOX here (see the job comment), so the sandbox
+      # suites skip; the canary below is what watches enforcement.
+      - name: vx run test (core, darwin)
+        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx
 
       # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
       # darwin CI because sandbox-exec misbehaves under load here — including

@@ -23,9 +23,5 @@
     "oxfmt": "^0.55.0",
     "oxlint": "^1.70.0",
     "oxlint-tsgolint": "^0.23.0"
-  },
-  "scripts": {
-    "docs:generate": "cd packages/vx-docs && bun scripts/import-docs.ts",
-    "site:check": "bun packages/vx-bench/update-site.ts --check"
   }
 }

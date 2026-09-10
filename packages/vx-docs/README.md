@@ -28,16 +28,17 @@ Everything runs through vx from the repo root; this package has no
 
 ```sh
 bun install                                   # from the repo root (Bun workspace)
-bun run docs:generate                         # import packages/vx/docs into src/content/docs
 
-bun packages/vx/src/bin.ts run build --filter @vzn/vx-docs    # astro build → dist/
+bun packages/vx/src/bin.ts run import --filter @vzn/vx-docs   # packages/vx/docs → src/content/docs
+bun packages/vx/src/bin.ts run build --filter @vzn/vx-docs    # astro build → dist/ (runs import first)
 bun packages/vx/src/bin.ts run dev --filter @vzn/vx-docs      # astro dev server
 bun packages/vx/src/bin.ts run preview --filter @vzn/vx-docs  # serve the built dist/
 bun packages/vx/src/bin.ts run test --filter @vzn/vx-docs     # the guide pins below
 ```
 
-`bun run site:check` (root) fails when the landing page or
-`benchmarks.md` drifts from `packages/vx-bench/results.json`.
+`bun packages/vx/src/bin.ts run check.site --filter @vzn/vx-bench` fails
+when the landing page or `benchmarks.md` drifts from
+`packages/vx-bench/results.json`; it is part of `vx run ci --all`.
 
 ## Tests
 
