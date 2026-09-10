@@ -15,6 +15,7 @@ import {
   armWatcher,
   pollWatcher,
   isIgnoredWatchPath,
+  makeRootEventFilter,
   makeWatchIgnore,
   sweepConfigs,
   WATCH_PROBE,
@@ -189,6 +190,67 @@ describe('the sweep sees what a run sees', () => {
     const swept = await sweepConfigs(metas, root)
     expect(swept.workspaceWide).toBe(true)
     expect([...swept.outputs]).toEqual([[path.join(root, 'packages', 'bare'), ['dist/**']]])
+  })
+})
+
+describe('the recursive root watcher keeps only the events a key can see', () => {
+  // With any `inputs.workspaceFiles` declared, ONE recursive watcher hears
+  // every write in the workspace. Before this rule it triggered on all of
+  // them: a `vx watch … > build.log` inside the repo looped forever (each
+  // cycle grew the log, the log was an event, the event was a cycle), and
+  // a coverage run or an editor's scratch file at the root cost a cycle
+  // each. A key can see exactly three kinds of path; the filter says so.
+  const root = path.join(os.tmpdir(), 'vx-root-filter')
+  const matters = makeRootEventFilter(
+    root,
+    [path.join(root, 'packages', 'app'), path.join(root, 'packages', 'lib')],
+    ['tsconfig.base.json', './configs/**', '!configs/README.md'],
+  )
+  it.each([
+    ['packages/app/src/index.ts', true],
+    ['packages/lib/package.json', true],
+    ['packages/app', true],
+    ['pnpm-lock.yaml', true],
+    ['pnpm-workspace.yaml', true],
+    ['tsconfig.base.json', true],
+    ['configs/tsconfig.strict.json', true],
+    ['configs/README.md', true], // a `!` only narrows; one cache-hit cycle beats a missed edit
+    ['build.log', false],
+    ['coverage/lcov.info', false],
+    ['.turbo/daemon.log', false],
+    ['packages/other/src/index.ts', false],
+    ['tsconfig.json', false],
+    ['nested/pnpm-lock.yaml', false], // a fingerprint NAME below the root is not the fingerprint
+  ])('%s → %s', (rel, kept) => {
+    expect({ rel, kept: matters(rel.split('/').join(path.sep)) }).toEqual({ rel, kept })
+  })
+
+  it('the sweep hands the loop every declared workspaceFiles glob, deduplicated', async () => {
+    const wsRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-sweep-inputs-'))
+    try {
+      await writeFile(
+        path.join(wsRoot, 'package.json'),
+        '{"name":"ws","workspaces":["packages/*"]}',
+      )
+      for (const [name, globs] of [
+        ['a', "['tsconfig.base.json', 'configs/**']"],
+        ['b', "['tsconfig.base.json']"],
+      ] as const) {
+        const dir = path.join(wsRoot, 'packages', name)
+        await mkdir(dir, { recursive: true })
+        await writeFile(path.join(dir, 'package.json'), `{"name":"${name}"}`)
+        await writeFile(
+          path.join(dir, 'vx.config.mjs'),
+          `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'], workspaceFiles: ${globs} }, outputs: { files: [] } } } } }\n`,
+        )
+      }
+      const projects = await listProjects(await loadWorkspace(wsRoot))
+      const swept = await sweepConfigs(projects, wsRoot)
+      expect(swept.workspaceWide).toBe(true)
+      expect([...swept.workspaceInputs].sort()).toEqual(['configs/**', 'tsconfig.base.json'])
+    } finally {
+      await rm(wsRoot, { recursive: true, force: true })
+    }
   })
 })
 

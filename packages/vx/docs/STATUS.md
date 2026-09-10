@@ -1267,6 +1267,33 @@ test-types` cold 53.6 s vs 58.2 s, restore 80 ms vs 166 ms,
       day in reading order (`what-vx-is` at 23:59, one minute less per
       post; the page shows only the day), pinned in the site README.
 
+119.  DONE (2026-09-10, late night — bug hunt, from a probe of `vx
+watch` on a Turbo-plugin workspace): with any
+      `inputs.workspaceFiles` declared — every Turbo `globalDependencies`
+      maps to one, so most Turbo repos — the loop runs on ONE recursive
+      root watcher that triggered on EVERY write in the tree. The probe
+      redirected its own output to a log inside the repo and the loop
+      never settled: each cycle grew the log, the log was an event, the
+      event was a cycle (eight cycles in six seconds, all hits). A
+      coverage run or an editor scratch file at the root cost a cycle
+      each the same way. Without `workspaceFiles` the root watcher was
+      already filtered (fingerprint names only) and a root file was
+      not an event — the recursive arm just never got the same rule.
+      `makeRootEventFilter` keeps the three kinds of path a key can
+      see (inside a project dir, a fingerprint file at the root, a
+      declared `workspaceFiles` glob; `!` patterns not consulted) and
+      drops the rest before the trigger; `sweepConfigs` now hands the
+      loop the declared globs. Pinned as a table in
+      `tests/watch-rules.test.ts` and end to end in
+      `tests/watch-loop.test.ts` (a root `build.log` and a
+      `coverage/lcov.info` are no cycle, the declared root file is
+      one; with the filter removed from the arm the log write is a
+      cycle — Expected 0, Received 1). Left open, pre-existing and now
+      visible: the per-project arm watches only the projects in the
+      run's scope, so an edit to an upstream dependency outside
+      `--filter` is not a cycle there, while the root arm accepts any
+      project's dir (Next 13).
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
@@ -1927,6 +1954,20 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     `vx init`'s emitted config on a fresh workspace under `vx watch`
     (an uncached task costs one extra execution per edit, item 110's
     pin). Never end with "what next?".
+
+13. **`vx watch` scope vs. what a cycle runs (found with item 119).**
+    The per-project arm watches the dirs of the projects in
+    `opts.projects` — the filter's answer — but a cycle also runs those
+    projects' upstream dependencies, and an edit to one of them
+    outside the filter is not an event, so `vx watch build --filter
+app` never re-runs on a `lib` edit while `vx run` would rebuild
+    both. The root arm (workspaceFiles in play) accepts any project's
+    dir, so the two arms disagree. The fix is one rule for both: watch
+    the projects a cycle can RUN — the scope plus its transitive
+    package-graph dependencies (`buildPackageGraph` already answers
+    that for `--filter 'app...'`). Pin it e2e with a two-project
+    workspace and `--filter app`: a `lib/src` edit is one cycle that
+    re-executes `lib#build` and `app#build`.
 
 ## Decisions (this arc)
 

@@ -45,7 +45,14 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
      supports recursive watch on every platform.
    - For the workspace root, `fs.watch(root, { recursive: false })`
      — only fingerprint files (`pnpm-lock.yaml` / `bun.lock` / …)
-     trigger.
+     trigger. When any task declares `inputs.workspaceFiles`, ONE
+     `fs.watch(root, { recursive: true })` replaces all of the above,
+     and `makeRootEventFilter` keeps the events a key can see — a path
+     inside any project's directory, a fingerprint file at the root, a
+     match of a declared `workspaceFiles` glob (negations not
+     consulted: a `!` only narrows, and a spurious event is one
+     cache-hit cycle) — and drops the rest of the tree, so a log
+     written at the root or a `coverage/` run is not a cycle.
    - Filter out `node_modules` / `.git` / `.vx` path segments,
      `.tsbuildinfo` / `~` suffixes (editor swap files), the RESOLVED
      cache directory (a relocated `cacheDir` would otherwise re-trigger

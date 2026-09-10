@@ -387,6 +387,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     workspaceRoot,
     projects: scope,
     workspaceWide: swept.workspaceWide,
+    projectDirs: allProjects.map((p) => p.dir),
+    workspaceInputs: swept.workspaceInputs,
     outputs: swept.outputs,
     // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
     cacheDir: opts.cacheDir ?? (await loadCliWorkspace(workspaceRoot)).cacheDir,
@@ -409,20 +411,29 @@ export async function sweepConfigs(
   projects: readonly ProjectMeta[],
   workspaceRoot: string,
   load: CliLoadOptions = {},
-): Promise<{ workspaceWide: boolean; outputs: Map<string, string[]> }> {
+): Promise<{ workspaceWide: boolean; workspaceInputs: string[]; outputs: Map<string, string[]> }> {
   const outputs = new Map<string, string[]>()
   const add = (dir: string, globs: readonly string[] | undefined): void => {
     if (globs === undefined || globs.length === 0) return
     outputs.set(dir, [...(outputs.get(dir) ?? []), ...globs])
   }
-  let workspaceWide = false
+  const workspaceInputs = new Set<string>()
   const fold = (dir: string, config: ProjectConfig): void => {
     for (const task of Object.values(config.tasks ?? {})) {
-      if ((task.cache?.inputs?.workspaceFiles?.length ?? 0) > 0) workspaceWide = true
+      for (const g of task.cache?.inputs?.workspaceFiles ?? []) workspaceInputs.add(g)
       add(dir, task.cache?.outputs?.files)
       add(workspaceRoot, task.cache?.outputs?.workspaceFiles)
     }
   }
+  const result = (): {
+    workspaceWide: boolean
+    workspaceInputs: string[]
+    outputs: Map<string, string[]>
+  } => ({
+    workspaceWide: workspaceInputs.size > 0,
+    workspaceInputs: [...workspaceInputs],
+    outputs,
+  })
   let staged: Map<string, ProjectEntry> | null = null
   try {
     staged = await loadCliProjects(workspaceRoot, projects, 'all', load)
@@ -431,7 +442,7 @@ export async function sweepConfigs(
   }
   if (staged !== null) {
     for (const p of staged.values()) fold(p.dir, p.config)
-    return { workspaceWide, outputs }
+    return result()
   }
   await Promise.all(
     projects.map(async (p) => {
@@ -443,7 +454,43 @@ export async function sweepConfigs(
       }
     }),
   )
-  return { workspaceWide, outputs }
+  return result()
+}
+
+/**
+ * Under the recursive root watcher, the events that can move a key. The
+ * watcher hears every write in the workspace; a key can see three kinds
+ * of path and no other: a file inside a project's directory (its own
+ * `inputs.files`, or its outputs, which the ignore filter drops next), a
+ * workspace fingerprint file at the root, and a match of a declared
+ * `inputs.workspaceFiles` glob. Everything else — a log written at the
+ * root, a `coverage/` or `.turbo/` tree, an editor's scratch file — is
+ * dropped before the trigger, so it costs no cycle. Before this rule the
+ * one Turbo idiom that puts every repo on this watcher
+ * (`globalDependencies` → `workspaceFiles`) made `vx watch … > build.log`
+ * inside the repo a loop that never settled: each cycle's output grew the
+ * log, the log was an event, the event was a cycle. Negated globs are not
+ * consulted: a `!` only narrows, and an event it would have excluded costs
+ * one cache-hit cycle, which is the wrong direction to be clever in.
+ */
+export function makeRootEventFilter(
+  workspaceRoot: string,
+  projectDirs: readonly string[],
+  workspaceInputs: readonly string[],
+): (filename: string) => boolean {
+  const dirs = projectDirs.map((d) => path.resolve(d))
+  const globs = workspaceInputs
+    .map(normalizeGlob)
+    .filter((g) => !g.startsWith('!'))
+    .map((g) => new Bun.Glob(g))
+  return (filename: string): boolean => {
+    const rel = filename.split(path.sep).join('/')
+    if (!rel.includes('/') && isWorkspaceFingerprintFile(rel)) return true
+    const abs = path.resolve(workspaceRoot, filename)
+    for (const d of dirs) if (abs === d || abs.startsWith(d + path.sep)) return true
+    for (const g of globs) if (g.match(rel)) return true
+    return false
+  }
 }
 
 interface WatchLoopArgs {
@@ -453,6 +500,10 @@ interface WatchLoopArgs {
   workspaceRoot: string
   projects: readonly ProjectMeta[]
   workspaceWide: boolean
+  /** Every project's directory, in scope or not — under the root watcher an edit there is an edit. */
+  projectDirs: readonly string[]
+  /** Every declared `inputs.workspaceFiles` glob, root-relative. */
+  workspaceInputs: readonly string[]
   /** Absolute, already-resolved — the loop must never re-derive it. */
   cacheDir: string
   /** Declared output globs per directory they are relative to (project dir, or the root for `workspaceFiles`). */
@@ -460,7 +511,17 @@ interface WatchLoopArgs {
 }
 
 async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
-  const { opts, stop, workspaceRoot, projects, workspaceWide, cacheDir, outputs } = args
+  const {
+    opts,
+    stop,
+    workspaceRoot,
+    projects,
+    workspaceWide,
+    projectDirs,
+    workspaceInputs,
+    cacheDir,
+    outputs,
+  } = args
 
   // Reentrancy guard — never two orchestrator runs in flight. While
   // one is running, any further events set `pending = true` and the
@@ -587,14 +648,17 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   }
 
   if (workspaceWide) {
-    // workspaceFiles inputs in play: any file in the workspace can be
-    // an input, so one recursive root watcher replaces the per-project
-    // ones (it also covers lockfile / pnpm-workspace.yaml edits). The
-    // ignore filter keeps node_modules / .git / .vx churn out; edits
-    // outside any task's inputs still cost only a cache-hit cycle.
+    // workspaceFiles inputs in play: a root-relative glob can name a
+    // file anywhere, so one recursive root watcher replaces the
+    // per-project ones (it also covers lockfile / pnpm-workspace.yaml
+    // edits). `matters` keeps the events a key can see — project
+    // trees, root fingerprint files, the declared globs — and drops the
+    // rest of the tree; the ignore filter then keeps node_modules /
+    // .git / .vx and declared outputs out of what remains.
+    const matters = makeRootEventFilter(workspaceRoot, projectDirs, workspaceInputs)
     try {
       arm(workspaceRoot, true, (filename) => {
-        if (isIgnoredPath(workspaceRoot, filename)) return
+        if (!matters(filename) || isIgnoredPath(workspaceRoot, filename)) return
         trigger(`root ${filename}`, path.join(workspaceRoot, filename))
       })
     } catch (err) {
