@@ -851,11 +851,13 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    ~17 ms gain would buy ~2 s of suite for a build step in every test
    run. The spawns stay on source.
 
-9. **Handoff after item 78 (2026-09-10, afternoon).** PR #269 holds
-   items 70–78 (perf: lazy sandbox, run-end snapshots, one core per
-   process; complexity: the layer contract, the outcome vocabulary,
-   the CAS substrate, the façade; DX: six CLI asks) and is green on
-   CI through 2c599e3; it merges on the owner's word, never on ours.
+9. **Handoff after item 79 (2026-09-10, afternoon).** PR #269 (items
+   70–77: perf — lazy sandbox, run-end snapshots, one core per process;
+   complexity — the layer contract, the outcome vocabulary, the CAS
+   substrate; DX — six CLI asks) merged into main as dba8f49 by the
+   owner at 13:10Z. PR #270 holds items 78–79 (the façade trim, the
+   Linux port bridge) on the same branch with main merged back in; it
+   merges on the owner's word, never on ours.
    What a fresh session should know: (a) the warm floor is measured
    and recorded three ways in items 76–77 — module load and the git
    walk are what remain, and the compile flags are the right ones;
