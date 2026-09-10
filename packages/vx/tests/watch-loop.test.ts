@@ -248,6 +248,48 @@ describe('vx watch loop (e2e)', () => {
     expect(w.out()).toContain('vx watch: app dist/out.txt; re-running...')
   }, 40_000)
 
+  it.each([
+    ['no gap', ''],
+    ['a gap between the delete and the rebuild, as rimraf && tsc has', 'sleep 0.3; '],
+  ])(
+    'an UNCACHED task that deletes and recreates its output settles after one redundant cycle (%s)',
+    async (_shape, gap) => {
+      // The shape of most build scripts — `rm -rf dist && tsc` — with no
+      // outputs declared. Before this pin the loop never settled: a
+      // deletion and a directory each passed the content gate
+      // unconditionally, and with a gap the debounce fired mid-run on a
+      // `dist` that was gone and not yet rebuilt (2026-09-10, one edit:
+      // 780 executions in two minutes). Now a path is judged on its
+      // SETTLED state, one window after the run — a directory's entries'
+      // names and sizes — so the rebuilt `dist` is the `dist` the loop
+      // last saw. Differential: with the gate passing directories
+      // through, executions climb past 3 within the settle window.
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        `export default { tasks: { build: { exec: { command: 'rm -rf dist; ${gap}mkdir -p dist; cat src/*.txt > dist/out.txt; echo run >> ${log}' } } } }\n`,
+      )
+      watch = startWatch(root)
+      const w = watch
+      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await Bun.sleep(SETTLE_MS)
+      expect(await executions(log)).toBe(1)
+
+      await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
+      await until(
+        async () => (await executions(log)) === 3,
+        'the edit cycle and its one redundant follower',
+      )
+      await Bun.sleep(SETTLE_MS * 2)
+      expect(await executions(log)).toBe(3)
+      expect(w.cycles()).toBe(2)
+      // The follower is labelled by what arrived — the task's own dist —
+      // not by the edit that started the cycle it landed in.
+      expect(w.out().split('re-running...')[2]).not.toContain('src/a.txt')
+      expect(w.out()).toContain('vx watch: app dist')
+    },
+    40_000,
+  )
+
   it('a git checkout that rewrites twenty inputs is one cycle with the new content (L5)', async () => {
     const git = gitIn(root)
     const names = Array.from({ length: 20 }, (_, i) => `f${String(i).padStart(2, '0')}.txt`)

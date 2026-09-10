@@ -578,11 +578,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     outputs,
   } = args
 
-  // Reentrancy guard — never two orchestrator runs in flight. While
-  // one is running, any further events set `pending = true` and the
-  // loop drains it after the current run finishes.
+  // Reentrancy guard — never two orchestrator runs in flight. Events that
+  // land while one is running wait in `pendingPaths` and are judged, on
+  // settled bytes, one debounce window after it ends.
   let running = false
-  let pending = false
   /** The cycle in flight, so the stop path can wait for its teardown before resolving. */
   let inFlight: Promise<void> = Promise.resolve()
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -592,60 +591,99 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // watcher sees the write: run 1 writes dist/x, the event re-runs, run 2
   // writes the same bytes, the event re-runs — forever (the init
   // walkthrough, 2026-09-04: every fresh workspace, since `init` emits no
-  // cache block). An undeclared write is caught by CONTENT, at debounce
-  // time (see `trigger`): a path whose settled bytes equal what this loop
-  // last hashed for it is not a change. A real edit changes the bytes; a deletion, a directory or a
-  // first sighting passes through (so the loop costs one redundant run,
-  // not an unbounded number).
-  const lastBytes = new Map<string, bigint>()
-  const sameBytes = (abs: string): boolean => {
-    let hash: bigint
+  // cache block). An undeclared write is caught by STATE, judged on what
+  // has settled (see `trigger`): a path whose settled state equals what
+  // this loop last saw for it is not a change. A file's state is its
+  // bytes; a directory's is its entries' names and sizes (a nested edit
+  // arrives as that path's own event); a path that is gone is one more
+  // state. A real edit changes the state; a first sighting passes through.
+  // So `rm -rf dist && tsc` — the shape of most build scripts — settles
+  // to the same `dist` it left and is one redundant cycle, not a loop
+  // (2026-09-10: 780 executions in two minutes from one edit, when a
+  // deletion and a directory each passed the gate unconditionally).
+  const ABSENT = -1n
+  const lastState = new Map<string, bigint>()
+  const settledState = (abs: string): bigint => {
+    let st: fs.Stats
     try {
-      hash = xxh3(fs.readFileSync(abs))
+      st = fs.statSync(abs)
     } catch {
-      lastBytes.delete(abs)
-      return false
+      return ABSENT
     }
-    const prev = lastBytes.get(abs)
-    lastBytes.set(abs, hash)
-    return prev === hash
+    if (!st.isDirectory()) {
+      try {
+        return xxh3(fs.readFileSync(abs))
+      } catch {
+        return ABSENT
+      }
+    }
+    const entries: string[] = []
+    try {
+      for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
+        let size = 0
+        if (e.isFile()) {
+          try {
+            size = fs.statSync(path.join(abs, e.name)).size
+          } catch {
+            size = -1
+          }
+        }
+        entries.push(`${e.name}\0${e.isDirectory() ? 'd' : size}`)
+      }
+    } catch {
+      return ABSENT
+    }
+    entries.sort()
+    return xxh3(Buffer.from(entries.join('\n')))
+  }
+  const sameState = (abs: string): boolean => {
+    const state = settledState(abs)
+    const prev = lastState.get(abs)
+    lastState.set(abs, state)
+    return prev === state
   }
 
-  // Paths that fired during the debounce window, first label wins. The
-  // content check runs when the timer fires, on SETTLED bytes: per event it
-  // is wrong on Linux, where a shell redirect truncates the file (one event,
+  // Paths that fired since the last judgement, first label wins. The state
+  // check runs when the timer fires, on SETTLED state: per event it is
+  // wrong on Linux, where a shell redirect truncates the file (one event,
   // empty) and then writes it (another, full), so consecutive events never
   // agree and a self-write loops anyway (CI, 2026-09-04: 9 re-runs where
-  // macOS, which coalesces the two, saw 2).
+  // macOS, which coalesces the two, saw 2). While a cycle runs, nothing is
+  // judged: the run's own writes are mid-flight (a `dist` deleted and not
+  // yet rebuilt is a state the tree will not keep), so the paths wait and
+  // are judged one window after the run ends, all together — an edit made
+  // meanwhile still differs from what the loop last saw and re-runs.
   const pendingPaths = new Map<string, string>()
+  const judge = (): string | undefined => {
+    let first: string | undefined
+    for (const [p, l] of pendingPaths) {
+      if (!sameState(p)) first ??= l
+    }
+    pendingPaths.clear()
+    return first
+  }
   const trigger = (label: string, abs: string): void => {
     if (!pendingPaths.has(abs)) pendingPaths.set(abs, label)
+    if (running) return
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       debounceTimer = null
-      let first: string | undefined
-      for (const [p, l] of pendingPaths) {
-        if (!sameBytes(p)) first ??= l
-      }
-      pendingPaths.clear()
+      if (running) return
+      const first = judge()
       if (first !== undefined) void cycle(first)
     }, DEBOUNCE_MS)
   }
 
   const cycle = async (label: string): Promise<void> => {
-    if (stop.aborted) return
-    if (running) {
-      pending = true
-      return
-    }
+    if (stop.aborted || running) return
     running = true
     const done = (inFlight = runCycle(label))
     await done
   }
-  const runCycle = async (label: string): Promise<void> => {
+  const runCycle = async (first: string): Promise<void> => {
     try {
-      do {
-        pending = false
+      let label: string | undefined = first
+      while (label !== undefined && !stop.aborted) {
         process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
         try {
           await runOrchestrator(opts)
@@ -660,10 +698,20 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
           const message = err instanceof Error ? err.message : String(err)
           process.stderr.write(`vx watch: cycle failed: ${message}\n`)
         }
-        // If a change arrived mid-run, loop again immediately.
-      } while (pending && !stop.aborted)
+        // What landed mid-run is judged on settled state, one window
+        // after the run, under the label of what actually arrived.
+        if (pendingPaths.size === 0 || stop.aborted) break
+        await Bun.sleep(DEBOUNCE_MS)
+        label = judge()
+      }
     } finally {
       running = false
+      // Anything that landed after the last judgement waits for a timer
+      // like any other event.
+      if (pendingPaths.size > 0 && !stop.aborted) {
+        const [abs, label] = [...pendingPaths][0]!
+        trigger(label, abs)
+      }
     }
   }
 

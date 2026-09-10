@@ -913,10 +913,16 @@ run...` precedes it.
    an edit, nor is the `dist` directory itself coming and going (a
    literal entry covers its whole tree, as in the schema) — and neither do `node_modules`,
    `.git` or the cache directory. A write the task did NOT declare (a
-   task with no `cache` block declares nothing) is caught by content:
-   a file whose bytes did not change since the loop last saw it is not
-   an edit, so a task that writes into its own project costs one extra
-   cycle instead of re-running forever. When any project's config declares
+   task with no `cache` block declares nothing) is caught by state,
+   judged once the bytes have settled: a file whose bytes did not
+   change since the loop last saw it is not an edit, nor is a directory
+   whose entries (names and sizes) did not, nor a path that stayed
+   gone; and nothing is judged while a cycle runs — its own writes are
+   mid-flight, a `dist` deleted and not yet rebuilt is a state the tree
+   will not keep — so paths that land mid-run are judged together one
+   debounce window after it ends, an edit made meanwhile included. A
+   task that writes into its own project, `rm -rf dist && tsc`
+   included, costs one extra cycle instead of re-running forever. When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so a root-relative glob can name a file anywhere). That watcher

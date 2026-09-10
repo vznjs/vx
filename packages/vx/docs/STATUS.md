@@ -1359,6 +1359,27 @@ app`, "watching 2 project(s)", a `lib/src` edit is one cycle that
       walk loading for itself: twice). On solid, `--affected --dry`
       with a lockfile diff prints each Turbo warning once.
 
+123.  DONE (2026-09-10, late night — bug hunt, `vx watch` on solid): an
+      edit to `solid-element/src` cost three cycles, and the small
+      repro of the shape was worse — an UNCACHED task that deletes and
+      recreates its output (`rm -rf dist && tsc`, most build scripts
+      with no `outputs` declared) looped forever: 780 executions in two
+      minutes from one edit, where the docs promised one redundant
+      cycle. Two holes in the content gate: a deletion and a directory
+      passed unconditionally, and the debounce judged paths mid-run, so
+      a `dist` deleted and not yet rebuilt was "a change" every cycle
+      (with a gap, absent/present alternated forever). Now a path is
+      judged on its SETTLED state — a file's bytes, a directory's entry
+      names and sizes, absence — and never while a cycle runs: what
+      lands mid-run waits and is judged together one window after the
+      run, under the label of what actually arrived (the follower used
+      to carry the first cycle's label). Pinned in
+      `tests/watch-loop.test.ts` for the shape with and without a gap:
+      one edit is exactly three executions and two cycles, the follower
+      labelled `app dist`; differential, a directory passing the gate:
+      executions climb past three. On solid the same edit is two
+      cycles.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
