@@ -41,6 +41,16 @@ async function executions(log: string): Promise<number> {
   return (await f.text()).split('\n').filter((l) => l === 'run').length
 }
 
+/** The initial run and nothing after it — on a miss, the watch's own output says which label re-ran. */
+async function initialOnly(w: Watch, log: string): Promise<void> {
+  const n = await executions(log)
+  if (n !== 1) {
+    throw new Error(
+      `expected the initial run only (1 execution), saw ${n}; watch output:\n${w.out()}`,
+    )
+  }
+}
+
 function startWatch(root: string, select: readonly string[] = ['--all']): Watch {
   const proc = Bun.spawn([process.execPath, BIN, 'watch', 'build', ...select], {
     cwd: root,
@@ -100,7 +110,7 @@ describe('vx watch loop (e2e)', () => {
     watch = startWatch(root)
     const w = watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-    expect(await executions(log)).toBe(1)
+    await initialOnly(w, log)
 
     await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
     await until(async () => (await executions(log)) === 2, 'the re-run after an edit')
@@ -130,7 +140,7 @@ describe('vx watch loop (e2e)', () => {
     watch = startWatch(root)
     const w = watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-    expect(await executions(log)).toBe(1)
+    await initialOnly(w, log)
 
     await writeFile(
       path.join(root, 'vx.workspace.mjs'),
@@ -158,7 +168,7 @@ describe('vx watch loop (e2e)', () => {
     watch = startWatch(root)
     const w = watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-    expect(await executions(log)).toBe(1)
+    await initialOnly(w, log)
 
     const bDir = await addProject(
       root,
@@ -309,7 +319,7 @@ describe('vx watch loop (e2e)', () => {
     const w = watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
     await Bun.sleep(SETTLE_MS)
-    expect(await executions(log)).toBe(1)
+    await initialOnly(w, log)
     expect(w.cycles()).toBe(0)
 
     await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
@@ -347,7 +357,7 @@ describe('vx watch loop (e2e)', () => {
       const w = watch
       await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
       await Bun.sleep(SETTLE_MS)
-      expect(await executions(log)).toBe(1)
+      await initialOnly(w, log)
 
       await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
       await until(
@@ -381,7 +391,7 @@ describe('vx watch loop (e2e)', () => {
     watch = startWatch(root)
     const w = watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-    expect(await executions(log)).toBe(1)
+    await initialOnly(w, log)
 
     git('checkout', '-q', 'feat')
     await until(async () => (await executions(log)) === 2, 'the re-run after the checkout')

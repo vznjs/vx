@@ -252,6 +252,10 @@ export function armWatcher(
   })
   const watcher = fs.watch(dir, { recursive, persistent: true }, (_event, filename) => {
     if (filename == null || typeof filename !== 'string') return
+    // An event naming the watched directory itself (macOS reports the
+    // directory a write landed in as its own item) carries nothing a key
+    // can see; the write's own event names the file.
+    if (filename === '' || filename === '.') return
     if (filename === WATCH_PROBE) {
       markReady(true)
       return

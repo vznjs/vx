@@ -1569,7 +1569,23 @@ equivalent — map it manually` on every run, for the value every
       watcher reacts only when the member SET changes now
       (`memberEntries`: directories and links, not dotted, not
       `node_modules` — discovery's rule), pinned in
-      `tests/watch-rules.test.ts`.
+      `tests/watch-rules.test.ts`. The next macOS run failed the
+      neighbouring uncached pin the same way (one execution before any
+      edit, the deletes-and-recreates test this time) with the set
+      check in place, so the member watcher was not the whole story —
+      three earlier macOS runs with it had passed, which makes this an
+      intermittent extra cycle right after the arms go live, on an
+      uncached task only (a cached one would hit and show nothing).
+      Unproven candidate: an FSEvents item event for the watched
+      directory ITSELF (its mtime moves when the probe or the task's
+      write lands in it), which arrives as an empty relative name and
+      passed every filter into the judge, where a directory's first
+      sighting is a change. `armWatcher` drops an event whose name is
+      empty or `.` now — nothing a key can see is named by it — and
+      the six initial-run assertions in `tests/watch-loop.test.ts`
+      throw with the watch's own output on a miss, so the next failure
+      names the label that re-ran instead of a count. Not
+      reproducible on Linux (inotify has no such event).
 
 131.  DONE (2026-09-10, late night — owner: "Remove no node no bun — no
       one cares. Warm run is also minor. Focus on overhead, flexibility,
