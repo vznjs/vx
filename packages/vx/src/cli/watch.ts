@@ -19,6 +19,7 @@ import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
 import {
+  buildPackageGraph,
   findWorkspaceRoot,
   listProjects,
   loadProjectConfig,
@@ -29,6 +30,7 @@ import {
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
 import { type CliLoadOptions, loadCliProjects, loadCliWorkspace } from './workspace-config.js'
+import { taskEdges } from './select.js'
 
 /** Wait this long after the last filesystem event before re-running. */
 const DEBOUNCE_MS = 150
@@ -348,8 +350,12 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
 
   // Enumerate projects-in-scope so we know what dirs to watch.
   // `opts.projects` is the resolved scope; undefined means "every
-  // project". We watch only those (plus the workspace root, for
-  // lockfile changes).
+  // project". The watched set is what a cycle can RUN: the scope plus
+  // its transitive dependencies (a cycle runs `lib#build` for
+  // `app#build`'s `^build`, so a `lib` edit is an edit) — the same
+  // closure `--filter 'app...'` walks, computed below once the initial
+  // run has staged the configs. Plus the workspace root, for lockfile
+  // changes.
   const workspaceRoot = await findWorkspaceRoot(cwd)
   const allProjects = await listProjects(await loadWorkspace(workspaceRoot))
   const scope =
@@ -377,22 +383,54 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   await runOrchestrator(opts)
   if (stop.signal.aborted) return 0
 
-  const swept = await sweepConfigs(allProjects, workspaceRoot, {
+  const load: CliLoadOptions = {
     ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
     ...(opts.frozen === true ? { frozen: true } : {}),
-  })
+  }
+  const swept = await sweepConfigs(allProjects, workspaceRoot, load)
+  const watched = await watchedProjects(workspaceRoot, allProjects, scope, load)
   return await runWatchLoop({
     opts,
     stop: stop.signal,
     workspaceRoot,
-    projects: scope,
+    projects: watched,
     workspaceWide: swept.workspaceWide,
-    projectDirs: allProjects.map((p) => p.dir),
+    projectDirs: watched.map((p) => p.dir),
     workspaceInputs: swept.workspaceInputs,
     outputs: swept.outputs,
     // The RESOLVED cache dir, not the `.vx` literal — see `makeWatchIgnore`.
     cacheDir: opts.cacheDir ?? (await loadCliWorkspace(workspaceRoot)).cacheDir,
   })
+}
+
+/**
+ * The projects a cycle can run, so both watcher arms cover the same dirs:
+ * the scope plus its transitive dependencies through the package graph
+ * and the cross-project `dependsOn` edges the task graph adds
+ * (`e2e` → `app` from `dependsOn: ['app#build']`). Before this, the
+ * per-project arm watched the filter's answer only, so
+ * `vx watch build --filter app` never re-ran on a `lib` edit that
+ * `vx run build --filter app` would have rebuilt. A whole-workspace
+ * scope is every project already and walks nothing. A config the loader
+ * rejects contributes no edges here; the run that just happened said so.
+ */
+export async function watchedProjects(
+  workspaceRoot: string,
+  allProjects: readonly ProjectMeta[],
+  scope: readonly ProjectMeta[],
+  load: CliLoadOptions = {},
+): Promise<ProjectMeta[]> {
+  if (scope.length === allProjects.length) return [...allProjects]
+  let edges: Map<string, string[]> | undefined
+  try {
+    edges = await taskEdges(workspaceRoot, allProjects, load)
+  } catch {
+    edges = undefined
+  }
+  const graph = buildPackageGraph([...allProjects], edges)
+  const names = new Set(scope.map((p) => p.name))
+  for (const p of scope) for (const d of graph.transitiveDeps(p.name)) names.add(d)
+  return allProjects.filter((p) => names.has(p.name))
 }
 
 /**
