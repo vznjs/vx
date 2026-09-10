@@ -6,7 +6,7 @@
 // time could never help), and the config-worker deadline that exists because a
 // worker the OS kills fires no `error` event and its caller waits forever.
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import fs, { chmodSync, existsSync } from 'node:fs'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
@@ -17,6 +17,7 @@ import {
   isIgnoredWatchPath,
   makeRootEventFilter,
   makeWatchIgnore,
+  memberEntries,
   sweepConfigs,
   WATCH_PROBE,
   watchCmd,
@@ -508,4 +509,29 @@ describe('armWatcher on an unwritable directory', () => {
       }
     },
   )
+})
+
+describe('the member set under a package glob directory', () => {
+  // The watcher on `packages/` reacts to this set changing and to nothing
+  // else: on macOS it also hears a member whose contents changed, and a
+  // task writing into its own project must not read as a package added.
+  it('a file, a dotted entry or node_modules is not a member; a directory or a link is', async () => {
+    const base = await mkdtemp(path.join(os.tmpdir(), 'vx-members-'))
+    try {
+      await mkdir(path.join(base, 'app'))
+      await mkdir(path.join(base, '.hidden'))
+      await mkdir(path.join(base, 'node_modules'))
+      await writeFile(path.join(base, 'notes.txt'), '')
+      await symlink(path.join(base, 'app'), path.join(base, 'linked'))
+      expect([...memberEntries(base)].sort()).toEqual(['app', 'linked'])
+      // A write INSIDE a member changes nothing here.
+      await writeFile(path.join(base, 'app', 'out.txt'), 'x')
+      expect([...memberEntries(base)].sort()).toEqual(['app', 'linked'])
+      await mkdir(path.join(base, 'lib'))
+      expect([...memberEntries(base)].sort()).toEqual(['app', 'lib', 'linked'])
+      expect([...memberEntries(path.join(base, 'missing'))]).toEqual([])
+    } finally {
+      await rm(base, { recursive: true, force: true })
+    }
+  })
 })

@@ -1558,7 +1558,34 @@ equivalent — map it manually` on every run, for the value every
       directory and a package added under it waits for a restart; and
       the watcher shape is not re-decided — a new package declaring
       the first `workspaceFiles` input keeps the per-project arms until
-      a restart. Both in the docs.
+      a restart. Both in the docs. CI's macOS job then failed the
+      uncached-task pin (PR #297, a docs-only head): on macOS a
+      non-recursive watcher on `packages/` also reports a member whose
+      CONTENTS changed — FSEvents names the directory a write landed
+      in — so the arm's own probe file and a task's write into its
+      project read as a member event and cost the uncached task one
+      execution per cycle; Linux's inotify never reports a child's
+      contents on the parent, so the container could not see it. The
+      watcher reacts only when the member SET changes now
+      (`memberEntries`: directories and links, not dotted, not
+      `node_modules` — discovery's rule), pinned in
+      `tests/watch-rules.test.ts`. The next macOS run failed the
+      neighbouring uncached pin the same way (one execution before any
+      edit, the deletes-and-recreates test this time) with the set
+      check in place, so the member watcher was not the whole story —
+      three earlier macOS runs with it had passed, which makes this an
+      intermittent extra cycle right after the arms go live, on an
+      uncached task only (a cached one would hit and show nothing).
+      Unproven candidate: an FSEvents item event for the watched
+      directory ITSELF (its mtime moves when the probe or the task's
+      write lands in it), which arrives as an empty relative name and
+      passed every filter into the judge, where a directory's first
+      sighting is a change. `armWatcher` drops an event whose name is
+      empty or `.` now — nothing a key can see is named by it — and
+      the six initial-run assertions in `tests/watch-loop.test.ts`
+      throw with the watch's own output on a miss, so the next failure
+      names the label that re-ran instead of a count. Not
+      reproducible on Linux (inotify has no such event).
 
 131.  DONE (2026-09-10, late night — owner: "Remove no node no bun — no
       one cares. Warm run is also minor. Focus on overhead, flexibility,
@@ -1593,6 +1620,21 @@ equivalent — map it manually` on every run, for the value every
       multiples gone. The warm number stays as one clause in the note
       and one line in the README. `update-site.ts --check` passes on
       the regenerated site.
+
+132.  DONE (2026-09-10, late night — the scaling claim gets a table):
+      the site says the runner grows with the graph in milliseconds
+      per package; `benchmarks.md` now shows it at three sizes. vx
+      alone, the generator's shape, one trivial `build` per package,
+      the compiled Linux binary at 1a35ec3, `run.ts` medians of 3 on
+      this 4-core container: 100 / 300 / 1,000 packages cold 310 /
+      762 / 2,091 ms (3.1 → 2.5 → 2.1 ms per package), warm 56 / 100 /
+      178 ms (0.56 → 0.33 → 0.18), restore 126 / 269 / 808 ms (1.26 →
+      0.90 → 0.81). Ten times the packages is 6.7× the cold time and
+      3.2× the warm: sub-linear, the fixed cost amortized, nothing
+      growing faster than the graph. The source form read 338 / 794 ms
+      cold at 100 / 300 — the ~40 ms transpile the binary does not pay,
+      as the harness's header says. The head-to-head per-package
+      figures on the site stay the owner's committed run.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
