@@ -76,6 +76,8 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
                         task on its project's own dependency closure; --affected follows. Parsers over core's
                         `lockfileClaim` (orchestrator/lockfile-claim.ts: memo, per-run gate, --affected diff).
                         This repo declares bun()
+packages/vx-infer       scripts() vite() vitest() next() tsc(): a config-less package gets its tasks from the
+                        tools it uses (`project` stage); the package's own declaration wins
 packages/vx-docs        Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-bench       synthetic workspace generator + runners (vx / turbo / nx)
 packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/;

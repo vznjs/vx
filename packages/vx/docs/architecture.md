@@ -19,6 +19,7 @@ by `tests/package-boundaries.unsafe.test.ts`):
 | `packages/vx-github`      | `@vzn/vx-github` — `github()` telemetry plugin: the GitHub Actions job summary                                                                                                   |
 | `packages/vx-turbo-cache` | `@vzn/vx-turbo-cache` — `turboCache()` cache plugin: any server speaking Turbo's `/v8/artifacts` API                                                                             |
 | `packages/vx-nx-cache`    | `@vzn/vx-nx-cache` — `nxCache()` cache plugin: any server implementing Nx's self-hosted cache spec                                                                               |
+| `packages/vx-infer`       | `@vzn/vx-infer` — `scripts()` `vite()` `vitest()` `next()` `tsc()`: tasks inferred from a package's tools on the `project` stage                                                 |
 | `packages/vx-lockfile`    | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
 | `packages/vx-docs`        | Astro Starlight docs site; imports `packages/vx/docs/**` at build time                                                                                                           |
 

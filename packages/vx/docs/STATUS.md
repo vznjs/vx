@@ -696,6 +696,32 @@ run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
     wait for what its deps BUILD, and core builds nothing a dependant
     consumes — it is consumed as source.
 
+88. DONE (tasks a package does not have to write): the gap analysis
+    the owner asked for (2026-09-10) put task inference first among
+    what is closable — Nx gives a package its tasks from `vite.config`
+    / `next.config` / `jest.config` with no config file, and vx had the
+    seam (the `project` stage) with one plugin on it, the Turbo one.
+    `@vzn/vx-infer` is the family: `vite()` (`build` cached on sources,
+    `public/`, `index.html`, the config, `.env*`, output `dist/**`;
+    `dev` and `preview` persistent, ready on `Local:`), `vitest()`
+    (`test`, from its own config or `vite.config` when vitest is a
+    dependency), `next()` (`build` with outputs listed as what `.next/`
+    holds besides Next's own `cache/` — the schema refuses a negated
+    output glob, rightly, and `.next/cache` must survive between
+    builds; `dev` and `start` persistent), `tsc()` (`typecheck`,
+    `--noEmit`, only with `typescript` in the manifest) and `scripts()`
+    (every `package.json` script an UNCACHED task — a script says
+    nothing about what it reads, and a guessed key is a stale hit;
+    `build` waits on `^build`, `dev`/`start`/`serve`/`watch` are
+    persistent, lifecycle scripts skipped, `exclude` for more). Each
+    fills what the package did not declare and never overwrites;
+    order is precedence, so tool plugins go before `scripts()`. The
+    sandbox is never inferred. Pinned through `planRun` over
+    config-less packages: each shape, the package's own declaration
+    winning, a package without the tool getting nothing, `exclude`,
+    and the plugins composing. Docs: the package README, the site
+    guide (`guides/inferred-tasks`), the comparison row, the listings.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core

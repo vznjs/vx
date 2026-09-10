@@ -164,7 +164,9 @@ Context Protocol server for AI coding agents, no SDK),
 [`@vzn/vx-nx-cache`](packages/vx-nx-cache) (remote cache against any
 server speaking Turbo's `/v8/artifacts` API or Nx's self-hosted cache
 spec — the wire is theirs, the artifacts are vx's),
-[`@vzn/vx-lockfile`](packages/vx-lockfile) (`pnpm()`, `bun()`, `npm()`,
+[`@vzn/vx-infer`](packages/vx-infer) (`scripts()`, `vite()`, `vitest()`,
+`next()`, `tsc()`: a config-less package gets its tasks from the tools it
+uses), [`@vzn/vx-lockfile`](packages/vx-lockfile) (`pnpm()`, `bun()`, `npm()`,
 `yarn()`: the lockfile keyed per project, so one install re-keys only the
 projects it reaches, and `--affected` follows), [`@vzn/vx-turbo`](packages/vx-turbo) (a Turbo repo under vx with
 nothing written: `turbo.json` + scripts become tasks through the
@@ -289,19 +291,20 @@ Production readiness for the **core task runner**: the semantics are
 solid; it is dogfooded continuously. The main operational rough edge
 is Windows (unsupported).
 
-| Surface                                            | Maturity             | Notes                                                                                        |
-| -------------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------- |
-| Core task runner + caching                         | **production-ready** | dogfooded continuously; ~2,500 core tests + the package suites, green                        |
-| Plugin pipeline (9 hooks, `commands` included)     | **shippable**        | crash-isolated, re-validated; the local executor + cache are the floor under every plugin    |
-| `vx init` / `@vzn/vx-migrate` (scripts; Turbo, Nx) | **shippable**        | one config per package, TODOs where a source cannot say                                      |
-| REAPI remote cache + execution (`@vzn/vx-reapi`)   | **shippable**        | Bazel AC + CAS + Execute; NativeLink / BuildBuddy / Buildbarn / bazel-remote                 |
-| OTel export (`@vzn/vx-otel`)                       | **shippable**        | OTLP traces + metrics + logs, zero SDK deps                                                  |
-| GitHub Actions (`@vzn/vx-github`)                  | **shippable**        | job summary + Checks API run                                                                 |
-| MCP server (`@vzn/vx-mcp`)                         | **shippable**        | `vx mcp` — read-only tools for AI agents, no SDK                                             |
-| Turbo-wire cache (`@vzn/vx-turbo-cache`)           | **shippable**        | any `/v8/artifacts` server, Bearer auth, HMAC artifact signatures                            |
-| Nx-wire cache (`@vzn/vx-nx-cache`)                 | **shippable**        | any Nx self-hosted cache server (`/v1/cache`, immutable records)                             |
-| Zero-migration Turbo (`@vzn/vx-turbo`)             | **shippable**        | a `turbo.json` workspace runs under vx with no `vx.config` written; a written config wins    |
-| Lockfile keys (`@vzn/vx-lockfile`)                 | **shippable**        | `pnpm()` `bun()` `npm()` `yarn()`: per-project dependency-closure keys; `--affected` follows |
+| Surface                                            | Maturity             | Notes                                                                                                 |
+| -------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------- |
+| Core task runner + caching                         | **production-ready** | dogfooded continuously; ~2,500 core tests + the package suites, green                                 |
+| Plugin pipeline (9 hooks, `commands` included)     | **shippable**        | crash-isolated, re-validated; the local executor + cache are the floor under every plugin             |
+| `vx init` / `@vzn/vx-migrate` (scripts; Turbo, Nx) | **shippable**        | one config per package, TODOs where a source cannot say                                               |
+| REAPI remote cache + execution (`@vzn/vx-reapi`)   | **shippable**        | Bazel AC + CAS + Execute; NativeLink / BuildBuddy / Buildbarn / bazel-remote                          |
+| OTel export (`@vzn/vx-otel`)                       | **shippable**        | OTLP traces + metrics + logs, zero SDK deps                                                           |
+| GitHub Actions (`@vzn/vx-github`)                  | **shippable**        | job summary + Checks API run                                                                          |
+| MCP server (`@vzn/vx-mcp`)                         | **shippable**        | `vx mcp` — read-only tools for AI agents, no SDK                                                      |
+| Turbo-wire cache (`@vzn/vx-turbo-cache`)           | **shippable**        | any `/v8/artifacts` server, Bearer auth, HMAC artifact signatures                                     |
+| Nx-wire cache (`@vzn/vx-nx-cache`)                 | **shippable**        | any Nx self-hosted cache server (`/v1/cache`, immutable records)                                      |
+| Zero-migration Turbo (`@vzn/vx-turbo`)             | **shippable**        | a `turbo.json` workspace runs under vx with no `vx.config` written; a written config wins             |
+| Inferred tasks (`@vzn/vx-infer`)                   | **shippable**        | `scripts()` `vite()` `vitest()` `next()` `tsc()`: tasks from the tools a package uses, no config file |
+| Lockfile keys (`@vzn/vx-lockfile`)                 | **shippable**        | `pnpm()` `bun()` `npm()` `yarn()`: per-project dependency-closure keys; `--affected` follows          |
 
 ## Development
 
