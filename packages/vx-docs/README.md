@@ -21,6 +21,40 @@ Hand-authored pages live only in the site and ARE tracked:
 - `src/content/docs/introduction.md`, `quickstart.md`,
   `add-to-existing-repo.md`, `concepts/`, `guides/`, `migrate/`
 
+## The landing page
+
+`src/pages/index.astro` with `src/styles/landing.css` is a standalone
+page (its own nav, footer and theme; the docs stay Starlight). Two
+layers live in it:
+
+- **The numbers** are generated: `packages/vx-bench/update-site.ts`
+  rewrites the `benchRows` block, the three hero stat tiles and the two
+  benchmark note paragraphs from `results.json`, and `check.site`
+  fails when they drift. Edit the generator, not those regions.
+- **The motion** is decoration over a complete page: the warp-field
+  canvas, the perspective floor and cursor spotlight, the race, the
+  reveals, the tilting cards, the count-ups, the typewriter terminal,
+  the grain. No dependency; everything is the one `<script>` at the
+  bottom of the page and the "Cinematic layer" section of the
+  stylesheet. `prefers-reduced-motion` holds every piece still, and
+  the DOM reads complete with the script removed.
+
+To check it visually, drive the pre-installed Chromium from a scratch
+directory (never from this package — `playwright-core` is not a
+dependency of the site):
+
+```sh
+bun --bun astro build && bun --bun astro preview --port 4321 &
+mkdir -p /tmp/pw && cd /tmp/pw && bun add playwright-core
+# then: chromium.launch({ executablePath: '/opt/pw-browsers/chromium-<n>/chrome-linux/chrome' }),
+# newPage({ viewport: { width: 390, height: 844 } }), goto('http://127.0.0.1:4321/vx/'),
+# and read document.documentElement.scrollWidth — it must equal the viewport width.
+```
+
+Chrome's `--screenshot` flag is not a substitute: it captures before
+CSS animations settle and at a viewport narrower than the layout, both
+of which look like page bugs and are not.
+
 ## Writing a blog post
 
 The blog (`/blog/`, RSS at `/blog/rss.xml`) is
