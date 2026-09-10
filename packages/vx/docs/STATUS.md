@@ -463,7 +463,11 @@ port-<tag>-<port>.sock … TCP:127.0.0.1:<port>` in front of the
     and re-park every ready exec task on every tick, O(R²) on a wide
     frontier — and the 6,000-task scale pin caught it (0.5 s → 28 s);
     the scan now runs only when the exec lane can admit, the legacy
-    O(1) gate kept per lane.
+    O(1) gate kept per lane. Re-measured on that final cut, six
+    interleaved rounds against the pre-lane binary: `run graph` 630 /
+    832 / 765 / 794 / 805 / 969 → 558 / 845 / 693 / 684 / 701 / 804 ms
+    — five wins of six, 10–17%, on a box whose baseline drifted 630 →
+    969 across the rounds.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
@@ -921,8 +925,8 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    70–77: perf — lazy sandbox, run-end snapshots, one core per process;
    complexity — the layer contract, the outcome vocabulary, the CAS
    substrate; DX — six CLI asks) merged into main as dba8f49 by the
-   owner at 13:10Z. PR #270 holds items 78–79 (the façade trim, the
-   Linux port bridge) on the same branch with main merged back in; it
+   owner at 13:10Z. PR #270 holds items 78–81 (the façade trim, the
+   Linux port bridge, completions, the restore lane) on the same branch with main merged back in; it
    merges on the owner's word, never on ours.
    What a fresh session should know: (a) the warm floor is measured
    and recorded three ways in items 76–77 — module load and the git
