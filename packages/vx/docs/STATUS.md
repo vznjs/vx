@@ -2257,12 +2257,15 @@ app` never re-runs on a `lib` edit while `vx run` would rebuild
     plugin's root files — a second consumer makes it one), a package
     added under a glob of another shape than `<dir>/*`, and the
     watcher shape when a new package declares the first
-    `workspaceFiles` input. Candidates next: the same reading for `vx
-    show`/`why` under a project plugin (they share `loadProjects`, so
-    the stage applies — unpinned for the read verbs), and the zero-
-    migration stage's remaining 20 ms per 1,000 (the overlay probes,
-    two clones per fill, a re-validation per plugin) if a workspace
-    that size ever runs without configs. Never end with "what next?".
+    `workspaceFiles` input. Refuted on the way: `vx why` and `vx show`
+    on a config-less package whose task a `project` plugin gave it —
+    `why` reads the run's history and explains the key with the
+    changed input, `show` lists the task as "from plugins" (probed in
+    the scratchpad, 2026-09-10; nothing to pin, the read verbs never
+    load the config `why` would need). Left: the zero-migration
+    stage's remaining 20 ms per 1,000 (the overlay probes, two clones
+    per fill, a re-validation per plugin) if a workspace that size
+    ever runs without configs. Never end with "what next?".
 
 ## Decisions (this arc)
 
