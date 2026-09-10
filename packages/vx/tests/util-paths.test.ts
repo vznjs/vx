@@ -26,7 +26,7 @@
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { relPosix as relPosixViaBarrel } from '../src/util/index.js'
+import { relPosix as relPosixViaBarrel, staticPrefix } from '../src/util/index.js'
 import { relPosix, toPosix } from '../src/util/paths.js'
 
 /**
@@ -493,5 +493,13 @@ describe('relPosix — documented boundaries', () => {
     const deep = Array.from({ length: 500 }, (_, i) => `seg${i}`).join('/')
     expect(relPosix('/r', `/r/${deep}`)).toBe(deep)
     expect(relPosix(`/r/${deep}`, '/r')).toBe(Array(500).fill('..').join('/'))
+  })
+})
+
+describe('staticPrefix and a brace set', () => {
+  it('reads `{dist,build}/**` as reaching either dir — the prefix is the anchor, not a literal `{dist,build}`', () => {
+    expect(staticPrefix('{dist,build}/**')).toBe('.')
+    expect(staticPrefix('out/{a,b}/**')).toBe('out')
+    expect(staticPrefix('dist/**')).toBe('dist')
   })
 })

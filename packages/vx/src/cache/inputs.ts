@@ -21,6 +21,7 @@ import { realpath, rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
 import { UserError } from '../util/index.js'
 import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
+import { normalizeGlob } from '../util/index.js'
 
 // The git side lives in git-inputs.ts; its whole public surface is
 // re-exported here so a reader that reaches the resolver for it (the
@@ -193,7 +194,9 @@ async function resolveWorkspaceFiles(args: {
   // carries its own copy of the filter-over-git-set design, so the same
   // silently-folds-nothing hazard exists here — and a fix applied only to the
   // project half would pass that half's tests while leaving this one live.
-  const unmatchedLiterals = new Set(positive.filter(isLiteralPath).map(stripTrailingSlash))
+  const unmatchedLiterals = new Set(
+    positive.map(normalizeGlob).filter(isLiteralPath).map(stripTrailingSlash),
+  )
   const candidates: string[] = []
   for (const rel of gitFiles) {
     if (unmatchedLiterals.size > 0) settleLiterals(unmatchedLiterals, rel)
@@ -491,9 +494,10 @@ function stripTrailingSlash(p: string): string {
  * names a file still matches exactly that file, since `x/**` matches
  * nothing under a file.
  */
-function asTrees(patterns: readonly string[]): string[] {
+export function asTrees(patterns: readonly string[]): string[] {
   const out: string[] = []
-  for (const p of patterns) {
+  for (const raw of patterns) {
+    const p = normalizeGlob(raw)
     if (!isLiteralPath(p)) {
       out.push(p)
       continue
@@ -615,7 +619,9 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   // an artifact built from an older version of a file the config explicitly
   // claims as an input. See the refusal below for why this is not simply
   // honoured instead.
-  const unmatchedLiterals = new Set(positive.filter(isLiteralPath).map(stripTrailingSlash))
+  const unmatchedLiterals = new Set(
+    positive.map(normalizeGlob).filter(isLiteralPath).map(stripTrailingSlash),
+  )
   // First pass: glob-filter to candidate absolute paths (no I/O).
   const candidates: string[] = []
   for (const rel of gitFiles) {

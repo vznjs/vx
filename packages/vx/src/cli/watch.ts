@@ -14,7 +14,8 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { xxh3 } from '../util/index.js'
+import { normalizeGlob, staticPrefix, xxh3 } from '../util/index.js'
+import { asTrees } from '../cache/index.js'
 import { parseRunArgs, resolveRunOptions } from './run.js'
 import { run as runOrchestrator, type RunOptions } from '../orchestrator/index.js'
 import {
@@ -80,16 +81,13 @@ export function makeWatchIgnore(
   // reporting "up-to-date". The literal prefix of each glob (`dist` for
   // `dist/**`, `build/out` for `build/out/*.js`; nothing for `*.js`) and
   // every ancestor of it under the dir are output containers.
-  // A literal entry means the file or its whole tree (schema.md), so a
-  // literal `gen` also matches `gen/**` here — the same rule the resolver
-  // applies, or the tree's files would count as edits.
-  const asTrees = (g: string): string[] =>
-    /[*?[\]{}!]/.test(g) ? [g] : [g.replace(/\/+$/, ''), `${g.replace(/\/+$/, '')}/**`]
+  // A literal entry means the file or its whole tree — the resolver's own
+  // rule (`asTrees`), so the tree's files never count as edits.
   const declared = [...outputs].map(
     ([dir, globs]) =>
       [
         path.resolve(dir),
-        globs.flatMap(asTrees).map((g) => new Bun.Glob(g)),
+        asTrees(globs).map((g) => new Bun.Glob(g)),
         globs.map(outputContainer).filter((c) => c !== ''),
       ] as const,
   )
@@ -110,16 +108,19 @@ export function makeWatchIgnore(
   }
 }
 
-/** The literal directory a glob's matches live under (`''` when the glob starts with a pattern). */
-export function outputContainer(glob: string): string {
-  const meta = glob.search(/[*?[\]{}!]/)
-  const literal = meta === -1 ? glob : glob.slice(0, meta)
-  // A literal entry is a file or its whole tree (schema: literal → tree),
-  // so the entry itself is the container; a pattern's container is the
-  // directory part before the first metacharacter.
-  const cut =
-    meta === -1 ? literal.replace(/\/+$/, '') : literal.slice(0, literal.lastIndexOf('/') + 1)
-  return cut.replace(/\/+$/, '')
+/**
+ * The literal directory a glob's matches live under (`''` when the glob
+ * starts with a pattern, or negates). A literal entry is a file or its
+ * whole tree (schema: literal → tree), so the entry itself is the
+ * container; a pattern's is `staticPrefix` — the same rule the sandbox
+ * baseline and the deferral gate read.
+ */
+export function outputContainer(raw: string): string {
+  const glob = normalizeGlob(raw)
+  if (glob.startsWith('!')) return ''
+  if (!/[*?[\]{}]/.test(glob)) return glob.replace(/\/+$/, '')
+  const prefix = staticPrefix(glob)
+  return prefix === '.' || prefix === '/' ? '' : prefix
 }
 
 /**

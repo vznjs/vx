@@ -1120,6 +1120,44 @@ signal` (an `AbortSignal`) runs the one teardown the process
       mystery in a CI log. Pinned in `tests/keep-alive.test.ts` on
       both exit codes. PR #276 (106–110) merged at 18:38Z, main
       fb97a97; 111 merged as PR #277 at 18:43Z, main 7878582.
+112.  DONE (2026-09-10, late night — a stale hit, found by a probe): an
+      input written `./src/**` folded ZERO files. The resolver matches
+      globs against git's enumeration (`src/a.ts`), and `Bun.Glob`
+      fed the literal `./` matches nothing, so the key never moved
+      with the source and an edit under it replayed the old outputs
+      as a green hit; outputs took the same spelling through a scan,
+      which tolerates `./`, and worked — the asymmetry hid it. Fix at
+      the one funnel every glob passes (`asTrees`): `normalizeGlob`
+      strips every leading `./` after an optional `!`, and the
+      unmatched-literal guard sees the same normalized names; the
+      schema refuses an entry that is only `.` / `./` (it names the
+      directory itself and selected nothing, silently) in
+      `inputs.files`, `outputs.files` and both `workspaceFiles`; the
+      watch loop's `outputContainer` normalizes too. A key-derivation
+      fix whose old key was already wrong: self-healing, no
+      `CACHE_VERSION` bump. `tests/dot-slash-globs.test.ts` (the
+      probe: fails with a hit without the fix; `!./gen/**`; the
+      outputs control; three refusals), `tests/watch-rules.test.ts`.
+      `./packages/*` in the workspace file already discovered
+      projects (probed). Also this commit: the watch loop reuses the
+      resolver's `asTrees` instead of its own copy of the
+      literal-tree rule. Probed the rest of the class one spelling at
+      a time against `Bun.Glob` and folded the silent ones into the
+      same normalization: an inner `/./` segment, a doubled `//`, and
+      a trailing `/` on a PATTERN (`src/*/` is the trees under `src`,
+      so `src/*/**`; a literal's trailing slash stays `asTrees`' job).
+      `src\a.ts` stays nothing — Windows is WSL.
+      The rule then moved to `util/paths.ts` and found its other
+      readers: workspace member globs (`!./packages/legacy` and
+      `!packages//legacy` excluded nothing — `legacy` stayed a member,
+      pinned in `tests/workspace.test.ts`, fails without),
+      `wholeSubtreePrefixes` (a `./dist/**` output lost the dir-mtime
+      short-circuit), and the watch loop's `outputContainer`, which is
+      now `staticPrefix` over the normalized glob instead of a second
+      copy of the prefix rule. `staticPrefix` itself learned that a
+      brace set is a wildcard: `{dist,build}/**` read as the literal
+      directory `{dist,build}` gave the sandbox baseline a prefix that
+      exists nowhere (pinned in `tests/util-paths.test.ts`).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

@@ -109,6 +109,13 @@ describe('the ignore filter follows the RESOLVED cache dir, not the .vx literal'
     )
     expect(ignore(proj, 'dist')).toBe(true)
     expect(ignore(proj, 'build')).toBe(true)
+    // `./dist/**` is `dist/**` (normalizeGlob) — for the tree and its container
+    const dotted = makeWatchIgnore(
+      path.join(root, '.vx', 'cache'),
+      new Map([[proj, ['./dist/**']]]),
+    )
+    expect(dotted(proj, path.join('dist', 'index.js'))).toBe(true)
+    expect(dotted(proj, 'dist')).toBe(true)
     expect(ignore(proj, path.join('build', 'out'))).toBe(true)
     expect(ignore(proj, 'gen')).toBe(true)
     expect(ignore(proj, path.join('gen', 'a.js'))).toBe(true)

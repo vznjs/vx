@@ -6,7 +6,13 @@
 // the lockfile's frozen path and the plugin `project` stage all cross.
 
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
-import { DISPATCHED_VERBS, MAX_TIMEOUT_MS, nearest, UserError } from '../util/index.js'
+import {
+  DISPATCHED_VERBS,
+  MAX_TIMEOUT_MS,
+  nearest,
+  normalizeGlob,
+  UserError,
+} from '../util/index.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
@@ -416,6 +422,11 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
               `let cleanOutputs delete files outside it)`,
           )
         }
+        if (namesDirItself(g)) {
+          throw new UserError(
+            `${where}.cache.outputs.files: "${g}" names the project directory itself and selects nothing — use "**" for everything under it`,
+          )
+        }
         if (g.startsWith('!')) {
           throw new UserError(
             `${where}.cache.outputs.files: negation is not supported (got "${g}") — ` +
@@ -440,6 +451,11 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
             `${where}.cache.inputs.files: '..' path segments are not allowed (got "${g}") — ` +
               `inputs must be project-relative (a '..' glob silently matches nothing; ` +
               `use cache.inputs.workspaceFiles for workspace-root-relative inputs)`,
+          )
+        }
+        if (namesDirItself(g)) {
+          throw new UserError(
+            `${where}.cache.inputs.files: "${g}" names the project directory itself and selects nothing — use "**" for everything under it`,
           )
         }
         assertNotDoubleNegated(g, `${where}.cache.inputs.files`)
@@ -573,6 +589,16 @@ function assertTimeoutInRange(ms: number, where: string): void {
  * `Bun.Glob.scan` follows `..` out of its cwd, so a `..` glob is a data-loss
  * vector (delete files outside the project / above the repo root).
  */
+/**
+ * `.`, `./`, `././` (with or without a `!`) name the directory itself, which
+ * no matcher expands: the entry selected nothing and said so nowhere.
+ * `./src/**` is fine — the resolver strips the `./` (`normalizeGlob`).
+ */
+function namesDirItself(glob: string): boolean {
+  const g = normalizeGlob(glob.startsWith('!') ? glob.slice(1) : glob)
+  return g === '' || g === '/'
+}
+
 function hasParentSegment(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
   return g.split('/').some((seg) => seg === '..')
@@ -697,6 +723,11 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
       throw new UserError(
         `${where}: '..' path segments are not allowed (got "${g}") — ` +
           `entries are workspace-root-relative and must stay within the workspace root`,
+      )
+    }
+    if (namesDirItself(g)) {
+      throw new UserError(
+        `${where}: "${g}" names the workspace root itself and selects nothing — use "**" for everything under it`,
       )
     }
     if (!negation && g.startsWith('!')) {

@@ -11,10 +11,24 @@ key (input file paths, output file paths, etc.).
 ```ts
 export function toPosix(p: string): string
 export function relPosix(from: string, to: string): string
+export function normalizeGlob(glob: string): string
+export function staticPrefix(glob: string): string
+export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null
 ```
 
 - `toPosix(p)` — replaces every `path.sep` with `/`.
 - `relPosix(from, to)` — `path.relative(from, to)` then `toPosix`.
+- `normalizeGlob(g)` — the spellings a reader accepts but a matcher turns
+  into nothing: a leading `./`, an inner `/./`, a doubled `//`, a trailing
+  `/` on a pattern (→ `/**`); after an optional `!`. The one rule behind
+  the input/output resolver (`asTrees`), the workspace member globs, the
+  watch loop's output containers, the subtree short-circuit and the
+  schema's "names the directory itself" refusal (2026-09-10).
+- `staticPrefix(g)` — the wildcard-free head of a glob, whole components
+  only; a brace set counts as a wildcard. Shared by the sandbox baseline,
+  the deferral gate and the watch loop's output container.
+- `wholeSubtreePrefixes(globs)` — the `<dir>/**` directories a task's
+  outputs cover whole, or `null`; normalizes first.
 
 ## Why
 

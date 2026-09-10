@@ -32,6 +32,8 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 describe('wholeSubtreePrefixes (eligibility)', () => {
   it('accepts only `<dir>/**` globs with a plain, non-root, non-escaping dir', () => {
     expect(wholeSubtreePrefixes(['dist/**'])).toEqual(['dist'])
+    // the spellings normalizeGlob folds: the short-circuit must not lose them
+    expect(wholeSubtreePrefixes(['./dist/**', 'build//out/**'])).toEqual(['dist', 'build/out'])
     expect(wholeSubtreePrefixes(['dist/**', 'build/out/**', 'dist/**'])).toEqual([
       'dist',
       'build/out',
