@@ -589,9 +589,10 @@ function assertTimeoutInRange(ms: number, where: string): void {
  * `./src/**` is fine — the resolver strips the `./` (`normalizeGlob`).
  */
 function namesDirItself(glob: string): boolean {
-  let g = glob.startsWith('!') ? glob.slice(1) : glob
-  while (g.startsWith('./')) g = g.slice(2)
-  return g === '' || g === '.'
+  const g = (glob.startsWith('!') ? glob.slice(1) : glob)
+    .replace(/\/{2,}/g, '/')
+    .replace(/(^|\/)(\.\/)+/g, '$1')
+  return g === '' || g === '.' || g === '/'
 }
 
 function hasParentSegment(glob: string): boolean {

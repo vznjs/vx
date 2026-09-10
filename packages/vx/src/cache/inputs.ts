@@ -476,17 +476,20 @@ export async function cleanWorkspaceOutputs(args: {
 }
 
 /**
- * `./src/**` and `src/**` name the same files; a matcher fed the literal
- * `./` matched nothing, so a task keyed on `./src/**` folded ZERO inputs and
- * an edit under it replayed the old outputs as a green hit (2026-09-10).
- * Every leading `./` goes, after a `!`; a bare `.` is the empty entry the
- * schema refuses.
+ * The spellings a reader, Turbo and `.gitignore` all accept but a matcher
+ * fed the raw string turns into NOTHING — and a task keyed on nothing
+ * replays old outputs as a green hit (2026-09-10, probed one by one):
+ * a leading `./`, an inner `/./` segment, a doubled `//`, and a trailing
+ * `/` on a pattern (`src/*\/` means the trees under `src`, so it becomes
+ * `src/*\/**`; a trailing slash on a LITERAL is `asTrees`' job). Applied
+ * after an optional `!`; a bare `.` is the empty entry the schema refuses.
  */
 export function normalizeGlob(glob: string): string {
   const neg = glob.startsWith('!')
   let g = neg ? glob.slice(1) : glob
-  while (g.startsWith('./')) g = g.slice(2)
+  g = g.replace(/\/{2,}/g, '/').replace(/(^|\/)(\.\/)+/g, '$1')
   if (g === '.') g = ''
+  if (!isLiteralPath(g) && g.endsWith('/')) g = `${g.replace(/\/+$/, '')}/**`
   return neg ? `!${g}` : g
 }
 

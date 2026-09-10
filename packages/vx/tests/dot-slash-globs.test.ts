@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run, type Logger } from '../src/orchestrator/index.js'
 import { loadProjectConfig } from '../src/workspace/index.js'
+import { asTrees, normalizeGlob } from '../src/cache/index.js'
 
 const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 
@@ -77,6 +78,26 @@ describe('./-prefixed globs', () => {
     await rm(path.join(dir, 'dist'), { recursive: true, force: true })
     expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['cache-hit'])
     expect(await Bun.file(path.join(dir, 'dist', 'out.txt')).text()).toBe('a1\ng1\n')
+  }, 30_000)
+
+  it('normalizeGlob: inner ./ segments, doubled slashes and a trailing slash on a pattern', () => {
+    expect(normalizeGlob('src/./a.ts')).toBe('src/a.ts')
+    expect(normalizeGlob('src//x///b.ts')).toBe('src/x/b.ts')
+    expect(normalizeGlob('././src/**')).toBe('src/**')
+    expect(normalizeGlob('!./gen/./**')).toBe('!gen/**')
+    expect(normalizeGlob('src/**/')).toBe('src/**/**')
+    expect(normalizeGlob('src/*/')).toBe('src/*/**')
+    // a literal keeps its trailing slash: asTrees makes it the tree
+    expect(normalizeGlob('src/')).toBe('src/')
+    expect(asTrees(['src/', 'lib/*/'])).toEqual(['src', 'src/**', 'lib/*/**'])
+    expect(normalizeGlob('.')).toBe('')
+  })
+
+  it('an input written src/**/ (trailing slash on a pattern) keys on src too', async () => {
+    const dir = await project(`{ inputs: { files: ['src/**/'] }, outputs: { files: ['dist/**'] } }`)
+    expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['success'])
+    await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
+    expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['success'])
   }, 30_000)
 
   for (const [field, entry] of [

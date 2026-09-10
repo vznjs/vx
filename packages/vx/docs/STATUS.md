@@ -1141,7 +1141,12 @@ signal` (an `AbortSignal`) runs the one teardown the process
       `./packages/*` in the workspace file already discovered
       projects (probed). Also this commit: the watch loop reuses the
       resolver's `asTrees` instead of its own copy of the
-      literal-tree rule.
+      literal-tree rule. Probed the rest of the class one spelling at
+      a time against `Bun.Glob` and folded the silent ones into the
+      same normalization: an inner `/./` segment, a doubled `//`, and
+      a trailing `/` on a PATTERN (`src/*/` is the trees under `src`,
+      so `src/*/**`; a literal's trailing slash stays `asTrees`' job).
+      `src\a.ts` stays nothing — Windows is WSL.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

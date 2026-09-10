@@ -585,9 +585,12 @@ interface CacheInputs {
 Project-relative globs. `!`-prefix negates. A **literal** entry (no
 glob character) names a file or a whole directory tree — `src` and
 `src/` both mean everything under `src`, as in Turbo and `.gitignore`;
-`!src` subtracts the tree. A leading `./` is accepted and means nothing:
-`./src/**` is `src/**`, `!./gen` is `!gen`. A bare `.` or `./` names the
-project directory itself and is refused at load — write `**`.
+`!src` subtracts the tree. Spellings a matcher would otherwise turn into
+nothing are normalized: a leading `./` (`./src/**` is `src/**`, `!./gen`
+is `!gen`), an inner `/./` segment, a doubled `//`, and a trailing `/` on
+a pattern (`src/*/` is the trees under `src`, `src/*/**`). A bare `.` or
+`./` names the project directory itself and is refused at load — write
+`**`.
 
 ```ts
 files: ['**/*'] // all project files
