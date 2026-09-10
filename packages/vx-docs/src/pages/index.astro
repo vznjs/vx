@@ -1,10 +1,10 @@
 ---
-// vx landing page — standalone marketing homepage.
-//
-// Ported from the Vx Design System website UI kit
-// (claude.ai/design handoff bundle). This is a full custom page that
-// REPLACES the Starlight splash homepage: it ships its own nav, footer
-// and dark "phosphor-on-ink" theme. Docs pages stay Starlight-themed.
+// vx landing page — a scroll-driven film, standalone (its own nav, footer
+// and theme; the docs stay Starlight). Every number is server-rendered
+// from results.json by packages/vx-bench/update-site.ts: the benchRows
+// block, the three stat tiles and the two benchmark note paragraphs are
+// the regions it rewrites (check.site guards them). Every effect is the
+// one <script> at the bottom over a DOM that reads complete without it.
 import '../styles/landing.css'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
@@ -219,16 +219,15 @@ const footCols = {
   community: [{ t: 'GitHub', h: GH }],
 }
 ---
-
 <!doctype html>
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>vx — One task runner. Build the rest on top.</title>
+    <title>vx — Bend time. Not the rules.</title>
     <meta
       name="description"
-      content="vx runs and caches a JavaScript monorepo's task graph — correctly, in milliseconds, from one self-contained binary — and stops there. Remote caches, remote execution, telemetry and AI agents are plugins on documented seams. What Nx would be if it were not a product."
+      content="vx runs and caches a JavaScript monorepo's task graph from one self-contained binary and adds 4% to a cold build where Turborepo adds 44% and Nx multiplies it by 9.6. No daemon, no cloud, no account. Everything distributed is a plugin on a documented seam."
     />
     <link rel="icon" href={href('logo-mark.svg')} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -247,9 +246,10 @@ const footCols = {
     </style>
   </head>
   <body>
-    <div class="vx-landing">
+    <div class="vx-landing film">
       <div class="grain" aria-hidden="true"></div>
       <div class="vignette" aria-hidden="true"></div>
+
       <!-- ===================== Nav ===================== -->
       <header class="nav">
         <span class="progress" aria-hidden="true"></span>
@@ -262,7 +262,7 @@ const footCols = {
             <a href={href('quickstart/')}>docs</a>
             <a href={href('benchmarks/')}>benchmarks</a>
             <a href={href('migrate/from-turborepo/')}>migrate</a>
-            <a href={href('concepts/why-vx-is-fast/')}>concepts</a>
+            <a href={href('blog/')}>blog</a>
           </nav>
         </div>
         <div class="nav-right">
@@ -280,34 +280,27 @@ const footCols = {
         </div>
       </header>
 
-      <!-- ===================== Hero ===================== -->
-      <section class="hero">
-        <canvas class="warp" aria-hidden="true"></canvas>
-        <div class="floor" aria-hidden="true"></div>
-        <div class="spotlight" aria-hidden="true"></div>
-        <div class="bloom"></div>
-        <div class="fade"></div>
-        <div class="hero-grid container">
-          <div class="hero-copy">
-            <div class="badges">
-              <span class="badge badge-phosphor"><span class="dot"></span>One binary · no Node, no Bun</span>
-              <span class="badge">No daemon</span>
-              <span class="badge">MIT licensed</span>
-            </div>
-            <p class="vx-kicker hero-kicker">// the task runner from the future</p>
-            <h1 class="hero-title">
-              <span class="line">Bend time.</span><br /><span
-                class="line phosphor chroma"
-                data-text="Not the rules.">Not the rules.</span
-              >
-            </h1>
-            <p class="lede">
-              vx runs and caches your monorepo's task graph from one self-contained binary — and
-              adds 4% to a cold build where Turborepo adds 44% and Nx multiplies it by 9.6. No
-              daemon, no cloud, no account. Remote caches, remote execution, telemetry and AI agents
-              are plugins on documented seams, never features inside.
+      <!-- ===================== Scene 0 · cold open ===================== -->
+      <section class="scene pin open" data-scene="open" style="--len:2.2">
+        <div class="stage">
+          <canvas class="warp" aria-hidden="true"></canvas>
+          <div class="open-copy">
+            <p class="open-cmd" aria-hidden="true">
+              <span class="caret">❯ </span><span class="typed" data-type="vx run build --all"></span>
             </p>
-            <div class="actions">
+            <h1 class="giant">
+              <span class="w" style="--i:0">Bend</span>
+              <span class="w" style="--i:1">time.</span>
+              <br />
+              <span class="w phosphor chroma" data-text="Not" style="--i:2">Not</span>
+              <span class="w phosphor chroma" data-text="the" style="--i:3">the</span>
+              <span class="w phosphor chroma" data-text="rules." style="--i:4">rules.</span>
+            </h1>
+            <p class="open-lede">
+              The task runner that adds four percent to a cold build. One binary, no daemon, no
+              cloud, no account — and everything distributed a plugin on a documented seam.
+            </p>
+            <div class="open-actions">
               <a class="btn btn-primary btn-lg" href={href('quickstart/')}
                 >Get started <span class="arr">→</span></a
               >
@@ -338,6 +331,104 @@ const footCols = {
                 </span>
               </button>
             </div>
+          </div>
+          <div class="scroll-cue" aria-hidden="true"><span></span>scroll</div>
+        </div>
+      </section>
+
+      <!-- ===================== Scene 1 · three clocks ===================== -->
+      <section
+        class="scene pin clocks"
+        data-scene="clocks"
+        data-lap={raceBase.val}
+        data-runners={`${raceVx.val},${raceTurbo.val},${raceNx.val}`}
+        style="--len:4"
+      >
+        <div class="stage">
+          <canvas class="orbit" aria-hidden="true"></canvas>
+          <div class="clock-hud">
+            <p class="vx-kicker">// one lap is your tasks alone · {raceBase.disp}</p>
+            <div class="readout"><span data-clock>T+00:00</span><span class="rate" data-rate>×60</span></div>
+          </div>
+          <div class="captions" data-captions>
+            <p class="cap" data-at="0">
+              <b>One lap</b> is your tasks on their own — {raceBase.disp} across 3,270 of them.
+            </p>
+            <p class="cap" data-at={raceVx.val} style="--c:var(--phosphor)">
+              <b>vx crosses the line</b> eight seconds later. {raceVx.disp} · {over(raceVx.val)}
+            </p>
+            <p class="cap" data-at={raceTurbo.val} style="--c:var(--c-turbo)">
+              <b>Turborepo crosses</b> a minute and a half after that. {raceTurbo.disp} ·{' '}
+              {over(raceTurbo.val)}
+            </p>
+            <p class="cap" data-at={raceTurbo.val + 1} style="--c:var(--c-nx)">
+              <b>Nx keeps lapping.</b> Time compresses tenfold so you can watch it finish.
+            </p>
+            <p class="cap" data-at={raceNx.val} style="--c:var(--c-nx)">
+              <b>Nx crosses</b> after nine and a half more laps. {raceNx.disp} · {over(raceNx.val)}
+            </p>
+          </div>
+          <div class="legend-lanes">
+            {
+              lanes.map((l) => (
+                <span class="ll" style={`--c:${l.tone}`} data-lane={l.name}>
+                  <i />
+                  {l.label} <em>{l.bar.disp}</em>
+                </span>
+              ))
+            }
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== Scene 2 · the overhead wall ===================== -->
+      <section class="scene pin wall" data-scene="wall" style="--len:2.6">
+        <div class="stage">
+          <div class="wall-copy">
+            <p class="vx-kicker">// every second above the floor is the runner</p>
+            <h2 class="huge">Your tasks are the floor.<br /><span class="phosphor">Everything above it is overhead.</span></h2>
+          </div>
+          <div class="monoliths" aria-label="Runner overhead over the ideal schedule">
+            {
+              lanes.map((l) => {
+                const extra = l.bar.val - raceBase.val
+                const clipped = extra > (raceTurbo.val - raceBase.val) * 2.4
+                const h = clipped ? 100 : (extra / ((raceTurbo.val - raceBase.val) * 1.15)) * 100
+                const secs = Math.round(extra / 1000)
+                const disp = secs >= 60 ? `${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, '0')}s` : `${secs} s`
+                return (
+                  <div class={`mono mono-${l.name}${clipped ? ' clipped' : ''}`} style={`--c:${l.tone};--h:${h.toFixed(1)}%`}>
+                    <div class="tower">
+                      <i class="fill"></i>
+                      <span class="cap-lbl">{clipped ? `off the chart · ${over(l.bar.val)}` : `+${disp}`}</span>
+                    </div>
+                    <div class="reflect"></div>
+                    <div class="plate">
+                      <span class="name">{l.label}</span>
+                      <span class="over">{over(l.bar.val)}</span>
+                      <span class="fin">+{disp} over {raceBase.disp}</span>
+                    </div>
+                  </div>
+                )
+              })
+            }
+            <div class="floor-line"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== Scene 3 · warm ===================== -->
+      <section class="scene pin warm" data-scene="warm" style="--len:2.4">
+        <div class="stage">
+          <canvas class="grid" aria-hidden="true"></canvas>
+          <div class="warm-copy">
+            <p class="vx-kicker">// fully cached · 3,270 tasks · 1,090 packages</p>
+            <div class="warm-num"><span data-warm>0</span><span class="u">ms</span></div>
+            <p class="warm-lede">
+              Every task's key comes straight from git's index — no file reads on a clean tree — and
+              every key is known before anything runs. Turborepo replays the same graph in 760 ms.
+              Nx in 3.59 s.
+            </p>
             <div class="stats">
               <div class="stat">
                 <span class="val"><span class="num">4</span><span class="unit">%</span></span>
@@ -356,9 +447,141 @@ const footCols = {
               </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          <!-- Terminal -->
-          <div class="term reveal" data-term>
+      <!-- ===================== Scene 4 · nothing to babysit ===================== -->
+      <section class="scene pin none" data-scene="none" style="--len:2.2">
+        <div class="stage">
+          <div class="none-copy">
+            <p class="vx-kicker">// what is not inside</p>
+            <ul class="strikes">
+              <li class="strike" data-k="0"><span>No daemon.</span></li>
+              <li class="strike" data-k="1"><span>No cloud.</span></li>
+              <li class="strike" data-k="2"><span>No account.</span></li>
+            </ul>
+            <p class="one giant-2"><span class="phosphor chroma" data-text="One binary.">One binary.</span></p>
+            <p class="none-lede">
+              Linux and macOS, x64 and arm64, nothing to install underneath — not Node, not Bun.
+              A workspace with no plugins runs and caches; a plugin that declines a task hands it
+              back to this machine.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== Only in vx ===================== -->
+      <section class="flow only">
+        <div class="container">
+          <div class="flow-head reveal">
+            <p class="vx-kicker">// only in vx</p>
+            <h2 class="huge">What no other runner does.</h2>
+          </div>
+          <div class="cards">
+            {
+              features.map((f, i) => (
+                <div class="card tilt reveal" style={`--c:${f.tone};--i:${i}`}>
+                  <span class="ico">
+                    <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    set:html={featIcons[f.icon]}
+                  />
+                  </span>
+                  <h3>{f.title}</h3>
+                  <p>{f.body}</p>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== The machine ===================== -->
+      <section class="flow machine">
+        <div class="container">
+          <div class="flow-head reveal">
+            <p class="vx-kicker">// built to be built on</p>
+            <h2 class="huge">A pipeline with a seam at every stage.</h2>
+            <p class="flow-sub">
+              Core is the pipeline and nothing else. Plugins fill a stage; core applies none by
+              default and names none — running here and caching here are the floor.
+            </p>
+          </div>
+          <div class="rail reveal" aria-hidden="true">
+            {
+              ['config', 'project', 'graph', 'key', 'fingerprint', 'schedule', 'executor', 'cache', 'telemetry', 'commands'].map((s, i) => (
+                <span class="node" style={`--i:${i}`}>{s}</span>
+              ))
+            }
+            <span class="pulse"></span>
+          </div>
+          <div class="cards">
+            {
+              platform.map((f, i) => (
+                <a
+                  class="card tilt reveal"
+                  style={`--c:${f.tone};--i:${i}`}
+                  href={
+                    f.icon === 'spark'
+                      ? href('guides/mcp/')
+                      : f.icon === 'plug'
+                        ? href('guides/plugins/')
+                        : f.icon === 'wire'
+                          ? href('guides/extensibility/')
+                          : f.icon === 'cloud'
+                            ? href('guides/remote-caching/')
+                            : href('guides/plugins/') + '#keys-and-order'
+                  }
+                >
+                  <span class="ico">
+                    <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    set:html={featIcons[f.icon]}
+                  />
+                  </span>
+                  <h3>{f.title}</h3>
+                  <p>{f.body}</p>
+                  <span class="learn">Learn more →</span>
+                </a>
+              ))
+            }
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== Terminal + config ===================== -->
+      <section class="flow live">
+        <div class="container live-grid">
+          <div class="live-copy reveal">
+            <p class="vx-kicker">// the whole configuration</p>
+            <h2 class="huge">Config is TypeScript.<br />A task is a command.</h2>
+            <p class="flow-sub">
+              <code>vx.config.ts</code> is evaluated before hashing, so imports, presets and
+              computed values are in the key. Inputs and outputs are declared, never inferred, and
+              the sandbox can prove them.
+            </p>
+            <a class="btn btn-ghost" href={href('schema/')}>Read the config reference <span class="arr">→</span></a>
+          </div>
+          <div class="live-cards reveal">
+            <div class="code-card">
+            <div class="bar"><span class="dot"></span><span class="name">vx.config.ts</span></div>
+            <pre><div><span class="tk-com">// vx.config.ts — next to any package.json</span></div><div><span class="tk-kw">import</span><span class="tk-txt"> {'{'} </span><span class="tk-fn">defineProject</span><span class="tk-txt"> {'}'} </span><span class="tk-kw">from</span><span class="tk-str"> '@vzn/vx'</span></div><div style="height:10px"></div><div><span class="tk-kw">export default</span><span class="tk-txt"> </span><span class="tk-fn">defineProject</span><span class="tk-punc">{'({'}</span></div><div><span class="tk-txt">  tasks: {'{'}</span></div><div><span class="tk-txt">    build: {'{'}</span></div><div><span class="tk-txt">      exec: {'{'} command: </span><span class="tk-str">'tsc -b'</span><span class="tk-txt"> {'}'},</span></div><div><span class="tk-txt">      dependsOn: [</span><span class="tk-str">'^build'</span><span class="tk-txt">],</span></div><div><span class="tk-txt">      cache: {'{'}</span></div><div><span class="tk-txt">        inputs: {'{'} files: [</span><span class="tk-str">'src/**'</span><span class="tk-txt">] {'}'},</span></div><div><span class="tk-txt">        outputs: {'{'} files: [</span><span class="tk-str">'dist/**'</span><span class="tk-txt">] {'}'},</span></div><div><span class="tk-txt">      {'}'},</span></div><div><span class="tk-txt">    {'}'},</span></div><div><span class="tk-txt">    test: {'{'}</span></div><div><span class="tk-txt">      exec: {'{'} command: </span><span class="tk-str">'bun test'</span><span class="tk-txt"> {'}'},</span></div><div><span class="tk-txt">      dependsOn: [</span><span class="tk-str">'build'</span><span class="tk-txt">],</span></div><div><span class="tk-txt">      cache: {'{'} inputs: {'{'} files: [</span><span class="tk-str">'src/**'</span><span class="tk-txt">] {'}'}, outputs: {'{'} files: [] {'}'} {'}'},</span></div><div><span class="tk-txt">    {'}'},</span></div><div><span class="tk-txt">  {'}'},</span></div><div><span class="tk-punc">{'})'}</span></div></pre>
+          </div>
+            <div class="term" data-term>
             <div class="term-bar-top">
               <span class="tdot" style="background:#ff5f57"></span>
               <span class="tdot" style="background:#febc2e"></span>
@@ -446,148 +669,16 @@ const footCols = {
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      <!-- ===================== Race ===================== -->
-      <section class="race" id="race">
-        <div class="race-inner container reveal">
-          <div class="race-head">
-            <p class="vx-kicker">// time dilation · cold build · same graph, same tasks</p>
-            <h2>Same code. <span class="phosphor">Different clocks.</span></h2>
-            <p class="vx-sub">
-              Your tasks alone need {raceBase.disp} on this graph. Everything after that is the
-              runner. Real numbers, played back at sixty times speed.
-            </p>
           </div>
-          <div
-            class="race-track"
-            data-race
-            data-base={raceBase.val}
-            data-max={Math.round(trackMax)}
-          >
-            <div class="race-clock">
-              <span class="t" data-clock>T+00:00</span>
-              <span class="lbl">build time</span>
-              <button class="replay" type="button" data-replay>↻ replay</button>
-            </div>
-            <div class="race-baseline" style={`--at:${(pct(raceBase.val) / 100).toFixed(4)}`}>
-              <span>ideal schedule · {raceBase.disp}</span>
-            </div>
-            {
-              lanes.map((l) => (
-                <div class={`lane lane-${l.name}`} style={`--c:${l.tone};--end:${pct(l.bar.val)}%`} data-ms={l.bar.val}>
-                  <div class="lane-head">
-                    <span class="name">{l.label}</span>
-                    <span class="over">{over(l.bar.val)}</span>
-                    <span class="fin">{l.bar.disp}</span>
-                  </div>
-                  <div class="lane-track">
-                    <span class="trail" />
-                    <span class="ship" />
-                    <span class="stamp">{l.bar.val > trackMax ? 'still running' : 'done'}</span>
-                  </div>
-                </div>
-              ))
-            }
-          </div>
-          <p class="race-foot">
-            Cold build of {benchRows[0] && '3,270'} tasks across 1,090 packages, every runner on the
-            same commands and the same concurrency. The <a href="#bench">full table</a> is below;
-            the harness is in the <a href={href('benchmarks/')}>benchmarks</a>.
-          </p>
         </div>
       </section>
 
-      <!-- ===================== Features ===================== -->
-      <section class="section container">
-        <div class="section-head reveal">
-          <p class="vx-kicker">// only in vx</p>
-          <h2>What sets vx apart.</h2>
-        </div>
-        <div class="feat-grid">
-          {
-            features.map((f, i) => (
-              <div class="feat-card tilt reveal" style={`--c:${f.tone};--i:${i}`}>
-                <span class="ico">
-                  <svg
-                    width="21"
-                    height="21"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    set:html={featIcons[f.icon]}
-                  />
-                </span>
-                <h3>{f.title}</h3>
-                <p>{f.body}</p>
-              </div>
-            ))
-          }
-        </div>
-      </section>
-
-      <!-- ===================== Platform layer ===================== -->
-      <section class="section container">
-        <div class="section-head reveal">
-          <p class="vx-kicker">// built to be built on</p>
-          <h2>The seams, not the platform.</h2>
-          <p class="vx-sub">
-            One binary, nine seams, no service. Every contract is documented and
-            every hook is optional; remote caches, remote execution, telemetry,
-            AI agents, learned scheduling and your own verbs are packages on top —
-            first-party or yours — never features inside. Core ships none of them.
-          </p>
-        </div>
-        <div class="feat-grid">
-          {
-            platform.map((f, i) => (
-              <a
-                class="feat-card platform-card tilt reveal"
-                style={`--c:${f.tone};--i:${i}`}
-                href={
-                  f.icon === 'spark'
-                    ? href('guides/mcp/')
-                    : f.icon === 'plug'
-                      ? href('guides/plugins/')
-                      : f.icon === 'wire'
-                        ? href('guides/extensibility/')
-                        : f.icon === 'cloud'
-                          ? href('guides/remote-caching/')
-                          : href('guides/plugins/') + '#keys-and-order'
-                }
-              >
-                <span class="ico">
-                  <svg
-                    width="21"
-                    height="21"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    set:html={featIcons[f.icon]}
-                  />
-                </span>
-                <h3>{f.title}</h3>
-                <p>{f.body}</p>
-                <span class="learn">Learn more →</span>
-              </a>
-            ))
-          }
-        </div>
-      </section>
-
-      <!-- ===================== Benchmark ===================== -->
-      <section class="bench" id="bench">
+      <!-- ===================== Proof ===================== -->
+      <section class="flow proof" id="bench">
         <div class="bench-panel container vx-scanlines reveal">
           <div class="bench-head">
             <div>
-              <p class="vx-kicker">// runner overhead · 3,270 tasks · 1,090 packages</p>
+              <p class="vx-kicker">// the receipts · 3,270 tasks · 1,090 packages</p>
               <h2>Your tasks, plus a few percent.</h2>
             </div>
             <div class="bench-legend">
@@ -601,13 +692,10 @@ const footCols = {
           <div class="bench-rows">
             {
               benchRows.map((r) => {
-                // Proportional within the row. The scale is the largest value that
-                // is not an outlier (more than 10× the next largest); an outlier is
-                // drawn clipped with a break so the others stay readable. No
-                // minimum width — a small bar is small.
                 const sorted = [...r.bars.map((b) => b.val)].sort((a, b) => b - a)
                 const outlier = sorted.length > 1 && sorted[0]! > 10 * sorted[1]!
                 const rowMax = (outlier ? sorted[1]! : sorted[0]!) * 1.05
+                const best = r.bars.find((x) => x.best)?.val ?? 1
                 return (
                   <div class="bench-row">
                     <p class="task">{r.task}</p>
@@ -624,11 +712,7 @@ const footCols = {
                             <span class="fill" />
                           </span>
                           <span class="disp">{b.disp}</span>
-                          <span class="ratio">
-                            {b.name === 'baseline' || b.best
-                              ? ''
-                              : `${(b.val / (r.bars.find((x) => x.best)?.val ?? 1)).toFixed(1)}×`}
-                          </span>
+                          <span class="ratio">{b.name === 'baseline' || b.best ? '' : `${(b.val / best).toFixed(1)}×`}</span>
                         </div>
                       )
                     })}
@@ -664,47 +748,25 @@ const footCols = {
         </div>
       </section>
 
-      <!-- ===================== Config ===================== -->
-      <section class="config">
-        <div class="config-grid container reveal">
-          <div>
-            <p class="vx-kicker">// configuration</p>
-            <h2>Config is just<br />TypeScript.</h2>
-            <p>
-              Not JSON, not YAML. <code>vx.config.ts</code> is evaluated before hashing, so imports,
-              shared presets and computed values all participate in the cache key. Tasks are shell
-              commands; declare inputs and outputs with full type-safety.
+      <!-- ===================== Warp in ===================== -->
+      <section class="scene pin outro" data-scene="outro" style="--len:1.6">
+        <div class="stage">
+          <canvas class="warp warp-out" aria-hidden="true"></canvas>
+          <div class="outro-copy">
+            <p class="vx-kicker">// migrate</p>
+            <h2 class="giant-2">Warp in.</h2>
+            <p class="outro-lede">
+              A Turborepo workspace runs under vx as it is: one plugin, no config rewritten. When you
+              want the TypeScript, <code>bunx @vzn/vx-migrate</code> writes it from your
+              <code class="turbo">turbo.json</code> or your <code class="nx">Nx project graph</code>.
+              What works there works here; the parity map proves every behaviour with a test.
             </p>
-            <a class="btn btn-ghost" href={href('schema/')}
-              >Read the config reference <span class="arr">→</span></a
-            >
-          </div>
-          <div class="code-card">
-            <div class="bar"><span class="dot"></span><span class="name">vx.config.ts</span></div>
-            <pre><div><span class="tk-com">// vx.config.ts — next to any package.json</span></div><div><span class="tk-kw">import</span><span class="tk-txt"> {'{'} </span><span class="tk-fn">defineProject</span><span class="tk-txt"> {'}'} </span><span class="tk-kw">from</span><span class="tk-str"> '@vzn/vx'</span></div><div style="height:10px"></div><div><span class="tk-kw">export default</span><span class="tk-txt"> </span><span class="tk-fn">defineProject</span><span class="tk-punc">{'({'}</span></div><div><span class="tk-txt">  tasks: {'{'}</span></div><div><span class="tk-txt">    build: {'{'}</span></div><div><span class="tk-txt">      exec: {'{'} command: </span><span class="tk-str">'tsc -b'</span><span class="tk-txt"> {'}'},</span></div><div><span class="tk-txt">      dependsOn: [</span><span class="tk-str">'^build'</span><span class="tk-txt">],</span></div><div><span class="tk-txt">      cache: {'{'}</span></div><div><span class="tk-txt">        inputs: {'{'} files: [</span><span class="tk-str">'src/**'</span><span class="tk-txt">] {'}'},</span></div><div><span class="tk-txt">        outputs: {'{'} files: [</span><span class="tk-str">'dist/**'</span><span class="tk-txt">] {'}'},</span></div><div><span class="tk-txt">      {'}'},</span></div><div><span class="tk-txt">    {'}'},</span></div><div><span class="tk-txt">    test: {'{'}</span></div><div><span class="tk-txt">      exec: {'{'} command: </span><span class="tk-str">'bun test'</span><span class="tk-txt"> {'}'},</span></div><div><span class="tk-txt">      dependsOn: [</span><span class="tk-str">'build'</span><span class="tk-txt">],</span></div><div><span class="tk-txt">      cache: {'{'} inputs: {'{'} files: [</span><span class="tk-str">'src/**'</span><span class="tk-txt">] {'}'}, outputs: {'{'} files: [] {'}'} {'}'},</span></div><div><span class="tk-txt">    {'}'},</span></div><div><span class="tk-txt">  {'}'},</span></div><div><span class="tk-punc">{'})'}</span></div></pre>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== Migrate CTA ===================== -->
-      <section class="migrate vx-grid-bg">
-        <div class="glow"></div>
-        <div class="beam" aria-hidden="true"></div>
-        <div class="inner reveal">
-          <p class="vx-kicker">// migrate</p>
-          <h2>Warp in from Turbo or Nx.<br /><span class="phosphor">In an afternoon.</span></h2>
-          <p>
-            <code>bunx @vzn/vx-migrate</code> converts your <code class="turbo">turbo.json</code> or{' '}
-            <code class="nx">Nx project graph</code> into a real <code>vx.config.ts</code>. The
-            mapping is mechanical — keep your task graph and your speed, drop the daemon and the
-            platform. What works there works here: the parity map names every behaviour a Turbo or
-            Nx user relies on and the test that proves it.
-          </p>
-          <div class="row">
-            <div class="cmd-pill"><span class="dollar">$</span> bunx @vzn/vx-migrate</div>
-            <a class="btn btn-primary btn-lg" href={href('migrate/from-turborepo/')}
-              >Read migration guide <span class="arr">→</span></a
-            >
+            <div class="row">
+              <div class="cmd-pill"><span class="dollar">$</span> bunx @vzn/vx-migrate</div>
+              <a class="btn btn-primary btn-lg" href={href('migrate/from-turborepo/')}
+                >Read the migration guide <span class="arr">→</span></a
+              >
+            </div>
           </div>
         </div>
       </section>
@@ -717,9 +779,7 @@ const footCols = {
               <img src={href('logo-mark.svg')} width="24" height="24" alt="vx" />
               <span class="word">vx</span>
             </div>
-            <p>
-              One task runner, built to be built on. One binary · MIT licensed.
-            </p>
+            <p>One task runner, built to be built on. One binary · MIT licensed.</p>
           </div>
           {
             Object.entries(footCols).map(([title, links]) => (
@@ -742,32 +802,28 @@ const footCols = {
     </div>
 
     <script>
-      // Every effect below is decoration over a page that reads fine without
-      // it: the DOM ships complete, the numbers are server-rendered, and a
-      // reduced-motion preference turns the motion off at the source.
+      // The film. Every effect here decorates a page that reads complete
+      // without it — the DOM ships whole and the numbers are server-rendered.
+      // `prefers-reduced-motion` turns the motion off at the source: pinned
+      // scenes render their final frame and nothing scrubs.
       const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
       const fine = matchMedia('(hover: hover) and (pointer: fine)').matches
+      const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
+      const ease = (t: number) => 1 - Math.pow(1 - clamp01(t), 3)
+      const fmt = (ms: number) => {
+        const s = Math.floor(ms / 1000)
+        return `T+${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+      }
 
-      // Install-pill: copy the command, flip to a checkmark briefly.
       document.querySelectorAll<HTMLButtonElement>('.install-pill').forEach((pill) => {
         pill.addEventListener('click', () => {
-          const cmd = pill.dataset.copy ?? ''
-          navigator.clipboard?.writeText(cmd).catch(() => {})
+          navigator.clipboard?.writeText(pill.dataset.copy ?? '').catch(() => {})
           pill.classList.add('copied')
           setTimeout(() => pill.classList.remove('copied'), 1400)
         })
       })
 
-      // Scroll progress beam in the nav.
-      const progress = document.querySelector<HTMLElement>('.nav .progress')
-      const onScroll = () => {
-        const max = document.documentElement.scrollHeight - innerHeight
-        if (progress) progress.style.width = `${max > 0 ? (scrollY / max) * 100 : 0}%`
-      }
-      addEventListener('scroll', onScroll, { passive: true })
-      onScroll()
-
-      // Reveal on entry, once. Cards stagger by their --i.
+      // ---- reveals for the flowing sections ----
       const revealed = new IntersectionObserver(
         (entries) => {
           for (const e of entries) {
@@ -780,129 +836,7 @@ const footCols = {
       )
       document.querySelectorAll('.reveal').forEach((el) => revealed.observe(el))
 
-      // Stat tiles count up from zero when the hero is in view.
-      const countUp = (num: HTMLElement) => {
-        const target = num.textContent ?? ''
-        const value = Number(target)
-        if (!Number.isFinite(value) || reduced) return
-        const decimals = (target.split('.')[1] ?? '').length
-        const start = performance.now()
-        const dur = 1400
-        const tick = (now: number) => {
-          const t = Math.min(1, (now - start) / dur)
-          const eased = 1 - Math.pow(1 - t, 3)
-          num.textContent = (value * eased).toFixed(decimals)
-          if (t < 1) requestAnimationFrame(tick)
-          else num.textContent = target
-        }
-        requestAnimationFrame(tick)
-      }
-      const stats = document.querySelector('.hero .stats')
-      if (stats) {
-        const once = new IntersectionObserver((entries) => {
-          if (!entries.some((e) => e.isIntersecting)) return
-          stats.querySelectorAll<HTMLElement>('.num').forEach(countUp)
-          once.disconnect()
-        })
-        once.observe(stats)
-      }
-
-      // The hero's warp field: a starfield streaming past the camera, tinted
-      // in the page's three accents, leaning toward the cursor. Paused while
-      // the hero is off screen; a single still frame under reduced motion.
-      const canvas = document.querySelector<HTMLCanvasElement>('canvas.warp')
-      const hero = document.querySelector<HTMLElement>('.hero')
-      if (canvas && hero) {
-        const ctx = canvas.getContext('2d')!
-        const tints = ['198,248,78', '94,224,255', '255,157,66', '242,245,239']
-        type Star = { x: number; y: number; z: number; pz: number; c: string }
-        let stars: Star[] = []
-        let w = 0
-        let h = 0
-        let dpr = 1
-        let mx = 0
-        let my = 0
-        let raf = 0
-        let visible = true
-        const size = () => {
-          dpr = Math.min(devicePixelRatio || 1, 2)
-          w = hero.clientWidth
-          h = hero.clientHeight
-          canvas.width = Math.floor(w * dpr)
-          canvas.height = Math.floor(h * dpr)
-          canvas.style.width = `${w}px`
-          canvas.style.height = `${h}px`
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-          const n = Math.min(520, Math.floor((w * h) / 2600))
-          stars = Array.from({ length: n }, () => spawn(true))
-        }
-        const spawn = (anywhere = false): Star => {
-          const z = anywhere ? Math.random() * 1 + 0.05 : 1
-          return {
-            x: (Math.random() * 2 - 1) * 1.6,
-            y: (Math.random() * 2 - 1) * 1.0,
-            z,
-            pz: z,
-            c: tints[Math.floor(Math.random() * tints.length)]!,
-          }
-        }
-        const frame = () => {
-          const cx = w * 0.62 + mx * 28
-          const cy = h * 0.42 + my * 18
-          const f = Math.min(w, h) * 0.9
-          ctx.fillStyle = 'rgba(10, 11, 13, 0.32)'
-          ctx.fillRect(0, 0, w, h)
-          ctx.lineCap = 'round'
-          const speed = reduced ? 0 : 0.0075
-          for (const s of stars) {
-            s.pz = s.z
-            s.z -= speed
-            if (s.z <= 0.03) {
-              Object.assign(s, spawn())
-              continue
-            }
-            const sx = cx + (s.x / s.z) * f
-            const sy = cy + (s.y / s.z) * f
-            const px = cx + (s.x / s.pz) * f
-            const py = cy + (s.y / s.pz) * f
-            if (sx < -50 || sx > w + 50 || sy < -50 || sy > h + 50) {
-              Object.assign(s, spawn())
-              continue
-            }
-            const depth = 1 - s.z
-            ctx.strokeStyle = `rgba(${s.c}, ${0.08 + depth * 0.6})`
-            ctx.lineWidth = 0.6 + depth * 2.2
-            ctx.beginPath()
-            ctx.moveTo(px, py)
-            ctx.lineTo(sx, sy)
-            ctx.stroke()
-          }
-          if (!reduced && visible) raf = requestAnimationFrame(frame)
-        }
-        size()
-        addEventListener('resize', () => size(), { passive: true })
-        if (fine) {
-          hero.addEventListener('pointermove', (e) => {
-            const r = hero.getBoundingClientRect()
-            mx = ((e.clientX - r.left) / r.width - 0.5) * 2
-            my = ((e.clientY - r.top) / r.height - 0.5) * 2
-            hero.style.setProperty('--sx', `${e.clientX - r.left}px`)
-            hero.style.setProperty('--sy', `${e.clientY - r.top}px`)
-          })
-        }
-        new IntersectionObserver((entries) => {
-          visible = entries.some((e) => e.isIntersecting)
-          if (visible && !reduced && raf === 0) raf = requestAnimationFrame(frame)
-          if (!visible && raf) {
-            cancelAnimationFrame(raf)
-            raf = 0
-          }
-        }).observe(hero)
-        if (reduced) frame()
-        else raf = requestAnimationFrame(frame)
-      }
-
-      // Cards tilt toward the cursor and carry a light that follows it.
+      // ---- cards tilt toward the cursor ----
       if (fine && !reduced) {
         document.querySelectorAll<HTMLElement>('.tilt').forEach((card) => {
           card.addEventListener('pointermove', (e) => {
@@ -921,7 +855,7 @@ const footCols = {
         })
       }
 
-      // The terminal types its command, then its rows land one by one.
+      // ---- the terminal types its command, then its rows land ----
       const term = document.querySelector<HTMLElement>('[data-term]')
       if (term && !reduced) {
         const cmd = term.querySelector<HTMLElement>('.term-prompt .cmd')
@@ -930,7 +864,9 @@ const footCols = {
         term.classList.add('playing')
         rows.forEach((r) => r.classList.add('pending'))
         if (cmd) cmd.textContent = ''
-        const play = () => {
+        const once = new IntersectionObserver((entries) => {
+          if (!entries.some((e) => e.isIntersecting)) return
+          once.disconnect()
           let i = 0
           const type = () => {
             if (!cmd) return
@@ -941,69 +877,266 @@ const footCols = {
               setTimeout(() => term.classList.remove('playing'), 260 + rows.length * 70 + 200)
             }
           }
-          setTimeout(type, 500)
-        }
-        const once = new IntersectionObserver((entries) => {
-          if (!entries.some((e) => e.isIntersecting)) return
-          once.disconnect()
-          play()
+          setTimeout(type, 400)
         })
         once.observe(term)
       }
 
-      // The race: three ships cross the same graph at sixty times real
-      // speed. Positions are the real cold-build times against a track
-      // scaled to Turbo's; Nx runs off the end and keeps running.
-      const race = document.querySelector<HTMLElement>('[data-race]')
-      if (race) {
-        const clock = race.querySelector<HTMLElement>('[data-clock]')
-        const lanes = [...race.querySelectorAll<HTMLElement>('.lane')]
-        const max = Number(race.dataset.max)
-        const speed = 60
-        let raf = 0
-        let start = 0
-        const fmt = (ms: number) => {
-          const s = Math.floor(ms / 1000)
-          return `T+${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-        }
-        const set = (elapsed: number) => {
-          if (clock) clock.textContent = fmt(Math.min(elapsed, max * 1.15))
-          for (const lane of lanes) {
-            const ms = Number(lane.dataset.ms)
-            const at = Math.min(elapsed, ms)
-            lane.style.setProperty('--pos', `${Math.min(100, (at / max) * 100)}%`)
-            lane.classList.toggle('done', elapsed >= ms)
-            lane.classList.toggle('offtrack', ms > max && elapsed >= max)
-          }
-        }
-        const run = () => {
-          cancelAnimationFrame(raf)
-          if (reduced) {
-            set(max * 1.15)
-            lanes.forEach((l) => l.classList.add('done'))
-            return
-          }
-          race.classList.add('running')
-          start = performance.now()
-          const tick = (now: number) => {
-            const elapsed = (now - start) * speed
-            set(elapsed)
-            if (elapsed < max * 1.15) raf = requestAnimationFrame(tick)
-            else race.classList.remove('running')
-          }
-          raf = requestAnimationFrame(tick)
-        }
-        race.querySelector('[data-replay]')?.addEventListener('click', run)
-        const once = new IntersectionObserver(
-          (entries) => {
-            if (!entries.some((e) => e.isIntersecting)) return
-            once.disconnect()
-            run()
-          },
-          { threshold: 0.35 },
-        )
-        once.observe(race)
+      // ---- canvases sized to their stage, at most 2× ----
+      const fit = (canvas: HTMLCanvasElement) => {
+        const stage = canvas.parentElement!
+        const dpr = Math.min(devicePixelRatio || 1, 2)
+        const w = stage.clientWidth
+        const h = stage.clientHeight
+        canvas.width = Math.floor(w * dpr)
+        canvas.height = Math.floor(h * dpr)
+        canvas.style.width = `${w}px`
+        canvas.style.height = `${h}px`
+        const ctx = canvas.getContext('2d')!
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        return { ctx, w, h }
       }
+
+      // ---- warp fields (cold open and outro): stars streaming past the camera ----
+      type Star = { x: number; y: number; z: number; pz: number; c: string }
+      const tints = ['198,248,78', '94,224,255', '255,157,66', '242,245,239']
+      const warpFields = [...document.querySelectorAll<HTMLCanvasElement>('canvas.warp')].map((canvas) => {
+        let stars: Star[] = []
+        let size = fit(canvas)
+        const spawn = (anywhere = false): Star => {
+          const z = anywhere ? Math.random() * 1 + 0.05 : 1
+          return { x: (Math.random() * 2 - 1) * 1.6, y: (Math.random() * 2 - 1) * 1.0, z, pz: z, c: tints[Math.floor(Math.random() * tints.length)]! }
+        }
+        const reseed = () => {
+          size = fit(canvas)
+          stars = Array.from({ length: Math.min(700, Math.floor((size.w * size.h) / 2200)) }, () => spawn(true))
+        }
+        reseed()
+        let mx = 0
+        let my = 0
+        if (fine) {
+          canvas.parentElement!.addEventListener('pointermove', (e) => {
+            const r = canvas.getBoundingClientRect()
+            mx = ((e.clientX - r.left) / r.width - 0.5) * 2
+            my = ((e.clientY - r.top) / r.height - 0.5) * 2
+          })
+        }
+        // `speed` in [0, 1]: the open accelerates as you scroll into the page.
+        const draw = (speed: number) => {
+          const { ctx, w, h } = size
+          const cx = w * 0.5 + mx * 30
+          const cy = h * 0.46 + my * 20
+          const f = Math.min(w, h) * 0.9
+          ctx.fillStyle = `rgba(10, 11, 13, ${0.22 + (1 - speed) * 0.4})`
+          ctx.fillRect(0, 0, w, h)
+          ctx.lineCap = 'round'
+          const v = reduced ? 0 : 0.003 + speed * 0.028
+          for (const s of stars) {
+            s.pz = s.z
+            s.z -= v
+            if (s.z <= 0.03) {
+              Object.assign(s, spawn())
+              continue
+            }
+            const sx = cx + (s.x / s.z) * f
+            const sy = cy + (s.y / s.z) * f
+            const px = cx + (s.x / s.pz) * f
+            const py = cy + (s.y / s.pz) * f
+            if (sx < -80 || sx > w + 80 || sy < -80 || sy > h + 80) {
+              Object.assign(s, spawn())
+              continue
+            }
+            const depth = 1 - s.z
+            ctx.strokeStyle = `rgba(${s.c}, ${0.06 + depth * 0.7})`
+            ctx.lineWidth = 0.5 + depth * (1.6 + speed * 2.4)
+            ctx.beginPath()
+            ctx.moveTo(px, py)
+            ctx.lineTo(sx, sy)
+            ctx.stroke()
+          }
+        }
+        return { canvas, draw, reseed }
+      })
+
+      // ---- the orbit: one lap is the ideal schedule; runners are comets ----
+      const clocks = document.querySelector<HTMLElement>('[data-scene="clocks"]')
+      const orbit = clocks?.querySelector<HTMLCanvasElement>('canvas.orbit') ?? null
+      const laneEls = [...(clocks?.querySelectorAll<HTMLElement>('.ll') ?? [])]
+      const clockEl = clocks?.querySelector<HTMLElement>('[data-clock]') ?? null
+      const rateEl = clocks?.querySelector<HTMLElement>('[data-rate]') ?? null
+      const caps = [...(clocks?.querySelectorAll<HTMLElement>('.cap') ?? [])]
+      const lapMs = Number(document.querySelector<HTMLElement>('[data-scene="clocks"]')?.dataset.lap) || 1
+      const runnerMs = (clocks?.dataset.runners ?? '0,0,0').split(',').map(Number)
+      const runners = [
+        { name: 'vx', ms: runnerMs[0] ?? 0, c: '198,248,78' },
+        { name: 'turbo', ms: runnerMs[1] ?? 0, c: '255,94,156' },
+        { name: 'nx', ms: runnerMs[2] ?? 0, c: '106,168,255' },
+      ]
+      let orbitSize = orbit ? fit(orbit) : null
+      const drawOrbit = (p: number) => {
+        if (!orbit || !orbitSize) return
+        const { ctx, w, h } = orbitSize
+        // Two phases: real time at 60× to just past Turbo's finish, then
+        // tenfold compression so Nx's remaining laps fit the scroll.
+        const split = 0.62
+        const turbo = runners[1]!.ms
+        const nx = runners[2]!.ms
+        const t = p < split ? (p / split) * (turbo + 12000) : turbo + 12000 + ((p - split) / (1 - split)) * (nx - turbo - 12000 + 1)
+        if (clockEl) clockEl.textContent = fmt(Math.min(t, nx))
+        if (rateEl) rateEl.textContent = p < split ? '×60' : '×600'
+        for (const cap of caps) cap.classList.toggle('on', t >= Number(cap.dataset.at))
+        ctx.clearRect(0, 0, w, h)
+        const cx = w / 2
+        const cy = h / 2
+        const R = Math.min(w, h) * 0.34
+        ctx.lineWidth = 1
+        ctx.strokeStyle = 'rgba(203, 209, 201, 0.14)'
+        ctx.beginPath()
+        ctx.arc(cx, cy, R, 0, Math.PI * 2)
+        ctx.stroke()
+        for (let i = 0; i < 60; i++) {
+          const a = (i / 60) * Math.PI * 2 - Math.PI / 2
+          const long = i % 5 === 0
+          ctx.strokeStyle = long ? 'rgba(203, 209, 201, 0.35)' : 'rgba(203, 209, 201, 0.12)'
+          ctx.beginPath()
+          ctx.moveTo(cx + Math.cos(a) * (R - (long ? 14 : 7)), cy + Math.sin(a) * (R - (long ? 14 : 7)))
+          ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R)
+          ctx.stroke()
+        }
+        // The start/finish line at twelve o'clock.
+        ctx.strokeStyle = 'rgba(242, 245, 239, 0.6)'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(cx, cy - R - 22)
+        ctx.lineTo(cx, cy - R + 18)
+        ctx.stroke()
+        runners.forEach((r, k) => {
+          const at = Math.min(t, r.ms)
+          const laps = at / lapMs
+          const a = laps * Math.PI * 2 - Math.PI / 2
+          const rr = R - 36 * k
+          const done = t >= r.ms
+          const tail = done ? 0.35 : Math.min(1.4, 0.35 + Math.min(t, r.ms) / 40000)
+          const grad = ctx.createLinearGradient(cx + Math.cos(a - tail) * rr, cy + Math.sin(a - tail) * rr, cx + Math.cos(a) * rr, cy + Math.sin(a) * rr)
+          grad.addColorStop(0, `rgba(${r.c}, 0)`)
+          grad.addColorStop(1, `rgba(${r.c}, 0.9)`)
+          ctx.strokeStyle = grad
+          ctx.lineWidth = 10
+          ctx.lineCap = 'round'
+          ctx.beginPath()
+          ctx.arc(cx, cy, rr, a - tail, a)
+          ctx.stroke()
+          const x = cx + Math.cos(a) * rr
+          const y = cy + Math.sin(a) * rr
+          const glow = ctx.createRadialGradient(x, y, 0, x, y, done ? 30 : 22)
+          glow.addColorStop(0, '#fff')
+          glow.addColorStop(0.25, `rgba(${r.c}, 1)`)
+          glow.addColorStop(1, `rgba(${r.c}, 0)`)
+          ctx.fillStyle = glow
+          ctx.beginPath()
+          ctx.arc(x, y, done ? 30 : 22, 0, Math.PI * 2)
+          ctx.fill()
+          laneEls[k]?.classList.toggle('done', done)
+        })
+      }
+
+      // ---- warm: 3,270 dots lit in a 510 ms sweep ----
+      const warm = document.querySelector<HTMLElement>('[data-scene="warm"]')
+      const gridCanvas = warm?.querySelector<HTMLCanvasElement>('canvas.grid') ?? null
+      const warmNum = warm?.querySelector<HTMLElement>('[data-warm]') ?? null
+      let gridSize = gridCanvas ? fit(gridCanvas) : null
+      const drawGrid = (p: number) => {
+        if (!gridCanvas || !gridSize) return
+        const { ctx, w, h } = gridSize
+        ctx.clearRect(0, 0, w, h)
+        // 3,270 dots fill the stage; the sweep lights them along a diagonal
+        // so the wave reads as a front crossing the graph.
+        const cols = w > 700 ? 109 : 55
+        const rows = Math.ceil(3270 / cols)
+        const cw = w / cols
+        const ch = h / rows
+        const front = ease(p / 0.55) * (cols + rows)
+        if (warmNum) warmNum.textContent = String(Math.round(Math.min(1, p / 0.55) * 510))
+        for (let i = 0; i < 3270; i++) {
+          const c = i % cols
+          const r = Math.floor(i / cols)
+          const x = c * cw + cw / 2
+          const y = r * ch + ch / 2
+          const d = c + r
+          const on = d < front
+          const fresh = on && d > front - 4
+          ctx.fillStyle = on ? (fresh ? 'rgba(216,255,107,0.9)' : 'rgba(198,248,78,0.3)') : 'rgba(203,209,201,0.07)'
+          ctx.beginPath()
+          ctx.arc(x, y, on ? (fresh ? 2.6 : 1.9) : 1.2, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+
+      // ---- the scrubber: each pinned scene owns a progress in [0, 1] ----
+      const scenes = [...document.querySelectorAll<HTMLElement>('.scene.pin')]
+      const progress = document.querySelector<HTMLElement>('.nav .progress')
+      let ticking = false
+      const render = () => {
+        ticking = false
+        const max = document.documentElement.scrollHeight - innerHeight
+        if (progress) progress.style.width = `${max > 0 ? (scrollY / max) * 100 : 0}%`
+        for (const scene of scenes) {
+          const r = scene.getBoundingClientRect()
+          const span = scene.offsetHeight - innerHeight
+          const p = reduced ? 1 : clamp01(span > 0 ? -r.top / span : 1)
+          const onScreen = r.bottom > 0 && r.top < innerHeight
+          scene.style.setProperty('--p', p.toFixed(4))
+          scene.classList.toggle('live', onScreen)
+          const kind = scene.dataset.scene
+          if (kind === 'clocks' && onScreen) drawOrbit(p)
+          if (kind === 'warm' && onScreen) drawGrid(p)
+          if (kind === 'none') {
+            scene.querySelectorAll<HTMLElement>('.strike').forEach((s, k) => s.classList.toggle('gone', p > 0.12 + k * 0.18))
+            scene.classList.toggle('one-in', p > 0.66)
+          }
+        }
+      }
+      const onScroll = () => {
+        if (ticking) return
+        ticking = true
+        requestAnimationFrame(render)
+      }
+      addEventListener('scroll', onScroll, { passive: true })
+      addEventListener('resize', () => {
+        orbitSize = orbit ? fit(orbit) : null
+        gridSize = gridCanvas ? fit(gridCanvas) : null
+        warpFields.forEach((f) => f.reseed())
+        render()
+      })
+
+      // ---- the warp fields run while their scene is on screen ----
+      const frame = () => {
+        for (const f of warpFields) {
+          const scene = f.canvas.closest<HTMLElement>('.scene')!
+          if (!scene.classList.contains('live')) continue
+          const p = Number(scene.style.getPropertyValue('--p') || 0)
+          f.draw(scene.dataset.scene === 'open' ? 0.15 + p * 0.85 : 0.5)
+        }
+        if (!reduced) requestAnimationFrame(frame)
+      }
+
+      // ---- cold open: the command types, then the title rises ----
+      const open = document.querySelector<HTMLElement>('[data-scene="open"]')
+      const typed = open?.querySelector<HTMLElement>('.typed') ?? null
+      if (open && typed && !reduced) {
+        const text = typed.dataset.type ?? ''
+        let i = 0
+        const type = () => {
+          typed.textContent = text.slice(0, ++i)
+          if (i < text.length) setTimeout(type, 42 + Math.random() * 50)
+          else setTimeout(() => open.classList.add('titled'), 320)
+        }
+        setTimeout(type, 500)
+      } else open?.classList.add('titled')
+
+      render()
+      if (reduced) warpFields.forEach((f) => f.draw(0.4))
+      else requestAnimationFrame(frame)
     </script>
   </body>
 </html>

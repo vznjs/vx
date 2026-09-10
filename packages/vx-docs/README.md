@@ -24,31 +24,44 @@ Hand-authored pages live only in the site and ARE tracked:
 ## The landing page
 
 `src/pages/index.astro` with `src/styles/landing.css` is a standalone
-page (its own nav, footer and theme; the docs stay Starlight). Two
-layers live in it:
+page (its own nav, footer and theme; the docs stay Starlight). It is a
+scroll-driven film: five pinned scenes, each a `section.scene.pin`
+whose height is `--len` viewports and whose sticky `.stage` is drawn
+from a scroll progress `--p` (0..1) the script writes on every frame —
+the cold open (a warp field and the command typing itself), the clocks
+(three real cold-build times on one orbit, sixty times speed, then six
+hundred), the wall (the three overheads as monoliths, Nx clipped off
+the chart), the warm replay (the 510 ms over a dot sweep, with the
+three stat tiles), and "One binary." (the strikes) — then flowing
+sections (the cards, the pipeline rail, the live terminal, the proof
+panel) and the outro. Two rules hold across it:
 
 - **The numbers** are generated: `packages/vx-bench/update-site.ts`
-  rewrites the `benchRows` block, the three hero stat tiles and the two
-  benchmark note paragraphs from `results.json`, and `check.site`
-  fails when they drift. Edit the generator, not those regions.
-- **The motion** is decoration over a complete page: the warp-field
-  canvas, the perspective floor and cursor spotlight, the race, the
-  reveals, the tilting cards, the count-ups, the typewriter terminal,
-  the grain. No dependency; everything is the one `<script>` at the
-  bottom of the page and the "Cinematic layer" section of the
-  stylesheet. `prefers-reduced-motion` holds every piece still, and
-  the DOM reads complete with the script removed.
+  rewrites the `benchRows` block, the three stat tiles in the warm
+  scene and the two benchmark note paragraphs from `results.json`, and
+  `check.site` fails when they drift. Edit the generator, not those
+  regions. The clocks and the wall read the same constants
+  (`raceBase`, `raceVx`, `raceTurbo`, `raceNx`, `over()`), so a
+  re-benchmark reshapes every scene.
+- **The motion** is the one `<script>` at the bottom over a DOM that
+  reads complete without it: the scrubber, the canvases (warp, orbit,
+  grid), the reveals, the tilting cards, the typewriter. No dependency.
+  `prefers-reduced-motion` unpins every scene and holds each on its
+  final frame.
 
 To check it visually, drive the pre-installed Chromium from a scratch
 directory (never from this package — `playwright-core` is not a
-dependency of the site):
+dependency of the site), scrolling each `[data-scene]` to a progress
+and capturing it:
 
 ```sh
 bun --bun astro build && bun --bun astro preview --port 4321 &
 mkdir -p /tmp/pw && cd /tmp/pw && bun add playwright-core
 # then: chromium.launch({ executablePath: '/opt/pw-browsers/chromium-<n>/chrome-linux/chrome' }),
 # newPage({ viewport: { width: 390, height: 844 } }), goto('http://127.0.0.1:4321/vx/'),
-# and read document.documentElement.scrollWidth — it must equal the viewport width.
+# for each scene: scrollTo(scene.offsetTop + p * (scene.offsetHeight - innerHeight)),
+# wait two frames, screenshot; and read document.documentElement.scrollWidth —
+# it must equal the viewport width at 1440 and at 390.
 ```
 
 Chrome's `--screenshot` flag is not a substitute: it captures before

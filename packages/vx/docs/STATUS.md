@@ -1406,37 +1406,42 @@ equivalent — map it manually` on every run, for the value every
 125.  DONE (2026-09-10, late night — owner: "make the landing page a
       visual masterpiece … a tool from the future, cinematic, bending
       time and space, crushing competitors, really good visual
-      effects"): a cinematic layer over the same page, every number
-      still server-rendered from `results.json` and every generator
-      hook intact (`check.site` passes; the stat tiles, the bench data
-      block and the note paragraphs are what `update-site.ts` still
-      rewrites). Hero: a canvas warp field (up to 520 streaks in the
-      three accents, leaning toward the cursor, paused off screen), a
-      perspective grid floor running toward the viewer, a cursor
-      spotlight, "Bend time. / Not the rules." with a chromatic-aberration
-      second line, staggered rises, count-up stat tiles, and the
-      terminal typing its command before its rows land. New "Same
-      code. Different clocks." race: three ships on real cold-build
-      times at sixty times speed (vx done at +4% just past the ideal
-      line, Turbo done at the track's end, Nx running off it, "still
-      running"), a replay button, and the overhead read the generator's
-      way (`over()`: a percentage under 2×, a multiple above). Cards
-      tilt toward the cursor with a light that follows it; sections
-      reveal on entry; the bench bars grow on reveal with a ratio badge
-      per competitor; a scroll-progress beam in the nav; film grain and
-      a vignette over everything; a beam sweeping the migrate CTA. No
-      dependency; `prefers-reduced-motion` holds every piece still, and
-      the DOM reads complete without the script. Verified in a real
-      Chromium (playwright-core in the session scratchpad against
-      `/opt/pw-browsers`, never in the repo): the document is exactly
-      390 px wide on a phone, the reveals fire on scroll, the race
-      resolves; the first captures with Chrome's `--screenshot` flag
-      froze mid-animation and clipped the phone at a narrower viewport
-      than the layout — capture artefacts, not page bugs. Two real
-      regressions found and fixed on the way: the hero as a flex column
-      let the terminal's preformatted rows set its min width (the grid
-      may shrink now), and the appended stat rules outranked the phone
-      media query by cascade order (the phone block sits after them).
+      effects", then "I asked for complete cinematic breath taking
+      redesign … not just improved design"): the landing page rewritten
+      from scratch as a scroll-driven film. The first delivery layered
+      effects over the old page and was rejected; the second is a new
+      `index.astro` and `landing.css`. Five pinned scenes, each
+      `section.scene.pin` `--len` viewports tall with a sticky stage
+      the script scrubs by a scroll progress `--p`: the cold open (a
+      warp field of streaks toward the viewer, `vx run build --all`
+      typing itself, "Bend time. / Not the rules." rising in), the
+      clocks (three runners on one orbit at real cold-build times, ×60
+      then ×600 after vx and Turbo finish, captions at T+3:46, T+5:13,
+      T+34:44, the HUD reading the lap and the rate), the wall (the
+      three overheads as monoliths that rotate with the scroll, vx +8 s,
+      Turbo +1m 35s, Nx clipped "off the chart · 9.6×"), the warm replay
+      (510 ms over a diagonal dot sweep, the three stat tiles beneath
+      it), and "One binary." (daemon, cloud, walled features, rewrite
+      struck through with a glitch, the line blurring in); then the
+      flowing sections — the cards, the ten-stage pipeline rail with a
+      pulse, the live terminal and config, the proof panel with bars
+      and ratio badges — and the outro ("Warp in.", the install pill,
+      the migrate CTA). Every number is still server-rendered from
+      `results.json` and every generator hook intact (`check.site`
+      passes: the stat tiles, the bench data block and the note
+      paragraphs are what `update-site.ts` rewrites; the clocks and the
+      wall read the same `over()` constants, so a re-benchmark reshapes
+      every scene). No dependency; one `<script>`; the DOM reads
+      complete without it; `prefers-reduced-motion` unpins every scene
+      and holds each on its final frame. Verified in a real Chromium
+      (playwright-core in the session scratchpad, never in the repo):
+      every scene captured at several progresses at 1440 and at 390,
+      `scrollWidth` equal to the viewport at both. Two fixes found by
+      looking: the warm dot grid covered only the top of the stage and
+      fought the number (a full-bleed sweep under a dark backdrop now,
+      widened on a phone where the copy is centred), and the Nx
+      monolith's "off the chart" label sat inside the clip mask that
+      cuts the tower (the label lives outside the mask).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
