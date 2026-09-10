@@ -296,7 +296,7 @@ dryRun` on the contract, so a layer that delegates gets it for
     silent hits, and `full` frames both. A sixth column needs a user
     who cannot get there with `broad`. Warm check on this head as an
     unprivileged user under the real sandbox (`run lint.oxlint
-    lint.oxfmt` scoped to core, three warm reps): run 26–29 ms, whole
+lint.oxfmt` scoped to core, three warm reps): run 26–29 ms, whole
     process 94–100 ms, classify + probe 17–20 ms, the sandbox never
     armed — items 70 and 71 hold after the two DX batches.
 76. DONE (`vx <verb> --help` is the reference cut to the verb): since
@@ -359,7 +359,7 @@ lint.oxfmt` gate as an unprivileged user, three warm reps each:
     `node_modules` at all, two runs and `vx info --format json` — all
     green, nothing installed beside the binary.
     Compile flags re-probed the same day, so nobody re-runs it: `vx
-    version` through the binary is 32 ms with `--bytecode` and 75–82
+version` through the binary is 32 ms with `--bytecode` and 75–82
     ms without it (`--minify` alone, plain), min of five; a compiled
     hello-world is 8 ms, bare `bun -e` 8 ms, `bun src/bin.ts version`
     49 ms. The release flags stand; the ~24 ms above the floor is the
@@ -692,7 +692,7 @@ run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
     13.7 / 13.8 s under the gate's contention, `check.binary` takes
     1.0 s. (Both runs' one red task is `@vzn/vx-docs#build` refusing
     that box's Node 20 — environment, green in CI.) The `install →
-    ^build` chain itself is untouched and right: a dependant's tasks
+^build` chain itself is untouched and right: a dependant's tasks
     wait for what its deps BUILD, and core builds nothing a dependant
     consumes — it is consumed as source.
 
@@ -747,6 +747,20 @@ run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
     Pinned: the loader accepts it, and through `planRun` a dependant
     whose `^build` reaches an empty group runs only its own task
     (control: a `build` that does work is pulled in).
+
+91. DONE (owner's decision, 2026-09-10, night — technology plugins
+    are the community's): `@vzn/vx-infer` (item 88: `vite()`,
+    `vitest()`, `next()`, `tsc()`, `scripts()`) is retired the day it
+    shipped. The point stands and the seam stays — the `project`
+    stage visits every package, a config-less one as `{ tasks: {} }`,
+    and a plugin fills what the package did not declare, with the
+    package's own config always winning — but core's authors name no
+    tool: people write configs and import what they need, plugins may
+    auto-configure on top and modify project configs, and a plugin
+    for a given framework is for whoever uses that framework to write.
+    `@vzn/vx-turbo` stays as the adoption plugin it is. The recipe
+    lives in the plugins guide; the comparison row records the
+    decision. Recorded in Decisions.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
@@ -1202,7 +1216,7 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    staleness surface (directory mtimes across platforms). REFUTED as
    not worth it; revisit only if discovery's share grows.
    (f) DONE 2026-09-10 as item 75: `--cache-dir` on `vx why`, `vx
-   last`, `vx info` and `vx cache prune`, through one parser and one
+last`, `vx info` and `vx cache prune`, through one parser and one
    resolver. Was: a `vx run` flag only, leaving the reading verbs on
    the default directory.
    (g) `vx why` names a plugin `key` part but shows its digests
@@ -1228,7 +1242,7 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    lands in the same shard, not before. Refuted alongside: pre-bundling
    the CLI for the ~130 end-to-end spawns. One `bun bin.ts --version`
    costs 45–47 ms (bun's own start is 4 ms); a `bun build
-   --target=bun` bundle of the same entry costs 83–90 ms, slower, as
+--target=bun` bundle of the same entry costs 83–90 ms, slower, as
    the flag-less compile was in item 32, and the `--bytecode` form's
    ~17 ms gain would buy ~2 s of suite for a build step in every test
    run. The spawns stay on source.
@@ -1308,6 +1322,14 @@ then exits on SIGINT` times out again, keep that run's stdout: the
 
 ## Decisions (this arc)
 
+- **No first-party technology plugins (owner, 2026-09-10).** A plugin
+  that gives packages tasks from a framework's config (`vite()`,
+  `next()`, …) is the community's to write on the `project` stage; core
+  names no tool, and this repo ships no such plugin. `@vzn/vx-turbo` is an
+  adoption plugin, not a technology plugin, and stays.
+- **Windows is WSL (owner, 2026-09-10).** vx spawns POSIX shell and ships
+  linux / darwin binaries; a Windows developer runs it under WSL, and the
+  docs say so instead of listing Windows as a gap.
 - **One core per process (2026-09-10).** The running `vx` serves its
   own façade to every `@vzn/vx` import it evaluates. A plugin package
   never carries its own copy of core into a run; the host decides the

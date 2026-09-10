@@ -55,7 +55,6 @@ plugin, the `TaskExecutor` contract for an executor.
 | `@vzn/vx-github`           | `telemetry`          | GitHub Actions job summary and Checks API                                                                            |
 | `@vzn/vx-mcp`              | `commands`           | `vx mcp`, an MCP server for AI agents                                                                                |
 | `@vzn/vx-turbo`            | `project`            | a Turbo repo under vx with nothing written                                                                           |
-| `@vzn/vx-infer`            | `project`            | `scripts()` `vite()` `vitest()` `next()` `tsc()`: a config-less package gets the tasks its tools imply               |
 | `@vzn/vx-lockfile`         | `fingerprint`, `key` | `pnpm()` `bun()` `npm()` `yarn()`: the lockfile keyed per project — one install re-keys only the projects it reaches |
 
 ## Tests

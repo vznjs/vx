@@ -57,7 +57,6 @@ export default defineConfig({
           label: 'Build your monorepo',
           items: [
             { label: 'Configuring tasks', link: '/guides/tasks/' },
-            { label: 'Inferred tasks', link: '/guides/inferred-tasks/' },
             { label: 'Caching tasks', link: '/guides/caching/' },
             { label: 'Task dependencies', link: '/guides/task-dependencies/' },
             { label: 'Running & filtering tasks', link: '/guides/running-tasks/' },
