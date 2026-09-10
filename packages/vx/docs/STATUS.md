@@ -1023,7 +1023,33 @@ before · 2 attempts this run`), `--summarize`'s per-task
       budget and the cache key. A task driving another workspace (the
       control) is untouched. `tests/signal-handling.test.ts`,
       `tests/recursive-run.test.ts`, parity rows, `docs/cli.md` exit
-      codes.
+      codes. Measured (interleaved, 7 reps, 100 projects, against a
+      worktree at main 1c7a6a5): restore arm 186 → 180 ms median (min
+      178 → 173), no-restore 129 → 126 (125 → 122) — no cost, as two
+      env assignments on the miss path and one env read per run
+      predict. The day's `run.ts 1000 5`: 2,642 / 227 / 916 ms
+      no-cache / warm-no-restore / warm-restore against last night's
+      2,488 / 227 / 1,049.
+107.  DONE (2026-09-10, night — the 2026-07 parity doc's LOW rows,
+      closed): L7 pinned — a NUL, `\r` progress rewrites and raw ANSI
+      replay byte-identical from the SQLite row on a hit
+      (`tests/replay-fidelity.test.ts`; bun:sqlite binds and reads
+      TEXT with an explicit length, and nothing calls SQL `length()` on
+      `stdout`). L4 fixed — `docs/caching.md`'s invalidation table sent
+      `package.json`'s `workspaces` field to the fingerprint, which
+      has never hashed it; the row now names the real mechanism
+      (membership, step 1; the file per project, step 4) and
+      `tests/caching-doc-drift.test.ts` pins the fingerprint
+      enumeration and every step-3 row against
+      `WORKSPACE_FINGERPRINT_FILES`. L2 pinned — `../packages/*` is
+      refused loud naming the pattern; not made a path form, `./` being
+      root-relative by documented choice. L1 (symlinks fold as the
+      target string: code and doc already agree), L3 (root member
+      affected) and L6 (prune racing a restore, orphan grace) were
+      already true and pinned; the doc rows now say where. L5 (watch
+      across a checkout) stays open with M7/M8 until the watch harness
+      stops being flaky. M2 marked done with a `vx show`-in-a-task
+      control added.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

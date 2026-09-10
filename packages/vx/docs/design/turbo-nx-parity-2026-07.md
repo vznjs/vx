@@ -485,6 +485,8 @@ root)` / the resolved selection from inside a package dir. Whatever the chosen
 
 ### M2. A task whose command re-invokes `vx run` is not detected — infinite recursion
 
+- **Status 2026-09-10**: DONE (STATUS 106). `VX_RUN_WORKSPACE` / `VX_RUN_TASK` on every child; `run()` refuses its own root, naming the task. `tests/recursive-run.test.ts` — the loop, the terminating nested shape, a `vx show` control and a different-workspace control.
+
 - **Turbo behaviour**: `crates/turborepo/tests/recursive_turbo_test.rs`
   `test_recursive_turbo_invocation_detected` — a package script that calls
   `turbo run` is refused with `recursive_turbo_invocations` + "creating a loop".
@@ -724,6 +726,8 @@ contributes (fully decoupled)` at the unit level. What is missing is the
 
 ### L1. Symlinked input hashing semantics are unpinned (and the doc's claim is inaccurate for symlinks)
 
+- **Status 2026-09-10**: superseded by the v20+ OID design — a symlink folds as the blob of its target string (`git-inputs.ts`), and `docs/caching.md` § step 2 says so. Nothing left here.
+
 - **Turbo behaviour**: `crates/turborepo-scm/src/package_deps.rs`
   `test_hash_symlink` — pins that a
   symlink hashes to git's blob of the **link target string**.
@@ -743,6 +747,8 @@ contributes (fully decoupled)` at the unit level. What is missing is the
 
 ### L2. `--filter` path forms: `../`-prefixed patterns are not recognised as paths
 
+- **Status 2026-09-10**: pinned as the loud refusal (`tests/cli.test.ts`). `./` is root-relative in vx by documented choice (H5), so a `../` form has no root-relative meaning; not added.
+
 - **Turbo behaviour**: `infer_pkg_test.rs::test_filter_sibling_directory` —
   `-F '../apps/*'` from `packages/` selects `my-app`.
 - **vx equivalent**: `src/workspace/filter.ts:74` treats only `./…`, `.`,
@@ -755,6 +761,8 @@ contributes (fully decoupled)` at the unit level. What is missing is the
 - **Value**: LOW — loud failure, and `docs/cli.md` only ever documents `./<dir>`.
 
 ### L3. Root-level file change and the root project's affected status
+
+- **Status 2026-09-10**: already pinned — `tests/affected.test.ts` "a vx-lock.json change never marks a project affected, even the root project" has the root as a member and a root README edit selecting only it.
 
 - **Turbo behaviour**: `filter_run_test.rs::test_filter_git_range_with_unstaged`
   — an unstaged edit to a root-level `bar.txt` puts the root package (`//`) in
@@ -777,6 +785,8 @@ contributes (fully decoupled)` at the unit level. What is missing is the
 
 ### L4. `docs/caching.md` claims the workspace fingerprint covers `package.json`'s `workspaces` field — it does not
 
+- **Status 2026-09-10**: DONE (STATUS 107). The row now names the real mechanism (membership, step 1; the file per project, step 4) and `tests/caching-doc-drift.test.ts` pins the fingerprint list and that row against `WORKSPACE_FINGERPRINT_FILES`.
+
 - **Turbo behaviour**: n/a (documentation accuracy item found while checking
   `test_root_package_json_change_does_not_globally_affect_tasks`).
 - **vx equivalent**: `docs/caching.md` § Invalidation paths says "Edit
@@ -795,6 +805,8 @@ contributes (fully decoupled)` at the unit level. What is missing is the
 
 ### L5. `vx watch` and a git branch switch
 
+- **Status 2026-09-10**: open, with M7/M8 — needs the watch harness that is not flaky.
+
 - **Turbo behaviour**: `crates/turborepo-filewatch/src/hash_watcher.rs`
   `test_switch_branch` / `test_switch_branch_with_inputs` — a `git checkout`
   that rewrites many files
@@ -809,6 +821,8 @@ contributes (fully decoupled)` at the unit level. What is missing is the
   window is stressed by hundreds of simultaneous events.
 
 ### L6. Cache pruning concurrent with a save
+
+- **Status 2026-09-10**: already pinned — `tests/artifact-roundtrip.test.ts` "throws when the artifact vanished between the probe and the restore" and `tests/cache.test.ts` "prune() reaps an aged artifact or temp the index does not know, and nothing younger" (the save-in-flight side).
 
 - **Turbo behaviour**: `crates/turborepo-cache/src/fs.rs` eviction tests
   (`test_evict_removes_stale_entries`, `test_evict_by_size_removes_oldest_first`)
@@ -827,6 +841,8 @@ contributes (fully decoupled)` at the unit level. What is missing is the
 - **Value**: LOW — the guard exists; the race that motivated it is untested.
 
 ### L7. `--output-logs` and cache-hit log replay fidelity for control characters
+
+- **Status 2026-09-10**: DONE (STATUS 107) — `tests/replay-fidelity.test.ts`: a NUL, CR progress rewrites and raw ANSI replay byte-identical from the SQLite row (bun:sqlite binds and reads TEXT with an explicit length, so the NUL survives; SQL `length()` would stop at it, and nothing calls it on `stdout`).
 
 - **Turbo behaviour**: `run_logging.rs::test_log_prefix_modes` asserts the
   **cached log file** contains exactly what the live run printed (no prefixes

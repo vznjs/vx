@@ -85,6 +85,24 @@ describe('vx run inside a task', () => {
     expect(r.text).toContain('task app#ci runs `vx run` inside its own workspace')
   }, 30_000)
 
+  it('a task that runs another vx verb in its own workspace is untouched (control)', async () => {
+    await addProject(
+      root,
+      'app',
+      `
+        export default {
+          tasks: {
+            build: { exec: { command: 'echo built' } },
+            audit: { exec: { command: '${VX} show' } },
+          },
+        }
+      `,
+    )
+    const r = await runVx(root, ['audit', '--all'])
+    expect(r.text).not.toContain('inside its own workspace')
+    expect(r.code).toBe(0)
+  }, 30_000)
+
   it('drives a different workspace from a task (control)', async () => {
     await addProject(
       root,
