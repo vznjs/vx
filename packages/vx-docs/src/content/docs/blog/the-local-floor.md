@@ -1,6 +1,6 @@
 ---
 title: 'The local floor: running here is not a plugin'
-date: 2026-09-10
+date: 2026-09-10T23:40:00Z
 authors:
   - vzn
 tags:

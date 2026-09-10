@@ -1,6 +1,6 @@
 ---
 title: 'One command per task; the shell is the API'
-date: 2026-09-10
+date: 2026-09-10T23:43:00Z
 authors:
   - vzn
 tags:

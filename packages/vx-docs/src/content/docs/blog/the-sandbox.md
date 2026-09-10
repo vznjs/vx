@@ -1,6 +1,6 @@
 ---
 title: 'The sandbox: turning a declaration into a boundary'
-date: 2026-09-10
+date: 2026-09-10T23:48:00Z
 authors:
   - vzn
 tags:

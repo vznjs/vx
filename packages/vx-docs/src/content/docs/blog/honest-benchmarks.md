@@ -1,6 +1,6 @@
 ---
 title: 'Benchmarks you can re-run'
-date: 2026-09-10
+date: 2026-09-10T23:30:00Z
 authors:
   - vzn
 tags:

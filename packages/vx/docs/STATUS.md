@@ -1261,7 +1261,11 @@ test-types` cold 53.6 s vs 58.2 s, restore 80 ms vs 166 ms,
       flaky tasks. All dated today and published (not `draft: true`);
       the owner re-dates or drafts them to stage an announcement
       cadence. Built with the site (all thirty render; every relative
-      link resolved in the built HTML), site tests pass.
+      link resolved in the built HTML), site tests pass. The index
+      tie-broke same-day posts by title, so a reader landed on the
+      lockfile post first: each post now carries a time on the same
+      day in reading order (`what-vx-is` at 23:59, one minute less per
+      post; the page shows only the day), pinned in the site README.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

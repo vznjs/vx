@@ -1,6 +1,6 @@
 ---
 title: 'There was no choice on the market'
-date: 2026-09-10
+date: 2026-09-10T23:57:00Z
 authors:
   - vzn
 tags:

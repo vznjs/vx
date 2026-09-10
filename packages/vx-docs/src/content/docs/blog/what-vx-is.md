@@ -1,6 +1,6 @@
 ---
 title: 'What vx is, and what it refuses to be'
-date: 2026-09-10
+date: 2026-09-10T23:59:00Z
 authors:
   - vzn
 tags:

@@ -1,6 +1,6 @@
 ---
 title: 'Explicit over magical: why vx never guesses your inputs'
-date: 2026-09-10
+date: 2026-09-10T23:49:00Z
 authors:
   - vzn
 tags:
