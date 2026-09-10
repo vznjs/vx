@@ -781,6 +781,12 @@ run test --filter @vzn/vx-lockfile` on a fresh checkout compiled
     thirteen shards side by side on this four-core box, not the
     upgrade: the guard passes alone under 1.4.2 and 1.4.0 alike,
     interleaved twice each, and the shard alone reruns 203/203.
+    One thing the local gate missed and CI caught (run 34503612332):
+    astro 7 makes `@astrojs/markdown-remark` an optional peer, and
+    `markdown.remarkPlugins` refuses to run without it — the local
+    build passed only because two stale 7.2 copies still sat in the
+    store. Moving them aside reproduced CI's failure; the site now
+    declares `@astrojs/markdown-remark ^7.3.0` and builds 153 pages.
 93. DONE (owner's ask, 2026-09-10, night — "we know hashes and past
     runs"): local flaky-task detection, three surfaces over the one
     rule `failure-mode.ts` already held. A task is flaky when its
