@@ -2,6 +2,13 @@
 
 ## Purpose
 
+Package globs come from the package manager's manifest and take its
+full grammar: a negated entry (`!packages/fixtures`, `!**/test/**`)
+subtracts from what the positive globs found — a literal one excludes
+its tree — in both discovery and the root-claim walk. Handed to the
+glob engine raw, a leading `!` negated the whole pattern and made every
+manifest in the tree a member (2026-09-10).
+
 Find the workspace root, enumerate its projects, and resolve the
 cache directory. Supports pnpm / npm / yarn / Bun workspaces, plus a
 single-project mode (bare `package.json` with no `workspaces` field).
