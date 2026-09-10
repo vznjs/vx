@@ -68,9 +68,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // The output-file fingerprints can't be batch-loaded at
   // prepareRun time — non-leaf task hashes depend on upstream
   // outputs that haven't been written yet, so hashes are
-  // necessarily computed mid-run. We do one extra SELECT per
-  // cache hit here. Still beats reading the manifest from the
-  // tar (decompress + parse) at the same point.
+  // necessarily computed mid-run. The short-circuit's batched probe
+  // loads the rows with the entry (`hit.outputRows`); only the lazy
+  // path pays one SELECT here. Either beats reading the manifest from
+  // the tar (decompress + parse) at the same point.
   let skipRestore = false
   if (anyOutputs) {
     const endRows = span('output rows')

@@ -179,8 +179,9 @@ genuinely needs them.
 ## Requirements & platform support
 
 The sandbox uses [`@anthropic-ai/sandbox-runtime`](https://www.npmjs.com/package/@anthropic-ai/sandbox-runtime),
-initialized lazily — only when at least one task in the run declares a
-sandbox. On a platform where it isn't available, a task that needs it
+started lazily — on the first task that actually executes inside a
+sandbox. A run whose sandboxed tasks are all cache hits never starts it
+(that probe cost every warm run 300–400 ms on Linux until 2026-09-10). On a platform where it isn't available, a task that needs it
 fails fast with a clear message (it never runs unsandboxed by accident).
 
 - **Linux** — needs `bubblewrap` (`bwrap`) and `socat` installed; some

@@ -159,14 +159,6 @@ export class ChainedCache implements CacheLayer {
     return this.layers[0]!.ingest(hash, compressed, meta)
   }
 
-  recordRun(run: RunRecord): void {
-    this.layers[0]!.recordRun(run)
-  }
-
-  recordRuns(runs: readonly RunRecord[]): void {
-    this.layers[0]!.recordRuns(runs)
-  }
-
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     this.layers[0]!.recordRunBundle(bundle)
   }

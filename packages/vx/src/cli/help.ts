@@ -1,5 +1,32 @@
-export function printHelp(pluginCommands: readonly string[] = []): void {
-  process.stdout.write(helpText(pluginCommands))
+export function printHelp(pluginCommands: readonly string[] = [], verb?: string): void {
+  process.stdout.write(verb === undefined ? helpText(pluginCommands) : verbHelpText(verb))
+}
+
+/**
+ * `vx <verb> --help`: the reference cut to one verb — the title, the Usage
+ * lines that name it, and every section that is `(for <verb>)` or lists a
+ * `vx <verb>` form — read from the same text, so nothing can drift. A verb
+ * the reference does not know gets the whole thing.
+ */
+export function verbHelpText(verb: string): string {
+  const blocks = helpText().split('\n\n')
+  const title = blocks[0]!
+  const names = (line: string): boolean =>
+    new RegExp(`^\\s*vx ${verb}( |$)`).test(line) ||
+    line.includes(`(for ${verb})`) ||
+    line.includes(`(for ${verb} `)
+  const kept: string[] = []
+  for (const block of blocks.slice(1)) {
+    const lines = block.split('\n')
+    if (lines[0] === 'Usage:') {
+      const own = lines.slice(1).filter(names)
+      if (own.length > 0) kept.push(['Usage:', ...own].join('\n'))
+      continue
+    }
+    if (lines.some(names)) kept.push(block)
+  }
+  if (kept.length === 0) return helpText()
+  return [title, ...kept, 'Full reference: vx help', ''].join('\n\n')
 }
 
 export function helpText(pluginCommands: readonly string[] = []): string {
@@ -9,14 +36,14 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Usage:',
     '  vx run [OPTIONS] [TASK | PKG#TASK] [-- forwarded-args...]',
     '  vx watch [OPTIONS] TASK [-- forwarded-args...]',
-    '  vx cache prune [--older-than <duration>] [--max-size <size>]',
+    '  vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--cache-dir <path>]',
     '  vx lock [--check]',
     '  vx init [--dry] [--force]',
     '  vx upgrade [tag]',
     '  vx show [PROJECT[#TASK] | TASK] [--format pretty|json]',
-    '  vx info',
-    '  vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json]',
-    '  vx last [RUNID] [--list[=N]] [--format pretty|json]',
+    '  vx info [--format pretty|json] [--cache-dir <path>]',
+    '  vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <path>]',
+    '  vx last [RUNID] [--list[=N]] [--format pretty|json] [--cache-dir <path>]',
     '  vx help',
     '  vx version',
     '',
@@ -31,8 +58,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     "  pkg#task                 Run a specific project's task directly.",
     '',
     'Execution (for run):',
-    '      --concurrency <n>           Max parallel tasks (default: CPU count).',
-    '      --excludeDependencies[=names]  Skip dependsOn edges. No value = all; comma list = specific names.',
+    '      --concurrency <n>           Max parallel tasks (default: CPU count); `50%` = half the CPUs.',
+    '      --exclude-dependencies[=names]  Skip dependsOn edges. No value = all; comma list = specific names.',
     '      --no-cache                  Disable caching entirely (no reads, no writes, outputs left alone).',
     '      --force                     Re-execute everything (skip reads) but still refresh the cache (writes on).',
     '      --cache <spec>              Per-layer read/write control. Comma list of <layer>:<flags>',
@@ -56,7 +83,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --output-logs <mode>        full | errors-only | hash-only | none — overrides the flow default',
     '      --download <mode>           all (default) | toplevel | none — where remote outputs land',
     '                                  (focused without --all/--filter/--affected, broad with, full in CI).',
-    '      --verbosity <n>             0=quiet, 1=verbose summary, 2+=debug (reserved).',
+    '      --verbosity <n>             0 (default) or 1+: print a per-task summary table after the run.',
     '',
     'Planning (for run — skips execution):',
     '      --dry[=text|json]    Print the task graph + cache hit/miss prediction.',
@@ -87,6 +114,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Cache management:',
     '  vx cache prune --older-than 30d     Evict entries last accessed > 30 days ago.',
     '  vx cache prune --max-size 1G        Keep total cache under 1 GB (LRU eviction).',
+    '      --dry-run                       Say what the policy would reap; delete nothing.',
+    '      --cache-dir <path>              The cache a run with the same flag uses (why, last, info too).',
     '',
     '  Duration units: s, m, h, d. Size units: K, M, G, T (powers of 1024).',
     '',
@@ -100,6 +129,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx info              Workspace doctor: vx/bun/git versions, project +',
     '                       task counts, cache dir/entries/size, recent runs,',
     '                       lock status.',
+    '      --format <fmt>   pretty (default) | json.',
     '  vx stats             Deprecated: alias of vx info.',
     "  vx why <task>        Why did this task re-run? Compares the task's latest",
     '                       run (or --run <id>) against its previous run: names the',

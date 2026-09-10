@@ -168,6 +168,192 @@ migrate` was 1,475 lines of core that knew Turbo's and Nx's file
     now lists `@vzn/vx-otel`, `@vzn/vx-github`, `@vzn/vx-mcp`,
     `@vzn/vx-schedule-history`.
 
+70. DONE (the sandbox starts on the first task that executes, not up
+    front): `armSandbox(nodes)` ran before classify + probe on every run
+    with a sandboxed task — a sandboxed `true` through the runtime, the
+    runtime module's own load, the proxy — 288 ms of this repo's 798 ms
+    warm gate, paid when every task was a hit and nothing executed.
+    `prepareSandbox(nodes)` now computes the domain union up front and
+    hands `ExecuteArgs.armSandbox` a memoized `arm()` that execute-task
+    calls before the first sandboxed spawn (both the cached path and the
+    persistent path); `resetSandbox` runs at the end only when it armed.
+    Interleaved A/B on this repo's warm `lint --all` as an unprivileged
+    user, three reps each: 339–486 ms → 33–38 ms (classify + probe
+    320–459 → 19–20 ms). An unavailable sandbox now fails the first
+    sandboxed task instead of the run's first millisecond; a run of hits
+    on a box without one succeeds, which is right — nothing ran. Pinned
+    in the unsafe suite: the second run of a sandboxed workspace with a
+    PATH that has only `git` on it (no bwrap, no sandbox-exec) hits and
+    succeeds; the control edits an input and that miss fails on the probe.
+71. DONE (the first warm run after a cold build no longer walks every
+    output tree): the miss path took its output-directory snapshot right
+    after the save, when the directories were milliseconds old — inside
+    `OUTPUT_DIRS_RACY_MS` — so the snapshot was refused every time, and
+    the next hit walked: on the 1,000-project bench, cold → warm read
+    `run graph` 181 ms with 1,000 `output glob` walks (296 ms
+    accumulated), and only the run after that 45 ms. The miss path now
+    queues the request on `ExecuteArgs.outputDirSnapshots` and run.ts
+    takes them at run end, 32 at a time, after the upload drain (a new
+    `output dir snapshots` stage row). Pinned differentially: a cold run
+    with a second task holding the run past the window leaves the
+    `dist` row behind; with the run-end loop disabled the row is absent.
+72. DONE (complexity pass, part 1 — the trimmed contract and the
+    comments that lied): the deep-debug audit after item 71 listed what
+    core carries that nothing uses or that no longer says what the code
+    does. Removed: `recordRun` / `recordRuns` from the `CacheLayer`
+    contract (`CACHE_LAYER_METHODS` 17 → 15; `recordRunBundle` is the
+    one run-history write, no caller took the per-row forms, and the
+    local `Cache` keeps them only for its own history tests), with the
+    LayeredCache / ChainedCache delegations and the two tests that
+    exercised them (rewritten on `recordRunBundle`); `parseFlaggedOutput`
+    (git-inputs.ts, exported and test-only since `ls-files -s -v` folded
+    the skip-worktree letter into the stage record) and its describe
+    block; the logger's `streamed` set (written on every live chunk,
+    read nowhere); a stranded `GitFilesCache` doc block in inputs.ts
+    describing a memo that left with the enumeration rewrite. Corrected:
+    the inputs.ts header (it named `ls-files --cached --others`; the
+    enumeration is `ls-files -s -v` + `status -uall`), the cache.ts
+    header (a second copy of the contract list, now a pointer to
+    layer.ts), the `hashFile` doc (the stored digest is a git blob OID
+    since v20, not an xxh3), the watch.ts ignore comment (the resolved
+    cache dir is filtered, relocated or not — `IGNORED_SEGMENTS` is not
+    what does it), the hit-restore SELECT comment (the batched probe
+    loads output rows with the entry; only the lazy path pays the
+    SELECT), and two config-schema doc blocks that sat on the wrong
+    function. `EMPTY_SHORT_CIRCUIT` was one module-level `Map` shared by
+    every run in a `vx watch` process; it is a factory now. One audit
+    claim was refuted and recorded as a comment instead of a fix: the
+    deferred-outputs path does not drop `outputs.workspaceFiles`,
+    because `deferralEligibility` forces such a task eager
+    (download-policy.test.ts pins it). Net −71 lines in src; the
+    contract docs (modules/cache.md, layered-cache.md, chained-cache.md,
+    caching.md, git-inputs.md) follow in the same commit.
+73. DONE (DX batch from the feature-gap audit — four small asks and the
+    stale rows): `--excludeDependencies` was the one camelCase flag in
+    a kebab-case CLI; it is `--exclude-dependencies` now, and the old
+    spelling — two edits past the suggester's reach — errors with the
+    new name outright. `--concurrency <n>%` is that share of the CPUs
+    (`50%` on eight cores is 4, never below 1, over 100% allowed for
+    I/O-bound work), resolved at parse time so the run and its summary
+    see one number. `vx cache prune --dry-run` picks the victims under
+    the same policy and counts the orphans the sweep would take, then
+    returns without touching the index or the directory (`PruneOptions.
+dryRun` on the contract, so a layer that delegates gets it for
+    free); pinned against the real prune with the same flags, which
+    reaps exactly what the dry run named. `vx info --format json` prints
+    the doctor's facts as one typed object (`InfoFacts`) that the pretty
+    rows render — one source, no second list; `git` is null when not
+    found and `gitStatusCache` null when git could not answer, where the
+    pretty form says `(not found)` / `(unknown)`. Docs: comparison.md,
+    architecture.md and patterns.md still called a Turbo-wire cache "a
+    third-party plugin story" while `@vzn/vx-turbo-cache` and
+    `@vzn/vx-nx-cache` sit in this repo; the rows name them now. Two
+    audit items refuted on reading: `vx <verb> --help` has printed the
+    reference since 2026-09-04, and cli.md's `vx migrate` / `vx prune`
+    sections are the pointers to the packages, not stale verbs.
+74. DONE (complexity pass, part 2 — one status vocabulary, and the
+    seam nobody used): four renderers spelled the outcome words on their
+    own — the framed block header and footer, the focused one-liner and
+    hash-only audit line in logger.ts, the `--verbosity 1` table in
+    cli/run.ts — and the table had drifted to `executed` where every
+    other surface says `success` while its own comment claimed the
+    shared vocabulary. `outcomeWord(o)` (bare word) and
+    `outcomeLabel(o)` (with `(exit N)` on a failure) in events.ts are
+    the one source now; the audit line keeps the bare word, so a
+    `hash-only` consumer parsing it sees no change (output-flow.test.ts
+    pins the exact line set). The CAS substrate — `cas-backend.ts`,
+    `digest.ts`, `Cache.contentBackend()`, `FsCASBackend`,
+    `MemoryCASBackend`, `Digest` — had no consumer in core or in any
+    plugin (`@vzn/vx-reapi` carries its own `Digest` on the wire
+    type), only its two test files and a module page; the 2026-06
+    review that designed it (§4.3) planned a cache composed of CAS +
+    index that was never built, and cache.ts reads and writes the
+    artifacts directory directly. Removed with its tests, page and
+    weights: −143 lines of src. Both are the pipeline principle
+    applied to core's own insides: a seam with no consumer is a
+    special case waiting to happen.
+75. DONE (`--cache-dir` on the verbs that read what a run wrote): a run
+    given `--cache-dir X` put its history, fingerprints and evaluations
+    in X, and `vx why`, `vx last`, `vx info` and `vx cache prune` opened
+    the workspace's cache regardless — so a relocated run could not be
+    explained, replayed, reported on or pruned. All four take
+    `--cache-dir <path>` now, through one parser (`parseCacheDirFlag`,
+    the run's rules: a value required, the space form refusing a
+    flag-shaped value) and one resolver (`cliCacheDir`, cwd-relative
+    exactly as prepare.ts resolves the run's). Pinned end to end: a run
+    with the flag is the one line `vx last --list --cache-dir` prints
+    and absent from the bare list (`no recorded runs`), and `vx info
+--format json --cache-dir` reports that directory with one run.
+    The `--verbosity` help and flag row claimed `2+ = debug (reserved)`
+    for a level nothing reads; de-claimed — `1+` prints the table.
+    Refuted on reading: the audit's "duplicated glob-filter resolver"
+    is three sites with three concerns (workspace membership, package
+    enumeration, `workspaceFiles` matching), one `Bun.Glob` each and
+    the partition rule already shared by comment; no shared resolver
+    would be shorter. Considered and left: `--output-logs new-only`
+    (frames for executed work, silence for hits) is a sixth mode over a
+    matrix five wide; `broad` already prints executed one-liners and
+    silent hits, and `full` frames both. A sixth column needs a user
+    who cannot get there with `broad`. Warm check on this head as an
+    unprivileged user under the real sandbox (`run lint.oxlint
+    lint.oxfmt` scoped to core, three warm reps): run 26–29 ms, whole
+    process 94–100 ms, classify + probe 17–20 ms, the sandbox never
+    armed — items 70 and 71 hold after the two DX batches.
+76. DONE (`vx <verb> --help` is the reference cut to the verb): since
+    2026-09-04 every core verb's `--help` printed the whole reference —
+    120 lines to find `--older-than`. `verbHelpText(verb)` keeps the
+    title, the `Usage:` lines that name the verb and every
+    blank-line-delimited section that is `(for <verb>)` or lists a
+    `vx <verb>` form, then `Full reference: vx help`; it reads the one
+    text (as `documentedFlags` does), so there is no second list to
+    drift, and an unknown verb gets the whole reference. Pinned: the
+    run cut carries every flag `documentedFlags('run')` names and no
+    other verb's section; the cache and last cuts carry their own
+    examples only. Two probes on the warm floor, recorded so nobody
+    re-runs them: (a) the `workspace config` stage (13–17 ms on this
+    repo) is not core's — `findWorkspaceRoot` + `loadWorkspace` are
+    under 2 ms in a fresh process and `loadWorkspacePlugins` is 9–11
+    ms, the four plugin packages this workspace declares transpiling
+    and importing; a workspace with no plugins pays nothing there, and
+    an evaluation cache cannot hold plugin objects. (b) the compiled
+    binary against `bun src/bin.ts` on the same warm scoped gate as an
+    unprivileged user, three reps each: wall 101–109 ms vs 121–134 ms,
+    run 13–15 vs 23–29 ms, classify + probe 10–12 vs 15–18 ms — the
+    release form is ~20 ms faster end to end, and both are under the
+    130 ms a process that loads ~200 modules costs before any graph.
+    The remaining warm floor is module load and the git status walk,
+    not orchestration.
+77. DONE (one core per process — the shipped binary's second core is
+    gone): every `import … from '@vzn/vx'` a run evaluates — a plugin
+    package, the workspace file, a project config — resolved through
+    `node_modules`, and in the compiled binary that was core's whole
+    source transpiled AGAIN, per process: `@vzn/vx-otel` alone 20–25 ms
+    (probe binary, three reps), this repo's four plugins 30–41 ms of
+    `workspace config`, a live-evaluated config 22 ms for the identity
+    `defineProject`. The 2026-09-03 refutation (§ Next 4) was of
+    `Bun.plugin`'s `onResolve`, which never fires for a bare specifier
+    from a dynamically imported user file; `build.module` — a VIRTUAL
+    module for the exact specifier — does. `registerCoreAlias` in
+    bin.ts serves `@vzn/vx` from this process's façade, loaded lazily
+    on the first such import (cli/core-alias.ts). Interleaved A/B,
+    binary against binary on the warm sandboxed `lint.oxlint
+lint.oxfmt` gate as an unprivileged user, three warm reps each:
+    wall 107–125 → 77–91 ms, `workspace config` 30–41 → 6.5–7.6 ms;
+    the impure-config probe 22 → 2 ms; the 1,000-project bench (no
+    `@vzn/vx` imports) equal both ways, as it should be. A workspace
+    file with no `@vzn/vx` installed anywhere now loads through the
+    binary (probed), so a binary user installs plugin packages only.
+    Pinned differentially in `tests/core-alias.test.ts`: a fixture
+    whose `node_modules/@vzn/vx` is a fake sees core's `definePlugin`
+    with the alias and the fake without. Fallout in this repo: core's
+    own `vx.config.ts` imported `./src/index.ts` relatively, which the
+    alias cannot serve AND which made the config impure for the
+    evaluation cache (the closure hashed core's source every run: 12
+    ms of `load configs`); it imports `@vzn/vx` now and is served from
+    the cache (1.1–1.5 ms). The registry-symbol brand on plugins
+    (item 69) stays: a plugin compiled against another copy is still
+    possible outside this alias, and the symbol costs nothing.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
@@ -402,24 +588,25 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
      config wins, gaps warned once. The maintenance-surface worry is
      answered by the shared mapper: there is one source of task truth
      for Turbo, and the plugin is 90 lines over it.
-4. **The shipped binary's second core.** A compiled `vx` loading a
-   `vx.workspace.ts` that imports `@vzn/vx` pulls a second copy of core
-   from `node_modules` (~12 ms) on every run — and makes a binary user
-   install the package at all. REFUTED 2026-09-03 as a runtime fix: a
-   `Bun.plugin` `onResolve` hook registered by the binary never fires
-   for a bare specifier imported by a dynamically imported user file
-   (Bun 1.4.0, probed in plain `bun` with a `.ts` and a `.mjs` user
-   file), so the binary cannot serve its bundled core to the workspace
-   file that way. The user-visible half is
-   closed (`isUserError` classifies by name across copies); what remains
-   is the cost and the duplicate module state — and the cost is NOT
-   measurable as an A/B from a workspace file (2026-09-03): a workspace
-   importing plugins by absolute source path also loads source, since the
-   binary cannot expose its bundled core to a workspace import, so both
-   arms read equal (77 vs 74–81 ms at 100 projects). REFUTED as a
-   runtime-plugin fix (Bun 1.4.0's `Bun.plugin` hooks never fire for
-   bare specifiers or `.ts`); options left are rewriting the config
-   source before import or a Bun fix. Parked. What IS pinned since
+4. **DONE 2026-09-10 — the shipped binary's second core (item 77).**
+   A compiled `vx` loading a `vx.workspace.ts` that imports `@vzn/vx`
+   pulled a second copy of core from `node_modules` on every run — and
+   made a binary user install the package at all. The 2026-09-03
+   refutation was of `Bun.plugin`'s `onResolve` hook, which indeed
+   never fires for a bare specifier imported by a dynamically imported
+   user file; `build.module` — a VIRTUAL module for the exact specifier
+   — does fire there (probed 2026-09-10 in a `--compile` binary: a
+   plugin package's `@vzn/vx` import served from the bundled façade,
+   and a workspace file with NO `@vzn/vx` installed anywhere loads).
+   `registerCoreAlias` in bin.ts is that virtual module, lazy on the
+   façade. The user-visible half was already
+   closed (`isUserError` classifies by name across copies); the earlier
+   note that the cost is NOT measurable as an A/B from a workspace file
+   (2026-09-03: a workspace importing plugins by absolute source path
+   also loads source, so both arms read equal, 77 vs 74–81 ms at 100
+   projects) was measuring the wrong pair — the A/B is binary against
+   binary, with and without the alias, on one workspace (item 77 has
+   the numbers). What IS pinned since
    2026-09-10: the darwin job's bare-specifier workspace declares
    `@vzn/vx-schedule-history`, so a plugin package's own `@vzn/vx`
    import (the second copy) and the `schedule` hook it fills run
@@ -637,6 +824,16 @@ bin.ts` load), not a vx change.
 
 ## Decisions (this arc)
 
+- **One core per process (2026-09-10).** The running `vx` serves its
+  own façade to every `@vzn/vx` import it evaluates. A plugin package
+  never carries its own copy of core into a run; the host decides the
+  runtime, as any host does. Item 77.
+- **No seam without a consumer (2026-09-10).** The `CASBackend` /
+  `Digest` substrate left core after three months with zero callers
+  (item 74). A content-addressed view of the artifacts directory comes
+  back when a plugin needs it, shaped by that plugin's use — not
+  before. The same rule retired `recordRun` / `recordRuns` from the
+  layer contract (item 72).
 - **A plugin's name is its package name; no overrides (owner,
   2026-09-10).** `definePlugin(import.meta, hooks)` reads it and stamps
   it; the workspace loader refuses anything else. Item 69.

@@ -104,6 +104,37 @@ describe('vx last (e2e)', () => {
   )
 
   it(
+    '--cache-dir reads the history a run with the same flag wrote, and nothing else',
+    async () => {
+      // A run that wrote elsewhere is invisible to a bare `vx last` and
+      // visible to `vx last --cache-dir` — the same resolution as the run's.
+      const other = await makeWorkspace()
+      try {
+        const r1 = await vx(other, ['run', 'build', '--all', '--cache-dir', 'elsewhere'])
+        expect(r1.code).toBe(0)
+        const there = await vx(other, ['last', '--list', '--cache-dir', 'elsewhere'])
+        expect(there.code).toBe(0)
+        expect(there.out.trim().split('\n').length).toBe(1)
+        expect(there.out).toContain('ok')
+        const here = await vx(other, ['last', '--list'])
+        expect(here.out.trim()).toBe('no recorded runs')
+        // The same directory, spelled with `=` and read by `vx info`.
+        const info = await vx(other, ['info', '--format=json', '--cache-dir=elsewhere'])
+        expect(info.code).toBe(0)
+        // macOS realpaths /var → /private/var inside the child; pin the
+        // unique tail, not the absolute prefix.
+        expect(
+          JSON.parse(info.out).cacheDir.endsWith(path.join(path.basename(other), 'elsewhere')),
+        ).toBe(true)
+        expect(JSON.parse(info.out).runs24h).toBe(1)
+      } finally {
+        await rm(other, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a failed run replays FAILED with the failure first',
     async () => {
       const r1 = await vx(root, ['run', 'boom', '--all'])
@@ -155,6 +186,10 @@ describe('parseLastArgs', () => {
     expect(parseLastArgs(['--format', 'json']).format).toBe('json')
     expect(parseLastArgs(['--format=pretty']).format).toBe('pretty')
     expect(parseLastArgs(['--format', 'yaml']).error).toMatch(/pretty \| json/)
+    expect(parseLastArgs(['--cache-dir', 'x']).cacheDir).toBe('x')
+    expect(parseLastArgs(['--cache-dir=y/z', '--list']).list).toBe(10)
+    expect(parseLastArgs(['--cache-dir']).error).toMatch(/requires a path/)
+    expect(parseLastArgs(['--cache-dir', '--list']).error).toMatch(/got flag/)
     expect(parseLastArgs(['--nope']).error).toMatch(/unknown flag/)
     expect(parseLastArgs(['a', 'b']).error).toMatch(/unexpected argument/)
   })

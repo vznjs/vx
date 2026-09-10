@@ -16,7 +16,6 @@ import {
   type RunSummaryRecord,
   type TelemetryContext,
   type TelemetrySink,
-  type VxPlugin,
 } from '../src/orchestrator/index.js'
 import { createEventBus } from '../src/orchestrator/events.js'
 import { run } from '../src/index.js'

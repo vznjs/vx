@@ -126,6 +126,63 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
+  // ─── Arming is lazy ─────────────────────────────────────────────
+
+  // The runtime starts on the first task that executes inside a sandbox,
+  // not up front: a run whose sandboxed tasks are all cache hits never
+  // probes, never loads the runtime and never starts its proxy — measured
+  // 339–486 ms → 33–38 ms for this repo's own warm gate (2026-09-10). The
+  // second run below makes the sandbox UNAVAILABLE (a PATH with only git on
+  // it: no bwrap, no socat, no sandbox-exec) and still succeeds because it
+  // hits; the control re-runs with an edited input, and that miss fails
+  // when the runtime cannot start — proving the same PATH does take the
+  // sandbox away. Which dependency the runtime misses first (the probe's
+  // bwrap or the bridge's socat) decides the message, so the control
+  // asserts the failure, not its text.
+  it(
+    'a run whose sandboxed tasks are all hits never starts the sandbox',
+    async () => {
+      await addProject(fixture.root, 'a', {
+        files: { 'src/x.txt': 'x\n' },
+        config: `export default { tasks: { build: {
+          exec: { command: 'cat src/x.txt > out.txt', sandbox: { allow: { read: ['**/*'], write: ['out.txt'] } } },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        } } }\n`,
+      })
+      const first = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: collectingLogger(fixture),
+      })
+      expectOk(first, fixture)
+      const onlyGit = await mkdtemp(path.join(os.tmpdir(), 'vx-path-'))
+      await symlink(Bun.which('git')!, path.join(onlyGit, 'git'))
+      const savedPath = process.env['PATH']
+      process.env['PATH'] = onlyGit
+      try {
+        const second = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: collectingLogger(fixture),
+        })
+        expectOk(second, fixture)
+        expect(second.outcomes[0]?.status).toBe('cache-hit')
+        await writeFile(path.join(fixture.root, 'packages', 'a', 'src', 'x.txt'), 'y\n')
+        const third = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: collectingLogger(fixture),
+        })
+        expect(third.ok).toBe(false)
+        expect(third.outcomes[0]?.status).toBe('failed')
+      } finally {
+        process.env['PATH'] = savedPath
+        await rm(onlyGit, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // ─── Activation ─────────────────────────────────────────────────
 
   it(

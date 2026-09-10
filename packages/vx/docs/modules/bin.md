@@ -30,6 +30,17 @@ main().catch((err) => {
 (actual file matches this shape; check `src/bin.ts` for the canonical
 text.)
 
+Before any verb runs, bin.ts registers the **core alias**
+(`cli/core-alias.ts`): a Bun virtual module for the exact specifier
+`@vzn/vx`, served lazily from this process's own façade. Every plugin
+package, workspace file and project config that imports `@vzn/vx`
+then gets the running core — one module state per process, and in the
+compiled binary no second copy of core transpiled from `node_modules`
+(a plugin package's import: 20–25 → 2–3 ms; a live-evaluated config's:
+22 → 2 ms; a workspace file with no `@vzn/vx` installed at all loads).
+`tests/core-alias.test.ts` pins it differentially against a fake
+`node_modules/@vzn/vx`.
+
 `vx` is shipped two ways:
 
 1. **As a Bun-runnable script** — `bin: "src/bin.ts"` in `package.json`,

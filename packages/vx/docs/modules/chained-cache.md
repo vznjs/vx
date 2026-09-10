@@ -16,7 +16,7 @@ When more than one plugin contributes a `cache` layer, `resolveCache`
   pack every miss twice).
 - **Restore goes to the layer that answered** (`restoreOutputs`,
   `outputsPath`) — an entry's artifact lives wherever it was found.
-- **The first layer owns the run index** (`recordRun*`, `stats`, `prune`,
+- **The first layer owns the run index** (`recordRunBundle`, `stats`, `prune`,
   `ingest`, `hashFile`, `isOutputsCurrent`), so a run is recorded once.
 - `hasRemote` is true when any layer has a remote. `remoteHasMany` marks
   each ANSWERING layer's own complement absent (its own truth) and returns

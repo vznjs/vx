@@ -24,7 +24,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   // which is the one place `--help` is not being asked of vx. Core verbs
   // only — a plugin verb owns its own arguments, `--help` included.
   if (command !== undefined && wantsHelp(command, rest)) {
-    printHelp(await pluginCommandHelp())
+    printHelp(await pluginCommandHelp(), command)
     return 0
   }
 
@@ -116,7 +116,13 @@ export async function run(argv: readonly string[]): Promise<number> {
 }
 
 // Re-exports for tests + programmatic embedders.
-export { detectFlow, parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
+export {
+  detectFlow,
+  parseConcurrency,
+  parseRunArgs,
+  resolveRunOptions,
+  type RunArgs,
+} from './run.js'
 export { parsePruneArgs, parseDuration, parseSize } from './cache.js'
 export { parseLockArgs, type LockArgs } from './lock.js'
 export { parseInitArgs, type InitArgs } from './init.js'
@@ -124,6 +130,7 @@ export { parseShowArgs, type ShowArgs } from './show.js'
 export { parseWhyArgs } from './why.js'
 export { parseLastArgs } from './last.js'
 export { formatBytes } from './format.js'
+export { registerCoreAlias } from './core-alias.js'
 
 /**
  * Is this invocation asking for help rather than work? See the call site for

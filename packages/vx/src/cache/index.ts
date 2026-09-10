@@ -27,8 +27,6 @@ export {
   CACHE_VERSION,
   SCHEMA_VERSION,
 } from './cache.js'
-export { type CASBackend, FsCASBackend } from './cas-backend.js'
-export { type Digest } from './digest.js'
 export {
   cleanOutputs,
   cleanWorkspaceOutputs,

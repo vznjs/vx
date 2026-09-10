@@ -48,11 +48,8 @@ export interface CacheLayer {
   // (cache.outputs.workspaceFiles); omitted → only `outputs/` restores.
   restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
   save(args: SaveArgs): Promise<string | null>
-  recordRun(run: RunRecord): void
-  recordRuns(runs: readonly RunRecord[]): void
-  // (Tier 3) Records a whole `vx run` atomically: the per-task `runs`
-  // rows + one `invocations` header row in ONE transaction. Replaces
-  // the bare recordRuns call in the orchestrator's end-of-run path. The
+  // The ONE run-history write: a whole `vx run` atomically, the per-task
+  // `runs` rows + one `invocations` header row in ONE transaction. The
   // input-fingerprint rows (entry_inputs) do NOT live here — they ride
   // the entry-save transaction (miss path only), so a warm run is free.
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
@@ -328,11 +325,11 @@ Reads via `get()` are non-blocking thanks to WAL.
 
 ## Run history & stats
 
-`recordRun()` appends one row to `runs` for every task — cache hits
-and misses, successes and failures. The orchestrator's end-of-run path
-uses `recordRunBundle()` instead, which records the per-task `runs`
-rows and one `invocations` header row (command, git/CI/host context,
-tags, run-level counts) **atomically in one transaction**. The Tier-3
+`recordRunBundle()` is the one run-history write: one `runs` row for
+every task — cache hits and misses, successes and failures — and one
+`invocations` header row (command, git/CI/host context, tags, run-level
+counts) **atomically in one transaction**. The per-row `recordRun` /
+`recordRuns` forms left the contract on 2026-09-10; no caller took them. The Tier-3
 input-fingerprint rows (`entry_inputs`) are NOT written here — they
 ride each entry's save transaction (`save`/`ingest`, miss path only)
 via `INSERT OR IGNORE`, so a warm all-cache-hit run writes none of them.
@@ -416,7 +413,7 @@ Pre-alpha tolerates this freely. See
 - `save → get → restoreOutputs` round-trip.
 - `get()` returns null when DB row exists but on-disk artifact was
   deleted.
-- `recordRun()` + `stats()` capture run counts and hit rate.
+- `recordRunBundle()` + `stats()` capture run counts and hit rate.
 
 End-to-end cache write/read/restore is also covered by
 `orchestrator.test.ts`.

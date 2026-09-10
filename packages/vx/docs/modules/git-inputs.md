@@ -22,7 +22,6 @@ export async function populateGitFilesCache(...): Promise<void>
 export function runGitLsFiles(cwd): GitLsResult             // the synchronous fallback
 export function parseCheckAttrOutput(out): Set<string>
 export function autocrlfConverts(coreConfig: string): boolean
-export function parseFlaggedOutput(out): Set<string>       // skip-worktree / assume-unchanged
 ```
 
 `startGitEnumeration` is what `prepareRun` kicks off before the configs

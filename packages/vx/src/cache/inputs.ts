@@ -6,17 +6,14 @@
 // `cache.inputs.env` is the cache-tracking axis for env vars; it's
 // independent of `exec.env`, which controls what reaches the child.
 //
-// File enumeration defers to git — same as Turbo and Nx. We ask git for
-// the file set via `git ls-files --cached --others --exclude-standard`,
-// which gives us:
-//   - all tracked files,
-//   - plus untracked-but-not-ignored files,
-//   - with nested .gitignore + .git/info/exclude + global excludes
-//     correctly applied (because git already does the cascade).
-// The user's `inputs.files` globs are then matched as a *filter* on
-// top of that file set. vx requires git to be installed and the
-// workspace to be a git work tree; non-git environments are not
-// supported.
+// File enumeration defers to git — same as Turbo and Nx. git-inputs.ts
+// asks for the tracked set with `git ls-files -s -v` (index OIDs and the
+// skip-worktree flag in the same spawn) and for the dirty and untracked
+// paths with `git status -uall`, with nested .gitignore, .git/info/exclude
+// and the global excludes applied because git already does the cascade.
+// The user's `inputs.files` globs are then matched as a *filter* on top
+// of that file set. vx requires git to be installed and the workspace to
+// be a git work tree; non-git environments are not supported.
 
 import path from 'node:path'
 import { lstatSync } from 'node:fs'
@@ -37,7 +34,6 @@ export {
   gitPathspecs,
   parseCheckAttrOutput,
   autocrlfConverts,
-  parseFlaggedOutput,
   type GitEnumeration,
 } from './git-inputs.js'
 
@@ -430,27 +426,6 @@ export async function cleanWorkspaceOutputs(args: {
   return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
 }
 
-/**
- * Per-run memo of each project's `git ls-files` output, plus the
- * staleness bookkeeping that lets the warm path avoid re-spawning git.
- *
- * After a cache-hit restore we know EXACTLY which paths changed on
- * disk: the declared outputs `cleanOutputs` wiped plus the artifact's
- * output files. `markOutputsChanged` records them; `snapshotFor`
- * hands back the existing snapshot when a resolving task's input
- * globs can't match any changed path — provably identical to what a
- * re-spawn would return, since glob matching ignores gitignore status
- * entirely when the path doesn't match. When globs DO overlap,
- * returning undefined forces the caller down the re-spawn path so
- * gitignore semantics stay byte-identical.
- *
- * The cache-miss save path marks the exact declared-output paths the
- * same way (execute-task.ts, after `cache.save`) instead of dropping the
- * snapshot — one fewer git spawn per project on a cold run. The contract
- * that makes it sound is that outputs are declared: a file an executed
- * task writes OUTSIDE `cache.outputs.files` is invisible to a same-project
- * downstream task's snapshot until the next run's enumeration.
- */
 function isLiteralPath(glob: string): boolean {
   return !/[*?[\]{}]/.test(glob)
 }
@@ -584,12 +559,11 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   return candidates.filter((abs) => oids?.has(abs) === true || isInputOnDisk(abs)).sort()
 }
 
-// `<mode> <oid> <stage>\t<path>` — the staged-entry form of
-// `ls-files -s`. `--others` paths print bare; with `-z`,
-// core.quotePath quoting is off, so a bare path containing a literal
-// tab still can't match this fixed-form prefix.
-// `ls-files -s -v`: an optional cache-state flag (`H`, `S`, `h`, …) then the
-// stage record. Both answers come from ONE spawn.
+/**
+ * Union of files matching any positive pattern in `cwd`, minus files
+ * matching any exclude glob (tested by Bun.Glob.match on the relative
+ * path). Bun.Glob takes a single pattern per instance, so we iterate.
+ */
 async function scanUnion(
   positive: readonly string[],
   excludeGlobs: readonly Bun.Glob[],

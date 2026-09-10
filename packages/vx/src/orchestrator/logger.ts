@@ -20,6 +20,7 @@ import { formatDuration, formatSummarySection, type RunContext } from './summary
 import { isGroupTask } from '../graph/index.js'
 import { appendTail, createTail, resetTail, tailText, type Tail } from '../util/index.js'
 import { isCacheHit } from './telemetry.js'
+import { outcomeWord } from './events.js'
 
 export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
@@ -127,20 +128,6 @@ function ghaFence(body: string, token: string): string {
 const cacheWordOf = (n: TaskNode): 'miss' | 'no-cache' =>
   n.config.cache === undefined ? 'no-cache' : 'miss'
 
-/** The unified outcome vocabulary word for a non-failed outcome. */
-function outcomeWord(o: TaskOutcome): string {
-  switch (o.status) {
-    case 'success':
-      return 'success'
-    case 'cache-hit':
-      return o.restored === false ? 'up-to-date' : 'restored-local'
-    case 'cache-hit-remote':
-      return o.restored === false ? 'up-to-date' : 'restored-remote'
-    default:
-      return o.status
-  }
-}
-
 export function resolveOutputView(
   options: {
     outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
@@ -185,8 +172,6 @@ export function defaultLogger(
   // a one-liner or streamed output since the last block does.
   let lineEmitted = false
   let streamedSinceBlock = false
-  // Ids whose output went straight to the terminal (focused mode).
-  const streamed = new Set<string>()
   // True while the live stream sits mid-line (chunk without trailing
   // newline) — the frame close must not glue onto partial output.
   let streamMidLine = false
@@ -478,7 +463,6 @@ export function defaultLogger(
     taskStdout(node, chunk) {
       if (discardsOutput) return
       if (streamsLive(node)) {
-        streamed.add(node.id)
         streamedSinceBlock = true
         if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
         writer.write(chunk)
@@ -494,7 +478,6 @@ export function defaultLogger(
     taskStderr(node, chunk) {
       if (discardsOutput) return
       if (streamsLive(node)) {
-        streamed.add(node.id)
         streamedSinceBlock = true
         if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
         writer.write(chunk)

@@ -85,9 +85,7 @@ export {
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency)
-// and input-output resolution. The blob-CAS/digest substrate
-// (cas-backend.ts / digest.ts) stays module-internal until it has a
-// consumer — no speculative public API. `cleanOutputs` is public for the
+// and input-output resolution. `cleanOutputs` is public for the
 // distributed submitter's targeted output materialization (wipe declared
 // outputs, then `restoreOutputs` the artifact — never a naive re-run).
 export {

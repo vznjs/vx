@@ -264,6 +264,11 @@ export interface PruneOptions {
    * bytes, evict LRU (smallest `accessed_at` first) until under it.
    */
   maxBytes?: number
+  /**
+   * Pick the victims and count the orphans, delete nothing: the result
+   * says what a real prune with the same policy would reap right now.
+   */
+  dryRun?: boolean
 }
 
 export interface PruneResult {
@@ -543,18 +548,10 @@ export interface CacheLayer {
    * the next `get(hash)` resolves locally.
    */
   ingest(hash: string, compressed: Uint8Array, meta: IngestMeta): Promise<void>
-  recordRun(run: RunRecord): void
   /**
-   * Append every run in `runs` to the history in a single SQLite
-   * transaction. ~10× faster than calling `recordRun` in a loop when
-   * `runs.length > ~50` (one fsync vs. N).
-   */
-  recordRuns(runs: readonly RunRecord[]): void
-  /**
-   * Record a whole `vx run` atomically: the per-task `runs` rows and
-   * the one `invocations` header row — in a SINGLE transaction (one
-   * fsync). Replaces the bare `recordRuns` call in the orchestrator's
-   * end-of-run path. Input-fingerprint rows are NOT written here — they
+   * The ONE run-history write: a whole `vx run` atomically, the per-task
+   * `runs` rows and the one `invocations` header row — in a SINGLE
+   * transaction (one fsync). Input-fingerprint rows are NOT written here — they
    * ride the entry-save transaction (`save`/`ingest`) so a warm
    * all-cache-hit run writes nothing.
    */
@@ -563,10 +560,10 @@ export interface CacheLayer {
   /**
    * Content-hash a file with an mtime+size fast path. If the
    * `(mtime_ms, size_bytes)` of `filePath` match a previously seen
-   * row, return the stored xxh3 digest instead of re-reading the
-   * bytes. Otherwise read + hash + upsert. The hash is byte-for-byte
-   * identical to what a fresh content-hash would produce — pure
-   * optimization, no cache-key change.
+   * row, return the stored digest (a git blob OID since CACHE_VERSION
+   * v20) instead of re-reading the bytes. Otherwise read + hash + upsert.
+   * The hash is byte-for-byte identical to what a fresh content-hash
+   * would produce — pure optimization, no cache-key change.
    */
   hashFile(filePath: string): Promise<string>
   /**

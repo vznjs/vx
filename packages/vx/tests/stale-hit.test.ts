@@ -17,7 +17,6 @@ import {
   GitFilesCache,
   autocrlfConverts,
   parseCheckAttrOutput,
-  parseFlaggedOutput,
   populateGitFilesCache,
 } from '../src/cache/inputs.js'
 
@@ -474,30 +473,5 @@ describe('autocrlfConverts', () => {
     // Other core.* keys in the same output must not be mistaken for it.
     expect(autocrlfConverts('core.eol lf\ncore.attributesfile /x')).toBe(false)
     expect(autocrlfConverts('core.eol lf\ncore.autocrlf TRUE')).toBe(true)
-  })
-})
-
-describe('parseFlaggedOutput', () => {
-  const rec = (...lines: string[]): string => lines.join('\0') + '\0'
-
-  it('flags skip-worktree (S) and every assume-unchanged (lowercase) state', () => {
-    // Uppercase S is skip-worktree; a lowercase letter is assume-unchanged
-    // layered on whatever state that letter names. `H` (plain cached) is the
-    // only common state that must NOT be flagged.
-    expect([...parseFlaggedOutput(rec('H a.txt', 'S b.txt', 'h c.txt', 'r d.txt'))].sort()).toEqual(
-      ['b.txt', 'c.txt', 'd.txt'],
-    )
-  })
-
-  it('keeps paths verbatim, including spaces and non-ASCII', () => {
-    expect([...parseFlaggedOutput(rec('S dir/a b.txt', 'S ünï.txt'))].sort()).toEqual([
-      'dir/a b.txt',
-      'ünï.txt',
-    ])
-  })
-
-  it('ignores empty and malformed records', () => {
-    expect([...parseFlaggedOutput('')]).toEqual([])
-    expect([...parseFlaggedOutput(rec('S', 'Sx.txt', 'H a.txt'))]).toEqual([])
   })
 })

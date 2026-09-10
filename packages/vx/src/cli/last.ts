@@ -9,12 +9,14 @@ import { seeHelp } from './help.js'
 import { getInvocation, getRun, listInvocations } from '../orchestrator/index.js'
 import { UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { loadCliWorkspace, warnToStderr } from './workspace-config.js'
+import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 
 interface LastArgs {
   runId?: string
   list?: number
   format: 'pretty' | 'json'
+  /** `--cache-dir`: read the history a run with the same flag wrote. */
+  cacheDir?: string
   error?: string
 }
 
@@ -39,6 +41,13 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
       out.format = fv
       continue
     }
+    const cd = parseCacheDirFlag(args, i)
+    if (cd !== null) {
+      if ('error' in cd) return { ...out, error: cd.error }
+      out.cacheDir = cd.cacheDir
+      i = cd.next
+      continue
+    }
     if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('last')}` }
     if (out.runId !== undefined) return { ...out, error: `unexpected argument: ${a}` }
     out.runId = a
@@ -60,7 +69,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
   if (parsed.error !== undefined) throw new UserError(`vx last: ${parsed.error}`)
 
   const root = await findWorkspaceRoot(process.cwd())
-  const cache = new Cache((await loadCliWorkspace(root)).cacheDir)
+  const cache = new Cache(await cliCacheDir(root, parsed.cacheDir))
   noteSchemaReset(cache, warnToStderr)
   try {
     const db = cache.dbHandle()

@@ -117,21 +117,21 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 
 ## Cache feature comparison
 
-| Cache feature            | Turbo                                      | Nx                     | vite-task                    | vx                                                                                   |
-| ------------------------ | ------------------------------------------ | ---------------------- | ---------------------------- | ------------------------------------------------------------------------------------ |
-| Local cache              | tarball-per-hash in `.turbo/cache`         | `.nx/cache` SQLite-ish | materialized-artifact crates | SQLite index + one `<hash>.tar.zst` per entry in `.vx/cache`                         |
-| Remote cache wire        | Vercel `/v8/artifacts/` (HMAC, pre-signed) | Nx Cloud or plugin     | —                            | plugin-driven (`@vzn/vx-reapi` ships Bazel AC/CAS; Turbo = third-party plugin story) |
-| Log replay on hit        | yes                                        | yes                    | yes                          | yes                                                                                  |
-| Output restore on hit    | yes                                        | yes                    | yes                          | yes                                                                                  |
-| Output cleaning          | (no — additive)                            | (no)                   | (materialized)               | **yes** — wipe before exec AND before restore                                        |
-| Cache pruning (CLI)      | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `vx cache prune --older-than / --max-size`                                           |
-| Stats / run history      | `--summarize` JSON files                   | Nx Cloud dashboard     | `--last-details`             | `runs` + `invocations` tables in `cache.db` (direct SQL); `vx info`; `vx last`       |
-| Per-run JSON summary     | `--summarize`                              | `--outputStyle`        | `--last-details`             | `--summarize[=<path>]`                                                               |
-| Chrome-trace profile     | `--profile`                                | (Nx Cloud)             | —                            | `--profile[=<path>]`                                                                 |
-| Async remote prefetch    | —                                          | —                      | —                            | **yes** — stable-key GETs overlap execution                                          |
-| Restore-ahead scheduling | —                                          | —                      | —                            | **yes** — two-tier scheduler restores warm hits ahead of their deps                  |
-| Artifact integrity       | HMAC `x-artifact-tag`                      | (transport-level)      | —                            | **yes** — every blob re-hashed on read against the digest it was requested under     |
-| Pre-signed URL auth      | yes                                        | yes                    | —                            | plugin's business — core ships the `cache` seam, not a transport                     |
+| Cache feature            | Turbo                                      | Nx                     | vite-task                    | vx                                                                                                                                              |
+| ------------------------ | ------------------------------------------ | ---------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Local cache              | tarball-per-hash in `.turbo/cache`         | `.nx/cache` SQLite-ish | materialized-artifact crates | SQLite index + one `<hash>.tar.zst` per entry in `.vx/cache`                                                                                    |
+| Remote cache wire        | Vercel `/v8/artifacts/` (HMAC, pre-signed) | Nx Cloud or plugin     | —                            | plugin-driven: `@vzn/vx-reapi` (Bazel AC/CAS), `@vzn/vx-turbo-cache` (`/v8/artifacts`, self-hosted or Vercel), `@vzn/vx-nx-cache` (`/v1/cache`) |
+| Log replay on hit        | yes                                        | yes                    | yes                          | yes                                                                                                                                             |
+| Output restore on hit    | yes                                        | yes                    | yes                          | yes                                                                                                                                             |
+| Output cleaning          | (no — additive)                            | (no)                   | (materialized)               | **yes** — wipe before exec AND before restore                                                                                                   |
+| Cache pruning (CLI)      | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `vx cache prune --older-than / --max-size`                                                                                                      |
+| Stats / run history      | `--summarize` JSON files                   | Nx Cloud dashboard     | `--last-details`             | `runs` + `invocations` tables in `cache.db` (direct SQL); `vx info`; `vx last`                                                                  |
+| Per-run JSON summary     | `--summarize`                              | `--outputStyle`        | `--last-details`             | `--summarize[=<path>]`                                                                                                                          |
+| Chrome-trace profile     | `--profile`                                | (Nx Cloud)             | —                            | `--profile[=<path>]`                                                                                                                            |
+| Async remote prefetch    | —                                          | —                      | —                            | **yes** — stable-key GETs overlap execution                                                                                                     |
+| Restore-ahead scheduling | —                                          | —                      | —                            | **yes** — two-tier scheduler restores warm hits ahead of their deps                                                                             |
+| Artifact integrity       | HMAC `x-artifact-tag`                      | (transport-level)      | —                            | **yes** — every blob re-hashed on read against the digest it was requested under                                                                |
+| Pre-signed URL auth      | yes                                        | yes                    | —                            | plugin's business — core ships the `cache` seam, not a transport                                                                                |
 
 ## Workspace integration
 
@@ -199,9 +199,11 @@ upstream repos.
    `RunOptions.remoteCache`), and a plugin ships the wire —
    `@vzn/vx-reapi` speaks Bazel's ActionCache + CAS, so NativeLink,
    BuildBuddy, Buildbarn and bazel-remote all work.
-   Turbo `/v8/artifacts` compatibility was DROPPED from core; a
-   Turbo-wire cache is a **third-party plugin story** — the seam recipe
-   lives in the extensibility guide.
+   Turbo `/v8/artifacts` compatibility was DROPPED from core and came
+   back as a plugin: `@vzn/vx-turbo-cache` speaks the Turbo wire
+   (self-hosted or Vercel) and `@vzn/vx-nx-cache` the Nx self-hosted
+   one, both against the same `cache` seam — the recipe for any other
+   wire lives in the extensibility guide.
 
 2. **`--continue=<mode>` — shipped.** `--continue[=never|deps-ok|always]`
    controls failure propagation: `never` fail-fast (stop dispatch on the

@@ -1,4 +1,4 @@
-import { defineProject } from './src/index.ts'
+import { defineProject } from '@vzn/vx'
 
 // The core suite runs as this many parallel `bun test` processes, the files
 // dealt by recorded weight (scripts/test-shard.ts). Many processes is not

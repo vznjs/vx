@@ -507,7 +507,7 @@ describe('buildTaskGraph', () => {
       expect(nodes.get('app#test')?.deps).toEqual(['deep#build.wasm'])
     })
 
-    it('--excludeDependencies filters expanded matches by their concrete name', () => {
+    it('--exclude-dependencies filters expanded matches by their concrete name', () => {
       const nodes = buildTaskGraph({
         projects: projects(
           project('app', {

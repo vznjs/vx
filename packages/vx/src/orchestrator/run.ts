@@ -18,7 +18,8 @@ import {
   type TaskOutcome,
 } from '../graph/index.js'
 import { mark, MAX_TIMEOUT_MS, printTimings, ulid, nearest } from '../util/index.js'
-import { armSandbox } from './sandbox-request.js'
+import { prepareSandbox } from './sandbox-request.js'
+import type { OutputDirSnapshot } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
 import { resolveResourceCosts } from './resources.js'
 import { busLogger, createEventBus, terminalSubscriber } from './events.js'
@@ -57,7 +58,9 @@ import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { formatAbortedSection, formatRunSummary } from './summary.js'
 import type { RunOptions, RunSummary } from './options.js'
 
-const EMPTY_SHORT_CIRCUIT: ShortCircuit = { preProbed: new Map(), restoreTier: new Set() }
+// Per run, never shared: a `vx watch` process runs many, and a shared map
+// is one `preProbed.set` away from leaking a hit across cycles.
+const emptyShortCircuit = (): ShortCircuit => ({ preProbed: new Map(), restoreTier: new Set() })
 
 /**
  * Parse the `VX_TASK_TIMEOUT` env var (ms) — the "global" run-level task
@@ -427,7 +430,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       )
     }
 
-    const anySandboxed = await armSandbox(nodes.values())
+    const sandboxArmer = prepareSandbox(nodes.values())
+    const outputDirSnapshots: OutputDirSnapshot[] = []
 
     // Focused flow: a requested GROUP has no output of its own, so
     // surface the same-project, non-group tasks it chains (one level)
@@ -515,7 +519,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // each probe, so there is no second cache.get. Gated by
     // shouldShortCircuit (local reads on, no remote layer); when off, both
     // maps are empty and the run is byte-identical.
-    let shortCircuit: ShortCircuit = EMPTY_SHORT_CIRCUIT
+    let shortCircuit: ShortCircuit = emptyShortCircuit()
     if (shouldShortCircuit(nodes, policy, cache)) {
       shortCircuit = await startLocalShortCircuit({
         nodes,
@@ -562,6 +566,8 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         hashCache,
         ...(probe !== undefined ? { preProbed: probe } : {}),
         ...(taint ? { taintedUpstream: true } : {}),
+        ...(sandboxArmer !== null ? { armSandbox: () => sandboxArmer.arm() } : {}),
+        outputDirSnapshots,
       }
     }
 
@@ -746,6 +752,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // cache layer stays usable until the run's uploads have settled.
     await prefetchDone
     await cache.drainUploads?.()
+    // The miss path's output-directory snapshots, taken now that the
+    // directories are old enough for the snapshot's racy window (see
+    // miss-save.ts). A few at a time: each is an lstat + readdir per
+    // prefix and one index transaction.
+    for (let i = 0; i < outputDirSnapshots.length; i += 32) {
+      await Promise.all(
+        outputDirSnapshots
+          .slice(i, i + 32)
+          .map((s) => cache.recordOutputDirs?.(s.hash, s.projectDir, s.prefixes)),
+      )
+    }
+    mark('output dir snapshots')
     await teardownPlugins(prepared.plugins, (m) => log.status(m))
     closeCache()
     mark('close')
@@ -754,7 +772,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
     // no task was sandboxed; otherwise SRT keeps proxy servers alive and
     // the next vx run would init on top of stale state.
-    if (anySandboxed) {
+    if (sandboxArmer?.armed) {
       try {
         await resetSandbox()
       } catch (err) {

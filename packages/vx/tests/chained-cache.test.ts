@@ -2,9 +2,46 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { Cache, ChainedCache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import {
+  Cache,
+  ChainedCache,
+  LayeredCache,
+  type RemoteCacheLayer,
+  type InvocationRecord,
+} from '../src/cache/index.js'
 import { resolveCache, type VxPlugin } from '../src/orchestrator/index.js'
 import { testPlugin } from './helpers/plugin.js'
+
+/** A minimal invocation row: `recordRunBundle` is the only run-history write a layer takes. */
+function invocation(runId: string): InvocationRecord {
+  return {
+    runId,
+    command: 'vx run t',
+    requestedTasks: JSON.stringify(['t']),
+    cachePolicy: 'lR,lW',
+    concurrency: 1,
+    flow: 'broad',
+    startedAt: Date.now() - 10,
+    endedAt: Date.now(),
+    totalDurationMs: 10,
+    taskCount: 1,
+    failedCount: 0,
+    hitCount: 0,
+    hitLocalCount: 0,
+    hitRemoteCount: 0,
+    exitOk: true,
+    commitSha: null,
+    branch: null,
+    dirty: null,
+    ci: false,
+    ciProvider: null,
+    host: null,
+    os: null,
+    arch: null,
+    vxVersion: '0.0.0',
+    tags: '{}',
+  }
+}
 
 function tmpCache(tag: string): { cache: Cache; dir: string } {
   const dir = mkdtempSync(path.join(tmpdir(), `vx-chained-${tag}-`))
@@ -77,17 +114,22 @@ describe('ChainedCache', () => {
   )
 
   it(
-    'the FIRST layer owns the run index: recordRun reaches only it',
+    'the FIRST layer owns the run index: recordRunBundle reaches only it',
     withTwo(async (a, b) => {
       const now = Date.now()
-      new ChainedCache([a, b]).recordRun({
-        project: 'p',
-        task: 't',
-        status: 'success',
-        exitCode: 0,
-        durationMs: 1,
-        startedAt: now,
-        endedAt: now + 1,
+      new ChainedCache([a, b]).recordRunBundle({
+        runs: [
+          {
+            project: 'p',
+            task: 't',
+            status: 'success',
+            exitCode: 0,
+            durationMs: 1,
+            startedAt: now,
+            endedAt: now + 1,
+          },
+        ],
+        invocation: invocation('run-1'),
       })
       expect(a.stats().runCountLast24h).toBe(1)
       expect(b.stats().runCountLast24h).toBe(0)

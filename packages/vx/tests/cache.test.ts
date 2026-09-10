@@ -813,6 +813,44 @@ describe('Cache storage (v10)', () => {
     expect(await cache.get('h1')).toBeNull()
   })
 
+  it('prune({ dryRun }) reports the victims and orphans and deletes nothing', async () => {
+    const { mkdir, writeFile, utimes } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    const f = path.join(projectDir, 'a.txt')
+    await writeFile(f, 'aaa')
+    await cache.save({
+      hash: 'h-dry',
+      projectDir,
+      outputFiles: [f],
+      entry: { taskId: 'pkg#build', command: 'noop', durationMs: 0, stdout: '' },
+    })
+    const aged = path.join(cacheDir, 'deadbeefdeadbeef.tar.zst')
+    await writeFile(aged, 'x'.repeat(64))
+    const twoHoursAgo = (Date.now() - 2 * 60 * 60 * 1000) / 1000
+    await utimes(aged, twoHoursAgo, twoHoursAgo)
+    await new Promise((r) => setTimeout(r, 10))
+
+    const dry = await cache.prune({ olderThanMs: Date.now(), dryRun: true })
+    expect(dry.evicted).toBe(1)
+    expect(dry.bytesFreed).toBeGreaterThanOrEqual(3)
+    expect(dry.orphans).toBe(1)
+    expect(dry.orphanBytes).toBe(64)
+    // Nothing moved: the row and artifact are still there (has() does not
+    // refresh the access time, so the same cutoff still applies below).
+    expect(await cache.has('h-dry')).toBe('local')
+    expect(existsSync(aged)).toBe(true)
+
+    // The real prune with the same policy reaps exactly what the dry run named.
+    const wet = await cache.prune({ olderThanMs: Date.now() })
+    expect({ evicted: wet.evicted, orphans: wet.orphans, orphanBytes: wet.orphanBytes }).toEqual({
+      evicted: 1,
+      orphans: 1,
+      orphanBytes: 64,
+    })
+    expect(await cache.get('h-dry')).toBeNull()
+    expect(existsSync(aged)).toBe(false)
+  })
+
   it('prune() rejects empty options', async () => {
     await expect(cache.prune({})).rejects.toThrow(/at least one of/)
   })

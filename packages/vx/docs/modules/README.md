@@ -37,7 +37,7 @@ For the high-level data flow, read
 | [`cli-run.md`](./cli-run.md)                 | `src/cli/run.ts` — the `vx run` parser and verb; `src/cli/select.ts` — scope, affected owners, picker.                              |
 | [`cli-watch.md`](./cli-watch.md)             | `src/cli/watch.ts` — `vx watch <task>`: re-run on FS change.                                                                        |
 | [`cli-cache.md`](./cli-cache.md)             | `src/cli/cache.ts` — `vx cache prune`, duration / size parsers.                                                                     |
-| [`cli-help.md`](./cli-help.md)               | `src/cli/help.ts` — static help text.                                                                                               |
+| [`cli-help.md`](./cli-help.md)               | `src/cli/help.ts` — static help text; `src/cli/core-alias.ts` — the `@vzn/vx` virtual module bin.ts registers (see `bin.md`).       |
 | [`plugin-commands.md`](./plugin-commands.md) | `src/cli/plugin-commands.ts` — plugin-contributed verbs (`VxPlugin.commands`).                                                      |
 | [`cli-format.md`](./cli-format.md)           | `src/cli/format.ts` — `formatBytes` and other shared formatters.                                                                    |
 | [`plan-format.md`](./plan-format.md)         | `src/cli/plan-format.ts` — plan → text / JSON / DOT.                                                                                |
@@ -123,14 +123,13 @@ group.
 
 ## Cache cluster
 
-| File                                               | Topic                                                                                                                                                                                                                                       |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`cache.md`](./cache.md)                           | `src/cache/cache.ts` — local cache: `bun:sqlite` index + tar.zst artifacts.                                                                                                                                                                 |
-|                                                    | `src/cache/{layer,policy,zstd,file-hashes,config-evals,output-index,run-history}.ts` — the slices `Cache` composes (cache.md § Files); `src/cache/{archive,tar-stream}.ts` — pack / scan / extract (cache.md, caching.md § Storage layout). |
-| [`layered-cache.md`](./layered-cache.md)           | `src/cache/layered-cache.ts` — local + remote composition + `RemoteCacheLayer` seam.                                                                                                                                                        |
-| [`inputs.md`](./inputs.md)                         | `src/cache/inputs.ts` — glob resolution, boundary enforcement, `cleanOutputs`.                                                                                                                                                              |
-| [`git-inputs.md`](./git-inputs.md)                 | `src/cache/git-inputs.ts` — the git enumeration (`ls-files`, `status`, `check-attr`) the resolver trusts.                                                                                                                                   |
-| [`cas-backend-digest.md`](./cas-backend-digest.md) | `src/cache/{cas-backend,digest}.ts` — content-addressed view of the artifacts dir (internal, no consumer).                                                                                                                                  |
+| File                                     | Topic                                                                                                                                                                                                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`cache.md`](./cache.md)                 | `src/cache/cache.ts` — local cache: `bun:sqlite` index + tar.zst artifacts.                                                                                                                                                                 |
+|                                          | `src/cache/{layer,policy,zstd,file-hashes,config-evals,output-index,run-history}.ts` — the slices `Cache` composes (cache.md § Files); `src/cache/{archive,tar-stream}.ts` — pack / scan / extract (cache.md, caching.md § Storage layout). |
+| [`layered-cache.md`](./layered-cache.md) | `src/cache/layered-cache.ts` — local + remote composition + `RemoteCacheLayer` seam.                                                                                                                                                        |
+| [`inputs.md`](./inputs.md)               | `src/cache/inputs.ts` — glob resolution, boundary enforcement, `cleanOutputs`.                                                                                                                                                              |
+| [`git-inputs.md`](./git-inputs.md)       | `src/cache/git-inputs.ts` — the git enumeration (`ls-files`, `status`, `check-attr`) the resolver trusts.                                                                                                                                   |
 
 ## Exec (process primitives)
 

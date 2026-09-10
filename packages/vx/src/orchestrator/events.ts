@@ -236,6 +236,29 @@ export interface OutcomeView {
   wallclockEndNs?: string
 }
 
+/**
+ * The one outcome vocabulary every renderer prints — the framed block
+ * header and footer, the focused one-liner, the hash-only audit line,
+ * the verbose summary table: `success` / `restored-local` /
+ * `restored-remote` / `up-to-date` / `failed` / `skipped`. A hit that
+ * materialized nothing is up-to-date whichever layer answered.
+ */
+export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string {
+  switch (o.status) {
+    case 'cache-hit':
+      return o.restored === false ? 'up-to-date' : 'restored-local'
+    case 'cache-hit-remote':
+      return o.restored === false ? 'up-to-date' : 'restored-remote'
+    default:
+      return o.status
+  }
+}
+
+/** `outcomeWord` with the exit code a failure carries: `failed (exit 9)`. */
+export function outcomeLabel(o: Pick<OutcomeView, 'status' | 'restored' | 'exitCode'>): string {
+  return o.status === 'failed' ? `failed (exit ${o.exitCode})` : outcomeWord(o)
+}
+
 export function projectNode(node: TaskNode): TaskView {
   const view: TaskView = {
     id: node.id,

@@ -25,9 +25,9 @@ import {
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { span } from '../util/index.js'
 import { sandboxRequestFor } from './sandbox-request.js'
-import { saveMiss } from './miss-save.js'
+import { saveMiss, type OutputDirSnapshot } from './miss-save.js'
 import { restoreHit } from './hit-restore.js'
-// The hit path's entry stays importable from here (tests, the short-circuit).
+// The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
 import type { Logger } from './logger.js'
@@ -121,6 +121,19 @@ export interface ExecuteArgs {
    */
   preProbed?: { hash: string; hit: CacheEntry | null }
   /**
+   * Start the sandbox runtime, on the first task that executes inside one
+   * (run.ts, `prepareSandbox`). Absent when no task in the run declares a
+   * sandbox. A cache hit never calls it: a hit needs no sandbox.
+   */
+  armSandbox?: () => Promise<void>
+  /**
+   * Run-scoped list the miss path appends its output-directory snapshot
+   * request to, taken at run end (run.ts) instead of right after the save:
+   * a directory written milliseconds ago is inside the snapshot's racy
+   * window and would be refused, and the next hit would walk the tree.
+   */
+  outputDirSnapshots?: OutputDirSnapshot[]
+  /**
    * `continueMode: 'always'` let this task run although an upstream —
    * directly or through a chain of successes — failed or aborted. It still
    * cleans its outputs and runs, and a cache HIT still restores (a hit is a
@@ -207,6 +220,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // (Until 2026-09-09 the block was accepted and silently ignored.)
   let command = plainCommand
   if (step.sandbox !== undefined) {
+    await args.armSandbox?.()
     const sb = await sandboxRequestFor(node, step.sandbox, args.workspaceRoot)
     command = (await wrapSandboxedCommand({ command: plainCommand, cwd: node.projectDir, ...sb }))
       .wrapped
@@ -614,6 +628,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       outputs: { files: outputs, workspaceFiles: wsOutputs },
     }
     if (!userSandbox) return base
+    await args.armSandbox?.()
     return { ...base, sandbox: await sandboxRequestFor(node, step.sandbox!, args.workspaceRoot) }
   }
 
@@ -653,6 +668,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       command: step.command,
       durationMs: result.durationMs,
       stdout: result.stdout,
+      outputDirSnapshots: args.outputDirSnapshots,
     })
   }
 

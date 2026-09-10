@@ -20,14 +20,10 @@
 // for the user to see — but on a cache hit there's nothing to replay
 // (the original run was successful and stderr typically empty).
 //
-// Replace this module to plug in remote storage. The contract is:
-//   key()           : derive a stable hash from a task's identity + inputs
-//   get(hash, ctx?) : retrieve a previous run's metadata, or null
-//   restoreOutputs  : extract the artifact's outputs/ into the project dir
-//   save            : persist outputs + stdout under a hash
-//   ingest          : adopt an artifact produced elsewhere (remote-hit path)
-//   recordRun       : append a row to the run history table (for stats)
-//   close           : release the SQLite handle
+// This is core's FLOOR, not a module to replace: remote storage is a
+// `RemoteCacheLayer` (has / get / put) that `LayeredCache` wraps around
+// this handle, declared by a plugin's `cache` hook. The contract every
+// layer speaks is `CacheLayer` in layer.ts; `plugin-host.ts` enforces it.
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -42,7 +38,6 @@ import {
   packArtifactStream,
   planArtifact,
 } from './archive.js'
-import { FsCASBackend } from './cas-backend.js'
 import {
   type CacheEntry,
   type CacheGetContext,
@@ -268,7 +263,7 @@ export class Cache implements CacheLayer {
   private readonly bumpAccessed: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
   private readonly insertEntryInput: ReturnType<Database['prepare']>
-  /** Memoized repo object format for blob-OID hashing (lazy-detected). */
+  /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
   private readonly configEvals: ConfigEvalTable
   private readonly outputs: OutputIndex
@@ -1212,21 +1207,6 @@ export class Cache implements CacheLayer {
     return this.db
   }
 
-  /**
-   * Content-addressed view over the same artifacts directory: an
-   * `FsCASBackend` rooted at `cacheDir`, reading and writing the
-   * `<hash>.tar.zst` files `Cache.save` produces, keyed by `Digest`.
-   * A write through it lands `<digest.hash>.tar.zst` with no index row:
-   * under a hash no row references it is an orphan `prune()` reaps after
-   * the in-flight grace window; under a hash a LIVE row references it
-   * REPLACES that entry's bytes, and the next lookup serves them. So it is
-   * a raw bytes view of the artifacts directory, not a save path — nothing
-   * in core writes through it, and a consumer that does owns that risk.
-   */
-  contentBackend(): FsCASBackend {
-    return new FsCASBackend(this.cacheDir)
-  }
-
   // --- run history: delegated to `RunHistory` (see run-history.ts) ---
   recordRun(run: RunRecord): void {
     this.history.recordRun(run)
@@ -1267,7 +1247,7 @@ export class Cache implements CacheLayer {
 
   async prune(options: PruneOptions): Promise<PruneResult> {
     this.flushAccessed()
-    const { olderThanMs, maxBytes } = options
+    const { olderThanMs, maxBytes, dryRun = false } = options
     if (olderThanMs === undefined && maxBytes === undefined) {
       throw new Error('prune: pass at least one of `olderThanMs` or `maxBytes`')
     }
@@ -1314,6 +1294,15 @@ export class Cache implements CacheLayer {
     // Promise.all over the unlinks. The IN-list is chunked at 900 like
     // flushAccessed so a huge eviction stays under any build's
     // bound-parameter ceiling.
+    if (dryRun) {
+      const orphans = await this.orphanStats()
+      return {
+        evicted: victims.size,
+        bytesFreed,
+        orphans: orphans.orphans,
+        orphanBytes: orphans.orphanBytes,
+      }
+    }
     if (victims.size > 0) {
       const hashes = [...victims]
       this.db.transaction(() => {

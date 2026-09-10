@@ -15,12 +15,14 @@ import {
 } from '../orchestrator/index.js'
 import { nearMatches, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { loadCliWorkspace, warnToStderr } from './workspace-config.js'
+import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 
 interface WhyArgs {
   target?: string
   runId?: string
   format: 'pretty' | 'json'
+  /** `--cache-dir`: read the history a run with the same flag wrote. */
+  cacheDir?: string
   error?: string
 }
 
@@ -51,6 +53,13 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
         }
       }
       out.format = fv
+      continue
+    }
+    const cd = parseCacheDirFlag(args, i)
+    if (cd !== null) {
+      if ('error' in cd) return { ...out, error: cd.error }
+      out.cacheDir = cd.cacheDir
+      i = cd.next
       continue
     }
     if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('why')}` }
@@ -138,7 +147,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   }
 
   const root = await findWorkspaceRoot(process.cwd())
-  const cache = new Cache((await loadCliWorkspace(root)).cacheDir)
+  const cache = new Cache(await cliCacheDir(root, parsed.cacheDir))
   noteSchemaReset(cache, warnToStderr)
   try {
     const db = cache.dbHandle()
