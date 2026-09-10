@@ -23,6 +23,7 @@
 import { cp, mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  definePlugin,
   buildPackageGraph,
   findWorkspaceRoot,
   listProjectMetas,
@@ -33,12 +34,9 @@ import {
 } from '@vzn/vx'
 
 const USAGE = 'usage: vx prune <project> [--out-dir <dir>] [--docker]'
-export const PRUNE_PLUGIN = 'vx/prune'
-
 /** The plugin: a workspace that declares it gets `vx prune` from the vx CLI. */
 export function prune(): VxPlugin {
-  return {
-    name: PRUNE_PLUGIN,
+  return definePlugin(import.meta, {
     commands: {
       prune: {
         description: 'emit a workspace subset (one project + its deps) for Docker builds',
@@ -47,7 +45,7 @@ export function prune(): VxPlugin {
         },
       },
     },
-  }
+  })
 }
 
 export interface PruneArgs {

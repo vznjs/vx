@@ -8,7 +8,7 @@
 // plugin — declare it in vx.workspace.ts. The trade: the env var ALONE no
 // longer auto-exports; you must `defineWorkspace({ plugins: [otel()] })`.
 
-import type { TelemetryContext, TelemetrySink, VxPlugin } from '@vzn/vx'
+import { definePlugin, type TelemetryContext, type TelemetrySink, type VxPlugin } from '@vzn/vx'
 import { OtelSink, type PostFn } from './sink.js'
 
 export interface OtelPluginOptions {
@@ -122,12 +122,11 @@ export function resolveOtelConfig(
  * Declines when no OTLP endpoint is set.
  */
 export function otel(opts: OtelPluginOptions = {}): VxPlugin {
-  return {
-    name: 'vx/otel',
+  return definePlugin(import.meta, {
     telemetry(ctx: TelemetryContext): TelemetrySink | undefined {
       const config = resolveOtelConfig(opts, process.env, (m) => ctx.warn(m))
       if (config === undefined) return undefined
       return new OtelSink(config)
     },
-  }
+  })
 }

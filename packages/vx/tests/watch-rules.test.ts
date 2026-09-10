@@ -21,6 +21,7 @@ import {
   watchCmd,
 } from '../src/cli/watch.js'
 import { listProjects, loadWorkspace, WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
+import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 describe('the ignore filter', () => {
   // Every project dir is watched RECURSIVELY, so without this a `bun install`
@@ -131,11 +132,14 @@ describe('the sweep sees what a run sees', () => {
     // outputs land in its dir — the zero-migration shape.
     await writeFile(
       path.join(root, 'vx.workspace.mjs'),
-      `export default { plugins: [{ name: 'gen', project(config) {
+      `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
+        'gen',
+        `{ project(config) {
         config.tasks.build = { exec: { command: 'echo' }, cache: {
           inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
           outputs: { files: ['dist/**'] } } }
-      } }] }\n`,
+      } }`,
+      )}] }\n`,
     )
     await mkdir(path.join(root, 'packages', 'bare'), { recursive: true })
     await writeFile(

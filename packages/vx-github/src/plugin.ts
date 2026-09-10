@@ -4,7 +4,7 @@
 // and no cost — so declaring `github()` is safe in every environment, the
 // same decline pattern as `otel()`.
 import { appendFile } from 'node:fs/promises'
-import type { RunSummaryRecord, TelemetrySink, VxPlugin } from '@vzn/vx'
+import { definePlugin, type RunSummaryRecord, type TelemetrySink, type VxPlugin } from '@vzn/vx'
 import {
   buildCheckRunPayload,
   postCheckRun,
@@ -90,8 +90,7 @@ export class GithubSummarySink implements TelemetrySink {
 }
 
 export function github(options: GithubPluginOptions = {}): VxPlugin {
-  return {
-    name: 'vx/github',
+  return definePlugin(import.meta, {
     telemetry(ctx) {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']
       if (file === undefined || file === '') return undefined
@@ -119,5 +118,5 @@ export function github(options: GithubPluginOptions = {}): VxPlugin {
         check,
       )
     },
-  }
+  })
 }

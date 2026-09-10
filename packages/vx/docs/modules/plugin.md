@@ -2,8 +2,11 @@
 
 ## Purpose
 
-The integration seam. A plugin declares a `name` plus at least one
-capability; `defineWorkspace({ plugins: [...] })` activates it. Core
+The integration seam. A plugin is `definePlugin(import.meta, hooks)`
+— its name is the name of the package it is defined in, read from the
+nearest `package.json` and stamped where the workspace loader checks,
+never a field — with at least one capability; `defineWorkspace({
+plugins: [...] })` activates it. Core
 consults capabilities at fixed points and otherwise ignores plugins —
 behavior lives in the plugin package (vite-style), not in core.
 

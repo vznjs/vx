@@ -8,8 +8,11 @@
 // run with a clean UserError naming plugin + hook. A plugin that throws
 // inside a bus hook is logged and disabled for the remainder of the run.
 
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Cache, CacheLayer, CachePolicy } from '../cache/index.js'
-import type { ProjectConfig, WorkspaceConfig } from '../config.js'
+import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { UserError } from '../util/index.js'
@@ -32,7 +35,12 @@ import type { TelemetryContext, TelemetrySink } from './telemetry.js'
  * outside the list.
  */
 export interface VxPlugin {
-  /** Stable identifier, convention `'org/name'`. Used in errors + precedence logs. */
+  /**
+   * The name of the package the plugin was defined in — set by
+   * `definePlugin` from the nearest `package.json`, never by the plugin.
+   * Heads every warning about the plugin, every `vx info` line, and the
+   * key material a `key` hook contributes.
+   */
   readonly name: string
 
   // --- PIPELINE stages (shape the run before it executes — opt-in) ----------
@@ -265,6 +273,70 @@ export interface Plugin {
    * `installPlugins` — its capabilities are consulted by `plugin-host.ts`.
    */
   setup?(ctx: PluginContext): void | Promise<void>
+}
+
+/** What a plugin author writes: every hook, and no name. */
+export type PluginHooks = Omit<VxPlugin, 'name'>
+
+/**
+ * Where a plugin is defined — `import.meta` of its module. `dir` is Bun's
+ * field; `url` is the standard one, for a module evaluated elsewhere.
+ */
+export interface PluginOrigin {
+  readonly dir?: string
+  readonly url?: string
+}
+
+const packageNameByDir = new Map<string, string>()
+
+/** The name of the nearest `package.json` above `dir` — the one that owns it. */
+function pluginPackageName(dir: string): string {
+  const memo = packageNameByDir.get(dir)
+  if (memo !== undefined) return memo
+  for (let d = dir; ; ) {
+    let text: string | undefined
+    try {
+      text = readFileSync(path.join(d, 'package.json'), 'utf8')
+    } catch {
+      /* not here; look one level up */
+    }
+    if (text !== undefined) {
+      const name = (JSON.parse(text) as { name?: unknown }).name
+      if (typeof name !== 'string' || name.length === 0) {
+        throw new UserError(
+          `definePlugin: ${path.join(d, 'package.json')} has no name — a plugin is a package, and its name is the package's`,
+        )
+      }
+      packageNameByDir.set(dir, name)
+      return name
+    }
+    const parent = path.dirname(d)
+    if (parent === d) {
+      throw new UserError(
+        `definePlugin: no package.json above ${dir} — a plugin is a package, and its name is the package's`,
+      )
+    }
+    d = parent
+  }
+}
+
+/**
+ * The one way to make a plugin: `definePlugin(import.meta, { ...hooks })`.
+ * The name is read from the package the calling module belongs to — the
+ * nearest `package.json` above it — and stamped where the workspace loader
+ * checks for it, so a plugin cannot be named anything but its package.
+ */
+export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin {
+  if ('name' in hooks) {
+    throw new UserError(`definePlugin: a plugin's name is its package name — drop the 'name' field`)
+  }
+  const dir =
+    origin.dir ?? (origin.url !== undefined ? path.dirname(fileURLToPath(origin.url)) : undefined)
+  if (dir === undefined) {
+    throw new UserError(`definePlugin: the first argument must be the plugin module's import.meta`)
+  }
+  const name = pluginPackageName(dir)
+  return { ...hooks, name, [PLUGIN_PACKAGE]: name } as VxPlugin
 }
 
 export interface InstallPluginsArgs {

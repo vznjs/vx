@@ -177,9 +177,9 @@ describe('@vzn/vx-turbo', () => {
       await planRun({ cwd: root, tasks: ['build'], log })
       const text = log.lines.join('\n')
       expect(text).toContain(
-        '[vx/turbo] app#build: output "!dist/**/*.map": vx outputs have no negation',
+        '[@vzn/vx-turbo] app#build: output "!dist/**/*.map": vx outputs have no negation',
       )
-      expect(text).toContain('[vx/turbo] note: root task //#root not migrated')
+      expect(text).toContain('[@vzn/vx-turbo] note: root task //#root not migrated')
       // Once for the workspace note, once per (package, task) for the gap.
       expect(text.split('root task //#root').length - 1).toBe(1)
     },

@@ -25,6 +25,7 @@ import {
   type TelemetrySink,
   type VxPlugin,
 } from '../src/orchestrator/index.js'
+import { pluginSource, testPlugin } from './helpers/plugin.js'
 
 function mkNode(id: string, command?: string): TaskNode {
   const [projectName, taskName] = id.split('#') as [string, string]
@@ -324,7 +325,7 @@ describe('subscribeTelemetry — host', () => {
 
   it('returns undefined when a plugin declines (telemetry → undefined)', async () => {
     const bus = createEventBus()
-    const plugins: VxPlugin[] = [{ name: 'org/decline', telemetry: () => undefined }]
+    const plugins: VxPlugin[] = [testPlugin('org/decline', { telemetry: () => undefined })]
     const handle = await subscribeTelemetry(plugins, bus, ctx, RUN)
     expect(handle).toBeUndefined()
   })
@@ -332,7 +333,7 @@ describe('subscribeTelemetry — host', () => {
   it('subscribes the source and fans records when a sink is contributed', async () => {
     const bus = createEventBus()
     const rec = recorder()
-    const plugins: VxPlugin[] = [{ name: 'org/tel', telemetry: () => rec.sink }]
+    const plugins: VxPlugin[] = [testPlugin('org/tel', { telemetry: () => rec.sink })]
     const handle = await subscribeTelemetry(plugins, bus, ctx, RUN)
     expect(handle).toBeDefined()
     const log = busLogger(bus)
@@ -346,7 +347,7 @@ describe('subscribeTelemetry — host', () => {
     const bus = createEventBus()
     const a = recorder()
     const b = recorder()
-    const plugins: VxPlugin[] = [{ name: 'org/tel', telemetry: () => [a.sink, b.sink] }]
+    const plugins: VxPlugin[] = [testPlugin('org/tel', { telemetry: () => [a.sink, b.sink] })]
     const handle = await subscribeTelemetry(plugins, bus, ctx, RUN)
     busLogger(bus).runStart?.({ total: 1 })
     expect(a.records).toHaveLength(1)
@@ -358,12 +359,11 @@ describe('subscribeTelemetry — host', () => {
     const bus = createEventBus()
     const warnings: string[] = []
     const plugins: VxPlugin[] = [
-      {
-        name: 'org/bad',
+      testPlugin('org/bad', {
         telemetry: () => {
           throw new Error('factory boom')
         },
-      },
+      }),
     ]
     const handle = await subscribeTelemetry(
       plugins,
@@ -378,7 +378,7 @@ describe('subscribeTelemetry — host', () => {
   it('dispose() removes the bus subscription (idempotent)', async () => {
     const bus = createEventBus()
     const rec = recorder()
-    const plugins: VxPlugin[] = [{ name: 'org/tel', telemetry: () => rec.sink }]
+    const plugins: VxPlugin[] = [testPlugin('org/tel', { telemetry: () => rec.sink })]
     const handle = await subscribeTelemetry(plugins, bus, ctx, RUN)
     handle!.dispose()
     handle!.dispose() // idempotent — must not throw
@@ -422,15 +422,16 @@ describe('telemetry — end-to-end through run()', () => {
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource(
           [
-            `{
-             name: 'org/tel',
-             telemetry() {
+            pluginSource(
+              'org/tel',
+              `{ telemetry() {
                return {
                  onRecord: (r) => globalThis.__vxTel.kinds.push(r.kind),
                  onRunSummary: (s) => { globalThis.__vxTel.summary = s; globalThis.__vxTel.summaryV = s.v },
                }
              },
            }`,
+            ),
           ],
           `globalThis.__vxTel = { kinds: [], summary: null, summaryV: null }
 `,

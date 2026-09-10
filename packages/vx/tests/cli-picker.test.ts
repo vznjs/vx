@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { pickTask } from '../src/cli/select.js'
+import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 let root: string
 
@@ -52,9 +53,12 @@ describe('vx run interactive picker', () => {
     // still has tasks when a plugin's `project` stage fills them.
     await writeFile(
       path.join(root, 'vx.workspace.mjs'),
-      `export default { plugins: [{ name: 'gen', project(config, ctx) {
+      `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
+        'gen',
+        `{ project(config, ctx) {
         if (ctx.name === 'gamma') config.tasks.gen = { exec: { command: 'true' }, description: 'from plugin' }
-      } }] }\n`,
+      } }`,
+      )}] }\n`,
     )
     const dir = path.join(root, 'packages', 'gamma')
     await mkdir(dir, { recursive: true })

@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseShowArgs } from '../src/cli/index.js'
 import { VERSION } from '../src/version.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
+import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 20_000
@@ -53,15 +54,16 @@ const APP_CONFIG = `
 // A workspace whose only tasks come from a plugin's `project` stage: no
 // package writes a config file. What `vx run` would run, `vx show` must
 // show — the two go through the same load.
-const PLUGIN_WORKSPACE = `
+const PLUGIN_WORKSPACE = `${PLUGIN_IMPORT}
   export default {
     plugins: [
-      {
-        name: 'gen',
-        project(config, ctx) {
+      ${pluginSource(
+        'gen',
+        `{ project(config, ctx) {
           config.tasks.gen = { exec: { command: 'echo gen ' + ctx.name } }
         },
-      },
+      }`,
+      )},
     ],
   }
 `

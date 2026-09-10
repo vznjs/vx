@@ -21,6 +21,7 @@ import {
   validateProjectConfig,
 } from '../src/workspace/project-loader.js'
 import { loadWorkspace } from '../src/workspace/workspace.js'
+import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 const CONFIG_PATH = '/ws/pkg/vx.config.ts'
 
@@ -274,7 +275,13 @@ const DISCOVERY_CASES: Array<[string, () => Promise<string | null>]> = [
 
 /** A `vx.workspace.ts` exporting `body`, loaded through the real loader. */
 function workspaceConfig(body: string): () => Promise<string | null> {
-  return () => failure({ 'vx.workspace.ts': `export default ${body}\n` }, loadWorkspaceConfig)
+  return () =>
+    failure({ 'vx.workspace.ts': `${PLUGIN_IMPORT}export default ${body}\n` }, loadWorkspaceConfig)
+}
+
+/** A plugin entry as fixture source: `definePlugin` over a package named `name`. */
+function plugin(name: string, hooks: string): string {
+  return pluginSource(name, hooks)
 }
 
 const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
@@ -282,14 +289,14 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   [
     "plugin '<name>' declares command '<verb>', a core verb — core verbs cannot be shadowed",
     workspaceConfig(
-      '{ plugins: [{ name: "p", commands: { show: { description: "d", run() { return 0 } } } }] }',
+      `{ plugins: [${plugin('p', '{ commands: { show: { description: "d", run() { return 0 } } } }')}] }`,
     ),
   ],
   [
     "plugins '<a>' and '<b>' both declare command '<verb>' — a verb has one owner",
     workspaceConfig(
-      '{ plugins: [{ name: "a", commands: { hi: { description: "d", run() { return 0 } } } }, ' +
-        '{ name: "b", commands: { hi: { description: "d", run() { return 0 } } } }] }',
+      `{ plugins: [${plugin('a', '{ commands: { hi: { description: "d", run() { return 0 } } } }')}, ` +
+        `${plugin('b', '{ commands: { hi: { description: "d", run() { return 0 } } } }')}] }`,
     ),
   ],
   ['concurrency must be a positive integer', workspaceConfig('{ concurrency: 0 }')],
@@ -297,14 +304,21 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   ['cacheDir must be a string', workspaceConfig('{ cacheDir: 42 }')],
   ['plugins must be an array of plugin objects', workspaceConfig('{ plugins: {} }')],
   ['plugins[<i>] must be an object', workspaceConfig('{ plugins: ["nope"] }')],
-  ['plugins[<i>].name must be a non-empty string', workspaceConfig('{ plugins: [{ name: "" }] }')],
+  [
+    'plugins[<i>] must come from definePlugin(import.meta, { … })',
+    workspaceConfig('{ plugins: [{ name: "p", setup() {} }] }'),
+  ],
+  [
+    'plugins[<i>].name overrides the package name',
+    workspaceConfig(`{ plugins: [{ ...${plugin('p', '{ setup() {} }')}, name: "q" }] }`),
+  ],
   [
     'plugins[<i>].<capability> must be a function',
-    workspaceConfig('{ plugins: [{ name: "p", setup: 1 }] }'),
+    workspaceConfig(`{ plugins: [${plugin('p', '{ setup: 1 }')}] }`),
   ],
   [
     'plugins[<i>] must contribute at least one of config/project/graph/key/schedule/setup/cache/executor/telemetry/teardown/commands',
-    workspaceConfig('{ plugins: [{ name: "p" }] }'),
+    workspaceConfig(`{ plugins: [${plugin('p', '{}')}] }`),
   ],
 ]
 

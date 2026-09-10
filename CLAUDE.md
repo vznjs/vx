@@ -116,6 +116,8 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 ## Conventions
 
 - No comments restating code; only "why" comments for non-obvious decisions.
+- A plugin is `definePlugin(import.meta, hooks)` and its name is its
+  package name — never a field, never overridden (owner, 2026-09-10).
 - No half-finished implementations behind flags. Ship it or don't write it.
 - Trust internal code; validate only at boundaries (user input, FS, network).
 - Test fixtures use heredoc strings for `vx.config.mjs`.

@@ -20,6 +20,7 @@ import {
 import type { TaskExecutor, TaskInputs } from '../src/exec/index.js'
 import { Cache, ChainedCache } from '../src/cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
+import { PLUGIN_IMPORT, pluginSource, testPlugin } from './helpers/plugin.js'
 
 async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => void }> {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'vx-plugin-cap-'))
@@ -82,9 +83,9 @@ describe('plugin-host — capability consultation + fallbacks', () => {
       write: true,
     })
     const plugins: VxPlugin[] = [
-      { name: 'org/none', cache: () => undefined },
-      { name: 'org/cache', cache: () => other },
-      { name: 'org/late', cache: () => local },
+      testPlugin('org/none', { cache: () => undefined }),
+      testPlugin('org/cache', { cache: () => other }),
+      testPlugin('org/late', { cache: () => local }),
     ]
     try {
       const resolved = await resolveCache(plugins, {
@@ -105,7 +106,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
     try {
-      const resolved = await resolveCache([{ name: 'org/none', cache: () => undefined }], {
+      const resolved = await resolveCache([testPlugin('org/none', { cache: () => undefined })], {
         ...baseCtx,
         localCache: local,
         policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
@@ -121,9 +122,9 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     const a: TaskExecutor = { name: 'a', execute: () => Promise.reject(new Error('unused')) }
     const b: TaskExecutor = { name: 'b', execute: () => Promise.reject(new Error('unused')) }
     const plugins: VxPlugin[] = [
-      { name: 'org/a', executor: () => a },
-      { name: 'org/none', executor: () => undefined },
-      { name: 'org/b', executor: async () => b },
+      testPlugin('org/a', { executor: () => a }),
+      testPlugin('org/none', { executor: () => undefined }),
+      testPlugin('org/b', { executor: async () => b }),
     ]
     const resolved = await resolveExecutors(plugins, { ...baseCtx, concurrency: 4 })
     // core's local executor is the tail of every list, never the head
@@ -138,7 +139,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     const local = new Cache(cacheDir, { read: true, write: true })
     try {
       await expect(
-        resolveCache([{ name: 'org/junk', cache: () => ({ nope: true }) as never }], {
+        resolveCache([testPlugin('org/junk', { cache: () => ({ nope: true }) as never })], {
           ...baseCtx,
           localCache: local,
           policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false },
@@ -151,7 +152,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
       rmSync(cacheDir, { recursive: true, force: true })
     }
     await expect(
-      resolveExecutors([{ name: 'org/junk', executor: () => ({ name: 'x' }) as never }], {
+      resolveExecutors([testPlugin('org/junk', { executor: () => ({ name: 'x' }) as never })], {
         ...baseCtx,
         concurrency: 1,
       }),
@@ -160,7 +161,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     )
     await expect(
       resolveExecutors(
-        [{ name: 'org/anon', executor: () => ({ execute: async () => ({}) }) as never }],
+        [testPlugin('org/anon', { executor: () => ({ execute: async () => ({}) }) as never })],
         {
           ...baseCtx,
           concurrency: 1,
@@ -171,12 +172,11 @@ describe('plugin-host — capability consultation + fallbacks', () => {
 
   it('resolveExecutors: a throwing executor factory aborts with a named UserError', async () => {
     const plugins: VxPlugin[] = [
-      {
-        name: 'org/broken-exec',
+      testPlugin('org/broken-exec', {
         executor: () => {
           throw new Error('exec boom')
         },
-      },
+      }),
     ]
     await expect(resolveExecutors(plugins, { ...baseCtx, concurrency: 1 })).rejects.toThrow(
       /org\/broken-exec.*exec boom/,
@@ -196,13 +196,14 @@ describe('plugin capabilities — end-to-end', () => {
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource(
           [
-            `{
-             name: 'org/cache',
-             cache(ctx) {
+            pluginSource(
+              'org/cache',
+              `{ cache(ctx) {
                globalThis.__vxCachePluginConsulted = true
                return ctx.localCache
              },
            }`,
+            ),
           ],
           `globalThis.__vxCachePluginConsulted = false
 `,
@@ -231,10 +232,11 @@ describe('plugin capabilities — end-to-end', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/bad-cache',
-             cache() { throw new Error('cache boom') },
+          pluginSource(
+            'org/bad-cache',
+            `{ cache() { throw new Error('cache boom') },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -261,7 +263,7 @@ describe('executor capability — config validation', () => {
     try {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `export default { plugins: [{ name: 'org/exec', executor() { return undefined } }] }`,
+        `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('org/exec', `{ executor() { return undefined } }`)}] }`,
       )
       const cfg = await loadWorkspaceConfig(workspaceRoot)
       expect(cfg?.plugins?.length).toBe(1)
@@ -275,7 +277,7 @@ describe('executor capability — config validation', () => {
     try {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
-        `export default { plugins: [{ name: 'org/exec', executor: 42 }] }`,
+        `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('org/exec', `{ executor: 42 }`)}] }`,
       )
       await expect(loadWorkspaceConfig(workspaceRoot)).rejects.toThrow(
         /plugins\[0\]\.executor.*function/,
@@ -304,9 +306,9 @@ describe('executor capability — end-to-end via run()', () => {
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource(
           [
-            `{
-             name: 'org/exec',
-             executor() {
+            pluginSource(
+              'org/exec',
+              `{ executor() {
                return {
                  name: 'fake',
                  async execute(req) {
@@ -317,6 +319,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+            ),
           ],
           `globalThis.__vxExec = []
 `,
@@ -339,9 +342,9 @@ describe('executor capability — end-to-end via run()', () => {
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource(
           [
-            `{
-             name: 'org/picky',
-             executor() {
+            pluginSource(
+              'org/picky',
+              `{ executor() {
                return {
                  name: 'picky',
                  accepts(task) { globalThis.__vxDeclined.push(task.taskId); return false },
@@ -349,6 +352,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+            ),
           ],
           `globalThis.__vxDeclined = []
 `,
@@ -380,9 +384,9 @@ describe('executor capability — end-to-end via run()', () => {
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource(
           [
-            `{
-             name: 'org/exec',
-             executor() {
+            pluginSource(
+              'org/exec',
+              `{ executor() {
                return {
                  name: 'fake',
                  async execute(req) {
@@ -393,6 +397,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+            ),
           ],
           `globalThis.__vxCalls = 0
          import { writeFileSync } from 'node:fs'
@@ -436,7 +441,10 @@ describe('executor capability — end-to-end via run()', () => {
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource(
           [
-            `{ name: 'org/second', cache: () => new Cache(${JSON.stringify(second)}, { read: true, write: true }) }`,
+            pluginSource(
+              'org/second',
+              `{ cache: () => new Cache(${JSON.stringify(second)}, { read: true, write: true }) }`,
+            ),
           ],
           `import { Cache } from ${JSON.stringify(CORE_INDEX)}`,
         ),
@@ -488,9 +496,9 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/inputs-spy',
-             executor() {
+          pluginSource(
+            'org/inputs-spy',
+            `{ executor() {
                return {
                  name: 'spy',
                  accepts(task) { return task.taskId === 'pkg-a#hello' },
@@ -503,6 +511,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -540,9 +549,9 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/inputs-spy',
-             executor() {
+          pluginSource(
+            'org/inputs-spy',
+            `{ executor() {
                return {
                  name: 'spy',
                  async execute(req) {
@@ -552,6 +561,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -577,9 +587,9 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/remote',
-             executor() {
+          pluginSource(
+            'org/remote',
+            `{ executor() {
                return {
                  name: 'remote-spy',
                  remote: true,
@@ -591,6 +601,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -624,9 +635,9 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/pool',
-             executor() {
+          pluginSource(
+            'org/pool',
+            `{ executor() {
                return {
                  name: 'pool',
                  remote: true,
@@ -641,6 +652,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -677,9 +689,9 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/demand',
-             executor() {
+          pluginSource(
+            'org/demand',
+            `{ executor() {
                globalThis.__vxDemand = []
                return {
                  name: 'demand-spy',
@@ -692,6 +704,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -728,9 +741,9 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/sizing',
-             executor() {
+          pluginSource(
+            'org/sizing',
+            `{ executor() {
                globalThis.__vxPlaced = {}
                return {
                  name: 'sizing-spy',
@@ -745,6 +758,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -782,9 +796,9 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/remote',
-             executor() {
+          pluginSource(
+            'org/remote',
+            `{ executor() {
                return {
                  name: 'spy-remote',
                  remote: true,
@@ -792,6 +806,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -823,7 +838,7 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{ name: 'org/broken-exec', executor() { throw new Error('exec boom') } }`,
+          pluginSource('org/broken-exec', `{ executor() { throw new Error('exec boom') } }`),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -867,9 +882,9 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/remote',
-             executor() {
+          pluginSource(
+            'org/remote',
+            `{ executor() {
                return {
                  name: 'picky-remote',
                  remote: true,
@@ -880,6 +895,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -914,9 +930,9 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/remote',
-             executor() {
+          pluginSource(
+            'org/remote',
+            `{ executor() {
                return {
                  name: 'pool',
                  remote: true,
@@ -924,6 +940,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -1077,9 +1094,9 @@ describe('executor capability — end-to-end via run()', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/remote',
-             executor() {
+          pluginSource(
+            'org/remote',
+            `{ executor() {
                return {
                  name: 'remote-spy',
                  remote: true,
@@ -1094,6 +1111,7 @@ describe('executor capability — end-to-end via run()', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)
@@ -1160,9 +1178,9 @@ describe('TaskOutcome.where — executor placement attribution', () => {
       await Bun.write(
         path.join(workspaceRoot, 'vx.workspace.mjs'),
         localWorkspaceSource([
-          `{
-             name: 'org/worker',
-             executor() {
+          pluginSource(
+            'org/worker',
+            `{ executor() {
                return {
                  name: 'spy-remote',
                  remote: true,
@@ -1179,9 +1197,10 @@ describe('TaskOutcome.where — executor placement attribution', () => {
                }
              },
            }`,
-          `{
-             name: 'org/tap',
-             telemetry() {
+          ),
+          pluginSource(
+            'org/tap',
+            `{ telemetry() {
                return {
                  name: 'tap',
                  onRecord(rec) {
@@ -1197,6 +1216,7 @@ describe('TaskOutcome.where — executor placement attribution', () => {
                }
              },
            }`,
+          ),
         ]),
       )
       await gitInit(workspaceRoot)

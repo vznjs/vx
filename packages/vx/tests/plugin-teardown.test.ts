@@ -22,6 +22,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import { teardownPlugins } from '../src/orchestrator/plugin-host.js'
 import { run } from '../src/index.js'
+import { pluginSource, testPlugin } from './helpers/plugin.js'
 
 /** Short enough that a hung plugin does not hold the suite for 3s. */
 const BOUND_MS = 120
@@ -43,7 +44,9 @@ const never = (): Promise<void> => new Promise<void>(() => {})
 describe('teardownPlugins — a dropped result is reported', () => {
   it('a teardown that never settles is named, not silently dropped', async () => {
     const warnings: string[] = []
-    await teardownPlugins([{ name: 'org/hung-teardown', teardown: never }], (m) => warnings.push(m))
+    await teardownPlugins([testPlugin('org/hung-teardown', { teardown: never })], (m) =>
+      warnings.push(m),
+    )
     expect(warnings.join('\n')).toContain('org/hung-teardown')
     expect(warnings.join('\n')).toMatch(/timed out/i)
   })
@@ -52,12 +55,11 @@ describe('teardownPlugins — a dropped result is reported', () => {
     const warnings: string[] = []
     await teardownPlugins(
       [
-        {
-          name: 'org/bad-teardown',
+        testPlugin('org/bad-teardown', {
           teardown: () => {
             throw new Error('teardown boom')
           },
-        },
+        }),
       ],
       (m) => warnings.push(m),
     )
@@ -71,7 +73,7 @@ describe('teardownPlugins — a dropped result is reported', () => {
   // with no exit code pending and a failed run reports green.
   it('the bound is real — a hung teardown returns, it does not hold the run', async () => {
     const started = Date.now()
-    await teardownPlugins([{ name: 'org/hung', teardown: never }], () => {})
+    await teardownPlugins([testPlugin('org/hung', { teardown: never })], () => {})
     const elapsed = Date.now() - started
     // Generous upper bound: this asserts "bounded", not a precise deadline,
     // so it cannot flake on a loaded box.
@@ -83,8 +85,8 @@ describe('teardownPlugins — a dropped result is reported', () => {
     let healthyTornDown = false
     await teardownPlugins(
       [
-        { name: 'org/hung', teardown: never },
-        { name: 'org/healthy', teardown: () => void (healthyTornDown = true) },
+        testPlugin('org/hung', { teardown: never }),
+        testPlugin('org/healthy', { teardown: () => void (healthyTornDown = true) }),
       ],
       () => {},
     )
@@ -128,11 +130,12 @@ describe('the lifecycle is reached on a run that FAILED', () => {
       path.join(root, 'vx.workspace.mjs'),
       localWorkspaceSource(
         [
-          `{
-         name: 'org/probe',
-         telemetry() { return { onRecord(){}, async flush() { globalThis.__vxLifecycle.push('flush') } } },
+          pluginSource(
+            'org/probe',
+            `{ telemetry() { return { onRecord(){}, async flush() { globalThis.__vxLifecycle.push('flush') } } },
          teardown() { globalThis.__vxLifecycle.push('teardown') },
        }`,
+          ),
         ],
         `globalThis.__vxLifecycle = []
 `,

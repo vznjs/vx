@@ -11,9 +11,13 @@
 // the plugin DECLINES and the run stays local.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { LayeredCache, type CacheLayer, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
-
-export const NX_CACHE_PLUGIN = 'vx/nx-cache'
+import {
+  definePlugin,
+  LayeredCache,
+  type CacheLayer,
+  type RemoteCacheLayer,
+  type VxPlugin,
+} from '@vzn/vx'
 
 export interface NxCacheOptions {
   /** Base URL of the cache server, or `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`. */
@@ -129,8 +133,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
  * Declines without a server, so it is safe to leave declared.
  */
 export function nxCache(options: NxCacheOptions = {}): VxPlugin {
-  return {
-    name: NX_CACHE_PLUGIN,
+  return definePlugin(import.meta, {
     cache(ctx): CacheLayer | undefined {
       const config = resolveNxCacheConfig(options)
       if (config === undefined) return undefined
@@ -139,5 +142,5 @@ export function nxCache(options: NxCacheOptions = {}): VxPlugin {
         onRemoteError: (err) => ctx.warn(`vx/nx-cache: ${err.message}`),
       })
     },
-  }
+  })
 }

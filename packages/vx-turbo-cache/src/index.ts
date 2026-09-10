@@ -11,9 +11,13 @@
 //
 // Imports core only through the public `@vzn/vx` specifier.
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { LayeredCache, type CacheLayer, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
-
-export const TURBO_CACHE_PLUGIN = 'vx/turbo-cache'
+import {
+  definePlugin,
+  LayeredCache,
+  type CacheLayer,
+  type RemoteCacheLayer,
+  type VxPlugin,
+} from '@vzn/vx'
 
 export interface TurboCacheOptions {
   /** Base URL of the cache server (`https://cache.example.com`), or `TURBO_API`. */
@@ -238,8 +242,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
  * Declines without a URL and a token, so it is safe to leave declared.
  */
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
-  return {
-    name: TURBO_CACHE_PLUGIN,
+  return definePlugin(import.meta, {
     cache(ctx): CacheLayer | undefined {
       const config = resolveTurboCacheConfig(options)
       if (config === undefined) return undefined
@@ -248,5 +251,5 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
         onRemoteError: (err) => ctx.warn(`vx/turbo-cache: ${err.message}`),
       })
     },
-  }
+  })
 }

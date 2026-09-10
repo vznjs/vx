@@ -148,6 +148,26 @@ migrate` was 1,475 lines of core that knew Turbo's and Nx's file
     that contention: the same work on four cores, which no order
     removes.
 
+69. DONE (a plugin's name is its package name — the owner's rule,
+    2026-09-10: "all plugins should have name taken from package name,
+    no overrides allowed"): `definePlugin(import.meta, hooks)` is the
+    one way to make a plugin. It reads the nearest `package.json` above
+    the calling module, stamps the name under a registry symbol
+    (`Symbol.for`, so a plugin package's own copy of core beside a
+    compiled binary's stamps the key the binary checks), and the
+    workspace loader — the one boundary every plugin crosses — refuses
+    a plain object and a `name` set over the stamp, each with a message
+    that says why. `PluginHooks` is `VxPlugin` without `name`, so a
+    `name` on the hooks object is a type error and a runtime refusal.
+    All nine first-party plugins converted; the core tests' inline
+    plugins go through `tests/helpers/plugin.ts`, which gives each
+    test plugin a package of its own under a temp root, in process or
+    as fixture source. Pinned in `tests/plugin-name.test.ts` (five
+    refusals, three controls) and by the façade snapshot. The same
+    morning's `vx/<thing>` convention is superseded by this: `vx info`
+    now lists `@vzn/vx-otel`, `@vzn/vx-github`, `@vzn/vx-mcp`,
+    `@vzn/vx-schedule-history`.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
@@ -157,13 +177,13 @@ against 14.6 s for the old deal's heaviest — the wall follows the
 heaviest shard, so about a second. The weights are what a twelve-way
 run on four cores measures, the condition the gate runs under.
 
-**Plugin names, one convention (2026-09-10).** `vx info` listed the
-repo's own plugins as `vzn/otel`, `@vzn/vx-github`, `vx/mcp` and
-`vx/schedule-history` — three spellings across four lines, and the same
-names head every plugin warning. Six of nine first-party plugins already
-said `vx/<thing>`; the other three (`vzn/otel`, `vzn/turbo`,
-`@vzn/vx-github`) now do too. No first-party plugin fills `key`, where
-the name is folded into the material, so nothing re-keys.
+**Plugin names, one convention (2026-09-10; superseded by item 69 the
+same day).** `vx info` listed the repo's own plugins as `vzn/otel`,
+`@vzn/vx-github`, `vx/mcp` and `vx/schedule-history` — three spellings
+across four lines. The interim answer was `vx/<thing>` everywhere; the
+owner's answer is that the name is the package name and nothing else,
+which item 69 enforces. No first-party plugin fills `key`, where the
+name is folded into the material, so nothing re-keyed either way.
 
 **The guide pin under the sandboxed gate (2026-09-10, after item 67).**
 CI's Linux job went red on 15136a6 in `@vzn/vx-docs#test`: the plugins
@@ -617,6 +637,9 @@ bin.ts` load), not a vx change.
 
 ## Decisions (this arc)
 
+- **A plugin's name is its package name; no overrides (owner,
+  2026-09-10).** `definePlugin(import.meta, hooks)` reads it and stamps
+  it; the workspace loader refuses anything else. Item 69.
 - **Gap audit vs Nx 23 / Turbo 2.10 (2026-09-04, owner's ask).** Core
   is at parity or ahead on every must-have a developer would miss
   (graph, filter DSL superset, affected, strict caching, env

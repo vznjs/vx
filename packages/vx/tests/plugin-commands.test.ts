@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { run as cli } from '../src/cli/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 
 let root: string
 let prevCwd: string
@@ -42,9 +43,9 @@ afterEach(async () => {
   delete (globalThis as { __vxCmd?: unknown }).__vxCmd
 })
 
-const HELLO = `{
-  name: 'org/hello',
-  commands: {
+const HELLO = pluginSource(
+  'org/hello',
+  `{ commands: {
     hello: {
       description: 'says hi',
       run(argv, ctx) {
@@ -53,19 +54,22 @@ const HELLO = `{
       },
     },
   },
-}`
+}`,
+)
 
-const SHADOW = `{
-  name: 'org/shadow',
-  commands: {
+const SHADOW = pluginSource(
+  'org/shadow',
+  `{ commands: {
     version: { description: 'never runs — core owns this verb', run() { globalThis.__vxCmd = 'shadowed'; return 9 } },
   },
-}`
+}`,
+)
 
-const TWICE = `{
-  name: 'org/twice',
-  commands: { hello: { description: 'also hi', run() { return 1 } } },
-}`
+const TWICE = pluginSource(
+  'org/twice',
+  `{ commands: { hello: { description: 'also hi', run() { return 1 } } },
+}`,
+)
 
 describe('plugin commands', () => {
   it('a plugin verb runs with its argv and a workspace context, and its exit code is the result', async () => {
@@ -87,10 +91,13 @@ describe('plugin commands', () => {
     await writeFile(
       path.join(root, 'vx.workspace.mjs'),
       localWorkspaceSource([
-        `{ name: 'org/forgetful', commands: {
+        pluginSource(
+          'org/forgetful',
+          `{ commands: {
           noret: { description: 'forgets its return', async run() {} },
           ok: { description: 'control', async run() { return 0 } },
         } }`,
+        ),
       ]),
     )
     await expect(cli(['noret'])).rejects.toThrow(
@@ -157,7 +164,9 @@ describe('plugin commands', () => {
   it('a malformed commands entry is refused by the loader, and the refusal is what the verb reports', async () => {
     await Bun.write(
       path.join(root, 'vx.workspace.mjs'),
-      localWorkspaceSource([`{ name: 'org/bad', commands: { hello: { run() { return 0 } } } }`]),
+      localWorkspaceSource([
+        pluginSource('org/bad', `{ commands: { hello: { run() { return 0 } } } }`),
+      ]),
     )
     expect(await cli(['hello'])).toBe(1)
     const text = err.join('')
@@ -197,16 +206,17 @@ describe('bin.ts prints a foreign-copy UserError as one line', () => {
     })
     return { code: p.exitCode, err: p.stderr.toString() }
   }
-  const PLUGIN = `{
-    name: 'org/foreign',
-    commands: {
+  const PLUGIN = pluginSource(
+    'org/foreign',
+    `{ commands: {
       refuse: { description: 'throws a class merely NAMED UserError', run() {
         class ForeignUserError extends Error { constructor(m) { super(m); this.name = 'UserError' } }
         throw new ForeignUserError('bad flag --x')
       } },
       crash: { description: 'throws a plain Error', run() { throw new Error('kaboom') } },
     },
-  }`
+  }`,
+  )
 
   it('a class named UserError from another copy prints the message only, exit 1', async () => {
     await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([PLUGIN]))

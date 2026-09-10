@@ -9,21 +9,23 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
 
 // A `config` plugin that moves the cache: the shape a plugin reading the
 // location from its own environment (a CI cache mount) takes.
-const WORKSPACE = `
+const WORKSPACE = `${PLUGIN_IMPORT}
   export default {
     plugins: [
-      {
-        name: 'mover',
-        config(ws) {
+      ${pluginSource(
+        'mover',
+        `{ config(ws) {
           ws.cacheDir = '.vx/moved'
         },
-      },
+      }`,
+      )},
     ],
   }
 `

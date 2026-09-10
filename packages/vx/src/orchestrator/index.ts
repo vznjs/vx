@@ -61,6 +61,9 @@ export {
   type PluginHookName,
   type PluginSetupContext,
   type VxPlugin,
+  definePlugin,
+  type PluginHooks,
+  type PluginOrigin,
 } from './plugin.js'
 export {
   applyConfigHooks,

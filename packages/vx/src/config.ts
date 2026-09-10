@@ -23,6 +23,17 @@ export interface WorkspaceConfig {
 }
 
 /**
+ * The runtime brand `definePlugin` stamps on a plugin: the name of the
+ * package it was defined in. The workspace loader accepts a plugin only
+ * when this is present and equals `name`, so a plugin's name is its
+ * package name and nothing else — no field to set, no override. A
+ * registry symbol on purpose: a plugin package imports its own copy of
+ * `@vzn/vx` beside a compiled binary's, and the two copies must stamp
+ * and check the same key.
+ */
+export const PLUGIN_PACKAGE: unique symbol = Symbol.for('vx.plugin.package')
+
+/**
  * Structural plugin shape — any subset of the pipeline stages
  * (`config`/`project`/`graph`/`key`/`schedule`), run-level capabilities
  * (`cache`/`executor`/`telemetry`) and CLI `commands`, plus optional
@@ -33,6 +44,7 @@ export interface WorkspaceConfig {
  * before consulting capabilities.
  */
 export interface Plugin {
+  /** The package name — set by `definePlugin`, never by the plugin. */
   readonly name: string
   config?(workspace: unknown, ctx: unknown): unknown
   project?(config: unknown, ctx: unknown): unknown

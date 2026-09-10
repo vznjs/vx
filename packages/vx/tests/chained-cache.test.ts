@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { Cache, ChainedCache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import { resolveCache, type VxPlugin } from '../src/orchestrator/index.js'
+import { testPlugin } from './helpers/plugin.js'
 
 function tmpCache(tag: string): { cache: Cache; dir: string } {
   const dir = mkdtempSync(path.join(tmpdir(), `vx-chained-${tag}-`))
@@ -109,7 +110,7 @@ describe('resolveCache — chaining', () => {
   it(
     'one contributing plugin → that layer, unwrapped',
     withTwo(async (a) => {
-      const plugins: VxPlugin[] = [{ name: 'org/one', cache: () => a }]
+      const plugins: VxPlugin[] = [testPlugin('org/one', { cache: () => a })]
       expect(await resolveCache(plugins, { ...baseCtx, localCache: a, policy })).toBe(a)
     }),
   )
@@ -118,8 +119,8 @@ describe('resolveCache — chaining', () => {
     'two contributing plugins → a ChainedCache in declaration order',
     withTwo(async (a, b) => {
       const plugins: VxPlugin[] = [
-        { name: 'org/first', cache: () => b },
-        { name: 'org/second', cache: () => a },
+        testPlugin('org/first', { cache: () => b }),
+        testPlugin('org/second', { cache: () => a }),
       ]
       const resolved = await resolveCache(plugins, { ...baseCtx, localCache: a, policy })
       expect(resolved).toBeInstanceOf(ChainedCache)
@@ -132,8 +133,8 @@ describe('resolveCache — chaining', () => {
     withTwo(async (a) => {
       const layered = new LayeredCache(a, noRemote)
       const plugins: VxPlugin[] = [
-        { name: 'org/cloud-like', cache: () => layered },
-        { name: 'vx/local-cache', cache: (ctx) => ctx.localCache },
+        testPlugin('org/cloud-like', { cache: () => layered }),
+        testPlugin('vx/local-cache', { cache: (ctx) => ctx.localCache }),
       ]
       expect(await resolveCache(plugins, { ...baseCtx, localCache: a, policy })).toBe(layered)
     }),

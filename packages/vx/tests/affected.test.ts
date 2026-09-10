@@ -15,6 +15,7 @@ import {
 import type { ProjectMeta } from '../src/workspace/workspace.js'
 import { listProjects, loadWorkspace } from '../src/workspace/index.js'
 import { workspaceGlobOwners } from '../src/cli/select.js'
+import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 async function git(cwd: string, ...args: string[]): Promise<void> {
   // -c commit.gpgsign=false defends against environments (CI sandboxes,
@@ -892,10 +893,13 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
     // glob; a written config in a sibling declares none.
     await writeFile(
       path.join(root, 'vx.workspace.mjs'),
-      `export default { plugins: [{ name: 'gen', project(config, ctx) {
+      `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
+        'gen',
+        `{ project(config, ctx) {
         if (ctx.name === 'bare') config.tasks.build = { exec: { command: 'true' }, cache: {
           inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, outputs: { files: [] } } }
-      } }] }\n`,
+      } }`,
+      )}] }\n`,
     )
     for (const [name, config] of [
       ['bare', null],
