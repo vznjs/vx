@@ -308,19 +308,19 @@ const footCols = {
             </div>
             <div class="stats">
               <div class="stat">
+                <span class="val"><span class="num">4</span><span class="unit">%</span></span>
+                <span class="label">Cold-run overhead</span>
+                <span class="sub">Turborepo +44% · Nx 9.6×</span>
+              </div>
+              <div class="stat plasma">
                 <span class="val"><span class="num">510</span><span class="unit">ms</span></span>
                 <span class="label">Full cache replay</span>
                 <span class="sub">3,270 tasks · 1,090 packages</span>
               </div>
-              <div class="stat plasma">
+              <div class="stat amber">
                 <span class="val"><span class="num">2.1</span><span class="unit">×</span></span>
                 <span class="label">Less CPU burned</span>
                 <span class="sub">vs Turborepo 2.10</span>
-              </div>
-              <div class="stat amber">
-                <span class="val"><span class="num">7.0</span><span class="unit">×</span></span>
-                <span class="label">Faster warm runs</span>
-                <span class="sub">vs Nx 23</span>
               </div>
             </div>
           </div>
@@ -505,8 +505,8 @@ const footCols = {
         <div class="bench-panel container vx-scanlines">
           <div class="bench-head">
             <div>
-              <p class="vx-kicker">// 3,270 tasks · 1,090 packages</p>
-              <h2>Lower is better. We checked.</h2>
+              <p class="vx-kicker">// runner overhead · 3,270 tasks · 1,090 packages</p>
+              <h2>Your tasks, plus a few percent.</h2>
             </div>
             <div class="bench-legend">
               <span class="legend"><span class="sw" style="background:var(--phosphor)"></span>vx</span>
@@ -551,6 +551,12 @@ const footCols = {
             }
           </div>
           <div class="bench-note">
+            <p>
+              Your tasks alone take 3m 38s on this graph — the ideal schedule, 10 perfectly parallel workers
+              along the dependency graph. vx finishes the cold build in 3m 46s (+4%), Turborepo in
+              5m 13s (+44%), Nx in 34m 44s (9.6× the schedule). Everything above the
+              baseline is the runner.
+            </p>
             <p>
               1,090 packages, 3,270 tasks, 100 dependency layers, identical commands, every runner
               pinned to the same concurrency, daemons on for the others, measured one at a time

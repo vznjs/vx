@@ -134,7 +134,11 @@ exact dependency graph (critical path 1m 40s, total work ÷
 workers 3m 38s); a cached run, a restore and the CPU a
 runner burns are 0 in theory, so every measured number in those rows is
 the runner. vx's cold overhead over the ideal schedule is
-8 s on 3,270 tasks. For context, the
+8 s on 3,270 tasks (+4%); Turborepo's is
+1m 35s (+44%) and Nx's 31m 06s (9.6× the
+schedule) — the number to read first: a runner that doubles a
+three-minute build is a different tool from one that adds a few
+percent. For context, the
 **measured floors** row gives what the cheapest possible implementation
 of each step costs on this machine: one `git status -uall` walk (the
 cost of asking what changed), that walk plus a raw copy of every output

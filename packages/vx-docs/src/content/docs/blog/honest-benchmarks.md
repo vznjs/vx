@@ -13,6 +13,15 @@ Benchmark numbers are only worth what the method behind them is worth.
 Here is the method, then the numbers, then how to read the ones that
 flatter vx less than the headline.
 
+One number first, because it is the one that decides whether a runner
+is worth having. Imagine your tasks take three minutes on their own.
+What does the tool add on top? On the 3,270-task workspace below the
+tasks alone take 3m 38s under an ideal schedule. vx finishes the cold
+build in 3m 46s: **4% overhead**. Turborepo finishes in 5m 13s, **44%**.
+Nx finishes in 34m 44s, **9.6× the schedule**. Every warm number on
+this page is a consequence of the same discipline, but this is the one
+you feel on every uncached build.
+
 ## Synthetic: the same graph, three runners
 
 `bun packages/vx-bench/compare.ts 100 11 1` scaffolds one workspace of
@@ -26,13 +35,13 @@ a time with daemons stopped between them so they never fight for CPU.
 `build` and `test` are `sleep 1`, so the numbers isolate the runner's
 own overhead from compilation.
 
-Fully cached, `build test --all`:
+`build test --all`, the tasks' own ideal schedule being 3m 38s:
 
-| Runner    | Fully cached | Cold build CPU |
-| --------- | ------------ | -------------- |
-| vx        | **510 ms**   | **35 s**       |
-| Turborepo | 760 ms       | 73 s           |
-| Nx        | 3.59 s       | 114 min        |
+| Runner    | Cold build          | Fully cached | Cold build CPU |
+| --------- | ------------------- | ------------ | -------------- |
+| vx        | **3m 46s** (+4%)    | **510 ms**   | **35 s**       |
+| Turborepo | 5m 13s (+44%)       | 760 ms       | 73 s           |
+| Nx        | 34m 44s (9.6×)      | 3.59 s       | 114 min        |
 
 The cold column is CPU time (user plus system, of the invocation and
 every child it waited for), not wall time, because on a synthetic

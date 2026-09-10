@@ -1308,6 +1308,25 @@ app`, "watching 2 project(s)", a `lib/src` edit is one cycle that
       re-executes `lib#build` and `app#build`; with the closure removed
       the marker never appears (timed out at "both projects watched").
 
+121.  DONE (2026-09-10, late night — owner: "the website should really
+      put focus on cold run metrics … imagine your tasks take 3 min and
+      tooling doubles that or 10×; vx just adds a few %"): the site,
+      the README and the benchmarks doc now lead with the runner's
+      overhead over the ideal schedule, rendered from `results.json` by
+      `update-site.ts` so it cannot drift (`over()`: under 2× a
+      percentage over the schedule, above it a multiple): on the
+      3,270-task graph the tasks alone take 3m 38s; vx 3m 46s (+4%),
+      Turborepo 5m 13s (+44%), Nx 34m 44s (9.6×). The hero's first
+      tile is that 4% with the other two in its subline (the "7.0×
+      faster warm runs vs Nx" tile gave way; the ratio stays in the
+      note); the benchmark section's heading is "Your tasks, plus a few
+      percent." and its note opens with the three wall times; the
+      README's generated block opens the same way; the benchmarks doc's
+      overhead sentence carries all three. Hand-written copy followed:
+      the why-fast concept page's first bullet, the honest-benchmarks
+      post (a cold-build column in its table) and the why-fast post's
+      opening. `check.site` guards the three generated files as before.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
