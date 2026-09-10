@@ -77,6 +77,16 @@ export async function resolvePluginCommand(
 }
 
 /** `vx help` lines for every plugin verb in the workspace around `cwd`. */
+/** The plugin verbs the workspace around `cwd` declares, in declaration order; none when it does not load. */
+export async function pluginVerbs(cwd = process.cwd()): Promise<string[]> {
+  const ws = await workspacePlugins(cwd).catch(() => null)
+  if (ws === null || 'loadError' in ws) return []
+  const verbs = new Set<string>()
+  for (const plugin of ws.plugins)
+    for (const verb of Object.keys(plugin.commands ?? {})) verbs.add(verb)
+  return [...verbs]
+}
+
 export async function pluginCommandHelp(cwd = process.cwd()): Promise<string[]> {
   const ws = await workspacePlugins(cwd).catch(() => null)
   if (ws === null || 'loadError' in ws) return []

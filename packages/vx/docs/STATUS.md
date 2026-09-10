@@ -426,6 +426,19 @@ port-<tag>-<port>.sock … TCP:127.0.0.1:<port>` in front of the
     forms) and the schema (a boolean or a non-empty list of TCP ports;
     an empty list, `0`, `65536`, a fraction, a string refused) have
     their own units.
+80. DONE (`vx completions bash|zsh|fish`, the gap audit's "later"):
+    a script over the verb table and each verb's help cut — the verbs
+    (the workspace's plugin verbs included at generation time) and
+    every flag of each, read from the one text `vx <verb> --help`
+    prints, so a flag cannot be documented and not completed; task and
+    project names are not completed on purpose (evaluating configs on
+    every Tab is the wrong price). `completions` joins `CORE_VERBS`,
+    so a plugin may not claim the name. Pinned: the bash script parses
+    (`bash -n`) and names every documented run flag, the zsh and fish
+    scripts name every verb and run flag, an unknown shell is refused
+    naming the three. The module page's verb table still listed
+    `migrate` and `prune` as core verbs with files that left in item
+    67; corrected in the same commit.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

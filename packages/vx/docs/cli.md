@@ -28,6 +28,7 @@ vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info
 vx stats              # deprecated alias of vx info
 vx upgrade [tag]      # self-update a compiled binary
+vx completions bash|zsh|fish
 
 # Meta
 vx help
@@ -1380,6 +1381,24 @@ a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
 elsewhere is replayed, explained, reported on and pruned there. Without
 the flag they open the workspace's cache (`defineWorkspace({ cacheDir })`
 or `.vx/cache`).
+
+## `vx completions`
+
+Print a completion script for `bash`, `zsh` or `fish`:
+
+```
+eval "$(vx completions bash)"                          # this shell
+vx completions zsh > ~/.zfunc/_vx                      # zsh, with ~/.zfunc on $fpath
+vx completions fish > ~/.config/fish/completions/vx.fish
+```
+
+The script completes the verbs — core's, and the plugin verbs the
+workspace around the cwd declares at generation time — and every flag
+of each verb, read from the same help text `vx <verb> --help` prints,
+so a flag cannot be documented and not completed. Task and project
+names are not completed (they are the workspace's, and a completion
+that evaluates configs on every Tab is the wrong price). An unknown
+shell is an error naming the three.
 
 ## Plugin commands
 
