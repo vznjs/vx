@@ -26,6 +26,8 @@ export {
   toWireEvent,
   projectNode,
   projectOutcome,
+  outcomeWord,
+  outcomeLabel,
 } from './events.js'
 export type {
   EventBus,

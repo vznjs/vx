@@ -38,7 +38,6 @@ import {
   packArtifactStream,
   planArtifact,
 } from './archive.js'
-import { FsCASBackend } from './cas-backend.js'
 import {
   type CacheEntry,
   type CacheGetContext,
@@ -1206,21 +1205,6 @@ export class Cache implements CacheLayer {
    */
   dbHandle(): Database {
     return this.db
-  }
-
-  /**
-   * Content-addressed view over the same artifacts directory: an
-   * `FsCASBackend` rooted at `cacheDir`, reading and writing the
-   * `<hash>.tar.zst` files `Cache.save` produces, keyed by `Digest`.
-   * A write through it lands `<digest.hash>.tar.zst` with no index row:
-   * under a hash no row references it is an orphan `prune()` reaps after
-   * the in-flight grace window; under a hash a LIVE row references it
-   * REPLACES that entry's bytes, and the next lookup serves them. So it is
-   * a raw bytes view of the artifacts directory, not a save path — nothing
-   * in core writes through it, and a consumer that does owns that risk.
-   */
-  contentBackend(): FsCASBackend {
-    return new FsCASBackend(this.cacheDir)
   }
 
   // --- run history: delegated to `RunHistory` (see run-history.ts) ---

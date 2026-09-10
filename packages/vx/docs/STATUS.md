@@ -251,6 +251,27 @@ dryRun` on the contract, so a layer that delegates gets it for
     audit items refuted on reading: `vx <verb> --help` has printed the
     reference since 2026-09-04, and cli.md's `vx migrate` / `vx prune`
     sections are the pointers to the packages, not stale verbs.
+74. DONE (complexity pass, part 2 — one status vocabulary, and the
+    seam nobody used): four renderers spelled the outcome words on their
+    own — the framed block header and footer, the focused one-liner and
+    hash-only audit line in logger.ts, the `--verbosity 1` table in
+    cli/run.ts — and the table had drifted to `executed` where every
+    other surface says `success` while its own comment claimed the
+    shared vocabulary. `outcomeWord(o)` (bare word) and
+    `outcomeLabel(o)` (with `(exit N)` on a failure) in events.ts are
+    the one source now; the audit line keeps the bare word, so a
+    `hash-only` consumer parsing it sees no change (output-flow.test.ts
+    pins the exact line set). The CAS substrate — `cas-backend.ts`,
+    `digest.ts`, `Cache.contentBackend()`, `FsCASBackend`,
+    `MemoryCASBackend`, `Digest` — had no consumer in core or in any
+    plugin (`@vzn/vx-reapi` carries its own `Digest` on the wire
+    type), only its two test files and a module page; the 2026-06
+    review that designed it (§4.3) planned a cache composed of CAS +
+    index that was never built, and cache.ts reads and writes the
+    artifacts directory directly. Removed with its tests, page and
+    weights: −143 lines of src. Both are the pipeline principle
+    applied to core's own insides: a seam with no consumer is a
+    special case waiting to happen.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
@@ -721,6 +742,12 @@ bin.ts` load), not a vx change.
 
 ## Decisions (this arc)
 
+- **No seam without a consumer (2026-09-10).** The `CASBackend` /
+  `Digest` substrate left core after three months with zero callers
+  (item 74). A content-addressed view of the artifacts directory comes
+  back when a plugin needs it, shaped by that plugin's use — not
+  before. The same rule retired `recordRun` / `recordRuns` from the
+  layer contract (item 72).
 - **A plugin's name is its package name; no overrides (owner,
   2026-09-10).** `definePlugin(import.meta, hooks)` reads it and stamps
   it; the workspace loader refuses anything else. Item 69.

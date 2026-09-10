@@ -5,6 +5,7 @@ import { defaultAffectedBase, findWorkspaceRoot } from '../workspace/index.js'
 import {
   planRun,
   formatRunReportMarkdown,
+  outcomeLabel,
   projectOutcome,
   run as runOrchestrator,
   type OutcomeView,
@@ -640,28 +641,7 @@ function printSummary(summary: RunResult): void {
 }
 
 function formatRow(o: OutcomeView): { task: string; status: string; duration: string } {
-  // Same outcome vocabulary as the framed blocks + summary:
-  // executed / restored-local / restored-remote / up-to-date /
-  // failed / skipped.
-  const status =
-    o.status === 'cache-hit'
-      ? o.restored === false
-        ? 'up-to-date'
-        : 'restored-local'
-      : o.status === 'cache-hit-remote'
-        ? o.restored === false
-          ? 'up-to-date'
-          : 'restored-remote'
-        : o.status === 'success'
-          ? 'executed'
-          : o.status === 'failed'
-            ? `failed (exit ${o.exitCode})`
-            : o.status
-  return {
-    task: o.taskId,
-    status,
-    duration: `${o.durationMs}ms`,
-  }
+  return { task: o.taskId, status: outcomeLabel(o), duration: `${o.durationMs}ms` }
 }
 
 /** `(did you mean --concurrency?)` for a flag within two edits of a documented one. */

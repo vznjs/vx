@@ -223,10 +223,6 @@ The cache is not a single file. It is composed:
 - **`inputs.ts`** — git-backed input enumeration (`GitFilesCache`),
   glob resolution with hard project boundaries, runtime-command
   resolution, output cleaning.
-- **`cas-backend.ts` / `digest.ts`** — a content-addressed view of
-  the artifacts directory (`CASBackend`, `Digest`), module-internal
-  with reference `Memory`/`Fs` backends and no consumer; `cache.ts`
-  reads and writes the directory directly, not through it.
 
 `prepareRun` constructs the local cache, then resolves the layer: an
 explicitly injected `RunOptions.remoteCache` wins outright (composed
@@ -490,7 +486,6 @@ functions; those are the seam. Internal helpers can change.
 | `graph/scheduler.ts`                       | Work-stealing, priority queues, distributed execution                                                                                                                |
 | `cache/cache.ts`                           | Different local store (per-entry manifests, BLOB-in-SQLite, S3-local)                                                                                                |
 | `cache/layered-cache.ts`                   | Different layering (local → regional → global); `RemoteCacheLayer` = the wire seam                                                                                   |
-| `cache/cas-backend.ts`                     | R2 / S3 / REAPI blob storage beneath the cache                                                                                                                       |
 | `exec/runner.ts`                           | Spawn into containers / remote builders                                                                                                                              |
 | `exec/env.ts`                              | Adjust isolation policy (broader allowlist, OS-specific essentials)                                                                                                  |
 | `cache/inputs.ts`                          | Enumerate inputs from something other than git's index (a VFS, Jujutsu, a watchman daemon) — declared inputs stay the contract; inference is rejected, see CLAUDE.md |

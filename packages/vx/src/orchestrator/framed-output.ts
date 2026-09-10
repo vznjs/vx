@@ -28,6 +28,7 @@
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { formatDuration } from './summary.js'
+import { outcomeLabel } from './events.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -469,27 +470,21 @@ export function formatPersistentList(
 function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
   const shortHash = o.hash ? o.hash.slice(0, 8) : ''
   const dim = (s: string) => paint('', s, colors, { dim: true })
+  const word = outcomeLabel(o)
   switch (o.status) {
     case 'cache-hit':
-      if (o.restored === false) {
-        return `${paint(SUCCESS, 'up-to-date', colors)} ${dim(`• ${shortHash}`)}`
-      }
-      return `${paint(SUCCESS, 'restored-local', colors)} ${dim(`• ${shortHash}`)}`
+      return `${paint(SUCCESS, word, colors)} ${dim(`• ${shortHash}`)}`
     case 'cache-hit-remote':
-      if (o.restored === false) {
-        return `${paint(SUCCESS, 'up-to-date', colors)} ${dim(`• ${shortHash}`)}`
-      }
-      return `${paint(ACCENT, 'restored-remote', colors)} ${dim(`• ${shortHash}`)}`
+      // A remote restore is the one hit painted accent: bytes came off the wire.
+      return `${paint(o.restored === false ? SUCCESS : ACCENT, word, colors)} ${dim(`• ${shortHash}`)}`
     case 'failed':
       // The command lives in its own `├─ command` section; the header
       // carries the outcome like every other status.
-      return paint(ERROR, `failed (exit ${o.exitCode})`, colors, { bold: true })
+      return paint(ERROR, word, colors, { bold: true })
     case 'skipped':
       return paint(WARN, 'skipped (upstream failed)', colors)
-    case 'success':
-      return dim('success')
     default:
-      return o.status
+      return dim(word)
   }
 }
 
@@ -507,21 +502,16 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
 }
 
 function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
+  const word = outcomeLabel(o)
   switch (o.status) {
-    case 'cache-hit':
-      return paint('', o.restored === false ? 'up-to-date' : 'restored-local', colors, {
-        dim: true,
-      })
-    case 'cache-hit-remote':
-      return paint('', o.restored === false ? 'up-to-date' : 'restored-remote', colors, {
-        dim: true,
-      })
-    case 'success':
-      return paint('', 'success', colors, { dim: true })
     case 'failed':
-      return paint(ERROR, `failed (exit ${o.exitCode})`, colors, { bold: true })
+      return paint(ERROR, word, colors, { bold: true })
     case 'skipped':
-      return paint(WARN, 'skipped', colors)
+      return paint(WARN, word, colors)
+    case 'cache-hit':
+    case 'cache-hit-remote':
+    case 'success':
+      return paint('', word, colors, { dim: true })
     default:
       return o.status
   }

@@ -20,6 +20,7 @@ import { formatDuration, formatSummarySection, type RunContext } from './summary
 import { isGroupTask } from '../graph/index.js'
 import { appendTail, createTail, resetTail, tailText, type Tail } from '../util/index.js'
 import { isCacheHit } from './telemetry.js'
+import { outcomeWord } from './events.js'
 
 export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
@@ -126,20 +127,6 @@ function ghaFence(body: string, token: string): string {
 
 const cacheWordOf = (n: TaskNode): 'miss' | 'no-cache' =>
   n.config.cache === undefined ? 'no-cache' : 'miss'
-
-/** The unified outcome vocabulary word for a non-failed outcome. */
-function outcomeWord(o: TaskOutcome): string {
-  switch (o.status) {
-    case 'success':
-      return 'success'
-    case 'cache-hit':
-      return o.restored === false ? 'up-to-date' : 'restored-local'
-    case 'cache-hit-remote':
-      return o.restored === false ? 'up-to-date' : 'restored-remote'
-    default:
-      return o.status
-  }
-}
 
 export function resolveOutputView(
   options: {
