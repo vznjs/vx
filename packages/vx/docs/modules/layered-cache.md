@@ -79,7 +79,7 @@ validation (zstd checks), which this layer also degrades to a miss.
 
 ## Delegation
 
-`key / recordRun / stats / prune / restoreOutputs / close` are pure
+`key / recordRunBundle / stats / prune / restoreOutputs / close` are pure
 delegations to the local `Cache`. The remote layer doesn't participate
 in cache identity, run history, or eviction — those are workspace-
 local concerns.

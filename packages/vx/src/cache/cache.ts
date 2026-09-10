@@ -20,14 +20,10 @@
 // for the user to see — but on a cache hit there's nothing to replay
 // (the original run was successful and stderr typically empty).
 //
-// Replace this module to plug in remote storage. The contract is:
-//   key()           : derive a stable hash from a task's identity + inputs
-//   get(hash, ctx?) : retrieve a previous run's metadata, or null
-//   restoreOutputs  : extract the artifact's outputs/ into the project dir
-//   save            : persist outputs + stdout under a hash
-//   ingest          : adopt an artifact produced elsewhere (remote-hit path)
-//   recordRun       : append a row to the run history table (for stats)
-//   close           : release the SQLite handle
+// This is core's FLOOR, not a module to replace: remote storage is a
+// `RemoteCacheLayer` (has / get / put) that `LayeredCache` wraps around
+// this handle, declared by a plugin's `cache` hook. The contract every
+// layer speaks is `CacheLayer` in layer.ts; `plugin-host.ts` enforces it.
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -268,7 +264,7 @@ export class Cache implements CacheLayer {
   private readonly bumpAccessed: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
   private readonly insertEntryInput: ReturnType<Database['prepare']>
-  /** Memoized repo object format for blob-OID hashing (lazy-detected). */
+  /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
   private readonly configEvals: ConfigEvalTable
   private readonly outputs: OutputIndex

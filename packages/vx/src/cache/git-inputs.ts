@@ -209,6 +209,11 @@ export function runGitLsFiles(cwd: string): GitLsResult {
   return parseLsFilesOutput(new TextDecoder().decode(proc.stdout))
 }
 
+// Each `ls-files -s -v` record is `[<flag> ]<mode> <oid> <stage>\t<path>` —
+// the staged-entry form, with an optional cache-state letter (`H`, `S`,
+// `h`, …) in front. `--others` paths print bare; with `-z`, core.quotePath
+// quoting is off, so a bare path containing a literal tab still cannot
+// match the fixed-form prefix. Both answers come from ONE spawn.
 function parseLsFilesOutput(out: string): GitLsResult {
   const files: string[] = []
   const oids = new Map<string, string>()
@@ -335,23 +340,6 @@ export function autocrlfConverts(coreConfig: string): boolean {
     }
   }
   return false
-}
-
-/**
- * Paths `git ls-files -v -z` marks as not-watched: `S` is skip-worktree, and
- * ANY lowercase letter is assume-unchanged layered on that entry's state.
- * Either way git has been told to stop comparing the worktree file, so its
- * index OID says nothing about what is — or isn't — on disk. Each
- * NUL-terminated record is `<letter><space><path>`.
- */
-export function parseFlaggedOutput(out: string): Set<string> {
-  const flagged = new Set<string>()
-  for (const record of out.split('\0')) {
-    if (record.length < 3 || record[1] !== ' ') continue
-    const letter = record[0]!
-    if (letter === 'S' || (letter >= 'a' && letter <= 'z')) flagged.add(record.slice(2))
-  }
-  return flagged
 }
 
 function parseStatusOutput(out: string): { dirty: Set<string>; untracked: string[] } {
@@ -647,9 +635,3 @@ export function applyGitEnumeration(
     cache.setWorkspaceRoot(workspaceRoot)
   }
 }
-
-/**
- * Union of files matching any positive pattern in `cwd`, minus files
- * matching any exclude glob (tested by Bun.Glob.match on the relative
- * path). Bun.Glob takes a single pattern per instance, so we iterate.
- */

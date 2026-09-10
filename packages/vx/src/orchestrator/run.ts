@@ -58,7 +58,9 @@ import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { formatAbortedSection, formatRunSummary } from './summary.js'
 import type { RunOptions, RunSummary } from './options.js'
 
-const EMPTY_SHORT_CIRCUIT: ShortCircuit = { preProbed: new Map(), restoreTier: new Set() }
+// Per run, never shared: a `vx watch` process runs many, and a shared map
+// is one `preProbed.set` away from leaking a hit across cycles.
+const emptyShortCircuit = (): ShortCircuit => ({ preProbed: new Map(), restoreTier: new Set() })
 
 /**
  * Parse the `VX_TASK_TIMEOUT` env var (ms) — the "global" run-level task
@@ -517,7 +519,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // each probe, so there is no second cache.get. Gated by
     // shouldShortCircuit (local reads on, no remote layer); when off, both
     // maps are empty and the run is byte-identical.
-    let shortCircuit: ShortCircuit = EMPTY_SHORT_CIRCUIT
+    let shortCircuit: ShortCircuit = emptyShortCircuit()
     if (shouldShortCircuit(nodes, policy, cache)) {
       shortCircuit = await startLocalShortCircuit({
         nodes,

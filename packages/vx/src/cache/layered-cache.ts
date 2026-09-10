@@ -413,14 +413,6 @@ export class LayeredCache implements CacheLayer {
     return this.local.outputDirsCurrent(projectDir, rows)
   }
 
-  recordRun(run: RunRecord): void {
-    this.local.recordRun(run)
-  }
-
-  recordRuns(runs: readonly RunRecord[]): void {
-    this.local.recordRuns(runs)
-  }
-
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     this.local.recordRunBundle(bundle)
   }

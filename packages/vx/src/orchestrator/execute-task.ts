@@ -27,7 +27,7 @@ import { span } from '../util/index.js'
 import { sandboxRequestFor } from './sandbox-request.js'
 import { saveMiss, type OutputDirSnapshot } from './miss-save.js'
 import { restoreHit } from './hit-restore.js'
-// The hit path's entry stays importable from here (tests, the short-circuit).
+// The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
 import type { Logger } from './logger.js'

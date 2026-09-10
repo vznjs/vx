@@ -506,15 +506,6 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
 }
 
 /**
- * True when a glob contains a `..` PATH SEGMENT (`../x`, `a/../b`, `x/..`), which
- * escapes its base dir — `foo..bar` / `a..b` inside a filename are fine. A
- * leading negation marker is stripped first so `!../x` is caught too. Used to
- * keep output globs inside the project and workspace globs inside the workspace
- * root: `cleanOutputs` rm()s resolved output paths before every run, and
- * `Bun.Glob.scan` follows `..` out of its cwd, so a `..` glob is a data-loss
- * vector (delete files outside the project / above the repo root).
- */
-/**
  * A millisecond delay past `MAX_TIMEOUT_MS` does not mean "effectively never" —
  * `setTimeout` silently reduces it to 1 ms, so the task is killed the instant it
  * spawns and reported `failed`. That is the exact inverse of the declaration,
@@ -535,22 +526,20 @@ function assertTimeoutInRange(ms: number, where: string): void {
   )
 }
 
+/**
+ * True when a glob contains a `..` PATH SEGMENT (`../x`, `a/../b`, `x/..`), which
+ * escapes its base dir — `foo..bar` / `a..b` inside a filename are fine. A
+ * leading negation marker is stripped first so `!../x` is caught too. Used to
+ * keep output globs inside the project and workspace globs inside the workspace
+ * root: `cleanOutputs` rm()s resolved output paths before every run, and
+ * `Bun.Glob.scan` follows `..` out of its cwd, so a `..` glob is a data-loss
+ * vector (delete files outside the project / above the repo root).
+ */
 function hasParentSegment(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
   return g.split('/').some((seg) => seg === '..')
 }
 
-/**
- * Refuse a non-empty glob list made up ENTIRELY of negations.
- *
- * The resolvers build their file set from the POSITIVE globs and use `!`
- * entries only to subtract, so with no positive pattern they return `[]` —
- * the task folds zero file inputs and its cache key stops moving with its
- * source. That is a stale hit, and it is silent.
- *
- * Refusing is free: such a config was ALREADY selecting nothing, so no
- * working task's key changes and no CACHE_VERSION bump is owed.
- */
 /**
  * `!!x` INVERTS the input set instead of double-negating it.
  *
@@ -583,6 +572,17 @@ function assertNotDoubleNegated(glob: string, where: string): void {
   )
 }
 
+/**
+ * Refuse a non-empty glob list made up ENTIRELY of negations.
+ *
+ * The resolvers build their file set from the POSITIVE globs and use `!`
+ * entries only to subtract, so with no positive pattern they return `[]` —
+ * the task folds zero file inputs and its cache key stops moving with its
+ * source. That is a stale hit, and it is silent.
+ *
+ * Refusing is free: such a config was ALREADY selecting nothing, so no
+ * working task's key changes and no CACHE_VERSION bump is owed.
+ */
 function assertNotNegationOnly(globs: readonly string[], where: string): void {
   if (globs.length === 0) return
   if (globs.some((g) => !g.startsWith('!'))) return

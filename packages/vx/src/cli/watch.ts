@@ -580,9 +580,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     }
   }
 
-  // The orchestrator's writes into `.vx/cache/` don't trigger
-  // re-runs because IGNORED_SEGMENTS includes `.vx`. Users who
-  // relocate the cache dir outside `.vx/` need their own filtering.
+  // The orchestrator's own writes never kick the loop: `makeWatchIgnore`
+  // closes over the RESOLVED cache dir (relocated or not) and the tasks'
+  // declared outputs.
 
   // "watching" is a promise that an edit from now on is seen; every
   // watcher has proved (or been given 2 s to prove) delivery first.

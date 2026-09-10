@@ -101,6 +101,9 @@ export class DeferredOutputs {
   private async run(taskId: string): Promise<void> {
     const entry = this.entries.get(taskId)!
     const producer = this.args.nodes.get(taskId)!
+    // Project outputs only: a task declaring `outputs.workspaceFiles` is
+    // never deferred (`deferralEligibility` forces it eager), so nothing
+    // workspace-anchored can reach this path.
     const outputs = producer.config.cache?.outputs.files ?? []
     const nestedProjectDirs = this.args.nestedDirsByProject.get(producer.projectName) ?? []
     const cleanArgs = { projectDir: producer.projectDir, outputs, nestedProjectDirs }

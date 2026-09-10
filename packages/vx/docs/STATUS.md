@@ -197,6 +197,37 @@ migrate` was 1,475 lines of core that knew Turbo's and Nx's file
     `output dir snapshots` stage row). Pinned differentially: a cold run
     with a second task holding the run past the window leaves the
     `dist` row behind; with the run-end loop disabled the row is absent.
+72. DONE (complexity pass, part 1 — the trimmed contract and the
+    comments that lied): the deep-debug audit after item 71 listed what
+    core carries that nothing uses or that no longer says what the code
+    does. Removed: `recordRun` / `recordRuns` from the `CacheLayer`
+    contract (`CACHE_LAYER_METHODS` 17 → 15; `recordRunBundle` is the
+    one run-history write, no caller took the per-row forms, and the
+    local `Cache` keeps them only for its own history tests), with the
+    LayeredCache / ChainedCache delegations and the two tests that
+    exercised them (rewritten on `recordRunBundle`); `parseFlaggedOutput`
+    (git-inputs.ts, exported and test-only since `ls-files -s -v` folded
+    the skip-worktree letter into the stage record) and its describe
+    block; the logger's `streamed` set (written on every live chunk,
+    read nowhere); a stranded `GitFilesCache` doc block in inputs.ts
+    describing a memo that left with the enumeration rewrite. Corrected:
+    the inputs.ts header (it named `ls-files --cached --others`; the
+    enumeration is `ls-files -s -v` + `status -uall`), the cache.ts
+    header (a second copy of the contract list, now a pointer to
+    layer.ts), the `hashFile` doc (the stored digest is a git blob OID
+    since v20, not an xxh3), the watch.ts ignore comment (the resolved
+    cache dir is filtered, relocated or not — `IGNORED_SEGMENTS` is not
+    what does it), the hit-restore SELECT comment (the batched probe
+    loads output rows with the entry; only the lazy path pays the
+    SELECT), and two config-schema doc blocks that sat on the wrong
+    function. `EMPTY_SHORT_CIRCUIT` was one module-level `Map` shared by
+    every run in a `vx watch` process; it is a factory now. One audit
+    claim was refuted and recorded as a comment instead of a fix: the
+    deferred-outputs path does not drop `outputs.workspaceFiles`,
+    because `deferralEligibility` forces such a task eager
+    (download-policy.test.ts pins it). Net −71 lines in src; the
+    contract docs (modules/cache.md, layered-cache.md, chained-cache.md,
+    caching.md, git-inputs.md) follow in the same commit.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

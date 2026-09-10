@@ -50,8 +50,6 @@ export const CACHE_LAYER_METHODS: readonly string[] = [
   'restoreOutputs',
   'save',
   'ingest',
-  'recordRun',
-  'recordRuns',
   'recordRunBundle',
   'stats',
   'hashFile',

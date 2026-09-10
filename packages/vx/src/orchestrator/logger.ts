@@ -185,8 +185,6 @@ export function defaultLogger(
   // a one-liner or streamed output since the last block does.
   let lineEmitted = false
   let streamedSinceBlock = false
-  // Ids whose output went straight to the terminal (focused mode).
-  const streamed = new Set<string>()
   // True while the live stream sits mid-line (chunk without trailing
   // newline) — the frame close must not glue onto partial output.
   let streamMidLine = false
@@ -478,7 +476,6 @@ export function defaultLogger(
     taskStdout(node, chunk) {
       if (discardsOutput) return
       if (streamsLive(node)) {
-        streamed.add(node.id)
         streamedSinceBlock = true
         if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
         writer.write(chunk)
@@ -494,7 +491,6 @@ export function defaultLogger(
     taskStderr(node, chunk) {
       if (discardsOutput) return
       if (streamsLive(node)) {
-        streamed.add(node.id)
         streamedSinceBlock = true
         if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
         writer.write(chunk)

@@ -9,6 +9,38 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/cache.js'
 import { LayeredCache, type RemoteCacheLayer } from '../src/cache/layered-cache.js'
+import type { InvocationRecord } from '../src/cache/index.js'
+
+/** A minimal invocation row: `recordRunBundle` is the only run-history write a layer takes. */
+function invocation(runId: string): InvocationRecord {
+  return {
+    runId,
+    command: 'vx run build',
+    requestedTasks: JSON.stringify(['build']),
+    cachePolicy: 'lR,lW',
+    concurrency: 1,
+    flow: 'broad',
+    startedAt: Date.now() - 10,
+    endedAt: Date.now(),
+    totalDurationMs: 10,
+    taskCount: 1,
+    failedCount: 0,
+    hitCount: 0,
+    hitLocalCount: 0,
+    hitRemoteCount: 0,
+    exitOk: true,
+    commitSha: null,
+    branch: null,
+    dirty: null,
+    ci: false,
+    ciProvider: null,
+    host: null,
+    os: null,
+    arch: null,
+    vxVersion: '0.0.0',
+    tags: '{}',
+  }
+}
 
 interface StubRemote {
   layer: RemoteCacheLayer
@@ -562,17 +594,22 @@ describe('LayeredCache', () => {
     expect(await layered.has('h-has-err')).toBe(null)
   })
 
-  it('stats() / recordRun() / prune() delegate to local', async () => {
+  it('stats() / recordRunBundle() / prune() delegate to local', async () => {
     const layered = makeLayered()
-    layered.recordRun({
-      hash: 'h-rec',
-      project: 'pkg',
-      task: 'build',
-      status: 'success',
-      exitCode: 0,
-      durationMs: 1,
-      startedAt: Date.now(),
-      endedAt: Date.now(),
+    layered.recordRunBundle({
+      runs: [
+        {
+          hash: 'h-rec',
+          project: 'pkg',
+          task: 'build',
+          status: 'success',
+          exitCode: 0,
+          durationMs: 1,
+          startedAt: Date.now(),
+          endedAt: Date.now(),
+        },
+      ],
+      invocation: invocation('run-1'),
     })
     const stats = layered.stats()
     expect(stats.runCountLast24h).toBe(1)
