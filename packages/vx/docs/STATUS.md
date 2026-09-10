@@ -806,6 +806,30 @@ before · 2 attempts this run`), `--summarize`'s per-task
     (`tests/flaky.test.ts`: red then green on one key names it in all
     three surfaces; a hit and a changed-key break are the controls).
     Comparison row: Nx has this behind Nx Cloud, Turbo not at all.
+94. DONE (owner's ask, 2026-09-10, night — "confidence that what
+    works with nx turbo will work with vx"): two parity suites over
+    the real CLI, `tests/parity-turbo.test.ts` (26 cases) and
+    `tests/parity-nx.test.ts` (19), on one four-package fixture
+    (`tests/helpers/parity.ts`: `app → ui → lib`, `app → lib`, `docs`
+    alone), every case named for the upstream contract it stands in
+    for — `dependsOn` in its four forms, the filter DSL, `[ref]` and
+    `--affected`, hits/restore/replay, inputs narrowing and the
+    cascade, `env` vs `passThrough`, `cache: false`, `--force` /
+    `--no-cache`, forwarded args in the hash, the lockfile and the
+    manifest in the hash, `--continue` modes, failures never cached,
+    `--output-logs`, `--summarize`, wildcards, groups, runtime and
+    root-file inputs, `nx show` / `vx show`, and Nx Cloud's flaky
+    flag answered locally (item 93). Selection cases read
+    `--dry=json`, so most of the 45 never execute; the two suites
+    run in ~9 s. `docs/parity.md` is the map: upstream → vx spelling
+    → the deep pin, with the three divergences that change what a
+    command selects or leaves on disk marked and pointed at the
+    reasoning (union not intersection, changed-not-dependents,
+    cleaned-not-additive). Two things the suites caught in the
+    writing, both mine: DOT edges point dependency → dependent, and
+    `--summarize` after `--` is the task's argument. The 2026-07
+    parity design doc's gap lists stay the backlog for edge cases;
+    this is the front door.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

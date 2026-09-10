@@ -12,6 +12,7 @@ dist/
 /src/content/docs/caching.md
 /src/content/docs/cli.md
 /src/content/docs/comparison.md
+/src/content/docs/parity.md
 /src/content/docs/execution.md
 /src/content/docs/flows.md
 /src/content/docs/optimizations.md

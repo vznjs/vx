@@ -95,6 +95,7 @@ export default defineConfig({
             { label: 'Caching deep dive', link: '/caching/' },
             { label: 'Execution lifecycle', link: '/execution/' },
             { label: 'vx vs Turborepo vs Nx', link: '/comparison/' },
+            { label: 'Turbo / Nx parity map', link: '/parity/' },
           ],
         },
         {
