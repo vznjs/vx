@@ -1528,9 +1528,9 @@ equivalent — map it manually` on every run, for the value every
       square of it at any other — so the mapping is indexed by name
       once per run: the visits read 8.8–11.8 ms after. At the run
       level the interleaved A/B (six rounds, the linear-scan plugin
-      from an immutable copy) ties inside the box's jitter: `load
-      configs` 41.2 min / 44.9 median → 41.8 / 44.0 ms. Kept for the
-      shape, not the number, and the number is recorded as a tie. What
+      from an immutable copy) ties inside the box's jitter:
+      `load configs` 41.2 min / 44.9 median → 41.8 / 44.0 ms. Kept for
+      the shape, not the number, and the number is recorded as a tie. What
       is left is the overlay probes (sequential or in flight, the same
       — item 126), two `structuredClone`s per fill and core's
       per-plugin re-validation; none is a lever at this size.
@@ -2276,8 +2276,8 @@ app` never re-runs on a `lib` edit while `vx run` would rebuild
     (item 125, the film) with the loop that followed: the `project`
     stage's context names every package core discovered (126, the
     Turbo plugin's second discovery gone, −12 ms per 1,000), one Turbo
-    mapping per run so a watch cycle sees a script edit (127), `vx
-    watch` on a `vx.workspace.*` edit (128), the mapping indexed by
+    mapping per run so a watch cycle sees a script edit (127),
+    `vx watch` on a `vx.workspace.*` edit (128), the mapping indexed by
     name (129, a tie at the run level, recorded as one), and a package
     added or removed under a running watch (130, the glob's directory
     watched, the set re-armed). Every one is pinned with a
