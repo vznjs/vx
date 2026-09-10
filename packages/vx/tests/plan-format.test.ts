@@ -166,6 +166,28 @@ describe('formatPlanJson', () => {
 })
 
 describe('formatGraphDot', () => {
+  // A task name is any object key in a config, so a quote, a backslash or a
+  // newline reaches the DOT writer. Turbo pins the HTML variant of this
+  // (`test_graph_to_html_escapes_task_names`); vx shipped the unescaped
+  // form twice in sibling formatters. Every quoted ID must close where the
+  // writer meant it to: one statement per line, balanced quotes.
+  it('escapes quotes, backslashes and newlines in task ids and labels', () => {
+    const wild = 'a#say "hi"\\now\nthen'
+    const plan: RunPlan = {
+      tasks: [task('a#build', 'miss', 'aaaaaaaa', []), task(wild, 'miss', 'bbbbbbbb', ['a#build'])],
+    }
+    const out = formatGraphDot(plan)
+    const quoted = /"((?:[^"\\]|\\.)*)"/g
+    for (const line of out.split('\n')) {
+      // Strip every well-formed quoted ID; a stray `"` left behind is one the
+      // writer failed to escape.
+      expect(line.replace(quoted, '')).not.toContain('"')
+      expect(line.includes('\n')).toBe(false)
+    }
+    expect(out).toContain('"a#say \\"hi\\"\\\\now\\nthen"')
+    expect(out).toContain('"a#build" -> "a#say \\"hi\\"\\\\now\\nthen";')
+  })
+
   it('emits a valid digraph with edges + per-status fillcolor', () => {
     const plan: RunPlan = {
       tasks: [

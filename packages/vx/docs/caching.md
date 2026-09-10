@@ -642,7 +642,18 @@ them) exactly, so the pack stats each output once and writes
 into the archive. Restore applies both. Entries that are not regular
 files (symlinks, hardlinks, devices) are never materialised — the
 reader reports them only to be skipped — so a
-poisoned artifact cannot smuggle one onto disk; entry NAMES are
+poisoned artifact cannot smuggle one onto disk. On the save side a
+**symlinked output** is captured as its target's bytes and comes back
+as a regular file (a hit that finds the task's own link still current
+leaves it); a link to a directory, or a dangling one, has no bytes to
+store, so the save refuses it by name rather than cache an entry that
+restores to nothing. The clean before exec and restore removes every
+file AND symlink the output globs cover (a link is unlinked, never
+followed) and prunes the directories it emptied, so a task whose
+output changed shape — `dist/out` a directory one run and a file the
+next — restores either entry over the other's tree; a stray the globs
+do not cover that stands in an entry's way fails the restore naming
+it, not as a corrupt artifact. Entry NAMES are
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps
 are unlinked and the empty directories the extraction created are

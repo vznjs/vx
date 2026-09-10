@@ -667,11 +667,10 @@ describe('output resolution contains itself — the loader guard is now the SECO
     // DIRECTORIES, so a link sitting inside a genuine output dir must not take
     // the whole dir out of the resolved set.
     //
-    // The first draft of this test asserted the link itself gets cleaned. That
-    // premise was WRONG and measuring said so: `onlyFiles: true` never yields a
-    // symlinked file — checked on 1.3.11 AND 1.4.0, both scan `dist/**` to
-    // `['dist/app.js']` alone. So vx never targets such a link, on any version,
-    // and its target is safe by construction rather than by this guard.
+    // The link IS an output (item 99, 2026-09-10): the scan yields symlinks so
+    // the save captures the target's bytes and the clean unlinks the LINK —
+    // `rm` on a symlink never follows it, so the file it points at is safe by
+    // the syscall's own contract, and this asserts exactly that.
     await write(path.join(projectDir, 'dist/app.js'), 'built')
     await symlink(path.join(victim, 'precious.txt'), path.join(projectDir, 'dist/linked.txt'))
 
@@ -680,12 +679,14 @@ describe('output resolution contains itself — the loader guard is now the SECO
       outputs: ['dist/**'],
       nestedProjectDirs: [],
     })
-    // The real file is resolved (the fix does not refuse a real dir); the link
-    // is not yielded at all.
-    expect(resolved).toEqual([path.join(projectDir, 'dist/app.js')])
+    expect(resolved).toEqual([
+      path.join(projectDir, 'dist/app.js'),
+      path.join(projectDir, 'dist/linked.txt'),
+    ])
 
     await cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
     expect(existsSync(path.join(projectDir, 'dist/app.js'))).toBe(false)
+    expect(existsSync(path.join(projectDir, 'dist/linked.txt'))).toBe(false)
     expect(await readFile(path.join(victim, 'precious.txt'), 'utf8')).toBe('precious')
   })
 

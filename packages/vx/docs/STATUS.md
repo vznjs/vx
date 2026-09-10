@@ -909,6 +909,73 @@ before · 2 attempts this run`), `--summarize`'s per-task
     count. Closed in the design doc. What the 2026-07 doc still lists
     is edge-case coverage (cycle topologies, odd filenames, watch
     timing), none a live defect after items 96–98's sweep.
+99. DONE (2026-09-10, late night — parity finding M12 was live, and
+    worse than listed): a restore across an output-shape change.
+    Probed every ordered pair of `dist/out` as a directory, a file
+    and a symlink: restoring the directory entry over a symlink and
+    the file entry over a directory failed as "corrupt artifact"
+    (an obstruction on disk, misnamed), and a task whose output is a
+    symlink cached NOTHING — the glob scan (`onlyFiles`) drops every
+    symlink, so the save captured no file and the "hit" restored an
+    empty tree under a green run, while `planArtifact`'s comment
+    claimed the link was stored as its target's content. Fixed on
+    three sides: the output scan lists symlinks (never followed, never
+    descended; one `lstat` per entry on the miss path), so the save
+    packs the target's bytes and the clean unlinks the link; a link to
+    a directory or a dangling one is refused by name at save time and
+    caches nothing (the task's own success stands, the next run
+    executes again); the clean prunes the directories it emptied,
+    never the project root, so a directory-shaped tree does not block
+    a file entry; and an obstruction the globs do not cover fails the
+    restore naming the path and the errno, no longer as a corrupt
+    artifact. `tests/output-shape.test.ts` drives all six transitions
+    both ways plus the stray and the two refusals; the containment pin
+    that had recorded "the link is never yielded" as a fact now
+    asserts the link is unlinked and its target untouched. M9 (a task
+    reading stdin sees EOF) pinned in the runner suite alongside.
+    Measured, since the scan is on the miss path: 1000 projects,
+    `run.ts 1000 3`, interleaved twice against a worktree at main —
+    no-cache 2,645 / 2,864 ms before against 2,683 / 2,820 after (the
+    loaded box's noise; the arm's own standalone median was 2,501),
+    warm arms identical. One `lstat` per output entry, twice per
+    miss, is invisible at this scale.
+100.  DONE (2026-09-10, late night — parity findings M1 and M5): the
+      `--graph` DOT writer interpolated task ids and labels raw, and a
+      task name is any config key, so a quote, a backslash or a newline
+      ended the string early and broke the document (the third sibling
+      formatter to ship this class). One DOT quoter now, pinned by a
+      per-line balanced-quotes check over a name carrying all three.
+      Odd filenames — a space, a quote, a backslash, non-ASCII — were
+      never pinned through hashing or the artifact: they are now, on the
+      enumeration side (git's `-z`, tracked and untracked) and the tar
+      round-trip (name- and byte-identical after a wipe and restore).
+      No live defect on the filename side. The 2026-07 parity doc's
+      remaining rows are cycle topologies (Nx M1), watch timing (M7, M8)
+      and the LOW list; none names a wrong result.
+101.  DONE (2026-09-10, late night — Nx's cycle matrix): six topologies
+      pinned where vx had two — a task cycle through every project and
+      one bridging a project without the task are refused; a package
+      cycle wrapping back through pass-through projects and one between
+      projects that makes no task cycle build; two disjoint package
+      cycles resolve independently in one graph; a two-task same-project
+      cycle is refused. No defect: the walk seeded with the declaring
+      project (the 2026-07-26 fix) holds on every shape. What the
+      2026-07 doc still lists is watch timing (M7, M8) and the LOW rows.
+
+**The restore arm is at its floor (2026-09-10, late night).** The
+1,000-project warm-restore run spends its wall in `restore: extract`
+(2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
+one artifact was timed alone, sequentially, 200 reps: `restoreOutputs`
+0.375 ms min / 0.75 avg, of which the five file syscalls the extractor
+needs (mkdir, write temp, chmod, utimes, rename) are 0.18–0.26 ms,
+zstd decode 0.02 ms, the artifact read 0.01 ms, the rows lookup
+0.003 ms, `realpath` 0.01 ms. The run's 393 ms `run graph` over 1,000
+restores is 0.39 ms per task — the sequential floor, overlapped. What
+is left is syscall round trips on the thread pool; folding chmod into
+the write (mode at open is umask-dependent, so the chmod stays for
+exactness) or skipping utimes would buy ~0.05 ms each, 15–25 ms of a
+434 ms run, on the stale-hit-critical path. Not worth the risk;
+recorded so the next reader does not re-derive it.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
@@ -1442,7 +1509,7 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     whole-process scale, as its 0.55 ms for 1,000 candidates said it
     would be. Open from the owner's last message: nothing; the
     2026-07 parity design doc's edge-case lists and § Next 5–8 remain
-    the backlog. Never merge #273 without the owner's word.
+    the backlog. #273 was merged by the owner at 17:03Z (main 891eba5, green); items 96–101 followed the same night, 96–98 inside #273 and 99–101 as PR #274 (green, mergeable, awaiting the owner). Never merge a PR without the owner's word.
 
 11. **Handoff after item 67 (2026-09-10, night).** The loop's Next
     items are spent; what a fresh session should know, in order:
@@ -1515,6 +1582,10 @@ last`, `vx info` and `vx cache prune`, through one parser and one
   back when a plugin needs it, shaped by that plugin's use — not
   before. The same rule retired `recordRun` / `recordRuns` from the
   layer contract (item 72).
+- **Merge your own PR once it is green (owner, 2026-09-10, "Merge
+  whenever you own the project").** The session's PR flow stays
+  (branch, PR, CI), but a green, mergeable PR no longer waits for the
+  owner's word; the next PR starts from the merged main.
 - **A plugin's name is its package name; no overrides (owner,
   2026-09-10).** `definePlugin(import.meta, hooks)` reads it and stamps
   it; the workspace loader refuses anything else. Item 69.

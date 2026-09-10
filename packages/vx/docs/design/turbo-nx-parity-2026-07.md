@@ -459,6 +459,8 @@ root)` / the resolved selection from inside a package dir. Whatever the chosen
 
 ### M1. `--graph` DOT output does not escape task ids
 
+> Closed 2026-09-10 (STATUS item 100): ids and labels go through one DOT quoter (`\`, `"`, newline); pinned with a balanced-quotes check per line.
+
 - **Turbo behaviour**: `crates/turborepo/tests/graph_test.rs`
   `test_graph_to_html_escapes_task_names` — a fixture declaring tasks literally
   named ``back`tick``, `interpolate${globalThis.alert(1)}` and
@@ -546,6 +548,8 @@ root)` / the resolved selection from inside a package dir. Whatever the chosen
 
 ### M5. Input hashing has no coverage for filenames with spaces / quotes / non-ASCII
 
+> Closed 2026-09-10 (STATUS item 100): pinned on the enumeration side (`tests/inputs.test.ts`) and the tar round-trip (`tests/artifact-roundtrip.test.ts`); no live defect.
+
 - **Turbo behaviour**: `crates/turborepo/tests/path_with_spaces_test.rs`
   `test_files_with_spaces_can_be_hashed` — creating `packages/util/with
 spaces.txt` must not break hashing or the dry run.
@@ -626,6 +630,8 @@ spaces.txt` must not break hashing or the dry run.
 
 ### M9. A task that reads stdin must see EOF and never hang
 
+> Closed 2026-09-10 (STATUS item 99): pinned in `tests/runner.test.ts`.
+
 - **Turbo behaviour**: `crates/turborepo/tests/stdin_eof_startup_test.rs`
   `nonpersistent_task_sees_eof_on_stdin_in_stream_mode` — spawns a real run with
   a 15 s timeout and asserts the task printed `stdin bytes=0`, i.e. it saw EOF
@@ -691,6 +697,8 @@ contributes (fully decoupled)` at the unit level. What is missing is the
   advanced-usage field, and half the mechanism is already pinned.
 
 ### M12. Sequential restore across an output-shape change (file ↔ directory ↔ symlink)
+
+> Closed 2026-09-10 (STATUS item 99): reproduced — two of six transitions failed as "corrupt artifact" and a symlinked output cached as nothing — and fixed; `tests/output-shape.test.ts` drives every ordered pair.
 
 - **Turbo behaviour**: `crates/turborepo-cache/src/cache_archive/restore.rs`
   `test_sequential_restores_symlink_then_directory` — a restore that must
@@ -1318,6 +1326,8 @@ tests/` → hits only in `tests/colors.test.ts`, about vx's OWN terminal output.
 ## MED
 
 ### M1. Cycle topologies: vx pins 2, Nx pins 8 — the untested ones are the sparse and multi-cycle shapes
+
+> Closed 2026-09-10 (STATUS item 101): six shapes pinned in `tests/task-graph.test.ts` — full and bridged task cycles refused, wrap-back and package-only cycles built, two disjoint cycles, a two-task self cycle.
 
 - **Nx behaviour**: `packages/nx/src/tasks-runner/create-task-graph.spec.ts` has a named
   cycle matrix, each a separate `it`:

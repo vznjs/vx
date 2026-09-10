@@ -88,7 +88,8 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 
 ## Workflow
 
-- **Push directly to `main`. No PRs.** Gate first, from the repo root:
+- **Gate, push, open the PR, merge it yourself once CI is green** (owner,
+  2026-09-10: "merge whenever you own the project"). Gate first, from the repo root:
   `bun packages/vx/src/bin.ts run ci --all` (lint → oxlint + oxfmt, test,
   docs build). Then push and confirm the real CI conclusion.
 - `bun test` alone is NOT the gate: it is transpile-only and cannot see a

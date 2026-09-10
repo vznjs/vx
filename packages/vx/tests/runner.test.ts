@@ -82,6 +82,20 @@ describe('runCommand', () => {
     expect(elapsed).toBeLessThan(3000)
   }, 15_000)
 
+  // Turbo pins `nonpersistent_task_sees_eof_on_stdin`: a task that reads
+  // stdin must see EOF, never block on a terminal vx will not hand it. The
+  // spawn passes `stdin: 'ignore'` — one word ('inherit') from a permanent
+  // CI hang, so it is pinned.
+  it('a task that reads stdin sees EOF at once, never a hang', async () => {
+    const result = await runCommand({
+      command: 'n=$(wc -c < /dev/stdin | tr -d " "); echo "stdin bytes=$n"',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain('stdin bytes=0')
+  })
+
   it('surfaces command-not-found as a non-zero exit (shell reports 127)', async () => {
     const result = await runCommand({
       command: 'this-binary-does-not-exist-12345',

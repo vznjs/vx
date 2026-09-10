@@ -144,17 +144,28 @@ export function formatPlanJson(plan: RunPlan): string {
 export function formatGraphDot(plan: RunPlan): string {
   const lines: string[] = ['digraph TaskGraph {', '  rankdir=LR;', '  node [shape=box];']
   for (const t of plan.tasks) {
-    const label = `${t.node.id}\\n${t.hash.slice(0, 8)}`
     const color = dotColor(t.cacheStatus)
-    lines.push(`  "${t.node.id}" [label="${label}", style="filled", fillcolor="${color}"];`)
+    lines.push(
+      `  ${dotString(t.node.id)} [label=${dotString(`${t.node.id}\n${t.hash.slice(0, 8)}`)}, style="filled", fillcolor="${color}"];`,
+    )
   }
   for (const t of plan.tasks) {
     for (const dep of t.deps) {
-      lines.push(`  "${dep}" -> "${t.node.id}";`)
+      lines.push(`  ${dotString(dep)} -> ${dotString(t.node.id)};`)
     }
   }
   lines.push('}')
   return lines.join('\n') + '\n'
+}
+
+/**
+ * A DOT double-quoted ID. A task name is any object key in a config, so
+ * `"`, `\` and a newline are all reachable; unescaped they end the
+ * string early and the document stops parsing. `\n` is DOT's own line
+ * break inside a label.
+ */
+function dotString(s: string): string {
+  return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n')}"`
 }
 
 function symbolFor(s: CacheStatus): string {

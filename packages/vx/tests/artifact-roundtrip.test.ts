@@ -202,6 +202,71 @@ describe('artifact round-trip', () => {
   )
 })
 
+describe('artifact round-trip — odd names', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-roundtrip-odd-'))
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'a space, a quote, a backslash and a non-ASCII name round-trip name- and byte-identically',
+    async () => {
+      // The enumeration side is `-z`-safe (inputs.test.ts pins it); this is
+      // the tar side: the entry name goes through the ustar header and the
+      // extractor's containment checks, and the file must come back under
+      // exactly the name the task wrote.
+      await write(
+        path.join(root, 'package.json'),
+        '{"name":"@acme/odd","version":"1.0.0","private":true}',
+      )
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: {
+                 command: [
+                   'mkdir -p dist',
+                   'cp src/in.txt "dist/with spaces.js"',
+                   'cp src/in.txt dist/café.js',
+                   "cp src/in.txt 'dist/quo\\"te.js'",
+                   "cp src/in.txt 'dist/back\\\\slash.js'",
+                 ].join(' && '),
+               },
+               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'src/in.txt'), 'ODD-CONTENT')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-qm', 'init')
+
+      const cold = vx(root, 'run', 'build')
+      expect(cold.exitCode).toBe(0)
+      const produced = await snapshotTree(path.join(root, 'dist'))
+      expect([...produced.keys()].sort()).toEqual(
+        ['with spaces.js', 'café.js', 'quo"te.js', 'back\\slash.js'].sort(),
+      )
+
+      await rm(path.join(root, 'dist'), { recursive: true, force: true })
+      const warm = vx(root, 'run', 'build')
+      expect(warm.exitCode).toBe(0)
+      const restored = await snapshotTree(path.join(root, 'dist'))
+      expect([...restored.keys()].sort()).toEqual([...produced.keys()].sort())
+      for (const [rel, want] of produced) expect(restored.get(rel)).toEqual(want)
+    },
+    TIMEOUT,
+  )
+})
+
 describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
   let cacheDir: string
   let projectDir: string
