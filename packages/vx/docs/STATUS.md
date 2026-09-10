@@ -860,10 +860,11 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    and recorded three ways in items 76–77 — module load and the git
    walk are what remain, and the compile flags are the right ones;
    (b) the façade is 34 runtime exports and a consumer widens it with
-   the pin; (c) the one capability gap still open in this file is § In
-   flight 3, a sandboxed task exposing a port on Linux — it needs a
-   port declaration (the persistent `readiness` block is the natural
-   place) and a per-port bridge, which is a design, not a fix; (d) the
+   the pin; (c) § In flight 3 — a sandboxed task exposing a port on
+   Linux — closed as item 79 (`localBinding: [port]`, a socat pair per
+   port), and the same item fixed the run's config never reaching SRT
+   after the Linux probe; what remains in § In flight is a platform
+   limit (macOS violation reporting is lossy, item 5); (d) the
    sandboxed check-in clone at `/home/user/sandbox-home/vx` is the
    way to measure this repo's own gate as an unprivileged user, and
    every A/B in items 70–77 ran there.
