@@ -10,7 +10,7 @@
 
 import type { ProjectConfig, TaskConfig, VxPlugin } from '@vzn/vx'
 import { definePlugin, type ProjectMeta } from '@vzn/vx'
-import { mapTurboWorkspace, type TurboMapping } from './turbo-map.js'
+import { mapTurboWorkspace, type TurboMappedProject } from './turbo-map.js'
 
 /** The TODO a persistent task carries in `vx migrate`'s report, in the plugin's voice. */
 const PERSISTENT_NOTE =
@@ -40,7 +40,7 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
   // edit on the old command (2026-09-10). `ctx.projects` is one array per
   // run, so its identity is the run's.
   let mappedFor: readonly ProjectMeta[] | undefined
-  let mapping: Promise<TurboMapping> | undefined
+  let mapping: Promise<Indexed> | undefined
   let warned = false
   const plugin = definePlugin(import.meta, {
     async project(config: ProjectConfig, ctx) {
@@ -55,7 +55,7 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
         warned = true
         for (const note of mapped.notes) ctx.warn(`[${plugin.name}] ${note}`)
       }
-      const project = mapped.projects.find((p) => p.name === ctx.name)
+      const project = mapped.byName.get(ctx.name)
       if (project === undefined) return
       config.tasks ??= {}
       for (const t of project.tasks) {
@@ -71,12 +71,26 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
   return plugin
 }
 
-async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<TurboMapping> {
-  return await mapTurboWorkspace(root, metas, {
+interface Indexed {
+  readonly byName: ReadonlyMap<string, TurboMappedProject>
+  readonly notes: readonly string[]
+}
+
+/**
+ * The mapping indexed by package name. The stage visits every package and
+ * each visit looked its package up with a linear scan over the mapping —
+ * a million comparisons on a 1,000-package workspace, a third of the
+ * stage's cost there (2026-09-10).
+ */
+async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<Indexed> {
+  const mapped = await mapTurboWorkspace(root, metas, {
     // Inline: the values themselves, where `vx migrate` splices a preset import.
     splice: (_kind, values) => values,
     persistentTodo: PERSISTENT_NOTE,
   })
+  const byName = new Map<string, TurboMappedProject>()
+  for (const project of mapped.projects) byName.set(project.name, project)
+  return { byName, notes: mapped.notes }
 }
 
 // The mapper itself, for tools that render what this plugin runs live

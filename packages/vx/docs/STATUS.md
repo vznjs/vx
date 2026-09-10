@@ -1515,6 +1515,26 @@ equivalent — map it manually` on every run, for the value every
       is the special case the seams exist to avoid; a second consumer
       makes it a seam.
 
+129.  DONE (2026-09-10, late night — the zero-migration stage, timed by
+      piece): a config-less 1,000-package Turbo workspace (scripts in
+      every `package.json`, no `vx.config`, `bench1000-bare` in the
+      scratchpad) loads in 42 ms under `turbo()` where 1,000 cached
+      config evaluations take 22, and the run is otherwise the same
+      ~200 ms. The pieces, in one process: the first visit's mapping
+      9–18 ms (the 1,000 overlay probes and the mapper's 3–7 ms
+      warm), the 999 other visits 10–22 ms, the 1,000 re-validations
+      2–3. Each visit looked its package up with `Array.find` over the
+      mapping — a million comparisons per run at this size, and the
+      square of it at any other — so the mapping is indexed by name
+      once per run: the visits read 8.8–11.8 ms after. At the run
+      level the interleaved A/B (six rounds, the linear-scan plugin
+      from an immutable copy) ties inside the box's jitter: `load
+      configs` 41.2 min / 44.9 median → 41.8 / 44.0 ms. Kept for the
+      shape, not the number, and the number is recorded as a tie. What
+      is left is the overlay probes (sequential or in flight, the same
+      — item 126), two `structuredClone`s per fill and core's
+      per-plugin re-validation; none is a lever at this size.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
