@@ -217,6 +217,8 @@ jobs:
         run: cd packages/vx-migrate && bun test
       - name: bun test (packages/vx-prune)
         run: cd packages/vx-prune && bun test
+      - name: bun test (packages/vx-pnpm)
+        run: cd packages/vx-pnpm && bun test
 
       # NativeLink gives the EXECUTION half a real scheduler + worker. Its
       # official image is distroless — no /bin/sh — so a worker inside it

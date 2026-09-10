@@ -188,6 +188,7 @@ const SEAMS = [
   'project',
   'graph',
   'key',
+  'fingerprint',
   'schedule',
   'executor',
   'cache',

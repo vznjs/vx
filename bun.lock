@@ -114,6 +114,17 @@
         "@vzn/vx": "*",
       },
     },
+    "packages/vx-pnpm": {
+      "name": "@vzn/vx-pnpm",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
     "packages/vx-prune": {
       "name": "@vzn/vx-prune",
       "version": "0.0.0",
@@ -658,6 +669,8 @@
     "@vzn/vx-nx-cache": ["@vzn/vx-nx-cache@workspace:packages/vx-nx-cache"],
 
     "@vzn/vx-otel": ["@vzn/vx-otel@workspace:packages/vx-otel"],
+
+    "@vzn/vx-pnpm": ["@vzn/vx-pnpm@workspace:packages/vx-pnpm"],
 
     "@vzn/vx-prune": ["@vzn/vx-prune@workspace:packages/vx-prune"],
 

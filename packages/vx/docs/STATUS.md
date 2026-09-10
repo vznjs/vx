@@ -507,6 +507,57 @@ port-<tag>-<port>.sock … TCP:127.0.0.1:<port>` in front of the
     work at once; the bench's independent tasks lose nothing, a chain
     waits for the save as it always did.
 
+83. DONE (a lockfile change re-keys only the projects it reaches;
+    owner's ask, 2026-09-10): every lockfile at the root was folded into
+    the workspace fingerprint every task key sees, so one `pnpm update
+foo` invalidated the whole workspace and `--affected` selected every
+    project. Two halves. Core grew its ninth seam, `VxPlugin.fingerprint
+= { files, affected(change, ctx) }`: a plugin CLAIMS a lockfile,
+    core leaves it out of the digest every task key folds (the
+    config-evaluation cache still keys on every file — a config may
+    import a dependency), and `--affected` asks the claimant which
+    projects a change touches, handing it the bytes at the base ref and
+    in the working tree, unioned with the path-owned projects; only
+    "cannot tell" widens as before. The claims load lazily, so a diff
+    with no lockfile in it never evaluates the workspace file for them;
+    the schema refuses a claim on a name core never folds and a second
+    claimant per file. `@vzn/vx-pnpm` (`pnpm()`) is the claimant: one
+    digest per importer over everything it reaches — name, version and
+    resolved-peer suffix (`foo@1(react@18)` is not `foo@1(react@19)`),
+    resolution, patch, `link:` followed into the linked importer's
+    reach, install-wide knobs (pnpmfile, package extensions, overrides,
+    settings) into every one — for lockfile v5, v6 and v9, parsed by
+    `Bun.YAML` with no dependency. The digest is Merkle over strongly
+    connected components (pnpm writes cycles), Tarjan iterative,
+    children first: the first cut walked one closure per importer and
+    took 405 ms on 1000 importers × 3000 packages; the SCC pass takes
+    20 (parse 42). Memoised on disk under the cache dir by the file's
+    xxh3, so a warm run pays one read + hash + a small JSON, never a
+    parse; per run the read happens once (a `WeakMap` on the key
+    context — per task it was 1000 stats, 47 ms in `prepare (graph)`).
+    Measured on the 1000-project bench with a synthetic 810 KB v9
+    lockfile (1000 importers, 3000 packages, fan-out 2): bump one
+    top-layer package → `plugins: []` 2,567 ms / 1000 miss, `pnpm()`
+    551 ms / 12 miss · 988 up-to-date; bump one bottom-layer package
+    (the whole fan-in reaches it) → 2,676 / 1000 miss vs 1,242 / 336
+    miss. Warm `run build --all`, interleaved min-of-7: in-run `time` 464 →
+    485 ms, `prepare (graph)` 2.5 → 9.6 ms — the read, the hash and the
+    memo once, then a map lookup per task — inside the run's own noise
+    (the bare arm spread 464–612).
+    Pinned: the two digests (a claimed edit moves `all`, not
+    `unclaimed`; a claimed file appearing moves neither), `--affected`
+    (answer used, both sides' bytes, undefined widens, an unclaimed
+    sibling widens, no load without a lockfile change), the claim
+    through `planRun` and the CLI, the three schema refusals via the
+    doc-drift table; and in the package: transitive bump, link, peer
+    suffix, patch, install-wide knob, YAML key order, v6, alias, a
+    cycle, `affected` (names, root-importer fallback, cannot-tell),
+    `vx run` / `vx why` / `--affected` end to end, `scope: 'workspace'`,
+    no lockfile, and the memo read instead of parsed (a planted
+    sentinel keys the task). Not done, by design: other lockfiles
+    (`bun.lock`, `yarn.lock`, `package-lock.json`) — the seam is the
+    same, each is a package when someone needs it.
+
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
 running on stale numbers: twelve shards side by side on this four-core
@@ -974,7 +1025,8 @@ then exits on SIGINT` times out again, keep that run's stdout: the
    port bridge, completions) merged as 61d9392 at 13:50Z. PR #271
    holds the two perf items after it — 81 the restore lane, 82 the
    save lane — on the same branch with main merged back in; it merges
-   on the owner's word, never on ours.
+   on the owner's word, never on ours. Item 83 (the `fingerprint` seam
+   and `@vzn/vx-pnpm`) is on the same branch after them.
    What a fresh session should know: (a) the warm floor is measured
    and recorded three ways in items 76–77 — module load and the git
    walk are what remain, and the compile flags are the right ones;
