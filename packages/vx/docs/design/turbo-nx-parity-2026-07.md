@@ -626,6 +626,8 @@ spaces.txt` must not break hashing or the dry run.
 
 ### M9. A task that reads stdin must see EOF and never hang
 
+> Closed 2026-09-10 (STATUS item 99): pinned in `tests/runner.test.ts`.
+
 - **Turbo behaviour**: `crates/turborepo/tests/stdin_eof_startup_test.rs`
   `nonpersistent_task_sees_eof_on_stdin_in_stream_mode` — spawns a real run with
   a 15 s timeout and asserts the task printed `stdin bytes=0`, i.e. it saw EOF
@@ -691,6 +693,8 @@ contributes (fully decoupled)` at the unit level. What is missing is the
   advanced-usage field, and half the mechanism is already pinned.
 
 ### M12. Sequential restore across an output-shape change (file ↔ directory ↔ symlink)
+
+> Closed 2026-09-10 (STATUS item 99): reproduced — two of six transitions failed as "corrupt artifact" and a symlinked output cached as nothing — and fixed; `tests/output-shape.test.ts` drives every ordered pair.
 
 - **Turbo behaviour**: `crates/turborepo-cache/src/cache_archive/restore.rs`
   `test_sequential_restores_symlink_then_directory` — a restore that must

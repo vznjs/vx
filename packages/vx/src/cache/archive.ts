@@ -39,6 +39,7 @@
 
 import { mkdir, chmod, realpath, rename, rmdir, stat, unlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
+import { UserError } from '../util/index.js'
 import { TarFormatError, type TarInput, tarEntries, tarPack, tarSize } from './tar-stream.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
@@ -108,7 +109,24 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   const meta: MetaFile = { version: 1, files: {} }
   const files = await Promise.all(
     [...args.outputs].map(async ([name, abs]) => {
-      const st = await stat(abs)
+      // `stat` follows a symlink, so a link to a file is packed as that
+      // file's bytes and comes back as a regular file. A link to a
+      // directory, or a dangling one, has no bytes to pack: refuse loudly
+      // rather than store an entry that restores to nothing.
+      const shown = name.startsWith('outputs/') ? name.slice('outputs/'.length) : name
+      const st = await stat(abs).catch((err: NodeJS.ErrnoException) => {
+        if (err.code === 'ENOENT') {
+          throw new UserError(
+            `output ${shown} is a dangling symlink: vx stores regular files only — emit a file, or exclude it from cache.outputs`,
+          )
+        }
+        throw err
+      })
+      if (!st.isFile()) {
+        throw new UserError(
+          `output ${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file, or exclude it from cache.outputs`,
+        )
+      }
       meta.files[name] = [st.mode & 0o777, Math.floor(st.mtimeMs)]
       return {
         name,

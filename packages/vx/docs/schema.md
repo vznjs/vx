@@ -821,6 +821,14 @@ Outputs are **NOT** filtered through gitignore — typical artifact
 dirs like `dist/`, `coverage/`, `.next/`, `pkg/` are captured normally
 even when gitignored (they usually are).
 
+A **symlink** the globs match is an output: it is captured as its
+target's bytes and restored as a regular file, and the clean unlinks
+it (never following it). A link to a directory, or a dangling one,
+cannot be stored — the save refuses it by name and caches nothing, so
+the next run executes again. The clean also prunes the directories it
+emptied, so an output that is a directory one run and a file the next
+restores either way.
+
 Empty `[]` is valid for tasks that produce no files (e.g. `lint`,
 `typecheck`, `test`); you still cache the no-op success so the next
 run is a no-op too.

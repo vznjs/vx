@@ -909,6 +909,36 @@ before · 2 attempts this run`), `--summarize`'s per-task
     count. Closed in the design doc. What the 2026-07 doc still lists
     is edge-case coverage (cycle topologies, odd filenames, watch
     timing), none a live defect after items 96–98's sweep.
+99. DONE (2026-09-10, late night — parity finding M12 was live, and
+    worse than listed): a restore across an output-shape change.
+    Probed every ordered pair of `dist/out` as a directory, a file
+    and a symlink: restoring the directory entry over a symlink and
+    the file entry over a directory failed as "corrupt artifact"
+    (an obstruction on disk, misnamed), and a task whose output is a
+    symlink cached NOTHING — the glob scan (`onlyFiles`) drops every
+    symlink, so the save captured no file and the "hit" restored an
+    empty tree under a green run, while `planArtifact`'s comment
+    claimed the link was stored as its target's content. Fixed on
+    three sides: the output scan lists symlinks (never followed, never
+    descended; one `lstat` per entry on the miss path), so the save
+    packs the target's bytes and the clean unlinks the link; a link to
+    a directory or a dangling one is refused by name at save time and
+    caches nothing (the task's own success stands, the next run
+    executes again); the clean prunes the directories it emptied,
+    never the project root, so a directory-shaped tree does not block
+    a file entry; and an obstruction the globs do not cover fails the
+    restore naming the path and the errno, no longer as a corrupt
+    artifact. `tests/output-shape.test.ts` drives all six transitions
+    both ways plus the stray and the two refusals; the containment pin
+    that had recorded "the link is never yielded" as a fact now
+    asserts the link is unlinked and its target untouched. M9 (a task
+    reading stdin sees EOF) pinned in the runner suite alongside.
+    Measured, since the scan is on the miss path: 1000 projects,
+    `run.ts 1000 3`, interleaved twice against a worktree at main —
+    no-cache 2,645 / 2,864 ms before against 2,683 / 2,820 after (the
+    loaded box's noise; the arm's own standalone median was 2,501),
+    warm arms identical. One `lstat` per output entry, twice per
+    miss, is invisible at this scale.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was

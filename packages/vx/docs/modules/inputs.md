@@ -129,7 +129,9 @@ Returns sorted absolute paths.
   `cache.inputs.workspaceFiles` (root-relative globs); see
   [`../schema.md`](../schema.md). A workspace-level `globalInputs` field is
   an owner-rejected non-goal.
-- Doesn't follow symlinks specially.
+- Doesn't follow symlinks. Inputs come from git, which reports a link as
+  a link; the OUTPUT scan yields symlinks as outputs (captured as the
+  target's bytes, unlinked on clean) and never descends through one.
 
 ## Tests
 
