@@ -560,6 +560,13 @@ const footCols = {
               vx replays 3,270 tasks in 510ms; Turborepo 760ms; Nx 3.59s. Reproduce with
               <code>bun packages/vx-bench/compare.ts 100 11 1</code>; the committed results are this run. The dashed <em>baseline</em> is the theoretical best case: cold is the tasks' own 3m 38s on 10 perfectly parallel workers along the dependency graph, and a cached run, a restore and the CPU a runner burns are 0 in theory — every bar is the runner's overhead. Bars are proportional within a row; a bar more than ten times the next runner's is clipped with a break, and the numbers are exact.
             </p>
+            <p>
+              On a real Turbo monorepo — <code>solidjs/solid</code>, its own <code>turbo.json</code>, nothing
+              rewritten — vx restores every output in 66 ms where Turbo takes 127 ms, replays a cached run in
+              51 ms against 95 ms, and builds cold 12% faster; the same executed graph and the same 64
+              files on both sides. The tables and the harness are in the
+              <a href={href('benchmarks/')}>benchmarks</a>.
+            </p>
           </div>
         </div>
       </section>

@@ -1,5 +1,12 @@
 import starlight from '@astrojs/starlight'
 import { defineConfig } from 'astro/config'
+// The blog: announcement posts under /blog/, an RSS feed, authors and
+// tags, rendered in Starlight's own chrome. Posts are Markdown files in
+// src/content/docs/blog/ (see README.md § Writing a blog post). The
+// plugin is the maintained Starlight blog (HiDeoo); hand-rolling the
+// index, pagination, RSS and structured data would be a second copy of
+// what it already does for this exact Starlight version.
+import starlightBlog from 'starlight-blog'
 import remarkMermaid from './src/plugins/remark-mermaid.mjs'
 
 // GitHub Pages project site: https://vznjs.github.io/vx/
@@ -12,7 +19,12 @@ export default defineConfig({
   // sandbox grants in vx.config.ts for why a write under node_modules breaks
   // module resolution inside the Linux sandbox.
   cacheDir: './.astro/cache',
-  vite: { cacheDir: './.astro/vite' },
+  // `satteri` (starlight-blog's Markdown engine) loads a native binding at
+  // runtime; bundled into a prerender chunk under dist/ that `require` has
+  // nowhere to resolve from in Bun's isolated install layout. Kept external
+  // — and declared here so it resolves from this package — it loads from
+  // its real path in the store, where its platform package is linked.
+  vite: { cacheDir: './.astro/vite', ssr: { external: ['satteri'] } },
   site,
   base,
   trailingSlash: 'always',
@@ -38,11 +50,25 @@ export default defineConfig({
         Head: './src/components/Head.astro',
       },
       customCss: ['./src/styles/theme.css'],
+      plugins: [
+        starlightBlog({
+          title: 'Blog',
+          prefix: 'blog',
+          navigation: 'header-end',
+          postCount: 10,
+          recentPostCount: 5,
+          authors: {
+            vzn: { name: 'vzn', title: 'vx maintainer', url: 'https://github.com/vznjs' },
+          },
+        }),
+      ],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/vznjs/vx' },
       ],
+      // Hand-authored pages live here; imported pages carry their own
+      // `editUrl` (scripts/import-docs.ts) pointing at packages/vx/docs/.
       editLink: {
-        baseUrl: 'https://github.com/vznjs/vx/edit/main/docs/',
+        baseUrl: 'https://github.com/vznjs/vx/edit/main/packages/vx-docs/',
       },
       sidebar: [
         {

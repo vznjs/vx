@@ -195,6 +195,10 @@ function transformFile(srcRel: string, content: string): string {
 
   const fm = ['---', GENERATED_MARK, `title: ${yaml(title)}`]
   if (description) fm.push(`description: ${yaml(description)}`)
+  // "Edit page" must open the source, not the generated copy: the site's
+  // `editLink.baseUrl` serves the hand-authored pages, so each imported
+  // page names its own file under packages/vx/docs/.
+  fm.push(`editUrl: ${yaml(`https://github.com/vznjs/vx/edit/main/packages/vx/docs/${srcRel}`)}`)
   fm.push('---', '')
   return `${fm.join('\n')}${body.join('\n').replace(/^\n+/, '')}`
 }

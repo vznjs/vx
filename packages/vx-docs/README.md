@@ -21,6 +21,38 @@ Hand-authored pages live only in the site and ARE tracked:
 - `src/content/docs/introduction.md`, `quickstart.md`,
   `add-to-existing-repo.md`, `concepts/`, `guides/`, `migrate/`
 
+## Writing a blog post
+
+The blog (`/blog/`, RSS at `/blog/rss.xml`) is
+[starlight-blog](https://github.com/HiDeoo/starlight-blog) on top of the
+same Starlight site; posts are tracked Markdown files in
+`src/content/docs/blog/`, one per post, newest first on the index. A
+post is:
+
+```md
+---
+title: 'vx 0.1: one binary, no daemon'
+date: 2026-10-01
+authors:
+  - vzn # a key from `authors` in astro.config.mjs, or an inline { name, title, url }
+tags:
+  - release
+excerpt: 'One paragraph shown on the index and in the feed.'
+# cover: { image: ../../../assets/post.png, alt: '…' }   # optional
+# draft: true                                              # optional: built only in dev
+---
+
+Body in Markdown. Internal links are relative to the post's own URL
+(`/blog/<slug>/`), like every other page here: [the
+quickstart](../../quickstart/).
+```
+
+`date` orders the index; `excerpt` is the summary (the first paragraph
+otherwise). Add an author once under `plugins: [starlightBlog({ authors })]`
+in `astro.config.mjs` and reference the key. `bun packages/vx/src/bin.ts
+run dev --filter @vzn/vx-docs` previews at `/vx/blog/`; a `draft: true`
+post is visible there and skipped by the build.
+
 ## Commands
 
 Everything runs through vx from the repo root; this package has no

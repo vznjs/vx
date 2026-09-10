@@ -72,7 +72,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // loads the rows with the entry (`hit.outputRows`); only the lazy
   // path pays one SELECT here. Either beats reading the manifest from
   // the tar (decompress + parse) at the same point.
-  let skipRestore = false
+  // A task with no declared outputs has nothing to clean or restore: its
+  // stdout replays from the row (`hit.stdout`), and its artifact holds
+  // only logs. Extracting it anyway cost an `exists` + a tar read per hit
+  // — 1.7 ms each on a four-task real repo whose `link` and `element`
+  // tasks declare `outputs: []` (2026-09-10, VX_TIMING).
+  let skipRestore = !anyOutputs
   if (anyOutputs) {
     const endRows = span('output rows')
     const expected = hit.outputRows ?? args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []

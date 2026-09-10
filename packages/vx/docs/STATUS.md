@@ -1196,6 +1196,72 @@ test-types` cold 53.6 s vs 58.2 s, restore 80 ms vs 166 ms,
       cross-package `dependsOn`, `**/dist/**` outputs all mapped; the
       only warnings are `outputLogs: "new-only"`, which has no vx
       spelling.
+115.  DONE (2026-09-10, night — owner's ask: a blog section for the
+      announcement articles): the site has a blog at `/blog/` (RSS at
+      `/blog/rss.xml`, authors, tags, pagination) — `starlight-blog`
+      0.29 on the same Starlight, reason recorded in
+      `astro.config.mjs`; posts are tracked Markdown under
+      `packages/vx-docs/src/content/docs/blog/`, the how-to (frontmatter,
+      relative links, drafts) is in `packages/vx-docs/README.md`, and
+      `hello-vx.md` is the first post. One trap on the way: the
+      plugin's Markdown engine (`satteri`) loads a native binding at
+      runtime, and bundled into a prerender chunk under `dist/` it had
+      nowhere to resolve from in Bun's isolated layout (the same class
+      as In-flight 1's astro dependency) — kept `ssr.external` and
+      declared by the site so it loads from its real path in the store.
+116.  DONE (2026-09-10, night — README, site and the repo for launch):
+      the README's benchmark sentence was hand-typed and had drifted
+      (559 ms where the committed run says 510); it is now a block
+      `update-site.ts` renders from `results.json` between `bench`
+      markers and `check.site` guards, plus one sentence on the real
+      Turbo repo (item 114) that points at the tables; the landing
+      page's benchmark note gained the same sentence. Every "Edit page"
+      link on the site was a 404: `editLink.baseUrl` named a `docs/`
+      path that exists nowhere, for imported and hand-authored pages
+      alike — imported pages now carry their own `editUrl` to
+      `packages/vx/docs/<file>` (written by `import-docs.ts`), the base
+      serves the hand-authored ones (Starlight appends the content
+      path), verified in the built HTML for all three page kinds.
+      `LICENSE` said "nxt contributors" — the project's old name.
+      `SECURITY.md` (private reporting, what is in scope) and
+      `CONTRIBUTING.md` (the gate, the pin rule, the number rule)
+      added at the root. CI then refused the README read: `check.site`
+      runs sandboxed and its allow-list named the two sibling files but
+      not the root README — declared as a read and a `workspaceFiles`
+      input (the same shape as the other two; this container cannot
+      host the sandbox, CI is the proof).
+117.  DONE (2026-09-10, night — perf, from the real-repo stage table):
+      a hit on a task with no declared outputs extracted its logs-only
+      artifact anyway — an `exists` and a tar read per hit for nothing
+      (1.7 ms each on solid's `link` and `element`, `VX_TIMING`); its
+      stdout replays from the row. `restoreHit` now skips clean and
+      restore when nothing is declared (`tests/no-output-hit.test.ts`,
+      fails without; the control with outputs still extracts).
+      Measured on solid, seven interleaved no-op runs against the
+      previous binary: 53 → 52 ms median, 49 → 46 min — at the noise
+      floor, as 3.4 ms of 51 predicts.
+
+118.  DONE (2026-09-10, night — owner's ask: "20+ blog posts about
+      technicals, what vx is, why it is fast, its methodologies and
+      values, migration, no choice on the market, the mechanics"):
+      thirty posts under `packages/vx-docs/src/content/docs/blog/`,
+      every claim taken from the docs and verified against source
+      where the docs were silent (three drafts were corrected on the
+      way: output overlap is refused only when provable, a clean-filter
+      path loses its index OID rather than trusting it, the purity gate
+      denies globals not `Math.random`). Series: what vx is · why fast ·
+      keys from git · resolved-config hashing · strict output ownership
+      · no daemon · pipeline with seams · the local floor · cascade
+      through inputs · `vx why` · explicit over magical · the sandbox ·
+      lockfile-aware keys · dev servers in the graph · Ctrl-C · watch ·
+      bitsets and the scheduler · no choice on the market · from
+      Turborepo · from Nx · honest benchmarks · remote execution ·
+      agents and MCP · values · one binary · config in TypeScript ·
+      `vx lock` · telemetry never breaks a run · one command per task ·
+      flaky tasks. All dated today and published (not `draft: true`);
+      the owner re-dates or drafts them to stage an announcement
+      cadence. Built with the site (all thirty render; every relative
+      link resolved in the built HTML), site tests pass.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1391,6 +1457,42 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
   only the two publish steps were skipped, as `dry_run` intends. The
   auth half is proven by the next release. Documented in
   `docs/cli.md` § Releasing.
+
+**Launch checklist (2026-09-10, the owner's "what is needed to go
+fully live").** What a public announcement needs, in order, with the
+state of each:
+
+1. OWNER: npm trusted publishing — on npmjs.com add the GitHub Actions
+   publisher (owner `vznjs`, repo `vx`, workflow `npm.yml`, no
+   environment) to `@vzn/vx` and the four platform packages, then delete
+   the `NPM_TOKEN` secret. Until then `npm install -g @vzn/vx` installs
+   v0.0.18 from 2026-09-04, four days of work behind main. Documented in
+   `docs/cli.md` § Releasing.
+2. OWNER: cut the release — a GitHub release with the tag is the whole
+   process (`release.yml` builds and signs the binaries, `npm.yml`
+   publishes with provenance). Pick the version the articles will name;
+   `0.1.0` says "first real release" where 0.0.19 says "another nightly".
+   The release notes are the changelog — there is no CHANGELOG file, and
+   GitHub's generated notes from merged PR titles are accurate since
+   every merge is one titled PR.
+3. OWNER: the site's address — it deploys to
+   https://vznjs.github.io/vx/ on every push to main (`docs.yml`). A
+   custom domain is a DNS record plus `SITE_URL` / `BASE_PATH` env in
+   that workflow (`astro.config.mjs` reads both); every internal link is
+   base-relative, so nothing else moves.
+4. DONE tonight: the blog (item 115) with thirty posts for the
+   announcement series (item 118), README and site numbers generated
+   and checked, "Edit page" links that open the right file, LICENSE
+   holder, SECURITY.md, CONTRIBUTING.md (item 116).
+5. OWNER, optional: enable GitHub private vulnerability reporting
+   (Settings → Security) so `SECURITY.md`'s instruction is live; issue
+   templates are not needed for a first announcement.
+6. Known limits an article should state plainly: Bun ≥ 1.4 for source
+   installs (the binary needs nothing); Linux sandboxing needs
+   `bubblewrap` + `socat` and cannot run as root inside a container;
+   Windows is WSL; macOS violation reporting is lossy under load
+   (In-flight 5); the remote seam moves whole artifacts in memory
+   (Next 2, fine below ~100 MiB).
 
 ## Next (ordered)
 
