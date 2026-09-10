@@ -198,6 +198,13 @@ describe('parseWhyArgs', () => {
 
   it('rejects unknown flags, bad formats, empty --run, extra positionals', () => {
     expect(parseWhyArgs(['--nope']).error).toContain('unknown flag')
+    // --cache-dir with vx run's rules: both spellings, a value required,
+    // the space form refusing a flag-shaped value.
+    expect(parseWhyArgs(['build', '--cache-dir', 'x']).cacheDir).toBe('x')
+    expect(parseWhyArgs(['build', '--cache-dir=y/z']).cacheDir).toBe('y/z')
+    expect(parseWhyArgs(['build', '--cache-dir']).error).toMatch(/requires a path/)
+    expect(parseWhyArgs(['build', '--cache-dir=']).error).toMatch(/requires a path/)
+    expect(parseWhyArgs(['build', '--cache-dir', '--format']).error).toMatch(/got flag/)
     expect(parseWhyArgs(['--format', 'xml']).error).toContain('invalid --format')
     expect(parseWhyArgs(['--run=']).error).toContain('invalid --run')
     expect(parseWhyArgs(['a', 'b']).error).toContain('unexpected argument')

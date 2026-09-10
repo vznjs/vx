@@ -221,6 +221,10 @@ describe('vx cache prune value parsing', () => {
     expect(parsePruneArgs(['--dry-run', '--max-size', '1G']).dryRun).toBe(true)
     expect(parsePruneArgs(['--older-than=30d']).dryRun).toBeUndefined()
     expect(parsePruneArgs(['--dry-run']).error).toMatch(/must pass --older-than/)
+    expect(parsePruneArgs(['--older-than=30d', '--cache-dir', 'x']).cacheDir).toBe('x')
+    expect(parsePruneArgs(['--cache-dir=x', '--max-size=1G']).cacheDir).toBe('x')
+    expect(parsePruneArgs(['--older-than=30d', '--cache-dir']).error).toMatch(/requires a path/)
+    expect(parsePruneArgs(['--cache-dir', '--older-than=30d']).error).toMatch(/got flag/)
   })
 
   it('rejects an empty = value rather than reading it as "prune nothing"', () => {

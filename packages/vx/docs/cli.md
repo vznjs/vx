@@ -231,7 +231,7 @@ stays clean).
 | `--frozen`                         | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI) — the run's, and the ones `--affected` owners and the picker select from. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                    |
 | `--output-logs <mode>`             | value          | flow-derived                       | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                       |
 | `--download <mode>`                | value          | `all`                              | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--download`. `--download=<mode>` form too.                                                                                                                                                                                                                            |
-| `--verbosity <n>`                  | int (0+)       | `0`                                | `1` prints a per-task summary table after the framed blocks; `2+` reserved. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--verbosity <n>`                  | int (0+)       | `0`                                | `1` or more prints a per-task summary table after the framed blocks. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                           |
 | `--dry[=text\|json]`               | optional value | off                                | Print the task graph + predicted cache hit/miss; skip execution.                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `--graph[=<path>]`                 | optional value | off                                | Emit Graphviz DOT (stdout if no path); skip execution.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `--summarize[=<path>]`             | optional value | off                                | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -948,6 +948,7 @@ Evict old or oversized cache entries. Operates on
 vx cache prune --older-than <duration>     # Drop entries last accessed before now - duration.
 vx cache prune --max-size <size>            # After age-based pruning, evict LRU until under <size>.
 vx cache prune ... --dry-run                # Say what either policy would reap; delete nothing.
+vx cache prune ... --cache-dir <path>       # The cache a run with the same flag uses.
 ```
 
 At least one of `--older-than` / `--max-size` is required. Both may
@@ -1010,7 +1011,9 @@ Exit codes:
 
 `vx cache prune` resolves the workspace root from cwd and honors a
 `defineWorkspace({ cacheDir })` override — it prunes the same
-directory a run would use.
+directory a run would use. `--cache-dir <path>` (cwd-relative, as on
+`vx run`) names another one, so a run that wrote elsewhere can be
+pruned there.
 
 ## `--frozen` (run flag)
 
@@ -1287,7 +1290,7 @@ per-component input fingerprints core persists on every miss. Read-only over the
 `cache.db`: no config evaluation, no re-hash.
 
 ```
-vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json]
+vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json] [--cache-dir <path>]
 ```
 
 By default it compares the task's **latest** recorded run against its
@@ -1355,7 +1358,7 @@ self-hosted dashboard gone (2026-08-23), this is THE run-replay
 surface.
 
 ```
-vx last [runId] [--list[=N]] [--format pretty|json]
+vx last [runId] [--list[=N]] [--format pretty|json] [--cache-dir <path>]
 ```
 
 Bare `vx last` replays the most recent run: a header (verdict, command,
@@ -1365,6 +1368,13 @@ per-task table — status, id, duration, cache key — failures first.
 run ids; `vx last <runId>` replays a specific one. `--format json`
 emits `{ invocation, tasks }` for scripting. An unknown run id fails
 loud and points at `--list`.
+
+`vx why`, `vx last`, `vx info` and `vx cache prune` all read the cache
+a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
+(cwd-relative, absolute used as-is): a run that wrote its history
+elsewhere is replayed, explained, reported on and pruned there. Without
+the flag they open the workspace's cache (`defineWorkspace({ cacheDir })`
+or `.vx/cache`).
 
 ## Plugin commands
 

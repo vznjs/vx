@@ -6,7 +6,13 @@ import { Cache, CACHE_VERSION, noteSchemaReset, SCHEMA_VERSION } from '../cache/
 import type { VxPlugin } from '../orchestrator/index.js'
 import { seeHelp } from './help.js'
 import { VERSION } from '../version.js'
-import { loadCliProjects, loadCliWorkspace, warnToStderr } from './workspace-config.js'
+import {
+  loadCliProjects,
+  loadCliWorkspace,
+  parseCacheDirFlag,
+  warnToStderr,
+} from './workspace-config.js'
+import path from 'node:path'
 import {
   findWorkspaceRoot,
   listProjects,
@@ -19,6 +25,8 @@ import { formatBytes } from './format.js'
 
 export interface InfoArgs {
   format: 'pretty' | 'json'
+  /** `--cache-dir`: report on the cache a run with the same flag uses. */
+  cacheDir?: string
   error?: string
 }
 
@@ -32,9 +40,16 @@ export function parseInfoArgs(args: readonly string[]): InfoArgs {
         return { ...out, error: `--format must be pretty or json${seeHelp('info')}` }
       }
       out.format = v
-    } else {
-      return { ...out, error: `unknown argument: ${a}${seeHelp('info')}` }
+      continue
     }
+    const cd = parseCacheDirFlag(args, i)
+    if (cd !== null) {
+      if ('error' in cd) return { ...out, error: cd.error }
+      out.cacheDir = cd.cacheDir
+      i = cd.next
+      continue
+    }
+    return { ...out, error: `unknown argument: ${a}${seeHelp('info')}` }
   }
   return out
 }
@@ -67,17 +82,20 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx info: ${parsed.error}\n`)
     return 1
   }
-  const facts = await collectInfo(process.cwd())
+  const facts = await collectInfo(process.cwd(), parsed.cacheDir)
   process.stdout.write(
     parsed.format === 'json' ? `${JSON.stringify(facts, null, 2)}\n` : `${renderInfo(facts)}\n`,
   )
   return 0
 }
 
-export async function collectInfo(cwd: string): Promise<InfoFacts> {
+export async function collectInfo(cwd: string, cacheDirOverride?: string): Promise<InfoFacts> {
   const root = await findWorkspaceRoot(cwd)
   const metas = await listProjects(await loadWorkspace(root))
-  const { cacheDir, plugins } = await loadCliWorkspace(root)
+  const ws = await loadCliWorkspace(root)
+  const { plugins } = ws
+  const cacheDir =
+    cacheDirOverride === undefined ? ws.cacheDir : path.resolve(cwd, cacheDirOverride)
   const cache = new Cache(cacheDir)
   noteSchemaReset(cache, warnToStderr)
   let stats
@@ -91,7 +109,7 @@ export async function collectInfo(cwd: string): Promise<InfoFacts> {
     // must not take the doctor down with it: the count then falls back to
     // the configs that do load, one by one, the broken ones as zero.
     try {
-      const loaded = await loadCliProjects(root, metas)
+      const loaded = await loadCliProjects(root, metas, 'all', { cacheDir })
       for (const p of loaded.values()) taskCount += Object.keys(p.config.tasks ?? {}).length
     } catch {
       taskCount = await countLoadableTasks(metas)

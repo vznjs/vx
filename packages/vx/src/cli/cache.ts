@@ -2,7 +2,7 @@ import { Cache, noteSchemaReset } from '../cache/index.js'
 import { seeHelp } from './help.js'
 import { parseDecimalInt, parseSize } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { loadCliWorkspace, warnToStderr } from './workspace-config.js'
+import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
 
 // parseSize moved to `util` (the orchestrator's resource resolver needs it
@@ -27,6 +27,8 @@ interface PruneArgs {
   olderThanMs?: number
   maxBytes?: number
   dryRun?: boolean
+  /** `--cache-dir`: prune the cache a run with the same flag uses. */
+  cacheDir?: string
   error?: string
 }
 
@@ -77,7 +79,11 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
     } else if (a === '--dry-run') {
       out.dryRun = true
     } else {
-      return { error: `unknown argument: ${a}${seeHelp('cache')}` }
+      const cd = parseCacheDirFlag(args, i)
+      if (cd === null) return { error: `unknown argument: ${a}${seeHelp('cache')}` }
+      if ('error' in cd) return { error: cd.error }
+      out.cacheDir = cd.cacheDir
+      i = cd.next
     }
   }
   if (out.olderThanMs === undefined && out.maxBytes === undefined) {
@@ -100,10 +106,11 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx cache prune: ${(err as Error).message}\n`)
     return 1
   }
-  // Honor `defineWorkspace({ cacheDir: '...' })` and a `config` plugin's
-  // edit of it — `vx run` and `vx cache prune` must operate on the same
-  // directory or prune silently no-ops against the wrong path.
-  const cache = new Cache((await loadCliWorkspace(root)).cacheDir)
+  // Honor `--cache-dir`, `defineWorkspace({ cacheDir: '...' })` and a
+  // `config` plugin's edit of it — `vx run` and `vx cache prune` must
+  // operate on the same directory or prune silently no-ops against the
+  // wrong path.
+  const cache = new Cache(await cliCacheDir(root, parsed.cacheDir))
   noteSchemaReset(cache, warnToStderr)
   try {
     const opts: { olderThanMs?: number; maxBytes?: number; dryRun?: boolean } = {}

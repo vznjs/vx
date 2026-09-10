@@ -272,6 +272,29 @@ dryRun` on the contract, so a layer that delegates gets it for
     weights: −143 lines of src. Both are the pipeline principle
     applied to core's own insides: a seam with no consumer is a
     special case waiting to happen.
+75. DONE (`--cache-dir` on the verbs that read what a run wrote): a run
+    given `--cache-dir X` put its history, fingerprints and evaluations
+    in X, and `vx why`, `vx last`, `vx info` and `vx cache prune` opened
+    the workspace's cache regardless — so a relocated run could not be
+    explained, replayed, reported on or pruned. All four take
+    `--cache-dir <path>` now, through one parser (`parseCacheDirFlag`,
+    the run's rules: a value required, the space form refusing a
+    flag-shaped value) and one resolver (`cliCacheDir`, cwd-relative
+    exactly as prepare.ts resolves the run's). Pinned end to end: a run
+    with the flag is the one line `vx last --list --cache-dir` prints
+    and absent from the bare list (`no recorded runs`), and `vx info
+--format json --cache-dir` reports that directory with one run.
+    The `--verbosity` help and flag row claimed `2+ = debug (reserved)`
+    for a level nothing reads; de-claimed — `1+` prints the table.
+    Refuted on reading: the audit's "duplicated glob-filter resolver"
+    is three sites with three concerns (workspace membership, package
+    enumeration, `workspaceFiles` matching), one `Bun.Glob` each and
+    the partition rule already shared by comment; no shared resolver
+    would be shorter. Considered and left: `--output-logs new-only`
+    (frames for executed work, silence for hits) is a sixth mode over a
+    matrix five wide; `broad` already prints executed one-liners and
+    silent hits, and `full` frames both. A sixth column needs a user
+    who cannot get there with `broad`.
 
 **Shard weights refreshed (2026-09-10, after items 65–67).** Three
 suites moved to packages and `init.test.ts` shrank, so the deal was
