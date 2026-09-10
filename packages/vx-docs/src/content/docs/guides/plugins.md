@@ -538,7 +538,11 @@ it('receives one summary with the task outcome', async () => {
 ```
 
 `handleSignals: false` keeps the run from installing process-wide
-signal handlers inside the test runner. Every telemetry record, the
+signal handlers inside the test runner. An embedder that needs to stop
+a run itself passes `signal` (an `AbortSignal`): on abort every child is
+SIGTERMed, SIGKILLed after the kill grace, nothing further is dispatched,
+and `run()` returns with those tasks `aborted` — the same teardown the
+CLI's own Ctrl-C runs, minus the exit. Every telemetry record, the
 cache, and the task outcomes are the real thing; a second `run()` in
 the same fixture is a cache hit, which is how you test what your sink
 sees on one.
