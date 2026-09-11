@@ -758,6 +758,31 @@ equivalent — map it manually` on every run, for the value every
       trusting the cache, migrate, architecture, parity, `vx why`,
       extensibility, remote execution and caching, MCP, schema).
 
+135.  DONE (2026-09-11 — owner: "Find the most popular repo using
+      Turborepo by stars, something big with many packages, so we can
+      bench against it; solid is too small"): n8n-io/n8n. Verified
+      against GitHub on 2026-09-11 — stars n8n 204k (root
+      `turbo.json`, 27 tasks; pnpm 12, Node ≥ 24), next.js 142k
+      (turbo, but a Rust monorepo with a handful of JS packages),
+      supabase 109k (no `turbo.json` on master any more), astro 62k
+      (turbo, ~90 `build` scripts but 553 workspace members, most of
+      them examples and test fixtures), cal.com 48k (turbo, yarn 4),
+      payload 45k (turbo, pnpm), medusa 36k (turbo, yarn 3, 100+
+      packages). n8n on a shallow clone in the scratchpad: 84
+      workspace members over six globs, 71 with `build`, 78
+      `typecheck`, 76 `test`; under `@vzn/vx-turbo` with nothing
+      written, `vx run --dry` plans build 71 tasks, typecheck 139,
+      test:unit 119, lint 133, all four 274 — every `pkg#task` root
+      key, the one per-package overlay (`@n8n/storybook`) and the
+      `^build` chains map. The run itself needs the bench host (this
+      container has Node 22, four cores); the recipe is at the top of
+      `packages/vx-bench/real/turbo-repo.sh` and in Next 15. Found on
+      the way and fixed: the plugin warned once PER TASK that a task
+      is persistent — n8n marks `dev` and `watch` persistent in most
+      packages, a hundred identical lines before the first frame — and
+      reports them in one line per run now, naming the count, the task
+      names and the package count; pinned in the plugin suite.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
@@ -1270,6 +1295,21 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     stage's remaining 20 ms per 1,000 (the overlay probes, two clones
     per fill, a re-validation per plugin) if a workspace that size
     ever runs without configs. Never end with "what next?".
+
+15. **Bench n8n on the bench host (owner, 2026-09-11).** The repo is
+    picked and mapped (item 135); the numbers need a machine with
+    Node ≥ 24, pnpm 12 and the cores the owner's solid run had. Clone
+    shallow, `pnpm install`, write the one-line `vx.workspace.mjs`,
+    then `packages/vx-bench/real/turbo-repo.sh` on `~/n8n` with the
+    binary, first `build` alone (outputs `dist`), then the four-task
+    form, build, typecheck, test:unit and lint (outputs `dist` and
+    `coverage`) — both invocations are spelled out at the top of the
+    script; record the tables in
+    `docs/benchmarks.md` beside solid and add a `solidRows`-shaped
+    block to the landing page's second panel (the same panel, the same
+    rows). Expect the cold build to be long (editor-ui is a Vite build,
+    n8n-nodes-base a large tsc); the warm and restore rows are the
+    ones the graph size tests.
 
 ## Decisions (this arc)
 
