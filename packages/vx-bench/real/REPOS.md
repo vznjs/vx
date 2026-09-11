@@ -49,6 +49,11 @@ filters of the repo's own `build` script — `astro create-astro
   cached), forever. Probed with `--dry=json`: one byte appended to a
   gitignored `dist/index.js` changes the hash. vx excludes a task's
   declared outputs from its inputs on the same config.
+- The wide set (`build test`, 55) is dropped: `test` depends on `^test`
+  only and the tests import their package's `dist`, so a cold tree fails
+  under both tools (three own-`dist` tests under Turbo; under vx the
+  cross-package `@astrojs/language-server#test` and `@astrojs/ts-plugin#test`,
+  which downloads VS Code through the proxy).
 - The first harness's `dist`-directory wipe deleted a TRACKED fixture
   file, `packages/astro/e2e/fixtures/cloudflare/packages/my-lib/dist/index.js`,
   which stays deleted in the bench tree (it is an e2e fixture, outside
@@ -130,7 +135,7 @@ yarn 4.12 (node-modules linker), Turbo 2.7.1, Node 22.22. Scope:
 which three are `cache: false` in turbo.json (`@calcom/prisma#build`,
 `#post-install` — prisma generate — and `@calcom/web#copy-app-store-static`)
 and run on every arm under both tools, ~12 s together. Wide set
-`build type-check lint` = 31 (parity confirmed, not run).
+`build lint` (`type-check` is `cache: false` in turbo.json), 3 workers.
 
 - `.env` copied from `.env.example`, with `SKIP_DB_MIGRATIONS=1` added
   (no database here; `@calcom/prisma#build` connects otherwise) and the

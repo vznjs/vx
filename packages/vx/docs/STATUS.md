@@ -941,9 +941,11 @@ equivalent — map it manually` on every run, for the value every
       and thrashed 20 minutes at 97% system time; dropped (owner:
       "leave n8n alone, we have plenty of repos"); medusa's wide set
       dropped too — its `test` declares no `dependsOn`, so a cold tree
-      runs tests before their imports are built under both tools — so
-      the wide pass is payload and astro at 3 workers, and the harness
-      keeps one log per tool and arm. The landing
+      runs tests before their imports are built under both tools, and
+      astro's for the same gap (`test` depends on `^test` only) — so
+      the wide pass is payload `build lint` and cal.com `build lint` at
+      3 workers, and the harness keeps one log per tool and arm,
+      outside the artifact clean. The landing
       page's real-repo panel shows n8n (the most-starred), cold row
       and all — Turbo took it by 3%, inside the disk's noise — and the
       hero no longer claims every row on real repos: the cold row is
@@ -1463,9 +1465,9 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     ever runs without configs. Never end with "what next?".
 
 15. **Wide graphs, then the Nx round.** The five build sets are in
-    (item 141); the wide sets — payload `build lint` (89) and astro
-    `build test` (55), one rep each, 3 workers; n8n's dropped by the
-    owner, medusa's by its own `test` config — go into
+    (item 141); the wide sets — payload `build lint` (89) and cal.com
+    `build lint`, one rep each, 3 workers; n8n's dropped by the owner,
+    medusa's and astro's by their own `test` config — go into
     `docs/benchmarks.md` § Wide graphs as they finish. Then the same
     harness shape on Nx repos (owner: 3–5 popular ones; only
     `nx:run-commands`, `nx:run-script`, a plain `command` and

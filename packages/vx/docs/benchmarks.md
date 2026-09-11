@@ -423,6 +423,14 @@ and it passed on the restore arm once the build existed), Turbo lost
 "@medusajs/admin-vite-plugin"`) on all four arms. A repo configuration
 gap the two runners expose identically; not a number for either.
 
+**withastro/astro — `build test`, 55 tasks: dropped**, the same gap:
+`test` depends on `^test` only, and its tests import their own package's
+`dist`. Turbo lost `@astrojs/internal-helpers#test`, `upgrade#test` and
+`telemetry#test` on every arm; vx's scheduler happened to run the builds
+first and lost `@astrojs/language-server#test`, which imports
+`packages/astro/dist` across packages, plus `@astrojs/ts-plugin#test`,
+which downloads VS Code and cannot behind this proxy.
+
 **n8n-io/n8n — `build typecheck lint`, 220 tasks: dropped** (owner). The
 editor-ui's vue-tsc and eslint at 3.6–5.7 GB resident each do not fit
 the cgroup beside anything else.
