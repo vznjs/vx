@@ -409,12 +409,10 @@ function buildTask(
 
     const outFiles: string[] = []
     const wsOutFiles: string[] = []
+    const negated: string[] = []
     for (const o of def.outputs ?? []) {
       if (o.startsWith('!')) {
-        todos.push(
-          `output ${JSON.stringify(o)}: vx outputs have no negation — narrow the positive ` +
-            'globs instead',
-        )
+        negated.push(o)
       } else if (o.startsWith('$TURBO_ROOT$/')) {
         wsOutFiles.push(o.slice('$TURBO_ROOT$/'.length))
       } else if (climbed(o) !== null) {
@@ -427,6 +425,28 @@ function buildTask(
             'prefix (→ cache.outputs.workspaceFiles) — map manually',
         )
       } else outFiles.push(o)
+    }
+
+    // vx cleans and restores exactly the positive globs. A negation under
+    // a literal-rooted output (`dist/**` minus `!dist/**/*.map`) leaves a
+    // harmless superset of build products and is a todo; one that carves
+    // the package root out of a wildcard (medusa: `*/**` minus `!src/**`
+    // and `!node_modules/**`) does not — the superset is the sources, and
+    // the clean before exec would delete them. That task runs uncached.
+    const wild = outFiles.find((o) => /[*?[{]/.test(o.split('/')[0] ?? ''))
+    if (negated.length > 0 && wild !== undefined) {
+      todos.push(
+        `outputs ${negated.map((n) => JSON.stringify(n)).join(', ')} narrow ${JSON.stringify(wild)}: ` +
+          'vx outputs have no negation and the positive glob reaches the sources — task runs ' +
+          'uncached; declare the exact outputs in a vx.config to cache it',
+      )
+      return { name, todos, task, uses }
+    }
+    for (const n of negated) {
+      todos.push(
+        `output ${JSON.stringify(n)}: vx outputs have no negation — narrow the positive ` +
+          'globs instead',
+      )
     }
 
     const cacheEnv = uniq([...global('env'), ...envNames])

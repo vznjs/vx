@@ -5,6 +5,10 @@
 #   cold     caches AND outputs wiped — every task executes
 #   restore  outputs wiped, caches intact — every task a hit, outputs come back
 #   noop     nothing wiped — every task a hit over intact outputs
+#   noop2    the same again: a runner whose outputs are its own inputs
+#            (Turbo on an explicit `inputs: ["**/*"]` hashes its restored
+#            `dist/**`, so its first run after a restore rebuilds — astro,
+#            2026-09-11) stabilizes only here
 #
 #   real/turbo-repo.sh <repo> <vx-binary> "<tasks>" [reps] [output-dir-names]
 #
@@ -27,10 +31,14 @@
 # `--filter <p>` per pattern instead of `--all`, turbo `--filter=<p>`), for
 # a repo whose own `build` script is a filtered `turbo run build`; a
 # pattern may be negated (`!@payloadcms/plugin-*`). TURBO_ARGS adds what
-# the repo's own script passes turbo (medusa: `--concurrency=100%`).
+# the repo's own script passes turbo (medusa: `--concurrency=100%`);
+# VX_ARGS the same for vx — Turbo's default is 10 workers whatever the
+# core count, vx's is the core count, so a matched run passes vx
+# `--concurrency 10` (astro cold on four cores: 70.5 s at 4 workers,
+# 53.8 s at 8; payload 120 s at 4, 128 s at 8 — 2026-09-11).
 set -u
 R=$1; VX=$2; TASKS=$3; REPS=${4:-3}; DIRS=${5:-"dist types coverage"}
-FILTERS=${FILTERS:-}; TURBO_ARGS=${TURBO_ARGS:-}
+FILTERS=${FILTERS:-}; TURBO_ARGS=${TURBO_ARGS:-}; VX_ARGS=${VX_ARGS:-}
 vx_scope=(--all); turbo_scope=()
 if [ -n "$FILTERS" ]; then
   vx_scope=()
@@ -44,11 +52,18 @@ outputs() {
   for d in $DIRS; do args+=(-o -name "$d"); done
   find packages -path '*/node_modules' -prune -o \( -type d \( -false "${args[@]}" \) \) -print
 }
-wipe_outputs() { outputs | xargs -r rm -rf; }
+# `*.tsbuildinfo` goes with the outputs: an incremental tsc that finds its
+# build info but not its emit skips the emit (payload: 42 of them in the
+# package roots, and every dependant's `--emitDeclarationOnly` then failed
+# with TS6305 under either tool, 2026-09-11).
+wipe_outputs() {
+  outputs | xargs -r rm -rf
+  find packages -path '*/node_modules' -prune -o -name '*.tsbuildinfo' -print | xargs -r rm -f
+}
 wipe_turbo_cache() { rm -rf node_modules/.cache/turbo .turbo packages/*/.turbo; }
 wipe_vx_cache() { rm -rf .vx; }
 ms() { date +%s%N; }
-run_vx() { "$VX" run $TASKS "${vx_scope[@]}" > .vx-bench-vx.log 2>&1; echo $?; }
+run_vx() { "$VX" run $TASKS "${vx_scope[@]}" $VX_ARGS > .vx-bench-vx.log 2>&1; echo $?; }
 run_turbo() { node_modules/.bin/turbo run $TASKS "${turbo_scope[@]}" $TURBO_ARGS --no-daemon > .vx-bench-turbo.log 2>&1; echo $?; }
 time_arm() {
   local t0 t1 code
@@ -62,5 +77,6 @@ for _ in $(seq 1 "$REPS"); do
     wipe_outputs
     time_arm $tool restore
     time_arm $tool noop
+    time_arm $tool noop2
   done
 done

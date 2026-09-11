@@ -845,6 +845,47 @@ equivalent — map it manually` on every run, for the value every
       `<NONEXISTENT>` placeholders): astro 32, payload 45, medusa 83,
       cal.com 13, n8n 70.
 
+139.  DONE (2026-09-11): a negated output that carves the package
+      root out of a wildcard runs the task uncached. medusa's
+      turbo.json declares `build` outputs as `*/**` and `.medusa/**`
+      minus `!src/**` and `!node_modules/**`; the mapper kept the
+      positive globs and reported the negations, so core would have
+      cleaned `*/**` — the sources — before every exec. vx has no
+      output negation by design (the clean and the restore are exact),
+      so the rule is: a negation under a literal-rooted output
+      (`dist/**` minus `!dist/**/*.map`) leaves a harmless superset of
+      build products and stays a todo; a negation against a
+      wildcard-rooted positive makes the task uncached, with a todo
+      that says to declare the exact outputs in a vx.config. Pinned
+      in the plugin suite with the medusa shape: no cache block, the
+      one-line warning, and a real run whose `src/` survives (fails
+      on the previous mapper — the clean deleted the fixture's
+      generated source). The bench gives medusa exactly that: a
+      ten-line project-stage plugin in its `vx.workspace.mjs` naming
+      `dist/**` and `.medusa/**`, so both tools cache the same files.
+      Three more findings from the first astro rep, all in the
+      harness: (a) Turbo on astro's explicit `inputs: ["**/*"]` hashes
+      its own restored `dist/**` (an explicit inputs glob matches the
+      filesystem, gitignore or not — touching a gitignored
+      `dist/index.js` changed the task hash in `--dry=json`), so its
+      first run after a restore is a full rebuild (62 s on the noop
+      arm) and it stabilizes only on the run after; the harness gained
+      a `noop2` arm so both are reported. vx excludes declared outputs
+      from the inputs and answered the same noop in 636 ms. (b) The
+      cold gap on astro was concurrency, not the runner: Turbo defaults
+      to 10 workers whatever the core count, vx to the core count;
+      astro cold on four cores was 70.5 s at 4 workers, 53.8 s at 8,
+      56.5 s at 10, 54.3 s at 16 (Turbo 66.3 s), but payload was
+      120 s at 4 and 128 s at 8 — a CPU-bound swc build gains nothing
+      from oversubscription — so the default stays the core count
+      (refuted: "raise the default"; two repos disagree) and the
+      matched bench passes vx `--concurrency 10` through the new
+      `VX_ARGS`. (c) payload keeps 42 `tsconfig.tsbuildinfo` files in
+      the package roots; a wipe of `dist` alone made the next
+      incremental tsc skip its declaration emit and every dependant
+      failed with TS6305 under either tool — the wipe removes them
+      too.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so

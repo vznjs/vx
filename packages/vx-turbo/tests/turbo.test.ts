@@ -287,6 +287,43 @@ describe('@vzn/vx-turbo', () => {
   )
 })
 
+describe('output negation', () => {
+  it(
+    'a negation that carves the package root out of a wildcard output runs the task uncached',
+    async () => {
+      // medusa: `outputs: ["!node_modules/**", "!src/**", "*/**", ".medusa/**"]`.
+      // vx has no output negation; mapped to the positive `*/**` alone, the
+      // clean before exec would delete `src/`. Uncached, and the sources
+      // survive a real run.
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            build: {
+              dependsOn: ['codegen'],
+              outputs: ['!node_modules/**', '!src/**', '*/**', '.medusa/**'],
+            },
+            codegen: { outputs: ['src/gen/**'] },
+          },
+        }),
+      )
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['build'], log })
+      const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      expect(app.config.cache).toBeUndefined()
+      expect(log.lines.join('\n')).toContain(
+        '[@vzn/vx-turbo] 2 task(s) (build across 2 package(s)): outputs "!node_modules/**", "!src/**" narrow "*/**": vx outputs have no negation and the positive glob reaches the sources — task runs uncached; declare the exact outputs in a vx.config to cache it',
+      )
+      const result = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      expect(result.ok).toBe(true)
+      expect(
+        await Bun.file(path.join(root, 'packages', 'app', 'src', 'gen', 'api.js')).exists(),
+      ).toBe(true)
+    },
+    TIMEOUT,
+  )
+})
+
 describe('per-package turbo.json', () => {
   it(
     'extends: false alone opts the package out of the task; with keys it runs on those keys alone',
