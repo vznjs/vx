@@ -76,13 +76,25 @@ time_arm() {
   t0=$(ms); code=$(run_"$1"); t1=$(ms)
   echo "$1 $2 $(( (t1 - t0) / 1000000 )) ms exit=$code"
 }
+# SKIP_ARMS=n resumes a rep at its n-th arm (of the eight: four per tool,
+# vx first): every arm's precondition is on disk (the caches persist
+# between arms), so a driver that lost a process mid-rep restarts at the
+# arm it lost instead of the rep.
+SKIP_ARMS=${SKIP_ARMS:-0}
+arm_index=0
+arm() { # tool name pre-steps...
+  local tool=$1 name=$2; shift 2
+  local i=$arm_index; arm_index=$(( arm_index + 1 ))
+  [ "$i" -lt "$SKIP_ARMS" ] && return
+  for pre in "$@"; do $pre; done
+  time_arm "$tool" "$name"
+}
 for _ in $(seq 1 "$REPS"); do
   for tool in vx turbo; do
-    wipe_outputs; wipe_turbo_cache; wipe_vx_cache
-    time_arm $tool cold
-    wipe_outputs
-    time_arm $tool restore
-    time_arm $tool noop
-    time_arm $tool noop2
+    arm $tool cold wipe_outputs wipe_turbo_cache wipe_vx_cache
+    arm $tool restore wipe_outputs
+    arm $tool noop
+    arm $tool noop2
   done
+  SKIP_ARMS=0; arm_index=0
 done
