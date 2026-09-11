@@ -213,6 +213,24 @@ tools at the repo's `parallel: 4`.
 - `libs/dal`'s `test:watch` is an empty script: the placeholder with a
   todo (STATUS 143), where `command: ''` refused the whole workspace.
 
+### TanStack/router — f021f6d (2026-09-11)
+
+pnpm 11.21.0 (corepack's copy, wrapped in `.vx-bench-bin/`), Nx 23.2.0,
+Node 24.8. 438 projects (42 packages, 3 benchmarks, the examples and
+e2e apps); 1,999 `nx:run-script` targets, 464 `nx:run-commands` and 32
+`nx:noop`. The install is the repo's `packages/**`, `benchmarks/**` and
+root filters (the examples pull every framework; the bench never runs
+them). Scope: the repo's own `build` script's excludes (`examples/**`,
+`e2e/**`): `build test:build` = 85 tasks (43 + 42; `build` is
+`vite build`, `test:build` is `publint` + `attw --pack`). Both tools at
+the repo's `parallel: 5`.
+
+- `router-devtools-core` reaches `router-core` only through
+  `peerDependencies` (seven packages do, on their core or router);
+  vx ordered nothing on a peer and built the devtools before the
+  core's `dist` existed (STATUS 149). A workspace peer that does not
+  close a cycle orders the build since.
+
 ### redwoodjs/redwood — a7852fb (2025-12-13): dropped
 
 yarn 4.6.0 (no vendored release), Nx 20.3.2, 39 packages of scripts.

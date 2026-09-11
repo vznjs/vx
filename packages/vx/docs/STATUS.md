@@ -800,7 +800,8 @@ equivalent — map it manually` on every run, for the value every
       ones are exactly vx's plan, so both tools run the same graph in
       item 137's bench.
 
-137.  DONE (2026-09-11): a peer dependency orders nothing. Mapping
+137.  DONE (2026-09-11; narrowed by item 149 — only a peer that would
+      close a cycle orders nothing): a peer dependency orders nothing. Mapping
       medusajs/medusa under `@vzn/vx-turbo` planned zero tasks — a
       task-graph cycle, analytics to test-utils to medusa and back to
       analytics, every hop a `build` — while Turbo's own dry-run
@@ -1085,6 +1086,30 @@ apps/worker`) found nothing, and `cwd: '{projectRoot}'` earned a
       executions lost, against 0 of 24 idle and 3 of 24 loaded before.
       The e2e timeouts carry the watch's stdout and stderr (PR #310)
       so the next miss names itself.
+149.  DONE (2026-09-11 — Next 15, found by the fourth Nx repo): a
+      workspace peer orders the build unless it would close a cycle.
+      Item 137 made every `peerDependencies` entry reach only (a peer
+      is the consumer's to provide), and TanStack/router refuted the
+      half of that claim that matters for order: `router-devtools-core`
+      peers on `router-core`, pnpm links the peer into the package's
+      own `node_modules` (`linkWorkspacePackages`; bun, npm and yarn
+      hoist it to the root, where it resolves just the same), the build
+      type-checks against the peer's `dist`, and Nx orders `^build` on
+      the edge — vx built the devtools first and failed (77 of 85 on
+      the cold probe, 9 skipped downstream). The rule now: order edges
+      are the three hard fields, the task edges, and each workspace
+      peer that does not reach the package back through the order
+      edges so far, tried in (package, peer) name order so a mutual
+      peering keeps the same edge on every run; a peer that would
+      close a cycle stays reach only (medusa's shape from item 137,
+      still runnable, still affected). Pinned in
+      `tests/package-graph.test.ts` (the four-field pin flipped; the
+      peer-behind-a-dev-dep and mutual-peering differentials; the
+      medusa pin kept) and on router: the plan carries
+      `router-core#build` under the devtools build. Warm path: an
+      interleaved A/B of compiled binaries on the 1,000-project bench
+      (no peers there — the cost is one sort and an empty pass), 12
+      reps: base min 199 / median 203 ms, head 195 / 205. A tie.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
