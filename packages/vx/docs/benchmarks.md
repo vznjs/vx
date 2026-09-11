@@ -274,6 +274,39 @@ widest. Turbo with its daemon on would close part of the no-op gap
 (the daemon answers "what changed" without a walk); vx has no daemon
 to turn on.
 
+## Five real Turbo repos (2026-09-11)
+
+The same footing as the solid run — the repo's own `turbo.json`, vx
+put on top through `@vzn/vx-turbo` with a two-line `vx.workspace.mjs`,
+both tools scoped by the repo's own filters, Turbo without its daemon,
+four cores, Linux, arms interleaved, medians of 3 reps — on the
+largest Turbo repos on GitHub. Both tools run at Turbo's default of
+10 workers (`VX_ARGS="--concurrency 10"`; vx's default is the core
+count, and on payload that was the faster setting — see STATUS 139).
+Turbo's dry-run and vx's `--dry` plan the same `pkg#task` set on
+every repo. The script is `packages/vx-bench/real/turbo-repo.sh`;
+`noop2` is a second consecutive no-op.
+
+### withastro/astro (32 `build` tasks, pnpm 10, Turbo 2.10.2)
+
+| `build`                       | vx         | Turbo 2.10.2   |
+| ----------------------------- | ---------- | -------------- |
+| cold (caches + outputs wiped) | **52.2 s** | 63.0 s (1.21×) |
+| warm, outputs wiped (restore) | **1.23 s** | 1.31 s (1.07×) |
+| warm, nothing wiped (no-op)   | **612 ms** | 59.6 s (97×)   |
+| second no-op                  | **612 ms** | 48.8 s (80×)   |
+
+The no-op rows are not a typo. astro's `turbo.json` declares
+`inputs: ["**/*", "!test/**", …]`, and an explicit Turbo input glob
+matches the filesystem, gitignored or not — so each package's own
+`dist/**` is in its hash. After Turbo restores outputs, every hash
+differs from the one it saved and the whole graph rebuilds; 19 of the
+32 builds are not byte-reproducible, so the run after that rebuilds
+those 19 again (13 cached), and so on forever. vx excludes a task's
+declared outputs from its inputs and answers both no-ops in 0.6 s.
+The cold and restore rows are within noise of each other, in vx's
+favour.
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
