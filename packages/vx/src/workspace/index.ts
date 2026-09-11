@@ -57,6 +57,7 @@ export {
   PERSISTENT_TODO,
   quoteTsLiteral,
   type ApplyMigrationArgs,
+  type MigrationFormat,
   type GeneratedProject,
   type GeneratedTask,
   type MigrationPlan,

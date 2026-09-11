@@ -6,6 +6,7 @@
 import path from 'node:path'
 import {
   type GeneratedProject,
+  type MigrationFormat,
   type MigrationPlan,
   PERSISTENT_TODO,
   type ProjectMeta,
@@ -18,7 +19,10 @@ function relPosix(from: string, to: string): string {
   return path.relative(from, to).split(path.sep).join('/')
 }
 
-const PRESET_FILE = 'vx-preset.ts'
+/** The preset takes the configs' extension: plain arrays either way. */
+function presetFile(format: MigrationFormat): string {
+  return `vx-preset.${format}`
+}
 
 /** The preset export each global field becomes. */
 const PRESET_NAMES: Record<TurboGlobal, string> = {
@@ -30,6 +34,7 @@ const PRESET_NAMES: Record<TurboGlobal, string> = {
 export async function migrateTurbo(
   root: string,
   metas: readonly ProjectMeta[],
+  format: MigrationFormat = 'ts',
 ): Promise<MigrationPlan> {
   const mapping = await mapTurboWorkspace(root, metas, {
     splice: (kind) => [{ raw: `...${PRESET_NAMES[kind]}` }],
@@ -42,7 +47,7 @@ export async function migrateTurbo(
     return {
       name: p.name,
       dir: p.dir,
-      importLines: presetImportLines(used, root, p.dir),
+      importLines: presetImportLines(used, root, p.dir, format),
       tasks: p.tasks.map(({ name, todos, task }) => ({ name, todos, task })),
     }
   })
@@ -50,15 +55,20 @@ export async function migrateTurbo(
   const { inputs, env, pass } = mapping.globals
   const extraFiles: MigrationPlan['extraFiles'] = []
   if (inputs.length > 0 || env.length > 0 || pass.length > 0) {
-    extraFiles.push({ relPath: PRESET_FILE, contents: renderPreset(inputs, env, pass) })
+    extraFiles.push({ relPath: presetFile(format), contents: renderPreset(inputs, env, pass) })
   }
 
   return { headerNotes: [], projects, extraFiles, notes: mapping.notes }
 }
 
-function presetImportLines(used: ReadonlySet<string>, root: string, dir: string): string[] {
+function presetImportLines(
+  used: ReadonlySet<string>,
+  root: string,
+  dir: string,
+  format: MigrationFormat,
+): string[] {
   if (used.size === 0) return []
-  const rel = relPosix(dir, path.join(root, PRESET_FILE))
+  const rel = relPosix(dir, path.join(root, presetFile(format)))
   const spec = rel.startsWith('.') ? rel : `./${rel}`
   return [`import { ${[...used].sort().join(', ')} } from '${spec}'`]
 }

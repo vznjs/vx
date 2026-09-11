@@ -169,7 +169,8 @@ repo's exported graph. Parity is the task graph Nx plans
 bench-side rules for every Nx repo, named here: the generated configs
 are rewritten from `.ts` to `.mjs` (the type import dropped), because
 a package's `tsc --build` includes every `.ts` under it and compiled
-the configs into `dist-ts` — a migration gap, STATUS Next; and
+the configs into `dist-ts` — what `vx-migrate --mjs` writes since
+STATUS 145; and
 `.vx-bench-bin/` beside the repo holds the pinned package manager
 (`packageManager`), since corepack's shim resolves it through the
 registry on every spawn, which vx's isolated task env cannot reach.

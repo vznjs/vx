@@ -1,4 +1,4 @@
-// `vx-migrate [--from turbo|nx] [--dry] [--force]` — one vx.config.ts per
+// `vx-migrate [--from turbo|nx] [--dry] [--force] [--mjs]` — one vx.config.ts per
 // workspace package from an existing Turbo or Nx setup. Source auto-detect:
 // turbo.json → Turbo; .nx/workspace-data/project-graph.json → Nx (the
 // resolved snapshot). The mappers return a plan; core's migration seam
@@ -11,6 +11,7 @@ import {
   findWorkspaceRoot,
   listProjectMetas,
   loadWorkspace,
+  type MigrationFormat,
   type MigrationPlan,
   UserError,
 } from '@vzn/vx'
@@ -28,18 +29,21 @@ export * from './nx-cache/index.js'
 export interface MigrateArgs {
   dry: boolean
   force: boolean
+  /** `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts`. */
+  mjs: boolean
   from?: 'turbo' | 'nx'
   error?: string
 }
 
-const USAGE = 'usage: vx-migrate [--from turbo|nx] [--dry] [--force]'
+const USAGE = 'usage: vx-migrate [--from turbo|nx] [--dry] [--force] [--mjs]'
 
 export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
-  const out: MigrateArgs = { dry: false, force: false }
+  const out: MigrateArgs = { dry: false, force: false, mjs: false }
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     if (a === '--dry') out.dry = true
     else if (a === '--force') out.force = true
+    else if (a === '--mjs') out.mjs = true
     else if (a === '--from' || a?.startsWith('--from=')) {
       const v = a === '--from' ? args[++i] : a.slice('--from='.length)
       if (v !== 'turbo' && v !== 'nx') {
@@ -80,6 +84,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     throw new UserError('--from turbo, but no turbo.json at the workspace root')
   }
 
+  const format: MigrationFormat = parsed.mjs ? 'mjs' : 'ts'
   let source: string
   let plan: MigrationPlan
   if (parsed.from === 'nx' || (parsed.from === undefined && !hasTurbo)) {
@@ -101,7 +106,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     }
   } else {
     source = 'turbo.json'
-    plan = await migrateTurbo(root, metas)
+    plan = await migrateTurbo(root, metas, format)
   }
   return applyMigration({
     root,
@@ -111,5 +116,6 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     verb: 'vx-migrate',
     dry: parsed.dry,
     force: parsed.force,
+    format,
   })
 }

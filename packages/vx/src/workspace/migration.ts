@@ -94,7 +94,16 @@ export interface ApplyMigrationArgs {
   init?: boolean
   /** Report lines printed under the source line (e.g. "turbo.json found and not read"). */
   notes?: readonly string[]
+  /**
+   * `ts` (default) writes `vx.config.ts` with the type-only import and
+   * `satisfies`; `mjs` writes `vx.config.mjs` — the same object, untyped —
+   * for a package whose own `tsc --build` includes every `.ts` under it
+   * and compiled the config into its dist (TanStack/query, 2026-09-11).
+   */
+  format?: MigrationFormat
 }
+
+export type MigrationFormat = 'ts' | 'mjs'
 
 /**
  * Render a plan to files, refuse to overwrite without `force`, write (or
@@ -103,6 +112,9 @@ export interface ApplyMigrationArgs {
 export async function applyMigration(args: ApplyMigrationArgs): Promise<number> {
   const { root, metas, plan, source, verb, dry, force } = args
   const init = args.init === true
+  const format: MigrationFormat = args.format ?? 'ts'
+  const configName = `vx.config.${format}`
+  const workspaceName = `vx.workspace.${format}`
   const empty = plan.projects.length === 0
   if (empty && !init) {
     throw new UserError(
@@ -113,8 +125,12 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const files: { relPath: string; abs: string; contents: string }[] = []
   for (const p of plan.projects) {
     if (p.tasks.length === 0) continue
-    const abs = path.join(p.dir, 'vx.config.ts')
-    files.push({ relPath: relPosix(root, abs), abs, contents: renderConfigFile(source, p, verb) })
+    const abs = path.join(p.dir, configName)
+    files.push({
+      relPath: relPosix(root, abs),
+      abs,
+      contents: renderConfigFile(source, p, verb, format),
+    })
   }
   for (const f of plan.extraFiles) {
     files.push({ relPath: f.relPath, abs: path.join(root, f.relPath), contents: f.contents })
@@ -130,8 +146,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     )
   ).some(Boolean)
   if (!hasWorkspaceFile) {
-    const abs = path.join(root, 'vx.workspace.ts')
-    files.push({ relPath: relPosix(root, abs), abs, contents: WORKSPACE_FILE })
+    const abs = path.join(root, workspaceName)
+    files.push({ relPath: relPosix(root, abs), abs, contents: workspaceFile(format) })
   }
 
   if (!dry && !force) {
@@ -179,18 +195,19 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     report.push(
       `${verb}: no package.json scripts to turn into tasks.`,
       hasWorkspaceFile
-        ? 'vx.workspace.ts already exists.'
+        ? `${workspaceName} already exists.`
         : dry
-          ? 'would write vx.workspace.ts (dry run, nothing written).'
-          : 'wrote vx.workspace.ts.',
-      'Declare tasks in a vx.config.ts beside a package.json — your own command, for example:',
+          ? `would write ${workspaceName} (dry run, nothing written).`
+          : `wrote ${workspaceName}.`,
+      `Declare tasks in a ${configName} beside a package.json — your own command, for example:`,
       '',
-      ...EXAMPLE_CONFIG.trimEnd()
+      ...exampleConfig(format)
+        .trimEnd()
         .split('\n')
         .map((l) => `  ${l}`),
     )
   } else {
-    report.push(`${verb}: ${source} → vx.config.ts`)
+    report.push(`${verb}: ${source} → ${configName}`)
     for (const n of args.notes ?? []) report.push(`note: ${n}`)
     for (const n of plan.headerNotes) report.push(`note: ${n}`)
     report.push(
@@ -212,9 +229,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   return 0
 }
 
-const EXAMPLE_CONFIG = `import type { ProjectConfig } from '@vzn/vx'
-
-export default {
+const EXAMPLE_BODY = `export default {
   tasks: {
     build: {
       exec: { command: 'tsc -b' },
@@ -222,8 +237,13 @@ export default {
       cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
     },
   },
-} satisfies ProjectConfig
-`
+}`
+
+function exampleConfig(format: MigrationFormat): string {
+  return format === 'ts'
+    ? `import type { ProjectConfig } from '@vzn/vx'\n\n${EXAMPLE_BODY} satisfies ProjectConfig\n`
+    : `${EXAMPLE_BODY}\n`
+}
 
 // ─── TS emission ──────────────────────────────────────────────────────
 
@@ -231,14 +251,17 @@ export default {
 // `import { defineWorkspace } from '@vzn/vx'` loads a SECOND copy of core
 // into every run — measured 2026-09-09 at ~17 ms on a two-package
 // workspace, a fifth of the whole run — for an identity function.
-const WORKSPACE_FILE = `import type { WorkspaceConfig } from '@vzn/vx'
-
-// Plugins are consulted in this order; running here and caching in
+const WORKSPACE_BODY = `// Plugins are consulted in this order; running here and caching in
 // .vx/cache are the floor under all of them, so an empty list is a
 // complete workspace. Add a remote cache, a remote executor or telemetry
 // as one entry each — those imports are the runtime ones.
-export default { plugins: [] } satisfies WorkspaceConfig
-`
+export default { plugins: [] }`
+
+function workspaceFile(format: MigrationFormat): string {
+  return format === 'ts'
+    ? `import type { WorkspaceConfig } from '@vzn/vx'\n\n${WORKSPACE_BODY} satisfies WorkspaceConfig\n`
+    : `${WORKSPACE_BODY}\n`
+}
 
 const IDENT = /^[A-Za-z_$][\w$]*$/
 
@@ -264,14 +287,20 @@ function renderValue(v: unknown, indent: string): string {
   return `{\n${body.join('\n')}\n${indent}}`
 }
 
-function renderConfigFile(source: string, p: GeneratedProject, verb: string): string {
+function renderConfigFile(
+  source: string,
+  p: GeneratedProject,
+  verb: string,
+  format: MigrationFormat,
+): string {
   // A type-only import: the editor type-checks against the installed
   // package, and Bun erases it, so the config loads in a workspace that
-  // runs the vx binary without the package installed.
+  // runs the vx binary without the package installed. `mjs` is the same
+  // object with nothing to erase.
   const lines: string[] = [
     `// Generated by \`${verb}\` from ${source}. Review the TODO(vx-migrate) comments.`,
-    "import type { ProjectConfig } from '@vzn/vx'",
   ]
+  if (format === 'ts') lines.push("import type { ProjectConfig } from '@vzn/vx'")
   if (p.importLines.length > 0) lines.push(...p.importLines)
   lines.push('', 'export default {', '  tasks: {')
   for (const t of p.tasks) {
@@ -280,6 +309,6 @@ function renderConfigFile(source: string, p: GeneratedProject, verb: string): st
     const key = IDENT.test(t.name) ? t.name : quoteTsLiteral(t.name)
     lines.push(`    ${key}: ${renderValue(t.task, '    ')},`)
   }
-  lines.push('  },', '} satisfies ProjectConfig', '')
+  lines.push('  },', format === 'ts' ? '} satisfies ProjectConfig' : '}', '')
   return lines.join('\n')
 }

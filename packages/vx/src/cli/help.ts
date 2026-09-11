@@ -38,7 +38,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  vx watch [OPTIONS] TASK [-- forwarded-args...]',
     '  vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--cache-dir <path>]',
     '  vx lock [--check]',
-    '  vx init [--dry] [--force]',
+    '  vx init [--dry] [--force] [--mjs]',
     '  vx upgrade [tag]',
     '  vx show [PROJECT[#TASK] | TASK] [--format pretty|json]',
     '  vx info [--format pretty|json] [--cache-dir <path>]',

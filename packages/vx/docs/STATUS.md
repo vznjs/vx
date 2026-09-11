@@ -1012,6 +1012,22 @@ equivalent — map it manually` on every run, for the value every
       291 s to Nx's 299, restore 3.10 s to 9.05, no-op 655 ms to
       8.55 s (`docs/benchmarks.md` § Real Nx repos).
 
+145.  DONE (2026-09-11 — Next 15's first gap): `--mjs` on `vx init` and
+      `vx-migrate`. The seam's `format` (`ts` | `mjs`) names the files
+      (`vx.config.mjs`, `vx.workspace.mjs`, the Turbo preset
+      `vx-preset.mjs` with its import specifier) and renders the same
+      objects with no type import and no `satisfies`; the report and
+      the example follow. Why: a package whose `tsconfig` includes
+      every `.ts` under it compiles a generated `vx.config.ts` into its
+      dist — TanStack/query's `tsc --build` failed on the type import in
+      every sibling — and the bench had to rewrite the configs by hand.
+      Pinned in `init.test.ts` and the Turbo suite (the `.mjs` files
+      load through `loadProjectConfig`). The watch e2e flake (Next 5)
+      showed again on this item's suite runs: `workspace-root lockfile
+changes trigger a cycle` lost its 45 s window once alone on an
+      idle box and passed five of five right after, with and without
+      this change.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
@@ -1527,12 +1543,11 @@ last`, `vx info` and `vx cache prune`, through one parser and one
 
 15. **More Nx repos.** The five Turbo build sets, the two wide sets
     (item 141) and three Nx repos (items 142–144) are in.
-    Two gaps from the first Nx repos (item 142): `vx-migrate` should
-    write `.mjs` on request or say to exclude `vx.config.ts` from a
-    package's tsconfig `include`, and it should say what to do when
-    two targets declare one output directory (cache the one with the
-    `^` edge, uncache the siblings with a todo, or refuse loudly at
-    migration time instead of at load time). Then the harness on more
+    One gap from the first Nx repos (item 142) is open: `vx-migrate`
+    should say what to do when two targets declare one output
+    directory (cache the one with the `^` edge, uncache the siblings
+    with a todo, or refuse loudly at migration time instead of at load
+    time); the other, `.mjs` output, is item 145. Then the harness on more
     Nx repos (owner: 3–5 popular ones; only
     `nx:run-commands`, `nx:run-script`, a plain `command` and
     `nx:noop` targets are supported, anything else is out): the
