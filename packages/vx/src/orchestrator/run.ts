@@ -933,6 +933,11 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
     })
   } finally {
     prepared.cache.close()
+    // The same table a run prints: a dry run is how the prepare stages
+    // (discovery, config load, the git enumeration) get profiled on a
+    // real repo that has no install and no cache to run against.
+    mark('close')
+    printTimings()
   }
 }
 
