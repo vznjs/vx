@@ -287,6 +287,72 @@ describe('@vzn/vx-turbo', () => {
   )
 })
 
+describe('per-package turbo.json', () => {
+  it(
+    'extends: false alone opts the package out of the task; with keys it runs on those keys alone',
+    async () => {
+      // n8n's @n8n/storybook: root defines build/test, the package has the
+      // scripts, its turbo.json says `{ "extends": false }` — Turbo 2.9
+      // runs nothing for it (probed 2026-09-11). With another key the task
+      // runs on that key alone: no `^build` edge from the root.
+      await writeFile(
+        path.join(root, 'packages', 'app', 'turbo.json'),
+        JSON.stringify({
+          extends: ['//'],
+          tasks: { build: { extends: false, outputs: ['dist/**'] }, lint: { extends: false } },
+        }),
+      )
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['build'], log })
+      const ids = plan.tasks.map((t) => t.node.id).sort()
+      expect(ids, log.lines.join('\n')).toEqual(['app#build', 'lib#build'])
+      const lint = await planRun({ cwd: root, tasks: ['lint'], log })
+      expect(lint.tasks.map((t) => t.node.id)).toEqual([])
+      const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      expect(app.deps).toEqual([])
+      expect(app.config.cache!.inputs.files).toEqual(['**/*'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a glob that climbs out of the package is re-anchored on the workspace root',
+    async () => {
+      // cal.com's app-store-cli#build writes `../../packages/app-store/
+      // *.generated.ts`; as a project-relative output core refuses the
+      // config and the whole run aborts. It is a workspace glob.
+      await writeFile(
+        path.join(root, 'packages', 'app', 'turbo.json'),
+        JSON.stringify({
+          extends: ['//'],
+          tasks: {
+            build: {
+              inputs: ['src/**', '../lib/src/**', '!../lib/src/**/*.test.ts'],
+              outputs: ['dist/**', '../lib/generated/**', '../../../elsewhere/**'],
+            },
+          },
+        }),
+      )
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['build'], log })
+      const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      const cache = app.config.cache!
+      expect(cache.inputs.files).toEqual(['src/**'])
+      expect(cache.inputs.workspaceFiles).toEqual([
+        'tsconfig.base.json',
+        'packages/lib/src/**',
+        '!packages/lib/src/**/*.test.ts',
+      ])
+      expect(cache.outputs.files).toEqual(['dist/**'])
+      expect(cache.outputs.workspaceFiles).toEqual(['packages/lib/generated/**'])
+      expect(log.lines.join('\n')).toContain(
+        'output "../../../elsewhere/**": leaves the workspace — map manually',
+      )
+    },
+    TIMEOUT,
+  )
+})
+
 describe('the mapping reads the packages core discovered', () => {
   it('maps a package that is in ctx.projects and not on disk — the plugin never walks the workspace itself', async () => {
     const plugin = turbo()

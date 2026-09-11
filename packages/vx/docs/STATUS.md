@@ -824,6 +824,27 @@ equivalent — map it manually` on every run, for the value every
       uses `build:all` (templates excluded, leaves either way), where
       both plan the same 45 tasks.
 
+138.  DONE (2026-09-11): two more Turbo shapes the bench repos
+      taught the mapper. (a) A per-package `{ "extends": false }` with
+      nothing else is Turbo's opt-out — n8n's `@n8n/storybook` has
+      `build` and `test` scripts, the root defines both, and Turbo 2.9
+      runs nothing for it (probed with `--dry=json`: filtered to the
+      package, zero tasks; with an `outputs` key added, the task runs
+      on that key alone, no `^build` from the root). vx planned 71
+      `build` tasks to Turbo's 70. The mapper now drops the task for
+      an opt-out and, for an overlay with keys, starts from the
+      overlay instead of the root definition. (b) A glob that climbs
+      out of the package — cal.com's app-store-cli writes its output
+      to `../../packages/app-store/*.generated.ts` — is a
+      workspace-root glob in vx's terms: re-anchored on the root into
+      `outputs.workspaceFiles` / `inputs.workspaceFiles` (negation
+      kept); one that climbs out of the workspace is reported. Before,
+      core refused the project-relative glob and the whole cal.com run
+      aborted. Both pinned in the plugin suite. Every bench repo now
+      plans exactly Turbo's real task set (Turbo's dry-run minus its
+      `<NONEXISTENT>` placeholders): astro 32, payload 45, medusa 83,
+      cal.com 13, n8n 70.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
