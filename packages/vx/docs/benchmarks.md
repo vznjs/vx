@@ -487,6 +487,21 @@ eight workers on four cores; the warm rows are the runner.
 | warm, nothing wiped (no-op)   | **341 ms**  | 4.02 s (11.8×)  |
 | second no-op                  | **349 ms**  | 4.07 s (11.7×)  |
 
+### novuhq/novu (37 `build` tasks, pnpm 11, Nx 21.3.11, `parallel: 4`)
+
+Scoped as the repo's own `build` script (`nextjs` and `nestjs`
+excluded). The builds carry their `prebuild` / `postbuild` hooks under
+both tools (STATUS 144); the first vx cold rep read 335 s against
+290–291 s for the other two, the disk's slow phase, absorbed by the
+median.
+
+| `build`                       | vx          | Nx 21.3.11      |
+| ----------------------------- | ----------- | --------------- |
+| cold (caches + outputs wiped) | **291.2 s** | 299.4 s (1.03×) |
+| warm, outputs wiped (restore) | **3.10 s**  | 9.05 s (2.92×)  |
+| warm, nothing wiped (no-op)   | **655 ms**  | 8.55 s (13.1×)  |
+| second no-op                  | **642 ms**  | 8.69 s (13.5×)  |
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,

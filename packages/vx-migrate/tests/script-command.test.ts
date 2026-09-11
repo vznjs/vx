@@ -13,6 +13,30 @@ describe('scriptCommand — a script body becomes the task command', () => {
     expect(scriptCommand('test', 'prerun-check && vitest')).toBe('prerun-check && vitest')
   })
 
+  it('folds pre<name> and post<name> hooks into the command, in that order', () => {
+    // novu, 2026-09-11: `prebuild` copies the CSS the build inlines.
+    const scripts = {
+      prebuild: 'cp a.css a.directcss',
+      build: 'tsup',
+      postbuild: 'rm a.directcss',
+      test: 'vitest',
+      // Lifecycle hooks of the package manager's own verbs never ride inside a task.
+      preinstall: 'node check.js',
+      install: 'node-gyp rebuild',
+    }
+    expect(scriptCommand('build', 'tsup', scripts)).toBe(
+      'cp a.css a.directcss && tsup && rm a.directcss',
+    )
+    expect(scriptCommand('test', 'vitest', scripts)).toBe('vitest')
+    expect(scriptCommand('install', 'node-gyp rebuild', scripts)).toBe('node-gyp rebuild')
+    // An empty hook is no hook.
+    expect(scriptCommand('build', 'tsup', { prebuild: '', build: 'tsup' })).toBe('tsup')
+    // yarn >= 2 runs no hooks: a builtin anywhere means `yarn run`, hooks dropped.
+    expect(scriptCommand('build', 'tsup', { prebuild: 'run clean', build: 'tsup' })).toBe(
+      'yarn run build',
+    )
+  })
+
   it("routes a body that calls yarn's `run` builtin through `yarn run <name>`", () => {
     // strapi, 2026-09-11: every package script is `run -T <root bin>`.
     expect(scriptCommand('build:code', 'run -T rollup -c')).toBe('yarn run build:code')
