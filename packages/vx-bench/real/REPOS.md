@@ -159,6 +159,43 @@ and run on every arm under both tools, ~12 s together. Wide set
 - `@calcom/app-store-cli#build` writes `../../packages/app-store/*.generated.ts`;
   mapped to `outputs.workspaceFiles` by the plugin (STATUS 138).
 
+## Nx repos (`nx-repo.sh`)
+
+The same arms against the repo's own Nx (`NX_DAEMON=false`,
+`NX_NO_CLOUD=true`: local runner against local runner), on the
+`vx.config` files `bunx @vzn/vx-migrate --from nx` wrote from the
+repo's exported graph. Parity is the task graph Nx plans
+(`nx run-many … --graph=<file>`) against vx's `--dry=json`. Two
+bench-side rules for every Nx repo, named here: the generated configs
+are rewritten from `.ts` to `.mjs` (the type import dropped), because
+a package's `tsc --build` includes every `.ts` under it and compiled
+the configs into `dist-ts` — a migration gap, STATUS Next; and
+`.vx-bench-bin/` beside the repo holds the pinned package manager
+(`packageManager`), since corepack's shim resolves it through the
+registry on every spawn, which vx's isolated task env cannot reach.
+
+### TanStack/query — 7452ef6 (2026-09-10)
+
+pnpm 11.9.0 (self-managed), Nx 22.1.3, Node 22.22. 102 projects, 573
+targets, all `nx:run-script`. Scope: the repo's own `build` script's
+excludes (`examples/**`, `integrations/**`): `build` = 25 tasks. Both
+tools at the repo's `parallel: 5`. No adjustments beyond the two above.
+
+### strapi/strapi — 34fdea8 (2026-09-11)
+
+yarn 4.12.0 (`yarnPath`; the release file copied from cal.com's
+checkout, corepack being unable to fetch it here), Nx 20.8.4, Node
+22.22. 47 projects; 416 `nx:run-script` targets and 37
+`@nx/js:release-publish` (placeholders, not benched). `build` = 39
+tasks with `^build`, `--nx-ignore-cycles` as the repo's own scripts
+pass it; both tools at the repo's `parallel: 8`.
+
+- Every package script is `run -T <root bin>` — yarn's shell builtin —
+  so the mapper routes them through `yarn run <name>` (STATUS 142).
+- `build:code` and `build:types` share `dist/**` with `build`; vx
+  refuses two tasks on one output directory, so the bench strips the
+  cache block from those two siblings (they are not benched).
+
 ## Results
 
 `docs/benchmarks.md`, "Five real Turbo repos" — the build tables — and
