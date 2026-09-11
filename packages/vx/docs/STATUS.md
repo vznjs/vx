@@ -1043,6 +1043,24 @@ changes trigger a cycle` lost its 45 s window once alone on an
       case the loader lets through, tasks without cache) and in the Nx
       fixture (`pkg-b#build:types` on `build`'s `out`).
 
+147.  DONE (2026-09-11 — Next 15, storybook's prerequisite): an
+      `nx:run-commands` target runs where Nx ran it, with its
+      placeholders expanded. Nx runs those commands from the WORKSPACE
+      ROOT unless `cwd` says otherwise and interpolates `{projectRoot}`,
+      `{projectName}` and `{workspaceRoot}`; the mapper emitted the
+      string verbatim into a task vx runs from the project dir, so a
+      root-relative command (storybook's `node ./scripts/build/
+build-package.ts --cwd {projectRoot}`, novu's `npx biome lint
+apps/worker`) found nothing, and `cwd: '{projectRoot}'` earned a
+      spurious todo. `nxRunCommand` expands the three placeholders and
+      prefixes the `cd` from the project dir to where Nx ran it (none
+      when that is the project dir; `{args.*}` is a todo — params
+      forwarding). A plain `command` is the same shorthand. Pinned as a
+      unit (storybook's `compile`, a `{projectRoot}` cwd, a declared
+      sub-directory, the root project) and in the Nx fixture, where
+      the run-commands pins now carry the `cd` (three fail on the
+      previous mapper).
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
@@ -1564,8 +1582,9 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     `nx:run-commands`, `nx:run-script`, a plain `command` and
     `nx:noop` targets are supported, anything else is out): the
     remaining candidate is storybook (483 targets inheriting a plain
-    `command`; needs `{projectRoot}` / `{projectName}` expansion in
-    command strings first, a mapper feature); redwood is dropped — its
+    `command`; its placeholders and root cwd map since item 147, so
+    the next step is the bench itself: yarn 4.18 with no vendored
+    release, a large install); redwood is dropped — its
     `build` declares no outputs, so Nx's cache replays the log and a
     restore arm restores nothing under either tool (REPOS.md). Parity
     is the task graph as above.
