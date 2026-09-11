@@ -28,10 +28,22 @@ frontier expansion; `transitiveDeps` / `transitiveDependents` serve
 
 ## Algorithm
 
-For each project, scan all four dep buckets — `dependencies`,
-`devDependencies`, `peerDependencies`, `optionalDependencies` — and
-keep names that resolve to another workspace project (skipping
-self-references).
+For each project, scan the four dep buckets and keep names that
+resolve to another workspace project (skipping self-references). Two
+adjacencies come out of it:
+
+- **order** (`directDeps`, what `'^name'` walks): `dependencies`,
+  `devDependencies`, `optionalDependencies` and the task edges — what
+  the package has installed for itself.
+- **reach** (`transitiveDeps` / `transitiveDependents`, what
+  `--filter pkg...` and `--affected` read): order plus
+  `peerDependencies`. A peer is provided by whoever consumes the
+  package and is never linked into its own `node_modules`, so it is
+  not a build-order edge (Turbo reads no peers at all), and peers are
+  the one bucket that routinely closes a cycle — medusa's test-utils
+  peers on medusa, which depends on it through analytics; as an order
+  edge that was a task cycle (2026-09-11). A change in the peer can
+  still break the package that peers on it, so it stays affected.
 
 The graph is precomputed once per `vx run` invocation:
 
@@ -50,10 +62,10 @@ and graph traversal.
 - **Doesn't include external (non-workspace) deps.** Those flow into
   the cache key via the workspace fingerprint (lockfile hash) and
   the project package.json hash.
-- **Doesn't classify dep types** (dependencies vs devDependencies vs
-  peerDependencies). For the task graph all four are equivalent —
-  they all signal "this package needs that one to be present /
-  built first."
+- **Doesn't classify dep types beyond peer / not peer.** For the
+  task graph `dependencies`, `devDependencies` and
+  `optionalDependencies` are equivalent — each says "this package
+  needs that one built first."
 - **Doesn't detect package-level cycles.** Cycles within the
   workspace package graph itself are pathological but legal in
   package managers. The cycle protection above means traversal
@@ -72,7 +84,8 @@ and graph traversal.
 - transitiveDependents inverts correctly.
 - external (non-workspace) deps are ignored.
 - self-reference in a dep is skipped.
-- all four dep buckets are scanned.
+- all four dep buckets are scanned; a peer reaches but does not order.
+- a peer that closes a cycle is no cycle for the build order.
 
 ## Replacing this module
 

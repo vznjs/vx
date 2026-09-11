@@ -254,14 +254,14 @@ describe('@vzn/vx-turbo', () => {
       await planRun({ cwd: root, tasks: ['build'], log })
       const lines = log.lines.filter((l) => l.includes('persistent'))
       expect(lines).toEqual([
-        '[@vzn/vx-turbo] 4 persistent task(s) (dev, watch across 2 package(s)) are persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
+        '[@vzn/vx-turbo] 4 task(s) (dev, watch across 2 package(s)): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
       ])
     },
     TIMEOUT,
   )
 
   it(
-    'a task that does not map is reported once, as a warning, not written',
+    'a gap shared by many tasks is one warning per run, not written',
     async () => {
       await writeFile(
         path.join(root, 'turbo.json'),
@@ -272,12 +272,119 @@ describe('@vzn/vx-turbo', () => {
       const log = silent()
       await planRun({ cwd: root, tasks: ['build'], log })
       const text = log.lines.join('\n')
+      // Once for the workspace note, once for the gap — astro's `build`
+      // carries the same `!vendor/**` output in 57 tasks, and a line per
+      // task was 57 identical lines before the first frame (2026-09-11).
       expect(text).toContain(
-        '[@vzn/vx-turbo] app#build: output "!dist/**/*.map": vx outputs have no negation',
+        '[@vzn/vx-turbo] 2 task(s) (build across 2 package(s)): output "!dist/**/*.map": vx outputs have no negation',
       )
+      expect(text).not.toContain('app#build: output')
       expect(text).toContain('[@vzn/vx-turbo] note: root task //#root not migrated')
-      // Once for the workspace note, once per (package, task) for the gap.
       expect(text.split('root task //#root').length - 1).toBe(1)
+      expect(text.split('vx outputs have no negation').length - 1).toBe(1)
+    },
+    TIMEOUT,
+  )
+})
+
+describe('output negation', () => {
+  it(
+    'a negation that carves the package root out of a wildcard output runs the task uncached',
+    async () => {
+      // medusa: `outputs: ["!node_modules/**", "!src/**", "*/**", ".medusa/**"]`.
+      // vx has no output negation; mapped to the positive `*/**` alone, the
+      // clean before exec would delete `src/`. Uncached, and the sources
+      // survive a real run.
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            build: {
+              dependsOn: ['codegen'],
+              outputs: ['!node_modules/**', '!src/**', '*/**', '.medusa/**'],
+            },
+            codegen: { outputs: ['src/gen/**'] },
+          },
+        }),
+      )
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['build'], log })
+      const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      expect(app.config.cache).toBeUndefined()
+      expect(log.lines.join('\n')).toContain(
+        '[@vzn/vx-turbo] 2 task(s) (build across 2 package(s)): outputs "!node_modules/**", "!src/**" narrow "*/**": vx outputs have no negation and the positive glob reaches the sources — task runs uncached; declare the exact outputs in a vx.config to cache it',
+      )
+      const result = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      expect(result.ok).toBe(true)
+      expect(
+        await Bun.file(path.join(root, 'packages', 'app', 'src', 'gen', 'api.js')).exists(),
+      ).toBe(true)
+    },
+    TIMEOUT,
+  )
+})
+
+describe('per-package turbo.json', () => {
+  it(
+    'extends: false alone opts the package out of the task; with keys it runs on those keys alone',
+    async () => {
+      // n8n's @n8n/storybook: root defines build/test, the package has the
+      // scripts, its turbo.json says `{ "extends": false }` — Turbo 2.9
+      // runs nothing for it (probed 2026-09-11). With another key the task
+      // runs on that key alone: no `^build` edge from the root.
+      await writeFile(
+        path.join(root, 'packages', 'app', 'turbo.json'),
+        JSON.stringify({
+          extends: ['//'],
+          tasks: { build: { extends: false, outputs: ['dist/**'] }, lint: { extends: false } },
+        }),
+      )
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['build'], log })
+      const ids = plan.tasks.map((t) => t.node.id).sort()
+      expect(ids, log.lines.join('\n')).toEqual(['app#build', 'lib#build'])
+      const lint = await planRun({ cwd: root, tasks: ['lint'], log })
+      expect(lint.tasks.map((t) => t.node.id)).toEqual([])
+      const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      expect(app.deps).toEqual([])
+      expect(app.config.cache!.inputs.files).toEqual(['**/*'])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a glob that climbs out of the package is re-anchored on the workspace root',
+    async () => {
+      // cal.com's app-store-cli#build writes `../../packages/app-store/
+      // *.generated.ts`; as a project-relative output core refuses the
+      // config and the whole run aborts. It is a workspace glob.
+      await writeFile(
+        path.join(root, 'packages', 'app', 'turbo.json'),
+        JSON.stringify({
+          extends: ['//'],
+          tasks: {
+            build: {
+              inputs: ['src/**', '../lib/src/**', '!../lib/src/**/*.test.ts'],
+              outputs: ['dist/**', '../lib/generated/**', '../../../elsewhere/**'],
+            },
+          },
+        }),
+      )
+      const log = silent()
+      const plan = await planRun({ cwd: root, tasks: ['build'], log })
+      const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      const cache = app.config.cache!
+      expect(cache.inputs.files).toEqual(['src/**'])
+      expect(cache.inputs.workspaceFiles).toEqual([
+        'tsconfig.base.json',
+        'packages/lib/src/**',
+        '!packages/lib/src/**/*.test.ts',
+      ])
+      expect(cache.outputs.files).toEqual(['dist/**'])
+      expect(cache.outputs.workspaceFiles).toEqual(['packages/lib/generated/**'])
+      expect(log.lines.join('\n')).toContain(
+        'output "../../../elsewhere/**": leaves the workspace — map manually',
+      )
     },
     TIMEOUT,
   )

@@ -1,11 +1,11 @@
 import type { ProjectMeta } from './workspace.js'
 
 export interface PackageGraph {
-  /** Immediate workspace deps (sorted). */
+  /** Immediate workspace deps the package builds AFTER (sorted): every bucket but peers. */
   directDeps: (name: string) => string[]
-  /** All transitive workspace deps for each project. */
+  /** All transitive workspace deps a change can reach the package through — peers included. */
   transitiveDeps: (name: string) => string[]
-  /** All transitive workspace dependents (packages that depend on the named one). */
+  /** All transitive workspace dependents (packages a change here can reach) — peers included. */
   transitiveDependents: (name: string) => string[]
 }
 
@@ -25,31 +25,46 @@ export function buildPackageGraph(
   const byName = new Map<string, ProjectMeta>()
   for (const p of projects) byName.set(p.name, p)
 
+  // Two adjacencies. ORDER (`directDeps`, the `^task` walk) is what the
+  // package has installed for itself: dependencies, devDependencies,
+  // optionalDependencies and the task edges. REACH (the transitive
+  // closures `--filter pkg...` and `--affected` read) adds
+  // peerDependencies: a peer is provided by the consumer, never linked
+  // into the package's own node_modules, so it is not a build-order edge
+  // — and peers are the one bucket that routinely cycles (medusa's
+  // test-utils peers on medusa, which dev-depends on it through
+  // analytics; Turbo, which reads no peers, runs it; an order edge here
+  // made it a task cycle, 2026-09-11) — but a change in the peer can
+  // still break the package that peers on it, so it stays affected.
   const directDeps = new Map<string, string[]>()
+  const reachDeps = new Map<string, string[]>()
   for (const p of projects) {
-    const seen = new Set<string>()
+    const order = new Set<string>()
     for (const name of taskEdges?.get(p.name) ?? []) {
-      if (name !== p.name && byName.has(name)) seen.add(name)
+      if (name !== p.name && byName.has(name)) order.add(name)
     }
-    for (const field of [
-      'dependencies',
-      'devDependencies',
-      'peerDependencies',
-      'optionalDependencies',
-    ] as const) {
+    const add = (
+      field: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies',
+      into: Set<string>,
+    ) => {
       const obj = p.packageJson[field]
-      if (!obj) continue
+      if (!obj) return
       for (const name of Object.keys(obj)) {
-        if (name === p.name) continue
-        if (byName.has(name)) seen.add(name)
+        if (name !== p.name && byName.has(name)) into.add(name)
       }
     }
-    directDeps.set(p.name, [...seen].sort())
+    add('dependencies', order)
+    add('devDependencies', order)
+    add('optionalDependencies', order)
+    const reach = new Set(order)
+    add('peerDependencies', reach)
+    directDeps.set(p.name, [...order].sort())
+    reachDeps.set(p.name, [...reach].sort())
   }
 
   // Reverse adjacency: who declares X as a workspace dep.
   const directDependents = new Map<string, string[]>()
-  for (const [name, deps] of directDeps) {
+  for (const [name, deps] of reachDeps) {
     for (const d of deps) {
       const arr = directDependents.get(d)
       if (arr) arr.push(name)
@@ -162,7 +177,7 @@ export function buildPackageGraph(
 
   return {
     directDeps: (name) => directDeps.get(name) ?? [],
-    transitiveDeps: makeAccessor(directDeps),
+    transitiveDeps: makeAccessor(reachDeps),
     transitiveDependents: makeAccessor(directDependents),
   }
 }

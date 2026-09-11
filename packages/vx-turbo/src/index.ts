@@ -12,7 +12,7 @@ import type { ProjectConfig, TaskConfig, VxPlugin } from '@vzn/vx'
 import { definePlugin, type ProjectMeta } from '@vzn/vx'
 import { mapTurboWorkspace, type TurboMappedProject } from './turbo-map.js'
 
-/** The note every persistent task carries; the plugin reports them all in one line per run. */
+/** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
 const PERSISTENT_NOTE =
   'persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; ' +
   'add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output'
@@ -54,15 +54,19 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
       if (!warned) {
         warned = true
         for (const note of mapped.notes) ctx.warn(`[${plugin.name}] ${note}`)
-        // One line for every persistent task, not one per task: n8n has a
-        // `dev` and a `watch` in most of its 84 packages, and the per-task
-        // form was a hundred identical lines before the first frame
-        // (2026-09-11).
-        if (mapped.persistent.length > 0) {
-          const names = [...new Set(mapped.persistent.map((id) => id.slice(id.indexOf('#') + 1)))]
-          const packages = new Set(mapped.persistent.map((id) => id.slice(0, id.indexOf('#'))))
+        // One line per DISTINCT gap, not one per task: n8n has a `dev` and
+        // a `watch` in most of its 84 packages, and astro's `build` carries
+        // the same `!vendor/**` output in every package — the per-task form
+        // was a hundred identical lines before the first frame (2026-09-11).
+        for (const [todo, ids] of mapped.todos) {
+          if (ids.length === 1) {
+            ctx.warn(`[${plugin.name}] ${ids[0]}: ${todo}`)
+            continue
+          }
+          const names = [...new Set(ids.map((id) => id.slice(id.indexOf('#') + 1)))]
+          const packages = new Set(ids.map((id) => id.slice(0, id.indexOf('#'))))
           ctx.warn(
-            `[${plugin.name}] ${mapped.persistent.length} persistent task(s) (${names.join(', ')} across ${packages.size} package(s)) are ${PERSISTENT_NOTE}`,
+            `[${plugin.name}] ${ids.length} task(s) (${names.join(', ')} across ${packages.size} package(s)): ${todo}`,
           )
         }
       }
@@ -70,10 +74,6 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
       if (project === undefined) return
       config.tasks ??= {}
       for (const t of project.tasks) {
-        for (const todo of t.todos) {
-          if (todo === PERSISTENT_NOTE) continue
-          ctx.warn(`[${plugin.name}] ${ctx.name}#${t.name}: ${todo}`)
-        }
         if (t.task === null) continue
         // The user's own declaration wins — the plugin fills, never overwrites.
         // A copy per fill: the stage hands core an object it owns and edits
@@ -88,8 +88,8 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
 interface Indexed {
   readonly byName: ReadonlyMap<string, TurboMappedProject>
   readonly notes: readonly string[]
-  /** `pkg#task` ids of every task turbo.json marks persistent, for the one-line note. */
-  readonly persistent: readonly string[]
+  /** Every task-level gap, keyed on its text, to the `pkg#task` ids that carry it. */
+  readonly todos: ReadonlyMap<string, readonly string[]>
 }
 
 /**
@@ -105,14 +105,18 @@ async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<Inde
     persistentTodo: PERSISTENT_NOTE,
   })
   const byName = new Map<string, TurboMappedProject>()
-  const persistent: string[] = []
+  const todos = new Map<string, string[]>()
   for (const project of mapped.projects) {
     byName.set(project.name, project)
     for (const t of project.tasks) {
-      if (t.todos.includes(PERSISTENT_NOTE)) persistent.push(`${project.name}#${t.name}`)
+      for (const todo of t.todos) {
+        let ids = todos.get(todo)
+        if (ids === undefined) todos.set(todo, (ids = []))
+        ids.push(`${project.name}#${t.name}`)
+      }
     }
   }
-  return { byName, notes: mapped.notes, persistent }
+  return { byName, notes: mapped.notes, todos }
 }
 
 // The mapper itself, for tools that render what this plugin runs live

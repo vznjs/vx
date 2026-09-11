@@ -120,7 +120,9 @@ facing summary.
 | `...^<pattern>` | Only the transitive dependents, excluding the matched package itself.                               |
 
 An edge is a `package.json` workspace dependency (`dependencies`,
-`devDependencies`, `peerDependencies`, `optionalDependencies`) OR a
+`devDependencies`, `peerDependencies`, `optionalDependencies`; a peer
+counts for selection but is not a build-order edge, see
+`modules/package-graph.md`) OR a
 cross-project `dependsOn` entry (`e2e`'s `test: { dependsOn:
 ['app#build'] }` makes `e2e` a dependent of `app`). The task graph knows
 both, so selection follows both: `vx run test --filter '...app'` runs

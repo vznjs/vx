@@ -147,7 +147,18 @@ function taskNamesFor(
   for (const key of Object.keys(pkgTasks ?? {})) {
     if (!key.includes('#')) push(key)
   }
-  return names
+  return names.filter((n) => !optedOut(pkgTasks?.[n]))
+}
+
+/**
+ * A per-package `{ "extends": false }` with nothing else is Turbo's
+ * opt-out: the package's script exists, the root defines the task, and
+ * Turbo 2.9 runs nothing for it (n8n's `@n8n/storybook` on `build` and
+ * `test`; probed with `--dry=json`, 2026-09-11). With any other key the
+ * task runs on those keys alone, the root definition not inherited.
+ */
+function optedOut(def: TurboTask | undefined): boolean {
+  return def?.extends === false && Object.keys(def).length === 1
 }
 
 export async function mapTurboWorkspace(
@@ -219,12 +230,15 @@ export async function mapTurboWorkspace(
         }
         continue
       }
-      const def: TurboTask = {
-        ...rootTasks[name],
-        ...rootTasks[`${meta.name}#${name}`],
-        ...pkgTasks?.[name],
-      }
-      tasks.push(buildTask(name, def, script, own, emitted, globals, opts))
+      const overlay = pkgTasks?.[name]
+      const def: TurboTask =
+        overlay?.extends === false
+          ? { ...overlay }
+          : { ...rootTasks[name], ...rootTasks[`${meta.name}#${name}`], ...overlay }
+      delete def.extends
+      tasks.push(
+        buildTask(name, def, script, own, emitted, globals, opts, relPosix(root, meta.dir)),
+      )
     }
     projects.push({ name: meta.name, dir: meta.dir, tasks })
   }
@@ -260,8 +274,20 @@ function buildTask(
   emitted: ReadonlyMap<string, ReadonlySet<string>>,
   globals: TurboMapping['globals'],
   opts: MapTurboOptions,
+  pkgDir: string,
 ): TurboMappedTask {
   const todos: string[] = []
+  // A glob that climbs out of the package (`../../packages/app-store/
+  // *.generated.ts`, cal.com's app-store-cli) is a workspace-root glob
+  // in vx's terms: re-anchor it on the root. One that climbs out of the
+  // workspace has no home and is reported.
+  const climbed = (glob: string): string | null => {
+    const body = glob.startsWith('!') ? glob.slice(1) : glob
+    if (!body.startsWith('../')) return null
+    const anchored = path.posix.normalize(path.posix.join(pkgDir, body))
+    if (anchored.startsWith('../')) return null
+    return (glob.startsWith('!') ? '!' : '') + anchored
+  }
   const uses = new Set<TurboGlobal>()
   const global = (kind: TurboGlobal): readonly unknown[] => {
     const values = globals[kind]
@@ -365,8 +391,13 @@ function buildTask(
         }
         const neg = i.startsWith('!')
         const body = neg ? i.slice(1) : i
+        const up = climbed(i)
         if (body.startsWith('$TURBO_ROOT$/')) {
           wsFiles.push((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length))
+        } else if (up !== null) {
+          wsFiles.push(up)
+        } else if (body.startsWith('../')) {
+          todos.push(`input ${JSON.stringify(i)}: leaves the workspace — map manually`)
         } else if (i.includes('$TURBO_ROOT$')) {
           todos.push(
             `input ${JSON.stringify(i)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
@@ -378,20 +409,44 @@ function buildTask(
 
     const outFiles: string[] = []
     const wsOutFiles: string[] = []
+    const negated: string[] = []
     for (const o of def.outputs ?? []) {
       if (o.startsWith('!')) {
-        todos.push(
-          `output ${JSON.stringify(o)}: vx outputs have no negation — narrow the positive ` +
-            'globs instead',
-        )
+        negated.push(o)
       } else if (o.startsWith('$TURBO_ROOT$/')) {
         wsOutFiles.push(o.slice('$TURBO_ROOT$/'.length))
+      } else if (climbed(o) !== null) {
+        wsOutFiles.push(climbed(o)!)
+      } else if (o.startsWith('../')) {
+        todos.push(`output ${JSON.stringify(o)}: leaves the workspace — map manually`)
       } else if (o.includes('$TURBO_ROOT$')) {
         todos.push(
           `output ${JSON.stringify(o)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
             'prefix (→ cache.outputs.workspaceFiles) — map manually',
         )
       } else outFiles.push(o)
+    }
+
+    // vx cleans and restores exactly the positive globs. A negation under
+    // a literal-rooted output (`dist/**` minus `!dist/**/*.map`) leaves a
+    // harmless superset of build products and is a todo; one that carves
+    // the package root out of a wildcard (medusa: `*/**` minus `!src/**`
+    // and `!node_modules/**`) does not — the superset is the sources, and
+    // the clean before exec would delete them. That task runs uncached.
+    const wild = outFiles.find((o) => /[*?[{]/.test(o.split('/')[0] ?? ''))
+    if (negated.length > 0 && wild !== undefined) {
+      todos.push(
+        `outputs ${negated.map((n) => JSON.stringify(n)).join(', ')} narrow ${JSON.stringify(wild)}: ` +
+          'vx outputs have no negation and the positive glob reaches the sources — task runs ' +
+          'uncached; declare the exact outputs in a vx.config to cache it',
+      )
+      return { name, todos, task, uses }
+    }
+    for (const n of negated) {
+      todos.push(
+        `output ${JSON.stringify(n)}: vx outputs have no negation — narrow the positive ` +
+          'globs instead',
+      )
     }
 
     const cacheEnv = uniq([...global('env'), ...envNames])

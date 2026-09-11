@@ -783,6 +783,109 @@ equivalent — map it manually` on every run, for the value every
       reports them in one line per run now, naming the count, the task
       names and the package count; pinned in the plugin suite.
 
+136.  DONE (2026-09-11): every mapper gap is one line per run. Item
+      135's one-line form covered persistent tasks only; the astro
+      dry-run under `@vzn/vx-turbo` then printed 57 identical lines
+      for `!vendor/**` (one per package whose `build` and `build:ci`
+      negate an output). The plugin now indexes every task-level todo
+      by its text at mapping time and reports each once, naming the
+      count, the task names and the package count (a gap one task
+      carries keeps its `pkg#task:` form); the persistent line is the
+      same shape. Pinned in the plugin suite: two packages sharing a
+      negated output are one line, and the per-task form is absent.
+      Astro's task set under the plugin was also checked against
+      Turbo's own dry-run for the repo's build scope: Turbo lists 64
+      tasks of which 32 are `<NONEXISTENT>` placeholders (`build`
+      depends on `prebuild`, which only `astro` defines); the 32 real
+      ones are exactly vx's plan, so both tools run the same graph in
+      item 137's bench.
+
+137.  DONE (2026-09-11): a peer dependency orders nothing. Mapping
+      medusajs/medusa under `@vzn/vx-turbo` planned zero tasks — a
+      task-graph cycle, analytics to test-utils to medusa and back to
+      analytics, every hop a `build` — while Turbo's own dry-run
+      planned 83. The edge that closed the loop is test-utils' PEER
+      on medusa; the other two are a devDependency and a dependency.
+      Turbo reads no peers at all. The package graph now has two
+      adjacencies: order (`directDeps`, the `'^name'` walk) is
+      dependencies, devDependencies, optionalDependencies and the
+      task edges — what the package has installed for itself — and
+      reach (`transitiveDeps` / `transitiveDependents`, what
+      `--filter pkg...` and `--affected` read) adds peers, because a
+      change in a peer can still break the package that peers on it.
+      Pinned in `tests/package-graph.test.ts` (a peer reaches but
+      does not order; the medusa shape is no cycle), documented in
+      `modules/package-graph.md`, `cli.md` and `schema.md`. Under
+      the fix medusa plans the same 83 `pkg#task` ids Turbo runs.
+      Payload's scope was checked the same way: its `build:core`
+      (negated `plugin-*` / `storage-*` filters) differs between the
+      tools — Turbo still builds an excluded package when a selected
+      one depends on it, vx drops it from the run — so the bench
+      uses `build:all` (templates excluded, leaves either way), where
+      both plan the same 45 tasks.
+
+138.  DONE (2026-09-11): two more Turbo shapes the bench repos
+      taught the mapper. (a) A per-package `{ "extends": false }` with
+      nothing else is Turbo's opt-out — n8n's `@n8n/storybook` has
+      `build` and `test` scripts, the root defines both, and Turbo 2.9
+      runs nothing for it (probed with `--dry=json`: filtered to the
+      package, zero tasks; with an `outputs` key added, the task runs
+      on that key alone, no `^build` from the root). vx planned 71
+      `build` tasks to Turbo's 70. The mapper now drops the task for
+      an opt-out and, for an overlay with keys, starts from the
+      overlay instead of the root definition. (b) A glob that climbs
+      out of the package — cal.com's app-store-cli writes its output
+      to `../../packages/app-store/*.generated.ts` — is a
+      workspace-root glob in vx's terms: re-anchored on the root into
+      `outputs.workspaceFiles` / `inputs.workspaceFiles` (negation
+      kept); one that climbs out of the workspace is reported. Before,
+      core refused the project-relative glob and the whole cal.com run
+      aborted. Both pinned in the plugin suite. Every bench repo now
+      plans exactly Turbo's real task set (Turbo's dry-run minus its
+      `<NONEXISTENT>` placeholders): astro 32, payload 45, medusa 83,
+      cal.com 13, n8n 70.
+
+139.  DONE (2026-09-11): a negated output that carves the package
+      root out of a wildcard runs the task uncached. medusa's
+      turbo.json declares `build` outputs as `*/**` and `.medusa/**`
+      minus `!src/**` and `!node_modules/**`; the mapper kept the
+      positive globs and reported the negations, so core would have
+      cleaned `*/**` — the sources — before every exec. vx has no
+      output negation by design (the clean and the restore are exact),
+      so the rule is: a negation under a literal-rooted output
+      (`dist/**` minus `!dist/**/*.map`) leaves a harmless superset of
+      build products and stays a todo; a negation against a
+      wildcard-rooted positive makes the task uncached, with a todo
+      that says to declare the exact outputs in a vx.config. Pinned
+      in the plugin suite with the medusa shape: no cache block, the
+      one-line warning, and a real run whose `src/` survives (fails
+      on the previous mapper — the clean deleted the fixture's
+      generated source). The bench gives medusa exactly that: a
+      ten-line project-stage plugin in its `vx.workspace.mjs` naming
+      `dist/**` and `.medusa/**`, so both tools cache the same files.
+      Three more findings from the first astro rep, all in the
+      harness: (a) Turbo on astro's explicit `inputs: ["**/*"]` hashes
+      its own restored `dist/**` (an explicit inputs glob matches the
+      filesystem, gitignore or not — touching a gitignored
+      `dist/index.js` changed the task hash in `--dry=json`), so its
+      first run after a restore is a full rebuild (62 s on the noop
+      arm) and it stabilizes only on the run after; the harness gained
+      a `noop2` arm so both are reported. vx excludes declared outputs
+      from the inputs and answered the same noop in 636 ms. (b) The
+      cold gap on astro was concurrency, not the runner: Turbo defaults
+      to 10 workers whatever the core count, vx to the core count;
+      astro cold on four cores was 70.5 s at 4 workers, 53.8 s at 8,
+      56.5 s at 10, 54.3 s at 16 (Turbo 66.3 s), but payload was
+      120 s at 4 and 128 s at 8 — a CPU-bound swc build gains nothing
+      from oversubscription — so the default stays the core count
+      (refuted: "raise the default"; two repos disagree) and the
+      matched bench passes vx `--concurrency 10` through the new
+      `VX_ARGS`. (c) payload keeps 42 `tsconfig.tsbuildinfo` files in
+      the package roots; a wipe of `dist` alone made the next
+      incremental tsc skip its declaration emit and every dependant
+      failed with TS6305 under either tool — the wipe removes them
+      too.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
