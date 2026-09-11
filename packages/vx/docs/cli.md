@@ -23,7 +23,7 @@ vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <size>]
 vx lock [--check]
-vx init [--dry] [--force]
+vx init [--dry] [--force] [--mjs]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info
 vx stats              # deprecated alias of vx info
@@ -1189,7 +1189,11 @@ no `@vzn/vx` installed for it — the type-only form is still what the
 scaffold writes, because it types the same with no import to resolve
 in an editor without the package. A workspace that imports a PLUGIN
 package at runtime without having installed it is told so, with the
-install command.
+install command. `--mjs` writes the same objects as `vx.config.mjs` and
+`vx.workspace.mjs`, with no import and no `satisfies`: a package whose
+own `tsconfig` includes every `.ts` under it compiles a `vx.config.ts`
+into its dist (TanStack/query's `tsc --build`, 2026-09-11), and an
+`.mjs` is outside that include. `@vzn/vx-migrate` takes the same flag.
 
 Each script becomes a task with its command verbatim. `build` gets
 `dependsOn: ['^build']` and **no cache block** — under a

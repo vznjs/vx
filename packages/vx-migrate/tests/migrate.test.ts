@@ -240,6 +240,31 @@ describe('vx migrate (turbo)', () => {
     expect(preset).toContain("export const globalPassThroughEnv = ['AWS_PROFILE']")
   })
 
+  it(
+    '--mjs writes vx.config.mjs files that import a vx-preset.mjs, and they load',
+    async () => {
+      const r = await vx(root, ['--mjs', '--force'])
+      expect(r.code).toBe(0)
+      expect(r.out).toContain('turbo.json → vx.config.mjs')
+      expect(r.out).toContain('vx-preset.mjs')
+      const preset = await Bun.file(path.join(root, 'vx-preset.mjs')).text()
+      expect(preset).toContain('export const globalInputs')
+      const generated = await Bun.file(path.join(root, 'packages', 'app', 'vx.config.mjs')).text()
+      expect(generated).not.toContain('@vzn/vx')
+      expect(generated).not.toContain('satisfies')
+      expect(generated).toContain("from '../../vx-preset.mjs'")
+      const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.mjs'))
+      expect(config.tasks?.build).toBeDefined()
+      // Back to the .ts form for the tests that follow.
+      await rm(path.join(root, 'vx-preset.mjs'))
+      await rm(path.join(root, 'packages', 'app', 'vx.config.mjs'))
+      await rm(path.join(root, 'packages', 'lib', 'vx.config.mjs'), { force: true })
+      const back = await vx(root, ['--force'])
+      expect(back.code).toBe(0)
+    },
+    TIMEOUT,
+  )
+
   it('reports clean/TODO counts and lists each TODO as project#task: reason', () => {
     // app: codegen + lint clean; build 3 TODOs ($TURBO_ROOT$ dep,
     // output negation, env wildcard — the $TURBO_ROOT$ input now maps
@@ -793,10 +818,10 @@ describe('vx migrate source detection', () => {
 
 describe('parseMigrateArgs', () => {
   it('defaults', () => {
-    expect(parseMigrateArgs([])).toEqual({ dry: false, force: false })
+    expect(parseMigrateArgs([])).toEqual({ dry: false, force: false, mjs: false })
   })
   it('--dry and --force', () => {
-    expect(parseMigrateArgs(['--dry', '--force'])).toEqual({ dry: true, force: true })
+    expect(parseMigrateArgs(['--dry', '--force'])).toEqual({ dry: true, force: true, mjs: false })
   })
   it('unknown flag errors', () => {
     expect(parseMigrateArgs(['--nope']).error).toContain('--nope')

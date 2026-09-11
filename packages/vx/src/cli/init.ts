@@ -1,4 +1,4 @@
-// `vx init [--dry] [--force]` — a workspace from nowhere: one vx.config.ts
+// `vx init [--dry] [--force] [--mjs]` — a workspace from nowhere: one vx.config.ts
 // per package from its package.json scripts, and the workspace file every
 // run needs. Turbo and Nx are not read here; a runner's own config beside
 // the scripts is the richer source, and `@vzn/vx-migrate` maps it.
@@ -16,14 +16,17 @@ import {
 export interface InitArgs {
   dry: boolean
   force: boolean
+  /** `vx.config.mjs` instead of `.ts` — see `ApplyMigrationArgs.format`. */
+  mjs: boolean
   error?: string
 }
 
 export function parseInitArgs(args: readonly string[]): InitArgs {
-  const out: InitArgs = { dry: false, force: false }
+  const out: InitArgs = { dry: false, force: false, mjs: false }
   for (const a of args) {
     if (a === '--dry') out.dry = true
     else if (a === '--force') out.force = true
+    else if (a === '--mjs') out.mjs = true
     else if (a.startsWith('-')) return { ...out, error: `unknown flag: ${a}${seeHelp('init')}` }
     else return { ...out, error: `unexpected argument: ${a}` }
   }
@@ -67,5 +70,6 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     force: parsed.force,
     init: true,
     notes,
+    format: parsed.mjs ? 'mjs' : 'ts',
   })
 }

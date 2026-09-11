@@ -101,6 +101,7 @@ export {
 } from './workspace/index.js'
 export type {
   ApplyMigrationArgs,
+  MigrationFormat,
   GeneratedProject,
   GeneratedTask,
   MigrationPlan,
