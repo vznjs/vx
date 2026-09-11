@@ -1481,6 +1481,19 @@ state of each:
    (the save-lane and restore-lane changes of the evening under a
    quieter box), every other row within its own spread.
 
+   Closing figures for 2026-09-11, evening (the same container, source
+   form, medians of 5, after items 131–148 — the migrate merge, the Nx
+   mapper fixes, the real-repo benches and the watch arm instant; none
+   touched `vx run`): 100 projects 120 ms warm / 171 restore / 396 cold;
+   1,000 projects 247 / 870 / 2,810 — against the night's 126 / 205 /
+   427 and 244 / 1,006 / 2,567: the warm rows tie, the 1,000-project
+   restore row reads −14% and the cold row +9% with no commit on either
+   lane. Both moved together with the box: the cold reps climbed
+   monotonically through the run (2,639 → 3,171) while the restore reps
+   held (841–907), so the spread is the container's, not the diff's; an
+   A/B was not run because there is no candidate commit to put on the
+   other arm.
+
 7. **First-run DX follow-ups (candidates, from the 2026-09-04
    walkthrough).** (a) DONE 2026-09-09: `--summarize` task rows carry
    `noCache: true` for a task with no `cache` block (present only when
