@@ -649,8 +649,20 @@ equivalent — map it manually` on every run, for the value every
       empty or `.` now — nothing a key can see is named by it — and
       the six initial-run assertions in `tests/watch-loop.test.ts`
       throw with the watch's own output on a miss, so the next failure
-      names the label that re-ran instead of a count. Not
-      reproducible on Linux (inotify has no such event).
+      names the label that re-ran instead of a count. It did
+      (2026-09-11, a docs-only head): `vx watch: app dist;
+      re-running...` right after "watching", with nothing written
+      after the initial run — the per-project arm delivered the
+      INITIAL RUN's own `dist` write after it went live (FSEvents
+      hands a new stream what landed just before it started), and a
+      path the loop had never judged passed the settled-state gate
+      unconditionally. The gate reads the path's mtime against the
+      instant the watchers went live now: a first sighting last
+      modified before it is the initial run's, not an edit; after it,
+      a change; a path already gone stays a change (a deletion has no
+      date). `modifiedBefore` is pinned in `tests/watch-rules.test.ts`;
+      the e2e proof is CI's macOS job. Linux never showed it: inotify
+      delivers nothing from before the watch.
 
 131.  DONE (2026-09-10, late night — owner: "Remove no node no bun — no
       one cares. Warm run is also minor. Focus on overhead, flexibility,

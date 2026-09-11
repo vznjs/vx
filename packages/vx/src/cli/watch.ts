@@ -660,11 +660,19 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     entries.sort()
     return xxh3(Buffer.from(entries.join('\n')))
   }
+  // A path this loop has never judged is a change only if it moved since
+  // the watchers went live. macOS delivers the initial run's own writes
+  // AFTER the arm (CI, 2026-09-11: `app dist; re-running...` with no edit
+  // made — FSEvents hands a stream what landed just before it started),
+  // and a first sighting used to pass unconditionally; the path's mtime
+  // says which side of the arm it belongs to. A path already gone is a
+  // change: a deletion has no date to read.
   const sameState = (abs: string): boolean => {
     const state = settledState(abs)
     const prev = lastState.get(abs)
     lastState.set(abs, state)
-    return prev === state
+    if (prev !== undefined) return prev === state
+    return state !== ABSENT && modifiedBefore(abs, armedAt)
   }
 
   // Paths that fired since the last judgement, first label wins. The state
@@ -781,6 +789,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     )
   }
 
+  /** The instant the watchers go live: a path last modified before it is the initial run's, not an edit. */
+  const armedAt = Date.now()
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   const perProject = new Map<string, WatchHandle>()
   const armProject = (proj: ProjectMeta): void => {
@@ -929,6 +939,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     }
     stop.addEventListener('abort', () => void cleanup(), { once: true })
   })
+}
+
+/** True when `abs` was last modified before `t` (epoch ms); false when it cannot be read. */
+export function modifiedBefore(abs: string, t: number): boolean {
+  try {
+    return fs.statSync(abs).mtimeMs < t
+  } catch {
+    return false
+  }
 }
 
 /**

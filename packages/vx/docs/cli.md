@@ -926,12 +926,16 @@ run...` precedes it.
    judged once the bytes have settled: a file whose bytes did not
    change since the loop last saw it is not an edit, nor is a directory
    whose entries (names and sizes) did not, nor a path that stayed
-   gone; and nothing is judged while a cycle runs — its own writes are
-   mid-flight, a `dist` deleted and not yet rebuilt is a state the tree
-   will not keep — so paths that land mid-run are judged together one
-   debounce window after it ends, an edit made meanwhile included. A
-   task that writes into its own project, `rm -rf dist && tsc`
-   included, costs one extra cycle instead of re-running forever. When any project's config declares
+   gone; a path the loop has never judged is an edit only if it was
+   modified after the watchers went live (macOS delivers the initial
+   run's own writes after the arm; the mtime says which side of it a
+   path belongs to); and nothing is judged while a cycle runs — its
+   own writes are mid-flight, a `dist` deleted and not yet rebuilt is
+   a state the tree will not keep — so paths that land mid-run are
+   judged together one debounce window after it ends, an edit made
+   meanwhile included. A task that writes into its own project,
+   `rm -rf dist && tsc` included, costs one extra cycle instead of
+   re-running forever. When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so a root-relative glob can name a file anywhere). That watcher
