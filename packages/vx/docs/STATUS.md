@@ -1148,6 +1148,27 @@ apps/worker`) found nothing, and `cwd: '{projectRoot}'` earned a
       `{projectRoot}/.next` output as `.next/**` (item 151). Nx round
       closed at five repos (owner: 3–5): query, strapi, novu, router,
       refine.
+153.  DONE (2026-09-11 — the real-repo no-op, profiled): vx reports
+      76 ms of refine's 183 ms no-op wall and 293 of router's 513, so
+      the rest was measured on refine with `VX_TIMING=1` (three runs,
+      180 ms wall, the table's 162 ms): startup 27, git enumeration 34,
+      classify + probe 34 (the 35 task hashes 24, the batched probe
+      8), run graph 42, record history 5, and ~15 ms of Bun boot before
+      the first mark (`--version` is 20 ms wall; the tail after the
+      table is 7 ms under strace). Discovery and config load are 10 ms
+      for 206 projects. The run graph's 42 ms is the output proof:
+      6,790 output files under 35 `dist/**` (median 70 per package, max
+      1,192) stat'ed synchronously at three workers — ~6 µs a file,
+      the price of "a hit over intact outputs" meaning intact, and the
+      one cost that scales with the repo rather than the task count
+      (payload's 14,430 files, STATUS 2026-09-11, are the same lane).
+      Refuted on the way, so nobody re-runs them: scoping the git
+      enumeration to the run — strace shows both spawns already carry
+      the loaded closure's 35 package directories as pathspecs (`git
+status -uall` scoped is 19 ms here against 54 for the tree; the
+      64-pathspec cap in `gitPathspecs` is what a `--all` run on a
+      200-project tree exceeds, by design); and a cost in the exit
+      path. Nothing to take without a design change to the proof.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

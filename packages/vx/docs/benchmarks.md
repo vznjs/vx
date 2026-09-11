@@ -537,6 +537,14 @@ so both tools run at Nx's default of 3.
 | warm, nothing wiped (no-op)   | **184 ms**  | 2.11 s (11.5×)  |
 | second no-op                  | **183 ms**  | 2.18 s (11.9×)  |
 
+Where a real no-op goes (refine, `VX_TIMING=1`, 180 ms wall): ~15 ms
+of runtime boot, 27 ms startup, 34 ms of git enumeration (two spawns
+scoped to the 35 packages), 34 ms deriving the 35 keys and probing
+them in one query, 42 ms proving the outputs intact — 6,790 files
+under 35 `dist/**`, stat'ed at ~6 µs each, the one cost that scales
+with the repo's output size rather than its task count — and 5 ms of
+history (STATUS 153).
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
