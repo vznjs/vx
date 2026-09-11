@@ -8,19 +8,22 @@ The rule for adjustments: a change is made only when the repo's own
 config cannot run here as shipped, or when it handicaps one tool for a
 reason that has nothing to do with the runner; every one is named.
 
-Box for every run below: this container — 4 cores, 16 GB, Linux
-6.18 (Firecracker), ext4 on a virtio disk that was 92% full (its file
-creates alternate between ~30 µs and ~400 µs per file; the medians of
-three interleaved reps are the defence). Bun 1.4.2; vx compiled from
+Box for every run below: this container — 4 cores, 16 GB of which the
+session's memory cgroup allows 13.3 GiB (`memory.limit_in_bytes`; a
+process over it is OOM-killed, see n8n), Linux 6.18 (Firecracker), ext4
+on a virtio disk that was 92% full (its file creates alternate between
+~30 µs and ~400 µs per file; the medians of three interleaved reps are
+the defence). Bun 1.4.2; vx compiled from
 this branch with `bun build --compile --minify --bytecode`; Turbo is
 each repo's own devDependency, run through `node_modules/.bin/turbo`
 with the repo's root `node_modules/.bin` on PATH (what its own
 `yarn build` / `pnpm build` would give it), `--no-daemon`. Both tools
 at 10 workers (Turbo's default; vx's default is the core count) unless
-the repo's own script says otherwise. Full artifact cleanup before a
+the repo's own script says otherwise; the wide sets at 3 (below). Full artifact cleanup before a
 cold and a restore arm: every git-ignored path except `node_modules`,
 `.yarn`, `.husky`, `.env*`, `.vx` and `.turbo` (the two caches, wiped
-separately for a cold arm).
+separately for a cold arm). Each arm's output is kept as
+`.vx-bench-<tool>-<arm>.log` beside the repo.
 
 ## solidjs/solid — b25c557 (2026-09-10)
 
@@ -107,6 +110,10 @@ tasks; wide set `build typecheck lint` = 220. 84 workspace members.
   for it and, since STATUS 138, neither does vx.
 - One vx cold rep read 193 s against 133–137 s for the other two and a
   standalone re-run; the disk's slow phase, absorbed by the median.
+- The wide set at 4 workers does not fit the cgroup: the cold arm lost
+  `n8n-editor-ui#lint` and `#typecheck` to the OOM killer (3.6 GB
+  resident each, `dmesg`), and the lint passed alone on the same inputs
+  afterwards. Every wide set runs both tools at 3 workers.
 
 ## calcom/cal.com — 569a389 (2026-09-09)
 

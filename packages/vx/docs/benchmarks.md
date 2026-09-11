@@ -284,7 +284,7 @@ Both tools at Turbo's default of 10 workers (vx's default is the core
 count; medusa's own script says `--concurrency=100%` and both get it).
 Turbo's dry-run and vx's `--dry` plan the same `pkg#task` set on every
 repo. One binary for all five (the restore and warm-hit fixes of
-STATUS 140 are in it). The script is `packages/vx-bench/real/turbo-repo.sh`;
+STATUS 141 are in it). The script is `packages/vx-bench/real/turbo-repo.sh`;
 `noop2` is a second consecutive no-op. Every repo's revision, toolchain,
 scope and bench-side adjustment is in `packages/vx-bench/real/REPOS.md`.
 
@@ -347,7 +347,7 @@ other and Turbo takes both. The difference in what the two runs DO is
 not noise: on every hit vx loads the 14,430 recorded output rows and
 stats every file (~36 ms) to prove the outputs are intact, Turbo checks
 nothing on disk — delete a file under `dist` and `turbo run build` still
-prints a hit. Before STATUS 140 this repo read 129 s / 6.3 s / 372 ms /
+prints a hit. Before STATUS 141 this repo read 129 s / 6.3 s / 372 ms /
 325 ms for vx.
 
 ### medusajs/medusa (83 `build` + `build:plugin` tasks, yarn 3, Turbo 1.13.4)
@@ -361,7 +361,7 @@ The repo's own `--concurrency=100%` for both. 24k tracked files.
 | warm, nothing wiped (no-op)   | **947 ms** | 3.29 s (3.5×)  |
 | second no-op                  | **953 ms** | 3.12 s (3.3×)  |
 
-Before STATUS 140 vx's no-op here was 2.5 s: every task carried the
+Before STATUS 141 vx's no-op here was 2.5 s: every task carried the
 same `globalDependencies` literal and resolved it against the whole
 enumeration, 76 of 83 were hashed twice, and the absent `.medusa/**`
 prefix refused every directory snapshot.
