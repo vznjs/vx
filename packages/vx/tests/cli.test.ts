@@ -815,7 +815,10 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
       const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
       await writeFile(path.join(workspaceRoot, 'packages', 'one', 'src', 'index.txt'), 'v1')
@@ -893,7 +896,10 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
 
       const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
@@ -938,7 +944,10 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
 
       const cmd = startWatch(['watch', '--all', 'hello', '--output-logs', 'full'])
       await waitFor(() => stdout.includes('watching 1 project'))
@@ -979,7 +988,10 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
 
       const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
@@ -1004,7 +1016,10 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
 
       const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
@@ -1046,7 +1061,10 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
 
       const cmd = startWatch(['watch', '--all', 'hello', '--output-logs', 'full'])
       await waitFor(() => stdout.includes('watching the workspace root'))
