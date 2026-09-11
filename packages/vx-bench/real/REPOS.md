@@ -211,6 +211,14 @@ tools at the repo's `parallel: 4`.
 - `libs/dal`'s `test:watch` is an empty script: the placeholder with a
   todo (STATUS 143), where `command: ''` refused the whole workspace.
 
+### redwoodjs/redwood — a7852fb (2025-12-13): dropped
+
+yarn 4.6.0 (no vendored release), Nx 20.3.2, 39 packages of scripts.
+Its `build` target declares no outputs anywhere — `nx.json` caches it
+on inputs alone and no package adds an `nx` field — so Nx's cache
+replays the log and restores no `dist`; a restore arm would write
+nothing under either tool. Not a runner comparison.
+
 ## Results
 
 `docs/benchmarks.md`, "Five real Turbo repos" — the build tables — and

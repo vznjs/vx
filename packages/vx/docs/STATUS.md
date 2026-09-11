@@ -1536,10 +1536,12 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     Nx repos (owner: 3–5 popular ones; only
     `nx:run-commands`, `nx:run-script`, a plain `command` and
     `nx:noop` targets are supported, anything else is out): the
-    remaining shortlist is storybook (483 targets inheriting a plain
+    remaining candidate is storybook (483 targets inheriting a plain
     `command`; needs `{projectRoot}` / `{projectName}` expansion in
-    command strings) and redwood (package scripts, yarn 4); parity is
-    the task graph as above.
+    command strings first, a mapper feature); redwood is dropped — its
+    `build` declares no outputs, so Nx's cache replays the log and a
+    restore arm restores nothing under either tool (REPOS.md). Parity
+    is the task graph as above.
 
 ## Decisions (this arc)
 
