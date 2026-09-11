@@ -650,8 +650,8 @@ equivalent — map it manually` on every run, for the value every
       the six initial-run assertions in `tests/watch-loop.test.ts`
       throw with the watch's own output on a miss, so the next failure
       names the label that re-ran instead of a count. It did
-      (2026-09-11, a docs-only head): `vx watch: app dist;
-      re-running...` right after "watching", with nothing written
+      (2026-09-11, a docs-only head): `app dist; re-running...`
+      right after "watching", with nothing written
       after the initial run — the per-project arm delivered the
       INITIAL RUN's own `dist` write after it went live (FSEvents
       hands a new stream what landed just before it started), and a
