@@ -50,7 +50,13 @@ describe('VX_TIMING on a dry run', () => {
   it('prints the stage table through the graph build and the close', async () => {
     const out = await vx(root, ['build', '--all', '--dry'], { VX_TIMING: '1' })
     expect(out).toContain('[vx timing]  stage')
-    for (const stage of ['discover projects', 'load configs', 'git enumeration', 'build graph', 'close']) {
+    for (const stage of [
+      'discover projects',
+      'load configs',
+      'git enumeration',
+      'build graph',
+      'close',
+    ]) {
       expect(out).toContain(stage)
     }
   })
