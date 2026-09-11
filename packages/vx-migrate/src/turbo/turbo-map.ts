@@ -13,6 +13,7 @@
 import path from 'node:path'
 import { type ProjectMeta, UserError } from '@vzn/vx'
 import { scriptCommand } from '../script-command.js'
+import { resolveSharedOutputs } from '../shared-outputs.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 function relPosix(from: string, to: string): string {
@@ -250,6 +251,7 @@ export async function mapTurboWorkspace(
         ),
       )
     }
+    resolveSharedOutputs(tasks)
     projects.push({ name: meta.name, dir: meta.dir, tasks })
   }
 

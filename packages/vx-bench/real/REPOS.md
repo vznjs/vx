@@ -194,8 +194,9 @@ pass it; both tools at the repo's `parallel: 8`.
 - Every package script is `run -T <root bin>` — yarn's shell builtin —
   so the mapper routes them through `yarn run <name>` (STATUS 142).
 - `build:code` and `build:types` share `dist/**` with `build`; vx
-  refuses two tasks on one output directory, so the bench strips the
-  cache block from those two siblings (they are not benched).
+  refuses two cached tasks on one output path, so the bench stripped
+  the cache block from those two siblings (they are not benched) —
+  what the mapper does itself since STATUS 146.
 
 ### novuhq/novu — fd04f7c (2026-09-11)
 
