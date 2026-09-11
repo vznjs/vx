@@ -101,7 +101,20 @@ export interface ResolveInputsArgs {
    * only — global dedup so a root-level probe spawns once per run.
    */
   workspaceRuntimeCache?: Map<string, Promise<string>>
+  /**
+   * Run-scoped memo for `cache.inputs.workspaceFiles`, keyed by the
+   * declaration and valid for one enumeration snapshot. A Turbo-mapped
+   * workspace gives every task the same `globalDependencies`, and
+   * resolving one literal against medusa's 24k-file enumeration per task
+   * was 930 ms of a 3.0 s warm no-op (159 scans, 2026-09-11).
+   */
+  workspaceFilesCache?: WorkspaceFilesCache
 }
+
+export type WorkspaceFilesCache = Map<
+  string,
+  { snapshot: readonly string[]; result: Promise<string[]> }
+>
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
   const projectFiles = await resolveFiles({
@@ -120,6 +133,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
       workspaceFiles: wsDecl,
       ownWorkspaceOutputs: args.ownWorkspaceOutputs ?? [],
       ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+      ...(args.workspaceFilesCache !== undefined ? { memo: args.workspaceFilesCache } : {}),
     })
     // Dedupe: when the project dir IS the workspace root (or a glob
     // overlaps), the same absolute path can arrive via both lists —
@@ -166,6 +180,7 @@ async function resolveWorkspaceFiles(args: {
   workspaceFiles: readonly string[]
   ownWorkspaceOutputs: readonly string[]
   gitFilesCache?: GitFilesCache
+  memo?: WorkspaceFilesCache
 }): Promise<string[]> {
   const positive: string[] = []
   const negative: string[] = []
@@ -190,6 +205,29 @@ async function resolveWorkspaceFiles(args: {
     gitFiles = runGitLsFiles(args.workspaceRoot).files
     args.gitFilesCache?.set(args.workspaceRoot, gitFiles)
   }
+  // The memo is valid for the snapshot it was computed over: a task that
+  // wrote workspace outputs mid-run replaces the partition, and the next
+  // caller sees a different array and scans again.
+  const memoKey =
+    args.memo === undefined
+      ? undefined
+      : JSON.stringify([positive, negative, args.ownWorkspaceOutputs])
+  if (memoKey !== undefined) {
+    const hit = args.memo!.get(memoKey)
+    if (hit !== undefined && hit.snapshot === gitFiles) return hit.result
+  }
+  const result = resolveWorkspaceFilesOver(args, gitFiles, positive, positiveGlobs, excludeGlobs)
+  if (memoKey !== undefined) args.memo!.set(memoKey, { snapshot: gitFiles, result })
+  return result
+}
+
+async function resolveWorkspaceFilesOver(
+  args: { workspaceRoot: string; gitFilesCache?: GitFilesCache },
+  gitFiles: readonly string[],
+  positive: readonly string[],
+  positiveGlobs: readonly Bun.Glob[],
+  excludeGlobs: readonly Bun.Glob[],
+): Promise<string[]> {
   // Second call site of the literal-input guard. `resolveWorkspaceFiles`
   // carries its own copy of the filter-over-git-set design, so the same
   // silently-folds-nothing hazard exists here — and a fix applied only to the

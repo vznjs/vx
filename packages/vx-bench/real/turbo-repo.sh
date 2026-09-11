@@ -37,7 +37,7 @@
 # `--concurrency 10` (astro cold on four cores: 70.5 s at 4 workers,
 # 53.8 s at 8; payload 120 s at 4, 128 s at 8 — 2026-09-11).
 set -u
-R=$1; VX=$2; TASKS=$3; REPS=${4:-3}; DIRS=${5:-"dist types coverage"}
+R=$1; VX=$2; TASKS=$3; REPS=${4:-3}
 FILTERS=${FILTERS:-}; TURBO_ARGS=${TURBO_ARGS:-}; VX_ARGS=${VX_ARGS:-}
 vx_scope=(--all); turbo_scope=()
 if [ -n "$FILTERS" ]; then
@@ -47,18 +47,24 @@ if [ -n "$FILTERS" ]; then
   set +f
 fi
 cd "$R"
-outputs() {
-  local args=()
-  for d in $DIRS; do args+=(-o -name "$d"); done
-  find packages -path '*/node_modules' -prune -o \( -type d \( -false "${args[@]}" \) \) -print
-}
-# `*.tsbuildinfo` goes with the outputs: an incremental tsc that finds its
-# build info but not its emit skips the emit (payload: 42 of them in the
-# package roots, and every dependant's `--emitDeclarationOnly` then failed
-# with TS6305 under either tool, 2026-09-11).
+# The repo's own `build` script runs Turbo through its package manager
+# (`yarn build` → `turbo run …`), which puts the root `node_modules/.bin`
+# on PATH for every task; run bare, Turbo left medusa's `@medusajs/icons`
+# without the root's `rollup` (exit 127, 2026-09-11). vx exposes the bin
+# dirs itself; the same PATH for both tools is the same footing.
+export PATH="$R/node_modules/.bin:$PATH"
+# Full artifact cleanup: everything git ignores under the repo except the
+# installs (`node_modules`, `.yarn`), the two caches (`.vx`, and `.turbo`
+# — Turbo 2 keeps its local cache in `.turbo/cache`; both wiped
+# separately for a cold arm) and `.env*`. Turbo does not clean outputs
+# before a run and vx cleans only a task's declared ones, so anything
+# short of this leaks between arms and tools — Turbo's `.turbo` logs,
+# astro's prebuilt files, payload's `.swc` caches and 42 stale
+# `tsconfig.tsbuildinfo` files that made the next incremental tsc skip
+# its declaration emit (TS6305 in every dependant, 2026-09-11).
 wipe_outputs() {
-  outputs | xargs -r rm -rf
-  find packages -path '*/node_modules' -prune -o -name '*.tsbuildinfo' -print | xargs -r rm -f
+  git clean -fdXq -e '!node_modules' -e '!**/node_modules/**' -e '!.vx' -e '!.vx/**' \
+    -e '!.env*' -e '!.yarn' -e '!.yarn/**' -e '!.husky' -e '!.husky/**' -e '!.turbo' -e '!.turbo/**'
 }
 wipe_turbo_cache() { rm -rf node_modules/.cache/turbo .turbo packages/*/.turbo; }
 wipe_vx_cache() { rm -rf .vx; }
@@ -70,13 +76,25 @@ time_arm() {
   t0=$(ms); code=$(run_"$1"); t1=$(ms)
   echo "$1 $2 $(( (t1 - t0) / 1000000 )) ms exit=$code"
 }
+# SKIP_ARMS=n resumes a rep at its n-th arm (of the eight: four per tool,
+# vx first): every arm's precondition is on disk (the caches persist
+# between arms), so a driver that lost a process mid-rep restarts at the
+# arm it lost instead of the rep.
+SKIP_ARMS=${SKIP_ARMS:-0}
+arm_index=0
+arm() { # tool name pre-steps...
+  local tool=$1 name=$2; shift 2
+  local i=$arm_index; arm_index=$(( arm_index + 1 ))
+  [ "$i" -lt "$SKIP_ARMS" ] && return
+  for pre in "$@"; do $pre; done
+  time_arm "$tool" "$name"
+}
 for _ in $(seq 1 "$REPS"); do
   for tool in vx turbo; do
-    wipe_outputs; wipe_turbo_cache; wipe_vx_cache
-    time_arm $tool cold
-    wipe_outputs
-    time_arm $tool restore
-    time_arm $tool noop
-    time_arm $tool noop2
+    arm $tool cold wipe_outputs wipe_turbo_cache wipe_vx_cache
+    arm $tool restore wipe_outputs
+    arm $tool noop
+    arm $tool noop2
   done
+  SKIP_ARMS=0; arm_index=0
 done

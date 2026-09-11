@@ -1,5 +1,6 @@
 import path from 'node:path'
 import type { TaskConfig, CacheConfig } from '../config.js'
+import type { WorkspaceFilesCache } from '../cache/index.js'
 import {
   type CacheKeyInput,
   type CacheLayer,
@@ -32,6 +33,7 @@ export interface HashCache {
   taskConfig: WeakMap<TaskConfig, string>
   runtime: Map<string, Promise<string>>
   workspaceRuntime: Map<string, Promise<string>>
+  workspaceFiles: WorkspaceFilesCache
 }
 
 export function createHashCache(): HashCache {
@@ -40,6 +42,7 @@ export function createHashCache(): HashCache {
     taskConfig: new WeakMap(),
     runtime: new Map(),
     workspaceRuntime: new Map(),
+    workspaceFiles: new Map(),
   }
 }
 
@@ -174,6 +177,7 @@ async function resolveKeyInput(args: ComputeHashArgs): Promise<CacheKeyInput> {
       ? {
           runtimeCache: args.hashCache.runtime,
           workspaceRuntimeCache: args.hashCache.workspaceRuntime,
+          workspaceFilesCache: args.hashCache.workspaceFiles,
         }
       : {}),
   })

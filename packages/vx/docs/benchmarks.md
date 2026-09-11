@@ -274,6 +274,125 @@ widest. Turbo with its daemon on would close part of the no-op gap
 (the daemon answers "what changed" without a walk); vx has no daemon
 to turn on.
 
+## Five real Turbo repos (2026-09-11)
+
+The same footing as the solid run, on the largest Turbo repos on GitHub:
+the repo's own `turbo.json`, vx on top through `@vzn/vx-turbo` with a
+two-line `vx.workspace.mjs`, both tools scoped by the repo's own
+filters, four cores, Linux, arms interleaved, medians of three reps.
+Both tools at Turbo's default of 10 workers (vx's default is the core
+count; medusa's own script says `--concurrency=100%` and both get it).
+Turbo's dry-run and vx's `--dry` plan the same `pkg#task` set on every
+repo. One binary for all five (the restore and warm-hit fixes of
+STATUS 140 are in it). The script is `packages/vx-bench/real/turbo-repo.sh`;
+`noop2` is a second consecutive no-op. Every repo's revision, toolchain,
+scope and bench-side adjustment is in `packages/vx-bench/real/REPOS.md`.
+
+What the harness does that the first attempt did not, all of it for
+Turbo's benefit as much as vx's: every git-ignored artifact outside the
+installs and the two caches is cleaned before a cold and a restore arm
+(Turbo does not clean outputs; the first run leaked `.turbo` logs,
+prebuilt files and 42 stale `tsconfig.tsbuildinfo` files between
+arms); the repo's root `node_modules/.bin` is on PATH as the repo's own
+`yarn build` would have it (bare, Turbo lost medusa's `rollup`); npm
+trusts this container's proxy CA (cal.com's embed build runs `npx`);
+and astro's `build` inputs exclude its own outputs (below).
+
+Two tasks needed a bench-side output list, declared in the repo's
+`vx.workspace.mjs` as a ten-line project-stage plugin and named here so
+nobody reads them as the plugin's own mapping: medusa's `build` outputs
+are `*/**` minus `!src/**` in turbo.json, which vx (no output negation)
+runs uncached, so the bench names `dist/**` and `.medusa/**`; and
+cal.com's `@calcom/web#build` writes 110 symlinks to `node_modules`
+directories under `.next/node_modules`, which vx's artifact format does
+not store, so the bench names the rest of `.next` — everything
+`next start` reads — and Turbo's artifact carries the 110 links too.
+Directory symlinks in artifacts are STATUS Next.
+
+### withastro/astro (32 `build` tasks, pnpm 10, Turbo 2.10.2)
+
+astro's `build` declares `inputs: ["**/*", …]`, and an explicit Turbo
+input glob matches the filesystem, gitignored or not — so as shipped,
+each package's own `dist/**` is in its hash. Turbo's first run after a
+restore then rebuilds the whole graph (59.6 s on the first harness),
+and because 19 of the 32 builds are not byte-reproducible the run after
+that rebuilds those 19 again (48.8 s, 13 cached), forever. Probed with
+`--dry=json`: appending one byte to a gitignored `dist/index.js` changes
+the task hash. vx excludes a task's declared outputs from its inputs on
+the same config. The table is on the fixed config — `!dist/**/*` and
+`!src/**/*.prebuilt*` added to the `build`, `build:ci` and `prebuild`
+inputs — so Turbo is measured at its best.
+
+| `build`                       | vx         | Turbo 2.10.2   |
+| ----------------------------- | ---------- | -------------- |
+| cold (caches + outputs wiped) | **52.0 s** | 62.9 s (1.21×) |
+| warm, outputs wiped (restore) | **887 ms** | 1.58 s (1.78×) |
+| warm, nothing wiped (no-op)   | **627 ms** | 1.17 s (1.86×) |
+| second no-op                  | **632 ms** | 1.18 s (1.86×) |
+
+### payloadcms/payload (45 `build` tasks, pnpm 10, Turbo 2.10.4)
+
+Scoped as the repo's own `build:all` (the four templates excluded).
+Turbo's default inputs (the git-tracked files), no explicit glob.
+
+| `build`                       | vx          | Turbo 2.10.4       |
+| ----------------------------- | ----------- | ------------------ |
+| cold (caches + outputs wiped) | **126.9 s** | 127.5 s (1.00×)    |
+| warm, outputs wiped (restore) | **3.44 s**  | 3.46 s (1.01×)     |
+| warm, nothing wiped (no-op)   | 256 ms      | **237 ms** (0.93×) |
+| second no-op                  | 275 ms      | **267 ms** (0.97×) |
+
+Parity, and the doc says so: the no-op rows are within noise of each
+other and Turbo takes both. The difference in what the two runs DO is
+not noise: on every hit vx loads the 14,430 recorded output rows and
+stats every file (~36 ms) to prove the outputs are intact, Turbo checks
+nothing on disk — delete a file under `dist` and `turbo run build` still
+prints a hit. Before STATUS 140 this repo read 129 s / 6.3 s / 372 ms /
+325 ms for vx.
+
+### medusajs/medusa (83 `build` + `build:plugin` tasks, yarn 3, Turbo 1.13.4)
+
+The repo's own `--concurrency=100%` for both. 24k tracked files.
+
+| `build build:plugin`          | vx         | Turbo 1.13.4   |
+| ----------------------------- | ---------- | -------------- |
+| cold (caches + outputs wiped) | **308 s**  | 315 s (1.02×)  |
+| warm, outputs wiped (restore) | **3.86 s** | 7.16 s (1.85×) |
+| warm, nothing wiped (no-op)   | **947 ms** | 3.29 s (3.5×)  |
+| second no-op                  | **953 ms** | 3.12 s (3.3×)  |
+
+Before STATUS 140 vx's no-op here was 2.5 s: every task carried the
+same `globalDependencies` literal and resolved it against the whole
+enumeration, 76 of 83 were hashed twice, and the absent `.medusa/**`
+prefix refused every directory snapshot.
+
+### n8n-io/n8n (70 `build` tasks, pnpm 12, Turbo 2.9.18, Node 24)
+
+| `build`                       | vx         | Turbo 2.9.18        |
+| ----------------------------- | ---------- | ------------------- |
+| cold (caches + outputs wiped) | 137.2 s    | **133.7 s** (0.97×) |
+| warm, outputs wiped (restore) | **8.27 s** | 12.5 s (1.52×)      |
+| warm, nothing wiped (no-op)   | **842 ms** | 1.36 s (1.62×)      |
+| second no-op                  | **839 ms** | 1.34 s (1.60×)      |
+
+The cold row is `n8n-nodes-base#build` (55 s alone) plus what fits
+around it; a first vx rep read 193 s in the disk's slow phase and the
+median absorbed it.
+
+### calcom/cal.com (13 `build` tasks, yarn 3, Turbo 2.7.1, scope `@calcom/web...`)
+
+Three of the thirteen are `cache: false` in turbo.json (prisma's
+generate among them, ~12 s together) and run on every arm under both
+tools, so the warm rows have a 12 s floor. `.env` from the example with
+the two empty secrets filled, `SKIP_DB_MIGRATIONS=1`, no database.
+
+| `build`                       | vx          | Turbo 2.7.1     |
+| ----------------------------- | ----------- | --------------- |
+| cold (caches + outputs wiped) | **245.7 s** | 250.7 s (1.02×) |
+| warm, outputs wiped (restore) | **17.4 s**  | 19.9 s (1.14×)  |
+| warm, nothing wiped (no-op)   | **14.7 s**  | 18.5 s (1.26×)  |
+| second no-op                  | **14.5 s**  | 17.8 s (1.22×)  |
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,

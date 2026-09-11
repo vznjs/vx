@@ -123,14 +123,21 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     expect(await cache.outputDirsCurrent(proj, rows())).toBe(true)
   })
 
-  it('does not descend a symlinked directory, and records nothing over the cap or for a missing prefix', async () => {
+  it('does not descend a symlinked directory, records a missing prefix as absent, and nothing over the cap', async () => {
     mkdirSync(path.join(root, 'elsewhere/x'), { recursive: true })
     symlinkSync(path.join(root, 'elsewhere'), path.join(proj, 'dist/link'))
     await cache.recordOutputDirs('h1', proj, ['dist'])
     expect(rows().map((r) => r.path)).not.toContain('dist/link')
     expect(rows().map((r) => r.path)).not.toContain('dist/link/x')
+    // A declared prefix the task never produced is recorded ABSENT (mtime
+    // -1) rather than refusing the snapshot: current while it stays
+    // absent, stale the moment something creates it.
     await cache.recordOutputDirs('h1', proj, ['nope'])
-    expect(rows()).toEqual([])
+    expect(rows()).toEqual([{ path: 'nope', mtimeMs: -1 }])
+    expect(await cache.outputDirsCurrent(proj, rows())).toBe(true)
+    mkdirSync(path.join(proj, 'nope'))
+    expect(await cache.outputDirsCurrent(proj, rows())).toBe(false)
+    rmSync(path.join(proj, 'nope'), { recursive: true })
     for (let i = 0; i < OUTPUT_DIRS_CAP + 1; i++) mkdirSync(path.join(proj, 'dist', `d${i}`))
     await cache.recordOutputDirs('h1', proj, ['dist'])
     expect(rows()).toEqual([])
@@ -209,6 +216,39 @@ describe('warm hits through run() with the short-circuit', () => {
     // stray that the directory mtime exposed is gone.
     expect(existsSync(path.join(dist(), 'stray.js'))).toBe(false)
     expect(existsSync(path.join(dist(), 'sub/in.js'))).toBe(true)
+  })
+
+  it('a restore records the directories at run end, once they are old enough', async () => {
+    // The restore renames into its directories inside the racy window, so
+    // a snapshot taken right after it was refused and the first warm run
+    // after EVERY restore walked its output trees (payload: 41 of 45 tasks,
+    // 14,430 files, 2026-09-11). Deferred to run end, like the miss path.
+    // `b` is an uncached task that keeps the run open past the window, so
+    // `a`'s restore has aged by the time the snapshot is taken.
+    await mkdir(path.join(root, 'packages/b'), { recursive: true })
+    await writeFile(path.join(root, 'packages/b/package.json'), JSON.stringify({ name: 'b' }))
+    await writeFile(
+      path.join(root, 'packages/b/vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: 'sleep ${(OUTPUT_DIRS_RACY_MS * 3) / 1000}' } } } }\n`,
+    )
+    expect((await runBuild()).ok).toBe(true) // the miss
+    const recordedDirs = () => {
+      const c = db()
+      const hash = (
+        c.dbHandle().query("SELECT hash FROM entries WHERE task = 'build'").get() as {
+          hash: string
+        }
+      ).hash
+      const recorded = (c.loadOutputDirsBatch([hash]).get(hash) ?? []).map((r) => r.path).sort()
+      c.close()
+      return recorded
+    }
+    await rm(dist(), { recursive: true, force: true })
+    const restored = await runBuild()
+    expect(restored.ok).toBe(true)
+    expect(restored.outcomes.find((o) => o.node.id === 'a#build')!.status).toBe('cache-hit')
+    expect(existsSync(path.join(dist(), 'sub/in.js'))).toBe(true)
+    expect(recordedDirs()).toEqual(['dist', 'dist/sub'])
   })
 
   it('a root-anchored glob records nothing and keeps the walk (control)', async () => {

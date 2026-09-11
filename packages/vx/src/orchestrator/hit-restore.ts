@@ -156,8 +156,19 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     if (outputs.length > 0) cleanedRels = await cleanOutputs(cleanArgs)
     if (wsOutputs.length > 0) cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
     await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot)
+    // The directory snapshot behind the NEXT hit's skip-restore, taken at
+    // run end when the run keeps a list (as the miss path does, see
+    // miss-save.ts): the restore renamed into these directories
+    // microseconds ago, inside the snapshot's racy window, so a snapshot
+    // taken here was refused and the first warm run after every restore
+    // walked its output trees — 41 of payload's 45 tasks, 14,430 files,
+    // ~75 ms of the no-op's CPU (2026-09-11).
     if (dirPrefixes !== null) {
-      await args.cache.recordOutputDirs?.(hash, node.projectDir, dirPrefixes)
+      if (args.outputDirSnapshots !== undefined) {
+        args.outputDirSnapshots.push({ hash, projectDir: node.projectDir, prefixes: dirPrefixes })
+      } else {
+        await args.cache.recordOutputDirs?.(hash, node.projectDir, dirPrefixes)
+      }
     }
     // Restored outputs changed the project's tree — but on this
     // path we know the EXACT changed paths (wiped declared

@@ -971,6 +971,55 @@ describe('resolved file order is stable regardless of enumeration order', () => 
       path.join('src', 'c.ts'),
     ])
   })
+
+  it('a workspaceFiles declaration is resolved once per run and snapshot', async () => {
+    // Every Turbo-mapped task carries the same `globalDependencies`; resolving
+    // one literal against medusa's 24k-file enumeration per task was 930 ms of
+    // a 3.0 s warm no-op (2026-09-11). The memo is keyed on the declaration
+    // and valid for one enumeration snapshot.
+    await write(path.join(root, 'tsconfig.base.json'), '{}')
+    const gitMemo = new GitFilesCache()
+    const snapshot = ['tsconfig.base.json', 'pkg/src/a.ts']
+    gitMemo.set(root, snapshot)
+    const wsMemo = new Map()
+    const resolve = () =>
+      resolveInputs({
+        projectDir,
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files: [], workspaceFiles: ['tsconfig.base.json'] },
+        ownOutputs: [],
+        nestedProjectDirs: [],
+        gitFilesCache: gitMemo,
+        workspaceFilesCache: wsMemo,
+      })
+    const first = await resolve()
+    expect(first.files).toEqual([path.join(root, 'tsconfig.base.json')])
+    const second = await resolve()
+    expect(second.files).toEqual(first.files)
+    expect(wsMemo.size).toBe(1)
+    const entry = [...wsMemo.values()][0]!
+    expect(entry.snapshot).toBe(snapshot)
+    // A different declaration is its own entry.
+    await resolveInputs({
+      projectDir,
+      workspaceRoot: root,
+      envSource: {},
+      inputs: { files: [], workspaceFiles: ['tsconfig.base.json', '!nope'] },
+      ownOutputs: [],
+      nestedProjectDirs: [],
+      gitFilesCache: gitMemo,
+      workspaceFilesCache: wsMemo,
+    })
+    expect(wsMemo.size).toBe(2)
+    // A replaced partition (a task wrote workspace outputs) invalidates it:
+    // the next resolution scans the new snapshot and re-keys the entry.
+    const replaced = [...snapshot]
+    gitMemo.set(root, replaced)
+    await resolve()
+    expect(wsMemo.size).toBe(2)
+    expect([...wsMemo.values()][0]!.snapshot).toBe(replaced)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────

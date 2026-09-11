@@ -6,7 +6,7 @@
 // intermediate still poisons the key), which these cases exercise directly.
 
 import { describe, expect, it } from 'bun:test'
-import { dependsOnSiblingOutputs } from '../src/orchestrator/stable-keys.js'
+import { dependsOnSiblingOutputs, workspaceInputsReach } from '../src/orchestrator/stable-keys.js'
 import type { TaskNode } from '../src/graph/index.js'
 
 const node = (
@@ -97,5 +97,43 @@ describe('dependsOnSiblingOutputs — restore-tier stability gate', () => {
         false,
       ),
     ).toBe(false)
+  })
+})
+
+describe('workspaceInputsReach — a workspace reader against its producers', () => {
+  it('a root literal reaches no package; a package-tree glob reaches that package', () => {
+    expect(workspaceInputsReach(['turbo.json'], ['packages/a', 'packages/b'])).toBe(false)
+    expect(workspaceInputsReach(['tsconfig.base.json', '!README.md'], ['packages/a'])).toBe(false)
+    expect(workspaceInputsReach(['packages/a/src/**'], ['packages/a'])).toBe(true)
+    expect(workspaceInputsReach(['packages/a/src/**'], ['packages/b'])).toBe(false)
+    // An ancestor literal reaches everything under it; a bare glob everything.
+    expect(workspaceInputsReach(['packages'], ['packages/a'])).toBe(true)
+    expect(workspaceInputsReach(['packages/**'], ['packages/a'])).toBe(true)
+    expect(workspaceInputsReach(['**/*.md'], ['packages/a'])).toBe(true)
+    expect(workspaceInputsReach(['{packages,apps}/**'], ['packages/a'])).toBe(true)
+    // A producer at the workspace root is reachable by anything.
+    expect(workspaceInputsReach(['turbo.json'], ['.'])).toBe(true)
+    // Negations never reach.
+    expect(workspaceInputsReach(['!packages/a/**'], ['packages/a'])).toBe(false)
+  })
+
+  it('the gate uses the reach when it knows the dirs, and stays conservative when it does not', () => {
+    const dirs = new Map([
+      ['A', 'packages/a'],
+      ['B', 'packages/b'],
+    ])
+    const reader = node('A', { workspaceFiles: ['turbo.json'] })
+    // Old answer without dirs: any producer upstream → preliminary.
+    expect(dependsOnSiblingOutputs(reader, new Set(['B']), false)).toBe(true)
+    // With dirs: a root literal cannot see packages/b → stable.
+    expect(dependsOnSiblingOutputs(reader, new Set(['B']), false, dirs)).toBe(false)
+    // A glob into the producer's tree is still preliminary.
+    const treeReader = node('A', { workspaceFiles: ['packages/b/dist/**'] })
+    expect(dependsOnSiblingOutputs(treeReader, new Set(['B']), false, dirs)).toBe(true)
+    // A producer whose dir is unknown keeps the conservative answer.
+    expect(dependsOnSiblingOutputs(reader, new Set(['C']), false, dirs)).toBe(true)
+    // The other clauses are untouched: same-project producer, workspace-output producer.
+    expect(dependsOnSiblingOutputs(reader, new Set(['A']), false, dirs)).toBe(true)
+    expect(dependsOnSiblingOutputs(reader, new Set(['B']), true, dirs)).toBe(true)
   })
 })

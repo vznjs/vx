@@ -313,8 +313,15 @@ export interface OutputDirRow {
   mtimeMs: number
 }
 
-/** More directories than this under a task's output prefixes: record nothing, keep the walk. */
-export const OUTPUT_DIRS_CAP = 256
+/**
+ * More directories than this under a task's output prefixes: record
+ * nothing, keep the walk. 256 refused payload's `@payloadcms/ui#build`
+ * (535 directories, 4,069 files), which then paid the refused snapshot's
+ * walk AND the output glob on every warm no-op — 65 ms of a 320 ms run
+ * (2026-09-11). Rows are 60 bytes each and the check is one stat per
+ * directory, so the cap is a bound on pathological trees, not a budget.
+ */
+export const OUTPUT_DIRS_CAP = 8192
 
 /**
  * A directory whose mtime lies within this many ms of the snapshot is RACY
