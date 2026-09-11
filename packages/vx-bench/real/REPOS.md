@@ -174,6 +174,10 @@ STATUS 145; and
 `.vx-bench-bin/` beside the repo holds the pinned package manager
 (`packageManager`), since corepack's shim resolves it through the
 registry on every spawn, which vx's isolated task env cannot reach.
+A third since router: `NX_CACHE_DIRECTORY` pins Nx's cache to
+`.nx/cache` inside the repo, because Nx 23 keeps it per user under
+`~/.nx/<workspace id>/` where no repo clean reaches it — router's
+second cold arm read 85 of 85 hits from there (2026-09-11).
 
 ### TanStack/query — 7452ef6 (2026-09-10)
 
@@ -230,6 +234,9 @@ the repo's `parallel: 5`.
   vx ordered nothing on a peer and built the devtools before the
   core's `dist` existed (STATUS 149). A workspace peer that does not
   close a cycle orders the build since.
+- Rep 2's Nx cold arm ran before the cache pin above and is not in
+  the medians; an Nx-only rep replaced it (three real cold runs:
+  226.7, 229.8 and 224.1 s).
 
 ### redwoodjs/redwood — a7852fb (2025-12-13): dropped
 

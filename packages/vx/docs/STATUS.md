@@ -1110,6 +1110,20 @@ apps/worker`) found nothing, and `cwd: '{projectRoot}'` earned a
       interleaved A/B of compiled binaries on the 1,000-project bench
       (no peers there — the cost is one sort and an empty pass), 12
       reps: base min 199 / median 203 ms, head 195 / 205. A tie.
+150.  DONE (2026-09-11 — Next 15, the fourth Nx repo): TanStack/router
+      benched, `build test:build` = 85 tasks at the repo's
+      `parallel: 5`, medians of three: cold 199.9 s vs Nx 23.2.0's
+      226.7 s, restore 1.00 s vs 3.33 s, no-op 505 ms vs 3.21 s
+      (`docs/benchmarks.md`, `REPOS.md`). Two things the repo taught:
+      the peer order edge (item 149), and Nx 23's cache living per
+      user under `~/.nx/<workspace id>/`, outside anything the
+      harness's clean sees — rep 2's Nx cold arm read 85 of 85 hits
+      from it (5.0 s) and is not in the medians; `nx-repo.sh` pins
+      `NX_CACHE_DIRECTORY` inside the repo since, and an Nx-only rep
+      on the pin (224.1 s cold, the cache under `.nx/cache`, nothing
+      under `~/.nx`) replaced the row. The install is the packages,
+      benchmarks and root filters only (1 GB; the examples pull every
+      framework and are out of the repo's own scope anyway).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1637,7 +1651,7 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     ever runs without configs. Never end with "what next?".
 
 15. **More Nx repos.** The five Turbo build sets, the two wide sets
-    (item 141) and three Nx repos (items 142–144) are in.
+    (item 141) and four Nx repos (items 142–144, 150) are in.
     Both gaps from the first Nx repos (item 142) are closed: `.mjs`
     output is item 145, two targets on one output path item 146. Then the harness on more
     Nx repos (owner: 3–5 popular ones; only

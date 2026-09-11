@@ -502,6 +502,25 @@ median.
 | warm, nothing wiped (no-op)   | **655 ms**  | 8.55 s (13.1×)  |
 | second no-op                  | **642 ms**  | 8.69 s (13.5×)  |
 
+### TanStack/router (85 `build` + `test:build` tasks, pnpm 11, Nx 23.2.0, `parallel: 5`)
+
+Scoped as the repo's own `build` script (`examples/**` and `e2e/**`
+excluded): 43 `build` (`vite build`) and 42 `test:build` (`publint` +
+`attw --pack`) over 42 packages and a benchmark. Seven packages reach
+their core only through `peerDependencies`; the first vx cold run
+built `router-devtools-core` before `router-core`'s `dist` existed and
+failed, which is STATUS 149 (a workspace peer orders the build unless
+it closes a cycle) — the rows below are on that fix. Nx 23 keeps its
+cache per user outside the repo; the harness pins it inside so the
+cold arm is cold (`REPOS.md`).
+
+| `build test:build`            | vx          | Nx 23.2.0       |
+| ----------------------------- | ----------- | --------------- |
+| cold (caches + outputs wiped) | **199.9 s** | 226.7 s (1.13×) |
+| warm, outputs wiped (restore) | **1.00 s**  | 3.33 s (3.32×)  |
+| warm, nothing wiped (no-op)   | **505 ms**  | 3.21 s (6.4×)   |
+| second no-op                  | **513 ms**  | 3.30 s (6.4×)   |
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
