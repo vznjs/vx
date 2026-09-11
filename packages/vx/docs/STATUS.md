@@ -1061,6 +1061,31 @@ apps/worker`) found nothing, and `cwd: '{projectRoot}'` earned a
       the run-commands pins now carry the `cd` (three fail on the
       previous mapper).
 
+148.  DONE (2026-09-11 — Next 5, the watch e2e flake): the arm instant
+      is read off the mtime clock. A first-sighted path is a change
+      only if it moved since the watchers went live, judged by its
+      mtime against `armedAt`; `armedAt` was `Date.now()`, the fine
+      clock, and an mtime is the kernel's coarse clock, up to a tick
+      behind — measured here: 2 of 3,000 tight writes carried an mtime
+      5.8 ms EARLIER than a `Date.now()` taken before the write, and
+      more under CPU load, where the tick is skipped. So an edit made
+      right after the ready line was judged the initial run's and
+      dropped, and the loop waited forever: three shard runs lost a
+      45 s window that day, and the reproduction (four CPU burners,
+      `scratchpad/watch-probe.sh`) failed 3–5 of every 6 runs, the
+      traced failures reading raw event → trigger → `same=true` on the
+      edited file. `fsClockNow(cacheDir)` writes and removes a stamp
+      under the cache dir and returns its mtime, so both sides of the
+      comparison share one clock and every later write is at or after
+      it; the same-tick case reads as a change (one benign extra cycle
+      on the macOS late-delivery path the rule exists for). Pinned in
+      `watch-rules.test.ts` (2,000 writes right after the stamp, none
+      "before" it; the stamp removed; an older file still before) and
+      by the probe: 12 of 12 loaded runs green on the fix, 0 of 24 test
+      executions lost, against 0 of 24 idle and 3 of 24 loaded before.
+      The e2e timeouts carry the watch's stdout and stderr (PR #310)
+      so the next miss names itself.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
@@ -1328,20 +1353,9 @@ state of each:
    real workspace uploads > 100 MiB artifacts, not before.
 3. DONE 2026-09-09 as item 88 → `@vzn/vx-turbo` (history) — zero-migration adoption as a plugin on the `project` stage.
 4. DONE 2026-09-10 as item 77 (history) — one core per process; the shipped binary serves its own façade to every `@vzn/vx` import.
-5. **The watch e2e flake.** Every initial-run assertion in
-   `tests/watch-loop.test.ts` throws with the watch's own stdout on a
-   miss (2026-09-10), so a red run names the label that re-ran; the
-   macOS intermittent extra cycle is recorded under item 130. On this
-   box (2026-09-11) `tests/cli.test.ts`'s watch tests lost their 45 s
-   window three times in a day under four parallel shards (a different
-   test each time: the lockfile cycle, the no-cache self-trigger, the
-   re-run after an edit) and, in a probe, 3 of 24 executions under four
-   CPU burners against 0 of 24 idle; the timeout said nothing about
-   where the watch stood. Its `waitFor` now throws with the captured
-   watch stdout, like watch-loop's, and `scratchpad/watch-probe.sh` is
-   the reproduction (four burners, six runs); the next red run under
-   load names the stall — proof of delivery vs. the cycle itself — and
-   that is the fix's starting point.
+5. DONE 2026-09-11 as item 148 — the watch e2e flake was the arm
+   instant on the wrong clock; the macOS intermittent extra cycle stays
+   recorded under item 130.
 6. **Re-measure the warm run after each day's work** — the hot path is
    the product. `bun packages/vx-bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap
@@ -1591,10 +1605,11 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     Nx repos (owner: 3–5 popular ones; only
     `nx:run-commands`, `nx:run-script`, a plain `command` and
     `nx:noop` targets are supported, anything else is out): the
-    remaining candidate is storybook (483 targets inheriting a plain
-    `command`; its placeholders and root cwd map since item 147, so
-    the next step is the bench itself: yarn 4.18 with no vendored
-    release, a large install); redwood is dropped — its
+    remaining candidate was storybook (483 targets inheriting a plain
+    `command`; its placeholders and root cwd map since item 147): its
+    install does not fit this box — the fetch step filled the 6 GB
+    left on the disk with the yarn cache alone (ENOSPC, 2026-09-11) —
+    so it waits for a bench host with room; redwood is dropped — its
     `build` declares no outputs, so Nx's cache replays the log and a
     restore arm restores nothing under either tool (REPOS.md). Parity
     is the task graph as above.

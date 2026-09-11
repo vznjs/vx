@@ -18,6 +18,7 @@ import {
   makeRootEventFilter,
   makeWatchIgnore,
   memberEntries,
+  fsClockNow,
   modifiedBefore,
   sweepConfigs,
   WATCH_PROBE,
@@ -551,6 +552,37 @@ describe('a first sighting is a change only if the path moved since the arm', ()
       const earlier = (await stat(f)).mtimeMs - 1
       expect(modifiedBefore(f, earlier)).toBe(false)
       expect(modifiedBefore(path.join(dir, 'missing'), later)).toBe(false)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('fsClockNow — the arm instant on the mtime clock', () => {
+  it('a write made right after it is never "modified before" it, and the stamp is gone', async () => {
+    // `Date.now()` reads the fine clock; an mtime is the kernel's coarse
+    // clock, up to a tick behind (2 of 3,000 tight writes on the Linux
+    // bench box, 5.8 ms; more under load) — so an edit made right after
+    // the arm was judged the initial run's and dropped (the watch e2e
+    // flake, 2026-09-11). A stamp read off the filesystem is on the
+    // mtime clock itself.
+    const { mkdtemp, rm, writeFile } = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const fs = await import('node:fs')
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-clock-'))
+    try {
+      const f = path.join(dir, 'edit.txt')
+      for (let i = 0; i < 2000; i++) {
+        const armedAt = fsClockNow(dir)
+        fs.writeFileSync(f, String(i))
+        expect(modifiedBefore(f, armedAt)).toBe(false)
+      }
+      expect(fs.existsSync(path.join(dir, '.vx-watch-clock'))).toBe(false)
+      // And a file from before the arm still reads as before it.
+      await writeFile(f, 'old')
+      await new Promise((r) => setTimeout(r, 30))
+      expect(modifiedBefore(f, fsClockNow(dir))).toBe(true)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
