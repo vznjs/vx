@@ -701,6 +701,27 @@ equivalent — map it manually` on every run, for the value every
       as the harness's header says. The head-to-head per-package
       figures on the site stay the owner's committed run.
 
+133.  DONE (2026-09-11 — owner: "The website looks bad. It's laggy,
+      too complex, tons of visual bugs, inconsistent"): the film is
+      gone; the landing page is static. No canvases (the warp field,
+      the orbit, the dot grid), no pinned scroll-scrubbed scenes, no
+      grain or vignette overlays, no card tilt, no reveals, no
+      typewriter, no glitch — one script, for the install command's
+      copy button. `document.getAnimations()` is 0 and the page has
+      no `<canvas>`; a real Chromium loads it in ~120 ms at 1440 and
+      ~50 at 390, no horizontal overflow at either. What stays is the
+      message the owner set on 09-10 (one unit, the per-package
+      scaling number, the differentiators, "Open. All of it.") in
+      one visual language: the benchmark panel's bar draws the
+      overhead chart, the stat tile is the one primitive, two display
+      sizes, hover states only. Sections: hero with the terminal
+      (static rows), the overhead chart with the three per-package
+      tiles, the four "no"s, the nine cards, the pipeline rail with
+      the platform cards, the config card, the benchmark panel, the
+      migrate call to action, the footer. The generator's regions are
+      unchanged and `update-site.ts --check` passes; the stylesheet
+      went from 1,759 to 1,167 lines and the page from 1,152 to 714.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so

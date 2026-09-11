@@ -24,51 +24,42 @@ Hand-authored pages live only in the site and ARE tracked:
 ## The landing page
 
 `src/pages/index.astro` with `src/styles/landing.css` is a standalone
-page (its own nav, footer and theme; the docs stay Starlight). It is a
-scroll-driven film: five pinned scenes, each a `section.scene.pin`
-whose height is `--len` viewports and whose sticky `.stage` is drawn
-from a scroll progress `--p` (0..1) the script writes on every frame —
-the cold open (a warp field and the command typing itself), the clocks
-(three real cold-build times on one orbit, sixty times speed, then six
-hundred), the wall (the three overheads as monoliths in one unit,
-`+m:ss`, Nx clipped off the chart), the scale (3,270 tasks counted over
-a dot sweep, with the three per-package stat tiles), and "Open, all the
-way down." (the strikes) — then flowing
-sections (the cards, the pipeline rail, the live terminal, the proof
-panel) and the outro. Two rules hold across it:
+page (its own nav, footer and theme; the docs stay Starlight). It is
+static: no canvases, no pinned scenes, no scroll scripting, no reveal
+or tilt effects — one script for the install command's copy button.
+Sections in order: the hero with the terminal, the overhead chart and
+the three per-package stat tiles, "Open. All of it.", the nine cards,
+the pipeline rail with the platform cards, the config card, the
+benchmark panel, the migrate call to action, the footer. Two rules
+hold across it:
 
 - **The numbers** are generated: `packages/vx-bench/update-site.ts`
-  rewrites the `benchRows` block, the three per-package stat tiles in
-  the scale scene and the two benchmark note paragraphs from
-  `results.json`, and
+  rewrites the `benchRows` block, the three per-package stat tiles and
+  the two benchmark note paragraphs from `results.json`, and
   `check.site` fails when they drift. Edit the generator, not those
-  regions. The clocks and the wall read the same constants
-  (`raceBase`, `raceVx`, `raceTurbo`, `raceNx`, `over()`), so a
-  re-benchmark reshapes every scene.
-- **The motion** is the one `<script>` at the bottom over a DOM that
-  reads complete without it: the scrubber, the canvases (warp, orbit,
-  grid), the reveals, the tilting cards, the typewriter. No dependency.
-  `prefers-reduced-motion` unpins every scene and holds each on its
-  final frame.
+  regions. The overhead chart reads the same constants (`raceBase`,
+  `raceVx`, `raceTurbo`, `raceNx`, `plus()`, `perPkg()`), so a
+  re-benchmark reshapes it too.
+- **One visual language**: the benchmark panel's bar (`.bench-bar`)
+  is the overhead chart's bar; the stat tile is the same primitive
+  everywhere; two display sizes (`h1`, `h2`); hover states only. A
+  rule that would animate, pin or scroll-drive anything is out of
+  scope by decision (owner, 2026-09-11: the film was laggy and
+  inconsistent).
 
 To check it visually, drive the pre-installed Chromium from a scratch
 directory (never from this package — `playwright-core` is not a
-dependency of the site), scrolling each `[data-scene]` to a progress
-and capturing it:
+dependency of the site):
 
 ```sh
 bun --bun astro build && bun --bun astro preview --port 4321 &
 mkdir -p /tmp/pw && cd /tmp/pw && bun add playwright-core
 # then: chromium.launch({ executablePath: '/opt/pw-browsers/chromium-<n>/chrome-linux/chrome' }),
 # newPage({ viewport: { width: 390, height: 844 } }), goto('http://127.0.0.1:4321/vx/'),
-# for each scene: scrollTo(scene.offsetTop + p * (scene.offsetHeight - innerHeight)),
-# wait two frames, screenshot; and read document.documentElement.scrollWidth —
-# it must equal the viewport width at 1440 and at 390.
+# screenshot({ fullPage: true }); read document.documentElement.scrollWidth (must equal the
+# viewport width at 1440 and at 390), document.querySelectorAll('canvas').length (0) and
+# document.getAnimations().length (0).
 ```
-
-Chrome's `--screenshot` flag is not a substitute: it captures before
-CSS animations settle and at a viewport narrower than the layout, both
-of which look like page bugs and are not.
 
 ## Writing a blog post
 
