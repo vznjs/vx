@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-migrate",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Adopt vx from Turbo or Nx: `bunx @vzn/vx-migrate` writes one vx.config.ts per package from turbo.json or an exported Nx project graph, through core's migration seam.",
   "type": "module",
   "main": "./src/index.ts",

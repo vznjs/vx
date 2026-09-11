@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-nx-cache",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Nx self-hosted remote cache plugin for vx — stores artifacts in any server implementing Nx's remote cache OpenAPI spec (GET/PUT /v1/cache/{hash}, Bearer auth, immutable records).",
   "type": "module",
   "main": "./src/index.ts",

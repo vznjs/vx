@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-bench",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "description": "Synthetic-workspace generator, runners and the ideal-schedule baseline behind the published benchmarks.",
   "type": "module",

@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-turbo-cache",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Turborepo remote cache plugin for vx — stores artifacts in any self-hosted server speaking Turbo's /v8/artifacts API (Bearer auth, x-artifact-* headers, HMAC-SHA256 artifact signatures).",
   "type": "module",
   "main": "./src/index.ts",

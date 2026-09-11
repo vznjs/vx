@@ -1205,7 +1205,11 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     `oxfmt --check <file>` passes what `oxfmt --check .` rejects (a
     code span wrapped across an indented line), so the gate's format
     check is the directory scan from the package, never a named file
-    (CLAUDE.md). Left: the zero-migration
+    (CLAUDE.md). Refuted 2026-09-11: shipping plugins prebuilt to
+    save the transpile on import — on the compiled binary the
+    `workspace config` stage reads 9–12 ms with no plugin and 12–14
+    with `turbo()` imported from source, ~2 ms for a build step in
+    every plugin package. Left: the zero-migration
     stage's remaining 20 ms per 1,000 (the overlay probes, two clones
     per fill, a re-validation per plugin) if a workspace that size
     ever runs without configs. Never end with "what next?".

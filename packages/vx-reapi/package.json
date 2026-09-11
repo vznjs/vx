@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-reapi",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Bazel Remote Execution API plugin for vx — remote cache (ActionCache + CAS) against NativeLink, BuildBuddy, Buildbarn or bazel-remote.",
   "type": "module",
   "main": "./src/index.ts",

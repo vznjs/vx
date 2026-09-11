@@ -1,6 +1,7 @@
 {
   "name": "@vzn/monorepo",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Workspace root for @vzn/vx and its plugin packages.",
   "private": true,
   "type": "module",
