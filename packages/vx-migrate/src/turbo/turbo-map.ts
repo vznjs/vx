@@ -5,7 +5,7 @@
 // turbo's own rule. Two consumers, one mapper, so they cannot drift:
 //   - `@vzn/vx-migrate` renders these to vx.config.ts files, splicing
 //     turbo's global fields in as imports of a generated preset;
-//   - `@vzn/vx-turbo` hands them to the `project` stage live, with the
+//   - `@vzn/vx-migrate` hands them to the `project` stage live, with the
 //     global values inlined, so a Turbo repo runs under vx with no file
 //     written.
 // The consumer decides what a global becomes through `splice`.

@@ -4,7 +4,9 @@
 
 Core reads no other runner's format. `vx init` (package.json scripts)
 stays; Turbo and Nx migrations are `@vzn/vx-migrate`, a package with its
-own bin; the Turbo mapper belongs to `@vzn/vx-turbo`, which runs it live.
+own bin; the Turbo mapper belongs to the `turbo()` plugin, which runs it
+live (its own package `@vzn/vx-turbo` until 2026-09-11, `@vzn/vx-migrate`
+since: one adoption package).
 What core keeps is the seam every adoption tool shares: a `MigrationPlan`
 in, files out (`workspace/migration.ts`, `applyMigration` on the façade).
 
@@ -19,7 +21,7 @@ the binary the user has.
 
 ## Why the mapper lives in the plugin, not the migrator
 
-Two consumers, one mapping: `@vzn/vx-turbo` runs `turbo.json` under vx
+Two consumers, one mapping: `turbo()` runs `turbo.json` under vx
 with nothing written, `@vzn/vx-migrate` renders the same mapping to
 files. The plugin is the one a workspace keeps; the migrator is run
 once. So the migrator depends on the plugin, never the reverse, and the

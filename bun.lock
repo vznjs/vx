@@ -96,20 +96,6 @@
       "bin": {
         "vx-migrate": "./src/bin.ts",
       },
-      "dependencies": {
-        "@vzn/vx-turbo": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/bun": "^1.4.0",
-        "@vzn/vx": "workspace:*",
-      },
-      "peerDependencies": {
-        "@vzn/vx": "*",
-      },
-    },
-    "packages/vx-nx-cache": {
-      "name": "@vzn/vx-nx-cache",
-      "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
@@ -121,20 +107,6 @@
     "packages/vx-otel": {
       "name": "@vzn/vx-otel",
       "version": "0.0.0",
-      "devDependencies": {
-        "@types/bun": "^1.4.0",
-        "@vzn/vx": "workspace:*",
-      },
-      "peerDependencies": {
-        "@vzn/vx": "*",
-      },
-    },
-    "packages/vx-prune": {
-      "name": "@vzn/vx-prune",
-      "version": "0.0.0",
-      "bin": {
-        "vx-prune": "./src/bin.ts",
-      },
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
@@ -161,28 +133,6 @@
     },
     "packages/vx-schedule-history": {
       "name": "@vzn/vx-schedule-history",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@types/bun": "^1.4.0",
-        "@vzn/vx": "workspace:*",
-      },
-      "peerDependencies": {
-        "@vzn/vx": "*",
-      },
-    },
-    "packages/vx-turbo": {
-      "name": "@vzn/vx-turbo",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@types/bun": "^1.4.0",
-        "@vzn/vx": "workspace:*",
-      },
-      "peerDependencies": {
-        "@vzn/vx": "*",
-      },
-    },
-    "packages/vx-turbo-cache": {
-      "name": "@vzn/vx-turbo-cache",
       "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "^1.4.0",
@@ -752,19 +702,11 @@
 
     "@vzn/vx-migrate": ["@vzn/vx-migrate@workspace:packages/vx-migrate"],
 
-    "@vzn/vx-nx-cache": ["@vzn/vx-nx-cache@workspace:packages/vx-nx-cache"],
-
     "@vzn/vx-otel": ["@vzn/vx-otel@workspace:packages/vx-otel"],
-
-    "@vzn/vx-prune": ["@vzn/vx-prune@workspace:packages/vx-prune"],
 
     "@vzn/vx-reapi": ["@vzn/vx-reapi@workspace:packages/vx-reapi"],
 
     "@vzn/vx-schedule-history": ["@vzn/vx-schedule-history@workspace:packages/vx-schedule-history"],
-
-    "@vzn/vx-turbo": ["@vzn/vx-turbo@workspace:packages/vx-turbo"],
-
-    "@vzn/vx-turbo-cache": ["@vzn/vx-turbo-cache@workspace:packages/vx-turbo-cache"],
 
     "acorn": ["acorn@8.18.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ=="],
 

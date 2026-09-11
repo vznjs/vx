@@ -886,6 +886,18 @@ equivalent — map it manually` on every run, for the value every
       failed with TS6305 under either tool — the wipe removes them
       too.
 
+140.  DONE (2026-09-11, owner): adoption is one package. `@vzn/vx-turbo`
+      (the `turbo()` project-stage plugin and the mapper), `@vzn/vx-turbo-cache`
+      (`turboCache()`) and `@vzn/vx-nx-cache` (`nxCache()`) merged into
+      `@vzn/vx-migrate` as `src/turbo/`, `src/turbo-cache/` and
+      `src/nx-cache/`, one entry exporting all of it beside the migrate
+      CLI; every plugin from it is named `@vzn/vx-migrate` (a plugin's
+      name is its package name, and core reads names only in messages
+      and the key stage's material prefix). `@vzn/vx-prune` is removed
+      with its verb; `vx prune` prints that it is gone unless a declared
+      plugin claims the verb. Suites, READMEs, the docs tables and the
+      bench harness follow the move; the shim test's package list too.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
@@ -1419,8 +1431,8 @@ last`, `vx info` and `vx cache prune`, through one parser and one
 - **No first-party technology plugins (owner, 2026-09-10).** A plugin
   that gives packages tasks from a framework's config (`vite()`,
   `next()`, …) is the community's to write on the `project` stage; core
-  names no tool, and this repo ships no such plugin. `@vzn/vx-turbo` is an
-  adoption plugin, not a technology plugin, and stays.
+  names no tool, and this repo ships no such plugin. `turbo()` in
+  `@vzn/vx-migrate` is an adoption plugin, not a technology plugin, and stays.
 - **Windows is WSL (owner, 2026-09-10).** vx spawns POSIX shell and ships
   linux / darwin binaries; a Windows developer runs it under WSL, and the
   docs say so instead of listing Windows as a gap.

@@ -1,5 +1,5 @@
 // Turbo → vx migration: the RENDERING half. The mapping itself lives in
-// `@vzn/vx-turbo` (which runs it live); this file turns turbo's global
+// `turbo()` (which runs it live); this file turns turbo's global
 // fields into a root vx-preset.ts that each generated config imports and
 // spreads — TypeScript composition replaces turbo's global config.
 
@@ -11,7 +11,7 @@ import {
   type ProjectMeta,
   quoteTsLiteral as quote,
 } from '@vzn/vx'
-import { mapTurboWorkspace, type TurboGlobal } from '@vzn/vx-turbo'
+import { mapTurboWorkspace, type TurboGlobal } from './turbo/turbo-map.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 function relPosix(from: string, to: string): string {

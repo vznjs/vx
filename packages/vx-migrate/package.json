@@ -2,7 +2,7 @@
   "name": "@vzn/vx-migrate",
   "version": "0.0.0",
   "license": "MIT",
-  "description": "Adopt vx from Turbo or Nx: `bunx @vzn/vx-migrate` writes one vx.config.ts per package from turbo.json or an exported Nx project graph, through core's migration seam.",
+  "description": "Adopt @vzn/vx from Turborepo or Nx: run a Turbo repo unchanged, migrate either to vx.config.ts, and keep your Turbo or Nx remote cache",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -22,9 +22,6 @@
   ],
   "engines": {
     "bun": ">=1.4"
-  },
-  "dependencies": {
-    "@vzn/vx-turbo": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",

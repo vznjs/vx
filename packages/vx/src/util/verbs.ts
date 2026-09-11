@@ -26,7 +26,7 @@ export const DISPATCHED_VERBS: readonly string[] = [...CORE_VERBS, 'stats']
 
 /**
  * Verbs core owned once and a package owns now. Not core verbs: a plugin
- * may declare them (`@vzn/vx-prune` does), and the dispatcher prints the
+ * may declare them, and the dispatcher prints the
  * pointer only when no declared plugin claimed the name.
  */
 export const MOVED_VERBS: Readonly<Record<string, string>> = {
@@ -34,6 +34,6 @@ export const MOVED_VERBS: Readonly<Record<string, string>> = {
     'vx migrate moved to @vzn/vx-migrate: run `bunx @vzn/vx-migrate` (turbo.json or an Nx ' +
     'project graph → vx.config.ts); `vx init` reads package.json scripts',
   prune:
-    'vx prune moved to @vzn/vx-prune: run `bunx @vzn/vx-prune <project>`, or declare `prune()` ' +
-    'from @vzn/vx-prune in vx.workspace.ts to keep the verb',
+    'vx prune was removed (2026-09-11): the Docker-subset verb is not shipped; copy the ' +
+    'workspace and `--filter` the build instead',
 }

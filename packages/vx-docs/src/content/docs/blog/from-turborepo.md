@@ -17,20 +17,20 @@ changes is where the config lives and what it can say.
 
 ## Step zero: do not migrate
 
-`@vzn/vx-turbo` fills vx's `project` stage from your existing
+`turbo()` from `@vzn/vx-migrate` fills vx's `project` stage from your existing
 `turbo.json` and each package's scripts. One file, and the repository
 runs under vx:
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'
-import { turbo } from '@vzn/vx-turbo'
+import { turbo } from '@vzn/vx-migrate'
 
 export default defineWorkspace({ plugins: [turbo()] })
 ```
 
 ```bash
-bun add -d @vzn/vx @vzn/vx-turbo   # or npm / pnpm / yarn
+bun add -d @vzn/vx @vzn/vx-migrate   # or npm / pnpm / yarn
 vx run build --all
 ```
 
@@ -59,7 +59,7 @@ inlines the matching `package.json` script as the task's command, and
 emits one `vx.config.ts` per package. It emits a task only where the
 script exists. Anything it cannot infer becomes a `TODO(vx-migrate)`
 comment, never a silently wrong value. It renders from the same mapper
-`@vzn/vx-turbo` runs, so the files say exactly what the plugin was
+`turbo()` runs, so the files say exactly what the plugin was
 already doing.
 
 ## What maps, and what is better

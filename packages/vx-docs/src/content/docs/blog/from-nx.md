@@ -89,7 +89,7 @@ composes, so a shared input list is an import.
 - **Nx Cloud's distributed execution.** The seam is public:
   `@vzn/vx-reapi` runs tasks on any Bazel Remote Execution API pool.
   There is no first-party service and there will not be one.
-- **Nx Cloud's remote cache.** `@vzn/vx-nx-cache` speaks the
+- **Nx Cloud's remote cache.** `nxCache()` from `@vzn/vx-migrate` speaks the
   self-hosted `/v1/cache` wire, so an existing self-hosted server keeps
   working. Any other wire is a `cache` plugin.
 - **Nx Cloud's flaky-test detection.** vx [detects flaky

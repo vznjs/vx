@@ -422,8 +422,8 @@ End-to-end cache write/read/restore is also covered by
 
 Most likely replacement: **remote cache** — already a layer, not a
 replacement: `docs/modules/layered-cache.md` is the seam, and
-`@vzn/vx-turbo-cache`, `@vzn/vx-nx-cache` and `@vzn/vx-reapi` are the
-wires that fill it.
+`@vzn/vx-migrate` (`turboCache()`, `nxCache()`) and `@vzn/vx-reapi` are
+the wires that fill it.
 
 The contract is small: `key()` is pure given inputs; `get()`, `save()`,
 `restoreOutputs()` are the three I/O methods. A remote implementation

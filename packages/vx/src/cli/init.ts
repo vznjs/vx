@@ -46,7 +46,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   if (await Bun.file(path.join(root, 'turbo.json')).exists()) {
     notes.push(
       'turbo.json found and not read — `bunx @vzn/vx-migrate` maps it (dependsOn, inputs, ' +
-        'outputs), or `plugins: [turbo()]` from @vzn/vx-turbo runs it with nothing written',
+        'outputs), or `plugins: [turbo()]` from @vzn/vx-migrate runs it with nothing written',
     )
   } else if (
     (await Bun.file(path.join(root, 'nx.json')).exists()) ||

@@ -1,4 +1,4 @@
-// @vzn/vx-nx-cache — a vx `cache` plugin that stores artifacts in any server
+// @vzn/vx-migrate (nxCache) — a vx `cache` plugin that stores artifacts in any server
 // implementing Nx's self-hosted remote cache OpenAPI spec: `GET` and `PUT`
 // `/v1/cache/{hash}`, a Bearer token, `application/octet-stream` bodies,
 // and an IMMUTABLE record — a second write of an existing hash is `409`.

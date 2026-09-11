@@ -123,9 +123,9 @@ exported from the single `@vzn/vx` entry point.
 ## Bring your own remote cache
 
 The remote-cache **wire is a plugin concern** — core ships no HTTP cache
-client at all. `@vzn/vx-reapi` speaks Bazel's CAS; `@vzn/vx-turbo-cache`
+client at all. `@vzn/vx-reapi` speaks Bazel's CAS; `@vzn/vx-migrate`'s `turboCache()`
 speaks Turbo's `/v8/artifacts` (ducktors, Vercel hosted, …) and
-`@vzn/vx-nx-cache` Nx's self-hosted `/v1/cache` — each is the same
+its `nxCache()` Nx's self-hosted `/v1/cache` — each is the same
 recipe with that tool's shapes inside the class:
 
 ```ts
