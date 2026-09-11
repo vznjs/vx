@@ -378,6 +378,7 @@ const NX_GRAPH = {
                 '{projectRoot}/dist',
                 '{options.outFile}',
                 '{projectRoot}/coverage/lcov.info',
+                '{projectRoot}/.output',
                 '{workspaceRoot}/reports/build.json',
               ],
               dependsOn: [
@@ -492,10 +493,17 @@ describe('vx migrate (nx)', () => {
       // {env: X} → cache input AND passThrough (isolated child env).
       expect(build.cache?.inputs.env).toEqual(['NODE_ENV'])
       expect(build.exec?.env?.passThrough).toEqual(['NODE_ENV'])
-      // outputs: dir heuristic, {options.*} resolution + project-prefix
-      // strip, file with extension kept verbatim; {workspaceRoot}/<path>
-      // → outputs.workspaceFiles.
-      expect(build.cache?.outputs.files).toEqual(['dist/**', 'build/main.js', 'coverage/lcov.info'])
+      // outputs: dir heuristic (a leading dot is a hidden directory, not
+      // an extension — a bare `.output` would save nothing, the output
+      // scan lists files), {options.*} resolution + project-prefix strip,
+      // file with extension kept verbatim; {workspaceRoot}/<path> →
+      // outputs.workspaceFiles.
+      expect(build.cache?.outputs.files).toEqual([
+        'dist/**',
+        'build/main.js',
+        'coverage/lcov.info',
+        '.output/**',
+      ])
       expect(build.cache?.outputs.workspaceFiles).toEqual(['reports/build.json'])
       // dependsOn object forms.
       expect(build.dependsOn).toEqual(['^build', 'codegen', '^prebuild', 'pkg-b#tool', 'fmt'])

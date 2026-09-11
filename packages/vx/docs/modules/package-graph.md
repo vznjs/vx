@@ -33,17 +33,28 @@ resolve to another workspace project (skipping self-references). Two
 adjacencies come out of it:
 
 - **order** (`directDeps`, what `'^name'` walks): `dependencies`,
-  `devDependencies`, `optionalDependencies` and the task edges — what
-  the package has installed for itself.
+  `devDependencies`, `optionalDependencies`, the task edges, and a
+  `peerDependencies` entry on a workspace sibling unless that edge
+  would close a cycle through the order edges so far — what the
+  package imports at build time.
 - **reach** (`transitiveDeps` / `transitiveDependents`, what
-  `--filter pkg...` and `--affected` read): order plus
-  `peerDependencies`. A peer is provided by whoever consumes the
-  package and is never linked into its own `node_modules`, so it is
-  not a build-order edge (Turbo reads no peers at all), and peers are
-  the one bucket that routinely closes a cycle — medusa's test-utils
-  peers on medusa, which depends on it through analytics; as an order
-  edge that was a task cycle (2026-09-11). A change in the peer can
-  still break the package that peers on it, so it stays affected.
+  `--filter pkg...` and `--affected` read): order plus every
+  workspace peer.
+
+A peer on a sibling is an import that resolves to the sibling's build:
+every package manager links or hoists it (pnpm's
+`linkWorkspacePackages`, the hoisted root of bun, npm and yarn), and Nx
+orders `^build` on it — TanStack/router's `router-devtools-core` peers
+on `router-core` and type-checks against its `dist`; vx built the
+devtools first and failed (2026-09-11). But peers are the one bucket
+that routinely closes a cycle — medusa's test-utils peers on medusa,
+which depends on it through analytics; Turbo, which reads no peers,
+runs it, and an unconditional order edge was a task cycle
+(2026-09-11) — so a peer edge that would close a cycle is reach only:
+the consumer above provides that peer. Peers are tried in
+(package, peer) name order, so which edge of a mutual peering stays is
+the same on every run. A change in a peer always reaches the package
+that peers on it, ordered or not.
 
 The graph is precomputed once per `vx run` invocation:
 

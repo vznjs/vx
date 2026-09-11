@@ -111,7 +111,7 @@ describe('buildPackageGraph', () => {
     expect(g.transitiveDependents('b')).toContain('a')
   })
 
-  it('reads all four dependency fields: three order a build, a peer only reaches', () => {
+  it('reads all four dependency fields: a workspace peer orders a build too', () => {
     const m: ProjectMeta = {
       name: 'a',
       dir: '/ws/a',
@@ -125,12 +125,49 @@ describe('buildPackageGraph', () => {
       configPath: null,
     }
     const g = buildPackageGraph([m, meta('b'), meta('c'), meta('d'), meta('e')])
-    // A peer is provided by whoever consumes `a`, never linked into `a`'s
-    // own node_modules: not a build-order edge (`^build` does not wait on
-    // it), but a change in it still reaches `a` (`--affected`, `...d`).
-    expect(g.directDeps('a')).toEqual(['b', 'c', 'e'])
+    // A peer on a sibling is an import that resolves to the sibling's
+    // build (every package manager links or hoists it): `^build` waits
+    // on it (router's devtools-core peers on router-core, 2026-09-11),
+    // and a change in it reaches `a` (`--affected`, `...d`).
+    expect(g.directDeps('a')).toEqual(['b', 'c', 'd', 'e'])
     expect(g.transitiveDeps('a').sort()).toEqual(['b', 'c', 'd', 'e'])
     expect(g.transitiveDependents('d')).toEqual(['a'])
+  })
+
+  it('a peer stays reach only when the peer already depends on the package', () => {
+    // core dev-depends on its devtools (tests), devtools PEERS on core:
+    // the hard edge orders, the peer edge would close the loop.
+    const g = buildPackageGraph([
+      meta('core', { devtools: 'workspace:*' }),
+      {
+        name: 'devtools',
+        dir: '/ws/devtools',
+        packageJson: { name: 'devtools', peerDependencies: { core: 'workspace:*' } },
+        configPath: null,
+      },
+    ])
+    expect(g.directDeps('core')).toEqual(['devtools'])
+    expect(g.directDeps('devtools')).toEqual([])
+    expect(g.transitiveDeps('devtools').sort()).toEqual(['core', 'devtools'])
+  })
+
+  it('two packages peering on each other keep one order edge, in name order', () => {
+    const peerOn = (name: string, peer: string): ProjectMeta => ({
+      name,
+      dir: `/ws/${name}`,
+      packageJson: { name, peerDependencies: { [peer]: 'workspace:*' } },
+      configPath: null,
+    })
+    // Whichever order the projects arrive in, `a → b` is the edge kept.
+    for (const projects of [
+      [peerOn('a', 'b'), peerOn('b', 'a')],
+      [peerOn('b', 'a'), peerOn('a', 'b')],
+    ]) {
+      const g = buildPackageGraph(projects)
+      expect(g.directDeps('a')).toEqual(['b'])
+      expect(g.directDeps('b')).toEqual([])
+      expect(g.transitiveDependents('a').sort()).toEqual(['a', 'b'])
+    }
   })
 
   it('a peer that closes a cycle is no cycle for the build order (medusa, 2026-09-11)', () => {

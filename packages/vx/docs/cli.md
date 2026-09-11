@@ -121,7 +121,7 @@ facing summary.
 
 An edge is a `package.json` workspace dependency (`dependencies`,
 `devDependencies`, `peerDependencies`, `optionalDependencies`; a peer
-counts for selection but is not a build-order edge, see
+that would close a cycle counts for selection only, see
 `modules/package-graph.md`) OR a
 cross-project `dependsOn` entry (`e2e`'s `test: { dependsOn:
 ['app#build'] }` makes `e2e` a dependent of `app`). The task graph knows

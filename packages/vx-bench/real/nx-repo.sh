@@ -56,6 +56,12 @@ export PATH="$R/.vx-bench-bin:$R/node_modules/.bin:$PATH"
 # Local runner against local runner: a repo's `nxCloudId` would have Nx
 # fetch its cloud client on every run (and fail to, behind this egress).
 export NX_DAEMON=false NX_NO_CLOUD=true
+# Nx 23 keeps its task cache and database per user, under
+# `~/.nx/<workspace id>/`, outside anything the repo's clean sees: a
+# second cold arm read 85 of 85 hits from it (router, 2026-09-11).
+# Pinning the directory turns that sharing off and puts the cache where
+# older releases kept it — the same disk, wiped by `wipe_nx_cache`.
+export NX_CACHE_DIRECTORY="$R/.nx/cache"
 # Everything git ignores except the installs, the two caches and the
 # arm logs; see turbo-repo.sh for why less than this leaks between arms.
 wipe_outputs() {

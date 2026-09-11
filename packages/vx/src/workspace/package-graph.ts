@@ -26,22 +26,33 @@ export function buildPackageGraph(
   for (const p of projects) byName.set(p.name, p)
 
   // Two adjacencies. ORDER (`directDeps`, the `^task` walk) is what the
-  // package has installed for itself: dependencies, devDependencies,
-  // optionalDependencies and the task edges. REACH (the transitive
-  // closures `--filter pkg...` and `--affected` read) adds
-  // peerDependencies: a peer is provided by the consumer, never linked
-  // into the package's own node_modules, so it is not a build-order edge
-  // — and peers are the one bucket that routinely cycles (medusa's
-  // test-utils peers on medusa, which dev-depends on it through
-  // analytics; Turbo, which reads no peers, runs it; an order edge here
-  // made it a task cycle, 2026-09-11) — but a change in the peer can
-  // still break the package that peers on it, so it stays affected.
+  // package imports at build time: dependencies, devDependencies,
+  // optionalDependencies, the task edges, and a workspace peer that does
+  // not close a cycle. REACH (the transitive closures `--filter pkg...`
+  // and `--affected` read) is ORDER plus every workspace peer.
+  //
+  // A peer on a workspace sibling is an import that resolves to that
+  // sibling's build: every package manager links or hoists it (pnpm's
+  // `linkWorkspacePackages`, the hoisted root of bun/npm/yarn), and
+  // TanStack/router's `router-devtools-core` peers on `router-core` and
+  // type-checks against its `dist` — Nx orders `^build` on the peer,
+  // vx built the devtools first and failed (2026-09-11). But peers are
+  // the one bucket that routinely cycles (medusa's test-utils peers on
+  // medusa, which dev-depends on it through analytics; Turbo, which
+  // reads no peers, runs it; an unconditional order edge made `^build`
+  // a task cycle, 2026-09-11), so a peer edge that would close a cycle
+  // through the order graph is reach only: the consumer above provides
+  // that peer. Peers are tried in (package, peer) name order, so which
+  // edge of a two-peer cycle stays is stable across runs.
   const directDeps = new Map<string, string[]>()
   const reachDeps = new Map<string, string[]>()
-  for (const p of projects) {
-    const order = new Set<string>()
+  const order = new Map<string, Set<string>>()
+  const peers = new Map<string, Set<string>>()
+  const sorted = [...projects].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  for (const p of sorted) {
+    const own = new Set<string>()
     for (const name of taskEdges?.get(p.name) ?? []) {
-      if (name !== p.name && byName.has(name)) order.add(name)
+      if (name !== p.name && byName.has(name)) own.add(name)
     }
     const add = (
       field: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies',
@@ -53,13 +64,40 @@ export function buildPackageGraph(
         if (name !== p.name && byName.has(name)) into.add(name)
       }
     }
-    add('dependencies', order)
-    add('devDependencies', order)
-    add('optionalDependencies', order)
-    const reach = new Set(order)
-    add('peerDependencies', reach)
-    directDeps.set(p.name, [...order].sort())
-    reachDeps.set(p.name, [...reach].sort())
+    add('dependencies', own)
+    add('devDependencies', own)
+    add('optionalDependencies', own)
+    order.set(p.name, own)
+    const peer = new Set<string>()
+    add('peerDependencies', peer)
+    peers.set(p.name, peer)
+  }
+  // `to` reaches `from` through the order edges so far ⇒ from → to
+  // would close a cycle.
+  const reaches = (start: string, goal: string): boolean => {
+    const seen = new Set<string>([start])
+    const stack = [start]
+    while (stack.length > 0) {
+      for (const next of order.get(stack.pop()!) ?? []) {
+        if (next === goal) return true
+        if (!seen.has(next)) {
+          seen.add(next)
+          stack.push(next)
+        }
+      }
+    }
+    return false
+  }
+  for (const p of sorted) {
+    const own = order.get(p.name)!
+    for (const peer of [...peers.get(p.name)!].sort()) {
+      if (!own.has(peer) && !reaches(peer, p.name)) own.add(peer)
+    }
+  }
+  for (const p of sorted) {
+    const own = order.get(p.name)!
+    directDeps.set(p.name, [...own].sort())
+    reachDeps.set(p.name, [...new Set([...own, ...peers.get(p.name)!])].sort())
   }
 
   // Reverse adjacency: who declares X as a workspace dep.
