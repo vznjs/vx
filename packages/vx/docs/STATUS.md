@@ -936,8 +936,18 @@ equivalent — map it manually` on every run, for the value every
       the wide n8n set (`build typecheck lint`, 220 tasks) at 4
       workers lost `n8n-editor-ui#lint` and `#typecheck` to the OOM
       killer (3.6 GB resident each, `dmesg`; the lint passed alone on
-      the same inputs), so the wide pass runs both tools at 3 workers
-      and the harness keeps one log per tool and arm. The landing
+      the same inputs), and at 3 workers its last three tasks — vue-tsc
+      at 5.7 GB and two eslints at 3.85 — filled the cgroup to the byte
+      and thrashed 20 minutes at 97% system time; dropped (owner:
+      "leave n8n alone, we have plenty of repos"); medusa's wide set
+      dropped too — its `test` declares no `dependsOn`, so a cold tree
+      runs tests before their imports are built under both tools, and
+      astro's for the same gap (`test` depends on `^test` only) — so
+      the wide pass is payload `build lint` (89: cold 318 s to Turbo's
+      334, the warm rows within 3% on the repo's own uncached lint
+      floor) and cal.com `build lint` (24: Turbo's cold by 4%, vx's
+      warm rows by 1.22–1.26×) at 3 workers, and the harness keeps one
+      log per tool and arm, outside the artifact clean. The landing
       page's real-repo panel shows n8n (the most-starred), cold row
       and all — Turbo took it by 3%, inside the disk's noise — and the
       hero no longer claims every row on real repos: the cold row is
@@ -1456,11 +1466,8 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     per fill, a re-validation per plugin) if a workspace that size
     ever runs without configs. Never end with "what next?".
 
-15. **Wide graphs, then the Nx round.** The five build sets are in
-    (item 141); the wide sets — n8n `build typecheck lint` (220),
-    payload `build lint` (89), medusa `build build:plugin test` (157),
-    astro `build test` (55), one rep each, 3 workers — go into
-    `docs/benchmarks.md` § Wide graphs as they finish. Then the same
+15. **The Nx round.** The five build sets and the two wide sets are
+    in (item 141, `docs/benchmarks.md` § Wide graphs). Next: the same
     harness shape on Nx repos (owner: 3–5 popular ones; only
     `nx:run-commands`, `nx:run-script`, a plain `command` and
     `nx:noop` targets are supported, anything else is out): the

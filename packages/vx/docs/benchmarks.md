@@ -393,6 +393,60 @@ the two empty secrets filled, `SKIP_DB_MIGRATIONS=1`, no database.
 | warm, nothing wiped (no-op)   | **14.7 s**  | 18.5 s (1.26×)  |
 | second no-op                  | **14.5 s**  | 17.8 s (1.22×)  |
 
+### Wide graphs (2026-09-11, one rep, 3 workers)
+
+Each repo's whole task set, not only `build`: the graph a team actually
+runs. One rep per arm and both tools at 3 workers, because the session's
+memory cgroup allows 13.3 GiB and the wide sets' typecheck and lint
+processes run at 3.6–5.7 GB resident each. Same harness, same cleanup,
+same scope as the build tables. Two sets ran; three could not, and the
+reasons are the repos' own (below), the same under both tools.
+
+**payloadcms/payload — `build lint`, 89 tasks.** payload's `lint` is
+`cache: false` in its own turbo.json, so the 44 lint tasks run on every
+arm under both tools (~225 s at 3 workers); the three warm rows are
+that floor, and the cold row is the floor plus the 45 builds.
+
+| `build lint`                  | vx        | Turbo 2.10.4      |
+| ----------------------------- | --------- | ----------------- |
+| cold (caches + outputs wiped) | **318 s** | 334 s (1.05×)     |
+| warm, outputs wiped (restore) | 229 s     | **223 s** (0.97×) |
+| warm, nothing wiped (no-op)   | **227 s** | 228 s (1.01×)     |
+| second no-op                  | **226 s** | 226 s (1.00×)     |
+
+**calcom/cal.com — `build lint`, 24 tasks, scope `@calcom/web...`.**
+`type-check` is `cache: false` in the repo's turbo.json and stays out;
+the three uncached build tasks (~12 s) run on every arm as in the build
+table, so the warm rows are the runner plus that floor.
+
+| `build lint`                  | vx         | Turbo 2.7.1         |
+| ----------------------------- | ---------- | ------------------- |
+| cold (caches + outputs wiped) | 246.0 s    | **236.8 s** (0.96×) |
+| warm, outputs wiped (restore) | **16.2 s** | 19.7 s (1.22×)      |
+| warm, nothing wiped (no-op)   | **14.3 s** | 17.7 s (1.23×)      |
+| second no-op                  | **14.3 s** | 18.0 s (1.26×)      |
+
+**medusajs/medusa — `build build:plugin test`, 157 tasks: dropped.**
+medusa's `test` declares no `dependsOn`, so on a cold tree both tools
+start tests before the packages they import are built: vx lost
+`@medusajs/auth#test` (`Cannot find module '@medusajs/framework/awilix'`,
+and it passed on the restore arm once the build existed), Turbo lost
+`@medusajs/dashboard#test` (`Failed to resolve entry for package
+"@medusajs/admin-vite-plugin"`) on all four arms. A repo configuration
+gap the two runners expose identically; not a number for either.
+
+**withastro/astro — `build test`, 55 tasks: dropped**, the same gap:
+`test` depends on `^test` only, and its tests import their own package's
+`dist`. Turbo lost `@astrojs/internal-helpers#test`, `upgrade#test` and
+`telemetry#test` on every arm; vx's scheduler happened to run the builds
+first and lost `@astrojs/language-server#test`, which imports
+`packages/astro/dist` across packages, plus `@astrojs/ts-plugin#test`,
+which downloads VS Code and cannot behind this proxy.
+
+**n8n-io/n8n — `build typecheck lint`, 220 tasks: dropped** (owner). The
+editor-ui's vue-tsc and eslint at 3.6–5.7 GB resident each do not fit
+the cgroup beside anything else.
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,

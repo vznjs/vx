@@ -49,6 +49,11 @@ filters of the repo's own `build` script — `astro create-astro
   cached), forever. Probed with `--dry=json`: one byte appended to a
   gitignored `dist/index.js` changes the hash. vx excludes a task's
   declared outputs from its inputs on the same config.
+- The wide set (`build test`, 55) is dropped: `test` depends on `^test`
+  only and the tests import their package's `dist`, so a cold tree fails
+  under both tools (three own-`dist` tests under Turbo; under vx the
+  cross-package `@astrojs/language-server#test` and `@astrojs/ts-plugin#test`,
+  which downloads VS Code through the proxy).
 - The first harness's `dist`-directory wipe deleted a TRACKED fixture
   file, `packages/astro/e2e/fixtures/cloudflare/packages/my-lib/dist/index.js`,
   which stays deleted in the bench tree (it is an e2e fixture, outside
@@ -87,6 +92,10 @@ tracked files.
   `turbo()` runs such a task uncached rather than clean `*/**`
   (the sources) before every exec. The override names what Turbo
   caches, so both tools cache the same files.
+- The wide set (`build build:plugin test`, 157) is dropped: `test` has no
+  `dependsOn` in turbo.json, so on a cold tree each tool runs some test
+  before the package it imports is built (vx `@medusajs/auth#test`,
+  Turbo `@medusajs/dashboard#test`), and the arm fails under both.
 - The root `node_modules/.bin` on PATH is what lets
   `@medusajs/icons#build` find `rollup` — a root devDependency the
   package does not declare, resolved through the root `yarn build` in
@@ -110,10 +119,14 @@ tasks; wide set `build typecheck lint` = 220. 84 workspace members.
   for it and, since STATUS 138, neither does vx.
 - One vx cold rep read 193 s against 133–137 s for the other two and a
   standalone re-run; the disk's slow phase, absorbed by the median.
-- The wide set at 4 workers does not fit the cgroup: the cold arm lost
-  `n8n-editor-ui#lint` and `#typecheck` to the OOM killer (3.6 GB
-  resident each, `dmesg`), and the lint passed alone on the same inputs
-  afterwards. Every wide set runs both tools at 3 workers.
+- The wide set does not fit the cgroup above 2 workers: at 4 the cold
+  arm lost `n8n-editor-ui#lint` and `#typecheck` to the OOM killer
+  (3.6 GB resident each, `dmesg`; the lint passed alone on the same
+  inputs afterwards), and at 3 the same two with `n8n-nodes-base#lint`
+  beside them (vue-tsc 5.7 GB, the two eslints 3.85 GB each) filled the
+  cgroup to the byte and thrashed for 20 minutes at 97% system time
+  with 211 of 220 tasks done. Dropped (owner, 2026-09-11: "leave n8n
+  alone, we have plenty of repos"); n8n's numbers are the `build` set.
 
 ## calcom/cal.com — 569a389 (2026-09-09)
 
@@ -122,7 +135,7 @@ yarn 4.12 (node-modules linker), Turbo 2.7.1, Node 22.22. Scope:
 which three are `cache: false` in turbo.json (`@calcom/prisma#build`,
 `#post-install` — prisma generate — and `@calcom/web#copy-app-store-static`)
 and run on every arm under both tools, ~12 s together. Wide set
-`build type-check lint` = 31 (parity confirmed, not run).
+`build lint` (`type-check` is `cache: false` in turbo.json), 3 workers.
 
 - `.env` copied from `.env.example`, with `SKIP_DB_MIGRATIONS=1` added
   (no database here; `@calcom/prisma#build` connects otherwise) and the

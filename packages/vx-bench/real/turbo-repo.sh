@@ -64,14 +64,17 @@ export PATH="$R/node_modules/.bin:$PATH"
 # its declaration emit (TS6305 in every dependant, 2026-09-11).
 wipe_outputs() {
   git clean -fdXq -e '!node_modules' -e '!**/node_modules/**' -e '!.vx' -e '!.vx/**' \
-    -e '!.env*' -e '!.yarn' -e '!.yarn/**' -e '!.husky' -e '!.husky/**' -e '!.turbo' -e '!.turbo/**'
+    -e '!.env*' -e '!.yarn' -e '!.yarn/**' -e '!.husky' -e '!.husky/**' -e '!.turbo' -e '!.turbo/**' \
+    -e '!.vx-bench-*'
 }
 wipe_turbo_cache() { rm -rf node_modules/.cache/turbo .turbo packages/*/.turbo; }
 wipe_vx_cache() { rm -rf .vx; }
 ms() { date +%s%N; }
-# One log per tool AND arm (.vx-bench-<tool>-<arm>.log): a cold arm that
-# failed under one log per tool was overwritten by the restore arm before
-# anyone read it (n8n, 2026-09-11 — two OOM kills, found in dmesg instead).
+# One log per tool AND arm (.vx-bench-<tool>-<arm>.log), kept out of the
+# clean above (astro ignores `*.log`, and the restore arm's clean took the
+# cold arm's log with it): a cold arm that failed under one log per tool
+# was overwritten by the restore arm before anyone read it (n8n,
+# 2026-09-11 — two OOM kills, found in dmesg instead).
 run_vx() { "$VX" run $TASKS "${vx_scope[@]}" $VX_ARGS > ".vx-bench-vx-$1.log" 2>&1; echo $?; }
 run_turbo() { node_modules/.bin/turbo run $TASKS "${turbo_scope[@]}" $TURBO_ARGS --no-daemon > ".vx-bench-turbo-$1.log" 2>&1; echo $?; }
 time_arm() {
