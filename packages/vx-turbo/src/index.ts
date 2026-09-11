@@ -12,10 +12,10 @@ import type { ProjectConfig, TaskConfig, VxPlugin } from '@vzn/vx'
 import { definePlugin, type ProjectMeta } from '@vzn/vx'
 import { mapTurboWorkspace, type TurboMappedProject } from './turbo-map.js'
 
-/** The TODO a persistent task carries in `vx migrate`'s report, in the plugin's voice. */
+/** The note every persistent task carries; the plugin reports them all in one line per run. */
 const PERSISTENT_NOTE =
-  'persistent in turbo.json — vx runs it as a persistent task that is ready on spawn; ' +
-  'add `exec.persistent.readyWhen` in a vx.config to gate dependents on its output'
+  'persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; ' +
+  'add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output'
 
 export interface TurboPluginOptions {
   /**
@@ -54,12 +54,26 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
       if (!warned) {
         warned = true
         for (const note of mapped.notes) ctx.warn(`[${plugin.name}] ${note}`)
+        // One line for every persistent task, not one per task: n8n has a
+        // `dev` and a `watch` in most of its 84 packages, and the per-task
+        // form was a hundred identical lines before the first frame
+        // (2026-09-11).
+        if (mapped.persistent.length > 0) {
+          const names = [...new Set(mapped.persistent.map((id) => id.slice(id.indexOf('#') + 1)))]
+          const packages = new Set(mapped.persistent.map((id) => id.slice(0, id.indexOf('#'))))
+          ctx.warn(
+            `[${plugin.name}] ${mapped.persistent.length} persistent task(s) (${names.join(', ')} across ${packages.size} package(s)) are ${PERSISTENT_NOTE}`,
+          )
+        }
       }
       const project = mapped.byName.get(ctx.name)
       if (project === undefined) return
       config.tasks ??= {}
       for (const t of project.tasks) {
-        for (const todo of t.todos) ctx.warn(`[${plugin.name}] ${ctx.name}#${t.name}: ${todo}`)
+        for (const todo of t.todos) {
+          if (todo === PERSISTENT_NOTE) continue
+          ctx.warn(`[${plugin.name}] ${ctx.name}#${t.name}: ${todo}`)
+        }
         if (t.task === null) continue
         // The user's own declaration wins — the plugin fills, never overwrites.
         // A copy per fill: the stage hands core an object it owns and edits
@@ -74,6 +88,8 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
 interface Indexed {
   readonly byName: ReadonlyMap<string, TurboMappedProject>
   readonly notes: readonly string[]
+  /** `pkg#task` ids of every task turbo.json marks persistent, for the one-line note. */
+  readonly persistent: readonly string[]
 }
 
 /**
@@ -89,8 +105,14 @@ async function mapAll(root: string, metas: readonly ProjectMeta[]): Promise<Inde
     persistentTodo: PERSISTENT_NOTE,
   })
   const byName = new Map<string, TurboMappedProject>()
-  for (const project of mapped.projects) byName.set(project.name, project)
-  return { byName, notes: mapped.notes }
+  const persistent: string[] = []
+  for (const project of mapped.projects) {
+    byName.set(project.name, project)
+    for (const t of project.tasks) {
+      if (t.todos.includes(PERSISTENT_NOTE)) persistent.push(`${project.name}#${t.name}`)
+    }
+  }
+  return { byName, notes: mapped.notes, persistent }
 }
 
 // The mapper itself, for tools that render what this plugin runs live

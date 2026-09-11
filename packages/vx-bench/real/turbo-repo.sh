@@ -13,7 +13,15 @@
 # removes under packages/*/ (default: dist types coverage). Rows print as
 # `<tool> <arm> <ms> exit=<code>`; run each tool's last log is kept beside
 # the repo as .vx-bench-<tool>.log. First run: solidjs/solid, 2026-09-10,
-# recorded in packages/vx/docs/benchmarks.md.
+# recorded in packages/vx/docs/benchmarks.md. Next target (owner,
+# 2026-09-11: "solid is too small"): n8n-io/n8n — the most-starred
+# Turborepo monorepo (204k), 84 workspace packages, 71 `build` tasks,
+# 274 across build + typecheck + test:unit + lint; needs Node >= 24 and
+# pnpm 12 on the bench host:
+#   git clone --depth 1 https://github.com/n8n-io/n8n && cd n8n && pnpm install
+#   printf "import { turbo } from '@vzn/vx-turbo'\nexport default { plugins: [turbo()] }\n" > vx.workspace.mjs
+#   real/turbo-repo.sh ~/n8n <vx-binary> "build" 3 "dist"
+#   real/turbo-repo.sh ~/n8n <vx-binary> "build typecheck test:unit lint" 3 "dist coverage"
 set -u
 R=$1; VX=$2; TASKS=$3; REPS=${4:-3}; DIRS=${5:-"dist types coverage"}
 cd "$R"

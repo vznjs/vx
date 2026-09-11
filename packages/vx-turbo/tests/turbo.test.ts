@@ -229,6 +229,38 @@ describe('@vzn/vx-turbo', () => {
   )
 
   it(
+    'every persistent task is one warning per run, not one per task',
+    async () => {
+      // n8n marks `dev` and `watch` persistent in most of its 84 packages;
+      // a line per task was a hundred identical lines before the first frame.
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            build: { outputs: ['dist/**'] },
+            dev: { persistent: true, cache: false },
+            watch: { persistent: true, cache: false },
+          },
+        }),
+      )
+      for (const name of ['lib', 'app']) {
+        const file = path.join(root, 'packages', name, 'package.json')
+        const pj = JSON.parse(await Bun.file(file).text()) as { scripts: Record<string, string> }
+        pj.scripts['dev'] = 'echo dev'
+        pj.scripts['watch'] = 'echo watch'
+        await writeFile(file, JSON.stringify(pj))
+      }
+      const log = silent()
+      await planRun({ cwd: root, tasks: ['build'], log })
+      const lines = log.lines.filter((l) => l.includes('persistent'))
+      expect(lines).toEqual([
+        '[@vzn/vx-turbo] 4 persistent task(s) (dev, watch across 2 package(s)) are persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task that does not map is reported once, as a warning, not written',
     async () => {
       await writeFile(
