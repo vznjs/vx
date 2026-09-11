@@ -967,7 +967,14 @@ equivalent — map it manually` on every run, for the value every
       siblings uncached and benches `build`. Nx parity by task graph
       (`nx run-many --graph=<file>` against `vx --dry=json`): query 25,
       strapi 39, identical sets. Harness: `real/nx-repo.sh`, the four
-      arms against the repo's own Nx with `NX_DAEMON=false`.
+      arms against the repo's own Nx with `NX_DAEMON=false` and
+      `NX_NO_CLOUD=true`, the pinned package manager on PATH for both
+      (corepack's shim fetches the registry per spawn, which vx's
+      isolated env cannot). Two migration gaps the round exposed, in
+      Next: the generated `vx.config.ts` is compiled by a package's own
+      `tsc --build` (query's `include: **/*.ts`; the bench rewrites the
+      configs to `.mjs`), and two targets on one output directory
+      (strapi's `build:code` / `build:types` / `build`, all `dist/**`).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1482,9 +1489,15 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     per fill, a re-validation per plugin) if a workspace that size
     ever runs without configs. Never end with "what next?".
 
-15. **The Nx round.** The five build sets and the two wide sets are
-    in (item 141, `docs/benchmarks.md` § Wide graphs). Next: the same
-    harness shape on Nx repos (owner: 3–5 popular ones; only
+15. **The Nx round (in flight).** The five build sets and the two
+    wide sets are in (item 141, `docs/benchmarks.md` § Wide graphs).
+    Two gaps from the first Nx repos (item 142): `vx-migrate` should
+    write `.mjs` on request or say to exclude `vx.config.ts` from a
+    package's tsconfig `include`, and it should say what to do when
+    two targets declare one output directory (cache the one with the
+    `^` edge, uncache the siblings with a todo, or refuse loudly at
+    migration time instead of at load time). Then the same harness
+    shape on more Nx repos (owner: 3–5 popular ones; only
     `nx:run-commands`, `nx:run-script`, a plain `command` and
     `nx:noop` targets are supported, anything else is out): the
     shortlist is strapi, storybook (needs `{projectRoot}` /

@@ -47,8 +47,15 @@ if [ -n "$FILTERS" ]; then
   [ -n "$excludes" ] && nx_scope+=(--exclude="$excludes")
 fi
 cd "$R"
-export PATH="$R/node_modules/.bin:$PATH"
-export NX_DAEMON=false
+# `.vx-bench-bin/` beside the repo, when present, holds the package
+# manager the repo pins (`packageManager`): corepack's shims resolve it by
+# fetching the registry, which vx's isolated task env (no proxy variable)
+# cannot and which costs every spawn under either tool; a developer with
+# the pinned pnpm or yarn installed is the footing both tools get.
+export PATH="$R/.vx-bench-bin:$R/node_modules/.bin:$PATH"
+# Local runner against local runner: a repo's `nxCloudId` would have Nx
+# fetch its cloud client on every run (and fail to, behind this egress).
+export NX_DAEMON=false NX_NO_CLOUD=true
 # Everything git ignores except the installs, the two caches and the
 # arm logs; see turbo-repo.sh for why less than this leaks between arms.
 wipe_outputs() {
