@@ -1135,6 +1135,19 @@ apps/worker`) found nothing, and `cwd: '{projectRoot}'` earned a
       Only a dot past the first character marks a file now; pinned in
       `migrate.test.ts` (`.output` → `.output/**` beside `lcov.info`
       kept), documented in the package README.
+152.  DONE (2026-09-11 — Next 15, the fifth Nx repo): refinedev/refine
+      benched, the 35 library `build` tasks at Nx's default
+      `parallel: 3`, medians of three: cold 104.2 s vs Nx 18.2.2's
+      115.3 s, restore 636 ms vs 2.23 s, no-op 184 ms vs 2.11 s
+      (`docs/benchmarks.md`, `REPOS.md`). Out of both tools: the
+      examples (the repo's own scope) and its two Next apps —
+      `refine-ui`'s build fetches Google Fonts (no egress here) and
+      `live-previews` is one 280 s `next build`. `types` shares
+      `dist/**` with `build`, so item 146 leaves it uncached under vx
+      while Nx caches it: not benched. The mapper wrote the repo's
+      `{projectRoot}/.next` output as `.next/**` (item 151). Nx round
+      closed at five repos (owner: 3–5): query, strapi, novu, router,
+      refine.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1661,7 +1674,8 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     per fill, a re-validation per plugin) if a workspace that size
     ever runs without configs. Never end with "what next?".
 
-15. **More Nx repos.** The five Turbo build sets, the two wide sets
+15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
+    (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
     (item 141) and four Nx repos (items 142–144, 150) are in.
     Both gaps from the first Nx repos (item 142) are closed: `.mjs`
     output is item 145, two targets on one output path item 146. Then the harness on more
