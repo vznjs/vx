@@ -25,27 +25,28 @@ Hand-authored pages live only in the site and ARE tracked:
 
 `src/pages/index.astro` with `src/styles/landing.css` is a standalone
 page (its own nav, footer and theme; the docs stay Starlight). It is
-static: no canvases, no pinned scenes, no scroll scripting, no reveal
-or tilt effects — one script for the install command's copy button.
-Sections in order: the hero with the terminal, the overhead chart and
-the three per-package stat tiles, "Open. All of it.", the nine cards,
-the pipeline rail with the platform cards, the config card, the
-benchmark panel, the migrate call to action, the footer. Two rules
-hold across it:
+static — no canvases, no pinned scenes, no scroll scripting, no reveal
+or tilt effects; one script for the install command's copy button —
+and built from three primitives that are exactly the same everywhere
+they appear (owner, 2026-09-11): the section head (kicker, `h2`, one
+line), the card (icon, title, two sentences, a "Docs →" link), and the
+benchmark panel (legend, rows of bars, every competitor a multiple of
+vx). Every point on the page links to the docs page that proves it.
+Sections: the hero with the terminal; the benchmark panel (overhead,
+cold, cached, restore, CPU); the same panel for solidjs/solid; the
+three per-package stat tiles; the nine cards; the three "no" cards;
+the six plugin cards; the config card; migrate; the footer.
 
 - **The numbers** are generated: `packages/vx-bench/update-site.ts`
-  rewrites the `benchRows` block, the three per-package stat tiles and
-  the two benchmark note paragraphs from `results.json`, and
-  `check.site` fails when they drift. Edit the generator, not those
-  regions. The overhead chart reads the same constants (`raceBase`,
-  `raceVx`, `raceTurbo`, `raceNx`, `plus()`, `perPkg()`), so a
-  re-benchmark reshapes it too.
-- **One visual language**: the benchmark panel's bar (`.bench-bar`)
-  is the overhead chart's bar; the stat tile is the same primitive
-  everywhere; two display sizes (`h1`, `h2`); hover states only. A
-  rule that would animate, pin or scroll-drive anything is out of
-  scope by decision (owner, 2026-09-11: the film was laggy and
-  inconsistent).
+  rewrites the `benchRows` block and the three per-package stat tiles
+  from `results.json`, and `check.site` fails when they drift. Edit
+  the generator, not those regions. The overhead row reads the same
+  constants (`raceBase`, `lanes`, `plus()`), so a re-benchmark reshapes
+  it too; the solid rows are typed from `docs/benchmarks.md`.
+- **The message** (owner, 2026-09-11): vx is the fastest in every row,
+  on the synthetic graph and on a real repo, at any size. No
+  percentage-and-multiple mix: every competitor bar reads as a multiple
+  of vx, every overhead as clock time.
 
 To check it visually, drive the pre-installed Chromium from a scratch
 directory (never from this package — `playwright-core` is not a

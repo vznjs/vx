@@ -734,6 +734,30 @@ equivalent — map it manually` on every run, for the value every
       unchanged and `update-site.ts --check` passes; the stylesheet
       went from 1,759 to 1,167 lines and the page from 1,152 to 714.
 
+134.  DONE (2026-09-11 — owner: "Make sure things are consistent: if
+      the same layout is repeated it's exactly the same, no extra
+      info, no text. Don't focus on seconds-not-minutes, focus on we
+      are always the fastest no matter what. Too much small text. Add
+      refs to docs to every point"): three primitives, each identical
+      everywhere — the section head (kicker, `h2`, one line), the
+      card (icon, title, two sentences, "Docs →"), the benchmark panel
+      (legend, rows, every competitor a multiple of vx, vx's own row
+      "fastest"). The message is "The fastest task runner. In every
+      row.": the panel gains the overhead row (what each runner adds
+      over the ideal schedule, so Turborepo reads 11× vx and Nx 221×)
+      above cold, cached, restore and CPU; the same panel repeats for
+      solidjs/solid (cold, restore, cached; vx first in each); the
+      per-package tiles become "First at any size". The nine
+      differentiators, the three "no"s and the six plugin cards are
+      one card; the rail, the overhead chart, the `nots` list and the
+      two-column layouts are gone. Body text is 16–20 px (was 13–15);
+      the benchmark note paragraphs left the page for the docs, and
+      the generator no longer rewrites them (`update-site.ts`: rows
+      and tiles only). Every card and every section links to the page
+      that proves it (benchmarks, sandboxing, plugins, comparison,
+      trusting the cache, migrate, architecture, parity, `vx why`,
+      extensibility, remote execution and caching, MCP, schema).
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
