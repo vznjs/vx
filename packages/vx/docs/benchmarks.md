@@ -447,6 +447,31 @@ which downloads VS Code and cannot behind this proxy.
 editor-ui's vue-tsc and eslint at 3.6–5.7 GB resident each do not fit
 the cgroup beside anything else.
 
+## Real Nx repos (2026-09-11)
+
+The Turbo footing for Nx: the repo's own Nx (`NX_DAEMON=false`,
+`NX_NO_CLOUD=true`) against vx on the `vx.config` files
+`bunx @vzn/vx-migrate --from nx` wrote from the repo's exported graph,
+both tools at the worker count the repo's `nx.json` sets, medians of
+three interleaved reps, the same cleanup and arm logs as
+`turbo-repo.sh`. Parity is the task graph: `nx run-many … --graph`
+against `vx --dry=json` plan the same `project#target` set. Every
+revision, toolchain and bench-side rule (the configs rewritten to
+`.mjs`, the pinned package manager on PATH) is in
+`packages/vx-bench/real/REPOS.md` § Nx repos.
+
+### TanStack/query (25 `build` tasks, pnpm 11, Nx 22.1.3, `parallel: 5`)
+
+Scoped as the repo's own `build` script (`examples/**` and
+`integrations/**` excluded). Every target is `nx:run-script`.
+
+| `build`                       | vx         | Nx 22.1.3      |
+| ----------------------------- | ---------- | -------------- |
+| cold (caches + outputs wiped) | **47.4 s** | 55.1 s (1.16×) |
+| warm, outputs wiped (restore) | **656 ms** | 1.98 s (3.02×) |
+| warm, nothing wiped (no-op)   | **174 ms** | 1.88 s (10.8×) |
+| second no-op                  | **156 ms** | 1.89 s (12.1×) |
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
