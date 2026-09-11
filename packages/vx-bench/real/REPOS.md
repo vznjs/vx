@@ -81,7 +81,7 @@ tracked files.
   `inputs.workspaceFiles: ['turbo.json']` (the mapped inputs). The
   repo's turbo.json declares the outputs as `*/**` and `.medusa/**`
   minus `!src/**` and `!node_modules/**`; vx has no output negation and
-  `@vzn/vx-turbo` runs such a task uncached rather than clean `*/**`
+  `turbo()` runs such a task uncached rather than clean `*/**`
   (the sources) before every exec. The override names what Turbo
   caches, so both tools cache the same files.
 - The root `node_modules/.bin` on PATH is what lets

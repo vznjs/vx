@@ -70,8 +70,8 @@ export function delegatedScript(command: string): string | null
 ## What it does NOT do
 
 - Read `turbo.json`, an Nx graph, or any other runner's format. That is
-  `@vzn/vx-migrate`, which depends on `@vzn/vx-turbo` for the Turbo
-  mapping the plugin also runs live.
+  `@vzn/vx-migrate`, whose `turbo()` plugin runs the same Turbo
+  mapping live.
 
 ## Tests
 

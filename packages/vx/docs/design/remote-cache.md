@@ -2,8 +2,8 @@
 
 > **Status: RETIRED (2026-07-10).** The Turbo-wire client this designed
 > was removed from core — the remote cache is plugin-driven
-> (`docs/modules/layered-cache.md` is the seam; `@vzn/vx-turbo-cache`,
-> `@vzn/vx-nx-cache` and `@vzn/vx-reapi` are the wires). Kept as the
+> (`docs/modules/layered-cache.md` is the seam; `@vzn/vx-migrate`'s
+> `turboCache()` / `nxCache()` and `@vzn/vx-reapi` are the wires). Kept as the
 > historical record of the original Turbo-verbatim design.
 
 ## What we're solving

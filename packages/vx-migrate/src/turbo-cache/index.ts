@@ -1,4 +1,4 @@
-// @vzn/vx-turbo-cache — a vx `cache` plugin that stores artifacts in any
+// @vzn/vx-migrate (turboCache) — a vx `cache` plugin that stores artifacts in any
 // server speaking Turborepo's remote cache API (`/v8/artifacts`): Vercel's
 // hosted cache, or a self-hosted implementation of the published OpenAPI
 // spec. The wire is Turbo's; the bytes are vx's own artifacts under vx's

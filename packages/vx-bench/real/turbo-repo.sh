@@ -1,5 +1,5 @@
 #!/bin/bash
-# vx (compiled binary + @vzn/vx-turbo on the repo's own turbo.json) against
+# vx (compiled binary + @vzn/vx-migrate's turbo() on the repo's own turbo.json) against
 # the repo's own Turbo, on a real Turbo monorepo. Three arms per tool,
 # interleaved (vx, turbo, vx, turbo …) so box noise lands on both:
 #   cold     caches AND outputs wiped — every task executes
@@ -23,7 +23,7 @@
 # 274 across build + typecheck + test:unit + lint; needs Node >= 24 and
 # pnpm 12 on the bench host:
 #   git clone --depth 1 https://github.com/n8n-io/n8n && cd n8n && pnpm install
-#   printf "import { turbo } from '@vzn/vx-turbo'\nexport default { plugins: [turbo()] }\n" > vx.workspace.mjs
+#   printf "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo()] }\n" > vx.workspace.mjs
 #   real/turbo-repo.sh ~/n8n <vx-binary> "build" 3 "dist"
 #   real/turbo-repo.sh ~/n8n <vx-binary> "build typecheck test:unit lint" 3 "dist coverage"
 #

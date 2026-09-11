@@ -91,7 +91,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-describe('@vzn/vx-turbo', () => {
+describe('turbo()', () => {
   it(
     'plans a turbo.json workspace with no vx.config: tasks, edges, cache blocks, inlined globals',
     async () => {
@@ -219,10 +219,10 @@ describe('@vzn/vx-turbo', () => {
       expect(text).not.toContain('outputLogs" ("new-only")')
       expect(text).not.toContain('has no vx equivalent')
       expect(text).toContain(
-        '[@vzn/vx-turbo] app#test: turbo key "outputLogs" ("hash-only") is a per-run setting in vx — run with --output-logs hash-only',
+        '[@vzn/vx-migrate] app#test: turbo key "outputLogs" ("hash-only") is a per-run setting in vx — run with --output-logs hash-only',
       )
       expect(text).toContain(
-        '[@vzn/vx-turbo] app#lint: turbo key "outputLogs" ("loud") is not a value vx knows — run with --output-logs full|hash-only|errors-only|none',
+        '[@vzn/vx-migrate] app#lint: turbo key "outputLogs" ("loud") is not a value vx knows — run with --output-logs full|hash-only|errors-only|none',
       )
     },
     TIMEOUT,
@@ -254,7 +254,7 @@ describe('@vzn/vx-turbo', () => {
       await planRun({ cwd: root, tasks: ['build'], log })
       const lines = log.lines.filter((l) => l.includes('persistent'))
       expect(lines).toEqual([
-        '[@vzn/vx-turbo] 4 task(s) (dev, watch across 2 package(s)): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
+        '[@vzn/vx-migrate] 4 task(s) (dev, watch across 2 package(s)): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
       ])
     },
     TIMEOUT,
@@ -276,10 +276,10 @@ describe('@vzn/vx-turbo', () => {
       // carries the same `!vendor/**` output in 57 tasks, and a line per
       // task was 57 identical lines before the first frame (2026-09-11).
       expect(text).toContain(
-        '[@vzn/vx-turbo] 2 task(s) (build across 2 package(s)): output "!dist/**/*.map": vx outputs have no negation',
+        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): output "!dist/**/*.map": vx outputs have no negation',
       )
       expect(text).not.toContain('app#build: output')
-      expect(text).toContain('[@vzn/vx-turbo] note: root task //#root not migrated')
+      expect(text).toContain('[@vzn/vx-migrate] note: root task //#root not migrated')
       expect(text.split('root task //#root').length - 1).toBe(1)
       expect(text.split('vx outputs have no negation').length - 1).toBe(1)
     },
@@ -312,7 +312,7 @@ describe('output negation', () => {
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.config.cache).toBeUndefined()
       expect(log.lines.join('\n')).toContain(
-        '[@vzn/vx-turbo] 2 task(s) (build across 2 package(s)): outputs "!node_modules/**", "!src/**" narrow "*/**": vx outputs have no negation and the positive glob reaches the sources — task runs uncached; declare the exact outputs in a vx.config to cache it',
+        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): outputs "!node_modules/**", "!src/**" narrow "*/**": vx outputs have no negation and the positive glob reaches the sources — task runs uncached; declare the exact outputs in a vx.config to cache it',
       )
       const result = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       expect(result.ok).toBe(true)

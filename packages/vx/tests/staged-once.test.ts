@@ -2,7 +2,7 @@
 // stages every config when a filter walks the graph (`app...`,
 // `--affected` with a diff) to read the `pkg#task` edges; the run used to
 // load them all again — the `project` stage's cost paid twice, its
-// warnings printed twice (seen on solidjs/solid under `@vzn/vx-turbo`:
+// warnings printed twice (seen on solidjs/solid under `@vzn/vx-migrate`:
 // every "no vx equivalent" line doubled under `--affected`). The staged
 // load now travels into the run (`RunOptions.staged`) and `vx watch`
 // shares its sweep with the watched-set walk, while every cycle after an
@@ -103,7 +103,7 @@ export default { plugins: [${pluginSource(
     // which project's `workspaceFiles` glob covers it needs every config
     // staged (`workspaceGlobOwners`); before this, that was a second load
     // — the run did not reuse it. Seen on solidjs/solid: a lockfile edit
-    // is an orphan even when a plugin claims it, so every `@vzn/vx-turbo`
+    // is an orphan even when a plugin claims it, so every `@vzn/vx-migrate`
     // warning printed twice under `--affected`.
     const git = gitIn(root)
     git('add', '-A')

@@ -19,6 +19,11 @@ import { migrateTurbo } from './migrate-turbo.js'
 
 export { migrateNx } from './migrate-nx.js'
 export { migrateTurbo } from './migrate-turbo.js'
+// The three plugins: the Turbo project stage (a repo runs unchanged), and
+// the two remote caches speaking Turbo's and Nx's wire.
+export * from './turbo/index.js'
+export * from './turbo-cache/index.js'
+export * from './nx-cache/index.js'
 
 export interface MigrateArgs {
   dry: boolean

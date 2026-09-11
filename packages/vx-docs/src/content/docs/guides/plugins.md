@@ -201,14 +201,14 @@ durations the cold run should assume until the history has its own.
 
 The plugins that ship alongside vx are ordinary consumers of these same
 seams: `@vzn/vx-reapi` fills `executor` and `cache` against any Bazel
-REAPI server, `@vzn/vx-turbo-cache` and `@vzn/vx-nx-cache` fill `cache`
+REAPI server, `turboCache()` and `nxCache()` from `@vzn/vx-migrate` fill `cache`
 against any server speaking Turbo's or Nx's self-hosted cache API,
-`@vzn/vx-turbo` fills `project` so a `turbo.json` workspace runs with no
+`turbo()` from the same package fills `project` so a `turbo.json` workspace runs with no
 `vx.config` written, `@vzn/vx-schedule-history` fills `schedule` with
 critical-path priorities learned from past runs, `@vzn/vx-otel` and
-`@vzn/vx-github` fill `telemetry`, and `@vzn/vx-prune` adds a verb through
-`commands` (`@vzn/vx-migrate` is a bin, not a plugin — it runs before a
-workspace file exists). None of them is privileged — core depends on
+`@vzn/vx-github` fill `telemetry`, and `@vzn/vx-mcp` adds a verb through
+`commands` (`@vzn/vx-migrate` is both: a bin that runs before a workspace
+file exists, and the plugins above). None of them is privileged — core depends on
 none, and yours plugs in the same way. What a plugin declines lands on core's floor: the local
 executor and the local cache, which sit behind every declared list.
 
@@ -476,8 +476,8 @@ function myCache(): VxPlugin {
 export default defineWorkspace({ plugins: [myCache()] })
 ```
 
-`@vzn/vx-turbo-cache` is exactly this shape with `/v8/artifacts/:hash`
-URLs and `x-artifact-*` headers inside the class, and `@vzn/vx-nx-cache`
+`turboCache()` is exactly this shape with `/v8/artifacts/:hash`
+URLs and `x-artifact-*` headers inside the class, and `nxCache()`
 the same with Nx's `/v1/cache/:hash`; both are declared explicitly and
 decline when unconfigured. For a fully custom
 layering (not just a different wire), implement the `CacheLayer` interface

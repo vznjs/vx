@@ -240,7 +240,7 @@ way, is where the same shape is compared against Turborepo and Nx.
 
 Not a synthetic workspace: `solidjs/solid` at b25c557 (5 packages,
 pnpm 9, Turbo 2.10.10 as the repo's own devDependency, Node 22), with
-vx put on top of the repo's own `turbo.json` through `@vzn/vx-turbo` —
+vx put on top of the repo's own `turbo.json` through `turbo()` (then `@vzn/vx-turbo`, now `@vzn/vx-migrate`) —
 a two-line `vx.workspace.mjs`, no config rewritten. Both tools see the
 same graph: `build` is four executed tasks (`solid-js#types`, `#link`,
 `#build`, `solid-element#build`; Turbo lists three more `build` nodes
@@ -277,7 +277,7 @@ to turn on.
 ## Five real Turbo repos (2026-09-11)
 
 The same footing as the solid run, on the largest Turbo repos on GitHub:
-the repo's own `turbo.json`, vx on top through `@vzn/vx-turbo` with a
+the repo's own `turbo.json`, vx on top through `@vzn/vx-migrate`'s `turbo()` with a
 two-line `vx.workspace.mjs`, both tools scoped by the repo's own
 filters, four cores, Linux, arms interleaved, medians of three reps.
 Both tools at Turbo's default of 10 workers (vx's default is the core

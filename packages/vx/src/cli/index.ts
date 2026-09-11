@@ -89,7 +89,7 @@ export async function run(argv: readonly string[]): Promise<number> {
           : ''
       // A verb core owned once (`migrate`, `prune`) and a package owns now:
       // the pointer, but only after the plugins had their chance — a
-      // workspace that declares @vzn/vx-prune keeps `vx prune`.
+      // workspace that declares a plugin verb of that name keeps it.
       const moved = MOVED_VERBS[command]
       if (moved !== undefined) {
         process.stderr.write(`${moved}${loadNote}\n`)

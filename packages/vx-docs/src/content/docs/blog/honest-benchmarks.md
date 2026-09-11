@@ -58,7 +58,7 @@ that machine) are in [Benchmarks](../../benchmarks/).
 A synthetic workspace cannot tell you what happens with rollup, tsc and
 vitest in the loop. So the second benchmark is solidjs/solid at a
 pinned commit: five packages, pnpm 9, Turbo 2.10.10 as the repository's
-own dependency, Node 22. vx is put on top through `@vzn/vx-turbo`, a
+own dependency, Node 22. vx is put on top through `turbo()` from `@vzn/vx-migrate`, a
 two-line `vx.workspace.mjs`, no config rewritten, so both tools see the
 same graph and restore the identical 64 output files. vx runs as its
 compiled binary; Turbo runs with `--no-daemon` so both pay their own

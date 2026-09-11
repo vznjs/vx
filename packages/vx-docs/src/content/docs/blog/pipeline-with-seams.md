@@ -48,7 +48,7 @@ order.
 The proof that the seams are the right width is what has been built on
 them without a special case in core:
 
-- **`@vzn/vx-turbo`** fills the `project` stage from a `turbo.json` and
+- **`turbo()` from `@vzn/vx-migrate`** fills the `project` stage from a `turbo.json` and
   each package's scripts. A Turborepo workspace runs under vx with a
   two-line workspace file and no config rewritten.
 - **`@vzn/vx-lockfile`** uses `fingerprint` to claim `pnpm-lock.yaml`
@@ -60,15 +60,14 @@ them without a special case in core:
 - **`@vzn/vx-reapi`** provides both `executor` and `cache` against any
   Bazel Remote Execution API server: remote cache and remote execution
   from one plugin.
-- **`@vzn/vx-turbo-cache`** and **`@vzn/vx-nx-cache`** are `cache`
+- **`turboCache()` and `nxCache()`**, from the same package, are `cache`
   layers speaking Turbo's `/v8/artifacts` and Nx's `/v1/cache` wire
   formats, so an existing self-hosted cache server keeps working.
 - **`@vzn/vx-otel`** and **`@vzn/vx-github`** are `telemetry` sinks: an
   OTLP exporter with no OpenTelemetry SDK dependency, and a GitHub
   Actions job summary plus a check run on the built commit.
-- **`@vzn/vx-mcp`** and **`@vzn/vx-prune`** are `commands`: a Model
-  Context Protocol server for coding agents, and a workspace subset for
-  Docker builds.
+- **`@vzn/vx-mcp`** is `commands`: a Model Context Protocol server for
+  coding agents, a verb core does not know.
 
 Every one of these lives in its own package and imports core only
 through `@vzn/vx`'s public façade. A test pins the façade so it cannot
@@ -80,9 +79,8 @@ widen by accident.
 the seam is too narrow, and the fix is to widen the seam, not to keep
 the branch. Twice in this repository's history a capability shipped
 inside core and was moved out once the hook it needed existed: `vx
-prune` became `@vzn/vx-prune` on the `commands` seam, and the
-run-history scheduler became `@vzn/vx-schedule-history` on `schedule`.
-Core got smaller both times.
+migrate` became `@vzn/vx-migrate`, and the run-history scheduler became
+`@vzn/vx-schedule-history` on `schedule`. Core got smaller both times.
 
 The second rule is the one that keeps the floor under your feet: core
 applies **no** plugin by default and names none. A capability a plugin

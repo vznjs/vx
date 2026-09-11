@@ -1207,7 +1207,7 @@ edge); `dev` / `start` / `serve` / `watch` /
 On a repo that already has `turbo.json` or an Nx workspace, `init`
 still maps scripts only and says so, naming the richer path:
 `bunx @vzn/vx-migrate` (which auto-detects the source) or `plugins: [turbo()]`
-from `@vzn/vx-turbo`.
+from `@vzn/vx-migrate`.
 
 A run in a root with no `vx.workspace.*` at all fails before any task
 with `no vx.workspace.ts found — run vx init …` ahead of the usual
@@ -1417,28 +1417,11 @@ why, diff }`).
 
 ## `vx prune`
 
-Moved out of core on 2026-09-10: `@vzn/vx-prune` emits a self-contained
-SUBSET of the workspace for Docker builds (Turbo `turbo prune` parity)
-— one project plus its transitive workspace dependencies, the root
-manifests rewritten to the subset, any `vx.workspace.*`, and the
-lockfile (unpruned). Two ways in, one body:
-
-```
-bunx @vzn/vx-prune <project> [--out-dir <dir>] [--docker]   # no workspace file needed
-vx prune <project> [--out-dir <dir>] [--docker]             # when vx.workspace.ts declares prune()
-```
-
-```ts
-// vx.workspace.ts
-import { prune } from '@vzn/vx-prune'
-export default { plugins: [prune()] }
-```
-
-Typing `vx prune` in a workspace that does not declare it prints that
-pointer and exits 1. The rules (what is rewritten, what is excluded,
-what `--docker` splits, what the config scan warns about) live in the
-package's README. This is the `commands` seam in use: a verb core does
-not know, owned by a plugin the workspace declares.
+Removed (owner, 2026-09-11). It was a core verb until 2026-09-10 and the
+`@vzn/vx-prune` package after; the Docker-subset use case is a workspace
+copy plus `--filter` on the build. Typing `vx prune` prints that and
+exits 1 — unless a declared plugin claims the verb through the
+`commands` seam, which is how a workspace would bring it back.
 
 ## `vx last`
 
@@ -1647,7 +1630,7 @@ The schema is documented in
 ## What's still missing vs Turbo
 
 Tracked in [`comparison.md`](./comparison.md). Nothing visible from the
-CLI is open: `--output-logs hash-only`, `@vzn/vx-prune`, `--continue=<mode>`
+CLI is open: `--output-logs hash-only`, `--continue=<mode>`
 and `--cache-dir <path>` all shipped and are documented above.
 Remote-cache credentials are not core CLI flags at all: core carries no
 HTTP cache client — a remote cache arrives through a plugin's `cache`

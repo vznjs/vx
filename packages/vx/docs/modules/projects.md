@@ -6,7 +6,7 @@ One code path for "which tasks exist, resolved": `prepareRun` (a run,
 a plan) and `vx show` both call `loadProjects`, so what `show` prints
 is what a run would see — the plugin `config` and `project` stages
 included. Before this, `show` read config files raw and printed
-`(no vx config)` for a package `@vzn/vx-turbo` gives tasks to.
+`(no vx config)` for a package `turbo()` gives tasks to.
 
 ## Public surface
 

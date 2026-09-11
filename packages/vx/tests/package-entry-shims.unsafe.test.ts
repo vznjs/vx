@@ -17,10 +17,7 @@ const SHIMS: ReadonlyArray<[pkg: string, shim: string, real: string]> = [
   ['vx-reapi', 'index.ts', 'src/index.ts'],
   ['vx-mcp', 'index.ts', 'src/index.ts'],
   ['vx-schedule-history', 'index.ts', 'src/index.ts'],
-  ['vx-turbo', 'index.ts', 'src/index.ts'],
   ['vx-migrate', 'index.ts', 'src/index.ts'],
-  ['vx-prune', 'index.ts', 'src/index.ts'],
-  ['vx-prune', 'index.ts', 'src/index.ts'],
 ]
 
 describe('root entry shims for compiled binaries', () => {
@@ -38,9 +35,7 @@ describe('root entry shims for compiled binaries', () => {
     'vx-reapi',
     'vx-mcp',
     'vx-schedule-history',
-    'vx-turbo',
     'vx-migrate',
-    'vx-prune',
   ])('%s ships its shim (package.json files)', async (pkg) => {
     const manifest = (await Bun.file(path.join(PACKAGES, pkg, 'package.json')).json()) as {
       files: string[]

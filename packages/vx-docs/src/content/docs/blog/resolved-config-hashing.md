@@ -49,7 +49,7 @@ Two properties fall out:
 - **Presets are safe to share.** Edit `vx-preset.ts` and every task
   that spread it re-keys, with no `globalDependencies` list to keep in
   sync.
-- **Plugins are in the key.** `@vzn/vx-turbo` fills the `project` stage
+- **Plugins are in the key.** `turbo()` from `@vzn/vx-migrate` fills the `project` stage
   from a `turbo.json`; the resolved tasks it produces are what gets
   hashed. A plugin cannot change a task's behaviour behind the key's
   back.

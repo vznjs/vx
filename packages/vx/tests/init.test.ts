@@ -202,7 +202,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const text = `${r.out}${r.err}`
       expect(text).toContain('vx init: package.json scripts → vx.config.ts')
       expect(text).toContain('note: turbo.json found and not read — `bunx @vzn/vx-migrate` maps it')
-      expect(text).toContain('`plugins: [turbo()]` from @vzn/vx-turbo')
+      expect(text).toContain('`plugins: [turbo()]` from @vzn/vx-migrate')
       // The control — the package reads it, so the note would be false
       // there — lives in packages/vx-migrate/tests, the only place that
       // may spawn its bin.

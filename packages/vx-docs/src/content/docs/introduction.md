@@ -67,20 +67,19 @@ What ships on those seams today, each its own package:
 - **[`@vzn/vx-reapi`](../guides/remote-caching/)** — Bazel's Remote
   Execution API: NativeLink, BuildBuddy, Buildbarn and bazel-remote as a
   shared cache _and_ as remote executors.
-- **[`@vzn/vx-turbo-cache`](../guides/remote-caching/)** and
-  **`@vzn/vx-nx-cache`** — any server speaking Turbo's or Nx's cache
-  wire, Vercel's Remote Cache included.
+- **[`@vzn/vx-migrate`](../guides/remote-caching/)** — adoption in one
+  package: `turbo()` runs a `turbo.json` workspace under vx with nothing
+  written, the CLI writes configs from `turbo.json` or an Nx graph, and
+  `turboCache()` / `nxCache()` keep any server speaking Turbo's or Nx's
+  cache wire, Vercel's Remote Cache included.
 - **[`@vzn/vx-otel`](../guides/otel-bridge/)** — every run as
   OpenTelemetry traces, metrics and logs. No SDK.
 - **[`@vzn/vx-github`](../guides/ci/)** — the Actions job summary and a
   Checks API run.
 - **[`@vzn/vx-mcp`](../guides/mcp/)** — `vx mcp`, a read-only Model
   Context Protocol server for Claude Code, Cursor and Continue.dev.
-- **[`@vzn/vx-turbo`](../migrate/from-turborepo/)** — a `turbo.json`
-  workspace runs under vx with nothing written.
 - **`@vzn/vx-schedule-history`** — order by the critical path learned
-  from your own runs; **`@vzn/vx-prune`** — a Docker-ready workspace
-  subset; **`@vzn/vx-migrate`** — `turbo.json` or an Nx graph →
+  from your own runs.json` or an Nx graph →
   `vx.config.ts`.
 
 Plugins for a given framework or tool — Vite's tasks, Next's outputs,

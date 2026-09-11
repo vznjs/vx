@@ -11,16 +11,15 @@ packages integrate with core exclusively through its public API
 (`src/index.ts`, imported as the bare `@vzn/vx` specifier — enforced
 by `tests/package-boundaries.unsafe.test.ts`):
 
-| Package                   | What                                                                                                                                                                             |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.` (root)                | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                       |
-| `packages/vx-otel`        | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps                                                                                       |
-| `packages/vx-reapi`       | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                 |
-| `packages/vx-github`      | `@vzn/vx-github` — `github()` telemetry plugin: the GitHub Actions job summary                                                                                                   |
-| `packages/vx-turbo-cache` | `@vzn/vx-turbo-cache` — `turboCache()` cache plugin: any server speaking Turbo's `/v8/artifacts` API                                                                             |
-| `packages/vx-nx-cache`    | `@vzn/vx-nx-cache` — `nxCache()` cache plugin: any server implementing Nx's self-hosted cache spec                                                                               |
-| `packages/vx-lockfile`    | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
-| `packages/vx-docs`        | Astro Starlight docs site; imports `packages/vx/docs/**` at build time                                                                                                           |
+| Package                | What                                                                                                                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.` (root)             | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                       |
+| `packages/vx-otel`     | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps                                                                                       |
+| `packages/vx-reapi`    | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                 |
+| `packages/vx-github`   | `@vzn/vx-github` — `github()` telemetry plugin: the GitHub Actions job summary                                                                                                   |
+| `packages/vx-migrate`  | `@vzn/vx-migrate` — adoption: `turbo()` project-stage plugin, `turboCache()` / `nxCache()` cache plugins (Turbo's `/v8/artifacts`, Nx's self-hosted spec), the migrate CLI       |
+| `packages/vx-lockfile` | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
+| `packages/vx-docs`     | Astro Starlight docs site; imports `packages/vx/docs/**` at build time                                                                                                           |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the ~80-symbol public API and the plugin
@@ -527,8 +526,8 @@ There is no first-party wire: core ships the seam and nothing else.
 every blob it reads against the digest it was requested under. The **tar
 interior** is the local cache's own format — one `stdout` entry plus
 `outputs/<rel>` — shipped verbatim; local and remote layers transport
-the same tar.zst bytes end-to-end. The Turbo wire (`@vzn/vx-turbo-cache`)
-and the Nx wire (`@vzn/vx-nx-cache`) are plugins against the same seam,
+the same tar.zst bytes end-to-end. The Turbo wire and the Nx wire
+(`turboCache()` and `nxCache()` in `@vzn/vx-migrate`) are plugins against the same seam,
 as is any other — the recipe lives in the extensibility guide.
 
 ## Run-history analytics

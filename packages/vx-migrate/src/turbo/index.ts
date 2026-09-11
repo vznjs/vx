@@ -1,4 +1,4 @@
-// `@vzn/vx-turbo` — a Turbo repo under vx with nothing written.
+// `@vzn/vx-migrate` — a Turbo repo under vx with nothing written.
 //
 // Fills the `project` stage: every package the workspace discovers is given
 // the tasks turbo.json + its package.json scripts define, mapped by the same

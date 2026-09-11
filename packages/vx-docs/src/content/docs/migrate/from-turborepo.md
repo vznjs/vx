@@ -11,21 +11,21 @@ files — and `bunx @vzn/vx-migrate` writes them for you.
 
 ## Try it first, without writing a file
 
-`@vzn/vx-turbo` runs a `turbo.json` workspace under vx as it is: the
+`turbo()` from `@vzn/vx-migrate` runs a `turbo.json` workspace under vx as it is: the
 plugin fills vx's `project` stage from your `turbo.json` and each
-package's scripts, using the same mapper `@vzn/vx-migrate` renders files from.
+package's scripts, using the same mapper `bunx @vzn/vx-migrate` renders files from.
 One file, and the repo runs:
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx'
-import { turbo } from '@vzn/vx-turbo'
+import { turbo } from '@vzn/vx-migrate'
 
 export default defineWorkspace({ plugins: [turbo()] })
 ```
 
 ```bash
-bun add -d @vzn/vx @vzn/vx-turbo
+bun add -d @vzn/vx @vzn/vx-migrate
 vx run build --all
 ```
 

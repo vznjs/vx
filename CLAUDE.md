@@ -65,12 +65,11 @@ packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)
 packages/vx-github      GitHub Actions job summary + Checks API plugin
 packages/vx-mcp         `vx mcp` — MCP server for AI agents (commands seam, no SDK)
-packages/vx-turbo-cache Turbo `/v8/artifacts` remote cache plugin (self-hosted or Vercel)
-packages/vx-nx-cache    Nx self-hosted remote cache plugin (`/v1/cache`)
-packages/vx-turbo       zero-migration Turbo plugin: turbo.json + scripts → tasks via the `project` stage;
-                        owns the Turbo mapper @vzn/vx-migrate renders from
-packages/vx-migrate     `bunx @vzn/vx-migrate`: turbo.json or an Nx graph → vx.config.ts (core keeps `vx init`)
-packages/vx-prune       `bunx @vzn/vx-prune` / the `prune` verb via the commands seam: a workspace subset for Docker
+packages/vx-migrate     adoption, one package (2026-09-11): `turbo()` runs a Turbo repo unchanged (turbo.json +
+                        scripts → tasks via the `project` stage; owns the mapper the CLI renders from),
+                        `turboCache()` / `nxCache()` keep a Turbo (`/v8/artifacts`) or Nx (`/v1/cache`) remote
+                        cache, and `bunx @vzn/vx-migrate` writes vx.config.ts from turbo.json or an Nx graph
+                        (core keeps `vx init`). `src/turbo/`, `src/turbo-cache/`, `src/nx-cache/`
 packages/vx-schedule-history  `schedule` plugin: order by the critical path learned from run history
 packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fingerprint` seam) and keys each
                         task on its project's own dependency closure; --affected follows. Parsers over core's
