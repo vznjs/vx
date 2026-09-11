@@ -472,6 +472,21 @@ Scoped as the repo's own `build` script (`examples/**` and
 | warm, nothing wiped (no-op)   | **174 ms** | 1.88 s (10.8×) |
 | second no-op                  | **156 ms** | 1.89 s (12.1×) |
 
+### strapi/strapi (39 `build` tasks, yarn 4, Nx 20.8.4, `parallel: 8`, `--nx-ignore-cycles`)
+
+Every package script is yarn's `run -T <root bin>`, so each task is
+`yarn run build` under both tools (STATUS 142); the per-package
+`build` is `npm-run-all clean --parallel build:code build:types`,
+a rollup and a tsc into one `dist`. The cold row is 39 of those at
+eight workers on four cores; the warm rows are the runner.
+
+| `build`                       | vx          | Nx 20.8.4       |
+| ----------------------------- | ----------- | --------------- |
+| cold (caches + outputs wiped) | **238.2 s** | 245.7 s (1.03×) |
+| warm, outputs wiped (restore) | **1.61 s**  | 3.94 s (2.44×)  |
+| warm, nothing wiped (no-op)   | **341 ms**  | 4.02 s (11.8×)  |
+| second no-op                  | **349 ms**  | 4.07 s (11.7×)  |
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,

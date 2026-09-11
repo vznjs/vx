@@ -966,7 +966,11 @@ equivalent — map it manually` on every run, for the value every
       cannot serve two tasks one directory); the bench runs the
       siblings uncached and benches `build`. Nx parity by task graph
       (`nx run-many --graph=<file>` against `vx --dry=json`): query 25,
-      strapi 39, identical sets. Harness: `real/nx-repo.sh`, the four
+      strapi 39, identical sets; medians of three in
+      `docs/benchmarks.md` § Real Nx repos — query cold 47.4 s to Nx's
+      55.1, restore 656 ms to 1.98 s, no-op 174 ms to 1.88 s; strapi
+      cold 238 s to 246, restore 1.61 s to 3.94, no-op 341 ms to 4.02 s.
+      Harness: `real/nx-repo.sh`, the four
       arms against the repo's own Nx with `NX_DAEMON=false` and
       `NX_NO_CLOUD=true`, the pinned package manager on PATH for both
       (corepack's shim fetches the registry per spawn, which vx's
@@ -975,6 +979,11 @@ equivalent — map it manually` on every run, for the value every
       `tsc --build` (query's `include: **/*.ts`; the bench rewrites the
       configs to `.mjs`), and two targets on one output directory
       (strapi's `build:code` / `build:types` / `build`, all `dist/**`).
+      The gate for this item ran on the bench box with four shards
+      side by side (load 6–8) and lost `cli.test.ts`'s "workspace-root
+      lockfile changes trigger a cycle" to its 45 s window once; alone
+      it passes in 0.3 s and CI passed on the same head. The window is
+      a claim about time under that load, not a refuted one.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1489,21 +1498,21 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     per fill, a re-validation per plugin) if a workspace that size
     ever runs without configs. Never end with "what next?".
 
-15. **The Nx round (in flight).** The five build sets and the two
-    wide sets are in (item 141, `docs/benchmarks.md` § Wide graphs).
+15. **More Nx repos.** The five Turbo build sets, the two wide sets
+    (item 141) and the first two Nx repos (item 142) are in.
     Two gaps from the first Nx repos (item 142): `vx-migrate` should
     write `.mjs` on request or say to exclude `vx.config.ts` from a
     package's tsconfig `include`, and it should say what to do when
     two targets declare one output directory (cache the one with the
     `^` edge, uncache the siblings with a todo, or refuse loudly at
-    migration time instead of at load time). Then the same harness
-    shape on more Nx repos (owner: 3–5 popular ones; only
+    migration time instead of at load time). Then the harness on more
+    Nx repos (owner: 3–5 popular ones; only
     `nx:run-commands`, `nx:run-script`, a plain `command` and
     `nx:noop` targets are supported, anything else is out): the
-    shortlist is strapi, storybook (needs `{projectRoot}` /
-    `{projectName}` expansion in migrate-nx command strings), novu,
-    TanStack/query and redwood; parity is `nx run-many` graph against
-    vx `--dry`, and the doc states the `NX_DAEMON` setting.
+    remaining shortlist is storybook (483 targets inheriting a plain
+    `command`; needs `{projectRoot}` / `{projectName}` expansion in
+    command strings), novu (35 `nx:run-commands`) and redwood
+    (package scripts, yarn 4); parity is the task graph as above.
 
 ## Decisions (this arc)
 
