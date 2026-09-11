@@ -307,6 +307,26 @@ declared outputs from its inputs and answers both no-ops in 0.6 s.
 The cold and restore rows are within noise of each other, in vx's
 favour.
 
+### payloadcms/payload (45 `build` tasks, pnpm 10, Turbo 2.10.4)
+
+Scoped as the repo's own `build:all` (`--filter=!blank !blank-tanstack
+!website !ecommerce`, the templates). Turbo's default inputs (the
+git-tracked files) here, no explicit glob.
+
+| `build`                       | vx      | Turbo 2.10.4        |
+| ----------------------------- | ------- | ------------------- |
+| cold (caches + outputs wiped) | 129.4 s | **123.9 s** (0.96×) |
+| warm, outputs wiped (restore) | 6.28 s  | **3.48 s** (0.55×)  |
+| warm, nothing wiped (no-op)   | 372 ms  | **234 ms** (0.63×)  |
+| second no-op                  | 325 ms  | **215 ms** (0.66×)  |
+
+Turbo wins every row on this repo, and the doc says so: the restore
+row is the widest (payload's 45 `dist` trees are large, and vx's
+archive extraction is slower than Turbo's here), and the two no-op
+rows put vx's walk over 52 projects at 100–150 ms more than Turbo's
+git-index hash. This is the profiling target from the five-repo run
+(STATUS Next).
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
