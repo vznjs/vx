@@ -110,10 +110,14 @@ tasks; wide set `build typecheck lint` = 220. 84 workspace members.
   for it and, since STATUS 138, neither does vx.
 - One vx cold rep read 193 s against 133–137 s for the other two and a
   standalone re-run; the disk's slow phase, absorbed by the median.
-- The wide set at 4 workers does not fit the cgroup: the cold arm lost
-  `n8n-editor-ui#lint` and `#typecheck` to the OOM killer (3.6 GB
-  resident each, `dmesg`), and the lint passed alone on the same inputs
-  afterwards. Every wide set runs both tools at 3 workers.
+- The wide set does not fit the cgroup above 2 workers: at 4 the cold
+  arm lost `n8n-editor-ui#lint` and `#typecheck` to the OOM killer
+  (3.6 GB resident each, `dmesg`; the lint passed alone on the same
+  inputs afterwards), and at 3 the same two with `n8n-nodes-base#lint`
+  beside them (vue-tsc 5.7 GB, the two eslints 3.85 GB each) filled the
+  cgroup to the byte and thrashed for 20 minutes at 97% system time
+  with 211 of 220 tasks done. The wide set runs both tools at 2
+  workers; the other wide sets at 3.
 
 ## calcom/cal.com — 569a389 (2026-09-09)
 

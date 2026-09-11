@@ -936,8 +936,11 @@ equivalent — map it manually` on every run, for the value every
       the wide n8n set (`build typecheck lint`, 220 tasks) at 4
       workers lost `n8n-editor-ui#lint` and `#typecheck` to the OOM
       killer (3.6 GB resident each, `dmesg`; the lint passed alone on
-      the same inputs), so the wide pass runs both tools at 3 workers
-      and the harness keeps one log per tool and arm. The landing
+      the same inputs), and at 3 workers its last three tasks — vue-tsc
+      at 5.7 GB and two eslints at 3.85 — filled the cgroup to the byte
+      and thrashed 20 minutes at 97% system time, so n8n's wide set
+      runs both tools at 2 workers, the other three at 3, and the
+      harness keeps one log per tool and arm. The landing
       page's real-repo panel shows n8n (the most-starred), cold row
       and all — Turbo took it by 3%, inside the disk's noise — and the
       hero no longer claims every row on real repos: the cold row is
