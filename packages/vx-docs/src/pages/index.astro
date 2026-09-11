@@ -40,7 +40,7 @@ const features = [
     icon: 'bolt',
     tone: 'var(--phosphor)',
     title: 'Fastest in every row',
-    body: 'Cold, cached, restore and CPU — on a synthetic 3,270-task graph and on a real Turbo repo, vx is first in every measurement.',
+    body: 'Cold, cached, restore and CPU on a synthetic 3,270-task graph; restore and no-op on five real Turbo repos, where the cold build is the compilers\' time and reads within 3% either way.',
     doc: href('benchmarks/'),
   },
   {
@@ -236,28 +236,31 @@ const lanes = [
   { name: 'nx', label: 'Nx', bar: raceNx, tone: 'var(--c-nx)' },
 ]
 
-// A real Turbo repo (solidjs/solid, its own turbo.json, nothing rewritten)
-// in the same panel, the same rows; the tables are in docs/benchmarks.md.
-const solidRows = [
+// A real Turbo repo in the same panel, the same rows: n8n-io/n8n, the
+// most-starred Turborepo monorepo, its own turbo.json, nothing rewritten,
+// 70 `build` tasks, medians of three; the tables for all five repos are
+// in docs/benchmarks.md. The cold row is the compilers' (Turbo took it by
+// 3%, inside the disk's noise); the runner's rows are the other two.
+const n8nRows = [
   {
     task: 'Cold build · caches and outputs wiped',
     bars: [
-      { name: 'vx', val: 40600, disp: '40.6s', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 45500, disp: '45.5s', c: 'var(--c-turbo)' },
+      { name: 'vx', val: 137200, disp: '137.2s', c: 'var(--phosphor)' },
+      { name: 'turbo', val: 133700, disp: '133.7s', c: 'var(--c-turbo)', best: true },
     ],
   },
   {
     task: 'Restoring outputs · cache → disk',
     bars: [
-      { name: 'vx', val: 66, disp: '66ms', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 127, disp: '127ms', c: 'var(--c-turbo)' },
+      { name: 'vx', val: 8270, disp: '8.27s', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 12500, disp: '12.5s', c: 'var(--c-turbo)' },
     ],
   },
   {
     task: 'Fully cached · nothing to rebuild',
     bars: [
-      { name: 'vx', val: 51, disp: '51ms', c: 'var(--phosphor)', best: true },
-      { name: 'turbo', val: 95, disp: '95ms', c: 'var(--c-turbo)' },
+      { name: 'vx', val: 842, disp: '842ms', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 1360, disp: '1.36s', c: 'var(--c-turbo)' },
     ],
   },
 ]
@@ -365,10 +368,11 @@ const footCols = {
         <div class="container hero-grid">
           <div class="hero-copy">
             <p class="vx-kicker">// a task runner and cache for JavaScript monorepos</p>
-            <h1>The fastest task runner.<br /><span class="phosphor">In every row.</span></h1>
+            <h1>The fastest task runner.<br /><span class="phosphor">Measured on real repos.</span></h1>
             <p class="lede">
-              Cold, cached, restore, CPU — on a synthetic 3,270-task graph and on a real Turbo repo,
-              vx finishes first. One binary. No daemon, no cloud, no paywall.
+              Cold, cached, restore, CPU on a synthetic 3,270-task graph; restore and no-op on astro,
+              payload, medusa, n8n and cal.com under their own turbo.json. One binary. No daemon, no
+              cloud, no paywall.
             </p>
             <div class="actions">
               <a class="btn btn-primary btn-lg" href={href('quickstart/')}
@@ -529,12 +533,12 @@ const footCols = {
         </div>
       </section>
 
-      <section class="section" id="solid">
+      <section class="section" id="real">
         <div class="container">
           <div class="section-head">
-            <p class="vx-kicker">// a real repo · solidjs/solid · its own turbo.json, nothing rewritten</p>
-            <h2>First on a real repo too.</h2>
-            <p class="sub">The same executed graph and the same output files on both sides.</p>
+            <p class="vx-kicker">// a real repo · n8n-io/n8n · 84 packages · its own turbo.json, nothing rewritten</p>
+            <h2>The runner's rows on a real repo.</h2>
+            <p class="sub">The same executed graph and the same output files on both sides. The cold row is the compilers' time; restore and no-op are the runner's. Astro, payload, medusa and cal.com are in the benchmarks.</p>
           </div>
           <div class="bench-panel">
             <div class="bench-legend">
@@ -543,7 +547,7 @@ const footCols = {
             </div>
             <div class="bench-rows">
               {
-                solidRows.map((r) => {
+                n8nRows.map((r) => {
                   const sorted = [...r.bars.map((b) => b.val)].sort((a, b) => b - a)
                   const outlier = sorted.length > 1 && sorted[0]! > 10 * sorted[1]!
                   const rowMax = (outlier ? sorted[1]! : sorted[0]!) * 1.05
@@ -574,7 +578,7 @@ const footCols = {
               }
             </div>
           </div>
-          <a class="section-link" href="{href('benchmarks/') + '#a-real-turbo-repo-solidjssolid-2026-09-10'}">Benchmarks: the solid tables <span class="arr">→</span></a>
+          <a class="section-link" href="{href('benchmarks/') + '#five-real-turbo-repos-2026-09-11'}">Benchmarks: the five real repos <span class="arr">→</span></a>
         </div>
       </section>
 

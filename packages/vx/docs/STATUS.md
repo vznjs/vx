@@ -898,6 +898,51 @@ equivalent — map it manually` on every run, for the value every
       plugin claims the verb. Suites, READMEs, the docs tables and the
       bench harness follow the move; the shim test's package list too.
 
+141.  DONE (2026-09-11 — Next 15; owner: "one thing at a time", "real
+      comparison not cheating", "best possible scenarios"): five real
+      Turbo repos, benched and fixed. astro, payload, medusa, n8n and
+      cal.com on this container against each repo's own Turbo, one
+      arm at a time, full artifact cleanup before every cold and
+      restore arm: `docs/benchmarks.md` § Five real Turbo repos; every
+      revision, toolchain and bench-side adjustment in
+      `packages/vx-bench/real/REPOS.md`. What the profiles of the first
+      tables exposed in vx, each fix with a pin that fails on the
+      previous code: (a) `Bun.write` blocks the calling thread for a
+      small buffer, so restores serialized — `writeFile` from
+      node:fs/promises, the containment check and the mkdir memoized
+      per directory, chmod/utimes/rename committed in synchronous
+      batches of 256 (payload restore 6.3 s → 3.44 s); (b) the
+      directory snapshot after a restore was taken inside its own racy
+      window and refused, so the first warm run after every restore
+      walked its output trees (41 of payload's 45 tasks, 14,430 files)
+      — taken at run end like the miss path's; (c) `OUTPUT_DIRS_CAP`
+      256 → 8192 (`@payloadcms/ui` has 535 output directories); (d)
+      `inputs.workspaceFiles` resolved per task — memoized per run and
+      snapshot, the stability gate reads the memo (medusa's 83 tasks
+      share one `globalDependencies` literal, 76 were hashed twice;
+      no-op 2.5 s → 947 ms); (e) an absent output prefix (medusa's
+      `.medusa/**`) refused every snapshot — recorded as absent. Bench
+      side, named in the doc so nobody reads them as the mapping:
+      medusa's and cal.com's output lists (item 139; cal.com's
+      `.next/node_modules` holds 110 symlinks to directories, which
+      the artifact format does not store — Next), astro's `build`
+      inputs fixed for Turbo's benefit, n8n's `@vscode/ripgrep` never
+      built, cal.com's `.env`. The trade payload's no-op shows: vx
+      stats every recorded output file on a hit (~36 ms for 14,430)
+      and Turbo checks nothing on disk, and the doc says Turbo takes
+      that row. Refuted: a hand-written `ls-files` parser (slower than
+      the regex), synchronous small writes, `UV_THREADPOOL_SIZE`. The
+      box is 16 GB but the session's memory cgroup allows 13.3 GiB:
+      the wide n8n set (`build typecheck lint`, 220 tasks) at 4
+      workers lost `n8n-editor-ui#lint` and `#typecheck` to the OOM
+      killer (3.6 GB resident each, `dmesg`; the lint passed alone on
+      the same inputs), so the wide pass runs both tools at 3 workers
+      and the harness keeps one log per tool and arm. The landing
+      page's real-repo panel shows n8n (the most-starred), cold row
+      and all — Turbo took it by 3%, inside the disk's noise — and the
+      hero no longer claims every row on real repos: the cold row is
+      the compilers', the runner's rows are vx's on all five.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
@@ -1411,20 +1456,18 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     per fill, a re-validation per plugin) if a workspace that size
     ever runs without configs. Never end with "what next?".
 
-15. **Bench n8n on the bench host (owner, 2026-09-11).** The repo is
-    picked and mapped (item 135); the numbers need a machine with
-    Node ≥ 24, pnpm 12 and the cores the owner's solid run had. Clone
-    shallow, `pnpm install`, write the one-line `vx.workspace.mjs`,
-    then `packages/vx-bench/real/turbo-repo.sh` on `~/n8n` with the
-    binary, first `build` alone (outputs `dist`), then the four-task
-    form, build, typecheck, test:unit and lint (outputs `dist` and
-    `coverage`) — both invocations are spelled out at the top of the
-    script; record the tables in
-    `docs/benchmarks.md` beside solid and add a `solidRows`-shaped
-    block to the landing page's second panel (the same panel, the same
-    rows). Expect the cold build to be long (editor-ui is a Vite build,
-    n8n-nodes-base a large tsc); the warm and restore rows are the
-    ones the graph size tests.
+15. **Wide graphs, then the Nx round.** The five build sets are in
+    (item 141); the wide sets — n8n `build typecheck lint` (220),
+    payload `build lint` (89), medusa `build build:plugin test` (157),
+    astro `build test` (55), one rep each, 3 workers — go into
+    `docs/benchmarks.md` § Wide graphs as they finish. Then the same
+    harness shape on Nx repos (owner: 3–5 popular ones; only
+    `nx:run-commands`, `nx:run-script`, a plain `command` and
+    `nx:noop` targets are supported, anything else is out): the
+    shortlist is strapi, storybook (needs `{projectRoot}` /
+    `{projectName}` expansion in migrate-nx command strings), novu,
+    TanStack/query and redwood; parity is `nx run-many` graph against
+    vx `--dry`, and the doc states the `NX_DAEMON` setting.
 
 ## Decisions (this arc)
 

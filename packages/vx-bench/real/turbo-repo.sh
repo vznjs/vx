@@ -15,8 +15,8 @@
 # The repo must already have `vx.workspace.mjs` with `plugins: [turbo()]`
 # and its dependencies installed. `output-dir-names` is what the wipe
 # removes under packages/*/ (default: dist types coverage). Rows print as
-# `<tool> <arm> <ms> exit=<code>`; run each tool's last log is kept beside
-# the repo as .vx-bench-<tool>.log. First run: solidjs/solid, 2026-09-10,
+# `<tool> <arm> <ms> exit=<code>`; each arm's log is kept beside the repo
+# as .vx-bench-<tool>-<arm>.log. First run: solidjs/solid, 2026-09-10,
 # recorded in packages/vx/docs/benchmarks.md. Next target (owner,
 # 2026-09-11: "solid is too small"): n8n-io/n8n — the most-starred
 # Turborepo monorepo (204k), 84 workspace packages, 71 `build` tasks,
@@ -69,11 +69,14 @@ wipe_outputs() {
 wipe_turbo_cache() { rm -rf node_modules/.cache/turbo .turbo packages/*/.turbo; }
 wipe_vx_cache() { rm -rf .vx; }
 ms() { date +%s%N; }
-run_vx() { "$VX" run $TASKS "${vx_scope[@]}" $VX_ARGS > .vx-bench-vx.log 2>&1; echo $?; }
-run_turbo() { node_modules/.bin/turbo run $TASKS "${turbo_scope[@]}" $TURBO_ARGS --no-daemon > .vx-bench-turbo.log 2>&1; echo $?; }
+# One log per tool AND arm (.vx-bench-<tool>-<arm>.log): a cold arm that
+# failed under one log per tool was overwritten by the restore arm before
+# anyone read it (n8n, 2026-09-11 — two OOM kills, found in dmesg instead).
+run_vx() { "$VX" run $TASKS "${vx_scope[@]}" $VX_ARGS > ".vx-bench-vx-$1.log" 2>&1; echo $?; }
+run_turbo() { node_modules/.bin/turbo run $TASKS "${turbo_scope[@]}" $TURBO_ARGS --no-daemon > ".vx-bench-turbo-$1.log" 2>&1; echo $?; }
 time_arm() {
   local t0 t1 code
-  t0=$(ms); code=$(run_"$1"); t1=$(ms)
+  t0=$(ms); code=$(run_"$1" "$2"); t1=$(ms)
   echo "$1 $2 $(( (t1 - t0) / 1000000 )) ms exit=$code"
 }
 # SKIP_ARMS=n resumes a rep at its n-th arm (of the eight: four per tool,
