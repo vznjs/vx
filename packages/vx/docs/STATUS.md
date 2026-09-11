@@ -1331,7 +1331,17 @@ state of each:
 5. **The watch e2e flake.** Every initial-run assertion in
    `tests/watch-loop.test.ts` throws with the watch's own stdout on a
    miss (2026-09-10), so a red run names the label that re-ran; the
-   macOS intermittent extra cycle is recorded under item 130.
+   macOS intermittent extra cycle is recorded under item 130. On this
+   box (2026-09-11) `tests/cli.test.ts`'s watch tests lost their 45 s
+   window three times in a day under four parallel shards (a different
+   test each time: the lockfile cycle, the no-cache self-trigger, the
+   re-run after an edit) and, in a probe, 3 of 24 executions under four
+   CPU burners against 0 of 24 idle; the timeout said nothing about
+   where the watch stood. Its `waitFor` now throws with the captured
+   watch stdout, like watch-loop's, and `scratchpad/watch-probe.sh` is
+   the reproduction (four burners, six runs); the next red run under
+   load names the stall — proof of delivery vs. the cycle itself — and
+   that is the fix's starting point.
 6. **Re-measure the warm run after each day's work** — the hot path is
    the product. `bun packages/vx-bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap

@@ -810,11 +810,15 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
         }`,
       )
       let stdout = ''
+      watchOut = () => stdout
       vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
       const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
       await writeFile(path.join(workspaceRoot, 'packages', 'one', 'src', 'index.txt'), 'v1')
@@ -838,6 +842,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       const { writeFile } = await import('node:fs/promises')
 
       let stdout = ''
+      watchOut = () => stdout
       let stderr = ''
       vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
         stdout += String(chunk)
@@ -886,11 +891,15 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       const { writeFile } = await import('node:fs/promises')
 
       let stdout = ''
+      watchOut = () => stdout
       vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
 
       const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
@@ -930,11 +939,15 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       const { writeFile } = await import('node:fs/promises')
 
       let stdout = ''
+      watchOut = () => stdout
       vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
 
       const cmd = startWatch(['watch', '--all', 'hello', '--output-logs', 'full'])
       await waitFor(() => stdout.includes('watching 1 project'))
@@ -970,11 +983,15 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       const { writeFile } = await import('node:fs/promises')
 
       let stdout = ''
+      watchOut = () => stdout
       vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
 
       const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
@@ -994,11 +1011,15 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
     'SIGTERM also exits the watch loop cleanly',
     async () => {
       let stdout = ''
+      watchOut = () => stdout
       vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
 
       const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
@@ -1035,11 +1056,15 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       )
 
       let stdout = ''
+      watchOut = () => stdout
       vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
         stdout += String(chunk)
         return true
       })
-      vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk) // stderr too: the poller swap says why a cycle is late
+        return true
+      })
 
       const cmd = startWatch(['watch', '--all', 'hello', '--output-logs', 'full'])
       await waitFor(() => stdout.includes('watching the workspace root'))
@@ -1070,11 +1095,17 @@ async function writeFor(
 // Default well under the watch tests' 30s wrapper but far above the old
 // 10s — these e2e watch tests drive a debounced fs.watch + a full re-run
 // and flake under concurrent suite load when the inner budget is tight.
+/** The captured watch stdout, for waitFor's error: a red run names where it stalled. */
+let watchOut: () => string = () => ''
+
 async function waitFor(predicate: () => boolean, timeoutMs = 45_000): Promise<void> {
   const start = Date.now()
   while (!predicate()) {
     if (Date.now() - start > timeoutMs) {
-      throw new Error(`waitFor timed out after ${timeoutMs}ms`)
+      // The watch's own stdout so far: a timeout under load (three shard
+      // runs on 2026-09-11) named nothing until this did.
+      const seen = watchOut().slice(-2000)
+      throw new Error(`waitFor timed out after ${timeoutMs}ms; watch stdout so far:\n${seen}`)
     }
     await new Promise((r) => setTimeout(r, 25))
   }
@@ -1640,6 +1671,7 @@ describe('vx cache prune command', () => {
 
   it('reports 0 entries pruned from an empty cache', async () => {
     let stdout = ''
+    watchOut = () => stdout
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
       stdout += String(chunk)
       return true
