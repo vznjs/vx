@@ -16,6 +16,7 @@ import {
   type ProjectMeta,
   UserError,
 } from '@vzn/vx'
+import { scriptCommand } from './script-command.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 function relPosix(from: string, to: string): string {
@@ -426,7 +427,7 @@ function mapCommand(
   if (executor === 'nx:run-script') {
     const script = typeof options.script === 'string' ? options.script : targetName
     const body = scripts[script]
-    if (body !== undefined) return body
+    if (body !== undefined) return scriptCommand(script, body)
     todos.push(`nx:run-script: package.json has no ${JSON.stringify(script)} script`)
     return PLACEHOLDER
   }

@@ -12,6 +12,7 @@
 
 import path from 'node:path'
 import { type ProjectMeta, UserError } from '@vzn/vx'
+import { scriptCommand } from '../script-command.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 function relPosix(from: string, to: string): string {
@@ -237,7 +238,16 @@ export async function mapTurboWorkspace(
           : { ...rootTasks[name], ...rootTasks[`${meta.name}#${name}`], ...overlay }
       delete def.extends
       tasks.push(
-        buildTask(name, def, script, own, emitted, globals, opts, relPosix(root, meta.dir)),
+        buildTask(
+          name,
+          def,
+          scriptCommand(name, script),
+          own,
+          emitted,
+          globals,
+          opts,
+          relPosix(root, meta.dir),
+        ),
       )
     }
     projects.push({ name: meta.name, dir: meta.dir, tasks })

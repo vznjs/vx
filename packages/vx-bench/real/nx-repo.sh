@@ -35,9 +35,11 @@ if [ -n "$FILTERS" ]; then
   set -f
   for f in $FILTERS; do
     vx_scope+=(--filter "$f")
+    # vx spells a directory selector `./examples/**`; nx takes `examples/**`.
+    g=${f#!}; g=${g#./}
     case $f in
-      !*) excludes="${excludes:+$excludes,}${f#!}" ;;
-      *) projects="${projects:+$projects,}$f" ;;
+      !*) excludes="${excludes:+$excludes,}$g" ;;
+      *) projects="${projects:+$projects,}$g" ;;
     esac
   done
   set +f

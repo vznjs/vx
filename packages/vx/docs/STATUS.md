@@ -953,6 +953,22 @@ equivalent — map it manually` on every run, for the value every
       hero no longer claims every row on real repos: the cold row is
       the compilers', the runner's rows are vx's on all five.
 
+142.  DONE (2026-09-11 — the Nx round, Next 15): a script that calls
+      yarn's `run` builtin runs as `yarn run <name>`. yarn ≥ 2 runs
+      scripts in its own shell, where `run -T rollup -c` is "the root's
+      rollup" and `run clean && run build` chains siblings; inlined into
+      sh — both mappers' rule, one process less per task — every strapi
+      package was `run: command not found`. `scriptCommand` in
+      `@vzn/vx-migrate` is the one place both mappers turn a body into a
+      command; the pin covers `vitest run` and `prerun-check` (not the
+      builtin). Bench side, strapi's `build:code` and `build:types`
+      share `dist/**` with `build`, which vx refuses (an exact clean
+      cannot serve two tasks one directory); the bench runs the
+      siblings uncached and benches `build`. Nx parity by task graph
+      (`nx run-many --graph=<file>` against `vx --dry=json`): query 25,
+      strapi 39, identical sets. Harness: `real/nx-repo.sh`, the four
+      arms against the repo's own Nx with `NX_DAEMON=false`.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
