@@ -47,6 +47,12 @@ if [ -n "$FILTERS" ]; then
   set +f
 fi
 cd "$R"
+# The repo's own `build` script runs Turbo through its package manager
+# (`yarn build` → `turbo run …`), which puts the root `node_modules/.bin`
+# on PATH for every task; run bare, Turbo left medusa's `@medusajs/icons`
+# without the root's `rollup` (exit 127, 2026-09-11). vx exposes the bin
+# dirs itself; the same PATH for both tools is the same footing.
+export PATH="$R/node_modules/.bin:$PATH"
 # Full artifact cleanup: everything git ignores under the repo except the
 # installs (`node_modules`, `.yarn`), the two caches (`.vx`, and `.turbo`
 # — Turbo 2 keeps its local cache in `.turbo/cache`; both wiped
