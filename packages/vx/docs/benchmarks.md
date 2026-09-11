@@ -398,9 +398,9 @@ the two empty secrets filled, `SKIP_DB_MIGRATIONS=1`, no database.
 Each repo's whole task set, not only `build`: the graph a team actually
 runs. One rep per arm and both tools at 3 workers, because the session's
 memory cgroup allows 13.3 GiB and the wide sets' typecheck and lint
-processes run at 3.6–5.7 GB resident each (n8n's `build typecheck lint`
-set was OOM-killed at 4 workers and thrashed at 3, and the owner dropped
-it). Same harness, same cleanup, same scope as the build tables.
+processes run at 3.6–5.7 GB resident each. Same harness, same cleanup,
+same scope as the build tables. Two sets ran; three could not, and the
+reasons are the repos' own (below), the same under both tools.
 
 **payloadcms/payload — `build lint`, 89 tasks.** payload's `lint` is
 `cache: false` in its own turbo.json, so the 44 lint tasks run on every
@@ -413,6 +413,18 @@ that floor, and the cold row is the floor plus the 45 builds.
 | warm, outputs wiped (restore) | 229 s     | **223 s** (0.97×) |
 | warm, nothing wiped (no-op)   | **227 s** | 228 s (1.01×)     |
 | second no-op                  | **226 s** | 226 s (1.00×)     |
+
+**calcom/cal.com — `build lint`, 24 tasks, scope `@calcom/web...`.**
+`type-check` is `cache: false` in the repo's turbo.json and stays out;
+the three uncached build tasks (~12 s) run on every arm as in the build
+table, so the warm rows are the runner plus that floor.
+
+| `build lint`                  | vx         | Turbo 2.7.1         |
+| ----------------------------- | ---------- | ------------------- |
+| cold (caches + outputs wiped) | 246.0 s    | **236.8 s** (0.96×) |
+| warm, outputs wiped (restore) | **16.2 s** | 19.7 s (1.22×)      |
+| warm, nothing wiped (no-op)   | **14.3 s** | 17.7 s (1.23×)      |
+| second no-op                  | **14.3 s** | 18.0 s (1.26×)      |
 
 **medusajs/medusa — `build build:plugin test`, 157 tasks: dropped.**
 medusa's `test` declares no `dependsOn`, so on a cold tree both tools
