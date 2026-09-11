@@ -407,12 +407,12 @@ it). Same harness, same cleanup, same scope as the build tables.
 arm under both tools (~225 s at 3 workers); the three warm rows are
 that floor, and the cold row is the floor plus the 45 builds.
 
-| `build lint`                  | vx        | Turbo 2.10.4       |
-| ----------------------------- | --------- | ------------------ |
-| cold (caches + outputs wiped) | **318 s** | 334 s (1.05×)      |
-| warm, outputs wiped (restore) | 229 s     | **223 s** (0.97×)  |
-| warm, nothing wiped (no-op)   | **227 s** | 228 s (1.01×)      |
-| second no-op                  | **226 s** | 226 s (1.00×)      |
+| `build lint`                  | vx        | Turbo 2.10.4      |
+| ----------------------------- | --------- | ----------------- |
+| cold (caches + outputs wiped) | **318 s** | 334 s (1.05×)     |
+| warm, outputs wiped (restore) | 229 s     | **223 s** (0.97×) |
+| warm, nothing wiped (no-op)   | **227 s** | 228 s (1.01×)     |
+| second no-op                  | **226 s** | 226 s (1.00×)     |
 
 ## Performance history
 
