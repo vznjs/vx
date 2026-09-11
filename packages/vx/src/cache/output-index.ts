@@ -5,8 +5,11 @@
 // writes the file rows through `replaceFileRows` inside its own save
 // transaction.
 
+/** `mtime_ms` of a recorded output prefix that did not exist when the snapshot was taken. */
+const ABSENT_DIR_MTIME = -1
+
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
-import { statSync } from 'node:fs'
+import { lstatSync, statSync } from 'node:fs'
 import { lstat, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -130,12 +133,21 @@ export class OutputIndex {
     prefixes: readonly string[],
   ): Promise<void> {
     const rows: Array<[string, number]> = []
-    const walk = async (rel: string): Promise<boolean> => {
+    const walk = async (rel: string, isPrefix = false): Promise<boolean> => {
       const abs = path.join(projectDir, rel)
       let st
       try {
         st = await lstat(abs)
       } catch {
+        // A declared prefix the task never produced (`build/**` beside
+        // `dist/**`, medusa's `.medusa/**`) is recorded ABSENT: the check
+        // then asks that it still not exist. Refusing the snapshot instead
+        // made every such task re-glob its outputs on every warm hit — all
+        // 83 of medusa's, 210 ms of a 2.5 s no-op (2026-09-11).
+        if (isPrefix) {
+          rows.push([rel, ABSENT_DIR_MTIME])
+          return true
+        }
         return false
       }
       if (!st.isDirectory()) return false
@@ -156,7 +168,7 @@ export class OutputIndex {
     }
     let ok = true
     for (const prefix of prefixes) {
-      if (!(await walk(prefix))) {
+      if (!(await walk(prefix, true))) {
         ok = false
         break
       }
@@ -198,12 +210,14 @@ export class OutputIndex {
   async outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean> {
     if (rows.length === 0) return false
     const results = rows.map((r) => {
+      let st
       try {
-        const st = statSync(path.join(projectDir, r.path))
-        return st.isDirectory() && Math.abs(st.mtimeMs - r.mtimeMs) < 1
+        st = lstatSync(path.join(projectDir, r.path))
       } catch {
-        return false
+        return r.mtimeMs === ABSENT_DIR_MTIME
       }
+      if (r.mtimeMs === ABSENT_DIR_MTIME) return false
+      return st.isDirectory() && Math.abs(st.mtimeMs - r.mtimeMs) < 1
     })
     return results.every(Boolean)
   }

@@ -13,6 +13,7 @@
 
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
+import { normalizeGlob, relPosix } from '../util/index.js'
 import { computeGroupHash, computeTaskHash, type HashCache } from './task-hash.js'
 
 export interface DeriveStableKeysArgs {
@@ -60,6 +61,14 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   const outputProjectsById = new Map<string, ReadonlySet<string>>()
   const wsOutputUpstreamById = new Map<string, boolean>()
   const stableKeys: StableKey[] = []
+  // Workspace-relative project dirs, for the reach test of a
+  // `workspaceFiles` reader against its upstream producers.
+  const dirByProject = new Map<string, string>()
+  for (const node of args.nodes.values()) {
+    if (!dirByProject.has(node.projectName)) {
+      dirByProject.set(node.projectName, relPosix(args.workspaceRoot, node.projectDir))
+    }
+  }
 
   for (const id of order) {
     const node = args.nodes.get(id)!
@@ -106,7 +115,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
 
     const unstable =
       node.deps.some((d) => unstableById.has(d)) ||
-      dependsOnSiblingOutputs(node, outputProjects, wsOutputUpstream)
+      dependsOnSiblingOutputs(node, outputProjects, wsOutputUpstream, dirByProject)
     if (unstable) unstableById.add(id)
 
     const cacheEnabled = node.config.cache !== undefined
@@ -169,6 +178,7 @@ export function dependsOnSiblingOutputs(
   node: TaskNode,
   upstreamOutputProjects: ReadonlySet<string>,
   hasWsOutputUpstream: boolean,
+  dirByProject?: ReadonlyMap<string, string>,
 ): boolean {
   const cache = node.config.cache
   // A cache-disabled task has no key to prefetch anyway; treat as
@@ -184,8 +194,55 @@ export function dependsOnSiblingOutputs(
   // `app` read `gen/**` project-relative), so the mere presence of a
   // workspace-output producer upstream makes the key preliminary.
   if (hasWsOutputUpstream) return true
-  const readsWorkspaceFiles = (cache.inputs?.workspaceFiles?.length ?? 0) > 0
-  if (readsWorkspaceFiles && upstreamOutputProjects.size > 0) return true
+  const wsInputs = cache.inputs?.workspaceFiles ?? []
+  if (wsInputs.length > 0 && upstreamOutputProjects.size > 0) {
+    // Without the dirs the old answer stands: a workspace reader over any
+    // producer is preliminary. With them, only a reader whose globs can
+    // reach a producer's directory is. A Turbo-mapped workspace gives every
+    // task its `globalDependencies` as root literals (`turbo.json`), which
+    // reach no package — classing those as unstable hashed medusa's 83
+    // tasks twice and probed 76 of them lazily (2026-09-11).
+    if (dirByProject === undefined) return true
+    const dirs: string[] = []
+    for (const p of upstreamOutputProjects) {
+      const d = dirByProject.get(p)
+      if (d === undefined) return true
+      dirs.push(d)
+    }
+    return workspaceInputsReach(wsInputs, dirs)
+  }
+  return false
+}
+
+/**
+ * Can any positive `workspaceFiles` entry match a path inside one of
+ * `dirs` (workspace-relative project dirs)? An entry's reach is its
+ * literal prefix — the segments before the first one holding a glob
+ * metacharacter — and it reaches a dir when either is the other's
+ * ancestor or equal. An entry with no literal prefix (`**\/*`) reaches
+ * everything. Conservative on every unknown spelling.
+ */
+export function workspaceInputsReach(
+  workspaceFiles: readonly string[],
+  dirs: readonly string[],
+): boolean {
+  for (const raw of workspaceFiles) {
+    if (raw.startsWith('!')) continue
+    const entry = normalizeGlob(raw)
+    const segments = entry.split('/')
+    const literal: string[] = []
+    for (const seg of segments) {
+      if (/[*?[\]{}]/.test(seg)) break
+      literal.push(seg)
+    }
+    if (literal.length === 0) return true
+    const prefix = literal.join('/')
+    for (const dir of dirs) {
+      if (dir === '' || dir === '.') return true
+      if (prefix === dir || prefix.startsWith(`${dir}/`) || dir.startsWith(`${prefix}/`))
+        return true
+    }
+  }
   return false
 }
 

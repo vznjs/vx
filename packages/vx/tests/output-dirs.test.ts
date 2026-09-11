@@ -123,14 +123,21 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     expect(await cache.outputDirsCurrent(proj, rows())).toBe(true)
   })
 
-  it('does not descend a symlinked directory, and records nothing over the cap or for a missing prefix', async () => {
+  it('does not descend a symlinked directory, records a missing prefix as absent, and nothing over the cap', async () => {
     mkdirSync(path.join(root, 'elsewhere/x'), { recursive: true })
     symlinkSync(path.join(root, 'elsewhere'), path.join(proj, 'dist/link'))
     await cache.recordOutputDirs('h1', proj, ['dist'])
     expect(rows().map((r) => r.path)).not.toContain('dist/link')
     expect(rows().map((r) => r.path)).not.toContain('dist/link/x')
+    // A declared prefix the task never produced is recorded ABSENT (mtime
+    // -1) rather than refusing the snapshot: current while it stays
+    // absent, stale the moment something creates it.
     await cache.recordOutputDirs('h1', proj, ['nope'])
-    expect(rows()).toEqual([])
+    expect(rows()).toEqual([{ path: 'nope', mtimeMs: -1 }])
+    expect(await cache.outputDirsCurrent(proj, rows())).toBe(true)
+    mkdirSync(path.join(proj, 'nope'))
+    expect(await cache.outputDirsCurrent(proj, rows())).toBe(false)
+    rmSync(path.join(proj, 'nope'), { recursive: true })
     for (let i = 0; i < OUTPUT_DIRS_CAP + 1; i++) mkdirSync(path.join(proj, 'dist', `d${i}`))
     await cache.recordOutputDirs('h1', proj, ['dist'])
     expect(rows()).toEqual([])
