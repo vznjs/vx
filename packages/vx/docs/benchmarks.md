@@ -414,6 +414,19 @@ that floor, and the cold row is the floor plus the 45 builds.
 | warm, nothing wiped (no-op)   | **227 s** | 228 s (1.01×)     |
 | second no-op                  | **226 s** | 226 s (1.00×)     |
 
+**medusajs/medusa — `build build:plugin test`, 157 tasks: dropped.**
+medusa's `test` declares no `dependsOn`, so on a cold tree both tools
+start tests before the packages they import are built: vx lost
+`@medusajs/auth#test` (`Cannot find module '@medusajs/framework/awilix'`,
+and it passed on the restore arm once the build existed), Turbo lost
+`@medusajs/dashboard#test` (`Failed to resolve entry for package
+"@medusajs/admin-vite-plugin"`) on all four arms. A repo configuration
+gap the two runners expose identically; not a number for either.
+
+**n8n-io/n8n — `build typecheck lint`, 220 tasks: dropped** (owner). The
+editor-ui's vue-tsc and eslint at 3.6–5.7 GB resident each do not fit
+the cgroup beside anything else.
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,

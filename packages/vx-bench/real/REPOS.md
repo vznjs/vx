@@ -87,6 +87,10 @@ tracked files.
   `turbo()` runs such a task uncached rather than clean `*/**`
   (the sources) before every exec. The override names what Turbo
   caches, so both tools cache the same files.
+- The wide set (`build build:plugin test`, 157) is dropped: `test` has no
+  `dependsOn` in turbo.json, so on a cold tree each tool runs some test
+  before the package it imports is built (vx `@medusajs/auth#test`,
+  Turbo `@medusajs/dashboard#test`), and the arm fails under both.
 - The root `node_modules/.bin` on PATH is what lets
   `@medusajs/icons#build` find `rollup` — a root devDependency the
   package does not declare, resolved through the root `yarn build` in
