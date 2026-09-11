@@ -220,7 +220,7 @@ tools at the repo's `parallel: 4`.
 ### TanStack/router — f021f6d (2026-09-11)
 
 pnpm 11.21.0 (corepack's copy, wrapped in `.vx-bench-bin/`), Nx 23.2.0,
-Node 24.8. 438 projects (42 packages, 3 benchmarks, the examples and
+Node 22.22 (the repo's `.nvmrc` says 24; nothing in the set minds). 438 projects (42 packages, 3 benchmarks, the examples and
 e2e apps); 1,999 `nx:run-script` targets, 464 `nx:run-commands` and 32
 `nx:noop`. The install is the repo's `packages/**`, `benchmarks/**` and
 root filters (the examples pull every framework; the bench never runs
@@ -237,6 +237,27 @@ the repo's `parallel: 5`.
 - Rep 2's Nx cold arm ran before the cache pin above and is not in
   the medians; an Nx-only rep replaced it (three real cold runs:
   226.7, 229.8 and 224.1 s).
+
+### refinedev/refine — 2352eb5 (2026-09-11)
+
+pnpm 9.4.0 (corepack's copy, wrapped in `.vx-bench-bin/`; `pnpm.cjs`
+in that release), Nx 18.2.2 under lerna, Node 22.22. 206 projects (37
+packages, 169 examples), 724 targets, all `nx:run-script`; the
+install is `packages/**` and the root (`CYPRESS_INSTALL_BINARY=0`:
+cypress's postinstall fetches its binary and the fetch reset). Scope:
+`examples/**` out, and the two Next apps out of both tools —
+`refine-ui`'s `next build` fetches Google Fonts through `next/font`
+(the proxy's certificate chain fails it here, and it would be a
+network cost either way) and `live-previews` is one 280 s `next build`
+that would be the whole cold arm. What is left is the 35 library
+builds (`tsup && node ../shared/generate-declarations.js`). Nx's
+`nx.json` sets no `parallel`, so both tools run at Nx's default of 3.
+`types` shares `dist/**` with `build` and is uncached under vx
+(STATUS 146); Nx caches it. Not benched: it re-runs the declarations
+`build` already wrote.
+
+- `{projectRoot}/.next` in the repo's `build` outputs is the case
+  STATUS 151 fixed: it maps to `.next/**` now.
 
 ### redwoodjs/redwood — a7852fb (2025-12-13): dropped
 

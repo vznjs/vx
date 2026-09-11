@@ -521,6 +521,22 @@ cold arm is cold (`REPOS.md`).
 | warm, nothing wiped (no-op)   | **505 ms**  | 3.21 s (6.4×)   |
 | second no-op                  | **513 ms**  | 3.30 s (6.4×)   |
 
+### refinedev/refine (35 `build` tasks, pnpm 9, Nx 18.2.2, `parallel: 3`)
+
+The library builds only (`tsup && node ../shared/generate-declarations.js`):
+`examples/**` out as the repo's own scope, and the two Next apps out of
+both tools — `refine-ui` fetches Google Fonts through `next/font`
+(no egress here) and `live-previews` is one 280 s `next build` that
+would be the whole cold arm (`REPOS.md`). No `parallel` in `nx.json`,
+so both tools run at Nx's default of 3.
+
+| `build`                       | vx          | Nx 18.2.2       |
+| ----------------------------- | ----------- | --------------- |
+| cold (caches + outputs wiped) | **104.2 s** | 115.3 s (1.11×) |
+| warm, outputs wiped (restore) | **636 ms**  | 2.23 s (3.5×)   |
+| warm, nothing wiped (no-op)   | **184 ms**  | 2.11 s (11.5×)  |
+| second no-op                  | **183 ms**  | 2.18 s (11.9×)  |
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
