@@ -393,6 +393,27 @@ the two empty secrets filled, `SKIP_DB_MIGRATIONS=1`, no database.
 | warm, nothing wiped (no-op)   | **14.7 s**  | 18.5 s (1.26×)  |
 | second no-op                  | **14.5 s**  | 17.8 s (1.22×)  |
 
+### Wide graphs (2026-09-11, one rep, 3 workers)
+
+Each repo's whole task set, not only `build`: the graph a team actually
+runs. One rep per arm and both tools at 3 workers, because the session's
+memory cgroup allows 13.3 GiB and the wide sets' typecheck and lint
+processes run at 3.6–5.7 GB resident each (n8n's `build typecheck lint`
+set was OOM-killed at 4 workers and thrashed at 3, and the owner dropped
+it). Same harness, same cleanup, same scope as the build tables.
+
+**payloadcms/payload — `build lint`, 89 tasks.** payload's `lint` is
+`cache: false` in its own turbo.json, so the 44 lint tasks run on every
+arm under both tools (~225 s at 3 workers); the three warm rows are
+that floor, and the cold row is the floor plus the 45 builds.
+
+| `build lint`                  | vx        | Turbo 2.10.4       |
+| ----------------------------- | --------- | ------------------ |
+| cold (caches + outputs wiped) | **318 s** | 334 s (1.05×)      |
+| warm, outputs wiped (restore) | 229 s     | **223 s** (0.97×)  |
+| warm, nothing wiped (no-op)   | **227 s** | 228 s (1.01×)      |
+| second no-op                  | **226 s** | 226 s (1.00×)      |
+
 ## Performance history
 
 Where vx's own headroom went, on the same 1090-package / 3,270-node graph,
