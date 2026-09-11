@@ -1169,6 +1169,14 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       64-pathspec cap in `gitPathspecs` is what a `--all` run on a
       200-project tree exceeds, by design); and a cost in the exit
       path. Nothing to take without a design change to the proof.
+154.  DONE (2026-09-11): `VX_TIMING=1` prints the stage table at the
+      end of a `--dry` run too. Item 153's profile needed a 2.3 GB
+      reinstall of refine because the table was silent under `--dry`,
+      and the prepare stages (discovery, config load, the git
+      enumeration) are exactly what a dry run exercises on a checkout
+      with no install. Pinned in `tests/timing-dry.test.ts` (the
+      table through `build graph` and `close` with the variable, absent
+      without); `modules/timing.md` and `cli.md` say so.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

@@ -9,7 +9,9 @@ load, git enumeration, build graph, plugin stages — the graph, key and
 schedule hooks, so a plugin's cost is its own row; `run()`: classify +
 probe, run graph, history, close) and `span(label)` accumulates repeated per-task
 operations (`cache.get`, `output glob`, `output stat`, `task hash`).
-`printTimings()` writes the table to stderr at the end of the run.
+`printTimings()` writes the table to stderr at the end of the run, and
+at the end of a `--dry` run — a dry run is how the prepare stages get
+profiled on a real repo with no install to run against.
 
 ## Invariants
 
@@ -22,5 +24,7 @@ operations (`cache.get`, `output glob`, `output stat`, `task hash`).
 
 ## Tests
 
-Exercised by every `VX_TIMING` measurement in `docs/benchmarks.md`; no
-unit test of its own — the table is a developer tool, not a contract.
+Exercised by every `VX_TIMING` measurement in `docs/benchmarks.md`.
+`tests/timing-dry.test.ts` pins the dry-run table (present through
+`build graph` and `close` with the variable, absent without); the
+table's shape is a developer tool, not a contract.
