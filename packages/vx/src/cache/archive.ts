@@ -37,7 +37,8 @@
 // skipped — vx's outputs are regular files, and an artifact that claims
 // otherwise silently loses the claim rather than acting on it.
 
-import { mkdir, chmod, realpath, rename, rmdir, stat, unlink, utimes } from 'node:fs/promises'
+import { chmodSync, renameSync, statSync, utimesSync } from 'node:fs'
+import { mkdir, realpath, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError } from '../util/index.js'
 import { TarFormatError, type TarInput, tarEntries, tarPack, tarSize } from './tar-stream.js'
@@ -332,6 +333,16 @@ class Extractor {
   private inflight: Promise<unknown>[] = []
   private inflightBytes = 0
   private readonly realBaseCache = new Map<string, string>()
+  // Per-directory memos. An artifact holds a few files per directory
+  // (payload's ui: 4,069 files in 535 directories), and the containment
+  // walk and the `mkdir -p` are properties of the directory, not the
+  // entry: doing both once per directory took the restore of that
+  // artifact from 220–300 µs per file to the write itself. The window
+  // this opens — a symlink planted at a validated directory between two
+  // of its entries — is the same one that already lies between an
+  // entry's own check and its write.
+  private readonly containedDirs = new Set<string>()
+  private readonly ensuredDirs = new Set<string>()
 
   constructor(
     private readonly destDir: string,
@@ -400,6 +411,18 @@ class Extractor {
     if (targetResolved !== baseResolved && !targetResolved.startsWith(baseResolved + path.sep)) {
       throw new ArchiveSecurityError(`archive entry escapes destDir (unsafe): ${name}`)
     }
+    const parentResolved = path.dirname(targetResolved)
+    if (this.containedDirs.has(parentResolved)) return
+    await this.assertParentContained(base, targetResolved, name)
+    this.containedDirs.add(parentResolved)
+  }
+
+  private async assertParentContained(
+    base: string,
+    targetResolved: string,
+    name: string,
+  ): Promise<void> {
+    const baseResolved = path.resolve(base)
     const realBase = await this.realBaseOf(base)
     // Only ancestors strictly BELOW the base are candidates — those are the
     // ones a poisoned entry could follow out of the tree. The walk must never
@@ -436,7 +459,12 @@ class Extractor {
     target: string,
     body: Uint8Array | AsyncIterable<Uint8Array>,
   ): Promise<void> {
-    const created = await mkdir(path.dirname(target), { recursive: true })
+    const dir = path.dirname(target)
+    let created: string | undefined
+    if (!this.ensuredDirs.has(dir)) {
+      created = await mkdir(dir, { recursive: true })
+      this.ensuredDirs.add(dir)
+    }
     // Write beside the target and RENAME into place. rename(2) replaces
     // the destination's directory ENTRY without following it, which is
     // what makes this both link-safe and concurrency-safe:
@@ -458,7 +486,14 @@ class Extractor {
     this.staged.push({ name, tmp, target, created })
     if (body instanceof Uint8Array) {
       this.inflightBytes += body.byteLength
-      const write = Bun.write(tmp, body)
+      // `writeFile`, not `Bun.write`: for a buffer this size `Bun.write`
+      // does the open, write and close on the calling thread and only
+      // its promise is asynchronous, so ten restores in flight wrote
+      // their 14,430 files one after another — a serial restore of
+      // payload took the same 6–7 s as one at concurrency 10, and a CPU
+      // profile put 6.7 of its 8.0 s inside `write` (2026-09-11). The
+      // thread-pool write lets the restores overlap their I/O.
+      const write = writeFile(tmp, body)
       // A write that fails before `commit` or `abort` awaits it must not
       // surface as an unhandled rejection; the awaiting `Promise.all` still
       // sees the error through the original promise.
@@ -482,20 +517,31 @@ class Extractor {
     await Promise.all(pending)
   }
 
-  /** Apply each entry's mode and mtime, then rename everything into place. */
+  /**
+   * Apply each entry's mode and mtime, then rename everything into place.
+   * Synchronous calls in batches: the three metadata calls per file are a
+   * few microseconds each on the calling thread and ~40 µs each as
+   * thread-pool round trips, and a large artifact has thousands of them
+   * (measured 2026-09-11 on payload's ui, 4,069 files: 892 ms → see the
+   * archive bench). A yield every `COMMIT_BATCH` files keeps the other
+   * restores' round trips flowing. The chmod is skipped when the mode is
+   * the one the temp file was created with — the common case.
+   */
   async commit(metaFor: (name: string) => [mode: number, mtimeMs: number]): Promise<void> {
     await this.drain()
-    await Promise.all(
-      this.staged.map(async (s) => {
-        const [mode, mtimeMs] = metaFor(s.name)
-        if (mode !== 0) await chmod(s.tmp, mode & 0o777)
-        if (mtimeMs > 0) {
-          const t = mtimeMs / 1000
-          await utimes(s.tmp, t, t)
-        }
-        await rename(s.tmp, s.target)
-      }),
-    )
+    const first = this.staged[0]
+    const createdMode = first === undefined ? -1 : statSync(first.tmp).mode & 0o777
+    let n = 0
+    for (const s of this.staged) {
+      const [mode, mtimeMs] = metaFor(s.name)
+      if (mode !== 0 && (mode & 0o777) !== createdMode) chmodSync(s.tmp, mode & 0o777)
+      if (mtimeMs > 0) {
+        const t = mtimeMs / 1000
+        utimesSync(s.tmp, t, t)
+      }
+      renameSync(s.tmp, s.target)
+      if (++n % COMMIT_BATCH === 0) await new Promise<void>((r) => setImmediate(r))
+    }
     this.staged.length = 0
   }
 
@@ -528,6 +574,9 @@ class Extractor {
     this.staged.length = 0
   }
 }
+
+/** Files renamed into place between two yields of a commit. */
+const COMMIT_BATCH = 256
 
 /** Per-process counter for extract temp names; uniqueness only. */
 let tmpSeq = 0
