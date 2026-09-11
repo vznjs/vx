@@ -1605,10 +1605,11 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     Nx repos (owner: 3–5 popular ones; only
     `nx:run-commands`, `nx:run-script`, a plain `command` and
     `nx:noop` targets are supported, anything else is out): the
-    remaining candidate is storybook (483 targets inheriting a plain
-    `command`; its placeholders and root cwd map since item 147, so
-    the next step is the bench itself: yarn 4.18 with no vendored
-    release, a large install); redwood is dropped — its
+    remaining candidate was storybook (483 targets inheriting a plain
+    `command`; its placeholders and root cwd map since item 147): its
+    install does not fit this box — the fetch step filled the 6 GB
+    left on the disk with the yarn cache alone (ENOSPC, 2026-09-11) —
+    so it waits for a bench host with room; redwood is dropped — its
     `build` declares no outputs, so Nx's cache replays the log and a
     restore arm restores nothing under either tool (REPOS.md). Parity
     is the task graph as above.
