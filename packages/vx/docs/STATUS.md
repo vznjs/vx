@@ -934,23 +934,7 @@ state of each:
 
 ## Next (ordered)
 
-0. **DONE 2026-09-10 as item 87 — dependants build core's release
-   binaries for nothing.** (Kept for the reasoning.) Every
-   package's `install` depends on `^build`, and core's `build` is the
-   four `bun build --compile` targets — so `vx run test --filter
-@vzn/vx-lockfile` on a fresh checkout compiles four binaries first,
-   the service job in CI needs the whole sandbox runtime to run one
-   test suite, and a root container that cannot sandbox fails every
-   package's tasks at the compile step (seen all day, 2026-09-10). A
-   dependant needs core's SOURCE, which needs no build. Decide what
-   `build` means for core (nothing — the binaries are a release
-   artifact, `release`/`build.bun` — or a no-op group the binaries hang
-   off) and what `install` means for a package that consumes source;
-   then the ci.yml "compiled binary reports the manifest version" step
-   names its build explicitly instead of riding the `^build` chain.
-   Measure the gate's wall before and after; the four compiles are the
-   longest tasks in it.
-
+0. DONE 2026-09-10 as item 87 (history) — core has no `build`; dependants stop compiling the release binaries.
 1. **The live REAPI suites are green again (2026-09-04); the
    whole-graph run stays optional.** With OrbStack's docker back, the
    rehosted `vx-nativelink:bun-node` image on
@@ -982,62 +966,12 @@ state of each:
    measures nothing; streaming needs a two-pass digest and a chunked
    compressed upload through the adaptive-downgrade path. Do it when a
    real workspace uploads > 100 MiB artifacts, not before.
-3. **DONE 2026-09-09 — zero-migration adoption as a plugin.** (Kept for the reasoning.)
-   The Vite-shaped ecosystem lever: `plugins: [turbo()]` in a Turbo
-   repo (or `nx()`) and `vx run build --all` works against `turbo.json`
-   - `package.json` scripts with no generated files — a trial that
-     commits nothing. The `project` stage is the right seam, and the
-     mapping already exists in `migrate-turbo.ts` / `migrate-nx.ts`, but
-     the seam gap that blocked it is CLOSED (2026-09-09): when any
-     plugin declares `project`, a package without a config file is
-     loaded as `{ tasks: {} }` for the stage to fill (pinned: a
-     scripts-to-tasks plugin gives a config-less package a task that
-     plans and runs; with no `project` plugin the package stays
-     invisible, as before). DONE the same day: `@vzn/vx-turbo`. The
-     mapper moved out of the CLI into `workspace/turbo.ts` (one mapping,
-     two consumers — `vx migrate` renders it with preset splices, the
-     plugin runs it live with the globals inlined), the façade exports
-     it, and the plugin fills the `project` stage from it, never
-     overwriting a written config. Pinned end to end over the migrate
-     suite's Turbo fixture: plan shape, edges, cache blocks, inlined
-     globals, second-run hits, `cache: false` uncached, hand-written
-     config wins, gaps warned once. The maintenance-surface worry is
-     answered by the shared mapper: there is one source of task truth
-     for Turbo, and the plugin is 90 lines over it.
-4. **DONE 2026-09-10 — the shipped binary's second core (item 77).**
-   A compiled `vx` loading a `vx.workspace.ts` that imports `@vzn/vx`
-   pulled a second copy of core from `node_modules` on every run — and
-   made a binary user install the package at all. The 2026-09-03
-   refutation was of `Bun.plugin`'s `onResolve` hook, which indeed
-   never fires for a bare specifier imported by a dynamically imported
-   user file; `build.module` — a VIRTUAL module for the exact specifier
-   — does fire there (probed 2026-09-10 in a `--compile` binary: a
-   plugin package's `@vzn/vx` import served from the bundled façade,
-   and a workspace file with NO `@vzn/vx` installed anywhere loads).
-   `registerCoreAlias` in bin.ts is that virtual module, lazy on the
-   façade. The user-visible half was already
-   closed (`isUserError` classifies by name across copies); the earlier
-   note that the cost is NOT measurable as an A/B from a workspace file
-   (2026-09-03: a workspace importing plugins by absolute source path
-   also loads source, so both arms read equal, 77 vs 74–81 ms at 100
-   projects) was measuring the wrong pair — the A/B is binary against
-   binary, with and without the alias, on one workspace (item 77 has
-   the numbers). What IS pinned since
-   2026-09-10: the darwin job's bare-specifier workspace declares
-   `@vzn/vx-schedule-history`, so a plugin package's own `@vzn/vx`
-   import (the second copy) and the `schedule` hook it fills run
-   through the compiled binary on every push — probed first by hand
-   on Linux with a native `--compile` build, 12 sandboxed tasks as an
-   unprivileged user. The plugins guide's "Publishing a plugin
-   package" section (2026-09-10) was proven the same way before it
-   shipped: a scratch `@acme/vx-thing` laid out exactly as it says
-   loads and runs its sink through `bun bin.ts` and through the
-   binary; delete its root `index.ts` and the binary says `cannot
-find '@acme/vx-thing'` while `bun` still loads it.
-5. **The watch e2e flake** — if `re-runs the task after a file change,
-then exits on SIGINT` times out again, keep that run's stdout: the
-   presence of `re-running...` separates a lost event from a slow
-   re-run (see the 2026-09-03 watch entry).
+3. DONE 2026-09-09 as item 88 → `@vzn/vx-turbo` (history) — zero-migration adoption as a plugin on the `project` stage.
+4. DONE 2026-09-10 as item 77 (history) — one core per process; the shipped binary serves its own façade to every `@vzn/vx` import.
+5. **The watch e2e flake.** Every initial-run assertion in
+   `tests/watch-loop.test.ts` throws with the watch's own stdout on a
+   miss (2026-09-10), so a red run names the label that re-ran; the
+   macOS intermittent extra cycle is recorded under item 130.
 6. **Re-measure the warm run after each day's work** — the hot path is
    the product. `bun packages/vx-bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap
@@ -1236,147 +1170,11 @@ last`, `vx info` and `vx cache prune`, through one parser and one
    ~17 ms gain would buy ~2 s of suite for a build step in every test
    run. The spawns stay on source.
 
-9. **Handoff after item 79 (2026-09-10, afternoon).** PR #269 (items
-   70–77: perf — lazy sandbox, run-end snapshots, one core per process;
-   complexity — the layer contract, the outcome vocabulary, the CAS
-   substrate; DX — six CLI asks) merged into main as dba8f49 by the
-   owner at 13:10Z; PR #270 (items 78–80: the façade trim, the Linux
-   port bridge, completions) merged as 61d9392 at 13:50Z. PR #271
-   (items 81–82, the restore lane and the save lane) merged as b71008b
-   at 14:24Z. PR #272 holds item 83 — the `fingerprint` seam and
-   the pnpm plugin, the owner's lockfile ask — with items 84–86 (the
-   shell in core, one `@vzn/vx-lockfile` package for pnpm / bun / npm
-   / yarn, CI on vx tasks only) merged as 9f762cc at 15:52Z on the
-   owner's "merge all". PR #273 holds items 87–90 (core's explicit
-   empty `build`, `@vzn/vx-infer`, the hosted cache in three commands)
-   on the same branch with main merged back in; it merges on the
-   owner's word, never on ours.
-   What a fresh session should know: (a) the warm floor is measured
-   and recorded three ways in items 76–77 — module load and the git
-   walk are what remain, and the compile flags are the right ones;
-   (b) the façade is 34 runtime exports and a consumer widens it with
-   the pin; (c) § In flight 3 — a sandboxed task exposing a port on
-   Linux — closed as item 79 (`localBinding: [port]`, a socat pair per
-   port), and the same item fixed the run's config never reaching SRT
-   after the Linux probe; what remains in § In flight is a platform
-   limit (macOS violation reporting is lossy, item 5); (d) the
-   sandboxed check-in clone at `/home/user/sandbox-home/vx` is the
-   way to measure this repo's own gate as an unprivileged user, and
-   every A/B in items 70–77 ran there.
-10. **Handoff after item 95 (2026-09-10, late night).** PR #273
-    carries items 87–95: core's empty `build` group and
-    `check.binary`, the hosted-cache path, `@vzn/vx-infer` shipped
-    and retired the same day (technology plugins are the
-    community's), Bun 1.4.2 with every dependency and action current,
-    local flaky-task detection (three surfaces, one rule, a partial
-    index that keeps a green run at 0.01 ms), the Turbo / Nx parity
-    suites with `docs/parity.md`, and the positioning redo (one
-    thing, built to be built on; one binary, no Node or Bun; Windows
-    under WSL). Every head from 9622ba6 to d81d9e7 was red on one
-    task, `@vzn/vx-docs#build` — astro 7's optional peer, hidden
-    locally by stale store copies (item 92's note); af01500 declares
-    it. Re-measured after the day's work (`run.ts 100 5` / `1000 5`,
-    medians, this four-core box): 100 projects 117 / 164 / 359 ms
-    and 1000 projects 227 / 1,049 / 2,488 ms for warm-no-restore /
-    warm-restore / no-cache, against the night's 126 / 205 / 427 and
-    244 / 1,006 / 2,567 — the detector's probe is invisible at the
-    whole-process scale, as its 0.55 ms for 1,000 candidates said it
-    would be. Open from the owner's last message: nothing; the
-    2026-07 parity design doc's edge-case lists and § Next 5–8 remain
-    the backlog. #273 was merged by the owner at 17:03Z (main 891eba5, green); items 96–101 followed the same night, 96–98 inside #273 and 99–101 as PR #274 (green, mergeable, awaiting the owner). "Never merge without the owner's word" held until the owner's 2026-09-10 message "Merge whenever you own the project": #274 was merged by this loop (main 4e4ff81), items 102–105 are PR #275, and 106 follows it.
-
-11. **Handoff after item 67 (2026-09-10, night).** The loop's Next
-    items are spent; what a fresh session should know, in order:
-    (a) PR #265 merged into main (d96a06f) and PR #266 (items 65–68
-    and the day's follow-ups) merged as e099265, both by merge commit —
-    the branch cannot be rebase-merged, and it restarts from main after
-    each merge (a fast-forward; the next work opens a new PR).
-    Schedule-history, migrate and prune left core, which went from 125
-    files / 1,225,063 bytes under `src` to 119 / 1,172,583. Core's
-    verbs are run, watch, cache, lock, init, upgrade, show, info, why,
-    last; `src` holds no plugin.
-    (b) The suite's floor is processes, not timers (the paragraph after
-    item 58). The one lever left is converting the nineteen
-    CLI-spawning suites (~250 cases at 91 ms) to in-process calls where
-    process semantics are not the claim — about 14 s of file time,
-    ~1 s of wall on twelve shards; do it only if a box with many cores
-    shows the wall pinned by them. The gate on four cores is 15.7 s;
-    the whole test graph under the REAL sandbox as an unprivileged user
-    (twelve shards, the unsafe suite, eleven package suites) reads
-    44 s, three reps 24/24 on 1bce329 — no flake at twelve-way
-    concurrency behind bwrap.
-    (c) DONE 2026-09-10: the darwin CI job's four slices run side by
-    side (3 min 8 s sequential before). The canary step runs AFTER the
-    test step and the sandbox suites are class-gated there, so the load
-    lands on nothing `sandbox-exec` enforces; the canary stays the gate
-    that would say otherwise. Measured on 2a2e693: the test step 73 s,
-    the job 1 min 36 s, the canary 20/20 — the PR's CI wall went from
-    ~3 min 10 s to under 2 min, and the Linux gate is the longest job
-    again.
-    (d) `executeCachedTask` (execute-task.ts, ~440 lines) is dense
-    policy — probe, hash, clean, exec, save — with no clean seam left
-    after the hit and miss paths moved out; leave it whole.
-    (e) `run()` is 895 lines; the run-context record (25 lines of
-    literal assembly) is the last cohesive block, and moving it buys
-    nothing a reader needs. Stop slicing there.
-    (f) Warm path: no lead in the stage table (the two refuted probes
-    after item 61); the discovery memo and pre-bundling stay refuted.
-    Superseded 2026-09-10 by items 70, 71 and 77: the lazy sandbox, the
-    run-end snapshots and the core alias were all vx changes the stage
-    table did show once read on the right workspace (this repo's own
-    gate under the real sandbox, the binary rather than `bun bin.ts`).
-    (g) Capabilities worth a design before code: streaming artifacts
-    through the remote seam (Next 2, gated by the plugin side), and a
-    `serve`-shaped embedder built OUTSIDE this repo on the façade
-    (the seams are in place: `inflight`, `remoteCache`,
-    `telemetrySinks`, the wire event form).
-
-12. **Handoff after item 112 (2026-09-10, late night).** Everything
-    this loop shipped tonight is on main (8e8210c): PR #275 (102–105),
-    #276 (106–110 — signal escalation and the recursion refusal, the
-    parity doc's LOW rows, the enumeration-equivalence property, the
-    `RunOptions.signal` abort seam with the watch loop on it, the
-    watch-loop e2e that found the `dist`-container double cycle, the
-    shard-weight refresh, Next 7(c) closed by measurement), #277 (111,
-    the keep-alive exit line), #278 (docs), #279 (112 — the `./src/**`
-    stale hit and the rest of the glob-spelling class, one normalizer
-    in util read by the resolver, the workspace member globs, the
-    subtree short-circuit, the watch container and the schema; a brace
-    set is a wildcard to `staticPrefix`). Every commit was gated here
-    as shards + package suites + oxlint + oxfmt + the docs build — this
-    container cannot host the sandbox (root, no nested user namespaces;
-    `vx run ci --all` fails every sandboxed task at the probe), so the
-    gate ran piecewise and CI's sandboxed jobs were the real proof;
-    every head was green. No PR is open. What a fresh session finds:
-    the STATUS backlog holds nothing this container can act on (Next 2
-    and the surveys' deferred rows are parked with reasons; In-flight
-    item 5 is a macOS constraint; the release step is the owner's npm
-    trusted-publisher setup); the 2026-07 parity doc's only open row
-    is M7, by choice. Tonight's method paid twice — a probe of the
-    obvious spelling (`SIGTERM` to `vx watch`, `./src/**` as an input)
-    against the documented contract — so start there: candidates are
-    `exec.sandbox.allow` paths spelled with `./` (needs a host that can
-    sandbox), the vx-turbo mapper handing `./`-spelled turbo.json globs
-    through (now normalized downstream, unpinned at the mapper), and
-    `vx init`'s emitted config on a fresh workspace under `vx watch`
-    (an uncached task costs one extra execution per edit, item 110's
-    pin). Never end with "what next?".
-
-13. **DONE 2026-09-10 as item 120 — `vx watch` scope vs. what a cycle
-    runs (found with item 119).** (Kept for the reasoning.)
-    The per-project arm watched the dirs of the projects in
-    `opts.projects` — the filter's answer — but a cycle also runs those
-    projects' upstream dependencies, and an edit to one of them
-    outside the filter is not an event, so `vx watch build --filter
-app` never re-runs on a `lib` edit while `vx run` would rebuild
-    both. The root arm (workspaceFiles in play) accepts any project's
-    dir, so the two arms disagree. The fix is one rule for both: watch
-    the projects a cycle can RUN — the scope plus its transitive
-    package-graph dependencies (`buildPackageGraph` already answers
-    that for `--filter 'app...'`). Pin it e2e with a two-project
-    workspace and `--filter app`: a `lib/src` edit is one cycle that
-    re-executes `lib#build` and `app#build`.
-
+9. Superseded by 14 (items 70–80 landed as PRs #269–#271, 2026-09-10).
+10. Superseded by 14 (items 81–95 landed as PRs #272–#273, 2026-09-10).
+11. Superseded by 14 (the survey and parity rounds, items 96–111, 2026-09-10).
+12. Superseded by 14 (items 102–112 landed as PRs #275–#279, 2026-09-10).
+13. DONE 2026-09-10 as item 120 — `vx watch` watches the projects a cycle can run.
 14. **Handoff after item 130 (2026-09-10, late night).** PR #293
     merged the landing page's first delivery (a layer over the old
     page); the owner asked for a full redesign, and PR #294 carries it
