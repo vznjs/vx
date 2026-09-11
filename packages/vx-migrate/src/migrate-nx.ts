@@ -430,7 +430,7 @@ function mapCommand(
     // An empty script is a target Nx lists and `pnpm run` runs as nothing
     // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
     // that refuses to load, so it is the placeholder with its todo.
-    if (body !== undefined && body.length > 0) return scriptCommand(script, body)
+    if (body !== undefined && body.length > 0) return scriptCommand(script, body, scripts)
     todos.push(
       body === undefined
         ? `nx:run-script: package.json has no ${JSON.stringify(script)} script`

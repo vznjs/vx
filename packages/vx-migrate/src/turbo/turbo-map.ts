@@ -241,7 +241,7 @@ export async function mapTurboWorkspace(
         buildTask(
           name,
           def,
-          scriptCommand(name, script),
+          scriptCommand(name, script, scripts),
           own,
           emitted,
           globals,

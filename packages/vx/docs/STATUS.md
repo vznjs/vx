@@ -998,6 +998,18 @@ equivalent — map it manually` on every run, for the value every
       excludes (`nextjs`, `nestjs`) is 37 tasks, identical under
       `nx run-many --graph` and `vx --dry`.
 
+144.  DONE (2026-09-11 — the Nx round, novu): `pre<name>` / `post<name>`
+      hooks ride inside the mapped command. npm and pnpm run them
+      around `<name>` without being asked, so Nx and Turbo, which run
+      `pnpm run build`, get them for free; the inlined body did not,
+      and `@novu/js#build` failed on the CSS its `prebuild` copies.
+      `scriptCommand` folds them in that order, the way `vx init` has
+      since its scripts mapper (workspace/migrate-scripts.ts), skips
+      the package manager's own lifecycle names, and folds none for a
+      yarn ≥ 2 script (that shell runs no hooks). Pinned; fails on the
+      previous helper. The novu bench rows before the fix (vx cold
+      183 s, exit 1) are discarded.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
