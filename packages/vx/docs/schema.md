@@ -519,7 +519,9 @@ Semantics:
   compile error (`'^name'` / `'pkg#name'` reference other projects
   and stay free strings).
 - **`'^name'`** — nearest-holder frontier. Walk the package dep graph
-  from this project's direct deps; each path stops at the first dep
+  from this project's direct deps (`dependencies`, `devDependencies`,
+  `optionalDependencies` — a `peerDependencies` entry is the
+  consumer's to provide and orders nothing); each path stops at the first dep
   that declares the task and an edge is added to it (Turbo/Nx
   direct-deps parity). The holder's own `dependsOn` is responsible
   for anything deeper — chain `'^name'` in the holder to keep the

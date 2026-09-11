@@ -800,6 +800,30 @@ equivalent — map it manually` on every run, for the value every
       ones are exactly vx's plan, so both tools run the same graph in
       item 137's bench.
 
+137.  DONE (2026-09-11): a peer dependency orders nothing. Mapping
+      medusajs/medusa under `@vzn/vx-turbo` planned zero tasks — a
+      task-graph cycle, analytics to test-utils to medusa and back to
+      analytics, every hop a `build` — while Turbo's own dry-run
+      planned 83. The edge that closed the loop is test-utils' PEER
+      on medusa; the other two are a devDependency and a dependency.
+      Turbo reads no peers at all. The package graph now has two
+      adjacencies: order (`directDeps`, the `'^name'` walk) is
+      dependencies, devDependencies, optionalDependencies and the
+      task edges — what the package has installed for itself — and
+      reach (`transitiveDeps` / `transitiveDependents`, what
+      `--filter pkg...` and `--affected` read) adds peers, because a
+      change in a peer can still break the package that peers on it.
+      Pinned in `tests/package-graph.test.ts` (a peer reaches but
+      does not order; the medusa shape is no cycle), documented in
+      `modules/package-graph.md`, `cli.md` and `schema.md`. Under
+      the fix medusa plans the same 83 `pkg#task` ids Turbo runs.
+      Payload's scope was checked the same way: its `build:core`
+      (negated `plugin-*` / `storage-*` filters) differs between the
+      tools — Turbo still builds an excluded package when a selected
+      one depends on it, vx drops it from the run — so the bench
+      uses `build:all` (templates excluded, leaves either way), where
+      both plan the same 45 tasks.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so

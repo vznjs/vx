@@ -111,7 +111,7 @@ describe('buildPackageGraph', () => {
     expect(g.transitiveDependents('b')).toContain('a')
   })
 
-  it('reads all four dependency fields (dependencies, devDependencies, peer, optional)', () => {
+  it('reads all four dependency fields: three order a build, a peer only reaches', () => {
     const m: ProjectMeta = {
       name: 'a',
       dir: '/ws/a',
@@ -125,8 +125,30 @@ describe('buildPackageGraph', () => {
       configPath: null,
     }
     const g = buildPackageGraph([m, meta('b'), meta('c'), meta('d'), meta('e')])
-    // All four dep fields contribute, so transitive deps include
-    // every workspace package mentioned in any of them.
+    // A peer is provided by whoever consumes `a`, never linked into `a`'s
+    // own node_modules: not a build-order edge (`^build` does not wait on
+    // it), but a change in it still reaches `a` (`--affected`, `...d`).
+    expect(g.directDeps('a')).toEqual(['b', 'c', 'e'])
     expect(g.transitiveDeps('a').sort()).toEqual(['b', 'c', 'd', 'e'])
+    expect(g.transitiveDependents('d')).toEqual(['a'])
+  })
+
+  it('a peer that closes a cycle is no cycle for the build order (medusa, 2026-09-11)', () => {
+    // medusa: analytics dev-depends on test-utils, test-utils PEERS on
+    // medusa, medusa depends on analytics. Turbo reads no peers and runs
+    // it; with the peer as an order edge `^build` was a task cycle.
+    const g = buildPackageGraph([
+      meta('analytics', { 'test-utils': 'workspace:*' }),
+      {
+        name: 'test-utils',
+        dir: '/ws/test-utils',
+        packageJson: { name: 'test-utils', peerDependencies: { medusa: 'workspace:*' } },
+        configPath: null,
+      },
+      meta('medusa', { analytics: 'workspace:*' }),
+    ])
+    expect(g.directDeps('test-utils')).toEqual([])
+    // Reach still closes the loop: a medusa change affects test-utils.
+    expect(g.transitiveDependents('medusa').sort()).toEqual(['analytics', 'medusa', 'test-utils'])
   })
 })

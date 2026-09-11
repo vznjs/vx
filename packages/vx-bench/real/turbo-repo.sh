@@ -25,14 +25,18 @@
 #
 # FILTERS="astro @astrojs/*" scopes BOTH tools to the same packages (vx
 # `--filter <p>` per pattern instead of `--all`, turbo `--filter=<p>`), for
-# a repo whose own `build` script is a filtered `turbo run build`.
+# a repo whose own `build` script is a filtered `turbo run build`; a
+# pattern may be negated (`!@payloadcms/plugin-*`). TURBO_ARGS adds what
+# the repo's own script passes turbo (medusa: `--concurrency=100%`).
 set -u
 R=$1; VX=$2; TASKS=$3; REPS=${4:-3}; DIRS=${5:-"dist types coverage"}
-FILTERS=${FILTERS:-}
+FILTERS=${FILTERS:-}; TURBO_ARGS=${TURBO_ARGS:-}
 vx_scope=(--all); turbo_scope=()
 if [ -n "$FILTERS" ]; then
   vx_scope=()
+  set -f  # `@astrojs/*` is a filter, not a path
   for f in $FILTERS; do vx_scope+=(--filter "$f"); turbo_scope+=("--filter=$f"); done
+  set +f
 fi
 cd "$R"
 outputs() {
@@ -45,7 +49,7 @@ wipe_turbo_cache() { rm -rf node_modules/.cache/turbo .turbo packages/*/.turbo; 
 wipe_vx_cache() { rm -rf .vx; }
 ms() { date +%s%N; }
 run_vx() { "$VX" run $TASKS "${vx_scope[@]}" > .vx-bench-vx.log 2>&1; echo $?; }
-run_turbo() { node_modules/.bin/turbo run $TASKS "${turbo_scope[@]}" --no-daemon > .vx-bench-turbo.log 2>&1; echo $?; }
+run_turbo() { node_modules/.bin/turbo run $TASKS "${turbo_scope[@]}" $TURBO_ARGS --no-daemon > .vx-bench-turbo.log 2>&1; echo $?; }
 time_arm() {
   local t0 t1 code
   t0=$(ms); code=$(run_"$1"); t1=$(ms)
