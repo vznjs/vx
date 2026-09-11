@@ -783,6 +783,23 @@ equivalent — map it manually` on every run, for the value every
       reports them in one line per run now, naming the count, the task
       names and the package count; pinned in the plugin suite.
 
+136.  DONE (2026-09-11): every mapper gap is one line per run. Item
+      135's one-line form covered persistent tasks only; the astro
+      dry-run under `@vzn/vx-turbo` then printed 57 identical lines
+      for `!vendor/**` (one per package whose `build` and `build:ci`
+      negate an output). The plugin now indexes every task-level todo
+      by its text at mapping time and reports each once, naming the
+      count, the task names and the package count (a gap one task
+      carries keeps its `pkg#task:` form); the persistent line is the
+      same shape. Pinned in the plugin suite: two packages sharing a
+      negated output are one line, and the per-task form is absent.
+      Astro's task set under the plugin was also checked against
+      Turbo's own dry-run for the repo's build scope: Turbo lists 64
+      tasks of which 32 are `<NONEXISTENT>` placeholders (`build`
+      depends on `prebuild`, which only `astro` defines); the 32 real
+      ones are exactly vx's plan, so both tools run the same graph in
+      item 137's bench.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so

@@ -22,8 +22,18 @@
 #   printf "import { turbo } from '@vzn/vx-turbo'\nexport default { plugins: [turbo()] }\n" > vx.workspace.mjs
 #   real/turbo-repo.sh ~/n8n <vx-binary> "build" 3 "dist"
 #   real/turbo-repo.sh ~/n8n <vx-binary> "build typecheck test:unit lint" 3 "dist coverage"
+#
+# FILTERS="astro @astrojs/*" scopes BOTH tools to the same packages (vx
+# `--filter <p>` per pattern instead of `--all`, turbo `--filter=<p>`), for
+# a repo whose own `build` script is a filtered `turbo run build`.
 set -u
 R=$1; VX=$2; TASKS=$3; REPS=${4:-3}; DIRS=${5:-"dist types coverage"}
+FILTERS=${FILTERS:-}
+vx_scope=(--all); turbo_scope=()
+if [ -n "$FILTERS" ]; then
+  vx_scope=()
+  for f in $FILTERS; do vx_scope+=(--filter "$f"); turbo_scope+=("--filter=$f"); done
+fi
 cd "$R"
 outputs() {
   local args=()
@@ -34,8 +44,8 @@ wipe_outputs() { outputs | xargs -r rm -rf; }
 wipe_turbo_cache() { rm -rf node_modules/.cache/turbo .turbo packages/*/.turbo; }
 wipe_vx_cache() { rm -rf .vx; }
 ms() { date +%s%N; }
-run_vx() { "$VX" run $TASKS --all > .vx-bench-vx.log 2>&1; echo $?; }
-run_turbo() { node_modules/.bin/turbo run $TASKS --no-daemon > .vx-bench-turbo.log 2>&1; echo $?; }
+run_vx() { "$VX" run $TASKS "${vx_scope[@]}" > .vx-bench-vx.log 2>&1; echo $?; }
+run_turbo() { node_modules/.bin/turbo run $TASKS "${turbo_scope[@]}" --no-daemon > .vx-bench-turbo.log 2>&1; echo $?; }
 time_arm() {
   local t0 t1 code
   t0=$(ms); code=$(run_"$1"); t1=$(ms)
