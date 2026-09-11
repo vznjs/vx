@@ -1008,7 +1008,9 @@ equivalent — map it manually` on every run, for the value every
       the package manager's own lifecycle names, and folds none for a
       yarn ≥ 2 script (that shell runs no hooks). Pinned; fails on the
       previous helper. The novu bench rows before the fix (vx cold
-      183 s, exit 1) are discarded.
+      183 s, exit 1) are discarded; with it, medians of three: cold
+      291 s to Nx's 299, restore 3.10 s to 9.05, no-op 655 ms to
+      8.55 s (`docs/benchmarks.md` § Real Nx repos).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1524,7 +1526,7 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     ever runs without configs. Never end with "what next?".
 
 15. **More Nx repos.** The five Turbo build sets, the two wide sets
-    (item 141) and the first two Nx repos (item 142) are in.
+    (item 141) and three Nx repos (items 142–144) are in.
     Two gaps from the first Nx repos (item 142): `vx-migrate` should
     write `.mjs` on request or say to exclude `vx.config.ts` from a
     package's tsconfig `include`, and it should say what to do when
@@ -1536,8 +1538,8 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     `nx:noop` targets are supported, anything else is out): the
     remaining shortlist is storybook (483 targets inheriting a plain
     `command`; needs `{projectRoot}` / `{projectName}` expansion in
-    command strings), novu (35 `nx:run-commands`) and redwood
-    (package scripts, yarn 4); parity is the task graph as above.
+    command strings) and redwood (package scripts, yarn 4); parity is
+    the task graph as above.
 
 ## Decisions (this arc)
 

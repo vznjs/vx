@@ -196,6 +196,21 @@ pass it; both tools at the repo's `parallel: 8`.
   refuses two tasks on one output directory, so the bench strips the
   cache block from those two siblings (they are not benched).
 
+### novuhq/novu — fd04f7c (2026-09-11)
+
+pnpm 11.0.9 (corepack's copy, wrapped in `.vx-bench-bin/`), Nx 21.3.11,
+Node 22.22. 43 projects; 416 `nx:run-script` targets, 39
+`nx:run-commands` (the lints, with workspace-root `cwd`s; not benched)
+and 10 `@nx/js:release-publish` placeholders. Scope: the repo's own
+`build` script's excludes (`nextjs`, `nestjs`): `build` = 37 tasks. Both
+tools at the repo's `parallel: 4`.
+
+- `pre<name>` / `post<name>` hooks ride inside the mapped command
+  (STATUS 144); before that `@novu/js#build` failed on the CSS its
+  `prebuild` copies.
+- `libs/dal`'s `test:watch` is an empty script: the placeholder with a
+  todo (STATUS 143), where `command: ''` refused the whole workspace.
+
 ## Results
 
 `docs/benchmarks.md`, "Five real Turbo repos" — the build tables — and
