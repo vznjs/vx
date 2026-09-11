@@ -780,9 +780,8 @@ equivalent — map it manually` on every run, for the value every
       the way and fixed: the plugin warned once PER TASK that a task
       is persistent — n8n marks `dev` and `watch` persistent in most
       packages, a hundred identical lines before the first frame — and
-      reports them in one line per run now (`4 persistent task(s)
-      (dev, watch across 2 package(s)) are …`), pinned in the plugin
-      suite.
+      reports them in one line per run now, naming the count, the task
+      names and the package count; pinned in the plugin suite.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1301,9 +1300,11 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     picked and mapped (item 135); the numbers need a machine with
     Node ≥ 24, pnpm 12 and the cores the owner's solid run had. Clone
     shallow, `pnpm install`, write the one-line `vx.workspace.mjs`,
-    then `packages/vx-bench/real/turbo-repo.sh ~/n8n <vx-binary>
-    "build" 3 "dist"` and the four-task form (`"build typecheck
-    test:unit lint"`, outputs `"dist coverage"`); record the tables in
+    then `packages/vx-bench/real/turbo-repo.sh` on `~/n8n` with the
+    binary, first `build` alone (outputs `dist`), then the four-task
+    form, build, typecheck, test:unit and lint (outputs `dist` and
+    `coverage`) — both invocations are spelled out at the top of the
+    script; record the tables in
     `docs/benchmarks.md` beside solid and add a `solidRows`-shaped
     block to the landing page's second panel (the same panel, the same
     rows). Expect the cold build to be long (editor-ui is a Vite build,
