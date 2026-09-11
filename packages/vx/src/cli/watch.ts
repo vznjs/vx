@@ -136,6 +136,8 @@ export const WATCH_PROBE = '.vx-watch-probe'
 
 /** How long a watcher gets to report its own probe before the loop goes on without proof. */
 const WATCH_PROBE_TIMEOUT_MS = 2_000
+/** The file `fsClockNow` writes and removes, under the cache dir the watchers ignore. */
+const WATCH_CLOCK_STAMP = '.vx-watch-clock'
 
 /** Anything the loop needs to shut down at exit. */
 export interface WatchHandle {
@@ -789,8 +791,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     )
   }
 
-  /** The instant the watchers go live: a path last modified before it is the initial run's, not an edit. */
-  const armedAt = Date.now()
+  /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
+  const armedAt = fsClockNow(cacheDir)
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   const perProject = new Map<string, WatchHandle>()
   const armProject = (proj: ProjectMeta): void => {
@@ -947,6 +949,31 @@ export function modifiedBefore(abs: string, t: number): boolean {
     return fs.statSync(abs).mtimeMs < t
   } catch {
     return false
+  }
+}
+
+/**
+ * "Now" as the filesystem will stamp the next write, not as `Date.now()`
+ * reads it. A file's mtime comes from the kernel's coarse clock, which
+ * runs up to a tick behind the fine clock `Date.now()` reads — measured
+ * on the Linux bench box 2026-09-11: 2 of 3,000 tight writes carried an
+ * mtime 5.8 ms EARLIER than a `Date.now()` taken before the write, and
+ * more under CPU load, where the tick is skipped. An `armedAt` from the
+ * fine clock then judged an edit made right after the ready line as
+ * "modified before the arm" and dropped it (the watch e2e flake, three
+ * shard runs that day; traced: raw event, trigger, `same=true`). A stamp
+ * read off a file written here is on the mtime clock itself, and every
+ * later write's mtime is at or after it.
+ */
+export function fsClockNow(dir: string): number {
+  const stamp = path.join(dir, WATCH_CLOCK_STAMP)
+  try {
+    fs.writeFileSync(stamp, '')
+    const at = fs.statSync(stamp).mtimeMs
+    fs.unlinkSync(stamp)
+    return at
+  } catch {
+    return Date.now()
   }
 }
 
