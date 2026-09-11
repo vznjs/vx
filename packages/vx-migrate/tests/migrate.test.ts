@@ -366,6 +366,7 @@ const NX_GRAPH = {
             },
             codegen: { executor: 'nx:run-commands', options: { command: 'node gen.js' } },
             test: { executor: 'nx:run-script', options: {}, cache: true },
+            empty: { executor: 'nx:run-script', options: {} },
             serve: { executor: '@nx/webpack:dev-server', options: { port: 4200 } },
             fmt: { executor: 'nx:run-commands', options: { command: 'fmt' } },
           },
@@ -420,7 +421,7 @@ async function makeNxWorkspace(): Promise<string> {
     path.join(root, '.nx', 'workspace-data', 'project-graph.json'),
     JSON.stringify(NX_GRAPH, null, 2),
   )
-  await addPackage(root, 'pkg-a', { test: 'jest' })
+  await addPackage(root, 'pkg-a', { test: 'jest', empty: '' })
   await addPackage(root, 'pkg-b', {})
   return root
 }
@@ -479,6 +480,13 @@ describe('vx migrate (nx)', () => {
       // Foreign executor → placeholder command; dependsOn/cache parts kept.
       const serve = tasks.serve!
       expect(serve.exec?.command).toBe(PLACEHOLDER)
+
+      // run-script on an empty script (novu's `test:watch: ""`) is the
+      // placeholder with a todo, not `command: ''` — a config that refuses
+      // to load.
+      expect(tasks.empty!.exec?.command).toBe(PLACEHOLDER)
+      const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
+      expect(text).toContain('package.json script "empty" is empty')
     },
     TIMEOUT,
   )

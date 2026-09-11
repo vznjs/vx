@@ -420,18 +420,27 @@ function mapCommand(
         .filter((c): c is string => typeof c === 'string' && c.length > 0)
       if (parts.length > 0) return parts.join(' && ')
     }
-    if (typeof options.command === 'string') return options.command
+    if (typeof options.command === 'string' && options.command.length > 0) return options.command
     todos.push(`nx:run-commands target has no command — options: ${JSON.stringify(options)}`)
     return PLACEHOLDER
   }
   if (executor === 'nx:run-script') {
     const script = typeof options.script === 'string' ? options.script : targetName
     const body = scripts[script]
-    if (body !== undefined) return scriptCommand(script, body)
-    todos.push(`nx:run-script: package.json has no ${JSON.stringify(script)} script`)
+    // An empty script is a target Nx lists and `pnpm run` runs as nothing
+    // (novu's `test:watch: ""`, 2026-09-11); as a command it is a config
+    // that refuses to load, so it is the placeholder with its todo.
+    if (body !== undefined && body.length > 0) return scriptCommand(script, body)
+    todos.push(
+      body === undefined
+        ? `nx:run-script: package.json has no ${JSON.stringify(script)} script`
+        : `nx:run-script: package.json script ${JSON.stringify(script)} is empty`,
+    )
     return PLACEHOLDER
   }
-  if (executor === undefined && typeof target.command === 'string') return target.command
+  if (executor === undefined && typeof target.command === 'string' && target.command.length > 0) {
+    return target.command
+  }
   // The common executors wrap one CLI each; the task runs on the first
   // try and the TODO still asks for a look, since executor options
   // (config paths, watch flags) are not carried over.

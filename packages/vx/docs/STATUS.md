@@ -985,6 +985,19 @@ equivalent — map it manually` on every run, for the value every
       it passes in 0.3 s and CI passed on the same head. The window is
       a claim about time under that load, not a refuted one.
 
+143.  DONE (2026-09-11 — the Nx round, novu): an empty package script is
+      not a command. Nx lists `test:watch: ""` as an `nx:run-script`
+      target and `pnpm run` runs it as nothing; the mapper wrote
+      `command: ''`, which the loader refuses, so one empty script in
+      `libs/dal` sank the whole workspace. It is the placeholder with a
+      todo naming the script, like a missing one; `nx:run-commands`
+      and a plain `command` guard the empty string too. Pinned in the
+      Nx fixture (fails on the previous mapper). novu: 43 projects,
+      416 `nx:run-script` and 39 `nx:run-commands` targets (the lints,
+      with workspace-root `cwd`s); `build` minus the repo's own
+      excludes (`nextjs`, `nestjs`) is 37 tasks, identical under
+      `nx run-many --graph` and `vx --dry`.
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
