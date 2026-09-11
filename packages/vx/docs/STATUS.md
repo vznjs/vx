@@ -1656,44 +1656,66 @@ last`, `vx info` and `vx cache prune`, through one parser and one
 11. Superseded by 14 (the survey and parity rounds, items 96–111, 2026-09-10).
 12. Superseded by 14 (items 102–112 landed as PRs #275–#279, 2026-09-10).
 13. DONE 2026-09-10 as item 120 — `vx watch` watches the projects a cycle can run.
-14. **Handoff after item 130 (2026-09-10, late night).** PR #293
-    merged the landing page's first delivery (a layer over the old
-    page); the owner asked for a full redesign, and PR #294 carries it
-    (item 125, the film) with the loop that followed: the `project`
-    stage's context names every package core discovered (126, the
-    Turbo plugin's second discovery gone, −12 ms per 1,000), one Turbo
-    mapping per run so a watch cycle sees a script edit (127),
-    `vx watch` on a `vx.workspace.*` edit (128), the mapping indexed by
-    name (129, a tie at the run level, recorded as one), and a package
-    added or removed under a running watch (130, the glob's directory
-    watched, the set re-armed). Every one is pinned with a
-    differential; the piecewise gate ran here (this container cannot
-    host the sandbox) and CI was green on every head it had run by
-    the time of writing. Method that paid tonight: read one arm of a
-    feature for the file it cannot see (the workspace config, the
-    package directory, a plugin's memo), probe it end to end in the
-    scratchpad, then pin. What is still no event under `vx watch`, by
-    choice and in the docs: a root `turbo.json` edit (no seam names a
-    plugin's root files — a second consumer makes it one), a package
-    added under a glob of another shape than `<dir>/*`, and the
-    watcher shape when a new package declares the first
-    `workspaceFiles` input. Refuted on the way: `vx why` and `vx show`
-    on a config-less package whose task a `project` plugin gave it —
-    `why` reads the run's history and explains the key with the
-    changed input, `show` lists the task as "from plugins" (probed in
-    the scratchpad, 2026-09-10; nothing to pin, the read verbs never
-    load the config `why` would need). Learned on PR #295's red:
-    `oxfmt --check <file>` passes what `oxfmt --check .` rejects (a
-    code span wrapped across an indented line), so the gate's format
-    check is the directory scan from the package, never a named file
-    (CLAUDE.md). Refuted 2026-09-11: shipping plugins prebuilt to
-    save the transpile on import — on the compiled binary the
-    `workspace config` stage reads 9–12 ms with no plugin and 12–14
-    with `turbo()` imported from source, ~2 ms for a build step in
-    every plugin package. Left: the zero-migration
-    stage's remaining 20 ms per 1,000 (the overlay probes, two clones
-    per fill, a re-validation per plugin) if a workspace that size
-    ever runs without configs. Never end with "what next?".
+14. **Handoff after item 153 (2026-09-11, night).** PRs #302–#315
+    carried the day: the adoption packages merged into
+    `@vzn/vx-migrate` (`turbo()`, `turboCache()`, `nxCache()`, the
+    CLI), `@vzn/vx-prune` gone, the Turbo build sets and wide sets
+    benched, then the Nx round — query, strapi, novu, router, refine,
+    five repos, every one on the repo's own worker count with the
+    task sets proven identical by `--graph` against `--dry=json` —
+    and what the round taught core and the mapper: `--mjs` output
+    (145), one output path per cached task at migration time (146),
+    run-commands' cwd and placeholders (147), the watch arm instant on
+    the mtime clock (148), a workspace peer as an order edge unless it
+    closes a cycle (149, the one core graph change of the day, A/B'd
+    a tie), Nx 23's per-user cache pinned by the harness (150), a
+    hidden output directory as its subtree glob (151), and the
+    real-repo no-op profiled to its floors (153). Open: Next 16 above
+    (overlapping outputs, with its rewrite catch), Next 1 and 2 as
+    before. The box: four cores, a 13.3 GiB cgroup, no sandbox (the
+    gate runs as `scratchpad/gate-manual.sh`), Node 22.22; a chain of
+    benches survives a turn boundary only under `setsid` from a plain
+    shell, and every `pkill -f` pattern must not appear in its own
+    command line. Never end with "what next?".
+
+14a. **Handoff after item 130 (2026-09-10, late night).** PR #293
+merged the landing page's first delivery (a layer over the old
+page); the owner asked for a full redesign, and PR #294 carries it
+(item 125, the film) with the loop that followed: the `project`
+stage's context names every package core discovered (126, the
+Turbo plugin's second discovery gone, −12 ms per 1,000), one Turbo
+mapping per run so a watch cycle sees a script edit (127),
+`vx watch` on a `vx.workspace.*` edit (128), the mapping indexed by
+name (129, a tie at the run level, recorded as one), and a package
+added or removed under a running watch (130, the glob's directory
+watched, the set re-armed). Every one is pinned with a
+differential; the piecewise gate ran here (this container cannot
+host the sandbox) and CI was green on every head it had run by
+the time of writing. Method that paid tonight: read one arm of a
+feature for the file it cannot see (the workspace config, the
+package directory, a plugin's memo), probe it end to end in the
+scratchpad, then pin. What is still no event under `vx watch`, by
+choice and in the docs: a root `turbo.json` edit (no seam names a
+plugin's root files — a second consumer makes it one), a package
+added under a glob of another shape than `<dir>/*`, and the
+watcher shape when a new package declares the first
+`workspaceFiles` input. Refuted on the way: `vx why` and `vx show`
+on a config-less package whose task a `project` plugin gave it —
+`why` reads the run's history and explains the key with the
+changed input, `show` lists the task as "from plugins" (probed in
+the scratchpad, 2026-09-10; nothing to pin, the read verbs never
+load the config `why` would need). Learned on PR #295's red:
+`oxfmt --check <file>` passes what `oxfmt --check .` rejects (a
+code span wrapped across an indented line), so the gate's format
+check is the directory scan from the package, never a named file
+(CLAUDE.md). Refuted 2026-09-11: shipping plugins prebuilt to
+save the transpile on import — on the compiled binary the
+`workspace config` stage reads 9–12 ms with no plugin and 12–14
+with `turbo()` imported from source, ~2 ms for a build step in
+every plugin package. Left: the zero-migration
+stage's remaining 20 ms per 1,000 (the overlay probes, two clones
+per fill, a re-validation per plugin) if a workspace that size
+ever runs without configs. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
@@ -1726,9 +1748,21 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     overlap before B runs, diffed after — size + mtime, the proof the
     hit path already trusts), B's clean removes only that set, and B's
     artifact holds only that set; the restore order follows the edge.
-    Cost: one stat walk of the overlap per B miss, none on a hit. Not
-    started; do it if a third repo shows the shape, with the design
-    note first (`docs/design/`).
+    Cost: one stat walk of the overlap per B miss, none on a hit. The
+    catch, seen while writing this: refine's `types` ADDS nothing —
+    `build` is `tsup && node ../shared/generate-declarations.js` and
+    `types` is the second half again, so it REWRITES `build`'s `.d.ts`
+    files with the same bytes and new mtimes. Under the design above
+    B's own set is empty (same bytes) but A's proof is size + mtime,
+    so the next no-op finds A's outputs moved and restores them — a
+    restore where there was nothing to restore, every run. Either the
+    proof compares content for files a downstream task touched (a hash
+    per overlapped file, the cost the proof avoids by design), or a
+    rewrite-in-place stays refused and only additions are admitted.
+    strapi's `build:types` (tsc into the `dist` rollup filled) is the
+    addition case; refine's is the rewrite. Not started; do it if a
+    third repo shows the addition shape, with the design note first
+    (`docs/design/`), and leave the rewrite refused.
 
 ## Decisions (this arc)
 
