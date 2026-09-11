@@ -938,9 +938,10 @@ equivalent — map it manually` on every run, for the value every
       killer (3.6 GB resident each, `dmesg`; the lint passed alone on
       the same inputs), and at 3 workers its last three tasks — vue-tsc
       at 5.7 GB and two eslints at 3.85 — filled the cgroup to the byte
-      and thrashed 20 minutes at 97% system time, so n8n's wide set
-      runs both tools at 2 workers, the other three at 3, and the
-      harness keeps one log per tool and arm. The landing
+      and thrashed 20 minutes at 97% system time; dropped (owner:
+      "leave n8n alone, we have plenty of repos") — the wide pass is
+      payload, medusa and astro at 3 workers, and the harness keeps
+      one log per tool and arm. The landing
       page's real-repo panel shows n8n (the most-starred), cold row
       and all — Turbo took it by 3%, inside the disk's noise — and the
       hero no longer claims every row on real repos: the cold row is
@@ -1460,9 +1461,9 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     ever runs without configs. Never end with "what next?".
 
 15. **Wide graphs, then the Nx round.** The five build sets are in
-    (item 141); the wide sets — n8n `build typecheck lint` (220),
-    payload `build lint` (89), medusa `build build:plugin test` (157),
-    astro `build test` (55), one rep each, 3 workers — go into
+    (item 141); the wide sets — payload `build lint` (89), medusa
+    `build build:plugin test` (157), astro `build test` (55), one rep
+    each, 3 workers; n8n's dropped by the owner — go into
     `docs/benchmarks.md` § Wide graphs as they finish. Then the same
     harness shape on Nx repos (owner: 3–5 popular ones; only
     `nx:run-commands`, `nx:run-script`, a plain `command` and

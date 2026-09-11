@@ -116,8 +116,8 @@ tasks; wide set `build typecheck lint` = 220. 84 workspace members.
   inputs afterwards), and at 3 the same two with `n8n-nodes-base#lint`
   beside them (vue-tsc 5.7 GB, the two eslints 3.85 GB each) filled the
   cgroup to the byte and thrashed for 20 minutes at 97% system time
-  with 211 of 220 tasks done. The wide set runs both tools at 2
-  workers; the other wide sets at 3.
+  with 211 of 220 tasks done. Dropped (owner, 2026-09-11: "leave n8n
+  alone, we have plenty of repos"); n8n's numbers are the `build` set.
 
 ## calcom/cal.com — 569a389 (2026-09-09)
 
