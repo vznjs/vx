@@ -277,10 +277,14 @@ function buildTask(
 
   const outFiles: string[] = []
   const wsOutFiles: string[] = []
-  // Heuristic: a bare directory path captures its whole subtree.
+  // Heuristic: a bare directory path captures its whole subtree. A dot
+  // past the first character is an extension (`lcov.info`); a leading
+  // one is a hidden DIRECTORY (`.next`, `.output`, `.netlify` — what Nx
+  // plugins and router declare), and a bare name for a directory saves
+  // nothing: the output scan lists files, never a directory itself.
   const dirGlob = (rel: string): string => {
     const last = rel.split('/').at(-1)!
-    return !rel.includes('*') && !last.includes('.') ? `${rel}/**` : rel
+    return !rel.includes('*') && !last.slice(1).includes('.') ? `${rel}/**` : rel
   }
   const pushOut = (rel: string): void => {
     outFiles.push(dirGlob(rel))

@@ -1124,6 +1124,17 @@ apps/worker`) found nothing, and `cwd: '{projectRoot}'` earned a
       under `~/.nx`) replaced the row. The install is the packages,
       benchmarks and root filters only (1 GB; the examples pull every
       framework and are out of the repo's own scope anyway).
+151.  DONE (2026-09-11 — from router's configs): the Nx mapper's
+      directory heuristic took a leading dot for an extension, so
+      `{projectRoot}/.output`, `.netlify` and `.wrangler` (router's
+      `build` outputs; Nx's own plugins declare `.next` and `.nuxt` the
+      same way) were written bare while `dist` became `dist/**`. A bare
+      name for a directory saves nothing — the output scan lists files
+      and symlinks, never a directory itself — so a hit would have
+      restored no `.output`, the stale-hit class in a generated config.
+      Only a dot past the first character marks a file now; pinned in
+      `migrate.test.ts` (`.output` → `.output/**` beside `lcov.info`
+      kept), documented in the package README.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
