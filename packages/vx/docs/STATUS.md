@@ -1028,6 +1028,21 @@ changes trigger a cycle` lost its 45 s window once alone on an
       idle box and passed five of five right after, with and without
       this change.
 
+146.  DONE (2026-09-11 — Next 15's second gap): two targets on one output
+      path resolve at migration time. vx cleans a task's outputs before
+      it runs and before a restore, so the loader refuses two cached
+      tasks whose outputs provably overlap — and strapi's `build`,
+      `build:code` and `build:types`, all on `dist/**`, met that refusal
+      at load time after a clean migration report. `resolveSharedOutputs`
+      in `@vzn/vx-migrate`, after both mappers: the loader's own
+      conservative overlap test (equal literals, a literal a glob
+      matches, identical globs), the task with a `^` edge keeps its
+      cache (the first declared when none has one), every other task on
+      that path runs uncached with a todo naming the keeper and the
+      fix. Pinned as a unit (the strapi shape, the disjoint-prefix
+      case the loader lets through, tasks without cache) and in the Nx
+      fixture (`pkg-b#build:types` on `build`'s `out`).
+
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
 (2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
@@ -1543,11 +1558,8 @@ last`, `vx info` and `vx cache prune`, through one parser and one
 
 15. **More Nx repos.** The five Turbo build sets, the two wide sets
     (item 141) and three Nx repos (items 142–144) are in.
-    One gap from the first Nx repos (item 142) is open: `vx-migrate`
-    should say what to do when two targets declare one output
-    directory (cache the one with the `^` edge, uncache the siblings
-    with a todo, or refuse loudly at migration time instead of at load
-    time); the other, `.mjs` output, is item 145. Then the harness on more
+    Both gaps from the first Nx repos (item 142) are closed: `.mjs`
+    output is item 145, two targets on one output path item 146. Then the harness on more
     Nx repos (owner: 3–5 popular ones; only
     `nx:run-commands`, `nx:run-script`, a plain `command` and
     `nx:noop` targets are supported, anything else is out): the

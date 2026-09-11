@@ -17,6 +17,7 @@ import {
   UserError,
 } from '@vzn/vx'
 import { scriptCommand } from './script-command.js'
+import { resolveSharedOutputs } from './shared-outputs.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
 function relPosix(from: string, to: string): string {
@@ -132,7 +133,12 @@ export async function migrateNx(
       }
       tasks.push(t)
     }
-    projects.push({ name: meta.name, dir: meta.dir, importLines: [], tasks })
+    projects.push({
+      name: meta.name,
+      dir: meta.dir,
+      importLines: [],
+      tasks: resolveSharedOutputs(tasks),
+    })
   }
 
   const notes: string[] = []

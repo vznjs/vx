@@ -417,6 +417,13 @@ const NX_GRAPH = {
             },
             prebuild: { executor: 'nx:run-commands', options: { command: 'pre' } },
             tool: { executor: 'nx:run-commands', options: { command: 'tool' } },
+            // Shares build's output path with no ^ edge (strapi's build:types).
+            'build:types': {
+              executor: 'nx:run-commands',
+              options: { command: 'tsc --emitDeclarationOnly' },
+              outputs: ['{projectRoot}/out'],
+              cache: true,
+            },
           },
         },
       },
@@ -531,6 +538,15 @@ describe('vx migrate (nx)', () => {
       expect(build.exec?.command).toBe('make')
       expect(build.cache?.inputs.files).toEqual(['src/**/*'])
       expect(build.cache?.outputs.files).toEqual(['out/**'])
+
+      // Two targets on one output path: the one with the ^ edge keeps
+      // its cache, the sibling runs uncached with a todo naming it —
+      // instead of the loader's refusal after a clean migration report.
+      const types = tasks['build:types']!
+      expect(types.exec?.command).toBe('tsc --emitDeclarationOnly')
+      expect(types.cache).toBeUndefined()
+      const text = await Bun.file(path.join(root, 'packages', 'pkg-b', 'vx.config.ts')).text()
+      expect(text).toContain('"out/**" that "build" also declares')
       // cache absent but outputs present → cache block emitted.
       const pack = tasks.pack!
       expect(pack.cache?.outputs.files).toEqual(['pkg/**'])
