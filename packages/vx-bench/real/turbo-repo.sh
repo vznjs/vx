@@ -37,7 +37,7 @@
 # `--concurrency 10` (astro cold on four cores: 70.5 s at 4 workers,
 # 53.8 s at 8; payload 120 s at 4, 128 s at 8 — 2026-09-11).
 set -u
-R=$1; VX=$2; TASKS=$3; REPS=${4:-3}; DIRS=${5:-"dist types coverage"}
+R=$1; VX=$2; TASKS=$3; REPS=${4:-3}
 FILTERS=${FILTERS:-}; TURBO_ARGS=${TURBO_ARGS:-}; VX_ARGS=${VX_ARGS:-}
 vx_scope=(--all); turbo_scope=()
 if [ -n "$FILTERS" ]; then
@@ -47,18 +47,18 @@ if [ -n "$FILTERS" ]; then
   set +f
 fi
 cd "$R"
-outputs() {
-  local args=()
-  for d in $DIRS; do args+=(-o -name "$d"); done
-  find packages -path '*/node_modules' -prune -o \( -type d \( -false "${args[@]}" \) \) -print
-}
-# `*.tsbuildinfo` goes with the outputs: an incremental tsc that finds its
-# build info but not its emit skips the emit (payload: 42 of them in the
-# package roots, and every dependant's `--emitDeclarationOnly` then failed
-# with TS6305 under either tool, 2026-09-11).
+# Full artifact cleanup: everything git ignores under the repo except the
+# installs (`node_modules`, `.yarn`), the two caches (`.vx`, and `.turbo`
+# — Turbo 2 keeps its local cache in `.turbo/cache`; both wiped
+# separately for a cold arm) and `.env*`. Turbo does not clean outputs
+# before a run and vx cleans only a task's declared ones, so anything
+# short of this leaks between arms and tools — Turbo's `.turbo` logs,
+# astro's prebuilt files, payload's `.swc` caches and 42 stale
+# `tsconfig.tsbuildinfo` files that made the next incremental tsc skip
+# its declaration emit (TS6305 in every dependant, 2026-09-11).
 wipe_outputs() {
-  outputs | xargs -r rm -rf
-  find packages -path '*/node_modules' -prune -o -name '*.tsbuildinfo' -print | xargs -r rm -f
+  git clean -fdXq -e '!node_modules' -e '!**/node_modules/**' -e '!.vx' -e '!.vx/**' \
+    -e '!.env*' -e '!.yarn' -e '!.yarn/**' -e '!.husky' -e '!.husky/**' -e '!.turbo' -e '!.turbo/**'
 }
 wipe_turbo_cache() { rm -rf node_modules/.cache/turbo .turbo packages/*/.turbo; }
 wipe_vx_cache() { rm -rf .vx; }
