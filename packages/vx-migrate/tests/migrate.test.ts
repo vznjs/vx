@@ -483,7 +483,8 @@ describe('vx migrate (nx)', () => {
 
       const build = tasks.build!
       // commands array joined with ' && '.
-      expect(build.exec?.command).toBe('tsc -b && echo done')
+      // Nx runs run-commands from the workspace root: the cd is part of the command.
+      expect(build.exec?.command).toBe('cd ../.. && tsc -b && echo done')
       // namedInputs expansion: production → default + spec exclusion.
       // {workspaceRoot}/<path> → inputs.workspaceFiles, not a TODO.
       expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.spec.ts'])
@@ -501,7 +502,7 @@ describe('vx migrate (nx)', () => {
 
       // cache absent + no inputs/outputs → no cache block.
       expect(tasks.codegen!.cache).toBeUndefined()
-      expect(tasks.codegen!.exec?.command).toBe('node gen.js')
+      expect(tasks.codegen!.exec?.command).toBe('cd ../.. && node gen.js')
 
       // run-script inlines the package.json script body; cache:true with
       // no inputs → files ['**/*'].
@@ -530,12 +531,13 @@ describe('vx migrate (nx)', () => {
   })
 
   it(
-    'pkg-b covers cwd TODO, projectRoot strip, dir heuristic, implied cache',
+    'pkg-b covers cwd, projectRoot strip, dir heuristic, implied cache',
     async () => {
       const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-b', 'vx.config.ts'))
       const tasks = config.tasks!
       const build = tasks.build!
-      expect(build.exec?.command).toBe('make')
+      // A declared cwd under the project: a cd relative to the project dir, no todo.
+      expect(build.exec?.command).toBe('cd sub && make')
       expect(build.cache?.inputs.files).toEqual(['src/**/*'])
       expect(build.cache?.outputs.files).toEqual(['out/**'])
 
@@ -543,7 +545,7 @@ describe('vx migrate (nx)', () => {
       // its cache, the sibling runs uncached with a todo naming it —
       // instead of the loader's refusal after a clean migration report.
       const types = tasks['build:types']!
-      expect(types.exec?.command).toBe('tsc --emitDeclarationOnly')
+      expect(types.exec?.command).toBe('cd ../.. && tsc --emitDeclarationOnly')
       expect(types.cache).toBeUndefined()
       const text = await Bun.file(path.join(root, 'packages', 'pkg-b', 'vx.config.ts')).text()
       expect(text).toContain('"out/**" that "build" also declares')
@@ -563,7 +565,7 @@ describe('vx migrate (nx)', () => {
     expect(result.out).toMatch(/pkg-a#build: .*params/)
     expect(result.out).toMatch(/pkg-a#serve: .*@nx\/webpack:dev-server/)
     expect(result.out).toMatch(/pkg-a#test: /)
-    expect(result.out).toMatch(/pkg-b#build: .*cwd/)
+    expect(result.out).not.toMatch(/pkg-b#build: .*cwd/)
   })
 
   it(

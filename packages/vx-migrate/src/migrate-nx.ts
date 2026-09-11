@@ -16,6 +16,7 @@ import {
   type ProjectMeta,
   UserError,
 } from '@vzn/vx'
+import { nxRunCommand } from './nx-command.js'
 import { scriptCommand } from './script-command.js'
 import { resolveSharedOutputs } from './shared-outputs.js'
 
@@ -123,8 +124,9 @@ export async function migrateNx(
     const targets = node?.data?.targets
     if (!targets) continue
     const tasks: GeneratedTask[] = []
+    const projectName = node?.name ?? meta.name
     for (const [targetName, target] of Object.entries(targets)) {
-      const t = buildTask(root, meta, targetName, target, namedInputs, metaByNode)
+      const t = buildTask(root, meta, projectName, targetName, target, namedInputs, metaByNode)
       // task === null → no vx representation; surface the reason in
       // the report but emit nothing into the config.
       if (t.task === null && t.todos.length > 0) {
@@ -177,6 +179,7 @@ async function readNamedInputs(root: string): Promise<Record<string, unknown[]> 
 function buildTask(
   root: string,
   meta: ProjectMeta,
+  projectName: string,
   targetName: string,
   target: NxTarget,
   namedInputs: Record<string, unknown[]> | null,
@@ -188,7 +191,7 @@ function buildTask(
   const scripts =
     (meta.packageJson as unknown as { scripts?: Record<string, string> }).scripts ?? {}
 
-  const command = mapCommand(targetName, target, options, projectRel, scripts, todos)
+  const command = mapCommand(targetName, target, options, projectRel, projectName, scripts, todos)
 
   const files: string[] = []
   const wsFiles: string[] = []
@@ -403,6 +406,7 @@ function mapCommand(
   target: NxTarget,
   options: Record<string, unknown>,
   projectRel: string,
+  projectName: string,
   scripts: Record<string, string>,
   todos: string[],
 ): string | null {
@@ -412,21 +416,22 @@ function mapCommand(
     // (handled by the caller; nothing to map here).
     return null
   }
+  // run-commands, and a plain `command` (its shorthand): Nx runs them from
+  // the workspace root unless `cwd` says otherwise, with `{projectRoot}`,
+  // `{projectName}` and `{workspaceRoot}` expanded — see nx-command.ts.
+  const shell = (cmd: string): string =>
+    nxRunCommand(cmd, { projectRel, projectName, cwd: options.cwd }, todos)
   if (executor === 'nx:run-commands') {
-    if (typeof options.cwd === 'string' && normRel(options.cwd) !== projectRel) {
-      todos.push(
-        `run-commands cwd ${JSON.stringify(options.cwd)} differs from the project root — vx ` +
-          'runs commands from the project dir; adjust the command',
-      )
-    }
     const cmds = options.commands
     if (Array.isArray(cmds) && cmds.length > 0) {
       const parts = cmds
         .map((c) => (typeof c === 'string' ? c : ((c as { command?: unknown }).command as string)))
         .filter((c): c is string => typeof c === 'string' && c.length > 0)
-      if (parts.length > 0) return parts.join(' && ')
+      if (parts.length > 0) return shell(parts.join(' && '))
     }
-    if (typeof options.command === 'string' && options.command.length > 0) return options.command
+    if (typeof options.command === 'string' && options.command.length > 0) {
+      return shell(options.command)
+    }
     todos.push(`nx:run-commands target has no command — options: ${JSON.stringify(options)}`)
     return PLACEHOLDER
   }
@@ -445,7 +450,7 @@ function mapCommand(
     return PLACEHOLDER
   }
   if (executor === undefined && typeof target.command === 'string' && target.command.length > 0) {
-    return target.command
+    return shell(target.command)
   }
   // The common executors wrap one CLI each; the task runs on the first
   // try and the TODO still asks for a look, since executor options
