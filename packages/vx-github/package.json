@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-github",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "GitHub Actions integration for vx — a telemetry plugin that writes the run as a GitHub Actions job summary.",
   "type": "module",
   "main": "./src/index.ts",

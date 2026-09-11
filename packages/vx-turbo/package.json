@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-turbo",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Zero-migration Turbo plugin for vx — runs a turbo.json workspace under vx with no vx.config files written, through the `project` stage.",
   "type": "module",
   "main": "./src/index.ts",

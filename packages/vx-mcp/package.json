@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-mcp",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Model Context Protocol server for vx — a plugin that adds `vx mcp`, exposing cache stats, run history and cache-key explanations to AI coding agents over stdio.",
   "type": "module",
   "main": "./src/index.ts",

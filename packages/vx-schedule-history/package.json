@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-schedule-history",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "History-based scheduling for vx — a `schedule` plugin that orders ready tasks by their expected remaining critical path, learned from the local run history.",
   "type": "module",
   "main": "./src/index.ts",

@@ -109,7 +109,9 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
      2026-09-04). When the debounce timer fires, every path that fired
      in the window is hashed on its SETTLED bytes and the cycle is
      skipped if none differ from what the loop last hashed; a real
-     edit, a deletion or a first sighting passes — so a self-write
+     edit, a deletion or a first sighting modified after the arm
+     passes (`modifiedBefore`: the initial run's own writes arrive
+     after the arm on macOS, and their mtime predates it) — so a self-write
      costs one redundant cycle, not an unbounded number. Debounce time,
      not event time: on Linux a shell redirect truncates the file (one
      event, empty) and then writes it (another, full), so consecutive

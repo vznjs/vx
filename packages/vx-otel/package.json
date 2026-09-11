@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-otel",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "OpenTelemetry exporter for vx — a telemetry plugin mapping runs to OTLP traces + metrics (CI/CD + VCS semantic conventions).",
   "type": "module",
   "main": "./src/index.ts",

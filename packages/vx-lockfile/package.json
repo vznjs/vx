@@ -1,6 +1,7 @@
 {
   "name": "@vzn/vx-lockfile",
   "version": "0.0.0",
+  "license": "MIT",
   "description": "Lockfile plugins for vx — pnpm(), bun(), npm(), yarn(): each keys every task on its project's own resolved dependency closure from the package manager's lockfile, so a lockfile change re-keys only the projects it reaches; --affected follows the same answer.",
   "type": "module",
   "main": "./src/index.ts",

@@ -17,11 +17,14 @@ fully cached run replays the graph in 510 ms.
 <!-- bench:end -->
 
 On a real Turbo monorepo (`solidjs/solid`, its own `turbo.json`, no
-config rewritten) vx is 1.6–2.1× faster on every warm run and 9–12%
-faster cold. Measured, reproducible, on hardware you own
+config rewritten) vx replays a cached build in 51 ms where Turbo takes
+95, restores every output in 66 ms against 127, and builds cold in
+40.6 s against 45.5 s. Measured, reproducible, on hardware you own
 ([benchmarks](packages/vx/docs/benchmarks.md)).
 
-One binary. No daemon. No Node, no Bun. Nothing to babysit.
+One binary. No daemon, no cloud, no account, no paywall. Sandboxed
+tasks, a plugin at every stage, seconds of overhead at a thousand
+packages.
 
 vx does one thing — run and cache a task graph, correctly — and stops
 there. Remote caches, remote execution, telemetry, AI agents, learned

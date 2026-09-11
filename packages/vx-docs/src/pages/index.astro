@@ -1,10 +1,9 @@
 ---
-// vx landing page — a scroll-driven film, standalone (its own nav, footer
-// and theme; the docs stay Starlight). Every number is server-rendered
-// from results.json by packages/vx-bench/update-site.ts: the benchRows
-// block, the three stat tiles and the two benchmark note paragraphs are
-// the regions it rewrites (check.site guards them). Every effect is the
-// one <script> at the bottom over a DOM that reads complete without it.
+// vx landing page — standalone (its own nav, footer and theme; the docs
+// stay Starlight), static, one script for the copy button. Every number is
+// server-rendered from results.json by packages/vx-bench/update-site.ts:
+// the benchRows block and the three stat tiles are the regions it
+// rewrites (check.site guards them).
 import '../styles/landing.css'
 
 const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
@@ -33,96 +32,126 @@ const termTasks = [
 // Differentiators only — the things Turbo and Nx can't do. Every claim
 // traces to README.md / docs (no table-stakes like "affected graph",
 // which both competitors already ship).
+// Every card is the same card: icon, title, one or two sentences, a link
+// to the page that proves it (owner, 2026-09-11: same layout 1:1, every
+// point references the docs).
 const features = [
   {
     icon: 'bolt',
     tone: 'var(--phosphor)',
-    title: 'Overhead in seconds, at any size',
-    body: 'On 1,090 packages and 3,270 tasks, vx adds eight seconds to the cold build — 8 ms per package. Turborepo adds a minute and a half, Nx half an hour. The graph grows; the runner stays in seconds.',
+    title: 'Fastest in every row',
+    body: 'Cold, cached, restore and CPU — on a synthetic 3,270-task graph and on a real Turbo repo, vx is first in every measurement.',
+    doc: href('benchmarks/'),
   },
   {
     icon: 'shield',
     tone: 'var(--phosphor)',
     title: 'Sandboxed, per task',
-    body: 'exec.sandbox runs a task under an OS-level file and network allow-list — bwrap on Linux, seatbelt on macOS. A read outside the declared inputs or a phone-home fails the build instead of hiding in it. A task proves what it touches; nothing is inferred.',
+    body: 'An OS-level file and network allow-list per task. An undeclared read or a phone-home fails the build instead of hiding in it.',
+    doc: href('guides/sandboxing/'),
   },
   {
     icon: 'plug',
     tone: 'var(--amber)',
     title: 'A plugin at every stage',
-    body: 'One VxPlugin object: project() gives packages tasks, graph() edits the edges, key() folds material into the key, schedule() picks what runs next, executor and cache decide where, telemetry watches, commands adds verbs. Core applies none by default.',
+    body: 'Project, graph, key, schedule, executor, cache, telemetry, commands: one plugin object fills any of them. Core applies none by default.',
+    doc: href('guides/plugins/'),
   },
   {
     icon: 'lock',
     tone: 'var(--plasma)',
-    title: 'Open, with no paywall behind it',
-    body: 'MIT. Remote cache and remote execution are plugins on open protocols — Bazel’s Remote Execution API, Turborepo’s and Nx’s own cache wires — so a NativeLink, a bazel-remote or your own server is the “cloud”. Flaky-task detection, run history, why-a-miss: in the binary, not a tier.',
+    title: 'Open, with no paywall',
+    body: 'MIT. Remote cache and execution on open protocols; flaky detection, run history and why-a-miss in the binary, not a tier.',
+    doc: href('comparison/'),
   },
   {
     icon: 'cache',
     tone: 'var(--phosphor)',
     title: 'Correct by construction',
-    body: 'Keys are content-addressed: git blob ids for clean files, the evaluated config object (imports and presets included), the project’s own dependency closure from the lockfile, upstream input keys folded through the graph. Declared outputs are wiped before every run and restore, so a stale file cannot survive.',
+    body: 'Content-addressed keys from git, the evaluated config and the lockfile closure. Outputs are owned, so a stale file cannot survive.',
+    doc: href('guides/trusting-the-cache/'),
   },
   {
     icon: 'mesh',
     tone: 'var(--plasma)',
     title: 'Compatible with what you have',
-    body: 'A Turborepo workspace runs as it is through @vzn/vx-turbo; @vzn/vx-migrate writes vx.config.ts from turbo.json or an Nx graph; pnpm, bun, npm and yarn lockfiles are each a plugin; Turbo and Nx remote caches are wires you can keep.',
+    body: 'A Turborepo workspace runs as it is. Migrate from turbo.json or an Nx graph; pnpm, bun, npm and yarn lockfiles are each a plugin.',
+    doc: href('migrate/from-turborepo/'),
   },
   {
     icon: 'wire',
     tone: 'var(--amber)',
     title: 'Modular to the core',
-    body: 'Core is a pipeline with seams — config, project, graph, key, schedule, executor, cache, telemetry, commands — and every module’s index.ts is its contract, enforced by tests. Nothing distributed ships in core; the seams exist so someone can build it on top.',
+    body: 'Core is a pipeline with seams and every module’s index is its contract. Nothing distributed ships in core.',
+    doc: href('architecture/'),
   },
   {
     icon: 'box',
     tone: 'var(--plasma)',
     title: 'Tested like infrastructure',
-    body: '2,700+ tests across core and the plugins, every fix pinned with a test that fails without it, parity suites that run Turborepo’s and Nx’s behaviours under vx, and cache correctness treated as the worst failure class: a stale hit is a bug before anything else is.',
+    body: '2,700+ tests, every fix pinned by one that fails without it, and parity suites that run Turborepo’s and Nx’s behaviours under vx.',
+    doc: href('parity/'),
   },
   {
     icon: 'graph',
     tone: 'var(--amber)',
     title: 'A cache you can interrogate',
-    body: 'vx why names the exact file, env var or upstream that moved a task’s key instead of “miss”; vx last replays any run; vx lock freezes the resolved graph so --frozen runs exactly that. Every key component is recorded at save time, so the answer is exact.',
+    body: 'vx why names the file, env var or upstream that moved a key. vx last replays any run; vx lock freezes the graph.',
+    doc: href('cli/') + '#vx-why',
   },
 ]
 
-// The pipeline — what plugins can decide. Every claim traces to
-// docs/design/pipeline-2026-09.md and the plugin guide.
+// The pipeline — what plugins can decide. Same card, same shape.
 const platform = [
   {
     icon: 'plug',
     tone: 'var(--amber)',
-    title: 'A pipeline with a hook at every stage',
-    body: 'One VxPlugin object, Vite-style: project() adds or rewrites a package’s tasks (keyed exactly like yours), graph() edits the edges, key() folds extra material into the cache key, schedule() decides which ready task runs first, commands adds verbs to vx. Declaration order is the order; core re-validates what a stage produced.',
+    title: 'Hooks, Vite-style',
+    body: 'project() adds tasks, graph() edits edges, key() folds material into the key, schedule() picks what runs next, commands adds verbs.',
+    doc: href('guides/plugins/'),
   },
   {
     icon: 'wire',
     tone: 'var(--phosphor)',
     title: 'Nothing applied by default',
-    body: 'Core is only the pipeline — fully offline, no account, no service, and it names no plugin. Where a task runs (executor), where artifacts live (cache) and where run records go (telemetry) are plugins you declare in vx.workspace.ts; running here and caching here are the floor under them, so a workspace with no plugins runs, and a plugin that declines a task hands it back to this machine.',
+    body: 'Core names no plugin. Running here and caching here are the floor; a plugin that declines a task hands it back to this machine.',
+    doc: href('guides/extensibility/'),
   },
   {
     icon: 'cloud',
     tone: 'var(--plasma)',
-    title: 'Bazel-compatible remote cache and execution',
-    body: '@vzn/vx-reapi speaks the Bazel Remote Execution API: NativeLink, BuildBuddy, Buildbarn and bazel-remote work as a shared cache, and NativeLink’s workers run your tasks remotely — the executor seam, filled by a plugin, with nothing distributed shipped in core.',
+    title: 'Bazel-compatible remote execution',
+    body: '@vzn/vx-reapi speaks the Remote Execution API: NativeLink, BuildBuddy, Buildbarn and bazel-remote as a shared cache and as workers.',
+    doc: href('guides/remote-execution/'),
+  },
+  {
+    icon: 'cache',
+    tone: 'var(--plasma)',
+    title: 'Turbo and Nx cache wires',
+    body: '@vzn/vx-turbo-cache and @vzn/vx-nx-cache speak the remote caches you already run, self-hosted or hosted.',
+    doc: href('guides/remote-caching/'),
   },
   {
     icon: 'spark',
     tone: 'var(--phosphor)',
     title: 'MCP for AI agents',
-    body: '@vzn/vx-mcp adds vx mcp: a read-only Model Context Protocol server over stdio, so Claude Code, Cursor and Continue.dev query cache stats, run history and rebuild causes through the standard agent-tool protocol. No SDK, no service — a plugin on the commands seam.',
+    body: 'vx mcp is a read-only Model Context Protocol server over stdio: cache stats, run history and rebuild causes for any agent.',
+    doc: href('guides/mcp/'),
   },
   {
     icon: 'brain',
     tone: 'var(--amber)',
-    title: 'Scheduling that learns — as a plugin',
-    body: '@vzn/vx-schedule-history orders ready tasks by the expected remaining critical path learned from your own run history. It is the reference schedule() plugin, its own package: a policy core exposes a hook for, not a flag core carries — core ships no plugin at all.',
+    title: 'Scheduling that learns',
+    body: '@vzn/vx-schedule-history orders ready tasks by the critical path learned from your own run history. A plugin, not a flag.',
+    doc: href('guides/plugins/') + '#keys-and-order',
   },
+]
+
+// What is not inside. Same card, same shape.
+const nots = [
+  { icon: 'bolt', tone: 'var(--c-turbo)', title: 'No daemon', body: 'One binary per platform, nothing long-lived. Every run starts clean and finishes.', doc: href('comparison/') },
+  { icon: 'cloud', tone: 'var(--c-turbo)', title: 'No cloud, no account', body: 'Nothing phones home. A remote is a plugin you declare, on a protocol you can host.', doc: href('guides/remote-caching/') },
+  { icon: 'lock', tone: 'var(--c-turbo)', title: 'No paywall', body: 'MIT, all of it. Every seam a cloud would sit on is a documented hook.', doc: href('comparison/') },
 ]
 
 const featIcons: Record<string, string> = {
@@ -206,8 +235,52 @@ const lanes = [
   { name: 'turbo', label: 'Turborepo', bar: raceTurbo, tone: 'var(--c-turbo)' },
   { name: 'nx', label: 'Nx', bar: raceNx, tone: 'var(--c-nx)' },
 ]
-const trackMax = raceTurbo.val * 1.04
-const pct = (ms: number) => Math.min(100, (ms / trackMax) * 100)
+
+// A real Turbo repo (solidjs/solid, its own turbo.json, nothing rewritten)
+// in the same panel, the same rows; the tables are in docs/benchmarks.md.
+const solidRows = [
+  {
+    task: 'Cold build · caches and outputs wiped',
+    bars: [
+      { name: 'vx', val: 40600, disp: '40.6s', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 45500, disp: '45.5s', c: 'var(--c-turbo)' },
+    ],
+  },
+  {
+    task: 'Restoring outputs · cache → disk',
+    bars: [
+      { name: 'vx', val: 66, disp: '66ms', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 127, disp: '127ms', c: 'var(--c-turbo)' },
+    ],
+  },
+  {
+    task: 'Fully cached · nothing to rebuild',
+    bars: [
+      { name: 'vx', val: 51, disp: '51ms', c: 'var(--phosphor)', best: true },
+      { name: 'turbo', val: 95, disp: '95ms', c: 'var(--c-turbo)' },
+    ],
+  },
+]
+// The cold row's overhead over the ideal schedule, as one more row of the
+// same panel: what each runner adds, so the multiples are of vx's overhead.
+const overheadRow = {
+  task: 'Runner overhead · cold build over the ideal schedule',
+  bars: lanes.map((l) => ({
+    name: l.name,
+    val: l.bar.val - raceBase.val,
+    disp: plus(l.bar.val),
+    c: l.tone,
+    ...(l.name === 'vx' ? { best: true } : {}),
+  })),
+}
+type Bar = { name: string; val: number; disp: string; c: string; best?: boolean }
+/** Every competitor bar reads as a multiple of vx's; vx's own reads "fastest". */
+const times = (b: Bar, best: number): string => {
+  if (b.name === 'baseline') return ''
+  if (b.best) return 'fastest'
+  const r = b.val / best
+  return r >= 10 ? `${Math.round(r)}× vx` : `${r.toFixed(1)}× vx`
+}
 
 const footCols = {
   product: [
@@ -239,7 +312,7 @@ const footCols = {
     <title>vx — Bend time. Not the rules.</title>
     <meta
       name="description"
-      content="vx runs, sandboxes and caches a JavaScript monorepo's task graph from one binary and adds eight seconds of overhead to a 3,270-task cold build where Turborepo adds a minute and a half and Nx half an hour. No daemon, no cloud, no account, no paywall. Every seam is a documented plugin hook."
+      content="The fastest task runner for JavaScript monorepos, in every row: cold, cached, restore and CPU, on a 3,270-task graph and on a real Turbo repo. One binary, sandboxed tasks, a plugin at every stage. No daemon, no cloud, no paywall."
     />
     <link rel="icon" href={href('logo-mark.svg')} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -258,13 +331,8 @@ const footCols = {
     </style>
   </head>
   <body>
-    <div class="vx-landing film">
-      <div class="grain" aria-hidden="true"></div>
-      <div class="vignette" aria-hidden="true"></div>
-
-      <!-- ===================== Nav ===================== -->
+    <div class="vx-landing">
       <header class="nav">
-        <span class="progress" aria-hidden="true"></span>
         <div class="nav-left">
           <a class="brand" href={base}>
             <img src={href('logo-mark.svg')} width="26" height="26" alt="vx" />
@@ -292,27 +360,17 @@ const footCols = {
         </div>
       </header>
 
-      <!-- ===================== Scene 0 · cold open ===================== -->
-      <section class="scene pin open" data-scene="open" style="--len:2.2">
-        <div class="stage">
-          <canvas class="warp" aria-hidden="true"></canvas>
-          <div class="open-copy">
-            <p class="open-cmd" aria-hidden="true">
-              <span class="caret">❯ </span><span class="typed" data-type="vx run build --all"></span>
+      <!-- ===================== Hero ===================== -->
+      <section class="hero">
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <p class="vx-kicker">// a task runner and cache for JavaScript monorepos</p>
+            <h1>The fastest task runner.<br /><span class="phosphor">In every row.</span></h1>
+            <p class="lede">
+              Cold, cached, restore, CPU — on a synthetic 3,270-task graph and on a real Turbo repo,
+              vx finishes first. One binary. No daemon, no cloud, no paywall.
             </p>
-            <h1 class="giant">
-              <span class="w" style="--i:0">Bend</span>
-              <span class="w" style="--i:1">time.</span>
-              <br />
-              <span class="w phosphor chroma" data-text="Not" style="--i:2">Not</span>
-              <span class="w phosphor chroma" data-text="the" style="--i:3">the</span>
-              <span class="w phosphor chroma" data-text="rules." style="--i:4">rules.</span>
-            </h1>
-            <p class="open-lede">
-              The task runner that adds seconds where others add minutes — at a thousand packages
-              and beyond. Sandboxed, pluggable, open. One binary, no daemon, no cloud, no paywall.
-            </p>
-            <div class="open-actions">
+            <div class="actions">
               <a class="btn btn-primary btn-lg" href={href('quickstart/')}
                 >Get started <span class="arr">→</span></a
               >
@@ -320,279 +378,16 @@ const footCols = {
                 <span class="dollar">$</span>
                 <span class="cmd">npm install -g @vzn/vx</span>
                 <span class="copy">
-                  <svg
-                    class="icon-copy"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><rect x="9" y="9" width="11" height="11" rx="2"></rect><path
-                      d="M5 15V5a2 2 0 012-2h10"></path></svg
+                  <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    ><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 012-2h10"></path></svg
                   >
-                  <svg
-                    class="icon-check"
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"><path d="M20 6L9 17l-5-5"></path></svg
-                  >
+                  <svg class="icon-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"></path></svg>
                 </span>
               </button>
             </div>
           </div>
-          <div class="scroll-cue" aria-hidden="true"><span></span>scroll</div>
-        </div>
-      </section>
-
-      <!-- ===================== Scene 1 · three clocks ===================== -->
-      <section
-        class="scene pin clocks"
-        data-scene="clocks"
-        data-lap={raceBase.val}
-        data-runners={`${raceVx.val},${raceTurbo.val},${raceNx.val}`}
-        style="--len:4"
-      >
-        <div class="stage">
-          <canvas class="orbit" aria-hidden="true"></canvas>
-          <div class="clock-hud">
-            <p class="vx-kicker">// one lap is your tasks alone · {raceBase.disp}</p>
-            <div class="readout"><span data-clock>T+00:00</span><span class="rate" data-rate>×60</span></div>
-          </div>
-          <div class="captions" data-captions>
-            <p class="cap" data-at="0">
-              <b>One lap</b> is your tasks on their own — {raceBase.disp} across 3,270 of them.
-            </p>
-            <p class="cap" data-at={raceVx.val} style="--c:var(--phosphor)">
-              <b>vx crosses the line</b> eight seconds later. {raceVx.disp} · {plus(raceVx.val)}
-            </p>
-            <p class="cap" data-at={raceTurbo.val} style="--c:var(--c-turbo)">
-              <b>Turborepo crosses</b> a minute and a half after that. {raceTurbo.disp} ·{' '}
-              {plus(raceTurbo.val)}
-            </p>
-            <p class="cap" data-at={raceTurbo.val + 1} style="--c:var(--c-nx)">
-              <b>Nx keeps lapping.</b> Time compresses tenfold so you can watch it finish.
-            </p>
-            <p class="cap" data-at={raceNx.val} style="--c:var(--c-nx)">
-              <b>Nx crosses</b> after nine and a half more laps. {raceNx.disp} · {plus(raceNx.val)}
-            </p>
-          </div>
-          <div class="legend-lanes">
-            {
-              lanes.map((l) => (
-                <span class="ll" style={`--c:${l.tone}`} data-lane={l.name}>
-                  <i />
-                  {l.label} <em>{l.bar.disp}</em>
-                </span>
-              ))
-            }
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== Scene 2 · the overhead wall ===================== -->
-      <section class="scene pin wall" data-scene="wall" style="--len:2.6">
-        <div class="stage">
-          <div class="wall-copy">
-            <p class="vx-kicker">// seconds, not minutes · the same 3,270 tasks, the same clock</p>
-            <h2 class="huge">Your tasks are the floor.<br /><span class="phosphor">Everything above it is overhead.</span></h2>
-          </div>
-          <div class="monoliths" aria-label="Runner overhead over the ideal schedule">
-            {
-              lanes.map((l) => {
-                const extra = l.bar.val - raceBase.val
-                const clipped = extra > (raceTurbo.val - raceBase.val) * 2.4
-                const h = clipped ? 100 : (extra / ((raceTurbo.val - raceBase.val) * 1.15)) * 100
-                return (
-                  <div class={`mono mono-${l.name}${clipped ? ' clipped' : ''}`} style={`--c:${l.tone};--h:${h.toFixed(1)}%`}>
-                    <div class="tower">
-                      <i class="fill"></i>
-                      <span class="cap-lbl">{clipped ? `off the chart · ${plus(l.bar.val)}` : plus(l.bar.val)}</span>
-                    </div>
-                    <div class="reflect"></div>
-                    <div class="plate">
-                      <span class="name">{l.label}</span>
-                      <span class="over">{plus(l.bar.val)}</span>
-                      <span class="fin">{perPkg(l.bar.val)} ms per package</span>
-                    </div>
-                  </div>
-                )
-              })
-            }
-            <div class="floor-line"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== Scene 3 · scale ===================== -->
-      <section class="scene pin scale" data-scene="scale" style="--len:2.4">
-        <div class="stage">
-          <canvas class="grid" aria-hidden="true"></canvas>
-          <div class="scale-copy">
-            <p class="vx-kicker">// 1,090 packages · 100 dependency layers · one cold build</p>
-            <div class="scale-num"><span data-count>0</span><span class="u">tasks</span></div>
-            <p class="scale-lede">
-              keyed, scheduled, sandboxed and cached for eight seconds of overhead in all. Grow the
-              graph and the runner grows with it in milliseconds per package — and stays in seconds
-              where the others go to minutes.
-            </p>
-            <div class="stats">
-              <div class="stat">
-                <span class="val"><span class="num">8</span><span class="unit">ms</span></span>
-                <span class="label">per package · vx</span>
-                <span class="sub">+0:08 on 1,090 packages</span>
-              </div>
-              <div class="stat turbo">
-                <span class="val"><span class="num">88</span><span class="unit">ms</span></span>
-                <span class="label">per package · Turborepo</span>
-                <span class="sub">+1:35 on 1,090 packages</span>
-              </div>
-              <div class="stat nx">
-                <span class="val"><span class="num">1,712</span><span class="unit">ms</span></span>
-                <span class="label">per package · Nx</span>
-                <span class="sub">+31:06 on 1,090 packages</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== Scene 4 · nothing to babysit ===================== -->
-      <section class="scene pin none" data-scene="none" style="--len:2.2">
-        <div class="stage">
-          <div class="none-copy">
-            <p class="vx-kicker">// what is not inside</p>
-            <ul class="strikes">
-              <li class="strike" data-k="0"><span>No daemon.</span></li>
-              <li class="strike" data-k="1"><span>No cloud.</span></li>
-              <li class="strike" data-k="2"><span>No account.</span></li>
-              <li class="strike" data-k="3"><span>No paywall.</span></li>
-            </ul>
-            <p class="one giant-2"><span class="phosphor chroma" data-text="Open. All of it.">Open. All of it.</span></p>
-            <p class="none-lede">
-              MIT, one binary for Linux and macOS. Remote cache and remote execution speak open
-              protocols — Bazel's Remote Execution API, Turborepo's and Nx's own cache wires — and
-              every seam a cloud would sit on is a documented hook you can fill yourself.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== Only in vx ===================== -->
-      <section class="flow only">
-        <div class="container">
-          <div class="flow-head reveal">
-            <p class="vx-kicker">// built different, on purpose</p>
-            <h2 class="huge">What sets it apart.</h2>
-          </div>
-          <div class="cards">
-            {
-              features.map((f, i) => (
-                <div class="card tilt reveal" style={`--c:${f.tone};--i:${i}`}>
-                  <span class="ico">
-                    <svg
-                    width="22"
-                    height="22"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    set:html={featIcons[f.icon]}
-                  />
-                  </span>
-                  <h3>{f.title}</h3>
-                  <p>{f.body}</p>
-                </div>
-              ))
-            }
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== The machine ===================== -->
-      <section class="flow machine">
-        <div class="container">
-          <div class="flow-head reveal">
-            <p class="vx-kicker">// built to be built on</p>
-            <h2 class="huge">A pipeline with a seam at every stage.</h2>
-            <p class="flow-sub">
-              Core is the pipeline and nothing else. Plugins fill a stage; core applies none by
-              default and names none — running here and caching here are the floor.
-            </p>
-          </div>
-          <div class="rail reveal" aria-hidden="true">
-            {
-              ['config', 'project', 'graph', 'key', 'fingerprint', 'schedule', 'executor', 'cache', 'telemetry', 'commands'].map((s, i) => (
-                <span class="node" style={`--i:${i}`}>{s}</span>
-              ))
-            }
-            <span class="pulse"></span>
-          </div>
-          <div class="cards">
-            {
-              platform.map((f, i) => (
-                <a
-                  class="card tilt reveal"
-                  style={`--c:${f.tone};--i:${i}`}
-                  href={
-                    f.icon === 'spark'
-                      ? href('guides/mcp/')
-                      : f.icon === 'plug'
-                        ? href('guides/plugins/')
-                        : f.icon === 'wire'
-                          ? href('guides/extensibility/')
-                          : f.icon === 'cloud'
-                            ? href('guides/remote-caching/')
-                            : href('guides/plugins/') + '#keys-and-order'
-                  }
-                >
-                  <span class="ico">
-                    <svg
-                    width="22"
-                    height="22"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    set:html={featIcons[f.icon]}
-                  />
-                  </span>
-                  <h3>{f.title}</h3>
-                  <p>{f.body}</p>
-                  <span class="learn">Learn more →</span>
-                </a>
-              ))
-            }
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== Terminal + config ===================== -->
-      <section class="flow live">
-        <div class="container live-grid">
-          <div class="live-copy reveal">
-            <p class="vx-kicker">// the whole configuration</p>
-            <h2 class="huge">Config is TypeScript.<br />A task is a command.</h2>
-            <p class="flow-sub">
-              <code>vx.config.ts</code> is evaluated before hashing, so imports, presets and
-              computed values are in the key. Inputs and outputs are declared, never inferred, and
-              the sandbox can prove them.
-            </p>
-            <a class="btn btn-ghost" href={href('schema/')}>Read the config reference <span class="arr">→</span></a>
-          </div>
-          <div class="live-cards reveal">
-            <div class="code-card">
-            <div class="bar"><span class="dot"></span><span class="name">vx.config.ts</span></div>
-            <pre><div><span class="tk-com">// vx.config.ts — next to any package.json</span></div><div><span class="tk-kw">import</span><span class="tk-txt"> {'{'} </span><span class="tk-fn">defineProject</span><span class="tk-txt"> {'}'} </span><span class="tk-kw">from</span><span class="tk-str"> '@vzn/vx'</span></div><div style="height:10px"></div><div><span class="tk-kw">export default</span><span class="tk-txt"> </span><span class="tk-fn">defineProject</span><span class="tk-punc">{'({'}</span></div><div><span class="tk-txt">  tasks: {'{'}</span></div><div><span class="tk-txt">    build: {'{'}</span></div><div><span class="tk-txt">      exec: {'{'} command: </span><span class="tk-str">'tsc -b'</span><span class="tk-txt"> {'}'},</span></div><div><span class="tk-txt">      dependsOn: [</span><span class="tk-str">'^build'</span><span class="tk-txt">],</span></div><div><span class="tk-txt">      cache: {'{'}</span></div><div><span class="tk-txt">        inputs: {'{'} files: [</span><span class="tk-str">'src/**'</span><span class="tk-txt">] {'}'},</span></div><div><span class="tk-txt">        outputs: {'{'} files: [</span><span class="tk-str">'dist/**'</span><span class="tk-txt">] {'}'},</span></div><div><span class="tk-txt">      {'}'},</span></div><div><span class="tk-txt">    {'}'},</span></div><div><span class="tk-txt">    test: {'{'}</span></div><div><span class="tk-txt">      exec: {'{'} command: </span><span class="tk-str">'bun test'</span><span class="tk-txt"> {'}'},</span></div><div><span class="tk-txt">      dependsOn: [</span><span class="tk-str">'build'</span><span class="tk-txt">],</span></div><div><span class="tk-txt">      cache: {'{'} inputs: {'{'} files: [</span><span class="tk-str">'src/**'</span><span class="tk-txt">] {'}'}, outputs: {'{'} files: [] {'}'} {'}'},</span></div><div><span class="tk-txt">    {'}'},</span></div><div><span class="tk-txt">  {'}'},</span></div><div><span class="tk-punc">{'})'}</span></div></pre>
-          </div>
-            <div class="term" data-term>
+          <div class="hero-aside">
+            <div class="term">
             <div class="term-bar-top">
               <span class="tdot" style="background:#ff5f57"></span>
               <span class="tdot" style="background:#febc2e"></span>
@@ -684,104 +479,250 @@ const footCols = {
         </div>
       </section>
 
-      <!-- ===================== Proof ===================== -->
-      <section class="flow proof" id="bench">
-        <div class="bench-panel container vx-scanlines reveal">
-          <div class="bench-head">
-            <div>
-              <p class="vx-kicker">// the receipts · 3,270 tasks · 1,090 packages</p>
-              <h2>Seconds, not minutes.</h2>
-            </div>
+      <section class="section" id="bench">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// 3,270 tasks · 1,090 packages · 100 layers · identical commands, identical concurrency</p>
+            <h2>First in every row.</h2>
+            <p class="sub">The same graph under vx, Turborepo and Nx. Every bar is the runner; every competitor reads as a multiple of vx.</p>
+          </div>
+          <div class="bench-panel">
             <div class="bench-legend">
               <span class="legend"><span class="sw" style="background:var(--phosphor)"></span>vx</span>
-              <span class="legend"
-                ><span class="sw" style="background:var(--c-turbo)"></span>turborepo</span
-              >
+              <span class="legend"><span class="sw" style="background:var(--c-turbo)"></span>turborepo</span>
               <span class="legend"><span class="sw" style="background:var(--c-nx)"></span>nx</span>
             </div>
-          </div>
-          <div class="bench-rows">
-            {
-              benchRows.map((r) => {
-                const sorted = [...r.bars.map((b) => b.val)].sort((a, b) => b - a)
-                const outlier = sorted.length > 1 && sorted[0]! > 10 * sorted[1]!
-                const rowMax = (outlier ? sorted[1]! : sorted[0]!) * 1.05
-                return (
-                  <div class="bench-row">
-                    <p class="task">{r.task}</p>
-                    {r.bars.map((b) => {
-                      const clipped = b.val > rowMax
-                      const pct = clipped ? 100 : (b.val / rowMax) * 100
-                      return (
-                        <div
-                          class={`bench-bar${b.best ? ' best' : ''}${b.name === 'baseline' ? ' baseline' : ''}${clipped ? ' clipped' : ''}`}
-                          style={`--c:${b.c};--w:${pct}%`}
-                        >
-                          <span class="name">{b.name}</span>
-                          <span class="track">
-                            <span class="fill" />
-                          </span>
-                          <span class="disp">{b.disp}</span>
-                          <span class="ratio">{r === cold && b.name !== 'baseline' ? plus(b.val) : ''}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })
-            }
-          </div>
-          <div class="bench-note">
-            <p>
-              Your tasks alone take 3m 38s on this graph — the ideal schedule, 10 perfectly parallel workers
-              along the dependency graph. vx finishes the cold build in 3m 46s (+0:08), Turborepo in
-              5m 13s (+1:35), Nx in 34m 44s (+31:06). Everything above the
-              baseline is the runner: 8 ms per package for vx, 88 ms for Turborepo, 1,712 ms for Nx.
-            </p>
-            <p>
-              1,090 packages, 3,270 tasks, 100 dependency layers, identical commands, every runner
-              pinned to the same concurrency, daemons on for the others, measured one at a time
-              (2026-09-03, Turborepo 2.10.12, Nx 23.2.0, Apple silicon, 10 cores). The tasks are
-              <code>sleep 1</code>, so the clock measures the runner and CPU measures its overhead:
-              vx burned 35 s to build the whole graph cold, Turborepo 73 s, Nx 114 minutes. Warm,
-              vx replays 3,270 tasks in 510ms; Turborepo 760ms; Nx 3.59s. Reproduce with
-              <code>bun packages/vx-bench/compare.ts 100 11 1</code>; the committed results are this run. The dashed <em>baseline</em> is the theoretical best case: cold is the tasks' own 3m 38s on 10 perfectly parallel workers along the dependency graph, and a cached run, a restore and the CPU a runner burns are 0 in theory — every bar is the runner's overhead. Bars are proportional within a row; a bar more than ten times the next runner's is clipped with a break, and the numbers are exact.
-            </p>
-            <p>
-              On a real Turbo monorepo — <code>solidjs/solid</code>, its own <code>turbo.json</code>, nothing
-              rewritten — vx restores every output in 66 ms where Turbo takes 127 ms, replays a cached run in
-              51 ms against 95 ms, and builds cold 12% faster; the same executed graph and the same 64
-              files on both sides. The tables and the harness are in the
-              <a href={href('benchmarks/')}>benchmarks</a>.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== Warp in ===================== -->
-      <section class="scene pin outro" data-scene="outro" style="--len:1.6">
-        <div class="stage">
-          <canvas class="warp warp-out" aria-hidden="true"></canvas>
-          <div class="outro-copy">
-            <p class="vx-kicker">// migrate</p>
-            <h2 class="giant-2">Warp in.</h2>
-            <p class="outro-lede">
-              A Turborepo workspace runs under vx as it is: one plugin, no config rewritten. When you
-              want the TypeScript, <code>bunx @vzn/vx-migrate</code> writes it from your
-              <code class="turbo">turbo.json</code> or your <code class="nx">Nx project graph</code>.
-              What works there works here; the parity map proves every behaviour with a test.
-            </p>
-            <div class="row">
-              <div class="cmd-pill"><span class="dollar">$</span> bunx @vzn/vx-migrate</div>
-              <a class="btn btn-primary btn-lg" href={href('migrate/from-turborepo/')}
-                >Read the migration guide <span class="arr">→</span></a
-              >
+            <div class="bench-rows">
+              {
+                [overheadRow, ...benchRows].map((r) => {
+                  const sorted = [...r.bars.map((b) => b.val)].sort((a, b) => b - a)
+                  const outlier = sorted.length > 1 && sorted[0]! > 10 * sorted[1]!
+                  const rowMax = (outlier ? sorted[1]! : sorted[0]!) * 1.05
+                  const best = r.bars.find((x) => x.best)?.val ?? 1
+                  return (
+                    <div class="bench-row">
+                      <p class="task">{r.task}</p>
+                      {r.bars.map((b) => {
+                        const clipped = b.val > rowMax
+                        const pct = clipped ? 100 : (b.val / rowMax) * 100
+                        return (
+                          <div
+                            class={`bench-bar${b.best ? ' best' : ''}${b.name === 'baseline' ? ' baseline' : ''}${clipped ? ' clipped' : ''}`}
+                            style={`--c:${b.c};--w:${pct}%`}
+                          >
+                            <span class="name">{b.name}</span>
+                            <span class="track">
+                              <span class="fill" />
+                            </span>
+                            <span class="disp">{b.disp}</span>
+                            <span class="ratio">{times(b, best)}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })
+              }
             </div>
           </div>
+          <a class="section-link" href="{href('benchmarks/')}">Benchmarks: tables, methodology, reproduce it <span class="arr">→</span></a>
         </div>
       </section>
 
-      <!-- ===================== Footer ===================== -->
+      <section class="section" id="solid">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// a real repo · solidjs/solid · its own turbo.json, nothing rewritten</p>
+            <h2>First on a real repo too.</h2>
+            <p class="sub">The same executed graph and the same output files on both sides.</p>
+          </div>
+          <div class="bench-panel">
+            <div class="bench-legend">
+              <span class="legend"><span class="sw" style="background:var(--phosphor)"></span>vx</span>
+              <span class="legend"><span class="sw" style="background:var(--c-turbo)"></span>turborepo</span>
+            </div>
+            <div class="bench-rows">
+              {
+                solidRows.map((r) => {
+                  const sorted = [...r.bars.map((b) => b.val)].sort((a, b) => b - a)
+                  const outlier = sorted.length > 1 && sorted[0]! > 10 * sorted[1]!
+                  const rowMax = (outlier ? sorted[1]! : sorted[0]!) * 1.05
+                  const best = r.bars.find((x) => x.best)?.val ?? 1
+                  return (
+                    <div class="bench-row">
+                      <p class="task">{r.task}</p>
+                      {r.bars.map((b) => {
+                        const clipped = b.val > rowMax
+                        const pct = clipped ? 100 : (b.val / rowMax) * 100
+                        return (
+                          <div
+                            class={`bench-bar${b.best ? ' best' : ''}${b.name === 'baseline' ? ' baseline' : ''}${clipped ? ' clipped' : ''}`}
+                            style={`--c:${b.c};--w:${pct}%`}
+                          >
+                            <span class="name">{b.name}</span>
+                            <span class="track">
+                              <span class="fill" />
+                            </span>
+                            <span class="disp">{b.disp}</span>
+                            <span class="ratio">{times(b, best)}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })
+              }
+            </div>
+          </div>
+          <a class="section-link" href="{href('benchmarks/') + '#a-real-turbo-repo-solidjssolid-2026-09-10'}">Benchmarks: the solid tables <span class="arr">→</span></a>
+        </div>
+      </section>
+
+      <!-- ===================== At any size ===================== -->
+      <section class="section" id="scale">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// what each runner adds per package · the same cold build</p>
+            <h2>First at any size.</h2>
+            <p class="sub">Grow the graph and the runner grows with it in milliseconds per package.</p>
+          </div>
+          <div class="stats">
+            <div class="stat">
+              <span class="val"><span class="num">8</span><span class="unit">ms</span></span>
+              <span class="label">per package · vx</span>
+              <span class="sub">+0:08 on 1,090 packages</span>
+            </div>
+            <div class="stat turbo">
+              <span class="val"><span class="num">88</span><span class="unit">ms</span></span>
+              <span class="label">per package · Turborepo</span>
+              <span class="sub">+1:35 on 1,090 packages</span>
+            </div>
+            <div class="stat nx">
+              <span class="val"><span class="num">1,712</span><span class="unit">ms</span></span>
+              <span class="label">per package · Nx</span>
+              <span class="sub">+31:06 on 1,090 packages</span>
+            </div>
+          </div>
+          <a class="section-link" href={href('benchmarks/') + '#how-the-overhead-scales-with-the-workspace-2026-09-10'}>Benchmarks: 100, 300 and 1,000 packages <span class="arr">→</span></a>
+        </div>
+      </section>
+
+      <!-- ===================== What sets it apart ===================== -->
+      <section class="section" id="why">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// built different, on purpose</p>
+            <h2>What sets it apart.</h2>
+            <p class="sub">Nine things, each with the page that proves it.</p>
+          </div>
+          <div class="cards">
+            {
+              features.map((f) => (
+                <a class="card" style={`--c:${f.tone}`} href={f.doc}>
+                  <span class="ico">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" set:html={featIcons[f.icon]} />
+                  </span>
+                  <h3>{f.title}</h3>
+                  <p>{f.body}</p>
+                  <span class="learn">Docs →</span>
+                </a>
+              ))
+            }
+          </div>
+          <a class="section-link" href={href('comparison/')}>The full comparison with Turborepo and Nx <span class="arr">→</span></a>
+        </div>
+      </section>
+
+      <!-- ===================== What is not inside ===================== -->
+      <section class="section" id="open">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// what is not inside</p>
+            <h2>Open. All of it.</h2>
+            <p class="sub">MIT, one binary, open protocols. Every seam a cloud would sit on is yours.</p>
+          </div>
+          <div class="cards">
+            {
+              nots.map((f) => (
+                <a class="card" style={`--c:${f.tone}`} href={f.doc}>
+                  <span class="ico">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" set:html={featIcons[f.icon]} />
+                  </span>
+                  <h3>{f.title}</h3>
+                  <p>{f.body}</p>
+                  <span class="learn">Docs →</span>
+                </a>
+              ))
+            }
+          </div>
+          <a class="section-link" href={href('guides/extensibility/')}>Extensibility: the seams and what fills them <span class="arr">→</span></a>
+        </div>
+      </section>
+
+      <!-- ===================== Built to be built on ===================== -->
+      <section class="section" id="plugins">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// built to be built on</p>
+            <h2>A pipeline with a seam at every stage.</h2>
+            <p class="sub">Core is the pipeline and nothing else. Plugins fill a stage.</p>
+          </div>
+          <div class="cards">
+            {
+              platform.map((f) => (
+                <a class="card" style={`--c:${f.tone}`} href={f.doc}>
+                  <span class="ico">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" set:html={featIcons[f.icon]} />
+                  </span>
+                  <h3>{f.title}</h3>
+                  <p>{f.body}</p>
+                  <span class="learn">Docs →</span>
+                </a>
+              ))
+            }
+          </div>
+          <a class="section-link" href={href('guides/plugins/')}>Writing a plugin <span class="arr">→</span></a>
+        </div>
+      </section>
+
+      <!-- ===================== Config ===================== -->
+      <section class="section" id="config">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// the whole configuration</p>
+            <h2>Config is TypeScript.<br />A task is a command.</h2>
+            <p class="sub">Evaluated before hashing, so imports and presets are in the key. Inputs and outputs declared, never inferred.</p>
+          </div>
+          <div class="live-cards">
+            <div class="code-card">
+            <div class="bar"><span class="dot"></span><span class="name">vx.config.ts</span></div>
+            <pre><div><span class="tk-com">// vx.config.ts — next to any package.json</span></div><div><span class="tk-kw">import</span><span class="tk-txt"> {'{'} </span><span class="tk-fn">defineProject</span><span class="tk-txt"> {'}'} </span><span class="tk-kw">from</span><span class="tk-str"> '@vzn/vx'</span></div><div style="height:10px"></div><div><span class="tk-kw">export default</span><span class="tk-txt"> </span><span class="tk-fn">defineProject</span><span class="tk-punc">{'({'}</span></div><div><span class="tk-txt">  tasks: {'{'}</span></div><div><span class="tk-txt">    build: {'{'}</span></div><div><span class="tk-txt">      exec: {'{'} command: </span><span class="tk-str">'tsc -b'</span><span class="tk-txt"> {'}'},</span></div><div><span class="tk-txt">      dependsOn: [</span><span class="tk-str">'^build'</span><span class="tk-txt">],</span></div><div><span class="tk-txt">      cache: {'{'}</span></div><div><span class="tk-txt">        inputs: {'{'} files: [</span><span class="tk-str">'src/**'</span><span class="tk-txt">] {'}'},</span></div><div><span class="tk-txt">        outputs: {'{'} files: [</span><span class="tk-str">'dist/**'</span><span class="tk-txt">] {'}'},</span></div><div><span class="tk-txt">      {'}'},</span></div><div><span class="tk-txt">    {'}'},</span></div><div><span class="tk-txt">    test: {'{'}</span></div><div><span class="tk-txt">      exec: {'{'} command: </span><span class="tk-str">'bun test'</span><span class="tk-txt"> {'}'},</span></div><div><span class="tk-txt">      dependsOn: [</span><span class="tk-str">'build'</span><span class="tk-txt">],</span></div><div><span class="tk-txt">      cache: {'{'} inputs: {'{'} files: [</span><span class="tk-str">'src/**'</span><span class="tk-txt">] {'}'}, outputs: {'{'} files: [] {'}'} {'}'},</span></div><div><span class="tk-txt">    {'}'},</span></div><div><span class="tk-txt">  {'}'},</span></div><div><span class="tk-punc">{'})'}</span></div></pre>
+          </div>
+          </div>
+          <a class="section-link" href={href('schema/')}>The config reference <span class="arr">→</span></a>
+        </div>
+      </section>
+
+      <!-- ===================== Migrate ===================== -->
+      <section class="section" id="migrate">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// migrate</p>
+            <h2>Bring the repo you have.</h2>
+            <p class="sub">A Turborepo workspace runs under vx as it is. When you want the TypeScript, one command writes it.</p>
+          </div>
+          <div class="actions">
+            <div class="cmd-pill"><span class="dollar">$</span> bunx @vzn/vx-migrate</div>
+            <a class="btn btn-primary btn-lg" href={href('migrate/from-turborepo/')}
+              >From Turborepo <span class="arr">→</span></a
+            >
+            <a class="btn btn-ghost btn-lg" href={href('migrate/from-nx/')}
+              >From Nx <span class="arr">→</span></a
+            >
+          </div>
+        </div>
+      </section>
+
       <footer class="footer">
         <div class="foot-grid container">
           <div class="foot-brand">
@@ -812,341 +753,18 @@ const footCols = {
     </div>
 
     <script>
-      // The film. Every effect here decorates a page that reads complete
-      // without it — the DOM ships whole and the numbers are server-rendered.
-      // `prefers-reduced-motion` turns the motion off at the source: pinned
-      // scenes render their final frame and nothing scrubs.
-      const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
-      const fine = matchMedia('(hover: hover) and (pointer: fine)').matches
-      const clamp01 = (x: number) => Math.min(1, Math.max(0, x))
-      const ease = (t: number) => 1 - Math.pow(1 - clamp01(t), 3)
-      const fmt = (ms: number) => {
-        const s = Math.floor(ms / 1000)
-        return `T+${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-      }
-
-      document.querySelectorAll<HTMLButtonElement>('.install-pill').forEach((pill) => {
-        pill.addEventListener('click', () => {
-          navigator.clipboard?.writeText(pill.dataset.copy ?? '').catch(() => {})
+      // The one interaction on the page: the install command copies itself.
+      const pill = document.querySelector<HTMLButtonElement>('.install-pill')
+      pill?.addEventListener('click', async () => {
+        const text = pill.dataset['copy'] ?? ''
+        try {
+          await navigator.clipboard.writeText(text)
           pill.classList.add('copied')
           setTimeout(() => pill.classList.remove('copied'), 1400)
-        })
+        } catch {
+          // clipboard unavailable: the command is visible to select by hand
+        }
       })
-
-      // ---- reveals for the flowing sections ----
-      const revealed = new IntersectionObserver(
-        (entries) => {
-          for (const e of entries) {
-            if (!e.isIntersecting) continue
-            e.target.classList.add('in')
-            revealed.unobserve(e.target)
-          }
-        },
-        { rootMargin: '0px 0px -6% 0px', threshold: 0.01 },
-      )
-      document.querySelectorAll('.reveal').forEach((el) => revealed.observe(el))
-
-      // ---- cards tilt toward the cursor ----
-      if (fine && !reduced) {
-        document.querySelectorAll<HTMLElement>('.tilt').forEach((card) => {
-          card.addEventListener('pointermove', (e) => {
-            const r = card.getBoundingClientRect()
-            const px = (e.clientX - r.left) / r.width
-            const py = (e.clientY - r.top) / r.height
-            card.style.setProperty('--mx', `${px * 100}%`)
-            card.style.setProperty('--my', `${py * 100}%`)
-            card.style.setProperty('--rx', `${(0.5 - py) * 7}deg`)
-            card.style.setProperty('--ry', `${(px - 0.5) * 9}deg`)
-          })
-          card.addEventListener('pointerleave', () => {
-            card.style.setProperty('--rx', '0deg')
-            card.style.setProperty('--ry', '0deg')
-          })
-        })
-      }
-
-      // ---- the terminal types its command, then its rows land ----
-      const term = document.querySelector<HTMLElement>('[data-term]')
-      if (term && !reduced) {
-        const cmd = term.querySelector<HTMLElement>('.term-prompt .cmd')
-        const rows = [...term.querySelectorAll<HTMLElement>('.term-task, .term-rule, .term-row')]
-        const text = cmd?.textContent ?? ''
-        term.classList.add('playing')
-        rows.forEach((r) => r.classList.add('pending'))
-        if (cmd) cmd.textContent = ''
-        const once = new IntersectionObserver((entries) => {
-          if (!entries.some((e) => e.isIntersecting)) return
-          once.disconnect()
-          let i = 0
-          const type = () => {
-            if (!cmd) return
-            cmd.textContent = text.slice(0, ++i)
-            if (i < text.length) setTimeout(type, 34 + Math.random() * 40)
-            else {
-              rows.forEach((r, k) => setTimeout(() => r.classList.remove('pending'), 260 + k * 70))
-              setTimeout(() => term.classList.remove('playing'), 260 + rows.length * 70 + 200)
-            }
-          }
-          setTimeout(type, 400)
-        })
-        once.observe(term)
-      }
-
-      // ---- canvases sized to their stage, at most 2× ----
-      const fit = (canvas: HTMLCanvasElement) => {
-        const stage = canvas.parentElement!
-        const dpr = Math.min(devicePixelRatio || 1, 2)
-        const w = stage.clientWidth
-        const h = stage.clientHeight
-        canvas.width = Math.floor(w * dpr)
-        canvas.height = Math.floor(h * dpr)
-        canvas.style.width = `${w}px`
-        canvas.style.height = `${h}px`
-        const ctx = canvas.getContext('2d')!
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-        return { ctx, w, h }
-      }
-
-      // ---- warp fields (cold open and outro): stars streaming past the camera ----
-      type Star = { x: number; y: number; z: number; pz: number; c: string }
-      const tints = ['198,248,78', '94,224,255', '255,157,66', '242,245,239']
-      const warpFields = [...document.querySelectorAll<HTMLCanvasElement>('canvas.warp')].map((canvas) => {
-        let stars: Star[] = []
-        let size = fit(canvas)
-        const spawn = (anywhere = false): Star => {
-          const z = anywhere ? Math.random() * 1 + 0.05 : 1
-          return { x: (Math.random() * 2 - 1) * 1.6, y: (Math.random() * 2 - 1) * 1.0, z, pz: z, c: tints[Math.floor(Math.random() * tints.length)]! }
-        }
-        const reseed = () => {
-          size = fit(canvas)
-          stars = Array.from({ length: Math.min(700, Math.floor((size.w * size.h) / 2200)) }, () => spawn(true))
-        }
-        reseed()
-        let mx = 0
-        let my = 0
-        if (fine) {
-          canvas.parentElement!.addEventListener('pointermove', (e) => {
-            const r = canvas.getBoundingClientRect()
-            mx = ((e.clientX - r.left) / r.width - 0.5) * 2
-            my = ((e.clientY - r.top) / r.height - 0.5) * 2
-          })
-        }
-        // `speed` in [0, 1]: the open accelerates as you scroll into the page.
-        const draw = (speed: number) => {
-          const { ctx, w, h } = size
-          const cx = w * 0.5 + mx * 30
-          const cy = h * 0.46 + my * 20
-          const f = Math.min(w, h) * 0.9
-          ctx.fillStyle = `rgba(10, 11, 13, ${0.22 + (1 - speed) * 0.4})`
-          ctx.fillRect(0, 0, w, h)
-          ctx.lineCap = 'round'
-          const v = reduced ? 0 : 0.003 + speed * 0.028
-          for (const s of stars) {
-            s.pz = s.z
-            s.z -= v
-            if (s.z <= 0.03) {
-              Object.assign(s, spawn())
-              continue
-            }
-            const sx = cx + (s.x / s.z) * f
-            const sy = cy + (s.y / s.z) * f
-            const px = cx + (s.x / s.pz) * f
-            const py = cy + (s.y / s.pz) * f
-            if (sx < -80 || sx > w + 80 || sy < -80 || sy > h + 80) {
-              Object.assign(s, spawn())
-              continue
-            }
-            const depth = 1 - s.z
-            ctx.strokeStyle = `rgba(${s.c}, ${0.06 + depth * 0.7})`
-            ctx.lineWidth = 0.5 + depth * (1.6 + speed * 2.4)
-            ctx.beginPath()
-            ctx.moveTo(px, py)
-            ctx.lineTo(sx, sy)
-            ctx.stroke()
-          }
-        }
-        return { canvas, draw, reseed }
-      })
-
-      // ---- the orbit: one lap is the ideal schedule; runners are comets ----
-      const clocks = document.querySelector<HTMLElement>('[data-scene="clocks"]')
-      const orbit = clocks?.querySelector<HTMLCanvasElement>('canvas.orbit') ?? null
-      const laneEls = [...(clocks?.querySelectorAll<HTMLElement>('.ll') ?? [])]
-      const clockEl = clocks?.querySelector<HTMLElement>('[data-clock]') ?? null
-      const rateEl = clocks?.querySelector<HTMLElement>('[data-rate]') ?? null
-      const caps = [...(clocks?.querySelectorAll<HTMLElement>('.cap') ?? [])]
-      const lapMs = Number(document.querySelector<HTMLElement>('[data-scene="clocks"]')?.dataset.lap) || 1
-      const runnerMs = (clocks?.dataset.runners ?? '0,0,0').split(',').map(Number)
-      const runners = [
-        { name: 'vx', ms: runnerMs[0] ?? 0, c: '198,248,78' },
-        { name: 'turbo', ms: runnerMs[1] ?? 0, c: '255,94,156' },
-        { name: 'nx', ms: runnerMs[2] ?? 0, c: '106,168,255' },
-      ]
-      let orbitSize = orbit ? fit(orbit) : null
-      const drawOrbit = (p: number) => {
-        if (!orbit || !orbitSize) return
-        const { ctx, w, h } = orbitSize
-        // Two phases: real time at 60× to just past Turbo's finish, then
-        // tenfold compression so Nx's remaining laps fit the scroll.
-        const split = 0.62
-        const turbo = runners[1]!.ms
-        const nx = runners[2]!.ms
-        const t = p < split ? (p / split) * (turbo + 12000) : turbo + 12000 + ((p - split) / (1 - split)) * (nx - turbo - 12000 + 1)
-        if (clockEl) clockEl.textContent = fmt(Math.min(t, nx))
-        if (rateEl) rateEl.textContent = p < split ? '×60' : '×600'
-        for (const cap of caps) cap.classList.toggle('on', t >= Number(cap.dataset.at))
-        ctx.clearRect(0, 0, w, h)
-        const cx = w / 2
-        const cy = h / 2
-        const R = Math.min(w, h) * 0.34
-        ctx.lineWidth = 1
-        ctx.strokeStyle = 'rgba(203, 209, 201, 0.14)'
-        ctx.beginPath()
-        ctx.arc(cx, cy, R, 0, Math.PI * 2)
-        ctx.stroke()
-        for (let i = 0; i < 60; i++) {
-          const a = (i / 60) * Math.PI * 2 - Math.PI / 2
-          const long = i % 5 === 0
-          ctx.strokeStyle = long ? 'rgba(203, 209, 201, 0.35)' : 'rgba(203, 209, 201, 0.12)'
-          ctx.beginPath()
-          ctx.moveTo(cx + Math.cos(a) * (R - (long ? 14 : 7)), cy + Math.sin(a) * (R - (long ? 14 : 7)))
-          ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R)
-          ctx.stroke()
-        }
-        // The start/finish line at twelve o'clock.
-        ctx.strokeStyle = 'rgba(242, 245, 239, 0.6)'
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        ctx.moveTo(cx, cy - R - 22)
-        ctx.lineTo(cx, cy - R + 18)
-        ctx.stroke()
-        runners.forEach((r, k) => {
-          const at = Math.min(t, r.ms)
-          const laps = at / lapMs
-          const a = laps * Math.PI * 2 - Math.PI / 2
-          const rr = R - 36 * k
-          const done = t >= r.ms
-          const tail = done ? 0.35 : Math.min(1.4, 0.35 + Math.min(t, r.ms) / 40000)
-          const grad = ctx.createLinearGradient(cx + Math.cos(a - tail) * rr, cy + Math.sin(a - tail) * rr, cx + Math.cos(a) * rr, cy + Math.sin(a) * rr)
-          grad.addColorStop(0, `rgba(${r.c}, 0)`)
-          grad.addColorStop(1, `rgba(${r.c}, 0.9)`)
-          ctx.strokeStyle = grad
-          ctx.lineWidth = 10
-          ctx.lineCap = 'round'
-          ctx.beginPath()
-          ctx.arc(cx, cy, rr, a - tail, a)
-          ctx.stroke()
-          const x = cx + Math.cos(a) * rr
-          const y = cy + Math.sin(a) * rr
-          const glow = ctx.createRadialGradient(x, y, 0, x, y, done ? 30 : 22)
-          glow.addColorStop(0, '#fff')
-          glow.addColorStop(0.25, `rgba(${r.c}, 1)`)
-          glow.addColorStop(1, `rgba(${r.c}, 0)`)
-          ctx.fillStyle = glow
-          ctx.beginPath()
-          ctx.arc(x, y, done ? 30 : 22, 0, Math.PI * 2)
-          ctx.fill()
-          laneEls[k]?.classList.toggle('done', done)
-        })
-      }
-
-      // ---- scale: 3,270 dots lit in one sweep, the counter naming each ----
-      const scale = document.querySelector<HTMLElement>('[data-scene="scale"]')
-      const gridCanvas = scale?.querySelector<HTMLCanvasElement>('canvas.grid') ?? null
-      const countNum = scale?.querySelector<HTMLElement>('[data-count]') ?? null
-      let gridSize = gridCanvas ? fit(gridCanvas) : null
-      const drawGrid = (p: number) => {
-        if (!gridCanvas || !gridSize) return
-        const { ctx, w, h } = gridSize
-        ctx.clearRect(0, 0, w, h)
-        // 3,270 dots fill the stage; the sweep lights them along a diagonal
-        // so the wave reads as a front crossing the graph.
-        const cols = w > 700 ? 109 : 55
-        const rows = Math.ceil(3270 / cols)
-        const cw = w / cols
-        const ch = h / rows
-        const front = ease(p / 0.55) * (cols + rows)
-        if (countNum) countNum.textContent = Math.round(Math.min(1, p / 0.55) * 3270).toLocaleString('en-US')
-        for (let i = 0; i < 3270; i++) {
-          const c = i % cols
-          const r = Math.floor(i / cols)
-          const x = c * cw + cw / 2
-          const y = r * ch + ch / 2
-          const d = c + r
-          const on = d < front
-          const fresh = on && d > front - 4
-          ctx.fillStyle = on ? (fresh ? 'rgba(216,255,107,0.9)' : 'rgba(198,248,78,0.3)') : 'rgba(203,209,201,0.07)'
-          ctx.beginPath()
-          ctx.arc(x, y, on ? (fresh ? 2.6 : 1.9) : 1.2, 0, Math.PI * 2)
-          ctx.fill()
-        }
-      }
-
-      // ---- the scrubber: each pinned scene owns a progress in [0, 1] ----
-      const scenes = [...document.querySelectorAll<HTMLElement>('.scene.pin')]
-      const progress = document.querySelector<HTMLElement>('.nav .progress')
-      let ticking = false
-      const render = () => {
-        ticking = false
-        const max = document.documentElement.scrollHeight - innerHeight
-        if (progress) progress.style.width = `${max > 0 ? (scrollY / max) * 100 : 0}%`
-        for (const scene of scenes) {
-          const r = scene.getBoundingClientRect()
-          const span = scene.offsetHeight - innerHeight
-          const p = reduced ? 1 : clamp01(span > 0 ? -r.top / span : 1)
-          const onScreen = r.bottom > 0 && r.top < innerHeight
-          scene.style.setProperty('--p', p.toFixed(4))
-          scene.classList.toggle('live', onScreen)
-          const kind = scene.dataset.scene
-          if (kind === 'clocks' && onScreen) drawOrbit(p)
-          if (kind === 'scale' && onScreen) drawGrid(p)
-          if (kind === 'none') {
-            scene.querySelectorAll<HTMLElement>('.strike').forEach((s, k) => s.classList.toggle('gone', p > 0.1 + k * 0.14))
-            scene.classList.toggle('one-in', p > 0.66)
-          }
-        }
-      }
-      const onScroll = () => {
-        if (ticking) return
-        ticking = true
-        requestAnimationFrame(render)
-      }
-      addEventListener('scroll', onScroll, { passive: true })
-      addEventListener('resize', () => {
-        orbitSize = orbit ? fit(orbit) : null
-        gridSize = gridCanvas ? fit(gridCanvas) : null
-        warpFields.forEach((f) => f.reseed())
-        render()
-      })
-
-      // ---- the warp fields run while their scene is on screen ----
-      const frame = () => {
-        for (const f of warpFields) {
-          const scene = f.canvas.closest<HTMLElement>('.scene')!
-          if (!scene.classList.contains('live')) continue
-          const p = Number(scene.style.getPropertyValue('--p') || 0)
-          f.draw(scene.dataset.scene === 'open' ? 0.15 + p * 0.85 : 0.5)
-        }
-        if (!reduced) requestAnimationFrame(frame)
-      }
-
-      // ---- cold open: the command types, then the title rises ----
-      const open = document.querySelector<HTMLElement>('[data-scene="open"]')
-      const typed = open?.querySelector<HTMLElement>('.typed') ?? null
-      if (open && typed && !reduced) {
-        const text = typed.dataset.type ?? ''
-        let i = 0
-        const type = () => {
-          typed.textContent = text.slice(0, ++i)
-          if (i < text.length) setTimeout(type, 42 + Math.random() * 50)
-          else setTimeout(() => open.classList.add('titled'), 320)
-        }
-        setTimeout(type, 500)
-      } else open?.classList.add('titled')
-
-      render()
-      if (reduced) warpFields.forEach((f) => f.draw(0.4))
-      else requestAnimationFrame(frame)
     </script>
   </body>
 </html>

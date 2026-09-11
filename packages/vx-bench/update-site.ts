@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Rewrite the landing page's benchmark rows, stat tiles and note, and the
+// Rewrite the landing page's benchmark rows and stat tiles, and the
 // benchmarks doc's stress-shape section, from packages/vx-bench/results.json — the file
 // `packages/vx-bench/compare.ts` commits. The site is a rendering of the runner's
 // output, never hand-typed numbers; run this after every comparison.
@@ -134,26 +134,6 @@ for (const [label, r] of [
     `<span class="num">${perPkg(r).toLocaleString('en-US')}</span><span class="unit">ms</span></span>\n$1<span class="label">per package · ${label}</span>\n$2<span class="sub">${plus(r)} on ${d.packages.toLocaleString('en-US')} packages</span>`,
   )
 }
-const note = `<p>
-              Your tasks alone take ${disp(B.fresh)} on this graph — the ideal schedule, ${d.concurrency} perfectly parallel workers
-              along the dependency graph. vx finishes the cold build in ${disp(vx.fresh)} (${plus(vx)}), Turborepo in
-              ${disp(turbo.fresh)} (${plus(turbo)}), Nx in ${disp(nx.fresh)} (${plus(nx)}). Everything above the
-              baseline is the runner: ${perPkg(vx)} ms per package for vx, ${perPkg(turbo)} ms for Turborepo, ${perPkg(nx).toLocaleString('en-US')} ms for Nx.
-            </p>
-            <p>
-              ${d.packages.toLocaleString('en-US')} packages, ${nodes.toLocaleString('en-US')} tasks, 100 dependency layers, identical commands, every runner
-              pinned to the same concurrency, daemons on for the others, measured one at a time
-              (${d.date.slice(0, 10)}, Turborepo ${turbo.version}, Nx ${nx.version}, Apple silicon, 10 cores). The tasks are
-              <code>sleep 1</code>, so the clock measures the runner and CPU measures its overhead:
-              vx burned ${Math.round(vx.freshCpu / 1000)} s to build the whole graph cold, Turborepo ${Math.round(turbo.freshCpu / 1000)} s, Nx ${Math.round(nx.freshCpu / 60_000)} minutes. Warm,
-              vx replays ${nodes.toLocaleString('en-US')} tasks in ${disp(vx.warmNoRestore)}; Turborepo ${disp(turbo.warmNoRestore)}; Nx ${disp(nx.warmNoRestore)}. Reproduce with
-              <code>bun packages/vx-bench/compare.ts 100 11 1</code>; the committed results are this run. The dashed <em>baseline</em> is the theoretical best case: cold is the tasks' own ${disp(B.fresh)} on 10 perfectly parallel workers along the dependency graph, and a cached run, a restore and the CPU a runner burns are 0 in theory — every bar is the runner's overhead. Bars are proportional within a row; a bar more than ten times the next runner's is clipped with a break, and the numbers are exact.
-            </p>`
-landing = landing.replace(
-  /<p>\s*Your tasks alone take[\s\S]*?<\/p>\s*<p>\s*[\d,]+ packages, [\d,]+ tasks, 100 dependency layers,[\s\S]*?<\/p>/,
-  note,
-)
-
 // ---- README benchmark sentence ----
 // Between the bench markers the README states the same three numbers the
 // landing page's stat tiles do; hand-typed, it drifted (559 ms where the

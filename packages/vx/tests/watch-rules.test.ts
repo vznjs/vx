@@ -6,7 +6,7 @@
 // time could never help), and the config-worker deadline that exists because a
 // worker the OS kills fires no `error` event and its caller waits forever.
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import fs, { chmodSync, existsSync } from 'node:fs'
 import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
@@ -18,6 +18,7 @@ import {
   makeRootEventFilter,
   makeWatchIgnore,
   memberEntries,
+  modifiedBefore,
   sweepConfigs,
   WATCH_PROBE,
   watchCmd,
@@ -532,6 +533,26 @@ describe('the member set under a package glob directory', () => {
       expect([...memberEntries(path.join(base, 'missing'))]).toEqual([])
     } finally {
       await rm(base, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('a first sighting is a change only if the path moved since the arm', () => {
+  // macOS delivers the initial run's own writes after the watchers go live;
+  // the mtime says which side of the arm an unseen path belongs to.
+  it('reads the mtime against the arm instant; an unreadable path is never "before"', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-armed-'))
+    try {
+      const f = path.join(dir, 'out.txt')
+      await writeFile(f, 'x')
+      const later = Date.now() + 10_000
+      expect(modifiedBefore(f, later)).toBe(true)
+      expect(modifiedBefore(dir, later)).toBe(true)
+      const earlier = (await stat(f)).mtimeMs - 1
+      expect(modifiedBefore(f, earlier)).toBe(false)
+      expect(modifiedBefore(path.join(dir, 'missing'), later)).toBe(false)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
     }
   })
 })
