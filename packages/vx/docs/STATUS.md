@@ -1712,6 +1712,24 @@ last`, `vx info` and `vx cache prune`, through one parser and one
     restore arm restores nothing under either tool (REPOS.md). Parity
     is the task graph as above.
 
+16. **Two cached tasks on one output path, when one depends on the
+    other.** Two of the five Nx repos have it: strapi's `build:types`
+    and refine's `types` write `dist/**/*.d.ts` into the `dist` their
+    package's `build` fills, and both declare `dist` as the output of
+    both targets; Nx caches both, vx leaves the dependent one uncached
+    (item 146 resolves the overlap at migration time). What blocks it
+    is the clean: vx removes a task's declared outputs before it runs
+    and before a restore, so a `types` miss under a `build` hit would
+    delete the `dist` that `types` reads. A design that admits it:
+    when B's outputs overlap A's and B depends on A, B's own output
+    set is the files its run ADDED or CHANGED (a snapshot of the
+    overlap before B runs, diffed after — size + mtime, the proof the
+    hit path already trusts), B's clean removes only that set, and B's
+    artifact holds only that set; the restore order follows the edge.
+    Cost: one stat walk of the overlap per B miss, none on a hit. Not
+    started; do it if a third repo shows the shape, with the design
+    note first (`docs/design/`).
+
 ## Decisions (this arc)
 
 - **No first-party technology plugins (owner, 2026-09-10).** A plugin
