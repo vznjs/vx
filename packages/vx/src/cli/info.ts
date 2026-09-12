@@ -5,6 +5,7 @@
 import { Cache, CACHE_VERSION, noteSchemaReset, SCHEMA_VERSION } from '../cache/index.js'
 import { flakyTasks, type FlakyTask, type VxPlugin } from '../orchestrator/index.js'
 import { seeHelp } from './help.js'
+import { PLUGIN_HOOKS } from '../config.js'
 import { VERSION } from '../version.js'
 import {
   loadCliProjects,
@@ -219,21 +220,8 @@ export function renderInfo(f: InfoFacts): string {
   return rows.map(([label, value]) => `${`${label}:`.padEnd(labelW + 1)} ${value}`).join('\n')
 }
 
-/** The seams a plugin can fill, in pipeline order (docs/design/pipeline-2026-09.md). */
-const SEAMS = [
-  'config',
-  'project',
-  'graph',
-  'key',
-  'fingerprint',
-  'schedule',
-  'admit',
-  'executor',
-  'cache',
-  'telemetry',
-  'setup',
-  'commands',
-] as const
+/** The seams a plugin can fill, in pipeline order: the one hook list, less the lifecycle end. */
+const SEAMS = PLUGIN_HOOKS.filter((h) => h !== 'teardown')
 
 function filledSeams(p: VxPlugin): string[] {
   return SEAMS.filter((s) => p[s as keyof VxPlugin] !== undefined)

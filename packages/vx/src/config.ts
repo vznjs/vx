@@ -58,7 +58,45 @@ export interface Plugin {
   telemetry?(ctx: unknown): unknown
   setup?(ctx: unknown): void | Promise<void>
   teardown?(): void | Promise<void>
+  readonly fingerprint?: unknown
 }
+
+/**
+ * Every hook a plugin may fill, in pipeline order — THE list. The loader's
+ * "must be a function" and "at least one of" checks, the host's stage gate
+ * and `vx info`'s seam column all read it, so a stage added here is a stage
+ * everywhere: `admit` reached `vx info` a day late (2026-09-12) because
+ * that column kept its own copy, and the loader kept a third. The type
+ * pin below refuses a list that drifts from `Plugin`'s keys either way.
+ */
+export const PLUGIN_HOOKS = [
+  'config',
+  'project',
+  'graph',
+  'key',
+  'fingerprint',
+  'schedule',
+  'admit',
+  'executor',
+  'cache',
+  'telemetry',
+  'setup',
+  'commands',
+  'teardown',
+] as const
+export type PluginHook = (typeof PLUGIN_HOOKS)[number]
+/** The hooks that are functions; `commands` and `fingerprint` are objects. */
+export const PLUGIN_FUNCTION_HOOKS = PLUGIN_HOOKS.filter(
+  (h): h is Exclude<PluginHook, 'commands' | 'fingerprint'> =>
+    h !== 'commands' && h !== 'fingerprint',
+)
+type PluginHookKeys = Exclude<keyof Plugin, 'name'>
+type HooksNotListed = Exclude<PluginHookKeys, PluginHook>
+type HooksNotOnPlugin = Exclude<PluginHook, PluginHookKeys>
+// Both `never`, or this line does not compile: the list and the type agree.
+const _pluginHooksMatch: [HooksNotListed, HooksNotOnPlugin] extends [never, never] ? true : never =
+  true
+void _pluginHooksMatch
 
 export interface ProjectConfig {
   /** Tasks declared by this project, keyed by task name. */

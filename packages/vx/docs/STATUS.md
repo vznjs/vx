@@ -1380,6 +1380,16 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       `totalBytes`, `cgroupLimitBytes`); `vx run --help` says "the
       cores this process may use". Pinned: the row shapes (pure) and
       the live rows and facts in the info e2e.
+164.  DONE (2026-09-12): one plugin hook list. Item 163's gap was a
+      second copy of the seam list, and the loader kept a third (its
+      ad-hoc plugin type and its `caps` array), the class "suspect a
+      second copy of the rule" names. `PLUGIN_HOOKS` now lives beside
+      the `Plugin` type in `config.ts`, in pipeline order, with a
+      compile-time pin that the list and the type's keys agree both
+      ways; the loader's function-hook check and its "at least one of"
+      message, and the doctor's seam column, derive from it, so a stage
+      added there is a stage everywhere. The message's order is the
+      pipeline's now (`schema.md` and its drift pin follow).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
