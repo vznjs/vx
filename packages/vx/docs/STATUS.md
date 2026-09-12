@@ -1500,6 +1500,30 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       (scheduler), the vetoing plugin's second task through `run()`
       and the control run's absence (plugin-pipeline), the footer line
       (summary). Docs: scheduler.md, cli.md, the design note.
+172.  DONE (2026-09-12): the release tree is assembled on every gate.
+      v0.0.19's `npm publish` died at its first step — `build-npm.ts`
+      copied `packages/vx/plugins`, the root shim directory that left
+      with the last plugin subpath two days earlier, and the darwin job
+      exited on `ENOENT ... /packages/vx/plugins` before a single
+      package was published (nothing reached the registry; the release
+      assets attached fine, they are a different workflow). The script
+      ran nowhere but the release, so nothing could catch the drift.
+      Two changes: the copy list is DERIVED from the core manifest's
+      exports map (`coreEntries` — `index.ts`, `src`, and the top
+      directory of every non-"." subpath, which is the directory twin
+      the compiled binary resolves by), and it is a hard error, named,
+      if a path it would ship does not exist; and the main-package
+      assembly is `emitMainPackage`, exported, so the gate builds the
+      real `@vzn/vx` tree into a temp dir without the four
+      cross-compiled binaries. `tests/build-npm.unsafe.test.ts` (unsafe:
+      the tree carries the repo-root README and LICENSE) pins that every
+      entry in the emitted `files` exists, that the launcher `bin`
+      points at a shipped file, and that each exports subpath has its
+      twin; differential — restoring `plugins` to the list fails it with
+      the named error. The same hardcoded name in
+      `package-entry-shims.unsafe.test.ts` is now derived from the
+      subpath too. Not re-runnable for v0.0.19: that tag carries the
+      broken script, so the next release (v0.0.20) is what publishes.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

@@ -42,12 +42,18 @@ describe('root entry shims for compiled binaries', () => {
       exports: Record<string, unknown>
     }
     expect(manifest.files).toContain('index.ts')
-    // Every subpath the exports map offers has a directory-convention twin.
+    // Every subpath the exports map offers has a directory-convention twin,
+    // and the directory that twin lives in is shipped. Derived from the
+    // subpath, never a name: the one subpath dir core ever had (`plugins`)
+    // was still being published by name two days after it was deleted.
     for (const sub of Object.keys(manifest.exports)) {
       if (sub === '.') continue
       const twin = path.join(PACKAGES, pkg, sub, 'index.ts')
       expect({ sub, present: await Bun.file(twin).exists() }).toEqual({ sub, present: true })
+      expect({ sub, files: manifest.files }).toEqual({
+        sub,
+        files: expect.arrayContaining([sub.replace(/^\.\//, '').split('/')[0]!]),
+      })
     }
-    if (Object.keys(manifest.exports).length > 1) expect(manifest.files).toContain('plugins')
   })
 })
