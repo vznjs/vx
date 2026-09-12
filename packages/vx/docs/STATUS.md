@@ -1390,6 +1390,16 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       message, and the doctor's seam column, derive from it, so a stage
       added there is a stage everywhere. The message's order is the
       pipeline's now (`schema.md` and its drift pin follow).
+165.  DONE (2026-09-12): the hook tables follow the list. Five hand
+      tables tabulate the hooks — `architecture.md`, `modules/plugin.md`,
+      the pipeline design note, and the site's plugin guide and
+      extensibility flow — and two lacked `fingerprint`. Drift pins now
+      hold them to `PLUGIN_HOOKS`: `tests/plugin-hooks-doc-drift.test.ts`
+      in core for its three, and `tests/plugin-hooks-guide.test.ts` in
+      `@vzn/vx-docs` for the site's two, reading the list off the façade
+      (`PLUGIN_HOOKS` exported for that consumer). The lifecycle pair is
+      prose in the stage tables and required in the hook tables; a
+      control drops `admit` from a table and shows the extractor sees it.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

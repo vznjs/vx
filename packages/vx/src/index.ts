@@ -18,6 +18,10 @@ export { clampInt, UserError, isUserError } from './util/index.js'
 // "Did you mean": the hint core's own verbs give for a near-miss name, for a
 // plugin verb to give the same one.
 export { nearMatches } from './util/index.js'
+// Every hook a plugin may fill, in pipeline order — the one list the
+// loader, the host and `vx info` read; exported so a doc pin outside core
+// (the site's guides) holds its tables to the same list.
+export { PLUGIN_HOOKS, type PluginHook } from './config.js'
 // The machine as this process may use it — cores and memory capped by the
 // cgroup a container runs under. Core's default worker count reads the
 // first; a policy that budgets memory (`@vzn/vx-schedule-history`) reads
