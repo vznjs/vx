@@ -1266,7 +1266,38 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       dispatch) 6 reps min 1753 / med 1859 vs 1800 / 1846 — a tie
       inside the spread; without a policy the dispatch tracks nothing.
       Design note: `docs/design/resource-estimates-2026-09.md`. Step 2
-      is Next 17.
+      is item 158.
+158.  DONE (2026-09-12): the producing execution's usage rides the
+      artifact (step 2 of item 157). A fresh CI runner has no history,
+      and that is where the budget bites. `cpuMs` and `peakRssBytes`
+      join the artifact's sidecar (`.vx-meta.json`, an optional `exec`
+      field), so every wire ships them verbatim and the
+      `RemoteCacheLayer` seam does not move; save and ingest index them
+      on the `entries` row from the artifact (`cpu_ms`,
+      `peak_rss_bytes`; `SCHEMA_VERSION` v26, no `CACHE_VERSION` bump —
+      the container is unchanged and an old artifact reads as before);
+      a hit surfaces them as `storedCpuMs` / `storedPeakRssBytes` on its
+      outcome, `--summarize` and the event stream (what the hit
+      skipped, never what it spent, the `storedDurationMs` split); the
+      history reader takes them from a hit row's entry with a
+      primary-key join over hit rows only, so `@vzn/vx-schedule-history`
+      has a reservation on the machine's next run. No "observed
+      elsewhere" row: the entry is the record. The ingest side takes a
+      foreign sidecar's numbers only as plain non-negative numbers.
+      Pinned: pack → scan round trip and the boundary
+      (`archive-security.test.ts`), the entry built from the artifact on
+      save and ingest alike (`cache.test.ts`), a hit row's usage from
+      its entry and a pruned entry contributing nothing
+      (`history.test.ts`), and end to end through the stub remote
+      layer: a `.vx`-wiped run restores from the remote, the hit carries
+      the first run's peak RSS as `storedPeakRssBytes` and none as its
+      own, and the history reader over the fresh cache reports it
+      (`orchestrator-remote.test.ts`). Measured (compiled binaries,
+      origin/main vs this, interleaved on the 1,000-project bench, one
+      workspace per arm): warm no-op 12 reps min 134 / med 140 vs
+      137 / 142 ms; `--force` 6 reps min 1840 / med 1862 vs 1760 /
+      1792 — a tie inside the spread both ways (the hit path spreads two
+      optional fields per entry; the save binds two more columns).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1862,17 +1893,8 @@ ever runs without configs. Never end with "what next?".
     third repo shows the addition shape, with the design note first
     (`docs/design/`), and leave the rewrite refused.
 
-17. **Usage rides on the artifact (step 2 of item 157).** A fresh CI
-    runner has no history, and that is where the memory budget bites.
-    The producing execution's `cpuMs` and `peakRssBytes` join the cache
-    entry's manifest; a remote hit writes an "observed elsewhere" row
-    into local history, so `@vzn/vx-schedule-history` has a number on
-    the first run.
-    No second sync channel, nothing to merge, no `CACHE_VERSION` bump
-    (an entry without the fields contributes nothing). Needs: the
-    manifest field on save, the row on a remote hit (marked so `vx why`
-    and `--summarize` can tell it from a local execution), a stub-layer
-    round trip in the tests, and the plugins guide line. Not started.
+17. DONE 2026-09-12 as item 158 — the producing execution's usage rides
+    the artifact's sidecar; a hit's entry is the history's record.
 
 ## Decisions (this arc)
 

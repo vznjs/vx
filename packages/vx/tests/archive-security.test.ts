@@ -32,6 +32,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { extractArtifactStream, packArtifact, scanArtifact } from '../src/cache/archive.js'
+import { tarPack } from '../src/cache/tar-stream.js'
 import { streamOf } from './helpers/stream.js'
 
 // ─── tar fixture helpers (same pattern as cache-baseline.test.ts) ────
@@ -673,6 +674,67 @@ describe('packArtifact → restore round trip', () => {
 
     await restore(bytes, dest)
     expect(await readFile(path.join(dest, deepRel), 'utf8')).toBe('long')
+  })
+})
+
+describe("the sidecar carries the producing execution's usage", () => {
+  // What a reservation learned from history packs on rides the artifact,
+  // so a machine that never ran the task (a fresh runner on a remote hit)
+  // still learns it — and every wire ships the bytes verbatim, so no seam
+  // moves. Additive: an artifact without it reads exactly as before.
+  const scan = (bytes: Uint8Array) => scanArtifact(streamOf(bytes))
+  const usage = { cpuMs: 12_345, peakRssBytes: 640 * 1024 * 1024 }
+
+  it('round-trips cpuMs and peakRssBytes through pack and scan', async () => {
+    const bytes = await packArtifact({ stdout: '', outputs: new Map(), exec: usage })
+    expect((await scan(bytes)).exec).toEqual(usage)
+  })
+
+  it('carries only the axes the runner reported, and nothing when it reported none', async () => {
+    const rss = await packArtifact({
+      stdout: '',
+      outputs: new Map(),
+      exec: { peakRssBytes: 1024 },
+    })
+    expect((await scan(rss)).exec).toEqual({ peakRssBytes: 1024 })
+    const none = await packArtifact({ stdout: '', outputs: new Map() })
+    expect((await scan(none)).exec).toBeUndefined()
+    const empty = await packArtifact({ stdout: '', outputs: new Map(), exec: {} })
+    expect((await scan(empty)).exec).toBeUndefined()
+  })
+
+  it("takes a foreign sidecar's usage only as plain non-negative numbers", async () => {
+    // The ingest side is the untrusted boundary: bytes off a remote. A
+    // sidecar that says `"cpuMs": "lots"` or a negative RSS must not become
+    // a reservation; the well-formed axis beside it still counts.
+    const meta = new TextEncoder().encode(
+      JSON.stringify({
+        version: 1,
+        files: {},
+        exec: { cpuMs: 'lots', peakRssBytes: 4096, extra: -1 },
+      }),
+    )
+    const stdout = new TextEncoder().encode('')
+    const chunks: Uint8Array[] = []
+    for await (const c of tarPack([
+      { name: 'stdout', size: 0, body: stdout },
+      { name: '.vx-meta.json', size: meta.byteLength, body: meta },
+    ]))
+      chunks.push(c)
+    const bytes = new Uint8Array(await new Blob(chunks).arrayBuffer())
+    expect((await scan(bytes)).exec).toEqual({ peakRssBytes: 4096 })
+    const bad = new TextEncoder().encode(
+      JSON.stringify({ version: 1, files: {}, exec: { cpuMs: -5, peakRssBytes: NaN } }),
+    )
+    const badChunks: Uint8Array[] = []
+    for await (const c of tarPack([
+      { name: 'stdout', size: 0, body: stdout },
+      { name: '.vx-meta.json', size: bad.byteLength, body: bad },
+    ]))
+      badChunks.push(c)
+    expect(
+      (await scan(new Uint8Array(await new Blob(badChunks).arrayBuffer()))).exec,
+    ).toBeUndefined()
   })
 })
 

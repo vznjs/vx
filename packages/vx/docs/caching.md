@@ -639,8 +639,14 @@ anywhere.
 Tar headers carry mode and second mtimes. vx needs both permission bits (a lost executable bit builds cold
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
-`.vx-meta.json` — `{ version, files: { <entry>: [mode, mtimeMs] } }` —
-into the archive. Restore applies both. Entries that are not regular
+`.vx-meta.json` — `{ version, files: { <entry>: [mode, mtimeMs] }, exec? }` —
+into the archive. Restore applies both. `exec` (`{ cpuMs?, peakRssBytes? }`,
+2026-09-12) is what the PRODUCING execution used: it rides the artifact
+so a machine that never ran the task — a fresh runner on a remote hit —
+still learns what the task needs (`@vzn/vx-schedule-history` packs on
+it), every wire ships the bytes verbatim, and an artifact without it
+reads as before. The ingest side takes the numbers only as plain
+non-negative numbers; anything else in a foreign sidecar is dropped. Entries that are not regular
 files (symlinks, hardlinks, devices) are never materialised — the
 reader reports them only to be skipped — so a
 poisoned artifact cannot smuggle one onto disk. On the save side a
@@ -684,7 +690,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 `vx cache prune`'s to reap.
 
 ```sql
--- src/cache/cache.ts schema (SCHEMA_VERSION = 'v25')
+-- src/cache/cache.ts schema (SCHEMA_VERSION = 'v26')
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version'
@@ -701,7 +707,9 @@ CREATE TABLE entries (
   size_bytes   INTEGER NOT NULL,  -- artifact size
   stdout       TEXT NOT NULL DEFAULT '',  -- captured stdout (pure-SQL hit replay)
   created_at   INTEGER NOT NULL,  -- ms-epoch
-  accessed_at  INTEGER NOT NULL   -- ms-epoch; bumps batch at flush (LRU)
+  accessed_at  INTEGER NOT NULL,  -- ms-epoch; bumps batch at flush (LRU)
+  cpu_ms         INTEGER,         -- v26: the producing execution's usage, from
+  peak_rss_bytes INTEGER          --      the artifact's sidecar (save + ingest)
 );
 
 CREATE TABLE runs (

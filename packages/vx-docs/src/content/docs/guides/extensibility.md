@@ -181,7 +181,10 @@ export function turboCache(opts: { url: string; token: string }): VxPlugin {
 `LayeredCache` owns everything wire-independent — read-through with
 local hydration, at-most-once in-flight deduplication, background
 write-through uploads, and the never-fail contract — so a wire plugin
-stays this small. Embedders that already hold a client can also inject
+stays this small. The artifact bytes carry their own metadata beyond
+the wire's `durationMs` (the producing execution's CPU time and peak
+RSS, in the archive's sidecar), so a wire that ships the bytes verbatim
+hands a fresh machine everything a scheduling policy learns from. Embedders that already hold a client can also inject
 it per-run via `RunOptions.remoteCache` (explicit injection wins over
 the plugin consult).
 

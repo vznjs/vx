@@ -42,6 +42,9 @@ export interface SaveMissArgs {
   command: string
   durationMs: number
   stdout: string
+  /** The execution's usage, when the runner reported it — rides the artifact's sidecar. */
+  cpuMs?: number | undefined
+  peakRssBytes?: number | undefined
   /** When present, the directory snapshot is queued here instead of taken now. */
   outputDirSnapshots?: OutputDirSnapshot[] | undefined
   /**
@@ -102,6 +105,8 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
         command: a.command,
         durationMs: a.durationMs,
         stdout: a.stdout,
+        ...(a.cpuMs !== undefined ? { cpuMs: a.cpuMs } : {}),
+        ...(a.peakRssBytes !== undefined ? { peakRssBytes: a.peakRssBytes } : {}),
       },
     })
     endSave()

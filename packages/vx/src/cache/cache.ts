@@ -32,6 +32,7 @@ import path from 'node:path'
 import { relPosix, UserError, xxh3, xxh3hex, span } from '../util/index.js'
 import {
   ArchiveSecurityError,
+  type ExecUsage,
   extractArtifactStream,
   scanArtifact,
   packArtifactBytes,
@@ -180,7 +181,13 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        runs every time by design, and `vx last` could not mark it the
 //        way the terminal summary does (`no-cache`). Analytics-only —
 //        the cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v25'
+//   v26: entries.cpu_ms / peak_rss_bytes — what the producing execution
+//        used, read out of the artifact's sidecar at save and ingest
+//        alike, so a hit (a remote one on a fresh runner above all) can
+//        tell the history what the task needs. The cache KEY and the
+//        artifact container are unchanged (no CACHE_VERSION bump: an
+//        artifact without the field reads as before).
+export const SCHEMA_VERSION = 'v26'
 
 /**
  * SQL predicate selecting `runs` rows that record an EXECUTION.
@@ -236,6 +243,8 @@ interface EntryRow {
   stdout: string
   created_at: number
   accessed_at: number
+  cpu_ms: number | null
+  peak_rss_bytes: number | null
 }
 
 function entryOf(row: EntryRow, fileRows: OutputFileRow[]): CacheEntry {
@@ -245,11 +254,22 @@ function entryOf(row: EntryRow, fileRows: OutputFileRow[]): CacheEntry {
     command: row.command,
     exitCode: row.exit_code,
     durationMs: row.duration_ms,
+    ...(row.cpu_ms !== null ? { cpuMs: row.cpu_ms } : {}),
+    ...(row.peak_rss_bytes !== null ? { peakRssBytes: row.peak_rss_bytes } : {}),
     outputFiles: fileRows.map((r) => r.path),
     outputRows: fileRows,
     stdout: row.stdout,
     storedAt: new Date(row.created_at).toISOString(),
     source: 'local',
+  }
+}
+
+/** The sidecar's `exec` from a save's entry: only the axes the runner reported. */
+function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsage | undefined {
+  if (entry.cpuMs === undefined && entry.peakRssBytes === undefined) return undefined
+  return {
+    ...(entry.cpuMs !== undefined ? { cpuMs: entry.cpuMs } : {}),
+    ...(entry.peakRssBytes !== undefined ? { peakRssBytes: entry.peakRssBytes } : {}),
   }
 }
 
@@ -374,7 +394,10 @@ export class Cache implements CacheLayer {
         size_bytes   INTEGER NOT NULL,
         stdout       TEXT NOT NULL DEFAULT '',
         created_at   INTEGER NOT NULL,
-        accessed_at  INTEGER NOT NULL
+        accessed_at  INTEGER NOT NULL,
+        -- v26: the producing execution's usage, from the artifact's sidecar.
+        cpu_ms         INTEGER,
+        peak_rss_bytes INTEGER
       );
       CREATE TABLE IF NOT EXISTS runs (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -540,17 +563,19 @@ export class Cache implements CacheLayer {
     `)
 
     this.insertEntry = this.db.prepare(`
-      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, stdout, created_at, accessed_at, cpu_ms, peak_rss_bytes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(hash) DO UPDATE SET
-        stdout       = excluded.stdout,
-        project      = excluded.project,
-        task         = excluded.task,
-        command      = excluded.command,
-        exit_code    = excluded.exit_code,
-        duration_ms  = excluded.duration_ms,
-        size_bytes   = excluded.size_bytes,
-        accessed_at  = excluded.accessed_at
+        stdout         = excluded.stdout,
+        project        = excluded.project,
+        task           = excluded.task,
+        command        = excluded.command,
+        exit_code      = excluded.exit_code,
+        duration_ms    = excluded.duration_ms,
+        size_bytes     = excluded.size_bytes,
+        accessed_at    = excluded.accessed_at,
+        cpu_ms         = excluded.cpu_ms,
+        peak_rss_bytes = excluded.peak_rss_bytes
     `)
     this.selectEntry = this.db.prepare('SELECT * FROM entries WHERE hash = ?')
     this.bumpAccessed = this.db.prepare('UPDATE entries SET accessed_at = ? WHERE hash = ?')
@@ -1017,6 +1042,7 @@ export class Cache implements CacheLayer {
     const plan = await planArtifact({
       stdout: args.entry.stdout ?? '',
       outputs: this.outputsOf(args),
+      exec: usageOfEntry(args.entry),
     })
     if (plan.size <= STREAM_DECODE_FROM)
       return await Bun.zstdCompress(await packArtifactBytes(plan))
@@ -1039,6 +1065,7 @@ export class Cache implements CacheLayer {
     const plan = await planArtifact({
       stdout: args.entry.stdout ?? '',
       outputs: this.outputsOf(args),
+      exec: usageOfEntry(args.entry),
     })
     if (plan.size <= STREAM_DECODE_FROM)
       return await Bun.zstdCompress(await packArtifactBytes(plan))
@@ -1194,6 +1221,10 @@ export class Cache implements CacheLayer {
         stdoutText,
         now,
         now,
+        // From the artifact, on both paths: a save indexes what it just
+        // packed, an ingest what the producing machine packed.
+        scanned.exec?.cpuMs ?? null,
+        scanned.exec?.peakRssBytes ?? null,
       )
       outputs.replaceFileRows(hash, outputFileRows)
       // INSERT OR IGNORE: identical inputs derive this same hash, so a

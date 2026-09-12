@@ -106,23 +106,33 @@ export class LocalHistoryProvider implements HistoryProvider {
     // did — while the rates count every executed row.
     const sql = `
       SELECT
-        project,
-        task,
+        r.project,
+        r.task,
         COUNT(*) AS total,
-        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successes,
-        SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) AS hits,
-        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
-        SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) AS retried,
-        GROUP_CONCAT(CASE WHEN (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
-                          THEN duration_ms END) AS ds,
-        MAX(CASE WHEN (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
-                 THEN peak_rss_bytes END) AS rss,
-        MAX(CASE WHEN (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
-                      AND cpu_ms IS NOT NULL AND duration_ms > 0
-                 THEN cpu_ms * 1.0 / duration_ms END) AS cpu
-      FROM runs
-      WHERE id >= ? AND ${EXECUTED_RUNS_SQL}
-      GROUP BY project, task
+        SUM(CASE WHEN r.status = 'success' THEN 1 ELSE 0 END) AS successes,
+        SUM(CASE WHEN r.cache_hit = 1 THEN 1 ELSE 0 END) AS hits,
+        SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failures,
+        SUM(CASE WHEN r.attempts > 1 THEN 1 ELSE 0 END) AS retried,
+        GROUP_CONCAT(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
+                          THEN r.duration_ms END) AS ds,
+        MAX(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
+                 THEN r.peak_rss_bytes
+                 WHEN r.cache_hit = 1 THEN e.peak_rss_bytes END) AS rss,
+        MAX(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
+                      AND r.cpu_ms IS NOT NULL AND r.duration_ms > 0
+                 THEN r.cpu_ms * 1.0 / r.duration_ms
+                 WHEN r.cache_hit = 1 AND e.cpu_ms IS NOT NULL AND e.duration_ms > 0
+                 THEN e.cpu_ms * 1.0 / e.duration_ms END) AS cpu
+      FROM runs r
+      -- A hit executed nothing here, but its entry carries what the
+      -- PRODUCING execution used (the artifact's sidecar, indexed at save
+      -- and ingest alike), so a task this machine has only ever restored
+      -- — a fresh runner behind a remote cache — still has a number. The
+      -- join is by primary key and only for hit rows; an entry pruned
+      -- since contributes nothing.
+      LEFT JOIN entries e ON r.cache_hit = 1 AND e.hash = r.hash
+      WHERE r.id >= ? AND ${EXECUTED_RUNS_SQL}
+      GROUP BY r.project, r.task
     `
     type Row = {
       project: string

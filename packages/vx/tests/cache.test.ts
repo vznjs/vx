@@ -607,6 +607,61 @@ describe('Cache storage (v10)', () => {
     expect(await cache.get('h-orphan')).toBeNull()
   })
 
+  it("indexes the producing execution's usage from the artifact, on save and on ingest alike", async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await mkdir(path.dirname(outFile), { recursive: true })
+    await writeFile(outFile, 'produced')
+    await cache.save({
+      hash: 'h-usage',
+      projectDir,
+      outputFiles: [outFile],
+      entry: {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        durationMs: 3000,
+        stdout: '',
+        cpuMs: 7500,
+        peakRssBytes: 512 * 1024 * 1024,
+      },
+    })
+    const saved = await cache.get('h-usage')
+    expect(saved?.cpuMs).toBe(7500)
+    expect(saved?.peakRssBytes).toBe(512 * 1024 * 1024)
+
+    // A second machine ingests the same bytes with only the wire's
+    // metadata (taskId, command, durationMs): the usage must come out of
+    // the artifact itself, or a fresh runner learns nothing.
+    const otherDir = path.join(workspaceRoot, 'other-cache')
+    const other = new Cache(otherDir)
+    try {
+      const bytes = await Bun.file(path.join(cacheDir, 'h-usage.tar.zst')).bytes()
+      await other.ingest('h-usage', bytes, {
+        taskId: 'pkg#build',
+        command: 'tsc',
+        durationMs: 3000,
+      })
+      const ingested = await other.get('h-usage')
+      expect(ingested?.cpuMs).toBe(7500)
+      expect(ingested?.peakRssBytes).toBe(512 * 1024 * 1024)
+    } finally {
+      other.close()
+    }
+
+    // An execution that reported nothing leaves the columns NULL, and the
+    // entry says undefined — never 0.
+    await cache.save({
+      hash: 'h-quiet',
+      projectDir,
+      outputFiles: [outFile],
+      entry: { taskId: 'pkg#build', command: 'tsc', durationMs: 1, stdout: '' },
+    })
+    const quiet = await cache.get('h-quiet')
+    expect(quiet?.cpuMs).toBeUndefined()
+    expect(quiet?.peakRssBytes).toBeUndefined()
+  })
+
   it('ingest() rejects corrupt zstd bytes — no artifact on disk, no SQL row', async () => {
     const garbage = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4, 5, 6, 7, 8])
     await expect(

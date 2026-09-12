@@ -60,6 +60,20 @@ interface MetaFile {
    *  container is versioned by CACHE_VERSION, which gates reads. */
   version: 1
   files: Record<string, [mode: number, mtimeMs: number]>
+  /**
+   * What the PRODUCING execution used (2026-09-12, additive: an artifact
+   * without it reads as before). Rides the artifact so a machine that
+   * never ran the task — a fresh CI runner on a remote hit — still learns
+   * what it needs; every wire ships the bytes verbatim, so no seam
+   * changes.
+   */
+  exec?: ExecUsage
+}
+
+/** CPU time and peak RSS of the execution that produced an artifact. */
+export interface ExecUsage {
+  cpuMs?: number
+  peakRssBytes?: number
 }
 
 /** One regular file in an artifact, with its restore metadata resolved. */
@@ -90,6 +104,8 @@ export class ArchiveSecurityError extends Error {
 export interface PackArgs {
   stdout: string
   outputs: ReadonlyMap<string, string>
+  /** The producing execution's usage, when the runner reported it. */
+  exec?: ExecUsage | undefined
 }
 
 /** A packed artifact's plan: its entries with their stats, and the tar's exact size. */
@@ -108,6 +124,8 @@ export interface ArtifactPlan {
  */
 export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   const meta: MetaFile = { version: 1, files: {} }
+  const exec = usageOf(args.exec)
+  if (exec !== undefined) meta.exec = exec
   const files = await Promise.all(
     [...args.outputs].map(async ([name, abs]) => {
       // `stat` follows a symlink, so a link to a file is packed as that
@@ -208,14 +226,19 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
  */
 export async function scanArtifact(
   tar: ReadableStream<Uint8Array>,
-): Promise<{ entries: ArchiveEntry[]; stdout: string | null }> {
+): Promise<{ entries: ArchiveEntry[]; stdout: string | null; exec: ExecUsage | undefined }> {
   const seen: Array<{ name: string; size: number; mtimeMs: number }> = []
   let meta: MetaFile['files'] = {}
+  let exec: ExecUsage | undefined
   let stdout: string | null = null
   for await (const e of tarEntries(tar)) {
     if (e.type !== '0') continue
     if (e.name === META_ENTRY) {
-      meta = (JSON.parse(await textOf(e.body)) as MetaFile).files ?? {}
+      const parsed = JSON.parse(await textOf(e.body)) as MetaFile
+      meta = parsed.files ?? {}
+      // The ingest side is the untrusted boundary: a foreign sidecar's
+      // usage is taken only when it is a plain non-negative number.
+      exec = usageOf(parsed.exec)
       continue
     }
     assertSafeName(e.name)
@@ -231,7 +254,19 @@ export async function scanArtifact(
       return { name: s.name, size: s.size, mode: m?.[0] ?? 0o644, mtimeMs: m?.[1] ?? s.mtimeMs }
     }),
     stdout,
+    exec,
   }
+}
+
+/** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */
+function usageOf(raw: unknown): ExecUsage | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const { cpuMs, peakRssBytes } = raw as { cpuMs?: unknown; peakRssBytes?: unknown }
+  const out: { cpuMs?: number; peakRssBytes?: number } = {}
+  if (typeof cpuMs === 'number' && Number.isFinite(cpuMs) && cpuMs >= 0) out.cpuMs = cpuMs
+  if (typeof peakRssBytes === 'number' && Number.isFinite(peakRssBytes) && peakRssBytes >= 0)
+    out.peakRssBytes = peakRssBytes
+  return out.cpuMs === undefined && out.peakRssBytes === undefined ? undefined : out
 }
 
 /**

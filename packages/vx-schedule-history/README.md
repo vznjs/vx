@@ -35,7 +35,10 @@ reservation and those of everything running beside it fit the budgets —
 cores are the run's worker count, memory is this machine's total — and
 a task over a whole budget runs alone. A task with no execution in the
 window reserves nothing and runs freely, as it would with no plugin; a
-spike or a refactor ages out with the window.
+spike or a refactor ages out with the window. A cache hit counts too:
+the producing execution's usage rides the artifact, so a fresh CI runner
+that restored a task from a remote cache has its reservation on the
+next run without ever having executed it.
 
 ```ts
 plugins: [
