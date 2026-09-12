@@ -32,8 +32,9 @@ learns them. Each task's reservation is the largest peak RSS in the
 window times a headroom (1.25), rounded up to 64 MB, and the most CPU
 parallelism seen, rounded to a whole core; a task is admitted while its
 reservation and those of everything running beside it fit the budgets —
-cores are the run's worker count, memory is this machine's total — and
-a task over a whole budget runs alone. A task with no execution in the
+cores are the run's worker count, memory is what this process may use
+(the machine's total, capped by the cgroup limit a container runs
+under) — and a task over a whole budget runs alone. A task with no execution in the
 window reserves nothing and runs freely, as it would with no plugin; a
 spike or a refactor ages out with the window. A cache hit counts too:
 the producing execution's usage rides the artifact, so a fresh CI runner
@@ -43,7 +44,7 @@ next run without ever having executed it.
 ```ts
 plugins: [
   scheduleHistoryPlugin({
-    // MB. Pass it in a cgroup-limited container: the default reads the HOST's RAM.
+    // MB. The default is the machine's total capped by the cgroup limit; set it to budget below either.
     memory: 8192,
     resources: { headroom: 1.5 },
     // Declared by hand for what history cannot size (a first run); a declaration wins.

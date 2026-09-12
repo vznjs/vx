@@ -459,6 +459,27 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
       await rm(cwd, { recursive: true, force: true })
     }
   })
+
+  it('reads a known CPU burn back as milliseconds, on THIS platform', async () => {
+    // Same rule for the other unit: Bun's `cpuTime` is typed as
+    // microseconds and the converter divides by 1000. A child that spins
+    // for 500 ms of wall time on one core must report 500 ms of CPU give
+    // or take the runtime's own start; a value in milliseconds divided
+    // by 1000 would read as 0.5, one in nanoseconds as 500,000.
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-cpu-'))
+    try {
+      const result = await runCommand({
+        command: `bun -e "const t = Date.now(); while (Date.now() - t < 500) {}"`,
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+      })
+      expect(result.exitCode).toBe(0)
+      expect(result.cpuMs!).toBeGreaterThanOrEqual(400)
+      expect(result.cpuMs!).toBeLessThan(2000)
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('execWrap — grandchild-orphan mitigation', () => {

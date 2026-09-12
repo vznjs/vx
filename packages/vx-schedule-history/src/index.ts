@@ -11,7 +11,6 @@
 // hit is backfill, never a critical-path task). The estimate here is "what
 // if everything ran", which is exactly the case where order matters.
 
-import os from 'node:os'
 import {
   definePlugin,
   LocalHistoryProvider,
@@ -20,6 +19,7 @@ import {
   type TaskNode,
   type VxPlugin,
 } from '@vzn/vx'
+import { machineMemoryBytes } from './memory-limit.js'
 
 /** Default duration when neither task history nor a workspace median exists. */
 const DEFAULT_DURATION_MS = 1000
@@ -40,8 +40,9 @@ export interface ScheduleHistoryOptions {
   readonly resources?: false | { readonly headroom?: number }
   /**
    * Memory budget in megabytes the reservations pack against. Default:
-   * this machine's total memory — pass it in a cgroup-limited container,
-   * where the total is the host's.
+   * what this process may use — the machine's total, capped by the
+   * cgroup limit a container runs under (`os.totalmem()` alone reports
+   * the HOST's RAM there). Pass it to budget below either.
    */
   readonly memory?: number
   /**
@@ -112,7 +113,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     Object.entries(options.reservations ?? {}),
   )
   if (options.resources !== false || options.reservations !== undefined) {
-    const memoryMb = options.memory ?? Math.floor(os.totalmem() / MB)
+    const memoryMb = options.memory ?? Math.floor(machineMemoryBytes() / MB)
     hooks.admit = (task, ctx) =>
       admits(
         task.id,
@@ -126,6 +127,8 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   }
   return definePlugin(import.meta, hooks)
 }
+
+export { cgroupMemoryLimitBytes, machineMemoryBytes, type CgroupProbe } from './memory-limit.js'
 
 /** Default multiplier over the largest peak RSS seen — the asymmetry: over-reserving costs some parallelism, under-reserving meets the OOM killer. */
 const DEFAULT_HEADROOM = 1.25

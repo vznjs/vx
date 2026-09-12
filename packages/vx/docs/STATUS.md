@@ -1318,6 +1318,24 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       fails it at 229 GB, a kilobyte value read as bytes would fail it
       at 200 KB. `docs/modules/runner.md` corrected; CLAUDE.md gains the
       rule. Not a stale-hit class: the number never fed a key.
+160.  DONE (2026-09-12): the memory budget is what the process may use,
+      not the host's RAM. `@vzn/vx-schedule-history` defaulted `memory`
+      to `os.totalmem()`, which inside a cgroup-limited container is the
+      host's total — this box says 15.7 GiB while its leaf cgroup allows
+      13.3 GiB, and a CI job's docker executor or a Kubernetes runner is
+      the same shape; the README told the user to pass `memory` there,
+      which nobody does before the OOM killer says so. The plugin now
+      reads the tightest limit on the path from this process's cgroup
+      to the root — `memory.max` on v2 (`max` binds nothing),
+      `memory.limit_in_bytes` on v1 (the page-counter sentinel binds
+      nothing), an ancestor's limit binding too — and budgets
+      `min(total, limit)`; `memory` still overrides. Linux only; a
+      membership path outside the root is not walked; nothing here can
+      throw. Pinned on fixture trees for both hierarchies, the ancestor
+      case, the sentinel, absent files, the escape, and the live read of
+      this machine (`tests/memory-limit.test.ts`). Alongside, the
+      CPU-time unit got the same measured pin as the RSS one (item 159):
+      a 500 ms spin reads back as ~500 ms of CPU.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
