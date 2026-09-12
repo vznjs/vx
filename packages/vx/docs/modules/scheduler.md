@@ -81,10 +81,15 @@ concurrency` check for exec-tier nodes — including its O(1) early-out
    2026-09-10 on the 1,000-project bench with every task a restore: 4 → 8
    workers cut the run-graph stage 683–754 → 556–595 ms, 16 no better).
    With pools
-   (or with `resourceCosts`) a saturated tick instead SCANS the ready
+   (or with an `admit` policy) a saturated tick instead SCANS the ready
    queue, parking what does not fit and repushing it with its original
-   seq; that is the same cost the resource-admission path already pays and
-   is the price of a per-task admission predicate.
+   seq; that is the price of a per-task admission predicate, and it is
+   paid only when one exists. `admit(id, running)` is that predicate for
+   local exec-tier nodes: asked after the count gate with the set of
+   local exec-tier tasks running right now (tracked only while a policy
+   exists), a `false` parks the node; restore-tier and pooled nodes are
+   never asked. Core passes the plugins' `admit` stage here
+   (`plugin-host.buildAdmission`) and holds no costs of its own.
 5. **Failed upstream** → an exec-tier node is marked `skipped`
    synchronously (no `execute` call). Restore-tier nodes **bypass**
    this check — their key is dep-success-independent (pure-input

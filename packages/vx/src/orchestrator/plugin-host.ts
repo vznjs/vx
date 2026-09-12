@@ -97,7 +97,7 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
 
 export function hasHook(
   plugins: readonly VxPlugin[],
-  hook: 'config' | 'project' | 'graph' | 'key' | 'schedule',
+  hook: 'config' | 'project' | 'graph' | 'key' | 'schedule' | 'admit',
 ): boolean {
   for (const p of plugins) if (p[hook] !== undefined) return true
   return false
@@ -279,6 +279,44 @@ export async function applyScheduleHooks(
     }
   }
   return merged
+}
+
+/**
+ * `admit` stage, built once per run into the predicate the scheduler asks
+ * at every local dispatch: every plugin that answers must admit. A plugin
+ * that throws is reported once and admits from then on — a policy never
+ * breaks a run — so the predicate is never the reason a task hangs.
+ * Undefined when no plugin answers, which keeps the scheduler on its
+ * count-only path.
+ */
+export function buildAdmission(
+  plugins: readonly VxPlugin[],
+  nodes: ReadonlyMap<string, TaskNode>,
+  concurrency: number,
+  warn: (message: string) => void,
+): ((id: string, running: ReadonlySet<string>) => boolean) | undefined {
+  const answering = plugins.filter((p) => p.admit !== undefined)
+  if (answering.length === 0) return undefined
+  const broken = new Set<VxPlugin>()
+  return (id, running) => {
+    const task = nodes.get(id)
+    if (task === undefined) return true
+    const ctx = {
+      running: [...running].flatMap((r) => nodes.get(r) ?? []),
+      concurrency,
+    }
+    for (const plugin of answering) {
+      if (broken.has(plugin)) continue
+      try {
+        if (plugin.admit!(task, ctx) === false) return false
+      } catch (err) {
+        broken.add(plugin)
+        const m = err instanceof Error ? err.message : String(err)
+        warn(`plugin '${plugin.name}' failed in admit: ${m}; admitting every task from here on`)
+      }
+    }
+    return true
+  }
 }
 
 /**

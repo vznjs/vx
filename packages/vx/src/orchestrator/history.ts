@@ -34,6 +34,19 @@ export interface TaskHistory {
   /** Failure mode classification over the same window (`failureModeOf`,
    *  the one rule `vx why`'s all-time query also applies). */
   failureMode: FailureMode
+  /**
+   * Largest peak RSS (bytes) any successful execution in the window
+   * reported; undefined when none did (hits report nothing, and a
+   * platform may not expose rusage). The floor a memory reservation
+   * learned from history packs on.
+   */
+  maxPeakRssBytes?: number
+  /**
+   * The most CPU parallelism any successful execution in the window
+   * showed: cpu time over wall time, so 2.0 means two cores busy for the
+   * whole task. Undefined when no row carried both numbers.
+   */
+  maxCpuParallelism?: number
 }
 
 /** Map keyed by `project#task`. */
@@ -101,7 +114,12 @@ export class LocalHistoryProvider implements HistoryProvider {
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures,
         SUM(CASE WHEN attempts > 1 THEN 1 ELSE 0 END) AS retried,
         GROUP_CONCAT(CASE WHEN (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
-                          THEN duration_ms END) AS ds
+                          THEN duration_ms END) AS ds,
+        MAX(CASE WHEN (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
+                 THEN peak_rss_bytes END) AS rss,
+        MAX(CASE WHEN (cache_hit IS NULL OR cache_hit = 0) AND status = 'success'
+                      AND cpu_ms IS NOT NULL AND duration_ms > 0
+                 THEN cpu_ms * 1.0 / duration_ms END) AS cpu
       FROM runs
       WHERE id >= ? AND ${EXECUTED_RUNS_SQL}
       GROUP BY project, task
@@ -115,6 +133,8 @@ export class LocalHistoryProvider implements HistoryProvider {
       failures: number
       retried: number
       ds: string | null
+      rss: number | null
+      cpu: number | null
     }
     // Every pair in the slice is grouped (the slice is bounded, so this is
     // cheap) and the asked-for ones are picked out here — a per-row IN-list
@@ -146,6 +166,8 @@ export class LocalHistoryProvider implements HistoryProvider {
         successRate: total > 0 ? (row.successes || 0) / total : 0,
         hitRate: total > 0 ? (row.hits || 0) / total : 0,
         failureMode: failureModeOf(counts, () => mixed.get(key) ?? 0),
+        ...(row.rss !== null ? { maxPeakRssBytes: row.rss } : {}),
+        ...(row.cpu !== null ? { maxCpuParallelism: row.cpu } : {}),
       })
     }
     return out

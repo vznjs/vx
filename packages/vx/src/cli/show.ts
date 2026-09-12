@@ -251,7 +251,6 @@ function taskBlock(taskName: string, task: TaskConfig): string {
           .join(', '),
   )
   add('remote', exec?.remote === undefined ? undefined : String(exec.remote))
-  add('resources', exec?.resources === undefined ? undefined : JSON.stringify(exec.resources))
   add('sandbox', exec?.sandbox === undefined ? undefined : JSON.stringify(exec.sandbox))
   const persistent = exec?.persistent
   if (persistent !== undefined) {

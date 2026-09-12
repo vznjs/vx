@@ -257,7 +257,6 @@ stays clean).
 | `--retry <n>`                      | value          | `0`                                | Re-run a failed task up to `n` more times. Run-level default only: a task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retry=<n>` form too.                                                                                                                                                                                                                                                                                                              |
 | `--continue[=<mode>]`              | value          | `deps-ok`                          | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                         |
 | `--timeout <ms>`                   | positive int   | none                               | Default per-task timeout for tasks without their own `exec.timeout`. Sits above `VX_TASK_TIMEOUT` + workspace `timeout`; per-task `exec.timeout` always wins. A runaway task is killed + `failed`. Never affects cache keys. `--timeout=<ms>` form too.                                                                                                                                                                                                                                    |
-| `--memory <size>`                  | size           | total system RAM                   | Memory budget that per-task `exec.resources.memory` reservations pack against (`8GB`, `512MB`). Pass it in cgroup-limited containers — the default reads the HOST's RAM. Reservations are per-task config, not flags. Never affects cache keys. `--memory=<size>` form too.                                                                                                                                                                                                                |
 | `--frozen`                         | boolean        | off                                | Load configs from `vx-lock.json` instead of evaluating (CI) — the run's, and the ones `--affected` owners and the picker select from. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                    |
 | `--output-logs <mode>`             | value          | flow-derived                       | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                       |
 | `--download <mode>`                | value          | `all`                              | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--download`. `--download=<mode>` form too.                                                                                                                                                                                                                            |
@@ -308,14 +307,13 @@ leading dash.
 (`1e3`), fractional (`2.7`), signed (`+4`) and space-padded forms, plus
 anything past `2^53` (it would parse to a number you did not type).
 These all used to be silently reinterpreted — `--concurrency 0x10` ran
-16 workers. `--memory` takes a size string (`512MB`), same rule for its
-digits.
+16 workers.
 
 An empty `=` value on an OPTIONAL-value flag means "no value", so it
 takes that flag's documented default: `--profile=` writes `profile.json`
 and `--summarize=` writes `<cacheDir>/runs/<run_id>.json`, exactly like
 their bare forms. Value flags that have no bare form (`--retry=`,
-`--timeout=`, `--memory=`, `--cache-dir=`, `--filter=`, `--cache=`)
+`--timeout=`, `--cache-dir=`, `--filter=`, `--cache=`)
 reject an empty value instead.
 
 #### Cache control: `--cache`, `--no-cache`, `--force`

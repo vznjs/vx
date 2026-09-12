@@ -600,89 +600,23 @@ describe('loadProjectConfig', () => {
     })
   })
 
-  describe('exec.resources validation', () => {
-    const withResources = (literal: string) =>
-      `export default { tasks: { build: { exec: { command: 'tsc', resources: ${literal} } } } }`
-
-    it('accepts cores, megabytes, an image, and fractional cpus', async () => {
-      for (const literal of [
-        `{ cpus: 2 }`,
-        `{ cpus: 0.5 }`,
-        `{ memory: 1024 }`,
-        `{ image: 'vx-playwright' }`,
-        `{ cpus: 2, memory: 4096, image: 'vx-playwright' }`,
-        `{}`,
-      ]) {
-        const file = path.join(dir, 'vx.config.mjs')
-        await writeFile(file, withResources(literal))
-        const cfg = await loadProjectConfig(file)
-        expect(cfg.tasks?.build?.exec?.resources).toBeDefined()
-      }
-    })
-
-    it('rejects invalid cpus forms', async () => {
-      // Percent forms went with the 2026-08-30 units change: a percentage
-      // names a fraction of THIS run's budget, and an executor placing the
-      // task on another machine has no way to mean anything by it.
-      for (const literal of [
-        `{ cpus: -1 }`,
-        `{ cpus: NaN }`,
-        `{ cpus: '50%' }`,
-        `{ cpus: '2GB' }`,
-      ]) {
-        const file = path.join(dir, 'vx.config.mjs')
-        await writeFile(file, withResources(literal))
-        await expect(loadProjectConfig(file)).rejects.toThrow(
-          /resources\.cpus must be a non-negative number of CPU cores/,
-        )
-      }
-    })
-
-    it('rejects invalid memory forms', async () => {
-      // A size STRING is rejected too, deliberately: the unit is megabytes,
-      // and silently accepting '512MB' beside `memory: 512` would give two
-      // spellings that differ by a factor of a million.
-      for (const literal of [
-        `{ memory: -1 }`,
-        `{ memory: 1.5 }`,
-        `{ memory: '512MB' }`,
-        `{ memory: '25%' }`,
-      ]) {
-        const file = path.join(dir, 'vx.config.mjs')
-        await writeFile(file, withResources(literal))
-        await expect(loadProjectConfig(file)).rejects.toThrow(
-          /resources\.memory must be a non-negative integer number of megabytes/,
-        )
-      }
-    })
-
-    it('rejects an empty or non-string image', async () => {
-      for (const literal of [`{ image: '' }`, `{ image: 7 }`]) {
-        const file = path.join(dir, 'vx.config.mjs')
-        await writeFile(file, withResources(literal))
-        await expect(loadProjectConfig(file)).rejects.toThrow(
-          /resources\.image must be a non-empty/,
-        )
-      }
-    })
-
-    it('rejects unknown fields (future axes must be added deliberately)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
-      await writeFile(file, withResources(`{ gpu: 1 }`))
-      await expect(loadProjectConfig(file)).rejects.toThrow(/unknown field "gpu"/)
-    })
-
-    it('rejects a non-object resources', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
-      await writeFile(file, withResources(`4`))
-      await expect(loadProjectConfig(file)).rejects.toThrow(/resources must be an object/)
-    })
+  // `exec.resources` left the schema on 2026-09-12 (reservations are the
+  // schedule plugin's to learn or declare). A config still declaring it
+  // must fail loudly: an unknown field that was silently dropped would
+  // hash as if never written.
+  it('rejects the retired exec.resources field', async () => {
+    const file = path.join(dir, 'vx.config.mjs')
+    await writeFile(
+      file,
+      `export default { tasks: { build: { exec: { command: 'tsc', resources: { cpus: 2 } } } } }`,
+    )
+    await expect(loadProjectConfig(file)).rejects.toThrow(/unknown field "resources"/)
   })
 
   // A typo'd field was silently DROPPED, so the task hashed as if it had
   // never been written — for a cache-key field that is a stale hit, not a
   // config mistake. Every level that feeds the key now rejects unknown
-  // keys, the way `exec.resources` and `exec.sandbox` already did.
+  // keys, the way `exec.sandbox` already did.
   describe('unknown fields', () => {
     const cfg = (task: string): string => `export default { tasks: { build: ${task} } }`
 
@@ -819,7 +753,6 @@ describe('loadProjectConfig', () => {
             command: 'true',
             timeout: 1000,
             retries: 1,
-            resources: { cpus: 1, memory: 1024, image: 'vx-toolchain' },
             env: { passThrough: ['CI'], define: { A: 'b' } },
             sandbox: { allow: { read: ['../shared'], network: ['registry.npmjs.org'] } },
           },

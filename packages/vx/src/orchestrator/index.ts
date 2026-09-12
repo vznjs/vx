@@ -63,6 +63,7 @@ export {
   type PluginCommand,
   type ProjectHookContext,
   type ScheduleHookContext,
+  type AdmitContext,
   type WorkspaceHookContext,
   type InstallPluginsArgs,
   type Plugin,

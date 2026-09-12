@@ -172,18 +172,6 @@ export interface TaskPlacement {
   readonly pinnedLocal: boolean
   /** Declares `cache` — the only tasks whose input set is described, and so the only ones that can ship. */
   readonly cacheable: boolean
-  /**
-   * `exec.resources` VERBATIM — CPU cores, megabytes, and the image a
-   * worker must be running for this task to be routed to it. All three are
-   * requirements MATCHED against what an executor has, never instructions
-   * to build a machine: a distributed executor's workers belong to whoever
-   * runs the fleet.
-   *
-   * Placement is where this belongs: `exec.resources` is stripped from the
-   * cache key precisely because it decides WHERE a task fits, never what
-   * it produces.
-   */
-  readonly resources?: Readonly<{ cpus?: number; memory?: number; image?: string }>
 }
 
 export interface TaskExecutor {

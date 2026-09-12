@@ -656,9 +656,9 @@ describe('runGraph — continueMode', () => {
   })
 })
 
-describe('runGraph — resource admission (exec.resources)', () => {
+describe('runGraph — an admission policy over the count limit (`admit`)', () => {
   // Manual completion gates: execute() records the start and blocks on
-  // the task's gate, so tests control exactly when budget releases.
+  // the task's gate, so tests control exactly when a slot frees.
   function gates(ids: string[]) {
     const release = new Map<string, () => void>()
     const held = new Map<string, Promise<void>>()
@@ -672,16 +672,30 @@ describe('runGraph — resource admission (exec.resources)', () => {
     }
     return { held, release }
   }
-  const cost = (entries: Record<string, { cpu?: number; mem?: number }>) =>
-    new Map(Object.entries(entries).map(([id, c]) => [id, { cpu: c.cpu ?? 0, mem: c.mem ?? 0 }]))
-
-  it('two cpus:4 on a budget of 8 run concurrently', async () => {
+  // A packing policy in the shape a plugin writes: each task costs `cost`
+  // units of a `budget`; a task that fits beside what runs is admitted, a
+  // task over the whole budget runs alone (from idle, so it never starves).
+  const packing = (costs: Record<string, number>, budget: number) => {
+    const cost = (id: string): number => costs[id] ?? 0
+    return (id: string, running: ReadonlySet<string>): boolean => {
+      const c = cost(id)
+      if (c === 0) return true
+      let reserved = 0
+      for (const r of running) reserved += cost(r)
+      return c <= budget ? reserved + c <= budget : running.size === 0
+    }
+  }
+  const peakOf = async (opts: {
+    ids: string[]
+    concurrency: number
+    admit: (id: string, running: ReadonlySet<string>) => boolean
+  }): Promise<number> => {
     let active = 0
     let peak = 0
     const out = await runGraph({
-      nodes: nodes(node('a#run'), node('b#run')),
-      concurrency: 8,
-      resourceCosts: cost({ 'a#run': { cpu: 4 }, 'b#run': { cpu: 4 } }),
+      nodes: nodes(...opts.ids.map((id) => node(id))),
+      concurrency: opts.concurrency,
+      admit: opts.admit,
       execute: async (n) => {
         active++
         peak = Math.max(peak, active)
@@ -690,83 +704,58 @@ describe('runGraph — resource admission (exec.resources)', () => {
         return success(n)
       },
     })
-    expect(out.size).toBe(2)
+    expect(out.size).toBe(opts.ids.length)
+    return peak
+  }
+
+  it('two tasks the policy fits together run concurrently', async () => {
+    const peak = await peakOf({
+      ids: ['a#run', 'b#run'],
+      concurrency: 8,
+      admit: packing({ 'a#run': 4, 'b#run': 4 }, 8),
+    })
     expect(peak).toBe(2)
   })
 
-  it('two cpus:5 on a budget of 8 serialize', async () => {
-    let active = 0
-    let peak = 0
-    await runGraph({
-      nodes: nodes(node('a#run'), node('b#run')),
+  it('two tasks the policy cannot fit together serialize', async () => {
+    const peak = await peakOf({
+      ids: ['a#run', 'b#run'],
       concurrency: 8,
-      resourceCosts: cost({ 'a#run': { cpu: 5 }, 'b#run': { cpu: 5 } }),
-      execute: async (n) => {
-        active++
-        peak = Math.max(peak, active)
-        await new Promise((r) => setTimeout(r, 20))
-        active--
-        return success(n)
-      },
+      admit: packing({ 'a#run': 5, 'b#run': 5 }, 8),
     })
     expect(peak).toBe(1)
   })
 
-  it('memory axis: two 600-byte tasks on a 1000-byte budget serialize', async () => {
-    let active = 0
-    let peak = 0
-    await runGraph({
-      nodes: nodes(node('a#run'), node('b#run')),
+  it('the policy sees a task dispatched earlier in the SAME tick', async () => {
+    // Two ready tasks, one tick: the second ask must list the first as
+    // running, or two tasks that must not share a machine would start
+    // together. Recorded per ask, asserted by content.
+    const seen: string[][] = []
+    await peakOf({
+      ids: ['a#run', 'b#run'],
       concurrency: 8,
-      memBudget: 1000,
-      resourceCosts: cost({ 'a#run': { mem: 600 }, 'b#run': { mem: 600 } }),
-      execute: async (n) => {
-        active++
-        peak = Math.max(peak, active)
-        await new Promise((r) => setTimeout(r, 20))
-        active--
-        return success(n)
+      admit: (_id, running) => {
+        seen.push([...running].sort())
+        return true
       },
     })
-    expect(peak).toBe(1)
+    expect(seen[0]).toEqual([])
+    expect(seen[1]).toEqual(['a#run'])
   })
 
-  it('combined: a task that fits CPU but not memory waits for memory', async () => {
-    let active = 0
-    let peak = 0
-    await runGraph({
-      nodes: nodes(node('a#run'), node('b#run')),
-      concurrency: 8,
-      memBudget: 1000,
-      resourceCosts: cost({
-        'a#run': { cpu: 1, mem: 800 },
-        'b#run': { cpu: 1, mem: 400 },
-      }),
-      execute: async (n) => {
-        active++
-        peak = Math.max(peak, active)
-        await new Promise((r) => setTimeout(r, 20))
-        active--
-        return success(n)
-      },
-    })
-    expect(peak).toBe(1)
-  })
-
-  it('backfill: a parked too-big head lets a smaller lower-priority task through', async () => {
+  it('backfill: a refused head lets a smaller lower-priority task through', async () => {
     const { held, release } = gates(['p#a', 'p#b', 'p#c'])
     const started: string[] = []
     const done = runGraph({
       nodes: nodes(node('p#a'), node('p#b'), node('p#c')),
       concurrency: 8,
-      // Priority a > b > c; a (cpus:6) dispatches first, head b (cpus:4)
-      // doesn't fit and parks, c (cpus:2) backfills alongside a.
       priorities: new Map([
         ['p#a', 100],
         ['p#b', 50],
         ['p#c', 10],
       ]),
-      resourceCosts: cost({ 'p#a': { cpu: 6 }, 'p#b': { cpu: 4 }, 'p#c': { cpu: 2 } }),
+      // a takes the whole budget; b and c each half.
+      admit: packing({ 'p#a': 8, 'p#b': 4, 'p#c': 4 }, 8),
       onStart: (n) => started.push(n.id),
       execute: async (n) => {
         await held.get(n.id)
@@ -774,39 +763,26 @@ describe('runGraph — resource admission (exec.resources)', () => {
       },
     })
     await Bun.sleep(0)
-    expect(started).toEqual(['p#a', 'p#c'])
+    // a fills the budget; b and c park.
+    expect(started).toEqual(['p#a'])
     release.get('p#a')!()
     await Bun.sleep(0)
-    expect(started).toEqual(['p#a', 'p#c', 'p#b'])
+    expect(started).toEqual(['p#a', 'p#b', 'p#c'])
     release.get('p#b')!()
     release.get('p#c')!()
     await done
   })
 
-  it('solo-clamp: an over-budget task runs alone from idle; an all-over-budget graph serializes', async () => {
-    let active = 0
-    let peak = 0
-    const out = await runGraph({
-      nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
+  it('solo: a task over the whole budget runs alone from idle; an all-over graph serializes', async () => {
+    const peak = await peakOf({
+      ids: ['a#run', 'b#run', 'c#run'],
       concurrency: 8,
-      resourceCosts: cost({
-        'a#run': { cpu: 16 },
-        'b#run': { cpu: 16 },
-        'c#run': { cpu: 16 },
-      }),
-      execute: async (n) => {
-        active++
-        peak = Math.max(peak, active)
-        await new Promise((r) => setTimeout(r, 10))
-        active--
-        return success(n)
-      },
+      admit: packing({ 'a#run': 16, 'b#run': 16, 'c#run': 16 }, 8),
     })
-    expect(out.size).toBe(3)
     expect(peak).toBe(1)
   })
 
-  it('zero never blocks: a cpus:0 task runs beside a solo-clamped giant while cpus:1 waits', async () => {
+  it('a task the policy never charges runs beside a solo giant while a charged one waits', async () => {
     const { held, release } = gates(['p#big', 'p#small', 'p#free'])
     const started: string[] = []
     const done = runGraph({
@@ -817,8 +793,8 @@ describe('runGraph — resource admission (exec.resources)', () => {
         ['p#small', 50],
         ['p#free', 10],
       ]),
-      // free has NO entry — zero cost by absence, exempt from the axis.
-      resourceCosts: cost({ 'p#big': { cpu: 16 }, 'p#small': { cpu: 1 } }),
+      // free has no cost: the policy admits it whatever runs.
+      admit: packing({ 'p#big': 16, 'p#small': 1 }, 8),
       onStart: (n) => started.push(n.id),
       execute: async (n) => {
         await held.get(n.id)
@@ -835,19 +811,17 @@ describe('runGraph — resource admission (exec.resources)', () => {
     await done
   })
 
-  it('skip-safety: a too-big task with a failed dep skips instead of parking', async () => {
+  it('skip-safety: a refused task with a failed dep skips instead of parking', async () => {
     const { held, release } = gates(['p#long'])
-    const finished: string[] = []
     let bigSkippedWhileLongActive = false
     const done = runGraph({
       nodes: nodes(node('p#dep'), node('p#long'), node('p#big', ['p#dep'])),
       concurrency: 8,
-      resourceCosts: cost({ 'p#long': { cpu: 4 }, 'p#big': { cpu: 16 } }),
+      admit: packing({ 'p#long': 4, 'p#big': 16 }, 8),
       onFinish: (o) => {
-        finished.push(`${o.node.id}:${o.status}`)
-        // The doomed giant must resolve as skipped WHILE long still holds
-        // budget — if the parker fit-checked would-skip tasks, it would
-        // park here (16 > 8, reserved 4 ≠ 0) instead of finishing.
+        // The doomed giant must resolve as skipped WHILE long still runs —
+        // if the parker asked the policy about would-skip tasks, it would
+        // park here (16 > 8, long running) instead of finishing.
         if (o.node.id === 'p#big' && o.status === 'skipped') bigSkippedWhileLongActive = true
       },
       execute: async (n) => {
@@ -864,23 +838,34 @@ describe('runGraph — resource admission (exec.resources)', () => {
     expect(out.get('p#long')!.status).toBe('success')
   })
 
-  it('restore tier reserves 0: a restore declaring cpus:8 runs beside a cpus:8 executor', async () => {
-    let active = 0
-    let peak = 0
-    await runGraph({
-      nodes: nodes(node('a#run'), node('b#run')),
-      concurrency: 8,
-      restoreTier: new Set(['b#run']),
-      resourceCosts: cost({ 'a#run': { cpu: 8 }, 'b#run': { cpu: 8 } }),
-      execute: async (n) => {
-        active++
-        peak = Math.max(peak, active)
-        await new Promise((r) => setTimeout(r, 20))
-        active--
-        return success(n)
-      },
-    })
+  it('a restore-tier task is never asked and never listed as running', async () => {
+    // A restore is a tar extract, not the task's real work: it holds no
+    // local resources. The policy would refuse `b` if asked (its cost is
+    // the whole budget) and would refuse `a` if `b` were listed.
+    const asked: string[] = []
+    const peak = await (async () => {
+      let active = 0
+      let peak = 0
+      await runGraph({
+        nodes: nodes(node('a#run'), node('b#run')),
+        concurrency: 8,
+        restoreTier: new Set(['b#run']),
+        admit: (id, running) => {
+          asked.push(id)
+          return running.size === 0
+        },
+        execute: async (n) => {
+          active++
+          peak = Math.max(peak, active)
+          await new Promise((r) => setTimeout(r, 20))
+          active--
+          return success(n)
+        },
+      })
+      return peak
+    })()
     expect(peak).toBe(2)
+    expect(asked).toEqual(['a#run'])
   })
 
   it('FIFO-among-equals survives park + repush (original seq preserved)', async () => {
@@ -892,12 +877,7 @@ describe('runGraph — resource admission (exec.resources)', () => {
     const done = runGraph({
       nodes: nodes(node('p#a'), node('p#b'), node('p#c'), node('p#d')),
       concurrency: 8,
-      resourceCosts: cost({
-        'p#a': { cpu: 6 },
-        'p#b': { cpu: 4 },
-        'p#c': { cpu: 4 },
-        'p#d': { cpu: 4 },
-      }),
+      admit: packing({ 'p#a': 6, 'p#b': 4, 'p#c': 4, 'p#d': 4 }, 8),
       onStart: (n) => started.push(n.id),
       execute: async (n) => {
         await held.get(n.id)
@@ -917,13 +897,12 @@ describe('runGraph — resource admission (exec.resources)', () => {
     await done
   })
 
-  it('empty resourceCosts map takes the legacy path (no admission, count limit only)', async () => {
+  it('no policy takes the legacy path (count limit only)', async () => {
     let active = 0
     let peak = 0
     await runGraph({
       nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
       concurrency: 2,
-      resourceCosts: new Map(),
       execute: async (n) => {
         active++
         peak = Math.max(peak, active)
@@ -935,75 +914,17 @@ describe('runGraph — resource admission (exec.resources)', () => {
     expect(peak).toBe(2)
   })
 
-  it('fractional costs that leave float residue do NOT hang the solo-clamp (regression)', async () => {
-    // 0.1 + 0.2 - 0.1 - 0.2 === 2.78e-17 in IEEE-754, so after the first two
-    // tasks release, a naive `reservedCpu === 0` solo-clamp gate would never
-    // fire and the over-budget `c` (cpu:4 on budget 3) would park forever —
-    // active hits 0, no future tick, the run hangs / exits without running c.
-    // The integer holder-count + snap-to-zero fix must let c run.
-    const ran = new Set<string>()
-    const out = await runGraph({
-      nodes: nodes(node('a#run'), node('b#run'), node('c#run')),
-      concurrency: 3,
-      cpuBudget: 3,
-      resourceCosts: new Map([
-        ['a#run', { cpu: 0.1, mem: 0 }],
-        ['b#run', { cpu: 0.2, mem: 0 }],
-        ['c#run', { cpu: 4, mem: 0 }], // over budget → solo-clamp
-      ]),
-      execute: async (n) => {
-        ran.add(n.id)
-        await new Promise((r) => setTimeout(r, 5))
-        return success(n)
-      },
-    })
-    expect(out.size).toBe(3)
-    expect(ran.has('c#run')).toBe(true)
-    expect(out.get('c#run')!.status).toBe('success')
-  })
-
-  it('percent-derived fractional memory (0.30000000000000004-style) still admits + terminates', async () => {
-    // resolveMem('10%', budget) yields non-representable fractional bytes;
-    // interleaved release must snap the axis back to exact 0 so an over-budget
-    // memory task solo-clamps instead of wedging.
-    const budget = 3
-    const frac = (10 / 100) * budget // 0.30000000000000004
-    const ran = new Set<string>()
-    const out = await runGraph({
-      nodes: nodes(node('a#run'), node('b#run'), node('big#run')),
-      concurrency: 3,
-      memBudget: budget,
-      resourceCosts: new Map([
-        ['a#run', { cpu: 0, mem: frac }],
-        ['b#run', { cpu: 0, mem: frac }],
-        ['big#run', { cpu: 0, mem: budget * 10 }], // over budget → solo-clamp
-      ]),
-      execute: async (n) => {
-        ran.add(n.id)
-        await new Promise((r) => setTimeout(r, 5))
-        return success(n)
-      },
-    })
-    expect(out.size).toBe(3)
-    expect(ran.has('big#run')).toBe(true)
-  })
-
-  it('a throwing onFinish does not double-release into a permanent admission wedge', async () => {
+  it('a throwing onFinish does not unlist twice into a wedged policy', async () => {
     // `.then(onFulfilled, onRejected)` — a throw from the fulfillment arm
-    // (onFinish) must NOT also run the rejection arm, or the reservation
-    // releases twice, `reserved` goes negative, and the solo-clamp gate is
-    // never satisfiable again. The first task's onFinish throws; the later
-    // over-budget task must still run.
+    // (onFinish) must NOT also run the rejection arm, or the slot releases
+    // twice. The first task's onFinish throws; the later task that needs an
+    // idle machine must still run.
     let threw = false
     const ran = new Set<string>()
     const out = await runGraph({
       nodes: nodes(node('a#run'), node('big#run', ['a#run'])),
       concurrency: 4,
-      cpuBudget: 4,
-      resourceCosts: new Map([
-        ['a#run', { cpu: 1, mem: 0 }],
-        ['big#run', { cpu: 8, mem: 0 }], // over budget → solo-clamp, needs idle axis
-      ]),
+      admit: (id, running) => id !== 'big#run' || running.size === 0,
       onFinish: (o) => {
         if (o.node.id === 'a#run' && !threw) {
           threw = true
@@ -1018,154 +939,25 @@ describe('runGraph — resource admission (exec.resources)', () => {
     })
     expect(out.size).toBe(2)
     expect(ran.has('big#run')).toBe(true)
-  })
-})
-
-describe('executor pools under failure', () => {
-  // The pool admission (`poolOf`) landed with the placement wave; nothing
-  // exercised its RELEASE path under a rejecting executor. A leaked slot
-  // would not fail anything — the run would just quietly lose remote
-  // parallelism, and with enough failures wedge entirely, which is why the
-  // probe asserts completion rather than any error.
-  const pool = { name: 'remote', capacity: 2 }
-
-  it('a rejecting execute releases its pool slot — later tasks still run', async () => {
-    let inFlight = 0
-    let peak = 0
-    const ran: string[] = []
-    const out = await runGraph({
-      nodes: nodes(node('a#1'), node('a#2'), node('a#3'), node('a#4'), node('a#5'), node('a#6')),
-      concurrency: 1, // the LOCAL width; the pool must not be throttled by it
-      poolOf: () => pool,
-      execute: async (n) => {
-        inFlight++
-        peak = Math.max(peak, inFlight)
-        await new Promise((r) => setTimeout(r, 10))
-        inFlight--
-        ran.push(n.id)
-        // half the pool's work rejects MID-FLIGHT
-        if (n.id === 'a#2' || n.id === 'a#4' || n.id === 'a#6') {
-          throw new Error(`boom ${n.id}`)
-        }
-        return success(n)
-      },
-    })
-    // every task got an outcome — a leaked slot would have wedged the run
-    expect(out.size).toBe(6)
-    expect(ran.length).toBe(6)
-    expect([...out.values()].filter((o) => o.status === 'failed').length).toBe(3)
-    // the pool bound held throughout, including across the rejections
-    expect(peak).toBe(2)
+    expect(out.get('big#run')!.status).toBe('success')
   })
 
-  it('pooled failures do not consume LOCAL slots, and vice versa', async () => {
-    // One local worker + a capacity-2 pool: a slow pooled task must not stop
-    // local work, and a slow local task must not stop pooled work.
-    const order: string[] = []
-    const out = await runGraph({
-      nodes: nodes(node('p#slow'), node('l#quick')),
-      concurrency: 1,
-      poolOf: (id) => (id.startsWith('p#') ? pool : undefined),
-      execute: async (n) => {
-        if (n.id === 'p#slow') await new Promise((r) => setTimeout(r, 80))
-        order.push(n.id)
-        return success(n)
-      },
-    })
-    expect(out.size).toBe(2)
-    // the local task finished while the pooled one was still in flight
-    expect(order).toEqual(['l#quick', 'p#slow'])
-  })
-
-  it('a task queued behind a full pool runs after a FAILED occupant leaves', async () => {
-    // The sharpest version of the leak probe: fill the pool with two tasks
-    // that both REJECT, with a third parked behind them. If either failure
-    // leaks its slot, the third never admits and the promise never resolves.
-    let third = false
-    const out = await runGraph({
-      nodes: nodes(node('a#f1'), node('a#f2'), node('a#third')),
-      concurrency: 4,
-      poolOf: () => pool,
-      execute: async (n) => {
-        await new Promise((r) => setTimeout(r, 5))
-        if (n.id !== 'a#third') throw new Error('boom')
-        third = true
-        return success(n)
-      },
-    })
-    expect(out.size).toBe(3)
-    expect(third).toBe(true)
-    expect(out.get('a#third')?.status).toBe('success')
-  })
-
-  it('fail-fast trips ACROSS placement: a pooled failure stops local dispatch', async () => {
-    // The trip is global by design — placement is admission-only after
-    // placement time — but the guarantee was never pinned across the
-    // boundary. Local slot busy with l#slow while the pooled p#fail fails;
-    // the queued l#next must dequeue AFTER the trip and skip.
-    const started: string[] = []
-    const out = await runGraph({
-      nodes: nodes(node('p#fail'), node('l#slow'), node('l#next')),
-      concurrency: 1,
-      continueMode: 'never',
-      poolOf: (id) => (id.startsWith('p#') ? pool : undefined),
-      onStart: (n) => started.push(n.id),
-      execute: async (n) => {
-        if (n.id === 'p#fail') return failed(n)
-        await new Promise((r) => setTimeout(r, 40))
-        return success(n)
-      },
-    })
-    expect(out.get('p#fail')!.status).toBe('failed')
-    expect(out.get('l#slow')!.status).toBe('success') // in-flight finishes
-    expect(out.get('l#next')!.status).toBe('skipped')
-    expect(started.sort()).toEqual(['l#slow', 'p#fail'])
-  })
-
-  it('fail-fast trips ACROSS placement: a local failure stops pooled dispatch', async () => {
-    // The inverse: pool (capacity 2... use capacity-1 shape) — p#slow holds
-    // the pool while the local l#fail fails; the queued p#next must skip.
-    const one = { name: 'solo', capacity: 1 }
-    const started: string[] = []
-    const out = await runGraph({
-      nodes: nodes(node('l#fail'), node('p#slow'), node('p#next')),
-      concurrency: 1,
-      continueMode: 'never',
-      poolOf: (id) => (id.startsWith('p#') ? one : undefined),
-      onStart: (n) => started.push(n.id),
-      execute: async (n) => {
-        if (n.id === 'l#fail') return failed(n)
-        await new Promise((r) => setTimeout(r, 40))
-        return success(n)
-      },
-    })
-    expect(out.get('l#fail')!.status).toBe('failed')
-    expect(out.get('p#slow')!.status).toBe('success')
-    expect(out.get('p#next')!.status).toBe('skipped')
-    expect(started.sort()).toEqual(['l#fail', 'p#slow'])
-  })
-
-  it('a pooled task reserves NO local resources — even an over-budget cost', async () => {
-    // exec.resources describes the machine that RUNS the task; a pooled task
-    // runs on the remote pool, so charging its reservation against the LOCAL
-    // axes would be wrong twice over: an over-budget cost would solo-clamp
-    // (admit only when the axis is idle) and idle the whole local machine
-    // while the work executes elsewhere. The discriminating shape: if the
-    // pooled cost were charged, p#big could NEVER be in flight at the same
-    // time as a local resource holder — solo-clamp and axis-holding are
-    // mutually exclusive by construction. So the pin asserts the overlap.
+  it('a pooled task is never asked and never listed: it runs on the pool, not here', async () => {
+    // The discriminating shape: if the pooled task were listed as running,
+    // the policy (which admits `l#*` only from idle) could never have p#big
+    // and a local task in flight together. So the pin asserts the overlap.
     const inFlight = new Set<string>()
     let overlapped = false
+    const asked: string[] = []
+    const pool = { name: 'remote', capacity: 1 }
     const out = await runGraph({
       nodes: nodes(node('p#big'), node('l#a'), node('l#b')),
       concurrency: 2,
-      cpuBudget: 2,
       poolOf: (id) => (id.startsWith('p#') ? pool : undefined),
-      resourceCosts: new Map([
-        ['p#big', { cpu: 100, mem: 0 }], // over budget — would solo-clamp if charged
-        ['l#a', { cpu: 1, mem: 0 }],
-        ['l#b', { cpu: 1, mem: 0 }],
-      ]),
+      admit: (id, running) => {
+        asked.push(id)
+        return running.size === 0 || id === 'l#b'
+      },
       execute: async (n) => {
         inFlight.add(n.id)
         if (inFlight.has('p#big') && (inFlight.has('l#a') || inFlight.has('l#b'))) {
@@ -1179,6 +971,7 @@ describe('executor pools under failure', () => {
     expect(out.size).toBe(3)
     expect([...out.values()].every((o) => o.status === 'success')).toBe(true)
     expect(overlapped).toBe(true)
+    expect(asked).not.toContain('p#big')
   })
 })
 

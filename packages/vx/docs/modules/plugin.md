@@ -12,19 +12,20 @@ behavior lives in the plugin package (vite-style), not in core.
 
 ## Capabilities
 
-| Capability             | Consulted by        | Contract                                                                                 |
-| ---------------------- | ------------------- | ---------------------------------------------------------------------------------------- |
-| `executor(ctx)`        | `plugin-host.ts`    | return a `TaskExecutor` or decline; ALL kept in order, first accepting runs              |
-| `config(ws, ctx)`      | every verb, first   | edit the workspace config in place before anything is derived from it — `cacheDir` too   |
-| `project(cfg, ctx)`    | per loaded config   | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name |
-| `graph(nodes, ctx)`    | after graph build   | edit `deps`/`requested`/resources in place; dangling deps and cycles are refused         |
-| `key(task, ctx)`       | per task, at hash   | `{ name: value }` material folded into the key and named in `vx why`                     |
-| `schedule(nodes, ctx)` | before scheduling   | task id → weight, merged over the structural baseline; later plugin wins per task        |
-| `commands`             | unknown CLI verb    | `{ verb: { description, run(argv, ctx) } }`; core verbs win; listed by `vx help`         |
-| `cache(ctx)`           | run setup           | return a `CacheLayer` or decline; ALL kept in order and chained (see chained-cache.md)   |
-| `telemetry(ctx)`       | `telemetry-host.ts` | return sink(s) or decline                                                                |
-| `setup(ctx)`           | `installPlugins`    | validate config; throw `UserError`                                                       |
-| `teardown()`           | end-of-run          | flush/close; crash-isolated, 3s-bounded                                                  |
+| Capability             | Consulted by         | Contract                                                                                                           |
+| ---------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `executor(ctx)`        | `plugin-host.ts`     | return a `TaskExecutor` or decline; ALL kept in order, first accepting runs                                        |
+| `config(ws, ctx)`      | every verb, first    | edit the workspace config in place before anything is derived from it — `cacheDir` too                             |
+| `project(cfg, ctx)`    | per loaded config    | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name                           |
+| `graph(nodes, ctx)`    | after graph build    | edit `deps`/`requested` in place; dangling deps and cycles are refused                                             |
+| `key(task, ctx)`       | per task, at hash    | `{ name: value }` material folded into the key and named in `vx why`                                               |
+| `schedule(nodes, ctx)` | before scheduling    | task id → weight, merged over the structural baseline; later plugin wins per task                                  |
+| `admit(task, ctx)`     | every local dispatch | `false` holds a ready task beside `ctx.running` until something finishes; sync, cheap; a throw admits from then on |
+| `commands`             | unknown CLI verb     | `{ verb: { description, run(argv, ctx) } }`; core verbs win; listed by `vx help`                                   |
+| `cache(ctx)`           | run setup            | return a `CacheLayer` or decline; ALL kept in order and chained (see chained-cache.md)                             |
+| `telemetry(ctx)`       | `telemetry-host.ts`  | return sink(s) or decline                                                                                          |
+| `setup(ctx)`           | `installPlugins`     | validate config; throw `UserError`                                                                                 |
+| `teardown()`           | end-of-run           | flush/close; crash-isolated, 3s-bounded                                                                            |
 
 ## Invariants
 

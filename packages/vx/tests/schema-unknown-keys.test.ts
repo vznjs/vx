@@ -21,7 +21,6 @@ function full(): Record<string, unknown> {
           command: 'true',
           env: { passThrough: ['CI'], define: { A: 'b' } },
           persistent: { readyWhen: 'ready' },
-          resources: { cpus: 1, memory: 128 },
           sandbox: {
             allow: { read: ['x'] },
             deny: { network: ['example.com'] },
@@ -69,7 +68,6 @@ describe('an unknown key is refused at every object level of a config', () => {
       'tasks.t.exec',
       'tasks.t.exec.env',
       'tasks.t.exec.persistent',
-      'tasks.t.exec.resources',
       'tasks.t.exec.sandbox',
       'tasks.t.exec.sandbox.allow',
       'tasks.t.exec.sandbox.deny',

@@ -119,6 +119,20 @@ export interface VxPlugin {
     ctx: ScheduleHookContext,
   ): ReadonlyMap<string, number> | undefined | Promise<ReadonlyMap<string, number> | undefined>
 
+  /**
+   * Admission over the worker count: asked for every task about to start
+   * on this machine, with the tasks running here right now. Return `false`
+   * to hold it until something finishes (it is asked again then). Asked
+   * many times per run, so it must be cheap and synchronous; a throw is
+   * reported once and the plugin admits from then on — a policy never
+   * breaks a run. Restore-tier hits and tasks on an executor pool hold no
+   * local resources and are never asked. When several plugins answer, all
+   * must admit. Core keeps no notion of what a task needs: a plugin that
+   * packs memory or CPU learns or declares the numbers itself
+   * (`@vzn/vx-schedule-history` packs what past executions used).
+   */
+  admit?(task: TaskNode, ctx: AdmitContext): boolean
+
   // --- CLI verbs (opt-in) ---------------------------------------------------
 
   /**
@@ -263,6 +277,13 @@ export interface FingerprintChange {
 export interface FingerprintContext extends BaseContext {
   /** Every project in the workspace: package name and absolute directory. */
   readonly projects: ReadonlyArray<{ readonly name: string; readonly dir: string }>
+}
+
+export interface AdmitContext {
+  /** The tasks executing on this machine right now, in dispatch order. */
+  readonly running: readonly TaskNode[]
+  /** The run's worker count — the ceiling the count gate already applies. */
+  readonly concurrency: number
 }
 
 export interface ScheduleHookContext extends BaseContext {

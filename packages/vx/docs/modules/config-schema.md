@@ -27,7 +27,7 @@ rules (a plugin may not shadow a core verb; a verb has one owner).
 ## Rules
 
 - **Unknown keys are refused at every object level** — `tasks`, the
-  task, `exec`, `exec.env`, `exec.persistent`, `exec.resources`,
+  task, `exec`, `exec.env`, `exec.persistent`,
   `exec.sandbox` and its `allow` / `deny` / `ignore`, `cache`,
   `cache.inputs`, `cache.outputs`, and the workspace top level. The
   message is `<level> has unknown field "<key>" (allowed: …)` plus

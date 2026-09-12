@@ -3,7 +3,6 @@
 // so the layers can be swapped without touching the others.
 
 import type { ProjectEntry } from '../workspace/index.js'
-import os from 'node:os'
 import path from 'node:path'
 import { type CacheLayer, type CachePolicy, FULL_CACHE_POLICY } from '../cache/index.js'
 import { VERSION } from '../version.js'
@@ -22,10 +21,9 @@ import { mark, MAX_TIMEOUT_MS, printTimings, ulid, nearest, UserError } from '..
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
-import { resolveResourceCosts } from './resources.js'
 import { busLogger, createEventBus, terminalSubscriber } from './events.js'
 import { installPlugins } from './plugin.js'
-import { resolveExecutors, teardownPlugins } from './plugin-host.js'
+import { buildAdmission, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
@@ -491,17 +489,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         if (node.requested || node.surfaced === true) requestedCount++
       }
     }
-    // Resource-aware admission: resolve every task's `exec.resources`
-    // into absolute costs ONCE, up front, so the scheduler's inner loop is
-    // a plain Map.get (percent forms were removed 2026-08-30 — see
-    // resources.ts). The
-    // CPU budget is the run's concurrency; the memory budget is
-    // os.totalmem() unless `--memory` overrides it (pass `--memory` in
-    // cgroup-limited containers — totalmem() reports the HOST's RAM).
-    // Nothing declared → empty map → fields omitted from the scheduler
-    // AND the footer → byte-identical legacy path.
-    const memBudget = options.memory ?? os.totalmem()
-    const resourceCosts = resolveResourceCosts(nodes)
+    // Admission over the worker count is a plugin's (`admit`): built once
+    // into the predicate the scheduler asks at every local dispatch. No
+    // plugin answers → undefined → the count-only path, byte for byte.
+    const admit = buildAdmission(prepared.plugins, nodes, concurrency, (m) => log.status(m))
 
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
@@ -511,7 +502,6 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       remoteCacheEnabled,
       concurrency,
       workspaceProjectCount,
-      ...(resourceCosts.size > 0 ? { cpuBudget: concurrency, memBudget } : {}),
     }
 
     // Lifecycle hooks drive the default logger's dynamic status line
@@ -631,7 +621,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       concurrency,
       settledOf: (o) => deferredSaves.get(o.node.id),
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
-      ...(resourceCosts.size > 0 ? { resourceCosts, cpuBudget: concurrency, memBudget } : {}),
+      ...(admit !== undefined ? { admit } : {}),
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
       onStart: (node) => {

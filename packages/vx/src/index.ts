@@ -29,7 +29,6 @@ export type {
   CacheConfig,
   CacheInputs,
   CacheOutputs,
-  ResourcesConfig,
   SandboxConfig,
   SandboxGrants,
   SandboxDenials,
@@ -138,6 +137,7 @@ export type {
   PluginCommand,
   ProjectHookContext,
   ScheduleHookContext,
+  AdmitContext,
   WorkspaceHookContext,
   PluginSetupContext,
 } from './orchestrator/index.js'

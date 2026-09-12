@@ -8,7 +8,6 @@
 //   retries      per-task `exec.retries` > RunOptions.retries (`--retry`)
 //   concurrency  RunOptions.concurrency > workspace `concurrency`
 //                > `navigator.hardwareConcurrency`
-//   memory       RunOptions.memory (`--memory`) > `os.totalmem()`
 //
 // Two subtleties carry most of the risk, and both are the kind a plausible
 // rewrite breaks without failing anything else:
@@ -23,7 +22,7 @@
 // individual timeout rungs and the CLI-side retry cases; this suite covers
 // what they do not: the env-rung PARSER in isolation, the retries ladder's
 // unguarded direction (config beats a *smaller* run-level default), the
-// entire concurrency + memory ladders, and the combined key-stability and
+// entire concurrency ladder, and the combined key-stability and
 // wire boundaries.
 
 import { readFileSync } from 'node:fs'
@@ -38,7 +37,6 @@ import { readTaskTimeoutEnv } from '../src/orchestrator/run.js'
 import { parseDecimalInt } from '../src/util/index.js'
 
 const TIMEOUT = 20_000
-const GiB = 1024 ** 3
 
 /** Long enough that spawn jitter can never fake an overlap or a serialization. */
 const SPAN_SECONDS = '0.3'
@@ -427,110 +425,6 @@ describe('concurrency ladder — options > workspace > hardwareConcurrency', () 
     },
     TIMEOUT,
   )
-
-  it(
-    'the RESOLVED concurrency is also the CPU budget `exec.resources.cpus` packs against',
-    async () => {
-      // `run.ts` passes the resolved concurrency as `cpuBudget`, so the same
-      // ladder governs resource admission. Two tasks reserving an ABSOLUTE
-      // `cpus: 2` fit together under a budget of 4 and not under 2 — which
-      // means a refactor that resolved concurrency correctly but stopped
-      // threading it into `cpuBudget` (or resolved a different value for it)
-      // flips one of these two arms. `resources.test.ts` cannot see this: its
-      const config = `export default {
-        tasks: {
-          run: {
-            exec: { command: ${JSON.stringify(SPAN_CMD)}, resources: { cpus: 2 } },
-          },
-        },
-      }`
-      const a = await addProject(fixture.root, 'a', config)
-      const b = await addProject(fixture.root, 'b', config)
-      await setWorkspace(fixture.root, 'concurrency: 2')
-
-      const serial = await run({
-        cwd: fixture.root,
-        tasks: ['run'],
-        projects: ['a', 'b'],
-        log: capturingLogger(fixture),
-      })
-      expect(serial.ok).toBe(true)
-      const [first, second] = await spansOf(a, b)
-      // budget 2, cost 2+2 → the second parks until the first releases.
-      expect(second.s).toBeGreaterThanOrEqual(first.e)
-
-      const parallel = await run({
-        cwd: fixture.root,
-        tasks: ['run'],
-        projects: ['a', 'b'],
-        concurrency: 4,
-        log: capturingLogger(fixture),
-      })
-      expect(parallel.ok).toBe(true)
-      const [p1, p2] = await spansOf(a, b)
-      // budget 4, cost 2+2 → an exact fill, which admission must allow.
-      expect(p2.s).toBeLessThan(p1.e)
-    },
-    TIMEOUT,
-  )
-})
-
-// --------------------------------------------------------------------------
-// memory ladder
-// --------------------------------------------------------------------------
-
-describe('memory ladder — RunOptions.memory > os.totalmem()', () => {
-  beforeEach(async () => {
-    fixture = await makeWorkspace()
-  })
-  afterEach(async () => {
-    await rm(fixture.root, { recursive: true, force: true })
-  })
-
-  it(
-    'RunOptions.memory is the budget `exec.resources.memory` packs against',
-    async () => {
-      // Absolute reservations, so the arms differ only by the budget: two
-      // 600MB tasks exceed a 1GB budget and fit a 2GB one. Dropping
-      // `options.memory` falls back to `os.totalmem()` — many GB on any real
-      // host — so both tasks would overlap and the first arm fails. `cpus` is
-      // undeclared, so the CPU axis is free and cannot explain either result.
-      const config = `export default {
-        tasks: {
-          run: {
-            exec: { command: ${JSON.stringify(SPAN_CMD)}, resources: { memory: 600 } },
-          },
-        },
-      }`
-      const a = await addProject(fixture.root, 'a', config)
-      const b = await addProject(fixture.root, 'b', config)
-
-      const serial = await run({
-        cwd: fixture.root,
-        tasks: ['run'],
-        projects: ['a', 'b'],
-        concurrency: 4,
-        memory: GiB,
-        log: capturingLogger(fixture),
-      })
-      expect(serial.ok).toBe(true)
-      const [first, second] = await spansOf(a, b)
-      expect(second.s).toBeGreaterThanOrEqual(first.e)
-
-      const parallel = await run({
-        cwd: fixture.root,
-        tasks: ['run'],
-        projects: ['a', 'b'],
-        concurrency: 4,
-        memory: 2 * GiB,
-        log: capturingLogger(fixture),
-      })
-      expect(parallel.ok).toBe(true)
-      const [p1, p2] = await spansOf(a, b)
-      expect(p2.s).toBeLessThan(p1.e)
-    },
-    TIMEOUT,
-  )
 })
 
 // --------------------------------------------------------------------------
@@ -549,7 +443,7 @@ describe('run-level knobs are never folded into a cache key', () => {
     "a run with every scheduling/presentation knob set HITS a plain run's entry",
     async () => {
       // `--retry` and `--timeout` have their own single-knob pins; concurrency,
-      // memory, continueMode, flow, outputLogs, tags and command have none.
+      // continueMode, flow, outputLogs, tags and command have none.
       // Setting all of them at once is the cheap invariant: these describe HOW
       // a run is executed and reported, never WHAT it computes, so the key must
       // not move. Folding any one of them in turns this into `'success'`.
@@ -580,7 +474,6 @@ describe('run-level knobs are never folded into a cache key', () => {
         retries: 3,
         timeout: 60_000,
         concurrency: 1,
-        memory: 4 * GiB,
         continueMode: 'always',
         flow: 'broad',
         outputLogs: 'none',

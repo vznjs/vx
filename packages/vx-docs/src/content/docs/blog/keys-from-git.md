@@ -94,8 +94,7 @@ root (a shared `tsconfig.base.json`) and says so in its name.
   `cache.inputs.env` instead.
 - Tool versions you did not declare. `node --version` is a
   `cache.inputs.runtime` line away.
-- `exec.resources` and `exec.remote`. Both are placement. Where a task
-  ran and how many cores it reserved say nothing about what it
+- `exec.remote`. Placement. Where a task ran says nothing about what it
   produced.
 - `vx-lock.json`, so that `vx lock` itself does not re-key the world.
 

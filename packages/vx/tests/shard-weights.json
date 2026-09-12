@@ -98,7 +98,6 @@
   "project-loader.test.ts": 1179,
   "recursive-run.test.ts": 2928,
   "replay-fidelity.test.ts": 570,
-  "resources.test.ts": 903,
   "restore-git-spawns.test.ts": 1653,
   "retries.test.ts": 2048,
   "run-artifacts.test.ts": 106,

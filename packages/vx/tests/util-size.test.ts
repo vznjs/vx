@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test'
-import { parseRunArgs, parsePruneArgs } from '../src/cli/index.js'
+import { parsePruneArgs } from '../src/cli/index.js'
 import { parseSize } from '../src/util/size.js'
 // Every cross-module caller reaches parseSize through the util CONTRACT
-// (tests/module-boundaries.test.ts): orchestrator/resources.ts:9,
-// workspace/project-loader.ts:3, cli/run.ts:30, cli/cache.ts:2. The barrel
+// (tests/module-boundaries.test.ts): workspace/project-loader.ts:3,
+// cli/cache.ts:2. The barrel
 // re-export is part of the surface under test, not an implementation detail.
 import { parseSize as parseSizeViaBarrel } from '../src/util/index.js'
 
@@ -11,16 +11,8 @@ import { parseSize as parseSizeViaBarrel } from '../src/util/index.js'
 //
 //   `vx cache prune --max-size <size>`  → the LRU eviction cap. A value
 //        larger than intended evicts nothing.
-//   `vx run --memory <size>`            → the memory BUDGET that every
-//        `exec.resources.memory: "<n>%"` reservation resolves against
-//        (orchestrator/resources.ts:35). A wrong budget silently mis-sizes
-//        every percent reservation in the graph, so the scheduler admits the
-//        wrong set of tasks concurrently — no error, just wrong packing.
-//   `exec.resources.memory: "512MB"`    → validated by the loader as
-//        `parseSize(memory) !== null` (workspace/project-loader.ts:627) and
-//        then resolved by `parseSize(v) ?? 0` (resources.ts:36). Those two
-//        must agree: anything the loader admits must resolve to a real
-//        number, or a declared reservation silently becomes "reserve nothing".
+//   (`--memory` and `exec.resources.memory` read it too until 2026-09-12,
+//        when reservations left core for the schedule plugin.)
 //
 // Both directions are load-bearing. A wrong ACCEPT is a budget the user did
 // not ask for; a wrong REJECT is a confusing flag error on a legal
@@ -69,9 +61,9 @@ describe('parseSize — accepted forms', () => {
   })
 
   // `B` is OPTIONAL and sits outside the unit group, so both spellings of
-  // every unit must land on the same number. `--memory 8GB` and `--memory 8G`
-  // are both documented; if they diverged, one of the two documented forms
-  // would silently set a different budget.
+  // every unit must land on the same number. `8GB` and `8G` are both
+  // documented; if they diverged, one of the two documented forms would
+  // silently set a different cap.
   it('treats a trailing B as decoration, never as a multiplier', () => {
     expect(parseSize('1KB')).toBe(parseSize('1K'))
     expect(parseSize('1MB')).toBe(parseSize('1M'))
@@ -170,7 +162,6 @@ describe('parseSize — zero', () => {
   it('leaves the "0 wipes everything" refusal to the CLI callers', () => {
     expect(parseSize('0')).toBe(0)
     expect(parsePruneArgs(['--max-size', '0']).error).toMatch(/would evict every entry/)
-    expect(parseRunArgs(['--memory', '0', 'build']).error).toMatch(/--memory must be/)
   })
 
   // The CLI guards the VALUE, not the literal string — so a computed-to-zero
@@ -178,7 +169,6 @@ describe('parseSize — zero', () => {
   it('makes the CLI zero guard fire for every zero spelling', () => {
     for (const raw of ['0', '0K', '0GB', '00']) {
       expect(parsePruneArgs(['--max-size', raw]).error).toMatch(/would evict every entry/)
-      expect(parseRunArgs(['--memory', raw, 'build']).error).toMatch(/--memory must be/)
     }
   })
 })
@@ -214,10 +204,8 @@ describe('parseSize — fractions are refused, never truncated', () => {
     expect(parseSize('1.9G')).not.toBe(2 * GiB)
   })
 
-  // Both the loader gate and the resolver read the same null, so a fractional
-  // declaration is a config ERROR rather than a silent "reserve nothing"
-  // (resources.ts:36 turns null into 0).
-  it('is what makes the loader refuse a fractional exec.resources.memory', () => {
+  // A fractional count of a unit is not a size: null, never a rounded number.
+  it('refuses a fractional size', () => {
     expect(parseSize('1.5GB')).toBeNull()
     expect(parseSize('1GB')).not.toBeNull()
   })
@@ -225,11 +213,11 @@ describe('parseSize — fractions are refused, never truncated', () => {
 
 describe('parseSize — no whitespace anywhere', () => {
   // `^` and `$` bracket the whole pattern with no `\s*`, so the string must be
-  // exactly the size. This matters because an unquoted `--memory 1 GB` arrives
+  // exactly the size. This matters because an unquoted `--max-size 1 GB` arrives
   // as TWO argv entries: the parser sees "1" and then treats "GB" as a
-  // positional task name. Accepting "1 GB" here would not fix that shell-level
+  // stray positional. Accepting "1 GB" here would not fix that shell-level
   // split; it would only make a QUOTED "1 GB" mean 1 GiB while the unquoted
-  // form meant 1 byte plus a bogus task name.
+  // form meant 1 byte plus a bogus argument.
   it('rejects whitespace between the number and the unit, and at either end', () => {
     for (const raw of [
       '1 GB',
@@ -329,7 +317,7 @@ describe('parseSize — signs, units, and structural junk', () => {
   // Every row here is a value `Number()` converts to something
   // plausible-but-different. parseSize rejects them at the REGEX, before
   // parseDecimalInt is even reached — but the outcome must be the same null,
-  // or `--memory 0x1000` would silently set a 4096-byte budget.
+  // or `--max-size 0x1000` would silently set a 4096-byte cap.
   const numberish: ReadonlyArray<readonly [string, number]> = [
     ['0x10', 16],
     ['0X10', 16],
@@ -484,9 +472,8 @@ describe('parseSize — anchoring', () => {
 })
 
 describe('call-site contracts', () => {
-  // The forms documented for the two flags (docs/cli.md:188, :952, :979) and
-  // for exec.resources.memory (docs/schema.md:203). Each must parse, or a
-  // documented invocation is a flag error.
+  // The forms documented for `--max-size` (docs/cli.md). Each must parse,
+  // or a documented invocation is a flag error.
   it('parses every documented example', () => {
     const documented: ReadonlyArray<readonly [string, number]> = [
       ['8GB', 8 * GiB],

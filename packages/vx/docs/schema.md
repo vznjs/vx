@@ -107,7 +107,6 @@ interface ExecConfig {
   env?: ExecEnv // optional per-task env layering
   timeout?: number // ms before vx SIGTERMs the child (see below)
   retries?: number // max additional attempts after a failure (see below)
-  resources?: ResourcesConfig // CPU/memory reservations for admission (see below)
   persistent?: PersistentConfig // long-running task (dev server, watcher)
   sandbox?: SandboxConfig // opt-in OS sandbox for this command
 }
@@ -213,70 +212,6 @@ The run-level default is `vx run --retry <n>` — it applies to tasks
 that don't declare their own `retries`; explicit config always wins,
 including an explicit `retries: 0`. The CLI flag never affects cache
 keys.
-
-#### `resources` (optional)
-
-```ts
-interface ResourcesConfig {
-  cpus?: number // CPU cores, fractional allowed
-  memory?: number // megabytes — 4096 is four gigabytes
-  image?: string // container image a worker must be running to take this task
-}
-```
-
-What a task needs from a machine. Locally that is a **reservation** for
-scheduling admission: the scheduler packs ready tasks so concurrent
-reservations never exceed a budget on either axis — a 12 GB linker and a
-6-core type-check no longer count the same as a near-free `lint`. Turbo and
-Nx have nothing comparable (flat task-count concurrency only); Bazel's local
-resources are the precedent. A distributed executor reads the same numbers as
-a **requirement** and routes the task to a worker that satisfies them.
-
-```ts
-test: {
-  exec: {
-    command: 'vitest run integration',
-    resources: { cpus: 4, memory: 2048 },
-  },
-}
-
-e2e: {
-  exec: {
-    command: 'playwright test',
-    resources: { cpus: 2, memory: 4096, image: 'vx-playwright' },
-  },
-}
-```
-
-- **Admission control, NOT enforcement.** vx uses the numbers only to
-  decide what to co-schedule — it does not cgroup-limit, `nice`, or
-  kill a task that exceeds its declaration (that stays the job of
-  `exec.timeout` and the OS).
-- **Default `0` = reserve nothing, run freely.** A task that omits the
-  field (or declares `0`) is gated only by the concurrency-count limit.
-  Reservations coordinate among tasks that opt in; every existing
-  config schedules byte-identically.
-- **The same numbers everywhere.** Cores and megabytes mean the same thing
-  on this machine and on a worker, which is why percent forms were removed
-  on 2026-08-30: a percentage names a fraction of THIS run's budget, and an
-  executor placing the task elsewhere has no way to mean anything by it. The
-  local budgets are the run's `concurrency` and total system RAM, the latter
-  overridable with `vx run --memory <size>`. **Container caveat:** in a
-  cgroup-limited container `os.totalmem()` reports the HOST's RAM — pass
-  `--memory` with the real limit in CI containers.
-- **`image` is a MATCH, never a provisioning instruction.** A distributed
-  executor's workers belong to whoever runs the fleet; a task naming an image
-  is routed to a worker already running it, and an executor with no such
-  worker reports that rather than building one. Executors that do not run
-  containers ignore the field.
-- **Never blocks the run:** a reservation larger than the whole budget
-  is admitted alone (when nothing else holds that axis), so an
-  over-declared task still runs — one at a time — instead of
-  deadlocking. Confirmed cache restores reserve nothing (a restore is a
-  tar extract, not the task's real work).
-- **Never busts a cache:** the whole `resources` object is stripped
-  from the cache key — it's a scheduling hint with zero effect on
-  outputs, so tuning a reservation re-uses every existing entry.
 
 #### `remote` (optional)
 
@@ -1363,7 +1298,7 @@ and surfaces `UserError` (clean output, no stack):
 
 **Unknown fields are rejected**, not ignored, at every object level —
 the project's top level (`tasks`), the task itself, `exec`, `exec.env`,
-`exec.persistent`, `exec.resources`, `exec.sandbox` and its `allow` /
+`exec.persistent`, `exec.sandbox` and its `allow` /
 `deny` / `ignore` blocks, `cache`, `cache.inputs`, and `cache.outputs`
 (`tests/schema-unknown-keys.test.ts` walks every one) — and at the top
 of `vx.workspace.ts`,
@@ -1389,20 +1324,20 @@ Workspace-discovery errors (`src/workspace/workspace.ts`):
 
 Workspace-config errors:
 
-| Symptom                                                                                                                                       | Cause                                                                                                             |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `concurrency must be a positive integer`                                                                                                      | `concurrency` is negative, zero, NaN, ...                                                                         |
-| `timeout must be a positive integer (milliseconds)`                                                                                           | Workspace `timeout` is ≤ 0, NaN, or not an int.                                                                   |
-| `cacheDir must be a string`                                                                                                                   | Wrong shape.                                                                                                      |
-| `plugins must be an array of plugin objects`                                                                                                  | Wrong shape.                                                                                                      |
-| `plugins[<i>] must be an object`                                                                                                              | A non-object entry in `plugins`.                                                                                  |
-| `plugins[<i>] must come from definePlugin(import.meta, { … })`                                                                                | A plain object where a plugin was expected: a plugin's name is its package name, and only `definePlugin` sets it. |
-| `plugins[<i>].name overrides the package name`                                                                                                | A `name` set over `definePlugin`'s result; drop the field.                                                        |
-| `plugins[<i>].<capability> must be a function`                                                                                                | A capability key holding something that is not callable.                                                          |
-| `plugins[<i>] must contribute at least one of config/project/graph/key/schedule/setup/cache/executor/telemetry/teardown/commands/fingerprint` | A plugin object with no capability.                                                                               |
-| `<file> has unknown field "<key>"`                                                                                                            | Typo'd / unsupported top-level key (`plugin`, `cacheDirectory`); the hint names the nearest spelling.             |
-| `plugin '<name>' declares command '<verb>', a core verb — core verbs cannot be shadowed`                                                      | A plugin verb the dispatcher matches first; it could never run.                                                   |
-| `plugins '<a>' and '<b>' both declare command '<verb>' — a verb has one owner`                                                                | Two plugins on one verb; the first would win and hide the second.                                                 |
-| `plugins[<i>].fingerprint must be { files: [name, …], affected: function }`                                                                   | A fingerprint claim without its file list or its `affected` answer.                                               |
-| `plugin '<name>' claims fingerprint file "<file>", which core does not fold`                                                                  | A claim on a file the workspace fingerprint never folds — there is nothing to take out.                           |
-| `plugins '<a>' and '<b>' both claim fingerprint file '<file>' — a file has one claimant`                                                      | Two plugins keying the same lockfile; the key would fold both and `--affected` could ask only one.                |
+| Symptom                                                                                                                                             | Cause                                                                                                             |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `concurrency must be a positive integer`                                                                                                            | `concurrency` is negative, zero, NaN, ...                                                                         |
+| `timeout must be a positive integer (milliseconds)`                                                                                                 | Workspace `timeout` is ≤ 0, NaN, or not an int.                                                                   |
+| `cacheDir must be a string`                                                                                                                         | Wrong shape.                                                                                                      |
+| `plugins must be an array of plugin objects`                                                                                                        | Wrong shape.                                                                                                      |
+| `plugins[<i>] must be an object`                                                                                                                    | A non-object entry in `plugins`.                                                                                  |
+| `plugins[<i>] must come from definePlugin(import.meta, { … })`                                                                                      | A plain object where a plugin was expected: a plugin's name is its package name, and only `definePlugin` sets it. |
+| `plugins[<i>].name overrides the package name`                                                                                                      | A `name` set over `definePlugin`'s result; drop the field.                                                        |
+| `plugins[<i>].<capability> must be a function`                                                                                                      | A capability key holding something that is not callable.                                                          |
+| `plugins[<i>] must contribute at least one of config/project/graph/key/schedule/admit/setup/cache/executor/telemetry/teardown/commands/fingerprint` | A plugin object with no capability.                                                                               |
+| `<file> has unknown field "<key>"`                                                                                                                  | Typo'd / unsupported top-level key (`plugin`, `cacheDirectory`); the hint names the nearest spelling.             |
+| `plugin '<name>' declares command '<verb>', a core verb — core verbs cannot be shadowed`                                                            | A plugin verb the dispatcher matches first; it could never run.                                                   |
+| `plugins '<a>' and '<b>' both declare command '<verb>' — a verb has one owner`                                                                      | Two plugins on one verb; the first would win and hide the second.                                                 |
+| `plugins[<i>].fingerprint must be { files: [name, …], affected: function }`                                                                         | A fingerprint claim without its file list or its `affected` answer.                                               |
+| `plugin '<name>' claims fingerprint file "<file>", which core does not fold`                                                                        | A claim on a file the workspace fingerprint never folds — there is nothing to take out.                           |
+| `plugins '<a>' and '<b>' both claim fingerprint file '<file>' — a file has one claimant`                                                            | Two plugins keying the same lockfile; the key would fold both and `--affected` could ask only one.                |

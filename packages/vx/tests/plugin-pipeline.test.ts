@@ -539,6 +539,115 @@ describe('key stage — explainability', () => {
   )
 })
 
+describe('admit stage', () => {
+  // The seam a memory-packing plugin fills. Core keeps no notion of what a
+  // task needs; it asks the policy at every local dispatch with what runs.
+  const sleeper = "export default { tasks: { build: { exec: { command: 'sleep 0.15' } } } }\n"
+  function spans(): Logger & { spans: Map<string, { start: number; end: number }> } {
+    const spans = new Map<string, { start: number; end: number }>()
+    return {
+      spans,
+      status() {},
+      taskStart(node: { id: string }) {
+        spans.set(node.id, { start: Bun.nanoseconds(), end: 0 })
+      },
+      taskStdout() {},
+      taskStderr() {},
+      taskComplete(node: { id: string }) {
+        const s = spans.get(node.id)
+        if (s) s.end = Bun.nanoseconds()
+      },
+    } as Logger & { spans: Map<string, { start: number; end: number }> }
+  }
+  const overlap = (log: ReturnType<typeof spans>, a: string, b: string): boolean => {
+    const [x, y] = [log.spans.get(a)!, log.spans.get(b)!]
+    return x.start < y.end && y.start < x.end
+  }
+
+  it(
+    'a policy that refuses company serializes two tasks the count limit would run together',
+    async () => {
+      await pkg('a', sleeper)
+      await pkg('b', sleeper)
+      await workspace([
+        pluginSource('org/solo', `{ admit(task, ctx) { return ctx.running.length === 0 } }`),
+      ])
+      const log = spans()
+      const summary = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 2,
+        log,
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(overlap(log, 'a#build', 'b#build')).toBe(false)
+      // CONTROL: the same two tasks with no policy overlap at concurrency 2.
+      await workspace([])
+      const plain = spans()
+      await run({ cwd: root, tasks: ['build'], concurrency: 2, log: plain, handleSignals: false })
+      expect(overlap(plain, 'a#build', 'b#build')).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the policy sees the task dispatched a moment earlier, and every answering plugin must admit',
+    async () => {
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([
+        pluginSource(
+          'org/witness',
+          `{ admit(task, ctx) { (globalThis.__vxAsked ??= []).push([task.id, ctx.running.map((r) => r.id), ctx.concurrency]); return true } }`,
+        ),
+        pluginSource(
+          'org/veto',
+          `{ admit(task) { return task.id !== 'b#build' || (globalThis.__vxAsked ?? []).length > 1 } }`,
+        ),
+      ])
+      const summary = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 2,
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      const asked = (globalThis as { __vxAsked?: [string, string[], number][] }).__vxAsked ?? []
+      // First ask: nothing running, the worker count as declared.
+      expect(asked[0]).toEqual(['a#build', [], 2])
+      // Second ask, same tick: a is listed already.
+      expect(asked[1]).toEqual(['b#build', ['a#build'], 2])
+      delete (globalThis as { __vxAsked?: unknown }).__vxAsked
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a throwing policy is reported once and admits from then on — never a hung run',
+    async () => {
+      await pkg('a', build)
+      await pkg('b', build)
+      await workspace([pluginSource('org/boom', `{ admit() { throw new Error('boom') } }`)])
+      const status: string[] = []
+      const log = { ...silent(), status: (m: string) => status.push(m) } as Logger
+      const summary = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 2,
+        log,
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      expect(
+        status.filter((m) => m.includes("plugin 'org/boom' failed in admit: boom")),
+      ).toHaveLength(1)
+    },
+    TIMEOUT,
+  )
+})
+
 describe('schedule stage', () => {
   it(
     "a plugin's weights decide which ready task runs first",
