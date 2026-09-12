@@ -89,7 +89,12 @@ concurrency` check for exec-tier nodes — including its O(1) early-out
    local exec-tier tasks running right now (tracked only while a policy
    exists), a `false` parks the node; restore-tier and pooled nodes are
    never asked. Core passes the plugins' `admit` stage here
-   (`plugin-host.buildAdmission`) and holds no costs of its own.
+   (`plugin-host.buildAdmission`) and holds no costs of its own. A
+   task a policy refused while a worker was free is timed from that
+   first refusal to its dispatch, and its outcome carries the wait as
+   `admissionHeldMs` — `--summarize` rows, the event stream and the
+   footer's `admit held N tasks` show the policy's hand; no policy, no
+   field, no clock read.
 5. **Failed upstream** → an exec-tier node is marked `skipped`
    synchronously (no `execute` call). Restore-tier nodes **bypass**
    this check — their key is dep-success-independent (pure-input

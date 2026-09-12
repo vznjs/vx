@@ -1487,6 +1487,19 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       that spawn them peak at 51–75 MB (measured), so the fixtures
       out-weigh them with room. Docs: runner.md, cli.md, execute-task.md,
       the design note, the plugin README.
+171.  DONE (2026-09-12): the run says when a policy held a task. The
+      plugin's `vx history` says what it will reserve; nothing said
+      what that cost a run — two tasks that stopped overlapping looked
+      like a slower machine. The scheduler now times a task from the first
+      refusal it meets with a worker free to its dispatch and puts the
+      wait on its outcome as `admissionHeldMs`; `--summarize` rows and
+      the event stream carry it, and the footer's `info` row sums it
+      (`admit held 3 tasks 4.2s`). Zero-cost without a policy: no map,
+      no clock read, no field. Pinned: the serialized pair carries the
+      hold on the held task only and a policy-less run on neither
+      (scheduler), the vetoing plugin's second task through `run()`
+      and the control run's absence (plugin-pipeline), the footer line
+      (summary). Docs: scheduler.md, cli.md, the design note.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

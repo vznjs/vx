@@ -62,6 +62,8 @@ function taskEntry(o: TaskOutcome, flaky?: FlakyFinding): Record<string, unknown
     // keys, so a consumer never reads a remote worker's peak as this run's.
     ...(o.storedCpuMs !== undefined ? { storedCpuMs: o.storedCpuMs } : {}),
     ...(o.storedPeakRssBytes !== undefined ? { storedPeakRssBytes: o.storedPeakRssBytes } : {}),
+    // Present only when an `admit` policy held the task with a worker free.
+    ...(o.admissionHeldMs !== undefined ? { admissionHeldMs: o.admissionHeldMs } : {}),
     // hrtime spans are bigints → emit as strings so JSON.parse on
     // the consumer side doesn't truncate the ns precision.
     ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: String(o.wallclockStartNs) } : {}),

@@ -111,6 +111,8 @@ export interface SummaryStats {
   left?: number
   /** Cache-miss duration spread (only tasks that actually executed). */
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null
+  /** Tasks an `admit` policy held with a worker free, and the waits summed. Absent with no hold. */
+  held?: { count: number; sumMs: number }
 }
 
 /**
@@ -246,6 +248,14 @@ export function formatSummarySection(
     if (context.concurrency !== undefined)
       info.push(`${context.concurrency} worker${context.concurrency === 1 ? '' : 's'}`)
     info.push(context.remoteCacheEnabled ? 'local + remote cache' : 'local cache')
+    // The plugin's hand on the run: a task a policy held with a worker
+    // free would otherwise have started; without the line nothing says
+    // the policy acted.
+    if (stats.held !== undefined && stats.held.count > 0) {
+      info.push(
+        `admit held ${stats.held.count} task${stats.held.count === 1 ? '' : 's'} ${formatDuration(stats.held.sumMs)}`,
+      )
+    }
     lines.push('', row('info', join(info)), row('time', `${formatDuration(totalMs)}${spread}`))
   } else {
     lines.push('', row('time', `${formatDuration(totalMs)}${spread}`))
@@ -276,6 +286,7 @@ export function formatRunSummary(
   const durations = outcomes
     .filter((o) => (o.status === 'success' || o.status === 'failed') && !isGroupTask(o.node))
     .map((o) => o.durationMs)
+  const heldOutcomes = outcomes.filter((o) => o.admissionHeldMs !== undefined)
   return formatSummarySection(
     {
       failed: t.failed,
@@ -296,6 +307,14 @@ export function formatRunSummary(
               count: durations.length,
             }
           : null,
+      ...(heldOutcomes.length > 0
+        ? {
+            held: {
+              count: heldOutcomes.length,
+              sumMs: heldOutcomes.reduce((sum, o) => sum + o.admissionHeldMs!, 0),
+            },
+          }
+        : {}),
     },
     totalMs,
     colors,

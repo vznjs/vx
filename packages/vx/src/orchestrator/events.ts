@@ -231,6 +231,8 @@ export interface OutcomeView {
   hash?: string
   cpuMs?: number
   peakRssBytes?: number
+  /** How long an `admit` policy held the task with a worker free (see `TaskOutcome`). */
+  admissionHeldMs?: number
   restored?: boolean
   sandboxViolations?: number
   sandboxViolationLines?: string[]
@@ -291,6 +293,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.hash !== undefined) view.hash = outcome.hash
   if (outcome.cpuMs !== undefined) view.cpuMs = outcome.cpuMs
   if (outcome.peakRssBytes !== undefined) view.peakRssBytes = outcome.peakRssBytes
+  if (outcome.admissionHeldMs !== undefined) view.admissionHeldMs = outcome.admissionHeldMs
   if (outcome.restored !== undefined) view.restored = outcome.restored
   if (outcome.sandboxViolations !== undefined) view.sandboxViolations = outcome.sandboxViolations
   if (outcome.sandboxViolationLines !== undefined)
