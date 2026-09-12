@@ -676,8 +676,8 @@ Writes a per-run JSON file:
       "exitCode": 0,
       "durationMs": 4,
       "hash": "...",
-      "cpuMs": 123,
-      "peakRssBytes": 45678,
+      "storedCpuMs": 123,
+      "storedPeakRssBytes": 45678,
       "wallclockStartNs": "12345678",
       "wallclockEndNs": "12356789"
     }
@@ -697,7 +697,13 @@ Writes a per-run JSON file:
 
 Default path: `<cacheDir>/runs/<run_id>.json`. hrtime fields are
 strings (bigints serialized as strings) to preserve ns precision
-through JSON.
+through JSON. `cpuMs` / `peakRssBytes` are what the task's own
+execution used and appear on executed rows only; a hit's `durationMs`
+is the restore it cost, and what the PRODUCING execution used rides the
+artifact and appears under its own keys, `storedCpuMs` /
+`storedPeakRssBytes` (the work the hit skipped, the split
+`storedDurationMs` draws in the event stream) — a remote worker's peak
+is never presented as this run's.
 
 **`ok` / `exitCode`** are the run's verdict — the same value the CLI
 exits with. Gate on these rather than re-deriving a pass from the
@@ -741,7 +747,7 @@ Writes a Chrome-trace JSON of every task's wallclock span. Open in
   "traceEvents": [
     {
       "name": "@vzn/vx#lint",
-      "cat": "cache-hit",
+      "cat": "success",
       "ph": "X",
       "ts": 12345,
       "dur": 4321,
