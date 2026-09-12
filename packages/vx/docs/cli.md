@@ -1457,7 +1457,10 @@ vx last [runId] [--list[=N]] [--format pretty|json] [--cache-dir <path>]
 
 Bare `vx last` replays the most recent run: a header (verdict, command,
 when, duration, branch @ sha, CI, task/hit/failure counts) and a
-per-task table — status, id, duration, cache key — failures first.
+per-task table — status, id, duration, cache key, and for a task that
+executed, what it used (peak RSS and CPU parallelism, `312 MB · 1.4×
+cpu`: the runner's own record, and the number `@vzn/vx-schedule-history`
+reserves from; a hit spent nothing and shows nothing) — failures first.
 `vx last --list` prints the N most recent runs (default 10) with their
 run ids; `vx last <runId>` replays a specific one. `--format json`
 emits `{ invocation, tasks }` for scripting. An unknown run id fails
@@ -1510,8 +1513,8 @@ export function mcp(): VxPlugin {
 ```
 
 (`@vzn/vx-mcp` ships exactly this: declare `mcp()` and `vx mcp` serves
-five read-only tools to AI agents — four over the run history, one
-over the resolved task catalog.) The dispatcher tries core's verbs
+six read-only tools to AI agents — four over the run history, one
+over the resolved task catalog, one the workspace doctor's facts.) The dispatcher tries core's verbs
 first and consults plugins only for a word core does not know, loading
 the workspace config from the cwd to find them (outside a workspace the
 verb is simply unknown). A plugin verb that names a core verb, or one

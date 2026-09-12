@@ -1423,6 +1423,17 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       fixture's one project, task and entry, the worker and memory
       bounds) and the stdio round trip's tool count; docs in
       `modules/doctor.md`, the package README and the site's MCP guide.
+168.  DONE (2026-09-12): `vx last` shows what each executed task used.
+      The runner has recorded every execution's peak RSS and CPU time
+      since item 157, and `@vzn/vx-schedule-history` reserves from
+      them, but no surface showed a developer the number — the JSON
+      form carried it, the table did not. A task's row now ends
+      `45 MB · 0.9× cpu` (peak RSS, CPU time over wall time); a hit
+      spent nothing and shows nothing. Pinned end to end, the unit proven
+      by its bound (a one-file task peaks between 1 MB and 1 GB — the
+      kilobyte and the ×1024 readings both fall outside). Found on the
+      way: cli.md still said `vx mcp` serves five tools; six, since
+      item 167 — a second copy of the count, corrected.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
