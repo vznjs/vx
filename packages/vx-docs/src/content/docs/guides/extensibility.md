@@ -45,6 +45,7 @@ flowchart LR
 | project  | `project(config, ctx)` | a project's tasks — add, remove, rewrite (keyed like yours) | nothing unless declared          |
 | graph    | `graph(nodes, ctx)`    | the run's edges                                         | nothing unless declared              |
 | key      | `key(task, ctx)`       | extra cache-key material (named in `vx why`)            | nothing unless declared              |
+| fingerprint | `fingerprint`       | which lockfile a plugin keys per project instead of per workspace | `pnpm()` and friends from `@vzn/vx-lockfile` |
 | schedule | `schedule(nodes, ctx)` | which ready task runs first                             | `scheduleHistoryPlugin()`, or your own |
 | admit    | `admit(task, ctx)`     | whether a ready task starts now beside what runs here   | `scheduleHistoryPlugin()`, or your own |
 | execute  | `executor(ctx)`        | *where* ONE task's command runs — local or a worker     | your own; the local executor is the floor |

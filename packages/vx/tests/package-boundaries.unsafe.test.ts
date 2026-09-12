@@ -98,6 +98,7 @@ describe('package boundaries', () => {
       'LocalHistoryProvider',
       'PERSISTENT_TASK_NAMES',
       'PERSISTENT_TODO',
+      'PLUGIN_HOOKS',
       'TASK_STATUSES',
       'TELEMETRY_SCHEMA_VERSION',
       'TaskLogBuffer',
