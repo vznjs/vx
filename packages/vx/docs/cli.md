@@ -1514,7 +1514,9 @@ export function mcp(): VxPlugin {
 
 (`@vzn/vx-mcp` ships exactly this: declare `mcp()` and `vx mcp` serves
 six read-only tools to AI agents — four over the run history, one
-over the resolved task catalog, one the workspace doctor's facts.) The dispatcher tries core's verbs
+over the resolved task catalog, one the workspace doctor's facts.
+`@vzn/vx-schedule-history` adds `vx history`: what it learned per task
+and the reservation its `admit` hook packs.) The dispatcher tries core's verbs
 first and consults plugins only for a word core does not know, loading
 the workspace config from the cwd to find them (outside a workspace the
 verb is simply unknown). A plugin verb that names a core verb, or one

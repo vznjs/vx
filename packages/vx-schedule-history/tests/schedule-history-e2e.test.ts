@@ -11,6 +11,7 @@ import { run, type Logger } from '@vzn/vx'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
 const TIMEOUT = 20_000
 let root: string
 
@@ -146,6 +147,95 @@ describe('schedule-history plugin end to end', () => {
       })
       expect(r2.ok).toBe(true)
       expect(spans(second)).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '`vx history` shows what the plugin learned per task and the reservation it packs',
+    async () => {
+      // One ~200 MB task and two trivial tasks, run once; then the verb,
+      // through the real dispatcher. The hog's row carries its peak RSS
+      // and a learned reservation (its peak × 1.25, up to 64 MB); a
+      // declared reservation shows as declared.
+      await pkg(
+        'a',
+        'export default { tasks: { build: { exec: { command: \'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(50); console.log(b.length)"\' } } } }\n',
+      )
+      await pkg('b', "export default { tasks: { build: { exec: { command: 'true' } } } }\n")
+      await pkg('c', "export default { tasks: { build: { exec: { command: 'true' } } } }\n")
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource([
+            "scheduleHistoryPlugin({ memory: 4096, reservations: { 'c#build': { memory: 1024, cpus: 2 } } })",
+          ]),
+      )
+      const r1 = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 2,
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(r1.ok).toBe(true)
+      const json = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
+        cwd: root,
+      })
+      expect(json.exitCode).toBe(0)
+      const out = JSON.parse(json.stdout.toString()) as {
+        window: number
+        budgets: { cpus: number; memory: number }
+        tasks: {
+          id: string
+          runs: number
+          maxPeakRssBytes: number | null
+          reservation: { memory?: number; cpus?: number } | null
+          declared: boolean
+        }[]
+      }
+      expect(out.window).toBe(20)
+      expect(out.budgets.memory).toBe(4096)
+      expect(out.budgets.cpus).toBeGreaterThanOrEqual(1)
+      const byId = new Map(out.tasks.map((t) => [t.id, t]))
+      const a = byId.get('a#build')!
+      expect(a.runs).toBe(1)
+      expect(a.maxPeakRssBytes).toBeGreaterThan(200 * 1024 * 1024)
+      expect(a.reservation?.memory).toBeGreaterThanOrEqual(256)
+      expect(a.reservation?.memory).toBeLessThanOrEqual(640)
+      expect(a.reservation!.memory! % 64).toBe(0)
+      expect(a.declared).toBe(false)
+      // Every learned reservation is the estimator's rule over the peak the
+      // same row shows: × 1.25, up to the next 64 MB, absent under one step.
+      // (`true` itself peaks near the step on this runner, so whether it
+      // reserves is the rule's call, not the pin's.)
+      for (const t of out.tasks.filter((t) => !t.declared && t.maxPeakRssBytes !== null)) {
+        const mb = (t.maxPeakRssBytes! * 1.25) / (1024 * 1024)
+        const expected = mb >= 64 ? Math.ceil(mb / 64) * 64 : undefined
+        expect(t.reservation?.memory).toBe(expected)
+      }
+      const b = byId.get('b#build')!
+      expect(b.runs).toBe(1)
+      expect(b.reservation?.cpus).toBeUndefined()
+      const c = byId.get('c#build')!
+      expect(c.runs).toBe(1)
+      expect(c.maxPeakRssBytes).toBeGreaterThan(0)
+      expect(c.reservation).toEqual({ memory: 1024, cpus: 2 })
+      expect(c.declared).toBe(true)
+      const pretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
+      expect(pretty.exitCode).toBe(0)
+      const text = pretty.stdout.toString()
+      expect(text).toContain('budgets')
+      expect(text).toMatch(/a#build\s+1\s+\S+\s+\d+ MB\s+\S+\s+\d+ MB$/m)
+      expect(text).toMatch(/b#build\s+1\s+\S+\s+\d+ (KB|MB)\s+\S+\s+(—|\d+ MB)$/m)
+      expect(text).toMatch(/c#build\s+1\s+.*1024 MB · 2 cores \(declared\)$/m)
+      const bad = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'history', '--nope'],
+        cwd: root,
+      })
+      expect(bad.exitCode).not.toBe(0)
+      expect(bad.stderr.toString()).toContain('unknown flag: --nope')
     },
     TIMEOUT,
   )
