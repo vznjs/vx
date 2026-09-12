@@ -34,6 +34,12 @@ it), so a workspace that declares nothing runs and caches here.
 - `applyConfigHooks` / `applyProjectHooks` / `applyGraphHooks` /
   `applyKeyHooks` / `applyScheduleHooks` — the pipeline stages, run in
   declaration order only when some plugin declares them (`hasHook`).
+- `buildAdmission(plugins, nodes, concurrency, warn)` → the scheduler's
+  `admit(id, running)` predicate, or undefined when no plugin declares
+  `admit` (the scheduler then tracks nothing). Every declaring plugin is
+  asked with the running tasks' nodes and the worker count, all must
+  admit; a throw is warned once, naming the plugin, and that plugin
+  admits from then on.
 - `resolveExecutors(plugins, ctx, opts?)` — the executors in order; the first
   to accept a task runs it.
 - `teardownPlugins(plugins, warn)` — end-of-run: each plugin's
