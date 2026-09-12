@@ -16,7 +16,7 @@ export interface RunResult {
   stdout: string // retained text, or '' when `capture.stdout` is false
   stderr: string // retained text, or '' when `capture.stderr` is false
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
-  peakRssBytes?: number // maxRSS as Bun reports it: bytes on every platform
+  peakRssBytes?: number // maxRSS (bytes), only when it rose above vx's own RSS high-water mark
 }
 
 // Which streams are retained onto the result. Both default to true.
@@ -113,8 +113,8 @@ the peak there is unchanged — that term is deliberately unbounded.
 
 ## Resource usage
 
-`resourceUsageToCpuRss(proc.resourceUsage())` converts Bun's shape
-into our schema:
+`resourceUsageToCpuRss(proc.resourceUsage(), ownRssHighWater())` converts
+Bun's shape into our schema:
 
 - `cpuTime.total` is a microseconds bigint → `cpuMs = Number(...) / 1000`.
 - `maxRSS` is bytes on every platform (Bun normalizes the kernel's
@@ -123,6 +123,17 @@ into our schema:
   peak 1024× too big; `tests/runner.test.ts` now reads a known
   allocation back within a bounded factor, so a unit slip cannot pass a
   pure-function pin again.
+- A peak at or under this process's own RSS high-water mark is not
+  reported. Linux folds the forking parent's mark into a child's
+  `ru_maxrss` at exec (a forked child starts with its parent's pages and
+  `exec_mmap` keeps the old mm's peak), so a task lighter than vx reads
+  vx's footprint: `true` read 44 MB through vx while its shell's `VmHWM`
+  was 1.9 MB, and 300 MB allocated in the parent made `true` read
+  328 MB (2026-09-12). `ownRssHighWater()` reads `VmHWM` from
+  `/proc/self/status` after the child exits (the mark is monotonic, so
+  it covers the task's span; elsewhere the current RSS is the bound in
+  hand), and `peakRssBytes` is set only above it — unknown, bounded by
+  vx's own footprint, otherwise. `cpuMs` is the child's own either way.
 
 Returns `{}` (no fields) when `resourceUsage()` is unavailable; the
 orchestrator persists NULLs in the `runs` table for that task.

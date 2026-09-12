@@ -62,7 +62,7 @@ history: last 20 runs · budgets 4 cores (the default worker count; --concurrenc
   task             runs      p50  peak rss    cpu  reserves
   app#build          12    8.41s    612 MB   1.9×  768 MB · 2 cores
   app#e2e             3   41.2s    1.4 GB   1.1×  4096 MB · 2 cores (declared)
-  lib#test           12    1.02s     48 MB   1.0×  —
+  lib#test           12    1.02s         —   1.0×  —
   3 tasks with no execution in the window reserve nothing
 ```
 
@@ -70,7 +70,10 @@ history: last 20 runs · budgets 4 cores (the default worker count; --concurrenc
 `runs`, `p50DurationMs`, `maxPeakRssBytes`, `maxCpuParallelism`,
 `reservation` and `declared`. A cache hit's row carries the producing
 execution's usage, so a task restored from a remote cache shows a
-reservation on a machine that never executed it.
+reservation on a machine that never executed it. A task lighter than
+vx itself has no peak on record (the runner reports one only above its
+own footprint, since Linux hands a lighter child the parent's figure)
+and reserves nothing — what a task under vx's own footprint needs.
 
 `resources: false` turns the learning off (declared `reservations` are
 still packed). Admission control, not enforcement: nothing is

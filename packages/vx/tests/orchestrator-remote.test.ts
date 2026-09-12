@@ -157,6 +157,20 @@ const BUILD_CONFIG = `
   }
 `
 
+// The usage round trip needs a peak on record, and the runner reports one
+// only above its own footprint (a lighter child reads the parent's mark
+// back on Linux), so this build holds 150 MB.
+const HEAVY_BUILD_CONFIG = `
+  export default {
+    tasks: {
+      build: {
+        exec: { command: 'bun -e "const b = Buffer.alloc(150 * 1024 * 1024, 1); require(\\'fs\\').writeFileSync(\\'out.txt\\', \\'built\\'); console.log(b.length)"' },
+        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+      },
+    },
+  }
+`
+
 describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
   it(
     'a run served entirely from the remote layer reports ok: true',
@@ -667,7 +681,7 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
-          config: BUILD_CONFIG,
+          config: HEAVY_BUILD_CONFIG,
         })
         const first = await run({
           cwd: fixture.root,
@@ -679,7 +693,7 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
         expect(produced.status).toBe('success')
         // The runner reports rusage on linux and darwin; the differential
         // below needs a real number, not an absent one.
-        expect(produced.peakRssBytes).toBeGreaterThan(0)
+        expect(produced.peakRssBytes).toBeGreaterThan(150 * 1024 * 1024)
         expect(produced.storedPeakRssBytes).toBeUndefined()
 
         // The fresh runner: no local cache, no history.

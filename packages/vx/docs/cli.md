@@ -698,7 +698,9 @@ Writes a per-run JSON file:
 Default path: `<cacheDir>/runs/<run_id>.json`. hrtime fields are
 strings (bigints serialized as strings) to preserve ns precision
 through JSON. `cpuMs` / `peakRssBytes` are what the task's own
-execution used and appear on executed rows only; a hit's `durationMs`
+execution used and appear on executed rows only (`peakRssBytes` only
+when the task's peak rose above vx's own footprint — a lighter task's
+figure would be vx's, handed back by the kernel); a hit's `durationMs`
 is the restore it cost, and what the PRODUCING execution used rides the
 artifact and appears under its own keys, `storedCpuMs` /
 `storedPeakRssBytes` (the work the hit skipped, the split
@@ -1460,7 +1462,8 @@ when, duration, branch @ sha, CI, task/hit/failure counts) and a
 per-task table — status, id, duration, cache key, and for a task that
 executed, what it used (peak RSS and CPU parallelism, `312 MB · 1.4×
 cpu`: the runner's own record, and the number `@vzn/vx-schedule-history`
-reserves from; a hit spent nothing and shows nothing) — failures first.
+reserves from; a hit spent nothing and shows nothing, and a task lighter
+than vx itself shows its CPU only) — failures first.
 `vx last --list` prints the N most recent runs (default 10) with their
 run ids; `vx last <runId>` replays a specific one. `--format json`
 emits `{ invocation, tasks }` for scripting. An unknown run id fails

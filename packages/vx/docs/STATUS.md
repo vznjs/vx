@@ -1471,6 +1471,22 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       plugin would pack phantoms. Item 170 fixes the recording; the
       pin here claims the estimator's rule over the shown peak, not
       what a trivial task shows.
+170.  DONE (2026-09-12): a task lighter than vx itself records no peak.
+      The runner reads its own RSS high-water mark after the child
+      exits (`VmHWM` from `/proc/self/status` on Linux — the mark is
+      monotonic, so one read after covers the task's span; the current
+      RSS elsewhere) and reports `peakRssBytes` only above it; `cpuMs`
+      is the child's own either way. Under the mark the peak is
+      unknown, bounded by vx's footprint, and the plugin reserves
+      nothing for it — what such a task needs. Differential: from a
+      process holding 300 MB, `true` reports no peak (328 MB without
+      the floor) and a 600 MB task reports its own; the light-task pins
+      that expected a number now expect none, and the three fixtures
+      whose usage round trip needs a number (`vx last`, the remote
+      hit's stored usage, `vx history`) hold 150 MB. The test processes
+      that spawn them peak at 51–75 MB (measured), so the fixtures
+      out-weigh them with room. Docs: runner.md, cli.md, execute-task.md,
+      the design note, the plugin README.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -2069,6 +2085,34 @@ platform unit by producing a known quantity and reading it back;
 probe the doctor and the guides after a seam change, since they are
 the surfaces nothing reads; when a defect is a second copy, find the
 third before pinning. Never end with "what next?".
+
+14c. **Handoff after item 170 (2026-09-12, midday).** PRs #332–#335
+carried the surfaces the resources arc had left unread. The doctor's
+facts moved to `orchestrator/doctor.ts` and `vx mcp` answers them as
+`getWorkspaceInfo` (167); `vx last` ends each executed row with what
+it used, `45 MB · 0.9× cpu` (168); `@vzn/vx-schedule-history` adds
+`vx history`, the reservation it packs per task over the budgets it
+packs into (169). Dogfooding those found the day's real defect, the
+second in the RSS unit's neighbourhood: Linux folds the forking
+parent's RSS high-water mark into a child's `ru_maxrss` at exec, so a
+task lighter than vx read vx's footprint — `true` at 44 MB through vx
+against a 1.9 MB shell, 328 MB from a 300 MB parent — and on a large
+workspace every light task would have reserved vx's own RSS; the
+runner reports a peak only above its own mark now (170). CI reddened
+once on the `Cache.key` scaling guard with nothing quadratic (34×
+against 30 on the shared runner), and the guard compares equal work
+per rep now, ≤ 3× where quadratic reads 10×. The `modules/plugins.md`
+seam table had said `schedule` alone for the plugin since `admit`
+landed — corrected with this entry; no pin, since a core test cannot
+read the plugin packages. Open: Next 1, 2 and 16 as before, all
+gated; the launch checklist's owner steps; a real-repo dogfood of
+`vx history` waits for a repo with its dependencies installed (the
+bench clones here are bare). Methods that paid today: a probe that
+confirms a thesis becomes a test, and one that refutes the obvious
+cause (CPU hogs did not move the ratio guard) is recorded before the
+next guess; a child's rusage is the parent's until proven otherwise;
+`pkill -f` and `pgrep -f` match their own shell — the rule is in
+CLAUDE.md now. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

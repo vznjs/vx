@@ -4,6 +4,7 @@
 // process exits. cpuMs / peakRssBytes are then surfaced on RunResult and
 // folded into the v11 `runs` table by the orchestrator.
 
+import { readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import { killGraceMs } from '../util/index.js'
 
@@ -487,8 +488,32 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     stderr,
     ...(proc.signalCode ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
-    ...resourceUsageToCpuRss(proc.resourceUsage()),
+    ...resourceUsageToCpuRss(proc.resourceUsage(), ownRssHighWater()),
   }
+}
+
+/**
+ * This process's own RSS high-water mark, in bytes: the floor under which
+ * a child's `ru_maxrss` says nothing about the child. Linux folds the
+ * forking parent's high-water mark into the child's figure at exec (a
+ * forked child starts with its parent's pages; `exec_mmap` keeps the old
+ * mm's peak), so a task lighter than vx itself reads vx's footprint —
+ * `true` read 44 MB through vx while its shell's `VmHWM` was 1.9 MB, and
+ * 300 MB allocated in the parent made `true` read 328 MB (2026-09-12).
+ * Read after the child exits so it covers the whole task's span (the mark
+ * is monotonic). Linux reads `VmHWM`; elsewhere the current RSS is the
+ * bound in hand.
+ */
+export function ownRssHighWater(): number {
+  if (process.platform === 'linux') {
+    try {
+      const m = /VmHWM:\s+(\d+) kB/.exec(readFileSync('/proc/self/status', 'utf8'))
+      if (m !== null) return Number(m[1]) * 1024
+    } catch {
+      // /proc unreadable: fall through to the current RSS.
+    }
+  }
+  return process.memoryUsage.rss()
 }
 
 /**
@@ -549,6 +574,8 @@ export async function streamToString(
  */
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
+  /** The parent's own high-water mark (`ownRssHighWater`); a peak at or under it is inherited, not the child's, and is not reported. */
+  floorBytes = 0,
 ): { cpuMs?: number; peakRssBytes?: number } {
   if (!usage) return {}
   // cpuTime.total is microseconds as a bigint → ms.
@@ -563,6 +590,7 @@ export function resourceUsageToCpuRss(
   // recorded peak was over any budget and ran alone. Measured, not
   // assumed: `tests/runner.test.ts` allocates a known number of bytes
   // and reads the peak back within a bounded factor of it.
-  const peakRssBytes = usage.maxRSS
-  return { cpuMs, peakRssBytes }
+  // A reading at or under the parent's own mark is the parent's (see
+  // `ownRssHighWater`): the child's peak is unknown, bounded by it.
+  return usage.maxRSS > floorBytes ? { cpuMs, peakRssBytes: usage.maxRSS } : { cpuMs }
 }
