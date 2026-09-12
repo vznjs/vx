@@ -112,8 +112,6 @@ describe('package boundaries', () => {
       'deriveCacheSource',
       'escapeMarkdownCell',
       'findWorkspaceRoot',
-      // The flakiness classification rule, shared so the cloud analytics twin
-      // cannot derive its own answer for the same dashboard badge.
       'isCacheHit',
       'isPassStatus',
       'isUserError',
@@ -122,6 +120,8 @@ describe('package boundaries', () => {
       'loadResolvedProjects',
       'loadWorkspace',
       'lockfileClaim',
+      'machineMemoryBytes',
+      'machineParallelism',
       'nearMatches',
       'planRun',
       'prepareRun',

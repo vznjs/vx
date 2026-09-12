@@ -5,6 +5,7 @@
 // else asks the executors in declaration order, and the local floor takes
 // what nothing claimed.
 
+import { machineParallelism } from '../util/index.js'
 import { selectExecutor, type TaskExecutor } from '../exec/index.js'
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { resolveDownloadModes } from './download-policy.js'
@@ -107,7 +108,7 @@ export async function planExecutorOf(
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
       warn: (m: string) => log.status(m),
-      concurrency: Math.max(1, navigator.hardwareConcurrency),
+      concurrency: machineParallelism(),
     })
   } catch (err) {
     log.status(

@@ -17,7 +17,15 @@ import {
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
-import { mark, MAX_TIMEOUT_MS, printTimings, ulid, nearest, UserError } from '../util/index.js'
+import {
+  mark,
+  MAX_TIMEOUT_MS,
+  printTimings,
+  ulid,
+  nearest,
+  UserError,
+  machineParallelism,
+} from '../util/index.js'
 import { prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
@@ -239,10 +247,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     hashCache,
     workspaceProjectCount,
   } = prepared
-  const concurrency =
-    options.concurrency ??
-    workspaceConfig?.concurrency ??
-    Math.max(1, navigator.hardwareConcurrency)
+  const concurrency = options.concurrency ?? workspaceConfig?.concurrency ?? machineParallelism()
 
   // Resolved ONCE per run, in declaration order, the local executor last.
   // A broken factory aborts here, before any task starts.

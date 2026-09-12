@@ -1333,9 +1333,30 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       membership path outside the root is not walked; nothing here can
       throw. Pinned on fixture trees for both hierarchies, the ancestor
       case, the sentinel, absent files, the escape, and the live read of
-      this machine (`tests/memory-limit.test.ts`). Alongside, the
-      CPU-time unit got the same measured pin as the RSS one (item 159):
-      a 500 ms spin reads back as ~500 ms of CPU.
+      this machine (`tests/memory-limit.test.ts`, now core's
+      `tests/cgroup.test.ts`, item 161). Alongside, the CPU-time unit
+      got the same measured pin as the RSS one (item 159): a 500 ms
+      spin reads back as ~500 ms of CPU.
+161.  DONE (2026-09-12): the default worker count honours the cgroup
+      CPU quota, and the cgroup walk has one implementation. Core's
+      default was `navigator.hardwareConcurrency`, which inside a
+      container is the HOST's core count — eight workers on a docker
+      `--cpus=2` job, oversubscription by four, in exactly the CI
+      shape item 160 found for memory. `util/cgroup.ts` now owns the
+      walk from this process's cgroup to the root for both controllers:
+      `machineParallelism()` is the cores capped by the tightest quota
+      (`cpu.max` on v2, `cpu.cfs_quota_us` over `cpu.cfs_period_us` on
+      v1, `-1` / `max` binding nothing, an ancestor binding too),
+      rounded UP (a 1.5-core quota is two workers) and never below one;
+      it is the default in `run()`, the placement preview and
+      `--concurrency <n>%`. `machineMemoryBytes()` moved here from the
+      plugin (item 160) and both are on the façade, so
+      `@vzn/vx-schedule-history` imports the one walk instead of
+      carrying its own. Pinned on fixture trees for both hierarchies
+      (`tests/cgroup.test.ts`: the tightest level, `max` / `-1`, the
+      fraction, the escape, the live read never above what the OS
+      reports). This box has no CPU quota (`-1`, four cores), so the
+      live differential is memory's; the CPU arm is fixture-proven.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
