@@ -1971,6 +1971,41 @@ stage's remaining 20 ms per 1,000 (the overlay probes, two clones
 per fill, a re-validation per plugin) if a workspace that size
 ever runs without configs. Never end with "what next?".
 
+14b. **Handoff after item 166 (2026-09-12, morning).** PRs #320–#330
+carried the resources arc end to end and the sweep it pointed at.
+The owner's direction — "devs will not know what to put in
+`exec.resources`", then "the concept of resources should be only in
+history schedule, why should core know it" — became items 157–161:
+core keeps one `admit` seam and no notion of resources;
+`@vzn/vx-schedule-history` learns each task's reservation from what
+its past executions used and packs it; the producing execution's
+usage rides the artifact's sidecar so a fresh runner has a number on
+its first hit; and two container limits the raw numbers hid are read
+from the cgroup — the memory budget and the default worker count,
+one walk in `util/cgroup.ts`. Dogfooding found the day's real
+defect: every Linux peak RSS was recorded 1024× too big (Bun's
+`maxRSS` is bytes; a pure-function pin had enshrined kilobytes),
+which would have made every learned reservation run alone — the
+unit is measured now, and so is the CPU one. Then the doctor
+(`vx info`) grew `workers` and `memory` rows with their sources
+(163), and the class "a second copy of the rule" was swept: one
+`PLUGIN_HOOKS` list pinned against the type (164), the five hook
+tables held to it (165), the docs' quoted version constants held to
+the constants — one was already stale (166). Every warm-path change
+was A/B'd on compiled binaries and read a tie; the day's whole diff
+too, after the morning bench read −26% on every row (the box, not
+the code — the new baseline is in Next 6). Open: Next 1, 2 and 16
+as before, all gated; the launch checklist's owner steps. The box:
+four cores, a 15.7 GiB machine under a 13.3 GiB leaf cgroup, no CPU
+quota, no sandbox (the gate is `scratchpad/gate-manual.sh`); a
+`pkill -f` pattern must not appear in its own command line; `oxfmt`
+un-indents a STATUS list continuation when a code span wraps across
+it, so keep each span on one line. Methods that paid: measure a
+platform unit by producing a known quantity and reading it back;
+probe the doctor and the guides after a seam change, since they are
+the surfaces nothing reads; when a defect is a second copy, find the
+third before pinning. Never end with "what next?".
+
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
     (item 141) and four Nx repos (items 142–144, 150) are in.
