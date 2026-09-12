@@ -549,18 +549,20 @@ export async function streamToString(
  */
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
-  platform: NodeJS.Platform = process.platform,
 ): { cpuMs?: number; peakRssBytes?: number } {
   if (!usage) return {}
   // cpuTime.total is microseconds as a bigint → ms.
   const cpuMs = Number(usage.cpuTime.total) / 1000
-  // maxRSS is the raw kernel `ru_maxrss`, whose UNIT IS PLATFORM-SPECIFIC and
-  // Bun does NOT normalize it:
-  //   • Linux   → kilobytes  (multiply by 1024 for bytes)
-  //   • macOS / BSD → bytes  (already bytes; do NOT multiply)
-  //   • Windows → bytes (PeakWorkingSetSize)
-  // Treating macOS's byte value as KB inflates peak RSS by 1024× — e.g. a
-  // real 460 MB showed up as 460 GB. Convert per platform.
-  const peakRssBytes = platform === 'linux' ? usage.maxRSS * 1024 : usage.maxRSS
+  // `maxRSS` is BYTES on every platform: Bun normalizes the kernel's
+  // `ru_maxrss` (kilobytes on Linux, bytes on macOS) before handing it
+  // over, as its typing says. This used to multiply by 1024 on Linux on
+  // the belief that Bun passed the raw value through, and every Linux
+  // peak was 1024× too big — a 64 MB `bun test` recorded as 64 GB in
+  // telemetry, `--summarize` and the run history, and once reservations
+  // were learned from that history (2026-09-12) every task with a
+  // recorded peak was over any budget and ran alone. Measured, not
+  // assumed: `tests/runner.test.ts` allocates a known number of bytes
+  // and reads the peak back within a bounded factor of it.
+  const peakRssBytes = usage.maxRSS
   return { cpuMs, peakRssBytes }
 }

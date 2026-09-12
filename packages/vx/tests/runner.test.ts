@@ -424,29 +424,40 @@ line`, // embedded newline
   })
 })
 
-describe('resourceUsageToCpuRss — peak RSS unit per platform', () => {
-  // maxRSS's unit differs by OS: Linux returns kilobytes, macOS/BSD bytes.
-  // Treating macOS's byte value as KB inflates peak RSS by 1024×.
-  // Only the fields the converter reads; cast through unknown for the rest.
-  const usage = {
-    cpuTime: { total: 1_500_000n },
-    maxRSS: 480_000, // raw ru_maxrss
-  } as unknown as Parameters<typeof resourceUsageToCpuRss>[0]
-
-  it('Linux: maxRSS is kilobytes → ×1024 to bytes', async () => {
-    const r = resourceUsageToCpuRss(usage, 'linux')
-    expect(r.peakRssBytes).toBe(480_000 * 1024)
+describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
+  it("passes Bun's maxRSS through and converts cpu microseconds to ms", () => {
+    // Only the fields the converter reads; cast through unknown for the rest.
+    const usage = {
+      cpuTime: { total: 1_500_000n },
+      maxRSS: 480_000,
+    } as unknown as Parameters<typeof resourceUsageToCpuRss>[0]
+    const r = resourceUsageToCpuRss(usage)
+    expect(r.peakRssBytes).toBe(480_000)
     expect(r.cpuMs).toBe(1500)
   })
 
-  it('macOS: maxRSS is already bytes → no multiply', async () => {
-    const r = resourceUsageToCpuRss(usage, 'darwin')
-    expect(r.peakRssBytes).toBe(480_000)
-  })
-
-  it('Windows: PeakWorkingSetSize is bytes → no multiply', async () => {
-    const r = resourceUsageToCpuRss(usage, 'win32')
-    expect(r.peakRssBytes).toBe(480_000)
+  it('reads a known allocation back as bytes, on THIS platform', async () => {
+    // The unit is Bun's to normalize and ours to trust only once measured:
+    // a pure-function pin enshrined "kilobytes on Linux" for a year of
+    // Linux peaks recorded 1024× too big. A child that allocates and
+    // touches 200 MB must report a peak between that and a few times it
+    // (the runtime's own footprint on top) — a kilobyte value read as
+    // bytes would land at ~200 KB, a byte value multiplied by 1024 at
+    // ~200 GB, and either fails.
+    const MB = 1024 * 1024
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-rss-'))
+    try {
+      const result = await runCommand({
+        command: `bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); console.log(b.length)"`,
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+      })
+      expect(result.exitCode).toBe(0)
+      expect(result.peakRssBytes!).toBeGreaterThanOrEqual(200 * MB)
+      expect(result.peakRssBytes!).toBeLessThan(800 * MB)
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
   })
 })
 

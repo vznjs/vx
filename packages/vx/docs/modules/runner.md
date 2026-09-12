@@ -16,7 +16,7 @@ export interface RunResult {
   stdout: string // retained text, or '' when `capture.stdout` is false
   stderr: string // retained text, or '' when `capture.stderr` is false
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
-  peakRssBytes?: number // maxRSS * 1024 (Bun normalizes KB; we → bytes)
+  peakRssBytes?: number // maxRSS as Bun reports it: bytes on every platform
 }
 
 // Which streams are retained onto the result. Both default to true.
@@ -117,7 +117,12 @@ the peak there is unchanged — that term is deliberately unbounded.
 into our schema:
 
 - `cpuTime.total` is a microseconds bigint → `cpuMs = Number(...) / 1000`.
-- `maxRSS` is kilobytes on Linux/macOS → `peakRssBytes = maxRSS * 1024`.
+- `maxRSS` is bytes on every platform (Bun normalizes the kernel's
+  `ru_maxrss`; typed and measured) → `peakRssBytes = maxRSS`. It was
+  multiplied by 1024 on Linux until 2026-09-12, which made every Linux
+  peak 1024× too big; `tests/runner.test.ts` now reads a known
+  allocation back within a bounded factor, so a unit slip cannot pass a
+  pure-function pin again.
 
 Returns `{}` (no fields) when `resourceUsage()` is unavailable; the
 orchestrator persists NULLs in the `runs` table for that task.
