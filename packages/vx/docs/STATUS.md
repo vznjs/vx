@@ -1400,6 +1400,13 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       (`PLUGIN_HOOKS` exported for that consumer). The lifecycle pair is
       prose in the stage tables and required in the hook tables; a
       control drops `admit` from a table and shows the extractor sees it.
+166.  DONE (2026-09-12): the docs' "currently" copies of `CACHE_VERSION`
+      and `SCHEMA_VERSION` are pinned to the constants. The sweep for a
+      second copy found `modules/cache.md` still saying the index schema
+      was v25, a morning after item 158 bumped it; caching.md (two
+      lines), that sentence and cli.md's `vx info` sample now read the
+      constants in their drift pins. CLAUDE.md's copy stays a rule — a
+      core test may read only its own package.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

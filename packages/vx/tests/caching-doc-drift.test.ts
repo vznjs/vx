@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
 
 const doc = readFileSync(path.join(import.meta.dir, '..', 'docs', 'caching.md'), 'utf8')
@@ -40,5 +41,32 @@ describe('docs/caching.md against the fingerprint the code computes', () => {
       expect(named.length).toBeGreaterThan(0)
       for (const name of named) expect(WORKSPACE_FINGERPRINT_FILES).toContain(name)
     }
+  })
+})
+
+// The two version constants are quoted as "currently" in three places a
+// reader trusts. The module doc still said the index schema was v25 a
+// morning after the v26 bump (2026-09-12); each copy is pinned to the
+// constant now. CLAUDE.md quotes them too, but a core test may read only
+// its own package, so that copy stays a rule ("verify in source before
+// quoting"), not a pin.
+describe('the docs quote the current CACHE_VERSION and SCHEMA_VERSION', () => {
+  const moduleDoc = readFileSync(
+    path.join(import.meta.dir, '..', 'docs', 'modules', 'cache.md'),
+    'utf8',
+  )
+
+  it('caching.md names the current key-derivation sentinel', () => {
+    expect(doc).toContain(`(currently \`'${CACHE_VERSION}'\`, in \`src/cache/cache.ts\`)`)
+  })
+
+  it('caching.md heads its schema block with the current SCHEMA_VERSION', () => {
+    expect(doc).toContain(`-- src/cache/cache.ts schema (SCHEMA_VERSION = '${SCHEMA_VERSION}')`)
+  })
+
+  it('modules/cache.md quotes both constants as they are', () => {
+    expect(moduleDoc).toContain(
+      `\`CACHE_VERSION\` is currently \`'${CACHE_VERSION}'\`; \`SCHEMA_VERSION\` is\n\`'${SCHEMA_VERSION}'\`.`,
+    )
   })
 })
