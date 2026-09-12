@@ -1500,6 +1500,30 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       (scheduler), the vetoing plugin's second task through `run()`
       and the control run's absence (plugin-pipeline), the footer line
       (summary). Docs: scheduler.md, cli.md, the design note.
+172.  DONE (2026-09-12, assessment — the real-repo dogfood the arc
+      pointed at): TanStack/router, 307 projects, installed (pnpm,
+      72 s, 2.1 GB) with the plugin declared. A cold run of every
+      `build` executed 296 tasks in 421 s at four workers; `vx history`
+      then showed every build's peak (380 MB–1.0 GB) and the
+      reservation it packs (512–1344 MB), three rows with no peak —
+      two tasks under vx's own footprint, one failure — as designed;
+      `vx last` ended each row with its usage. The one failure is the
+      repo's: the solid `start-basic-static` example prerenders by
+      fetching an external API, refused by this egress. Under the
+      13.6 GB budget nothing was held and a forced second run tied
+      the first (403 s); under `memory: 1024` on a four-package subset
+      (13 tasks with deps) the footer read `admit held 8 tasks 39.35s`
+      and the rows named each hold — the feature reads right on real
+      data. One observation to carry: CPU parallelism is a reading of
+      contention. The same builds read 0.9–1.0× beside three others
+      and 1.9–2.3× alone under the tight budget, the plugin keeps the
+      maximum, so each then reserved 2 cores. On that 13-task graph
+      an A/B (count-only vs learned, interleaved twice) tied — 40.0 /
+      38.6 s vs 38.9 / 41.0 s — with no hold fired, since the graph
+      never had three tasks ready at once; whether 2-wide packing
+      loses on a wide graph (single-threaded phases idle the other
+      cores) is Next 18, unmeasured. Install and outputs cleaned; the
+      configs and the bench logs stay.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -2176,6 +2200,16 @@ CLAUDE.md now. Never end with "what next?".
 
 17. DONE 2026-09-12 as item 158 — the producing execution's usage rides
     the artifact's sidecar; a hit's entry is the history's record.
+18. **Is the learned CPU axis a loss on a wide graph?** The reading
+    is a function of contention (item 172: 1.0× beside three tasks,
+    2.0× alone), the plugin keeps the window's maximum, and a whole
+    repo of 2-core builds packs a four-core box two wide, idling cores
+    through each build's single-threaded phases. Measure before
+    deciding: a wide set (`./examples/react/**` on router, ~100
+    builds) with a solo history first, count-only against learned,
+    interleaved. If it loses, the axis should reserve from the
+    contended reading (the minimum that still exceeded one core), or
+    not learn cpus at all and keep them declarable. Not started.
 
 ## Decisions (this arc)
 
