@@ -724,62 +724,6 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
-  it("placement: a task's exec.resources reach the executor VERBATIM", async () => {
-    // Declared, not resolved: an executor placing the task on another machine
-    // matches these numbers against what its workers actually have, and
-    // `image` is a routing constraint core knows nothing about. Resolving or
-    // dropping any of it here would strand the executor.
-    const { workspaceRoot, cleanup } = await writeFixture()
-    try {
-      await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
-        `export default { tasks: {
-           big: { exec: { command: 'echo big', resources: { cpus: 2, memory: 512, image: 'vx-pw' } } },
-           plain: { exec: { command: 'echo plain' } },
-         } }`,
-      )
-      await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
-        localWorkspaceSource([
-          pluginSource(
-            'org/sizing',
-            `{ executor() {
-               globalThis.__vxPlaced = {}
-               return {
-                 name: 'sizing-spy',
-                 remote: true,
-                 accepts(task) {
-                   globalThis.__vxPlaced[task.taskId] = task.resources ?? null
-                   return true
-                 },
-                 async execute() {
-                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
-                 },
-               }
-             },
-           }`,
-          ),
-        ]),
-      )
-      await gitInit(workspaceRoot)
-      const summary = await run({
-        cwd: workspaceRoot,
-        projects: ['pkg-a'],
-        tasks: ['big', 'plain'],
-        log: makeSilentLogger(),
-        handleSignals: false,
-      })
-      expect(summary.ok).toBe(true)
-      const placed = (globalThis as unknown as { __vxPlaced: Record<string, unknown> }).__vxPlaced
-      expect(placed['pkg-a#big']).toEqual({ cpus: 2, memory: 512, image: 'vx-pw' })
-      // The control: a task that declares nothing carries nothing, so an
-      // executor can tell "no reservation" from "zero".
-      expect(placed['pkg-a#plain']).toBeNull()
-    } finally {
-      cleanup()
-    }
-  })
-
   it('placement: --dry names the executor each task would land on', async () => {
     // `exec.remote` is otherwise invisible — nothing in a run's output says
     // where a task went, so a mis-declared pin reads exactly like a correct

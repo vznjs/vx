@@ -179,12 +179,6 @@ describe('numeric flags take a plain decimal integer only', () => {
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
     expect(parseRunArgs(['build', '--verbosity', '0']).verbosity).toBe(0)
   })
-
-  it('--memory keeps its size-string forms (parsed by parseSize, already strict)', () => {
-    expect(parseRunArgs(['--memory=512MB', 'build']).memory).toBe(512 * 1024 * 1024)
-    expect(parseRunArgs(['--memory', '2G', 'build']).memory).toBe(2 * 1024 ** 3)
-    expect(parseRunArgs(['--memory=0x1000', 'build']).error).toMatch(/--memory must be/)
-  })
 })
 
 describe('vx cache prune value parsing', () => {

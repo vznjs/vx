@@ -91,20 +91,6 @@ export interface TaskOutcome {
 
 export type ContinueMode = 'never' | 'deps-ok' | 'always'
 
-/**
- * Resolved per-task resource reservation, in absolute units (cpu may be
- * fractional; mem is bytes). Declared here (structurally) because `graph`
- * can't import `orchestrator`, where the resolver lives — same pattern as
- * A `0` axis means "reserve nothing, run freely": the
- * task is exempt from that axis entirely (needs no headroom, holds none).
- */
-export interface ResourceCost {
-  cpu: number
-  mem: number
-}
-
-const ZERO_COST: ResourceCost = { cpu: 0, mem: 0 }
-
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
@@ -176,17 +162,14 @@ export interface ScheduleOptions {
    */
   poolOf?: (id: string) => { name: string; capacity: number } | undefined
   /**
-   * Resolved per-task resource reservations (`exec.resources`, resolved
-   * by the orchestrator against the run's budgets). An absent id means
-   * zero cost; undefined/empty means no task opted in — the scheduler
-   * takes the legacy path byte-identically. Admission control only —
-   * nothing is enforced on the child process.
+   * Admission over the worker count: asked for every exec-tier task about
+   * to start on this machine, with the ids of the exec-tier tasks running
+   * here right now (added on dispatch, so two asks in one tick see each
+   * other). `false` parks the task until something finishes. Undefined →
+   * count-only, the legacy path byte for byte. Restore-tier hits and
+   * pooled tasks hold no local resources and are never asked.
    */
-  resourceCosts?: ReadonlyMap<string, ResourceCost>
-  /** CPU budget reservations pack against. Defaults to `concurrency`. */
-  cpuBudget?: number
-  /** Memory budget (bytes). Defaults to Infinity (axis off). */
-  memBudget?: number
+  admit?: (id: string, running: ReadonlySet<string>) => boolean
 }
 
 /**
@@ -419,31 +402,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const restoreConcurrency = concurrency === 1 ? 1 : 2 * concurrency
   let resolved = false
 
-  // Resource admission (2-D bin packing over the count limit). Inactive
-  // (no task opted in) → the tick loop short-circuits before any of this
-  // and behaves byte-identically to the count-only scheduler.
-  const costs = options.resourceCosts
-  const resourcesActive = costs !== undefined && costs.size > 0
-  const cpuBudget = options.cpuBudget ?? concurrency
-  const memBudget = options.memBudget ?? Infinity
-  // Reservations are FLOAT sums (fractional cpus, and percent-of-budget
-  // resolves to non-representable values like `0.30000000000000004`), so
-  // add/release cycles leave ~1e-17 residue instead of an exact 0. Two
-  // guards keep that residue from corrupting admission:
-  //   - the solo-clamp gate ("is the axis idle?") reads INTEGER holder
-  //     counts, never the float sum === 0 — a residue would otherwise
-  //     park an over-budget task forever (active===0, no future tick =
-  //     a silent hang / exit-0-without-running);
-  //   - `reserved` snaps back to EXACT 0 whenever its holder count hits
-  //     0, so residue can't accumulate across busy periods.
-  // The within-budget comparison also carries a tiny relative epsilon so
-  // an exact-fill (`reserved + cost == budget`) can't mis-round into a
-  // spurious block. Admission is a hint, so the epsilon's sub-ulp
-  // over-admission is harmless.
-  let reservedCpu = 0
-  let reservedMem = 0
-  let holdersCpu = 0
-  let holdersMem = 0
+  // Admission policy over the count limit (a plugin's `admit`). Inactive
+  // → the tick loop short-circuits before any of this and behaves
+  // byte-identically to the count-only scheduler.
+  const admitPolicy = options.admit
+  const admitActive = admitPolicy !== undefined
+  const running = new Set<string>()
 
   // A restore-tier task is a confirmed local cache hit: its "execution"
   // is a cheap tar extract, not the task's real work — it reserves ZERO
@@ -481,43 +445,19 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       poolActive.set(pool.name, (poolActive.get(pool.name) ?? 1) - 1)
     }
   }
-  const costOf = (id: string): ResourceCost =>
-    options.restoreTier?.has(id) || poolOf?.(id) !== undefined
-      ? ZERO_COST
-      : (costs?.get(id) ?? ZERO_COST)
-
-  // Zero never blocks; a within-budget cost needs headroom (with an
-  // exact-fill epsilon); an over-budget cost can never have headroom, so
-  // it solo-clamps: admitted only when the axis is idle (no holders — an
-  // idle pool always admits at least one ready task, no deadlock).
-  const fitsAxis = (cost: number, reserved: number, holders: number, budget: number): boolean =>
-    cost === 0 ? true : cost <= budget ? reserved + cost <= budget + budget * 1e-9 : holders === 0
-
-  const fits = (id: string): boolean => {
-    const c = costOf(id)
-    return (
-      fitsAxis(c.cpu, reservedCpu, holdersCpu, cpuBudget) &&
-      fitsAxis(c.mem, reservedMem, holdersMem, memBudget)
-    )
-  }
-
-  // Reserve/release keep the float sum AND the integer holder count in
-  // lockstep; releasing the last holder on an axis snaps its sum to 0.
-  const reserve = (c: ResourceCost): void => {
-    if (c.cpu > 0) {
-      reservedCpu += c.cpu
-      holdersCpu++
+  // The policy sees exec-tier local tasks only; a restore is a tar
+  // extract and a pooled task runs on someone else's capacity.
+  const local = (id: string): boolean => !options.restoreTier?.has(id) && poolOf?.(id) === undefined
+  const admits = (id: string): boolean => !local(id) || admitPolicy!(id, running)
+  // With no policy nothing reads `running`, so nothing is tracked: the
+  // count-only dispatch allocates no closure and touches no set per task.
+  const untracked = (): void => {}
+  const track = (id: string): (() => void) => {
+    if (!admitActive || !local(id)) return untracked
+    running.add(id)
+    return () => {
+      running.delete(id)
     }
-    if (c.mem > 0) {
-      reservedMem += c.mem
-      holdersMem++
-    }
-  }
-  const release = (c: ResourceCost): void => {
-    if (c.cpu > 0 && --holdersCpu === 0) reservedCpu = 0
-    else reservedCpu -= c.cpu
-    if (c.mem > 0 && --holdersMem === 0) reservedMem = 0
-    else reservedMem -= c.mem
   }
 
   return new Promise<Map<string, TaskOutcome>>((resolve) => {
@@ -579,33 +519,33 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
     const tick = (): void => {
       if (resolved) return
-      // Exec-tier tasks parked THIS tick on a failed resource fit.
-      // Within one synchronous tick `reserved` only increases (release
-      // happens in the async completion callbacks, which run a fresh
-      // tick), so a task that doesn't fit now cannot fit later in the
-      // same tick — parking it for the tick's remainder is exact, and
-      // each id pops at most once per tick (O(R log R)).
+      // Exec-tier tasks parked THIS tick on a refused admission. Within
+      // one synchronous tick `running` only grows (tasks leave it in the
+      // async completion callbacks, which run a fresh tick), so a task
+      // refused now cannot be admitted later in the same tick — parking
+      // it for the tick's remainder is exact, and each id pops at most
+      // once per tick (O(R log R)).
       const parked: Array<[string, number]> = []
 
       // Highest-priority admissible task: exec tier first (misses own
-      // the pool), then restore tier. With no reservations declared this
+      // the pool), then restore tier. With no admission policy this
       // short-circuits to exactly the legacy takeReady. A would-skip
-      // task returns without a fit check (finishing it is free); restore
-      // tasks cost zero by construction, so they never park.
+      // task returns without asking (finishing it is free); restore
+      // tasks are never asked, so they never park.
       const takeFitting = (): string | undefined => {
-        // No pools, no reservations and a full exec lane: nothing on the
+        // No pools, no policy and a full exec lane: nothing on the
         // exec queue can be admitted, so it is not scanned — scanning it
         // would pop and re-park every ready exec task on every tick, and
         // with a wide frontier that is O(R) per tick, O(R²) per run (the
         // 6,000-task scale pin went 0.5 s → 28 s when the restore lane's
         // first cut let the scan run past a full exec lane, 2026-09-10).
         // This is the legacy O(1) gate, kept per lane.
-        const execAdmissible = poolOf !== undefined || resourcesActive || active < concurrency
+        const execAdmissible = poolOf !== undefined || admitActive || active < concurrency
         if (execAdmissible) {
           while (execReady.size > 0) {
             const seq = execReady.peekSeq()
             const id = execReady.pop() as string
-            if (willSkip(id) || ((!resourcesActive || fits(id)) && hasRoom(id))) return id
+            if (willSkip(id) || (hasRoom(id) && (!admitActive || admits(id)))) return id
             parked.push([id, seq])
           }
         }
@@ -639,12 +579,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         }
 
         const leave = admit(id)
-        // Reserve on dispatch; capture the cost so the release in the
-        // completion callbacks is symmetric even if the maps change.
-        const cost = costOf(id)
-        reserve(cost)
+        // Listed as running on dispatch, so the policy's next ask in this
+        // tick sees it; the completion callbacks unlist it.
+        const untrack = track(id)
         // Crash-isolated observer hook — a throwing onStart must not abort
-        // the dispatch loop (it would strand the tick with reservations held).
+        // the dispatch loop (it would strand the tick with the slot held).
         try {
           onStart?.(node)
         } catch (err) {
@@ -655,13 +594,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // `.then(onFulfilled, onRejected)` — NOT `.then(f).catch(g)`. The
         // rejection arm handles ONLY `execute()` rejecting; a throw from
         // the fulfillment arm (finishOne / onFinish / tick) must NOT also
-        // run the rejection arm, or `active`/`reserved` release twice —
-        // and a double release drives `reserved` negative, permanently
-        // wedging the solo-clamp gate.
+        // run the rejection arm, or `active` releases twice — and a
+        // double release wedges the count gate.
         execute(node, upstream).then(
           (outcome) => {
             leave()
-            release(cost)
+            untrack()
             // The slot is free now; the dependents wait for what the
             // outcome still owes (a save landing), if anything.
             const settled = options.settledOf?.(outcome)
@@ -686,7 +624,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               durationMs: 0,
             }
             leave()
-            release(cost)
+            untrack()
             finishOne(id, outcome)
             // Surface the error live; the outcome itself doesn't
             // carry captured stderr (that's the logger's job). A

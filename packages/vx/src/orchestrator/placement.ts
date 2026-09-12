@@ -72,9 +72,6 @@ export function placeTasks(
       command: node.config.exec!.command,
       pinnedLocal: pinAllLocal || pinned.has(node.id),
       cacheable: node.config.cache !== undefined,
-      ...(node.config.exec?.resources === undefined
-        ? {}
-        : { resources: node.config.exec.resources }),
     })
     placements.executors.set(node.id, executor)
     if (node.config.exec?.remote === 'only') {

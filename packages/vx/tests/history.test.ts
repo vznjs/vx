@@ -470,6 +470,59 @@ describe('LocalHistoryProvider', () => {
     }
   })
 
+  it('reports the largest peak RSS and CPU parallelism an execution in the window used', async () => {
+    // What a reservation learned from history packs on: the maximum, not
+    // the mean (the OOM killer reads the maximum), over successful
+    // executions only — a hit reports nothing and a failure's usage is
+    // not what the task needs to succeed.
+    const cache = makeCache()
+    const base = 1_000_000
+    const unreported = (r: RunRecord): RunRecord => {
+      const { peakRssBytes: _rss, cpuMs: _cpu, ...rest } = r
+      return rest
+    }
+    const row = (i: number, extra: Partial<RunRecord>): RunRecord => ({
+      ...mkRun({
+        hash: `h${i}`,
+        project: 'a',
+        task: 'build',
+        status: 'success',
+        durationMs: 1000,
+        startedAt: base + i * 100,
+      }),
+      ...extra,
+    })
+    recordAsInvocations(cache, [
+      row(1, { peakRssBytes: 300 * 1024 * 1024, cpuMs: 1500 }),
+      row(2, { peakRssBytes: 900 * 1024 * 1024, cpuMs: 2600 }),
+      row(3, { peakRssBytes: 100 * 1024 * 1024, cpuMs: 800 }),
+      // A failed execution's usage is not evidence.
+      row(4, { status: 'failed', exitCode: 1, peakRssBytes: 5000 * 1024 * 1024, cpuMs: 9000 }),
+      // A hit executed nothing; its zeros must not pull the maximum down or up.
+      row(5, { cacheHit: true, peakRssBytes: 0, cpuMs: 0 }),
+      // A task that never reported usage answers undefined, not 0.
+      unreported(
+        mkRun({
+          hash: 'h6',
+          project: 'b',
+          task: 'build',
+          status: 'success',
+          durationMs: 50,
+          startedAt: base + 600,
+        }),
+      ),
+    ])
+    const table = await new LocalHistoryProvider(cache.dbHandle(), 10).loadFor([
+      'a#build',
+      'b#build',
+    ])
+    expect(table.get('a#build')?.maxPeakRssBytes).toBe(900 * 1024 * 1024)
+    expect(table.get('a#build')?.maxCpuParallelism).toBeCloseTo(2.6, 5)
+    expect(table.get('b#build')?.maxPeakRssBytes).toBeUndefined()
+    expect(table.get('b#build')?.maxCpuParallelism).toBeUndefined()
+    cache.close()
+  })
+
   it('returns nothing for tasks with no prior runs', async () => {
     const cache = makeCache()
     try {

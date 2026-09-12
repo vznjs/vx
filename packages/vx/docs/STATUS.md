@@ -1221,6 +1221,52 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       run, ~2.5%, for a second staleness surface on a boundary check.
       Not built. What frozen keeps over plain, the identity stats, is
       the ~9 ms between the first two rows.
+157.  DONE (2026-09-12 — owner: "devs will not know what to put in
+      `exec.resources`, and it can change at any time; let the schedule
+      history take past usage into account", then on the first cut:
+      "the concept of resources should be only in history schedule —
+      why should core know it"): reservations learned from history,
+      and core knows no resources. Core keeps one seam, the `admit`
+      stage: `VxPlugin.admit(task, ctx)` is asked at every local
+      dispatch after the count gate with `ctx.running` (the tasks
+      executing here, in dispatch order) and `ctx.concurrency`; `false`
+      holds the task until something finishes. Synchronous; a throw is
+      reported once and the plugin admits from then on; restore-tier
+      hits and pooled tasks are never asked or counted; all answering
+      plugins must admit; with none answering the dispatch loop is
+      byte-identical to before (no running set, no closure). Removed
+      from core in the same change: `exec.resources` and its
+      validation, `ResourcesConfig`, `--memory` / `RunOptions.memory`,
+      `TaskPlacement.resources`, the scheduler's two-axis packing, the
+      footer's budgets, the `vx show` row, `orchestrator/resources.ts`
+      (a breaking change, pre-alpha; a config declaring `resources` is
+      refused as an unknown field, never silently re-keyed; no
+      `CACHE_VERSION` bump — see the design note). `TaskHistory` now
+      carries the usage maxima over the window (`maxPeakRssBytes`,
+      `maxCpuParallelism`, successful executions only), and
+      `@vzn/vx-schedule-history` turns them into reservations in the
+      history read it already makes: the largest peak RSS × 1.25
+      rounded up to 64 MB (omitted under a step), the most parallelism
+      seen rounded to a core (omitted at one); `reservations` declares
+      by hand and wins; `memory` (MB) names the budget a cgroup hides;
+      its `admit` packs them, a task over a whole budget running alone.
+      Pinned: the scheduler's admission (`scheduler.test.ts`:
+      serialize / concurrent, same-tick visibility, backfill, solo,
+      skip-safety, restore and pooled never asked, FIFO, no policy
+      identical), the stage end to end (`plugin-pipeline.test.ts`: a
+      veto serializes what a control overlaps, the context in order, a
+      throwing policy reported once), the history maxima
+      (`history.test.ts`), the estimator and the packing rule
+      (`resource-estimates.test.ts`), and two ~200 MB tasks under
+      `memory: 512` overlapping on the first run and serializing on the
+      second (`schedule-history-e2e.test.ts`). Measured (compiled
+      binaries, origin/main vs this, interleaved on the 1,000-project
+      bench, one workspace per arm): warm no-op 24 reps min 135 / med
+      144 ms both arms; `--force` (every task through the exec-tier
+      dispatch) 6 reps min 1753 / med 1859 vs 1800 / 1846 — a tie
+      inside the spread; without a policy the dispatch tracks nothing.
+      Design note: `docs/design/resource-estimates-2026-09.md`. Step 2
+      is Next 17.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1816,8 +1862,25 @@ ever runs without configs. Never end with "what next?".
     third repo shows the addition shape, with the design note first
     (`docs/design/`), and leave the rewrite refused.
 
+17. **Usage rides on the artifact (step 2 of item 157).** A fresh CI
+    runner has no history, and that is where the memory budget bites.
+    The producing execution's `cpuMs` and `peakRssBytes` join the cache
+    entry's manifest; a remote hit writes an "observed elsewhere" row
+    into local history, so `@vzn/vx-schedule-history` has a number on
+    the first run.
+    No second sync channel, nothing to merge, no `CACHE_VERSION` bump
+    (an entry without the fields contributes nothing). Needs: the
+    manifest field on save, the row on a remote hit (marked so `vx why`
+    and `--summarize` can tell it from a local execution), a stub-layer
+    round trip in the tests, and the plugins guide line. Not started.
+
 ## Decisions (this arc)
 
+- **Resources are the schedule plugin's (owner, 2026-09-12).** Core
+  gates on the worker count and asks the `admit` stage for anything
+  finer; it holds no per-task cores or megabytes, no config field for
+  them, no budget flag. What a task needs is learned from what it used
+  (`@vzn/vx-schedule-history`), or declared to that plugin. Item 157.
 - **No first-party technology plugins (owner, 2026-09-10).** A plugin
   that gives packages tasks from a framework's config (`vite()`,
   `next()`, …) is the community's to write on the `project` stage; core

@@ -54,9 +54,8 @@ Two properties fall out:
   hashed. A plugin cannot change a task's behaviour behind the key's
   back.
 
-Placement fields are stripped before hashing. `exec.resources` and
-`exec.remote` say where a task runs and how much it reserves, which is
-not what it produces. `timeout`, `retries` and `description` are
+Placement is stripped before hashing. `exec.remote` says where a task
+runs, which is not what it produces. `timeout`, `retries` and `description` are
 folded, because a task that was allowed to run longer may have finished
 where the shorter one was killed.
 

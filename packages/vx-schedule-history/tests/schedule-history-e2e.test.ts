@@ -31,6 +31,23 @@ async function pkg(name: string, config: string): Promise<void> {
   await writeFile(path.join(dir, 'vx.config.mjs'), config)
 }
 
+function timed(): Logger & { spans: Map<string, { start: number; end: number }> } {
+  const spans = new Map<string, { start: number; end: number }>()
+  return {
+    spans,
+    status() {},
+    taskStart(node: { id: string }) {
+      spans.set(node.id, { start: Bun.nanoseconds(), end: 0 })
+    },
+    taskStdout() {},
+    taskStderr() {},
+    taskComplete(node: { id: string }) {
+      const s = spans.get(node.id)
+      if (s) s.end = Bun.nanoseconds()
+    },
+  } as Logger & { spans: Map<string, { start: number; end: number }> }
+}
+
 function silent(): Logger & { started: string[] } {
   const started: string[] = []
   return {
@@ -81,6 +98,54 @@ describe('schedule-history plugin end to end', () => {
       })
       expect(summary.ok).toBe(true)
       expect(second.started[0]).toBe('b#build')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a reservation learned from history keeps two memory-hungry tasks from running together',
+    async () => {
+      // Two tasks that each hold ~200 MB for a moment, under the plugin's
+      // 512 MB budget and two workers. Run 1 has no history: nothing is
+      // reserved, both run at once (their spans overlap). Run 2 has each
+      // task's peak RSS: ~250 MB × 1.25 → 320 MB each, 640 > 512, so the
+      // second waits for the first (no overlap). The differential is the
+      // overlap itself; a run that reserved nothing would overlap both times.
+      const hog =
+        'export default { tasks: { build: { exec: { command: \'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(400); console.log(b.length)"\' } } } }\n'
+      await pkg('a', hog)
+      await pkg('b', hog)
+      await Bun.write(
+        path.join(root, 'vx.workspace.mjs'),
+        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['scheduleHistoryPlugin({ memory: 512 })']),
+      )
+      const spans = (log: ReturnType<typeof timed>): boolean => {
+        const [x, y] = [log.spans.get('a#build')!, log.spans.get('b#build')!]
+        return x.start < y.end && y.start < x.end
+      }
+      const first = timed()
+      const r1 = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 2,
+        cache: { localRead: false, localWrite: true, remoteRead: false, remoteWrite: false },
+        log: first,
+        handleSignals: false,
+      })
+      expect(r1.ok).toBe(true)
+      expect(spans(first)).toBe(true)
+      const second = timed()
+      const r2 = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 2,
+        cache: { localRead: false, localWrite: true, remoteRead: false, remoteWrite: false },
+        log: second,
+        handleSignals: false,
+      })
+      expect(r2.ok).toBe(true)
+      expect(spans(second)).toBe(false)
     },
     TIMEOUT,
   )

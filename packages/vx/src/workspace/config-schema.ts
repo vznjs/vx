@@ -68,6 +68,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         graph?: unknown
         key?: unknown
         schedule?: unknown
+        admit?: unknown
         commands?: unknown
         teardown?: unknown
         fingerprint?: unknown
@@ -108,6 +109,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         'graph',
         'key',
         'schedule',
+        'admit',
         'setup',
         'cache',
         'executor',
@@ -255,10 +257,6 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
       const remote = (exec as { remote?: unknown }).remote
       if (remote !== undefined && typeof remote !== 'boolean' && remote !== 'only') {
         throw new UserError(`${where}.exec.remote must be a boolean or 'only' (or omitted)`)
-      }
-      const resources = (exec as { resources?: unknown }).resources
-      if (resources !== undefined) {
-        validateResources(resources, `${where}.exec.resources`)
       }
       const env = (exec as { env?: unknown }).env
       if (env !== undefined) {
@@ -518,8 +516,8 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
 // Unknown keys are REJECTED rather than silently dropped: a typo in a
 // cache-key field (`workspaceFile`, `task`, `timeoutMs`) is otherwise
 // discarded, so the task hashes as if the field were never written and vx
-// serves a stale artifact — the same reasoning `exec.resources` and
-// `sandbox` already encode. A new field must be added here deliberately.
+// serves a stale artifact — the same reasoning `sandbox` already
+// encodes. A new field must be added here deliberately.
 const PROJECT_FIELDS = new Set(['tasks'])
 const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'cache'])
 const EXEC_FIELDS = new Set([
@@ -527,7 +525,6 @@ const EXEC_FIELDS = new Set([
   'env',
   'timeout',
   'retries',
-  'resources',
   'persistent',
   'remote',
   'sandbox',
@@ -860,31 +857,5 @@ function validateSandbox(sandbox: unknown, where: string): void {
         throw new UserError(`${where}.sandbox.ignore.${f} is a flag, not something to ignore`)
       }
     }
-  }
-}
-
-const RESOURCES_FIELDS = new Set(['cpus', 'memory', 'image'])
-
-function validateResources(resources: unknown, where: string): void {
-  if (typeof resources !== 'object' || resources === null || Array.isArray(resources)) {
-    throw new UserError(`${where} must be an object (e.g. \`{ cpus: 2, memory: 2048 }\`)`)
-  }
-  assertKnownFields(resources, RESOURCES_FIELDS, where)
-  const { cpus, memory, image } = resources as {
-    cpus?: unknown
-    memory?: unknown
-    image?: unknown
-  }
-  if (cpus !== undefined && (typeof cpus !== 'number' || !Number.isFinite(cpus) || cpus < 0)) {
-    throw new UserError(`${where}.cpus must be a non-negative number of CPU cores`)
-  }
-  if (
-    memory !== undefined &&
-    (typeof memory !== 'number' || !Number.isInteger(memory) || memory < 0)
-  ) {
-    throw new UserError(`${where}.memory must be a non-negative integer number of megabytes`)
-  }
-  if (image !== undefined && (typeof image !== 'string' || image === '')) {
-    throw new UserError(`${where}.image must be a non-empty string (or omitted)`)
   }
 }

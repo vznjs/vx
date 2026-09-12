@@ -890,10 +890,9 @@ never wrong. Details and the deny-list:
   object at lock time and goes stale.
 - **`vx-lock.json`** — globally excluded (v24); also filtered out of
   `--affected` change sets.
-- **`exec.resources` and `exec.remote`.** Both are pure PLACEMENT: they
-  decide _where_ and _alongside what_ a task runs, never what it
-  produces. Tuning a memory reservation, or pinning a task to this
-  machine, does not bust its cache. `remote` especially must not — the
+- **`exec.remote`.** Pure PLACEMENT: it decides _where_ a task runs,
+  never what it produces, so pinning a task to this machine does not
+  bust its cache. It must not — the
   whole contract of a remote executor is that the same command over the
   same inputs yields the same outputs, so a key that moved with
   placement would split your laptop from the worker pool over nothing.

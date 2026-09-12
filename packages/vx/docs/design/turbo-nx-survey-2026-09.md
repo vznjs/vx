@@ -42,7 +42,8 @@ has no vx spelling, on purpose).
    target is named as such; `--concurrency <n>%`; `pkg#task` runs
    under `--filter '!pkg'`. Comparison rows: no bare-task
    cross-product; `parallelism: false` maps to a whole-budget
-   `exec.resources` reservation.
+   reservation (then `exec.resources`; a schedule-plugin reservation
+   since 2026-09-12).
 
 ## Fixed (STATUS 106, same night)
 

@@ -51,6 +51,7 @@ export interface Plugin {
   graph?(nodes: unknown, ctx: unknown): unknown
   key?(task: unknown, ctx: unknown): unknown
   schedule?(nodes: unknown, ctx: unknown): unknown
+  admit?(task: unknown, ctx: unknown): unknown
   readonly commands?: Readonly<Record<string, unknown>>
   cache?(ctx: unknown): unknown
   executor?(ctx: unknown): unknown
@@ -250,16 +251,6 @@ export interface ExecConfig {
    */
   retries?: number
   /**
-   * Resource RESERVATIONS for admission control — NOT enforcement: vx
-   * does not cgroup-limit, nice, or kill the task; it only decides what
-   * to co-schedule so concurrent reservations never exceed the CPU /
-   * memory budget. Each axis defaults to 0 = reserve nothing: the task
-   * runs subject only to the concurrency-count limit. A pure scheduling
-   * hint — the whole object is stripped from the cache key, so tuning a
-   * reservation never invalidates a cached result.
-   */
-  resources?: ResourcesConfig
-  /**
    * Long-running / continuous task (dev server, watcher, daemon).
    * When present, the task is spawned but the runner does NOT wait
    * for it to exit. Instead it considers the task "ready" — either
@@ -291,25 +282,6 @@ export interface ExecConfig {
    * exits at teardown. Enforced, not reported.
    */
   sandbox?: SandboxConfig
-}
-
-/**
- * Per-task resource reservation (see `ExecConfig.resources`). Grouped so
- * a future axis slots in without new top-level `exec` fields; the loader
- * rejects unknown keys.
- */
-export interface ResourcesConfig {
-  /** CPU cores; fractional is allowed (`0.5`). */
-  cpus?: number
-  /** Megabytes. `memory: 4096` is four gigabytes. */
-  memory?: number
-  /**
-   * The container image this task needs, MATCHED against what a worker
-   * advertises — never a provisioning instruction, since a distributed
-   * executor's workers belong to whoever runs the fleet. Ignored by
-   * executors that do not run containers.
-   */
-  image?: string
 }
 
 export interface PersistentConfig {

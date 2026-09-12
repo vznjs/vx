@@ -93,7 +93,6 @@ group.
 | [`history.md`](./history.md)                       | `src/orchestrator/history.ts` — per-task duration history behind `--dry` predictions.                                          |
 |                                                    | `src/orchestrator/failure-mode.ts` — the flakiness verdict, in one place (see history.md).                                     |
 | [`metrics.md`](./metrics.md)                       | `src/orchestrator/metrics.ts` — run-history queries behind `vx last` / `vx why` / the MCP.                                     |
-| [`resources.md`](./resources.md)                   | `src/orchestrator/resources.ts` — `exec.resources` → the scheduler's per-task costs.                                           |
 | [`task-log-buffer.md`](./task-log-buffer.md)       | `src/orchestrator/task-log-buffer.ts` — bounded per-task log capture for telemetry sinks.                                      |
 | [`run-report.md`](./run-report.md)                 | `src/orchestrator/run-report.ts` — `--report=markdown` table.                                                                  |
 

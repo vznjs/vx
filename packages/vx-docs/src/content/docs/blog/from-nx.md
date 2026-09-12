@@ -73,7 +73,7 @@ placeholders, fill the TODOs.
 | `outputs`                             | `cache.outputs.files`                         |
 | `nx affected`                         | `vx run … --affected[=<base>]`                |
 | `nx run-many --projects`              | `vx run … --filter`                           |
-| `parallelism: false`                  | `exec.resources` reserving the whole budget   |
+| `parallelism: false`                  | a schedule-plugin reservation over the budget |
 | `nx watch`                            | `vx watch`                                    |
 | `targetDefaults`                      | a preset file you import and spread           |
 

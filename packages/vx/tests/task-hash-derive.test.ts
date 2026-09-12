@@ -151,44 +151,13 @@ describe('computeTaskHash — what the config contributes', () => {
     expect(a).not.toBe(b)
   })
 
-  it('STABILITY: adding exec.resources does NOT move the key', async () => {
-    // `hashableConfig` strips `exec.resources` before stringifying. Resources
-    // are a scheduling ADMISSION hint — how many CPU/memory units a task
-    // reserves so the scheduler can pack the run. Nothing about them reaches
-    // the task's output, so tuning a reservation must never cost a full
-    // rebuild. The log records this as the reason the field shipped with NO
-    // CACHE_VERSION bump: a config declaring none stringifies byte-identically
-    // to before the field existed.
-    const plain = await key({ node: node({}, { exec: { command: 'build' } }) })
-    const reserved = await key({
-      node: node({}, { exec: { command: 'build', resources: { cpus: 2 } } }),
-    })
-    expect(reserved).toBe(plain)
-  })
-
-  it('STABILITY: changing exec.resources does NOT move the key', async () => {
-    // The half that actually bites a user: they tune a reservation up on a
-    // slow machine, and the whole graph must stay warm.
-    const two = await key({
-      node: node({}, { exec: { command: 'build', resources: { cpus: 2 } } }),
-    })
-    const eight = await key({
-      node: node(
-        {},
-        { exec: { command: 'build', resources: { cpus: 8, memory: 2048, image: 'other' } } },
-      ),
-    })
-    expect(eight).toBe(two)
-  })
-
   it('STABILITY: exec.remote does NOT move the key', async () => {
     // Placement, not content. `exec.remote: false` says "run this task on
     // this machine" — it never reaches the task's output, and the whole
     // contract of a remote executor is that the same command over the same
     // inputs produces the same bytes wherever it runs. A key that moved when
     // placement changed would split a laptop from a worker pool over nothing
-    // and gut the remote hit rate, which is the same argument that strips
-    // `exec.resources` one test up.
+    // and gut the remote hit rate.
     const plain = await key({ node: node({}, { exec: { command: 'build' } }) })
     const pinned = await key({ node: node({}, { exec: { command: 'build', remote: false } }) })
     const shipped = await key({ node: node({}, { exec: { command: 'build', remote: true } }) })
@@ -217,10 +186,10 @@ describe('computeTaskHash — what the config contributes', () => {
 
   it('SENSITIVITY: exec.timeout DOES move the key — distinct by design', async () => {
     // The anti-drift pin for the neighbouring decision. `timeout` and
-    // `retries` sit right beside `resources` in the same object and are NOT
+    // `retries` sit right beside `remote` in the same object and are NOT
     // stripped: the log states that retro-stripping them would change every
     // affected key and therefore require a CACHE_VERSION bump, so it was
-    // deliberately left out of scope. Someone who reads the `resources` strip
+    // deliberately left out of scope. Someone who reads the `remote` strip
     // and reasonably concludes "these are all scheduling hints, strip them
     // too" has to fail this test first.
     const a = await key({ node: node({}, { exec: { command: 'build' } }) })

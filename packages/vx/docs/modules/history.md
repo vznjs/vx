@@ -42,6 +42,12 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
   pairs that failed without a retry already proving nondeterminism.
 - Skipped rows (`status = 'skipped'`) are excluded from the window
   (`EXECUTED_RUNS_SQL`), so a run of skips cannot dilute the numbers.
+- `maxPeakRssBytes` and `maxCpuParallelism` (cpu time over wall time) are
+  maxima over the window's successful executions only: a hit reports
+  nothing, and a failure's usage is not what the task needs to succeed.
+  Absent when no row carried the number. `@vzn/vx-schedule-history`
+  turns them into the reservations its `admit` hook packs
+  (`docs/design/resource-estimates-2026-09.md`).
 
 ## The per-run surfaces (`failure-mode.ts`)
 

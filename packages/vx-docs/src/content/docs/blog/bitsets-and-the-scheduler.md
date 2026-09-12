@@ -72,18 +72,21 @@ because reusing a preliminary probe would be a stale-hit path. The rule
 that decides stability is shared with the remote prefetch so the two
 cannot disagree.
 
-## Resources are part of the tick
+## Admission is part of the tick
 
-`exec.resources` lets a task reserve cores and megabytes
-(`resources: { cpus: 4, memory: 2048 }`). The scheduler treats the
-budget as another gate: a ready task waits until its reservation fits
-alongside the running ones. It is admission control, not enforcement;
-nothing is cgroup-limited or reniced, and a task that exceeds its
-declaration is the job of `exec.timeout` and the OS. The numbers are
-absolute on purpose: a percentage would name a fraction of *this*
-machine's budget, which means nothing to an executor placing the task
-elsewhere. A remote executor with `capacity` gets its own pool, so a
-64-wide worker fleet is not throttled by a laptop's core count.
+Core's only gate is the worker count. Anything finer is a plugin's:
+the `admit` stage is asked at every local dispatch, with the tasks
+running here right now, and a `false` holds the ready task until
+something finishes. Core keeps no notion of what a task needs — a
+developer cannot know a linker's peak RSS, and it changes with every
+dependency bump — so `@vzn/vx-schedule-history` learns it: the runner
+records every execution's CPU time and peak RSS, and the plugin packs
+the largest seen, with headroom, against the machine's memory. It is
+admission control, not enforcement; nothing is cgroup-limited or
+reniced, and a task that exceeds its reservation is the job of
+`exec.timeout` and the OS. A remote executor with `capacity` gets its
+own pool and is never asked, so a 64-wide worker fleet is not throttled
+by a laptop's core count.
 
 Reference: the scheduler module notes under
 [Architecture](../../architecture/).

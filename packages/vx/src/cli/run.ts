@@ -15,7 +15,7 @@ import {
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { findCwdProject, pickTask, resolveFilters } from './select.js'
-import { MAX_TIMEOUT_MS, parseDecimalInt, parseSize, nearest } from '../util/index.js'
+import { MAX_TIMEOUT_MS, parseDecimalInt, nearest } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
@@ -58,12 +58,6 @@ export interface RunArgs {
    * env and workspace `timeout` defaults. Undefined when not passed.
    */
   timeout: number | undefined
-  /**
-   * `--memory <size>` / `--memory=<size>`: memory budget (resolved to
-   * bytes) for `exec.resources.memory` reservations. Defaults to
-   * os.totalmem() when not passed — pass it in cgroup-limited containers.
-   */
-  memory: number | undefined
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   forwardArgs: string[]
@@ -125,7 +119,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
     frozen: false,
     retries: undefined,
     timeout: undefined,
-    memory: undefined,
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
@@ -178,7 +171,7 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
       // bare flag) and "drop none" (an empty list) are equally defensible
       // readings, and silently picking either does the opposite of what
       // half the callers mean. Reject and name both explicit forms; the
-      // sibling value flags (--retry=, --timeout=, --memory=, --cache-dir=)
+      // sibling value flags (--retry=, --timeout=, --cache-dir=)
       // reject an empty `=` value the same way.
       if (raw === '') {
         return {
@@ -218,14 +211,6 @@ export function parseRunArgs(args: readonly string[]): RunArgs {
         return { ...out, error: `--timeout must be a positive integer (ms), got: ${v}` }
       }
       out.timeout = n
-    } else if (a === '--memory' || a?.startsWith('--memory=')) {
-      const v = a === '--memory' ? before[++i] : a.slice('--memory='.length)
-      if (v === undefined || v === '') return { ...out, error: `--memory requires a value` }
-      const bytes = parseSize(v)
-      if (bytes === null || bytes <= 0) {
-        return { ...out, error: `--memory must be a size like 8GB or 512MB, got: ${v}` }
-      }
-      out.memory = bytes
     } else if (a === '--output-logs' || a?.startsWith('--output-logs=')) {
       const v = a === '--output-logs' ? before[++i] : a.slice('--output-logs='.length)
       if (v !== 'full' && v !== 'errors-only' && v !== 'none' && v !== 'hash-only') {
@@ -501,7 +486,6 @@ export async function resolveRunOptions(
   if (staged !== undefined) opts.staged = staged
   if (parsed.retries !== undefined) opts.retries = parsed.retries
   if (parsed.timeout !== undefined) opts.timeout = parsed.timeout
-  if (parsed.memory !== undefined) opts.memory = parsed.memory
   if (parsed.cacheDir !== undefined) opts.cacheDir = parsed.cacheDir
   if (parsed.concurrency !== undefined) opts.concurrency = parsed.concurrency
   if (parsed.summarize !== undefined) opts.summarize = parsed.summarize

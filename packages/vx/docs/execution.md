@@ -423,10 +423,10 @@ pool full.
   the declared executors, in order, which one takes each task (see
   [`schema.md` § `remote`](./schema.md#remote-optional) for what pins a
   task here); the scheduler then knows which pool every task will occupy.
-- **A pooled task reserves no local resources.** `exec.resources` is a
-  budget for THIS machine's CPU and RAM; a task running elsewhere spends
-  neither, so it is admitted with a zero cost and can never park behind a
-  local reservation.
+- **A pooled task holds nothing on this machine.** The `admit` stage is
+  asked only for tasks about to run here, with the tasks running here; a
+  task on an executor pool is never asked and never counted, so it can
+  never park behind a local reservation.
 - **Restore-tier tasks are always local** — a cache restore is a tar
   extract on this disk, so it takes a local slot regardless of where the
   task would have executed.

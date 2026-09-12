@@ -64,9 +64,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   including retries, runs on the executor it was placed on. Placement must
   precede scheduling because the scheduler admits a pooled task against its
   executor's `capacity` rather than a local worker slot.
-- `exec.remote` is stripped from the cache key (`task-hash.hashableConfig`),
-  the same as `exec.resources`: placement has no effect on outputs, and a key
-  that moved with it would gut the remote hit rate.
+- `exec.remote` is stripped from the cache key (`task-hash.hashableConfig`):
+  placement has no effect on outputs, and a key that moved with it would
+  gut the remote hit rate.
 
 ## What it does NOT do
 
