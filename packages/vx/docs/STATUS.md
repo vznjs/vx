@@ -1177,6 +1177,26 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       with no install. Pinned in `tests/timing-dry.test.ts` (the
       table through `build graph` and `close` with the variable, absent
       without); `modules/timing.md` and `cli.md` say so.
+155.  DONE (2026-09-12 — owner: "frozen should always be faster;
+      the benchmarks page says otherwise"): it is a tie, and the page
+      said why wrongly. Since the config-evaluation cache (2026-09-02)
+      a plain warm run evaluates nothing for a provably pure config and
+      serves the validated object from `cache.db` with no
+      re-validation (`project-loader.ts`: "stored AFTER validation, so
+      a hit needs none"); `--frozen` parses the 1.1 MB lock and
+      re-validates all 1,000 entries, because the lock is hand-editable
+      (`lockfile.ts`, deliberate). Frozen skips only the per-config
+      identity stat and pays the parse back. Measured on the
+      1,000-project bench, compiled binary, 12 interleaved reps: plain
+      min 154 / median 177 ms, frozen 148 / 165; `load configs` 20–25
+      ms plain against 6–10 (lock read) + 12–14 (load) frozen, with a
+      temporary mark. The 2026-09-03 46-package row (83 vs 76, median
+      of 1) is that tie under noise, not a regression. No code change:
+      the validation is the boundary. `benchmarks.md` corrected in
+      place — the frozen paragraph, and "Known headroom", which still
+      said an evaluation cache had been rejected — and `--frozen`
+      documented for what it buys: the guarantee, and eval-free runs
+      for configs the purity gate cannot prove.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

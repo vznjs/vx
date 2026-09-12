@@ -208,9 +208,24 @@ at the top is the same comparison at scale, where vx's far lower per-task
 overhead pulls it ~2× ahead on cold, too.
 
 **`vx lock` + `--frozen`** is measured as its own row: it executes the
-frozen `vx-lock.json` graph with **zero per-run config evaluation**, which
-trims another ~10% off the warm path (117 ms here) and is the recommended
-CI configuration. In your repo: `vx lock`, then commit `vx-lock.json`.
+frozen `vx-lock.json` graph with **zero per-run config evaluation**. Read
+the row as a tie, not a win: since the config-evaluation cache
+(2026-09-02) the plain warm run evaluates nothing either for a config
+the purity gate can prove pure, and it serves the same validated object
+from `cache.db` without re-validating it, while `--frozen` parses the
+whole lock and re-validates every entry (the lock is hand-editable, so
+it is a boundary). What frozen still skips is the per-config identity
+stat; what it still pays is the lock's own parse. Measured 2026-09-12
+on the 1,000-project bench, compiled binary, 12 interleaved reps:
+plain min 154 / median 177 ms, frozen 148 / 165 — ~5%, the identity
+stats; the `load configs` stage reads 20–25 ms plain against 6–10 ms
+of lock read plus 12–14 ms of load frozen. The 83 vs 76 ms above
+(2026-09-03, median of 1) is the same tie under a laptop's noise.
+`--frozen` is for what it guarantees — what runs is what was locked,
+whatever a config would read from the environment — and for configs
+the gate cannot prove pure, which evaluate live on every plain run and
+come from the lock under `--frozen`. In your repo: `vx lock`, then
+commit `vx-lock.json`.
 
 ## How the overhead scales with the workspace (2026-09-10)
 
@@ -567,13 +582,16 @@ the shipped-optimization catalog with invariants is
 
 ## Known headroom
 
-The remaining no-cache floor is dominated by **config evaluation**:
-`loadProjectConfig` is ~199 ms of a ~517 ms warm wall at 1000 projects
-(discovery ~82 ms, package graph ~1 ms). A resolved-config eval cache was
-designed and **rejected** — soundness would need a static purity gate (no
-imports, no `process.env`), and a correctness-critical heuristic isn't
-worth ~200 ms. Configs are programs: they re-run, they don't cache.
-`vx run --frozen` is the sound version of that win for CI — it loads the
-committed `vx-lock.json` with zero evaluation (~10–21% off the warm path).
+Config evaluation was the largest fixed cost of a warm run
+(`loadProjectConfig` ~199 ms of a ~517 ms warm wall at 1,000 projects,
+2026-09-02, before the day's work). The resolved-config evaluation cache
+that was first rejected here shipped the same day behind the static
+purity gate it needed (`caching.md` § Config evaluation cache): a config
+whose import closure is provably pure is served validated from
+`cache.db`, keyed on the blob id of every file in the closure; anything
+the gate cannot prove evaluates live. `load configs` is 16–25 ms per
+1,000 configs since. `vx run --frozen` is not a faster version of that
+path (see the head-to-head above, 2026-09-12): it is the env-independent
+one, and the eval-free one for impure configs.
 
 **Source vs binary.** The runner invokes `bun packages/vx/src/bin.ts` by default, which pays ~40 ms of transpile per run that the `--bytecode` release binary does not (2026-09-09: 114 vs 71 ms on a two-package workspace; 20 projects warm 109 vs 64 ms). Set `VX_BIN=<path>` to time the shipped binary instead.
