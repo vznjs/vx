@@ -523,6 +523,71 @@ describe('LocalHistoryProvider', () => {
     cache.close()
   })
 
+  it("takes a hit row's usage from its ENTRY — what the producing execution used", async () => {
+    // A task this machine has only ever restored (a fresh runner behind a
+    // remote cache) still has a number: the artifact's sidecar carries the
+    // producing execution's usage, save and ingest index it on the entry,
+    // and the window reads it for hit rows. The hit's own row says what
+    // the restore cost (2 ms), never what the task needs — the
+    // parallelism must come from the entry's duration, not the hit's.
+    const cache = makeCache()
+    const base = 1_000_000
+    const dir = mkdtempSync(path.join(tmpdir(), 'vx-history-proj-'))
+    try {
+      await cache.save({
+        hash: 'h-remote',
+        projectDir: dir,
+        outputFiles: [],
+        entry: {
+          taskId: 'a#build',
+          command: 'tsc',
+          durationMs: 4000,
+          stdout: '',
+          cpuMs: 10_000,
+          peakRssBytes: 700 * 1024 * 1024,
+        },
+      })
+      recordAsInvocations(cache, [
+        {
+          ...mkRun({
+            hash: 'h-remote',
+            project: 'a',
+            task: 'build',
+            status: 'cache-hit-remote',
+            durationMs: 2,
+            startedAt: base + 100,
+          }),
+          exitCode: 0,
+          cacheHit: true,
+        },
+        // A hit whose entry is gone (pruned, or a foreign cache.db) is no evidence.
+        {
+          ...mkRun({
+            hash: 'h-gone',
+            project: 'b',
+            task: 'build',
+            status: 'cache-hit',
+            durationMs: 2,
+            startedAt: base + 200,
+          }),
+          exitCode: 0,
+          cacheHit: true,
+        },
+      ])
+      const table = await new LocalHistoryProvider(cache.dbHandle(), 10).loadFor([
+        'a#build',
+        'b#build',
+      ])
+      expect(table.get('a#build')?.maxPeakRssBytes).toBe(700 * 1024 * 1024)
+      expect(table.get('a#build')?.maxCpuParallelism).toBeCloseTo(2.5, 5)
+      expect(table.get('b#build')?.maxPeakRssBytes).toBeUndefined()
+      expect(table.get('b#build')?.maxCpuParallelism).toBeUndefined()
+    } finally {
+      cache.close()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('returns nothing for tasks with no prior runs', async () => {
     const cache = makeCache()
     try {

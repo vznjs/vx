@@ -123,6 +123,15 @@ export interface CacheEntry {
   command: string
   exitCode: number
   durationMs: number
+  /**
+   * What the PRODUCING execution used — CPU time and peak RSS — carried in
+   * the artifact's sidecar, so an entry ingested from a remote knows them
+   * too. Absent when the runner reported nothing. A hit surfaces them as
+   * `storedCpuMs` / `storedPeakRssBytes` on its outcome: what the hit
+   * skipped, never what it spent.
+   */
+  cpuMs?: number
+  peakRssBytes?: number
   outputFiles: string[]
   /**
    * The `output_files` rows behind `outputFiles` (size / mode / mtime), when

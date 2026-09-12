@@ -66,7 +66,9 @@ validation (zstd checks), which this layer also degrades to a miss.
 2. If `policy.remoteRead` is off → miss.
 3. `pullFromRemote(hash)` — shared with `prefetch` through the
    in-flight map: `remote.get` → `local.ingest(bytes)` → re-read
-   local. `durationMs` from the wire rides the ingested entry.
+   local. `durationMs` from the wire rides the ingested entry; the
+   producing execution's `cpuMs` / `peakRssBytes` ride the artifact's
+   own sidecar, so no wire needs to carry them.
 
 ## Write path
 

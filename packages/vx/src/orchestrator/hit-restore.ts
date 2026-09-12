@@ -211,6 +211,8 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     // `storedDurationMs`, which is what the hit skipped.
     durationMs: Math.round(performance.now() - cacheOpStart),
     storedDurationMs: hit.durationMs,
+    ...(hit.cpuMs !== undefined ? { storedCpuMs: hit.cpuMs } : {}),
+    ...(hit.peakRssBytes !== undefined ? { storedPeakRssBytes: hit.peakRssBytes } : {}),
     hash,
     restored,
     wallclockStartNs: taskStartNs,

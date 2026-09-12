@@ -43,11 +43,16 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
 - Skipped rows (`status = 'skipped'`) are excluded from the window
   (`EXECUTED_RUNS_SQL`), so a run of skips cannot dilute the numbers.
 - `maxPeakRssBytes` and `maxCpuParallelism` (cpu time over wall time) are
-  maxima over the window's successful executions only: a hit reports
-  nothing, and a failure's usage is not what the task needs to succeed.
-  Absent when no row carried the number. `@vzn/vx-schedule-history`
-  turns them into the reservations its `admit` hook packs
-  (`docs/design/resource-estimates-2026-09.md`).
+  maxima over the window's successful executions, plus — for hit rows —
+  what the PRODUCING execution used, read from the hit's `entries` row
+  (a primary-key join, hit rows only): the artifact's sidecar carries it,
+  save and ingest index it, so a task this machine has only ever
+  restored (a fresh runner behind a remote cache) still has a number. A
+  hit's own row says what the restore cost, never what the task needs; a
+  failure's usage is not what the task needs to succeed; an entry pruned
+  since contributes nothing. Absent when no row carried the number.
+  `@vzn/vx-schedule-history` turns them into the reservations its
+  `admit` hook packs (`docs/design/resource-estimates-2026-09.md`).
 
 ## The per-run surfaces (`failure-mode.ts`)
 

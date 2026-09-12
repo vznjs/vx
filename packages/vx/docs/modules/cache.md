@@ -251,8 +251,13 @@ Determinism notes:
     ├── outputs/             #   declared output files, project-relative
     ├── workspace-outputs/   #   declared outputs.workspaceFiles,
     │                        #   WORKSPACE-ROOT-relative (when any)
-    └── .vx-meta.json        #   { version, files: { <entry>: [mode, mtimeMs] } }
+    └── .vx-meta.json        #   { version, files: { <entry>: [mode, mtimeMs] }, exec? }
 ```
+
+`exec` is `{ cpuMs?, peakRssBytes? }` — what the producing execution
+used, so an entry ingested from a remote knows it too (see caching.md
+§ Artifact container); the save and the ingest both index it on the
+`entries` row from the artifact, never from the caller.
 
 `.vx-meta.json` exists because tar headers carry only second mtimes —
 see `src/cache/archive.ts`, which owns pack, scan and extract, plus the
@@ -267,7 +272,7 @@ a small artifact (≤ 4 MiB) is packed and decoded in one call instead.
 SQLite stores metadata only:
 
 - **`entries`** — one row per cached output:
-  `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)`.
+  `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
 - **`runs`** — one row per task execution (hit or miss):
   `(id, hash, project, task, status, exit_code, duration_ms, forward_args, started_at, ended_at)`.
 - **`schema_meta`** — schema version sentinel. Mismatch → drop the

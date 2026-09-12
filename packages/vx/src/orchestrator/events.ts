@@ -225,6 +225,9 @@ export interface OutcomeView {
   /** Cache hits only: the exec time the entry was stored with — the work
    *  this hit skipped, as opposed to `durationMs`, the restore it cost. */
   storedDurationMs?: number
+  /** Cache hits only: what the producing execution used (see `TaskOutcome`). */
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
   hash?: string
   cpuMs?: number
   peakRssBytes?: number
@@ -283,6 +286,8 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (isGroupTask(outcome.node)) view.isGroup = true
   else if (outcome.node.config.cache === undefined) view.noCache = true
   if (outcome.storedDurationMs !== undefined) view.storedDurationMs = outcome.storedDurationMs
+  if (outcome.storedCpuMs !== undefined) view.storedCpuMs = outcome.storedCpuMs
+  if (outcome.storedPeakRssBytes !== undefined) view.storedPeakRssBytes = outcome.storedPeakRssBytes
   if (outcome.hash !== undefined) view.hash = outcome.hash
   if (outcome.cpuMs !== undefined) view.cpuMs = outcome.cpuMs
   if (outcome.peakRssBytes !== undefined) view.peakRssBytes = outcome.peakRssBytes

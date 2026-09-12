@@ -676,6 +676,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           command: step.command,
           durationMs: result.durationMs,
           stdout: result.stdout,
+          ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
+          ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
         },
       })
     }
@@ -694,6 +696,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       command: step.command,
       durationMs: result.durationMs,
       stdout: result.stdout,
+      ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
+      ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
       outputDirSnapshots: args.outputDirSnapshots,
       deferSave: args.deferSave,
     })

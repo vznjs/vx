@@ -31,6 +31,14 @@ export interface TaskOutcome {
    * Undefined on every non-hit outcome — nothing was skipped.
    */
   storedDurationMs?: number
+  /**
+   * For cache-hit statuses: what the PRODUCING execution used, read from
+   * the entry (it rides the artifact, so a remote hit on a fresh machine
+   * carries it too). The same split as `storedDurationMs`: `cpuMs` /
+   * `peakRssBytes` are what THIS run spent and stay absent on a hit.
+   */
+  storedCpuMs?: number
+  storedPeakRssBytes?: number
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number

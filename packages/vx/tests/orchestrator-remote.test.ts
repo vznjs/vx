@@ -19,7 +19,7 @@ import {
   TIMEOUT,
 } from './helpers/orchestrator-fixture.js'
 import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
-import { planRun, prepareRun, run } from '../src/orchestrator/index.js'
+import { LocalHistoryProvider, planRun, prepareRun, run } from '../src/orchestrator/index.js'
 import { pluginSource } from './helpers/plugin.js'
 
 /**
@@ -643,6 +643,70 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(second.ok).toBe(true)
         // …and therefore no second upload of bytes the remote already holds.
         expect([...remote.store.keys()]).toEqual(putsAfterFirst)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+describe("orchestrator e2e: a remote hit carries the producing execution's usage", () => {
+  it(
+    'a fresh runner learns what the task used from the artifact it restored',
+    async () => {
+      // Step 2 of the reservations learned from history: the machine that
+      // never ran the task has no `runs` row with usage, and that is where
+      // a memory budget bites (a fresh CI runner). The producing
+      // execution's CPU time and peak RSS ride the artifact's sidecar, the
+      // ingest indexes them on the entry, the hit surfaces them as
+      // `stored*` (never as this run's own usage), and the history reader
+      // takes them from the hit row's entry.
+      const fixture = await makeFixture('vx-remote-usage-')
+      const remote = startArtifactEndpoint()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const first = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        const produced = first.outcomes[0]!
+        expect(produced.status).toBe('success')
+        // The runner reports rusage on linux and darwin; the differential
+        // below needs a real number, not an absent one.
+        expect(produced.peakRssBytes).toBeGreaterThan(0)
+        expect(produced.storedPeakRssBytes).toBeUndefined()
+
+        // The fresh runner: no local cache, no history.
+        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        const second = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        const hit = second.outcomes[0]!
+        expect(hit.status).toBe('cache-hit-remote')
+        expect(hit.storedPeakRssBytes).toBe(produced.peakRssBytes!)
+        expect(hit.storedCpuMs).toBe(produced.cpuMs!)
+        // A hit spent no CPU of its own on the task.
+        expect(hit.peakRssBytes).toBeUndefined()
+        expect(hit.cpuMs).toBeUndefined()
+
+        // What `@vzn/vx-schedule-history` reads on this runner's NEXT run.
+        const local = new Cache(path.join(fixture.root, '.vx', 'cache'))
+        try {
+          const table = await new LocalHistoryProvider(local.dbHandle()).loadFor(['app#build'])
+          expect(table.get('app#build')?.maxPeakRssBytes).toBe(produced.peakRssBytes!)
+          expect(table.get('app#build')?.hitRate).toBe(1)
+        } finally {
+          local.close()
+        }
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

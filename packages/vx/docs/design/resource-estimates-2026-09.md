@@ -1,6 +1,6 @@
 # Resource reservations learned from history (2026-09)
 
-**Status: shipped 2026-09-12 — core has an `admit` stage and no notion of resources; `@vzn/vx-schedule-history` learns each task's reservation from what its past executions used and packs them. Step 2 (the producing execution's usage carried on the cache artifact) is `STATUS` Next.**
+**Status: shipped 2026-09-12 — core has an `admit` stage and no notion of resources; `@vzn/vx-schedule-history` learns each task's reservation from what its past executions used and packs them. Step 2, the producing execution's usage carried on the cache artifact, shipped the same day.**
 
 ## Why
 
@@ -84,14 +84,41 @@ only when nothing else runs, which an idle machine always reaches. The
 `memory` option exists because `os.totalmem()` in a cgroup-limited
 container reports the host's RAM.
 
-## Step 2 (not in this change)
+## Step 2: the usage rides the artifact
 
-The producing execution's `cpuMs` and `peakRssBytes` join the cache
-entry's manifest; a remote hit writes an "observed elsewhere" row into
-local history. A fresh CI runner then has an estimate on its first run,
-where the budget bites, with no second sync channel and nothing to
-merge. No `CACHE_VERSION` bump: an entry without the fields contributes
-nothing.
+A fresh CI runner has no history, and that is where the budget bites.
+The producing execution's `cpuMs` and `peakRssBytes` join the
+artifact's own sidecar (`.vx-meta.json`, an optional `exec` field), so:
+
+- every wire ships them for free — Turbo's `/v8/artifacts`, Nx's
+  `/v1/cache`, REAPI's CAS all move the bytes verbatim, and the
+  `RemoteCacheLayer` seam does not change;
+- save and ingest index them on the `entries` row from the artifact
+  (`cpu_ms`, `peak_rss_bytes`; `SCHEMA_VERSION` v26), the way the
+  output rows already come from the sidecar — one source on both paths;
+- a hit surfaces them on its outcome as `storedCpuMs` /
+  `storedPeakRssBytes`, the split `storedDurationMs` already draws:
+  what the hit skipped, never what it spent, so `--summarize` and the
+  event stream name a remote worker's peak under its own key;
+- the history reader takes them from a hit row's entry (a primary-key
+  join, hit rows only), so the plugin's next run on that machine has a
+  reservation. No "observed elsewhere" row is written: the entry IS the
+  record, and a row copied from it would be a second copy to keep true.
+
+No `CACHE_VERSION` bump: the container is unchanged and an artifact
+without the field reads as before. The ingest side is the untrusted
+boundary: a foreign sidecar's usage is taken only as plain non-negative
+numbers. Pinned: pack → scan round trip and the boundary
+(`archive-security.test.ts`), the entry built from the artifact on save
+and on ingest alike (`cache.test.ts`), a hit row's usage from its entry
+and a pruned entry contributing nothing (`history.test.ts`), and end to
+end through the stub remote layer: a run with its `.vx` wiped restores
+from the remote, the hit carries the first run's peak RSS as
+`storedPeakRssBytes` and none as its own, and the history reader over
+the fresh cache reports it (`orchestrator-remote.test.ts`). Measured on
+the 1,000-project bench, compiled binaries interleaved: warm no-op 12
+reps min 134 / med 140 ms before vs 137 / 142 after; `--force` 6 reps
+min 1840 / med 1862 vs 1760 / 1792 — a tie inside the spread.
 
 ## Rejected
 
