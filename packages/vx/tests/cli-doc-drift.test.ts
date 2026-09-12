@@ -11,6 +11,7 @@
 // finds.
 
 import { describe, expect, it } from 'bun:test'
+import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 
 /**
  * Flags the parser compares against. `parseRunArgs` matches every flag as a
@@ -52,5 +53,12 @@ describe('docs/cli.md Flags table matches the run parser', () => {
     const undocumented = [...parsed].filter((f) => !documented.has(f)).sort()
     const unparsed = [...documented].filter((f) => !parsed.has(f)).sort()
     expect({ undocumented, unparsed }).toEqual({ undocumented: [], unparsed: [] })
+  })
+})
+
+describe('docs/cli.md — the `vx info` sample quotes the current versions', () => {
+  it('cache versions row', async () => {
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
+    expect(doc).toContain(`cache versions: keys ${CACHE_VERSION} · index schema ${SCHEMA_VERSION}`)
   })
 })
