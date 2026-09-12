@@ -1336,7 +1336,9 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       this machine (`tests/memory-limit.test.ts`, now core's
       `tests/cgroup.test.ts`, item 161). Alongside, the CPU-time unit
       got the same measured pin as the RSS one (item 159): a 500 ms
-      spin reads back as ~500 ms of CPU.
+      spin reads back as CPU inside [50, 2000] ms — a bound only a
+      unit slip (ms or ns read as µs) can leave; a loaded macOS runner
+      gave 357 ms, which a 400 ms floor failed once.
 161.  DONE (2026-09-12): the default worker count honours the cgroup
       CPU quota, and the cgroup walk has one implementation. Core's
       default was `navigator.hardwareConcurrency`, which inside a
