@@ -14,12 +14,12 @@
 import {
   definePlugin,
   LocalHistoryProvider,
+  machineMemoryBytes,
   type Cache,
   type HistoryTable,
   type TaskNode,
   type VxPlugin,
 } from '@vzn/vx'
-import { machineMemoryBytes } from './memory-limit.js'
 
 /** Default duration when neither task history nor a workspace median exists. */
 const DEFAULT_DURATION_MS = 1000
@@ -127,8 +127,6 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   }
   return definePlugin(import.meta, hooks)
 }
-
-export { cgroupMemoryLimitBytes, machineMemoryBytes, type CgroupProbe } from './memory-limit.js'
 
 /** Default multiplier over the largest peak RSS seen — the asymmetry: over-reserving costs some parallelism, under-reserving meets the OOM killer. */
 const DEFAULT_HEADROOM = 1.25

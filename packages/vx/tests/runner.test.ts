@@ -463,9 +463,12 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
   it('reads a known CPU burn back as milliseconds, on THIS platform', async () => {
     // Same rule for the other unit: Bun's `cpuTime` is typed as
     // microseconds and the converter divides by 1000. A child that spins
-    // for 500 ms of wall time on one core must report 500 ms of CPU give
-    // or take the runtime's own start; a value in milliseconds divided
-    // by 1000 would read as 0.5, one in nanoseconds as 500,000.
+    // for 500 ms of wall time reports up to 500 ms of CPU — less by
+    // however much a loaded runner deschedules it (a macOS CI runner gave
+    // 357 ms, 2026-09-12), so the floor is generous: the pin is on the
+    // UNIT, which is off by a thousand either way. A value in
+    // milliseconds divided by 1000 would read as 0.5, one in nanoseconds
+    // as 500,000; neither is inside [50, 2000].
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-cpu-'))
     try {
       const result = await runCommand({
@@ -474,7 +477,7 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
         env: { PATH: process.env.PATH ?? '' },
       })
       expect(result.exitCode).toBe(0)
-      expect(result.cpuMs!).toBeGreaterThanOrEqual(400)
+      expect(result.cpuMs!).toBeGreaterThanOrEqual(50)
       expect(result.cpuMs!).toBeLessThan(2000)
     } finally {
       await rm(cwd, { recursive: true, force: true })

@@ -986,7 +986,7 @@ export default defineWorkspace({
 
 ```ts
 interface WorkspaceConfig {
-  /** Maximum concurrent tasks. Defaults to navigator.hardwareConcurrency. */
+  /** Maximum concurrent tasks. Defaults to the cores this process may use (the CPU count, capped by a cgroup quota). */
   concurrency?: number
   /** Cache directory, relative to workspace root. Defaults to `.vx/cache`. */
   cacheDir?: string

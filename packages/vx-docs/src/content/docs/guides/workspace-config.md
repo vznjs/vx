@@ -71,7 +71,7 @@ The maximum number of tasks vx runs in parallel.
 concurrency: 8
 ```
 
-- **Default:** the number of CPU cores (`navigator.hardwareConcurrency`).
+- **Default:** the number of CPU cores this process may use (`navigator.hardwareConcurrency`, capped by the cgroup CPU quota a container runs under).
 - The CLI `--concurrency <n>` **overrides** this for a single run, so you
   can keep a sensible default here and dial it up or down ad hoc.
 

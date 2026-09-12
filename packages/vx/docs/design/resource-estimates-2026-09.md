@@ -83,10 +83,12 @@ machine's total — and a task over a whole budget runs alone, admitted
 only when nothing else runs, which an idle machine always reaches. The
 memory budget is what the process may use: `os.totalmem()` capped by
 the tightest `memory.max` (v2) or `memory.limit_in_bytes` (v1) on the
-path from this process's cgroup to the root, because inside a
-cgroup-limited container the total is the host's (this box: 15.7 GiB
-total, 13.3 GiB at the leaf cgroup, 2026-09-12); the `memory` option
-budgets below either.
+path from this process's cgroup to the root (`machineMemoryBytes` on
+the façade, `util/cgroup.ts` — the same walk gives core its default
+worker count from the CPU quota), because inside a cgroup-limited
+container the total is the host's (this box: 15.7 GiB total, 13.3 GiB
+at the leaf cgroup, 2026-09-12); the `memory` option budgets below
+either.
 
 ## Step 2: the usage rides the artifact
 

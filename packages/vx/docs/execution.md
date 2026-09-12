@@ -400,8 +400,14 @@ The colors / framing modules:
 
 ## Concurrency
 
-- **Default** — `navigator.hardwareConcurrency` (Bun's CPU-count
-  primitive), or `vx.workspace.ts`'s `concurrency` field when set.
+- **Default** — the cores this process may use: `navigator.hardwareConcurrency`
+  capped by the cgroup CPU quota a container runs under (`cpu.max` on v2,
+  `cpu.cfs_quota_us` on v1, an ancestor's quota binding too; a 1.5-core
+  quota is two workers, never below one — `util/cgroup.ts`), or
+  `vx.workspace.ts`'s `concurrency` field when set. Inside a container the
+  raw count is the HOST's, and eight workers on a two-core quota is
+  oversubscription by four; `--concurrency <n>%` is a percentage of the
+  same capped count.
 - **Override** — `--concurrency N` (CLI). CLI wins over workspace
   config.
 - **`concurrency: 1`** serializes execution while still respecting

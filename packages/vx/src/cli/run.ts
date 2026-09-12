@@ -15,7 +15,7 @@ import {
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { findCwdProject, pickTask, resolveFilters } from './select.js'
-import { MAX_TIMEOUT_MS, parseDecimalInt, nearest } from '../util/index.js'
+import { MAX_TIMEOUT_MS, parseDecimalInt, nearest, machineParallelism } from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
@@ -92,11 +92,13 @@ const RETIRED_EXCLUDE_DEPENDENCIES = /^--excludeDependencies(=|$)/
 
 /**
  * `--concurrency <n>` is a positive decimal integer, or `<n>%` of the
- * CPU count (`50%` on eight cores is 4, never below 1; over 100% is
- * allowed for I/O-bound work). The percent form resolves here, at parse
- * time, so the run sees one number and the summary says what it ran with.
+ * cores this process may use (`50%` on eight cores is 4, never below 1;
+ * over 100% is allowed for I/O-bound work; a container's CPU quota caps
+ * the count the way it caps the default). The percent form resolves
+ * here, at parse time, so the run sees one number and the summary says
+ * what it ran with.
  */
-export function parseConcurrency(v: string, cpus = navigator.hardwareConcurrency): number | null {
+export function parseConcurrency(v: string, cpus = machineParallelism()): number | null {
   const pct = /^(\d+)%$/.exec(v)
   if (pct) {
     const n = parseDecimalInt(pct[1]!)

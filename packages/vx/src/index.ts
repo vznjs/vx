@@ -18,6 +18,11 @@ export { clampInt, UserError, isUserError } from './util/index.js'
 // "Did you mean": the hint core's own verbs give for a near-miss name, for a
 // plugin verb to give the same one.
 export { nearMatches } from './util/index.js'
+// The machine as this process may use it — cores and memory capped by the
+// cgroup a container runs under. Core's default worker count reads the
+// first; a policy that budgets memory (`@vzn/vx-schedule-history`) reads
+// the second, so the cgroup walk has one implementation.
+export { machineMemoryBytes, machineParallelism } from './util/index.js'
 
 // Schema types and helpers (used by user vx.config files and presets).
 export type {
