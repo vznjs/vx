@@ -1197,6 +1197,30 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       said an evaluation cache had been rejected — and `--frozen`
       documented for what it buys: the guarantee, and eval-free runs
       for configs the purity gate cannot prove.
+156.  REFUTED by measurement (2026-09-12 — owner: "prove it first"):
+      trusting an unedited `vx-lock.json` to skip its per-entry
+      validation. Three ways were on the table — a self-stamp written
+      by `vx lock`, git cleanliness of the tracked lock (the
+      enumeration already knows it, but a scoped run's pathspecs do not
+      reach the root file), and pnpm's pattern, a validated-identity
+      record in machine-local state. pnpm's was verified on a scratch
+      workspace under pnpm 11.21: `node_modules/.pnpm-workspace-state-v1.json`
+      holds `lastValidatedTimestamp` and the resolution settings; a
+      `pnpm run` under `verify-deps-before-run` opens `pnpm-lock.yaml`
+      zero times while every manifest is older than the stamp, once
+      after a `touch` (same bytes: it re-checks the lock against the
+      manifests' specifiers and re-stamps), and refuses with
+      `ERR_PNPM_VERIFY_DEPS_BEFORE_RUN` after a specifier edit. For vx
+      the same record would live in `cache.db` behind the stat memo
+      `hashFile` already keeps. The ceiling was measured before
+      building it: one probe binary from HEAD whose frozen path skips
+      `validateProjectConfig` under an env var, three arms interleaved
+      15 times on the 1,000-project bench — plain min 134 / median
+      146 ms, `--frozen` 129 / 137, `--frozen` without validation 125
+      / 134. Every trust mechanism can save only that step: 3–4 ms a
+      run, ~2.5%, for a second staleness surface on a boundary check.
+      Not built. What frozen keeps over plain, the identity stats, is
+      the ~9 ms between the first two rows.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
