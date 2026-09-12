@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   execWrap,
+  ownRssHighWater,
   resourceUsageToCpuRss,
   runCommand,
   runPersistent,
@@ -116,8 +117,10 @@ describe('runCommand', () => {
     expect(result.stdout.trim()).toBe(`prefix: hello world with space it's`)
   })
 
-  it('reports cpuMs and peakRssBytes from rusage (v11 analytics)', async () => {
-    // Burn a tiny bit of CPU so cpuMs is observably > 0.
+  it('reports cpuMs from rusage; a task lighter than this process has no peak on record', async () => {
+    // Burn a tiny bit of CPU so cpuMs is observably > 0. The shell loop
+    // peaks at ~2 MB, under this process's own mark, and Linux hands the
+    // parent's mark back as the child's — so the honest peak is unknown.
     const result = await runCommand({
       command: 'i=0; while [ $i -lt 5000 ]; do i=$((i+1)); done; echo done',
       cwd,
@@ -125,9 +128,8 @@ describe('runCommand', () => {
     })
     expect(result.exitCode).toBe(0)
     expect(result.cpuMs).toBeDefined()
-    expect(result.peakRssBytes).toBeDefined()
     expect(result.cpuMs!).toBeGreaterThanOrEqual(0)
-    expect(result.peakRssBytes!).toBeGreaterThan(0)
+    expect(result.peakRssBytes).toBeUndefined()
   })
 
   it('captures rusage even when the command exits non-zero', async () => {
@@ -138,7 +140,7 @@ describe('runCommand', () => {
     })
     expect(result.exitCode).toBe(7)
     expect(result.cpuMs).toBeDefined()
-    expect(result.peakRssBytes).toBeDefined()
+    expect(result.peakRssBytes).toBeUndefined()
   })
 
   it('reports 128+signo for a SIGKILL-killed child (137)', async () => {
@@ -436,6 +438,16 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
     expect(r.cpuMs).toBe(1500)
   })
 
+  it('a peak at or under the parent’s own mark is not the child’s and is not reported', () => {
+    const usage = {
+      cpuTime: { total: 1_500_000n },
+      maxRSS: 480_000,
+    } as unknown as Parameters<typeof resourceUsageToCpuRss>[0]
+    expect(resourceUsageToCpuRss(usage, 480_000)).toEqual({ cpuMs: 1500 })
+    expect(resourceUsageToCpuRss(usage, 500_000)).toEqual({ cpuMs: 1500 })
+    expect(resourceUsageToCpuRss(usage, 479_999)).toEqual({ cpuMs: 1500, peakRssBytes: 480_000 })
+  })
+
   it('reads a known allocation back as bytes, on THIS platform', async () => {
     // The unit is Bun's to normalize and ours to trust only once measured:
     // a pure-function pin enshrined "kilobytes on Linux" for a year of
@@ -458,6 +470,38 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }
+  })
+
+  it('the peak is the child’s own, never the parent’s footprint handed back', async () => {
+    // Linux folds the forking parent's RSS high-water mark into a child's
+    // ru_maxrss at exec, so a `true` spawned from a 300 MB parent read
+    // 328 MB (2026-09-12). Hold 300 MB here, then: a trivial task reports
+    // no peak (it would read ≥ 300 MB without the floor), and a task that
+    // outweighs this process reports its own. Runs last in this file on
+    // purpose — the mark is monotonic, so the 200 MB pin above must come
+    // first.
+    const MB = 1024 * 1024
+    const hold = Buffer.alloc(300 * MB, 1)
+    expect(ownRssHighWater()).toBeGreaterThanOrEqual(300 * MB)
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-floor-'))
+    try {
+      const env = { PATH: process.env.PATH ?? '' }
+      const light = await runCommand({ command: 'true', cwd, env })
+      expect(light.exitCode).toBe(0)
+      expect(light.cpuMs).toBeDefined()
+      expect(light.peakRssBytes).toBeUndefined()
+      const heavy = await runCommand({
+        command: `bun -e "const b = Buffer.alloc(600 * 1024 * 1024, 1); console.log(b.length)"`,
+        cwd,
+        env,
+      })
+      expect(heavy.exitCode).toBe(0)
+      expect(heavy.peakRssBytes!).toBeGreaterThanOrEqual(600 * MB)
+      expect(heavy.peakRssBytes!).toBeLessThan(2000 * MB)
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+    expect(hold.length).toBe(300 * MB)
   })
 
   it('reads a known CPU burn back as milliseconds, on THIS platform', async () => {

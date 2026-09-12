@@ -208,8 +208,6 @@ describe('schedule-history plugin end to end', () => {
       expect(a.declared).toBe(false)
       // Every learned reservation is the estimator's rule over the peak the
       // same row shows: × 1.25, up to the next 64 MB, absent under one step.
-      // (`true` itself peaks near the step on this runner, so whether it
-      // reserves is the rule's call, not the pin's.)
       for (const t of out.tasks.filter((t) => !t.declared && t.maxPeakRssBytes !== null)) {
         const mb = (t.maxPeakRssBytes! * 1.25) / (1024 * 1024)
         const expected = mb >= 64 ? Math.ceil(mb / 64) * 64 : undefined
@@ -220,7 +218,9 @@ describe('schedule-history plugin end to end', () => {
       expect(b.reservation?.cpus).toBeUndefined()
       const c = byId.get('c#build')!
       expect(c.runs).toBe(1)
-      expect(c.maxPeakRssBytes).toBeGreaterThan(0)
+      // `true` is lighter than vx itself, so its peak is unknown (the
+      // runner reports a peak only above its own footprint).
+      expect(c.maxPeakRssBytes).toBeNull()
       expect(c.reservation).toEqual({ memory: 1024, cpus: 2 })
       expect(c.declared).toBe(true)
       const pretty = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'history'], cwd: root })
@@ -228,7 +228,7 @@ describe('schedule-history plugin end to end', () => {
       const text = pretty.stdout.toString()
       expect(text).toContain('budgets')
       expect(text).toMatch(/a#build\s+1\s+\S+\s+\d+ MB\s+\S+\s+\d+ MB$/m)
-      expect(text).toMatch(/b#build\s+1\s+\S+\s+\d+ (KB|MB)\s+\S+\s+(—|\d+ MB)$/m)
+      expect(text).toMatch(/b#build\s+1\s+\S+\s+—\s+\S+\s+—$/m)
       expect(text).toMatch(/c#build\s+1\s+.*1024 MB · 2 cores \(declared\)$/m)
       const bad = Bun.spawnSync({
         cmd: [process.execPath, CORE_BIN, 'history', '--nope'],

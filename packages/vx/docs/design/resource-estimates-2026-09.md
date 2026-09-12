@@ -54,6 +54,16 @@ executions only: a hit reports nothing, and a failure's usage is not
 what the task needs to succeed. That is a query the history module
 already owned, not a concept.
 
+A peak is on record only when it rose above vx's own RSS high-water
+mark. Linux folds the forking parent's mark into a child's `ru_maxrss`
+at exec, so a task lighter than vx reads vx's footprint back — 300 MB
+allocated in the parent made `true` read 328 MB (2026-09-12) — and on
+a large workspace, where vx itself runs at hundreds of MB, every light
+task would have reserved that and the plugin would have packed
+phantoms. The runner reports no peak for such a task (`ownRssHighWater`,
+runner.md); it reserves nothing, which is what a task under vx's own
+footprint needs.
+
 ## What the plugin does
 
 `@vzn/vx-schedule-history` reads the history once per run, in

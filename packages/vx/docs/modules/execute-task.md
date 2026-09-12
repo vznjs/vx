@@ -105,7 +105,8 @@ caches.
    `cache.save({ hash, projectDir, outputFiles, entry })`.
 6. Return outcome with hash, status (`success` / `failed`),
    exitCode, durationMs, captured stdout/stderr, hrtime spans, and
-   (when Bun's resourceUsage returned them) `cpuMs` / `peakRssBytes`.
+   (when Bun's resourceUsage returned them) `cpuMs` / `peakRssBytes` —
+   the peak only when it rose above vx's own footprint (runner.md).
 
 ## The hit
 

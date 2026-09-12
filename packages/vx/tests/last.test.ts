@@ -14,7 +14,12 @@ const APP_CONFIG = `
   export default {
     tasks: {
       build: {
-        exec: { command: 'cat src/input.txt > out.txt' },
+        // Holds 150 MB so its peak rises above vx's own footprint — the
+        // runner reports a peak only above that (see ownRssHighWater).
+        exec: {
+          command:
+            'bun -e "const fs = require(\\'fs\\'); const b = Buffer.alloc(150 * 1024 * 1024, 1); fs.writeFileSync(\\'out.txt\\', fs.readFileSync(\\'src/input.txt\\')); console.log(b.length)"',
+        },
         cache: {
           inputs: { files: ['src/**'] },
           outputs: { files: ['out.txt'] },
@@ -94,15 +99,15 @@ describe('vx last (e2e)', () => {
       const [hitRun, missRun] = [runs[0]!.runId, runs[1]!.runId]
       const miss = await vx(root, ['last', missRun])
       expect(miss.code).toBe(0)
-      // The unit is proven by the bound, not the label: a process that
-      // wrote one file peaks in the tens of MB — kilobytes read as a
-      // process that used nothing, bytes×1024 as one that used gigabytes
-      // (the Linux defect of 2026-09-12).
+      // The unit is proven by the bound, not the label: a task holding
+      // 150 MB peaks between that and a few times it — kilobytes read as
+      // a process that used nothing, bytes×1024 as one that used
+      // gigabytes (the Linux defect of 2026-09-12).
       expect(miss.out).toMatch(/success\s+app#build\s+\S+\s+\S+  \d+(\.\d)? MB · \d+\.\d× cpu$/m)
       const missJson = JSON.parse((await vx(root, ['last', missRun, '--format', 'json'])).out) as {
         tasks: { peakRssBytes: number | null; cpuMs: number | null }[]
       }
-      expect(missJson.tasks[0]!.peakRssBytes).toBeGreaterThan(1024 * 1024)
+      expect(missJson.tasks[0]!.peakRssBytes).toBeGreaterThan(150 * 1024 * 1024)
       expect(missJson.tasks[0]!.peakRssBytes).toBeLessThan(1024 * 1024 * 1024)
       expect(missJson.tasks[0]!.cpuMs).toBeGreaterThan(0)
       const hit = await vx(root, ['last', hitRun])

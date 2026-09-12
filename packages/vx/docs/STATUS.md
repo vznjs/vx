@@ -1471,6 +1471,22 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       plugin would pack phantoms. Item 170 fixes the recording; the
       pin here claims the estimator's rule over the shown peak, not
       what a trivial task shows.
+170.  DONE (2026-09-12): a task lighter than vx itself records no peak.
+      The runner reads its own RSS high-water mark after the child
+      exits (`VmHWM` from `/proc/self/status` on Linux — the mark is
+      monotonic, so one read after covers the task's span; the current
+      RSS elsewhere) and reports `peakRssBytes` only above it; `cpuMs`
+      is the child's own either way. Under the mark the peak is
+      unknown, bounded by vx's footprint, and the plugin reserves
+      nothing for it — what such a task needs. Differential: from a
+      process holding 300 MB, `true` reports no peak (328 MB without
+      the floor) and a 600 MB task reports its own; the light-task pins
+      that expected a number now expect none, and the three fixtures
+      whose usage round trip needs a number (`vx last`, the remote
+      hit's stored usage, `vx history`) hold 150 MB. The test processes
+      that spawn them peak at 51–75 MB (measured), so the fixtures
+      out-weigh them with room. Docs: runner.md, cli.md, execute-task.md,
+      the design note, the plugin README.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
