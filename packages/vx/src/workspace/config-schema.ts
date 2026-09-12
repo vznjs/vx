@@ -5,7 +5,14 @@
 // it accepts, and `validateProjectConfig` is the one boundary the loader,
 // the lockfile's frozen path and the plugin `project` stage all cross.
 
-import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
+import {
+  PLUGIN_FUNCTION_HOOKS,
+  PLUGIN_HOOKS,
+  PLUGIN_PACKAGE,
+  type Plugin,
+  type ProjectConfig,
+  type WorkspaceConfig,
+} from '../config.js'
 import {
   DISPATCHED_VERBS,
   MAX_TIMEOUT_MS,
@@ -56,23 +63,9 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       if (p === null || typeof p !== 'object') {
         throw new UserError(`${configPath}: \`plugins[${i}]\` must be an object`)
       }
-      const plug = p as {
-        name?: unknown
-        setup?: unknown
-        backend?: unknown
-        cache?: unknown
-        executor?: unknown
-        telemetry?: unknown
-        config?: unknown
-        project?: unknown
-        graph?: unknown
-        key?: unknown
-        schedule?: unknown
-        admit?: unknown
-        commands?: unknown
-        teardown?: unknown
-        fingerprint?: unknown
-      }
+      // The loose schema's shape (unknown-typed hooks) plus the one retired
+      // key this loader still refuses by name.
+      const plug = p as Partial<Plugin> & { name?: unknown; backend?: unknown }
       // A plugin's name is its package name and nothing else. `definePlugin`
       // reads it and stamps it under a registry symbol; a plain object, or
       // one whose `name` was overwritten after the stamp, is refused here —
@@ -103,20 +96,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
             `task's command runs (see docs/architecture.md § plugin capabilities).`,
         )
       }
-      const caps = [
-        'config',
-        'project',
-        'graph',
-        'key',
-        'schedule',
-        'admit',
-        'setup',
-        'cache',
-        'executor',
-        'telemetry',
-        'teardown',
-      ] as const
-      for (const cap of caps) {
+      for (const cap of PLUGIN_FUNCTION_HOOKS) {
         if (plug[cap] !== undefined && typeof plug[cap] !== 'function') {
           throw new UserError(`${configPath}: \`plugins[${i}].${cap}\` must be a function`)
         }
@@ -188,13 +168,9 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       }
       // A plugin must contribute at least one capability or lifecycle hook
       // — an empty `{ name }` object is a no-op authoring mistake.
-      if (
-        caps.every((cap) => plug[cap] === undefined) &&
-        plug.commands === undefined &&
-        plug.fingerprint === undefined
-      ) {
+      if (PLUGIN_HOOKS.every((hook) => plug[hook] === undefined)) {
         throw new UserError(
-          `${configPath}: \`plugins[${i}]\` must contribute at least one of ${[...caps, 'commands', 'fingerprint'].join('/')}`,
+          `${configPath}: \`plugins[${i}]\` must contribute at least one of ${PLUGIN_HOOKS.join('/')}`,
         )
       }
     }
