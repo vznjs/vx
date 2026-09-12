@@ -1359,6 +1359,13 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       fraction, the escape, the live read never above what the OS
       reports). This box has no CPU quota (`-1`, four cores), so the
       live differential is memory's; the CPU arm is fixture-proven.
+162.  DONE (2026-09-12): the macOS descriptor tripwire
+      (`bun-test-import-descriptors.test.ts`) read `after - before` as
+      exactly 0 on Bun ≥ 1.4.1; the runner read -1 once, on a docs-only
+      PR — a descriptor an earlier file left open closing between the
+      two samples of a shared process. The claim is that imports pin
+      nothing, so the pin now reads no growth (`<= 0`); a leak still
+      reads positive.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

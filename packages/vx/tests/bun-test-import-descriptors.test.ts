@@ -45,7 +45,11 @@ describe.skipIf(process.platform !== 'darwin')('bun test import descriptors', ()
         // Bun 1.4.1 fixed it: the macOS runner measured exactly 0 for the
         // same 40 imports (2026-09-04). The isolate hint can go once the
         // minimum Bun is 1.4.1; until then 1.4.0 users still hit the cap.
-        expect(after - before).toBe(0)
+        // The pin is "imports pin nothing", so it reads no GROWTH: in a
+        // shared process a descriptor an earlier file left open (a pipe,
+        // a socket) can close between the two samples, and the runner
+        // read exactly -1 once (2026-09-12); a leak still reads positive.
+        expect(after - before).toBeLessThanOrEqual(0)
       }
     } finally {
       rmSync(root, { recursive: true, force: true })
