@@ -87,6 +87,32 @@ describe('vx last (e2e)', () => {
   )
 
   it(
+    'an executed task shows what it used; a hit shows nothing (it spent nothing)',
+    async () => {
+      const list = await vx(root, ['last', '--list', '--format', 'json'])
+      const runs = JSON.parse(list.out) as { runId: string }[]
+      const [hitRun, missRun] = [runs[0]!.runId, runs[1]!.runId]
+      const miss = await vx(root, ['last', missRun])
+      expect(miss.code).toBe(0)
+      // The unit is proven by the bound, not the label: a process that
+      // wrote one file peaks in the tens of MB — kilobytes read as a
+      // process that used nothing, bytes×1024 as one that used gigabytes
+      // (the Linux defect of 2026-09-12).
+      expect(miss.out).toMatch(/success\s+app#build\s+\S+\s+\S+  \d+(\.\d)? MB · \d+\.\d× cpu$/m)
+      const missJson = JSON.parse((await vx(root, ['last', missRun, '--format', 'json'])).out) as {
+        tasks: { peakRssBytes: number | null; cpuMs: number | null }[]
+      }
+      expect(missJson.tasks[0]!.peakRssBytes).toBeGreaterThan(1024 * 1024)
+      expect(missJson.tasks[0]!.peakRssBytes).toBeLessThan(1024 * 1024 * 1024)
+      expect(missJson.tasks[0]!.cpuMs).toBeGreaterThan(0)
+      const hit = await vx(root, ['last', hitRun])
+      expect(hit.out).toMatch(/cache-hit\s+app#build\s+\S+\s+\S+$/m)
+      expect(hit.out).not.toContain('× cpu')
+    },
+    TIMEOUT,
+  )
+
+  it(
     '--list shows both runs, newest first, with run ids that replay',
     async () => {
       const r = await vx(root, ['last', '--list'])

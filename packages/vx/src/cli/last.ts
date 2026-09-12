@@ -5,6 +5,7 @@
 // Read-only — no config evaluation, no re-hash, no cache probe.
 
 import { Cache, noteSchemaReset } from '../cache/index.js'
+import { formatBytes } from './format.js'
 import { seeHelp } from './help.js'
 import { getInvocation, getRun, listInvocations } from '../orchestrator/index.js'
 import { UserError } from '../util/index.js'
@@ -62,6 +63,24 @@ function fmtMs(ms: number): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(2)}s`
   const m = Math.floor(ms / 60_000)
   return `${m}m ${Math.round((ms - m * 60_000) / 1000)}s`
+}
+
+/**
+ * What an executed task used — its peak RSS and its CPU parallelism (CPU
+ * time over wall time) — as the runner recorded them. This is the number
+ * `@vzn/vx-schedule-history` reserves from, so the replay shows it where
+ * a developer can read it; a hit spent nothing and shows nothing.
+ */
+function fmtUsage(t: {
+  cpuMs: number | null
+  peakRssBytes: number | null
+  durationMs: number
+}): string {
+  const parts: string[] = []
+  if (t.peakRssBytes !== null) parts.push(formatBytes(t.peakRssBytes))
+  if (t.cpuMs !== null && t.durationMs > 0)
+    parts.push(`${(t.cpuMs / t.durationMs).toFixed(1)}× cpu`)
+  return parts.length > 0 ? `  ${parts.join(' · ')}` : ''
 }
 
 export async function lastCmd(args: readonly string[]): Promise<number> {
@@ -141,7 +160,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         // by design; a reader must not take its row for a miss.
         lines.push(
           `  ${t.status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
-            `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}`,
+            `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}`,
         )
       }
     }
