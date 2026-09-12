@@ -84,7 +84,7 @@ describe('handleMessage', () => {
     expect(garbage.error.code).toBe(-32700)
   })
 
-  it('tools/list advertises the five tools with object schemas', async () => {
+  it('tools/list advertises the six tools with object schemas', async () => {
     const r = (await handleMessage(req(4, 'tools/list'), ctx)) as {
       result: { tools: Array<{ name: string; inputSchema: { type: string } }> }
     }
@@ -92,6 +92,7 @@ describe('handleMessage', () => {
       'explainCacheKey',
       'getCacheStats',
       'getRunHistory',
+      'getWorkspaceInfo',
       'listTasks',
       'whyDidThisRerun',
     ])
@@ -121,6 +122,40 @@ describe('handleMessage', () => {
     )) as { result: { isError?: boolean; content: Array<{ text: string }> } }
     expect(bad.result.isError).toBe(true)
     expect(bad.result.content[0]!.text).toContain('unknown project: nope')
+  })
+
+  it('getWorkspaceInfo answers with the doctor’s facts — the verb’s collector, over the wire', async () => {
+    const r = (await handleMessage(
+      req(8, 'tools/call', { name: 'getWorkspaceInfo', arguments: {} }),
+      ctx,
+    )) as { result: { content: Array<{ text: string }>; isError?: boolean } }
+    expect(r.result.isError).toBeUndefined()
+    const facts = JSON.parse(r.result.content[0]!.text) as {
+      vx: string
+      projects: number
+      tasks: number
+      plugins: unknown[]
+      workers: { count: number; source: string; cores: number }
+      memory: { usableBytes: number; totalBytes: number }
+      cacheVersion: string
+      schemaVersion: string
+      cacheEntries: number
+      lockfile: boolean
+    }
+    expect(facts.vx).toBe(VERSION)
+    // The version constants are not on the façade (a plugin has no business
+    // with them); the tool carries whatever the collector reports, so the pin
+    // is their shape — `vx-cache-vN` and `vN`, what a bug report is asked for.
+    expect(facts.cacheVersion).toMatch(/^vx-cache-v\d+$/)
+    expect(facts.schemaVersion).toMatch(/^v\d+$/)
+    expect(facts.projects).toBe(1)
+    expect(facts.tasks).toBe(1)
+    // The fixture's one entry — the same cache dir `getCacheStats` reads.
+    expect(facts.cacheEntries).toBe(1)
+    expect(facts.workers.count).toBeGreaterThanOrEqual(1)
+    expect(facts.workers.count).toBeLessThanOrEqual(facts.workers.cores)
+    expect(facts.memory.usableBytes).toBeLessThanOrEqual(facts.memory.totalBytes)
+    expect(facts.lockfile).toBe(false)
   })
 
   it('tools/call returns text content; a tool refusal is an isError result, not a protocol error', async () => {
@@ -180,7 +215,7 @@ describe('vx mcp over stdio (the real entry point)', () => {
       .split('\n')
       .map((l) => JSON.parse(l) as { id: number; result: Record<string, unknown> })
     expect(replies.map((r) => r.id)).toEqual([1, 2, 3])
-    expect((replies[1]!.result['tools'] as unknown[]).length).toBe(5)
+    expect((replies[1]!.result['tools'] as unknown[]).length).toBe(6)
     const history = JSON.parse(
       (replies[2]!.result['content'] as Array<{ text: string }>)[0]!.text,
     ) as {

@@ -28,13 +28,14 @@ Run the agent from inside the workspace — `vx mcp` finds the workspace
 
 ## Tools
 
-| Tool              | Answers                                                                                                                                                                                                            |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `listTasks`       | "What can I run here?" — every project and the tasks a run would see (command, `dependsOn`, whether it caches), resolved like `vx run` resolves them, plugin stages included. `project` narrows to one.            |
-| `getCacheStats`   | "What's the state of my cache?" — entries, total size, runs / hits in the last 24h, hit rate. `scope: { project }` narrows every number to that project.                                                           |
-| `getRunHistory`   | "Which tasks have I been running, and how fast?" — recent runs plus per-task p50 / p99 / success rate / hit rate / failure mode (flaky only on a real nondeterminism signal). Filters: `project`, `task`, `limit`. |
-| `explainCacheKey` | "What's the cache identity of `pkg#build`?" — the latest entry's hash, command, exit code, duration, size.                                                                                                         |
-| `whyDidThisRerun` | "Why did `pkg#test` re-execute in run X?" — the run's key against the previous run's, and whether it changed.                                                                                                      |
+| Tool               | Answers                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `listTasks`        | "What can I run here?" — every project and the tasks a run would see (command, `dependsOn`, whether it caches), resolved like `vx run` resolves them, plugin stages included. `project` narrows to one.                                                            |
+| `getCacheStats`    | "What's the state of my cache?" — entries, total size, runs / hits in the last 24h, hit rate. `scope: { project }` narrows every number to that project.                                                                                                           |
+| `getRunHistory`    | "Which tasks have I been running, and how fast?" — recent runs plus per-task p50 / p99 / success rate / hit rate / failure mode (flaky only on a real nondeterminism signal). Filters: `project`, `task`, `limit`.                                                 |
+| `explainCacheKey`  | "What's the cache identity of `pkg#build`?" — the latest entry's hash, command, exit code, duration, size.                                                                                                                                                         |
+| `whyDidThisRerun`  | "Why did `pkg#test` re-execute in run X?" — the run's key against the previous run's, and whether it changed.                                                                                                                                                      |
+| `getWorkspaceInfo` | "What is this workspace, and what will a run use?" — `vx info --format json`: versions, the git status cache, projects and tasks, plugins and their seams, the worker count and memory budget with their sources, cache versions and state, flaky tasks, the lock. |
 
 Every tool is **read-only**. Nothing here runs a task or writes the
 cache (`listTasks` opens it only to serve cached config evaluations); the plugin declares only a CLI verb, no executor and no cache

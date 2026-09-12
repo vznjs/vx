@@ -51,7 +51,8 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         continue-taint), execute-task (+ miss-save,
                         sandbox-request), task-hash,
                         projects.ts (the staged config load every reader shares), plugin
-                        stages + seams, events, logger
+                        stages + seams, events, logger, doctor.ts (the facts `vx info` and
+                        `vx mcp`'s getWorkspaceInfo both report)
   src/workspace/        discovery, config eval (+ config-cache.ts), config-schema.ts (what a config
                         may say), package graph, --filter/--affected, lockfile, migration.ts (the
                         plan → files seam `vx init` and @vzn/vx-migrate share)
