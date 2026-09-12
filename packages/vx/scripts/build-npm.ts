@@ -17,6 +17,7 @@
 //
 //   bun packages/vx/scripts/build-npm.ts <version> [--out=dist/npm] [--only=linux-x64]
 
+import { existsSync } from 'node:fs'
 import { chmod, cp, mkdir, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
@@ -119,6 +120,82 @@ async function emitPlatformPackages(args: {
   }
 }
 
+/**
+ * The entries the published `@vzn/vx` copies out of `packages/vx`, in the
+ * order its `files` lists them. Derived from the exports map, never spelled
+ * out: the compiled binary resolves an on-disk package by directory
+ * (`<pkg>/<subpath>/index.ts`) and ignores `exports`, so every non-"."
+ * subpath must ship its twin — and a hand-written list drifts. `plugins`
+ * was on that list for two days after the last plugin subpath left core,
+ * and the first release to run this script died on the missing directory
+ * (v0.0.19, 2026-09-12).
+ */
+export function coreEntries(exports: Readonly<Record<string, unknown>>): readonly string[] {
+  const subs = new Set<string>()
+  for (const sub of Object.keys(exports)) {
+    if (sub === '.') continue
+    const top = sub.replace(/^\.\//, '').split('/')[0]
+    if (top !== undefined && top !== '') subs.add(top)
+  }
+  return ['index.ts', 'src', ...[...subs].sort()]
+}
+
+/**
+ * Emit the primary `@vzn/vx` package — library source, the root shims, the
+ * Node launcher and the manifest — into `<outDir>/vx`. Exported so the tree
+ * can be assembled (and pinned) without the four cross-compiled binaries the
+ * platform packages need.
+ */
+export async function emitMainPackage(args: { version: string; outDir: string }): Promise<string> {
+  const { version, outDir } = args
+  const corePkg = (await Bun.file(join(CORE, 'package.json')).json()) as {
+    description?: string
+    dependencies?: Record<string, string>
+    exports: Record<string, unknown>
+  }
+
+  const mainDir = join(outDir, 'vx')
+  await mkdir(mainDir, { recursive: true })
+  const entries = coreEntries(corePkg.exports)
+  for (const entry of entries) {
+    const src = join(CORE, entry)
+    if (!existsSync(src)) {
+      throw new Error(`@vzn/vx would ship ${entry}, but ${src} does not exist`)
+    }
+    await cp(src, join(mainDir, entry), { recursive: true })
+  }
+  await cp(join(CORE, 'npm-launcher.mjs'), join(mainDir, 'launcher.mjs'))
+  await cp(join(ROOT, 'README.md'), join(mainDir, 'README.md'))
+  await cp(join(ROOT, 'LICENSE'), join(mainDir, 'LICENSE'))
+
+  await writeJson(join(mainDir, 'package.json'), {
+    name: '@vzn/vx',
+    version,
+    description: corePkg.description ?? 'An open, extensible monorepo task runner.',
+    type: 'module',
+    // The library surface — plugin authors `import { defineProject } from '@vzn/vx'`.
+    // The same exports map the workspace package declares; `coreEntries`
+    // ships a directory twin for every subpath it names.
+    exports: corePkg.exports,
+    types: './src/index.ts',
+    // The CLI — a Node launcher that execs the matching platform binary.
+    bin: { vx: './launcher.mjs' },
+    engines: { node: '>=18' },
+    optionalDependencies: allOptional('@vzn/vx', version),
+    // Runtime deps the library source needs when imported (the binary embeds
+    // its own copy). Mirrors the workspace root so versions never drift.
+    dependencies: corePkg.dependencies ?? {},
+    files: [...entries, 'launcher.mjs', 'README.md', 'LICENSE'],
+    repository: REPOSITORY,
+    homepage: `${REPO_URL}#readme`,
+    bugs: `${REPO_URL}/issues`,
+    license: 'MIT',
+    keywords: ['monorepo', 'task-runner', 'build', 'cache', 'bun', 'turborepo', 'nx'],
+  })
+
+  return mainDir
+}
+
 async function main(): Promise<void> {
   const { version, out, only } = parseArgs(Bun.argv.slice(2))
   const outDir = isAbsolute(out) ? out : join(ROOT, out)
@@ -126,12 +203,6 @@ async function main(): Promise<void> {
   if (targets.length === 0) throw new Error(`--only=${only}: unknown target`)
 
   await rm(outDir, { recursive: true, force: true })
-
-  const corePkg = (await Bun.file(join(CORE, 'package.json')).json()) as {
-    description?: string
-    dependencies?: Record<string, string>
-    exports: Record<string, unknown>
-  }
 
   // --- @vzn/vx: platform binaries + the library/launcher package -----------
   await emitPlatformPackages({
@@ -143,44 +214,7 @@ async function main(): Promise<void> {
     outDir,
   })
 
-  const mainDir = join(outDir, 'vx')
-  await mkdir(mainDir, { recursive: true })
-  await cp(join(CORE, 'src'), join(mainDir, 'src'), { recursive: true })
-  // The root shims: Bun 1.4.0's compiled binary resolves an on-disk package
-  // by `<pkg>/index.ts` / `<pkg>/<subpath>/index.ts` and ignores the exports
-  // map, so without these a workspace config fails to import `@vzn/vx` under
-  // the very binary this package ships (see packages/vx/index.ts).
-  await cp(join(CORE, 'index.ts'), join(mainDir, 'index.ts'))
-  await cp(join(CORE, 'plugins'), join(mainDir, 'plugins'), { recursive: true })
-  await cp(join(ROOT, 'packages', 'vx', 'npm-launcher.mjs'), join(mainDir, 'launcher.mjs'))
-  await cp(join(ROOT, 'README.md'), join(mainDir, 'README.md'))
-  await cp(join(ROOT, 'LICENSE'), join(mainDir, 'LICENSE'))
-
-  await writeJson(join(mainDir, 'package.json'), {
-    name: '@vzn/vx',
-    version,
-    description: corePkg.description ?? 'An open, extensible monorepo task runner.',
-    type: 'module',
-    // The library surface — plugin authors `import { defineProject } from '@vzn/vx'`.
-    // The same exports map the workspace package declares — the plugin
-    // subpath (`@vzn/vx/plugins/schedule-history`) is importable only if
-    // it is here; a map with only "." shipped once.
-    exports: corePkg.exports,
-    types: './src/index.ts',
-    // The CLI — a Node launcher that execs the matching platform binary.
-    bin: { vx: './launcher.mjs' },
-    engines: { node: '>=18' },
-    optionalDependencies: allOptional('@vzn/vx', version),
-    // Runtime deps the library source needs when imported (the binary embeds
-    // its own copy). Mirrors the workspace root so versions never drift.
-    dependencies: corePkg.dependencies ?? {},
-    files: ['index.ts', 'plugins', 'src', 'launcher.mjs', 'README.md', 'LICENSE'],
-    repository: REPOSITORY,
-    homepage: `${REPO_URL}#readme`,
-    bugs: `${REPO_URL}/issues`,
-    license: 'MIT',
-    keywords: ['monorepo', 'task-runner', 'build', 'cache', 'bun', 'turborepo', 'nx'],
-  })
+  await emitMainPackage({ version, outDir })
 
   const names = [...targets.map((t) => `@vzn/vx-${t.target}`), '@vzn/vx']
   process.stdout.write(
@@ -197,4 +231,4 @@ function dirFor(name: string): string {
   return name === '@vzn/vx' ? 'vx' : name
 }
 
-await main()
+if (import.meta.main) await main()
