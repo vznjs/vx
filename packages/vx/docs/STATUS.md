@@ -1366,6 +1366,19 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       two samples of a shared process. The claim is that imports pin
       nothing, so the pin now reads no growth (`<= 0`); a leak still
       reads positive.
+163.  DONE (2026-09-12): `vx info` names `admit` and says what a run
+      will use. A probe of the doctor after items 157–161 found two
+      gaps: its seam list was a second copy of the capability list and
+      did not know `admit` (the plugin read `(schedule)` alone), and
+      nothing told a user in a container that the run had picked two
+      workers or a 13.3 GiB budget, or why. Two rows now: `workers`
+      (`4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 —
+vx.workspace.ts (4 cores)`) and `memory` (`13 GB usable — cgroup
+limit; the machine has 16 GB`, or the total), both in the JSON
+      facts (`workers { count, source, cores, cpuQuota }`, `memory {
+usableBytes, totalBytes, cgroupLimitBytes }`); `vx run --help`
+      says "the cores this process may use". Pinned: the row shapes
+      (pure) and the live rows and facts in the info e2e.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseShowArgs } from '../src/cli/index.js'
+import { describeMemory, describeWorkers } from '../src/cli/info.js'
 import { VERSION } from '../src/version.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
@@ -368,6 +369,20 @@ describe('vx info (e2e)', () => {
       expect(r.out).toContain(path.basename(root))
       expect(r.out).toMatch(row('projects', '2 (4 tasks)'))
       expect(r.out).toMatch(row('plugins', 'none'))
+      // The worker count a run defaults to, with its source, and the memory
+      // a packing policy budgets — the two numbers a container hides.
+      expect(r.out).toMatch(/^workers: +[1-9]\d* — (the CPU count|cgroup CPU quota )/m)
+      expect(r.out).toMatch(/^memory: +\d/m)
+      const json = await vx(root, ['info', '--format=json'])
+      expect(json.code).toBe(0)
+      const facts = JSON.parse(json.out) as {
+        workers: { count: number; source: string; cores: number; cpuQuota: number | null }
+        memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
+      }
+      expect(facts.workers.count).toBeGreaterThanOrEqual(1)
+      expect(facts.workers.count).toBeLessThanOrEqual(facts.workers.cores)
+      expect(['cores', 'cgroup']).toContain(facts.workers.source)
+      expect(facts.memory.usableBytes).toBeLessThanOrEqual(facts.memory.totalBytes)
       expect(r.out).toContain('cache dir:')
       // The constants themselves, not a copy of them: a bump shows up here.
       expect(r.out).toMatch(
@@ -482,5 +497,37 @@ describe('parseShowArgs', () => {
   it('rejects unknown flags and extra positionals', () => {
     expect(parseShowArgs(['--bogus']).error).toBe('unknown flag: --bogus (see `vx show --help`)')
     expect(parseShowArgs(['a', 'b']).error).toBe('unexpected argument: b')
+  })
+})
+
+describe('vx info — the workers and memory rows', () => {
+  const GB = 1024 ** 3
+  it('names where the worker count comes from', () => {
+    expect(describeWorkers({ count: 4, source: 'cores', cores: 4, cpuQuota: null })).toBe(
+      '4 — the CPU count',
+    )
+    expect(describeWorkers({ count: 2, source: 'cgroup', cores: 8, cpuQuota: 1.5 })).toBe(
+      '2 — cgroup CPU quota 1.5 of 8 cores',
+    )
+    expect(describeWorkers({ count: 8, source: 'workspace', cores: 4, cpuQuota: null })).toBe(
+      '8 — vx.workspace.ts (4 cores)',
+    )
+    // A quota that does not bind (wider than the cores) is still named.
+    expect(describeWorkers({ count: 4, source: 'cores', cores: 4, cpuQuota: 6 })).toBe(
+      '4 — the CPU count, cgroup CPU quota 6',
+    )
+  })
+
+  it('says when the cgroup, not the machine, bounds memory', () => {
+    expect(
+      describeMemory({
+        usableBytes: 13.3 * GB,
+        totalBytes: 15.7 * GB,
+        cgroupLimitBytes: 13.3 * GB,
+      }),
+    ).toBe('13 GB usable — cgroup limit; the machine has 16 GB')
+    expect(
+      describeMemory({ usableBytes: 16 * GB, totalBytes: 16 * GB, cgroupLimitBytes: null }),
+    ).toBe('16 GB')
   })
 })

@@ -8,7 +8,13 @@ export { clampInt, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export { normalizeGlob, relPosix, staticPrefix, wholeSubtreePrefixes } from './paths.js'
 export { killGraceMs, settleWithin, teardownTimeoutMs } from './settle.js'
 export { parseSize } from './size.js'
-export { machineMemoryBytes, machineParallelism, type CgroupProbe } from './cgroup.js'
+export {
+  cgroupCpuQuota,
+  cgroupMemoryLimitBytes,
+  machineMemoryBytes,
+  machineParallelism,
+  type CgroupProbe,
+} from './cgroup.js'
 export { appendTail, createTail, resetTail, tailText, type Tail } from './tail.js'
 export { ulid } from './ulid.js'
 export { editDistance, nearMatches, nearest } from './edit-distance.js'
