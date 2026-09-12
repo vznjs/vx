@@ -179,6 +179,11 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   line; proven both ways, 2026-09-10).
 - Correct wrong entries in place; never write a plausible cause you have
   not proven.
+- A platform unit (bytes vs kilobytes, ms vs µs) is measured, never
+  asserted: pin it by producing a known quantity and reading it back
+  within a bounded factor. A pure-function test of the conversion only
+  restates the assumption (Linux peak RSS ran 1024× too big under one,
+  2026-09-12).
 
 ## Live invariants (verify in source before quoting)
 

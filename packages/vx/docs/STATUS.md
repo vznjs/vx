@@ -1298,6 +1298,26 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       137 / 142 ms; `--force` 6 reps min 1840 / med 1862 vs 1760 /
       1792 — a tie inside the spread both ways (the hit path spreads two
       optional fields per entry; the save binds two more columns).
+159.  DONE (2026-09-12): every Linux peak RSS was recorded 1024× too
+      big. `resourceUsageToCpuRss` multiplied Bun's `maxRSS` by 1024 on
+      Linux on the belief that Bun passes the kernel's kilobyte
+      `ru_maxrss` through; Bun normalizes it to bytes on every platform
+      (its typing says so, and a child that allocates 300 MB reports
+      329,129,984). Found by measuring what a test shard would teach the
+      dogfooded plugin: a 64 MB `bun test` read as 64 GB. The reach:
+      telemetry (`vx.peak_rss_bytes`), `--summarize`, the run history
+      and, since item 157, every reservation learned on Linux — over any
+      budget, so a task with a recorded peak ran ALONE; CI never showed
+      it because a runner has no history, and the plugin's own e2e
+      passed for the wrong reason (two 200 MB tasks serialize under
+      `memory: 512` either way; they still do with the true numbers,
+      640 > 512). The only pin was a pure-function test that enshrined
+      the assumption. Now `peakRssBytes = maxRSS` everywhere, and the
+      pin allocates a known 200 MB in a child and reads the peak back
+      within a bounded factor (`tests/runner.test.ts`): the old multiply
+      fails it at 229 GB, a kilobyte value read as bytes would fail it
+      at 200 KB. `docs/modules/runner.md` corrected; CLAUDE.md gains the
+      rule. Not a stale-hit class: the number never fed a key.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

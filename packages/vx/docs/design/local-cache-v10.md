@@ -96,16 +96,16 @@ Concurrency:
 Adds nullable analytics columns to the `runs` table without changing
 existing semantics:
 
-| Column               | Source                                      |
-| -------------------- | ------------------------------------------- |
-| `run_id`             | ULID stamped by orchestrator per invocation |
-| `cpu_ms`             | `Bun.spawn().resourceUsage().cpuTime` total |
-| `peak_rss_bytes`     | `resourceUsage().maxRSS * 1024`             |
-| `wallclock_start_ns` | `hrtime.bigint()` relative to run t=0       |
-| `wallclock_end_ns`   | same                                        |
-| `cache_hit`          | convenience boolean (derivable from status) |
-| `bytes_uploaded`     | remote-cache push size (`LayeredCache`)     |
-| `bytes_downloaded`   | remote-cache pull size on hit               |
+| Column               | Source                                                                    |
+| -------------------- | ------------------------------------------------------------------------- |
+| `run_id`             | ULID stamped by orchestrator per invocation                               |
+| `cpu_ms`             | `Bun.spawn().resourceUsage().cpuTime` total                               |
+| `peak_rss_bytes`     | `resourceUsage().maxRSS` (bytes; the `* 1024` here was wrong, 2026-09-12) |
+| `wallclock_start_ns` | `hrtime.bigint()` relative to run t=0                                     |
+| `wallclock_end_ns`   | same                                                                      |
+| `cache_hit`          | convenience boolean (derivable from status)                               |
+| `bytes_uploaded`     | remote-cache push size (`LayeredCache`)                                   |
+| `bytes_downloaded`   | remote-cache pull size on hit                                             |
 
 Why nullable: old rows shouldn't disappear, and the runner / remote
 layer populates these progressively. Querying with `WHERE cpu_ms IS
