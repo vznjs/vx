@@ -39,6 +39,14 @@ export interface TaskOutcome {
    */
   storedCpuMs?: number
   storedPeakRssBytes?: number
+  /**
+   * How long an `admit` policy held this task after it was ready with a
+   * free worker — the wait the plugin, not the count gate, imposed. Set
+   * only when a policy refused it at least once (so a run with no policy
+   * carries the field on no outcome); `--summarize` rows, the event
+   * stream and the summary footer show it.
+   */
+  admissionHeldMs?: number
   /** v11 analytics: CPU time + peak RSS for this task's child process. */
   cpuMs?: number
   peakRssBytes?: number
@@ -416,6 +424,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const admitPolicy = options.admit
   const admitActive = admitPolicy !== undefined
   const running = new Set<string>()
+  // When a policy first refused each parked task — so its outcome can say
+  // how long the policy, not the count gate, held it. Nothing with no
+  // policy: the map is never touched.
+  const heldSince = new Map<string, number>()
 
   // A restore-tier task is a confirmed local cache hit: its "execution"
   // is a cheap tar extract, not the task's real work — it reserves ZERO
@@ -553,7 +565,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           while (execReady.size > 0) {
             const seq = execReady.peekSeq()
             const id = execReady.pop() as string
-            if (willSkip(id) || (hasRoom(id) && (!admitActive || admits(id)))) return id
+            if (willSkip(id)) return id
+            if (hasRoom(id)) {
+              if (!admitActive || admits(id)) return id
+              // A free worker, refused by the policy: the hold starts now.
+              if (!heldSince.has(id)) heldSince.set(id, Date.now())
+            }
             parked.push([id, seq])
           }
         }
@@ -590,6 +607,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // Listed as running on dispatch, so the policy's next ask in this
         // tick sees it; the completion callbacks unlist it.
         const untrack = track(id)
+        const since = admitActive ? heldSince.get(id) : undefined
+        const heldMs = since === undefined ? 0 : Math.max(1, Date.now() - since)
+        if (since !== undefined) heldSince.delete(id)
+        const withHold = (o: TaskOutcome): TaskOutcome =>
+          heldMs > 0 ? { ...o, admissionHeldMs: heldMs } : o
         // Crash-isolated observer hook — a throwing onStart must not abort
         // the dispatch loop (it would strand the tick with the slot held).
         try {
@@ -605,7 +627,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // run the rejection arm, or `active` releases twice — and a
         // double release wedges the count gate.
         execute(node, upstream).then(
-          (outcome) => {
+          (raw) => {
+            const outcome = withHold(raw)
             leave()
             untrack()
             // The slot is free now; the dependents wait for what the
@@ -625,12 +648,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           },
           (err: unknown) => {
             const message = err instanceof Error ? err.message : String(err)
-            const outcome: TaskOutcome = {
+            const outcome: TaskOutcome = withHold({
               node,
               status: 'failed',
               exitCode: 1,
               durationMs: 0,
-            }
+            })
             leave()
             untrack()
             finishOne(id, outcome)

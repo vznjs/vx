@@ -36,7 +36,12 @@ admit: …; admitting every task from here on`) and the plugin admits
 - with several answering plugins, all must admit;
 - a skipping task (a failed dependency) never waits on admission;
 - with no plugin answering, the scheduler's dispatch is byte-identical
-  to before the stage existed — no set is maintained, no closure runs.
+  to before the stage existed — no set is maintained, no closure runs;
+- a task refused while a worker was free carries the wait on its
+  outcome (`admissionHeldMs`, from the first refusal to dispatch), and
+  the footer sums the holds (`admit held 3 tasks 4.2s`), so a run says
+  when the policy acted — the plugin's `vx history` says what it will
+  reserve, the run says what that cost.
 
 Gone from core, in the same change: `exec.resources` (and its
 validation, its `ResourcesConfig` type, its `vx show` row), `--memory`,

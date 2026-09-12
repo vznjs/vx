@@ -726,6 +726,30 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
     expect(peak).toBe(1)
   })
 
+  it('the held task carries the wait on its outcome; the admitted one and a policy-less run carry none', async () => {
+    // Two tasks that cannot share the budget: the second is refused
+    // while a worker is free, and its outcome says for how long. The
+    // control has no policy, so no outcome may carry the field — the
+    // claim that a policy-less run reads no clock.
+    const held = async (admit?: (id: string, running: ReadonlySet<string>) => boolean) =>
+      runGraph({
+        nodes: nodes(node('a#run'), node('b#run')),
+        concurrency: 8,
+        ...(admit !== undefined ? { admit } : {}),
+        execute: async (n) => {
+          await new Promise((r) => setTimeout(r, 20))
+          return success(n)
+        },
+      })
+    const out = await held(packing({ 'a#run': 5, 'b#run': 5 }, 8))
+    const waits = [...out.values()].map((o) => o.admissionHeldMs).filter((w) => w !== undefined)
+    expect(waits.length).toBe(1)
+    expect(waits[0]!).toBeGreaterThanOrEqual(1)
+    expect(out.get('a#run')!.admissionHeldMs).toBeUndefined()
+    const plain = await held()
+    for (const o of plain.values()) expect(o.admissionHeldMs).toBeUndefined()
+  })
+
   it('the policy sees a task dispatched earlier in the SAME tick', async () => {
     // Two ready tasks, one tick: the second ask must list the first as
     // running, or two tasks that must not share a machine would start

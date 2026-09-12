@@ -582,11 +582,23 @@ describe('admit stage', () => {
       })
       expect(summary.ok).toBe(true)
       expect(overlap(log, 'a#build', 'b#build')).toBe(false)
+      // The run says what the policy cost: the task it held carries the
+      // wait, the one it admitted first does not.
+      const waits = summary.outcomes.map((o) => o.admissionHeldMs).filter((w) => w !== undefined)
+      expect(waits.length).toBe(1)
+      expect(waits[0]!).toBeGreaterThanOrEqual(100)
       // CONTROL: the same two tasks with no policy overlap at concurrency 2.
       await workspace([])
       const plain = spans()
-      await run({ cwd: root, tasks: ['build'], concurrency: 2, log: plain, handleSignals: false })
+      const control = await run({
+        cwd: root,
+        tasks: ['build'],
+        concurrency: 2,
+        log: plain,
+        handleSignals: false,
+      })
       expect(overlap(plain, 'a#build', 'b#build')).toBe(true)
+      for (const o of control.outcomes) expect(o.admissionHeldMs).toBeUndefined()
     },
     TIMEOUT,
   )
