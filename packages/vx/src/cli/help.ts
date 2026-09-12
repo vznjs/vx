@@ -59,7 +59,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     "  pkg#task                 Run a specific project's task directly.",
     '',
     'Execution (for run):',
-    '      --concurrency <n>           Max parallel tasks (default: CPU count); `50%` = half the CPUs.',
+    '      --concurrency <n>           Max parallel tasks (default: the cores this process may use); `50%` = half of them.',
     '      --exclude-dependencies[=names]  Skip dependsOn edges. No value = all; comma list = specific names.',
     '      --no-cache                  Disable caching entirely (no reads, no writes, outputs left alone).',
     '      --force                     Re-execute everything (skip reads) but still refresh the cache (writes on).',

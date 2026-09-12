@@ -12,7 +12,14 @@ import {
   parseCacheDirFlag,
   warnToStderr,
 } from './workspace-config.js'
+import os from 'node:os'
 import path from 'node:path'
+import {
+  cgroupCpuQuota,
+  cgroupMemoryLimitBytes,
+  machineMemoryBytes,
+  machineParallelism,
+} from '../util/index.js'
 import {
   findWorkspaceRoot,
   listProjects,
@@ -65,6 +72,23 @@ export interface InfoFacts {
   projects: number
   tasks: number
   plugins: Array<{ name: string; seams: string[] }>
+  /**
+   * The worker count a run defaults to and where it comes from: the
+   * workspace's `concurrency`, else the cores this process may use — the
+   * CPU count capped by a cgroup quota (`cpuQuota`, in cores, null when
+   * none binds).
+   */
+  workers: {
+    count: number
+    source: 'workspace' | 'cgroup' | 'cores'
+    cores: number
+    cpuQuota: number | null
+  }
+  /**
+   * What a memory-packing policy budgets: the machine's total capped by
+   * the cgroup limit (`cgroupLimitBytes`, null when none binds).
+   */
+  memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
   cacheDir: string
   cacheVersion: string
   schemaVersion: string
@@ -140,6 +164,8 @@ export async function collectInfo(cwd: string, cacheDirOverride?: string): Promi
     // all" before reading any config. A declined seam still costs nothing;
     // this names the declarations, not what a run consulted.
     plugins: plugins.map((p) => ({ name: p.name, seams: filledSeams(p) })),
+    workers: workersFact(ws.workspaceConfig?.concurrency),
+    memory: memoryFact(),
     cacheDir,
     // The two versions a bug report needs and the reset notice names: the
     // key prefix (a bump orphans every entry) and the index schema (a
@@ -171,6 +197,8 @@ export function renderInfo(f: InfoFacts): string {
     ['workspace root', f.workspaceRoot],
     ['projects', `${f.projects} (${f.tasks} task${f.tasks === 1 ? '' : 's'})`],
     ['plugins', describePlugins(f.plugins)],
+    ['workers', describeWorkers(f.workers)],
+    ['memory', describeMemory(f.memory)],
     ['cache dir', f.cacheDir],
     ['cache versions', `keys ${f.cacheVersion} · index schema ${f.schemaVersion}`],
     ['cache entries', `${f.cacheEntries} (${formatBytes(f.cacheBytes)})`],
@@ -199,6 +227,7 @@ const SEAMS = [
   'key',
   'fingerprint',
   'schedule',
+  'admit',
   'executor',
   'cache',
   'telemetry',
@@ -208,6 +237,49 @@ const SEAMS = [
 
 function filledSeams(p: VxPlugin): string[] {
   return SEAMS.filter((s) => p[s as keyof VxPlugin] !== undefined)
+}
+
+/**
+ * Inside a container the CPU count and `os.totalmem()` are the HOST's; the
+ * cgroup is what the kernel enforces, and a run that used the host's
+ * numbers would be the OOM killer's. The doctor says which one a run
+ * reads, because nothing else would.
+ */
+function workersFact(workspaceConcurrency: number | undefined): InfoFacts['workers'] {
+  const cores = Math.max(1, navigator.hardwareConcurrency)
+  const quota = process.platform === 'linux' ? (cgroupCpuQuota() ?? null) : null
+  if (workspaceConcurrency !== undefined) {
+    return { count: workspaceConcurrency, source: 'workspace', cores, cpuQuota: quota }
+  }
+  const machine = machineParallelism()
+  return { count: machine, source: machine < cores ? 'cgroup' : 'cores', cores, cpuQuota: quota }
+}
+
+function memoryFact(): InfoFacts['memory'] {
+  const totalBytes = os.totalmem()
+  const limit = process.platform === 'linux' ? (cgroupMemoryLimitBytes() ?? null) : null
+  return { usableBytes: machineMemoryBytes(), totalBytes, cgroupLimitBytes: limit }
+}
+
+/** `4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 — vx.workspace.ts (4 cores)`. */
+export function describeWorkers(w: InfoFacts['workers']): string {
+  const quota = w.cpuQuota === null ? '' : `, cgroup CPU quota ${trimCores(w.cpuQuota)}`
+  if (w.source === 'workspace') return `${w.count} — vx.workspace.ts (${w.cores} cores${quota})`
+  if (w.source === 'cgroup')
+    return `${w.count} — cgroup CPU quota ${trimCores(w.cpuQuota ?? w.count)} of ${w.cores} cores`
+  return `${w.count} — the CPU count${quota}`
+}
+
+/** `13 GB usable — cgroup limit; the machine has 16 GB`, or `16 GB`. */
+export function describeMemory(m: InfoFacts['memory']): string {
+  if (m.cgroupLimitBytes !== null && m.usableBytes < m.totalBytes) {
+    return `${formatBytes(m.usableBytes)} usable — cgroup limit; the machine has ${formatBytes(m.totalBytes)}`
+  }
+  return formatBytes(m.totalBytes)
+}
+
+function trimCores(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, '')
 }
 
 /** `2 — app#test (3 of 7 runs failed on unchanged inputs); api#e2e (1 of 4)`, or `none`. */

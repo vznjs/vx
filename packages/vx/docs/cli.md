@@ -1326,6 +1326,8 @@ git status cache:  core.fsmonitor, core.untrackedCache off — `git config core.
 workspace root:    /work/repo
 projects:       12 (34 tasks)
 plugins:        2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry)
+workers:        2 — cgroup CPU quota 2 of 8 cores
+memory:         13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:      /work/repo/.vx/cache
 cache versions: keys vx-cache-v27 · index schema v26
 cache entries:  42 (1.3 GB)
@@ -1345,9 +1347,17 @@ vx-lock.json:   yes
   run; both are off by default, so `vx info` says when they are.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
   each fills, in pipeline order (`config`, `project`, `graph`, `key`,
-  `schedule`, `executor`, `cache`, `telemetry`, `setup`, `commands`),
-  or `none`. It reads the declarations: a plugin that declines a task
-  at run time still lists its seam here.
+  `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
+  `setup`, `commands`), or `none`. It reads the declarations: a plugin
+  that declines a task at run time still lists its seam here.
+- `workers` is the count a run defaults to and where it comes from:
+  `vx.workspace.ts`'s `concurrency` when set, else the cores this
+  process may use — the CPU count, capped by the cgroup CPU quota a
+  container runs under (`8 — the CPU count`, `2 — cgroup CPU quota 2 of
+8 cores`). `memory` is what a memory-packing policy budgets
+  (`@vzn/vx-schedule-history`): the machine's total, capped by the
+  cgroup limit — inside a container the raw numbers are the host's,
+  and the doctor is where to see which one a run reads.
 - `flaky tasks` is the standing list a run's Flaky section adds to:
   every task whose history (30 days, what the cache keeps) holds a
   cache key that both passed and failed, most failures first, with
@@ -1366,7 +1376,10 @@ vx-lock.json:   yes
   script or a bug-report template: `vx`, `bun`, `git` (null when not
   found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
   git could not answer), `workspaceRoot`, `projects`, `tasks`,
-  `plugins` (`[{ name, seams }]`), `cacheDir`, `cacheVersion`,
+  `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
+cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
+  `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
+cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheVersion`,
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `orphans`
   (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h`,
   `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
