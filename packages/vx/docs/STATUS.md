@@ -1768,6 +1768,22 @@ state of each:
    A/B was not run because there is no candidate commit to put on the
    other arm.
 
+   Closing figures for 2026-09-12, morning (the same container, source
+   form, medians of 5, after items 157–161 — the admit seam, the usage
+   on the artifact, the RSS unit, the cgroup budget and worker count;
+   three of them touch the hit path): 100 projects 87 ms warm / 127
+   restore / 280 cold; 1,000 projects 182 / 615 / 1,853 — against the
+   evening's 120 / 171 / 396 and 247 / 870 / 2,810, every row −26% to
+   −34%, which no diff of the day can claim. So the day HAS a candidate
+   this time and the A/B was run: compiled binaries, start-of-day main
+   (5972968) against main after item 161, interleaved on the
+   1,000-project bench, one workspace per arm — warm no-op 12 reps min
+   133 / med 139 vs 132 / 142 ms, `--force` 6 reps min 1789 / med 1846
+   vs 1773 / 1826: a tie inside the spread. The −26% is the box's
+   morning, not the code's; the figures above are the new baseline for
+   this container's quiet state, and the per-item A/Bs (157, 158)
+   stand.
+
 7. **First-run DX follow-ups (candidates, from the 2026-09-04
    walkthrough).** (a) DONE 2026-09-09: `--summarize` task rows carry
    `noCache: true` for a task with no `cache` block (present only when
