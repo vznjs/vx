@@ -15,11 +15,15 @@ import {
   definePlugin,
   LocalHistoryProvider,
   machineMemoryBytes,
-  type Cache,
+  Cache,
   type HistoryTable,
   type TaskNode,
   type VxPlugin,
+  loadResolvedProjects,
+  machineParallelism,
+  UserError,
 } from '@vzn/vx'
+import type { CommandContext } from '@vzn/vx'
 
 /** Default duration when neither task history nor a workspace median exists. */
 const DEFAULT_DURATION_MS = 1000
@@ -95,6 +99,13 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     }
   }
   const hooks: Parameters<typeof definePlugin>[1] = {
+    commands: {
+      history: {
+        description:
+          'what this plugin learned per task — p50, peak RSS, CPU parallelism — and the reservation it packs',
+        run: (argv, ctx) => historyCmd(argv, ctx, options),
+      },
+    },
     async schedule(nodes, ctx) {
       const table = await load(nodes, ctx, 'ordering')
       if (table === undefined) return undefined
@@ -151,8 +162,16 @@ export function resourceEstimates(
   history: HistoryTable,
   headroom = DEFAULT_HEADROOM,
 ): ReadonlyMap<string, ResourceEstimate> {
+  return estimatesFor(nodes.keys(), history, headroom)
+}
+
+function estimatesFor(
+  ids: Iterable<string>,
+  history: HistoryTable,
+  headroom: number,
+): ReadonlyMap<string, ResourceEstimate> {
   const out = new Map<string, ResourceEstimate>()
-  for (const id of nodes.keys()) {
+  for (const id of ids) {
     const h = history.get(id)
     if (h === undefined) continue
     const est: { cpus?: number; memory?: number } = {}
@@ -287,4 +306,129 @@ export function criticalPathPriorities(
   }
   for (const n of nodes) if (!memo.has(n.id)) memo.set(n.id, ownDuration(n))
   return memo
+}
+
+// `vx history` — the plugin's own surface for what it learned. The
+// reservations are decided at dispatch and shown nowhere by core (core
+// holds no notion of them), so without this a developer could not tell
+// what the plugin will pack, or why two tasks stopped overlapping.
+interface HistoryRow {
+  id: string
+  runs: number
+  p50DurationMs: number | null
+  maxPeakRssBytes: number | null
+  maxCpuParallelism: number | null
+  reservation: ResourceEstimate | null
+  declared: boolean
+}
+
+async function historyCmd(
+  argv: readonly string[],
+  ctx: CommandContext,
+  options: ScheduleHistoryOptions,
+): Promise<number> {
+  let format: 'pretty' | 'json' = 'pretty'
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!
+    if (a === '--format' || a.startsWith('--format=')) {
+      const v = a === '--format' ? argv[++i] : a.slice(9)
+      if (v !== 'pretty' && v !== 'json') {
+        throw new UserError(`vx history: invalid --format: ${v ?? ''} (expected pretty | json)`)
+      }
+      format = v
+      continue
+    }
+    throw new UserError(`vx history: unknown flag: ${a} (only --format pretty|json)`)
+  }
+  // The tasks a run would see, plugin stages included — the same ids the
+  // `schedule` hook is handed.
+  const projects = await loadResolvedProjects(ctx.workspaceRoot, { scope: 'all', warn: ctx.warn })
+  const ids: string[] = []
+  for (const p of projects.values()) {
+    for (const t of Object.keys(p.config.tasks ?? {})) ids.push(`${p.name}#${t}`)
+  }
+  const window = options.window ?? DEFAULT_WINDOW
+  const cache = new Cache(ctx.cacheDir)
+  let table: HistoryTable
+  try {
+    table = await new LocalHistoryProvider(cache.dbHandle(), window).loadFor(ids)
+  } finally {
+    cache.close()
+  }
+  const learned =
+    options.resources !== false
+      ? estimatesFor(ids, table, options.resources?.headroom ?? DEFAULT_HEADROOM)
+      : new Map<string, ResourceEstimate>()
+  const reservations = withDeclared(learned, options.reservations)
+  const budgets: Budgets = {
+    cpus: machineParallelism(),
+    memory: options.memory ?? Math.floor(machineMemoryBytes() / MB),
+  }
+  const rows: HistoryRow[] = ids.map((id) => {
+    const h = table.get(id)
+    return {
+      id,
+      runs: h?.runs ?? 0,
+      p50DurationMs: h?.p50DurationMs ?? null,
+      maxPeakRssBytes: h?.maxPeakRssBytes ?? null,
+      maxCpuParallelism: h?.maxCpuParallelism ?? null,
+      reservation: reservations.get(id) ?? null,
+      declared: options.reservations?.[id] !== undefined,
+    }
+  })
+  if (format === 'json') {
+    process.stdout.write(`${JSON.stringify({ window, budgets, tasks: rows })}\n`)
+    return 0
+  }
+  const seen = rows.filter((r) => r.runs > 0 || r.reservation !== null)
+  const lines: string[] = [
+    `history: last ${window} runs · budgets ${budgets.cpus} cores (the default worker count; --concurrency changes it per run) · ${budgets.memory} MB` +
+      `${options.memory !== undefined ? ' (the memory option)' : ' (what this process may use)'}`,
+  ]
+  if (seen.length === 0) {
+    lines.push('no task has an execution in the window — run something first')
+  } else {
+    const idW = Math.max(...seen.map((r) => r.id.length), 4)
+    lines.push(
+      `  ${'task'.padEnd(idW)}  ${'runs'.padStart(4)}  ${'p50'.padStart(7)}  ${'peak rss'.padStart(8)}  ${'cpu'.padStart(5)}  reserves`,
+    )
+    for (const r of seen) {
+      const reserve =
+        r.reservation === null
+          ? '—'
+          : [
+              ...(r.reservation.memory !== undefined ? [`${r.reservation.memory} MB`] : []),
+              ...(r.reservation.cpus !== undefined
+                ? [`${r.reservation.cpus} core${r.reservation.cpus === 1 ? '' : 's'}`]
+                : []),
+            ].join(' · ') + (r.declared ? ' (declared)' : '')
+      lines.push(
+        `  ${r.id.padEnd(idW)}  ${String(r.runs).padStart(4)}  ${fmtMs(r.p50DurationMs).padStart(7)}  ` +
+          `${fmtBytes(r.maxPeakRssBytes).padStart(8)}  ${(r.maxCpuParallelism === null ? '—' : `${r.maxCpuParallelism.toFixed(1)}×`).padStart(5)}  ${reserve}`,
+      )
+    }
+    const silent = rows.length - seen.length
+    if (silent > 0) {
+      lines.push(
+        `  ${silent} task${silent === 1 ? '' : 's'} with no execution in the window reserve${silent === 1 ? 's' : ''} nothing`,
+      )
+    }
+  }
+  process.stdout.write(`${lines.join('\n')}\n`)
+  return 0
+}
+
+function fmtMs(ms: number | null): string {
+  if (ms === null) return '—'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(2)}s`
+  const m = Math.floor(ms / 60_000)
+  return `${m}m ${Math.round((ms - m * 60_000) / 1000)}s`
+}
+
+function fmtBytes(n: number | null): string {
+  if (n === null) return '—'
+  if (n < MB) return `${Math.round(n / 1024)} KB`
+  if (n < 1024 * MB) return `${(n / MB).toFixed(0)} MB`
+  return `${(n / (1024 * MB)).toFixed(1)} GB`
 }

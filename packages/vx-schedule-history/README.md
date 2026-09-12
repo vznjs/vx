@@ -53,6 +53,25 @@ plugins: [
 ]
 ```
 
+`vx history` (a verb this plugin adds) shows what it learned per task
+and the reservation it will pack, with the budgets it packs into:
+
+```
+$ vx history
+history: last 20 runs · budgets 4 cores (the default worker count; --concurrency changes it per run) · 13567 MB (what this process may use)
+  task             runs      p50  peak rss    cpu  reserves
+  app#build          12    8.41s    612 MB   1.9×  768 MB · 2 cores
+  app#e2e             3   41.2s    1.4 GB   1.1×  4096 MB · 2 cores (declared)
+  lib#test           12    1.02s     48 MB   1.0×  —
+  3 tasks with no execution in the window reserve nothing
+```
+
+`--format json` emits `{ window, budgets, tasks }` with every task's
+`runs`, `p50DurationMs`, `maxPeakRssBytes`, `maxCpuParallelism`,
+`reservation` and `declared`. A cache hit's row carries the producing
+execution's usage, so a task restored from a remote cache shows a
+reservation on a machine that never executed it.
+
 `resources: false` turns the learning off (declared `reservations` are
 still packed). Admission control, not enforcement: nothing is
 cgroup-limited or reniced, and a task that exceeds its reservation is

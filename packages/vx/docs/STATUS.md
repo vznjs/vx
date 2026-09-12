@@ -1445,6 +1445,32 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       1000-file key against ten 100-file keys, the same work per rep
       on both sides, ≤ 3× (quadratic reads 10×): 0.95–1.16 across ten
       probes in all three conditions.
+169.  DONE (2026-09-12): `vx history` — the schedule-history plugin shows
+      what it learned. The reservations are decided at dispatch and core
+      holds no notion of them, so nothing showed a developer what the
+      plugin would pack or why two tasks stopped overlapping; the design
+      note allows showing an observed number and forbids writing one.
+      The plugin now adds a verb on the `commands` seam: per task, runs
+      in the window, p50, the largest peak RSS, the CPU parallelism and
+      the reservation (a declared one marked), over the budgets it packs
+      into — the default worker count and the memory option or what the
+      process may use; `--format json` for scripts. It resolves the
+      workspace as a run does (`loadResolvedProjects`) and reads the
+      same history the hook reads. Pinned end to end through the real
+      dispatcher: a 200 MB task's row and reservation, the estimator's
+      rule over every shown peak, a declared reservation, the pretty
+      rows, an unknown flag. Docs: the package README, cli.md's plugin
+      commands. Found on the way, by the pin's own probe: `true` read
+      a 44 MB peak through vx and 15–18 MB from a bare bun script,
+      while the shell's own `VmHWM` is 1.9 MB. Linux folds the
+      parent's RSS high-water mark into a child's `ru_maxrss` at exec
+      (a forked child starts with its parent's pages), so a task
+      lighter than vx itself reads vx's footprint: 300 MB allocated in
+      the parent and `true` reads 328 MB, proven both ways. On a large
+      workspace every light task would reserve vx's own RSS and the
+      plugin would pack phantoms. Item 170 fixes the recording; the
+      pin here claims the estimator's rule over the shown peak, not
+      what a trivial task shows.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
