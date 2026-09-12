@@ -1433,7 +1433,18 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       by its bound (a one-file task peaks between 1 MB and 1 GB — the
       kilobyte and the ×1024 readings both fall outside). Found on the
       way: cli.md still said `vx mcp` serves five tools; six, since
-      item 167 — a second copy of the count, corrected.
+      item 167 — a second copy of the count, corrected. CI then
+      reddened on a guard the diff does not touch: `Cache.key`'s
+      scaling ratio read 34× against 30 on the shared runner (51× once
+      under thirteen local shards, twice on main before min-of-3). The
+      guard exposed a 1 ms window (one 100-file key) against a 10 ms
+      one (one 1000-file key), so noise that lands per rep lands
+      unequally. Refuted here as the cause: four CPU hogs (10–11×,
+      three of three) and the twelve shards beside it (10.8–11.3×) —
+      the runner's noise is not this box's. The guard now compares one
+      1000-file key against ten 100-file keys, the same work per rep
+      on both sides, ≤ 3× (quadratic reads 10×): 0.95–1.16 across ten
+      probes in all three conditions.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

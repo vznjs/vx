@@ -317,19 +317,28 @@ describePerf('cache baseline: Cache.key', () => {
     assertBudget(r, budget)
   })
 
-  it('scales near-linearly in file count (1000 / 100 ratio ≤ 30×)', async () => {
-    // The 100→1000 jump SHOULD be ~10× since `Cache.key` walks inputs
-    // once. A ratio > 30 means quadratic blowup snuck in somewhere
-    // (true quadratic reads ~100×). Min-of-3 interleaved — this guard
-    // false-redded main twice on shared runners as a single-window ratio.
+  it('scales near-linearly in file count (one 1000-file key ≤ 3× ten 100-file keys)', async () => {
+    // `Cache.key` walks inputs once, so one 1000-file key costs what ten
+    // 100-file keys cost (a little less: per-call overhead is paid once
+    // instead of ten times). Quadratic blowup reads ~10×; the guard is 3×.
+    // The two sides do the SAME work per rep — 1,000 file stats, a ~10 ms
+    // window — so noise that lands per rep or per file lands on both
+    // equally. The earlier form (one 100-file key against one 1000-file
+    // key, ratio ≤ 30) exposed a 1 ms window against a 10 ms one and read
+    // 34× on a shared runner and 51× under thirteen local shards with
+    // nothing quadratic; this form read 0.95–1.16 alone, under four CPU
+    // hogs and under twelve shards (2026-09-12).
     const f100 = await makeInputFiles('lin-100', 100)
     const f1000 = await makeInputFiles('lin-1000', 1000)
     const { aMinNs, bMinNs } = await benchRatioSides(
-      () => bench(50, async () => void (await cache.key({ ...baseInput, inputFiles: f100 }))),
+      () =>
+        bench(20, async () => {
+          for (let k = 0; k < 10; k++) await cache.key({ ...baseInput, inputFiles: f100 })
+        }),
       () => bench(20, async () => void (await cache.key({ ...baseInput, inputFiles: f1000 }))),
     )
     const ratio = bMinNs / aMinNs
-    expect(ratio).toBeLessThanOrEqual(30)
+    expect(ratio).toBeLessThanOrEqual(3)
   })
 })
 

@@ -180,6 +180,10 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   line; proven both ways, 2026-09-10).
 - Correct wrong entries in place; never write a plausible cause you have
   not proven.
+- `pkill -f` / `pgrep -f` match the shell running them when the pattern
+  appears in its own command line: the pkill killed its caller (exit
+  144) and a `while pgrep` wait never ended (three times, 2026-09-12).
+  Match on a marker the target alone carries, or hold the child's pid.
 - A platform unit (bytes vs kilobytes, ms vs µs) is measured, never
   asserted: pin it by producing a known quantity and reading it back
   within a bounded factor. A pure-function test of the conversion only
