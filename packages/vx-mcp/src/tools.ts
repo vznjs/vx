@@ -1,5 +1,6 @@
-// The five tools, as pure handlers over one workspace: four over its
-// cache.db, one over its resolved configs. Every handler opens what it
+// The six tools, as pure handlers over one workspace: four over its
+// cache.db, one over its resolved configs, one the doctor's facts (what
+// `vx info` prints, from the same collector). Every handler opens what it
 // reads for the call and closes it — the server is a short-lived adapter —
 // and validates its arguments at the boundary rather than coercing them:
 // an agent that sends the wrong shape must be told, not answered with data
@@ -8,6 +9,7 @@
 import {
   Cache,
   clampInt,
+  collectInfo,
   loadResolvedProjects,
   LocalHistoryProvider,
   splitTaskId,
@@ -88,6 +90,15 @@ const TOOLS: readonly ToolDef[] = [
       required: ['runId', 'taskId'],
     },
   },
+  {
+    name: 'getWorkspaceInfo',
+    description:
+      'The workspace doctor (`vx info --format json`): vx, bun and git versions, the git status cache, ' +
+      'projects and tasks, the plugins and the seams each fills, the worker count and memory budget a run ' +
+      'will use and where each comes from, the cache dir and versions, entries, orphans, runs and hits in ' +
+      'the last 24h, flaky tasks, whether vx-lock.json exists — the facts a bug report needs.',
+    inputSchema: { type: 'object', properties: {} },
+  },
 ]
 
 export function listTools(): readonly ToolDef[] {
@@ -112,6 +123,8 @@ export async function handleToolCall(
       return explainCacheKey(args, ctx)
     case 'whyDidThisRerun':
       return whyDidThisRerun(args, ctx)
+    case 'getWorkspaceInfo':
+      return getWorkspaceInfo(ctx)
     default:
       throw new UserError(`vx mcp: unknown tool: ${name}`)
   }
@@ -334,4 +347,14 @@ async function whyDidThisRerun(
   } finally {
     cache.close()
   }
+}
+
+async function getWorkspaceInfo(ctx: ToolContext): Promise<Record<string, unknown>> {
+  // The same collector `vx info` prints from, over the cache dir the
+  // command context resolved — so the tool and the verb cannot disagree.
+  const facts = await collectInfo(ctx.workspaceRoot, {
+    cacheDir: ctx.cacheDir,
+    warn: (m) => process.stderr.write(`${m}\n`),
+  })
+  return { ...facts }
 }

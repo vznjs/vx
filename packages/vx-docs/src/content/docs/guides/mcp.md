@@ -55,6 +55,7 @@ directory, exactly like `vx run`.
 | `getRunHistory`   | "Which tasks have I been running, and how fast?" — recent runs plus per-task p50 / p99 / success rate / hit rate. `failureMode` calls a task flaky only on a real nondeterminism signal (a within-run retry, or one key that both failed and succeeded) — repeated failures on their own keys are a break, not flake. |
 | `explainCacheKey` | "What's the cache identity of `pkg#build`?" — the latest entry's hash, command, exit code, duration and size. The per-component breakdown is `vx why`.                                                                                     |
 | `whyDidThisRerun` | "Why did `pkg#test` re-execute in run X instead of hitting?" — the run's key against the previous run's for the same task, and whether it changed.                                                                                       |
+| `getWorkspaceInfo` | "What is this workspace, and what will a run use?" — `vx info --format json` over the wire: vx, bun and git versions, projects and tasks, plugins and the seams each fills, the worker count and memory budget and where each comes from, cache versions, entries, orphans, flaky tasks — the facts a bug report needs. |
 
 The four history tools read the local `cache.db` — the same tables `vx why`, `vx last`
 and `vx info` read. Ask things like:

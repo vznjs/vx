@@ -155,3 +155,4 @@ export type {
   RunSummaryRow,
   WhyDidThisRerun,
 } from './metrics.js'
+export { collectInfo, type CollectInfoOptions, type InfoFacts } from './doctor.js'

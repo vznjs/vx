@@ -107,6 +107,7 @@ describe('package boundaries', () => {
       'applyMigration',
       'buildPackageGraph',
       'clampInt',
+      'collectInfo',
       'definePlugin',
       'defineProject',
       'defineWorkspace',

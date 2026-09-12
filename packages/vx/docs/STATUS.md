@@ -1407,6 +1407,22 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       lines), that sentence and cli.md's `vx info` sample now read the
       constants in their drift pins. CLAUDE.md's copy stays a rule — a
       core test may read only its own package.
+167.  DONE (2026-09-12): the doctor's facts are an orchestrator module,
+      and `vx mcp` answers them. `cli/info.ts` held the collector — the
+      staged config load, the plugin seams, the cache versions and
+      orphans, the worker and memory sources — behind the verb's
+      renderer, so an agent that wanted "what is this workspace and
+      what will a run use" had to shell out to `vx info --format json`
+      and parse a CLI. `collectInfo(cwd, { cacheDir?, warn? })` and
+      `InfoFacts` now live in `orchestrator/doctor.ts` and on the façade
+      (the package-boundary snapshot widened by one name); the verb is
+      the renderer over it. `@vzn/vx-mcp` gains `getWorkspaceInfo`,
+      the sixth tool: the same collector over the command context's
+      cache dir, so the tool and the verb cannot disagree. Pinned in
+      the MCP suite (the facts over the wire: versions by shape, the
+      fixture's one project, task and entry, the worker and memory
+      bounds) and the stdio round trip's tool count; docs in
+      `modules/doctor.md`, the package README and the site's MCP guide.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
