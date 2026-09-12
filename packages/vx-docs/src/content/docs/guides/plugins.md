@@ -29,10 +29,11 @@ interface VxPlugin {
   // PIPELINE stages — shape the run before it executes:
   config?(workspace, ctx): void // the workspace config, before it is used
   project?(config, ctx): void // one loaded project's tasks: add / remove / edit
-  graph?(nodes, ctx): void // the task graph: edges, requested, resources
+  graph?(nodes, ctx): void // the task graph: edges, requested
   key?(task, ctx): Record<string, string> // extra cache-key material per task
   fingerprint?: { files; affected(change, ctx) } // claim a lockfile: key it per project, not per workspace
   schedule?(nodes, ctx): Map<string, number> // task id → priority among ready tasks
+  admit?(task, ctx): boolean // may this ready task start now, beside what runs here?
 
   // BEHAVIOR capabilities — decide WHERE work runs and where artifacts live:
   executor?(ctx): TaskExecutor | undefined // where ONE task's command runs
@@ -178,6 +179,20 @@ which is why it is a plugin and not a flag. A fresh CI runner has no
 history, and there the structural order starts a long leaf task last;
 `scheduleHistoryPlugin({ assume: { 'docs#build': 30_000 } })` names the
 durations the cold run should assume until the history has its own.
+
+`admit` is asked at every local dispatch, after the worker-count gate,
+with the tasks running on this machine right now (`ctx.running`) and
+the worker count (`ctx.concurrency`). Return `false` to hold the task
+until something finishes; it is asked again then. Core gates on the
+worker count and nothing finer — it keeps no notion of what a task
+needs — so a policy that packs memory or CPU learns or declares the
+numbers itself. The same plugin is the reference: it reserves what each
+task's past executions used (peak RSS with headroom, CPU parallelism),
+packs them against the cores and the memory this process may use, and
+runs a task over a whole budget alone. The hook must be synchronous and
+cheap; a throw is reported once and the plugin admits from then on, so
+a policy never breaks a run. Restore-tier hits and tasks on an
+executor's pool hold nothing here and are never asked.
 
 - **`executor`** returns a `TaskExecutor` — the thing that actually runs
   one task's command — or `undefined` to decline. Executors form a

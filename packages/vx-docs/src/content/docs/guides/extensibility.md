@@ -21,8 +21,9 @@ plugin can replace any part" is pinned rather than promised.
 ## The pipeline
 
 A run is a pipeline — discover projects, evaluate configs, build the
-task graph, derive keys, schedule, execute, cache, observe — and a plugin
-is a small object in `vx.workspace.ts` that hooks any of those stages.
+task graph, derive keys, schedule, admit, execute, cache, observe — and a
+plugin is a small object in `vx.workspace.ts` that hooks any of those
+stages.
 Each hook is independent and opt-in, and declaration order is the order
 everywhere. **Nothing is applied by default** — a workspace declares
 every plugin it uses, and core names none. Running here and caching
@@ -31,7 +32,7 @@ what a plugin declines lands back on this machine.
 
 ```mermaid
 flowchart LR
-  cfg["configs"] --> proj["project()"] --> graph["graph()"] --> key["key()"] --> sched["schedule()"] --> exec["executor()"] --> cache["cache()"] --> obs["telemetry()"]
+  cfg["configs"] --> proj["project()"] --> graph["graph()"] --> key["key()"] --> sched["schedule()"] --> admit["admit()"] --> exec["executor()"] --> cache["cache()"] --> obs["telemetry()"]
   proj -. edit tasks .-> p["plugins in vx.workspace.ts<br/>first-party OR your own"]
   exec -. where it runs .-> p
   cache -. where artifacts live .-> p
@@ -45,6 +46,7 @@ flowchart LR
 | graph    | `graph(nodes, ctx)`    | the run's edges                                         | nothing unless declared              |
 | key      | `key(task, ctx)`       | extra cache-key material (named in `vx why`)            | nothing unless declared              |
 | schedule | `schedule(nodes, ctx)` | which ready task runs first                             | `scheduleHistoryPlugin()`, or your own |
+| admit    | `admit(task, ctx)`     | whether a ready task starts now beside what runs here   | `scheduleHistoryPlugin()`, or your own |
 | execute  | `executor(ctx)`        | *where* ONE task's command runs — local or a worker     | your own; the local executor is the floor |
 | store    | `cache(ctx)`           | *which* cache is used — your server, S3, a CAS          | your own; the local store is the floor |
 | observe  | `telemetry(ctx)`       | *where* run data goes — OTel, Slack, your DB            | nothing unless declared              |
