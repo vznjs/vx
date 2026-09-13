@@ -1156,7 +1156,19 @@ publishes them with **npm trusted publishing** — the job's OIDC token
 is exchanged for a short-lived credential and provenance is attached,
 so no long-lived npm token exists anywhere. Both publish loops skip a
 package already on the registry, so a re-run (`npm publish` →
-_Run workflow_ with the version) resumes where it stopped.
+_Run workflow_ with the version) resumes where it stopped. That dispatch
+also takes a `ref`: it runs the workflow from the default branch against
+the code that ref names, so a release whose publish died on a workflow
+bug is completed by the FIXED workflow building the tag's own source
+(`version: 0.0.20`, `ref: v0.0.20`) — re-running the failed run itself
+would replay the broken file, which is pinned to the tag.
+
+Both Linux jobs go through `.github/actions/vx-runner` before any
+`vx run`: every task in this repo declares `exec.sandbox`, and a
+declared sandbox whose runtime is missing is a hard error, not a
+downgrade — the compile tasks fail in 0 ms saying which of bubblewrap,
+socat and ripgrep is absent. v0.0.20 shipped its darwin packages and
+then stopped exactly there.
 
 One-time setup, per package, on npmjs.com → package → Settings →
 Trusted Publisher → GitHub Actions: owner `vznjs`, repository `vx`,
