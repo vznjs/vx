@@ -1548,6 +1548,42 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       loses on a wide graph (single-threaded phases idle the other
       cores) is Next 18, unmeasured. Install and outputs cleaned; the
       configs and the bench logs stay.
+174.  DONE (2026-09-13): every Linux CI job that runs a vx task installs
+      the sandbox runtime, and the class is pinned. v0.0.20's publish
+      stopped one step past 172's fix: `npm.yml`'s ubuntu job never
+      installed bubblewrap / socat / ripgrep, so both
+      `build.bun.linux-*` tasks failed in 0 ms — "sandbox not available:
+      ripgrep (rg) not found; bubblewrap (bwrap) not installed; socat
+      not installed" — and `@vzn/vx` never reached the registry. The
+      macOS job runs first and had already published
+      `@vzn/vx-darwin-x64` and `-arm64` at 0.0.20, so npm holds the two
+      darwin packages at 0.0.20 and `@vzn/vx` at 0.0.18; the release
+      assets are fine (`release.yml` installs the deps, and its four
+      binaries and signatures attached). The gap was old — `npm.yml`
+      gained the cross-compile WARM step when the build tasks became
+      sandboxed and never the deps — and invisible: v0.0.18 predates
+      the sandboxed build, and v0.0.19 died earlier, in the darwin job.
+      `npm.yml`'s publish job and `release.yml`'s assets job now use
+      `.github/actions/vx-runner`, the same composite step `ci.yml` and
+      `docs.yml` already used (deps, the AppArmor userns lift, the
+      bwrap probe, the warm), so the dependency list lives in ONE file.
+      `tests/workflow-runner.unsafe.test.ts` pins the class off the
+      workflow YAML: the five Linux jobs that run a vx task are named
+      exactly (a vacuous pin is the failure mode here), each must use
+      the action, and the action must still install the binaries the
+      probe looks for; differential — dropping the `uses:` from
+      `npm.yml` fails it naming `npm.yml#publish`. `npm.yml` also takes
+      a `ref` input now: a dispatch runs the fixed workflow from main
+      against the code a tag names, which is the only way to finish a
+      release whose publish died on a workflow bug (re-running the
+      failed run replays the file pinned to the tag). Docs: cli.md's
+      Releasing section. The gate could not run in this container (root
+      in a container, so the seccomp helper cannot nest a user
+      namespace: 41 sandboxed tasks fail); lint, the format scan and
+      `bun test` stood in — 2877 pass, the two peak-RSS readings that
+      fail here fail on main's tree too and are green on the runners.
+      NEXT: dispatch `npm publish` with `version: 0.0.20`,
+      `ref: v0.0.20` to complete the set.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

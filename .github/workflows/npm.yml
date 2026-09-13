@@ -12,7 +12,11 @@ name: npm publish
 # four @vzn/vx-<target>), linking this repo + this workflow.
 #
 # - release published   → publish the release version
-# - workflow_dispatch   → publish, or dry-run, a chosen version manually
+# - workflow_dispatch   → publish, or dry-run, a chosen version manually.
+#   A dispatch runs THIS file from the default branch but builds whatever
+#   `ref` names, so a release whose publish failed on a workflow bug is
+#   completed by dispatching the fixed workflow at that release's tag
+#   (`version: 0.0.20`, `ref: v0.0.20`) — the tag's code, the fixed steps.
 
 on:
   release:
@@ -21,6 +25,9 @@ on:
     inputs:
       version:
         description: 'Version to build/publish (e.g. 1.2.3). Defaults to the release tag.'
+        required: false
+      ref:
+        description: 'Git ref to build (e.g. v0.0.20). Defaults to the release tag, or this branch.'
         required: false
       dry_run:
         description: 'Build the tree but do not publish.'
@@ -50,6 +57,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.ref || '' }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
@@ -155,6 +164,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.ref || '' }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -231,14 +242,18 @@ jobs:
         run: |
           bun -e 'const f = "packages/vx/package.json"; const p = await Bun.file(f).json(); p.version = process.argv[1]; await Bun.write(f, JSON.stringify(p, null, 2) + "\n")' "${{ steps.version.outputs.version }}"
 
-      # Warm bun's cross-compile targets before the sandbox sees them —
-      # see the note in the darwin job above.
-      - name: Warm bun cross-compile targets
-        run: |
-          echo 'console.log(0)' > /tmp/warm.ts
-          for t in linux-x64 linux-arm64; do
-            bun build --compile --target="bun-$t" /tmp/warm.ts --outfile "/tmp/warm-$t" >/dev/null
-          done
+      # What a Linux runner needs before `vx run` executes a sandboxed task:
+      # the sandbox runtime's deps (bubblewrap, socat, strace, ripgrep), the
+      # AppArmor userns restriction lifted, and bun's cross-compile targets
+      # warmed OUTSIDE the sandbox. Every `build.bun.<target>` declares
+      # `exec.sandbox`, and a declared sandbox that cannot be built is a hard
+      # error — so without this the compile tasks fail in 0 ms with "sandbox
+      # not available: ripgrep (rg) not found; bubblewrap (bwrap) not
+      # installed; socat not installed". That is exactly what stopped
+      # v0.0.20: the darwin job published its two packages and this job
+      # never reached `npm publish`. The action is the one place those deps
+      # are named; ci.yml and release.yml use the same one.
+      - uses: ./.github/actions/vx-runner
 
       # Cross-compile the four standalone binaries (fanned out + cached by
       # vx). --concurrency 2: concurrent `--compile --minify --bytecode`
