@@ -1718,6 +1718,16 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       subcommand is one line with a pointer at that verb's `--help`.
       The verb typo is now the same shape, pointing at `vx help`; the
       two pins assert the pointer and the absence of the help text.
+185.  DONE (2026-09-16): the classes behind items 181, 182 and 184
+      grepped, per the rule. Callers of the orchestrator's `run()`: only
+      `vx run` and `vx watch`, both recording their command now (the
+      MCP server drives no runs); a verdict and a detail that repeat
+      each other: none left in `metrics.ts`; a small error that prints
+      the whole help: only the two `--help` paths, on purpose. One
+      stale claim found on the way: `telemetry.ts` still described
+      bin.ts's exit as `process.exit(await run(...))`, the form item
+      175 replaced; the comment's argument (a never-settling flush
+      would exit 0) holds either way and now names the current form.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
