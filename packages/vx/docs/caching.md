@@ -110,6 +110,19 @@ over (in order):
     files also yields every tracked file's OID — so deriving these
     hashes costs zero file reads, zero per-file stats, zero SQLite
     lookups.
+
+    A task with **no `cache` block** derives a key too — its dependents
+    fold it (step 10) — and, declaring nothing, folds **every file in
+    its project**: `**/*`, gitignore-aware, untracked files included,
+    and its own outputs not excluded, since it declared none. So its
+    key moves whenever it writes a file git does not ignore: a cached
+    dependent misses once more after the upstream's first run and hits
+    from the third. `vx why` on the dependent names the upstream as
+    the moved component; on the upstream it says the file set moved
+    and that no fingerprints say which. Ignore the outputs in git, or
+    declare the block (`tests/uncached-upstream-key.test.ts` pins both
+    arms).
+
 12. **Plugin key material** — the `{ name: value }` pairs a plugin's
     `key(task, ctx)` stage returned for this task, stored on the node as
     sorted `plugin/name` pairs and folded after the upstream keys,
