@@ -476,7 +476,8 @@ export function createTelemetrySource(args: {
       const ms = teardownTimeoutMs()
       // Bounded, for the same reason plugin teardown is bounded in
       // plugin-host.ts: run() awaits this BEFORE closeCache() and before it
-      // returns, and bin.ts is `process.exit(await run(...))`. A sink whose
+      // returns, and bin.ts exits with run()'s code once it returns (through
+      // stdout's end callback since 2026-09-15; the code is still that). A sink whose
       // flush never settles therefore drains the event loop with no exit code
       // pending — Bun exits 0 and a FAILED run reports green, with the cache's
       // accessed_at bumps and every later plugin's teardown lost with it.
