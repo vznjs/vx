@@ -1728,6 +1728,18 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       bin.ts's exit as `process.exit(await run(...))`, the form item
       175 replaced; the comment's argument (a never-settling flush
       would exit 0) holds either way and now names the current form.
+186.  DONE (2026-09-16, refutation): a fifth walk, the CI persona,
+      found nothing off. On a fresh two-package workspace: `vx lock`,
+      `lock --check` clean and after a config edit (names the file,
+      exits 1), `run --frozen` taking the lock over a live edit (as
+      documented — pair it with `lock --check`), `--affected=HEAD~1`
+      selecting the changed project only (deliberate, cli.md says so
+      in bold and gives `--filter '...[main]'` for dependents;
+      `design/affected-config-imports-2026-08.md` § Rejected), the
+      `--summarize` file's shape, and `--output-logs errors-only`
+      framing only the failure. Five walks since 14d found four
+      items (181, 182, 184, and 183's sample) and then nothing; the
+      next probe should change persona or surface, not repeat these.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
