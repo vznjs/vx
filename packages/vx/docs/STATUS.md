@@ -1706,7 +1706,9 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       cache row that the renderer never prints (the bullet below the
       sample is where the advice lives). Rewritten row for row in the
       verb's format. `vx mcp`'s `getCacheStats` description now says
-      its counts are task runs, as item 181's row does.
+      its counts are task runs, as item 181's row does. The versions
+      pin on the sample (`cli-doc-drift.test.ts`) assumed one space
+      after the label and now tolerates the padding.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
