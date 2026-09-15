@@ -1582,8 +1582,14 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       namespace: 41 sandboxed tasks fail); lint, the format scan and
       `bun test` stood in — 2877 pass, the two peak-RSS readings that
       fail here fail on main's tree too and are green on the runners.
-      NEXT: dispatch `npm publish` with `version: 0.0.20`,
-      `ref: v0.0.20` to complete the set.
+      Outcome (2026-09-13, 16:47Z): v0.0.21 was released on this
+      commit instead of a dispatch, and its `npm publish` run succeeded
+      end to end — the registry holds `@vzn/vx` and all four platform
+      packages at 0.0.21, `latest` — so the set is complete without
+      re-running v0.0.20 (verified 2026-09-15, `npm view`). Reviewed
+      2026-09-15 with 172: both landed green on main's CI; 174 was
+      pushed straight to main without a PR, the one deviation from
+      the gate-push-PR-merge workflow.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
