@@ -1709,6 +1709,15 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       its counts are task runs, as item 181's row does. The versions
       pin on the sample (`cli-doc-drift.test.ts`) assumed one space
       after the label and now tolerates the padding.
+184.  DONE (2026-09-16): a typo'd verb is one line. A fourth walk
+      (`--version`, an unknown verb, `last` and `why` before any run,
+      `run` without `--all` from the root, `upgrade` from a source
+      checkout) read right except the unknown verb, which printed its
+      near-miss hint and then the whole help — a hundred-odd lines past
+      the line that mattered — while every verb's own unknown flag or
+      subcommand is one line with a pointer at that verb's `--help`.
+      The verb typo is now the same shape, pointing at `vx help`; the
+      two pins assert the pointer and the absence of the help text.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

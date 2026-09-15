@@ -71,8 +71,10 @@ describe('a task without a cache block is `no-cache`, never `miss`', () => {
   it('a verb typo gets the same hint a task or flag typo gets', () => {
     const r = vx(root, ['rnu', 'build'])
     expect(r.code).toBe(1)
-    expect(r.err).toContain('vx: unknown command: rnu. Did you mean run?')
+    expect(r.err).toContain('vx: unknown command: rnu. Did you mean run? (see `vx help`)')
+    // One line and a pointer, not the full help after it.
+    expect(r.err).not.toContain('Usage:')
     // Nothing near: no hint, no wrong guess.
-    expect(vx(root, ['zzzzzzzz']).err).toContain('vx: unknown command: zzzzzzzz\n')
+    expect(vx(root, ['zzzzzzzz']).err).toContain('vx: unknown command: zzzzzzzz (see `vx help`)\n')
   })
 })
