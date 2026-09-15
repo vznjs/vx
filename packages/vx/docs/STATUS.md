@@ -1626,6 +1626,16 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       `vx history` row carries none. Docs: the plugin README, the design
       note's Rejected list. Install, outputs and the pnpm store cleaned;
       the configs and bench logs stay.
+177.  DONE (2026-09-15): `vx mcp`'s `getRunHistory` names the usage its
+      rows carry. A probe of the surfaces after the arc (`vx info`, its
+      JSON, `getWorkspaceInfo`, `vx history` on a workspace declaring
+      both plugins) read right everywhere; the one drift was in words:
+      the history rows have carried `maxPeakRssBytes` and
+      `maxCpuParallelism` since item 157 and the tool description, the
+      package README and the site's MCP guide never said so. Named now,
+      and the stdio round trip pins them on the wire — CPU parallelism
+      always on record, the peak absent for a task lighter than vx
+      itself.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

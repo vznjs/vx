@@ -220,8 +220,21 @@ describe('vx mcp over stdio (the real entry point)', () => {
       (replies[2]!.result['content'] as Array<{ text: string }>)[0]!.text,
     ) as {
       runs: Array<{ project: string; task: string }>
+      history: Array<{
+        id: string
+        p50DurationMs: number | undefined
+        maxCpuParallelism?: number
+        maxPeakRssBytes?: number
+      }>
     }
     expect(history.runs.map((r) => `${r.project}#${r.task}`)).toEqual(['a#build'])
+    // The per-task row carries what the executions showed: CPU parallelism
+    // is the child's own and always on record; `echo built` is lighter than
+    // vx itself, so its peak is unknown and absent, not a number.
+    const row = history.history.find((h) => h.id === 'a#build')!
+    expect(typeof row.p50DurationMs).toBe('number')
+    expect(typeof row.maxCpuParallelism).toBe('number')
+    expect(row.maxPeakRssBytes).toBeUndefined()
   }, 20_000)
 
   it('is listed by vx help and unknown outside the workspace', async () => {
