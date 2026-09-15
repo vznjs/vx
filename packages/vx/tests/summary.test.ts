@@ -147,7 +147,7 @@ describe('formatRunSummary', () => {
     const held = { ...outcome('a#x', 'success'), admissionHeldMs: 1200 }
     const lines = formatRunSummary([held, outcome('b#x', 'success')], 10, { enabled: false }, ctx)
     const info = lines.find((l) => l.startsWith('  info'))!
-    expect(info).toBe('  info      4 workers · local cache · admit held 1 task 1.20s')
+    expect(info).toBe('  info      4 workers · local cache · admit held 1 task, 1.20s in all')
     const plain = formatRunSummary([outcome('a#x', 'success')], 10, { enabled: false }, ctx)
     expect(plain.find((l) => l.startsWith('  info'))).toBe('  info      4 workers · local cache')
   })

@@ -709,7 +709,9 @@ is never presented as this run's. `admissionHeldMs` appears on a row
 only when an `admit` policy (a plugin's — `@vzn/vx-schedule-history`
 packs learned reservations) refused the task while a worker was free:
 the wait from that first refusal to its dispatch, the plugin's hand on
-the run. The footer's `info` row sums it: `admit held 3 tasks 4.2s`.
+the run. The footer's `info` row sums the waits, task-seconds:
+`admit held 3 tasks, 4.2s in all` (85 held tasks can read 4783s beside
+a 160 s run).
 
 **`ok` / `exitCode`** are the run's verdict — the same value the CLI
 exits with. Gate on these rather than re-deriving a pass from the

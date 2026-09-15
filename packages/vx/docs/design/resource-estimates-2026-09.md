@@ -39,7 +39,7 @@ admit: …; admitting every task from here on`) and the plugin admits
   to before the stage existed — no set is maintained, no closure runs;
 - a task refused while a worker was free carries the wait on its
   outcome (`admissionHeldMs`, from the first refusal to dispatch), and
-  the footer sums the holds (`admit held 3 tasks 4.2s`), so a run says
+  the footer sums the holds (`admit held 3 tasks, 4.2s in all`), so a run says
   when the policy acted — the plugin's `vx history` says what it will
   reserve, the run says what that cost.
 

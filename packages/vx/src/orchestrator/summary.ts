@@ -250,10 +250,12 @@ export function formatSummarySection(
     info.push(context.remoteCacheEnabled ? 'local + remote cache' : 'local cache')
     // The plugin's hand on the run: a task a policy held with a worker
     // free would otherwise have started; without the line nothing says
-    // the policy acted.
+    // the policy acted. The duration is the waits summed, task-seconds
+    // — 85 held tasks read `4783s` beside a 160 s run on TanStack/router
+    // (2026-09-15), so the line says it is a sum.
     if (stats.held !== undefined && stats.held.count > 0) {
       info.push(
-        `admit held ${stats.held.count} task${stats.held.count === 1 ? '' : 's'} ${formatDuration(stats.held.sumMs)}`,
+        `admit held ${stats.held.count} task${stats.held.count === 1 ? '' : 's'}, ${formatDuration(stats.held.sumMs)} in all`,
       )
     }
     lines.push('', row('info', join(info)), row('time', `${formatDuration(totalMs)}${spread}`))
