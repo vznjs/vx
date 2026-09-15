@@ -59,8 +59,8 @@ const TOOLS: readonly ToolDef[] = [
     name: 'getRunHistory',
     description:
       'Recent runs filtered by project / task, with per-task summary stats: p50 / p99, success and hit ' +
-      'rates, failure mode, and the largest peak RSS and CPU parallelism the executions showed — what ' +
-      '@vzn/vx-schedule-history reserves from (a task lighter than vx itself shows no peak).',
+      'rates, failure mode, and the largest peak RSS and CPU parallelism the executions showed — the peak ' +
+      'is what @vzn/vx-schedule-history reserves from (a task lighter than vx itself shows no peak).',
     inputSchema: {
       type: 'object',
       properties: {
