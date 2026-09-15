@@ -1696,7 +1696,10 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       uncached task said the verdict twice and now says what moves its
       key; `vx init`'s TODO says every file here folds into dependents'
       keys until the block exists; `tests/uncached-upstream-key.test.ts`
-      pins the double miss and the gitignored control.
+      pins the double miss and the gitignored control. A third walk over
+      the planning and maintenance verbs (`--dry` before and after a run,
+      `--graph`, `show --format json`, `lock`, `cache --help`, a wrong
+      `cache` subcommand, `run --help`) found nothing off.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
