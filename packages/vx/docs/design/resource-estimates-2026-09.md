@@ -80,8 +80,10 @@ task's reservation:
   worth packing. Maximum, not mean: the two errors are asymmetric —
   over-reserving loses some parallelism, under-reserving meets the OOM
   killer.
-- cpus: the most parallelism any execution showed, rounded to a whole
-  core; omitted at one, since a worker slot already is one core.
+- cpus: never learned, only declared. The first cut reserved the most
+  parallelism any execution showed, rounded to a whole core; measured
+  on 92 real builds (2026-09-15, below), that reading is a function of
+  contention, and packing by it lost 21%.
 - decay: the window is by run count (`window`, 20), so a task whose
   usage dropped after a refactor loses its old reservation after twenty
   runs, and a one-off spike ages out the same way.
@@ -143,6 +145,17 @@ min 1840 / med 1862 vs 1760 / 1792 — a tie inside the spread.
 
 ## Rejected
 
+- Learning cores from the CPU parallelism executions showed. The
+  reading depends on contention: TanStack/router's builds read 0.9–1.0×
+  beside three others and 1.9–2.3× alone, the estimator kept the
+  window's maximum, so after one solo run every build reserved two
+  cores and a four-core box packed two wide. On the 92 react-example
+  builds, interleaved at four workers with `--force`: count-only 132 /
+  133 / 176 s (the 176 a first cold rep), learned 160 / 161 s, with 85
+  of 92 tasks held — cores idle through each build's single-threaded
+  phases, and the run pays. Memory has no such feedback (a peak is a
+  peak wherever it ran); cores stay declarable for a task that must
+  run alone.
 - The first cut: keep `exec.resources` in core and let the plugin fill
   it from history in a `graph` hook. Core then carried a config field
   nobody could write, a CLI flag for its budget, a scheduler that packed

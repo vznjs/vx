@@ -23,8 +23,10 @@ export { handleMcpRequest, listMcpTools, setMcpContext } from './mcp-rpc.js'
 export { formatBytes } from './format.js'
 ```
 
-`run(argv)` returns the exit code. `bin.ts` calls
-`process.exit(await run(process.argv.slice(2)))`.
+`run(argv)` returns the exit code. `bin.ts` ends stdout and exits with
+that code in the `end` callback: Bun drops what a pipe has not yet taken
+when `process.exit` follows a large write, and every JSON verb was
+exposed (2026-09-15). A verb never calls `process.exit` itself.
 
 ## Subcommands
 

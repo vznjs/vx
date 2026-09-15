@@ -12,7 +12,14 @@ registerCoreAlias(() => import('./index.js') as Promise<Record<string, unknown>>
 // the file. The compile target doesn't allow top-level await.
 async function main(): Promise<void> {
   try {
-    process.exit(await run(process.argv.slice(2)))
+    const code = await run(process.argv.slice(2))
+    // Bun 1.4.2 drops what a pipe has not yet taken when `process.exit`
+    // follows a large write: 300 KB written then exit delivers 64 KiB
+    // (128 KiB after a tick), and `vx history --format json` on a
+    // 300-project workspace was cut mid-string at 128 KiB (2026-09-15).
+    // `end`'s callback fires once the pipe holds it all; a reader that
+    // closed early, a null sink and an empty stdout all still exit.
+    process.stdout.end(() => process.exit(code))
   } catch (err) {
     // UserError (workspace not found, cycle, config invalid, ...) —
     // print the message only; the stack is noise the user can't act

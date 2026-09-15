@@ -1590,6 +1590,23 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       2026-09-15 with 172: both landed green on main's CI; 174 was
       pushed straight to main without a PR, the one deviation from
       the gate-push-PR-merge workflow.
+175.  DONE (2026-09-15): the CLI's stdout reaches a pipe whole. Found
+      by Next 18's harness: `vx history --format json` on the
+      307-project router clone, piped into a parser, was cut mid-string
+      at 128 KiB. Bun 1.4.2 drops what a pipe has not yet taken when
+      `process.exit` follows a large write — measured in isolation, 300
+      KB written then exit delivered 64 KiB (128 KiB after a tick),
+      while ending stdout and exiting in its callback delivered all of
+      it, and still exited under a reader that closed early, a null
+      sink and an empty stdout. `bin.ts` does that now; every verb
+      that writes JSON (`show`, `last`, `why`, `info`, `history`) was
+      exposed, since each returns its code and the entry point exited
+      at once. Pinned by spawning the real entry point: a project's
+      JSON from `vx show` with a 2 MiB description, read by a
+      reader that starts 500 ms late (a reader that drains at once
+      takes everything before the exit and proves nothing) — fails
+      three of three on the old path (1.1 MiB, 1.1 MiB, 219 KiB
+      received) and passes with the fix. Rule in CLAUDE.md.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
