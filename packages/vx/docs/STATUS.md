@@ -1740,6 +1740,14 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       framing only the failure. Five walks since 14d found four
       items (181, 182, 184, and 183's sample) and then nothing; the
       next probe should change persona or surface, not repeat these.
+187.  DONE (2026-09-16): the generated `vx-preset.ts` names the tool
+      the configs name. A sixth walk, the Turbo adopter — the migrate
+      CLI's `--dry` and its write, `run build` twice, `test`, `lint`,
+      `show`, `info` — read right (the mapping, the one TODO on the
+      persistent task, the hits) except the preset's header, which
+      said `vx migrate`, a verb that does not exist (item 184's
+      one-liner is what typing it gets), while every config said
+      `vx-migrate`. One name now, pinned.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
