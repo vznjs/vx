@@ -1652,6 +1652,14 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       (133 / 139 and 1789 / 1846) on both arms alike, which is the
       box's evening, not the code's, as 14b found the other way round;
       the per-arm comparison is what the duty asks and it reads even.
+180.  DONE (2026-09-15): the plugins guide shows an `admit` policy. Its
+      `admit` paragraph was prose only, and still said the reference
+      plugin reserves CPU parallelism — retired by item 176. The
+      paragraph reads memory with headroom and declared cores now, and
+      carries the smallest useful policy: the e2e suites that share one
+      database run one at a time while everything else keeps the worker
+      count — eleven lines, type-checked by the guide's snippet pin
+      like every other block — and names how the run reports a hold.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
