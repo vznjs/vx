@@ -42,7 +42,8 @@ const TOOLS: readonly ToolDef[] = [
   },
   {
     name: 'getCacheStats',
-    description: 'Aggregate cache statistics (entries, total size, hits in last 24h).',
+    description:
+      'Aggregate cache statistics: entries, total bytes, and the last 24 hours of task runs and cache hits (task runs, not invocations; getRunHistory lists those).',
     inputSchema: {
       type: 'object',
       properties: {

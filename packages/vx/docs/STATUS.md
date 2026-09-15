@@ -1700,6 +1700,15 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       the planning and maintenance verbs (`--dry` before and after a run,
       `--graph`, `show --format json`, `lock`, `cache --help`, a wrong
       `cache` subcommand, `run --help`) found nothing off.
+183.  DONE (2026-09-15): the `vx info` sample in cli.md is the verb's
+      output. It padded its first five rows wider than the rest and
+      appended a `git config core.fsmonitor true` hint to the status
+      cache row that the renderer never prints (the bullet below the
+      sample is where the advice lives). Rewritten row for row in the
+      verb's format. `vx mcp`'s `getCacheStats` description now says
+      its counts are task runs, as item 181's row does. The versions
+      pin on the sample (`cli-doc-drift.test.ts`) assumed one space
+      after the label and now tolerates the padding.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

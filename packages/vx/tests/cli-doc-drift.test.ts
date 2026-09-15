@@ -59,6 +59,12 @@ describe('docs/cli.md Flags table matches the run parser', () => {
 describe('docs/cli.md — the `vx info` sample quotes the current versions', () => {
   it('cache versions row', async () => {
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
-    expect(doc).toContain(`cache versions: keys ${CACHE_VERSION} · index schema ${SCHEMA_VERSION}`)
+    // The renderer pads every label to the widest; the sample is its output.
+    expect(doc).toMatch(
+      new RegExp(
+        `^cache versions:\\s+keys ${CACHE_VERSION} · index schema ${SCHEMA_VERSION}$`,
+        'm',
+      ),
+    )
   })
 })

@@ -1345,22 +1345,22 @@ than failing the doctor:
 
 ```
 $ vx info
-vx:                0.0.0
-bun:               1.4.0
-git:               2.53.0
-git status cache:  core.fsmonitor, core.untrackedCache off — `git config core.fsmonitor true` makes every run's status walk near-free on a large tree
-workspace root:    /work/repo
-projects:       12 (34 tasks)
-plugins:        2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry)
-workers:        2 — cgroup CPU quota 2 of 8 cores
-memory:         13 GB usable — cgroup limit; the machine has 16 GB
-cache dir:      /work/repo/.vx/cache
-cache versions: keys vx-cache-v27 · index schema v26
-cache entries:  42 (1.3 GB)
-orphans:        3 artifacts (12.4 MB) the index does not know — `vx cache prune` reaps them
-task runs (24h): 7 (5 cache hits)
-flaky tasks:    1 — web#test (3 of 11 runs failed on unchanged inputs)
-vx-lock.json:   yes
+vx:               0.0.0
+bun:              1.4.2
+git:              2.53.0
+git status cache: core.fsmonitor, core.untrackedCache off
+workspace root:   /work/repo
+projects:         12 (34 tasks)
+plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry)
+workers:          2 — cgroup CPU quota 2 of 8 cores
+memory:           13 GB usable — cgroup limit; the machine has 16 GB
+cache dir:        /work/repo/.vx/cache
+cache versions:   keys vx-cache-v27 · index schema v26
+cache entries:    42 (1.3 GB)
+orphans:          3 artifacts (12.4 MB) the index does not know — `vx cache prune` reaps them
+task runs (24h):  7 (5 cache hits)
+flaky tasks:      1 — web#test (3 of 11 runs failed on unchanged inputs)
+vx-lock.json:     yes
 ```
 
 - `git` shows `(not found)` when the binary is missing; a broken
