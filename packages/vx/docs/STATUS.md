@@ -2253,6 +2253,33 @@ next guess; a child's rusage is the parent's until proven otherwise;
 `pkill -f` and `pgrep -f` match their own shell — the rule is in
 CLAUDE.md now. Never end with "what next?".
 
+14d. **Handoff after item 176 (2026-09-15, night).** Two threads
+closed since 14c. The releases: v0.0.19 and v0.0.20 each died one
+step further into `npm publish` (a copy list naming a deleted
+directory, then a Linux job without the sandbox runtime; items 172
+and 174, landed by another session and reviewed here), and v0.0.21
+completed the set — the registry holds `@vzn/vx` and the four
+platform packages at 0.0.21. The resources arc's last question: the
+real-repo dogfood on TanStack/router (173) read every surface right,
+and Next 18's measurement on 92 builds settled the CPU axis — a
+build's parallelism is a reading of contention, packing by the solo
+reading cost 21%, so the plugin learns memory only and cores stay
+declarable (176). The harness for that measurement found the day's
+core defect on the way: Bun drops piped stdout on `process.exit`, and
+every JSON verb was exposed until `bin.ts` learned to end stdout
+first (175). Open: Next 1, 2 and 16 as before, all gated; the launch
+checklist's owner steps. The box: unchanged (four cores, 13.3 GiB
+leaf cgroup, no sandbox, the gate is `scratchpad/gate-manual.sh`);
+the bench clones under the scratchpad are bare again, and installing
+router costs 72 s and 2.1 GB when a real-repo probe needs it. Methods
+that paid: a pin whose reader is too fast proves nothing — the
+stdout pin's reader starts late on purpose, and the old path fails it
+three of three; a measurement that ties on a narrow graph (173's
+13-task A/B) says nothing about a wide one, so the wide one was run
+before deciding; when a fix and a measurement share a harness, land
+the fix on its own evidence and the measurement on its own. Never end
+with "what next?".
+
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
     (item 141) and four Nx repos (items 142–144, 150) are in.
