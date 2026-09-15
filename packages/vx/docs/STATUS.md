@@ -1660,6 +1660,26 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       database run one at a time while everything else keeps the worker
       count — eleven lines, type-checked by the guide's snippet pin
       like every other block — and names how the run reports a hold.
+181.  DONE (2026-09-15): three first-run surfaces read straight. A
+      fresh two-package workspace was walked from `vx init` through
+      run, why, last, info and watch, and three things read wrong.
+      `vx last --list` showed a watch cycle as
+      `$ /…/src/bin.ts watch build --all` beside `$ vx run build
+--all`: `watchCmd` never set the invocation `command`, so run()'s
+      process.argv fallback recorded the bin's path (pinned in the
+      watch-loop suite by `vx last --list` during a watch). `vx why`
+      said `cache-hit · cache hit · key …` for a hit: the status names
+      the hit and its tier, so the word now follows executed runs only
+      (`success · executed`, as documented; a third-run pin in
+      why.test.ts fails on the old line). `vx info`'s `runs (24h)`
+      counted task runs — three invocations of two tasks read 6 —
+      while `vx last` calls an invocation a run; the row is `task runs
+(24h)` and cli.md says what it counts and where the invocation
+      count lives (`vx last --list`). The JSON field stays `runs24h`.
+      Refuted on the way: the migrated configs, the TODO's cache-block
+      guidance (followed literally, the second run hit), `vx why`'s
+      first-run line, `vx info`'s worker and memory rows, and watch's
+      recovery from a broken package.json all read right.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -2311,7 +2331,10 @@ stdout pin's reader starts late on purpose, and the old path fails it
 three of three; a measurement that ties on a narrow graph (173's
 13-task A/B) says nothing about a wide one, so the wide one was run
 before deciding; when a fix and a measurement share a harness, land
-the fix on its own evidence and the measurement on its own. Never end
+the fix on its own evidence and the measurement on its own. After
+the handoff: item 181, a first-run walk that found three surfaces
+reading wrong (watch's recorded command, why's hit line, info's run
+count) — the cheap probe after an arc still pays. Never end
 with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos

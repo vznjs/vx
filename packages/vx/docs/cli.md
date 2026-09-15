@@ -1358,7 +1358,7 @@ cache dir:      /work/repo/.vx/cache
 cache versions: keys vx-cache-v27 · index schema v26
 cache entries:  42 (1.3 GB)
 orphans:        3 artifacts (12.4 MB) the index does not know — `vx cache prune` reaps them
-runs (24h):     7 (5 cache hits)
+task runs (24h): 7 (5 cache hits)
 flaky tasks:    1 — web#test (3 of 11 runs failed on unchanged inputs)
 vx-lock.json:   yes
 ```
@@ -1389,6 +1389,10 @@ vx-lock.json:   yes
   cache key that both passed and failed, most failures first, with
   the outcomes over those keys. A cache hit counts as a pass (it
   replayed one). `none` when the history never mixed.
+- `task runs (24h)` counts task runs, executed and replayed alike, so
+  the hits are a share of it: three `vx run` of two tasks are six. An
+  invocation is what `vx last` calls a run; `vx last --list` counts
+  those.
 - `cache versions` are the two constants a bug report needs and the
   reset notice names: the key prefix (`CACHE_VERSION`; a bump orphans
   every entry) and the index schema (`SCHEMA_VERSION`; a mismatch drops
@@ -1407,8 +1411,8 @@ cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
   `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheVersion`,
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `orphans`
-  (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h`,
-  `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
+  (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
+  runs, as the row), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
   empty when none), `lockfile`. The pretty rows render this object;
   there is no second source.
 - `vx stats` is a **deprecated alias** of `vx info` (info absorbed
@@ -1446,6 +1450,8 @@ app#build — run 019f5a02-…
     changed file  src/input.txt  3fe2a1b0… → 91c47d22…
 ```
 
+A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
+names the hit and its tier, so only an executed run carries the word.
 The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still
