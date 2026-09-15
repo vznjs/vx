@@ -1680,6 +1680,26 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       guidance (followed literally, the second run hit), `vx why`'s
       first-run line, `vx info`'s worker and memory rows, and watch's
       recovery from a broken package.json all read right.
+182.  DONE (2026-09-15): the uncached upstream's moving key is pinned
+      and said. The second walk (error paths: a typo'd task, an
+      unknown filter, a failing command, `why` on an uncached task —
+      all read right) found a cached dependent of an uncached upstream
+      missing twice before it hit. The cause is by design, not a
+      defect: a task with no `cache` block folds `**/*` of its project
+      into the key its dependents fold, its own outputs included since
+      it declared none, so writing an un-ignored file moves its key
+      after the first run (gitignored outputs keep it still — the
+      control). Not changed: excluding untracked files would hide a new
+      source from the key (a stale hit downstream, the worst class),
+      and the task's outputs are unknown by definition. Changed: the
+      rule is in caching.md § key derivation; `vx why`'s detail on an
+      uncached task said the verdict twice and now says what moves its
+      key; `vx init`'s TODO says every file here folds into dependents'
+      keys until the block exists; `tests/uncached-upstream-key.test.ts`
+      pins the double miss and the gitignored control. A third walk over
+      the planning and maintenance verbs (`--dry` before and after a run,
+      `--graph`, `show --format json`, `lock`, `cache --help`, a wrong
+      `cache` subcommand, `run --help`) found nothing off.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

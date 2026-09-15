@@ -114,7 +114,7 @@ export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan {
       if (name === 'build') {
         task['dependsOn'] = ['^build']
         todos.push(
-          "cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs — without it the task always runs; a block with EMPTY outputs would be a cached no-op, not an uncached task",
+          "cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs — without it the task always runs and every file here, what it writes included, folds into the key its dependents fold; a block with EMPTY outputs would be a cached no-op, not an uncached task",
         )
       } else if (AFTER_BUILD.has(name) && hasBuild) {
         task['dependsOn'] = ['build']
