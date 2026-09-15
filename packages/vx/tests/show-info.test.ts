@@ -389,7 +389,7 @@ describe('vx info (e2e)', () => {
         row('cache versions', `keys ${CACHE_VERSION} · index schema ${SCHEMA_VERSION}`),
       )
       expect(r.out).toMatch(row('cache entries', '0 (0 B)'))
-      expect(r.out).toMatch(row('runs (24h)', '0'))
+      expect(r.out).toMatch(row('task runs (24h)', '0'))
       expect(r.out).toMatch(row('flaky tasks', 'none'))
       expect(r.out).toMatch(row('vx-lock.json', 'no'))
       // Control for the orphans row below: nothing on disk the index does

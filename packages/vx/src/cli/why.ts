@@ -185,9 +185,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const lines: string[] = []
     const t = why.thisRun!
     lines.push(`${taskId} — run ${runId}`)
+    // A hit's status (`cache-hit`, `cache-hit-remote`) already names it and
+    // its tier; only an executed run needs the word.
     lines.push(
       `  this run   ${fmtWhen(t.startedAt)} · ${t.status}` +
-        `${t.cacheHit === true ? ' · cache hit' : t.cacheHit === false ? ' · executed' : ''} · key ${t.hash}`,
+        `${t.cacheHit === false ? ' · executed' : ''} · key ${t.hash}`,
     )
     if (why.previousRun == null) {
       lines.push('  previous   (none — first recorded run of this task)')

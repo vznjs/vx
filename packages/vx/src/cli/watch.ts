@@ -350,6 +350,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // default (exit 143) and left the cycle's children running under init.
   const stop = new AbortController()
   const opts: RunOptions = { ...resolved, handleSignals: false, signal: stop.signal }
+  // Every cycle's `invocations` row names the verb, as `vx run`'s does;
+  // run()'s process.argv fallback put the bin's absolute path there, so
+  // `vx last --list` showed `$ /…/bin.ts watch build` beside `$ vx run build`.
+  opts.command = ['vx', 'watch', ...args].join(' ')
   // A staged load from the selection pass is one run's worth of configs;
   // every cycle after an edit must evaluate live.
   delete opts.staged

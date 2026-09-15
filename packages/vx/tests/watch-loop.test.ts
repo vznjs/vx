@@ -111,6 +111,10 @@ describe('vx watch loop (e2e)', () => {
     const w = watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
     await initialOnly(w, log)
+    // The cycle's invocation row names the verb, as `vx run`'s does; the
+    // process.argv fallback recorded the bin's absolute path in its place.
+    const last = Bun.spawnSync([process.execPath, BIN, 'last', '--list'], { cwd: root })
+    expect(last.stdout.toString()).toContain('$ vx watch build --all')
 
     await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
     await until(async () => (await executions(log)) === 2, 'the re-run after an edit')

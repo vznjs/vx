@@ -142,6 +142,20 @@ describe('vx why (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  // Last: it adds a third run, which the tests above must not see.
+  it(
+    "a hit's line is its status and key — the status names the hit, nothing repeats it",
+    async () => {
+      await vx(root, ['run', 'build', '--all'])
+      const r = await vx(root, ['why', 'app#build'])
+      expect(r.code).toBe(0)
+      expect(r.out).toMatch(/^  this run   \S+ · cache-hit · key [0-9a-f]+$/m)
+      expect(r.out).not.toContain('cache hit ·')
+      expect(r.out).toContain('served from cache')
+    },
+    TIMEOUT,
+  )
 })
 
 describe('parseWhyArgs', () => {
