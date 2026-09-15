@@ -58,24 +58,27 @@ describe('resourceEstimates', () => {
     expect(est.get('a#build')).toEqual({ memory: 640 })
   })
 
-  it('cpus is the parallelism seen, rounded, and omitted at one core', () => {
-    // A worker slot already is one core; reserving it would double-count.
+  it('cores are never learned, whatever parallelism the executions showed', () => {
+    // The reading is a function of contention — the same builds read 1.0×
+    // beside three others and 2.0× alone — and reserving the solo reading
+    // packed 92 real builds two wide on four cores for a 21% longer run
+    // (2026-09-15). A declared `cpus` still packs (withDeclared, admits).
     const nodes = new Map([
-      ['one#build', node('one#build')],
       ['two#build', node('two#build')],
       ['four#build', node('four#build')],
+      ['big#build', node('big#build')],
     ])
     const est = resourceEstimates(
       nodes,
       table({
-        'one#build': hist({ maxCpuParallelism: 1.4 }),
         'two#build': hist({ maxCpuParallelism: 1.6 }),
         'four#build': hist({ maxCpuParallelism: 3.7 }),
+        'big#build': hist({ maxCpuParallelism: 3.7, maxPeakRssBytes: 500 * MB }),
       }),
     )
-    expect(est.has('one#build')).toBe(false)
-    expect(est.get('two#build')).toEqual({ cpus: 2 })
-    expect(est.get('four#build')).toEqual({ cpus: 4 })
+    expect(est.has('two#build')).toBe(false)
+    expect(est.has('four#build')).toBe(false)
+    expect(est.get('big#build')).toEqual({ memory: 640 })
   })
 
   it('a task with no execution in the window, or usage under a step, gets nothing', () => {

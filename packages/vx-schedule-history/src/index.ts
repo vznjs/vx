@@ -153,9 +153,12 @@ export interface ResourceEstimate {
 /**
  * What each task should reserve, from its history: memory is the largest
  * peak RSS in the window times `headroom`, rounded UP to 64 MB and omitted
- * under one step (nothing worth packing); cpus is the most parallelism
- * seen, rounded to a whole core and omitted at one (a worker slot already
- * is one core). Tasks with no execution in the window are absent.
+ * under one step (nothing worth packing). Cores are never learned: the
+ * parallelism a build shows is what the machine let it have (1.0× beside
+ * three others, 2.0× alone), reserving the solo reading packs a four-core
+ * box two wide, and that idles cores through every single-threaded phase —
+ * 160 s against 132 s on 92 real builds (2026-09-15). `reservations` may
+ * still declare `cpus`. Tasks with no execution in the window are absent.
  */
 export function resourceEstimates(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -174,16 +177,12 @@ function estimatesFor(
   for (const id of ids) {
     const h = history.get(id)
     if (h === undefined) continue
-    const est: { cpus?: number; memory?: number } = {}
+    const est: { memory?: number } = {}
     if (h.maxPeakRssBytes !== undefined) {
       const mb = (h.maxPeakRssBytes * headroom) / MB
       if (mb >= MEMORY_STEP_MB) est.memory = Math.ceil(mb / MEMORY_STEP_MB) * MEMORY_STEP_MB
     }
-    if (h.maxCpuParallelism !== undefined) {
-      const cpus = Math.round(h.maxCpuParallelism)
-      if (cpus >= 2) est.cpus = cpus
-    }
-    if (est.memory !== undefined || est.cpus !== undefined) out.set(id, est)
+    if (est.memory !== undefined) out.set(id, est)
   }
   return out
 }

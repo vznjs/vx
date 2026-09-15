@@ -205,6 +205,7 @@ describe('schedule-history plugin end to end', () => {
       expect(a.reservation?.memory).toBeGreaterThanOrEqual(256)
       expect(a.reservation?.memory).toBeLessThanOrEqual(640)
       expect(a.reservation!.memory! % 64).toBe(0)
+      expect(a.reservation?.cpus).toBeUndefined()
       expect(a.declared).toBe(false)
       // Every learned reservation is the estimator's rule over the peak the
       // same row shows: × 1.25, up to the next 64 MB, absent under one step.

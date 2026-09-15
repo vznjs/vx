@@ -184,6 +184,10 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   appears in its own command line: the pkill killed its caller (exit
   144) and a `while pgrep` wait never ended (three times, 2026-09-12).
   Match on a marker the target alone carries, or hold the child's pid.
+- Bun drops what a pipe has not yet taken when `process.exit` follows a
+  large stdout write (2 MiB written, 1.1 MiB read, 2026-09-15). `bin.ts`
+  ends stdout and exits in its callback; a verb never calls
+  `process.exit` itself, and a pin's reader starts late on purpose.
 - A platform unit (bytes vs kilobytes, ms vs µs) is measured, never
   asserted: pin it by producing a known quantity and reading it back
   within a bounded factor. A pure-function test of the conversion only

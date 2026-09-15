@@ -1590,6 +1590,42 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       2026-09-15 with 172: both landed green on main's CI; 174 was
       pushed straight to main without a PR, the one deviation from
       the gate-push-PR-merge workflow.
+175.  DONE (2026-09-15): the CLI's stdout reaches a pipe whole. Found
+      by Next 18's harness: `vx history --format json` on the
+      307-project router clone, piped into a parser, was cut mid-string
+      at 128 KiB. Bun 1.4.2 drops what a pipe has not yet taken when
+      `process.exit` follows a large write — measured in isolation, 300
+      KB written then exit delivered 64 KiB (128 KiB after a tick),
+      while ending stdout and exiting in its callback delivered all of
+      it, and still exited under a reader that closed early, a null
+      sink and an empty stdout. `bin.ts` does that now; every verb
+      that writes JSON (`show`, `last`, `why`, `info`, `history`) was
+      exposed, since each returns its code and the entry point exited
+      at once. Pinned by spawning the real entry point: a project's
+      JSON from `vx show` with a 2 MiB description, read by a
+      reader that starts 500 ms late (a reader that drains at once
+      takes everything before the exit and proves nothing) — fails
+      three of three on the old path (1.1 MiB, 1.1 MiB, 219 KiB
+      received) and passes with the fix. Rule in CLAUDE.md.
+176.  DONE (2026-09-15, Next 18 measured): the schedule-history plugin
+      no longer learns cores. On the router clone, a solo history first
+      (92 react-example builds at one worker, 241 s; CPU parallelism
+      p10 / p50 / p90 1.61 / 1.92 / 2.23×), then the arms at four
+      workers with `--force`, interleaved: count-only 176 / 132 / 133 /
+      134 s (the 176 a first cold rep), learned 160 / 161 / 171 s with
+      85 of 92 tasks held (`admit held 85 tasks 4783s`, task-seconds).
+      Min-of-N 132 against 160: 21% longer. The reading is a function
+      of contention — the same builds read 0.9–1.0× beside three others
+      in item 173 — the estimator kept the window's maximum, and every
+      build then reserved two cores, so a four-core box packed two wide
+      and idled cores through each build's single-threaded phases.
+      Memory has no such feedback (a peak is a peak wherever it ran) and
+      stays learned; `cpus` stays declarable through `reservations` for
+      a task that must run alone. Pins: the estimator learns no cores
+      whatever the parallelism seen, a declared `cpus` still packs, the
+      `vx history` row carries none. Docs: the plugin README, the design
+      note's Rejected list. Install, outputs and the pnpm store cleaned;
+      the configs and bench logs stay.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -2266,16 +2302,8 @@ CLAUDE.md now. Never end with "what next?".
 
 17. DONE 2026-09-12 as item 158 — the producing execution's usage rides
     the artifact's sidecar; a hit's entry is the history's record.
-18. **Is the learned CPU axis a loss on a wide graph?** The reading
-    is a function of contention (item 173: 1.0× beside three tasks,
-    2.0× alone), the plugin keeps the window's maximum, and a whole
-    repo of 2-core builds packs a four-core box two wide, idling cores
-    through each build's single-threaded phases. Measure before
-    deciding: a wide set (`./examples/react/**` on router, ~100
-    builds) with a solo history first, count-only against learned,
-    interleaved. If it loses, the axis should reserve from the
-    contended reading (the minimum that still exceeded one core), or
-    not learn cpus at all and keep them declarable. Not started.
+18. DONE 2026-09-15 as item 176 — measured a 21% loss (132 vs 160 s
+    on 92 builds); cores are declared, never learned.
 
 ## Decisions (this arc)
 

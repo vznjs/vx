@@ -29,9 +29,12 @@ The same history answers what each task used: the runner records every
 execution's CPU time and peak RSS. Core's only gate is the worker count;
 this plugin's `admit` hook packs the finer numbers, and core never
 learns them. Each task's reservation is the largest peak RSS in the
-window times a headroom (1.25), rounded up to 64 MB, and the most CPU
-parallelism seen, rounded to a whole core; a task is admitted while its
-reservation and those of everything running beside it fit the budgets —
+window times a headroom (1.25), rounded up to 64 MB; cores are never
+learned (the parallelism a build shows is what the machine let it have,
+and reserving the solo reading packed 92 real builds two wide on four
+cores for a 21% longer run, 2026-09-15), only declared. A task is
+admitted while its reservation and those of everything running beside
+it fit the budgets —
 cores are the run's worker count, memory is what this process may use
 (the machine's total, capped by the cgroup limit a container runs
 under) — and a task over a whole budget runs alone. A task with no execution in the
