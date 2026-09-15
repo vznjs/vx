@@ -150,10 +150,10 @@ min 1840 / med 1862 vs 1760 / 1792 — a tie inside the spread.
   beside three others and 1.9–2.3× alone, the estimator kept the
   window's maximum, so after one solo run every build reserved two
   cores and a four-core box packed two wide. On the 92 react-example
-  builds, interleaved at four workers with `--force`: count-only 132 /
-  133 / 176 s (the 176 a first cold rep), learned 160 / 161 s, with 85
-  of 92 tasks held — cores idle through each build's single-threaded
-  phases, and the run pays. Memory has no such feedback (a peak is a
+  builds, interleaved at four workers with `--force`: count-only 176 /
+  132 / 133 / 134 s (the 176 a first cold rep), learned 160 / 161 /
+  171 s, with 85 of 92 tasks held — cores idle through each build's
+  single-threaded phases, and the run pays 21% by min-of-N. Memory has no such feedback (a peak is a
   peak wherever it ran); cores stay declarable for a task that must
   run alone.
 - The first cut: keep `exec.resources` in core and let the plugin fill
