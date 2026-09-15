@@ -186,13 +186,35 @@ the worker count (`ctx.concurrency`). Return `false` to hold the task
 until something finishes; it is asked again then. Core gates on the
 worker count and nothing finer — it keeps no notion of what a task
 needs — so a policy that packs memory or CPU learns or declares the
-numbers itself. The same plugin is the reference: it reserves what each
-task's past executions used (peak RSS with headroom, CPU parallelism),
-packs them against the cores and the memory this process may use, and
-runs a task over a whole budget alone. The hook must be synchronous and
-cheap; a throw is reported once and the plugin admits from then on, so
-a policy never breaks a run. Restore-tier hits and tasks on an
-executor's pool hold nothing here and are never asked.
+numbers itself. The same plugin is the reference: it reserves the peak
+RSS each task's past executions used (with headroom; cores only when
+declared, since a build's parallelism is a reading of contention), packs
+them against the cores and the memory this process may use, and runs a
+task over a whole budget alone. The hook must be synchronous and cheap;
+a throw is reported once and the plugin admits from then on, so a
+policy never breaks a run. Restore-tier hits and tasks on an executor's
+pool hold nothing here and are never asked. A policy need not learn
+anything — the smallest useful one serializes the tasks that share a
+resource nothing else models:
+
+```ts
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+// The e2e suites share one database: at most one runs here at a time,
+// while everything else keeps the worker count.
+export function oneDatabase(): VxPlugin {
+  return definePlugin(import.meta, {
+    admit(task, ctx) {
+      if (!task.id.endsWith('#e2e')) return true
+      return !ctx.running.some((r) => r.id.endsWith('#e2e'))
+    },
+  })
+}
+```
+
+The run says when it acted: a held task carries `admissionHeldMs` on its
+`--summarize` row and the footer's `info` row sums the waits (`admit
+held 3 tasks, 4.2s in all`).
 
 - **`executor`** returns a `TaskExecutor` — the thing that actually runs
   one task's command — or `undefined` to decline. Executors form a
