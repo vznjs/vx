@@ -43,11 +43,15 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
   }
   const root = await findWorkspaceRoot(process.cwd())
   const workspace = await loadWorkspace(root)
-  const metas = (await listProjects(workspace)).filter(
-    (m): m is ConfiguredMeta => m.configPath !== null,
-  )
-  if (parsed.check) return await checkLock(root, metas)
-  return await writeLock(root, metas)
+  const all = await listProjects(workspace)
+  const metas = all.filter((m): m is ConfiguredMeta => m.configPath !== null)
+  // A project with no vx.config has nothing to freeze: its tasks (a plugin's,
+  // or none) load live under --frozen too, so both verbs say how many the
+  // count above leaves out — `locked 0 project configs` on a turbo() repo
+  // read like an audit of something (2026-09-16).
+  const bare = all.length - metas.length
+  if (parsed.check) return await checkLock(root, metas, bare)
+  return await writeLock(root, metas, bare)
 }
 
 /** Evaluate one config in the current env, returning its lock entry. */
@@ -66,7 +70,13 @@ async function evaluateEntry(root: string, meta: ConfiguredMeta): Promise<Lockfi
   }
 }
 
-async function writeLock(root: string, metas: ConfiguredMeta[]): Promise<number> {
+function bareNote(bare: number): string {
+  return bare === 0
+    ? ''
+    : ` (${bare} project${bare === 1 ? ' has' : 's have'} no vx.config; their tasks are never frozen)`
+}
+
+async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): Promise<number> {
   const entries = await Promise.all(metas.map((m) => evaluateEntry(root, m)))
   const projects: Record<string, LockfileEntry> = {}
   // `listProjects` sorts by name — stable lockfile diffs for free.
@@ -74,7 +84,9 @@ async function writeLock(root: string, metas: ConfiguredMeta[]): Promise<number>
   const lock: Lockfile = { version: LOCKFILE_VERSION, projects }
   await writeLockfile(root, lock)
   const n = metas.length
-  process.stdout.write(`vx: locked ${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}\n`)
+  process.stdout.write(
+    `vx: locked ${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}\n`,
+  )
   return 0
 }
 
@@ -86,7 +98,7 @@ async function writeLock(root: string, metas: ConfiguredMeta[]): Promise<number>
  *      catches eval-time env-var drift that file hashes cannot see —
  *      file bytes unchanged, resolved value changed.
  */
-async function checkLock(root: string, metas: ConfiguredMeta[]): Promise<number> {
+async function checkLock(root: string, metas: ConfiguredMeta[], bare: number): Promise<number> {
   const lock = await readLockfile(root)
   if (!lock) {
     process.stderr.write(
@@ -131,6 +143,8 @@ async function checkLock(root: string, metas: ConfiguredMeta[]): Promise<number>
     return 1
   }
   const n = metas.length
-  process.stdout.write(`vx: lock is up to date (${n} project${n === 1 ? '' : 's'})\n`)
+  const audited = `${n} project${n === 1 ? '' : 's'}`
+  const skipped = bare === 0 ? '' : `; ${bare} without a vx.config not audited`
+  process.stdout.write(`vx: lock is up to date (${audited}${skipped})\n`)
   return 0
 }
