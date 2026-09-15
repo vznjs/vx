@@ -134,10 +134,12 @@ describe('plugin commands', () => {
     await expect(cli(['show'])).rejects.toThrow(refusal)
   })
 
-  it('an unknown verb is still unknown, with the help text', async () => {
+  it('an unknown verb is still unknown, and says where help is', async () => {
     await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['nope'])).toBe(1)
     expect(err.join('')).toContain('unknown command: nope')
+    expect(err.join('')).toContain('(see `vx help`)')
+    expect(err.join('')).not.toContain('Usage:')
   })
 
   it('vx help lists plugin verbs with their description and plugin', async () => {

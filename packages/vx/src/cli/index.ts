@@ -110,8 +110,11 @@ export async function run(argv: readonly string[]): Promise<number> {
         )
         return 1
       }
-      process.stderr.write(`vx: unknown command: ${command}${didYouMeanVerb(command)}${loadNote}\n`)
-      printHelp()
+      // One line, as a verb's own unknown flag or subcommand gets; the full
+      // help after a typo was a hundred lines past the hint that mattered.
+      process.stderr.write(
+        `vx: unknown command: ${command}${didYouMeanVerb(command)}${loadNote} (see \`vx help\`)\n`,
+      )
       return 1
     }
   }
