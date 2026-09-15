@@ -1641,6 +1641,17 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       the waits summed, task-seconds, which nothing said. It reads
       `admit held 85 tasks, 4783s in all` now; the per-task waits stay
       on the `--summarize` rows. Pin and docs follow.
+179.  DONE (2026-09-15, Next 6 duty): the day's diff A/B'd on the warm
+      path. Item 175 put an `end` on stdout before every exit, which is
+      the tail of every run, so compiled binaries of main before it
+      (2f6496c) and after item 178 (3901e12) ran interleaved on the
+      1,000-project bench, one workspace per arm: warm no-op 12 reps
+      min 180 / med 187 ms before vs 182 / 187 after; `--force` 6 reps
+      min 2506 / med 2526 vs 2494 / 2531 — a tie inside the spread. The
+      absolute figures sit 35–40% above the 2026-09-12 morning baseline
+      (133 / 139 and 1789 / 1846) on both arms alike, which is the
+      box's evening, not the code's, as 14b found the other way round;
+      the per-arm comparison is what the duty asks and it reads even.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
