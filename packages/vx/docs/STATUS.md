@@ -2366,6 +2366,25 @@ reading wrong (watch's recorded command, why's hit line, info's run
 count) — the cheap probe after an arc still pays. Never end
 with "what next?".
 
+14e. **Handoff after item 183 (2026-09-16, small hours).** Three
+first-run walks on fresh scratch workspaces since 14d, each a
+STATUS item: 181 (three surfaces reading wrong — watch's recorded
+command, why's hit line, info's run count; PR #347), 182 (a cached
+dependent of an uncached upstream misses twice, by design — pinned
+with its gitignored control and said in caching.md, `vx why` and
+the init TODO; PR #348) and 183 (the `vx info` sample is the verb's
+output; PR #349). Open: Next 1, 2 and 16 as before, all gated; the
+launch checklist's owner steps. The box: unchanged (four cores,
+13.3 GiB leaf cgroup, no sandbox); the gate is
+`scratchpad/gate-manual.sh`, which now defaults its output
+directory to its own — one run wrote every step's output to `/`
+because `S` was set but not exported. Methods that paid: the cheap
+walk after an arc keeps paying (181 and 182 came from two of them);
+the gate caught a pin my own `bunx oxfmt --check | tail -1` read
+as clean — `oxfmt` prints its verdict BEFORE its `Finished` line,
+so a tail of one line is always clean (the rule in CLAUDE.md now
+says so). Never end with "what next?".
+
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
     (item 141) and four Nx repos (items 142–144, 150) are in.

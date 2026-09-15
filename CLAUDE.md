@@ -177,7 +177,10 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - Format-check by directory scan (`cd packages/vx && bunx oxfmt --check .`,
   what CI runs), never by naming the file: `oxfmt --check <file>` passed a
   STATUS.md that the scan rejected (a code span wrapped across an indented
-  line; proven both ways, 2026-09-10).
+  line; proven both ways, 2026-09-10). And read the scan's exit or its
+  `Format issues found` line, never its last line: the verdict prints
+  BEFORE `Finished in …`, so `| tail -1` reads clean on a failure (the
+  gate caught what that tail passed, 2026-09-15).
 - Correct wrong entries in place; never write a plausible cause you have
   not proven.
 - `pkill -f` / `pgrep -f` match the shell running them when the pattern
