@@ -1636,6 +1636,11 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       and the stdio round trip pins them on the wire — CPU parallelism
       always on record, the peak absent for a task lighter than vx
       itself.
+178.  DONE (2026-09-15): the footer's hold line says it is a sum. On
+      router it read `admit held 85 tasks 4783s` beside `time 160s` —
+      the waits summed, task-seconds, which nothing said. It reads
+      `admit held 85 tasks, 4783s in all` now; the per-task waits stay
+      on the `--summarize` rows. Pin and docs follow.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
