@@ -11,7 +11,9 @@ terminal and a task succeeding or failing. Read it alongside
  ┌─ CLI dispatch (src/bin.ts → src/cli/index.ts → src/cli/run.ts)
  │    1. bin.ts spawns; forwards process.argv to cli.run().
  │    2. cli/index.ts dispatches by subcommand (run / watch / cache /
- │       lock / init / upgrade / show / info / mcp / help / version).
+ │       lock / init / upgrade / show / info / stats / why / last /
+ │       completions / help / version); any other verb is asked of the
+ │       workspace's plugins (`commands` seam — `vx mcp` is one).
  │    3. cli/run.ts:parseRunArgs(argv) → RunArgs (validated; resolves
  │       the 4-axis cache policy from --cache / --no-cache / --force).
  │    4. cli/run.ts:runCmd resolves the project scope:
@@ -55,8 +57,10 @@ terminal and a task succeeding or failing. Read it alongside
  │       project, computed over EVERY config-bearing project (loaded
  │       or not) for boundary enforcement.
  │    8. computeWorkspaceFingerprint — xxh3 over every supported
- │       lockfile + pnpm-workspace.yaml found at the root. Computed
- │       once; reused for every task's cache key.
+ │       lockfile + pnpm-workspace.yaml found at the root, minus the
+ │       files a `fingerprint` plugin claims (`@vzn/vx-lockfile` keys
+ │       those per project). Computed once; reused for every task's
+ │       cache key.
  │    9. expandRequested → buildTaskGraph (see below).
  │   10. Cache open: new Cache(cacheDir, { read, write }) with the
  │       policy's local slice. An injected RunOptions.remoteCache is
@@ -79,7 +83,7 @@ terminal and a task succeeding or failing. Read it alongside
  │      - '^name'    → task in the nearest deps declaring it
  │                     (frontier walk; non-holders passed through)
  │      - 'pkg#name' → specific package's task
- │    Excluded edges (per --excludeDependencies) are dropped.
+ │    Excluded edges (per --exclude-dependencies[=names]) are dropped.
  │    Detect cycles — throws with the path.
  │    Each node carries: id (`${project}#${task}`), projectName,
  │    projectDir, taskName, config, sorted deps, `requested: boolean`.
@@ -96,7 +100,7 @@ terminal and a task succeeding or failing. Read it alongside
  │      3. subscribeTelemetry — collects every plugin's TelemetrySink;
  │         with ZERO sinks it returns undefined and NOTHING subscribes
  │         (the no-telemetry hot path is byte-identical).
- │    With no plugins declared, all four steps are skipped entirely.
+ │    With no plugins declared, all three steps are skipped entirely.
  │
  ├─ Run-level state
  │    • runId   — ULID stamped once per `vx run` invocation; every
@@ -142,8 +146,9 @@ terminal and a task succeeding or failing. Read it alongside
  │    On failure: exec-tier dependents are marked `skipped` (exit 1,
  │    durationMs 0, no spawn); independent siblings keep running.
  │    The scheduler doesn't know about caching; the execute callback
- │    is the seam. (A service run with a shared `inflight` map dedupes
- │    identical-hash tasks across concurrent runs here too.)
+ │    is the seam. (An embedder running concurrent runs in one process
+ │    may pass a shared `inflight` map; admission.ts then dedupes
+ │    identical-key tasks across them. A plain `vx run` passes none.)
  │
  ├─ Per-task execution (src/orchestrator/execute-task.ts:executeTask)
  │    Each task takes one of three paths:
@@ -282,9 +287,11 @@ one cache slot for the whole chain.
 
 The child process gets, in priority order (lowest first):
 
-1. **Essential allowlist** (`PATH`, `HOME`, `SHELL`, `TMPDIR`, `LANG`,
-   `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`,
-   `NODE_OPTIONS`, plus Windows essentials like `SYSTEMROOT`).
+1. **Essential allowlist** (`PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`,
+   `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`,
+   `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`, plus
+   the Windows essentials from `SYSTEMROOT` to `PATHEXT` — the list is
+   `ESSENTIAL_ENV` in `src/exec/env.ts`).
 2. **`exec.env.passThrough`** names → values from host `process.env`.
 3. **`exec.env.define`** literal name/value pairs.
 4. **PATH augmentation** — `<projectDir>/node_modules/.bin` is
@@ -303,9 +310,11 @@ The child process gets, in priority order (lowest first):
    reader that left a pipe, a ulimit, a seccomp refusal); vx's own
    timeout and a shutdown's SIGTERM keep their own lines.
 
-Anything not in these four layers is invisible to the child. This
-prevents incidental env leakage between machines and gives
-reproducible runs.
+Anything not in these four layers is invisible to the child, except
+the two vx sets itself — `VX_RUN_WORKSPACE` and `VX_RUN_TASK` — so a
+task that shells out to `vx run` in its own workspace is refused
+before it forks without bound. This prevents incidental env leakage
+between machines and gives reproducible runs.
 
 The allowlist + isolation contract lives in
 [`modules/env.md`](./modules/env.md) and is the only field the
@@ -355,7 +364,7 @@ wire forwarders attach beside it). What renders:
 - **The glyph grid.** Reported task lines share one column grid —
   `<glyph> <time> <status> <cache> <name>`. Glyph SHAPE = cache axis
   (`⏺` miss / `►` fresh / `⇢` local / `⇣` remote / `◼` failed / `⊘`
-  skipped / `▸` persistent); glyph COLOR + the status word = task axis
+  skipped / `⦿` running / `▸` persistent); glyph COLOR + the status word = task axis
   (success / failed / skipped / running); the cache word (miss /
   fresh / local / remote) spells it out.
 - **Buffered, framed (non-focused paths).** `runCommand` listens to
@@ -364,8 +373,8 @@ wire forwarders attach beside it). What renders:
   chunks per-task and dumps the full body as a framed block on task
   completion. No per-line prefix, no interleaving between concurrent
   tasks.
-- **Cache write.** Full stdout text is stored in the entry; replay is
-  stdout-only (v17).
+- **Cache write.** The captured stdout — its first and last 8 MiB,
+  the cut middle named — is stored in the entry; replay is stdout-only.
 - **Cache hit replay.** The stored stdout is fed through the same
   logger path, so it renders per the active flow (streamed raw for a
   focused requested task, framed in full mode, silent in broad).
