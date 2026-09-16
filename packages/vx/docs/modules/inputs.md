@@ -7,21 +7,26 @@ can hash:
 
 - a sorted list of absolute file paths whose contents will be hashed
 - a sorted list of `[envName, hostValue]` pairs
+- sorted `[command, output]` pairs for `cache.inputs.runtime` and
+  `workspaceRuntime` (each command run once per run through a memo)
 
-Plus a small helper to resolve `cache.outputs.files` to actual produced
-files for capture.
+Plus the helpers that resolve and clean `cache.outputs.files` and
+`outputs.workspaceFiles`.
 
 ## Public surface
 
-The git side — `GitFilesCache`, the `ls-files` / `status` /
-`check-attr` parsers, `startGitEnumeration` / `applyGitEnumeration` —
-is `git-inputs.ts` (see git-inputs.md); this module imports the cache
-and re-exports it for readers that reach it here.
+The git side is `git-inputs.ts` (see git-inputs.md); this module
+re-exports it for readers that reach it here: `GitFilesCache`,
+`populateGitFilesCache`, `runGitLsFiles`, `startGitEnumeration`,
+`applyGitEnumeration`, `gitPathspecs`, `parseCheckAttrOutput`,
+`autocrlfConverts` and the `GitEnumeration` type.
 
 ```ts
 export interface ResolvedInputs {
   files: string[] // absolute paths, sorted
   envValues: Array<[name: string, value: string]> // sorted by name
+  runtimeValues: Array<[command: string, output: string]> // sorted by command
+  workspaceRuntimeValues: Array<[command: string, output: string]>
 }
 
 export interface ResolveInputsArgs {
@@ -30,8 +35,18 @@ export interface ResolveInputsArgs {
   envSource: NodeJS.ProcessEnv
   inputs: CacheInputs | undefined
   ownOutputs: string[] // project-relative globs to exclude
+  ownWorkspaceOutputs?: string[] // root-relative `outputs.workspaceFiles` to exclude from `inputs.workspaceFiles`
   nestedProjectDirs: string[] // absolute dirs of nested projects
+  gitFilesCache?: GitFilesCache // per-run memo of `git ls-files` per project
+  runtimeCache?: Map<string, Promise<string>> // per-run memo of `inputs.runtime`, keyed projectDir + '\0' + command
+  workspaceRuntimeCache?: Map<string, Promise<string>> // per-run memo of `workspaceRuntime`, keyed by command
+  workspaceFilesCache?: WorkspaceFilesCache // per-run memo of `inputs.workspaceFiles` per declaration
 }
+
+export type WorkspaceFilesCache = Map<
+  string,
+  { snapshot: readonly string[]; result: Promise<string[]> }
+>
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs>
 
@@ -51,49 +66,76 @@ export async function cleanOutputs(args: {
   outputs: string[]
   nestedProjectDirs: string[]
 }): Promise<void>
+
+// The same pair for `outputs.workspaceFiles`, anchored at the root with
+// no project-dir exclusion; the clean returns the root-relative paths
+// it removed, for `GitFilesCache.markWorkspaceOutputsChanged`.
+export async function resolveWorkspaceOutputs(args: {
+  workspaceRoot: string
+  outputs: string[]
+}): Promise<string[]>
+export async function cleanWorkspaceOutputs(args: {
+  workspaceRoot: string
+  outputs: string[]
+}): Promise<string[]>
+
+/** A literal entry compiles to itself plus its subtree: `src/` → `src`, `src/**`. */
+export function asTrees(patterns: readonly string[]): string[]
 ```
 
-## File resolution rules (v14)
+## File resolution rules
 
-The candidate file set comes from `git ls-files --cached --others
---exclude-standard` when the project is inside a git repo, falling
-back to a `Bun.Glob` walker when it isn't. The user's
-`cache.inputs.files` globs are then applied as a filter on top.
+The candidate file set comes from git — `git ls-files --cached
+--others --exclude-standard` in the project directory — and the user's
+`cache.inputs.files` globs are applied as a filter on top. There is no
+other walker: a project outside a git work tree is a `UserError`
+("vx requires git").
 
-1. **Candidate enumeration:**
-   - **Git path** (default when a `.git` work-tree exists). `git
-ls-files` yields tracked files PLUS untracked-but-not-ignored
-     files. `.gitignore` cascades (workspace + every nested), plus
-     `.git/info/exclude` + global excludes, are honored — git
-     applies them for us. This matches what Turbo and Nx do
-     internally.
-   - **Fallback path** (no git available). `Bun.Glob.scan(projectDir)`
-     walks the FS. The `ignore` library applies workspace-root +
-     project-root `.gitignore` patterns, with the caveat that
-     project-level anchored patterns are evaluated against
-     workspace-relative paths (so `pkg/.gitignore: src/skip.ts`
-     misbehaves — match git semantics by adopting a git workspace).
+1. **Candidate enumeration.** `git ls-files` yields tracked files PLUS
+   untracked-but-not-ignored files. `.gitignore` cascades (workspace +
+   every nested), plus `.git/info/exclude` + global excludes, are
+   honored — git applies them for us. This matches what Turbo and Nx
+   do internally. The listing is memoized per run in `GitFilesCache`
+   (one spawn per project, or one workspace-wide spawn through
+   `populateGitFilesCache`); a project inside a nested repository — a
+   submodule, an embedded repository, which the workspace's git holds
+   as one gitlink — is enumerated by its own git.
 2. **Positive globs** — `cache.inputs.files` strings without `!`.
    The default when `cache.inputs.files` is undefined is `['**/*']`.
-   Each is checked against the candidate set via `Bun.Glob.match`.
+   Each is normalized (a leading `./`, inner `./` segments, doubled
+   slashes and a trailing slash) and checked against the candidate
+   set via `Bun.Glob.match`. A literal entry — no glob character —
+   means the file or its whole tree: `src/`, `src` and `dist` all
+   compile to the path plus `<path>/**` (`asTrees`), as in Turbo and
+   every `.gitignore`. A literal that exists on disk but git does not
+   list (gitignored) is refused as a `UserError`: it would contribute
+   nothing to the key, and the task would report up-to-date after
+   that file changed. A literal that does not exist stays silent — an
+   optional file is an ordinary declaration.
 3. **Negative globs** — entries starting with `!`. The `!` is
-   stripped; the rest becomes a `Bun.Glob` and any matched path is
-   removed.
+   stripped; the rest becomes a `Bun.Glob` (a literal is a tree here
+   too) and any matched path is removed.
 4. **Always-ignored** — hard-coded
-   (`**/node_modules/**`, `**/.git/**`, `**/.vx/**`, `**/*.tsbuildinfo`)
+   (`**/node_modules/**`, `**/.git/**`, `**/.vx/**`, `**/*.tsbuildinfo`,
+   `**/vx-lock.json`, `**/*.bun-build`)
    — applied as a defense-in-depth even if git happens to track
-   something there.
+   something there. The lock file is vx's own frozen-config metadata,
+   never a task input; the `.bun-build` intermediate is a transient a
+   concurrent compile is mid-write.
 5. **Boundary ignores** — every nested project's directory (relative
    to this project) → `<rel>/**`. Cross-project isolation contract.
 6. **Own outputs** — declared `cache.outputs.files` are excluded.
    Prevents self-invalidation.
 7. **Existence check** — `git ls-files --cached` can surface a
-   deleted-but-tracked path; we drop entries that don't exist on
-   disk so the hasher doesn't throw ENOENT. Paths carrying a trusted
-   index OID skip the probe (a clean tracked file necessarily exists),
-   which is why `skip-worktree` / `assume-unchanged` entries have
-   their OID dropped up front — git is not watching those, so their
-   OID says nothing about whether the file is on disk.
+   deleted-but-tracked path; we drop entries that are not on disk so
+   the hasher doesn't throw ENOENT. "On disk" is an `lstat`: a regular
+   file or a symlink (to anything, or to nothing — its target string
+   is what folds, as in git); a directory is not an input (git lists a
+   gitlink at its path and `**/*` matches it). Paths carrying a
+   trusted index OID skip the probe (a clean tracked file necessarily
+   exists), which is why `skip-worktree` / `assume-unchanged` entries
+   have their OID dropped up front — git is not watching those, so
+   their OID says nothing about whether the file is on disk.
 
 The matched absolute paths are sorted alphabetically and returned.
 
@@ -111,19 +153,35 @@ host's `process.env`):
 
 `resolveOutputs` is a simpler glob pass:
 
-- Globs run against the project dir.
+- Globs run against the project dir (a literal is a tree here too).
 - Always-ignored paths excluded (`node_modules`, etc.).
 - Nested-project subtrees excluded (boundary isolation).
 - **No gitignore filter** — outputs like `dist/` are usually
   gitignored on purpose, and we still want to capture them.
+- **Only paths really inside the project**, after resolving each
+  output's directory: Bun 1.4.0's `Glob.scan` descends into a
+  symlinked directory, so `dist -> ../victim` yielded paths that are
+  lexically inside the project while the files are not — and the
+  caller deletes what this returns. A directory that will not resolve
+  is refused (a broken link, or a race with the producing task).
 
-Returns sorted absolute paths.
+Returns sorted absolute paths. `resolveWorkspaceOutputs` is the same
+pass for `outputs.workspaceFiles`, anchored at the workspace root and
+deliberately without the project-dir exclusion.
+
+`cleanOutputs` removes every match, then the directories it emptied,
+bottom-up and never the root itself (a directory left standing where
+the cached entry holds a file of the same name blocks the restore). A
+declared output the process cannot remove — another user's `dist/`, a
+read-only checkout — is a `UserError` naming the path, not an internal
+error.
 
 ## What this does NOT do
 
-- Doesn't hash file content (that's `cache.ts:hashFiles`).
+- Doesn't hash file content (that's `file-hashes.ts`'s `FileHashStore`
+  under `orchestrator/task-hash.ts`).
 - Doesn't apply `inputs.tasks` filtering (that's
-  `orchestrator.filterUpstreamHashes`).
+  `orchestrator/upstream.ts`'s `filterUpstreamHashes`).
 - Doesn't support workspace-relative globs in `inputs.files` —
   intentionally scoped per-project. For workspace-root-anchored files use
   `cache.inputs.workspaceFiles` (root-relative globs); see
@@ -138,9 +196,10 @@ Returns sorted absolute paths.
 Two test files cover this module:
 
 **`tests/inputs.test.ts`** — direct unit tests against `resolveInputs`,
-`resolveOutputs`, `cleanOutputs`. Split into FS-walker tests (no git
-init in fixture) and **git-path tests** (init a real git repo in the
-fixture). The git-path block verifies:
+`resolveOutputs`, `cleanOutputs`, each on a real git repository in the
+fixture, plus the `gitFilesCache` memo, the single workspace-wide
+spawn, the symlink edge cases and the runtime values. The git-path
+block verifies:
 
 - Nested `.gitignore` patterns are correctly anchored (the v13 bug).
 - Untracked-but-not-ignored files participate immediately.

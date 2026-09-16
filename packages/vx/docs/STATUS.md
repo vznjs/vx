@@ -175,6 +175,28 @@ test is telling the truth.
       plan-format.md is the formatter on one fixture
       (`tests/plan-format.test.ts`, four fail on the old page); the
       names events.md now declares are held by the surface law.
+314.  DONE (2026-09-16, the next three module pages by gap: cli-cache,
+      inputs, scheduler). cli-cache.md said the verb hard-codes
+      `.vx/cache` and has no `--dry-run` — it resolves the directory
+      a run would use (`--cache-dir`, `cacheDir`, a `config` plugin)
+      and has had the flag since 2608ed4; its regex was the lowercase
+      one, its `PruneArgs` three of five fields, its test bullet a
+      `--older-than 0s` the verb now refuses. inputs.md described a
+      `Bun.Glob` fallback walker and an `ignore` library that no
+      longer exist (git or a `UserError`), four always-ignored globs
+      of six, `ResolveInputsArgs` six of eleven fields, hashing in a
+      `cache.ts:hashFiles` that is `file-hashes.ts`, and none of the
+      literal-is-a-tree rule, the gitignored-literal refusal, the
+      nested-repository enumeration, the symlink containment guard or
+      the emptied-directory sweep. scheduler.md's `TaskOutcome` had
+      twelve of twenty-three fields, `ScheduleOptions` none of
+      `continueMode`, `settledOf`, `admit`, and `mergePriorities` was
+      unnamed. Fixed, and the law is `tests/module-shape-drift.test.ts`:
+      a page's interface block lists exactly the source's top-level
+      fields (five shapes), and a quoted constant or regex is the
+      source's (`ALWAYS_IGNORE`, both parsers). Seven fail on the old
+      pages. The surface law holds names; this holds the fields
+      beneath them — the same law one level down.
 
 ## In flight
 
