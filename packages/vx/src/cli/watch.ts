@@ -134,6 +134,35 @@ export function outputContainer(raw: string): string {
  */
 export const WATCH_PROBE = '.vx-watch-probe'
 
+/**
+ * The subset of `paths` git ignores, asked once per judgement (one
+ * `git check-ignore` per debounce window that has candidates, never per
+ * event). A git-ignored path is invisible to every cache key — inputs
+ * are tracked + untracked-not-ignored — so a cycle it starts can change
+ * nothing, and a task that writes one on every run (a pid file, a
+ * timestamped log, `.next/trace`) made the loop re-run itself forever
+ * (2026-09-16: 29 cycles in 8 s from one edit). A TRACKED file that
+ * matches a pattern is not reported, by git's own rule, so it stays an
+ * edit. Outside a repository (exit 128) nothing is ignored, as before.
+ */
+export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> {
+  const ignored = new Set<string>()
+  if (paths.length === 0) return ignored
+  const proc = Bun.spawnSync({
+    cmd: ['git', 'check-ignore', '-z', '--stdin'],
+    cwd: workspaceRoot,
+    stdin: Buffer.from(paths.map((p) => `${p}\0`).join('')),
+    stdout: 'pipe',
+    stderr: 'ignore',
+  })
+  // 0: some ignored; 1: none. Anything else is git refusing (not a
+  // repository, a path inside a nested one): no path is ignored.
+  if (proc.exitCode !== 0) return ignored
+  for (const p of new TextDecoder().decode(proc.stdout).split('\0'))
+    if (p.length > 0) ignored.add(p)
+  return ignored
+}
+
 /** How long a watcher gets to report its own probe before the loop goes on without proof. */
 const WATCH_PROBE_TIMEOUT_MS = 2_000
 /** The file `fsClockNow` writes and removes, under the cache dir the watchers ignore. */
@@ -695,12 +724,38 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // are judged one window after the run ends, all together — an edit made
   // meanwhile still differs from what the loop last saw and re-runs.
   const pendingPaths = new Map<string, string>()
-  const judge = (): string | undefined => {
+  // A path that starts cycle after cycle from the run's own writes is a
+  // task rewriting a file with different bytes every run (a pid file, a
+  // timestamped log): the state gate cannot settle it, and nothing here
+  // can tell the third such write from a user's third save mid-run — so
+  // watch names it once, with the remedy, and keeps going. Counted only
+  // on the judgement AFTER a run; an idle judgement is the user's.
+  const streak = { abs: '', n: 0 }
+  const noticed = new Set<string>()
+  const judge = (afterRun: boolean): string | undefined => {
+    const ignored = gitIgnored(workspaceRoot, [...pendingPaths.keys()])
     let first: string | undefined
+    let firstAbs: string | undefined
     for (const [p, l] of pendingPaths) {
-      if (!sameState(p)) first ??= l
+      if (ignored.has(p)) continue
+      if (!sameState(p) && first === undefined) {
+        first = l
+        firstAbs = p
+      }
     }
     pendingPaths.clear()
+    if (firstAbs === undefined || !afterRun) {
+      streak.n = 0
+      return first
+    }
+    streak.n = streak.abs === firstAbs ? streak.n + 1 : 1
+    streak.abs = firstAbs
+    if (streak.n >= 3 && !noticed.has(firstAbs)) {
+      noticed.add(firstAbs)
+      process.stdout.write(
+        `vx watch: ${first} has started 3 cycles in a row, written by the cycle before each — a task rewrites it every run. Declare it in cache.outputs (an output never starts a cycle) or add it to .gitignore (a git-ignored path never does); until then every run re-runs.\n`,
+      )
+    }
     return first
   }
   const trigger = (label: string, abs: string): void => {
@@ -710,7 +765,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     debounceTimer = setTimeout(() => {
       debounceTimer = null
       if (running) return
-      const first = judge()
+      const first = judge(false)
       if (first !== undefined) void cycle(first)
     }, DEBOUNCE_MS)
   }
@@ -747,7 +802,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         // after the run, under the label of what actually arrived.
         if (pendingPaths.size === 0 || stop.aborted) break
         await Bun.sleep(DEBOUNCE_MS)
-        label = judge()
+        label = judge(true)
       }
     } finally {
       running = false
