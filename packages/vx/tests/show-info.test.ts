@@ -373,6 +373,11 @@ describe('vx info (e2e)', () => {
       // a packing policy budgets — the two numbers a container hides.
       expect(r.out).toMatch(/^workers: +[1-9]\d* — (the CPU count|cgroup CPU quota )/m)
       expect(r.out).toMatch(/^memory: +\d/m)
+      // The runtime probe's verdict for this host, with the declared count:
+      // the fixture declares none, so an unavailable runtime fails nothing.
+      expect(r.out).toMatch(
+        /^sandbox: +(available \(0 tasks declare exec\.sandbox\)|unavailable — .+; 0 tasks declare exec\.sandbox)$/m,
+      )
       const json = await vx(root, ['info', '--format=json'])
       expect(json.code).toBe(0)
       const facts = JSON.parse(json.out) as {
@@ -453,6 +458,11 @@ describe('vx info (e2e)', () => {
       expect(facts.hits24h).toBe(0)
       expect(facts.flakyTasks).toEqual([])
       expect(facts.lockfile).toBe(false)
+      expect(facts.sandbox).toEqual({
+        available: expect.any(Boolean),
+        reason: expect.any(String),
+        declared: 0,
+      })
       // Same facts either way: the pretty rows render this object.
       const pretty = await vx(root, ['info'])
       expect(pretty.out).toContain(`cache entries:`)

@@ -83,10 +83,23 @@ export function renderInfo(f: InfoFacts): string {
     // the hits are a share of.
     ['task runs (24h)', `${f.runs24h} (${f.hits24h} cache hits)`],
     ['flaky tasks', describeFlakyTasks(f.flakyTasks)],
+    ['sandbox', describeSandbox(f.sandbox)],
     ['vx-lock.json', f.lockfile ? 'yes' : 'no'],
   ]
   const labelW = Math.max(...rows.map(([label]) => label.length))
   return rows.map(([label, value]) => `${`${label}:`.padEnd(labelW + 1)} ${value}`).join('\n')
+}
+
+/**
+ * `available (3 tasks declare exec.sandbox)`, or `unavailable — <why>; 3
+ * tasks declare exec.sandbox and will fail`: a declared sandbox whose
+ * runtime cannot start fails the task, so the doctor names it before a run
+ * does.
+ */
+export function describeSandbox(s: InfoFacts['sandbox']): string {
+  const declared = `${s.declared} task${s.declared === 1 ? '' : 's'} declare${s.declared === 1 ? 's' : ''} exec.sandbox`
+  if (s.available) return `available (${declared})`
+  return `unavailable — ${s.reason}; ${declared}${s.declared > 0 ? ' and will fail' : ''}`
 }
 
 /** `4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 — vx.workspace.ts (4 cores)`. */

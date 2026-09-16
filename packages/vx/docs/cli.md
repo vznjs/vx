@@ -1376,6 +1376,7 @@ cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12.4 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
 flaky tasks:      1 — web#test (3 of 11 runs failed on unchanged inputs)
+sandbox:          available (9 tasks declare exec.sandbox)
 vx-lock.json:     yes
 ```
 
@@ -1387,6 +1388,14 @@ vx-lock.json:     yes
   critical path. git's `core.fsmonitor` (a daemon that watches the
   worktree) and `core.untrackedCache` make it near-free after the first
   run; both are off by default, so `vx info` says when they are.
+- `sandbox` is the runtime probe's verdict for THIS host — one sandboxed
+  `true`, memoized — and how many loaded tasks declare `exec.sandbox`. A
+  declared sandbox whose runtime cannot start fails the task at run
+  time rather than downgrading, so `unavailable — <why>; 3 tasks declare
+exec.sandbox and will fail` says it first: root inside a container
+  (the runtime's seccomp helper cannot create its nested user namespace;
+  run as a non-root user or set `sandbox.weakerWhenNested: true`), a
+  missing bubblewrap or socat, a nested seatbelt on macOS.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
   each fills, in pipeline order (`config`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
