@@ -270,6 +270,45 @@ test is telling the truth.
       the control with no row. `docs/cli.md` § `vx why` lists the six
       kinds and what each folds.
 
+257.  DONE (2026-09-16, a persona: the tool that moved): a task whose
+      command is `tsc --version` with `tsc` installed only in a sibling
+      package's `node_modules/.bin` failed with the shell's line ("sh:
+      1: exec: tsc: not found", exit 127) — true, and silent on the one
+      thing that is vx's: the PATH it built (the project's bin, then
+      the root's, never a sibling's). On exit 127 the frame gets one
+      line naming the word (`execWord`, the same predicate `execWrap`
+      uses, so a pipeline says "a command in this task"), the two bin
+      directories and the rule; `taskBinDirs` is the one place both
+      the env and the line read them from. Pinned in
+      `tool-not-on-path.test.ts` with a PATH of bun, sh and git alone
+      and a control (the same tool at the root's bin runs green, no
+      line); fails without the fix. Read on the way: a first probe
+      "passed" because the box's PATH had a `tsc` — an ambient PATH is
+      part of every task's env by design (the allowlist), and a
+      changed PATH is not a key change (env is folded only when
+      declared), so a probe of a missing tool needs a stripped PATH and
+      a miss. The darwin job of #420 taught the pin to compare against
+      the workspace's real path (`/tmp` is `/private/tmp` there; the
+      class of 242's pin).
+258.  DONE (2026-09-16, the class of 257): a word with a slash is a file,
+      not a PATH lookup, and the 257 line blamed the PATH for it — the
+      shell says "not found" for a script that EXISTS when its `#!`
+      interpreter does not (probed: `exec ./x.sh` with `#!/nonexistent`
+      exits 127 with the file's name in the line, under dash and bash
+      5), so the line would have sent a user to install a tool they
+      have. The verdict moved to `shell-verdict.ts`: a bare word keeps
+      the PATH rule (and `chmod +x` on 126); a path is read under
+      either code — missing (the resolved path), a directory, no
+      execute bit, a CRLF `#!` line (the interpreter the shell looked
+      for ends in `\r`), a `#!` interpreter that does not exist, no
+      `#!` line at all (126, the loader's "Exec format error"). Unit-
+      pinned on real files in `shell-verdict.test.ts`; the e2e pin
+      gained the shebang and the no-execute-bit cases (both fail
+      without the wiring). The darwin job taught the third shell:
+      macOS's bash 3.2 names a missing interpreter itself ("bad
+      interpreter") and exits 1, so vx adds nothing there, and the pin
+      says so per platform rather than skipping.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items

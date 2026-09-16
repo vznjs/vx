@@ -8,6 +8,7 @@ export {
   shellQuote,
   signalExitCode,
   type CaptureConfig,
+  execWord,
 } from './runner.js'
 export {
   initSandbox,

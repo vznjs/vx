@@ -136,10 +136,21 @@ const SHELL_BUILTINS = new Set([
  * the shell.
  */
 export function execWrap(command: string): string {
-  if (SHELL_CONTROL.test(command)) return command
+  const first = execWord(command)
+  return first === undefined ? command : `exec ${command}`
+}
+
+/**
+ * The one program a command runs when it is a plain `word args…` — the
+ * word `execWrap` execs, and the word the shell names in "not found" when
+ * it exits 127. Undefined for a pipeline, a builtin, an assignment: there
+ * the 127 could be any segment's.
+ */
+export function execWord(command: string): string | undefined {
+  if (SHELL_CONTROL.test(command)) return undefined
   const first = command.trimStart().split(/\s+/)[0] ?? ''
-  if (first === '' || first.includes('=') || SHELL_BUILTINS.has(first)) return command
-  return `exec ${command}`
+  if (first === '' || first.includes('=') || SHELL_BUILTINS.has(first)) return undefined
+  return first
 }
 
 /**
