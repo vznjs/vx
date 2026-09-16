@@ -414,7 +414,8 @@ is on):
 2. A second `computeTaskHash` runs with the `captureInto` side-channel
    to record the per-component input fingerprint (miss-only; the
    HashCache memos make it a re-fold, no extra I/O).
-3. The artifact — one `stdout` entry, the `outputs/<rel>` (+
+3. The artifact — one `stdout` entry (bounded: the first and last 8 MiB
+   of the task's output, the dropped middle named where it was), the `outputs/<rel>` (+
    `workspace-outputs/<rel>`) entries and the `.vx-meta.json` sidecar —
    is packed in-process (no staging dir, no subprocess) into a
    single `<hash>.tar.zst`, written to a temp name, validated, and

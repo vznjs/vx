@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Spawn a shell command, stream stdout/stderr live, capture full text,
-and surface CPU + peak RSS from `Bun.spawn().resourceUsage()`. Also
+Spawn a shell command, stream stdout/stderr live, capture a bounded
+copy of the text, and surface CPU + peak RSS from
+`Bun.spawn().resourceUsage()`. Also
 hosts the `runPersistent` variant for long-running tasks that don't
 exit before the rest of the graph finishes.
 
@@ -104,6 +105,15 @@ full byte size in heap for the task's whole life:
   the cache has never stored stderr (v17 artifact format).
 - `stdout` is retained only when the task **will write a cache entry**,
   since `cache.save`'s `entry.stdout` is its one consumer.
+- What is retained is **bounded**: the first `CAPTURE_HEAD_CHARS` and
+  the last `CAPTURE_TAIL_CHARS` (8 MiB each), with the dropped middle
+  counted and named where it was (`droppedOutputLine`). The live
+  stream is whole — every byte reaches the terminal as the task writes
+  it — so the bound is on what the cache entry stores and a hit
+  replays. Unbounded, a task printing 200 MB cost vx 620 MB of RSS on
+  the miss and on every hit, and its stdout sat whole in `cache.db`
+  (2026-09-16). `tests/capture-cap.test.ts` pins the head, the tail,
+  the line, the live stream, and the replay.
 
 Measured through the real CLI on a task writing 150 MB with
 `--output-logs none`: peak RSS 294 → 81 MiB, and flat in task volume

@@ -523,6 +523,75 @@ export function ownRssHighWater(): number {
  * still reaches `onChunk`; only the retained copy is dropped, so a caller
  * that will not read it does not pay its byte size in heap.
  */
+/**
+ * What a task's captured output keeps: the first `CAPTURE_HEAD_CHARS` and
+ * the last `CAPTURE_TAIL_CHARS` characters, the dropped middle counted and
+ * named where it was. The live stream is never bounded — every byte still
+ * reaches the terminal as the task writes it — only the copy vx retains
+ * for the cache entry and its replay. Unbounded, a task printing 200 MB
+ * cost vx 620 MB of RSS on the miss AND on every hit, and its stdout sat
+ * whole in `cache.db` (measured 2026-09-16); a realistic chatty suite is
+ * 5–20 MB, so the bound is above what a replay is worth reading anyway.
+ */
+export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
+export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
+
+const mib = (n: number): string => `${(n / (1024 * 1024)).toFixed(1)} MiB`
+
+/** The line that stands where the dropped middle was. */
+export function droppedOutputLine(dropped: number): string {
+  return (
+    `\n[vx] ${mib(dropped)} of output not kept — vx keeps the first ${mib(CAPTURE_HEAD_CHARS)} ` +
+    `and the last ${mib(CAPTURE_TAIL_CHARS)} of a task's output for its cache entry and replay\n`
+  )
+}
+
+/**
+ * A head-and-tail accumulator: the head fills once, the tail is a ring
+ * of chunks trimmed from the front, so memory is bounded by the two
+ * limits plus one chunk whatever the task prints.
+ */
+class BoundedCapture {
+  private head = ''
+  private readonly tail: string[] = []
+  private tailLen = 0
+  private dropped = 0
+
+  push(chunk: string): void {
+    if (this.head.length < CAPTURE_HEAD_CHARS) {
+      const room = CAPTURE_HEAD_CHARS - this.head.length
+      if (chunk.length <= room) {
+        this.head += chunk
+        return
+      }
+      this.head += chunk.slice(0, room)
+      chunk = chunk.slice(room)
+    }
+    this.tail.push(chunk)
+    this.tailLen += chunk.length
+    while (this.tailLen > CAPTURE_TAIL_CHARS) {
+      const first = this.tail[0]!
+      const excess = this.tailLen - CAPTURE_TAIL_CHARS
+      if (first.length <= excess) {
+        this.tail.shift()
+        this.tailLen -= first.length
+        this.dropped += first.length
+      } else {
+        this.tail[0] = first.slice(excess)
+        this.tailLen -= excess
+        this.dropped += excess
+      }
+    }
+  }
+
+  text(): string {
+    const tail = this.tail.join('')
+    return this.dropped === 0
+      ? this.head + tail
+      : this.head + droppedOutputLine(this.dropped) + tail
+  }
+}
+
 export async function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,
@@ -535,7 +604,7 @@ export async function streamToString(
   // so the runtime value is always a ReadableStream; the `number` branch
   // is unreachable but typed.
   if (!stream || typeof stream === 'number') return ''
-  let full = ''
+  const full = new BoundedCapture()
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   // On abort, cancel the read so a pending `reader.read()` resolves
@@ -551,19 +620,19 @@ export async function streamToString(
       const { value, done } = await reader.read()
       if (done) break
       const chunk = decoder.decode(value, { stream: true })
-      if (retain) full += chunk
+      if (retain) full.push(chunk)
       onChunk?.(chunk)
     }
     const tail = decoder.decode()
     if (tail.length > 0) {
-      if (retain) full += tail
+      if (retain) full.push(tail)
       onChunk?.(tail)
     }
   } finally {
     signal?.removeEventListener('abort', onAbort)
     reader.releaseLock()
   }
-  return full
+  return full.text()
 }
 
 /**

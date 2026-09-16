@@ -156,10 +156,15 @@ describe('runCommand stream capture', () => {
       const dropFew = probeRssMib(capturedProbe(false, CAP_FEW_MIB))
       const dropMany = probeRssMib(capturedProbe(false, CAP_MANY_MIB))
 
-      // Retaining is the documented default: `RunResult.stdout` holds what
-      // the child wrote, so it MUST grow with the volume. Pinned so that
-      // "just stop capturing everywhere" has to argue with this line.
-      expect(keepMany - keepFew).toBeGreaterThan(CAP_EXTRA_MIB * 0.5)
+      // Retaining is the documented default, and since 2026-09-16 what it
+      // retains is BOUNDED (a head and a tail, `CAPTURE_*_CHARS`): the extra
+      // 120 MiB the child writes must not cost the extra 120 MiB. Full
+      // retention cost 141 MiB here (102 → 243); the bounded ring costs the
+      // allocator's high-water of pushing the chunks through it (40 MiB
+      // measured), so the line sits at the volume itself — full retention
+      // fails it, the bound clears it 3× over. `tests/capture-cap.test.ts`
+      // pins that the head and the tail are still there.
+      expect(keepMany - keepFew).toBeLessThan(CAP_EXTRA_MIB)
 
       // Opted down, the same 120 MiB of extra output must not move it: the
       // stream is still fully drained, just not retained. Measured 102→243

@@ -572,6 +572,27 @@ the error table in `docs/schema.md` has the row.
       as `probe` from a fresh JUnit run of all twelve shards: 168 files,
       151 s of recorded weight against 135; the local shards deal to
       10–15 s. The next CI run is the number.
+229.  DONE (2026-09-16, Next 20): a task's retained output is bounded.
+      The live stream is untouched — every byte reaches the terminal as
+      the task writes it — but the copy vx keeps for the cache entry
+      and its replay is the first 8 MiB and the last 8 MiB, with the
+      dropped middle counted and named where it was (`[vx] 22.1 MiB of
+output not kept — vx keeps the first 8.0 MiB and the last 8.0 MiB
+of a task's output for its cache entry and replay`). The
+      accumulator fills a head once and keeps a ring of tail chunks
+      trimmed from the front, so memory is the two bounds plus one
+      chunk whatever the task prints. Measured on the 200 MB probe:
+      the hit 620 → 109 MB of RSS and `.vx/cache` 193 → 17 MB; the MISS
+      stays at 652 MB, which is not the capture but the logger's frame
+      buffer — a task's live chunks are held until its frame prints,
+      the persistent path alone routes them into a bounded tail, and
+      `--output-logs none` avoids it (measured 294 → 81 MiB when that
+      mode shipped). Left as it is: a frame is the whole output by
+      contract, and a chatty task's operator has the mode. Pinned in `capture-cap.test.ts` (40 MB: the head, the tail,
+      the exact length, the line's number, the live stream still whole;
+      1 MB: whole, no line; through `run()`: the hit replays the bounded
+      text with the line). `modules/runner.md`, `caching.md` § Cache
+      write and the site's Known limits say it.
 
 ## In flight
 
@@ -928,7 +949,7 @@ with "what next?".
     task floor), and what a waiting run prints (the admit-held line's
     shape, item 171). Not started.
 
-20. **A task's captured output has no cap.** Measured 2026-09-16
+20. DONE 2026-09-16 as item 229 — the retained copy is bounded (8 MiB head + 8 MiB tail, the middle named). Was: **A task's captured output has no cap.** Measured 2026-09-16
     (item 225's probe): a task printing 200 MB costs vx 620 MB of RSS
     on the miss AND on every hit (the string, its encodings, the row),
     and its stdout lands in `cache.db` whole — 193 MB of `.vx/cache`
