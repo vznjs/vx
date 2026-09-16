@@ -370,7 +370,12 @@ test is telling the truth.
       before 249 / 254 and 244 / 255 — a tie inside the box's jitter.
       Expected: `shellVerdict` and `failedLabel` sit on the exit path
       of an executed task, and a warm run executes nothing; a hit's
-      label is not a failure's.
+      label is not a failure's. The Linux job of #424 found the
+      opted-down capture bound in `output-memory.test.ts` read exactly
+      its 30 MiB line under twelve shards — the allocator high-water
+      the logger test above it had already met and widened to half the
+      volume (retention costs the full 141 MiB); the capture test now
+      uses the same slack.
 
 ## In flight
 

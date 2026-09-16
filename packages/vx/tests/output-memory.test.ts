@@ -168,8 +168,13 @@ describe('runCommand stream capture', () => {
 
       // Opted down, the same 120 MiB of extra output must not move it: the
       // stream is still fully drained, just not retained. Measured 102→243
-      // MiB retaining vs 50→51 MiB not.
-      expect(dropMany - dropFew).toBeLessThan(CAP_EXTRA_MIB * 0.25)
+      // MiB retaining vs 50→51 MiB not. The bound is the logger test's 0.5,
+      // for its reason: the residual is the allocator's high-water of the
+      // chunks pushed through, and it grows with load — 0.25 read exactly
+      // 30 MiB on the Linux job of #424 under twelve shards (2026-09-16).
+      // Retention costs the full 141 MiB, 2× this line; the noise sits
+      // half below it.
+      expect(dropMany - dropFew).toBeLessThan(CAP_EXTRA_MIB * 0.5)
     },
     TIMEOUT,
   )
