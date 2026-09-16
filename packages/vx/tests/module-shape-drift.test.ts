@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { formatBytes } from '../src/cli/format.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 const read = (rel: string) => readFileSync(path.join(pkg, rel), 'utf8')
@@ -109,6 +110,8 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['upgrade', 'cli/upgrade.ts', 'ReleaseAsset'],
   ['cli-watch', 'cli/watch.ts', 'ArmedWatcher'],
   ['logger', 'orchestrator/logger.ts', 'OutputView'],
+  ['colors', 'orchestrator/colors.ts', 'ColorSupport'],
+  ['colors', 'orchestrator/colors.ts', 'PaintOptions'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -239,5 +242,40 @@ describe('cli-help.md names every section the help text has', () => {
     expect(section).not.toBeNull()
     const named = [...section![1]!.matchAll(/^- `([^`]+)`/gm)].map((m) => m[1]!)
     expect(named).toEqual(headers)
+  })
+})
+
+describe('a module page shows what a formatter prints', () => {
+  it("cli-format.md's byte table is formatBytes, row for row", () => {
+    const doc = read('docs/modules/cli-format.md')
+    const rows = [...doc.matchAll(/^\| `([^`]+)`\s+\| `([^`]+)`\s+\|$/gm)].map((m) => [
+      m[1]!,
+      m[2]!,
+    ])
+    const inputs: ReadonlyArray<[expr: string, n: number]> = [
+      ['0', 0],
+      ['1023', 1023],
+      ['1024', 1024],
+      ['9 * 1024 + 100', 9 * 1024 + 100],
+      ['10 * 1024', 10 * 1024],
+      ['1024 ** 2', 1024 ** 2],
+      ['5 * 1024 ** 3', 5 * 1024 ** 3],
+    ]
+    expect(rows).toEqual(inputs.map(([expr, n]) => [expr, formatBytes(n)]))
+  })
+})
+
+describe('a module page lists the errors a parser throws', () => {
+  it("dependency-spec.md's five errors are parseDependencySpec's, as a set", () => {
+    const src = read('src/graph/dependency-spec.ts')
+    const thrown = new Set(
+      [...src.matchAll(/new DependencySpecError\(raw, '([^']+)'\)/g)].map((m) => m[1]!),
+    )
+    const doc = read('docs/modules/dependency-spec.md')
+    const errors = /Errors:\n\n([\s\S]*?)\n\n/.exec(doc)
+    expect(errors).not.toBeNull()
+    const named = new Set([...errors![1]!.matchAll(/→ `([^`]+)`/g)].map((m) => m[1]!))
+    expect(named).toEqual(thrown)
+    expect(thrown.size).toBe(5)
   })
 })

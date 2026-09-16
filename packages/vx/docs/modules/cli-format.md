@@ -25,10 +25,15 @@ and one decimal of precision below 10 of any unit. Powers of 1024.
 
 ## Use sites
 
-- `vx cache prune` output (`Pruned N entries (1.3 GB freed)`).
+- `vx cache prune` output (`Pruned N entries (1.3 GB freed)`, and the
+  orphaned artifacts it reaped).
 - The `vx info` doctor printout (`vx stats` is a deprecated alias): the
   cache-size line (`cache entries    N (1.3 GB)`).
+- `vx last`: each executed task's peak RSS.
+- Re-exported from `cli/index.ts` for the verbs a plugin adds.
 
 ## Tests
 
-`tests/cli.test.ts` includes a `formatBytes` table-driven case set.
+`tests/cli.test.ts` includes a `formatBytes` table-driven case set; the
+table above is the function's output row for row
+(`tests/module-shape-drift.test.ts`).
