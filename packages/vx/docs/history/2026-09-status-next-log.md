@@ -516,3 +516,69 @@ from …/node_modules/astro/dist/cli/index.js` — astro's OWN
    announcement series (item 118), README and site numbers generated
    and checked, "Edit page" links that open the right file, LICENSE
    holder, SECURITY.md, CONTRIBUTING.md (item 116).
+
+## Handoffs 14g–14i (moved 2026-09-16 with items 145–202)
+
+14g. **Handoff after item 192 (2026-09-16, small hours).** Three
+items since 14f: the plugin author's walk refuted nothing (190); the
+agent's walk over the MCP wire gave `whyDidThisRerun` its default
+run through a query the CLI now shares (191); and that PR's first CI
+run exposed item 170's pin on a knife edge — a light child's
+`ru_maxrss` equals the parent's mark by construction, the kernel's
+RSS counters lag by pages, and an exact comparison flipped once in
+twelve runs — so the floor has 4 MiB of slack now (192; the rule is
+in CLAUDE.md). Ten walks since 14d: eight fixes, two refutations;
+every persona this box can host has been walked once (the REAPI
+operator with live services has not — no docker here). Open: Next
+1, 2 and 16 as before, all gated; the launch checklist's owner
+steps; no open issues. The box: unchanged. Methods that paid: read
+a red CI job's own log before calling anything a flake — the failing
+pin was in code the diff never touched, and it was still a real
+knife edge, fixed with a differential pin rather than re-run; a
+walk's refutation is written down (186, 190) so the next reader
+changes angle. Never end with "what next?".
+
+14i. **Handoff after item 202 (2026-09-16, early morning).** Five
+items since 14h, three of them from walking the CI persona and the
+maintainer through `.github/` rather than a scratch workspace: § In
+flight cut to what is open (198); `--affected` in the two clone shapes
+CI produces — a base that is HEAD itself is named, a depth-1 checkout
+gets "a shallow clone?" instead of a `HEAD~1` nobody typed, and the
+site's own recipe, which had the first shape on every push to main,
+diffs against `github.event.before` now (199); the CI guide names
+`@vzn/vx-github` (200); the release paragraph and the npm workflow's
+header stopped claiming a token path the file lacks — 0.0.21 went
+through the token-free workflow, so launch-checklist 1 is done bar
+deleting a secret nothing reads (201); and the vx-cloud agent action,
+a leftover of the removed product, is gone (202). The shard re-deal of
+item 196 exposed a second deal-shaped edge on its third CI run
+(`output-dirs`' 8,193-directory case against bun's 5 s default, bounded
+by its work). Open: Next 1, 2 and 16 as before, all gated by their own
+terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN` secret,
+the release cut, the site's address. No open issues. The box:
+unchanged. Methods that paid: a persona's first REAL failure comes
+from the environment it runs in (a single-branch clone, a depth-1
+checkout), not from the verb's flags; read the CI job's own log before
+calling a failure a flake, and read your own recipe with the same eyes;
+a comment claiming behaviour the file lacks is a defect wherever it
+sits, a STATUS line repeating it included. Never end with "what next?".
+
+14h. **Handoff after item 197 (2026-09-16, small hours).** Five
+items since 14g: the one dependency that had moved (193), this file
+cut to a handoff again — loop items 105–144 and the Next list's
+record to `docs/history/` (194, 195), 2,657 lines to about 1,300 —
+and CI's wall time worked from its own job log: the core suite back
+to the average shard (196: the watch-loop suite had grown to a shard
+of its own; split three ways and re-weighed, the run 52 → 35 s here,
+and the re-deal exposed an RSS pin that trusted the alphabet), then
+the REAPI suite's 15 s wait pinned on the instance instead (197).
+CI's three jobs, #362 → #364: lint·format·test 2:19 → 1:42, plugin
+packages 1:18 → 0:51, core tests (macOS) 2:07 → 1:33. Next 6 duty,
+this box, `run.ts` medians of 5 after the day's merges: 100 projects
+112 ms warm / 158 restore / 380 cold; 1,000 projects 237 / 744 /
+2,520 — the warm rows on 2026-09-10's (123 / 240), the restore row
+at 1,000 well under it (1,163; the usage sidecar and the restore
+lane since). No warm-path code moved today beyond item 192's compare.
+Open: Next 1, 2 and 16 as before, all gated by their own
+terms; no open issues; every persona this box can host has been
+walked. The box: unchanged. Never end with "what next?".
