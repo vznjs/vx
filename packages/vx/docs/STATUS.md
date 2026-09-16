@@ -779,6 +779,23 @@ dependencies first`. On the evaluation path only — a warm run
       `config-missing-import.test.ts` (the refusal's suffix is the proof
       it came before the import; a provided package still evaluates).
 
+240.  DONE (2026-09-16, the number 239 owed): the refusal's scan cost
+      the cold path. An interleaved A/B on 1,000 cold configs against a
+      worktree at dafe980 (a fresh cache dir per rep) put 239 130 ms
+      behind (min 1181 → 1319 ms): a `Bun.Transpiler` was built per
+      config, and constructing one is 42 µs against 12 µs for its scan.
+      One transpiler per loader, made on first use, halved it (min
+      1134 → 1202); a textual pass before the scan — a regex over the
+      quoted specifiers after `from`, `import` and `require(`, and a
+      config whose only candidates are `@vzn/vx` and builtins skips the
+      transpiler — took the check to 2 µs per config (58 before, 13
+      with the shared transpiler), and the same-tree A/B of the check
+      against a stub is a tie at min-of-9 (1144 vs 1159 ms; the medians
+      45 ms apart inside arms that each spread 100). The scan still
+      decides: a candidate the regex finds is checked exactly, so a
+      commented import or a type-only one is dropped as before. The
+      warm path never ran any of it (the eval cache serves configs).
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
@@ -1126,6 +1143,36 @@ pid must be the INNER shell's `$$` — single quotes — or the
 differential passes on the old code for the wrong reason; Bun's
 `detached: true` exists and is a session, so the terminal's SIGHUP
 needs forwarding the moment you use it. Never end with "what next?".
+
+14q. **Handoff after item 240 (2026-09-16, night).** Four items since
+14p. `vx watch` no longer re-runs on a git-ignored path and names a
+file the cycle rewrites every run (237, #403 — its macOS job taught the
+streak to read the path's mtime, its Linux job replaced the run-lock
+e2e's head start with a marker). Three configuration personas (238,
+#404): `vx info` names a broken config once, an empty workspace hears
+about its globs, and two gate findings rode along — the plugin
+helper's sweep skips a root it cannot remove, and a fixture with no
+`node_modules` made Bun auto-install a missing import from the
+registry, which became Next 21 and then item 239 (#405): a config's
+bare import nothing provides is refused before evaluation. Its cost,
+measured after the fact, was 130 ms per 1,000 cold configs; 240 took
+it to a tie (one transpiler per loader, a textual pre-filter). Measured
+and clean on the way: the renderer on a 200,000-line task, the
+detached spawn of 236, every MCP tool during a run, a task's own env
+variables (documented), watch with `--affected` (the same refusal as
+run). Open: Next 1, 2 and 16, all gated by their own terms; In-flight
+5 (macOS); the owner residue — the `NPM_TOKEN` secret, the release
+cut, the site's address (an install script waits on it);
+`workspaceFiles` stops at a nested repository. The loop holds 38 items
+(203–240): the trim's trigger is forty. No open issues. The box: as
+14p; a root-run local suite leaves plugin roots the `probe` shards
+cannot remove — sweep `/tmp/vx-plugin-pkgs-*` as root before a gate.
+Methods that paid: a cost measured after shipping is still a cost —
+the A/B belongs in the item, not the handoff; a same-tree stub A/B
+isolates one function's cost from every other difference between
+arms; when medians and mins disagree, the spread is the finding, and
+the micro-benchmark decides what the number can be. Never end with
+"what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
