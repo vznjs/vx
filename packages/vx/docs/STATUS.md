@@ -99,6 +99,30 @@ test is telling the truth.
       benchmark figures on the same page carry their dated footnote
       and match `docs/benchmarks.md`; the package README states no
       count.
+284.  DONE (2026-09-16, the pages a newcomer copies from, read the
+      way the plugins guide is): every `defineProject` /
+      `defineWorkspace` block on the site compiled against the façade
+      (30 blocks across 21 pages, the plugins guide aside — it has its
+      own pin). One was wrong: schema.md's "Full example" declared a
+      `ci` group depending on `format-check` and `lint`, two tasks the
+      example never declared, and the typed `dependsOn` rejects it —
+      a red squiggle on the page's centrepiece since the typing
+      arrived, and nothing read it. The example now declares both
+      (two cached checks with no outputs) and says why the name must
+      exist. `config-snippets.test.ts` in the site package compiles
+      every such block on every page: a block counts when it calls
+      one of the two and imports only `@vzn/*` packages, so the
+      fragments (a skeleton with placeholders, a signature sketch, a
+      preset path that exists in prose) stay out; the plugin packages
+      the site does not depend on are ambient-typed, as the plugins
+      pin types Sentry, since the claim is core's config types. The
+      pin's first run named two more pages: the extensibility guide's
+      remote-cache sketch passed the seam's `ArrayBuffer | Uint8Array`
+      body straight to `fetch`, which Bun's types refuse (one
+      `Uint8Array` view over either shape now), and the
+      workspace-config guide's plugin block called `defineWorkspace`
+      without importing it. Three pages, each a red squiggle for
+      whoever copied it.
 
 ## In flight
 

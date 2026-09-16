@@ -96,7 +96,9 @@ class AcmeRemote implements RemoteCacheLayer {
     return { body: await res.arrayBuffer(), durationMs: undefined }
   }
   async put(hash: string, body: ArrayBuffer | Uint8Array) {
-    await fetch(`${this.url}/artifacts/${hash}`, { method: 'PUT', body })
+    // One view over either shape: fetch's body type takes a typed array,
+    // not the union the seam hands over.
+    await fetch(`${this.url}/artifacts/${hash}`, { method: 'PUT', body: new Uint8Array(body) })
   }
 }
 
