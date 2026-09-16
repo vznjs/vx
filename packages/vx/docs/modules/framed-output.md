@@ -15,8 +15,8 @@ where the eye lands. See `docs/modules/summary.md`.
 
 ```ts
 export interface TaskBlockBody {
-  stdout?: string // rendered under `├─ stdout`
-  stderr?: string // rendered under `├─ stderr`
+  stdout?: string // rendered under `├─ STDOUT ──…`
+  stderr?: string // rendered under `├─ STDERR ──…`
 }
 
 export function formatTaskBlock(
@@ -37,20 +37,25 @@ export function formatTaskExecutedLine(node, outcome, colors?): string
 
 ```
 ┌─ @vzn/vx#lint > success
-├─ command
-oxlint --type-aware --type-check
-├─ stdout
+
+$ oxlint --type-aware --type-check
+
+├─ STDOUT ──────────────────────────────────────────────────
+
 Found 0 warnings and 0 errors.
+
 └─ @vzn/vx#lint ── (327ms) success
 ```
 
 The block format is:
 
 - **Top line:** `┌─ <task-id> > <status header>`
-- **`├─ command` section:** executed tasks only (success and failed);
+- **`$ <command>` line:** executed tasks only (success and failed),
+  dim, between blank lines, with no section label (the owner cut it);
   cache hits replay stored output and skip it, skips never ran
-- **`├─ stdout` / `├─ stderr` sections:** present only when the
-  stream is non-empty after trim
+- **`├─ STDOUT ──…` / `├─ STDERR ──…` sections:** present only when the
+  stream is non-empty after trim; a blank line above and below the
+  content, and a head-dropped notice when the capture was bounded
 - **`├─ SANDBOX VIOLATIONS (n)` section:** when present — unique
   lines, verbatim, with the header in error red. The buffered renderer
   and the live frame share one builder, so a focused run shows it too
