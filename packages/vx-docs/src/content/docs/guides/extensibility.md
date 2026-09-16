@@ -48,8 +48,8 @@ flowchart LR
 | fingerprint | `fingerprint`       | which lockfile a plugin keys per project instead of per workspace | `pnpm()` and friends from `@vzn/vx-lockfile` |
 | schedule | `schedule(nodes, ctx)` | which ready task runs first                             | `scheduleHistoryPlugin()`, or your own |
 | admit    | `admit(task, ctx)`     | whether a ready task starts now beside what runs here   | `scheduleHistoryPlugin()`, or your own |
-| execute  | `executor(ctx)`        | *where* ONE task's command runs — local or a worker     | your own; the local executor is the floor |
-| store    | `cache(ctx)`           | *which* cache is used — your server, S3, a CAS          | your own; the local store is the floor |
+| execute  | `executor(ctx)`        | *where* ONE task's command runs — local or a worker     | `reapi({ execute: true })`, or your own; the local executor is the floor |
+| store    | `cache(ctx)`           | *which* cache is used — your server, S3, a CAS          | `reapi()`, `turboCache()`, `nxCache()`, or your own; the local store is the floor |
 | observe  | `telemetry(ctx)`       | *where* run data goes — OTel, Slack, your DB            | nothing unless declared              |
 | cli      | `commands`             | which verbs `vx` has                                    | nothing unless declared              |
 
@@ -65,12 +65,12 @@ runnable examples.
 
 ## The first-party plugins are just plugins
 
-`@vzn/vx-reapi` fills `cache` (and, in time, `executor`) against any
-server speaking Bazel's Remote Execution API — NativeLink, BuildBuddy,
-Buildbarn, bazel-remote. `@vzn/vx-otel` fills `telemetry` against any OTLP
-endpoint. Both decline when unconfigured and cost nothing, so they are
-safe to leave declared everywhere. Neither is privileged: they use the
-same seams your own package would.
+`@vzn/vx-reapi` fills `cache` and, with `execute: true`, `executor`
+against any server speaking Bazel's Remote Execution API — NativeLink,
+BuildBuddy, Buildbarn, bazel-remote (cache only). `@vzn/vx-otel` fills
+`telemetry` against any OTLP endpoint. Both decline when unconfigured
+and cost nothing, so they are safe to leave declared everywhere.
+Neither is privileged: they use the same seams your own package would.
 
 ## Build your own
 
@@ -208,9 +208,10 @@ snapshot-pinned. Concretely, vx core:
 - runs every task the same whichever plugins are declared.
 
 So the dependency arrow only ever points **one way**: plugins depend on
-`@vzn/vx`; `@vzn/vx` depends on nobody. Even core's own executor and cache
-obey it — they import core through the public `@vzn/vx` specifier, which is
-what makes "bring your own" a real, supported path.
+`@vzn/vx`; `@vzn/vx` depends on nobody. Core's own executor and cache
+are not plugins at all — they are the floor at the tail of every list,
+in core, with nothing to import — which is what makes "bring your own"
+a real, supported path: a plugin only ever sits ahead of the floor.
 
 ## See also
 

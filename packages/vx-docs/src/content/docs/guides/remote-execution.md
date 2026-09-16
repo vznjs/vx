@@ -210,8 +210,10 @@ Two requirements, both learned against real servers:
 
 - A wedged or unreachable server **degrades**: cache calls carry deadlines
   (default 30 s) and a failed probe is a cache miss, never a hung run.
-- Uploads chunk at 128 KB and automatically retry once at 64 KB if the
-  transfer stalls (a Bun HTTP/2 flow-control defect; the retry is warned).
+- Uploads chunk at 128 KB, measured safe on the Bun the binary embeds
+  (≥ 1.4; the plugin refuses an older one, whose HTTP/2 client hangs
+  above ~64 KB), and unary calls retry transient statuses
+  (`UNAVAILABLE`, `RESOURCE_EXHAUSTED`) with backoff.
 - A dropped `Execute` stream re-attaches to the same operation via
   `WaitExecution` — the action is not re-run.
 - Execution stage transitions (`queued` → `executing` → `completed`) surface
