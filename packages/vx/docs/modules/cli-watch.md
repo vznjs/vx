@@ -71,7 +71,7 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
      the root filter and the ignore filter are rebuilt on the new set.
      Until 2026-09-10 the set was fixed when the loop armed: the next
      cycle ran the new package and every edit inside it was silence
-     (`tests/watch-loop.test.ts`, the added-package pair). The scope
+     (`tests/watch-loop-members.test.ts`, the added-package pair). The scope
      is the one resolved at start; a glob of another shape has no
      such directory.
    - Filter out `node_modules` / `.git` / `.vx` path segments,
@@ -101,8 +101,8 @@ Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
      ends, under the label of what arrived). Before 2026-09-10 a
      deletion and a directory passed unconditionally and a mid-run
      judgement saw a half-rebuilt `dist`: `rm -rf dist && tsc` with no
-     outputs declared looped forever (`tests/watch-loop.test.ts`, the
-     delete-and-recreate pair). The prior text:
+     outputs declared looped forever (`tests/watch-loop-uncached.test.ts`,
+     the delete-and-recreate pair). The prior text:
    - Catch UNDECLARED writes by content: a task with no `cache` block
      declares no outputs and still writes into its project, and its
      own write re-triggered the cycle without end (the init walkthrough,
