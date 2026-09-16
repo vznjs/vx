@@ -9,7 +9,7 @@ import { formatDuration } from '../orchestrator/index.js'
  * task with recorded history also shows its typical duration (~p50).
  *
  *   would run:
- *     ✓  @vzn/vx#lint       cache hit (local)        abc12345
+ *     ◉  @vzn/vx#lint       cache hit (local)        abc12345
  *     ↓  @vzn/vx#test       cache hit (remote)       def67890
  *     ▶  @vzn/vx#build      cache miss — would exec  fedcba98  ~1.2s
  *

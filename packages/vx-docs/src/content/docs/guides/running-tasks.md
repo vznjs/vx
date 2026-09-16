@@ -102,7 +102,7 @@ cache entries — no stale hits across argument changes.
 ```bash
 vx run build --all --dry        # predicted hits/misses + the plan
 vx run build --all --dry=json   # same, as JSON
-vx run build --graph            # the task graph (text)
+vx run build --graph            # the task graph as Graphviz DOT, to stdout
 vx run build --graph=g.dot      # Graphviz DOT
 ```
 
@@ -123,9 +123,10 @@ would run:
 
 | Flag                       | Effect                                                       |
 | -------------------------- | ------------------------------------------------------------ |
-| `--no-cache` (`--force`)   | Ignore the cache for this run (don't read or write).         |
-| `--concurrency <n>`        | Cap parallel tasks (default: your CPU count).                |
-| `--output-logs <mode>`     | `full` · `errors-only` · `none` — control per-task logging.  |
+| `--no-cache`               | Ignore the cache for this run: no reads, no writes, outputs left alone. |
+| `--force`                  | Re-execute everything (no reads) but still refresh the cache (writes on). |
+| `--concurrency <n>`        | Cap parallel tasks (default: the cores this process may use, capped by a cgroup quota). |
+| `--output-logs <mode>`     | `full` · `errors-only` · `hash-only` · `none` — control per-task logging. |
 | `--summarize[=<path>]`     | Write a per-run JSON summary.                                |
 | `--profile[=<path>]`       | Write a Chrome-trace timeline of the run.                    |
 | `--frozen`                 | Run from the committed `vx-lock.json` (CI; see below).       |

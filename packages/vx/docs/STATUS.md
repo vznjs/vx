@@ -389,6 +389,23 @@ test is telling the truth.
       later waves took off. The stress section is generated
       (`update-site.ts --check`) and untouched; the real-repo
       sections are dated records and read as such.
+302.  DONE (2026-09-16, three site guides read against source:
+      running-tasks, sandboxing, remote-caching). running-tasks: the
+      run-flags table said `--no-cache` (`--force`) "don't read or
+      write" — `--force` keeps writes on, the whole point of it; two
+      rows now, with `--concurrency`'s default (the cgroup-capped
+      cores) and `--output-logs`'s `hash-only` mode; and `--graph` was
+      "the task graph (text)" (Graphviz DOT to stdout). The `--dry`
+      sample matched the formatter byte for byte — the probe that
+      rendered it found the formatter's own docblock showing a glyph
+      it never writes (`✓` for a local hit; it prints `◉`), corrected
+      — and the sample is now rendered by `formatPlanText` in
+      `tests/site-samples.unsafe.test.ts` and compared byte for byte
+      (a mutated glyph fails it); the site's own tests reach only the
+      public API, so the pin lives in core's unsafe half. sandboxing
+      and remote-caching read true against `sandbox-runtime.ts` and
+      `@vzn/vx-reapi` (the env names, the 128 KB chunk, the
+      `vx-reapi-v1` action prefix, the optional strace).
 
 ## In flight
 
