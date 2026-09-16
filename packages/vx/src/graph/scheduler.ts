@@ -668,7 +668,16 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               process.stderr.write(`[vx] ${id}: ${message} — ${fsRefusalHint(err)}\n`)
             } else {
               const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''
-              process.stderr.write(`[vx] internal error in ${id}: ${named}${message}\n`)
+              // A wrapped error's cause is the fact the reader needs (a
+              // CorruptArtifactError over an ENOENT is a race, not a bad
+              // archive); print it, since the stack is not printed here.
+              const cause =
+                err instanceof Error && err.cause instanceof Error ? err.cause : undefined
+              const because =
+                cause === undefined
+                  ? ''
+                  : ` (cause: ${(cause as NodeJS.ErrnoException).code ?? cause.name}: ${cause.message})`
+              process.stderr.write(`[vx] internal error in ${id}: ${named}${message}${because}\n`)
             }
             tick()
           },

@@ -1247,6 +1247,27 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       Linux job on the new deal: 1:33, against 2:04 on the run before
       it. The manual gate runs its shards as `probe` now too (2,857
       pass here), so the local gate sees the suite as CI's runner does.
+215.  DONE (2026-09-16, the concurrent-runs persona): two runs of the
+      same build on one workspace, outputs cold, cache warm — one
+      run in five died with "internal error … CorruptArtifactError:
+      artifact is not a readable archive" while the other restored 200
+      files fine. The mechanism, once the scheduler's internal-error
+      line carried the wrapped error's cause (it does now, for every
+      such line): a restore stages each file as `<target>.vx-tmp-*`
+      beside its target and renames on commit, and the other run's
+      clean of `dist/**` takes the staged files, so the commit's stat
+      or utime meets `ENOENT` — reproduced deterministically with a
+      clean landing 4–32 ms into a 2,000-file restore. An `ENOENT` on a
+      path the restore itself staged is a `UserError` now: "restore of
+      <hash> into <dir> was interrupted: a file it had just written
+      vanished … Another vx run is using this workspace — re-run once
+      it is done." The artifact is intact and nothing is half-restored
+      (the rename happens only once the whole archive has staged).
+      Pinned in `cache.test.ts` with a deleter loop playing the other
+      run for the whole restore (fails without the fix as a
+      `CorruptArtifactError`); `docs/caching.md` § Concurrent runs says
+      it. Not done, on the Next list: a per-task advisory lock so the
+      second run waits instead of failing.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1694,6 +1715,17 @@ walked. The box: unchanged. Never end with "what next?".
     the artifact's sidecar; a hit's entry is the history's record.
 18. DONE 2026-09-15 as item 176 — measured a 21% loss (132 vs 160 s
     on 92 builds); cores are declared, never learned.
+
+19. **A per-task lock for two runs on one workspace (from item 215).**
+    Two vx processes that clean and restore the same output tree race;
+    today the loser fails plainly ("was interrupted … another vx run").
+    A per-task advisory lock (`flock` on `<cacheDir>/locks/<taskId>`,
+    taken around clean + restore or execute, released with the task)
+    would make the second run wait for the first and then see its
+    outputs current. Cost to measure before shipping: one open + flock
+    per task on the warm path (expected microseconds against a 0.2 ms
+    task floor), and what a waiting run prints (the admit-held line's
+    shape, item 171). Not started.
 
 ## Decisions (this arc)
 

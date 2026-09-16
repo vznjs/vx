@@ -670,6 +670,56 @@ describe('Cache storage (v10)', () => {
     },
   )
 
+  it('a restore whose staged files another process removes is named an interruption, not a corrupt artifact', async () => {
+    // Two runs on one workspace: the other one's clean of `dist/**` takes
+    // the `.vx-tmp-*` files this restore staged, and its commit meets
+    // ENOENT. A deleter loop plays the other run for the whole restore.
+    const { mkdir, readdir, unlink, writeFile } = await import('node:fs/promises')
+    const dist = path.join(projectDir, 'dist')
+    await mkdir(dist, { recursive: true })
+    const files: string[] = []
+    for (let i = 0; i < 1500; i++) {
+      const f = path.join(dist, `out${i}.txt`)
+      await writeFile(f, 'hi'.repeat(100))
+      files.push(f)
+    }
+    await cache.save({
+      hash: 'h-race',
+      projectDir,
+      outputFiles: files,
+      entry: { taskId: 'pkg#build', command: 'build', durationMs: 1, stdout: '' },
+    })
+    let stop = false
+    let removed = 0
+    const deleter = (async () => {
+      while (!stop) {
+        for (const name of await readdir(dist).catch(() => [] as string[])) {
+          if (name.includes('.vx-tmp-'))
+            await unlink(path.join(dist, name)).then(
+              () => removed++,
+              () => {},
+            )
+        }
+        await new Promise((r) => setTimeout(r, 1))
+      }
+    })()
+    let caught: unknown
+    try {
+      await cache.restoreOutputs('h-race', projectDir)
+    } catch (err) {
+      caught = err
+    } finally {
+      stop = true
+      await deleter
+    }
+    expect(caught).toBeInstanceOf(UserError)
+    expect((caught as Error).message).toMatch(
+      /^restore of h-race into .* was interrupted: a file it had just written vanished \(ENOENT: .*\.vx-tmp-.*\)\. Another vx run is using this workspace — re-run once it is done\.$/,
+    )
+    // The loop did play the other run: it took staged files out from under both restores.
+    expect(removed).toBeGreaterThan(0)
+  }, 30_000)
+
   it('get() returns null when the entry has never been written', async () => {
     expect(await cache.get('never-written')).toBeNull()
   })
