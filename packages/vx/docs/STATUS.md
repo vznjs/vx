@@ -376,6 +376,17 @@ test is telling the truth.
       the logger test above it had already met and widened to half the
       volume (retention costs the full 141 MiB); the capture test now
       uses the same slack.
+264.  DONE (2026-09-16, a persona: the plugin author's first sink): the
+      plugins guide's two failure-reporting examples shipped a bare
+      `exitCode` and named none of the façade's rendering helpers, so
+      an author would roll a status `Set`, a table escape and a signal
+      decode of their own — the drift the façade exists to stop. One
+      section, "What the façade gives a sink", names the four answers
+      (`isPassStatus` / `isCacheHit` / `TASK_STATUSES`, `exitSignal`,
+      `escapeMarkdownCell`, `TaskLogBuffer`) with a runnable block; the
+      Sentry example reports the signal beside the code; the reference
+      names `src/index.ts` as the façade. Every block type-checks
+      against the façade (`plugins-guide-snippets.test.ts`).
 
 ## In flight
 
