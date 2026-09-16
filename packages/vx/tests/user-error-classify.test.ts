@@ -7,7 +7,7 @@
 // The name is the contract that survives.
 
 import { describe, expect, it } from 'bun:test'
-import { isUserError, UserError } from '../src/util/index.js'
+import { isPermissionError, isUserError, UserError } from '../src/util/index.js'
 
 /** What a UserError from ANOTHER copy of core looks like: same shape, foreign class. */
 class ForeignUserError extends Error {
@@ -29,5 +29,22 @@ describe('isUserError', () => {
     expect(isUserError(Object.assign(new Error('x'), { name: 'UserErrorish' }))).toBe(false)
     expect(isUserError({ name: 'UserError', message: 'x' })).toBe(false)
     expect(isUserError('UserError')).toBe(false)
+  })
+})
+
+describe('isPermissionError', () => {
+  const errno = (code: string): NodeJS.ErrnoException =>
+    Object.assign(new Error(`${code}: nope`), { code })
+
+  it('is the file system refusing a write: EACCES, EPERM, EROFS', () => {
+    for (const code of ['EACCES', 'EPERM', 'EROFS'])
+      expect(isPermissionError(errno(code))).toBe(true)
+  })
+
+  it('CONTROL: a missing path, a plain Error, a UserError and a non-error are not', () => {
+    expect(isPermissionError(errno('ENOENT'))).toBe(false)
+    expect(isPermissionError(new Error('EACCES: in the text only'))).toBe(false)
+    expect(isPermissionError(new UserError('x'))).toBe(false)
+    expect(isPermissionError({ code: 'EACCES' })).toBe(false)
   })
 })

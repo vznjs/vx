@@ -651,6 +651,25 @@ describe('Cache storage (v10)', () => {
     },
   )
 
+  // Root creates anywhere, so the case skips there; CI's runner is not root.
+  it.skipIf(process.getuid?.() === 0)(
+    'a cache directory that cannot be created is named with its remedies',
+    async () => {
+      const { chmod } = await import('node:fs/promises')
+      const parent = path.join(projectDir, 'sealed')
+      await mkdir(parent, { recursive: true })
+      await chmod(parent, 0o555)
+      try {
+        expect(() => new Cache(path.join(parent, '.vx', 'cache'))).toThrow(UserError)
+        expect(() => new Cache(path.join(parent, '.vx', 'cache'))).toThrow(
+          /^cannot create cache directory .*sealed\/\.vx\/cache \(EACCES: .*\) — vx keeps its cache there; make the workspace writable, set `cacheDir` in vx\.workspace\.ts, or pass --cache-dir <path>$/,
+        )
+      } finally {
+        await chmod(parent, 0o755)
+      }
+    },
+  )
+
   it('get() returns null when the entry has never been written', async () => {
     expect(await cache.get('never-written')).toBeNull()
   })

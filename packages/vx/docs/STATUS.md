@@ -1125,6 +1125,26 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       lists the project — it takes no `--cache-dir`, so the workspace's
       cache is the one that stops being writable), skipped as root and
       proven both ways as `probe`; `docs/caching.md` says it.
+210.  DONE (2026-09-16, the read-only checkout, the persona 206–209
+      kept naming, walked as `probe`): with the workspace root not
+      writable and no cache yet, every verb died in the cache's
+      `mkdirSync` with a raw stack — the readers included — and the
+      lock and init verbs died the same way writing `vx-lock.json` and
+      `vx.workspace.ts`. Two fixes, one general: the cache constructor
+      names an uncreatable directory with its three remedies (the
+      workspace writable, the `cacheDir` field, `--cache-dir`), and the
+      CLI's top level and the scheduler's error branch treat a file
+      system refusal (`EACCES`, `EPERM`, `EROFS`; `isPermissionError` in
+      `util/errors.ts`) like a `UserError`: one line, the path, a hint,
+      no stack — so the next tree write nobody wrapped reads right
+      without a fourth special case. Pinned: the rule as a unit with
+      controls (`ENOENT`, a plain Error carrying the word, a
+      `UserError`, a non-error), the constructor on a sealed parent
+      (`cache.test.ts`), and the CLI on a 0o555 workspace root (the
+      show verb names the cache directory and `--cache-dir`, the lock
+      verb names the lockfile, neither prints a frame) — the last two skipped
+      as root and proven both ways as `probe`; `docs/cli.md` (§ vx run)
+      and `docs/caching.md` say it.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

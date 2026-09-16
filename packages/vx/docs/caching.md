@@ -607,6 +607,9 @@ any task: `cache directory <path> is not writable (EACCES: …)`, with
 `--cache-dir <path>` as the way out. The readers (`vx show`, `why`,
 `last`, `info`) open such a directory read-only and go on: a config
 that misses the evaluation cache is evaluated live and not stored.
+Where the directory cannot be created at all (a read-only checkout with
+no cache yet) every verb says `cannot create cache directory <path>
+(EACCES: …)`, naming the workspace `cacheDir` field and `--cache-dir`.
 
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)

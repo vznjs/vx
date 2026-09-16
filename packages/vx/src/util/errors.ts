@@ -23,3 +23,18 @@ export class UserError extends Error {
 export function isUserError(err: unknown): err is UserError {
   return err instanceof UserError || (err instanceof Error && err.name === 'UserError')
 }
+
+/**
+ * An `EACCES`, `EPERM` or `EROFS` from the file system: a path vx must
+ * write is not this user's to write (a root-owned `.vx`, a read-only
+ * checkout). The environment's failure, reported like a UserError — one
+ * line naming the path — never as an internal error with a stack.
+ */
+export function isPermissionError(err: unknown): err is NodeJS.ErrnoException {
+  if (!(err instanceof Error)) return false
+  const code = (err as NodeJS.ErrnoException).code
+  return code === 'EACCES' || code === 'EPERM' || code === 'EROFS'
+}
+
+/** What follows the path in a permission error's one line. */
+export const PERMISSION_HINT = 'a path vx must write is not writable by this user'

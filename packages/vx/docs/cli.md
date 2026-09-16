@@ -1352,6 +1352,12 @@ neither reads `unknown project or task: "buidl" — did you mean build?`.
 
 Exit codes: `0` success; `1` parse error or unknown target.
 
+Every verb: a path vx must write that this user cannot (`EACCES`,
+`EPERM`, `EROFS` — a read-only checkout, another user's files) exits 1
+with one line naming the path, `vx: EACCES: permission denied, open
+'…/vx-lock.json' — a path vx must write is not writable by this user`,
+never a stack. Inside a run the task's line says the same.
+
 ## `vx info`
 
 Workspace doctor — one screen of facts for bug reports and sanity
