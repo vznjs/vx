@@ -184,6 +184,19 @@ test is telling the truth.
       it with `getWorkspaceInfo`, which reports the doctor's standing
       list, a different fact; the sentence now names both tools for
       what each reports. One pin fails on the old post.
+340.  DONE (2026-09-16, the next three oldest posts:
+      telemetry-never-breaks-a-run, dev-servers-in-the-graph, the
+      why-vx-is-fast post). The first two read true (the five-field
+      sink contract and the 3 s flush bound; `readyWhen` with the
+      trailing partial line, `exec.timeout` as the readiness bound,
+      ready-on-spawn, the foreground exit line, no violation report
+      for a server the run tears down); the telemetry post's interface
+      block is now pinned to `TelemetrySink`'s fields and its `wants`
+      union to the record kinds. The why post had the concept page's
+      two faults (item 334): "roughly 50 ms" for the bitset priorities
+      (single-digit ms) and its own spelling of the warm figures; nine
+      figures are now the benchmarks page's, pinned. One pin fails on
+      the old post.
 
 ## In flight
 

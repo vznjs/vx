@@ -358,3 +358,48 @@ describe('the agents-and-mcp post tabulates every tool the server offers', () =>
     expect(rows.sort()).toEqual([...names].sort())
   })
 })
+
+describe('the why-vx-is-fast post quotes the benchmarks page', () => {
+  it('each figure it states is on docs/benchmarks.md as written', () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    for (const figure of [
+      '3m 38s',
+      '3m 46s',
+      '5m 13s',
+      '34m 44s',
+      '510ms',
+      '760ms',
+      '3.59s',
+      '66 ms',
+      '127 ms',
+    ]) {
+      expect(page).toContain(figure)
+      expect(bench).toContain(figure)
+    }
+  })
+})
+
+describe('the telemetry post shows the sink contract the source declares', () => {
+  const src = readFileSync(
+    path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'telemetry.ts'),
+    'utf8',
+  )
+  const page = readFileSync(path.join(DOCS, 'blog', 'telemetry-never-breaks-a-run.md'), 'utf8')
+  const block = fencedBlock(page, 'ts', 'interface TelemetrySink {')
+  it('its interface block names every field of TelemetrySink, and no other', () => {
+    const decl = /export interface TelemetrySink \{([\s\S]*?)\n\}/.exec(src)
+    expect(decl).not.toBeNull()
+    const fields = (text: string): string[] =>
+      [...text.matchAll(/^  (?:readonly )?(\w+)\??[(:]/gm)].map((m) => m[1]!).sort()
+    expect(fields(block)).toEqual(fields(decl![1]!))
+    expect(fields(block).length).toBe(5)
+  })
+  it('its `wants` union is every record kind', () => {
+    const kinds = [...new Set([...src.matchAll(/kind: '([a-z.]+)'/g)].map((m) => m[1]!))].sort()
+    const union = /wants\?: ReadonlyArray<([^>]*)>/.exec(block)
+    expect(union).not.toBeNull()
+    const named = [...union![1]!.matchAll(/'([a-z.]+)'/g)].map((m) => m[1]!).sort()
+    expect(named).toEqual(kinds)
+  })
+})
