@@ -9,6 +9,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseShowArgs } from '../src/cli/index.js'
 import { describeMemory, describeWorkers } from '../src/cli/info.js'
+import { stableSandboxReason } from '../src/orchestrator/doctor.js'
 import { VERSION } from '../src/version.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
@@ -373,6 +374,11 @@ describe('vx info (e2e)', () => {
       // a packing policy budgets — the two numbers a container hides.
       expect(r.out).toMatch(/^workers: +[1-9]\d* — (the CPU count|cgroup CPU quota )/m)
       expect(r.out).toMatch(/^memory: +\d/m)
+      // The runtime probe's verdict for this host, with the declared count:
+      // the fixture declares none, so an unavailable runtime fails nothing.
+      expect(r.out).toMatch(
+        /^sandbox: +(available \(0 tasks declare exec\.sandbox\)|unavailable — .+; 0 tasks declare exec\.sandbox)$/m,
+      )
       const json = await vx(root, ['info', '--format=json'])
       expect(json.code).toBe(0)
       const facts = JSON.parse(json.out) as {
@@ -453,6 +459,11 @@ describe('vx info (e2e)', () => {
       expect(facts.hits24h).toBe(0)
       expect(facts.flakyTasks).toEqual([])
       expect(facts.lockfile).toBe(false)
+      expect(facts.sandbox).toEqual({
+        available: expect.any(Boolean),
+        reason: expect.any(String),
+        declared: 0,
+      })
       // Same facts either way: the pretty rows render this object.
       const pretty = await vx(root, ['info'])
       expect(pretty.out).toContain(`cache entries:`)
@@ -497,6 +508,23 @@ describe('parseShowArgs', () => {
   it('rejects unknown flags and extra positionals', () => {
     expect(parseShowArgs(['--bogus']).error).toBe('unknown flag: --bogus (see `vx show --help`)')
     expect(parseShowArgs(['a', 'b']).error).toBe('unexpected argument: b')
+  })
+})
+
+describe('vx info — the sandbox row is stable across invocations', () => {
+  // CI's sandboxed shard: the runtime cannot listen on its mux socket, and
+  // the raw error quotes a path named after the process id — two `vx info`
+  // runs differed by one number and the `vx stats` alias pin failed
+  // (2026-09-16). The doctor's text must not depend on its own pid.
+  it('drops the process id from the runtime socket path', () => {
+    expect(
+      stableSandboxReason(
+        "EPERM: operation not permitted, listen '/tmp/claude/srt-mux-1171-0.sock'",
+      ),
+    ).toBe("EPERM: operation not permitted, listen '/tmp/claude/srt-mux-<pid>.sock'")
+    // CONTROL: a reason without one is untouched.
+    const plain = 'a sandboxed `true` failed (exit 1): apply-seccomp: write /proc/self/uid_map'
+    expect(stableSandboxReason(plain)).toBe(plain)
   })
 })
 

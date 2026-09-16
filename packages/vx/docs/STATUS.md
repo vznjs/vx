@@ -990,6 +990,21 @@ fetch-depth: 0) or name the base`. Pinned three ways in
       as the project's zero-means-never analogy, cites the status
       line's floor instead. The design docs under `docs/design/` keep
       their dated mentions as the record they are.
+203.  DONE (2026-09-16, the root-in-a-container persona): a task
+      declaring `exec.sandbox` on this box fails with a precise line
+      (the runtime's seccomp helper cannot create its nested user
+      namespace as root inside a container; run as non-root or set
+      `sandbox.weakerWhenNested`), but `vx info` said nothing about the
+      sandbox at all, so the first sign was a failed run. The doctor
+      has a `sandbox` fact now — the runtime probe's verdict (one
+      sandboxed `true`, memoized, the Linux runtime reset afterwards so
+      its proxy sockets do not hold a standalone process open) and how
+      many loaded tasks declare a sandbox — rendered as one row,
+      "available" with the declared count or "unavailable" with the
+      probe's reason and the count that will fail; `--format json` and
+      the MCP's `getWorkspaceInfo` carry it as data. Pinned in
+      `show-info.test.ts` (either verdict, the fixture's zero count) and
+      documented in `docs/cli.md` § vx info.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

@@ -16,6 +16,7 @@ import {
   machineParallelism,
 } from '../util/index.js'
 import { VERSION } from '../version.js'
+import { probeSandbox, resetSandbox } from '../exec/index.js'
 import {
   buildPackageGraph,
   computeWorkspaceFingerprint,
@@ -74,6 +75,14 @@ export interface InfoFacts {
   /** Tasks the retained history shows both passing and failing on unchanged inputs. */
   flakyTasks: FlakyTask[]
   lockfile: boolean
+  /**
+   * Whether this host can run a task's `exec.sandbox`, and how many loaded
+   * tasks declare one. A declared sandbox whose runtime cannot start is a
+   * hard failure at run time, not a downgrade — so the doctor says so
+   * first (root inside a container, a missing bubblewrap, a nested
+   * seatbelt), with the probe's own reason.
+   */
+  sandbox: { available: boolean; reason: string; declared: number }
 }
 
 export interface CollectInfoOptions {
@@ -98,6 +107,7 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
   let orphans
   let flaky: FlakyTask[]
   let taskCount = 0
+  let sandboxed = 0
   try {
     stats = cache.stats()
     orphans = await cache.orphanStats()
@@ -120,7 +130,9 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
         warn,
       })
       for (const p of loaded.projects.values()) {
-        taskCount += Object.keys(p.config.tasks ?? {}).length
+        const tasks = p.config.tasks ?? {}
+        taskCount += Object.keys(tasks).length
+        for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
       }
     } catch {
       taskCount = await countLoadableTasks(metas)
@@ -130,6 +142,7 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
   }
 
   const lockPresent = await Bun.file(lockfilePath(root)).exists()
+  const sandbox = await sandboxFact(sandboxed)
   return {
     vx: VERSION,
     bun: Bun.version,
@@ -168,7 +181,37 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
     // this is the workspace's standing list.
     flakyTasks: flaky,
     lockfile: lockPresent,
+    sandbox,
   }
+}
+
+/**
+ * The runtime probe's verdict — one sandboxed `true` (memoized) — and the
+ * count of loaded tasks that would meet it. The probe initializes the
+ * Linux runtime, whose proxy sockets would keep a standalone process
+ * alive; reset after asking, since the doctor runs nothing.
+ */
+async function sandboxFact(declared: number): Promise<InfoFacts['sandbox']> {
+  try {
+    const verdict = await probeSandbox()
+    return { available: verdict.available, reason: stableSandboxReason(verdict.reason), declared }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { available: false, reason: stableSandboxReason(message), declared }
+  } finally {
+    await resetSandbox()
+  }
+}
+
+/**
+ * The doctor's output is pasted into bug reports and compared between
+ * invocations (`vx stats` is pinned byte-identical to `vx info`), so a
+ * reason must not carry this process's id. The Linux runtime names its
+ * mux socket after the pid (`srt-mux-<pid>-<n>.sock`), and a listen that
+ * fails — a nested sandbox, a read-only tmpdir — quotes that path.
+ */
+export function stableSandboxReason(reason: string): string {
+  return reason.replace(/srt-mux-\d+-\d+\.sock/g, 'srt-mux-<pid>.sock')
 }
 
 /** The seams a plugin can fill, in pipeline order: the one hook list, less the lifecycle end. */
