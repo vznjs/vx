@@ -38,3 +38,22 @@ export function isPermissionError(err: unknown): err is NodeJS.ErrnoException {
 
 /** What follows the path in a permission error's one line. */
 export const PERMISSION_HINT = 'a path vx must write is not writable by this user'
+
+/** `ENOSPC` or `EDQUOT`: the disk a path is on is full. */
+export function isDiskFull(err: unknown): err is NodeJS.ErrnoException {
+  if (!(err instanceof Error)) return false
+  const code = (err as NodeJS.ErrnoException).code
+  return code === 'ENOSPC' || code === 'EDQUOT'
+}
+
+/** A file system refusing a write for a reason no code path caused: permission or space. */
+export function isFsRefusal(err: unknown): err is NodeJS.ErrnoException {
+  return isPermissionError(err) || isDiskFull(err)
+}
+
+export const DISK_FULL_HINT = 'the disk that path is on is full'
+
+/** The one-line hint after a refusal's path. */
+export function fsRefusalHint(err: NodeJS.ErrnoException): string {
+  return isDiskFull(err) ? DISK_FULL_HINT : PERMISSION_HINT
+}

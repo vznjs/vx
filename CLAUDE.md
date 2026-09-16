@@ -103,8 +103,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   macOS caps a process at 10 240, so the whole suite in one process
   does not clear the cap.
 - `tests/*.unsafe.test.ts` is the suite a sandbox cannot host — the
-  sandbox's own tests (seatbelt cannot nest) and the cross-project law
-  (a project may read only its own directory). The shards exclude them
+  sandbox's own tests (seatbelt cannot nest), the cross-project law
+  (a project may read only its own directory) and the disk-full suite
+  (a sandboxed task sees a mount it did not make as read-only). The shards exclude them
   with `--path-ignore-patterns`; `test.bun.unsafe` runs them. It and
   `@vzn/vx-reapi#test` (which dials service containers on the host's
   loopback, unreachable from a Linux sandbox's network namespace) are
@@ -196,6 +197,12 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   within a bounded factor. A pure-function test of the conversion only
   restates the assumption (Linux peak RSS ran 1024× too big under one,
   2026-09-12).
+- `bun --bun` links `node` to itself under `/tmp/bun-node-<build>/`,
+  mode 0700, owned by whoever ran it first; a second user gets no shim
+  and no word of it, and `bun --bun astro build` ran the PATH's Node 20
+  (2026-09-16). On a shared box remove that directory before a run as
+  another user. A file-system refusal (`EACCES`, `ENOSPC`) reaching the
+  user as an "internal error" or a stack is a defect: `isFsRefusal`.
 - Two measured quantities that are equal by construction sit on jitter:
   a light child's `ru_maxrss` IS the parent's mark, and the kernel's RSS
   counters lag by pages, so an exact `>` between them flipped on one CI

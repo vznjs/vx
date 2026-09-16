@@ -15,6 +15,8 @@ import { writeLocalWorkspace } from './local-workspace.js'
 export interface WorkspaceOptions {
   /** mkdtemp prefix; name the suite so a leaked directory says who left it. */
   prefix?: string
+  /** Where mkdtemp creates it (default `os.tmpdir()`): a test that needs the fixture on a particular file system names it. */
+  dir?: string
   /** The root package.json `name`. */
   rootName?: string
   /** Write `vx.workspace.mjs` (no plugins). Default true. */
@@ -62,7 +64,7 @@ export function gitInitCommit(cwd: string, message = 'init'): void {
 
 /** A pnpm-style workspace root with `packages/*`; returns the root. */
 export async function makeWorkspace(opts: WorkspaceOptions = {}): Promise<string> {
-  const root = await mkdtemp(path.join(os.tmpdir(), opts.prefix ?? 'vx-ws-'))
+  const root = await mkdtemp(path.join(opts.dir ?? os.tmpdir(), opts.prefix ?? 'vx-ws-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(
     path.join(root, 'package.json'),

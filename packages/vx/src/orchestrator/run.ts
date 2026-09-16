@@ -755,7 +755,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
       host: hostContext,
       withTelemetry: telemetry !== undefined,
     })
-    cache.recordRunBundle(records)
+    try {
+      cache.recordRunBundle(records)
+    } catch (err) {
+      // History is observability: a full cache disk at the very end must
+      // not turn a finished run's verdict into a stack and exit 1 (seen as
+      // an unprivileged user on a 2 MiB disk, 2026-09-16). The run said
+      // what happened; `vx last` and the flaky list will not know this one.
+      const message = err instanceof Error ? err.message : String(err)
+      log.status(`[vx] run history not recorded: ${message} — the verdict above stands`)
+    }
     mark('record history')
     // Hand the per-run summary to the telemetry sinks + drain them. Only
     // when a sink is active (telemetry !== undefined) — otherwise this

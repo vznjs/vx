@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { registerCoreAlias, run } from './cli/index.js'
-import { isPermissionError, isUserError, PERMISSION_HINT } from './util/index.js'
+import { fsRefusalHint, isFsRefusal, isUserError } from './util/index.js'
 
 // Every `import … from '@vzn/vx'` this process evaluates — a plugin
 // package, a workspace or project config — resolves to THIS core, not to
@@ -31,10 +31,10 @@ async function main(): Promise<void> {
       // it produced `vx: vx why: …` (walkthrough, 2026-09-04).
       const m = err.message
       process.stderr.write(m.startsWith('vx ') ? `${m}\n` : `vx: ${m}\n`)
-    } else if (isPermissionError(err)) {
+    } else if (isFsRefusal(err)) {
       // The file system's refusal names the path; the stack would name
       // the verb's write, which the reader cannot act on either.
-      process.stderr.write(`vx: ${err.message} — ${PERMISSION_HINT}\n`)
+      process.stderr.write(`vx: ${err.message} — ${fsRefusalHint(err)}\n`)
     } else {
       const message = err instanceof Error ? (err.stack ?? err.message) : String(err)
       process.stderr.write(`vx: ${message}\n`)

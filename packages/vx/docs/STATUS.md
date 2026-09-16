@@ -1144,7 +1144,61 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       show verb names the cache directory and `--cache-dir`, the lock
       verb names the lockfile, neither prints a frame) — the last two skipped
       as root and proven both ways as `probe`; `docs/cli.md` (§ vx run)
-      and `docs/caching.md` say it.
+      and `docs/caching.md` say it. Next 6 on this head, after 206–210
+      put two `access` calls, a guarded `mkdir` and one axis check on
+      every run's cache open: 1,000 projects 232 ms warm / 711 restore /
+      2,542 cold (medians of 5; the morning's 237 / 744 / 2,520, midday's
+      244 / 700 / 2,570) — inside jitter, as the microseconds said.
+      Considered and declined: a doctor that prints the facts it can
+      when the cache directory cannot be created. Its one line is the
+      diagnosis, and the alternative is a nullable facts shape that
+      every `getWorkspaceInfo` consumer would have to learn for a
+      persona whose fix is a `chmod`.
+211.  DONE (2026-09-16, the full disk — a 2 MiB tmpfs mounts here, so
+      the persona is hostable; walked as `probe`): a save that runs out
+      of room already said `cache save failed: ENOSPC …` and let the
+      task's work stand, but a hit's restore onto a full workspace disk
+      fell through to "internal error … CorruptArtifactError: artifact
+      is not a readable archive" — 207's mislabel with a different code
+      — and a green run on a full cache disk printed its summary and
+      then died in the history write, SQLite's "database or disk is
+      full" with a stack, exit 1 over "1 success". Three changes:
+      `ENOSPC`/`EDQUOT` join the refusal class (`isDiskFull`,
+      `isFsRefusal`, a hint per kind) at the CLI's top level and the
+      scheduler; the restore names a full disk with its own remedy
+      ("Free space on that disk and re-run"); and the run record is a
+      status line when it fails ("run history not recorded: … — the
+      verdict above stands") — history is observability, and a run's
+      exit is its tasks'. Pinned as units with controls
+      (`user-error-classify.test.ts`) and end to end in
+      `disk-full.test.ts` on a small file system named by
+      `VX_SMALL_DISK`: a hit whose restore cannot write (the line, no
+      "internal error", no "corrupt artifact") and a finished run whose
+      record cannot be written (`--cache=local:r` leaves the record as
+      the one write; exit 0, the line, no frame). Root is subject to
+      ENOSPC like anyone, so no user switch is needed; the suite skips
+      without the variable and CI's Linux job mounts a 2 MiB tmpfs and
+      sets it, as the manual gate does — a gate on an env var CI sets,
+      not a probe. CI's first run placed it: inside a sandboxed shard
+      the mount was read-only (`EROFS` on the fixture's `mkdtemp`), a
+      mount the sandbox did not make, so the suite is in the unsafe
+      set — the tests a sandbox cannot host — and only that task passes
+      the variable through. Both cases fail without the fix. The gate's first run caught the pin the change
+      retired: `orchestrator-remote.test.ts` forced a record throw to
+      prove `close()` still ran and expected the run to reject; it
+      asserts the status line now, the close still. `docs/caching.md`
+      and `docs/cli.md` say it.
+212.  DONE (2026-09-16, the grid's last cell, as `probe`): the prune
+      verb against a root-owned cache died in its first DELETE with
+      SQLite's "attempt to write a readonly database" and a stack — the
+      one writer verb left that opened the cache without asking. It
+      asks now (`assertWritable()`, 208's check) unless `--dry-run`,
+      which only reads and reads a read-only cache fine. Pinned in
+      `cache-dir-selection.test.ts` (exit 1, the line, no frame; the
+      dry run exits 0), skipped as root and proven both ways as
+      `probe`. The other openers outside a run — the MCP tools, the
+      schedule-history plugin, `why`, `last` — read, and 209 opens a
+      read-only cache for them. `docs/caching.md` says it.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1468,6 +1522,34 @@ a fix by walking it, not by reading (207 and 208 were not in the code
 206 touched); a probe that passes for the wrong reason is caught by
 running it without the fix (208's first two probes passed on the old
 code too). Never end with "what next?".
+
+14k. **Handoff after item 211 (2026-09-16, morning).** Three items
+since 14j, the same walk carried to the tree's other refusals: the
+readers open an unwritable cache read-only and go on (209, the
+file-hash memo took the write axis it had ignored); a read-only
+checkout with no cache yet, and the verbs that write the tree, print
+one line naming the path instead of a stack — the file system's
+refusal is a `UserError` at the CLI's top level and in the scheduler,
+one rule for every write nobody wrapped (210); and a full disk, which
+a 2 MiB tmpfs makes hostable here and on CI, is reported the same way
+at the restore, and a run whose history cannot be written keeps its
+verdict (211; `disk-full.test.ts` behind `VX_SMALL_DISK`, mounted by
+CI's Linux job and the manual gate). Merged as #377–#378; 211 is
+#379. Refuted or retired on the way: a doctor that prints partial
+facts on an uncreatable cache directory (declined under 210 — its one
+line is the diagnosis); the pin that made a record throw reject the
+run (it asserts the line now). Next 6 closed the day at a tie (under
+210). Open: Next 1, 2 and 16 as before, all gated by their own terms;
+In-flight 5 (macOS); the owner residue — the `NPM_TOKEN` secret, the
+release cut, the site's address. No open issues. The box: as 14j,
+plus `mount -t tmpfs` works here as root (the small disk). Methods
+that paid: a persona's refusals come in kinds (permission, space) and
+each kind has three sites (clean, restore, record) — walk the grid,
+not the first cell; a claim in STATUS ("the readers keep working") is
+a test to run before it is a sentence to keep (209 came from testing
+208's last line); when a fix retires a pin, the pin's claim usually
+survives in another shape (close still runs) — keep the claim, change
+the shape. Never end with "what next?".
 
 14h. **Handoff after item 197 (2026-09-16, small hours).** Five
 items since 14g: the one dependency that had moved (193), this file

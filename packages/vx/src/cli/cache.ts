@@ -111,6 +111,12 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
   // operate on the same directory or prune silently no-ops against the
   // wrong path.
   const cache = new Cache(await cliCacheDir(root, parsed.cacheDir))
+  // A prune deletes rows and artifacts; a cache this user cannot write is
+  // refused up front with the directory named, as a run refuses it, rather
+  // than dying in the first DELETE with SQLite's "readonly database" and a
+  // stack (an unprivileged user on a root-owned `.vx`, 2026-09-16). A dry
+  // run only reads, and reads a read-only cache fine.
+  if (!parsed.dryRun) cache.assertWritable()
   noteSchemaReset(cache, warnToStderr)
   try {
     const opts: { olderThanMs?: number; maxBytes?: number; dryRun?: boolean } = {}

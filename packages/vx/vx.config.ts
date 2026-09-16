@@ -98,7 +98,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun test ./tests/*.unsafe.test.ts',
-        env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
+        env: { passThrough: ['VX_REQUIRE_SANDBOX', 'VX_SMALL_DISK'] },
       },
       cache: {
         inputs: {

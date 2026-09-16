@@ -1,7 +1,16 @@
 // Module contract. Cross-module imports must come through here; see
 // docs/design/module-isolation-2026-06.md and tests/module-boundaries.test.ts.
 
-export { isPermissionError, isUserError, PERMISSION_HINT, UserError } from './errors.js'
+export {
+  DISK_FULL_HINT,
+  fsRefusalHint,
+  isDiskFull,
+  isFsRefusal,
+  isPermissionError,
+  isUserError,
+  PERMISSION_HINT,
+  UserError,
+} from './errors.js'
 export { xxh3, xxh3hex } from './hash.js'
 export { mark, printTimings, span } from './timing.js'
 export { clampInt, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
