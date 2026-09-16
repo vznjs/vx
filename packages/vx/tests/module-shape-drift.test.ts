@@ -106,6 +106,9 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['sandbox-request', 'orchestrator/sandbox-request.ts', 'SandboxRequest'],
   ['sandbox-request', 'orchestrator/sandbox-request.ts', 'Placeholder'],
   ['git-inputs', 'cache/git-inputs.ts', 'GitEnumeration'],
+  ['upgrade', 'cli/upgrade.ts', 'ReleaseAsset'],
+  ['cli-watch', 'cli/watch.ts', 'ArmedWatcher'],
+  ['logger', 'orchestrator/logger.ts', 'OutputView'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {

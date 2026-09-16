@@ -336,6 +336,24 @@ test is telling the truth.
       (at most 64, none the root). Fixed; the shape law gains five
       shapes and reads a `readonly` field as a field. Four fail on
       the old pages.
+323.  DONE (2026-09-16, the gap list's last four: upgrade, cli-watch,
+      util-errors, logger — the probe's queue is empty). upgrade.md
+      had no surface and nothing on the unreachable-host line
+      (832c349). cli-watch.md's surface named `watchCmd` alone of
+      fifteen exports, its flag table still passed
+      `--excludeDependencies` through (retired), its picker pointer
+      went to `cli/run.ts`, and its Tests section named one of eight
+      suites. util-errors.md's surface was `UserError` alone (no
+      `isUserError`, none of the refusal helpers or hints, 2bcfbcd's
+      `isTmpdirRefusal`) and said `bin.ts` tests `instanceof` (it
+      consults `isUserError`, as the page's own later section says).
+      logger.md's `Logger.runStart` info had one field of five,
+      `OutputView` and `resolveOutputView` lacked `hash-only`, the
+      mode list lacked it too, and the status line was "a single
+      bottom line" with a format nothing prints — it is a region:
+      persistent rows, one row per worker slot, an overflow line and
+      the live summary section. Fixed; the shape law gains three
+      shapes (`OutputView` a control). Two fail on the old pages.
 
 ## In flight
 

@@ -10,11 +10,36 @@ filesystem events.
 ## Public surface
 
 ```ts
-export function watchCmd(args: readonly string[]): Promise<number>
+export async function watchCmd(args: readonly string[]): Promise<number>
+
+// The loop's parts, exported for the watch suites:
+export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, .tsbuildinfo / ~ suffixes
+export function makeWatchIgnore(...): (rel: string) => boolean // the above plus the cache dir and every declared output
+export function outputContainer(raw: string): string // the directory holding an output tree
+export const WATCH_PROBE = '.vx-watch-probe'
+export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
+export interface WatchHandle {
+  close(): void
+}
+export interface ArmedWatcher {
+  watcher: fs.FSWatcher
+  ready: Promise<boolean> // true once the watcher reported the probe, false on timeout
+}
+export function pollWatcher(dir: string, recursive: boolean, onEvent: (filename: string) => void, intervalMs?: number): WatchHandle
+export function armWatcher(dir: string, recursive: boolean, onEvent: (filename: string) => void, timeoutMs?: number): ArmedWatcher
+export async function watchedProjects(workspaceRoot, allProjects, scope, load?, staged?): Promise<ProjectMeta[]>
+export async function sweepConfigs(projects, workspaceRoot, load?): Promise<{ workspaceWide: boolean; … }>
+export function makeRootEventFilter(workspaceRoot: string, projectDirs: readonly string[], workspaceInputs: readonly string[]): (filename: string) => boolean
+export function modifiedBefore(abs: string, t: number): boolean
+export function fsClockNow(dir: string): number
+export function memberEntries(base: string): ReadonlySet<string>
 ```
 
 `cli.ts` dispatches `vx watch <...>` here. Returns the exit code
-(`0` on clean Ctrl+C; `1` on parser / scope error).
+(`0` on clean Ctrl+C; `1` on parser / scope error). `armWatcher` proves
+delivery before the loop trusts a watcher (a probe file the watcher
+must report within the timeout); `pollWatcher` is the fallback that
+re-walks the tree when the platform's watcher never does.
 
 ## Flag surface
 
@@ -28,7 +53,7 @@ that makes sense for a loop is supported. Rejected with exit 1:
 | (no task name)              | Watch needs an explicit task — no picker.      |
 
 Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
-`--no-cache`, `--excludeDependencies`, `--verbosity`, forwarded
+`--no-cache`, `--exclude-dependencies`, `--verbosity`, forwarded
 `--` args) passes through unchanged.
 
 ## Algorithm
@@ -195,6 +220,15 @@ non-persistent tasks where each cycle should re-run cleanly.
   `cat`s a source file; assertion writes the file mid-watch and
   checks the new content appears in stdout; SIGINT exits cleanly.
 
+The loop's own suites: `tests/watch-rules.test.ts` (the ignore rules
+and the root event filter), `tests/watch-loop.test.ts` (cycles end to
+end), `tests/watch-loop-members.test.ts` (a package coming or going),
+`tests/watch-loop-uncached.test.ts` (undeclared writes judged by
+settled state), `tests/watch-loop-selfwrite.test.ts` (a file rewritten
+with different bytes every run), `tests/watch-signals.test.ts` (SIGINT
+and SIGTERM during the initial run and a cycle), and
+`tests/staged-once.test.ts` (a cycle evaluates live).
+
 ## Replacing this module
 
 Plausible extensions, all contained:
@@ -202,7 +236,7 @@ Plausible extensions, all contained:
 - **`vx watch <task1> <task2>`** — multiple tasks. The orchestrator
   already supports multi-positional invocation; just relax the
   validation here.
-- **Picker support** — borrow the `pickTask` flow from `cli/run.ts`
+- **Picker support** — borrow the `pickTask` flow from `cli/select.ts`
   for TTY-with-no-task.
 - **Per-project debouncing** — track which project's events arrived
   in the current debounce window and only re-run tasks in those
