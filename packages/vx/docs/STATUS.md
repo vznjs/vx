@@ -615,7 +615,7 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270 and 275 (14–14v) are in
-    `docs/history/2026-09-status-next-log.md`; 14w–14z below are the
+    `docs/history/2026-09-status-next-log.md`; 14w–14aa below are the
     current ones.
 
 14w. **Handoff after item 281 (2026-09-16, afternoon).** Six items
@@ -756,6 +756,44 @@ flag tables), comparison.md's flag and schema maps against Turbo and
 Nx's current docs, benchmarks.md's prose against its own tables — and
 then the site's guides (running-tasks, remote-caching, sandboxing,
 plugins) against source the same way. Never end with "what next?".
+
+14aa. **Handoff after item 305 (2026-09-16, evening).** Six items
+since 14z, the read-against-source series finished: cli.md's flag
+table against the parser and `vx help` (four flags the help never
+named, 300); benchmarks.md's two contradictory 46-package tables
+(301); the site's seventeen guides in three passes (302–304: the
+run-flags table's `--force` claim, `--graph` as text in three places,
+the dev-server teardown, the env allowlist, the reapi "in time,
+executor", the 64 KB retry that no longer exists); and the
+introduction, migration and concept pages (305: a botched splice on
+the front page, `admit` missing from the table, `nx affected` still
+mapped to the changed-only filter). 300–301 went in #452, 302 in
+#453, 303 in #454, 304 in #455, 305 in #456 (open). Open: Next 1, 2
+and 16, all gated by their own terms; In-flight 5 (macOS); the owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's
+address. No open issues. The loop holds twenty-four items (282–305);
+the next trim moves 282–305 to history. The box: as 14z, and the
+same lesson three times in one evening — an entry that quotes broken
+markup, or lets a code span wrap onto a continuation line, breaks
+STATUS under the formatter, and a chain that prints the scan's
+verdict instead of gating on it commits the breakage (299, 304, 305:
+describe the breakage in words, gate every chain on `rc`); oxlint
+refuses a path with `..` — lint a sibling package's file from that
+package's directory (305); a `--dry` sample that already matched
+still earned its pin, and rendering it found the formatter's own
+docblock wrong (302) — render the sample even when it looks right.
+Methods that paid: the series' yield held to the last page (fifty-odd
+stale claims over eleven items, a pin behind every list), and the
+cheapest probe of a page is its own build output (`dist/`) or its
+own formatter (`formatPlanText`, `renderJobSummary`), never a
+re-read. Next: the trim (282–305 to history, the record paragraph
+and the pointers); then Next 6's re-measure is due only when warm-
+path code moves (none did this evening); then the design/ pages are
+dated records and stay, but `docs/modules/*.md`'s "Public surface"
+blocks are the one doc class this series never read against source
+— a pin that each block's exported names exist in the module is the
+same law as the inventory pins, forty pages wide. Never end with
+"what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
