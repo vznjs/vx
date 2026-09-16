@@ -32,12 +32,13 @@ import {
   drainOrAbort,
   shellQuote,
   signalExitCode,
+  spawnFailureText,
   streamToString,
   resourceUsageToCpuRss,
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
-import { UserError, xxh3hex } from '../util/index.js'
+import { isTmpdirRefusal, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
 import { buildCustomConfig } from './sandbox-binds.js'
 import { localBindingOn, toRealPath, unique } from './sandbox-paths.js'
 import { parseStraceViolations, reportableViolations } from './sandbox-violations.js'
@@ -102,6 +103,8 @@ async function probeUncached(weakerNested: boolean): Promise<SandboxAvailability
   }
   const deps = SandboxManager.checkDependencies()
   if (deps.errors.length > 0) return { available: false, reason: deps.errors.join('; ') }
+  const long = socketPathRefusal()
+  if (long !== undefined) return { available: false, reason: long }
   if (process.platform === 'linux') {
     await initSandbox()
     return trySandboxedTrue(SandboxManager, weakerNested)
@@ -176,8 +179,39 @@ async function trySandboxedTrue(
     if (proc.exitCode === 0) return { available: true, reason: '' }
     return { available: false, reason: unavailableReason(proc.exitCode, stderr) }
   } catch (err) {
-    return { available: false, reason: `sandbox probe threw: ${(err as Error).message}` }
+    return { available: false, reason: thrownReason(err, 'sandbox probe threw') }
   }
+}
+
+/**
+ * The runtime listens on `<tmpdir>/srt-mux-<pid>-<seq>.sock`, and a unix
+ * socket path has a hard length (`sun_path`: 108 bytes on Linux, 104 on
+ * macOS, one of them the NUL). Past it the runtime says "ENAMETOOLONG …
+ * listen" on macOS and "Failed to create bridge sockets after 5 attempts"
+ * on Linux (its retry loop swallows the code), neither naming the
+ * directory (2026-09-16). Checked up front, with room for the sequence.
+ */
+export function socketPathRefusal(tmpdir = os.tmpdir()): string | undefined {
+  const sample = path.join(tmpdir, `srt-mux-${process.pid}-zzz.sock`)
+  const limit = process.platform === 'darwin' ? 103 : 107
+  const length = Buffer.byteLength(sample)
+  if (length <= limit) return undefined
+  return `the sandbox runtime listens on a unix socket under the temp directory, and ${sample} is ${length} bytes where the OS allows ${limit} — point TMPDIR at a shorter path`
+}
+
+/**
+ * A throw from the runtime itself, in the user's terms. Its own temp files
+ * (the observer directory, the bridge sockets, the strace log) live under
+ * `os.tmpdir()`, so a temp directory that is missing or not writable
+ * failed a sandboxed task with a path and no knob ("EACCES … mkdtemp
+ * '/tmp/probe-ro/srt-obs-…'", a minimal image, 2026-09-16).
+ */
+export function thrownReason(err: unknown, what = ''): string {
+  const message = err instanceof Error ? err.message : String(err)
+  if (isTmpdirRefusal(err)) {
+    return `the sandbox runtime needs a writable temp directory and ${os.tmpdir()} is not one (${message}) — ${TMPDIR_HINT}`
+  }
+  return what === '' ? message : `${what}: ${message}`
 }
 
 /**
@@ -662,14 +696,9 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
       detached: true,
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return {
-      exitCode: 127,
-      durationMs: Date.now() - start,
-      stdout: '',
-      stderr: `\n[vx] failed to spawn sandboxed task: ${message}\n`,
-      violations: [],
-    }
+    const stderr = spawnFailureText(err, args.cwd, 'sandboxed task')
+    args.onStderr?.(stderr)
+    return { exitCode: 127, durationMs: Date.now() - start, stdout: '', stderr, violations: [] }
   }
 
   args.liveChildren?.add(proc)

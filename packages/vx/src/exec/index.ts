@@ -20,6 +20,8 @@ export {
   wrapSandboxedCommand,
   type ResolvedSandboxConfig,
   type SandboxViolation,
+  socketPathRefusal,
+  thrownReason,
 } from './sandbox-runtime.js'
 export { type DeniedCall } from './sandbox-violations.js'
 export { localExecutor } from './local-executor.js'

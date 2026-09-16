@@ -196,7 +196,9 @@ make two runs strangers; a read-only checkout can take it), holding the
 holder's pid: a second process polls every 50 ms, after a second says
 `[vx] waiting for another vx run (pid N) on this workspace to finish…`,
 and reclaims a lock whose pid is gone. A directory that cannot be made
-for any reason but "exists" is a one-line warning and an unlocked run.
+for any reason but "exists" is a one-line warning and an unlocked run;
+when the reason is the temp directory itself (missing, a file, not
+writable), the warning adds `point TMPDIR at a writable directory`.
 Runs inside ONE process share the lock (a count; the last release
 removes the directory): an embedder that runs two at once coordinates
 them itself through `RunOptions.inflight`.
