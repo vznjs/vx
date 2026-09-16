@@ -236,13 +236,19 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // (Until 2026-09-09 the block was accepted and silently ignored.)
   let command = plainCommand
   let bridgeTag: string | undefined
+  // The empty files the request pre-created for a literal write grant; a
+  // server that never writes one gets it taken back when it exits, and a
+  // server that dies before readiness is told the directory spelling — the
+  // same trap and the same answer as a one-shot task's (sandbox-request.ts).
+  let placeholders: Placeholder[] = []
   if (step.sandbox !== undefined) {
     await args.armSandbox?.()
-    const { sandbox: sb } = await sandboxRequestFor(node, step.sandbox, args.workspaceRoot)
+    const sb = await sandboxRequestFor(node, step.sandbox, args.workspaceRoot)
+    placeholders = sb.placeholders
     const wrapped = await wrapSandboxedCommand({
       command: plainCommand,
       cwd: node.projectDir,
-      ...sb,
+      ...sb.sandbox,
     })
     command = wrapped.wrapped
     bridgeTag = wrapped.tag
@@ -268,12 +274,14 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const spawn = runPersistent(persistentOpts)
   // The host side of a port bridge lives exactly as long as the server:
   // released on the child's exit, whether the run tore it down or it died.
-  if (bridgeTag !== undefined) {
+  // A placeholder the server never wrote goes back the same way.
+  if (bridgeTag !== undefined || placeholders.length > 0) {
     const tag = bridgeTag
-    void spawn.child?.exited?.then(
-      () => releaseBridges(tag),
-      () => releaseBridges(tag),
-    )
+    const onExit = async (): Promise<void> => {
+      if (tag !== undefined) releaseBridges(tag)
+      await sweepPlaceholders(placeholders)
+    }
+    void spawn.child?.exited?.then(onExit, onExit)
   }
   try {
     await spawn.ready
@@ -283,6 +291,12 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // reader looks for why a task failed, and a run with a custom logger
     // (an embedder, the MCP server) never saw a bare stderr write at all.
     log.taskStderr(node, `\n[vx] ${node.id}: persistent task failed to become ready: ${message}\n`)
+    // The server is dead or being torn down; the sweep on its exit races
+    // this return, so take the untouched placeholders back here and say
+    // what they were (idempotent — an already-removed one is skipped).
+    for (const p of await sweepPlaceholders(placeholders)) {
+      log.taskStderr(node, `${untouchedPlaceholderLine(node.projectDir, p)}\n`)
+    }
     return {
       node,
       status: 'failed',

@@ -551,6 +551,18 @@ the error table in `docs/schema.md` has the row.
       seam, the uncapped captured output (Next 20), and the nested
       repository's `workspaceFiles` edge. No new page, so the sidebar
       law is untouched; the checklist item points at it.
+227.  DONE (2026-09-16, 218's persistent half): a dev server declaring
+      a literal write grant (`write: ['.cache']`) met the same trap as
+      a one-shot task — the grant pre-created as a FILE, its own
+      `mkdir` dying with "File exists" — and the persistent path
+      discarded the placeholders 218 made the one-shot path sweep, so
+      the file outlived the run and the readiness failure said nothing
+      of it. The placeholders ride the persistent request now: swept
+      when the child exits (beside the port bridge's release) and,
+      when readiness fails, swept there too with the `dir/` line on the
+      task's stream. Pinned in the unsafe suite (the failure names
+      `.cache/` and leaves no file; `.cache/` makes its directory and
+      becomes ready).
 
 ## In flight
 

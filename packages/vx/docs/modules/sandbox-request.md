@@ -33,8 +33,9 @@ export function sandboxRequestFor(
 
 // Remove the placeholders the task never wrote (still empty, mtime
 // untouched); returns their paths. execute-task calls it after every
-// attempt, and a failed task with nothing else reported gets one line
-// per untouched placeholder (`untouchedPlaceholderLine`).
+// attempt of a one-shot task, and when a persistent task's child exits
+// (or fails to become ready); a failed task with nothing else reported
+// gets one line per untouched placeholder (`untouchedPlaceholderLine`).
 export function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
 export function untouchedPlaceholderLine(projectDir: string, placeholder: string): string
 ```
