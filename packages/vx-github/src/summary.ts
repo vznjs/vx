@@ -69,7 +69,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
         .filter((s) => s.status === 'skipped' && s.blockedBy === t.taskId)
         .map((s) => escapeMarkdownCell(s.taskId))
       lines.push(
-        `- **${escapeMarkdownCell(t.taskId)}** — exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
+        `- **${escapeMarkdownCell(t.taskId)}** — ${t.timedOut === true ? `timed out, exit ${t.exitCode}` : `exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
       )
     }
     lines.push('')

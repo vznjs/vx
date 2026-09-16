@@ -68,6 +68,12 @@ export interface TaskOutcome {
    * read this one field (item 267).
    */
   blockedBy?: string
+  /**
+   * On a `failed` outcome: vx's own `timeout` killed the final attempt.
+   * The exit is the shell's 143, and every label says "timed out" instead
+   * of reading it as a signal (item 268).
+   */
+  timedOut?: true
   /** Executor-reported placement label (`ExecuteResult.where`) — set only
    *  when the task ran somewhere other than this host. Telemetry-only. */
   where?: string

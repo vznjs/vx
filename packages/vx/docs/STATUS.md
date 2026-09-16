@@ -438,6 +438,21 @@ test is telling the truth.
       `Required<TaskTelemetry>` fixture) refusing the new field until
       it was mapped — the tripwire doing its job — so the task span
       carries `vx.task.blocked_by`, a task id as the record has it.
+268.  DONE (2026-09-16, the reader of a timeout, the class of 267): since
+      262 a task vx's own `timeout` killed was labelled as a SIGTERM
+      death on every surface, `128 + SIGTERM` after its 143 — true of
+      the number and wrong about the cause; only the frame's own line
+      said "timed out", and the retry line said "after exit 143". The
+      outcome now carries `timedOut` (the runner's, on the final
+      attempt), and one `failedLabel` reads the reason first, "timed
+      out, exit 143", everywhere: the frame footer, the status line,
+      the report, the Actions
+      annotation, `--summarize` (`timedOut: true`), the telemetry record
+      (additive), the GitHub callout (`timed out, exit 143`) and the
+      OTel span (`vx.task.timed_out`); the retry line says "after a
+      timeout". `vx last` keeps `128 + SIGTERM`: the `runs` table has
+      no column, the same call as `blockedBy`. Pinned at the outcome
+      (the timeout test), the report, the annotation and both plugins.
 
 ## In flight
 

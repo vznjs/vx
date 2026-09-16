@@ -37,7 +37,7 @@ Pinned zones (owner: failures "on top of" the workers; persistent
 "always pinned until exit"):
 
 - **Failures** — `✗ <id> ── failed (exit N)` per failed task (the
-  signal named above 128, `failedLabel`), capped
+  signal named above 128, a timeout as such, `failedLabel`), capped
   at 5 + dim `… +K more failed`. Accumulate as failures happen; stay
   until runEnd.
 - **Persistent** — `▸ <id> ── running` for every ready persistent

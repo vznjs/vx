@@ -111,6 +111,7 @@ export const VX_ATTR = {
   cpuMs: 'vx.cpu_ms',
   taskWhere: 'vx.task.where',
   taskBlockedBy: 'vx.task.blocked_by',
+  taskTimedOut: 'vx.task.timed_out',
   taskOutputs: 'vx.task.outputs',
   peakRssBytes: 'vx.peak_rss_bytes',
   taskAttempts: 'vx.task.attempts',
@@ -262,6 +263,8 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
   if (t.where !== undefined) attrs.push(strAttr(VX_ATTR.taskWhere, t.where))
   // A skipped task's root blocker (a task id, as the record carries it).
   if (t.blockedBy !== undefined) attrs.push(strAttr(VX_ATTR.taskBlockedBy, t.blockedBy))
+  // vx's own deadline killed the task: the 143 is a timeout, not a signal.
+  if (t.timedOut === true) attrs.push(boolAttr(VX_ATTR.taskTimedOut, true))
   if (t.outputs !== undefined) attrs.push(strAttr(VX_ATTR.taskOutputs, t.outputs))
   if (t.peakRssBytes !== undefined) attrs.push(intAttr(VX_ATTR.peakRssBytes, t.peakRssBytes))
   if (t.attempts !== undefined) attrs.push(intAttr(VX_ATTR.taskAttempts, t.attempts))
