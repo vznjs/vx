@@ -102,6 +102,17 @@ test is telling the truth.
       install, with the command and cwd after it. Pinned beside 242's
       cases in `no-shell-on-path.test.ts`; fails without the fix.
 
+245.  DONE (2026-09-16, Next 6 — the day's diff on the warm path): after
+      #407 and #408 (241–244: git and sh refusals, the TMPDIR lines, the
+      spawn-failure text), 1,000 projects measured 248 ms warm / 754
+      restore / 2,738 cold (medians of 5) against the morning's 231 /
+      718 / 2,436. The interleaved A/B on one 1,000-project workspace,
+      the pre-241 commit (#406) in an immutable worktree against main,
+      9 reps each: min 250 vs 250, median 258 vs 262 — a tie. The gap to
+      the morning is the box (both arms sit 20 ms above it), not the
+      diff: every site the day touched is a catch path or a refusal
+      that a green run never enters.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
@@ -207,8 +218,8 @@ state of each:
    recorded under this duty (a synchronous restore for small
    artifacts, discovery's stat memo, the `restore: rows` lead) are in
    `docs/history/2026-09-status-next-log.md`; the latest day's A/B is
-   item 179 (2026-09-15, a tie), and the restore arm's floor is the
-   note under item 193. 2026-09-16, after item 225: 5,000 projects
+   item 245 (2026-09-16, a tie; 179 was the one before), and the
+   restore arm's floor is the note under item 193 (history). 2026-09-16, after item 225: 5,000 projects
    687 ms warm / 2,854 restore / 12,152 cold (medians of 3) against
    1,000's 231 / 718 / 2,436 — the warm stage table grows 3.4–3.9× for
    5× the projects (discover 23 → 89 ms, load configs 24 → 87, classify
