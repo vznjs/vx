@@ -7,6 +7,7 @@ import readline from 'node:readline/promises'
 import path from 'node:path'
 import {
   affectedProjects,
+  refIsHead,
   applyFilters,
   buildPackageGraph,
   findWorkspaceRoot,
@@ -238,7 +239,15 @@ export async function resolveFilters(
     const includes = parsed.filter((f) => !f.negate)
     if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
       const refs = includes.map((f) => f.gitSince).join(', ')
-      return { empty: `nothing affected since ${refs}` }
+      // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
+      // the branch under test) can never mark anything affected, and this
+      // exit-0 note was the only sign (CI persona, 2026-09-16). Say so.
+      const self = includes.find((f) => refIsHead(root, f.gitSince!))
+      const hint =
+        self === undefined
+          ? ''
+          : ` — ${self.gitSince} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
+      return { empty: `nothing affected since ${refs}${hint}` }
     }
     // One line, not a warning per pattern and then an error saying the same:
     // the patterns are in the error, and the nearest project name is the

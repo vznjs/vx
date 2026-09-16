@@ -52,16 +52,32 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Lint, test, build what changed
-        run: vx run lint test build --affected=origin/${{ github.base_ref || 'main' }}
+        # A PR diffs against its target branch. A push has no target: its
+        # base is the commit the branch was on before the push — `main`
+        # itself would be HEAD, and "nothing affected since origin/main".
+        run: >
+          vx run lint test build
+          --affected=${{ github.event_name == 'pull_request'
+            && format('origin/{0}', github.base_ref)
+            || github.event.before }}
 ```
 
 Notes:
 
 - **`fetch-depth: 0`** — `--affected` diffs against a base ref, which
-  needs real git history. A shallow clone can't compute it.
-- **`--affected=origin/<base>`** — on a PR, diff against the target
-  branch; on a push to `main`, fall back to `main`. Changed packages (and
-  their dependents) run; the rest restore from cache.
+  needs real git history. A shallow clone can't compute it, and vx says
+  so rather than guessing: with no `origin/HEAD` and no parent commit
+  the run fails with `--affected has no base here … a shallow clone?`,
+  and a base that turns out to be the commit under test is named as
+  `HEAD itself` in the `nothing affected since <ref>` note.
+- **The base** — on a PR, the target branch (`origin/<base_ref>`); on a
+  push, `github.event.before`, the commit the branch was on before the
+  push, so a three-commit push selects all three commits' changes.
+  `origin/main` on a push to `main` is HEAD itself and selects nothing —
+  vx names that case in its note. After a force-push `before` may be
+  gone from history; vx says the ref did not resolve, and `--all` is the
+  honest fallback for that run. Changed packages (and their dependents)
+  run; the rest restore from cache.
 - **`vx` is the npm-installed binary** on `PATH` — no wrapper needed. (Or
   install it as a dependency with `bun add -d @vzn/vx` and invoke it
   through your package manager.)

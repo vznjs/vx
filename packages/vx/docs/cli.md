@@ -148,7 +148,14 @@ vx run build --filter '[origin/main]'         # projects with files changed sinc
 Run the task only in projects whose files changed since `<base>`.
 
 - `--affected` (no value) uses `origin/HEAD`, falling back to
-  `HEAD~1` if `origin/HEAD` isn't resolvable.
+  `HEAD~1` if `origin/HEAD` isn't resolvable. A clone with neither — a
+  CI checkout at `fetch-depth: 1` — has no base at all, and vx says so
+  (`--affected has no base here … a shallow clone?`) instead of failing
+  on a `HEAD~1` nobody typed. And when the base IS the commit you are
+  on (a single-branch clone whose `origin/HEAD` is the branch under
+  test), the `nothing affected since <ref>` note says the ref is HEAD
+  itself and names the two bases you probably meant
+  (`--affected=origin/main`, `--affected=HEAD~1`).
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)

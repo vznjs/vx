@@ -256,8 +256,9 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
 /**
  * Resolve the default base for `--affected` with no explicit value.
  * Tries the remote's HEAD branch first (`origin/main`, `origin/master`,
- * etc.), then falls back to `HEAD~1` which always exists once there
- * are at least two commits.
+ * etc.), then falls back to `HEAD~1`. A clone with no `origin/HEAD` and
+ * no parent commit — a CI checkout at `fetch-depth: 1` — has no base at
+ * all, and says so here rather than failing on a ref nobody typed.
  */
 export async function defaultAffectedBase(workspaceRoot: string): Promise<string> {
   const probe = Bun.spawnSync({
@@ -268,7 +269,36 @@ export async function defaultAffectedBase(workspaceRoot: string): Promise<string
   })
   const out = new TextDecoder().decode(probe.stdout).trim()
   if (probe.exitCode === 0 && out.length > 0) return out
+  if (revParse(workspaceRoot, 'HEAD~1') === undefined) {
+    throw new UserError(
+      '--affected has no base here: origin/HEAD is not set and HEAD has no parent to compare ' +
+        'with — a shallow clone? Fetch history (actions/checkout: fetch-depth: 0) or name the ' +
+        'base: --affected=origin/main',
+    )
+  }
   return 'HEAD~1'
+}
+
+/**
+ * Does `ref` name the commit HEAD is on? A base that IS HEAD can never
+ * mark anything affected — the shape of a single-branch clone whose
+ * `origin/HEAD` is the branch under test.
+ */
+export function refIsHead(workspaceRoot: string, ref: string): boolean {
+  const head = revParse(workspaceRoot, 'HEAD')
+  return head !== undefined && head === revParse(workspaceRoot, ref)
+}
+
+/** The commit `ref` names, or undefined when it does not resolve here. */
+function revParse(workspaceRoot: string, ref: string): string | undefined {
+  const proc = Bun.spawnSync({
+    cmd: ['git', 'rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`],
+    cwd: workspaceRoot,
+    stdout: 'pipe',
+    stderr: 'ignore',
+  })
+  const sha = new TextDecoder().decode(proc.stdout).trim()
+  return proc.exitCode === 0 && sha.length > 0 ? sha : undefined
 }
 
 /** `git merge-base <ref> HEAD`, or `ref` itself when the two share no ancestor. */
