@@ -426,6 +426,27 @@ test is telling the truth.
       to ~20 ms on this repo's benchmark" (no such benchmark; the
       3,270-task numbers, dated). workspace-config, lockfiles' claim
       model and trusting-the-cache's `vx why` sample read true.
+304.  DONE (2026-09-16, the last four site guides read against their
+      packages: mcp, otel-bridge, extensibility, remote-execution).
+      extensibility said `@vzn/vx-reapi` fills `cache` "and, in time,
+      `executor`" (it has since the remote-execution arc, behind
+      `execute: true`), listed no first-party plugin for the execute
+      and store rows, and closed with "even core's own executor and
+      cache obey it — they import core through the public `@vzn/vx`
+      specifier" (the floor is in core, not a plugin, since
+      2026-09-10). remote-execution promised uploads "retry once at
+      64 KB if the transfer stalls" — the wire retries transient gRPC
+      statuses with backoff, and the 64 KB figure is Bun 1.3's ceiling
+      the plugin now refuses to run under. mcp (the six tools, the
+      hundred-line transport: `server.ts` is 144) and otel-bridge
+      (every option, default and attribute name in `otlp.ts`) read
+      true. That closes the site's seventeen guides; the series
+      (294–304) found fifty-odd stale claims across twelve pages and
+      left a pin behind each list. And this entry broke STATUS on its
+      first try: a code span wrapped across a continuation line, the
+      formatter un-indented the line, and a chain that printed the
+      format verdict instead of gating on it committed it — CLAUDE.md
+      has both rules; read them before writing an entry.
 
 ## In flight
 
