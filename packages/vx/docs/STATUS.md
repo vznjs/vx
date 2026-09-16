@@ -103,6 +103,19 @@ test is telling the truth.
       beside the tables); the daemon rejection quoted a 240 ms warm
       1000-project run the benchmarks page has at 172 ms. The
       shipped/rejected/out-of-scope lists otherwise read true.
+310.  DONE (2026-09-16, `optimizations.md` read against source): the
+      catalog cited `execute-task.ts` for the hashing rows (three of
+      them; it is `task-hash.ts` since item 16), `execute-task.ts` for
+      the git-snapshot invalidation (`miss-save.ts` and
+      `hit-restore.ts`), a `cache/remote-cache.ts` that does not exist,
+      `layered-cache.ts` for `Bun.Glob` (zero uses; `inputs.ts`), and
+      "the CLAUDE.md decision log" (retired 2026-09-02); two "known
+      headroom" entries had shipped — the batched all-hits probe
+      (#17d) and the per-run `taskConfigHash` memo (#5). Every
+      citation is module-qualified now and the pin in
+      `tests/doc-references.test.ts` holds each `module/file.ts:symbol`
+      to an existing file and symbol, and refuses a bare basename.
+      Fails on the old page.
 
 ## In flight
 
