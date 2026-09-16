@@ -116,6 +116,23 @@ test is telling the truth.
       `tests/doc-references.test.ts` holds each `module/file.ts:symbol`
       to an existing file and symbol, and refuses a bare basename.
       Fails on the old page.
+311.  DONE (2026-09-16, item 304 re-read against `wire.ts`): 304
+      removed the remote-execution guide's "retry once at 64 KB"
+      bullet as a Bun 1.3 leftover. It is live code: `writeResource`
+      catches a `DEADLINE_EXCEEDED` on a multi-message write and
+      retries once at `SAFE_CHUNK_BYTES` (65535), because the Bun
+      http2 flow-control defect is a race above the RFC 7540 initial
+      window, not a boundary. A grep for `retry` missed `retries`
+      and called it gone. The bullet is back, stating the trigger and
+      the size, and pinned in `tests/site-samples.unsafe.test.ts` to
+      `CHUNK_BYTES` and `SAFE_CHUNK_BYTES` read from the wire's
+      source; 304's record and 14aa are corrected in place, and
+      CLAUDE.md has the rule: grep every form of the word and the
+      constant's name before calling a documented behaviour gone.
+      Also fixed in passing: a code span in CLAUDE.md wrapped across a
+      continuation line (the root is outside `lint.oxfmt`'s scan, which
+      runs in `packages/vx`, so nothing caught it). Fails on the page
+      304 left.
 
 ## In flight
 
@@ -312,7 +329,8 @@ named, 300); benchmarks.md's two contradictory 46-package tables
 (301); the site's seventeen guides in three passes (302–304: the
 run-flags table's `--force` claim, `--graph` as text in three places,
 the dev-server teardown, the env allowlist, the reapi "in time,
-executor", the 64 KB retry that no longer exists); and the
+executor", and one wrong call, the "64 KB retry" that does exist,
+corrected in 311); and the
 introduction, migration and concept pages (305: a botched splice on
 the front page, `admit` missing from the table, `nx affected` still
 mapped to the changed-only filter). 300–301 went in #452, 302 in

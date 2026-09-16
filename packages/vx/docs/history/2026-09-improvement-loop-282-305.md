@@ -382,9 +382,12 @@ STATUS under the same numbering.
       cache obey it — they import core through the public `@vzn/vx`
       specifier" (the floor is in core, not a plugin, since
       2026-09-10). remote-execution promised uploads "retry once at
-      64 KB if the transfer stalls" — the wire retries transient gRPC
-      statuses with backoff, and the 64 KB figure is Bun 1.3's ceiling
-      the plugin now refuses to run under. mcp (the six tools, the
+      64 KB if the transfer stalls", and this item removed the claim
+      as Bun 1.3's ceiling — wrongly: `writeResource` retries a
+      deadline on a multi-message write once at `SAFE_CHUNK_BYTES`
+      (65535), and a grep for `retry` that missed `retries` called it
+      gone. Item 311 restored it, pinned to the wire's constants. mcp
+      (the six tools, the
       hundred-line transport: `server.ts` is 144) and otel-bridge
       (every option, default and attribute name in `otlp.ts`) read
       true. That closes the site's seventeen guides; the series
