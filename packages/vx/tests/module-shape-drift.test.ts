@@ -61,6 +61,9 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['task-hash', 'orchestrator/task-hash.ts', 'HashCache'],
   ['task-hash', 'orchestrator/task-hash.ts', 'ComputeHashArgs'],
   ['prepare', 'orchestrator/prepare.ts', 'PreparedRun'],
+  ['cli-run', 'cli/run.ts', 'RunArgs'],
+  ['summary', 'orchestrator/summary.ts', 'SummaryStats'],
+  ['summary', 'orchestrator/summary.ts', 'RunContext'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -123,5 +126,18 @@ describe('a module page lists the functions the module exports', () => {
       'ten',
     ]
     expect(doc).toContain(`the same ${WORDS[exported.length]} signatures`)
+  })
+})
+
+describe('cli-help.md names every section the help text has', () => {
+  it('its Sections list holds each header, in order', () => {
+    const src = read('src/cli/help.ts')
+    const headers = [...src.matchAll(/^    '([A-Z][^']*):',$/gm)].map((m) => m[1]!)
+    expect(headers.length).toBeGreaterThan(8)
+    const doc = read('docs/modules/cli-help.md')
+    const section = /## Sections \(current\)\n([\s\S]*?)\n## /.exec(doc)
+    expect(section).not.toBeNull()
+    const named = [...section![1]!.matchAll(/^- `([^`]+)`/gm)].map((m) => m[1]!)
+    expect(named).toEqual(headers)
   })
 })

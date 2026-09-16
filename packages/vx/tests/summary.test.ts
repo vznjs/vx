@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import {
   formatDuration,
@@ -299,5 +301,37 @@ describe('formatSkippedSection', () => {
     expect(lines[2]).toBe(
       '    ⊘ after lib#build failed: p0#build, p1#build, p10#build, p2#build, p3#build, p4#build, p5#build, p6#build … +3 more',
     )
+  })
+})
+
+describe('docs/modules/summary.md shows what the footer prints', () => {
+  it('its Format block is formatRunSummary on four successes with the run context it names', () => {
+    const doc = readFileSync(
+      path.resolve(import.meta.dir, '..', 'docs', 'modules', 'summary.md'),
+      'utf8',
+    )
+    const block = /## Format\n\n```\n([\s\S]*?)```/.exec(doc)
+    expect(block).not.toBeNull()
+    // A cached task (a `cache` block) that ran: the page's "4 miss" row.
+    const timed = (id: string, durationMs: number): TaskOutcome => ({
+      ...outcome(id, 'success'),
+      node: { id, config: { exec: { command: 'noop' }, cache: {} } } as TaskNode,
+      durationMs,
+    })
+    const lines = formatRunSummary(
+      [timed('a#build', 239), timed('a#test', 190), timed('a#lint', 215), timed('a#fmt', 216)],
+      248,
+      undefined,
+      {
+        version: '0.0.0',
+        packageCount: 1,
+        concurrency: 10,
+        remoteCacheEnabled: false,
+        workspaceProjectCount: 2,
+      },
+    )
+    // The leading blank line stands the footer apart from the last frame;
+    // the page's block starts at the rule.
+    expect(block![1]).toBe(lines.join('\n').replace(/^\n/, '') + '\n')
   })
 })

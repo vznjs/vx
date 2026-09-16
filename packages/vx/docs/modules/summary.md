@@ -13,6 +13,21 @@ upstream by `orchestrator.run` before this function is called.
 ## Public surface
 
 ```ts
+export interface SummaryStats {
+  failed: number
+  successful: number
+  skipped: number
+  total: number
+  upToDate: number
+  restoredLocal: number
+  restoredRemote: number
+  miss: number
+  noCache?: number // a task with no `cache` block never consulted the cache
+  left?: number // tasks that never started (an aborted run)
+  spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null // the time row's per-task spread
+  held?: { count: number; sumMs: number } // what an `admit` policy held, summed
+}
+
 export interface RunContext {
   version: string
   packageCount: number // projects covered → the bar's "affected" half
@@ -21,6 +36,14 @@ export interface RunContext {
   workspaceProjectCount?: number // total projects → the bar's denominator
 }
 
+// The meters + info + time rows from counted stats — the live status region renders these as the run proceeds.
+export function formatSummarySection(
+  stats: SummaryStats,
+  totalMs: number,
+  colors?: ColorSupport,
+  context?: RunContext,
+): string[]
+
 export function formatRunSummary(
   outcomes: readonly TaskOutcome[],
   totalMs: number,
@@ -28,10 +51,19 @@ export function formatRunSummary(
   context?: RunContext,
 ): string[]
 
+export function formatAbortedSection(outcomes: readonly TaskOutcome[]): string[]
+export function formatSkippedSection(outcomes: readonly TaskOutcome[]): string[]
 export function formatFlakySection(findings: readonly FlakyFinding[]): string[]
 
 export function formatDuration(ms: number): string
 ```
+
+`formatSkippedSection` names each skipped task under the failure (or
+aborted task) at the root of its chain — `blockedBy` — with fail-fast's
+skips under their own heading; a blocked group is left out, as every
+counter leaves it out, and a long list is capped on one line with the
+rest counted. `formatAbortedSection` lists what a shutdown signal took
+down. Both print after the footer, beside the Flaky section.
 
 `formatFlakySection` is the post-footer section naming the tasks this
 run proved flaky (`detectFlaky`, history.md): `✗ id — failed on inputs
@@ -65,9 +97,12 @@ Labels pad to 8, bars start at column 12, the rule + bars span 50
 cells. `projects` (affected vs workspace total) leads the meter stack;
 `tasks` and `cache` follow, the tasks legend carrying a dim `N total`.
 A blank line separates the meters from the `info` row (worker pool +
-cache mode) and the `time` row. `projects` and `info` only render when
-a `RunContext` is passed (the final footer); the live region shows the
-meters alone.
+cache mode, and `admit held N tasks · Ns` when a policy held any — a
+sum, said as one) and the `time` row. `projects` and `info` only
+render when a `RunContext` is passed (the final footer); the live
+region shows the meters alone. The block above is
+`formatRunSummary` on four successes of 239, 190, 215 and 216 ms with
+that context, pinned in `tests/summary.test.ts`.
 
 Colors:
 
@@ -92,7 +127,13 @@ Duration:
 - Empty outcomes (zero-task summary).
 - Stacked state meters (50 cells, largest-remainder allocation, every non-zero bucket gets >= 1 cell): tasks bar = failed/success/skipped, cache bar = miss/no-cache (dim: a task with no `cache` block never consulted it)/up-to-date/local/remote; color-coded legends below each bar.
 - Gradient wordmark rule (violet -> pink across the dashes).
-- Failed list capped at 5 ids + '... +N more' (frames above carry the rest).
+- Failed task ids are never listed — the count lives in the legend
+  (the frames above carry the names; a run can fail hundreds).
+- The run context folds into the footer (version on the rule, the
+  info row, the projects bar); no context keeps a bare `vx` rule.
+- The Skipped section: each skipped task under the failure at the root
+  of its chain, fail-fast and an aborted upstream named as such, a
+  blocked group left out, the names capped on one line.
 - Time row: blank line above, total + dim 'max / avg / min' per-task spread (skipped excluded).
 - Duration formatting (sub-second vs second+).
 - The Flaky section: exact lines for a failure that passed before, a

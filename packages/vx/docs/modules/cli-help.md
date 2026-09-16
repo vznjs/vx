@@ -9,11 +9,12 @@ the same text cut to that verb.
 ## Public surface
 
 ```ts
-export function printHelp(pluginCommands?: readonly string[], verb?: string): void
-export function helpText(pluginCommands?: readonly string[]): string
+export function printHelp(pluginCommands: readonly string[] = [], verb?: string): void
+export function helpText(pluginCommands: readonly string[] = []): string
 export function verbHelpText(verb: string): string
 export function documentedFlags(verb: string): string[]
 export function seeHelp(verb: string): string
+export { CORE_VERBS } from '../util/index.js'
 ```
 
 `helpText` is the whole reference, hard-coded. `verbHelpText` is the
@@ -26,21 +27,31 @@ There is no second list: the cut reads the text, as `documentedFlags`
 
 ## Sections (current)
 
-- Usage line per subcommand.
+- `Usage` — one line per verb.
 - `Selection (for run)` — default / `--all` / `--filter` / `--affected`
   / `pkg#task`.
 - `Execution (for run)` — concurrency, `--exclude-dependencies`,
-  `--no-cache` / `--force`, `--cache`, `--verbosity`.
+  `--no-cache` / `--force`, `--cache`, `--continue`, `--retry`,
+  `--timeout`, `--frozen`, `--output-logs`, `--verbosity`.
 - `Planning (for run — skips execution)` — `--dry`, `--graph`.
-- `Artifacts (for run)` — `--summarize`, `--profile`.
+- `Artifacts (for run)` — `--summarize`, `--profile`, `--report`,
+  `--report-file`, `--tag`.
+- `Extensions (plugins)` — the verbs the workspace's plugins add.
 - `Argument forwarding (for run)` — explanation of `--`.
+- `Watch mode` — `vx watch`.
 - `Cache management` — `vx cache prune` examples.
+- `Introspection` — `vx show`, `vx info`, `vx why`, `vx last`.
+- `Migration` — `vx init` and the pointer to `bunx @vzn/vx-migrate`.
+- `Shell completions` — `vx completions bash|zsh|fish`.
+- `Config lock` — `vx lock`.
 
 ## Updating
 
 When adding / changing a flag in `cli/run.ts` or `cli/cache.ts`,
-update the help text here too. Tests don't validate this against the
-parser; it's a documentation file that happens to be printable.
+update the help text here too. `tests/cli-doc-drift.test.ts` holds
+the help to the parser: every flag `parseRunArgs` accepts appears in
+a `(for run)` section, so a flag added to the parser and not to the
+text fails the gate.
 
 ## Tests
 
