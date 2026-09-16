@@ -315,8 +315,8 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270 and 275 (14–14v) are in
-    `docs/history/2026-09-status-next-log.md`; 14w below is the
-    current one.
+    `docs/history/2026-09-status-next-log.md`; 14w and 14x below are the
+    current ones.
 
 14w. **Handoff after item 281 (2026-09-16, afternoon).** Six items
 since 14v, merged as #436–#440: the second first-run walkthrough
@@ -351,6 +351,44 @@ every other surface excludes is the one to check in a new surface
 walked — the inner loop, `vx watch` through a failing edit and the
 fixing one, with the reason surfaces read as they cycle. Never end
 with "what next?".
+
+14x. **Handoff after item 287 (2026-09-16, mid-afternoon).** Six
+items since 14w, merged as #442–#446 with #446 open: the watch
+persona read right (282) and the loop was trimmed to history; the
+READMEs' counts corrected and the hook count pinned across the project
+boundary (283); every config block on the site compiled, three pages
+fixed (284); the day's warm-path A/B a tie (285); the package READMEs
+probed and their pin declined with the reason (286); and `--affected`
+changed to include dependents (287) — the reference documented the
+changed-only form with a rationale while two guides and the flag's
+name promised dependents, so an adopter's gate never ran a dependent's
+tests; a Decisions entry records the call and the parity table's `≠`
+row is closed. Open: Next 1, 2 and 16, all gated by their own terms;
+In-flight 5 (macOS); the owner residue — the `NPM_TOKEN` secret, the
+release cut, the site's address. No open issues. The loop holds six
+items (282–287) after the trim. The box: as 14w; a Python edit script
+that writes files before its last assertion leaves a half-done tree
+when that assertion fails, and a chain gated on the scan and the tests
+committed it (the trim, twice in one turn) — gate the chain on the
+script's own exit and make every write idempotent; an item inserted at
+the blank line after the last item lands BEFORE any item that follows
+it, so a cut "to the next item" misses the one you just wrote — count
+what the cut holds before writing the file; a type-checker pointed at
+a directory holding a symlinked `node_modules` walks it until the
+kernel kills it — name the files; the shard-4 flake of #440 has a name
+now, `task-tree-kill`'s "a timeout reaps the grandchild", a 300 ms
+window a loaded macOS runner outran (#445), two seconds since; a probe
+whose negative case contains the positive's needle ("broken" holds
+"ok") proves nothing — check the negative case before reading the
+result. Methods that paid: the pages a newcomer copies from are
+compiled, not read (284); a divergence a parity suite pins as
+documented is still a divergence the guides may contradict — read the
+guides against the suite, not the reference alone (287); a CI failure
+you cannot name gets its name from the next occurrence — keep the
+shard's file list. Next: the lockfile persona — a dependency bump under
+`bun()`, `vx why` naming the claim and `--affected` following it — and
+`vx init` on the walkthrough repo after 287, to read what the TODO says
+about `--affected` now. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
