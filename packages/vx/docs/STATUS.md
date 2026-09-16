@@ -1261,6 +1261,31 @@ knife edge, fixed with a differential pin rather than re-run; a
 walk's refutation is written down (186, 190) so the next reader
 changes angle. Never end with "what next?".
 
+14i. **Handoff after item 202 (2026-09-16, early morning).** Five
+items since 14h, three of them from walking the CI persona and the
+maintainer through `.github/` rather than a scratch workspace: § In
+flight cut to what is open (198); `--affected` in the two clone shapes
+CI produces — a base that is HEAD itself is named, a depth-1 checkout
+gets "a shallow clone?" instead of a `HEAD~1` nobody typed, and the
+site's own recipe, which had the first shape on every push to main,
+diffs against `github.event.before` now (199); the CI guide names
+`@vzn/vx-github` (200); the release paragraph and the npm workflow's
+header stopped claiming a token path the file lacks — 0.0.21 went
+through the token-free workflow, so launch-checklist 1 is done bar
+deleting a secret nothing reads (201); and the vx-cloud agent action,
+a leftover of the removed product, is gone (202). The shard re-deal of
+item 196 exposed a second deal-shaped edge on its third CI run
+(`output-dirs`' 8,193-directory case against bun's 5 s default, bounded
+by its work). Open: Next 1, 2 and 16 as before, all gated by their own
+terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN` secret,
+the release cut, the site's address. No open issues. The box:
+unchanged. Methods that paid: a persona's first REAL failure comes
+from the environment it runs in (a single-branch clone, a depth-1
+checkout), not from the verb's flags; read the CI job's own log before
+calling a failure a flake, and read your own recipe with the same eyes;
+a comment claiming behaviour the file lacks is a defect wherever it
+sits, a STATUS line repeating it included. Never end with "what next?".
+
 14h. **Handoff after item 197 (2026-09-16, small hours).** Five
 items since 14g: the one dependency that had moved (193), this file
 cut to a handoff again — loop items 105–144 and the Next list's
