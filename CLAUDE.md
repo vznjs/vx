@@ -247,11 +247,15 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   any item that follows N, so a cut "from N to the next item" misses
   the one just written. Count what a cut holds before writing it out.
 - A type-checker pointed at a directory that holds a symlinked
-  `node_modules` walks it until the kernel kills it (`oxlint
-  --type-check .`, 2026-09-16). Name the files.
+  `node_modules` walks it until the kernel kills it
+  (`oxlint --type-check .`, 2026-09-16). Name the files.
 - A probe's negative case is checked before its result is read: a
   flag set to "broken" still matched a `grep -q ok` ("broken" holds
   "ok"), and the cycle that was to fail passed (2026-09-16).
+- A negative grep is a claim about every spelling: `retry` missed
+  `retries`, and a documented upload retry that exists was struck
+  from a guide as gone (item 304, corrected in 311). Before calling a
+  behaviour absent, grep the word's forms and the constant's name.
 
 ## Live invariants (verify in source before quoting)
 

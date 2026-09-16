@@ -212,8 +212,11 @@ Two requirements, both learned against real servers:
   (default 30 s) and a failed probe is a cache miss, never a hung run.
 - Uploads chunk at 128 KB, measured safe on the Bun the binary embeds
   (≥ 1.4; the plugin refuses an older one, whose HTTP/2 client hangs
-  above ~64 KB), and unary calls retry transient statuses
-  (`UNAVAILABLE`, `RESOURCE_EXHAUSTED`) with backoff.
+  above ~64 KB). The flow-control defect is a race, not a boundary, so
+  a one-off `DEADLINE_EXCEEDED` on a multi-message write retries once
+  at 65535 bytes — `SAFE_CHUNK_BYTES`, the size never observed
+  hanging — before the task fails. Unary calls retry transient
+  statuses (`UNAVAILABLE`, `RESOURCE_EXHAUSTED`) with backoff.
 - A dropped `Execute` stream re-attaches to the same operation via
   `WaitExecution` — the action is not re-run.
 - Execution stage transitions (`queued` → `executing` → `completed`) surface

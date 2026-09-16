@@ -101,3 +101,24 @@ describe('the environment-variables guide names the essential allowlist', () => 
     for (const name of posix) expect(named).toContain(name)
   })
 })
+
+describe('the remote-execution guide states the wire chunk sizes', () => {
+  it('its uploads bullet names CHUNK_BYTES in KB and the SAFE_CHUNK_BYTES retry size', () => {
+    const wire = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-reapi', 'src', 'wire.ts'),
+      'utf8',
+    )
+    const chunk = /export const CHUNK_BYTES = (\d+) \* 1024/.exec(wire)
+    const safe = /export const SAFE_CHUNK_BYTES = (\d+)/.exec(wire)
+    expect(chunk).not.toBeNull()
+    expect(safe).not.toBeNull()
+    const page = readFileSync(path.join(GUIDES, 'remote-execution.md'), 'utf8')
+    const m =
+      /- Uploads chunk at (\d+) KB[\s\S]*?retries once\s+at (\d+) bytes — `SAFE_CHUNK_BYTES`/.exec(
+        page,
+      )
+    expect(m).not.toBeNull()
+    expect(m![1]).toBe(chunk![1])
+    expect(m![2]).toBe(safe![1])
+  })
+})
