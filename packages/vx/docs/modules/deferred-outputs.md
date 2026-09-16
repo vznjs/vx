@@ -8,8 +8,31 @@ fetches them when a locally-placed task turns out to need them.
 
 ## Public surface
 
-- `new DeferredOutputs({nodes, cache, workspaceRoot, nestedDirsByProject,
-gitFilesCache?, localWrite})`
+```ts
+export interface DeferredEntry {
+  materialize: () => Promise<void> // fetches the producer's outputs into its project dir
+  hash: string
+  entry: { taskId: string; command: string; durationMs: number; stdout: string }
+}
+
+export interface DeferredOutputsArgs {
+  nodes: Map<string, TaskNode>
+  cache: CacheLayer
+  workspaceRoot: string
+  nestedDirsByProject: Map<string, string[]>
+  gitFilesCache?: GitFilesCache
+  localWrite: boolean
+}
+
+export class DeferredOutputs {
+  constructor(args: DeferredOutputsArgs)
+  register(taskId: string, entry: DeferredEntry): void
+  pending(): string[]
+  get size(): number
+  materializeFor(node: TaskNode): Promise<void>
+}
+```
+
 - `register(taskId, {materialize, hash, entry})` — execute-task calls this
   instead of saving, when a deferred result comes back.
 - `materializeFor(node)` — fetch every deferred producer in `node`'s
@@ -18,9 +41,10 @@ gitFilesCache?, localWrite})`
   taken; each producer materialises at most once per run and they run
   concurrently.
 - `pending()` — task ids whose outputs are still remote, for the run
-  summary. An entry is cleared only on SUCCESS, so this covers both
-  "nothing needed them" and "fetching them FAILED" — the second is
-  exactly when a user needs telling their tree is not current.
+  summary (`size` is their count). An entry is cleared only on
+  SUCCESS, so this covers both "nothing needed them" and "fetching
+  them FAILED" — the second is exactly when a user needs telling
+  their tree is not current.
 
 ## Invariants
 

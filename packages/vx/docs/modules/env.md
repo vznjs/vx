@@ -17,6 +17,10 @@ export interface BuildEnvOptions {
 }
 
 export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv
+
+export const ESSENTIAL_ENV: readonly string[] // the allowlist below
+export const VX_RUN_WORKSPACE_ENV = 'VX_RUN_WORKSPACE' // set on every task's env by execute-task: the workspace root
+export const VX_RUN_TASK_ENV = 'VX_RUN_TASK' // and the task id — a `vx run` inside its own workspace reads them and refuses
 ```
 
 ## Composition
@@ -57,9 +61,6 @@ Result: a `NodeJS.ProcessEnv` ready to pass to `Bun.spawn`.
 - Doesn't read from `.env` files or anywhere except `source`. If you
   want `.env` support, do it at the config-author level (parse the file
   in `vx.config.ts` and feed values into `define`).
-- Doesn't merge `PATH` smart-style (prepend project bins, etc.). Pure
-  override. `node_modules/.bin` is on PATH because the shell handles it
-  (or doesn't); we don't intervene.
 - Doesn't strip or sanitize values. Whatever's in `source[name]` is
   what the child sees.
 

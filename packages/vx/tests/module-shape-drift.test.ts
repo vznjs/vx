@@ -64,6 +64,11 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['cli-run', 'cli/run.ts', 'RunArgs'],
   ['summary', 'orchestrator/summary.ts', 'SummaryStats'],
   ['summary', 'orchestrator/summary.ts', 'RunContext'],
+  ['filter', 'workspace/filter.ts', 'ParsedFilter'],
+  ['filter', 'workspace/filter.ts', 'ApplyFiltersOptions'],
+  ['env', 'exec/env.ts', 'BuildEnvOptions'],
+  ['deferred-outputs', 'orchestrator/deferred-outputs.ts', 'DeferredEntry'],
+  ['deferred-outputs', 'orchestrator/deferred-outputs.ts', 'DeferredOutputsArgs'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -87,6 +92,21 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const rule = /\*\*Always-ignored\*\* — hard-coded([\s\S]*?)— applied/.exec(doc)
     expect(rule).not.toBeNull()
     expect([...rule![1]!.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
+  })
+
+  it("env.md's two allowlist paragraphs are ESSENTIAL_ENV, split where Windows begins", () => {
+    const src = read('src/exec/env.ts')
+    const arr = /export const ESSENTIAL_ENV: readonly string\[\] = \[([\s\S]*?)\n\]/.exec(src)
+    expect(arr).not.toBeNull()
+    const constant = [...arr![1]!.matchAll(/'([^']+)'/g)].map((m) => m[1]!)
+    const doc = read('docs/modules/env.md')
+    const posix = /POSIX: ([\s\S]*?)\n\n/.exec(doc)
+    const windows = /Windows: ([\s\S]*?)\n\n/.exec(doc)
+    expect(posix).not.toBeNull()
+    expect(windows).not.toBeNull()
+    const names = (s: string) => [...s.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)
+    expect([...names(posix![1]!), ...names(windows![1]!)]).toEqual(constant)
+    expect(names(windows![1]!)[0]).toBe('SYSTEMROOT')
   })
 
   it("cli-cache.md's two regexes are parseDuration's and parseSize's", () => {
