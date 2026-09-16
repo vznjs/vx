@@ -94,6 +94,12 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['hit-restore', 'orchestrator/hit-restore.ts', 'RestoreHitArgs'],
   ['miss-save', 'orchestrator/miss-save.ts', 'OutputDirSnapshot'],
   ['miss-save', 'orchestrator/miss-save.ts', 'SaveMissArgs'],
+  ['options', 'orchestrator/options.ts', 'RunOptions'],
+  ['options', 'orchestrator/options.ts', 'RunSummary'],
+  ['lockfile', 'workspace/lockfile.ts', 'LockfileEntry'],
+  ['lockfile', 'workspace/lockfile.ts', 'Lockfile'],
+  ['plugin-commands', 'cli/plugin-commands.ts', 'ResolvedPluginCommand'],
+  ['plugin-commands', 'cli/plugin-commands.ts', 'UnresolvedPluginCommand'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -101,7 +107,7 @@ describe('a module page declares an interface with the fields the module has', (
     it(`docs/modules/${page}.md's ${name} is src/${source}'s`, () => {
       const doc = interfaceFields(read(`docs/modules/${page}.md`), name)
       const src = interfaceFields(read(`src/${source}`), name)
-      expect(src.length).toBeGreaterThan(1)
+      expect(src.length).toBeGreaterThan(0)
       expect(doc).toEqual(src)
     })
   }

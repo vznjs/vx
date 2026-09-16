@@ -9,6 +9,40 @@ check of its own); `vx lock --check` reports changed files from the
 stored hashes and re-evaluates to catch env-drift the hashes can't
 see.
 
+## Public surface
+
+```ts
+export const LOCKFILE_NAME = 'vx-lock.json'
+export const LOCKFILE_VERSION = 1
+
+export interface LockfileEntry {
+  configPath: string // root-relative, posix
+  configHash: string // for `--check`'s file-changed report
+  config: ProjectConfig // the validated object, as evaluated by `vx lock`
+}
+export interface Lockfile {
+  version: number
+  projects: Record<string, LockfileEntry> // by project name
+}
+
+export function lockfilePath(root: string): string
+export const FROZEN_WITHOUT_LOCK: string // the `--frozen` refusal when no lock exists
+export async function readLockfile(root: string): Promise<Lockfile | null>
+export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
+export async function frozenProjectConfig(
+  lock: Lockfile,
+  meta: { name: string; configPath: string },
+  root: string,
+): Promise<ProjectConfig>
+```
+
+`frozenProjectConfig` is what a `--frozen` load serves instead of an
+evaluation: an entry missing for the project, or one whose stored path
+is not the project's, is a `UserError` naming the project and the
+remedy. The CLI's own selection load (`loadCliProjects`, what a filter
+that walks the graph stages) reads the lock the same way under
+`--frozen`, so the selection and the run see one graph.
+
 ## Invariants
 
 - Deliberate asymmetry: `--frozen` runs TRUST the lock outright — a
