@@ -15,6 +15,47 @@ query per 900 keys — 1,000 point lookups measured 3.6 ms against 0.7 for
 the batch), then evaluates only the misses in the order given, so a failure
 names the first broken file as a one-by-one load did.
 
+## Public surface
+
+```ts
+export const CONFIG_EVAL_VERSION = 2
+
+/** Where cached evaluations live; `Cache` implements it over `cache.db`. */
+export interface ConfigEvalStore {
+  hashFile?(file: string): Promise<string> // the warm fast path: a file's git blob id behind a stat memo
+  hashFiles?(files: readonly string[]): Promise<Map<string, string>> // the same over many paths, one memo query per 500
+  getConfigClosures?(configPaths: readonly string[]): Map<string, string[]>
+  putConfigClosure?(configPath: string, files: readonly string[]): void
+  getConfigEval(key: string): string | null
+  getConfigEvals?(keys: readonly string[]): Map<string, string> // many keys in one round-trip
+  putConfigEval(key: string, json: string): void
+}
+
+/** What `configEvalKey` learned besides the key, for the store's closure index. */
+export interface ConfigEvalKeyResult {
+  key: string
+  closure: string[] // the config first, then every relative import in discovery order
+  indexable: boolean // false when a relative import is extensionless
+}
+
+export interface ConfigEvalKeyArgs {
+  configPath: string
+  hashFile?: (file: string) => Promise<string> // absent: the blob id is computed from the bytes in-process
+  bytes: Uint8Array
+  workspaceFingerprint: string
+}
+
+export function stripLiterals(source: string): string | null
+export function blobOidOf(bytes: Uint8Array): string
+export async function configEvalKey(a: ConfigEvalKeyArgs): Promise<ConfigEvalKeyResult | null>
+export async function configEvalKeyFromClosure(a: {
+  configPath: string
+  closure: readonly string[]
+  hashFile: (file: string) => Promise<string>
+  workspaceFingerprint: string
+}): Promise<string | null>
+```
+
 ## Key
 
 `configEvalKey({ configPath, bytes, workspaceFingerprint })` folds, in
@@ -39,8 +80,10 @@ closure is provably pure:
   `Bun`, `globalThis`, `global`, `self` (Bun's two live aliases of
   `globalThis` — a computed `global['proc' + 'ess']` never spells
   `process`), `fetch`, `Date`, `Temporal`, `Intl`, `crypto`,
-  `performance`, `navigator`, `require`, `eval`, `Function`, `await`,
-  `toLocale*`, `import.meta`, `Math.random`, or a dynamic `import(`;
+  `performance`, `navigator`, `require`, `eval`, `Function`,
+  `constructor`, `localeCompare` (a locale is the environment too),
+  `await`, `toLocale*`, `import.meta`, `Math.random`, or a dynamic
+  `import(`;
 - no backslash survives in code position: outside literals that is an
   identifier escape, and `\u0070rocess` IS `process` while matching no
   word in the list. Every spelling in the last two rules was cached as
@@ -91,8 +134,11 @@ mtime/size/ctime/inode memo — no read, no scan; a file changed within
 `FILE_HASH_RACY_MS` of its stat is hashed but not memoised, so a config
 edited moments ago is never served from a stale identity) with
 `configEvalKeyFromClosure`, whose fold is byte-identical to
-`configEvalKey`'s, so the two paths share entries. A fast key that misses
-takes the slow path for that config, which re-indexes it.
+`configEvalKey`'s, so the two paths share entries. Every indexed
+closure's files are identified in one call (`hashFiles`, one memo query
+per 500 paths; 1,000 point reads cost 7.7 ms of a warm run, 2026-09-09).
+A fast key that misses takes the slow path for that config, which
+re-indexes it.
 
 Sound because closure membership can only change by editing a listed file
 (the config, or an import that gains or drops an import), which changes

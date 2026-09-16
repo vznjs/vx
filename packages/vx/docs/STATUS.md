@@ -271,6 +271,22 @@ test is telling the truth.
       the reverse order let a `/*` inside a line comment open a
       phantom block (`ParsedFilter` read as twelve) — it now takes
       whichever opener comes first. Five fail on the old pages.
+319.  DONE (2026-09-16, the next three module pages by gap:
+      run-context, telemetry-host, config-cache). run-context.md said
+      the git context costs "ONE `git rev-parse` spawn" — it reads
+      `HEAD` from the `.git` files first (a linked worktree's
+      `gitdir:`, a symbolic or detached HEAD, loose and packed refs)
+      and spawns only on an unfamiliar layout; it named three of six
+      exports (no `captureDefaultBranch` ladder, no workspace
+      identity, no `normalizeRemoteUrl`) and two CI providers of five.
+      telemetry-host.md's signature lacked `extraSinks` and the sink
+      check (0130aec: an off-contract sink is refused with its shape
+      named). config-cache.md's impurity list lacked `constructor` and
+      `localeCompare` (b100ed3), the page had no surface block, and
+      the warm fast path never mentioned `hashFiles` (ac8cc32: every
+      indexed closure identified in one call). Fixed; the shape law
+      gains five shapes, the CI matrix and the impurity list (parsed
+      from `IMPURE_RE` itself). Seven fail on the old pages.
 
 ## In flight
 
@@ -421,7 +437,7 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270, 275, 281, 287 and 293 (14–14y) are in
-    `docs/history/2026-09-status-next-log.md`; 14z–14ab below are
+    `docs/history/2026-09-status-next-log.md`; 14z–14ac below are
     the current ones.
 
 14z. **Handoff after item 299 (2026-09-16, evening).** Six items
@@ -536,6 +552,51 @@ pages, prose against source, starting where the gap is widest
 prepare, summary, cli-help); then Next 6's re-measure only when
 warm-path code moves (none did today); the blog posts are dated
 records and stay. Never end with "what next?".
+
+14ac. **Handoff after item 319 (2026-09-16, evening).** Seven items
+since 14ab, one method: `git log -1` on each module page against its
+source lists the pages whose module moved after the page, and 313–319
+read them three at a time, widest gap first — plan-format, run-report,
+events; cli-cache, inputs, scheduler; task-hash, prepare, metrics;
+cli-help, summary, cli-run; filter, env, deferred-outputs; migration,
+remote-prefetch, history; run-context, telemetry-host, config-cache.
+Twenty-one pages, forty-odd stale claims (a fallback file walker and
+an `ignore` library that no longer exist, a hard-coded cache dir the
+verb resolves, a `TaskOutcome` block with half its fields, samples no
+formatter prints, a spawn the code avoids), and the law that came out
+of it: `tests/module-shape-drift.test.ts` holds a page's interface
+blocks to the source's top-level fields (twenty-six shapes), and a
+quoted constant or regex to the source (the always-ignored globs, the
+env allowlist, both size parsers, the CI matrix, the impurity list
+parsed from `IMPURE_RE` itself, the history window). 313 went in
+#459, 314 #460, 315 #461, 316 #462, 317 #463, all merged; 318 is #464
+(open) and 319 stacks on it. Open: Next 1, 2 and 16, gated by their
+own terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN`
+secret, the release cut, the site's address. No open issues. The loop
+holds 306–319. The box: the shape law's own parser was wrong twice in
+one item (318: `//` stripped before `/*` ate a docblock's close, the
+reverse let a `/*` inside a line comment open a phantom block — take
+whichever opener comes first), and a two-field interface tripped its
+"more than two" guard (319) — a law's own helpers earn the same
+differential as the claims; an edit script whose assertion fails
+mid-way has already written every earlier substitution (319: the
+remainder went in a second script — the first script cannot re-run,
+its early asserts now fail on their own work); a read started beside
+`git checkout -B` saw a missing file (318: run reads after the restart
+returns, never in the same turn); the formatter un-indented a code
+span wrapped across a numbered list's continuation line (318,
+remote-prefetch) — the STATUS rule holds for every page. Methods that
+paid: the gap probe as a queue (seven items with no search); render
+the sample even when it matches (316: the footer matched, and is
+pinned); a page with no surface block is the cheapest find of all.
+Next: the gap list's tail — placement, hit-restore, miss-save,
+options, lockfile, plugin-commands, admission, sandbox-request,
+git-inputs, upgrade, cli-watch, util-errors, logger (one to four
+commits each); then the pages the probe cannot see — a page written
+stale under a module that has not moved since stays stale, so the
+remaining forty by oldest page first; then Next 6's re-measure only
+when warm-path code moves (none did today). Never end with "what
+next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
