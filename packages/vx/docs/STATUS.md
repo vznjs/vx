@@ -735,6 +735,24 @@ of a task's output for its cache entry and replay`). The
       loaded runner, so the second took it and the two swapped roles —
       a marker the task writes replaces the sleep.
 
+238.  DONE (2026-09-16, three configuration personas): a package with no
+      `name`, a config importing a package that is not installed, and a
+      workspace whose package globs match nothing are each told the
+      right thing — two warts fixed. `vx info`'s config-error row named
+      the file twice for the import shape (the loader's message opens
+      with `Project config <abs>:`, and the doctor stripped only the
+      bare path); both prefixes are stripped now, pinned in
+      `show-info.test.ts`. And the empty workspace was told to run
+      `vx init`, which would have found no package to write for; it is
+      told its package globs matched nothing (`init.test.ts`). Measured
+      on the way, no change: a task printing 200,000 lines (2.5 MB)
+      costs the renderer 60–80 ms above vx's ~100 ms floor under
+      `--output-logs full`, and a hit's replay 35 ms — the default under
+      `--all` hides a success's output by design (BROAD flow); the
+      detached spawn of 236 on 200 uncached tasks, an interleaved A/B
+      against a worktree at 25d2de9 (min 255 → 264 ms, median 264 →
+      267), a tie within the jitter — at most 40 µs a spawn.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items

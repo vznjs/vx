@@ -541,6 +541,28 @@ describe('vx info — a config that will not load counts as zero, for every numb
       expect(pretty.out).toMatch(
         /^config errors: +packages\/broken\/vx\.config\.mjs: tasks\.build has unknown field "command"/m,
       )
+
+      // An import that fails is the loader's other message shape, which
+      // opens with `Project config <abs>:` — the row named the file twice.
+      const badimport = path.join(root, 'packages', 'badimport')
+      await mkdir(badimport, { recursive: true })
+      await writeFile(path.join(badimport, 'package.json'), JSON.stringify({ name: 'badimport' }))
+      await writeFile(
+        path.join(badimport, 'vx.config.mjs'),
+        `import { preset } from 'nope-pkg'\nexport default { tasks: { build: { exec: { command: 'true' }, ...preset } } }\n`,
+      )
+      const two = JSON.parse((await vx(root, ['info', '--format', 'json'])).out)
+      expect(two.configErrors).toEqual([
+        { path: 'packages/badimport/vx.config.mjs', message: "cannot find 'nope-pkg'" },
+        {
+          path: 'packages/broken/vx.config.mjs',
+          message: expect.stringMatching(/^tasks\.build has unknown field "command"/),
+        },
+      ])
+      // One row, the errors joined by `; ` in path order.
+      expect((await vx(root, ['info'])).out).toMatch(
+        /^config errors: +packages\/badimport\/vx\.config\.mjs: cannot find 'nope-pkg'; packages\/broken\//m,
+      )
     },
     TIMEOUT,
   )

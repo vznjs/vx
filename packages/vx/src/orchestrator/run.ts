@@ -963,12 +963,15 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
 /**
  * The first-run case, told apart from a typo: no package in the workspace
  * has a `vx.config.*` at all, so no name could have resolved. Reached only
- * on the error path.
+ * on the error path. A workspace whose package globs match NOTHING is
+ * told that instead — `vx init` would find no package to write for.
  */
-function initHint(prepared: { anyProjectConfig: boolean }): string {
-  return prepared.anyProjectConfig
-    ? ''
-    : ' No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.'
+function initHint(prepared: { anyProjectConfig: boolean; workspaceProjectCount: number }): string {
+  if (prepared.anyProjectConfig) return ''
+  if (prepared.workspaceProjectCount === 0) {
+    return " No package matched the workspace's package globs — check `workspaces` in package.json (or pnpm-workspace.yaml)."
+  }
+  return ' No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.'
 }
 
 /**
