@@ -89,6 +89,11 @@ filter still decouples the key.
 | `'pkg#name'` | specific package's `name` task                 |
 | `'!<form>'`  | exclude — applies to whatever the form matches |
 
+A `name` (and the package side of `pkg#name`) holding `*` is a
+pattern (`isTaskPattern`): `'build.*'` is every same-project upstream
+whose task name matches, `'^check.*'` the same in the dep workspaces,
+`'@acme/*#build'` a package pattern — `*` is any characters, anchored.
+
 **Last write wins.** Patterns are applied in order; a later include
 re-adds a previously excluded hash; a later exclude removes a
 previously included one. So `['*', '^*', '!^noisy']` reads

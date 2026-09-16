@@ -386,6 +386,21 @@ test is telling the truth.
       symlink note described a walker the module no longer feeds.
       Fixed; the shape law gains three shapes and the `DownloadMode`
       union. Four fail on the old pages.
+326.  DONE (2026-09-16, the next three oldest pages: plan, tally,
+      upstream). plan.md's `PlannedTask` had four fields of seven,
+      `RunPlan` one of four, `PlanArgs` seven of thirteen, no
+      `PlanPrediction`; its algorithm probed `cache.get` and its Side
+      effects section said the probe bumps `accessed_at` — the
+      planner calls `cache.has`, a presence check that bumps nothing
+      (the fact 302 pinned on the site was wrong on the module page
+      too); the history step, the placement label and the download
+      mode were absent. tally.md's `Tally` had six fields of ten (no
+      restored/up-to-date split, no `aborted`), and the rules did not
+      say an aborted task is outside `total`; `tallyViews` was
+      unnamed. upstream.md's pattern table lacked the task patterns
+      (`build.*`, `^check.*`, a package pattern in `pkg#name`) that
+      `nameMatcher` accepts. Fixed; the shape law gains six shapes.
+      Six fail on the old pages.
 
 ## In flight
 
