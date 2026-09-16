@@ -980,6 +980,16 @@ fetch-depth: 0) or name the base`. Pinned three ways in
       publishers are configured — launch-checklist 1 is done bar
       deleting a secret nothing reads. The header comment says what
       the steps do now.
+202.  DONE (2026-09-16, the maintainer's walk through `.github/`):
+      `.github/actions/vx-agent` was the vx-cloud distribution agent's
+      composite action — "joins a serve's session pool, executes
+      assigned tasks" — from the product the 2026-09-02 direction
+      removed; nothing referenced it and its last touch was 2026-09-03.
+      Deleted. The one other live mention, a comment in
+      `tests/config-eval.test.ts` citing the agent's idle-timeout flag
+      as the project's zero-means-never analogy, cites the status
+      line's floor instead. The design docs under `docs/design/` keep
+      their dated mentions as the record they are.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
