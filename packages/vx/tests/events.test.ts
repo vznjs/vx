@@ -262,6 +262,14 @@ describe('projectOutcome', () => {
     expect(view.isGroup).toBeUndefined()
   })
 
+  it("carries a skip's blocker to the wire, and nothing for a fail-fast skip", () => {
+    const node = mkNode({ id: 'a#deploy', command: 'x' })
+    expect(
+      projectOutcome(mkOutcome(node, { status: 'skipped', blockedBy: 'a#build' })).blockedBy,
+    ).toBe('a#build')
+    expect('blockedBy' in projectOutcome(mkOutcome(node, { status: 'skipped' }))).toBe(false)
+  })
+
   // `durationMs` is what THIS run spent (a hit's restore); the work the hit
   // SKIPPED is a separate number, and conflating them made `--report` state
   // the restore cost as the time saved.

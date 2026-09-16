@@ -236,6 +236,9 @@ export interface OutcomeView {
   timedOut?: true
   /** A persistent task that never became ready, and why (see `TaskOutcome`). */
   notReady?: 'timeout' | 'exited' | 'spawn'
+  /** A skipped task: the failed (or aborted) task at the root of the block
+   *  (see `TaskOutcome`); absent for fail-fast's skip, which nothing blocked. */
+  blockedBy?: string
   /** How long an `admit` policy held the task with a worker free (see `TaskOutcome`). */
   admissionHeldMs?: number
   restored?: boolean
@@ -268,12 +271,29 @@ export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string
 export function outcomeLabel(
   o: Pick<
     OutcomeView,
-    'status' | 'restored' | 'exitCode' | 'timedOut' | 'sandboxViolations' | 'notReady'
+    'status' | 'restored' | 'exitCode' | 'timedOut' | 'sandboxViolations' | 'notReady' | 'blockedBy'
   >,
 ): string {
-  return o.status === 'failed'
-    ? failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady)
-    : outcomeWord(o)
+  if (o.status === 'failed')
+    return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady)
+  if (o.status === 'skipped') return skippedLabel(o.blockedBy)
+  return outcomeWord(o)
+}
+
+/**
+ * Why a task was skipped, one copy for every surface: `blocked by lib#build`
+ * (the failed or aborted task at the root of the block, what the footer's
+ * Skipped section groups by), or '' for fail-fast's skip — the run stopped,
+ * nothing blocked it, and a label claiming an upstream failure would lie.
+ */
+export function skippedReason(blockedBy: string | undefined): string {
+  return blockedBy === undefined ? '' : `blocked by ${blockedBy}`
+}
+
+/** `skipped (blocked by lib#build)`, or a bare `skipped` for fail-fast's. */
+export function skippedLabel(blockedBy: string | undefined): string {
+  const why = skippedReason(blockedBy)
+  return why === '' ? 'skipped' : `skipped (${why})`
 }
 
 /**
@@ -342,6 +362,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.admissionHeldMs !== undefined) view.admissionHeldMs = outcome.admissionHeldMs
   if (outcome.timedOut === true) view.timedOut = true
   if (outcome.notReady !== undefined) view.notReady = outcome.notReady
+  if (outcome.blockedBy !== undefined) view.blockedBy = outcome.blockedBy
   if (outcome.restored !== undefined) view.restored = outcome.restored
   if (outcome.sandboxViolations !== undefined) view.sandboxViolations = outcome.sandboxViolations
   if (outcome.sandboxViolationLines !== undefined)

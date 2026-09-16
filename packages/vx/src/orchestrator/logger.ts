@@ -606,11 +606,11 @@ export function defaultLogger(
           return
         case 'focused':
           if (isPrimary(node)) {
-            // Skipped tasks never started (upstream failed), so no
-            // frame-open fired — and a skip has no output, so a
-            // one-liner carries everything a frame would.
+            // Skipped tasks never started (blocked upstream, or the run
+            // stopped), so no frame-open fired — and a skip has no output,
+            // so a one-liner carries everything a frame would.
             if (outcome.status === 'skipped') {
-              emitLine(formatTaskSkippedLine(node, colors))
+              emitLine(formatTaskSkippedLine(node, colors, outcome.blockedBy))
               return
             }
             if (streamsLive(node)) {
@@ -663,7 +663,7 @@ export function defaultLogger(
             return
           }
           if (outcome.status === 'skipped') {
-            emitLine(formatTaskSkippedLine(node, colors))
+            emitLine(formatTaskSkippedLine(node, colors, outcome.blockedBy))
             return
           }
           const block = formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors)

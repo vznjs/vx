@@ -538,6 +538,20 @@ test is telling the truth.
       median), after 244 / 254 and 238 / 244 — a tie. Expected: the
       row's insert is one prepared statement either way, and four
       nulls bind in the noise of a 1,000-row transaction.
+275.  DONE (2026-09-16, the class's last surface): the frame's skipped
+      header read `skipped (upstream failed)` — a claim, and false
+      under fail-fast, where the run stopped and nothing blocked the
+      task — and no logger path reached it anyway: every flow prints
+      a skipped task as the one-liner, which said `skipped` and
+      nothing else, so the reader scrolled to the Skipped footer for
+      the blocker the outcome already carried (267). One
+      `skippedLabel(blockedBy)` beside `failedLabel`: the one-liner
+      ends `• blocked by lib#build` (nothing for a fail-fast skip),
+      the block header and footer and the `--report` status cell read
+      `skipped (blocked by lib#build)`, and `blockedBy` rides
+      `OutcomeView`, which had every other reason but this one, so
+      an embedder's `task:complete` sees it too. logger.md claimed a
+      skipped requested task "is framed"; it never was.
 
 ## In flight
 

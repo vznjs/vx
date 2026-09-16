@@ -231,6 +231,17 @@ describe('defaultLogger visibility matrix — focused', () => {
     expect(out.text()).toBe(' ⊘         skipped          one#test\n')
   })
 
+  it('the skipped one-liner names what blocked the task', () => {
+    // The footer's Skipped section groups the same fact after the run; the
+    // row is where the reader looks first, and a bare `skipped` there sent
+    // them scrolling.
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
+    const n = mkNode('one#test', { requested: true })
+    log.taskComplete(n, mkOutcome(n, 'skipped', { blockedBy: 'one#build' }))
+    expect(out.text()).toBe(' ⊘         skipped          one#test • blocked by one#build\n')
+  })
+
   it('dependency success with output → silent', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, out)
