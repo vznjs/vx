@@ -458,8 +458,10 @@ with the same boundary rules. Skipped when:
 
 A declared output the process cannot remove (a `dist/` another user
 wrote, a read-only checkout) fails the task with `cannot remove declared
-output <path>: EACCES — …`: the environment's failure, reported plainly,
-never as an internal error.
+output <path>: EACCES — …`, and a restore that cannot write into such a
+directory with `restore of <hash> into <dir> could not write its outputs
+(EACCES: …)`: the environment's failure, reported plainly, never as an
+internal error or a corrupt artifact.
 
 Why so strict? Turbo and Nx restore additively — files from a prior
 state can survive. We've seen this cause:

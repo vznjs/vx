@@ -580,6 +580,42 @@ describe('Cache storage (v10)', () => {
     expect(await readFile(path.join(projectDir, 'dist', 'out.txt'), 'utf8')).toBe('produced')
   })
 
+  // Root writes anywhere, so the case skips there; CI's runner is not root.
+  it.skipIf(process.getuid?.() === 0)(
+    'restoreOutputs() into a directory this user cannot write names the tree, not the artifact',
+    async () => {
+      const { chmod, mkdir, writeFile } = await import('node:fs/promises')
+      const dist = path.join(projectDir, 'dist')
+      await mkdir(dist, { recursive: true })
+      const outFile = path.join(dist, 'out.txt')
+      await writeFile(outFile, 'produced')
+      await cache.save({
+        hash: 'h-ro',
+        projectDir,
+        outputFiles: [outFile],
+        entry: {
+          taskId: 'pkg#build',
+          command: 'echo produced > dist/out.txt',
+          durationMs: 1,
+          stdout: '',
+        },
+      })
+      // The clean already emptied the tree; the directory itself stays and
+      // is not this user's to write into.
+      await rm(outFile)
+      await chmod(dist, 0o500)
+      try {
+        const restore = cache.restoreOutputs('h-ro', projectDir)
+        await expect(restore).rejects.toBeInstanceOf(UserError)
+        await expect(cache.restoreOutputs('h-ro', projectDir)).rejects.toThrow(
+          /^restore of h-ro into .* could not write its outputs \(EACCES: /,
+        )
+      } finally {
+        await chmod(dist, 0o700)
+      }
+    },
+  )
+
   it('get() returns null when the entry has never been written', async () => {
     expect(await cache.get('never-written')).toBeNull()
   })

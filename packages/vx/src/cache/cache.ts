@@ -924,6 +924,15 @@ export class Cache implements CacheLayer {
             `Declared outputs are wiped before a restore, so this is a path the output globs do not cover — remove it and re-run.`,
         )
       }
+      // Same distinction for a directory this user may not write into (a
+      // `dist/` another user owns, a read-only checkout): the artifact is
+      // intact, the tree is not the process's to change.
+      if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') {
+        throw new UserError(
+          `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${(err as Error).message}). ` +
+            `Make the declared output paths writable by this user, or stop declaring them as outputs.`,
+        )
+      }
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     } finally {
       endExtract()
