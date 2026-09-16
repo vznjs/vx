@@ -122,6 +122,12 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['plan', 'orchestrator/plan.ts', 'PlanArgs'],
   ['tally', 'orchestrator/tally.ts', 'Tally'],
   ['tally', 'orchestrator/tally.ts', 'TallyItem'],
+  ['fingerprint', 'workspace/fingerprint.ts', 'WorkspaceFingerprints'],
+  ['lockfile-claim', 'orchestrator/lockfile-claim.ts', 'LockfileClaimOptions'],
+  ['lockfile-claim', 'orchestrator/lockfile-claim.ts', 'LockfileClaimHooks'],
+  ['lockfile-claim', 'orchestrator/lockfile-claim.ts', 'ReachGraph'],
+  ['task-log-buffer', 'orchestrator/task-log-buffer.ts', 'TaskLogEntry'],
+  ['task-log-buffer', 'orchestrator/task-log-buffer.ts', 'TaskLogBundle'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -210,6 +216,17 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const doc = read('docs/modules/util-ulid.md')
     expect(doc).toContain(`a ${id.length}-character UUIDv7`)
     expect(doc).not.toContain('26-character')
+  })
+
+  it("fingerprint.md's file table is WORKSPACE_FINGERPRINT_FILES, in order", () => {
+    const arr = /export const WORKSPACE_FINGERPRINT_FILES = \[([\s\S]*?)\n\]/.exec(
+      read('src/workspace/fingerprint.ts'),
+    )
+    expect(arr).not.toBeNull()
+    const files = [...arr![1]!.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]!)
+    const doc = read('docs/modules/fingerprint.md')
+    const rows = [...doc.matchAll(/^\| `([^`]+)`\s+\| [^|]+\|$/gm)].map((m) => m[1]!)
+    expect(rows).toEqual(files)
   })
 
   it("download-policy.md's DownloadMode is the source's union", () => {
