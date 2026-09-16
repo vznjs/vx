@@ -306,7 +306,7 @@ maintainers' handoff is [`packages/vx/docs/STATUS.md`](packages/vx/docs/STATUS.m
 ## Status
 
 **Pre-alpha.** The schema is settling; we bump `CACHE_VERSION` rather
-than maintain back-compat. **~2,500 core tests plus the package suites; CI green on every commit**;
+than maintain back-compat. **~3,000 core tests plus the package suites; CI green on every commit**;
 the project dogfoods itself (`vx run ci`). Published on npm:
 [`@vzn/vx`](https://www.npmjs.com/package/@vzn/vx) (a prebuilt standalone
 binary).
@@ -318,8 +318,8 @@ build.
 
 | Surface                                            | Maturity             | Notes                                                                                                                                                             |
 | -------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Core task runner + caching                         | **production-ready** | dogfooded continuously; ~2,500 core tests + the package suites, green                                                                                             |
-| Plugin pipeline (9 hooks, `commands` included)     | **shippable**        | crash-isolated, re-validated; the local executor + cache are the floor under every plugin                                                                         |
+| Core task runner + caching                         | **production-ready** | dogfooded continuously; ~3,000 core tests + the package suites, green                                                                                             |
+| Plugin pipeline (13 hooks, `commands` included)    | **shippable**        | crash-isolated, re-validated; the local executor + cache are the floor under every plugin                                                                         |
 | `vx init` / `@vzn/vx-migrate` (scripts; Turbo, Nx) | **shippable**        | one config per package, TODOs where a source cannot say                                                                                                           |
 | REAPI remote cache + execution (`@vzn/vx-reapi`)   | **shippable**        | Bazel AC + CAS + Execute; NativeLink / BuildBuddy / Buildbarn / bazel-remote                                                                                      |
 | OTel export (`@vzn/vx-otel`)                       | **shippable**        | OTLP traces + metrics + logs, zero SDK deps                                                                                                                       |

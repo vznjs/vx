@@ -47,6 +47,17 @@ describe('the plugin hook tables follow PLUGIN_HOOKS', () => {
     for (const hook of PLUGIN_HOOKS) expect(found).toContain(hook)
   })
 
+  // The root README's maturity table states the hook count in prose, and
+  // said 9 for a list of 13 until 2026-09-16 (item 283): nothing read it.
+  it('the README states the hook count PLUGIN_HOOKS has', async () => {
+    const readme = await Bun.file(
+      path.resolve(import.meta.dir, '..', '..', '..', 'README.md'),
+    ).text()
+    const m = /Plugin pipeline \((\d+) hooks, `commands` included\)/.exec(readme)
+    expect(m).not.toBeNull()
+    expect(Number(m![1])).toBe(PLUGIN_HOOKS.length)
+  })
+
   it('CONTROL: a table that lacks a hook is caught', async () => {
     // The extractor sees exactly what the rows say: a table without `admit`
     // fails the check above, so a passing run is evidence, not vacuity.
