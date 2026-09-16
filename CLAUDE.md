@@ -181,12 +181,21 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   line; proven both ways, 2026-09-10). And read the scan's exit or its
   `Format issues found` line, never its last line: the verdict prints
   BEFORE `Finished in …`, so `| tail -1` reads clean on a failure (the
-  gate caught what that tail passed, 2026-09-15).
+  gate caught what that tail passed, 2026-09-15). And a chain that
+  greps the verdict swallows the exit — piping the scan into a grep of
+  its verdict line exits 0 either way, so `&& commit` went through on
+  a failure twice in one day (2026-09-16). Capture the exit (`rc=$?`
+  before the grep) and gate the chain on it.
+- A numbered entry in STATUS's Next list goes at the END of the list:
+  the formatter renumbers the list sequentially, so one inserted above
+  its neighbours moved every number below it (three times by
+  2026-09-16). Same for a code span: never let one wrap across an
+  indented continuation line — the formatter un-indents the line and
+  the list item breaks.
 - Correct wrong entries in place; never write a plausible cause you have
   not proven.
 - `pkill -f` / `pgrep -f` match the shell running them when the pattern
-  appears in its own command line: the pkill killed its caller (exit
-  144) and a `while pgrep` wait never ended (three times, 2026-09-12).
+  appears in its own command line: the pkill killed its caller (exit 144) and a `while pgrep` wait never ended (three times, 2026-09-12).
   Match on a marker the target alone carries, or hold the child's pid.
 - Bun drops what a pipe has not yet taken when `process.exit` follows a
   large stdout write (2 MiB written, 1.1 MiB read, 2026-09-15). `bin.ts`
