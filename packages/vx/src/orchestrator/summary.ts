@@ -346,6 +346,63 @@ export function formatAbortedSection(outcomes: readonly TaskOutcome[]): string[]
 }
 
 /**
+ * Post-summary section naming the tasks that never started, under the
+ * failure that blocked them. The footer's "1 skipped" says a task was
+ * blocked and nothing about which task or by what; the broad flow prints
+ * no row for a skipped task on purpose (a wide red run would drown in
+ * them), so this is where the reader learns what the failure cost
+ * (item 266). A skip's cause is followed through a chain of skips to the
+ * failure at its root; a skip with no failed upstream is fail-fast's.
+ * Empty when nothing was skipped.
+ */
+export function formatSkippedSection(outcomes: readonly TaskOutcome[]): string[] {
+  const skipped = outcomes.filter((o) => o.status === 'skipped')
+  if (skipped.length === 0) return []
+  const byId = new Map(outcomes.map((o) => [o.node.id, o]))
+  const memo = new Map<string, string>()
+  const causeOf = (o: TaskOutcome): string => {
+    const known = memo.get(o.node.id)
+    if (known !== undefined) return known
+    // Seeded before the walk: a cycle cannot exist in a scheduled graph,
+    // but a memo that answers during its own walk costs nothing.
+    memo.set(o.node.id, 'after the run stopped (fail-fast)')
+    const ups = o.node.deps.map((d) => byId.get(d)).filter((u): u is TaskOutcome => u !== undefined)
+    const failed = ups.find((u) => u.status === 'failed')
+    const aborted = ups.find((u) => u.status === 'aborted')
+    const viaSkip = ups.find((u) => u.status === 'skipped')
+    const cause =
+      failed !== undefined
+        ? `after ${failed.node.id} failed`
+        : aborted !== undefined
+          ? `after ${aborted.node.id} was aborted`
+          : viaSkip !== undefined
+            ? causeOf(viaSkip)
+            : 'after the run stopped (fail-fast)'
+    memo.set(o.node.id, cause)
+    return cause
+  }
+  const groups = new Map<string, string[]>()
+  for (const o of skipped) {
+    const cause = causeOf(o)
+    const list = groups.get(cause) ?? []
+    list.push(o.node.id)
+    groups.set(cause, list)
+  }
+  const lines = [
+    '',
+    `  Skipped:  ${skipped.length} task${skipped.length === 1 ? '' : 's'} never started \u2014 blocked upstream`,
+  ]
+  const NAMES = 8
+  for (const [cause, ids] of [...groups].sort((a, b) => b[1].length - a[1].length)) {
+    ids.sort()
+    const shown = ids.slice(0, NAMES).join(', ')
+    const more = ids.length > NAMES ? ` \u2026 +${ids.length - NAMES} more` : ''
+    lines.push(`    \u2298 ${cause}: ${shown}${more}`)
+  }
+  return lines
+}
+
+/**
  * Post-summary section naming the tasks this run proved flaky: identical
  * inputs, both outcomes on record (or a retry within the run). A red run
  * whose failure has passed on these exact inputs before is not a break to

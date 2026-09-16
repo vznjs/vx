@@ -398,7 +398,26 @@ test is telling the truth.
       dependency like the schedule plugin) renders that run and checks
       every line is on the page; the prose says where the exit code
       and its signal go, and that core's `--report-file` writes the
-      plainer four-column report.
+      plainer four-column report. The other two rendered samples in the
+      guides (`--dry`'s plan, the Flaky footer) matched the CLI byte for
+      byte; the site's sweep is clean.
+266.  DONE (2026-09-16, a persona: the reader of a skipped task): a red
+      run's footer said `1 failed · 1 skipped` and nothing about which
+      task was skipped or by what — the broad flow prints no row for a
+      skipped task by design (the output-flow table, "silent"), and the
+      `⊘` one-liner in `full` mode names no cause either. A Skipped
+      section after the footer (beside Aborted and Flaky) names each
+      skipped task under the failure at the root of its chain of skips
+      (fail-fast and an aborted upstream named as such), eight names
+      per cause. Pure-pinned in `summary.test.ts`, end to end in
+      `skipped-footer.test.ts` with `--continue=always` as the control.
+      Read on the way: a skipped outcome carries `exitCode: 1` from the
+      scheduler, so `--summarize` reports 1 for a task that never ran;
+      the run's own exit is 1 and the row's status says skipped, so it
+      is a convention, not a lie — left as is. Cost on the footer's
+      path, measured in isolation: 0.022 ms on a 5,000-task green run
+      (one filter), 1.45 ms on a 4,999-skip chain behind one failure
+      (the memoised walk).
 
 ## In flight
 
