@@ -298,6 +298,10 @@ The child process gets, in priority order (lowest first):
    a word with a slash, what the file says — missing (the resolved
    path), a directory, no execute bit, a `#!` interpreter that does
    not exist (a CRLF line ending is named as such), or no `#!` line.
+   An exit above 128 gets the same line for its signal: which one, and
+   what sends it (the OOM killer, a crash in native code, an abort, a
+   reader that left a pipe, a ulimit, a seccomp refusal); vx's own
+   timeout and a shutdown's SIGTERM keep their own lines.
 
 Anything not in these four layers is invisible to the child. This
 prevents incidental env leakage between machines and gives

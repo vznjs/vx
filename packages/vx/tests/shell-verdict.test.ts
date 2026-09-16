@@ -34,8 +34,8 @@ function verdict(code: number, command: string): string | undefined {
 }
 
 describe('shellVerdict', () => {
-  it('says nothing for any other exit', () => {
-    for (const code of [0, 1, 2, 125, 128, 130, 143]) {
+  it('says nothing for a plain exit', () => {
+    for (const code of [0, 1, 2, 125, 128, 193, 255]) {
       expect(verdict(code, './shebang.sh')).toBeUndefined()
     }
   })
@@ -101,5 +101,52 @@ describe('shellVerdict', () => {
     expect(verdict(126, './fine.sh')).toBe(
       `[vx] exit 126 is the shell's "cannot execute": ./fine.sh exists and is executable, and the shell still could not run it — check its #! line (/bin/sh)`,
     )
+  })
+
+  // Item 259: an exit above 128 is a signal's number; the line names the
+  // signal and what sends it. The runner's own report is definite; the
+  // code alone names the possibility that the command exited so itself.
+  it('a SIGKILL the runner saw names the OOM killer and a kill', () => {
+    expect(
+      shellVerdict({ code: 137, command: 'node build.js', cwd, bins, signal: 'SIGKILL' }),
+    ).toBe(
+      `[vx] exit 137 is how the shell reports a death by SIGKILL (9): nothing catches it — on Linux the kernel's OOM killer (dmesg, or the memory limit of the container's cgroup) or an explicit kill; vx's own timeout reports itself as a timeout`,
+    )
+  })
+
+  it('a 139 with no signal reads as SIGSEGV in the last command, or its own exit', () => {
+    expect(verdict(139, 'node a.js | tee log')).toBe(
+      `[vx] exit 139 is 128 + 11, the shell's report of a death by SIGSEGV in the last command (or that command exited 139 itself): the program crashed in native code (a native module, or the runtime itself) — re-run the command by hand to reproduce`,
+    )
+  })
+
+  it('SIGABRT names the heap limit; SIGPIPE the reader that left', () => {
+    expect(
+      shellVerdict({ code: 134, command: 'node a.js', cwd, bins, signal: 'SIGABRT' }),
+    ).toContain(
+      "the program aborted itself — an assertion, or an allocator failure (a JS runtime's heap limit reports here)",
+    )
+    expect(verdict(141, 'yes | head -1')).toContain(
+      'it wrote to a pipe whose reader had gone — a reader in the command left early',
+    )
+  })
+
+  // CONTROL: a SIGINT/SIGTERM the runner saw is the abort path's (it reverts
+  // the task to aborted); the code alone (a pipeline's last command) is not.
+  it('a SIGTERM or SIGINT the runner saw gets no line; the code alone does', () => {
+    expect(
+      shellVerdict({ code: 143, command: 'node a.js', cwd, bins, signal: 'SIGTERM' }),
+    ).toBeUndefined()
+    expect(
+      shellVerdict({ code: 130, command: 'node a.js', cwd, bins, signal: 'SIGINT' }),
+    ).toBeUndefined()
+    expect(verdict(143, 'node a.js | tee log')).toContain(
+      'something outside vx asked the process to stop',
+    )
+  })
+
+  it('an unknown signal number above the table still names nothing false', () => {
+    expect(verdict(128 + 64, 'x')).toBeUndefined()
+    expect(verdict(200, 'x')).toBeUndefined()
   })
 })

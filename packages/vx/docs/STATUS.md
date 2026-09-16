@@ -308,6 +308,25 @@ test is telling the truth.
       macOS's bash 3.2 names a missing interpreter itself ("bad
       interpreter") and exits 1, so vx adds nothing there, and the pin
       says so per platform rather than skipping.
+259.  DONE (2026-09-16, the class of 257 and 258): a task killed by a
+      signal read `failed (exit 137)` and nothing else — 137, 139 and
+      134 are a number to look up, and the number does not say what
+      sent it. The same frame line now names the signal: definite when
+      the runner saw it (`RunResult.signal`), "in the last command, or
+      that command exited 139 itself" when only the code carries it (a
+      pipeline, an inner sh), and each signal's usual sender — SIGKILL
+      the OOM killer or a kill, SIGSEGV/SIGBUS/SIGILL/SIGFPE a crash in
+      native code, SIGABRT an assertion or a JS runtime's heap limit,
+      SIGPIPE a reader that left, SIGXCPU/SIGXFSZ a ulimit, SIGSYS a
+      seccomp filter or the sandbox. Two paths keep their own lines and
+      get none: vx's timeout (`timedOut`) and a SIGINT/SIGTERM the
+      runner saw (the task reverts to aborted). Pinned in
+      `signal-death.test.ts` (a `kill -9 $$` the runner sees, an inner
+      sh's SEGV the code alone carries, the timeout as control) and
+      per signal in `shell-verdict.test.ts`. Probed first: a subshell's
+      `$$` is the outer shell's pid, so `(kill -SEGV $$)` killed the
+      outer shell and the runner saw the signal — the code-only shape
+      needs an inner `sh -c`.
 
 ## In flight
 

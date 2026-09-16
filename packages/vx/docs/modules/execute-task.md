@@ -145,9 +145,19 @@ resolved path), a directory, no execute bit, a `#!` line ending in CRLF
 exist, or no `#!` line at all (the loader refused a binary). Probed
 2026-09-16: dash and bash 5 exit 127 for a missing interpreter and
 blame the file; macOS's bash 3.2 names the interpreter itself ("bad
-interpreter") and exits 1, so vx adds nothing there. A timed-out step
-gets no line. Pinned in `tests/shell-verdict.test.ts` on real files and
-end to end in `tests/tool-not-on-path.test.ts`.
+interpreter") and exits 1, so vx adds nothing there. An exit above 128
+is a signal's number: a signal the runner saw (`RunResult.signal`) is
+named as definite, a bare code (a pipeline's last command) as "a death
+by SIGSEGV in the last command, or that command exited 139 itself", and
+each signal carries what sends it — SIGKILL the OOM killer or a kill,
+SIGSEGV/SIGBUS/SIGILL/SIGFPE a crash in native code, SIGABRT an
+assertion or a JS runtime's heap limit, SIGPIPE a reader that left,
+SIGXCPU/SIGXFSZ a ulimit, SIGSYS a seccomp filter or the sandbox. A
+SIGINT/SIGTERM the runner saw is the abort path's (the task reverts to
+aborted) and gets no line. A timed-out step gets no line either: its
+own line names the timeout. Pinned in `tests/shell-verdict.test.ts` on real files and
+end to end in `tests/tool-not-on-path.test.ts` and
+`tests/signal-death.test.ts`.
 
 ## Hash derivation (`computeTaskHash`)
 
