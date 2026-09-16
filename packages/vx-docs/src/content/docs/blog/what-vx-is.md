@@ -35,10 +35,11 @@ seam a plugin can fill:
    misses with bounded parallelism, save results.
 
 In plugin terms the stages are named `config` → `project` → `graph` →
-`key` → `fingerprint` → `schedule`, followed by the two behaviour
-capabilities `executor` (where a command runs) and `cache` (where
-artifacts live), the observe-only `telemetry` capability, and
-`commands` (CLI verbs). Core applies **no** plugin by default and names
+`key` → `fingerprint` → `schedule` → `admit`, followed by the two
+behaviour capabilities `executor` (where a command runs) and `cache`
+(where artifacts live), the observe-only `telemetry` capability,
+`setup` and `teardown` around the run, and `commands` (CLI verbs).
+Core applies **no** plugin by default and names
 none. A workspace with no `vx.workspace.ts` still runs and caches,
 because the local executor and the local cache are the floor under
 every list, not plugins you have to remember to add.
