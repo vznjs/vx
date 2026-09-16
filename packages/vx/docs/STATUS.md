@@ -361,6 +361,16 @@ test is telling the truth.
       design) and `vx-otel`'s `vx.task.exit_code` stays the integer it
       is: a derived string in structured telemetry is a consumer's
       call, and none has asked.
+263.  DONE (2026-09-16, Next 6 — the day's diff on the warm path):
+      after #420–#424 (257–262: the shell's verdict on 127, 126 and a
+      signal, its label on every surface), the interleaved A/B on one
+      1,000-project workspace, the pre-257 commit (#419) in an immutable
+      worktree against the head of 262, 9 reps each, run twice with the
+      arms swapped: after 245 / 255 and 252 / 262 ms (min / median),
+      before 249 / 254 and 244 / 255 — a tie inside the box's jitter.
+      Expected: `shellVerdict` and `failedLabel` sit on the exit path
+      of an executed task, and a warm run executes nothing; a hit's
+      label is not a failure's.
 
 ## In flight
 
@@ -589,6 +599,34 @@ one item per piece, and each item's class is grepped in the same
 commit; a probe that confirms a thesis becomes a pin with a control
 that proves the pin can fail; a seam's resolved value is a boundary
 like its factory's. Never end with "what next?".
+
+14t. **Handoff after item 263 (2026-09-16, midday).** Eleven items
+since 14s, merged as #416–#424. One persona walked to its end — the
+reader of a failure — and the shard weights refreshed on the way
+(253). The shell's own line on exit 127 and 126 names the word and
+nothing about why: the PATH vx built (257), the file itself — missing,
+a directory, no execute bit, a CRLF or missing `#!` interpreter, no
+`#!` line (258; macOS's bash 3.2 names a bad interpreter itself and
+exits 1, pinned per platform) — and above 128 the signal and its usual
+sender, the OOM killer, a crash in native code, an abort, a closed
+pipe (259). The second-day reader then: `vx last` (260), the GitHub
+job summary (261, `exitSignal` on the façade by the rule
+`escapeMarkdownCell` set) and one `failedLabel` for the frame footer,
+the status line, the run report and the Actions annotation (262). The
+day's warm-path A/B is a tie (263). Open: Next 1, 2 and 16, all gated
+by their own terms; In-flight 5 (macOS); the owner residue — the
+`NPM_TOKEN` secret, the release cut, the site's address. No open
+issues. The loop holds 21 items (243–263): the trim's trigger is
+forty. The box: as 14p; `git cherry-pick` has no `-q`, and a chain
+that assumed one stopped before its push (260) — check `git status`
+after any chain that a usage line could break. Methods that paid: a
+shell's exit code is three shells' conventions, not one — dash, bash 5
+and bash 3.2 each got a probe before the pin; a line that names a
+cause must read the evidence (the file, the runner's signal) or say
+"or the command exited so itself"; a number rendered on four surfaces
+is one function or it drifts; a differential's name filter must match
+every pin it counts (a `-t` that matched one of two read as a broken
+fix, 260). Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
