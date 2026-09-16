@@ -1061,7 +1061,10 @@ restore; make the path removable by this user, or stop declaring
 it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       skipped as root (root removes anything; CI's runner is not root)
       and proven both ways here as the `probe` user; `docs/caching.md`
-      names the failure beside the clean contract.
+      names the failure beside the clean contract. The clean runs on
+      the hit-restore path, so Next 6 on this head: 1,000 projects 244
+      ms warm / 700 restore / 2,570 cold (medians of 5; the morning's
+      237 / 744 / 2,520) — a `.catch` per removed file is inside jitter.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
