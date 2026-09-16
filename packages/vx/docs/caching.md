@@ -601,16 +601,32 @@ same reason `lock --check` ignores `inputs.env` value changes.
 ## Concurrent runs
 
 Two vx processes on one workspace (a `vx watch` beside a `vx run`, two
-CI jobs on one checkout) are not serialized. The cache itself is safe —
-SQLite waits on the lock, artifacts land by rename — but a task's
-OUTPUT TREE is one directory both runs clean and restore, and a clean
-landing while the other run's restore is staging its files takes those
-files out from under it. That restore fails with `restore of <hash> into
-<dir> was interrupted: a file it had just written vanished (ENOENT: …).
-Another vx run is using this workspace — re-run once it is done.` The
-artifact is intact; nothing is corrupted or half-restored (a restore
-renames into place only once the whole archive has staged). A per-task
-lock that makes the second run wait is on the Next list.
+CI jobs on one checkout) take turns: a run takes the workspace's run
+lock before it schedules and releases it with its cache handle — before
+a persistent task's wait, so a dev server never holds it — and the
+second run waits, saying after a second whom it waits for:
+
+```
+[vx] waiting for another vx run (pid 4821) on this workspace to finish…
+```
+
+The cache itself was always safe (SQLite waits on its lock, artifacts
+land by rename); a task's OUTPUT TREE was not — both runs cleaned and
+restored the same `dist/`, and a clean landing while the other run's
+restore was staging took its files out from under it. The lock is an
+atomic directory under the temp directory, keyed by the workspace root
+(`--cache-dir` does not make two runs strangers) and holding the
+holder's pid, so a lock a killed run left behind is reclaimed once its
+pid is gone. Where the directory cannot be made at all (another user's
+lock, a temp directory this user cannot write) the run says so once and
+proceeds unlocked — a courtesy between cooperating runs, never a
+refusal — and a restore that then loses its staged files to the other
+run's clean fails with `restore of <hash> into <dir> was interrupted: a
+file it had just written vanished (ENOENT: …). Another vx run is using
+this workspace — re-run once it is done.`; the artifact is intact
+either way (a restore renames into place only once the whole archive
+has staged). Machines sharing a workspace over a network file system
+do not share a temp directory, so they do not share the lock.
 
 ## Storage layout
 

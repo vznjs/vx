@@ -1,0 +1,137 @@
+// One run at a time per workspace, on this machine.
+//
+// Two vx processes on one workspace race on every task's OUTPUT TREE: both
+// clean and restore the same `dist/`, and a clean landing while the other
+// run's restore is staging takes its files out from under it (item 215).
+// The cache itself is safe (SQLite waits, artifacts land by rename); the
+// tree is not, and a run that finished "green" can have had its restored
+// outputs deleted by the other run's clean a moment later. So a run takes
+// this lock before it schedules and releases it with its cache handle —
+// before a persistent task's wait, so a dev server never holds it.
+//
+// Keyed by the workspace, not the cache directory (`--cache-dir` must not
+// make two runs strangers), and kept under the temp directory so a
+// read-only checkout can take it. An atomic `mkdir` is the lock; a `pid`
+// file inside names the holder, so a lock a killed run left behind is
+// reclaimed when its pid is gone. Where the directory cannot be made for
+// any reason but "exists" (another user's stale lock, a temp directory
+// this user cannot write), the run says so once and proceeds unlocked:
+// the lock is a courtesy between cooperating runs, and refusing to run
+// would be worse than the race. Machines sharing a workspace over a
+// network file system do not share `/tmp`, so they do not share this.
+//
+// Runs inside ONE process share the lock: an embedder that runs two at
+// once coordinates them itself (`RunOptions.inflight` joins duplicate
+// tasks across them), and making them wait for each other would only
+// serialize what it chose to overlap. The directory is taken by the first
+// of them and removed by the last to release.
+
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { xxh3hex } from '../util/index.js'
+
+/** Runs in this process currently holding the lock, per lock directory. */
+const heldHere = new Map<string, number>()
+
+/** Polling cadence while another run holds the lock. */
+const POLL_MS = 50
+/** How long a wait stays silent before the run says whom it is waiting for. */
+const SAY_AFTER_MS = 1_000
+
+export interface RunLockOptions {
+  /** Where the lock directories live; `os.tmpdir()` unless a test says otherwise. */
+  dir?: string
+  /** A status line for the waiting notice and the unlocked warning. */
+  log: (line: string) => void
+  /** Abort the wait (Ctrl-C, an embedder's signal). */
+  signal?: AbortSignal | undefined
+}
+
+/** The lock directory for a workspace root: stable across runs and users, private to this machine. */
+export function runLockPath(workspaceRoot: string, dir = os.tmpdir()): string {
+  return path.join(dir, `vx-run-${xxh3hex(path.resolve(workspaceRoot))}`)
+}
+
+async function holderPid(lockDir: string): Promise<number | null> {
+  try {
+    const n = Number.parseInt(await readFile(path.join(lockDir, 'pid'), 'utf8'), 10)
+    return Number.isInteger(n) && n > 0 ? n : null
+  } catch {
+    return null
+  }
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    // EPERM: the process exists but is another user's — alive, not ours to
+    // reclaim. ESRCH: gone.
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+/**
+ * Take the workspace's run lock, waiting for a live holder in another
+ * process to release it. Resolves to the release function; the caller
+ * runs it on every exit path.
+ */
+export async function acquireRunLock(
+  workspaceRoot: string,
+  opts: RunLockOptions,
+): Promise<() => Promise<void>> {
+  const lockDir = runLockPath(workspaceRoot, opts.dir)
+  const pidFile = path.join(lockDir, 'pid')
+  const started = Date.now()
+  let said = false
+  const release = async (): Promise<void> => {
+    const left = (heldHere.get(lockDir) ?? 1) - 1
+    if (left > 0) {
+      heldHere.set(lockDir, left)
+      return
+    }
+    heldHere.delete(lockDir)
+    // Only the holder removes it: a reclaim by a later run must not be
+    // undone by the run that lost the directory.
+    if ((await holderPid(lockDir)) === process.pid) {
+      await rm(lockDir, { recursive: true, force: true })
+    }
+  }
+  for (;;) {
+    if (opts.signal?.aborted === true) return async () => {}
+    const here = heldHere.get(lockDir) ?? 0
+    if (here > 0) {
+      heldHere.set(lockDir, here + 1)
+      return release
+    }
+    try {
+      await mkdir(lockDir)
+      await writeFile(pidFile, `${process.pid}\n`)
+      heldHere.set(lockDir, 1)
+      return release
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EEXIST') {
+        opts.log(
+          `[vx] no run lock for this workspace (${(err as Error).message}) — another vx run on it at the same time may race this one`,
+        )
+        return async () => {}
+      }
+    }
+    const pid = await holderPid(lockDir)
+    if (pid === null || !alive(pid)) {
+      // A killed run's lock (or a directory with no pid yet: give the
+      // holder one poll to write it, then treat it as abandoned).
+      if (pid !== null || Date.now() - started >= POLL_MS) {
+        await rm(lockDir, { recursive: true, force: true })
+        continue
+      }
+    } else if (!said && Date.now() - started >= SAY_AFTER_MS) {
+      said = true
+      opts.log(`[vx] waiting for another vx run (pid ${pid}) on this workspace to finish…`)
+    }
+    await new Promise((r) => setTimeout(r, POLL_MS))
+  }
+}

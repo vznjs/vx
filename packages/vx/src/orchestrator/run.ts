@@ -41,6 +41,7 @@ import { formatPersistentList } from './framed-output.js'
 import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
 import { prepareRun } from './prepare.js'
+import { acquireRunLock } from './run-lock.js'
 import { forwardSignals, terminateChildren } from './signals.js'
 import {
   hasPooledExecutor,
@@ -372,7 +373,16 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     if (cacheClosed) return
     cacheClosed = true
     cache.close()
+    // Released with the handle: before a persistent task's wait, on every
+    // exit path (see run-lock.ts for why a run holds one at all).
+    void releaseRunLock()
   }
+  // Taken after the early exits above (nothing they do touches a tree) and
+  // before the schedule: from here on tasks clean, restore and write.
+  const releaseRunLock = await acquireRunLock(prepared.workspaceRoot, {
+    log: (m) => log.status(m),
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
+  })
   try {
     // One run-id per `vx run` invocation. Every task in the resulting
     // graph carries it so analytics queries can group by invocation.

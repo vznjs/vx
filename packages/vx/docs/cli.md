@@ -1352,6 +1352,11 @@ neither reads `unknown project or task: "buidl" — did you mean build?`.
 
 Exit codes: `0` success; `1` parse error or unknown target.
 
+Two runs on one workspace take turns: the second waits for the first's
+run lock and, after a second, says `[vx] waiting for another vx run
+(pid N) on this workspace to finish…` (see caching.md § Concurrent
+runs).
+
 Every verb: a path vx must write that this user cannot (`EACCES`,
 `EPERM`, `EROFS` — a read-only checkout, another user's files) or that
 the disk has no room for (`ENOSPC`, `EDQUOT`) exits 1 with one line
