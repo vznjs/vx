@@ -34,11 +34,16 @@ One component moved and it is named. Forty-one did not.
 ## What it reads
 
 `vx why` is read-only over the local `cache.db`. It evaluates no
-config, re-hashes nothing, runs nothing. It compares the task's latest
-recorded run with the one before it (or a run you pin with `--run`) and
-diffs the stored components: files by path and blob id, env values by
-name, the resolved config hash, the upstream keys by task id, the
-workspace fingerprint, a plugin's material by plugin name. When
+project config (the workspace file, once, for the cache directory,
+unless `--cache-dir` names it), re-hashes nothing, runs nothing. It
+compares the task's latest recorded run with the one before it (or a
+run you pin with `--run`) and diffs the stored components, one row per
+kind: `file` (path and blob id), `env` (a declared variable), `runtime`
+and `ws-runtime` (a declared command's output, project- or
+workspace-rooted), `forward` (the argv forwarded after `--`), `package`
+(the project's own `package.json`), `workspace` (the fingerprint),
+`config` (the evaluated task config), `upstream` (a dependency's input
+key, by task id) and `plugin` (a plugin's material, by name). When
 `@vzn/vx-lockfile` is declared, a dependency bump shows up as
 `plugin @vzn/vx-lockfile/pnpm` for exactly the projects it reaches.
 
@@ -49,14 +54,16 @@ it rebuilt, tomorrow, from a laptop.
 ## Three endings for an unchanged key
 
 The interesting cases are the ones where the key did *not* change, and
-`vx why` distinguishes them rather than calling all three a re-run:
+`vx why` distinguishes them rather than calling all three a re-run. The
+verdict line is one of these five sentences, quoted from the code:
 
-| Verdict                 | What happened                                                                   |
-| ----------------------- | ------------------------------------------------------------------------------- |
-| key changed             | Inputs differ. The components are listed.                                       |
-| unchanged, served       | It was a cache hit. Nothing re-ran.                                             |
-| unchanged, re-executed  | `--no-cache` or `--force`, or something outside the key influenced the run.     |
-| no cache outcome        | The run recorded nothing for this task, and vx says so instead of guessing.     |
+| vx says                                                                                                    | What happened                                                    |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| cache key changed between the previous run and this one (inputs differ)                                    | the components are listed                                        |
+| cache key unchanged — this run was served from cache, nothing re-ran                                       | it was a cache hit                                               |
+| cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)                     | you asked for it, or something outside the key                   |
+| cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown                  | the run recorded no outcome for this task; vx says so, not guesses |
+| this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only    | not a cache decision at all                                      |
 
 The third row is the one to act on. If a task re-executed on an
 unchanged key and you did not ask it to, something the key cannot see

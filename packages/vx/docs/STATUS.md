@@ -135,6 +135,28 @@ test is telling the truth.
       else let through) and the `(size, mode, mtime-ms)` fingerprint
       read true against `task-graph.ts` and `cache.ts`. Two pins fail
       on the old posts.
+337.  DONE (2026-09-16, the next three oldest posts: why-did-this-rerun,
+      ctrl-c, lock-and-frozen). ctrl-c and lock-and-frozen read true
+      (the 2 s grace and its two names, 130/143, the second Ctrl-C,
+      `aborted`, the nested-run refusal on `VX_RUN_WORKSPACE`; `--check`'s
+      hash plus re-evaluation, the lock off every key). why-did-this-rerun
+      had the guide's four faults (item 334) — the verdict table now quotes
+      the five sentences, held by the same pin — and named six of the ten
+      component kinds `cache.ts` records; it and cli.md now name all ten
+      (`runtime`, `ws-runtime`, `forward` and `plugin` were missing from one
+      or both), pinned to the `kind:` literals. And a correction of item
+      336: the strict-output post's "never touched" list was extended with
+      `node_modules` on the premise that `ALWAYS_IGNORE` guards the wipe;
+      it does not — `resolveOutputs` excluded only nested projects, and
+      `node_modules/**` IS an install task's output (the remote-execution
+      guide's recipe). inputs.md said the same wrong thing. The post's
+      original two, `.git` and `.vx`, were a guarantee the code lacked: a
+      root project declaring `**` would have emptied its repository and the
+      cache it restores from. Implemented as `OUTPUT_NEVER` in
+      `resolveOutputs`, `tests/output-wipe-guard.test.ts` (new; both cases
+      fail without it), inputs.md and caching.md say so, the post's list is
+      `.git` and `.vx` again and pinned to the constant. Four site pins fail
+      on the old pages.
 
 ## In flight
 

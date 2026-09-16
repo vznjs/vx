@@ -458,7 +458,10 @@ Declared `cache.outputs.files` are wiped in two distinct places:
   persist through a cache replay.
 
 Both branches use the same `cleanOutputs` helper (`src/cache/inputs.ts`)
-with the same boundary rules. Skipped when:
+with the same boundary rules, and two directories stay off the wipe
+whatever the glob: `.git` and `.vx` (`OUTPUT_NEVER`) — an output glob is
+otherwise taken as written, `node_modules/**` being an install task's
+legitimate output. Skipped when:
 
 - `cache.outputs.files` is empty (nothing declared as output).
 - The task's `willWrite` is false — no write axis is enabled (e.g.
