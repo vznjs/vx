@@ -74,7 +74,7 @@ group.
 | [`summary.md`](./summary.md)                       | `src/orchestrator/summary.ts` — tail `Tasks / Cached / Time` block.                                                                   |
 | [`plan.md`](./plan.md)                             | `src/orchestrator/plan.ts` — `--dry` / `--graph` planning (no exec).                                                                  |
 | [`placement.md`](./placement.md)                   | `src/orchestrator/placement.ts` — where each task runs: pins, executor order, `'only'`, pools, the `--dry` view.                      |
-| [`signals.md`](./signals.md)                       | `src/orchestrator/signals.ts` — SIGINT/SIGTERM forwarded to every child, then exit 128+signo.                                         |
+| [`signals.md`](./signals.md)                       | `src/orchestrator/signals.ts` — SIGINT/SIGTERM/SIGHUP forwarded, as a group signal, to every child, then exit 128+signo.              |
 | [`admission.md`](./admission.md)                   | `src/orchestrator/admission.ts` — between scheduler and task: in-flight dedup (an embedder's registry) and continue-taint.            |
 | [`run-artifacts.md`](./run-artifacts.md)           | `src/orchestrator/run-artifacts.ts` — `--summarize` JSON + `--profile` trace writers.                                                 |
 | [`prepare.md`](./prepare.md)                       | `src/orchestrator/prepare.ts` — shared run / planRun setup (workspace, graph, cache).                                                 |
@@ -139,6 +139,7 @@ group.
 | File                                         | Topic                                                                                                                 |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | [`runner.md`](./runner.md)                   | `src/exec/runner.ts` — `runCommand`, `runPersistent`, `shellQuote`.                                                   |
+| [`kill-tree.md`](./kill-tree.md)             | `src/exec/kill-tree.ts` — `killTree`: a task's process group dies with it (timeout, signal, shutdown).                |
 | [`env.md`](./env.md)                         | `src/exec/env.ts` — child env composition + essential allowlist.                                                      |
 | [`sandbox-runtime.md`](./sandbox-runtime.md) | `src/exec/sandbox-runtime.ts` — `runSandboxed` + violation tracking via `@anthropic-ai/sandbox-runtime`.              |
 |                                              | `src/exec/sandbox-violations.ts` — strace pass, seatbelt record description, report filters (see sandbox-runtime.md). |

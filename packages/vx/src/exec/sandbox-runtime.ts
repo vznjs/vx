@@ -658,6 +658,8 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
+      // As the unsandboxed spawn: its own process group (kill-tree.ts).
+      detached: true,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
