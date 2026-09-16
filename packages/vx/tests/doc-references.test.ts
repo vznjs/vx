@@ -7,6 +7,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { anchoredLinks, headingSlugs } from './helpers/markdown-anchors.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 
@@ -63,5 +64,31 @@ describe('docs/modules/README.md indexes every source module', () => {
       .map((p) => path.relative(path.join(pkg, 'src'), p).split(path.sep).join('/'))
       .filter((rel) => !rel.endsWith('index.ts') && !named.has(rel))
     expect(unindexed).toEqual([])
+  })
+})
+
+describe('every heading anchor the docs link to exists', () => {
+  it('`](x.md#anchor)` names a heading of x.md by its rendered id', () => {
+    const missing: string[] = []
+    const slugs = new Map<string, Set<string>>()
+    const slugsOf = (file: string): Set<string> | undefined => {
+      if (!slugs.has(file)) {
+        if (!existsSync(file)) return undefined
+        slugs.set(file, headingSlugs(readFileSync(file, 'utf8')))
+      }
+      return slugs.get(file)
+    }
+    for (const file of proseFiles()) {
+      for (const { target, anchor } of anchoredLinks(readFileSync(file, 'utf8'))) {
+        if (/^[a-z]+:/.test(target)) continue
+        const page = target === '' ? file : path.resolve(path.dirname(file), target)
+        if (!page.endsWith('.md')) continue
+        const ids = slugsOf(page)
+        if (ids === undefined || !ids.has(anchor)) {
+          missing.push(`${path.relative(pkg, file)}: ${target}#${anchor}`)
+        }
+      }
+    }
+    expect(missing).toEqual([])
   })
 })

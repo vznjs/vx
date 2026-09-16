@@ -34,10 +34,11 @@ flowchart LR
   class lrestore good
 ```
 
-The payoff: pair a shared cache with [`--affected`](../running-tasks/#selecting-only-what-changed-affected)
-and a typical PR executes only the few packages it changed and **downloads
-everything else** — CI that would take minutes finishes in seconds, on a
-machine that never ran most of the code.
+The payoff: pair a shared cache with [`--affected`](../running-tasks/#selecting-what-changed-and-what-depends-on-it---affected)
+and a typical PR schedules only the few packages it changed and the ones
+that depend on them — the rest are never scheduled — and within that set
+**downloads whatever another machine already built**. CI that would take
+minutes finishes in seconds, on a machine that never ran most of the code.
 
 Sharing is the only part that needs a server. A solo developer needs
 nothing here — the [local cache](../caching/) is automatic.
@@ -152,9 +153,9 @@ backend filling the `cache` seam should hold to it.
 
 Set the connection as CI secrets and you're done — see
 [Continuous integration](../ci/) for a complete GitHub Actions example.
-Pair the shared cache with `--affected` and most PRs only execute the
-packages they actually changed; everything else restores from a previous
-build.
+Pair the shared cache with `--affected` and most PRs schedule only the
+packages they changed and the ones that depend on them; within that set,
+what another machine already built restores instead of running.
 
 ## Next steps
 

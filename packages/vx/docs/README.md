@@ -68,9 +68,11 @@ tasks), `graph` (the edges), `key` (extra key material), `schedule`
 (which ready task runs first), `executor` (where one task's command
 runs), `cache` (where artifacts live), `telemetry` (where run records
 go), `commands` (which verbs exist) — and applies **none** of them by
-default. Even vx's own local executor and local cache are plugins you
-declare. A workspace that declares none fails before any task runs,
-naming the fix. Nothing here is a first-party product you have to adopt
+default. Running here and caching here are its floor: the local
+executor and the local cache sit at the tail of every list, so a
+workspace that declares nothing still runs and caches, and a plugin
+that declines a task hands it back to this machine. Nothing here is a
+first-party product you have to adopt
 to get the good behaviour, and nothing distributed ships in this repo —
 the hooks are how it gets built.
 ([modules/plugin.md](./modules/plugin.md), the design in

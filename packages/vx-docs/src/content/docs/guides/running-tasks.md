@@ -1,6 +1,6 @@
 ---
 title: Running & filtering tasks
-description: Run tasks across your monorepo — scope with --filter, select changed packages with --affected, forward args after --, and preview runs with --dry.
+description: Run tasks across your monorepo — scope with --filter, select changed packages and their dependents with --affected, forward args after --, and preview runs with --dry.
 ---
 
 `vx run <task>` is the command you'll type most. By default it runs the
@@ -13,7 +13,7 @@ widen, narrow, and target the run.
 vx run build            # current package (by cwd) + its deps
 vx run build --all      # every package that declares build
 vx run build --filter "@app/*"        # packages matching a filter
-vx run test --affected          # only packages changed vs the base branch
+vx run test --affected          # changed vs the base branch, and what depends on it
 ```
 
 `--all`, `--filter`, and `--affected` switch vx into a **broad** run;
@@ -54,7 +54,7 @@ The `...` expansion pulls in related packages across the dependency
 graph; see the [CLI reference](../../cli/) for the exact table. Combine
 multiple `--filter` flags to union selections.
 
-## Selecting only what changed: `--affected`
+## Selecting what changed, and what depends on it: `--affected`
 
 ```bash
 vx run test --affected                  # vs the default base branch

@@ -67,7 +67,7 @@ export default defineProject({
 vx init                   # scaffold vx.workspace.ts + a vx.config.ts per package from scripts
 vx run build              # cwd project + its workspace deps
 vx run test --all         # every project that declares `test`
-vx run ci --affected      # only what changed since origin/HEAD
+vx run ci --affected      # changed since origin/HEAD, and what depends on it
 vx watch lint             # re-run on file changes
 vx run build --dry        # show the plan, don't execute
 ```

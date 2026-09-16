@@ -1,6 +1,6 @@
 ---
 title: Continuous integration
-description: Run vx in CI — install the binary, build only what changed with --affected, share a cache by connecting a remote-cache backend, and (optionally) pin a reproducible run with vx lock + --frozen.
+description: Run vx in CI — install the binary, build what changed and what depends on it with --affected, share a cache by connecting a remote-cache backend, and (optionally) pin a reproducible run with vx lock + --frozen.
 ---
 
 vx is built for CI: a content-addressed cache plus `--affected` selection
@@ -19,7 +19,8 @@ workflow and when to reach for it.
    [Remote caching](../remote-caching/)). (No server? The local cache still
    makes warm runs instant; a shared cache is only needed to reuse work
    *across* machines.)
-3. Run with **`--affected`** so only changed packages execute.
+3. Run with **`--affected`** so only changed packages and their dependents
+   are scheduled.
 
 ## GitHub Actions
 

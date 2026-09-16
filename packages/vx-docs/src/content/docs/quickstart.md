@@ -152,7 +152,7 @@ Now run across the whole workspace:
 ```bash
 vx run build --all              # every package, in dependency order
 vx run build --filter "@app/*"  # only packages matching a filter
-vx run test --affected          # only what changed vs the base branch
+vx run test --affected          # changed vs the base branch, and what depends on it
 ```
 
 ## 7. See what vx will do (without doing it)

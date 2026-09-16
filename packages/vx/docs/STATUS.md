@@ -193,6 +193,27 @@ test is telling the truth.
       that writes before it asserts, the item inserted before the
       blank, the type-checker's `node_modules` walk, the probe whose
       negative case held the needle.
+290.  DONE (2026-09-16, the class 287 opened, grepped): six more
+      surfaces still described `--affected` as "only what changed" —
+      the quickstart, the adoption page, the running-tasks guide (its
+      comment, its description and its heading), the CI guide's
+      description and step 3, the remote-caching guide twice (which
+      also promised "downloads everything else", 289's mistake), and
+      the root README's command list; each says "and what depends on
+      it" now, and the remote-caching guide says the rest are never
+      scheduled. The heading rename found a broken anchor: the guide's
+      link to the running-tasks section had one hyphen where the built
+      id has three (github-slugger keeps `--affected`'s dashes), and
+      a sweep of every anchored link on the site and in the core docs
+      found four more (`--summarize-path`, `gaps-for-vznvx`, two
+      README headings that no longer exist). Two laws now: every
+      `](x.md#anchor)` in the core docs and every `](../page/#anchor)`
+      on the site names a heading by its rendered id
+      (`tests/helpers/markdown-anchors.ts` is the slugger; the site's
+      generated pages resolve to their source). The README's § 5 also
+      claimed a workspace that declares no plugin "fails before any
+      task runs" — the floor has run and cached since 2026-09-10, and
+      the same file said so 60 lines later; it says the floor now.
 
 ## In flight
 
