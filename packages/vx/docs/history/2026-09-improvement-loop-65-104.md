@@ -944,3 +944,124 @@ before · 2 attempts this run`), `--summarize`'s per-task
       `git merge-base --end-of-options <ref> HEAD` (the ref itself when
       there is no ancestor) feeds the diff and the claimed-file bytes;
       pinned with Turbo's diverged-base fixture.
+
+## Measurement records STATUS kept until 2026-09-16
+
+Written on 2026-09-10 beside items 45–67 and moved here with items 145–202.
+
+**The restore arm is at its floor (2026-09-10, late night).** The
+1,000-project warm-restore run spends its wall in `restore: extract`
+(2.4 ms accumulated per task under four workers; `VX_TIMING=1`), so
+one artifact was timed alone, sequentially, 200 reps: `restoreOutputs`
+0.375 ms min / 0.75 avg, of which the five file syscalls the extractor
+needs (mkdir, write temp, chmod, utimes, rename) are 0.18–0.26 ms,
+zstd decode 0.02 ms, the artifact read 0.01 ms, the rows lookup
+0.003 ms, `realpath` 0.01 ms. The run's 393 ms `run graph` over 1,000
+restores is 0.39 ms per task — the sequential floor, overlapped. What
+is left is syscall round trips on the thread pool; folding chmod into
+the write (mode at open is umask-dependent, so the chmod stays for
+exactness) or skipping utimes would buy ~0.05 ms each, 15–25 ms of a
+434 ms run, on the stale-hit-critical path. Not worth the risk;
+recorded so the next reader does not re-derive it.
+
+**Shard weights refreshed (2026-09-10, after items 65–67).** Three
+suites moved to packages and `init.test.ts` shrank, so the deal was
+running on stale numbers: twelve shards side by side on this four-core
+box read 11.8–14.6 s (wall 14.7 s). Re-weighed from that run's JUnit
+(`--weigh`), the same files deal to 13.5 s each by the new weights
+against 14.6 s for the old deal's heaviest — the wall follows the
+heaviest shard, so about a second. The weights are what a twelve-way
+run on four cores measures, the condition the gate runs under.
+
+**Plugin names, one convention (2026-09-10; superseded by item 69 the
+same day).** `vx info` listed the repo's own plugins as `vzn/otel`,
+`@vzn/vx-github`, `vx/mcp` and `vx/schedule-history` — three spellings
+across four lines. The interim answer was `vx/<thing>` everywhere; the
+owner's answer is that the name is the package name and nothing else,
+which item 69 enforces. No first-party plugin fills `key`, where the
+name is folded into the material, so nothing re-keyed either way.
+
+**The guide pin under the sandboxed gate (2026-09-10, after item 67).**
+CI's Linux job went red on 15136a6 in `@vzn/vx-docs#test`: the plugins
+guide's type-check pin exited 1 with no diagnostic line captured. The
+cause was the sandbox, not the types: item 65 had pointed the pin's
+tsconfig `paths` straight at `packages/vx-schedule-history/src`, a
+sibling the site does not depend on, and a sandboxed task may read its
+project, its `node_modules` and what those link to — nothing else. The
+fix is the honest one: the site declares `@vzn/vx-schedule-history` as
+a devDependency, Bun links it into the site's `node_modules`, the
+sandbox grants the link target, and the pin resolves the package
+through that link. Reproduced and proven differentially under the real
+sandbox here, not on CI alone — a probe refuted on the way: with the
+link present, even the direct path passed, so the denial was never
+about the route but about an ungranted target. Recipe, since the
+container runs as root and the runtime refuses a nested user namespace
+there: copy the bun binary somewhere world-readable, `chmod 1777
+/tmp/claude`, and run `vx run <task> --no-cache --excludeDependencies
+--cache-dir <writable>` as `nobody` with `HOME` set — bwrap works for
+an unprivileged user on this kernel. The pin now carries oxlint's tail
+when it exits non-zero without a diagnostic line, so the next such
+failure names its cause on CI.
+
+**Two warm-path probes refuted after item 61 (2026-09-10).** Cold
+config evaluation, measured by deleting `config_evals` and
+`config_closures` on the warm 1,000-project copy: the `load configs`
+stage reads 584 ms cold against 26 ms warm — 0.58 ms per config through
+the worker, so a 2,000-project first run pays about a second there and
+no batching lead exists; `scale-graph`'s 9.5 s `beforeAll` is its
+generator, git and warm plan, not evaluation. And the accumulated
+`output dirs` counter (52 ms over 1,000 proofs, 52 µs each for one or
+two `statSync` calls) is not a cost to chase: an accumulated span
+measures wall time between its start and end, and under the
+scheduler's concurrency that window holds other tasks' work, so the
+per-call figure over-counts. The rule for the stage table: stage rows
+are exclusive and comparable; accumulated rows are upper bounds.
+
+**Profiles after item 50 (2026-09-10).** `bun --cpu-prof` on the
+pre-warmed 1,000-project copy, third run of three. `vx show` (93 ms
+sampled): 28% in the discovery closure (`workspace.ts:303` — the
+per-package readdir + manifest read, async continuation attributed to
+the closure), 11% `JSON.parse` of manifests, 5% `listProjects`, then
+the staged load and the eval-cache keys at 1–3% each. Warm `vx run`
+(228 ms sampled): `statSync` 9% (the two output proofs, 2,000 stats,
+chosen sync by the 2026-09-09 A/B: 100 → 54 ms on the run-graph
+stage), `findConfigFile` 5%, `bun:sqlite` query 3.5%, package graph
+2.5%, `hashProjectPackageJson` 2.4%, then a long tail under 2%. No
+new hot spot: every frame over 2% is a measured decision already
+recorded (discovery 8(e), the proofs' sync stats, the manifest hash).
+The next warm-path gain is structural (8(e)'s stat-keyed discovery
+memo), not a frame.
+
+**Warm path after item 46 (2026-09-10).** Interleaved A/B, 1,000
+projects, twelve reps, both orders, base = the immutable c0b20ca
+worktree: main min 225 / med 242 ms vs head 231 / 246 in one order,
+head 221 / 233 vs main 222 / 232 in the other — a tie inside
+run-to-run jitter, the sign flipping with the order. The reset
+property read (39), the env field check (44, on the eval path only)
+and the orphan scan (35, prune only) cost the warm run nothing
+measurable.
+
+**Handoff after item 45 (2026-09-10, morning).** PR #265 carries the
+loop, 70+ commits; every head is green on CI except the ones a
+same-day commit fixed (d295a90 timing, 1414cf2 `.mcp.json`, f549719
+unformatted tables, 92e1682/f4a0d48 a doc law reading outside the
+sandbox — each recorded above). The shape since item 31: the owner's
+two asks (item 43's `vx lock` report and item 45's suite speed) both
+resolved to measurement first — a repro that round-trips, a JUnit
+timing pass — and each fix carries a pin that fails on the old code;
+three probes became laws (`doc-references`, `schema-unknown-keys`,
+`sandbox-hint`); the reset notice (39), the orphan sweep (35) and the
+doctor's orphans row (41) close the schema-bump story end to end. The
+suite runs ~95 s of test bodies across eight shards on four cores;
+what remains over a second is real work (rate floods, an 87k-edge
+graph, Worker spawns, ~130 end-to-end CLI spawns at ~100 ms). Start
+the next session from Next § 8: (e)/(f)/(g) are open with reasons;
+(c) is done for every verb but `vx lock`, on purpose. The scratchpad
+harnesses (`ab2.ts` warm, `ab3.ts` cold, `abshow.ts` for `vx show`,
+`junit/` for suite timing) take two worktrees and two workspace
+copies; recreate the copies with the bench generator.
+Next-list 8(b) decided: `--max-size` keeps reading a bare integer
+as bytes — it is pinned (`cli-arg-hygiene`: `--max-size 1` is one
+byte), documented as `<bytes>`, and the zero bound is the guard;
+refusing unitless there would reverse an earlier call for one
+footgun the docs already name.

@@ -5,7 +5,8 @@ so the handoff stays readable. Nothing below is current state: STATUS
 holds direction, what is in flight and what is next; this file holds
 what shipped and the numbers behind it. Items 1–64 are in
 `2026-09-review-arc.md`, items 65–104 in
-`2026-09-improvement-loop-65-104.md`; items 145 onward continue in
+`2026-09-improvement-loop-65-104.md`, items 145–202 in
+`2026-09-improvement-loop-145-202.md`; items 203 onward continue in
 STATUS under the same numbering.
 
 105.  DONE (same night — the rest of the survey's first tier): path
