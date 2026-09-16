@@ -456,6 +456,11 @@ with the same boundary rules. Skipped when:
   and managing the tree, so vx leaves it alone. `--force` keeps writes
   on, so it DOES clean (the saved snapshot must be clean).
 
+A declared output the process cannot remove (a `dist/` another user
+wrote, a read-only checkout) fails the task with `cannot remove declared
+output <path>: EACCES — …`: the environment's failure, reported plainly,
+never as an internal error.
+
 Why so strict? Turbo and Nx restore additively — files from a prior
 state can survive. We've seen this cause:
 
