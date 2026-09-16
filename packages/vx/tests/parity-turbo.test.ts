@@ -179,10 +179,14 @@ describe('Turbo parity — `--filter` (package selection)', () => {
       git('add', '-A')
       git('commit', '-q', '-m', 'touch lib')
       expect(await planned(root, ['lint', '--filter', '[HEAD~1]'])).toEqual(['lib#lint'])
-      // `--affected=<ref>` is the same selection spelled as a flag.
-      expect(await planned(root, ['lint', '--affected=HEAD~1'])).toEqual(['lib#lint'])
       // `...[ref]` widens to dependents: "prove I broke nothing downstream".
       expect(await planned(root, ['lint', '--filter', '...[HEAD~1]'])).toEqual([
+        'app#lint',
+        'lib#lint',
+        'ui#lint',
+      ])
+      // `--affected=<ref>` is that dependents form spelled as a flag (item 287).
+      expect(await planned(root, ['lint', '--affected=HEAD~1'])).toEqual([
         'app#lint',
         'lib#lint',
         'ui#lint',

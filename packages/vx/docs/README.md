@@ -146,7 +146,7 @@ Run things:
 vx run build                    # current package (+ its dependency graph)
 vx run build test --all         # every package, shared graph
 vx run build --filter "@app/*"  # pnpm-style filters
-vx run test --affected          # only what changed vs the base branch
+vx run test --affected          # what changed vs the base branch, and what depends on it
 vx watch dev                    # re-run on file change
 vx run build --dry              # predicted hits/misses, no execution
 vx why app#build                # what changed the key last time
