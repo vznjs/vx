@@ -552,6 +552,32 @@ test is telling the truth.
       `OutcomeView`, which had every other reason but this one, so
       an embedder's `task:complete` sees it too. logger.md claimed a
       skipped requested task "is framed"; it never was.
+276.  DONE (2026-09-16, the second first-run walkthrough, 14v's
+      next): a fresh two-package workspace (`@acme/lib`, `@acme/app`
+      depending on it, five scripts), git-initialised, under the
+      source binary: `vx init` (three tasks clean, two cache TODOs,
+      the next command named), the run it named (`no-cache`), the
+      TODO's block applied (a miss, then `up-to-date`), `vx why` on
+      the hit (key unchanged) and after an edit to lib's source (the
+      changed upstream named with both keys), `app#build` made to fail
+      under `vx run test --all` — the frame's `failed (exit 3)` with
+      the command and its stderr, the footer's Skipped section, the
+      `--report-file` table with `skipped (blocked by @acme/app#build)`
+      (275), `vx last` with `after @acme/app#build failed`, `vx info`
+      with `keys vx-cache-v27 · index schema v27` — then the same task
+      from inside `packages/app` (focused: the one-liner with its
+      blocker), a typo'd task, a typo'd filter, a bare `vx run` off a
+      TTY, `vx show` and bare `vx`. Every surface read right; nothing
+      to fix, and the pins that hold each are the loop's own. Three
+      things read as findings and were not: the report's headline
+      counts a hit under `success` AND `cached` (five numbers on four
+      tasks) — deliberate and pinned, "success says how a task ENDED,
+      cached where the result CAME from", where the GitHub summary's
+      buckets are disjoint; a skipped `vx last` row's `no-cache` states
+      the task's config, not a cache decision it never reached, and is
+      true; and "No projects declare task(s): buidl" carries no
+      `vx run:` prefix because it is `run()`'s line, which `watch` and
+      an embedder call too — the verb is not its to name.
 
 ## In flight
 
