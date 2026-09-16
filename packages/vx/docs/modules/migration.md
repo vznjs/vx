@@ -17,9 +17,15 @@ runner's format.
 ```ts
 export interface MigrationPlan {
   headerNotes: string[]
-  projects: GeneratedProject[] // { name, dir, importLines, tasks: GeneratedTask[] }
+  projects: GeneratedProject[]
   extraFiles: { relPath: string; contents: string }[]
   notes: string[]
+}
+export interface GeneratedProject {
+  name: string
+  dir: string
+  importLines: string[]
+  tasks: GeneratedTask[]
 }
 export interface GeneratedTask {
   name: string
@@ -29,6 +35,7 @@ export interface GeneratedTask {
 export interface RawExpr {
   readonly raw: string
 } // a verbatim TS expression
+export type MigrationFormat = 'ts' | 'mjs'
 export interface ApplyMigrationArgs {
   root: string
   metas: readonly ProjectMeta[]
@@ -39,11 +46,14 @@ export interface ApplyMigrationArgs {
   force: boolean
   init?: boolean
   notes?: readonly string[]
+  format?: MigrationFormat // default 'ts'
 }
 export function applyMigration(args: ApplyMigrationArgs): Promise<number>
 export function quoteTsLiteral(s: string): string
 export const PERSISTENT_TASK_NAMES: ReadonlySet<string>
 export const PERSISTENT_TODO: string
+
+// migrate-scripts.ts — the package.json-scripts mapper `vx init` runs through the seam
 export function migrateScripts(metas: readonly ProjectMeta[]): MigrationPlan
 export function delegatedScript(command: string): string | null
 ```
@@ -52,7 +62,13 @@ export function delegatedScript(command: string): string | null
 
 - A generated config is `import type { ProjectConfig } from '@vzn/vx'` plus
   `satisfies ProjectConfig`: the type-only form loads in a workspace that
-  runs the binary without the package installed.
+  runs the binary without the package installed. `format: 'mjs'`
+  (`--mjs`) writes the same object untyped as `vx.config.mjs`, for a
+  package whose `tsconfig` `include` would not cover a `.ts` config.
+- An empty plan in a single-project workspace whose root `package.json`
+  has no `workspaces` field, while packages with scripts sit beneath it,
+  is reported as such: the report names the packages the missing field
+  never reaches (item 248) instead of "nothing to migrate".
 - The workspace file is written when no `vx.workspace.{ts,mjs,js}` exists:
   a migrated workspace declares its plugins, and an empty list is a
   complete workspace (the floor).

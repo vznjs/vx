@@ -252,6 +252,25 @@ test is telling the truth.
       shape law gains five shapes and env.md's two allowlist
       paragraphs are `ESSENTIAL_ENV` split where Windows begins. Four
       fail on the old pages.
+318.  DONE (2026-09-16, the next three module pages by gap: migration,
+      remote-prefetch, history). migration.md's `ApplyMigrationArgs`
+      lacked `format` (`--mjs`, 1501a62) and `GeneratedProject` was a
+      comment; the single-project report that names the packages a
+      missing `workspaces` field never reaches (3add62b) was
+      undocumented. remote-prefetch.md said the prefetch is "gated on
+      `cache instanceof LayeredCache`" — it is gated on the policy's
+      `remoteRead` axis, probes existence in one batch
+      (`remoteHasMany`, marking the absent so the lazy path skips
+      them too) and pumps `concurrency` fetches; the page had no
+      shape. history.md had no surface block at all (`TaskHistory`,
+      `HistoryProvider`, the two providers, the window's default of
+      50). Fixed; the shape law gains six shapes and the window
+      default. And the law's own parser was wrong twice today: it
+      stripped `//` before `/*`, so a docblock quoting a line comment
+      ate the block's close (`GeneratedTask` read as two fields), and
+      the reverse order let a `/*` inside a line comment open a
+      phantom block (`ParsedFilter` read as twelve) — it now takes
+      whichever opener comes first. Five fail on the old pages.
 
 ## In flight
 
