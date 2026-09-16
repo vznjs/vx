@@ -7,7 +7,8 @@ what shipped and the numbers behind it. Items 1–64 are in
 `2026-09-review-arc.md`, items 65–104 in
 `2026-09-improvement-loop-65-104.md`, items 105–144 in
 `2026-09-improvement-loop-105-144.md`, items 203–242 in
-`2026-09-improvement-loop-203-242.md`; items 243 onward continue in
+`2026-09-improvement-loop-203-242.md`; items 243–281 in
+`2026-09-improvement-loop-243-281.md`; items 282 onward continue in
 STATUS under the same numbering.
 
 145.  DONE (2026-09-11 — Next 15's first gap): `--mjs` on `vx init` and
