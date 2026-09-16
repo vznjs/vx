@@ -617,13 +617,15 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     // The shell's 127 and 126 name the word and nothing about why — the
     // PATH vx built, or a `#!` line the file itself carries (items 257,
-    // 258). One frame line names the rule.
+    // 258) — and an exit above 128 is a signal's number and nothing
+    // about what sent it (259). One frame line names the rule.
     if (!res.timedOut) {
       const verdict = shellVerdict({
         code,
         command: step.command,
         cwd: node.projectDir,
         bins: taskBinDirs(node, args.workspaceRoot),
+        signal: res.signal,
       })
       if (verdict !== undefined) log.taskStderr(node, `\n${verdict}\n`)
     }

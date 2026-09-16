@@ -61,7 +61,7 @@ group.
 | [`options.md`](./options.md)                       | `src/orchestrator/options.ts` — `RunOptions` / `RunSummary` declarations.                                                             |
 | [`execute-task.md`](./execute-task.md)             | `src/orchestrator/execute-task.ts` — per-task: hash → cache lookup → spawn → save.                                                    |
 | [`sandbox-request.md`](./sandbox-request.md)       | `src/orchestrator/sandbox-request.ts` — arming the runtime for a run; the sandbox half of an ExecuteRequest: grants, binds.           |
-| [`execute-task.md`](./execute-task.md) § Verdict   | `src/orchestrator/shell-verdict.ts` — the frame line for exit 127 / 126: the PATH rule, a missing file, its `#!` line, `chmod +x`.    |
+| [`execute-task.md`](./execute-task.md) § Verdict   | `src/orchestrator/shell-verdict.ts` — the frame line for exit 126, 127 and 128 + n: the PATH rule, the file, the signal.              |
 | [`miss-save.md`](./miss-save.md)                   | `src/orchestrator/miss-save.ts` — what a miss leaves behind: resolve outputs, save, mark git.                                         |
 | [`miss-save.md`](./miss-save.md) § The save lane   | `src/orchestrator/save-lane.ts` — the bounded off-slot save queue `run()` drains before the upload drain.                             |
 | [`lockfile-claim.md`](./lockfile-claim.md)         | `src/orchestrator/lockfile-claim.ts` — the claimant's shell a lockfile plugin wraps its parser in, and `reachDigests`.                |
