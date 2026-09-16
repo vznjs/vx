@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Database } from 'bun:sqlite'
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
 import { EmptyHistoryProvider, LocalHistoryProvider } from '../src/orchestrator/index.js'
 
@@ -88,6 +88,9 @@ describe('LocalHistoryProvider', () => {
     cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-history-'))
     return new Cache(cacheDir)
   }
+  afterEach(() => {
+    rmSync(cacheDir, { recursive: true, force: true })
+  })
 
   it('aggregates success/failure/hit counts over recent runs', async () => {
     const cache = makeCache()
@@ -583,6 +586,7 @@ describe('LocalHistoryProvider', () => {
       expect(table.get('b#build')?.maxPeakRssBytes).toBeUndefined()
       expect(table.get('b#build')?.maxCpuParallelism).toBeUndefined()
     } finally {
+      rmSync(dir, { recursive: true, force: true })
       cache.close()
       rmSync(dir, { recursive: true, force: true })
     }

@@ -511,6 +511,28 @@ the error table in `docs/schema.md` has the row.
       it. Next 6 after 222: 1,000 projects 231 ms warm / 718 restore /
       2,436 cold (medians of 5; 216's 225 / 670 / 2,494), a tie within
       the reps' spread.
+224.  DONE (2026-09-16, 223's other half): the test fixtures that
+      outlived their suites. The plugin-package helper's root is one per
+      PROCESS — the module is evaluated once and shared by every file a
+      `bun test` process runs — so no file's `afterAll` may own it, and
+      `bun test` fires neither `exit` nor `beforeExit` (measured: a
+      hook on each wrote nothing). So the root carries the pid
+      (`vx-plugin-pkgs-<pid>-*`) and the next process to need one
+      sweeps the roots of dead pids, the run lock's own reclaim: litter
+      is bounded to the processes still running, and the next test
+      process removes the last one's. The schema-doc-drift provokers'
+      scratch directories (`vx-drift-*`) are registered and removed
+      after the file; the history suite's cache directory per test and
+      its project directory, the plugin-name suite's bare and unnamed
+      packages and boundary fixtures, and the plugin-capabilities
+      suite's second cache are removed where they are made. Refuted on
+      the way: a module-level `afterAll` in the helper (registers for
+      the first file only — the second process's root stayed) and a
+      process exit hook (never fires). Measured by the census: after a
+      full gate `/tmp` holds the lock directories of runs the kill
+      tests kill (reclaimed by the next run, by design) and the plugin
+      roots of the last shard processes (reclaimed by the next), and
+      nothing else of vx's.
 
 ## In flight
 

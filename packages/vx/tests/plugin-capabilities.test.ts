@@ -78,10 +78,8 @@ describe('plugin-host — capability consultation + fallbacks', () => {
   it('resolveCache: every contributing plugin is kept, chained in declaration order', async () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
-    const other = new Cache(mkdtempSync(path.join(tmpdir(), 'vx-cache-host2-')), {
-      read: true,
-      write: true,
-    })
+    const otherDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host2-'))
+    const other = new Cache(otherDir, { read: true, write: true })
     const plugins: VxPlugin[] = [
       testPlugin('org/none', { cache: () => undefined }),
       testPlugin('org/cache', { cache: () => other }),
@@ -98,6 +96,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     } finally {
       local.close()
       other.close()
+      rmSync(otherDir, { recursive: true, force: true })
       rmSync(cacheDir, { recursive: true, force: true })
     }
   })

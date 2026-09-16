@@ -12,7 +12,8 @@
 // requires every one to have a case below that provokes it. So a new row
 // cannot land unpinned, and a removed row fails until its case goes too.
 
-import { describe, expect, it } from 'bun:test'
+import { afterAll, describe, expect, it } from 'bun:test'
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { ESSENTIAL_ENV } from '../src/exec/env.js'
 import {
@@ -47,6 +48,17 @@ function normalize(s: string): string {
   return s.replaceAll('`', '')
 }
 
+/** Every scratch directory a provoker made, removed after the file (378 of them in /tmp after one day's gates, 2026-09-16). */
+const scratch: string[] = []
+function scratchDir(): string {
+  const dir = path.join(process.env['TMPDIR'] ?? '/tmp', `vx-drift-${Bun.randomUUIDv7()}`)
+  scratch.push(dir)
+  return dir
+}
+afterAll(async () => {
+  await Promise.all(scratch.map((d) => rm(d, { recursive: true, force: true })))
+})
+
 /** [row as printed in docs/schema.md, something that provokes it] */
 const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   [
@@ -54,7 +66,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     // Raised by the loader, not the validator — a config file whose default
     // export is not an object never reaches validation at all.
     async () => {
-      const dir = path.join(process.env['TMPDIR'] ?? '/tmp', `vx-drift-${Bun.randomUUIDv7()}`)
+      const dir = scratchDir()
       const file = path.join(dir, 'vx.config.ts')
       await Bun.write(file, 'export default 42\n')
       try {
@@ -258,7 +270,7 @@ async function documentedRows(anchor: string): Promise<string[]> {
 
 /** Write `files` into a fresh temp dir and return its path. */
 async function tempRoot(files: Record<string, string>): Promise<string> {
-  const dir = path.join(process.env['TMPDIR'] ?? '/tmp', `vx-drift-${Bun.randomUUIDv7()}`)
+  const dir = scratchDir()
   for (const [rel, content] of Object.entries(files)) await Bun.write(path.join(dir, rel), content)
   return dir
 }
