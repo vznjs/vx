@@ -438,3 +438,81 @@ probe should be a persona not yet walked (a plugin author on the
 rather than a ninth core walk; every fix carried a differential pin
 and a class grep, and the gate caught the one push made without
 reading its exit. Never end with "what next?".
+
+## In flight — the sandbox arc's closed items and the v0.0.18 release record
+
+Moved out on 2026-09-16 with the rest of the record; In-flight 5 (macOS
+violation reporting) and the launch checklist's owner steps stayed in
+STATUS.
+
+1. DONE 2026-09-09: `@vzn/vx-docs#build` on Linux CI, red since
+   2026-09-05 with exit 1 and nothing on either stream. Not the
+   telemetry EROFS recorded before (real, but not what exited), not the
+   runner's Node. A diagnostic frame from CI (hooking `process.exit` and
+   both rejection channels) said `Cannot find package 'yargs-parser'
+from …/node_modules/astro/dist/cli/index.js` — astro's OWN
+   dependency, unresolvable because the task's write grants under
+   `node_modules` (`.astro/**`, `.vite/**`) made `punchWritePaths` bind
+   node_modules' children one by one, and bwrap mounts a SYMLINKED child
+   (every package in Bun's isolated layout) as the directory it points
+   at, so astro sat in a plain directory with no `.bun/` siblings.
+   astro's and vite's caches now live under `.astro/` (astro.config.mjs)
+   and the grants follow; `punchWritePaths` warns, naming the grant,
+   whenever a punch meets a symlinked entry. The build also runs under
+   `bun --bun` (half the wall time; no dependency on the runner's Node)
+   and the telemetry define stays.
+2. DONE 2026-09-09, and the diagnosis was wrong: the four perf baselines
+   did not fail from eight-way contention but from ptrace. The Linux
+   sandbox wraps every task in `strace -f -e trace=openat`, and without
+   `--seccomp-bpf` strace stops the tracee on EVERY syscall and filters
+   in userspace, so a stat-heavy micro-benchmark ran 2.5–7× over
+   budget. Reproduced outside the sandbox: plain `bun test` 24/24, the
+   same four fail under strace, 24/24 again under `--seccomp-bpf`. The
+   flag is on (strace ≥ 5.3; older gets the slow form), which also
+   takes that tax off every other sandboxed task on Linux — the gate's
+   `time 138s · max 89s` on the last run is the number to compare.
+3. DONE 2026-09-10 (item 79): a sandboxed task exposes a port on Linux
+   through `allow.localBinding: [port, …]` — a per-port socat pair over
+   a unix socket in the sandbox tmpdir, the task's side in front of the
+   command, the host's side released when the task exits. The arming
+   went as this entry said (the unix-socket allowance from the run's
+   union at `initSandbox`), and found the reason the first probe still
+   died: on Linux the availability probe initializes SRT with an EMPTY
+   config and `initialize()` returns early ever after, so the run's own
+   call — the domain union included — never reached the runtime.
+   `initSandbox` now hot-reloads the run's config (`updateConfig`).
+   Was: macOS works and is properly gated; on Linux every sandboxed task
+   gets `--unshare-net`, so nothing saw the port.
+4. DONE 2026-09-09: persistent tasks run inside their `exec.sandbox`.
+   `wrapSandboxedCommand` is the enforcement half of `runSandboxed` on
+   its own and the persistent path spawns through it; the violation
+   report stays one-shot only, since it reads the trace after exit and a
+   server exits at teardown. `vx-docs`'s `dev` and `preview` blocks mean
+   what they say now. Pinned in the unsafe suite: a sandboxed server that
+   reads a workspace-root file sees the denial, the same server without
+   the block reads it.
+
+- **v0.0.18 is fully on npm; one owner step remains before the next
+  release.** npm released the two held packages about ninety minutes
+  after the publish: all five serve 0.0.18 as `latest` (2026-09-04
+  00:20Z). `npm.yml` now publishes with trusted publishing only — no
+  token read anywhere, `--provenance` explicit, the npm ≥ 11.5.1 +
+  sigstore guard on both jobs, `permissions: {}` at the top, every
+  action in `npm.yml` and `release.yml` pinned to a commit SHA, and the
+  object-form `repository` npm was rewriting. OWNER STEP before the next
+  release: on npmjs.com add the GitHub Actions trusted publisher (owner
+  `vznjs`, repo `vx`, workflow `npm.yml`, no environment) to each of the
+  five packages, then delete the `NPM_TOKEN` secret (it is no longer
+  read; npm restricts it — v0.0.17's `E401`, v0.0.18's hold). The
+  build half is PROVEN: a `workflow_dispatch` dry run of the new
+  workflow (run 33812502741, 2026-09-04) succeeded on both jobs — pinned
+  actions resolve, the npm ≥ 11.5.1 guard passes on macOS and ubuntu,
+  all five packages build and assemble at the stamped version, and
+  only the two publish steps were skipped, as `dry_run` intends. The
+  auth half is proven by the next release. Documented in
+  `docs/cli.md` § Releasing.
+
+4. DONE tonight: the blog (item 115) with thirty posts for the
+   announcement series (item 118), README and site numbers generated
+   and checked, "Edit page" links that open the right file, LICENSE
+   holder, SECURITY.md, CONTRIBUTING.md (item 116).

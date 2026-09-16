@@ -914,7 +914,13 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       did, new pin passes). A pin that depends on which files ran
       before it in the same process is a deal-shaped knife edge; the
       order comment it carried ("the 200 MB pin must come first")
-      named the dependency and still trusted the alphabet.
+      named the dependency and still trusted the alphabet. A second
+      deal-shaped edge on the third CI run (#366): `output-dirs`'s cap
+      case makes 8,193 directories and walks them — 3 s for the whole
+      file here, 7.7 s for the case on a loaded runner under four
+      shards — against bun's 5 s default; bounded at 30 s, as
+      `affected.test.ts` bounds its own spawn-heavy case (a bound that
+      matches the work still catches a hang).
 197.  DONE (2026-09-16, the next long pole in CI): with the shards
       dealt, `@vzn/vx-reapi#test` was the longest task (26.7 s), and
       15 s of it was one case waiting out the control-plane deadline
@@ -929,6 +935,12 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       skip (the live-service cases), and CI's plugin job loses the same
       15 s. Left as they are: `wedged`'s other waits (0.7–2.1 s each)
       are the deadlines under test.
+198.  DONE (2026-09-16, the last of the housekeeping): § In flight's
+      four closed sandbox-arc items and the v0.0.18 release record
+      moved to `docs/history/2026-09-status-next-log.md` too; what
+      stays is In-flight 5 (macOS), the release facts as of 0.0.21, and
+      the launch checklist's owner steps with the stale "installs
+      v0.0.18" sentence corrected.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1049,81 +1061,25 @@ footgun the docs already name.
 
 ## In flight
 
-**Open after the sandbox arc (2026-09-05).** Local `vx run ci --all` is
-green, 36/36, no violations. CI is not, and every remaining item is
-either a one-line decision or a known constraint, not a mystery:
+**Open after the sandbox arc (2026-09-05).** Its four Linux items
+closed by 2026-09-10 — the docs build under bwrap, strace's seccomp
+filter, a sandboxed port, persistent tasks inside their sandbox; the
+record is in `docs/history/2026-09-status-next-log.md`. What stays
+open is the one that needs a macOS box:
 
-1. DONE 2026-09-09: `@vzn/vx-docs#build` on Linux CI, red since
-   2026-09-05 with exit 1 and nothing on either stream. Not the
-   telemetry EROFS recorded before (real, but not what exited), not the
-   runner's Node. A diagnostic frame from CI (hooking `process.exit` and
-   both rejection channels) said `Cannot find package 'yargs-parser'
-from …/node_modules/astro/dist/cli/index.js` — astro's OWN
-   dependency, unresolvable because the task's write grants under
-   `node_modules` (`.astro/**`, `.vite/**`) made `punchWritePaths` bind
-   node_modules' children one by one, and bwrap mounts a SYMLINKED child
-   (every package in Bun's isolated layout) as the directory it points
-   at, so astro sat in a plain directory with no `.bun/` siblings.
-   astro's and vite's caches now live under `.astro/` (astro.config.mjs)
-   and the grants follow; `punchWritePaths` warns, naming the grant,
-   whenever a punch meets a symlinked entry. The build also runs under
-   `bun --bun` (half the wall time; no dependency on the runner's Node)
-   and the telemetry define stays.
-2. DONE 2026-09-09, and the diagnosis was wrong: the four perf baselines
-   did not fail from eight-way contention but from ptrace. The Linux
-   sandbox wraps every task in `strace -f -e trace=openat`, and without
-   `--seccomp-bpf` strace stops the tracee on EVERY syscall and filters
-   in userspace, so a stat-heavy micro-benchmark ran 2.5–7× over
-   budget. Reproduced outside the sandbox: plain `bun test` 24/24, the
-   same four fail under strace, 24/24 again under `--seccomp-bpf`. The
-   flag is on (strace ≥ 5.3; older gets the slow form), which also
-   takes that tax off every other sandboxed task on Linux — the gate's
-   `time 138s · max 89s` on the last run is the number to compare.
-3. DONE 2026-09-10 (item 79): a sandboxed task exposes a port on Linux
-   through `allow.localBinding: [port, …]` — a per-port socat pair over
-   a unix socket in the sandbox tmpdir, the task's side in front of the
-   command, the host's side released when the task exits. The arming
-   went as this entry said (the unix-socket allowance from the run's
-   union at `initSandbox`), and found the reason the first probe still
-   died: on Linux the availability probe initializes SRT with an EMPTY
-   config and `initialize()` returns early ever after, so the run's own
-   call — the domain union included — never reached the runtime.
-   `initSandbox` now hot-reloads the run's config (`updateConfig`).
-   Was: macOS works and is properly gated; on Linux every sandboxed task
-   gets `--unshare-net`, so nothing saw the port.
-4. DONE 2026-09-09: persistent tasks run inside their `exec.sandbox`.
-   `wrapSandboxedCommand` is the enforcement half of `runSandboxed` on
-   its own and the persistent path spawns through it; the violation
-   report stays one-shot only, since it reads the trace after exit and a
-   server exits at teardown. `vx-docs`'s `dev` and `preview` blocks mean
-   what they say now. Pinned in the unsafe suite: a sandboxed server that
-   reads a workspace-root file sees the denial, the same server without
-   the block reads it.
 5. **macOS violation reporting is lossy while any violation fails the
    task.** The unified log drops records under load, so the same task can
    pass or fail run to run. Enforcement is unaffected — the OS denied the
    operation either way — but the REPORT is not a reliable gate on that
    platform.
 
-- **v0.0.18 is fully on npm; one owner step remains before the next
-  release.** npm released the two held packages about ninety minutes
-  after the publish: all five serve 0.0.18 as `latest` (2026-09-04
-  00:20Z). `npm.yml` now publishes with trusted publishing only — no
-  token read anywhere, `--provenance` explicit, the npm ≥ 11.5.1 +
-  sigstore guard on both jobs, `permissions: {}` at the top, every
-  action in `npm.yml` and `release.yml` pinned to a commit SHA, and the
-  object-form `repository` npm was rewriting. OWNER STEP before the next
-  release: on npmjs.com add the GitHub Actions trusted publisher (owner
-  `vznjs`, repo `vx`, workflow `npm.yml`, no environment) to each of the
-  five packages, then delete the `NPM_TOKEN` secret (it is no longer
-  read; npm restricts it — v0.0.17's `E401`, v0.0.18's hold). The
-  build half is PROVEN: a `workflow_dispatch` dry run of the new
-  workflow (run 33812502741, 2026-09-04) succeeded on both jobs — pinned
-  actions resolve, the npm ≥ 11.5.1 guard passes on macOS and ubuntu,
-  all five packages build and assemble at the stamped version, and
-  only the two publish steps were skipped, as `dry_run` intends. The
-  auth half is proven by the next release. Documented in
-  `docs/cli.md` § Releasing.
+**Releases.** v0.0.21 is on npm, the four platform packages with it
+(2026-09-15, handoff 14d in the history file). `npm.yml` publishes
+through npm's OIDC trusted publishing and uses a scope-wide `NPM_TOKEN`
+instead if one is set; which path served 0.0.21 is not recorded here.
+The v0.0.18 record (the token's `E401`, the held packages, the dry run
+of the token-free workflow) moved to the history file with the items
+above.
 
 **Launch checklist (2026-09-10, the owner's "what is needed to go
 fully live").** What a public announcement needs, in order, with the
@@ -1132,9 +1088,9 @@ state of each:
 1. OWNER: npm trusted publishing — on npmjs.com add the GitHub Actions
    publisher (owner `vznjs`, repo `vx`, workflow `npm.yml`, no
    environment) to `@vzn/vx` and the four platform packages, then delete
-   the `NPM_TOKEN` secret. Until then `npm install -g @vzn/vx` installs
-   v0.0.18 from 2026-09-04, four days of work behind main. Documented in
-   `docs/cli.md` § Releasing.
+   the `NPM_TOKEN` secret if it still exists, so the OIDC path is the
+   only one (0.0.21 published on 2026-09-15; which path served it is
+   not recorded here). Documented in `docs/cli.md` § Releasing.
 2. OWNER: cut the release — a GitHub release with the tag is the whole
    process (`release.yml` builds and signs the binaries, `npm.yml`
    publishes with provenance). Pick the version the articles will name;
@@ -1147,10 +1103,9 @@ state of each:
    custom domain is a DNS record plus `SITE_URL` / `BASE_PATH` env in
    that workflow (`astro.config.mjs` reads both); every internal link is
    base-relative, so nothing else moves.
-4. DONE tonight: the blog (item 115) with thirty posts for the
-   announcement series (item 118), README and site numbers generated
-   and checked, "Edit page" links that open the right file, LICENSE
-   holder, SECURITY.md, CONTRIBUTING.md (item 116).
+4. DONE 2026-09-10: the blog and its thirty posts, README and site
+   numbers, LICENSE holder, SECURITY.md, CONTRIBUTING.md (items 115,
+   116, 118).
 5. OWNER, optional: enable GitHub private vulnerability reporting
    (Settings → Security) so `SECURITY.md`'s instruction is live; issue
    templates are not needed for a first announcement.
