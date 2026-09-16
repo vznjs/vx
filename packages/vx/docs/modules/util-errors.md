@@ -50,3 +50,8 @@ read as an "internal error" (reproduced through the real binary,
 helper; it is on the façade so a plugin can classify the same way. The
 **name** `UserError` is the contract that survives the copy boundary: a
 plugin may throw its own class named `UserError` without importing core's.
+
+`isExecutableMissing(err)` is Bun's `ENOENT` for a spawn that could not
+run at all, and `gitSpawnRefusal(cwd)` the one `UserError` for a git that
+is not on PATH — the input enumeration, `--affected` and the watch judge
+all say it (item 241): install git, not "git init".

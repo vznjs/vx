@@ -57,3 +57,25 @@ export const DISK_FULL_HINT = 'the disk that path is on is full'
 export function fsRefusalHint(err: NodeJS.ErrnoException): string {
   return isDiskFull(err) ? DISK_FULL_HINT : PERMISSION_HINT
 }
+
+/**
+ * A spawn that could not run at all — Bun throws `ENOENT` ("Executable not
+ * found in $PATH") synchronously from `Bun.spawn` and `Bun.spawnSync` alike.
+ * Every git call site tells it from a git that ran and failed, because the
+ * remedy differs: install git, not "git init".
+ */
+export function isExecutableMissing(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException)?.code === 'ENOENT'
+}
+
+/**
+ * The one refusal for a git that is not on PATH, wherever vx needed it — a
+ * `--affected` base, the input enumeration, a watch judgement. A minimal
+ * image without git met a stack from `defaultAffectedBase` before
+ * (2026-09-16); the enumeration had this line and the others did not.
+ */
+export function gitSpawnRefusal(cwd: string): UserError {
+  return new UserError(
+    `vx requires git: failed to spawn 'git' (working dir: ${cwd}). Install git and re-run.`,
+  )
+}

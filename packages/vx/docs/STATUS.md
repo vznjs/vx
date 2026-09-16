@@ -796,6 +796,21 @@ dependencies first`. On the evaluation path only — a warm run
       commented import or a type-only one is dropped as before. The
       warm path never ran any of it (the eval cache serves configs).
 
+241.  DONE (2026-09-16, a persona: a machine without git — a minimal
+      image): `vx run` said the right line (`vx requires git: failed to
+spawn 'git' … Install git and re-run`, the enumeration's), but
+      `--affected` printed Bun's stack (`Executable not found in $PATH:
+"git" … at defaultAffectedBase`), and a git that ran and failed
+      through a shell shim was read as "not a work tree — run git
+      init". Every git spawn in `affected.ts` goes through two wrappers
+      now, and a spawn that cannot run is util's `gitSpawnRefusal` —
+      one line, shared with the enumeration; the watch judge's
+      `check-ignore` ignores nothing and keeps going without git; the
+      other sites (`vx info`, the run's branch and sha, the object
+      format) already caught it. Pinned in `no-git-on-path.test.ts`:
+      the CLI child gets a PATH of bun and sh alone, and `--affected`,
+      `--affected=HEAD` and `--all` each print the line and no stack.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items

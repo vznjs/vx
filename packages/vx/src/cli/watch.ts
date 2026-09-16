@@ -148,13 +148,20 @@ export const WATCH_PROBE = '.vx-watch-probe'
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> {
   const ignored = new Set<string>()
   if (paths.length === 0) return ignored
-  const proc = Bun.spawnSync({
-    cmd: ['git', 'check-ignore', '-z', '--stdin'],
-    cwd: workspaceRoot,
-    stdin: Buffer.from(paths.map((p) => `${p}\0`).join('')),
-    stdout: 'pipe',
-    stderr: 'ignore',
-  })
+  let proc: ReturnType<typeof Bun.spawnSync>
+  try {
+    proc = Bun.spawnSync({
+      cmd: ['git', 'check-ignore', '-z', '--stdin'],
+      cwd: workspaceRoot,
+      stdin: Buffer.from(paths.map((p) => `${p}\0`).join('')),
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+  } catch {
+    // No git on PATH: nothing is ignored, and the loop keeps judging —
+    // the initial run already said what vx requires.
+    return ignored
+  }
   // 0: some ignored; 1: none. Anything else is git refusing (not a
   // repository, a path inside a nested one): no path is ignored.
   if (proc.exitCode !== 0) return ignored

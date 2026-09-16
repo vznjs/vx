@@ -7,7 +7,7 @@
 
 import path from 'node:path'
 import { existsSync } from 'node:fs'
-import { UserError } from '../util/index.js'
+import { UserError, gitSpawnRefusal } from '../util/index.js'
 
 export class GitFilesCache extends Map<string, readonly string[]> {
   private changed = new Map<string, string[]>()
@@ -193,9 +193,7 @@ export function runGitLsFiles(cwd: string): GitLsResult {
       stderr: 'pipe',
     })
   } catch {
-    throw new UserError(
-      `vx requires git: failed to spawn 'git' (working dir: ${cwd}). Install git and re-run.`,
-    )
+    throw gitSpawnRefusal(cwd)
   }
   if (proc.exitCode !== 0) {
     // Exit 128 = not a git work tree; other non-zero = git failure.
@@ -507,9 +505,7 @@ export async function startGitEnumeration(
     spawnGit(['config', '--get-regexp', '^core\\.(autocrlf|eol|attributesfile)$']),
   ])
   if (ls === null) {
-    throw new UserError(
-      `vx requires git: failed to spawn 'git' (working dir: ${workspaceRoot}). Install git and re-run.`,
-    )
+    throw gitSpawnRefusal(workspaceRoot)
   }
   if (ls.exitCode !== 0) {
     const stderr = ls.stderr.trim()

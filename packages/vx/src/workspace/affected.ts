@@ -8,11 +8,39 @@
 
 import { statSync } from 'node:fs'
 import path from 'node:path'
-import { UserError } from '../util/index.js'
+import { UserError, gitSpawnRefusal, isExecutableMissing } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners } from './config-imports.js'
 import { WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
 import type { ProjectMeta } from './workspace.js'
+
+/**
+ * Every git call here goes through these two: a git that is not on PATH
+ * is one refusal naming the install (util `gitSpawnRefusal`), never the
+ * `ENOENT` stack `defaultAffectedBase` showed a minimal image
+ * (2026-09-16). A git that ran and failed is each caller's to read.
+ */
+function spawnGitSync(
+  args: string[],
+  cwd: string,
+  stderr: 'pipe' | 'ignore' = 'pipe',
+): ReturnType<typeof Bun.spawnSync> {
+  try {
+    return Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr })
+  } catch (err) {
+    if (isExecutableMissing(err)) throw gitSpawnRefusal(cwd)
+    throw err
+  }
+}
+
+function spawnGit(args: string[], cwd: string): Bun.Subprocess<'ignore', 'pipe', 'pipe'> {
+  try {
+    return Bun.spawn({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
+  } catch (err) {
+    if (isExecutableMissing(err)) throw gitSpawnRefusal(cwd)
+    throw err
+  }
+}
 
 export interface AffectedArgs {
   workspaceRoot: string
@@ -214,12 +242,7 @@ async function gitBytesAt(
   ref: string,
   file: string,
 ): Promise<Uint8Array | null> {
-  const proc = Bun.spawn({
-    cmd: ['git', 'show', '--end-of-options', `${ref}:./${file}`],
-    cwd: workspaceRoot,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+  const proc = spawnGit(['show', '--end-of-options', `${ref}:./${file}`], workspaceRoot)
   const [bytes, stderr, exit] = await Promise.all([
     new Response(proc.stdout).bytes(),
     new Response(proc.stderr).text(),
@@ -239,12 +262,7 @@ async function bytesOrNull(file: string): Promise<Uint8Array | null> {
 
 /** Run a NUL-separated path-listing git command from the workspace root. */
 async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]> {
-  const proc = Bun.spawn({
-    cmd: ['git', ...cmd],
-    cwd: workspaceRoot,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+  const proc = spawnGit([...cmd], workspaceRoot)
   const stdout = await new Response(proc.stdout).text()
   const stderr = await new Response(proc.stderr).text()
   const exit = await proc.exited
@@ -262,12 +280,11 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
  * all, and says so here rather than failing on a ref nobody typed.
  */
 export async function defaultAffectedBase(workspaceRoot: string): Promise<string> {
-  const probe = Bun.spawnSync({
-    cmd: ['git', 'symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD'],
-    cwd: workspaceRoot,
-    stdout: 'pipe',
-    stderr: 'ignore',
-  })
+  const probe = spawnGitSync(
+    ['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD'],
+    workspaceRoot,
+    'ignore',
+  )
   const out = new TextDecoder().decode(probe.stdout).trim()
   if (probe.exitCode === 0 && out.length > 0) return out
   if (revParse(workspaceRoot, 'HEAD~1') === undefined) {
@@ -292,36 +309,29 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean {
 
 /** The commit `ref` names, or undefined when it does not resolve here. */
 function revParse(workspaceRoot: string, ref: string): string | undefined {
-  const proc = Bun.spawnSync({
-    cmd: ['git', 'rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`],
-    cwd: workspaceRoot,
-    stdout: 'pipe',
-    stderr: 'ignore',
-  })
+  const proc = spawnGitSync(
+    ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`],
+    workspaceRoot,
+    'ignore',
+  )
   const sha = new TextDecoder().decode(proc.stdout).trim()
   return proc.exitCode === 0 && sha.length > 0 ? sha : undefined
 }
 
 /** `git merge-base <ref> HEAD`, or `ref` itself when the two share no ancestor. */
 async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
-  const proc = Bun.spawn({
-    cmd: ['git', 'merge-base', '--end-of-options', ref, 'HEAD'],
-    cwd: workspaceRoot,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+  const proc = spawnGit(['merge-base', '--end-of-options', ref, 'HEAD'], workspaceRoot)
   const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
   const sha = out.trim()
   return exit === 0 && sha.length > 0 ? sha : ref
 }
 
 async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
-  const proc = Bun.spawnSync({
-    cmd: ['git', 'rev-parse', '--verify', '--quiet', '--end-of-options', ref],
-    cwd: workspaceRoot,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+  const proc = spawnGitSync(
+    ['rev-parse', '--verify', '--quiet', '--end-of-options', ref],
+    workspaceRoot,
+    'pipe',
+  )
   if (proc.exitCode === 0) return
   // `--verify --quiet` exits 1 for "that ref does not exist" and 128 for
   // "git could not run here at all" (not a repository, corrupt objects,
