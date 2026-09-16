@@ -11,8 +11,34 @@ live in a leaf file (not the module entry) so internals like
 
 ```ts
 export interface RunOptions {
-  /* cwd, tasks, projects?, staged?, concurrency?, cache? (CachePolicy), forwardArgs?,
-     excludeDependencies?, summarize?, profile?, log?, handleSignals?, signal? */
+  cwd: string
+  tasks: readonly string[] // bare names and `pkg#task` specs
+  projects?: string[] // the selection's project names; undefined = no scope needed
+  staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
+  concurrency?: number
+  cacheDir?: string // --cache-dir, resolved against cwd
+  cache?: CachePolicy // default FULL_CACHE_POLICY
+  remoteRequested?: boolean // a --cache spec named a remote axis
+  frozen?: boolean // run the lock's graph
+  outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
+  download?: 'all' | 'toplevel' | 'none'
+  flow?: 'focused' | 'broad'
+  retries?: number
+  timeout?: number
+  continueMode?: ContinueMode
+  excludeDependencies?: 'all' | readonly string[]
+  forwardArgs?: readonly string[]
+  summarize?: string
+  profile?: string
+  handleSignals?: boolean
+  signal?: AbortSignal
+  log?: Logger
+  bus?: EventBus // an embedder's bus; the run's own when absent
+  inflight?: Map<string, Promise<void>> // admission's cross-run in-flight table
+  tags?: Record<string, string> // onto the run record
+  telemetrySinks?: readonly TelemetrySink[] // an embedder's sinks, ahead of the plugins'
+  command?: string // the invocation as recorded (`vx run …`)
+  remoteCache?: RemoteCacheLayer // an injected remote layer; wins over the cache seam
 }
 export interface RunSummary {
   ok: boolean

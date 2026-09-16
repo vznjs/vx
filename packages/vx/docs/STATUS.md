@@ -302,6 +302,22 @@ test is telling the truth.
       already described). Fixed; the shape law gains four shapes,
       `RestoreHitArgs` among them as a control that passes both
       ways. Three fail on the old pages.
+321.  DONE (2026-09-16, the gap list's tail: options, lockfile,
+      plugin-commands). options.md's `RunOptions` was a comment naming
+      twelve of twenty-nine fields — no `bus`, `inflight`,
+      `telemetrySinks`, `remoteCache`, `download`, `flow`, `frozen`,
+      `timeout`, `continueMode`, `tags`, `command`, `outputLogs`; the
+      block is the interface now, each embedder field with its
+      meaning. lockfile.md had no surface (`LockfileEntry`,
+      `Lockfile`, the constants, `frozenProjectConfig`'s refusal), and
+      never said the CLI's selection load reads the lock under
+      `--frozen` too (b5a5854). plugin-commands.md said a verb the
+      workspace cannot answer is `null` — a workspace file that fails
+      to load answers `{ loadError }`, said beside "unknown command",
+      never instead of it — and lacked `pluginVerbs` (262662c, what
+      `vx completions` reads). Fixed; the shape law gains six shapes,
+      its field-count guard now admits a one-field interface. Five
+      fail on the old pages.
 
 ## In flight
 
