@@ -408,7 +408,7 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270 and 275 (14–14v) are in
-    `docs/history/2026-09-status-next-log.md`; 14w and 14x below are the
+    `docs/history/2026-09-status-next-log.md`; 14w–14y below are the
     current ones.
 
 14w. **Handoff after item 281 (2026-09-16, afternoon).** Six items
@@ -482,6 +482,37 @@ shard's file list. Next: the lockfile persona — a dependency bump under
 `bun()`, `vx why` naming the claim and `--affected` following it — and
 `vx init` on the walkthrough repo after 287, to read what the TODO says
 about `--affected` now. Never end with "what next?".
+
+14y. **Handoff after item 293 (2026-09-16, late afternoon).** Six
+items since 14x: the lockfile persona read right (288, #447); the CI
+guide's two sentences and CLAUDE.md's four rules (289); the
+`--affected` "changed only" wording swept from six more surfaces and
+the anchor sweep it started (290); every relative link a law, the
+README's `../packages/vx-reapi` 404 (291); all thirteen hooks named
+in the README's § 5 and CLAUDE.md, pinned (292); the overview page
+read whole against source — four stale claims, two pins (293).
+289–293 are #448, open. Open: Next 1, 2 and 16, all gated by their
+own terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN`
+secret, the release cut, the site's address. No open issues. The loop
+holds twelve items (282–293). The box: as 14x; a separator you
+printed (`echo ----`) reads as file content in the same scroll — a
+pin built on it found no `---` in the file (293's first run); a
+Markdown line that wraps onto "+ …" is a bullet to the formatter and
+a one-item list on the site (the README's plugin sentence, live for
+weeks); github-slugger keeps a flag's dashes, so a `--flag` heading's
+id has three hyphens and a link with one misses silently; the site's
+content directory is outside oxfmt's targets (`rc=2`, "no target
+file") — its pages are never format-scanned, so a wrapped code span
+there is on you. Methods that paid: when two claims in one page go
+stale, read the page whole against source before moving on (290 and
+292 → 293 found four more); a law found for one shape is widened to
+its class the same day (anchors → every relative link, 291); the
+build output on disk (`dist/`) is the oracle for what a link
+resolves to, cheaper than a rebuild. Next: the two pages the overview
+sends a ten-minute reader to, `comparison.md` § Where vx is ahead and
+`architecture.md`, read the same way — every claim against source,
+the numbers against benchmarks.md, the pins where a count or a list
+lives in prose. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
