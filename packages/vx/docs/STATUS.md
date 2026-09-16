@@ -630,6 +630,15 @@ test is telling the truth.
       and the footer's tasks legend showed no `skipped` for them
       either while its Skipped section counted three: recorded here,
       not chased (a group never starts by definition).
+281.  DONE (2026-09-16, the mismatch 280 recorded): the footer's
+      Skipped section listed three blocked `install` groups as "3 tasks
+      never started" while the tasks legend beside it counted no
+      skipped task — every counter (the tally, `--summarize`, the
+      report, the run records) excludes a group, and the section was
+      the one reader that did not. It now does: a group never starts
+      by definition, and its members' rows say what was blocked.
+      Pinned with a control (the same skip on a task with a command
+      is listed); cli.md says so.
 
 ## In flight
 

@@ -271,6 +271,27 @@ describe('formatSkippedSection', () => {
     ])
   })
 
+  it('leaves a blocked group out, as every other counter does', () => {
+    // The tasks legend excludes groups; a section that named them beside it
+    // said "3 tasks never started" against "997 total, none skipped".
+    const group: TaskOutcome = {
+      node: { id: 'app#install', config: {} } as TaskNode,
+      status: 'skipped',
+      exitCode: 0,
+      durationMs: 0,
+      blockedBy: 'lib#build',
+    }
+    expect(formatSkippedSection([dep('lib#build', 'failed'), group])).toEqual([])
+    // Control: the same skip on a task with a command is listed.
+    expect(
+      formatSkippedSection([dep('lib#build', 'failed'), dep('app#build', 'skipped', 'lib#build')]),
+    ).toEqual([
+      '',
+      '  Skipped:  1 task never started — blocked upstream',
+      '    ⊘ after lib#build failed: app#build',
+    ])
+  })
+
   it('caps the names on one line and counts the rest', () => {
     const many = Array.from({ length: 11 }, (_, i) => dep(`p${i}#build`, 'skipped', 'lib#build'))
     const lines = formatSkippedSection([dep('lib#build', 'failed'), ...many])
