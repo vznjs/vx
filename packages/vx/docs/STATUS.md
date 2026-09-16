@@ -498,6 +498,16 @@ test is telling the truth.
       and the package-boundaries suite's rule 5 pins that every oxfmt
       config in the repo ignores every masked name — the class, not
       the file.
+272.  DONE (2026-09-16, Next 6 — the day's closing diff on the warm
+      path): after #425–#431 (264–271: the outcome fields and the one
+      `failedLabel` on every executed task's exit path, the Skipped
+      footer on every run), the interleaved A/B on one 1,000-project
+      workspace, the main of 263 (#424) in an immutable worktree
+      against the head of 271, 9 reps each, run twice with the arms
+      swapped: after 253 / 266 and 254 / 266 ms (min / median), before
+      257 / 266 and 252 / 264 — a tie. Expected, as at 263: a warm run
+      executes nothing, and the footer's Skipped section is one filter
+      over the outcomes (0.022 ms on 5,000, item 266).
 
 ## In flight
 
