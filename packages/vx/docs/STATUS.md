@@ -742,6 +742,40 @@ is one function or it drifts; a differential's name filter must match
 every pin it counts (a `-t` that matched one of two read as a broken
 fix, 260). Never end with "what next?".
 
+14u. **Handoff after item 270 (2026-09-16, afternoon).** Seven items
+since 14t, merged as #425–#431, one class walked to its end: the
+reason a task failed rides the outcome and every surface reads it.
+First the docs that show what a reader sees: the plugins guide names
+the façade's sink helpers in a type-checked block (264) and the CI
+guide's job summary is the renderer's real output with a pin that
+renders the same run (265; the guides' other two samples matched). Then
+the reader of a skipped task: a Skipped footer section (266) and the
+root blocker recorded on the outcome for the summarize row, the
+telemetry record, the GitHub callout and the OTel span (267 — the OTel
+losslessness tripwire refused the field until it was mapped, as it
+should). Then every other reason the one `failedLabel` read as a bare
+number: vx's own timeout (268), sandbox violations (269, where the
+OTel guide had promised an attribute the plugin lacked), and a
+persistent task that never became ready (270, a typed
+`PersistentReadyError` and the child's real exit code). Each rides the
+outcome as an additive telemetry field; the `runs` table carries none
+of them, since a column is a `SCHEMA_VERSION` bump that resets every
+local cache — the day one is worth it, they all go in together. Open:
+Next 1, 2 and 16, all gated by their own terms; In-flight 5 (macOS);
+the owner residue — the `NPM_TOKEN` secret, the release cut, the
+site's address. No open issues. The loop holds 28 items (243–270): the
+trim's trigger is forty. The box: as 14t; a Python edit script asserts
+on anchors the formatter has since reflowed — every write after the
+failing assertion is skipped while the earlier ones land, so check
+`git status` and re-run from the failure (twice today). Methods that
+paid: a claim in a guide ("the span carries X") is grepped in the
+plugin before it is trusted; a made-up exit code (a skip's 1, a
+never-ready 1) is a lie the label repeats on every surface — carry the
+reason and the real code; the same one function on every surface is
+what makes a class of fixes a class; a differential's guard reads
+bun's summary line, not its per-test lines. Never end with "what
+next?".
+
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
     (item 141) and four Nx repos (items 142–144, 150) are in.
