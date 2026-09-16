@@ -165,6 +165,23 @@ test is telling the truth.
       pin the parity; the guides are true as written. Pinned
       end to end on a manifest edge (lib and app selected, tool not),
       with the plain form as the control (lib alone).
+288.  DONE (2026-09-16, the lockfile persona 14x named): a fresh
+      two-package workspace declaring `bun()` from `@vzn/vx-lockfile`,
+      `lib` depending on a real npm package and `app` on `lib`,
+      installed and committed; the dependency bumped and reinstalled.
+      `--affected=HEAD` selected both (`2 affected · 2 total` — the
+      manifest change and, through 287, the dependent); `vx why` on
+      lib named the changed manifest and the changed plugin part,
+      `@vzn/vx-lockfile/bun`, with the part's digests, and on app the
+      plugin part alone, its closure reached through lib — the shape
+      Next 8(g) records (digests, not material); `vx info` lists the
+      plugin with its seams, `key, fingerprint`. Every surface read
+      right; nothing to fix. The probe's own lesson: a foreign
+      workspace cannot install a workspace package through `file:` or
+      `link:` when that package's own dependencies are `workspace:*`
+      (`@vzn/vx@workspace:* failed to resolve`), and `bun install`
+      wipes hand-placed symlinks — install the real dependency first,
+      then symlink the plugin packages, after every install.
 
 ## In flight
 
