@@ -13,6 +13,7 @@
 
 import type { CaptureConfig, RunResult } from './runner.js'
 import type { ResolvedSandboxConfig, SandboxViolation } from './sandbox-runtime.js'
+import { UserError } from '../util/index.js'
 
 /** Sandbox baselines + the user's resolved sandbox block, when the task is sandboxed. */
 export interface ExecuteSandbox {
@@ -202,6 +203,45 @@ export interface TaskExecutor {
    */
   demand?(remaining: ReadonlySet<string>): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
+}
+
+/**
+ * The result an executor resolves with is a plugin's, so its shape is a
+ * boundary: a plugin that resolved `{}` met `res.violations` in core and
+ * became "internal error in <task>: TypeError …" — vx's crash, the plugin's
+ * bug (2026-09-16). Name the executor and the field instead. The factory's
+ * output is checked the same way in `resolveExecutors`.
+ */
+export function assertExecuteResult(
+  executor: string,
+  taskId: string,
+  res: unknown,
+): asserts res is ExecuteResult {
+  const fail = (what: string): never => {
+    throw new UserError(
+      `executor '${executor}' returned an invalid result for ${taskId}: ${what} — a plugin bug, not a task failure`,
+    )
+  }
+  if (typeof res !== 'object' || res === null)
+    fail(`${res === null ? 'null' : typeof res} (expected an object)`)
+  const r = res as Record<string, unknown>
+  for (const key of ['exitCode', 'durationMs']) {
+    if (typeof r[key] !== 'number') fail(`${key} is ${typeof r[key]} (expected a number)`)
+  }
+  for (const key of ['stdout', 'stderr']) {
+    if (typeof r[key] !== 'string') fail(`${key} is ${typeof r[key]} (expected a string)`)
+  }
+  if (!Array.isArray(r['violations']))
+    fail(`violations is ${typeof r['violations']} (expected an array)`)
+  const outputs = r['outputs'] as { kind?: unknown; materialize?: unknown } | undefined
+  if (outputs !== undefined) {
+    if (typeof outputs !== 'object' || outputs === null) fail('outputs is not an object')
+    else if (outputs.kind === 'deferred') {
+      if (typeof outputs.materialize !== 'function')
+        fail('outputs.kind is deferred without a materialize()')
+    } else if (outputs.kind !== 'disk')
+      fail(`outputs.kind is ${String(outputs.kind)} (expected disk or deferred)`)
+  }
 }
 
 /**

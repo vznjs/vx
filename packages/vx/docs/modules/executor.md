@@ -40,7 +40,12 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   hit would have matched; held in memory for the attempt and never
   persisted (`env`/`runtime` values may be secrets — `entry_inputs` stores
   digests only).
-- `ExecuteResult extends RunResult { violations; where? }` — `where` is the
+- `ExecuteResult extends RunResult { violations; where? }` — checked at the
+  seam (`assertExecuteResult`): a plugin that resolves something else is
+  refused with one line naming the executor, the task and the field
+  ("returned an invalid result for <task>: exitCode is undefined (expected
+  a number) — a plugin bug, not a task failure"), in the task's frame,
+  never a TypeError inside core. `where` is the
   executor-reported placement label (a REAPI worker id); absent = this
   host. Rides `TaskOutcome.where` into telemetry only (OTel:
   `vx.task.where`), never the analytics store.

@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, gitInit, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { Cache, type CacheEntry } from '../src/cache/index.js'
 import { localExecutor } from '../src/exec/local-executor.js'
+import { UserError } from '../src/util/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import type { ExecuteRequest, TaskExecutor } from '../src/exec/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
@@ -699,6 +700,70 @@ describe('execute-task — binary resolution: project bin, then the workspace ro
         const n = node(b, { exec: { command: 'sib-only' } }, 'proj#sib')
         const outcome = await executeTask(baseArgs(b, n, log))
         expect(outcome.exitCode).toBe(127)
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+describe('execute-task — the executor seam checks what a plugin resolves', () => {
+  // A plugin executor that resolved `{}` met `res.violations` in core and
+  // became "internal error in <task>: TypeError" — vx's crash for the
+  // plugin's bug (item 251). The seam names the executor and the field.
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it(
+    'a malformed result is a UserError naming the executor and the field, never a TypeError',
+    async () => {
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const n = node(b, { exec: { command: 'true' } }, 'proj#bad')
+        const bad = { name: 'org/bad', execute: async () => ({}) } as never
+        let caught: unknown
+        try {
+          await executeTask({ ...baseArgs(b, n, log), executor: bad })
+        } catch (err) {
+          caught = err
+        }
+        expect(caught).toBeInstanceOf(UserError)
+        expect((caught as Error).message).toBe(
+          "executor 'org/bad' returned an invalid result for proj#bad: exitCode is undefined (expected a number) — a plugin bug, not a task failure",
+        )
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+
+  // CONTROL: a well-formed result from a plugin executor is a plain outcome.
+  it(
+    "a well-formed result from a plugin executor is the task's outcome",
+    async () => {
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+        const n = node(b, { exec: { command: 'true' } }, 'proj#good')
+        const good = {
+          name: 'org/good',
+          execute: async () => ({
+            exitCode: 0,
+            durationMs: 1,
+            stdout: 'ran\n',
+            stderr: '',
+            violations: [],
+          }),
+        } as never
+        const outcome = await executeTask({ ...baseArgs(b, n, log), executor: good })
+        expect([outcome.status, outcome.exitCode]).toEqual(['success', 0])
       } finally {
         await closeBench(b)
       }

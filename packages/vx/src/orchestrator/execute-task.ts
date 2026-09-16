@@ -20,6 +20,7 @@ import {
   signalExitCode,
   type CaptureConfig,
   type ExecuteRequest,
+  assertExecuteResult,
   type ExecuteResult,
   type SandboxViolation,
   type TaskExecutor,
@@ -558,12 +559,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // no other trace. Rethrown unchanged — the scheduler still classifies it,
     // and still prints it plainly for a UserError.
     const endExec = span('miss: execute')
-    const res = await args.executor.execute(req).catch(async (err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err)
-      log.taskStderr(node, `${message}\n`)
-      await sweepPlaceholders(placeholders)
-      throw err
-    })
+    const res = await args.executor
+      .execute(req)
+      .then((r: unknown) => {
+        assertExecuteResult(args.executor.name, node.id, r)
+        return r
+      })
+      .catch(async (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err)
+        log.taskStderr(node, `${message}\n`)
+        await sweepPlaceholders(placeholders)
+        throw err
+      })
     endExec()
     violations = [...res.violations]
     // A placeholder the task never wrote is not its output: take it back

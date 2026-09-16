@@ -181,6 +181,23 @@ test is telling the truth.
       `@grpc/proto-loader` 0.7.15 → 0.8.1. `oxlint-tsgolint` 7.0.2001
       is current. Bun 1.4.2 is still the newest tag.
 
+251.  DONE (2026-09-16, the plugin-author lens at the executor seam): a
+      plugin executor whose `execute` resolved `{}` met `res.violations`
+      in core and became "internal error in <task>: TypeError …" — vx's
+      crash for the plugin's bug, where the factory's output had been
+      checked since item 15 (`resolveExecutors`: missing execute(), no
+      name). `assertExecuteResult` checks the resolved result at the
+      seam (exitCode and durationMs numbers, stdout and stderr strings,
+      violations an array, outputs disk or deferred with a
+      materialize) and refuses as a `UserError` naming the executor and
+      the field, written into the task's frame like a throw. Pinned in
+      `execute-task.test.ts` with a control (a well-formed result from
+      a plugin executor is the outcome); fails without the fix as the
+      TypeError. Read on the way: the other seams already validate at
+      the boundary (project stage, key parts, commands, the workspace
+      file's definePlugin stamp), and Next 8(d)'s "last large files" was
+      stale — corrected in place.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
@@ -307,9 +324,12 @@ state of each:
    behind (e) and (h) are in `docs/history/2026-09-status-next-log.md`.
    Still standing: (c) only `vx lock` reads config files raw, on
    purpose — grep for `loadProjectConfig(` before adding a fourth
-   consumer of the staged load; (d) `logger.ts` and `framed-output.ts`
-   are the last large files, and neither splits cleanly (one renderer,
-   one formatter); (e) REFUTED: a discovery memo keyed on directory and
+   consumer of the staged load; (d) was "`logger.ts` and
+   `framed-output.ts` are the last large files" — by 2026-09-16 they are
+   699 and 518 lines and the largest are `cache/cache.ts` 1,583,
+   `cli/watch.ts` 1,121, `orchestrator/run.ts` 1,040 and
+   `exec/sandbox-runtime.ts` 1,034, each one concern (the split of
+   cache.ts is item 8's), so the note is closed; (e) REFUTED: a discovery memo keyed on directory and
    manifest stats saves ≈ 3–4 ms of a 230 ms run for a second staleness
    surface — revisit only if discovery's share grows; (g) `vx why` shows
    a plugin `key` part's digests, not its material, because a raw
