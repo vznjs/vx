@@ -356,7 +356,10 @@ export function formatAbortedSection(outcomes: readonly TaskOutcome[]): string[]
  * nothing was skipped.
  */
 export function formatSkippedSection(outcomes: readonly TaskOutcome[]): string[] {
-  const skipped = outcomes.filter((o) => o.status === 'skipped')
+  // A group (no `exec`) never starts by definition and is not a task the
+  // tally counts; listing a blocked one here named three "tasks" the legend
+  // beside it counted as none (item 281). Its members' rows say enough.
+  const skipped = outcomes.filter((o) => o.status === 'skipped' && !isGroupTask(o.node))
   if (skipped.length === 0) return []
   const byId = new Map(outcomes.map((o) => [o.node.id, o]))
   const causeOf = (o: TaskOutcome): string => {

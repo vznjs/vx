@@ -117,6 +117,50 @@ function reasonParts(t: RunSummaryRow): string {
   return parts.map((p) => `  ${p}`).join('')
 }
 
+/** Hit rows shown before the rest fold — the slowest restores. */
+const HITS_SHOWN = 16
+
+/**
+ * The per-task rows: failures first, then what executed or was skipped,
+ * then cache hits. Hits are the noise of a warm run — 996 of a thousand
+ * rows on a red run put the failure a screen's height above the prompt
+ * (item 280) — so past `HITS_SHOWN` they fold into one line with their
+ * count; the ones shown are the slowest restores, the one thing a hit's
+ * row tells. `--format json` lists every row.
+ */
+export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
+  if (tasks.length === 0) return []
+  const failed = tasks.filter((t) => t.status === 'failed')
+  const hits = tasks.filter((t) => t.status !== 'failed' && t.cacheHit === true)
+  const rest = tasks.filter((t) => t.status !== 'failed' && t.cacheHit !== true)
+  const folded = hits.length > HITS_SHOWN
+  const shownHits = folded
+    ? [...hits].sort((a, b) => b.durationMs - a.durationMs).slice(0, HITS_SHOWN)
+    : hits
+  const ordered = [...failed, ...rest, ...shownHits]
+  const idW = Math.max(...ordered.map((t) => `${t.project}#${t.task}`.length), 4)
+  const lines = ['']
+  for (const t of ordered) {
+    const id = `${t.project}#${t.task}`
+    // The terminal summary's own word for a task that runs every time
+    // by design; a reader must not take its row for a miss.
+    // A failure's row reads as the frame did — `failed (exit 137)` —
+    // and above 128 names the signal the number stands for (260).
+    const status = t.status === 'failed' ? `failed (exit ${t.exitCode})` : t.status
+    lines.push(
+      `  ${status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
+        `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
+        reasonParts(t),
+    )
+  }
+  if (folded) {
+    lines.push(
+      `  … +${hits.length - HITS_SHOWN} more cache hits (the ${HITS_SHOWN} slowest restores shown) — vx last --format json lists every row`,
+    )
+  }
+  return lines
+}
+
 export async function lastCmd(args: readonly string[]): Promise<number> {
   const parsed = parseLastArgs(args)
   if (parsed.error !== undefined) throw new UserError(`vx last: ${parsed.error}`)
@@ -180,28 +224,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         ` (${inv.hitLocalCount} local, ${inv.hitRemoteCount} remote)` +
         `${inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''}`,
     )
-    const tasks = detail?.tasks ?? []
-    if (tasks.length > 0) {
-      lines.push('')
-      const failedFirst = [
-        ...tasks.filter((t) => t.status === 'failed'),
-        ...tasks.filter((t) => t.status !== 'failed'),
-      ]
-      const idW = Math.max(...tasks.map((t) => `${t.project}#${t.task}`.length), 4)
-      for (const t of failedFirst) {
-        const id = `${t.project}#${t.task}`
-        // The terminal summary's own word for a task that runs every time
-        // by design; a reader must not take its row for a miss.
-        // A failure's row reads as the frame did — `failed (exit 137)` —
-        // and above 128 names the signal the number stands for (260).
-        const status = t.status === 'failed' ? `failed (exit ${t.exitCode})` : t.status
-        lines.push(
-          `  ${status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
-            `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-            reasonParts(t),
-        )
-      }
-    }
+    lines.push(...formatTaskRows(detail?.tasks ?? []))
     process.stdout.write(`${lines.join('\n')}\n`)
     return 0
   } finally {

@@ -615,6 +615,30 @@ test is telling the truth.
       owner's quoted design line keeps its ✗). Found by grepping the
       docs for the shapes 277 and 278 retired: no README, guide or
       blog post carries them, and this was the one claim left.
+280.  DONE (2026-09-16, the second-day reader at scale — the question
+      276's two packages could not ask): `vx last` after a red run on
+      the 1,000-project bench workspace (one leaf broken, the whole
+      graph requested) was 1,002 lines — the failure first, then 996 `cache-hit`
+      rows, so the terminal showed hits and the one row that mattered
+      sat a thousand lines above the prompt. The rows are now a pure
+      `formatTaskRows`: failures, then what executed or was skipped,
+      then hits, and past sixteen hits the rest fold into one line with
+      their count and where every row is (`--format json`); the
+      sixteen shown are the slowest restores, the one thing a hit's row
+      tells. The skipped `install` groups the footer named did not
+      appear in the replay at all — a group is not a recorded run —
+      and the footer's tasks legend showed no `skipped` for them
+      either while its Skipped section counted three: recorded here,
+      not chased (a group never starts by definition).
+281.  DONE (2026-09-16, the mismatch 280 recorded): the footer's
+      Skipped section listed three blocked `install` groups as "3 tasks
+      never started" while the tasks legend beside it counted no
+      skipped task — every counter (the tally, `--summarize`, the
+      report, the run records) excludes a group, and the section was
+      the one reader that did not. It now does: a group never starts
+      by definition, and its members' rows say what was blocked.
+      Pinned with a control (the same skip on a task with a command
+      is listed); cli.md says so.
 
 ## In flight
 

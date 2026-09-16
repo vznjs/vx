@@ -1620,7 +1620,12 @@ command that exits 137 on its own reads the same). Where the run's
 footer gave a reason, the row ends with it instead: `timed out`,
 `never ready: exited`, `2 sandbox violations`, and for a skipped task
 `after lib#build failed` (the v27 columns; rows older than them read
-as before).
+as before). Rows run failures first, then what executed or was
+skipped, then hits; past sixteen hits the rest fold into one line with
+their count (`… +980 more cache hits`) — a thousand-task warm run is a
+thousand rows otherwise, with the one failure a screen above the
+prompt — and the sixteen shown are the slowest restores, the one thing
+a hit's row tells. `--format json` lists every row.
 `vx last --list` prints the N most recent runs (default 10) with their
 run ids; `vx last <runId>` replays a specific one. `--format json`
 emits `{ invocation, tasks }` for scripting. An unknown run id fails
@@ -1774,8 +1779,11 @@ that never started, under the failure that blocked it — the footer's
 A skip's cause is followed through a chain of skips to the failure at
 its root; a skip with no failed upstream is fail-fast's ("after the run
 stopped (fail-fast)"), and one behind a task killed by a signal names
-it as aborted. Eight names per cause, then `… +N more`. Absent when
-nothing was skipped (`--continue=always` skips nothing).
+it as aborted. Eight names per cause, then `… +N more`. A blocked
+group (a task with no command) is not listed — it never starts by
+definition and no counter counts it, so the section and the tasks
+legend agree. Absent when nothing was skipped (`--continue=always`
+skips nothing).
 
 **Flaky section.** After the footer, a run names the tasks it just
 proved nondeterministic — from the local run history alone, no
