@@ -7,7 +7,7 @@
 import { Cache, noteSchemaReset } from '../cache/index.js'
 import { formatBytes } from './format.js'
 import { seeHelp } from './help.js'
-import { getInvocation, getRun, listInvocations } from '../orchestrator/index.js'
+import { exitSignal, getInvocation, getRun, listInvocations } from '../orchestrator/index.js'
 import { UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
@@ -158,9 +158,14 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         const id = `${t.project}#${t.task}`
         // The terminal summary's own word for a task that runs every time
         // by design; a reader must not take its row for a miss.
+        // A failure's row reads as the frame did — `failed (exit 137)` —
+        // and above 128 names the signal the number stands for (260).
+        const status = t.status === 'failed' ? `failed (exit ${t.exitCode})` : t.status
+        const signal = t.status === 'failed' ? exitSignal(t.exitCode) : undefined
         lines.push(
-          `  ${t.status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
-            `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}`,
+          `  ${status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
+            `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
+            `${signal === undefined ? '' : `  128 + ${signal}`}`,
         )
       }
     }

@@ -7,6 +7,7 @@ export {
   runPersistent,
   shellQuote,
   signalExitCode,
+  exitSignal,
   type CaptureConfig,
   execWord,
 } from './runner.js'

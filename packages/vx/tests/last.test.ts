@@ -28,6 +28,9 @@ const APP_CONFIG = `
       boom: {
         exec: { command: 'exit 3' },
       },
+      killed: {
+        exec: { command: 'kill -9 $$' },
+      },
     },
   }
 `
@@ -174,7 +177,24 @@ describe('vx last (e2e)', () => {
       expect(r.code).toBe(0)
       expect(r.out).toContain('— FAILED')
       expect(r.out).toContain('1 failed')
-      expect(r.out).toMatch(/failed\s+app#boom/)
+      // The row reads as the frame did: the exit code, and no signal part
+      // for a plain exit (item 260).
+      expect(r.out).toMatch(/failed \(exit 3\)\s+app#boom/)
+      expect(r.out).not.toContain('128 +')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a task killed by a signal replays with the exit code and the signal it stands for',
+    async () => {
+      const r1 = await vx(root, ['run', 'killed', '--all'])
+      expect(r1.code).not.toBe(0)
+      const r = await vx(root, ['last'])
+      expect(r.code).toBe(0)
+      expect(r.out).toMatch(
+        /failed \(exit 137\)\s+app#killed\s+\S+ms\s+\S+\s+no-cache.*128 \+ SIGKILL$/m,
+      )
     },
     TIMEOUT,
   )

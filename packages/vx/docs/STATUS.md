@@ -327,6 +327,18 @@ test is telling the truth.
       `$$` is the outer shell's pid, so `(kill -SEGV $$)` killed the
       outer shell and the runner saw the signal — the code-only shape
       needs an inner `sh -c`.
+260.  DONE (2026-09-16, the second-day reader of 257–259): `vx last`
+      showed a failed task as `failed` and nothing more, though the
+      record holds its exit code (the JSON had it). The row now reads
+      as the frame did — `failed (exit 137)` — and ends with the signal
+      an exit above 128 stands for (`128 + SIGKILL`), by one reverse
+      map beside `signalExitCode` (`exitSignal`, exec) that the frame's
+      verdict uses too. The frame's verdict lines themselves are not in
+      the record: the run history stores an outcome per task, not its
+      stderr, and a failure is never cached, so the line lives in the
+      run's own output alone — by design (a run record is a summary;
+      the log is the CI job's). Pinned in `last.test.ts` (a `kill -9 $$`
+      row ends in `128 + SIGKILL`; `exit 3` has no signal part).
 
 ## In flight
 

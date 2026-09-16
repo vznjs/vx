@@ -1579,7 +1579,10 @@ per-task table — status, id, duration, cache key, and for a task that
 executed, what it used (peak RSS and CPU parallelism, `312 MB · 1.4×
 cpu`: the runner's own record, and the number `@vzn/vx-schedule-history`
 reserves from; a hit spent nothing and shows nothing, and a task lighter
-than vx itself shows its CPU only) — failures first.
+than vx itself shows its CPU only) — failures first, each as the frame
+read it, `failed (exit 137)`, with the signal an exit above 128 stands
+for at the row's end (`128 + SIGKILL`; the shell's convention, so a
+command that exits 137 on its own reads the same).
 `vx last --list` prints the N most recent runs (default 10) with their
 run ids; `vx last <runId>` replays a specific one. `--format json`
 emits `{ invocation, tasks }` for scripting. An unknown run id fails
