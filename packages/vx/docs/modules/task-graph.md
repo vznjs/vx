@@ -19,11 +19,7 @@ export interface TaskNode {
   requested: boolean // user-requested vs dep-pulled
 }
 
-export interface ProjectEntry {
-  name: string
-  dir: string
-  config: ProjectConfig
-}
+import type { ProjectEntry } from '../workspace/index.js' // { name, dir, config }
 
 export interface BuildGraphOptions {
   projects: Map<string, ProjectEntry>

@@ -76,6 +76,19 @@ test is telling the truth.
       each removed line checked present in its new file before the
       write. The loop holds this entry; 14z and 14aa stay as the
       current handoffs.
+307.  DONE (2026-09-16, 14aa's named next: the module pages' "Public
+      surface" blocks against their modules). A probe over the 68
+      pages that have one (247 names) found four stale: config-imports
+      documented `scanLocalImports`, a function the module has not
+      exported since the channel was rewritten (its real surface is
+      `unprovidedBareImports` and `configImportOwners`);
+      execute-task still declared the hash trio that moved to
+      `task-hash.ts`; stable-keys listed two internal helpers as
+      public; task-graph declared `ProjectEntry`, which the workspace
+      module owns. Fixed, and the law is `tests/module-surface-drift.test.ts`:
+      the index maps each page to its files, and every name a block
+      declares must be exported there (a bullet may name a member).
+      Fails on the old pages.
 
 ## In flight
 

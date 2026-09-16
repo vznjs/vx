@@ -17,7 +17,16 @@ DECLARED. A config import is neither.
 
 ```ts
 /** Absolute resolved targets of the RELATIVE specifiers in `source`. */
-export function scanLocalImports(source: string, fromDir: string, loader: 'ts' | 'js'): string[]
+export function unprovidedBareImports(
+  source: string,
+  fromDir: string,
+  loader: 'ts' | 'js',
+): string[]
+
+export interface ConfigImportOwnersArgs {
+  /* workspaceRoot, projects, changed paths */
+}
+export function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set<string>>
 
 export function configImportOwners(a: {
   workspaceRoot: string
