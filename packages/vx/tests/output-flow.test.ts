@@ -599,6 +599,14 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     expect(text).not.toContain('::endgroup::')
   })
 
+  it('the annotation names the signal an exit above 128 stands for', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#boom')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 137 }))
+    expect(out.text()).toContain('::error title=one#boom::failed (exit 137, 128 + SIGKILL)\n')
+  })
+
   it('quiet hit one-liners stay plain (not a block, nothing to collapse)', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)

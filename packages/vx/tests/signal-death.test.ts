@@ -53,7 +53,7 @@ describe('a task killed by a signal', () => {
   it('a SIGKILL the runner saw is named with the OOM killer and a kill', () => {
     const r = vx(root, ['run', 'killed', '--all'])
     expect(r.code).toBe(1)
-    expect(r.text).toContain('failed (exit 137)')
+    expect(r.text).toContain('failed (exit 137, 128 + SIGKILL)')
     expect(r.text).toContain(
       `[vx] exit 137 is how the shell reports a death by SIGKILL (9): nothing catches it — on Linux the kernel's OOM killer`,
     )
@@ -62,7 +62,7 @@ describe('a task killed by a signal', () => {
   it('a 139 the shell reports for a subshell is named as SIGSEGV or its own exit', () => {
     const r = vx(root, ['run', 'segv', '--all'])
     expect(r.code).toBe(1)
-    expect(r.text).toContain('failed (exit 139)')
+    expect(r.text).toContain('failed (exit 139, 128 + SIGSEGV)')
     expect(r.text).toContain(
       `[vx] exit 139 is 128 + 11, the shell's report of a death by SIGSEGV in the last command (or that command exited 139 itself): the program crashed in native code`,
     )

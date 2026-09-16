@@ -347,6 +347,20 @@ test is telling the truth.
       widened deliberately, and the callout names the signal after the
       code, `128 + SIGKILL` — pinned in the plugin's suite; `exit 2`
       stays bare.
+262.  DONE (2026-09-16, the last copies of the number): core itself
+      spelled a failure's label in three places — `outcomeLabel` (the
+      frame footer, the status line, `--summarize`), the run report's
+      own `failed (exit N)` and the Actions annotation's — so the
+      signal of 259 reached the frame's verdict line and none of the
+      labels. One `failedLabel` in `events.ts` now — the exit code and,
+      above 128, the signal after a comma — everywhere a failure is
+      labelled; a plain exit's label is unchanged. Pinned on the
+      report, the annotation and the
+      frame footer (signal-death e2e). `vx last`'s row keeps the
+      signal as its last column part (its status column is 17 wide by
+      design) and `vx-otel`'s `vx.task.exit_code` stays the integer it
+      is: a derived string in structured telemetry is a consumer's
+      call, and none has asked.
 
 ## In flight
 
