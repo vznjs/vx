@@ -154,7 +154,10 @@ host's `process.env`):
 `resolveOutputs` is a simpler glob pass:
 
 - Globs run against the project dir (a literal is a tree here too).
-- Always-ignored paths excluded (`node_modules`, etc.).
+- `.git` and `.vx` excluded whatever the glob (`OUTPUT_NEVER`: no task
+  produces them and their loss is unrecoverable). Nothing else is —
+  `ALWAYS_IGNORE` does not apply here, since `node_modules/**` is an
+  install task's legitimate output.
 - Nested-project subtrees excluded (boundary isolation).
 - **No gitignore filter** — outputs like `dist/` are usually
   gitignored on purpose, and we still want to capture them.

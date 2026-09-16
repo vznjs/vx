@@ -353,13 +353,25 @@ async function resolveRuntimeValues(
 }
 
 /** Resolve declared output globs (project-relative) to actual produced files. */
+/**
+ * What no output glob reaches. An output is otherwise taken as written —
+ * `node_modules/**` IS an install task's output, so `ALWAYS_IGNORE` does not
+ * apply here — but these two directories no task produces, and a root
+ * project declaring `**` would otherwise wipe its repository and the cache
+ * it is restoring from (2026-09-16).
+ */
+const OUTPUT_NEVER = ['**/.git/**', '**/.vx/**']
+
 export async function resolveOutputs(args: {
   projectDir: string
   outputs: string[]
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   if (args.outputs.length === 0) return []
-  const excludeGlobs = boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs).map(globFor)
+  const excludeGlobs = [
+    ...OUTPUT_NEVER,
+    ...boundaryIgnorePatterns(args.projectDir, args.nestedProjectDirs),
+  ].map(globFor)
   const scanned = [
     ...(await scanUnion(asTrees(args.outputs), excludeGlobs, args.projectDir, 'outputs')),
   ]

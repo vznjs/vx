@@ -62,8 +62,9 @@ means for a directory it only ever adds to.
   not declare is a bug the [sandbox](../the-sandbox/) can catch, but
   the wipe itself is bounded by the declaration.
 - Another project's directory. Boundaries are hard.
-- `node_modules`, `.git` and the `.vx` cache directory, wherever a glob
-  would otherwise reach them.
+- `.git` and the `.vx` cache directory, whatever the glob says. Nothing
+  else is exempt: `node_modules/**` is a legitimate output of an install
+  task, and the wipe takes an output glob as written.
 
 A task with no `cache` block declares no outputs and owns nothing. It
 runs every time and vx does not touch its tree.

@@ -1575,11 +1575,14 @@ app#build — run 019f5a02-…
 A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
 names the hit and its tier, so only an executed run carries the word.
 A row's kind is what the key folded: `file` (an input file, by blob
-id), `env` (a declared variable, by digest), `package` (the project's
-own `package.json`), `workspace` (the fingerprint: the lockfile and the
-other root manifests), `config` (the evaluated task config) and
-`upstream` (a dependency's input key — a lockfile change moves it
-too, so that row rides with the fingerprint's).
+id), `env` (a declared variable, by digest), `runtime` and
+`ws-runtime` (a declared command's output, `inputs.runtime` and
+`inputs.workspaceRuntime`), `forward` (the argv forwarded after `--`),
+`package` (the project's own `package.json`), `workspace` (the
+fingerprint: the lockfile and the other root manifests), `config` (the
+evaluated task config), `upstream` (a dependency's input key — a
+lockfile change moves it too, so that row rides with the
+fingerprint's) and `plugin` (a `key` plugin's material, by name).
 The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still

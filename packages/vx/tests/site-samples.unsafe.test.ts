@@ -176,7 +176,8 @@ describe('the add-to-existing-repo page states the concurrency default `vx help`
 
 describe('the trusting-the-cache guide quotes what vx why says', () => {
   const guide = readFileSync(path.join(GUIDES, 'trusting-the-cache.md'), 'utf8')
-  it('every verdict sentence metrics.ts can print is a row of its table', () => {
+  const post = readFileSync(path.join(DOCS, 'blog', 'why-did-this-rerun.md'), 'utf8')
+  it("every verdict sentence metrics.ts can print is a row of its table, and of the post's", () => {
     const src = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'metrics.ts'),
       'utf8',
@@ -192,7 +193,10 @@ describe('the trusting-the-cache guide quotes what vx why says', () => {
       ...verdicts.matchAll(/'((?:cache key|this task declares no `cache` block)[^']*)'/g),
     ].map((m) => m[1]!)
     expect(notes.length).toBe(5)
-    for (const note of notes) expect(guide).toContain(note)
+    for (const note of notes) {
+      expect(guide).toContain(note)
+      expect(post).toContain(note)
+    }
   })
   it('its console sample carries the labels why.ts prints, and a row in its shape', () => {
     const why = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'why.ts'), 'utf8')
@@ -276,7 +280,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
 })
 
 describe('the strict-output-ownership post names what the wipe never touches', () => {
-  it('every ALWAYS_IGNORE directory is in its list', () => {
+  it('every OUTPUT_NEVER directory is in its list, and nothing claims more', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'strict-output-ownership.md'), 'utf8')
     const section = /## What the wipe never touches\n([\s\S]*?)\n## /.exec(page)
     expect(section).not.toBeNull()
@@ -284,10 +288,28 @@ describe('the strict-output-ownership post names what the wipe never touches', (
       path.resolve(import.meta.dir, '..', 'src', 'cache', 'inputs.ts'),
       'utf8',
     )
-    const arr = /const ALWAYS_IGNORE = \[([\s\S]*?)\n\]/.exec(src)
+    const arr = /const OUTPUT_NEVER = \[([^\]]*)\]/.exec(src)
     expect(arr).not.toBeNull()
     const names = [...arr![1]!.matchAll(/'\*\*\/([^/']+)\/\*\*'/g)].map((m) => m[1]!)
-    expect(names.length).toBeGreaterThan(2)
+    expect(names.length).toBe(2)
     for (const name of names) expect(section![1]!).toContain('`' + name + '`')
+    expect(section![1]!).toContain('`node_modules/**` is a legitimate output')
   })
+})
+
+describe('the why pages name every component kind the key records', () => {
+  const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cache', 'cache.ts'), 'utf8')
+  const kinds = [...new Set([...src.matchAll(/kind: '([\w-]+)'/g)].map((m) => m[1]!))]
+  it('cache.ts records ten kinds', () => {
+    expect(kinds.length).toBe(10)
+  })
+  for (const [label, file] of [
+    ['the why-did-this-rerun post', path.join(DOCS, 'blog', 'why-did-this-rerun.md')],
+    ['docs/cli.md', path.resolve(import.meta.dir, '..', 'docs', 'cli.md')],
+  ] as const) {
+    it(`${label} names each kind`, () => {
+      const text = readFileSync(file, 'utf8')
+      for (const kind of kinds) expect(text).toContain('`' + kind + '`')
+    })
+  }
 })
