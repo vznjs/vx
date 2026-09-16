@@ -262,6 +262,14 @@ test is telling the truth.
       runs its steps itself, so `vx last` holds no `ci` run to read the
       gate's shape from; the shard table (253) is that shape.
 
+256.  DONE (2026-09-16, the rows 254 read by eye): `why.test.ts` walks
+      a two-project workspace through an env change, the project's
+      `package.json`, the lockfile (the fingerprint row and the
+      upstream row it moves), the config and an upstream source, and
+      pins each verdict row by its kind and the hash pair; the hit is
+      the control with no row. `docs/cli.md` § `vx why` lists the six
+      kinds and what each folds.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
