@@ -4,7 +4,7 @@
 // a manifest under a per-process temp root — and defines the plugin from
 // there. `pluginSource` is the same for a plugin written into a fixture's
 // `vx.workspace.mjs` as source text.
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { definePlugin, type PluginHooks, type VxPlugin } from '../../src/index.js'
@@ -13,12 +13,42 @@ import { PLUGIN_IMPORT } from './local-workspace.js'
 let root: string | undefined
 const dirs = new Map<string, string>()
 
+/**
+ * The root is one per PROCESS — this module is evaluated once and shared by
+ * every file `bun test` runs in it — so no file's `afterAll` may own it, and
+ * `bun test` fires neither `exit` nor `beforeExit` (measured 2026-09-16; 164
+ * roots sat in /tmp after one day's gates). So the root carries the pid,
+ * and the next process to need one sweeps the roots of dead pids: the same
+ * reclaim the run lock uses. Litter is bounded to the processes still
+ * running, and the next `bun test` removes the last one's.
+ */
+function processRoot(): string {
+  if (root !== undefined) return root
+  const tmp = tmpdir()
+  for (const name of readdirSync(tmp)) {
+    const m = /^vx-plugin-pkgs-(\d+)-/.exec(name)
+    if (m === null || alive(Number(m[1]))) continue
+    rmSync(path.join(tmp, name), { recursive: true, force: true })
+  }
+  root = mkdtempSync(path.join(tmp, `vx-plugin-pkgs-${process.pid}-`))
+  return root
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    // EPERM: another user's live process; ESRCH: gone.
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
 /** `{ dir }` of a package named `name`, created on first use. */
 export function pluginOrigin(name: string): { dir: string } {
   const known = dirs.get(name)
   if (known !== undefined) return { dir: known }
-  root ??= mkdtempSync(path.join(tmpdir(), 'vx-plugin-pkgs-'))
-  const dir = path.join(root, name.replace(/[@/]/g, '_'))
+  const dir = path.join(processRoot(), name.replace(/[@/]/g, '_'))
   mkdirSync(dir, { recursive: true })
   writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name }))
   dirs.set(name, dir)

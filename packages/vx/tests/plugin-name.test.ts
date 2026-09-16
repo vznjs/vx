@@ -4,11 +4,11 @@
 // that names itself, or one whose name was overwritten after the stamp is
 // refused at the one boundary every plugin crosses. The refusals are the
 // claim; the accepted forms are the controls.
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { describe, expect, it } from 'bun:test'
+import { afterAll, describe, expect, it } from 'bun:test'
 import { definePlugin } from '../src/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
 import { PLUGIN_IMPORT, pluginOrigin, pluginSource, testPlugin } from './helpers/plugin.js'
@@ -40,10 +40,15 @@ describe('definePlugin — the name is the package name', () => {
     const bare = mkdtempSync(path.join(tmpdir(), 'vx-no-pkg-'))
     // The temp root's parents carry no package.json either, or the walk
     // would find one; assert the message names the walk's start.
-    expect(() => definePlugin({ dir: bare }, {})).toThrow(/no package.json above/)
     const unnamed = mkdtempSync(path.join(tmpdir(), 'vx-unnamed-pkg-'))
-    writeFileSync(path.join(unnamed, 'package.json'), JSON.stringify({ private: true }))
-    expect(() => definePlugin({ dir: unnamed }, {})).toThrow(/has no name/)
+    try {
+      expect(() => definePlugin({ dir: bare }, {})).toThrow(/no package.json above/)
+      writeFileSync(path.join(unnamed, 'package.json'), JSON.stringify({ private: true }))
+      expect(() => definePlugin({ dir: unnamed }, {})).toThrow(/has no name/)
+    } finally {
+      rmSync(bare, { recursive: true, force: true })
+      rmSync(unnamed, { recursive: true, force: true })
+    }
   })
 
   it('refuses an origin that is not import.meta', () => {
@@ -52,8 +57,13 @@ describe('definePlugin — the name is the package name', () => {
 })
 
 describe('the workspace boundary accepts only definePlugin output', () => {
+  const dirs: string[] = []
+  afterAll(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true })
+  })
   async function load(pluginsSource: string): Promise<unknown> {
     const dir = mkdtempSync(path.join(tmpdir(), 'vx-plugin-boundary-'))
+    dirs.push(dir)
     writeFileSync(
       path.join(dir, 'vx.workspace.mjs'),
       `${PLUGIN_IMPORT}export default { plugins: [${pluginsSource}] }\n`,
