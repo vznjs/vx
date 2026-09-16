@@ -64,7 +64,8 @@ export function defaultLogger(
   became ready, `never ready: …`; a sandboxed task its violation count).
 - **`focused`** — requested non-group nodes stream stdout/stderr raw
   and live (cache-hit replay included); a quiet hit prints the hit
-  one-liner; a skipped requested task is framed. Dependency-pulled
+  one-liner; a skipped requested task prints the skipped one-liner
+  with its blocker (`• blocked by lib#build`). Dependency-pulled
   nodes are silent on success/hit and fully framed on failure.
 - **`broad`** — executed tasks print one
   `● id ── executed • <duration>` line; failures get full frames;

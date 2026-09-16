@@ -260,6 +260,11 @@ describe('per-row status and cache words', () => {
     )
   })
 
+  it('names what blocked a skipped task in its status cell', () => {
+    const md = report([view({ taskId: 'a#b', status: 'skipped', blockedBy: 'a#lib' })])
+    expect(rows(md)[0]).toContain('| skipped (blocked by a#lib) |')
+  })
+
   it.each([
     ['skipped', 'skipped'],
     ['aborted', 'aborted'],

@@ -9,7 +9,7 @@
 // logger shares that stream, so redirecting it captures the whole run log
 // too. `--report-file` is the sink that carries the property end to end.
 
-import { failedLabel, type OutcomeView } from './events.js'
+import { failedLabel, skippedLabel, type OutcomeView } from './events.js'
 
 /**
  * One finished run, reduced to what a report needs. Used to live in
@@ -76,6 +76,8 @@ function statusWord(o: OutcomeView): string {
       return 'success'
     case 'failed':
       return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady)
+    case 'skipped':
+      return skippedLabel(o.blockedBy)
     default:
       return o.status
   }

@@ -409,16 +409,16 @@ Reported task lines share one column grid —
 the glyph SHAPE encodes the cache axis, the glyph COLOR (and the
 status word) the task axis.
 
-| Glyph | Cache axis                | Status word    |
-| ----- | ------------------------- | -------------- |
-| `⏺`   | miss — the task ran       | success/failed |
-| `►`   | fresh (up-to-date)        | success        |
-| `⇢`   | restored from local cache | success        |
-| `⇣`   | restored from remote      | success        |
-| `◼`   | failed                    | failed         |
-| `⊘`   | skipped (upstream failed) | skipped        |
-| `⦿`   | running (worker row)      | running        |
-| `▸`   | persistent (dev server)   | running        |
+| Glyph | Cache axis                 | Status word    |
+| ----- | -------------------------- | -------------- |
+| `⏺`   | miss — the task ran        | success/failed |
+| `►`   | fresh (up-to-date)         | success        |
+| `⇢`   | restored from local cache  | success        |
+| `⇣`   | restored from remote       | success        |
+| `◼`   | failed                     | failed         |
+| `⊘`   | skipped (blocked upstream) | skipped        |
+| `⦿`   | running (worker row)       | running        |
+| `▸`   | persistent (dev server)    | running        |
 
 Per-task visibility by outcome. Each cell is the SHAPE of what prints —
 `silent`, `one-liner`, `frame`, or a conditional; the table is pinned to
@@ -444,9 +444,12 @@ What the shapes mean in each column:
   `$ cmd` line so a requested task looks the same whether it ran or not.
 - **skipped** is the exception: it never started, so no frame was opened,
   and it produced nothing a frame could hold. The one-liner says
-  everything, and where the flow prints none (broad, a dependency) the
+  everything, the blocker included (`⊘ skipped app#deploy • blocked by
+lib#build`; a fail-fast skip, which nothing blocked, carries no
+  suffix), and where the flow prints none (broad, a dependency) the
   footer's Skipped section names the task under the failure that
-  blocked it.
+  blocked it. `--report` reads the same fact into the status cell,
+  `skipped (blocked by lib#build)`.
 - **`frame, or one-liner if quiet`** — a cache hit with stored stdout is
   worth a frame (the output is the point); a hit with nothing to replay
   compresses to one line, which is what keeps a 2000-task warm run

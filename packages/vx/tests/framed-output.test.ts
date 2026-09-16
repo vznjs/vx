@@ -185,14 +185,23 @@ describe('formatTaskBlock', () => {
     )
   })
 
-  it('skipped tasks show 0ms + skipped status', () => {
+  it('skipped tasks show 0ms + skipped status, and the blocker when one is recorded', () => {
+    // A fail-fast skip has no blocker: the run stopped, and the old header's
+    // "(upstream failed)" claimed one that never existed.
     const out = formatTaskBlock(
       node('@vzn/vx#deploy', 'aws s3 sync'),
       outcome('@vzn/vx#deploy', 'skipped'),
       {},
     )
-    expect(out).toBe(
-      '┌─ @vzn/vx#deploy > skipped (upstream failed)\n└─ @vzn/vx#deploy ── (0ms) skipped\n',
+    expect(out).toBe('┌─ @vzn/vx#deploy > skipped\n└─ @vzn/vx#deploy ── (0ms) skipped\n')
+    const blocked = formatTaskBlock(
+      node('@vzn/vx#deploy', 'aws s3 sync'),
+      outcome('@vzn/vx#deploy', 'skipped', { blockedBy: '@vzn/vx#build' }),
+      {},
+    )
+    expect(blocked).toBe(
+      '┌─ @vzn/vx#deploy > skipped (blocked by @vzn/vx#build)\n' +
+        '└─ @vzn/vx#deploy ── (0ms) skipped (blocked by @vzn/vx#build)\n',
     )
   })
 

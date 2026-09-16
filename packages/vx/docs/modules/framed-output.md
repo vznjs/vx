@@ -78,7 +78,7 @@ verbose table): `executed` / `restored-local` / `restored-remote` /
 | `cache-hit-remote` (restored)     | cyan `restored-remote • <hash>`                                                                                                                                                                                                              | dim `restored-remote` |
 | either hit with `restored: false` | green `up-to-date • <hash>`                                                                                                                                                                                                                  | dim `up-to-date`      |
 | `failed`                          | bold red `failed (exit N)`, `failedLabel` (+ `, 128 + SIGKILL` above 128; a timeout reads `failed (timed out, exit 143)`; a persistent task that never became ready reads `never ready: …`; a sandboxed task's violations are counted after) | same                  |
-| `skipped`                         | yellow `skipped (upstream …)`                                                                                                                                                                                                                | yellow `skipped`      |
+| `skipped`                         | yellow `skipped (blocked by <id>)`, `skippedLabel`; bare `skipped` for a fail-fast skip                                                                                                                                                      | same                  |
 
 Duration formats: `<1s` → `Nms`, ≥1s → `N.NNs`.
 

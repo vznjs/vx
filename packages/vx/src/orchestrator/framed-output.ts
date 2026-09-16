@@ -28,7 +28,7 @@
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { paint, type ColorSupport } from './colors.js'
 import { formatDuration } from './summary.js'
-import { outcomeLabel } from './events.js'
+import { outcomeLabel, skippedReason } from './events.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -350,17 +350,29 @@ function formatOutcomeRow(
   )
 }
 
-/** Compact one-liner for a skipped task — it never ran (blank time). */
-export function formatTaskSkippedLine(node: TaskNode, colors: ColorSupport = NO_COLOR): string {
-  return formatTaskRow(
-    paint(WARN, '\u2298', colors),
-    null,
-    'skipped',
-    WARN,
-    '',
-    '',
-    paintTaskId(node, colors),
-    colors,
+/**
+ * Compact one-liner for a skipped task — it never ran (blank time). The
+ * blocker rides the row (`• blocked by lib#build`): the footer's Skipped
+ * section groups the same fact, but the row is where the reader's eye is.
+ */
+export function formatTaskSkippedLine(
+  node: TaskNode,
+  colors: ColorSupport = NO_COLOR,
+  blockedBy?: string,
+): string {
+  const why = skippedReason(blockedBy)
+  const suffix = why === '' ? '' : ` ${paint('', `• ${why}`, colors, { dim: true })}`
+  return (
+    formatTaskRow(
+      paint(WARN, '\u2298', colors),
+      null,
+      'skipped',
+      WARN,
+      '',
+      '',
+      paintTaskId(node, colors),
+      colors,
+    ) + suffix
   )
 }
 
@@ -482,7 +494,7 @@ function formatBlockHeader(o: TaskOutcome, colors: ColorSupport): string {
       // carries the outcome like every other status.
       return paint(ERROR, word, colors, { bold: true })
     case 'skipped':
-      return paint(WARN, 'skipped (upstream failed)', colors)
+      return paint(WARN, word, colors)
     default:
       return dim(word)
   }
