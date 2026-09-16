@@ -77,6 +77,26 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
       }
     },
   ],
+  [
+    "cannot find '<name>' — no node_modules above the config provides it; install the workspace's dependencies first",
+    // Raised by the loader before the evaluation (item 239): the scratch
+    // directory has no node_modules anywhere above it, the shape Bun would
+    // otherwise auto-install from the registry.
+    async () => {
+      const dir = scratchDir()
+      const file = path.join(dir, 'vx.config.ts')
+      await Bun.write(
+        file,
+        "import { preset } from 'nope-pkg'\nexport default { tasks: {}, ...preset }\n",
+      )
+      try {
+        await loadProjectConfig(file)
+        return null
+      } catch (err) {
+        return (err as Error).message
+      }
+    },
+  ],
   ['tasks must be an object keyed by task name', () => validated({ tasks: [ok] })],
   ['<level> has unknown field "<key>"', () => validated({ tasks: { b: { ...ok, caches: {} } } })],
   [
