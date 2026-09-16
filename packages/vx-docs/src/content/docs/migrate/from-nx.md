@@ -71,7 +71,7 @@ commands, and fill the TODOs.
 | `nx affected`                        | `vx run <task> --affected`                      |
 | `nx run-many --target=build`         | `vx run build --all`                            |
 | `nx build app`                       | `vx run app#build`                              |
-| local + Nx Cloud cache               | local + remote cache (Turborepo wire)           |
+| local + Nx Cloud cache               | local + a remote-cache plugin (`nxCache()` keeps a self-hosted Nx cache) |
 
 `namedInputs` (Nx's reusable input sets) don't have a schema equivalent
 in vx — but because the config is TypeScript, you express the same thing
@@ -118,8 +118,8 @@ running and caching without the platform.
 | ----------------------------- | --------------------------- |
 | `nx build app`                | `vx run app#build`          |
 | `nx run-many -t build`        | `vx run build --all`        |
-| `nx affected -t test`         | `vx run test --filter '...[origin/main]'` (changed + dependents; `--affected` alone is the changed set) |
-| `nx run app:build --verbose`  | `vx run app#build --verbosity 2`       |
+| `nx affected -t test`         | `vx run test --affected` (changed projects and their dependents) |
+| `nx run app:build --verbose`  | `vx run app#build --verbosity 1`       |
 | `nx graph`                    | `vx run build --graph`      |
 | `nx reset`                    | *(no daemon — nothing to reset)* |
 

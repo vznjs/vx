@@ -447,6 +447,24 @@ test is telling the truth.
       formatter un-indented the line, and a chain that printed the
       format verdict instead of gating on it committed it — CLAUDE.md
       has both rules; read them before writing an entry.
+305.  DONE (2026-09-16, the site's introduction, two migration pages
+      and two concept pages read against source). The introduction's
+      schedule-history bullet ended in a botched splice — half a
+      sentence and a stray backtick from a removed line beneath it —
+      live on the front page; its stage table
+      lacked `admit` (the site's hook pin covered the extensibility
+      table only; it covers this one now); its `@vzn/vx-migrate` link
+      went to the remote-caching guide; and "still faster cold than Nx
+      is daemon-warm" is false on every table the benchmarks page
+      holds (a cold run is the tasks). from-turborepo said Bun ≥ 1.3
+      (1.4) and sent a Turbo-cache user to write a plugin
+      (`turboCache()` reads `TURBO_TOKEN` already). from-nx mapped
+      `nx affected` to the changed-only filter with a note that
+      `--affected` "alone is the changed set" (287 made it the
+      dependents too; the class grep missed this copy because it was
+      a table cell), and Nx Cloud to "the Turborepo wire" (`nxCache()`
+      keeps a self-hosted Nx cache). how-vx-works' stage 5 now names
+      `admit`. why-vx-is-fast's numbers match the benchmarks page.
 
 ## In flight
 
