@@ -890,6 +890,16 @@ file created later is not covered — grant its directory instead. On both
 platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 `read: ['**/*']` lets a task list its own cwd.
 
+**A write grant's shape.** A write path that does not exist yet is
+created before the task starts (a mount needs something to bind), and a
+literal names a FILE: `write: ['dist/vx']` is an empty `dist/vx` the
+build overwrites. A directory the task will create is spelled with a
+trailing slash — `write: ['coverage/']` — or as a glob (`'dist/**'`).
+Spell a directory as a bare literal and the task's own `mkdir` meets
+"File exists"; the failure then says so, names the `dir/` spelling, and
+vx removes the empty file it made (it takes back any placeholder the
+task never wrote, so an unwritten one is never archived as an output).
+
 **`network` domain lists are per-RUN, not per-task.** SRT runs one
 filtering proxy per `vx run` and checks every request against the
 allowlist that proxy was started with, so vx arms it with the union of

@@ -388,6 +388,37 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       items are; handoffs 14g–14i to the next-log file. What stays is
       today's arc (203 onward) and the current handoffs. The record
       paragraph names every file; the 105–144 file's header points on.
+218.  DONE (2026-09-16, a workspace under a path with a space, walked
+      as `probe`): the path itself was fine — every verb, the sandbox,
+      the lock, `--frozen` — but the probe's own config found a trap
+      that has nothing to do with spaces. A literal sandbox write grant
+      on a path that does not exist yet (`write: ['dist']` on a cold
+      tree, the site guide's own `'coverage'`) is pre-created as an
+      empty FILE so bwrap has something to bind, so the task's `mkdir -p
+dist` died with "File exists" from its own tool, and the empty file
+      survived every later clean (`dist/**` matches nothing under a
+      file), so every run after met it again until someone deleted it
+      by hand. Now: a directory is spelled `dist/` (or a glob, as
+      before) and is created as one; the empty files vx makes are
+      returned with the request and swept after the attempt — the ones
+      the task never wrote (still empty, mtime untouched) are removed,
+      so an unwritten placeholder is never archived as an output and a
+      wrong spelling costs one failed run, not a poisoned tree; and a
+      failed task with nothing else reported gets one line per untouched
+      placeholder naming the `dir/` spelling, in the violations section
+      beside the failure, the way the missing-cwd read grant is named.
+      Pinned: `sandbox-request.test.ts` (a literal is a file and
+      reported, `dist/` and a glob are directories, an existing
+      directory stays one, the spelling does not change the grant; the
+      sweep removes an untouched placeholder and keeps a written one or
+      a directory put in its place) and two cases in the unsafe suite
+      (the trap: run not ok, the line names `dist/`, no `dist` left
+      behind; `dist/` fills). `docs/schema.md` § A write grant's shape,
+      the site's sandboxing guide (its example says `coverage/` now) and
+      `modules/sandbox-request.md` say it. Seen on the way, not done
+      here: a config array where an object is expected reports `unknown
+field "0"`, and `vx info` counts a config that fails to load as
+      zero tasks without saying so.
 
 ## In flight
 

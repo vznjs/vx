@@ -3,7 +3,7 @@
 // (bwrap cannot bind a path that does not exist). Shared by the cached path
 // (through the executor) and the persistent path (spawned in execute-task).
 
-import { mkdir, readdir, realpath, stat } from 'node:fs/promises'
+import { mkdir, readdir, realpath, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import type { ExecConfig } from '../config.js'
@@ -124,7 +124,7 @@ export async function sandboxRequestFor(
   node: TaskNode,
   sandbox: NonNullable<ExecConfig['sandbox']>,
   workspaceRoot: string,
-): Promise<NonNullable<ExecuteRequest['sandbox']>> {
+): Promise<SandboxRequest> {
   const depDirs = [
     path.join(node.projectDir, 'node_modules'),
     path.join(workspaceRoot, 'node_modules'),
@@ -138,8 +138,8 @@ export async function sandboxRequestFor(
   // bwrap cannot --bind a path that does not exist: the bind silently
   // becomes a no-op and writes to it appear to succeed but never land.
   // Pre-create what the task said it will write.
-  await prepareOutputsForBind(node.projectDir, sandbox.allow?.write ?? [])
-  return {
+  const placeholders = await prepareOutputsForBind(node.projectDir, sandbox.allow?.write ?? [])
+  const request: NonNullable<ExecuteRequest['sandbox']> = {
     // Only what the task declared, plus node_modules. Write paths are
     // readable too: a task that writes `dist/x` expects to read it back
     // (`tsc --incremental` re-reads .tsbuildinfo).
@@ -159,6 +159,24 @@ export async function sandboxRequestFor(
     reportWithin: node.projectDir,
     config: resolveSandboxConfig(sandbox, node.projectDir),
   }
+  return { sandbox: request, placeholders }
+}
+
+/**
+ * The sandbox half of the request, plus the empty files vx created so a
+ * literal write grant had something to bind (`placeholders`). They are
+ * vx's, not the task's, until the task writes them: `sweepPlaceholders`
+ * takes back the ones it never touched.
+ */
+export interface SandboxRequest {
+  sandbox: NonNullable<ExecuteRequest['sandbox']>
+  placeholders: Placeholder[]
+}
+
+/** An empty file vx created for a bind, and its mtime at creation. */
+export interface Placeholder {
+  path: string
+  mtimeMs: number
 }
 
 /**
@@ -192,11 +210,20 @@ async function linkedDeps(dirs: readonly string[]): Promise<string[]> {
 }
 
 /**
- * Ensure each declared output path exists on the host as either an
- * empty file (for literal output specs) or a directory (for globbed
- * specs) so bwrap's --bind can find a real fs entry to mount. Without
- * this, writes inside the sandbox to a non-existent allowWrite path
- * silently disappear (bwrap creates a tmpfs that evaporates on exit).
+ * Ensure each declared write path exists on the host as either an empty
+ * file (a literal path) or a directory (a glob's static prefix, or a
+ * literal ending in `/`) so bwrap's --bind can find a real fs entry to
+ * mount. Without this, writes inside the sandbox to a non-existent
+ * allowWrite path silently disappear (bwrap creates a tmpfs that
+ * evaporates on exit).
+ *
+ * A literal that names nothing yet is a FILE — `dist/vx` for `bun build
+ * --outfile dist/vx` — and the task that meant a directory (`write:
+ * ['dist']`, then `mkdir -p dist`) met "File exists" from its own tool,
+ * with the empty file left behind for every later run to meet again
+ * (its `dist/**` clean matches nothing under a file; 2026-09-16). So a
+ * directory is spelled `dist/`, and the files created here are returned
+ * so the caller can take back the ones the task never wrote.
  *
  * `cleanOutputs` ran just before this in the cache-enabled path, so
  * we know any stale content was wiped; what's left is to materialize
@@ -205,7 +232,8 @@ async function linkedDeps(dirs: readonly string[]): Promise<string[]> {
 async function prepareOutputsForBind(
   projectDir: string,
   outputs: readonly string[],
-): Promise<void> {
+): Promise<Placeholder[]> {
+  const placeholders: Placeholder[] = []
   for (const g of outputs) {
     const hasWildcard = /[*?[\]]/.test(g)
     // A grant OUTSIDE the project is the user's own path — never joined
@@ -222,8 +250,8 @@ async function prepareOutputsForBind(
       await mkdir(abs, { recursive: true }).catch(() => undefined)
       continue
     }
-    if (hasWildcard) {
-      const abs = path.join(projectDir, staticPrefix(g))
+    if (hasWildcard || g.endsWith('/')) {
+      const abs = path.join(projectDir, hasWildcard ? staticPrefix(g) : g)
       await mkdir(abs, { recursive: true })
     } else {
       const abs = path.join(projectDir, g)
@@ -233,8 +261,47 @@ async function prepareOutputsForBind(
       if (await stat(abs).catch(() => undefined)) continue
       await mkdir(path.dirname(abs), { recursive: true })
       await Bun.write(abs, '')
+      placeholders.push({ path: abs, mtimeMs: (await stat(abs)).mtimeMs })
     }
   }
+  return placeholders
+}
+
+/**
+ * Remove the placeholder files the task never wrote — still empty, mtime
+ * untouched — and return their paths. What the task wrote is its output
+ * and stays; what it did not is vx's own litter, and litter under a
+ * declared output would be archived as the task's (an empty `dist/vx`
+ * saved as a build) or, as a file where the task wanted a directory,
+ * would fail every later run the same way.
+ */
+export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]> {
+  const untouched: string[] = []
+  for (const p of placeholders) {
+    const st = await stat(p.path).catch(() => undefined)
+    if (st === undefined || !st.isFile() || st.size !== 0 || st.mtimeMs !== p.mtimeMs) continue
+    await rm(p.path, { force: true })
+    untouched.push(p.path)
+  }
+  return untouched
+}
+
+/**
+ * The line a failed task gets for a placeholder it never wrote. Not a
+ * diagnosis — the task may have died before its first write — but the
+ * one clue to the trap: a grant that meant a directory is bound as a
+ * file, and the task's own `mkdir` says only "File exists". Added when
+ * the task already failed and the sandbox reported nothing else, so it
+ * never reddens a pass and never buries a real denial.
+ */
+export function untouchedPlaceholderLine(projectDir: string, placeholder: string): string {
+  const rel = path.relative(projectDir, placeholder).split(path.sep).join('/')
+  return (
+    `vx: the sandbox write grant \`${rel}\` named nothing on disk, so vx bound it as an empty ` +
+    `file, which the task never wrote (removed again). If the task creates a directory there ` +
+    `("File exists" from its own mkdir), spell the grant \`${rel}/\` — a literal without the ` +
+    `slash is a file.`
+  )
 }
 
 /** `~/x` against the user's home; anything else unchanged. */

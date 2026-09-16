@@ -27,7 +27,12 @@ import {
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { span } from '../util/index.js'
-import { sandboxRequestFor } from './sandbox-request.js'
+import {
+  type Placeholder,
+  sandboxRequestFor,
+  sweepPlaceholders,
+  untouchedPlaceholderLine,
+} from './sandbox-request.js'
 import { saveMiss, type OutputDirSnapshot } from './miss-save.js'
 import { restoreHit } from './hit-restore.js'
 // The hit path's entry stays importable from here (tests).
@@ -233,7 +238,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let bridgeTag: string | undefined
   if (step.sandbox !== undefined) {
     await args.armSandbox?.()
-    const sb = await sandboxRequestFor(node, step.sandbox, args.workspaceRoot)
+    const { sandbox: sb } = await sandboxRequestFor(node, step.sandbox, args.workspaceRoot)
     const wrapped = await wrapSandboxedCommand({
       command: plainCommand,
       cwd: node.projectDir,
@@ -482,6 +487,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // the single source of truth, and a violation fails the task (below).
   const userSandbox = cfg.exec?.sandbox !== undefined
   let violations: SandboxViolation[] = []
+  // The empty files the sandbox request created for a literal write grant;
+  // swept after the attempt (`sweepPlaceholders`).
+  let placeholders: Placeholder[] = []
 
   // Cache miss path (or caching disabled), up to `1 + retries` attempts.
   // Explicit config wins over the run-level `--retry` default, including
@@ -536,13 +544,26 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // no other trace. Rethrown unchanged — the scheduler still classifies it,
     // and still prints it plainly for a UserError.
     const endExec = span('miss: execute')
-    const res = await args.executor.execute(req).catch((err: unknown) => {
+    const res = await args.executor.execute(req).catch(async (err: unknown) => {
       const message = err instanceof Error ? err.message : String(err)
       log.taskStderr(node, `${message}\n`)
+      await sweepPlaceholders(placeholders)
       throw err
     })
     endExec()
     violations = [...res.violations]
+    // A placeholder the task never wrote is not its output: take it back
+    // before the outputs are collected. On a failure it is also the one
+    // clue to a grant that meant a directory — say so beside the failure.
+    const untouched = await sweepPlaceholders(placeholders)
+    if (res.exitCode !== 0 && violations.length === 0) {
+      for (const p of untouched) {
+        violations.push({
+          timestamp: new Date(),
+          line: untouchedPlaceholderLine(node.projectDir, p),
+        })
+      }
+    }
     // Fail-on-violation, on BOTH platforms: macOS reads SRT's structured
     // violation store, Linux parses the strace log the sandboxed spawn
     // writes. (This comment used to claim Linux violations are "always 0"
@@ -655,7 +676,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     if (!userSandbox) return base
     await args.armSandbox?.()
-    return { ...base, sandbox: await sandboxRequestFor(node, step.sandbox!, args.workspaceRoot) }
+    const sb = await sandboxRequestFor(node, step.sandbox!, args.workspaceRoot)
+    placeholders = sb.placeholders
+    return { ...base, sandbox: sb.sandbox }
   }
 
   const wallclockEndNs = process.hrtime.bigint() - args.runStartHrTimeNs

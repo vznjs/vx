@@ -86,7 +86,7 @@ grants a thing is the vocabulary that silences it:
 sandbox: {
   allow: {
     read: ['.', '~/.cache/ms-playwright', '/etc/ssl/certs'],
-    write: ['dist/**', 'coverage'],
+    write: ['dist/**', 'coverage/'],
     network: ['registry.npmjs.org', '*.sentry.io'],
     systemInfo: ['vfs.disk-space'],
     unixSockets: ['/var/run/docker.sock'],
@@ -101,7 +101,12 @@ sandbox: {
 
 - **`read` / `write`** — paths or globs, project-relative, absolute, or
   `~`-expanded. A write grant is readable too (`tsc --incremental`
-  re-reads its own `.tsbuildinfo`).
+  re-reads its own `.tsbuildinfo`). A write path that does not exist
+  yet is created before the task starts, and a literal is a **file**
+  (`'dist/vx'`); a directory the task will create ends in a slash
+  (`'coverage/'`) or is a glob (`'dist/**'`). Spell a directory as a
+  bare literal and the task's own `mkdir` fails with "File exists" —
+  the failure names the `dir/` spelling.
 - **`network`** — `true` for anywhere, or an allowlist of domains
   (wildcards allowed). `deny.network` is evaluated first. Domain lists
   are enforced by one filtering proxy per run, so the effective allowlist
