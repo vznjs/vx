@@ -272,6 +272,63 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  // A root package.json with no `workspaces` is single-project mode, and a
+  // packages/app full of scripts beside it is invisible: `vx init` said
+  // "no package.json scripts" and `vx run` said "run vx init" (item 248).
+  const bareRoot = async (): Promise<string> => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-bare-'))
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'w', private: true }))
+    await addPackage(root, 'app', { build: 'tsc' })
+    await addPackage(root, 'lib', { test: 'vitest' })
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    return root
+  }
+  const HINT =
+    'package.json declares no `workspaces` (and there is no pnpm-workspace.yaml), so the root is the only project and 2 package.json below it are not: packages/app, packages/lib. Add `"workspaces": ["packages/*"]` to package.json and re-run.'
+
+  it('`vx init` on a root without `workspaces` names the packages its globs never reach', async () => {
+    const root = await bareRoot()
+    try {
+      const r = await vx(root, ['init'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(r.out).toContain(`vx init: ${HINT}`)
+      expect(r.out).not.toContain('no package.json scripts')
+      expect(r.out).not.toContain('Declare tasks in a')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('`vx run` there says the same, not `vx init`', async () => {
+    const root = await bareRoot()
+    try {
+      const r = await vx(root, ['run', 'build', '--all'])
+      expect(r.code).not.toBe(0)
+      const text = `${r.out}${r.err}`
+      expect(text).toContain(HINT)
+      expect(text).not.toContain('run `vx init`')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  // CONTROL: with the globs declared, the same tree is a workspace and init writes both configs.
+  it('the same tree with `workspaces` declared is a workspace', async () => {
+    const root = await bareRoot()
+    try {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'w', private: true, workspaces: ['packages/*'] }),
+      )
+      const r = await vx(root, ['init', '--dry'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(r.out).toContain('package.json scripts → vx.config.ts')
+      expect(r.out).not.toContain('declares no `workspaces`')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('a deleted dist is rebuilt on the next run', async () => {
     const root = await makeRoot('vx-init-rebuild-')
     await addPackage(root, 'w', { build: 'mkdir -p dist && cp src/a.txt dist/a.txt' })

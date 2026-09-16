@@ -69,6 +69,11 @@ When nothing claims `start` — a standalone package, or a subdirectory
 of a single-project repo — the nearest candidate wins. A bare
 `package.json` without `workspaces` means single-project mode: the root
 itself IS the project. Throws a `UserError` if no candidate is found.
+`unreachedPackages(workspace)` is the failure-path check for that mode:
+one shallow scan (two levels, `node_modules` and dot directories
+skipped) for the `package.json` files the missing globs never reach, and
+`unreachedHint` is the line `vx init` and `vx run` print for them —
+the cause, the packages, the `workspaces` entry to add.
 
 ### `loadWorkspace(root)`
 

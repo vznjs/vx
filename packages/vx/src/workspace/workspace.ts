@@ -161,6 +161,49 @@ async function readPackageGlobs(dir: string): Promise<string[] | null> {
 }
 
 /**
+ * Package manifests the globs never reach, in single-project mode only: a
+ * root `package.json` with no `workspaces` field makes the root the one
+ * project, and a `packages/app/package.json` full of scripts beside it is
+ * then invisible — `vx init` said "no package.json scripts" and `vx run`
+ * said "run vx init" (2026-09-16). One shallow scan, two levels, on the
+ * failure path only; `node_modules` and dot directories are skipped.
+ */
+export async function unreachedPackages(workspace: Workspace): Promise<string[]> {
+  if (workspace.packageGlobs.length !== 1 || workspace.packageGlobs[0] !== '.') return []
+  const found: string[] = []
+  // Two scans: Bun.Glob does not expand a brace whose alternatives hold a
+  // slash (`{*,*/*}/package.json` matched nothing, measured 2026-09-16).
+  for (const pattern of ['*/package.json', '*/*/package.json']) {
+    for await (const rel of new Bun.Glob(pattern).scan({
+      cwd: workspace.root,
+      onlyFiles: true,
+      dot: false,
+    })) {
+      const posix = rel.split(path.sep).join('/')
+      if (posix.startsWith('node_modules/') || posix.includes('/node_modules/')) continue
+      found.push(posix.slice(0, -'/package.json'.length))
+    }
+  }
+  return found.sort()
+}
+
+/** The line for `unreachedPackages`' finding: the cause, the packages, the glob to add. */
+export function unreachedHint(unreached: readonly string[]): string {
+  const n = unreached.length
+  const shown = unreached.slice(0, 3).join(', ') + (n > 3 ? ` and ${n - 3} more` : '')
+  const globs = [
+    ...new Set(unreached.map((d) => (d.includes('/') ? `${path.posix.dirname(d)}/*` : d))),
+  ]
+    .map((g) => `"${g}"`)
+    .join(', ')
+  return (
+    `package.json declares no \`workspaces\` (and there is no pnpm-workspace.yaml), so the root is the only project ` +
+    `and ${n} package.json below it ${n === 1 ? 'is' : 'are'} not: ${shown}. ` +
+    `Add \`"workspaces": [${globs}]\` to package.json and re-run.`
+  )
+}
+
+/**
  * Parse a workspace manifest, naming the FILE on failure. The raw parser
  * errors (`Failed to parse JSON`) carry no path, so in a 1000-package
  * monorepo they say nothing about which manifest is broken.

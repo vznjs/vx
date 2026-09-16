@@ -142,6 +142,23 @@ test is telling the truth.
       `unshare -n` and `bwrap --unshare-net`; and an unknown tag was
       already one line ("download failed (404)").
 
+248.  DONE (2026-09-16, the minimal-image persona at `vx init`): a root
+      `package.json` with no `workspaces` field beside a `packages/app`
+      full of scripts is single-project mode by design (the root is the
+      one project), so `vx init` said "no package.json scripts to turn
+      into tasks" and wrote an example config, and `vx run` said "run
+      vx init" — the scripts existed, the globs did not, and the
+      count-0 hint of 238 never fires because the root counts as one.
+      `unreachedPackages` (single-project mode only, on the failure path
+      only: one shallow scan two levels down, `node_modules` and dot
+      directories skipped) and `unreachedHint` give both verbs one
+      line: the cause, the packages, the `workspaces` entry to add.
+      Pinned in `init.test.ts` with a control (the same tree with the
+      globs declared is a workspace); both fail without the fix.
+      Measured on the way: Bun.Glob does not expand a brace whose
+      alternatives hold a slash (`{*,*/*}/package.json` matches
+      nothing) — two scans.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items

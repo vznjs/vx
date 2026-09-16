@@ -46,6 +46,8 @@ export {
   findWorkspaceRoot,
   listProjects,
   loadWorkspace,
+  unreachedHint,
+  unreachedPackages,
   memberBaseDirs,
   resolveCacheDir,
   type ProjectEntry,
