@@ -4,12 +4,14 @@ name: npm publish
 # Node launcher that execs a prebuilt standalone binary shipped per-platform
 # (@vzn/vx-<os>-<cpu>) as an optionalDependency. No Bun, no download.
 #
-# Auth is npm **Trusted Publishing (OIDC)** — no NPM_TOKEN secret (a scope-wide
-# NPM_TOKEN, if set, is used instead — see the Publish step). The job requests
-# an OIDC token (`id-token: write`) and npm (>= 11.5.1) exchanges it for a
-# short-lived, package-scoped credential + provenance. Configure a Trusted
-# Publisher on npmjs.com for EACH of the FIVE package names (@vzn/vx and the
-# four @vzn/vx-<target>), linking this repo + this workflow.
+# Auth is npm **Trusted Publishing (OIDC)** — this file reads no secret and
+# sets no NODE_AUTH_TOKEN (a token in the environment would take precedence
+# over the OIDC exchange, which is why none is set — see the Publish steps).
+# The job requests an OIDC token (`id-token: write`) and npm (>= 11.5.1)
+# exchanges it for a short-lived, package-scoped credential + provenance.
+# Configure a Trusted Publisher on npmjs.com for EACH of the FIVE package
+# names (@vzn/vx and the four @vzn/vx-<target>), linking this repo + this
+# workflow.
 #
 # - release published   → publish the release version
 # - workflow_dispatch   → publish, or dry-run, a chosen version manually.

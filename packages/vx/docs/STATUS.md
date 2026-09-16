@@ -971,6 +971,15 @@ fetch-depth: 0) or name the base`. Pinned three ways in
       summary and the PR check run. A section shows the one-line
       declaration, the `checks: write` permission and the no-token
       behaviour, and points at the README for the rest.
+201.  DONE (2026-09-16, a claim corrected in place): item 198's
+      "Releases" paragraph said `npm.yml` "uses a scope-wide
+      `NPM_TOKEN` instead if one is set", repeating the workflow's own
+      header comment; the file reads no secret and no step sets a
+      token, so a publish through it is the OIDC exchange or nothing,
+      and 0.0.21 having published through it means the trusted
+      publishers are configured — launch-checklist 1 is done bar
+      deleting a secret nothing reads. The header comment says what
+      the steps do now.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1104,23 +1113,21 @@ open is the one that needs a macOS box:
    platform.
 
 **Releases.** v0.0.21 is on npm, the four platform packages with it
-(2026-09-15, handoff 14d in the history file). `npm.yml` publishes
-through npm's OIDC trusted publishing and uses a scope-wide `NPM_TOKEN`
-instead if one is set; which path served 0.0.21 is not recorded here.
-The v0.0.18 record (the token's `E401`, the held packages, the dry run
-of the token-free workflow) moved to the history file with the items
-above.
+(2026-09-15, handoff 14d in the history file), published through
+`npm.yml`, which reads no secret and sets no token — its publish is the
+OIDC exchange or nothing — so the trusted publishers on npmjs.com are in
+place. The v0.0.18 record (the token's `E401`, the held packages, the dry
+run of the token-free workflow) moved to the history file with the
+items above.
 
 **Launch checklist (2026-09-10, the owner's "what is needed to go
 fully live").** What a public announcement needs, in order, with the
 state of each:
 
-1. OWNER: npm trusted publishing — on npmjs.com add the GitHub Actions
-   publisher (owner `vznjs`, repo `vx`, workflow `npm.yml`, no
-   environment) to `@vzn/vx` and the four platform packages, then delete
-   the `NPM_TOKEN` secret if it still exists, so the OIDC path is the
-   only one (0.0.21 published on 2026-09-15; which path served it is
-   not recorded here). Documented in `docs/cli.md` § Releasing.
+1. DONE by 2026-09-15 (0.0.21 published through the token-free
+   `npm.yml`, so the trusted publishers exist). OWNER residue: delete
+   the `NPM_TOKEN` repository secret if it still exists — nothing reads
+   it. Documented in `docs/cli.md` § Releasing.
 2. OWNER: cut the release — a GitHub release with the tag is the whole
    process (`release.yml` builds and signs the binaries, `npm.yml`
    publishes with provenance). Pick the version the articles will name;
