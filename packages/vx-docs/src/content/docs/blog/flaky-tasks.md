@@ -47,8 +47,9 @@ The section is not printed when nothing was flaky. `vx info` keeps the
 standing list across runs, `--summarize` carries it as typed data
 (`flaky: { passes, failures, attempts }` on the task, so a consumer can
 tell a break from a flake without parsing text), and the MCP
-`getRunHistory` tool reports the same signal to an agent, so an agent
-does not learn to shrug at a repeated failure on changing inputs.
+`getWorkspaceInfo` tool reports the same standing list to an agent, so
+an agent does not learn to shrug at a repeated failure on changing
+inputs.
 
 ## Why it is free
 

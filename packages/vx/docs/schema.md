@@ -235,7 +235,10 @@ daemon, a Docker socket, a device, a VPN-only host.
   nothing.
 - **Pinned by inference too.** A `persistent` task, and anything that
   depends on one (transitively), is pinned regardless of what it
-  declares — a worker cannot reach a port served on the submitter.
+  declares — a worker cannot reach a port served on the submitter. So is
+  a task with a `sandbox` block, and its dependants: the sandbox is this
+  machine's machinery, and a boundary a worker does not enforce would
+  pass vacuously.
 - **Placement is decided once per task**, before scheduling, so the
   scheduler knows which pool a task will occupy (see
   [execution.md](execution.md#executor-pools)).

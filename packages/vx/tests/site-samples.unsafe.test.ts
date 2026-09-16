@@ -9,6 +9,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
 import { formatTaskHitLine } from '../src/orchestrator/framed-output.js'
+import { formatFlakySection } from '../src/orchestrator/summary.js'
+import { localExecutor } from '../src/exec/local-executor.js'
 import { CACHE_LAYER_METHODS } from '../src/orchestrator/plugin-host.js'
 import { ESSENTIAL_ENV } from '../src/exec/env.js'
 import type { RunPlan } from '../src/orchestrator/plan.js'
@@ -223,5 +225,41 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
+  })
+})
+
+describe('the flaky-tasks post shows the section the footer prints', () => {
+  it('its sample is formatFlakySection on the two findings it describes', () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
+    const sample = fencedBlock(page, '', '  Flaky:').replace(/\n$/, '')
+    const finding = (
+      taskId: string,
+      status: 'success' | 'failed',
+      passes: number,
+      failures: number,
+      attempts = 1,
+    ) => {
+      const [project, task] = taskId.split('#') as [string, string]
+      return { taskId, project, task, hash: 'k', status, passes, failures, attempts }
+    }
+    expect(sample.split('\n')).toEqual(
+      formatFlakySection([
+        finding('app#test', 'failed', 3, 1),
+        finding('api#e2e', 'success', 1, 1, 2),
+      ]).slice(1),
+    )
+  })
+})
+
+describe('the local-floor post names the placement labels --dry prints', () => {
+  it("`@local` is the local executor's name and `@noop` the no-op placement", () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'the-local-floor.md'), 'utf8')
+    expect(page).toContain('`@' + localExecutor().name + '`')
+    const placement = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'placement.ts'),
+      'utf8',
+    )
+    expect(placement).toContain("'noop'")
+    expect(page).toContain('`@noop`')
   })
 })

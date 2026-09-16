@@ -44,8 +44,11 @@ export const UNPLACED_EXECUTOR: TaskExecutor
 ## Rules
 
 - **Pinned to this machine**: a task that transitively depends on a
-  persistent one (a worker cannot reach a port on the submitter), or
-  `exec.remote: false`. Pinned tasks never reach a remote executor;
+  persistent one (a worker cannot reach a port on the submitter), a
+  sandboxed task and its dependants (the sandbox is this machine's
+  machinery; a boundary "verified" where it is not enforced passes
+  vacuously), or `exec.remote: false`. Pinned tasks never reach a remote
+  executor;
   `selectExecutor` is told so and a remote executor declines. A
   persistent task itself, like a group, is not placed at all — it runs
   on this machine outside the executor list.
