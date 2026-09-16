@@ -485,6 +485,19 @@ test is telling the truth.
       annotation and both plugins; the `spawn` reason has no e2e pin —
       it needs a box without `sh`, the class `no-shell-on-path` covers
       for one-shot tasks — and is read by the same one label.
+271.  DONE (2026-09-16, a CI finding on #431's first head): the Linux
+      job's `@vzn/vx#lint.oxfmt` failed with "Failed to read file:
+      packages/vx/.mcp.json" — the sandbox runtime's `/dev/null` mask
+      on a name from its DANGEROUS_FILES, met by the walker whether or
+      not the file exists (history: the review arc's item 33, fixed in
+      the ROOT `.oxfmtrc.json` when core was the root). The nine
+      per-package configs written when core moved under `packages/`
+      never carried the ignore, and the mask is met only sometimes
+      (every head since passed the same task), so it lay dormant. All
+      nine now ignore `.mcp.json`, `.vscode`, `.idea` and `.claude`,
+      and the package-boundaries suite's rule 5 pins that every oxfmt
+      config in the repo ignores every masked name — the class, not
+      the file.
 
 ## In flight
 
