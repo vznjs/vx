@@ -5,6 +5,19 @@
 When more than one plugin contributes a `cache` layer, `resolveCache`
 (`plugin-host.ts`) chains them in declaration order instead of picking one.
 
+## Public surface
+
+```ts
+export class ChainedCache implements CacheLayer {
+  constructor(readonly layers: readonly CacheLayer[]) // at least two, or it throws
+  readonly hasRemote: boolean // any layer's
+  get local(): Cache | undefined // the first layer's
+}
+```
+
+Every `CacheLayer` method is implemented by delegation under the rules
+below; `key` goes to the first layer, like the run index.
+
 ## Rules
 
 - **Lookup walks the layers** (`get` / `has` / `prefetch`) until one
