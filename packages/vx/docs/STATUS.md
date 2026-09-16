@@ -376,6 +376,19 @@ test is telling the truth.
       table's. The table's `--affected` row still read "changed
       since" (287 swapped the section, not this row); it says
       dependents and the sugar now.
+301.  DONE (2026-09-16, `benchmarks.md` prose read against its own
+      tables): the page carried two 46-package head-to-head tables
+      with opposite verdicts on the warm row — the 2026-09-03 one
+      (Turbo 71 ms, vx 76 ms, "read it honestly: within a few
+      milliseconds") and an older one below it (vx 127 ms, Turbo
+      245 ms, "vx is 1.9× faster than Turbo") that a "predates both"
+      aside kept but a reader would quote; the older table and its
+      reading are gone, the paragraph says why. The Wave 2 breakdown
+      read "where the remaining 242 ms goes" under a table whose last
+      column says 172 ms; it is dated to its wave and says what the
+      later waves took off. The stress section is generated
+      (`update-site.ts --check`) and untouched; the real-repo
+      sections are dated records and read as such.
 
 ## In flight
 
