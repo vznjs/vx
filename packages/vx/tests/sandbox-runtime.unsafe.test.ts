@@ -1327,3 +1327,27 @@ describe.skipIf(!available || process.platform !== 'linux')(
     )
   },
 )
+
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a stale mux socket under this pid does not stop the runtime',
+  () => {
+    it(
+      "a dead process's socket file with a recycled pid is removed before SRT listens",
+      async () => {
+        // A regular file is enough: `listen` on any existing path is EADDRINUSE.
+        const stale = path.join(os.tmpdir(), `srt-mux-${process.pid}-0.sock`)
+        await resetSandbox()
+        await writeFile(stale, '')
+        try {
+          const verdict = await probeSandbox()
+          expect(verdict.available).toBe(true)
+          expect(existsSync(stale)).toBe(false)
+        } finally {
+          await rm(stale, { force: true })
+          await resetSandbox()
+        }
+      },
+      TIMEOUT,
+    )
+  },
+)
