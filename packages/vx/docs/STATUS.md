@@ -339,6 +339,14 @@ test is telling the truth.
       run's own output alone — by design (a run record is a summary;
       the log is the CI job's). Pinned in `last.test.ts` (a `kill -9 $$`
       row ends in `128 + SIGKILL`; `exit 3` has no signal part).
+261.  DONE (2026-09-16, the CI reader of 259–260): `@vzn/vx-github`'s
+      Failures callout said `exit 137` and stopped, the third surface
+      with its own reading of one number. `exitSignal` joined the façade
+      on the rule `escapeMarkdownCell` set (a sink rendering a failure
+      faces the same decode every time; one copy), the export snapshot
+      widened deliberately, and the callout names the signal after the
+      code, `128 + SIGKILL` — pinned in the plugin's suite; `exit 2`
+      stays bare.
 
 ## In flight
 

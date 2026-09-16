@@ -76,10 +76,17 @@ describe('renderJobSummary', () => {
     )
     expect(md).toContain('## ❌ vx run')
     expect(md).toContain('### Failures')
-    expect(md).toContain('- **b#build** — exit 2')
+    expect(md).toContain('- **b#build** — exit 2\n')
     const rows = md.split('\n').filter((l) => l.startsWith('| '))
     // rows[0] header, rows[1] separator; the first DATA row is the failure
     expect(rows[2]).toContain('b#build')
+  })
+
+  it('a failure above 128 names the signal its exit stands for', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'b#build', status: 'failed', exitCode: 137 })]),
+    )
+    expect(md).toContain('- **b#build** — exit 137 (128 + SIGKILL)\n')
   })
 
   it('escapes pipes in task ids — a hostile name cannot break the table', () => {

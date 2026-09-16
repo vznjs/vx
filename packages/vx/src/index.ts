@@ -193,6 +193,10 @@ export {
 // a hit's bytes belong to the run that executed) are a decision, not an
 // implementation detail. Two sinks rolling their own is how they fork.
 export { LOG_WIRE_VERSION, TaskLogBuffer } from './orchestrator/index.js'
+// `exitSignal` is on the façade on the same demonstrated need: a sink that
+// renders a failed task's exit code faces 137 where the frame and `vx last`
+// say `128 + SIGKILL`; the decode is the runner's convention, one copy.
+export { exitSignal } from './orchestrator/index.js'
 export type {
   CacheSource,
   RunContextRecord,

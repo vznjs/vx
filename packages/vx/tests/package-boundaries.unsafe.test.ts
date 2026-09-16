@@ -113,6 +113,7 @@ describe('package boundaries', () => {
       'defineWorkspace',
       'deriveCacheSource',
       'escapeMarkdownCell',
+      'exitSignal',
       'findWorkspaceRoot',
       'isCacheHit',
       'isPassStatus',
