@@ -662,6 +662,19 @@ of a task's output for its cache entry and replay`). The
       provenance — provenance is the npm route (`npm.yml` publishes
       with it).
 
+234.  DONE (2026-09-16, the npm-installed user of 233's persona): an
+      npm install runs the platform package's compiled binary — the
+      launcher execs `node_modules/@vzn/vx-<os>-<arch>/vx` — so it
+      passed the compiled-binary check and `vx upgrade` would have
+      renamed over a file npm owns: the command upgraded until the next
+      `npm install` (or a lockfile-pinned CI checkout) put the version
+      npm knows back, and `npm ls` disagreed with `vx --version` in
+      between. A binary under a `node_modules` refuses now and names
+      the npm command; `npmOwnedBinary` is pinned for a global, a local,
+      a pnpm store and a Windows path, and null for a hand-installed
+      one. Ordered after the source refusal, so a source checkout still
+      hears "git pull".
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items

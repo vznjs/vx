@@ -1222,8 +1222,12 @@ latest). A download that does not match the digest replaces nothing —
 and a release that publishes no digest for the asset is refused before
 the download. Named
 `upgrade` per CLI convention (`bun upgrade`, `deno upgrade`). Refuses
-when running from source — use `git pull`. (An npm-installed vx
-updates with `npm update -g @vzn/vx` instead.)
+when running from source — use `git pull` — and when the binary is
+npm's: an npm install runs the platform package's compiled binary
+under `node_modules`, and a rename over that file lasts until the next
+`npm install` puts the version npm knows back, so `vx upgrade` there
+says `this vx was installed by npm … Update with: npm install -g
+@vzn/vx@latest`.
 
 ## `vx init`
 
