@@ -303,6 +303,7 @@ interface RunSummaryRecord {
     peakRssBytes?: number
     blockedBy?: string // on a skipped task: the failed task at the root of the block
     timedOut?: true // on a failed task: vx's own timeout killed it (exit 143 is not a signal)
+    sandboxViolations?: number // on a sandboxed task: violations the sandbox recorded
   }>
 }
 ```

@@ -94,6 +94,13 @@ describe('renderJobSummary', () => {
     expect(md).toContain('- **lib#build** — exit 3 · blocked app#build, web#build\n')
   })
 
+  it('a sandboxed failure counts its violations', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'b#build', status: 'failed', exitCode: 1, sandboxViolations: 2 })]),
+    )
+    expect(md).toContain('- **b#build** — exit 1 · 2 sandbox violations\n')
+  })
+
   it('a timeout reads as the reason, not as the signal its exit is', () => {
     const md = renderJobSummary(
       summary([task({ taskId: 'b#build', status: 'failed', exitCode: 143, timedOut: true })]),

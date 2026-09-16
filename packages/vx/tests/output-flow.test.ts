@@ -615,6 +615,14 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     expect(out.text()).toContain('::error title=one#slow::failed (timed out, exit 143)\n')
   })
 
+  it('the annotation counts sandbox violations', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#box')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1, sandboxViolations: 1 }))
+    expect(out.text()).toContain('::error title=one#box::failed (exit 1, 1 sandbox violation)\n')
+  })
+
   it('quiet hit one-liners stay plain (not a block, nothing to collapse)', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)

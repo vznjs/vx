@@ -168,7 +168,7 @@ describe('formatTaskBlock', () => {
       { stderr: 'touch: dist/index.js: Operation not permitted\n' },
     )
     expect(out).toBe(
-      '┌─ @bench/top#build > failed (exit 1)\n' +
+      '┌─ @bench/top#build > failed (exit 1, 2 sandbox violations)\n' +
         '\n' +
         '$ sleep 3 && mkdir -p dist && touch dist/index.js\n' +
         '\n' +
@@ -181,7 +181,7 @@ describe('formatTaskBlock', () => {
         'touch(32784) deny(1) sysctl-read kern.iossupportversion\n' +
         'touch(32784) deny(1) file-read-metadata /Users/me/proj/packages/top/dist/index.js\n' +
         '\n' +
-        '└─ @bench/top#build ── (3.06s) failed (exit 1)\n',
+        '└─ @bench/top#build ── (3.06s) failed (exit 1, 2 sandbox violations)\n',
     )
   })
 
@@ -307,7 +307,7 @@ describe('persistent task framing', () => {
         '\n' +
         'bun(49255) deny(1) file-read-data /repo/packages/vx\n' +
         '\n' +
-        '└─ @vzn/vx#test ── (1.09s) failed (exit 1)',
+        '└─ @vzn/vx#test ── (1.09s) failed (exit 1, 1 sandbox violation)',
     )
   })
 

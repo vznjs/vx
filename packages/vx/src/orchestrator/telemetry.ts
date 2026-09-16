@@ -177,6 +177,8 @@ export interface TaskTelemetry {
   blockedBy?: string
   /** On a `failed` task: vx's own `timeout` killed it (exit 143 is the deadline, not a signal). Additive. */
   timedOut?: true
+  /** On a sandboxed task: how many declared-boundary violations the sandbox recorded (a failure on its own). Additive. */
+  sandboxViolations?: number
   /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
   wallclockStartNs?: string
   wallclockEndNs?: string

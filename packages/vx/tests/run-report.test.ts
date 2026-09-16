@@ -241,6 +241,11 @@ describe('per-row status and cache words', () => {
       view({ taskId: 'a#test', status: 'failed', exitCode: 143, timedOut: true }),
     ])
     expect(rows(timed)[0]).toContain('| failed (timed out, exit 143) |')
+    // A sandboxed task's violations are the reason it failed; the count reads.
+    const sandboxed = report([
+      view({ taskId: 'a#test', status: 'failed', exitCode: 1, sandboxViolations: 2 }),
+    ])
+    expect(rows(sandboxed)[0]).toContain('| failed (exit 1, 2 sandbox violations) |')
   })
 
   it('marks an executed task as a cache miss', () => {

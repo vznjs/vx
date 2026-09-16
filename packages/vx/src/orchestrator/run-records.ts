@@ -146,6 +146,7 @@ function telemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.attempts !== undefined) t.attempts = o.attempts
   if (o.blockedBy !== undefined) t.blockedBy = o.blockedBy
   if (o.timedOut === true) t.timedOut = true
+  if (o.sandboxViolations !== undefined) t.sandboxViolations = o.sandboxViolations
   if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
   if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
   return t

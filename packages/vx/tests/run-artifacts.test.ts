@@ -175,6 +175,33 @@ describe('writeRunSummary', () => {
     expect(parsed.tasks[1]?.['peakRssBytes']).toBeUndefined()
   })
 
+  it('carries a sandbox violation count, and only on the row that recorded one', async () => {
+    const out = await writeRunSummary({
+      target: path.join(tmp, 's.json'),
+      cacheDir,
+      cwd: tmp,
+      runId: 'x',
+      startedAtMs: 0,
+      endedAtMs: 1,
+      totalMs: 1,
+      ok: false,
+      outcomes: [
+        outcome({
+          node: execNode('a', 'build'),
+          status: 'failed',
+          exitCode: 1,
+          sandboxViolations: 2,
+        }),
+        outcome({ node: execNode('b', 'lint'), hash: 'h2' }),
+      ],
+    })
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as {
+      tasks: Array<Record<string, unknown>>
+    }
+    expect(parsed.tasks[0]?.['sandboxViolations']).toBe(2)
+    expect('sandboxViolations' in parsed.tasks[1]!).toBe(false)
+  })
+
   it('marks a task with no `cache` block `noCache: true`, and only that one', async () => {
     const cached = makeNode('a', 'build', { exec: { command: 'noop' } })
     cached.config = {
