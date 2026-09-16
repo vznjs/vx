@@ -1004,7 +1004,14 @@ fetch-depth: 0) or name the base`. Pinned three ways in
       probe's reason and the count that will fail; `--format json` and
       the MCP's `getWorkspaceInfo` carry it as data. Pinned in
       `show-info.test.ts` (either verdict, the fixture's zero count) and
-      documented in `docs/cli.md` § vx info.
+      documented in `docs/cli.md` § vx info. CI's first run added a
+      rule: inside the sandboxed test shard the runtime cannot listen on
+      its mux socket, and the raw error quoted a path named after the
+      process id, so two `vx info` runs differed by one number and the
+      `vx stats` byte-identical alias pin failed — the doctor's text is
+      pasted into bug reports and compared between invocations, so its
+      reason drops the pid (`stableSandboxReason`, pinned with a
+      control). No other pin compares two invocations byte for byte.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
