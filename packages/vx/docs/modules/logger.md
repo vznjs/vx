@@ -16,21 +16,30 @@ export interface Logger {
   taskStdout(node: TaskNode, chunk: string): void // streamed stdout chunk
   taskStderr(node: TaskNode, chunk: string): void // streamed stderr chunk
   taskComplete(node: TaskNode, outcome: TaskOutcome): void // flush block
-  // Optional lifecycle hooks — drive the default logger's dynamic
-  // status line; custom loggers may omit them.
-  runStart?(info: { total: number }): void
+  // Optional lifecycle hooks — drive the default logger's live status
+  // region; custom loggers may omit them.
+  runStart?(info: {
+    total: number
+    concurrency?: number // one worker row per slot
+    requestedCount?: number
+    context?: RunContext // the live summary section's context
+    startedAtMs?: number
+  }): void
   taskStart?(node: TaskNode): void
   runEnd?(): void
 }
 
 export interface OutputView {
-  mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad'
+  mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad' | 'hash-only'
   gha?: boolean // wrap blocks in ::group:: (GitHub Actions)
   ci?: boolean // truthy CI env — suppresses the status line
 }
 
 export function resolveOutputView(
-  options: { outputLogs?: 'full' | 'errors-only' | 'none'; flow?: 'focused' | 'broad' },
+  options: {
+    outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
+    flow?: 'focused' | 'broad'
+  },
   env?: Record<string, string | undefined>,
 ): OutputView
 
@@ -71,24 +80,32 @@ export function defaultLogger(
   `● id ── executed • <duration>` line; failures get full frames;
   hits / up-to-date / skipped are silent (buffers dropped).
 - **`errors-only`** — only failed tasks print.
+- **`hash-only`** — one line per task with its key, no output.
 - **`none`** — no per-task output.
 
 `status()` lines (header, summary) always print. Group tasks never
 print in any mode.
 
-## Status line
+## Status region
 
-The default logger owns a `createOutputWriter` from
-[`status-line.ts`](../modules/orchestrator.md) wrapping its output
-stream. Enabled only when the stream is a TTY and `view.ci` is not
-set. The optional `runStart` / `taskStart` / `runEnd` hooks (wired by
-`run()`) drive a single bottom line —
-`▶ <running> running · <done>/<total> · <ids> · <elapsed>s
-[· n failed]` — rewritten in place (ESC[2K + \r), throttled to 100ms
-with forced redraws on task events, and removed permanently at
-`runEnd` (and on the first requested-task start in focused mode).
-Every ordinary write clears the line first, writes, then redraws, so
-the line never interleaves with content.
+The default logger owns a `createOutputWriter` from `status-line.ts`
+wrapping its output stream. Enabled only when the stream is a TTY and
+`view.ci` is not set. The optional `runStart` / `taskStart` / `runEnd`
+hooks (wired by `run()`) drive a live region at the bottom
+(`formatStatusRegion`): a blank line separating it from the completed
+list above; one row per ready persistent task (`▸`, `running`, the id,
+no elapsed); one row per worker slot — the ticking elapsed time leads,
+then `running` and the full id, a task keeping its slot for its whole
+life so names never jump, an idle slot holding its place dim; a
+`… +N more running` line when tasks outnumber slots; then the live
+summary section, the same meters the final footer prints, filling in
+as the run proceeds so the region becomes the summary when the run
+ends. A failure logs a permanent one-liner the moment it lands
+(`formatFailureLine`) and the full frame replays at `runEnd`. The
+region is rewritten in place, throttled with forced redraws on task
+events, and removed permanently at `runEnd` (and on the first
+requested-task start in focused mode). Every ordinary write clears it
+first, writes, then redraws, so it never interleaves with content.
 
 ## Programmatic logger
 

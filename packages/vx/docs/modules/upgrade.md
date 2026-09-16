@@ -8,6 +8,25 @@ verifies the digest, and atomically renames it over the current
 executable. A mismatch — a cut transfer, a swapped asset — replaces
 nothing (item 233).
 
+## Public surface
+
+```ts
+export function isBunfsPath(p: string): boolean // a path inside the compiled binary's bundle
+export function npmOwnedBinary(execPath: string): string | null // the npm command that owns this file, or null
+export interface ReleaseAsset {
+  url: string
+  sha256: string // the digest the release API publishes for the asset
+}
+export function releaseAsset(release: unknown, name: string): ReleaseAsset // refuses a release without the asset or its digest
+export async function replaceBinary(dest: string, url: string, sha256: string): Promise<void>
+export async function upgradeCmd(args: readonly string[]): Promise<number>
+```
+
+A host the box cannot reach — the release API or the asset's — is
+one line naming the host and the step it was needed for (`could not
+reach <host> to <what>`), with the network or the proxy as the remedy;
+never Bun's `fetch` stack (832c349).
+
 ## Invariants
 
 - Compiled-binary detection keys off `Bun.main` / `process.argv[1]`

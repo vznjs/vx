@@ -13,10 +13,29 @@ errors keep the stack so we can debug them.
 export class UserError extends Error {
   constructor(message: string)
 }
+export function isUserError(err: unknown): err is UserError // by name, across a copy boundary (below)
+
+// The environment's refusals, reported like a UserError — one line naming the path, never a stack:
+export function isPermissionError(err: unknown): err is NodeJS.ErrnoException // EACCES, EPERM, EROFS
+export const PERMISSION_HINT: string
+export function isDiskFull(err: unknown): err is NodeJS.ErrnoException // ENOSPC
+export const DISK_FULL_HINT: string
+export function isFsRefusal(err: unknown): err is NodeJS.ErrnoException // either of the two
+export function fsRefusalHint(err: NodeJS.ErrnoException): string
+export function isTmpdirRefusal(err: unknown): err is NodeJS.ErrnoException // a path under os.tmpdir() missing, a file, or unwritable
+export const TMPDIR_HINT: string // "point TMPDIR at a writable directory"
+
+export function isExecutableMissing(err: unknown): boolean // Bun's ENOENT for a spawn that could not run at all
+export function gitSpawnRefusal(cwd: string): UserError // the one refusal for a git that is not on PATH
 ```
 
-`UserError` instances have `.name === 'UserError'`. `bin.ts` does
-`if (err instanceof UserError) print(err.message); else throw`.
+`UserError` instances have `.name === 'UserError'`. `bin.ts` prints
+`err.message` for anything `isUserError` admits and re-throws the
+rest; a file-system refusal (`isFsRefusal`) or a temp-directory
+refusal (`isTmpdirRefusal`) reaching the user is printed the same way,
+with the hint that names the knob — `TMPDIR` for a temp directory —
+because a minimal image's sandboxed task once said only "EACCES …
+mkdtemp" (2026-09-16).
 
 ## Convention
 
