@@ -77,6 +77,34 @@ describe('sh absent from PATH', () => {
     expect(r.text).not.toContain('internal error')
   })
 
+  it('a cache.inputs.runtime probe names the shell too, before any task runs', async () => {
+    const bin = await pathWithoutSh(false)
+    bins.push(bin)
+    await addProject(root, 'probe', {
+      config: `
+        export default {
+          tasks: {
+            build: {
+              exec: { command: 'echo built' },
+              cache: { inputs: { files: ['src/**'], runtime: ['echo v1'] }, outputs: { files: [] } },
+            },
+          },
+        }
+      `,
+      files: { 'src/a.txt': 'a1\n' },
+    })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'probe')
+    const r = vx(root, bin, ['run', 'build', '--all'])
+    expect(r.code).toBe(1)
+    expect(r.text).toContain(
+      "cache.inputs runtime command could not run: vx runs it with sh -c and 'sh' is not on PATH (command: echo v1, cwd: ",
+    )
+    expect(r.text).toContain('Install a POSIX sh and re-run.')
+    expect(r.text).not.toContain('Executable not found')
+  })
+
   // CONTROL: the same PATH with sh runs the task; the line is the shell's absence, not the PATH's shape.
   it('the same PATH with sh runs the task', async () => {
     const bin = await pathWithoutSh(true)

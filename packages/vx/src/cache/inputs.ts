@@ -19,7 +19,7 @@ import path from 'node:path'
 import { lstatSync } from 'node:fs'
 import { realpath, rm, rmdir } from 'node:fs/promises'
 import type { CacheInputs } from '../config.js'
-import { UserError } from '../util/index.js'
+import { isExecutableMissing, UserError } from '../util/index.js'
 import { GitFilesCache, runGitLsFiles } from './git-inputs.js'
 import { normalizeGlob } from '../util/index.js'
 
@@ -297,7 +297,14 @@ async function runRuntimeCommand(command: string, cwd: string): Promise<string> 
       stdout: 'pipe',
       stderr: 'pipe',
     })
-  } catch {
+  } catch (err) {
+    // The probe runs through `sh -c` like a task: a box without sh names
+    // the shell, not the command (item 244).
+    if (isExecutableMissing(err)) {
+      throw new UserError(
+        `cache.inputs runtime command could not run: vx runs it with sh -c and 'sh' is not on PATH (command: ${command}, cwd: ${cwd}). Install a POSIX sh and re-run.`,
+      )
+    }
     throw new UserError(`cache.inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
   }
   const [stdout, stderr, exitCode] = await Promise.all([

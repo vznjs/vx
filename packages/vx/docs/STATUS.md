@@ -84,6 +84,13 @@ test is telling the truth.
       fix; a sandboxed probe passing for the wrong reason was ruled out
       by running it on the old source as `probe`.
 
+244.  DONE (2026-09-16, the class of 242 grepped): the one other
+      `sh -c` in core, the `cache.inputs.runtime` probe, said "failed
+      to spawn: <command>" on a box without sh — the command blamed for
+      the shell's absence. An ENOENT there names the shell and the
+      install, with the command and cwd after it. Pinned beside 242's
+      cases in `no-shell-on-path.test.ts`; fails without the fix.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
