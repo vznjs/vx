@@ -12,6 +12,10 @@
 
 import { describe, expect, it } from 'bun:test'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
+import { formatRunSummary } from '../src/orchestrator/summary.js'
+import { formatTaskExecutedLine, formatTaskHitLine } from '../src/orchestrator/framed-output.js'
+import type { TaskNode } from '../src/graph/task-graph.js'
+import type { TaskOutcome } from '../src/graph/scheduler.js'
 
 /**
  * Flags the parser compares against. `parseRunArgs` matches every flag as a
@@ -66,5 +70,60 @@ describe('docs/cli.md — the `vx info` sample quotes the current versions', () 
         'm',
       ),
     )
+  })
+})
+
+// The broad-run sample is the one picture of a run the reference gives, and
+// it had drifted three ways from the renderer by 2026-09-16: the rule's
+// label sat at the right end (the renderer leads with it), the time line
+// read `5.34s (max … · avg … · min …)` (the renderer joins with `·`), and
+// the spread averaged the hit's 4 ms restore in — the very pollution the
+// spread excludes by design. Render the same run and compare byte for byte.
+describe('docs/cli.md — the broad-run sample is what the renderer prints', () => {
+  const node = (id: string): TaskNode =>
+    ({
+      id,
+      projectName: id.split('#')[0],
+      taskName: id.split('#')[1],
+      config: { exec: { command: 'x' }, cache: { inputs: { files: [] }, outputs: { files: [] } } },
+    }) as unknown as TaskNode
+
+  it('two rows and the footer, byte for byte', async () => {
+    const hit: TaskOutcome = {
+      node: node('@vzn/vx#format-check'),
+      status: 'cache-hit',
+      exitCode: 0,
+      durationMs: 4,
+      restored: true,
+      storedDurationMs: 900,
+    }
+    const ran: TaskOutcome = {
+      node: node('@vzn/vx#test'),
+      status: 'success',
+      exitCode: 0,
+      durationMs: 5200,
+    }
+    const rendered = [
+      formatTaskHitLine(hit.node, hit),
+      formatTaskExecutedLine(ran.node, ran),
+      ...formatRunSummary(
+        [hit, ran],
+        5340,
+        { enabled: false },
+        {
+          version: '0.0.0',
+          packageCount: 1,
+          remoteCacheEnabled: false,
+          concurrency: 8,
+          workspaceProjectCount: 3,
+        },
+      ),
+    ].join('\n')
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
+    const marker = 'A broad run looks like:\n\n```\n'
+    const start = doc.indexOf(marker)
+    expect(start).toBeGreaterThan(-1)
+    const body = doc.slice(start + marker.length)
+    expect(body.slice(0, body.indexOf('\n```\n'))).toBe(rendered)
   })
 })

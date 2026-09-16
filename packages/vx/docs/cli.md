@@ -1720,20 +1720,28 @@ There is **no top-of-run banner** — the run context lives in the
 footer. A broad run looks like:
 
 ```
- ⇢     4ms success  local  @vzn/vx#format-check
- ⏺  5.20s success  miss   @vzn/vx#test
+ ⇢     4ms success local    @vzn/vx#format-check
+ ⏺︎   5.20s success miss     @vzn/vx#test
 
-──────────────────────────────────────────────── vx 0.0.0
-  projects  ▰▰▰▰▰… (affected vs workspace bar)
+─ vx 0.0.0 ───────────────────────────────────────────────────
+  projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
             1 affected · 3 total
-  tasks     ▰▰▰▰▰… (failed/success/skipped meter)
+  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 success · 2 total
-  cache     ▰▰▰▰▰… (miss/no-cache/up-to-date/local/remote meter)
+  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             1 miss · 1 local
 
   info      8 workers · local cache
-  time      5.34s (max 5.20s · avg 2.6s · min 4ms)
+  time      5.34s · max 5.20s · avg 5.20s · min 5.20s
 ```
+
+The three bars are meters: `projects` is what the run covered against
+the workspace, `tasks` is failed / success / skipped, `cache` is miss /
+no-cache / up-to-date / local / remote (a skipped task rides it too, so
+the two legends sum alike). The `time` spread counts executed tasks
+only — a hit's restore time never enters it — which is why one executed
+task reads as its own max, avg and min. A test renders this run and
+checks it against this page, byte for byte.
 
 Group tasks emit no framed block by design (they aren't real tasks);
 running a group focused surfaces its real member tasks instead.
