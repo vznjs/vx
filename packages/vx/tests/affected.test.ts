@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
   affectedProjects,
   defaultAffectedBase,
+  refIsHead,
   workspaceGlobsMatch,
 } from '../src/workspace/affected.js'
 import {
@@ -717,7 +718,10 @@ describe('affectedProjects', () => {
 })
 
 describe('defaultAffectedBase', () => {
-  it('falls back to HEAD~1 when origin/HEAD is not set', async () => {
+  it('falls back to HEAD~1 when origin/HEAD is not set, and says "shallow clone" when that has no parent', async () => {
+    // A CI checkout at fetch-depth 1 has neither origin/HEAD nor HEAD~1;
+    // the old answer was `git ref "HEAD~1" did not resolve` — a ref the
+    // user never typed (CI persona, 2026-09-16).
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-default-'))
     try {
       await git(root, 'init', '-q')
@@ -726,7 +730,37 @@ describe('defaultAffectedBase', () => {
       await writeFile(path.join(root, 'a'), 'x')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'one')
+      await expect(defaultAffectedBase(root)).rejects.toThrow(
+        /--affected has no base here: origin\/HEAD is not set and HEAD has no parent .* a shallow clone\? .*fetch-depth: 0.*--affected=origin\/main/,
+      )
+      await writeFile(path.join(root, 'a'), 'y')
+      await git(root, 'commit', '-q', '-am', 'two')
       expect(await defaultAffectedBase(root)).toBe('HEAD~1')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('refIsHead: the base is HEAD itself in a single-branch clone whose origin/HEAD is this branch', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-self-'))
+    try {
+      await git(root, 'init', '-q', '-b', 'feat')
+      await git(root, 'config', 'user.email', 'test@vx.local')
+      await git(root, 'config', 'user.name', 'vx test')
+      await writeFile(path.join(root, 'a'), 'x')
+      await git(root, 'add', '.')
+      await git(root, 'commit', '-q', '-m', 'one')
+      await git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
+      await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
+      expect(await defaultAffectedBase(root)).toBe('origin/feat')
+      expect(refIsHead(root, 'origin/feat')).toBe(true)
+      expect(refIsHead(root, 'HEAD')).toBe(true)
+      // CONTROL: once HEAD moves on, the same base is a real one.
+      await writeFile(path.join(root, 'a'), 'y')
+      await git(root, 'commit', '-q', '-am', 'two')
+      expect(refIsHead(root, 'origin/feat')).toBe(false)
+      expect(refIsHead(root, 'HEAD~1')).toBe(false)
+      expect(refIsHead(root, 'no-such-ref')).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

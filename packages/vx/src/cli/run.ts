@@ -15,7 +15,13 @@ import {
 import type { ContinueMode } from '../graph/index.js'
 import { type CachePolicy, FULL_CACHE_POLICY, parseCachePolicy } from '../cache/index.js'
 import { findCwdProject, pickTask, resolveFilters } from './select.js'
-import { MAX_TIMEOUT_MS, parseDecimalInt, nearest, machineParallelism } from '../util/index.js'
+import {
+  MAX_TIMEOUT_MS,
+  isUserError,
+  parseDecimalInt,
+  nearest,
+  machineParallelism,
+} from '../util/index.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
@@ -421,7 +427,15 @@ export async function resolveRunOptions(
   const filterStrings = [...parsed.filters]
   if (parsed.affected !== undefined) {
     const root = await findWorkspaceRoot(cwd)
-    const base = parsed.affected === '' ? await defaultAffectedBase(root) : parsed.affected
+    let base = parsed.affected
+    if (base === '') {
+      try {
+        base = await defaultAffectedBase(root)
+      } catch (err) {
+        if (!isUserError(err)) throw err
+        return { error: err.message }
+      }
+    }
     filterStrings.push(`[${base}]`)
   }
 

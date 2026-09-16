@@ -58,7 +58,11 @@ jobs:
 Notes:
 
 - **`fetch-depth: 0`** — `--affected` diffs against a base ref, which
-  needs real git history. A shallow clone can't compute it.
+  needs real git history. A shallow clone can't compute it, and vx says
+  so rather than guessing: with no `origin/HEAD` and no parent commit
+  the run fails with `--affected has no base here … a shallow clone?`,
+  and a base that turns out to be the commit under test is named as
+  `HEAD itself` in the `nothing affected since <ref>` note.
 - **`--affected=origin/<base>`** — on a PR, diff against the target
   branch; on a push to `main`, fall back to `main`. Changed packages (and
   their dependents) run; the rest restore from cache.

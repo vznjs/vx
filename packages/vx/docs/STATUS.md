@@ -941,6 +941,26 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       stays is In-flight 5 (macOS), the release facts as of 0.0.21, and
       the launch checklist's owner steps with the stale "installs
       v0.0.18" sentence corrected.
+199.  DONE (2026-09-16, the CI persona's first real failure): `vx run
+build --affected` in the two clone shapes CI produces. A
+      single-branch clone whose `origin/HEAD` is the branch under test
+      resolved the default base to that branch — HEAD itself — and
+      printed `nothing affected since origin/feat`, exit 0: a job
+      configured that way runs nothing and goes green. A depth-1
+      checkout with no `origin/HEAD` fell back to `HEAD~1` and failed
+      with `git ref "HEAD~1" did not resolve`, a ref nobody typed. Now:
+      the empty note names a base that IS HEAD (`refIsHead`, a spawn on
+      the empty path only) and the two bases you probably meant
+      (`--affected=origin/main`, `--affected=HEAD~1`); the fallback
+      checks that `HEAD~1` exists and otherwise says `--affected has no
+base here … a shallow clone? Fetch history (actions/checkout:
+fetch-depth: 0) or name the base`. Pinned three ways in
+      `tests/affected-base-notes.test.ts` (both shapes plus the control:
+      a real base that selects nothing keeps the plain note) and in the
+      `defaultAffectedBase` / `refIsHead` units; `docs/cli.md` and the
+      site's CI guide say what vx says. Explicit refs are untouched:
+      `--affected=origin/main` in a single-branch clone still says the
+      ref did not resolve, which is true and names the fix.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
