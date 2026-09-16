@@ -789,3 +789,175 @@ pid must be the INNER shell's `$$` — single quotes — or the
 differential passes on the old code for the wrong reason; Bun's
 `detached: true` exists and is a session, so the terminal's SIGHUP
 needs forwarding the moment you use it. Never end with "what next?".
+
+## Handoffs 14q–14v (moved 2026-09-16 with items 243–281)
+
+14q. **Handoff after item 240 (2026-09-16, night).** Four items since
+14p. `vx watch` no longer re-runs on a git-ignored path and names a
+file the cycle rewrites every run (237, #403 — its macOS job taught the
+streak to read the path's mtime, its Linux job replaced the run-lock
+e2e's head start with a marker). Three configuration personas (238,
+#404): `vx info` names a broken config once, an empty workspace hears
+about its globs, and two gate findings rode along — the plugin
+helper's sweep skips a root it cannot remove, and a fixture with no
+`node_modules` made Bun auto-install a missing import from the
+registry, which became Next 21 and then item 239 (#405): a config's
+bare import nothing provides is refused before evaluation. Its cost,
+measured after the fact, was 130 ms per 1,000 cold configs; 240 took
+it to a tie (one transpiler per loader, a textual pre-filter). Measured
+and clean on the way: the renderer on a 200,000-line task, the
+detached spawn of 236, every MCP tool during a run, a task's own env
+variables (documented), watch with `--affected` (the same refusal as
+run). Open: Next 1, 2 and 16, all gated by their own terms; In-flight
+5 (macOS); the owner residue — the `NPM_TOKEN` secret, the release
+cut, the site's address (an install script waits on it);
+`workspaceFiles` stops at a nested repository. The loop holds 38 items
+(203–240): the trim's trigger is forty. No open issues. The box: as
+14p; a root-run local suite leaves plugin roots the `probe` shards
+cannot remove — sweep `/tmp/vx-plugin-pkgs-*` as root before a gate.
+Methods that paid: a cost measured after shipping is still a cost —
+the A/B belongs in the item, not the handoff; a same-tree stub A/B
+isolates one function's cost from every other difference between
+arms; when medians and mins disagree, the spread is the finding, and
+the micro-benchmark decides what the number can be. Never end with
+"what next?".
+
+14r. **Handoff after item 242 (2026-09-16, night).** Two items since
+14q, one persona carried on (a minimal image): a machine without git
+gets one line at every git site (241, #407), and one without `sh` sees
+why its task failed, inside the frame (242) — the runner's
+spawn-failure text had no reader, and `runner.md` claimed it did. The
+gate on 241 found the restore-interruption test's deleter losing its
+race under load (2 in 60; a synchronous sweep now, 0 in 60; recorded
+under 215). Items 203–242 moved to
+`docs/history/2026-09-improvement-loop-203-242.md` with handoffs
+14j–14p to the next-log file; the loop starts again at 243. Open:
+Next 1, 2 and 16, all gated by their own terms; In-flight 5 (macOS);
+the owner residue — the `NPM_TOKEN` secret, the release cut, the
+site's address. No open issues. The box: as 14p. Methods that paid: a
+result field nothing reads is a claim, not a channel — find the
+consumer before trusting the doc; a race test's other process must
+strike inside the window by construction, never by polling; a
+persona's next missing binary is the next item. Never end with "what
+next?".
+
+14s. **Handoff after item 252 (2026-09-16, late morning).** Ten items
+since 14r, merged as #409–#415, from two lenses walked to their ends.
+The minimal image: a temp directory that is missing or not writable
+names TMPDIR in the sandbox verdict and the run-lock line, and a
+socket path past `sun_path` is refused up front with the limit (243,
+the darwin job taught the second shape); the `cache.inputs.runtime`
+probe names the shell (244); the sandbox's three Linux dependencies
+and the install (246 — the docs had named two); `vx upgrade` with no
+route names the host (247); a root without `workspaces` beside
+packages full of scripts names them and the glob to add (248). The
+CI container was clean and is pinned end to end (249). The plugin
+author: a malformed executor result (251) and a remote layer's wrong
+shape (252) are named as the plugin's bug, never a TypeError or a
+corrupt artifact. Housekeeping: the day's warm-path A/B, a tie (245);
+oxfmt, oxlint and the sandbox runtime current, two REAPI majors left
+(250). Open: Next 1, 2 and 16, all gated by their own terms; In-flight
+5 (macOS); the owner residue — the `NPM_TOKEN` secret, the release
+cut, the site's address. No open issues. The box: as 14p; a manual
+`su probe` needs `PATH=/opt/probe-bin:$PATH` or the sandboxed server
+task's `bun` is not found and the port-bridge tests fail for the
+invocation, not the code (250). Methods that paid: a runtime's own
+error text is a path and no knob — name the knob; a walk of one
+persona's missing pieces (git, sh, tmp, deps, network, globs) finds
+one item per piece, and each item's class is grepped in the same
+commit; a probe that confirms a thesis becomes a pin with a control
+that proves the pin can fail; a seam's resolved value is a boundary
+like its factory's. Never end with "what next?".
+
+14t. **Handoff after item 263 (2026-09-16, midday).** Eleven items
+since 14s, merged as #416–#424. One persona walked to its end — the
+reader of a failure — and the shard weights refreshed on the way
+(253). The shell's own line on exit 127 and 126 names the word and
+nothing about why: the PATH vx built (257), the file itself — missing,
+a directory, no execute bit, a CRLF or missing `#!` interpreter, no
+`#!` line (258; macOS's bash 3.2 names a bad interpreter itself and
+exits 1, pinned per platform) — and above 128 the signal and its usual
+sender, the OOM killer, a crash in native code, an abort, a closed
+pipe (259). The second-day reader then: `vx last` (260), the GitHub
+job summary (261, `exitSignal` on the façade by the rule
+`escapeMarkdownCell` set) and one `failedLabel` for the frame footer,
+the status line, the run report and the Actions annotation (262). The
+day's warm-path A/B is a tie (263). Open: Next 1, 2 and 16, all gated
+by their own terms; In-flight 5 (macOS); the owner residue — the
+`NPM_TOKEN` secret, the release cut, the site's address. No open
+issues. The loop holds 21 items (243–263): the trim's trigger is
+forty. The box: as 14p; `git cherry-pick` has no `-q`, and a chain
+that assumed one stopped before its push (260) — check `git status`
+after any chain that a usage line could break. Methods that paid: a
+shell's exit code is three shells' conventions, not one — dash, bash 5
+and bash 3.2 each got a probe before the pin; a line that names a
+cause must read the evidence (the file, the runner's signal) or say
+"or the command exited so itself"; a number rendered on four surfaces
+is one function or it drifts; a differential's name filter must match
+every pin it counts (a `-t` that matched one of two read as a broken
+fix, 260). Never end with "what next?".
+
+14u. **Handoff after item 270 (2026-09-16, afternoon).** Seven items
+since 14t, merged as #425–#431, one class walked to its end: the
+reason a task failed rides the outcome and every surface reads it.
+First the docs that show what a reader sees: the plugins guide names
+the façade's sink helpers in a type-checked block (264) and the CI
+guide's job summary is the renderer's real output with a pin that
+renders the same run (265; the guides' other two samples matched). Then
+the reader of a skipped task: a Skipped footer section (266) and the
+root blocker recorded on the outcome for the summarize row, the
+telemetry record, the GitHub callout and the OTel span (267 — the OTel
+losslessness tripwire refused the field until it was mapped, as it
+should). Then every other reason the one `failedLabel` read as a bare
+number: vx's own timeout (268), sandbox violations (269, where the
+OTel guide had promised an attribute the plugin lacked), and a
+persistent task that never became ready (270, a typed
+`PersistentReadyError` and the child's real exit code). Each rides the
+outcome as an additive telemetry field; the `runs` table carries none
+of them, since a column is a `SCHEMA_VERSION` bump that resets every
+local cache — the day one is worth it, they all go in together. Open:
+Next 1, 2 and 16, all gated by their own terms; In-flight 5 (macOS);
+the owner residue — the `NPM_TOKEN` secret, the release cut, the
+site's address. No open issues. The loop holds 28 items (243–270): the
+trim's trigger is forty. The box: as 14t; a Python edit script asserts
+on anchors the formatter has since reflowed — every write after the
+failing assertion is skipped while the earlier ones land, so check
+`git status` and re-run from the failure (twice today). Methods that
+paid: a claim in a guide ("the span carries X") is grepped in the
+plugin before it is trusted; a made-up exit code (a skip's 1, a
+never-ready 1) is a lie the label repeats on every surface — carry the
+reason and the real code; the same one function on every surface is
+what makes a class of fixes a class; a differential's guard reads
+bun's summary line, not its per-test lines. Never end with "what
+next?".
+
+14v. **Handoff after item 275 (2026-09-16, early afternoon).** Five
+items since 14u: 271 and 272 rode #431 with it, 273–275 merged as
+#432–#434, and the reason class closed on its last three surfaces.
+The `runs` table took the four reasons in one `SCHEMA_VERSION` bump,
+`v26` → `v27` (273: `blocked_by`, `timed_out`, `sandbox_violations`,
+`not_ready`; `vx last` ends a row with the reason, an agent's
+`getRunHistory` row carries the fields with its exit code), the bump's
+warm-path A/B is a tie (274; one workspace copy per arm, since arms on
+different schemas reset a shared one), and the skipped row names its
+blocker (275: `• blocked by lib#build` on the one-liner, `skipped
+(blocked by …)` in the block and the report, `blockedBy` on the wire
+outcome; the frame's old header claimed "upstream failed", false under
+fail-fast, from a branch no logger path reached). Open: Next 1, 2 and
+16, all gated by their own terms; In-flight 5 (macOS); the owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues. The loop holds 33 items (243–275): the trim's trigger
+is forty. The box: as 14u; a table cell one character wider than its
+column is a format failure the scan names and `oxfmt --write` fixes —
+never realign by hand; a differential's `-t` is a substring, and
+`blocked` missed two pins named "blocker" (275) — count the pins the
+run lists, not the filter's intent. Methods that paid: a label on a
+branch no path reaches is still a claim, and its test the only reader
+— grep the callers before trusting a surface; the day a column is
+worth a schema bump, every column waiting goes in with it (273); a
+type that carries every reason but one is where the wire consumer
+loses it (`OutcomeView`, 275). Next: a second first-run walkthrough
+(`vx init` → `run` → `why` → `last` → `info` on a fresh workspace, the
+current binary), twelve days and 260 items after the first (item 9),
+with the reason surfaces read as a newcomer would. Never end with
+"what next?".
