@@ -258,6 +258,33 @@ test is telling the truth.
       found true: the outputs-wiped-before-restore claim, the three
       channels, `vx cache prune`, `readyWhen`, every number in "What
       that buys" against benchmarks.md.
+294.  DONE (2026-09-16, 14y's named next: the two pages the overview
+      sends a ten-minute reader to, read whole against source).
+      `comparison.md` § Where vx is ahead: every claim true (the
+      worker re-evaluation, the query-string bust on the entry, the
+      prefetch, `vx lock --check`, `--profile`, the group-task
+      exclusion from `runs`, the cache-on-persistent refusal,
+      `Bun.YAML` / zstd / xxHash3 in source). `architecture.md`: nine
+      stale claims — "the root package is `@vzn/vx`" and a `.` (root)
+      row (core is `packages/vx`); three of nine packages missing from
+      the table; "~80-symbol public API" (42 runtime symbols, the
+      snapshot); the orchestrator inventory named two files that do
+      not exist (`predict.ts`, `remote-cache-setup.ts`) and missed
+      seventeen that do; `TELEMETRY_SCHEMA_VERSION = 1` (2 since the
+      usage fields); a `POST /v1/ingest` from the removed cloud; the
+      dispatch list named `mcp` as a core verb and lacked `why`,
+      `last`, `completions`; the `--affected` sugar as `[<base>]`
+      (287 missed this copy); "declares `otel()` alongside the local
+      executor and cache" (five plugins, and the floor is implicit —
+      `vx.workspace.ts`'s own comment said "nothing runs that is not
+      declared here, including core's own executor and cache", stale
+      since 2026-09-10, corrected); the `runs` column table listed
+      twelve of twenty-one. Five pins in `tests/architecture-doc-drift.test.ts`
+      (inventory = `src/orchestrator/*.ts`; the telemetry version;
+      the dispatch sentence = the `case` list of `cli/index.ts`; the
+      column table = `CREATE TABLE runs`; the API count = the façade's
+      runtime keys) and one in its unsafe half (one row per
+      `packages/*`). All six fail on the old page.
 
 ## In flight
 
