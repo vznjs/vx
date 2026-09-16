@@ -2,10 +2,12 @@
 // for the first, says so after a second, and both finish green with the
 // tree intact — the race of item 215 (both cleaning and restoring one
 // `dist/`) cannot start.
+import { existsSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { runLockPath } from '../src/orchestrator/run-lock.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
@@ -104,6 +106,24 @@ describe('two runs on one workspace', () => {
           200,
         )
       }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a finished run leaves no lock directory behind',
+    async () => {
+      // The release was fired and forgotten at close, and the CLI exits as
+      // soon as run() resolves — so every CLI run left its lock directory
+      // in the temp dir (658 after one day's gates, 2026-09-16). The next
+      // run reclaimed it, so nothing ever waited; the litter is the finding.
+      await addProject(root, 'app', { config: MANY, files: { 'src/index.js': 'export {}\n' } })
+      const git = gitIn(root)
+      git('add', '-A')
+      git('commit', '-q', '-m', 'init')
+      const r = await vx(root, ['run', 'build', '--all'])
+      expect(r.code).toBe(0)
+      expect(existsSync(runLockPath(root))).toBe(false)
     },
     TIMEOUT,
   )
