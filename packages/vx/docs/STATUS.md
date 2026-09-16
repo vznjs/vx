@@ -645,7 +645,13 @@ state of each:
    artifacts, discovery's stat memo, the `restore: rows` lead) are in
    `docs/history/2026-09-status-next-log.md`; the latest day's A/B is
    item 179 (2026-09-15, a tie), and the restore arm's floor is the
-   note under item 193.
+   note under item 193. 2026-09-16, after item 225: 5,000 projects
+   687 ms warm / 2,854 restore / 12,152 cold (medians of 3) against
+   1,000's 231 / 718 / 2,436 — the warm stage table grows 3.4–3.9× for
+   5× the projects (discover 23 → 89 ms, load configs 24 → 87, classify
+   56 → 190, run graph 42 → 144), git's own enumeration 6× (9 → 55),
+   nothing super-linear; the fixed ~30 ms of startup and workspace
+   config is what makes 5,000 cheaper per project than 1,000.
 
 7. CLOSED — the 2026-09-04 walkthrough's four follow-ups landed
    ((a) `noCache` in `--summarize` rows, (b) `init` no longer makes
@@ -674,7 +680,7 @@ state of each:
 13. DONE 2026-09-10 as item 120 — `vx watch` watches the projects a cycle can run.
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197 and 202 (14–14i) are in `docs/history/2026-09-status-next-log.md`;
-    14j–14m below are the current ones.
+    14j–14n below are the current ones.
 
 14j. **Handoff after item 208 (2026-09-16, morning).** Six items
 since 14i, all from one persona taken one step further each time:
@@ -792,6 +798,38 @@ never by the status line — "the key will not change" prints under a
 green run, and a persona reading the exit code alone misses it (221);
 when a listing is scoped, detect by what is absent from a slice, not
 by what the scope would have to include. Never end with "what next?".
+
+14n. **Handoff after item 225 (2026-09-16, afternoon).** Four items
+since 14m, plus a measurement. The nested-repository persona closed:
+`--affected` selects every project under a repository git reports
+changed — the gitlink, or the untracked `dir/` (222, #389) — and the
+rule reached the user docs (225, #392). Then the box's own litter:
+a census of `/tmp` found 1,333 `vx-*` entries after the day's gates —
+658 of them the run lock's directories, whose release was fired and
+forgotten at close and lost the race with the CLI's exit every time
+(223, #390: awaited now), the rest test fixtures without a cleanup
+(224, #391: the plugin helper's per-process root carries its pid and
+the next process sweeps the dead ones, the way the lock reclaims;
+`bun test` fires neither `exit` nor `beforeExit`, measured). Recorded
+without building: a task's captured output has no cap — 200 MB of
+stdout is 620 MB of RSS on the miss and every hit and a 193 MB row —
+an outlier's cost, Next 20 with the design. Refuted: an unignored
+`node_modules` of 11k files (5 ms of a warm run); a git worktree, a
+duplicate project name and a task-name typo all handled. Next 6: 5,000
+projects at 687 ms warm, every stage 3.4–3.9× for 5× the projects,
+nothing super-linear. Open: Next 1, 2, 16 and 20, all gated by their
+own terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN`
+secret, the release cut, the site's address; `workspaceFiles` stops at
+a nested repository. No open issues. The box: as 14m; the census after
+a full gate is the lock directories of runs the kill tests kill and the
+plugin roots of the last shard processes, both reclaimed by the next.
+Methods that paid: count what a day leaves behind — the census found a
+bug in the day's own feature (223) that its pins could not, because a
+pin lives in the process that the bug needs to exit; a chain that
+greps a verdict swallows its exit — read the exit (twice today the
+gate caught what the chain passed); a numbered Next entry goes at the
+END of the list or the formatter renumbers it (third time). Never end
+with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
