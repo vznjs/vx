@@ -3,15 +3,61 @@
 ## Purpose
 
 Answer "where did the warm run go?" without a profiler. With
-`VX_TIMING=1`, `mark(label)` records the end of each stage
-(`prepareRun`: startup, workspace config, discovery, cache open, config
-load, git enumeration, build graph, plugin stages — the graph, key and
-schedule hooks, so a plugin's cost is its own row; `run()`: classify +
-probe, run graph, history, close) and `span(label)` accumulates repeated per-task
-operations (`cache.get`, `output glob`, `output stat`, `task hash`).
-`printTimings()` writes the table to stderr at the end of the run, and
-at the end of a `--dry` run — a dry run is how the prepare stages get
-profiled on a real repo with no install to run against.
+`VX_TIMING` set to anything but the empty string, `mark(label)` records
+the end of each stage — `prepareRun`'s seven, then `run()`'s, the
+first of which is marked as `prepareRun` returns and holds the graph,
+key and schedule hooks, so a plugin's cost is its own row — and
+`span(label)` accumulates the repeated per-task operations: the probe,
+the restore, the miss and the save, each split into its steps. The
+labels are listed below. `printTimings()` writes the table to stderr
+at the end of the run, and at the end of a `--dry` run — a dry run is
+how the prepare stages get profiled on a real repo with no install to
+run against.
+
+## Marks and spans (current)
+
+Marks, in the order a run ends them (`tests/module-shape-drift.test.ts`
+pins this list to `prepare.ts` and `run.ts`, and the spans to every
+`span(` call under `src/`):
+
+- `startup`
+- `workspace config`
+- `discover projects`
+- `open cache`
+- `load configs`
+- `git enumeration`
+- `build graph`
+- `plugin stages`
+- `classify + probe`
+- `run graph`
+- `record history`
+- `save lane`
+- `output dir snapshots`
+- `close`
+
+Spans, accumulated per call:
+
+- `cache.get`
+- `miss: build request`
+- `miss: clean outputs`
+- `miss: execute`
+- `miss: resolve outputs`
+- `miss: save`
+- `output dirs`
+- `output glob`
+- `output rows`
+- `output stat`
+- `probe`
+- `restore: exists`
+- `restore: extract`
+- `restore: rows`
+- `save: index tx`
+- `save: pack`
+- `save: rename`
+- `save: scan`
+- `save: write temp`
+- `stable keys`
+- `task hash`
 
 ## Invariants
 

@@ -460,6 +460,24 @@ test is telling the truth.
       default), each held to its declaration line — controls today,
       the tripwire for the day a cap moves. One fails on the old
       page.
+331.  DONE (2026-09-16, the three 09-11 pages: package-graph,
+      projects, timing). package-graph.md described the transitive
+      closures as memoised DFS built with the graph; they are bitset
+      closures swept in Kahn order, built on the first query (the
+      2026-09-09 profile), with the per-query fallback for a cycle and
+      the reason it is not a memoised recursion. Its Tests list was a
+      paraphrase of nine where the suite has thirteen — now the `it`
+      names, pinned in order. projects.md lacked
+      `loadResolvedProjects` (the embedder's read: `vx mcp`, the
+      schedule-history plugin) and said `vx show` passes no lock (it
+      passes the lock under `--frozen`, through
+      `cli/workspace-config.ts`). timing.md listed a third of the
+      marks and four of twenty-one spans, `history` for
+      `record history`; the page now lists every label, and the law
+      holds the marks to `prepare.ts` + `run.ts` in order and the
+      spans to every `span(` call under `src/`. Exports of
+      `projects.ts` join config's every-export pin; three more
+      shapes. Four pins fail on the old pages.
 
 ## In flight
 
