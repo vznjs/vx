@@ -1083,6 +1083,28 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       proves nothing — the cache's files sit in subdirectories already
       created, so the run saved as before; an unwritable cache
       directory is a separate probe, not taken.
+208.  DONE (2026-09-16, that probe taken, as `probe` with the whole
+      `.vx` read-only): every task failed at 0 ms, warm hits included,
+      as an internal error carrying SQLite's "attempt to write a
+      readonly database" — the command never ran — and with only the cache's
+      own files read-only the run went to its end and died there in
+      the history write, a stack on stderr. Every run writes the cache
+      (its record at the end, `accessed_at` on a hit, the artifact on a
+      miss), so the run's cache open asks the file system first: the
+      directory and, when it exists, `cache.db` must be writable
+      (`accessSync`, two calls, 1.8 µs), else a `UserError` names the directory
+      and `--cache-dir <path>` before the graph starts. Refuted on the
+      way, twice: a trial write inside `BEGIN IMMEDIATE … ROLLBACK`
+      passes on a handle SQLite opened read-only — the write lock alone,
+      and then a rolled-back `UPDATE` too, because under WAL a rolled-back
+      page never reaches the disk — so the check is the file system's,
+      not SQLite's. Pinned in `cache.test.ts` (unit, with a writable
+      control) and `cache-dir-selection.test.ts` (the CLI: exit 1, the
+      one line, no task ran), both skipped as root and proven both ways
+      as `probe`; `docs/cli.md` (`--cache-dir`) and `docs/caching.md`
+      (§ Storage layout) say it. Read-only verbs (`vx info`, `why`,
+      `last`) open the cache without the check and keep working on a
+      read-only cache, as they did.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

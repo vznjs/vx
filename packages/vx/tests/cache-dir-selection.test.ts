@@ -28,6 +28,63 @@ const CONFIG = `
   }
 `
 
+// Root writes anywhere, so the case skips there; CI's runner is not root.
+describe.skipIf(process.getuid?.() === 0)('a cache directory this user cannot write into', () => {
+  let root: string
+  let ro: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-cache-dir-ro-' })
+    ro = await mkdtemp(path.join(os.tmpdir(), 'vx-ro-cache-'))
+    await addProject(root, 'app', { config: CONFIG, files: { 'src/index.js': 'export {}\n' } })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+  })
+  afterEach(async () => {
+    const { chmod, readdir } = await import('node:fs/promises')
+    await chmod(ro, 0o755)
+    for (const f of await readdir(ro)) await chmod(path.join(ro, f), 0o644)
+    await rm(root, { recursive: true, force: true })
+    await rm(ro, { recursive: true, force: true })
+  })
+
+  const vx = async (args: string[]): Promise<{ code: number; out: string; err: string }> => {
+    const proc = Bun.spawn([process.execPath, BIN, ...args, '--cache-dir', ro], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    return { code, out, err }
+  }
+
+  it(
+    'fails the run once, before any task, naming the directory',
+    async () => {
+      // A first run creates the cache as this user; then the directory and
+      // its files stop being writable, the way another user's `.vx` is.
+      const first = await vx(['run', 'build', '--all'])
+      expect(`${first.code}\n${first.err}`).toStartWith('0\n')
+      const { chmod, readdir } = await import('node:fs/promises')
+      for (const f of await readdir(ro)) await chmod(path.join(ro, f), 0o444)
+      await chmod(ro, 0o555)
+      const second = await vx(['run', 'build', '--all'])
+      expect(second.code).toBe(1)
+      expect(second.err).toMatch(/cache directory .* is not writable \(/)
+      expect(second.err).toMatch(/pass --cache-dir <path>/)
+      // Not the per-task shape it had: no internal error, no task ran or failed.
+      expect(second.out + second.err).not.toContain('internal error')
+      expect(second.out + second.err).not.toContain('app#build')
+    },
+    TIMEOUT,
+  )
+})
+
 describe('the run’s --cache-dir reaches selection', () => {
   let root: string
   let elsewhere: string

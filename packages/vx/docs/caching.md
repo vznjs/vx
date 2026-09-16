@@ -600,6 +600,12 @@ same reason `lock --check` ignores `inputs.env` value changes.
 
 ## Storage layout
 
+The run must be able to write here — it records its history at the
+end of every run, hit or miss — so a directory this user cannot write
+into (another user's `.vx`, a read-only checkout) fails the run before
+any task: `cache directory <path> is not writable (EACCES: …)`, with
+`--cache-dir <path>` as the way out.
+
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)
 ├── .gitignore                              `*` — written when the dir is created, so the
