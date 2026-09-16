@@ -196,6 +196,12 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   within a bounded factor. A pure-function test of the conversion only
   restates the assumption (Linux peak RSS ran 1024× too big under one,
   2026-09-12).
+- `bun --bun` links `node` to itself under `/tmp/bun-node-<build>/`,
+  mode 0700, owned by whoever ran it first; a second user gets no shim
+  and no word of it, and `bun --bun astro build` ran the PATH's Node 20
+  (2026-09-16). On a shared box remove that directory before a run as
+  another user. A file-system refusal (`EACCES`, `ENOSPC`) reaching the
+  user as an "internal error" or a stack is a defect: `isFsRefusal`.
 - Two measured quantities that are equal by construction sit on jitter:
   a light child's `ru_maxrss` IS the parent's mark, and the kernel's RSS
   counters lag by pages, so an exact `>` between them flipped on one CI

@@ -1509,6 +1509,34 @@ a fix by walking it, not by reading (207 and 208 were not in the code
 running it without the fix (208's first two probes passed on the old
 code too). Never end with "what next?".
 
+14k. **Handoff after item 211 (2026-09-16, morning).** Three items
+since 14j, the same walk carried to the tree's other refusals: the
+readers open an unwritable cache read-only and go on (209, the
+file-hash memo took the write axis it had ignored); a read-only
+checkout with no cache yet, and the verbs that write the tree, print
+one line naming the path instead of a stack — the file system's
+refusal is a `UserError` at the CLI's top level and in the scheduler,
+one rule for every write nobody wrapped (210); and a full disk, which
+a 2 MiB tmpfs makes hostable here and on CI, is reported the same way
+at the restore, and a run whose history cannot be written keeps its
+verdict (211; `disk-full.test.ts` behind `VX_SMALL_DISK`, mounted by
+CI's Linux job and the manual gate). Merged as #377–#378; 211 is
+#379. Refuted or retired on the way: a doctor that prints partial
+facts on an uncreatable cache directory (declined under 210 — its one
+line is the diagnosis); the pin that made a record throw reject the
+run (it asserts the line now). Next 6 closed the day at a tie (under
+210). Open: Next 1, 2 and 16 as before, all gated by their own terms;
+In-flight 5 (macOS); the owner residue — the `NPM_TOKEN` secret, the
+release cut, the site's address. No open issues. The box: as 14j,
+plus `mount -t tmpfs` works here as root (the small disk). Methods
+that paid: a persona's refusals come in kinds (permission, space) and
+each kind has three sites (clean, restore, record) — walk the grid,
+not the first cell; a claim in STATUS ("the readers keep working") is
+a test to run before it is a sentence to keep (209 came from testing
+208's last line); when a fix retires a pin, the pin's claim usually
+survives in another shape (close still runs) — keep the claim, change
+the shape. Never end with "what next?".
+
 14h. **Handoff after item 197 (2026-09-16, small hours).** Five
 items since 14g: the one dependency that had moved (193), this file
 cut to a handoff again — loop items 105–144 and the Next list's
