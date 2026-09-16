@@ -1,5 +1,6 @@
-// HistoryTable + HistoryProvider — historical run data the scheduler
-// uses for predictive priority and `vx info --history` surfaces.
+// HistoryTable + HistoryProvider — historical run data the `schedule`
+// plugin (`@vzn/vx-schedule-history`, and its `vx history` verb) and
+// `--dry`'s time prediction read.
 //
 // The data has been in cache.db.runs since schema v11; what's new is
 // surfacing it. One SQL statement per call pulls the last N executed rows
@@ -7,10 +8,8 @@
 // result becomes a read-only snapshot for the run's lifetime. Loaded once
 // by the `schedule` stage (or `--dry`); never mutated mid-run.
 //
-// Two providers:
-//   LocalHistoryProvider  — reads cache.db directly (zero-config).
-//   RemoteHistoryProvider — would call a service RPC; deferred to
-//                            when such an RPC actually exists.
+// One provider ships, `LocalHistoryProvider`, reading cache.db directly
+// (zero-config); the interface is the seam a plugin fills for any other.
 
 import type { Database } from 'bun:sqlite'
 import { EXECUTED_RUNS_SQL } from '../cache/index.js'

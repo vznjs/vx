@@ -1024,29 +1024,30 @@ interface WorkspaceConfig {
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list and cache chain
   — so a workspace that declares none runs and caches here.
-  Declaration order is precedence: every `executor` is consulted in order
-  per task (first to accept runs it; what all decline runs locally);
-  every `cache` layer is chained (lookup walks, save reaches all, the
-  local store last). Each entry is a
-  `VxPlugin` object contributing any subset of the pipeline stages
-  `config` (edit the workspace config), `project` (edit a loaded
-  project's tasks — inject, remove, rewrite; re-validated by core and
-  hashed into the key like a hand edit), `graph` (edit the task graph's
-  edges), `key` (per-task `{ name: value }` material folded into the
-  cache key), `schedule` (task id → priority, merged over the
-  scheduler's baseline), CLI `commands` (`{ verb: { description,
-run(argv, ctx) } }`, consulted for a verb core does not know) — and the run-level
-  capabilities `cache` (which cache
-  layer is used), `executor
-(`executor(ctx)`— return a`TaskExecutor`(where one task's command
-runs) or decline),`telemetry`(observe-only data export — the
-canonical path for OTel, a self-hosted dashboard, or custom sinks),
-plus optional`setup`/`teardown`.
-First-party plugins include `otel()`from`@vzn/vx-otel`and`@vzn/vx-reapi`. A plugin
-that declines every capability (e.g. `otel()` with no OTLP
-  endpoint configured) costs nothing — a run with no active plugin
-  is byte-identical to one with none declared. Plugins observe, route
-  and execute; they never change what a task is.
+  Declaration order is precedence: every `executor` is consulted in
+  order per task (first to accept runs it; what all decline runs
+  locally); every `cache` layer is chained (lookup walks, save reaches
+  all, the local store last). Each entry is a `VxPlugin` contributing
+  any subset of the thirteen hooks, in pipeline order: `config` (edit
+  the workspace config before anything derives from it), `project`
+  (edit a loaded project's tasks — inject, remove, rewrite;
+  re-validated by core and hashed into the key like a hand edit),
+  `graph` (edit the task graph's edges), `key` (per-task
+  `{ name: value }` material folded into the cache key), `fingerprint`
+  (claim a lockfile and key it per project), `schedule` (task id →
+  priority, merged over the scheduler's baseline), `admit` (may this
+  ready task start now beside what runs here), `executor` (return a
+  `TaskExecutor` — where one task's command runs — or decline), `cache`
+  (return a cache layer or decline), `telemetry` (observe-only export:
+  OTel, the GitHub job summary, a custom sink), `setup` and `teardown`
+  around the run, and CLI `commands` (`{ verb: { description, run } }`,
+  consulted for a verb core does not know). First-party plugins:
+  `@vzn/vx-otel`, `@vzn/vx-github`, `@vzn/vx-reapi`, `@vzn/vx-lockfile`,
+  `@vzn/vx-schedule-history`, `@vzn/vx-mcp`, `@vzn/vx-migrate`. A
+  plugin that declines every capability (`otel()` with no OTLP endpoint
+  configured) costs nothing — a run with no active plugin is
+  byte-identical to one with none declared. Plugins observe, route and
+  execute; they never change what a task is.
 
 The loader validates the shape (positive integer for `concurrency`,
 string for `cacheDir`, plugin objects with a name and at least one

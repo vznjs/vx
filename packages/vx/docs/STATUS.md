@@ -347,6 +347,23 @@ test is telling the truth.
       table; moved to its own. The rest of the page's storage
       section (the artifact layout, the sidecar, the streaming save
       and restore, the index-is-authoritative rule) read true.
+299.  DONE (2026-09-16, `schema.md` § Workspace config and the module
+      index read against source): the `plugins` bullet named ten of
+      thirteen hooks (no `fingerprint`, `admit`, `teardown`) and its
+      code spans had wrapped across continuation lines, so the site
+      rendered the executor and telemetry clauses and the first-party
+      list as run-together backtick soup (item 280's formatter rule,
+      on a page a config author reads). Rewritten in pipeline order
+      naming all thirteen and the seven first-party packages, no span
+      across a line, and pinned to `PLUGIN_HOOKS` beside the table
+      pins. The header of `history.ts` said the scheduler and a
+      `vx info --history` flag read it (the `schedule` plugin and the
+      `--dry` prediction do; no such flag) and promised a remote
+      provider "when such an RPC exists" (the service is gone; the
+      interface is the seam). The module index read true row by row.
+      The lesson, again: quoting broken markup inside STATUS breaks
+      STATUS — an unbalanced backtick un-indents the list item under
+      the formatter (this entry, first try).
 
 ## In flight
 
