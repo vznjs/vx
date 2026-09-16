@@ -478,6 +478,29 @@ test is telling the truth.
       spans to every `span(` call under `src/`. Exports of
       `projects.ts` join config's every-export pin; three more
       shapes. Four pins fail on the old pages.
+332.  DONE (2026-09-16, the six 09-12 pages: config-schema, index,
+      plugin, plugin-host, plugins, util-cgroup — the oldest-page
+      queue's last). index.md's group table was the façade of
+      2026-08: thirty names that left it on 2026-09-10 (the graph
+      primitives, the hashing seam, the event bus, the history
+      readers) and none of the twenty that arrived (`definePlugin`,
+      `PLUGIN_HOOKS`, `collectInfo`, the machine pair, the migration
+      seam, the lockfile shell, `TaskLogBuffer`, `exitSignal`), "~80
+      exports" for a runtime set of 42, four plugin packages of
+      seven, and a release story (`gh release create` bumps
+      `VERSION`) where `npm.yml` stamps the manifest `version.ts`
+      imports. Rewritten from the file, values and types apart, and
+      the law holds both columns to it, the count in prose too.
+      plugin-host.md listed `resolveExecutors` twice with an `opts`
+      neither it nor `resolveCache` takes, an `opts.workspaceFile`
+      `vx init` hint the host no longer raises, a sink-isolation
+      invariant that is the telemetry host's, and none of `hasHook`,
+      `CACHE_LAYER_METHODS`, `fingerprintClaims`, `claimedAffected`;
+      the section now names every export and the law holds it.
+      config-schema.md's `where` is `configPath`; util-cgroup.md's
+      readers gain the doctor. plugin.md and plugins.md read true
+      (the hook table was pinned in 283). Three pins fail on the old
+      pages. Handoff 14ae.
 
 ## In flight
 
@@ -628,7 +651,7 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270, 275, 281, 287 and 293 (14–14y) are in
-    `docs/history/2026-09-status-next-log.md`; 14z–14ad below are
+    `docs/history/2026-09-status-next-log.md`; 14z–14ae below are
     the current ones.
 
 14z. **Handoff after item 299 (2026-09-16, evening).** Six items
@@ -830,6 +853,42 @@ util-cgroup (09-12) — then the 09-16 pages the day's own items wrote
 are current by construction; then the trim; then Next 6's re-measure
 only when warm-path code moves (none did today). Never end with "what
 next?".
+
+14ae. **Handoff after item 332 (2026-09-16, late night).** Six items
+since 14ad, and the oldest-page queue is exhausted: 327 (util-hash,
+util-ulid, version), 328 (bin, chained-cache, config), 329
+(fingerprint, lockfile-claim, task-log-buffer), 330 (the five util
+pages), 331 (package-graph, projects, timing), 332 (config-schema,
+index, plugin, plugin-host, plugins, util-cgroup). Every module page
+under `docs/modules/` has now been read against its source once in
+this series (306–332), and the 09-16 pages the day's own items wrote
+are current by construction. The finds of this stretch: a façade page
+that described the surface of a month ago (thirty names gone, twenty
+missing), a transitive closure described as the DFS a 2026-09-09
+profile replaced, a timing page naming a third of its labels, a host
+page with a `vx init` hint the host no longer raises, an every-export
+pin that reads the file (`config.ts`, `projects.ts`, `plugin-host.ts`,
+`index.ts` by column) and a tests list pinned to a suite's `it` names.
+`tests/module-shape-drift.test.ts` holds seventy-three shapes, its
+constants, samples, error sets, export lists, the timing labels and
+the façade. 326 went in #472, 327 #473, 328 #474, 329 #475, 330 #476,
+all merged; 331 is #477 (open) and 332 stacks on it. Open: Next 1, 2
+and 16, gated by their own terms; In-flight 5 (macOS); the owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues. The loop holds 306–332; the next trim moves them to
+history. The box: the pages that drifted furthest were the ones that
+describe a LIST the code owns (exports, labels, tests, hooks) — a list
+in prose is a snapshot, and the pin is what makes it a mirror; a page
+that reads true (plugin, plugins, four of five util pages) is still
+read, since the series' worth is the coverage, not the find count.
+Methods that paid: the same three-pages-per-item cadence; deriving a
+list pin from the source's own regularity (`mark('…')`, `it('…')`,
+`export {…} from`) rather than from the page. Next: the trim (306–332
+to `docs/history/`, this handoff's summary in their place); then the
+site pages under `packages/vx-docs/src/content/docs/` by the same
+oldest-page queue, guides first (each already has sample pins from
+297–305, so the read is prose); then Next 6's re-measure only when
+warm-path code moves (none did today). Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

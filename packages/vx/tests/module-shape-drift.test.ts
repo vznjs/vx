@@ -376,6 +376,46 @@ describe('a module page names every export the module has', () => {
   }
 })
 
+describe('index.md names every export of the façade, values and types apart', () => {
+  const values = new Set<string>()
+  const types = new Set<string>()
+  for (const m of read('src/index.ts').matchAll(/^export (type )?\{([^}]*)\} from/gm)) {
+    for (const raw of m[2]!.split(',')) {
+      const entry = raw.trim()
+      if (entry === '') continue
+      if (m[1] !== undefined || entry.startsWith('type ')) types.add(entry.replace(/^type /, ''))
+      else values.add(entry.split(' as ').at(-1)!)
+    }
+  }
+  const doc = read('docs/modules/index.md')
+  const rows = [...doc.matchAll(/^\| [^|]+ \| ([^|]*) \| ([^|]*) \|$/gm)]
+  const column = (i: 1 | 2): string[] =>
+    rows.flatMap((r) => [...r[i]!.matchAll(/`(\w+)`/g)].map((m) => m[1]!)).sort()
+  it('the values column is the runtime symbol set, and the count in prose is its size', () => {
+    expect(values.size).toBeGreaterThan(30)
+    expect(column(1)).toEqual([...values].sort())
+    expect(doc).toContain(`set (${values.size} names)`)
+  })
+  it('the types column is every export type', () => {
+    expect(types.size).toBeGreaterThan(60)
+    expect(column(2)).toEqual([...types].sort())
+  })
+})
+
+describe('plugin-host.md names every export of the host', () => {
+  it('its Public surface section holds each export', () => {
+    const src = read('src/orchestrator/plugin-host.ts')
+    const exported = [...src.matchAll(/^export (?:async )?(?:function|const) (\w+)/gm)].map(
+      (m) => m[1]!,
+    )
+    expect(exported.length).toBeGreaterThan(10)
+    const section = /## Public surface\n([\s\S]*?)\n## /.exec(read('docs/modules/plugin-host.md'))
+    expect(section).not.toBeNull()
+    const named = new Set([...section![1]!.matchAll(/`(\w+)/g)].map((m) => m[1]!))
+    expect(exported.filter((n) => !named.has(n))).toEqual([])
+  })
+})
+
 describe('a module page lists the tests its suite has', () => {
   it("package-graph.md's Tests bullets are the suite's it names, in order", () => {
     const src = read('tests/package-graph.test.ts')

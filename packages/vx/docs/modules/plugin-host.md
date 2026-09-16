@@ -22,29 +22,39 @@ it), so a workspace that declares nothing runs and caches here.
 
 ## Public surface
 
-- `resolveExecutors(plugins, ctx)` → `TaskExecutor[]` (ordered, the local
-  executor last; a throwing factory aborts).
-- `resolveCache(plugins, ctx, opts?)` → `CacheLayer` (one layer as is; two or
-  more chained in order — `ChainedCache`; a layer wrapping the local
-  handle subsumes the bare local layer; none is a named error).
-- `opts.workspaceFile: false` (host-only; plugins never see it) makes
-  either "no plugin" error lead with `vx init`, for a root with no
-  `vx.workspace.*` at all — a file that declares nothing gets the plain
-  error, since `init` would refuse to overwrite it.
+- `hasHook(plugins, hook)` — the zero-cost gate: does any plugin
+  declare the stage.
 - `applyConfigHooks` / `applyProjectHooks` / `applyGraphHooks` /
   `applyKeyHooks` / `applyScheduleHooks` — the pipeline stages, run in
-  declaration order only when some plugin declares them (`hasHook`).
+  declaration order only when some plugin declares them.
+- `fingerprintClaims(plugins)` → claimed file → its one claimant (the
+  schema refused a second, so this only indexes);
+  `claimedAffected(plugin, change, ctx)` asks the claimant which
+  projects a change to its file reaches — `undefined` is every project,
+  and a non-iterable answer is refused by name.
+- `resolveExecutors(plugins, ctx)` → `TaskExecutor[]` (ordered, the
+  local executor last; the first to accept a task runs it; a throwing
+  factory aborts).
+- `resolveCache(plugins, ctx)` → `CacheLayer` (one layer as is; two or
+  more chained in order — `ChainedCache`; a layer wrapping the local
+  handle subsumes the bare local layer; none declared leaves the local
+  store unwrapped). `CACHE_LAYER_METHODS` is what a returned layer must
+  carry.
 - `buildAdmission(plugins, nodes, concurrency, warn)` → the scheduler's
   `admit(id, running)` predicate, or undefined when no plugin declares
   `admit` (the scheduler then tracks nothing). Every declaring plugin is
   asked with the running tasks' nodes and the worker count, all must
   admit; a throw is warned once, naming the plugin, and that plugin
   admits from then on.
-- `resolveExecutors(plugins, ctx, opts?)` — the executors in order; the first
-  to accept a task runs it.
-- `teardownPlugins(plugins, warn)` — end-of-run: each plugin's
-  `teardown()` under try/catch and a time bound; errors warn, never
-  throw. Telemetry sinks are flushed by the telemetry host, not here.
+- `teardownPlugins(plugins, warn)` — end-of-run, in declaration order:
+  each plugin's `teardown()` under try/catch and a time bound
+  (`teardownTimeoutMs()`: `VX_TEARDOWN_TIMEOUT_MS`, 3 s by default; a
+  call that never settles is warned by name, never awaited past the
+  bound). Runs on the normal completion path only. Telemetry sinks are
+  flushed by the telemetry host, not here.
+
+Every export above is named in this section; `tests/module-shape-drift.test.ts`
+holds the list to the file.
 
 ## Invariants
 
@@ -54,6 +64,9 @@ it), so a workspace that declares nothing runs and caches here.
   a `schedule` return that is not a `Map`. A stage's edit is
   re-validated after EACH plugin (`applyProjectHooks`' `afterEach`), so
   the refusal names the plugin whose edit broke the task.
-- Sink init failures are isolated per plugin (warn + skip); a sink with
-  no handler at all is one of them.
-- Dispose only unsubscribes; teardown is the flush point.
+- A capability factory or stage that throws becomes a clean
+  `UserError` naming the plugin and the hook: what a plugin does is
+  load-bearing, never silently degraded (telemetry sinks are the
+  observe-only exception, isolated in `telemetry-host.ts`).
+- The finally-path disposers only unsubscribe; teardown is the flush
+  point.
