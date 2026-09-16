@@ -17,7 +17,9 @@ export default defineWorkspace({
 That's the whole setup. On a GitHub Actions runner (`GITHUB_STEP_SUMMARY`
 set) every `vx run` appends a summary block: verdict headline, stats
 (tasks / executed / cache hits / duration), failures called out above the
-per-task table.
+per-task table with their exit code, and the signal an exit above 128
+stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
+`vx last` say it).
 Anywhere else — laptops, other CI — the plugin **declines** and costs
 nothing, so declaring it unconditionally is safe.
 

@@ -7,6 +7,7 @@
 // shipped without the escape once already.
 import {
   escapeMarkdownCell,
+  exitSignal,
   isCacheHit,
   isPassStatus,
   type RunSummaryRecord,
@@ -58,7 +59,13 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
     lines.push('### Failures')
     lines.push('')
     for (const t of failed) {
-      lines.push(`- **${escapeMarkdownCell(t.taskId)}** — exit ${t.exitCode}`)
+      // The signal an exit above 128 stands for, as the frame and `vx last`
+      // say it (the shell's convention, so a command exiting 137 on its
+      // own reads the same).
+      const signal = exitSignal(t.exitCode)
+      lines.push(
+        `- **${escapeMarkdownCell(t.taskId)}** — exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`,
+      )
     }
     lines.push('')
   }
