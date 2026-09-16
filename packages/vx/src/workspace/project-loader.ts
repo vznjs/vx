@@ -3,6 +3,7 @@ import type { ProjectConfig, WorkspaceConfig } from '../config.js'
 import { UserError, xxh3hex } from '../util/index.js'
 import { validateProjectConfig, validateWorkspace } from './config-schema.js'
 import { evaluateConfigFresh } from './config-eval.js'
+import { unprovidedBareImports } from './config-imports.js'
 import { configEvalKey, configEvalKeyFromClosure, type ConfigEvalStore } from './config-cache.js'
 
 // The validator lives in config-schema.ts; re-exported so a reader that
@@ -41,6 +42,7 @@ async function loadDefaultExport(
   bytes?: Uint8Array,
 ): Promise<unknown> {
   bytes ??= await Bun.file(configPath).bytes()
+  refuseUnprovidedImports(bytes, configPath, kind)
   // `fresh` opts out of module-cache reuse entirely: `vx lock` and
   // `vx lock --check` must observe the CURRENT environment, and the
   // content-hash bust would replay an evaluation made under earlier
@@ -55,6 +57,26 @@ async function loadDefaultExport(
   const mod = ns?.default
   assertDefaultObject(mod, kind, configPath)
   return mod
+}
+
+/**
+ * A bare import nothing above the config provides is refused BEFORE the
+ * evaluation: left to Bun, a workspace with no `node_modules` would have
+ * the package auto-installed from the registry first (config-imports.ts),
+ * and a config must never download. The message keeps the shape Bun's own
+ * refusal has, with the remedy.
+ */
+function refuseUnprovidedImports(bytes: Uint8Array, configPath: string, kind: string): void {
+  const loader = /\.[cm]?ts$/.test(configPath) ? 'ts' : 'js'
+  const missing = unprovidedBareImports(
+    new TextDecoder().decode(bytes),
+    path.dirname(configPath),
+    loader,
+  )
+  if (missing.length === 0) return
+  throw new UserError(
+    `${kind} config ${configPath}: cannot find '${missing[0]}' — no node_modules above the config provides it; install the workspace's dependencies first`,
+  )
 }
 
 /**
@@ -238,6 +260,7 @@ export async function loadProjectConfigs(
     // single `vx run` hot path never pays for a worker.
     const repeat = loadedConfigs.has(configPath)
     loadedConfigs.add(configPath)
+    if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
     const mod = repeat
       ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
           throw configLoadError(err, configPath, 'Project') ?? err

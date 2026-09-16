@@ -25,9 +25,64 @@
 //     closure, and the containment channel already selects the project that
 //     owns it.
 
+import { existsSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
+import { builtinModules } from 'node:module'
 import path from 'node:path'
 import type { ProjectMeta } from './workspace.js'
+
+const BUILTINS = new Set(builtinModules)
+
+/** The package a bare specifier names: `@scope/name` or the first segment. */
+function packageOf(spec: string): string {
+  const parts = spec.split('/')
+  return spec.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]!
+}
+
+/**
+ * The bare specifiers of `source` that no `node_modules/<package>` above
+ * `fromDir` provides — the imports Bun would AUTO-INSTALL from the npm
+ * registry rather than fail, when no `node_modules` exists anywhere above
+ * (measured 2026-09-16: sixteen registry connections and 150 ms before
+ * "cannot find"; with one present, 0 and 1 ms). A config is evaluated in
+ * the user's process with the user's network: a fresh clone before its
+ * install, or a typo, must be a refusal, never a download. Builtins
+ * (`node:fs`, `fs`, `bun:sqlite`) and `@vzn/vx` (served by the core alias
+ * inside the compiled binary) are never in the list; relative and absolute
+ * specifiers resolve by path and are the loader's to refuse.
+ */
+export function unprovidedBareImports(
+  source: string,
+  fromDir: string,
+  loader: 'ts' | 'js',
+): string[] {
+  let specifiers: string[]
+  try {
+    specifiers = new Bun.Transpiler({ loader }).scanImports(source).map((i) => i.path)
+  } catch {
+    return [] // unparseable: the evaluation names the syntax error
+  }
+  const out: string[] = []
+  for (const spec of specifiers) {
+    if (spec.startsWith('.') || spec.startsWith('/') || spec.includes(':')) continue
+    if (BUILTINS.has(spec)) continue
+    if (spec === '@vzn/vx' || spec.startsWith('@vzn/vx/')) continue
+    const pkg = packageOf(spec)
+    let dir = path.resolve(fromDir)
+    let provided = false
+    for (;;) {
+      if (existsSync(path.join(dir, 'node_modules', pkg))) {
+        provided = true
+        break
+      }
+      const up = path.dirname(dir)
+      if (up === dir) break
+      dir = up
+    }
+    if (!provided && !out.includes(spec)) out.push(spec)
+  }
+  return out
+}
 
 /**
  * Absolute resolved targets of the RELATIVE specifiers in `source`.

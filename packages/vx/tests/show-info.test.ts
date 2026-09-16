@@ -558,7 +558,10 @@ describe('vx info — a config that will not load counts as zero, for every numb
       )
       const two = JSON.parse((await vx(root, ['info', '--format', 'json'])).out)
       expect(two.configErrors).toEqual([
-        { path: 'packages/badimport/vx.config.mjs', message: "cannot find 'nope-pkg'" },
+        {
+          path: 'packages/badimport/vx.config.mjs',
+          message: expect.stringMatching(/^cannot find 'nope-pkg' — no node_modules above/),
+        },
         {
           path: 'packages/broken/vx.config.mjs',
           message: expect.stringMatching(/^tasks\.build has unknown field "command"/),
@@ -566,7 +569,7 @@ describe('vx info — a config that will not load counts as zero, for every numb
       ])
       // One row, the errors joined by `; ` in path order.
       expect((await vx(root, ['info'])).out).toMatch(
-        /^config errors: +packages\/badimport\/vx\.config\.mjs: cannot find 'nope-pkg'; packages\/broken\//m,
+        /^config errors: +packages\/badimport\/vx\.config\.mjs: cannot find 'nope-pkg' — no node_modules above .*; packages\/broken\//m,
       )
     },
     TIMEOUT,

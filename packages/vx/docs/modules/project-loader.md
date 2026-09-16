@@ -148,3 +148,9 @@ Drop in any function that takes an absolute config path and returns
   a clean registry, but measured ~30-50 ms against the Worker's
   ~8-15 ms, and a compiled binary cannot spawn `bun` (it would need an
   internal subcommand on `process.execPath`).
+
+Before either evaluation path (the first in-process import, the repeat
+load's worker), a bare import nothing above the config provides is refused
+with the install named (`refuseUnprovidedImports`, item 239): left to Bun, a
+workspace with no `node_modules` would auto-install it from the registry
+first, and a config must never download.

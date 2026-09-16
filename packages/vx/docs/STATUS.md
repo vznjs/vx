@@ -762,6 +762,23 @@ of a task's output for its cache entry and replay`). The
       there — so the fixture has a `node_modules` like any real
       workspace, and the product gap is Next 21.
 
+239.  DONE (2026-09-16, Next 21): a config's bare import that no
+      `node_modules` provides is refused BEFORE the evaluation. Left to
+      Bun, a workspace with no `node_modules` anywhere above — a fresh
+      clone before its install, a typo in an import — had the package
+      auto-installed from the npm registry first: sixteen connections
+      and 150 ms before "cannot find", measured, and a sandbox violation
+      on the macOS job (238). `unprovidedBareImports` scans the config's
+      specifiers (the transpiler's own scan, as the owners walk does)
+      and climbs for `node_modules/<package>`; builtins, `@vzn/vx` (the
+      core alias) and path specifiers are never listed, and the refusal
+      keeps Bun's shape with the remedy: `cannot find 'x' — no
+node_modules above the config provides it; install the workspace's
+dependencies first`. On the evaluation path only — a warm run
+      serves configs from the eval cache and scans nothing. Pinned in
+      `config-missing-import.test.ts` (the refusal's suffix is the proof
+      it came before the import; a provided package still evaluates).
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
@@ -1187,7 +1204,7 @@ needs forwarding the moment you use it. Never end with "what next?".
     and after. Not started; the number that decides is a real
     workspace whose logs pass ~50 MB per task.
 
-21. **A config's bare import that no `node_modules` can serve reaches
+21. DONE 2026-09-16 as item 239 — refused before the evaluation, the install named. Was: **A config's bare import that no `node_modules` can serve reaches
     the npm registry before it fails.** Bun auto-installs a package a
     module cannot resolve when no `node_modules` exists above it —
     measured 2026-09-16: sixteen connections to the registry and 150 ms
