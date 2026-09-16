@@ -777,6 +777,15 @@ CREATE TABLE schema_meta (
   value TEXT NOT NULL
 );
 
+-- The config-evaluation cache (§ Config evaluation cache): the validated,
+-- JSON-serialised result of a provably pure config, keyed by everything
+-- the evaluation could have observed. Machine-local.
+CREATE TABLE config_evals (
+  key        TEXT PRIMARY KEY,
+  json       TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE TABLE entries (
   hash         TEXT PRIMARY KEY,  -- the 16-hex xxh3 cache key
   project      TEXT NOT NULL,
@@ -842,6 +851,53 @@ CREATE INDEX runs_run_id     ON runs(run_id);
 -- average aggregates in metrics.ts exclude it: counting a zero-duration
 -- non-event would dilute success rate, hit rate and mean duration. The
 -- completeness reads (listRuns / getRun / the run-detail timeline) include it.
+
+-- The file-hash memo: a content hash per input file that git could not
+-- answer (untracked or dirty), keyed by the stat identity that proves
+-- the bytes unchanged. Machine-local; § Cache key derivation step 4.
+CREATE TABLE file_hashes (
+  path         TEXT PRIMARY KEY,
+  mtime_ms     INTEGER NOT NULL,
+  size_bytes   INTEGER NOT NULL,
+  ctime_ms     INTEGER NOT NULL,
+  ino          INTEGER NOT NULL,
+  content_hash TEXT NOT NULL,
+  seen_at      INTEGER NOT NULL
+);
+
+-- v16: per-output-file fingerprints, scoped by the entry that produced
+-- them — what a hit stats to skip the restore when the tree is already
+-- current (§ A current tree). ON DELETE CASCADE follows a prune.
+CREATE TABLE output_files (
+  entry_hash  TEXT NOT NULL,
+  path        TEXT NOT NULL,
+  size_bytes  INTEGER NOT NULL,
+  mode        INTEGER NOT NULL,
+  mtime_ms    INTEGER NOT NULL,
+  PRIMARY KEY (entry_hash, path),
+  FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+);
+
+-- Each config's ORDERED import closure (the config first), so a warm
+-- load keys it by stat-hashing the list through file_hashes instead of
+-- reading every file. Machine-local; pruned with config_evals.
+CREATE TABLE config_closures (
+  config_path TEXT PRIMARY KEY,
+  files_json  TEXT NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+
+-- Every directory under a whole-subtree output glob, with its mtime as
+-- of the last save or restore on THIS machine: unchanged mtimes prove
+-- the output SET unchanged without a glob walk. Machine-local — a remote
+-- ingest writes none, and the first hit after it walks and records.
+CREATE TABLE output_dirs (
+  entry_hash  TEXT NOT NULL,
+  path        TEXT NOT NULL,
+  mtime_ms    INTEGER NOT NULL,
+  PRIMARY KEY (entry_hash, path),
+  FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
+);
 
 -- v22 (Tier 3): one header row per `vx run` invocation. The `runs`
 -- table is per-task; this is the per-invocation record carrying the
