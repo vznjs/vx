@@ -1259,13 +1259,23 @@ knife edge, fixed with a differential pin rather than re-run; a
 walk's refutation is written down (186, 190) so the next reader
 changes angle. Never end with "what next?".
 
-14h. **Handoff after item 196 (2026-09-16, small hours).** Four
+14h. **Handoff after item 197 (2026-09-16, small hours).** Five
 items since 14g: the one dependency that had moved (193), this file
 cut to a handoff again — loop items 105–144 and the Next list's
 record to `docs/history/` (194, 195), 2,657 lines to about 1,300 —
-and the core suite's wall time back to the average shard (196: the
-watch-loop suite had grown to a shard of its own; split three ways
-and re-weighed, the run 52 → 35 s here). Open: Next 1, 2 and 16 as before, all gated by their own
+and CI's wall time worked from its own job log: the core suite back
+to the average shard (196: the watch-loop suite had grown to a shard
+of its own; split three ways and re-weighed, the run 52 → 35 s here,
+and the re-deal exposed an RSS pin that trusted the alphabet), then
+the REAPI suite's 15 s wait pinned on the instance instead (197).
+CI's three jobs, #362 → #364: lint·format·test 2:19 → 1:42, plugin
+packages 1:18 → 0:51, core tests (macOS) 2:07 → 1:33. Next 6 duty,
+this box, `run.ts` medians of 5 after the day's merges: 100 projects
+112 ms warm / 158 restore / 380 cold; 1,000 projects 237 / 744 /
+2,520 — the warm rows on 2026-09-10's (123 / 240), the restore row
+at 1,000 well under it (1,163; the usage sidecar and the restore
+lane since). No warm-path code moved today beyond item 192's compare.
+Open: Next 1, 2 and 16 as before, all gated by their own
 terms; no open issues; every persona this box can host has been
 walked. The box: unchanged. Never end with "what next?".
 
