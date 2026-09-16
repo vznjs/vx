@@ -7,7 +7,7 @@ import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { isBunfsPath, releaseAsset, replaceBinary } from '../src/cli/upgrade.js'
+import { isBunfsPath, npmOwnedBinary, releaseAsset, replaceBinary } from '../src/cli/upgrade.js'
 
 const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-upgrade-'))
 const FAKE = '#!/bin/sh\necho fake-vx\n'
@@ -27,7 +27,7 @@ describe('isBunfsPath', () => {
   it('rejects real source paths — the source-mode signal', () => {
     // Under `--minify --bytecode`, import.meta.path is the SOURCE path;
     // keying compiled-binary detection off it (the old bug) misread
-    // every curl-installed binary as "running from source".
+    // every installed release binary as "running from source".
     expect(isBunfsPath('/Users/me/vx/src/bin.ts')).toBe(false)
     expect(isBunfsPath('/private/tmp/probe.ts')).toBe(false)
     expect(isBunfsPath('')).toBe(false)
@@ -98,6 +98,31 @@ describe('replaceBinary', () => {
         expect(await Array.fromAsync(new Bun.Glob('vx3.upgrade-*').scan({ cwd: dir }))).toEqual([])
       },
     )
+  })
+})
+
+describe('npmOwnedBinary', () => {
+  it('names the platform package for an npm-installed binary (global, local, pnpm)', () => {
+    expect(npmOwnedBinary('/usr/lib/node_modules/@vzn/vx/node_modules/@vzn/vx-linux-x64/vx')).toBe(
+      '@vzn/vx-linux-x64',
+    )
+    expect(npmOwnedBinary('/home/me/app/node_modules/@vzn/vx-darwin-arm64/vx')).toBe(
+      '@vzn/vx-darwin-arm64',
+    )
+    expect(
+      npmOwnedBinary(
+        '/home/me/app/node_modules/.pnpm/@vzn+vx-linux-x64@0.0.21/node_modules/@vzn/vx-linux-x64/vx',
+      ),
+    ).toBe('@vzn/vx-linux-x64')
+    expect(npmOwnedBinary('C:\\Users\\me\\node_modules\\@vzn\\vx-linux-x64\\vx')).toBe(
+      '@vzn/vx-linux-x64',
+    )
+  })
+
+  it('is null for a binary npm does not own', () => {
+    expect(npmOwnedBinary('/usr/local/bin/vx')).toBeNull()
+    expect(npmOwnedBinary('/home/me/.vx/bin/vx')).toBeNull()
+    expect(npmOwnedBinary('/$bunfs/root/vx')).toBeNull()
   })
 })
 

@@ -201,17 +201,17 @@ distributed ships in this repo; the seams are how you build it.
 
 ## How it compares
 
-|                           | vx                                                         | Turborepo                      | Nx               |
-| ------------------------- | ---------------------------------------------------------- | ------------------------------ | ---------------- |
-| Fully cached, 100 pkgs¹   | **144 ms**                                                 | 279 ms                         | 583+ ms          |
-| Config                    | TypeScript, evaluated into the cache key                   | JSON (static)                  | JSON (static)    |
-| Output ownership          | **Strict** — wiped before exec AND restore                 | Additive (stale files survive) | Additive         |
-| Clean-tree hashing        | **Zero reads** (git index OIDs)                            | git OIDs                       | re-hash / daemon |
-| Daemon required for speed | **No**                                                     | Optional                       | Yes              |
-| Per-task sandbox          | **Yes** — kernel-level, opt-in                             | No                             | No               |
-| Plugin API                | **Yes** — executor / cache / telemetry seams               | No                             | Yes (TS-tied)    |
-| OTel CI/CD spans          | **Yes** — `otel()` plugin, zero OTel-SDK deps              | No                             | Paid             |
-| Install                   | **Single binary** — npm or 1 curl line, no Node/Bun needed | npm + Node                     | npm + Node       |
+|                           | vx                                                               | Turborepo                      | Nx               |
+| ------------------------- | ---------------------------------------------------------------- | ------------------------------ | ---------------- |
+| Fully cached, 100 pkgs¹   | **144 ms**                                                       | 279 ms                         | 583+ ms          |
+| Config                    | TypeScript, evaluated into the cache key                         | JSON (static)                  | JSON (static)    |
+| Output ownership          | **Strict** — wiped before exec AND restore                       | Additive (stale files survive) | Additive         |
+| Clean-tree hashing        | **Zero reads** (git index OIDs)                                  | git OIDs                       | re-hash / daemon |
+| Daemon required for speed | **No**                                                           | Optional                       | Yes              |
+| Per-task sandbox          | **Yes** — kernel-level, opt-in                                   | No                             | No               |
+| Plugin API                | **Yes** — executor / cache / telemetry seams                     | No                             | Yes (TS-tied)    |
+| OTel CI/CD spans          | **Yes** — `otel()` plugin, zero OTel-SDK deps                    | No                             | Paid             |
+| Install                   | **Single binary** — npm, or one release file; no Node/Bun needed | npm + Node                     | npm + Node       |
 
 ¹ Wall-clock, direct binaries, same machine and workspace — full
 methodology and more scenarios in

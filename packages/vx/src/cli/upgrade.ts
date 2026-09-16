@@ -40,6 +40,25 @@ function isCompiledBinary(): boolean {
   )
 }
 
+/**
+ * The package directory that owns `execPath` when it sits under a
+ * `node_modules` — an npm install's platform binary, which the launcher
+ * runs as `…/node_modules/@vzn/vx-<os>-<arch>/vx`. That file is npm's:
+ * a rename over it upgrades this command until the next `npm install`
+ * (or a lockfile-pinned CI checkout) puts the version npm knows back,
+ * and `npm ls` never agrees with `vx --version` in between. Such an
+ * install updates through npm, and `vx upgrade` says so. Null for a
+ * binary installed by hand from a release.
+ */
+export function npmOwnedBinary(execPath: string): string | null {
+  const parts = execPath.split(/[\\/]/)
+  const at = parts.lastIndexOf('node_modules')
+  if (at === -1) return null
+  const scoped = parts[at + 1]?.startsWith('@') === true
+  const pkg = parts.slice(at + 1, at + (scoped ? 3 : 2)).join('/')
+  return pkg.length > 0 ? pkg : 'node_modules'
+}
+
 function assetName(): string {
   const os = process.platform === 'darwin' ? 'darwin' : process.platform
   const arch = process.arch === 'x64' || process.arch === 'arm64' ? process.arch : null
@@ -165,8 +184,14 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
         '(npm installs update with: npm install -g @vzn/vx@latest)',
     )
   }
-  const asset = releaseAsset(await fetchRelease(tag), assetName())
   const dest = process.execPath
+  const owner = npmOwnedBinary(dest)
+  if (owner !== null) {
+    throw new UserError(
+      `vx upgrade: this vx was installed by npm (${dest} belongs to ${owner}) — npm owns that file, and the next npm install would put the version it knows back. Update with: npm install -g @vzn/vx@latest`,
+    )
+  }
+  const asset = releaseAsset(await fetchRelease(tag), assetName())
   process.stdout.write(`vx upgrade: ${VERSION} → ${tag ?? 'latest'} (${dest})\n`)
   await replaceBinary(dest, asset.url, asset.sha256)
   // Report the replaced binary's own version — the new build speaks
