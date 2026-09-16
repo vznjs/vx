@@ -17,6 +17,10 @@ const shardTask = (i: number) => ({
     env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
     sandbox: {
       allow: {
+        // The root README states counts the suite pins (the hook count,
+        // item 283): a read across the project boundary, declared here
+        // and made an input below so a README edit re-keys the shards.
+        read: ['**/*', '../../README.md'],
         systemInfo: ['vfs.disk-space'],
         machLookup: ['com.apple.FSEvents'],
       },
@@ -25,6 +29,7 @@ const shardTask = (i: number) => ({
   cache: {
     inputs: {
       files: ['**/*'],
+      workspaceFiles: ['README.md'],
     },
     outputs: { files: [] as string[] },
   },

@@ -84,6 +84,21 @@ test is telling the truth.
       the loop stands at forty: items 243–281 moved to
       `docs/history/2026-09-improvement-loop-243-281.md` and handoffs
       14q–14v to the next-log file in this commit.
+283.  DONE (2026-09-16, the READMEs read against the code, the class
+      of 277–279 on the last pages not yet read that way): the root
+      README's maturity table said the plugin pipeline has 9 hooks
+      where `PLUGIN_HOOKS` lists 13 (`fingerprint`, `admit` and
+      `teardown` arrived after the count), and the same page and table
+      said "~2,500 core tests" where the gate's twelve shards pass
+      2,977 and the unsafe suite adds to that (2,553 `it` sites, 27 of
+      them `it.each`). Both counts corrected; the hook count is pinned
+      beside the hook-table pins, which needed a read across the
+      project boundary — declared on the shard tasks as a sandbox
+      grant and a `workspaceFiles` input, so a README edit re-keys
+      the shards, the way `@vzn/vx-docs` reads core's docs. The
+      benchmark figures on the same page carry their dated footnote
+      and match `docs/benchmarks.md`; the package README states no
+      count.
 
 ## In flight
 
