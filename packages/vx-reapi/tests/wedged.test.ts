@@ -13,6 +13,7 @@ import path from 'node:path'
 import { Cache } from '@vzn/vx'
 import { reapi } from '../src/index.js'
 import { ReapiRemoteCache } from '../src/cache.js'
+import { META_TIMEOUT_CAP_MS, ReapiClient } from '../src/wire.js'
 
 // The union overload of Bun.listen resolves to the unix variant without the
 // explicit TCP type argument, and a unix listener has no `port`.
@@ -183,17 +184,25 @@ describe('control-plane calls are bounded separately from bulk transfers', () =>
     }
   }, 20_000)
 
-  it('defaults derive from callTimeoutMs and cap at 15s, so raising it never lengthens a probe', async () => {
-    // No metaTimeoutMs given, and a bulk deadline far above the cap.
-    const cache = new ReapiRemoteCache({ endpoint: `127.0.0.1:${port}`, callTimeoutMs: 600_000 })
-    try {
-      const t0 = Date.now()
-      await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
-      expect(Date.now() - t0).toBeLessThan(20_000)
-    } finally {
-      cache.close()
+  it('defaults derive from callTimeoutMs and cap at 15s, so raising it never lengthens a probe', () => {
+    // Pinned on the instance's deadline, not by waiting the cap out on the
+    // wire (that cost this suite 15 s a run); the two cases around this one
+    // prove the wire honours the deadline in force, explicit and derived.
+    const at = (opts: { callTimeoutMs: number; metaTimeoutMs?: number }): number => {
+      const client = new ReapiClient({ endpoint: `127.0.0.1:${port}`, ...opts })
+      try {
+        return client.metaTimeoutMs
+      } finally {
+        client.close()
+      }
     }
-  }, 30_000)
+    // No metaTimeoutMs given, and a bulk deadline far above the cap.
+    expect(at({ callTimeoutMs: 600_000 })).toBe(META_TIMEOUT_CAP_MS)
+    expect(META_TIMEOUT_CAP_MS).toBe(15_000)
+    // Below the cap the bulk deadline governs; an explicit value is taken as given.
+    expect(at({ callTimeoutMs: 800 })).toBe(800)
+    expect(at({ callTimeoutMs: 600_000, metaTimeoutMs: 700 })).toBe(700)
+  })
 
   // CONTROL: the cap must not clamp a deliberately SHORT bulk deadline, or
   // `min()` would silently lengthen a probe that was already tighter.
