@@ -236,6 +236,22 @@ test is telling the truth.
       `RunContext` and a sections pin (cli-help.md's list is the help
       text's headers, in order); the footer sample is
       `tests/summary.test.ts`'s. Three fail on the old pages.
+317.  DONE (2026-09-16, the next three module pages by gap: filter,
+      env, deferred-outputs). filter.md's grammar said `*` never
+      crosses `/` (it is pnpm's rule: the sole metacharacter, any
+      characters, so `*core*` reaches through `@scope/`), had no path
+      glob (`./apps/*`, `{apps/**}` over the root-relative dir,
+      3daacd8), sent the `[<since>]` resolution to `cli/run.ts` (it is
+      `cli/select.ts`), lacked `pathGlob`, `pathRoot` and `onNoMatch`,
+      and claimed "the prefix wins" for `...pattern^...` (both flags
+      apply). env.md said vx does not touch `PATH` two sections below
+      the paragraph that says it prepends the project's bin, and
+      named neither run marker (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`,
+      what a nested `vx run` reads to refuse). deferred-outputs.md's
+      surface was prose with no shapes and no `size`. Fixed; the
+      shape law gains five shapes and env.md's two allowlist
+      paragraphs are `ESSENTIAL_ENV` split where Windows begins. Four
+      fail on the old pages.
 
 ## In flight
 
