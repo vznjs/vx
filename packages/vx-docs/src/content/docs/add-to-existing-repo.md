@@ -116,7 +116,7 @@ export default defineWorkspace({
 
 ```bash
 vx run build --all          # every package that declares build
-vx run test --affected      # only packages changed vs the base branch
+vx run test --affected      # changed vs the base branch, and what depends on it
 ```
 
 ## Running alongside your existing runner

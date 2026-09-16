@@ -193,13 +193,13 @@ Full breakdown + methodology in [`benchmarks.md`](./benchmarks.md).
 ## Where the lineage diverges
 
 For features Turbo or Nx have that vx **lacks**, see
-[`comparison.md` § Gaps](./comparison.md#gaps-for-vznvx).
+[`comparison.md` § Gaps](./comparison.md#gaps-for-vznvx-the-running-list).
 
 For places vx made a deliberately different call (TypeScript config,
 resolved-config hash, strict output ownership, no executor plugins,
 no daemon, no TUI), see
 [`comparison.md` § Where vx is ahead](./comparison.md#where-vx-is-ahead)
-and [`README.md`](./README.md#what-vzn-vx-is).
+and [`README.md`](./README.md#the-problems).
 
 ## Quick citation index
 

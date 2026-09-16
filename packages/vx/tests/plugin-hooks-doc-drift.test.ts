@@ -58,6 +58,16 @@ describe('the plugin hook tables follow PLUGIN_HOOKS', () => {
     expect(Number(m![1])).toBe(PLUGIN_HOOKS.length)
   })
 
+  // The technical README's § 5 walks the pipeline in prose and named 8
+  // of 13 hooks as "a hook at every stage" until 2026-09-16 (item 292).
+  it('README.md § 5 names every hook', async () => {
+    const text = await Bun.file(path.join(DOCS, 'README.md')).text()
+    const section = /### 5\. [^\n]*\n([\s\S]*?)\n## /.exec(text)
+    expect(section).not.toBeNull()
+    const named = new Set([...section![1]!.matchAll(/`([a-z]+)`/g)].map((m) => m[1]!))
+    for (const hook of PLUGIN_HOOKS) expect(named).toContain(hook)
+  })
+
   it('CONTROL: a table that lacks a hook is caught', async () => {
     // The extractor sees exactly what the rows say: a table without `admit`
     // fails the check above, so a passing run is evidence, not vacuity.

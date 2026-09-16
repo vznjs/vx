@@ -182,6 +182,82 @@ test is telling the truth.
       (`@vzn/vx@workspace:* failed to resolve`), and `bun install`
       wipes hand-placed symlinks — install the real dependency first,
       then symlink the plugin packages, after every install.
+289.  DONE (2026-09-16, after 287, the CI guide read once more): its
+      opening said a pull request "restores everything else from a
+      previous build" and its `--affected` note "the rest restore from
+      cache" — under `--affected` the rest are never scheduled, so
+      nothing is restored or probed; what a previous build already
+      produced is a hit within the selection. Both sentences say so.
+      And four of 14x's box entries moved to CLAUDE.md's rules learned
+      the hard way, where every session reads them: the edit script
+      that writes before it asserts, the item inserted before the
+      blank, the type-checker's `node_modules` walk, the probe whose
+      negative case held the needle.
+290.  DONE (2026-09-16, the class 287 opened, grepped): six more
+      surfaces still described `--affected` as "only what changed" —
+      the quickstart, the adoption page, the running-tasks guide (its
+      comment, its description and its heading), the CI guide's
+      description and step 3, the remote-caching guide twice (which
+      also promised "downloads everything else", 289's mistake), and
+      the root README's command list; each says "and what depends on
+      it" now, and the remote-caching guide says the rest are never
+      scheduled. The heading rename found a broken anchor: the guide's
+      link to the running-tasks section had one hyphen where the built
+      id has three (github-slugger keeps `--affected`'s dashes), and
+      a sweep of every anchored link on the site and in the core docs
+      found four more (`--summarize-path`, `gaps-for-vznvx`, two
+      README headings that no longer exist). Two laws now: every
+      `](x.md#anchor)` in the core docs and every `](../page/#anchor)`
+      on the site names a heading by its rendered id
+      (`tests/helpers/markdown-anchors.ts` is the slugger; the site's
+      generated pages resolve to their source). The README's § 5 also
+      claimed a workspace that declares no plugin "fails before any
+      task runs" — the floor has run and cached since 2026-09-10, and
+      the same file said so 60 lines later; it says the floor now.
+291.  DONE (2026-09-16, 290's law widened to every relative link):
+      the anchor laws read only `](x#anchor)` links; a probe of every
+      relative link in the core docs and on the site (201 and 194)
+      found one page that does not exist — the technical README linked
+      `@vzn/vx-reapi` as `../packages/vx-reapi`, which from
+      `packages/vx/docs` names nothing and on the site rendered as
+      `/vx/packages/vx-reapi`, a 404 on the overview page since the
+      package moved. It links the repository now. Both laws now hold
+      every relative link: the page must exist (a link with an
+      extension is a file beside the page), and an anchor must name a
+      heading. STATUS is outside the law (it quotes the patterns).
+      14x's other named next, `vx init` after 287, closed by a grep:
+      the scaffold says nothing about `--affected`.
+292.  DONE (2026-09-16, the hook list's two prose copies): the
+      technical README's § 5 said "a hook at every stage" and named
+      eight of thirteen (no `config`, `fingerprint`, `admit`, `setup`,
+      `teardown`), and CLAUDE.md's "Pipeline stages a plugin can fill"
+      line named ten. Both name all thirteen in pipeline order now,
+      and the hook-drift pins hold them: the § 5 paragraph in the safe
+      suite beside the tables, CLAUDE.md in a new unsafe half (the
+      repository root is outside the project). Each fails on the old
+      prose.
+293.  DONE (2026-09-16, the evaluator persona: the technical README,
+      the site's overview page, read whole against source after 290
+      and 292 found two stale claims in one section of it): four more.
+      The benchmark numbers came "from `bench/`" (the harness has been
+      `packages/vx-bench/` since the move); the layout said "the root
+      member is core" (core is `packages/vx`, a sibling of the
+      plugins), "eight modules" with a `plugins/` row (seven
+      directories; the floor lives in `exec/` and `cache/`, and the
+      rows say so now); and the plugin-package sentence named three of
+      seven published packages, with a "+" that a wrap had turned into
+      a bullet, so the overview page rendered "(Bazel remote cache"
+      and a one-item list. All seven are named. `modules/affected.md`
+      rule 4 still said a changed root lockfile selects every project
+      — true only for a lockfile no plugin claims, and the page never
+      mentioned the claim; it does. Two pins: the layout table's rows
+      are exactly the `src/` directories and the count sentence agrees
+      (safe half); the published-packages sentence names each
+      non-private `@vzn/vx-*` sibling (unsafe half, `packages/` is
+      outside the project). Both fail on the old README. Also read and
+      found true: the outputs-wiped-before-restore claim, the three
+      channels, `vx cache prune`, `readyWhen`, every number in "What
+      that buys" against benchmarks.md.
 
 ## In flight
 
@@ -332,7 +408,7 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270 and 275 (14–14v) are in
-    `docs/history/2026-09-status-next-log.md`; 14w and 14x below are the
+    `docs/history/2026-09-status-next-log.md`; 14w–14y below are the
     current ones.
 
 14w. **Handoff after item 281 (2026-09-16, afternoon).** Six items
@@ -406,6 +482,37 @@ shard's file list. Next: the lockfile persona — a dependency bump under
 `bun()`, `vx why` naming the claim and `--affected` following it — and
 `vx init` on the walkthrough repo after 287, to read what the TODO says
 about `--affected` now. Never end with "what next?".
+
+14y. **Handoff after item 293 (2026-09-16, late afternoon).** Six
+items since 14x: the lockfile persona read right (288, #447); the CI
+guide's two sentences and CLAUDE.md's four rules (289); the
+`--affected` "changed only" wording swept from six more surfaces and
+the anchor sweep it started (290); every relative link a law, the
+README's `../packages/vx-reapi` 404 (291); all thirteen hooks named
+in the README's § 5 and CLAUDE.md, pinned (292); the overview page
+read whole against source — four stale claims, two pins (293).
+289–293 are #448, open. Open: Next 1, 2 and 16, all gated by their
+own terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN`
+secret, the release cut, the site's address. No open issues. The loop
+holds twelve items (282–293). The box: as 14x; a separator you
+printed (`echo ----`) reads as file content in the same scroll — a
+pin built on it found no `---` in the file (293's first run); a
+Markdown line that wraps onto "+ …" is a bullet to the formatter and
+a one-item list on the site (the README's plugin sentence, live for
+weeks); github-slugger keeps a flag's dashes, so a `--flag` heading's
+id has three hyphens and a link with one misses silently; the site's
+content directory is outside oxfmt's targets (`rc=2`, "no target
+file") — its pages are never format-scanned, so a wrapped code span
+there is on you. Methods that paid: when two claims in one page go
+stale, read the page whole against source before moving on (290 and
+292 → 293 found four more); a law found for one shape is widened to
+its class the same day (anchors → every relative link, 291); the
+build output on disk (`dist/`) is the oracle for what a link
+resolves to, cheaper than a rebuild. Next: the two pages the overview
+sends a ten-minute reader to, `comparison.md` § Where vx is ahead and
+`architecture.md`, read the same way — every claim against source,
+the numbers against benchmarks.md, the pins where a count or a list
+lives in prose. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

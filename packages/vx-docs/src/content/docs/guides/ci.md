@@ -1,12 +1,13 @@
 ---
 title: Continuous integration
-description: Run vx in CI — install the binary, build only what changed with --affected, share a cache by connecting a remote-cache backend, and (optionally) pin a reproducible run with vx lock + --frozen.
+description: Run vx in CI — install the binary, build what changed and what depends on it with --affected, share a cache by connecting a remote-cache backend, and (optionally) pin a reproducible run with vx lock + --frozen.
 ---
 
 vx is built for CI: a content-addressed cache plus `--affected` selection
-means most pull requests execute only the packages they actually touched
-and restore everything else from a previous build. This guide is a working
-setup you can copy, plus the lockfile workflow and when to reach for it.
+means most pull requests run only the packages they touched and the ones
+that depend on them, restoring from a previous build whatever those did
+not change. This guide is a working setup you can copy, plus the lockfile
+workflow and when to reach for it.
 
 ## The shape of a fast CI run
 
@@ -18,7 +19,8 @@ setup you can copy, plus the lockfile workflow and when to reach for it.
    [Remote caching](../remote-caching/)). (No server? The local cache still
    makes warm runs instant; a shared cache is only needed to reuse work
    *across* machines.)
-3. Run with **`--affected`** so only changed packages execute.
+3. Run with **`--affected`** so only changed packages and their dependents
+   are scheduled.
 
 ## GitHub Actions
 
@@ -77,7 +79,9 @@ Notes:
   vx names that case in its note. After a force-push `before` may be
   gone from history; vx says the ref did not resolve, and `--all` is the
   honest fallback for that run. Changed packages (and their dependents)
-  run; the rest restore from cache.
+  run; the rest are never scheduled — nothing to restore, nothing to
+  probe — and within the selection, a task whose inputs the change did
+  not reach is a cache hit.
 - **`vx` is the npm-installed binary** on `PATH` — no wrapper needed. (Or
   install it as a dependency with `bun add -d @vzn/vx` and invoke it
   through your package manager.)

@@ -47,7 +47,7 @@ Default path: `<cacheDir>/runs/<runId>.json`. Explicit path is
 resolved against `cwd` (so a relative `--summarize=./summary.json`
 DTRT).
 
-Output shape — see [`cli.md` § `--summarize`](../cli.md#--summarize-path).
+Output shape — see [`cli.md` § `--summarize`](../cli.md#--summarizepath).
 hrtime fields are stringified bigints (preserves ns precision through
 JSON). `summary` block aggregates totals (successful / failed /
 skipped / cachedLocal / cachedRemote / total). A task the run proved

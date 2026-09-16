@@ -7,6 +7,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { headingSlugs, proseLinks } from './helpers/markdown-anchors.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 
@@ -63,5 +64,51 @@ describe('docs/modules/README.md indexes every source module', () => {
       .map((p) => path.relative(path.join(pkg, 'src'), p).split(path.sep).join('/'))
       .filter((rel) => !rel.endsWith('index.ts') && !named.has(rel))
     expect(unindexed).toEqual([])
+  })
+})
+
+describe('every relative link in the docs resolves', () => {
+  it('`](x.md)` names a file, and `](x.md#anchor)` a heading of it by its rendered id', () => {
+    const missing: string[] = []
+    const slugs = new Map<string, Set<string>>()
+    for (const file of proseFiles()) {
+      for (const { target, anchor } of proseLinks(readFileSync(file, 'utf8'))) {
+        const page = target === '' ? file : path.resolve(path.dirname(file), target)
+        const link = `${path.relative(pkg, file)}: ${target}${anchor === undefined ? '' : `#${anchor}`}`
+        if (!existsSync(page)) {
+          missing.push(link)
+          continue
+        }
+        if (anchor === undefined || !page.endsWith('.md')) continue
+        if (!slugs.has(page)) slugs.set(page, headingSlugs(readFileSync(page, 'utf8')))
+        if (!slugs.get(page)!.has(anchor)) missing.push(link)
+      }
+    }
+    expect(missing).toEqual([])
+  })
+})
+
+describe('docs/README.md § Repository layout follows src/', () => {
+  it('tabulates exactly the module directories, and states their count', () => {
+    const readme = readFileSync(path.join(pkg, 'docs', 'README.md'), 'utf8')
+    const rows = [...readme.matchAll(/^\| `([a-z]+)\/`\s+\|/gm)].map((m) => m[1]!).sort()
+    const dirs = readdirSync(path.join(pkg, 'src'))
+      .filter((name) => statSync(path.join(pkg, 'src', name)).isDirectory())
+      .sort()
+    expect(rows).toEqual(dirs)
+    const WORDS = [
+      'zero',
+      'one',
+      'two',
+      'three',
+      'four',
+      'five',
+      'six',
+      'seven',
+      'eight',
+      'nine',
+      'ten',
+    ]
+    expect(readme).toContain(`Core \`src/\` is **${WORDS[dirs.length]} modules**`)
   })
 })

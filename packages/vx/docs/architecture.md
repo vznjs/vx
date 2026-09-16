@@ -624,8 +624,8 @@ The codebase consistently chooses the same trade-offs:
 
 ## What's intentionally absent
 
-See [`README.md` § Out of scope](./README.md#out-of-scope-by-design)
-for the complete list. The most relevant ones for understanding the
+See [`README.md` § 5](./README.md#5-doing-all-that-without-becoming-the-platform)
+for the whole stance. The most relevant ones for understanding the
 architecture:
 
 - **No executor plugins.** Tasks are shell commands, full stop. The
