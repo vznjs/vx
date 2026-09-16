@@ -248,6 +248,20 @@ test is telling the truth.
       per-task figures are not costs. No change to the warm path; the
       arms' floors are the spawn and the extract, both known (193).
 
+255.  DONE (2026-09-16, housekeeping after the lenses): Next 8(c) said
+      only `vx lock` reads configs raw; five call sites read them by
+      now, and each was read — the doctor, the selector and watch fall
+      back to a raw per-file load only when the staged load throws, and
+      a `turbo()` workspace's `vx info` counts the plugin's tasks —
+      so the note is corrected, not the code. Core names no plugin in a
+      branch (every `@vzn/vx-` in `src/` is a comment or a pointer the
+      user reads). The day's measured traps went into CLAUDE.md's rules:
+      the probe user's PATH, Bun.Glob's brace with a slash, a dead
+      proxy as no network, the accumulated span table under
+      concurrency, a TMPDIR pin's path length on macOS. The gate script
+      runs its steps itself, so `vx last` holds no `ci` run to read the
+      gate's shape from; the shard table (253) is that shape.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
@@ -372,9 +386,12 @@ state of each:
 8. **Improvement-loop candidates (2026-09-09).** (a), (b), (f), (h)
    DONE as items 16/63, 8(b) 2026-09-10, 75 and 58; the measurements
    behind (e) and (h) are in `docs/history/2026-09-status-next-log.md`.
-   Still standing: (c) only `vx lock` reads config files raw, on
-   purpose — grep for `loadProjectConfig(` before adding a fourth
-   consumer of the staged load; (d) was "`logger.ts` and
+   Still standing: (c) `vx lock` reads config files raw on purpose,
+   and the doctor, the selector and watch fall back to a raw per-file
+   read only when the staged load throws (five call sites by
+   2026-09-16, each read and confirmed against a `turbo()` workspace:
+   `vx info` counts the plugin's tasks) — grep for `loadProjectConfig(`
+   before adding a consumer that is not a fallback; (d) was "`logger.ts` and
    `framed-output.ts` are the last large files" — by 2026-09-16 they are
    699 and 518 lines and the largest are `cache/cache.ts` 1,583,
    `cli/watch.ts` 1,121, `orchestrator/run.ts` 1,040 and
