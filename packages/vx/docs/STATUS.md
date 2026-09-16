@@ -95,6 +95,14 @@ test is telling the truth.
       value as a duration (it takes milliseconds). Pinned beside the
       table pin: every flag the section's vx cells and callouts name
       is a parser flag. Fails on the old page.
+309.  DONE (2026-09-16, comparison.md's gap audit and running list
+      read against source): the audit's "verified present in core"
+      still listed `prune` (removed 2026-09-11) and `migrate` (its own
+      package since 2026-09-10); the "shipped since" pipeline bullet
+      named five of thirteen hooks (pinned to `PLUGIN_HOOKS` now,
+      beside the tables); the daemon rejection quoted a 240 ms warm
+      1000-project run the benchmarks page has at 172 ms. The
+      shipped/rejected/out-of-scope lists otherwise read true.
 
 ## In flight
 

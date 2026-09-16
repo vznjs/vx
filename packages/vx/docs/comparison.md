@@ -171,11 +171,12 @@ of Turbo's DSL (`...`, `^...`, `!`, `./dir`, `[git-ref]`) and
 workspace files; strict env isolation (Turbo's
 `--env-mode=strict` is vx's only mode); `persistent` tasks with
 readiness gating (ahead of Turbo's `persistent` and Nx's
-`continuous`); the interactive picker; `watch`, `prune`, `--dry`,
-`--graph`, `--summarize`, `--profile`, `--continue` modes, retries,
-timeouts, `--output-logs` modes; `migrate` from Turbo, Nx
-and scripts; `init`; the cwd-scoped default; `last`, `why`, `show`,
-`info`; remote cache and execution through the seams (`@vzn/vx-reapi`).
+`continuous`); the interactive picker; `watch`, `--dry`, `--graph`,
+`--summarize`, `--profile`, `--continue` modes, retries, timeouts,
+`--output-logs` modes; `init` (scripts to configs) and, its own
+package, `bunx @vzn/vx-migrate` (Turbo, Nx); the cwd-scoped default;
+`last`, `why`, `show`, `info`; remote cache and execution through the
+seams (`@vzn/vx-reapi`).
 
 **Missing, and where it belongs:**
 
@@ -318,9 +319,10 @@ upstream repos.
   inputs (`runtime` / `workspaceRuntime`).
 - `vx lock` / `vx run --frozen`, `vx init` / `@vzn/vx-migrate`, `vx show`.
 - **The plugin pipeline (2026-09-02).** One `VxPlugin` hooks every
-  stage — `config`, `project`, `graph`, `key`, `schedule` — beside the
-  `executor` / `cache` / `telemetry` capabilities and `commands` (new
-  verbs). Core applies no plugin by default; a workspace declares all
+  stage — `config`, `project`, `graph`, `key`, `fingerprint`,
+  `schedule`, `admit` — beside the `executor` / `cache` / `telemetry`
+  capabilities, `commands` (new verbs) and the `setup` / `teardown`
+  pair. Core applies no plugin by default; a workspace declares all
   of them.
 - **A config evaluation cache** for provably pure configs
   (`src/workspace/config-cache.ts`): a lexer-backed purity GATE, not a
@@ -348,7 +350,7 @@ These don't appear on the roadmap and won't be added without a
 deliberate design pass.
 
 - **Daemon / persistent project-graph process.** Re-discovery is fast
-  enough on Bun (a warm 1000-project run is ~240 ms end to end, with
+  enough on Bun (a warm 1000-project run is ~170 ms end to end, with
   config loading scoped and pure configs served from the eval cache);
   the operational cost of a daemon doesn't pay for itself. Turbo 2.10
   reached the same conclusion and deprecated its daemon for `run`.
