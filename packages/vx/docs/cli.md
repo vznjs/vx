@@ -1142,6 +1142,15 @@ catching eval-time env and import-closure drift that byte hashes
 cannot see. The CI recipe is `vx lock --check && vx run … --frozen`.
 Full design: `docs/design/config-lock-2026-06.md`.
 
+A project with no `vx.config.*` — its tasks from a plugin's `project`
+stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing
+to freeze: the lock records nothing for it, `--check` does not audit
+it, and `--frozen` still loads its tasks live. Both verbs say how many
+such projects the workspace has (`locked 0 project configs →
+vx-lock.json (2 projects have no vx.config; their tasks are never
+frozen)`), so an empty lock on a plugin-only workspace never reads like
+an audit.
+
 Exit codes:
 
 - `0` — lock written / lock is up to date.

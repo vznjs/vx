@@ -1748,6 +1748,17 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       said `vx migrate`, a verb that does not exist (item 184's
       one-liner is what typing it gets), while every config said
       `vx-migrate`. One name now, pinned.
+188.  DONE (2026-09-16): `vx lock` names what it cannot freeze. A
+      seventh walk, a Turbo repo run unchanged under `turbo()` (show
+      marking every project `from plugins`, two builds, test, lint,
+      info's plugins row, why, a task's resolved config) read right,
+      except `vx lock`, which wrote an empty lock and reported zero
+      project configs locked, and `--check` then reported the lock up
+      to date over zero projects — an audit of nothing that read like
+      one. Both lines now count the projects without a vx.config and
+      say their tasks are never frozen; cli.md § vx lock carries the
+      rule; the pin holds both arms (no note when every project is
+      configured).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
