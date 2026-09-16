@@ -914,7 +914,13 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       did, new pin passes). A pin that depends on which files ran
       before it in the same process is a deal-shaped knife edge; the
       order comment it carried ("the 200 MB pin must come first")
-      named the dependency and still trusted the alphabet.
+      named the dependency and still trusted the alphabet. A second
+      deal-shaped edge on the third CI run (#366): `output-dirs`'s cap
+      case makes 8,193 directories and walks them — 3 s for the whole
+      file here, 7.7 s for the case on a loaded runner under four
+      shards — against bun's 5 s default; bounded at 30 s, as
+      `affected.test.ts` bounds its own spawn-heavy case (a bound that
+      matches the work still catches a hang).
 197.  DONE (2026-09-16, the next long pole in CI): with the shards
       dealt, `@vzn/vx-reapi#test` was the longest task (26.7 s), and
       15 s of it was one case waiting out the control-plane deadline
