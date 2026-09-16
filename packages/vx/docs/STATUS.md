@@ -701,7 +701,7 @@ state of each:
 13. DONE 2026-09-10 as item 120 — `vx watch` watches the projects a cycle can run.
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230 and 236 (14–14p) are in
-    `docs/history/2026-09-status-next-log.md`; 14q–14s below are the
+    `docs/history/2026-09-status-next-log.md`; 14q–14v below are the
     current ones.
 
 14q. **Handoff after item 240 (2026-09-16, night).** Four items since
@@ -842,6 +842,37 @@ reason and the real code; the same one function on every surface is
 what makes a class of fixes a class; a differential's guard reads
 bun's summary line, not its per-test lines. Never end with "what
 next?".
+
+14v. **Handoff after item 275 (2026-09-16, early afternoon).** Five
+items since 14u: 271 and 272 rode #431 with it, 273–275 merged as
+#432–#434, and the reason class closed on its last three surfaces.
+The `runs` table took the four reasons in one `SCHEMA_VERSION` bump,
+`v26` → `v27` (273: `blocked_by`, `timed_out`, `sandbox_violations`,
+`not_ready`; `vx last` ends a row with the reason, an agent's
+`getRunHistory` row carries the fields with its exit code), the bump's
+warm-path A/B is a tie (274; one workspace copy per arm, since arms on
+different schemas reset a shared one), and the skipped row names its
+blocker (275: `• blocked by lib#build` on the one-liner, `skipped
+(blocked by …)` in the block and the report, `blockedBy` on the wire
+outcome; the frame's old header claimed "upstream failed", false under
+fail-fast, from a branch no logger path reached). Open: Next 1, 2 and
+16, all gated by their own terms; In-flight 5 (macOS); the owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues. The loop holds 33 items (243–275): the trim's trigger
+is forty. The box: as 14u; a table cell one character wider than its
+column is a format failure the scan names and `oxfmt --write` fixes —
+never realign by hand; a differential's `-t` is a substring, and
+`blocked` missed two pins named "blocker" (275) — count the pins the
+run lists, not the filter's intent. Methods that paid: a label on a
+branch no path reaches is still a claim, and its test the only reader
+— grep the callers before trusting a surface; the day a column is
+worth a schema bump, every column waiting goes in with it (273); a
+type that carries every reason but one is where the wire consumer
+loses it (`OutcomeView`, 275). Next: a second first-run walkthrough
+(`vx init` → `run` → `why` → `last` → `info` on a fresh workspace, the
+current binary), twelve days and 260 items after the first (item 9),
+with the reason surfaces read as a newcomer would. Never end with
+"what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
