@@ -136,14 +136,14 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       const st = await stat(abs).catch((err: NodeJS.ErrnoException) => {
         if (err.code === 'ENOENT') {
           throw new UserError(
-            `output ${shown} is a dangling symlink: vx stores regular files only — emit a file, or exclude it from cache.outputs`,
+            `output ${shown} is a dangling symlink: vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces (output globs take no '!')`,
           )
         }
         throw err
       })
       if (!st.isFile()) {
         throw new UserError(
-          `output ${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file, or exclude it from cache.outputs`,
+          `output ${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces (output globs take no '!')`,
         )
       }
       meta.files[name] = [st.mode & 0o777, Math.floor(st.mtimeMs)]

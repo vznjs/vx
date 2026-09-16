@@ -628,6 +628,21 @@ of a task's output for its cache entry and replay`). The
       not fetched, a PR head against a depth-1 base) says the right
       thing each time.
 
+232.  DONE (2026-09-16, a persona: symlinked outputs): a task whose
+      `dist/` holds a link to a file, a link to a directory and a
+      dangling link — the contract held as documented (a file link is
+      stored as its bytes and restored as a file, the other two refuse
+      the save by name), but the refusal's remedy said "exclude it from
+      cache.outputs", and output globs take no `!` — the spelling it
+      pointed at fails to load ("negation is not supported"). The
+      remedy names what works now: narrow `cache.outputs.files` to the
+      files the task produces. Pinned in `output-shape.test.ts` (the
+      remedy text, not the prefix alone). Rejected on the way: storing
+      a link as a link — the restore never materialises one on purpose
+      (a poisoned artifact cannot smuggle a link onto disk,
+      `caching.md`), and a directory link's target is not the task's
+      output anyway.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
