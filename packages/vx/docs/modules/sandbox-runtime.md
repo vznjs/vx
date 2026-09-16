@@ -148,7 +148,12 @@ export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult
    wrapper probe refuses up front, naming the fix (a non-root user, or
    `sandbox.weakerWhenNested: true` on every sandboxed task —
    `run()` probes the weaker mode only when every sandboxed task opts
-   in). Memoized per mode.
+   in). Memoized per mode. A throw from the runtime itself is the same
+   one-line verdict, and one about its own temp files (the observer
+   directory, the bridge sockets, the strace log all live under
+   `os.tmpdir()`) names the knob: the sandbox runtime needs a writable
+   temp directory and the one it has is not one, point TMPDIR at a
+   writable directory.
 2. **`initSandbox`** is called once per `vx run` IF at least one task
    in the graph declares `sandbox`. It calls `SandboxManager.initialize`
    with a deny-all baseline (network blocked, no filesystem allows);

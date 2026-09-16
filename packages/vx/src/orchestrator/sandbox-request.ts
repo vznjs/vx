@@ -11,6 +11,7 @@ import {
   initSandbox,
   probeSandbox,
   resolveSandboxConfig,
+  thrownReason,
   type ExecuteRequest,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
@@ -91,9 +92,7 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
           // the dependency check does not cover) gets the same one-line
           // verdict as a refused probe, not an internal error with a stack.
           if (err instanceof UserError) throw err
-          throw new UserError(
-            `sandbox not available: ${err instanceof Error ? err.message : String(err)}`,
-          )
+          throw new UserError(`sandbox not available: ${thrownReason(err)}`)
         }
         armed = true
       })()

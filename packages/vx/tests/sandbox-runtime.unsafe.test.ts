@@ -1201,6 +1201,54 @@ describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
 })
 
 describe('sandbox probe', () => {
+  // A temp directory that is not there fails the runtime's own mkdtemp;
+  // the verdict named the path and no knob (item 243).
+  it(
+    'a temp directory that is not there: the verdict names TMPDIR',
+    async () => {
+      if (!(await sandboxAvailable('tmpdir refusal'))) return
+      const root = await makeWorkspaceRoot({ prefix: 'vx-sandbox-tmpdir-' })
+      try {
+        await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'echo built', sandbox: {} },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                },
+              },
+            }
+          `,
+          files: { 'src/a.txt': 'a1\n' },
+        })
+        const missing = path.join(root, 'no-such-tmp')
+        const p = Bun.spawnSync({
+          cmd: [
+            process.execPath,
+            path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+            'run',
+            'build',
+            '--all',
+          ],
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, NO_COLOR: '1', CI: '', TMPDIR: missing },
+        })
+        const text = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
+        expect(p.exitCode).toBe(1)
+        expect(text).toContain(
+          `sandbox not available: the sandbox runtime needs a writable temp directory and ${missing} is not one (ENOENT:`,
+        )
+        expect(text).toContain('point TMPDIR at a writable directory')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   it('returns a stable shape', async () => {
     const a = await probeSandbox()
     expect(typeof a.available).toBe('boolean')

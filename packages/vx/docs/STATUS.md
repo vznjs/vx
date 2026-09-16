@@ -65,6 +65,25 @@ recorded here as it lands. Layer map measured first (imports between
 orchestrator ← cli, `config.ts` a leaf, no back edges — the boundaries
 test is telling the truth.
 
+243.  DONE (2026-09-16, the minimal-image persona, a step further): a
+      temp directory that is missing, a file, or not writable. The run
+      lock degraded as designed (one line, an unlocked run) and a plain
+      task ran; a sandboxed task failed with "sandbox not available:
+      EACCES … mkdtemp '/tmp/probe-ro/srt-obs-…'" — the runtime's own
+      temp files live under `os.tmpdir()` — a path and no knob, in both
+      lines. Util's `isTmpdirRefusal` (ENOENT, ENOTDIR or a permission
+      code on a path under the temp directory; for a site whose path IS
+      the temp directory by construction) and `TMPDIR_HINT`; the
+      sandbox verdict for a runtime throw goes through `thrownReason`
+      and says "the sandbox runtime needs a writable temp directory and
+      <tmpdir> is not one (…) — point TMPDIR at a writable directory";
+      the run-lock line adds the hint. Pinned in `tmpdir-refusal.test.ts`
+      (a missing TMPDIR: exit 0, the lock line with the hint; the control
+      has the lock and no line) and in the unsafe sandbox suite (the
+      verdict, under a real sandbox as `probe`). Both fail without the
+      fix; a sandboxed probe passing for the wrong reason was ruled out
+      by running it on the old source as `probe`.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items

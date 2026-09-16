@@ -38,7 +38,7 @@ import {
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
-import { UserError, xxh3hex } from '../util/index.js'
+import { isTmpdirRefusal, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
 import { buildCustomConfig } from './sandbox-binds.js'
 import { localBindingOn, toRealPath, unique } from './sandbox-paths.js'
 import { parseStraceViolations, reportableViolations } from './sandbox-violations.js'
@@ -177,8 +177,23 @@ async function trySandboxedTrue(
     if (proc.exitCode === 0) return { available: true, reason: '' }
     return { available: false, reason: unavailableReason(proc.exitCode, stderr) }
   } catch (err) {
-    return { available: false, reason: `sandbox probe threw: ${(err as Error).message}` }
+    return { available: false, reason: thrownReason(err, 'sandbox probe threw') }
   }
+}
+
+/**
+ * A throw from the runtime itself, in the user's terms. Its own temp files
+ * (the observer directory, the bridge sockets, the strace log) live under
+ * `os.tmpdir()`, so a temp directory that is missing or not writable
+ * failed a sandboxed task with a path and no knob ("EACCES … mkdtemp
+ * '/tmp/probe-ro/srt-obs-…'", a minimal image, 2026-09-16).
+ */
+export function thrownReason(err: unknown, what = ''): string {
+  const message = err instanceof Error ? err.message : String(err)
+  if (isTmpdirRefusal(err)) {
+    return `the sandbox runtime needs a writable temp directory and ${os.tmpdir()} is not one (${message}) — ${TMPDIR_HINT}`
+  }
+  return what === '' ? message : `${what}: ${message}`
 }
 
 /**

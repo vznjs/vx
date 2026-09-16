@@ -3,6 +3,8 @@
 //
 // `bin.ts` and the scheduler consult `isUserError` to decide what to print.
 
+import os from 'node:os'
+
 export class UserError extends Error {
   constructor(message: string) {
     super(message)
@@ -78,4 +80,22 @@ export function gitSpawnRefusal(cwd: string): UserError {
   return new UserError(
     `vx requires git: failed to spawn 'git' (working dir: ${cwd}). Install git and re-run.`,
   )
+}
+
+export const TMPDIR_HINT = 'point TMPDIR at a writable directory'
+
+/**
+ * A temp-directory refusal: the path is under `os.tmpdir()` and the error
+ * says it is missing, a file, or not writable. The knob is TMPDIR, and a
+ * line that names the path should name the knob — a minimal image's
+ * sandboxed task said "EACCES … mkdtemp '/tmp/…/srt-obs-…'" and nothing
+ * else (2026-09-16). Only for a site whose path IS the temp directory by
+ * construction: a workspace under /tmp would pass the path test too.
+ */
+export function isTmpdirRefusal(err: unknown): err is NodeJS.ErrnoException {
+  if (!(err instanceof Error)) return false
+  const code = (err as NodeJS.ErrnoException).code
+  if (code !== 'ENOENT' && code !== 'ENOTDIR' && !isPermissionError(err)) return false
+  const p = (err as NodeJS.ErrnoException).path
+  return (typeof p === 'string' ? p : err.message).includes(os.tmpdir())
 }

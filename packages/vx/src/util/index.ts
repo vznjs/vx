@@ -6,6 +6,8 @@ export {
   fsRefusalHint,
   isDiskFull,
   isFsRefusal,
+  isTmpdirRefusal,
+  TMPDIR_HINT,
   isPermissionError,
   isUserError,
   PERMISSION_HINT,

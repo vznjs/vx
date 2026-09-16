@@ -29,7 +29,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { xxh3hex } from '../util/index.js'
+import { isTmpdirRefusal, TMPDIR_HINT, xxh3hex } from '../util/index.js'
 
 /** Runs in this process currently holding the lock, per lock directory. */
 const heldHere = new Map<string, number>()
@@ -114,8 +114,11 @@ export async function acquireRunLock(
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code
       if (code !== 'EEXIST') {
+        // The lock lives in the temp directory; one that is missing or not
+        // writable names its knob (a minimal image, 2026-09-16).
+        const hint = isTmpdirRefusal(err) ? `; ${TMPDIR_HINT}` : ''
         opts.log(
-          `[vx] no run lock for this workspace (${(err as Error).message}) — another vx run on it at the same time may race this one`,
+          `[vx] no run lock for this workspace (${(err as Error).message}${hint}) — another vx run on it at the same time may race this one`,
         )
         return async () => {}
       }
