@@ -138,8 +138,11 @@ export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult
 ## How it works
 
 1. **`probeSandbox`** asks SRT whether the platform is supported and
-   whether its runtime deps (bwrap + socat on Linux, sandbox-exec on
-   macOS) are present, then on Linux runs ONE sandboxed `true` through
+   whether its runtime deps (bwrap, socat and ripgrep on Linux — the
+   runtime expands its mandatory deny globs with `rg`; sandbox-exec on
+   macOS) are present — a missing one is named with the whole set and
+   the install (`dependencyReason`) — then on Linux runs ONE sandboxed
+   `true` through
    SRT's own wrapper — bwrap with the runtime's namespace flags plus its
    vendored `apply-seccomp` helper, which creates a nested user
    namespace. A bare `bwrap … /bin/true` passed on hosts where every

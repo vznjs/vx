@@ -20,6 +20,7 @@ export {
   wrapSandboxedCommand,
   type ResolvedSandboxConfig,
   type SandboxViolation,
+  dependencyReason,
   socketPathRefusal,
   thrownReason,
 } from './sandbox-runtime.js'

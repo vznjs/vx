@@ -164,7 +164,7 @@ Stated plainly, so nothing here surprises you later:
 
 - **Running from source needs Bun ≥ 1.4.** The published binary needs
   nothing; `bun packages/vx/src/bin.ts` from a checkout does.
-- **The Linux sandbox needs `bubblewrap` and `socat`**, and cannot run
+- **The Linux sandbox needs `bubblewrap`, `socat` and `ripgrep`**, and cannot run
   as root inside a container (the runtime's seccomp helper cannot
   create its nested user namespace there) — run as a non-root user or
   set `sandbox.weakerWhenNested: true`. `vx info` reports the verdict

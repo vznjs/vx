@@ -929,7 +929,8 @@ that make a cache key wrong. To reach a path outside the project —
 task, and a failed task is never cached. Activation is lazy (only when
 some task declares `exec.sandbox`); on an unsupported platform a
 sandboxed task fails fast rather than running unsandboxed. Linux needs
-`bubblewrap` + `socat` installed.
+`bubblewrap`, `socat` and `ripgrep` installed (the runtime expands its
+mandatory deny globs with `rg`); a missing one is named with the install.
 
 **macOS cannot nest.** `sandbox_apply` is refused inside a sandboxed
 process, so a task that itself sandboxes something (vx's own test suite)

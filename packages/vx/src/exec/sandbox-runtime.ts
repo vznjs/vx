@@ -102,7 +102,7 @@ async function probeUncached(weakerNested: boolean): Promise<SandboxAvailability
     return { available: false, reason: `platform ${process.platform} not supported` }
   }
   const deps = SandboxManager.checkDependencies()
-  if (deps.errors.length > 0) return { available: false, reason: deps.errors.join('; ') }
+  if (deps.errors.length > 0) return { available: false, reason: dependencyReason(deps.errors) }
   const long = socketPathRefusal()
   if (long !== undefined) return { available: false, reason: long }
   if (process.platform === 'linux') {
@@ -181,6 +181,22 @@ async function trySandboxedTrue(
   } catch (err) {
     return { available: false, reason: thrownReason(err, 'sandbox probe threw') }
   }
+}
+
+/**
+ * The runtime's own dependency check names what is missing ("ripgrep (rg)
+ * not found") and nothing else. On Linux it needs three binaries — bwrap
+ * for the namespaces, socat for the network bridge, ripgrep to expand its
+ * mandatory deny globs — and the docs named two of them until a minimal
+ * image with the two failed on the third (2026-09-16). Name the set and
+ * the install.
+ */
+export function dependencyReason(errors: readonly string[]): string {
+  const need =
+    process.platform === 'linux'
+      ? 'the sandbox runtime needs bubblewrap (bwrap), socat and ripgrep (rg) on PATH'
+      : 'the sandbox runtime is missing a dependency'
+  return `${need}: ${errors.join('; ')} — install it (Linux: apt install bubblewrap socat ripgrep, or the same names in your package manager) and re-run`
 }
 
 /**
