@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatGraphDot, formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
 import type { CacheStatus, PlannedTask, RunPlan } from '../src/orchestrator/plan.js'
@@ -256,5 +258,90 @@ describe('placement in the plan', () => {
       tasks: Array<Record<string, unknown>>
     }
     expect(without.tasks[0]).not.toHaveProperty('executor')
+  })
+})
+
+describe('docs/modules/plan-format.md shows what the formatters print', () => {
+  // The page showed a "no-cache — opts out" row, a group row the text form
+  // hides, a four-task plan summed as three, and a DOT document with a
+  // header, colours and labels the formatter never wrote (item 313,
+  // 2026-09-16). Each sample is the formatter on the same fixture.
+  const page = readFileSync(
+    path.resolve(import.meta.dir, '..', 'docs', 'modules', 'plan-format.md'),
+    'utf8',
+  )
+  const fenced = [...page.matchAll(/```(\w*)\n([\s\S]*?)```/g)].map((m) => ({
+    lang: m[1]!,
+    body: m[2]!,
+  }))
+  const texts = fenced.filter((b) => b.lang === '' && b.body.startsWith('would run:'))
+  const planned = (
+    id: string,
+    hash: string,
+    cacheStatus: CacheStatus,
+    deps: string[] = [],
+    extra: Partial<PlannedTask> = {},
+    description?: string,
+  ): PlannedTask => ({
+    node: {
+      id,
+      projectName: id.split('#')[0]!,
+      taskName: id.split('#')[1]!,
+      config: description === undefined ? {} : { description },
+    } as unknown as TaskNode,
+    hash,
+    cacheStatus,
+    deps,
+    ...extra,
+  })
+  const lint = planned(
+    '@vzn/vx#lint',
+    'd66cfed2a1b2c3d4',
+    'hit-remote',
+    [],
+    {},
+    'oxlint with tsgolint-backed type-aware checks',
+  )
+
+  it('the first text sample is a five-task plan with a description, a p50 and a group', () => {
+    const plan: RunPlan = {
+      tasks: [
+        planned('@vzn/vx#format-check', '02bfe8a9d1c2b3a4', 'hit-local'),
+        lint,
+        planned('@vzn/vx#test', '68595e49f0e1d2c3', 'miss', ['@vzn/vx#lint'], { p50Ms: 4200 }),
+        planned('@vzn/vx#dev', 'c0ffee0012345678', 'no-cache'),
+        planned('@vzn/vx#ci', '9a8b7c6d5e4f3a2b', 'group', [
+          '@vzn/vx#format-check',
+          '@vzn/vx#lint',
+          '@vzn/vx#test',
+        ]),
+      ],
+      predicted: { wallMs: 4200, workMs: 4200, unknownCount: 1 },
+    }
+    expect(texts[0]!.body).toBe(formatPlanText(plan))
+  })
+
+  it('the placement sample is two misses on named executors', () => {
+    const plan: RunPlan = {
+      tasks: [
+        planned('@vzn/vx#test', '68595e49f0e1d2c3', 'miss', [], {
+          p50Ms: 4200,
+          executor: 'vx/reapi',
+        }),
+        planned('@vzn/vx#docker', '1a0c33fe00112233', 'miss', [], { executor: 'local' }),
+      ],
+    }
+    expect(texts[1]!.body).toBe(formatPlanText(plan))
+  })
+
+  it('the JSON sample is the lint task alone', () => {
+    expect(fenced.find((b) => b.lang === 'json')!.body).toBe(formatPlanJson({ tasks: [lint] }))
+  })
+
+  it('the DOT sample is lint and a test that depends on it', () => {
+    const plan: RunPlan = {
+      tasks: [lint, planned('@vzn/vx#test', '68595e49f0e1d2c3', 'miss', ['@vzn/vx#lint'])],
+    }
+    expect(fenced.find((b) => b.lang === 'dot')!.body).toBe(formatGraphDot(plan))
   })
 })
