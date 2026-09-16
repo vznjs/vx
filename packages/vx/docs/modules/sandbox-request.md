@@ -23,11 +23,20 @@ concern has no cache-key or save logic in it.
 // task's `allow.network`, computed up front.
 export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null
 
+// The sandbox half of the request, plus the empty files created for a
+// literal write grant that named nothing yet (`placeholders`).
 export function sandboxRequestFor(
   node: TaskNode,
   sandbox: NonNullable<ExecConfig['sandbox']>,
   workspaceRoot: string,
-): Promise<NonNullable<ExecuteRequest['sandbox']>>
+): Promise<SandboxRequest>
+
+// Remove the placeholders the task never wrote (still empty, mtime
+// untouched); returns their paths. execute-task calls it after every
+// attempt, and a failed task with nothing else reported gets one line
+// per untouched placeholder (`untouchedPlaceholderLine`).
+export function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
+export function untouchedPlaceholderLine(projectDir: string, placeholder: string): string
 ```
 
 ## Rules
@@ -44,13 +53,19 @@ export function sandboxRequestFor(
   the project's own directory are reported, because those are the ones
   the cache key never folded.
 - **Binds need paths.** bwrap silently no-ops a bind on a missing path,
-  so declared write paths are pre-created: a glob's static prefix as a
-  directory, a literal path as an empty file unless something is
-  already there; a grant outside the project (`~/…`, absolute) only
-  when it is a glob.
+  so declared write paths are pre-created: a glob's static prefix or a
+  literal ending in `/` as a directory, any other literal as an empty
+  file unless something is already there; a grant outside the project
+  (`~/…`, absolute) only when it is a glob. The empty files are vx's
+  until the task writes them: the sweep after the attempt removes the
+  untouched ones (an unwritten placeholder is never archived as an
+  output), and a failed task is told that a grant it meant as a
+  directory is spelled `dir/` — its own `mkdir` said only "File exists",
+  and the file used to survive every later clean (2026-09-16).
 
 ## Tests
 
 `tests/sandbox*.unsafe.test.ts` (the sandbox cannot nest, so the CI
-job runs them with `VX_REQUIRE_SANDBOX=1`); `tests/execute-task*.test.ts`
+job runs them with `VX_REQUIRE_SANDBOX=1`); `tests/sandbox-request.test.ts`
+for the pre-created paths and the sweep; `tests/execute-task*.test.ts`
 for the request shape.

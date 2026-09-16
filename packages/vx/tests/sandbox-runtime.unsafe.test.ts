@@ -579,6 +579,68 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   )
 
   it(
+    'a literal write grant that meant a directory: the failure says `dist/`, and nothing is left behind',
+    async () => {
+      // A literal grant on a path that does not exist yet is bound as an
+      // empty FILE, so the task's own `mkdir -p dist` died with "File
+      // exists" — and the empty file survived every later clean (`dist/**`
+      // matches nothing under a file), so every run after met it again
+      // (2026-09-16). vx takes the untouched placeholder back and names the
+      // directory spelling beside the failure.
+      const projDir = await addProject(fixture.root, 'dirgrant', {
+        files: { 'src/x.txt': 'hi' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command: 'mkdir -p dist && cp src/x.txt dist/out.txt',
+                  sandbox: { allow: { read: ['.'], write: ['dist'] } },
+                },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      expect(r.ok).toBe(false)
+      const lines =
+        r.outcomes.find((o) => o.node.id === 'dirgrant#build')?.sandboxViolationLines ?? []
+      expect(lines.some((l) => l.includes('write grant `dist` named nothing on disk'))).toBe(true)
+      expect(lines.some((l) => l.includes('spell the grant `dist/`'))).toBe(true)
+      expect(existsSync(path.join(projDir, 'dist'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a `dist/` write grant is a directory the task may fill',
+    async () => {
+      const projDir = await addProject(fixture.root, 'dirslash', {
+        files: { 'src/x.txt': 'hi' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command: 'mkdir -p dist && cp src/x.txt dist/out.txt',
+                  sandbox: { allow: { read: ['.'], write: ['dist/'] } },
+                },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      expectOk(r, fixture)
+      expect(await readFile(path.join(projDir, 'dist/out.txt'), 'utf8')).toBe('hi')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a declared write path is readable too (touch stats before it creates)',
     async () => {
       // `touch` stats the file before creating it, so a write grant that
