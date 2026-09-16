@@ -64,6 +64,34 @@ describe('vx help names every flag the run parser accepts', () => {
   })
 })
 
+describe('docs/comparison.md names only flags vx has', () => {
+  // The flag map's vx column and the callout under it are prose nobody
+  // parsed; the callout named the retired --excludeDependencies until
+  // 2026-09-16 (item 308).
+  it('every --flag in the Quick CLI flag map section is a parser flag (or --version / --help)', async () => {
+    const doc = await Bun.file(new URL('../docs/comparison.md', import.meta.url).pathname).text()
+    const start = doc.indexOf('## Quick CLI flag map')
+    const end = doc.indexOf('## Config schema comparison')
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    const section = doc.slice(start, end)
+    // --parallel is named as the flag vx deliberately does not have.
+    const known = new Set([...(await parserFlags()), '--version', '--help', '--parallel'])
+    const named = new Set<string>()
+    for (const line of section.split('\n')) {
+      // Only vx's cell of a table row (the last), plus the callout paragraphs.
+      const cell = line.startsWith('|')
+        ? (line.split('|').at(-2) ?? '')
+        : line.startsWith('>')
+          ? line
+          : ''
+      for (const m of cell.matchAll(/`(--[a-z][a-zA-Z-]*)/g)) named.add(m[1]!)
+    }
+    expect(named.size).toBeGreaterThan(10)
+    expect([...named].filter((f) => !known.has(f)).sort()).toEqual([])
+  })
+})
+
 describe('docs/cli.md Flags table matches the run parser', () => {
   it('documents every flag the parser accepts, and no others', async () => {
     const parsed = await parserFlags()

@@ -71,7 +71,7 @@ is the wider matrix and the reasoning.
 | output log mode            | `--output-logs=full\|hash-only\|new-only\|errors-only\|none` | `--outputStyle=tui\|dynamic\|static\|stream\|…` | `--log=interleaved/labeled/grouped` | `--output-logs full\|hash-only\|errors-only\|none` (+ flow-derived default)                            |
 | profile / Chrome trace     | `--profile`                                                  | (via Nx Cloud)                                  | —                                   | `--profile[=<path>]`                                                                                   |
 | daemon on/off              | (deprecated in 2.10; ignored)                                | (Nx daemon, always on)                          | —                                   | (no daemon)                                                                                            |
-| retries / timeouts         | —                                                            | —                                               | —                                   | `--retry <n>`, `--timeout <dur>` (also per task in config)                                             |
+| retries / timeouts         | —                                                            | —                                               | —                                   | `--retry <n>`, `--timeout <ms>` (also per task in config)                                              |
 | remote placement / outputs | — (remote cache only)                                        | Nx Cloud agents                                 | —                                   | `--download=all\|toplevel\|none`, `exec.remote` (executor plugin, e.g. `@vzn/vx-reapi`)                |
 | run report                 | `--summarize`                                                | —                                               | —                                   | `--report=markdown`, `--report-file`; `vx last` replays any recorded run                               |
 | watch mode                 | `turbo watch`                                                | `nx watch`                                      | —                                   | `vx watch <task>`                                                                                      |
@@ -87,7 +87,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 > `dependsOn: ['^build']` you meant it. The legitimate
 > "I want to fan out without waiting" cases are already covered by
 > (a) not declaring `dependsOn` in the first place, and (b)
-> `--excludeDependencies`, which skips dependsOn expansion entirely
+> `--exclude-dependencies`, which skips dependsOn expansion entirely
 > or selectively.
 
 ## Config schema comparison

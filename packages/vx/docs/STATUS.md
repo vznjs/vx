@@ -89,6 +89,12 @@ test is telling the truth.
       the index maps each page to its files, and every name a block
       declares must be exported there (a bullet may name a member).
       Fails on the old pages.
+308.  DONE (2026-09-16, comparison.md's flag map against the parser):
+      the vx column held; the callout under it still named the
+      retired `--excludeDependencies`, and one cell wrote `--timeout`'s
+      value as a duration (it takes milliseconds). Pinned beside the
+      table pin: every flag the section's vx cells and callouts name
+      is a parser flag. Fails on the old page.
 
 ## In flight
 
