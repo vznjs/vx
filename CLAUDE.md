@@ -222,6 +222,23 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   jitter and below what the number decides (4 MiB against 64 MB steps),
   or measure a difference that exists.
 
+- A manual `su probe -c 'bun test …'` needs `PATH=/opt/probe-bin:$PATH`
+  or a sandboxed task that runs `bun` fails with "command not found"
+  and the port-bridge tests go red for the invocation, not the code
+  (the gate's step sets it; 2026-09-16, item 250).
+- `Bun.Glob` does not expand a brace whose alternatives hold a slash:
+  `{*,*/*}/package.json` matches nothing; two scans (2026-09-16).
+- A dead `HTTPS_PROXY` does not stand in for "no network" — Bun's
+  fetch reached the release regardless. Use `unshare -n` or
+  `bwrap --unshare-net` (2026-09-16, item 247).
+- The `VX_TIMING` accumulated span table sums WALL per call across
+  concurrent workers: 2 ms per `save: pack` under four workers is
+  overlap, not cost (an isolated one-file save is 0.82 ms). Measure a
+  suspected per-call cost in isolation before chasing it (item 254).
+- A `TMPDIR` under a workspace under the runner's temp directory puts
+  the sandbox runtime's socket past `sun_path` on macOS (104 bytes):
+  a temp-directory pin uses a short path directly under `os.tmpdir()`.
+
 ## Live invariants (verify in source before quoting)
 
 - `CACHE_VERSION` `vx-cache-v27`, core `SCHEMA_VERSION` `v26`,
