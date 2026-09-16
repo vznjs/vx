@@ -273,6 +273,25 @@ function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsa
   }
 }
 
+/**
+ * Why a process cannot write into `cacheDir`, or `null` when it can: the
+ * directory must take new files (the WAL, the artifacts) and `cache.db`,
+ * when it exists, must take pages. The file system's answer, not a trial
+ * write — under WAL a rolled-back write never reaches the disk, so
+ * `BEGIN IMMEDIATE … ROLLBACK` passes on a handle SQLite opened read-only
+ * (proven as an unprivileged user, 2026-09-16). Two `access` calls, 1.8 µs.
+ */
+function writeBlocked(cacheDir: string): string | null {
+  try {
+    accessSync(cacheDir, constants.W_OK)
+    const db = path.join(cacheDir, 'cache.db')
+    if (existsSync(db)) accessSync(db, constants.W_OK)
+    return null
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  }
+}
+
 export class Cache implements CacheLayer {
   /** This IS the local layer — there is nothing slower behind it. */
   readonly hasRemote = false
@@ -298,6 +317,8 @@ export class Cache implements CacheLayer {
    */
   private readonly read: boolean
   private readonly write: boolean
+  /** Why this process cannot write into `cacheDir`, or `null`; decided at open. */
+  private readonly writeBlocked: string | null
 
   /**
    * Set when THIS open found an index written by another `SCHEMA_VERSION`
@@ -320,6 +341,14 @@ export class Cache implements CacheLayer {
     // because callers use `new Cache(...)` directly; `mkdirSync` keeps
     // that property without a subprocess fork.
     mkdirSync(cacheDir, { recursive: true })
+    // A directory this user cannot write into is a read-only cache for
+    // every reader (`vx show`, `why`, `last`, the doctor, the watch sweep):
+    // the write axis goes off, so the config-evaluation store and the
+    // file-hash memo skip their upserts instead of dying in SQLite on the
+    // first miss (an unprivileged user on a root-owned `.vx`, 2026-09-16).
+    // A run wants more than a quiet read-only cache — `assertWritable()`.
+    this.writeBlocked = writeBlocked(cacheDir)
+    this.write = localPolicy.write && this.writeBlocked === null
     // Make the cache dir invisible to git, every time it is created: a
     // `*` .gitignore inside it (the Cargo / Nx convention). Two reasons,
     // both measured. A cache nobody ignored gets COMMITTED by the next
@@ -328,7 +357,7 @@ export class Cache implements CacheLayer {
     // its generator ignored `.vx`. An ignored directory is skipped by the
     // walk entirely. Only written when absent, so a user's own file wins.
     const ignore = path.join(cacheDir, '.gitignore')
-    if (!existsSync(ignore)) writeFileSync(ignore, '*\n')
+    if (this.writeBlocked === null && !existsSync(ignore)) writeFileSync(ignore, '*\n')
     this.db = new Database(path.join(cacheDir, 'cache.db'), { create: true })
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')
@@ -588,8 +617,8 @@ export class Cache implements CacheLayer {
     `)
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
-    this.files = new FileHashStore(this.db, cacheDir)
-    this.configEvals = new ConfigEvalTable(this.db, localPolicy)
+    this.files = new FileHashStore(this.db, cacheDir, this.write)
+    this.configEvals = new ConfigEvalTable(this.db, { read: this.read, write: this.write })
     this.outputs = new OutputIndex(this.db)
     this.history = new RunHistory(this.db)
   }
@@ -945,25 +974,15 @@ export class Cache implements CacheLayer {
    * directory this user cannot write into fails the run before the graph
    * starts, once, with the directory named, rather than every task at
    * 0 ms (or the run at its very end) with SQLite's "attempt to write a
-   * readonly database" as an internal error (an unprivileged user on a
-   * root-owned `.vx`, 2026-09-16). The check is the file system's, not a
-   * trial write: under WAL a rolled-back write never reaches the disk, so
-   * `BEGIN IMMEDIATE … ROLLBACK` passes on a handle SQLite opened
-   * read-only (proven as that user). The directory must take new files
-   * (the WAL, the artifacts) and the database file must take pages.
+   * readonly database" as an internal error. The readers open the same
+   * directory read-only and go on; a run refuses.
    */
   assertWritable(): void {
-    try {
-      accessSync(this.cacheDir, constants.W_OK)
-      const db = path.join(this.cacheDir, 'cache.db')
-      if (existsSync(db)) accessSync(db, constants.W_OK)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      throw new UserError(
-        `cache directory ${this.cacheDir} is not writable (${message}) — every run records its ` +
-          `history there; make it writable by this user, or pass --cache-dir <path>`,
-      )
-    }
+    if (this.writeBlocked === null) return
+    throw new UserError(
+      `cache directory ${this.cacheDir} is not writable (${this.writeBlocked}) — every run records its ` +
+        `history there; make it writable by this user, or pass --cache-dir <path>`,
+    )
   }
 
   async save(args: {

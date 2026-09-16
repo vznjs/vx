@@ -20,6 +20,8 @@ export class FileHashStore {
     private readonly db: Database,
     /** Where `git rev-parse --show-object-format` is asked, once, when a file misses the memo. */
     private readonly cacheDir: string,
+    /** The local WRITE axis: off, and a miss is hashed but not remembered (a read-only cache). */
+    private readonly write: boolean = true,
   ) {
     this.selectFileHash = this.db.prepare(
       'SELECT mtime_ms, size_bytes, ctime_ms, ino, content_hash FROM file_hashes WHERE path = ?',
@@ -118,7 +120,7 @@ export class FileHashStore {
     // changed within the window is hashed again on its next call rather
     // than memoised; the warm path never meets it (keys are derived long
     // after the files were written).
-    if (Date.now() - ctimeMs >= FILE_HASH_RACY_MS) {
+    if (this.write && Date.now() - ctimeMs >= FILE_HASH_RACY_MS) {
       this.upsertFileHash.run(filePath, mtimeMs, size, ctimeMs, ino, ch, Date.now())
     }
     return ch
@@ -205,7 +207,7 @@ export class FileHashStore {
         out.set(p, digest)
         // The same racy-clean rule as `hashFile`: a stat taken within the
         // window of the file's last change is not memoised.
-        if (now - st.ctimeMs >= FILE_HASH_RACY_MS) {
+        if (this.write && now - st.ctimeMs >= FILE_HASH_RACY_MS) {
           this.upsertFileHash.run(p, st.mtimeMs, st.size, st.ctimeMs, st.ino, digest, now)
         }
       }

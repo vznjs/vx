@@ -1105,6 +1105,26 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       (§ Storage layout) say it. Read-only verbs (`vx info`, `why`,
       `last`) open the cache without the check and keep working on a
       read-only cache, as they did.
+209.  DONE (2026-09-16, 208's last sentence tested rather than
+      believed): the readers kept working only while every config was
+      warm in the evaluation cache. With the config changed and the
+      cache read-only, `vx show` died with SQLite's "attempt to write
+      a readonly database" on the eval cache's store or the
+      file-hash memo's upsert, whichever came first; `vx info`
+      survived only because the doctor swallows a load error and counts
+      loadable configs instead, `why` and `last` read history and never
+      evaluate. The cache now decides at open whether the directory is
+      writable (the same two `access` calls) and, when it is not, opens
+      with the local WRITE axis off: the config-evaluation store already
+      honoured it, the file-hash memo does now, and the `.gitignore`
+      write is skipped; a run still refuses through `assertWritable()`,
+      which reads that decision. Pinned in `cache.test.ts` (a read-only
+      cache: `putConfigEval` and `hashFile` throw nothing and store
+      nothing) and `cache-dir-selection.test.ts` (`vx show` on the
+      workspace's own read-only cache with a changed config exits 0 and
+      lists the project — it takes no `--cache-dir`, so the workspace's
+      cache is the one that stops being writable), skipped as root and
+      proven both ways as `probe`; `docs/caching.md` says it.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
