@@ -1227,6 +1227,17 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       `UserError` back as an error result and any other error as a
       JSON-RPC error, and stays up either way; `vx watch` exits on the
       refusal with the same one line its initial run prints.
+214.  DONE (2026-09-16, the deal re-weighed as `probe`): the day added
+      four end-to-end cases that skip as root and a suite that runs
+      only with a mounted disk, and the weights the shard dealer trusts
+      were measured as root, where those cases cost nothing. The whole
+      core suite ran as the unprivileged user — 2,857 pass, 1 darwin-only
+      skip, 0 fail, 34 s wall on four workers — and `--weigh` took its
+      JUnit: 164 files, 132→134 s of recorded
+      test time, the movers `show-info.test.ts` 2→5 s, `cache-dir-selection.test.ts` 0→1 s, `flaky.test.ts` 0→1 s. The new deal predicts
+      11.2 s for every shard (max/avg 1.00); the measured walls were
+      9.2–13.7 s. This box hosts the suite as CI's runner sees it now,
+      not only the unsafe set, so the next re-weigh has the same recipe.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
