@@ -788,7 +788,7 @@ state of each:
 13. DONE 2026-09-10 as item 120 — `vx watch` watches the projects a cycle can run.
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230 and 236 (14–14p) are in
-    `docs/history/2026-09-status-next-log.md`; 14q–14v below are the
+    `docs/history/2026-09-status-next-log.md`; 14q–14w below are the
     current ones.
 
 14q. **Handoff after item 240 (2026-09-16, night).** Four items since
@@ -960,6 +960,40 @@ loses it (`OutcomeView`, 275). Next: a second first-run walkthrough
 current binary), twelve days and 260 items after the first (item 9),
 with the reason surfaces read as a newcomer would. Never end with
 "what next?".
+
+14w. **Handoff after item 281 (2026-09-16, afternoon).** Six items
+since 14v, merged as #436–#440: the second first-run walkthrough
+found nothing to fix (276) and then read each page against the
+renderer it describes — the broad-run sample (277), the frame
+anatomy (278) and the status-line doc's phantom Failures zone (279)
+had each drifted, and two byte-for-byte pins now hold the first two;
+the reader at scale (a thousand projects, one leaf broken) found
+`vx last` a thousand rows deep with the failure at the top (280,
+hits fold past sixteen) and the Skipped section naming groups no
+other counter counts (281). Open: Next 1, 2 and 16, all gated by
+their own terms; In-flight 5 (macOS); the owner residue — the
+`NPM_TOKEN` secret, the release cut, the site's address. No open
+issues. The loop holds 39 items (243–281): the trim's trigger is
+forty, so the item after next moves 243 onward to history. The box:
+as 14v; #440's first head went red in `test.bun.shard-4`, a shard
+holding none of its files — the Actions API serves at most the last
+five thousand log lines, which stop short of an early shard's
+section, the blob host the full log lives on is denied by the
+egress proxy, and the run uploads no artifacts, so a CI failure in
+an early shard cannot be named from here; three local runs passed,
+and with no re-run tool the one legitimate re-run was the push of
+the next real change (281), after one comment on the PR saying so
+— it came back green. A chain that ends in a subshell whose last
+command is a grep passes whatever the scan said (the STATUS span
+that wrapped in 280 was committed that way and amended); capture
+`rc=$?` before the grep. Methods that paid: a page that describes
+output is read against the renderer, not against memory (277–279);
+a probe at scale asks what two packages cannot (280); the counter
+every other surface excludes is the one to check in a new surface
+(281). Next: the trim after the next item, then a persona not yet
+walked — the inner loop, `vx watch` through a failing edit and the
+fixing one, with the reason surfaces read as they cycle. Never end
+with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
