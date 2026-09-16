@@ -245,6 +245,38 @@ describe('LayeredCache', () => {
     expect(await local.get('h-corrupt')).not.toBeNull()
   })
 
+  // A plugin's shape is a boundary (item 252): the line names the call
+  // and the shape, never "corrupt artifact" for a body that is a string.
+  it('get() that resolves the wrong shape is named as the plugin bug and degraded to a miss', async () => {
+    const errors: Error[] = []
+    const shaped = {
+      has: async () => true,
+      get: async () => ({ body: 'abc', durationMs: 1 }),
+      put: async () => {},
+    } as unknown as RemoteCacheLayer
+    const layered = new LayeredCache(local, shaped, { onRemoteError: (e) => errors.push(e) })
+    expect(await layered.get('h-shape', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
+    expect(errors.map((e) => e.message)).toEqual([
+      'remote cache layer returned an invalid result: get(h-shape) resolved body is string (expected { body: ArrayBuffer | Uint8Array, durationMs } or null) — a plugin bug, degraded to a miss',
+    ])
+    expect(await local.get('h-shape')).toBeNull()
+  })
+
+  it('hasMany() that resolves an array is named and read as no batch info', async () => {
+    const errors: Error[] = []
+    const shaped = {
+      has: async () => false,
+      hasMany: async () => ['h-a'],
+      get: async () => null,
+      put: async () => {},
+    } as unknown as RemoteCacheLayer
+    const layered = new LayeredCache(local, shaped, { onRemoteError: (e) => errors.push(e) })
+    expect(await layered.remoteHasMany(['h-a', 'h-b'])).toBeNull()
+    expect(errors.map((e) => e.message)).toEqual([
+      'remote cache layer returned an invalid result: hasMany() resolved an array (expected a Set of the hashes present, or null) — a plugin bug, degraded to a miss',
+    ])
+  })
+
   it('get() returns null when both local and remote miss', async () => {
     const layered = makeLayered()
     expect(await layered.get('h-nowhere')).toBeNull()

@@ -69,6 +69,30 @@ export interface RemoteCacheLayer {
  * Cap on concurrent background PUTs. Keeps a burst of cache misses from
  * opening one socket per task; excess uploads queue and drain FIFO.
  */
+/**
+ * What a remote layer resolves is a plugin's, so its shape is a boundary
+ * (item 252): a `get` that resolved `{ body: 'abc' }` was reported as
+ * "corrupt artifact … not a readable archive" — the bytes blamed for the
+ * plugin's shape — and a `hasMany` that resolved an array reached the
+ * prefetch pass's `.has()`. Named here and degraded to a miss, like every
+ * other remote failure.
+ */
+function invalidRemoteResult(what: string): Error {
+  return new Error(
+    `remote cache layer returned an invalid result: ${what} — a plugin bug, degraded to a miss`,
+  )
+}
+
+function isBytes(value: unknown): value is ArrayBuffer | Uint8Array {
+  return value instanceof ArrayBuffer || value instanceof Uint8Array
+}
+
+function describeValue(value: unknown): string {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'an array'
+  return typeof value === 'object' ? 'an object' : typeof value
+}
+
 const UPLOAD_CONCURRENCY = 4
 
 export interface LayeredCacheOptions {
@@ -157,7 +181,16 @@ export class LayeredCache implements CacheLayer {
     try {
       // `return await`, deliberately: the catch below is the never-fail
       // contract, and a returned promise's rejection would sail past it.
-      return await this.remote.hasMany(hashes)
+      const found: unknown = await this.remote.hasMany(hashes)
+      if (found !== null && found !== undefined && !(found instanceof Set)) {
+        this.reportRemoteError(
+          invalidRemoteResult(
+            `hasMany() resolved ${describeValue(found)} (expected a Set of the hashes present, or null)`,
+          ),
+        )
+        return null
+      }
+      return found ?? null
     } catch (err) {
       this.reportRemoteError(err)
       return null
@@ -259,7 +292,7 @@ export class LayeredCache implements CacheLayer {
     // or remote if a concurrent prefetch set it).
     if ((await this.local.has(hash)) === 'local') return true
 
-    let remoteResult
+    let remoteResult: unknown
     try {
       remoteResult = await this.remote.get(hash)
     } catch (err) {
@@ -267,6 +300,19 @@ export class LayeredCache implements CacheLayer {
       return false
     }
     if (!remoteResult) return false
+    if (typeof remoteResult !== 'object' || !isBytes((remoteResult as { body?: unknown }).body)) {
+      const shape =
+        typeof remoteResult !== 'object'
+          ? describeValue(remoteResult)
+          : `body is ${describeValue((remoteResult as { body?: unknown }).body)}`
+      this.reportRemoteError(
+        invalidRemoteResult(
+          `get(${hash}) resolved ${shape} (expected { body: ArrayBuffer | Uint8Array, durationMs } or null)`,
+        ),
+      )
+      return false
+    }
+    const remoteBody = remoteResult as { body: ArrayBuffer | Uint8Array; durationMs?: number }
 
     // Ingest the remote bytes into local using the caller-supplied
     // taskId/command plus the remote-reported durationMs. The remote
@@ -278,10 +324,10 @@ export class LayeredCache implements CacheLayer {
     const meta: IngestMeta = {
       taskId: ctx?.taskId ?? `${hash}#unknown`,
       command: ctx?.command ?? '',
-      durationMs: remoteResult.durationMs ?? 0,
+      durationMs: typeof remoteBody.durationMs === 'number' ? remoteBody.durationMs : 0,
     }
     try {
-      await this.local.ingest(hash, new Uint8Array(remoteResult.body), meta)
+      await this.local.ingest(hash, new Uint8Array(remoteBody.body), meta)
     } catch (err) {
       // The bytes came off the network — a corrupt/truncated remote
       // artifact must degrade to a cache miss (task re-executes), not

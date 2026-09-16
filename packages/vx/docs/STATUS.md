@@ -198,6 +198,24 @@ test is telling the truth.
       file's definePlugin stamp), and Next 8(d)'s "last large files" was
       stale — corrected in place.
 
+252.  DONE (2026-09-16, the plugin-author lens at the cache seam, after
+      251's executor): a remote layer's `get` that resolved
+      `{ body: 'abc' }` (or `{}`, or a string) was reported as "corrupt
+      artifact for <hash>: artifact is not a readable archive" — the
+      bytes blamed for the plugin's shape — and a `hasMany` that
+      resolved an array passed through to the prefetch pass's `.has()`.
+      Probed first through `LayeredCache` with six malformed layers:
+      nothing crashed (the never-fail contract holds), the words were
+      wrong. The layer checks both shapes now and names the call and
+      the shape through `onRemoteError` ("remote cache layer returned
+      an invalid result: get(<hash>) resolved body is string (expected
+      { body: ArrayBuffer | Uint8Array, durationMs } or null) — a
+      plugin bug, degraded to a miss"; a `hasMany` array reads as no
+      batch info). Pinned in `layered-cache.test.ts`; both fail without
+      the fix (the corrupt-artifact line; the array passed through).
+      `has()` is left as is: a truthy non-boolean only costs a `get`
+      that then misses.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
