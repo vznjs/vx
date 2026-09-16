@@ -216,6 +216,20 @@ test is telling the truth.
       `has()` is left as is: a truthy non-boolean only costs a `get`
       that then misses.
 
+253.  DONE (2026-09-16, the gate's own shape): ten test files added
+      since `tests/shard-weights.json` was recorded (the day's pins:
+      the tree kill, the watch self-write loop, no git, no sh, the
+      TMPDIR refusal, the CI output …) carried the table's median, and
+      the 12 shards ran 10.1 to 16.7 s — the gate's wall time is the
+      heaviest. Weighed from a junit run of all twelve as `probe`
+      (the junit reporter per shard, then the shard script's weigh
+      mode): the new deal predicts 13.3 s on every shard by the
+      same weights (the old deal, 11.7 to 16.6 by them), and the next
+      gate measured 13.4 to 15.0 s — the heaviest 1.6 s lighter, the
+      spread 1.7 s where it was 6.6. Refresh again when a new file
+      lands heavy: the median is what an unknown file costs, and a
+      6 s e2e is not the median.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
