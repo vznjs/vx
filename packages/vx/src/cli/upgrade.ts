@@ -48,7 +48,7 @@ function isCompiledBinary(): boolean {
  * (or a lockfile-pinned CI checkout) puts the version npm knows back,
  * and `npm ls` never agrees with `vx --version` in between. Such an
  * install updates through npm, and `vx upgrade` says so. Null for a
- * binary installed by hand or by the curl script.
+ * binary installed by hand from a release.
  */
 export function npmOwnedBinary(execPath: string): string | null {
   const parts = execPath.split(/[\\/]/)

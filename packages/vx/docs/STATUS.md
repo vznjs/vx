@@ -675,6 +675,15 @@ of a task's output for its cache entry and replay`). The
       one. Ordered after the source refusal, so a source checkout still
       hears "git pull".
 
+235.  DONE (2026-09-16, the same persona reading the README): the
+      comparison table promised "npm or 1 curl line" and no install
+      script exists anywhere — the quickstart offers npm or a release
+      file, and 234's own comment had repeated the phrase. De-claimed
+      in the README, the source and the test comment: npm, or one
+      release file. An install script is a launch decision for the
+      owner (it needs the site's address, checklist 3), not a line to
+      promise ahead of it.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items

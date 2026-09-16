@@ -27,7 +27,7 @@ describe('isBunfsPath', () => {
   it('rejects real source paths — the source-mode signal', () => {
     // Under `--minify --bytecode`, import.meta.path is the SOURCE path;
     // keying compiled-binary detection off it (the old bug) misread
-    // every curl-installed binary as "running from source".
+    // every installed release binary as "running from source".
     expect(isBunfsPath('/Users/me/vx/src/bin.ts')).toBe(false)
     expect(isBunfsPath('/private/tmp/probe.ts')).toBe(false)
     expect(isBunfsPath('')).toBe(false)
