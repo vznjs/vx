@@ -28,6 +28,7 @@ export { type DeniedCall } from './sandbox-violations.js'
 export { localExecutor } from './local-executor.js'
 export { killTree } from './kill-tree.js'
 export {
+  assertExecuteResult,
   selectExecutor,
   type ExecuteRequest,
   type ExecuteResult,
