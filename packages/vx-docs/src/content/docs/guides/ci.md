@@ -205,21 +205,30 @@ vx run build --all --profile=trace.json       # Chrome-trace timeline
 
 vx can append a per-task result table to the job's summary page, so a red
 build tells you *which* task failed without opening the raw log. Failures
-are sorted to the **top**, each with its exit code and cache provenance —
+are called out **above** the table, each with its exit code — and, for an
+exit above 128, the signal it stands for (`exit 137 (128 + SIGKILL)`) —
 so the one thing you opened the summary to find is the first thing you
-see. GitHub renders it as markdown right on the job page:
+see. The table's status word says what each task did: ran, restored from
+the local or the remote cache, or skipped. What `@vzn/vx-github` writes,
+byte for byte (a test renders this run and checks it against this page):
 
-> ### vx run — `vx run ci --all`
+> ## ❌ vx run
 >
-> ❌ failed · **5** tasks · **1** failed · **2** cache hits · **2** executed · **1** skipped · 21.4s
+> **5** tasks · **2** executed · **2** cache hits (1 remote) · **1** failed · 21.4s
 >
-> | Task | Status | Duration | Cache |
-> | --- | --- | ---: | --- |
-> | `@acme/web#build` | ❌ failed (exit 2) | 3.1s | miss |
-> | `@acme/web#test` | ✅ success | 4.2s | miss |
-> | `@acme/api#build` | 🟦 cache hit | 0ms | remote |
-> | `@acme/ui#build` | 🟦 cache hit | 0ms | local |
-> | `@acme/ui#lint` | ⚪ skipped | 0ms | — |
+> ### Failures
+>
+> - **@acme/web#build** — exit 2
+>
+> | Task | Status | Duration |
+> | --- | --- | --- |
+> | @acme/web#build | ❌ failed | 3.1s |
+> | @acme/web#test | ✅ ran | 4.2s |
+> | @acme/api#build | ☁️ remote cache | 0ms |
+> | @acme/ui#build | ⚡ cache | 0ms |
+> | @acme/ui#lint | ⏭️ skipped | 0ms |
+>
+> <sub>vx 0.0.21 · `vx run ci --all` · 3/5 passed · 2 restored</sub>
 
 Every task is in exactly one bucket: `cache hits + executed + skipped` is
 the task count. A **skipped** task is one whose dependency failed — under
@@ -230,7 +239,9 @@ downstream — so it is counted and named, never folded into "executed".
 Two ways to get it:
 
 - **Core, one flag.** `vx run ci --report-file="$GITHUB_STEP_SUMMARY"`
-  writes the table from the run's own outcomes — no plugin, no server.
+  writes the plainer run report from the run's own outcomes — a totals
+  line and a Task / Status / Cache / Duration table, `failed (exit 2)`
+  in the status cell — no plugin, no server.
   Use `--report-file`, not `--report=markdown >> …`: the report is
   machine-clean but stdout is shared with vx's own run output, so a
   redirect puts the whole log in the summary above the table.
