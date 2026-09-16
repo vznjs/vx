@@ -182,6 +182,17 @@ test is telling the truth.
       (`@vzn/vx@workspace:* failed to resolve`), and `bun install`
       wipes hand-placed symlinks — install the real dependency first,
       then symlink the plugin packages, after every install.
+289.  DONE (2026-09-16, after 287, the CI guide read once more): its
+      opening said a pull request "restores everything else from a
+      previous build" and its `--affected` note "the rest restore from
+      cache" — under `--affected` the rest are never scheduled, so
+      nothing is restored or probed; what a previous build already
+      produced is a hit within the selection. Both sentences say so.
+      And four of 14x's box entries moved to CLAUDE.md's rules learned
+      the hard way, where every session reads them: the edit script
+      that writes before it asserts, the item inserted before the
+      blank, the type-checker's `node_modules` walk, the probe whose
+      negative case held the needle.
 
 ## In flight
 

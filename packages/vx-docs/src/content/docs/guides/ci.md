@@ -4,9 +4,10 @@ description: Run vx in CI — install the binary, build only what changed with -
 ---
 
 vx is built for CI: a content-addressed cache plus `--affected` selection
-means most pull requests execute only the packages they actually touched
-and restore everything else from a previous build. This guide is a working
-setup you can copy, plus the lockfile workflow and when to reach for it.
+means most pull requests run only the packages they touched and the ones
+that depend on them, restoring from a previous build whatever those did
+not change. This guide is a working setup you can copy, plus the lockfile
+workflow and when to reach for it.
 
 ## The shape of a fast CI run
 
@@ -77,7 +78,9 @@ Notes:
   vx names that case in its note. After a force-push `before` may be
   gone from history; vx says the ref did not resolve, and `--all` is the
   honest fallback for that run. Changed packages (and their dependents)
-  run; the rest restore from cache.
+  run; the rest are never scheduled — nothing to restore, nothing to
+  probe — and within the selection, a task whose inputs the change did
+  not reach is a cache hit.
 - **`vx` is the npm-installed binary** on `PATH` — no wrapper needed. (Or
   install it as a dependency with `bun add -d @vzn/vx` and invoke it
   through your package manager.)
