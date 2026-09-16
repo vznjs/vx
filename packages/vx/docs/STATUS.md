@@ -372,6 +372,20 @@ test is telling the truth.
       in this series with no differential, and the first from the
       oldest end of the list. Sixty-odd shapes and samples now hold
       the module pages.
+325.  DONE (2026-09-16, the next three oldest pages: download-policy,
+      local-shortcircuit, nested-dirs). download-policy.md read true
+      but for `toplevel`'s eager set (a requested OR surfaced task)
+      and had no shapes. local-shortcircuit.md's gate said "NEVER
+      LayeredCache … ≥1 dep edge" — `shouldShortCircuit` tests the
+      layer's `hasRemote` flag, `localRead`, and at least one NODE;
+      its surface was two bullets. nested-dirs.md described an O(n²)
+      walk the module replaced with a sort and a forward scan (near
+      O(P log P)), skipping the interloper siblings (`foo-utils`
+      beside `foo`) that a plain break once let hide `foo/nested`;
+      its Tests section missed `tests/nested-dirs.test.ts`, and its
+      symlink note described a walker the module no longer feeds.
+      Fixed; the shape law gains three shapes and the `DownloadMode`
+      union. Four fail on the old pages.
 
 ## In flight
 

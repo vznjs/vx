@@ -112,6 +112,9 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['logger', 'orchestrator/logger.ts', 'OutputView'],
   ['colors', 'orchestrator/colors.ts', 'ColorSupport'],
   ['colors', 'orchestrator/colors.ts', 'PaintOptions'],
+  ['local-shortcircuit', 'orchestrator/local-shortcircuit.ts', 'ShortCircuitArgs'],
+  ['local-shortcircuit', 'orchestrator/local-shortcircuit.ts', 'ProbedEntry'],
+  ['local-shortcircuit', 'orchestrator/local-shortcircuit.ts', 'ShortCircuit'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -190,6 +193,14 @@ describe('a module page quotes a constant or a regex the module has', () => {
       .map((m) => m[1]!)
       .filter((n) => !aside.has(n) && !seen.has(n) && (seen.add(n), true))
     expect(named).toEqual(words)
+  })
+
+  it("download-policy.md's DownloadMode is the source's union", () => {
+    const line = /^export type DownloadMode = .*$/m.exec(
+      read('src/orchestrator/download-policy.ts'),
+    )
+    expect(line).not.toBeNull()
+    expect(read('docs/modules/download-policy.md')).toContain(`${line![0]}\n`)
   })
 
   it("cli-cache.md's two regexes are parseDuration's and parseSize's", () => {

@@ -11,11 +11,24 @@ See [`design/download-policy-cas-cache-2026-08.md`](../design/download-policy-ca
 
 ## Public surface
 
-- `resolveDownloadModes({nodes, policy, localPlaced, remoteOnly})` →
-  `{modeOf, downgrades}`. Per task: `never` for `exec.remote: 'only'`,
-  `eager` for a locally-placed task or policy `all` or a requested task
-  under `toplevel` or an ineligible producer, else `deferred`.
-  `downgrades` maps a task to WHY it was forced eager, for `--dry`.
+```ts
+export type DownloadMode = 'eager' | 'deferred' | 'never'
+
+export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, string> // ineligible id → why
+export function resolveDownloadModes(args: {
+  nodes: Map<string, TaskNode>
+  policy: 'all' | 'toplevel' | 'none'
+  localPlaced: ReadonlySet<string> // placed on a local executor — they write in place
+  remoteOnly: ReadonlySet<string> // `exec.remote: 'only'`
+}): { modeOf: Map<string, DownloadMode>; downgrades: Map<string, string> }
+```
+
+- `resolveDownloadModes` — per task, in this order: `never` for
+  `exec.remote: 'only'`; `eager` for policy `all` or a locally-placed
+  task; `eager` for a requested or surfaced task under `toplevel`;
+  `eager` for an ineligible producer, with the reason in `downgrades`
+  (what `--dry` prints); else `deferred`. Groups get no mode. Under
+  `all` the eligibility gate is not even computed.
 - `deferralEligibility(nodes)` → ineligible ids mapped to the reason.
 
 ## The gate
