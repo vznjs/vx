@@ -169,6 +169,12 @@ export interface TaskTelemetry {
    *  / `--retry` produced more than one attempt. A retried-then-passed task is
    *  flaky by definition; this is the telemetry-side flaky signal. */
   attempts?: number
+  /**
+   * On a `skipped` task: the id of the failed (or aborted) task at the
+   * root of what blocked it, through any chain of skips. Absent on a
+   * fail-fast skip and on every other status. Additive (schema stays 2).
+   */
+  blockedBy?: string
   /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
   wallclockStartNs?: string
   wallclockEndNs?: string

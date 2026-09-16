@@ -116,6 +116,19 @@ describe('runGraph', () => {
     })
     expect(out.get('a#build')?.status).toBe('failed')
     expect(out.get('b#build')?.status).toBe('skipped')
+    // The skipped outcome names the failure at the root of its block.
+    expect(out.get('b#build')?.blockedBy).toBe('a#build')
+  })
+
+  it('a skip behind a skip names the failure at the root, not the skip', async () => {
+    const out = await runGraph({
+      nodes: nodes(node('a#build'), node('b#build', ['a#build']), node('c#build', ['b#build'])),
+      concurrency: 4,
+      execute: async (n) => (n.id === 'a#build' ? failed(n) : success(n)),
+    })
+    expect(out.get('c#build')?.status).toBe('skipped')
+    expect(out.get('c#build')?.blockedBy).toBe('a#build')
+    expect(out.get('a#build')?.blockedBy).toBeUndefined()
   })
 
   it('skips dependents of an aborted task', async () => {

@@ -418,6 +418,26 @@ test is telling the truth.
       path, measured in isolation: 0.022 ms on a 5,000-task green run
       (one filter), 1.45 ms on a 4,999-skip chain behind one failure
       (the memoised walk).
+267.  DONE (2026-09-16, the second-day reader of 266): the footer knew
+      a skip's cause and no record did — `--summarize`, the telemetry
+      record and the job summary said `skipped` and stopped. The
+      scheduler now records the root of each block on the outcome
+      (`blockedBy`: the failed or aborted upstream, handed down a chain
+      of skips; absent for fail-fast), and every surface reads that one
+      field — the footer (the walk of 266 is gone), the `--summarize`
+      row, `TaskTelemetry` (additive: the version stays 2, as `where`
+      and `attempts` were added), and `@vzn/vx-github`'s Failures
+      callout, `— exit 3 · blocked app#build, web#build`. The `runs`
+      table does not carry it: a column is a `SCHEMA_VERSION` bump that
+      resets every local cache, and `vx last`'s skipped row says
+      `skipped` beside its failed neighbour, so the day it is worth a
+      bump is the day another column needs one. Pinned in the
+      scheduler (a skip behind a skip names the root), the summary, the
+      plugin's suite and end to end (the summarize row). The gate's
+      first run found `@vzn/vx-otel`'s losslessness tripwire (a
+      `Required<TaskTelemetry>` fixture) refusing the new field until
+      it was mapped — the tripwire doing its job — so the task span
+      carries `vx.task.blocked_by`, a task id as the record has it.
 
 ## In flight
 

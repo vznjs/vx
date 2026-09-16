@@ -53,6 +53,16 @@ describe('the Skipped section', () => {
     )
   })
 
+  it('the summarize row names the blocker; a failed row carries none', async () => {
+    const out = path.join(root, 's.json')
+    vx(root, ['run', 'build', '--all', `--summarize=${out}`])
+    const rows = (JSON.parse(await Bun.file(out).text()) as { tasks: Record<string, unknown>[] })
+      .tasks
+    const byId = new Map(rows.map((r) => [r['id'], r]))
+    expect(byId.get('app#build')?.['blockedBy']).toBe('lib#build')
+    expect(byId.get('lib#build')?.['blockedBy']).toBeUndefined()
+  })
+
   // CONTROL: nothing skipped, no section.
   it('prints no section when the run skipped nothing', () => {
     const r = vx(root, ['run', 'build', '--all', '--continue=always'])

@@ -82,6 +82,18 @@ describe('renderJobSummary', () => {
     expect(rows[2]).toContain('b#build')
   })
 
+  it('a failure names the tasks it blocked', () => {
+    const md = renderJobSummary(
+      summary([
+        task({ taskId: 'lib#build', status: 'failed', exitCode: 3 }),
+        task({ taskId: 'app#build', status: 'skipped', exitCode: 1, blockedBy: 'lib#build' }),
+        task({ taskId: 'web#build', status: 'skipped', exitCode: 1, blockedBy: 'lib#build' }),
+        task({ taskId: 'x#build', status: 'skipped', exitCode: 1 }),
+      ]),
+    )
+    expect(md).toContain('- **lib#build** — exit 3 · blocked app#build, web#build\n')
+  })
+
   it('a failure above 128 names the signal its exit stands for', () => {
     const md = renderJobSummary(
       summary([task({ taskId: 'b#build', status: 'failed', exitCode: 137 })]),

@@ -92,6 +92,7 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
       cacheHit: isCacheHit(o.status),
       ...(o.attempts !== undefined ? { attempts: o.attempts } : {}),
       cached: o.node.config.cache !== undefined,
+      ...(o.blockedBy !== undefined ? { blockedBy: o.blockedBy } : {}),
     })
     if (o.status === 'failed') failedCount++
     if (o.status === 'cache-hit') hitLocalCount++
@@ -143,6 +144,7 @@ function telemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.where !== undefined) t.where = o.where
   if (o.outputs !== undefined) t.outputs = o.outputs
   if (o.attempts !== undefined) t.attempts = o.attempts
+  if (o.blockedBy !== undefined) t.blockedBy = o.blockedBy
   if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
   if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
   return t
