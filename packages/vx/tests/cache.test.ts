@@ -674,7 +674,8 @@ describe('Cache storage (v10)', () => {
     // Two runs on one workspace: the other one's clean of `dist/**` takes
     // the `.vx-tmp-*` files this restore staged, and its commit meets
     // ENOENT. A deleter loop plays the other run for the whole restore.
-    const { mkdir, readdir, unlink, writeFile } = await import('node:fs/promises')
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    const { readdirSync, unlinkSync } = await import('node:fs')
     const dist = path.join(projectDir, 'dist')
     await mkdir(dist, { recursive: true })
     const files: string[] = []
@@ -691,16 +692,27 @@ describe('Cache storage (v10)', () => {
     })
     let stop = false
     let removed = 0
+    // The other run strikes SYNCHRONOUSLY on each turn of the loop — one
+    // readdirSync and every unlinkSync in the same tick — so whatever the
+    // restore has staged when it yields is gone before its commit renames
+    // the next batch. A 1 ms timer with an awaited unlink per file got one
+    // unlink per commit yield, aimed at a name in directory order, and 2
+    // restores in 60 under a 12-way load renamed every file it aimed at
+    // first (the gate, 2026-09-16).
     const deleter = (async () => {
       while (!stop) {
-        for (const name of await readdir(dist).catch(() => [] as string[])) {
-          if (name.includes('.vx-tmp-'))
-            await unlink(path.join(dist, name)).then(
-              () => removed++,
-              () => {},
-            )
+        let names: string[] = []
+        try {
+          names = readdirSync(dist)
+        } catch {}
+        for (const name of names) {
+          if (!name.includes('.vx-tmp-')) continue
+          try {
+            unlinkSync(path.join(dist, name))
+            removed++
+          } catch {}
         }
-        await new Promise((r) => setTimeout(r, 1))
+        await new Promise<void>((r) => setImmediate(r))
       }
     })()
     let caught: unknown

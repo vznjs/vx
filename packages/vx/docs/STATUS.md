@@ -339,7 +339,12 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       Pinned in `cache.test.ts` with a deleter loop playing the other
       run for the whole restore (fails without the fix as a
       `CorruptArtifactError`); `docs/caching.md` § Concurrent runs says
-      it. Not done, on the Next list: a per-task advisory lock so the
+      it. The deleter sweeps synchronously on each turn of the event
+      loop (2026-09-16, the gate on item 241): a 1 ms timer with an
+      awaited unlink per file got one unlink per commit yield, and 2
+      restores in 60 under a 12-way load renamed every file it aimed
+      at first; 0 in 60 once the sweep is one readdirSync plus its
+      unlinkSyncs in one tick. Not done, on the Next list: a per-task advisory lock so the
       second run waits instead of failing.
 216.  DONE (2026-09-16, Next 19, as a per-RUN lock): two vx processes
       on one workspace take turns now. A run takes the workspace's run
