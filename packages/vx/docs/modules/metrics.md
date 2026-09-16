@@ -17,6 +17,7 @@ getRun(db, runId): RunDetail | null                 // one invocation's task row
 listInvocations(db, { limit?, ... }): InvocationDetail[]
 getInvocation(db, runId): InvocationDetail | null   // the header row, tags parsed
 explainCacheKey(db, taskId): CacheKeyExplanation    // latest entry for a task
+latestRunId(db, taskId): string | null              // the run a caller without one means
 whyDidThisRerun(db, runId, taskId): WhyDidThisRerun // this run vs the previous one
 cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components moved
 ```
@@ -41,9 +42,9 @@ list, with a `note` that says which case it is.
   digests, never the material (an env value can be a secret); STATUS
   § Next 8(g) records why a plugin part's raw value is not stored.
 
-Keyed-run filtering (`KEYED_RUNS_SQL`) and the flakiness verdict
-(`failure-mode.ts`) are imported, not restated, so a rule written once
-cannot drift between readers.
+Keyed-run filtering (`KEYED_RUNS_SQL`, the cache module's) is
+imported, not restated, so a rule written once cannot drift between
+readers.
 
 ## What it does NOT do
 
@@ -62,5 +63,5 @@ lists).
 
 ## Replacing this module
 
-A reader over another store implements the same seven signatures; the
+A reader over another store implements the same eight signatures; the
 CLI verbs and the MCP tools format, they do not query.

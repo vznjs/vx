@@ -13,8 +13,12 @@ that shared work; the two callers stay thin.
 export interface PreparedRun {
   workspaceRoot: string
   workspaceConfig: WorkspaceConfig | null
+  plugins: readonly VxPlugin[] // the workspace's declared plugins, in declaration order; nothing is added
   cacheDir: string
   cache: CacheLayer // caller owns close()
+  localCache: Cache // the local handle `cache` may wrap; raw SQLite readers use it
+  hasRemoteLayer: boolean // `cache` is more than the local handle — the remote policy axes mean something
+  priorities: ReadonlyMap<string, number> // the `schedule` stage's weights; empty without one
   nodes: Map<string, TaskNode> // empty if `empty !== null`
   /**
    * Requested specs that matched NO project — a typo, or a stray
@@ -23,8 +27,13 @@ export interface PreparedRun {
    * returns an abandoned plan carrying the same list.
    */
   unresolvedTasks: readonly string[]
+  projects: ReadonlyMap<string, ProjectEntry> // every discovered project, a typo's measure
+  anyProjectConfig: boolean // some package has a vx.config.* at all, whatever the scope
   workspaceFingerprint: string
   nestedDirsByProject: Map<string, string[]>
+  gitFilesCache: GitFilesCache // per-run memo of `git ls-files`, by project dir
+  workspaceProjectCount: number // every project discovery found, in or out of scope
+  hashCache: HashCache // per-run memo of derived digests (see task-hash.md)
   /**
    * Reason `nodes` is empty:
    *   - `null`                — graph is non-empty, ready to execute.
@@ -46,7 +55,9 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
 ## Steps
 
 1. **Workspace discovery** — `findWorkspaceRoot`, `loadWorkspace`,
-   `loadWorkspaceConfig`, `listProjects`.
+   `listProjects`; the workspace config arrives evaluated and with the
+   `config` stage applied (`RunOptions`, from `cli/workspace-config.ts`),
+   and `loadWorkspacePlugins` gives the declared plugin list.
 2. **Project config load** — `loadProjects` ([`projects.md`](./projects.md)),
    the load `vx show` shares: scoped to the seeds and their package
    closure, from the lock under `--frozen`, through the plugin
@@ -57,12 +68,18 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    `computeNestedProjectDirs`, `expandRequested` (plus
    `unresolvedRequests`, the same predicate run in reverse to name the
    specs that resolved to nothing).
-4. **Cache + fingerprint** — `new Cache(resolveCacheDir(root,
-workspaceConfig))`, then the layer resolution (an injected
-   `RunOptions.remoteCache` composed into a `LayeredCache` wins; else
-   every `cache` capability in the declared plugin list, chained in
-   order — nothing is appended, and no layer at all is a named error),
-   `computeWorkspaceFingerprint`.
+4. **Cache + fingerprint** — `new Cache(dir)` on `--cache-dir` or
+   `resolveCacheDir(root, workspaceConfig)`, refused up front with the
+   directory named when this user cannot write it (`assertWritable`),
+   and an index reset by an upgrade said once (`noteSchemaReset`).
+   Then the layer resolution: an injected `RunOptions.remoteCache`
+   composed into a `LayeredCache` wins; else `resolveCache` collects
+   every `cache` capability in the declared plugin list in order — one
+   layer is used as is, two or more are chained, and a plugin
+   declaring nothing leaves the local store unwrapped as the floor.
+   `computeWorkspaceFingerprints` yields two digests from one read:
+   the config-evaluation key over every root file, and the task key
+   over the files no plugin's `fingerprint` claims.
 5. **Build the task graph** — `buildTaskGraph(...)` with optional
    `excludeDependencies` filter.
 
