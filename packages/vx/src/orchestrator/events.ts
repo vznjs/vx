@@ -232,6 +232,8 @@ export interface OutcomeView {
   hash?: string
   cpuMs?: number
   peakRssBytes?: number
+  /** A failure vx's own `timeout` killed (see `TaskOutcome`). */
+  timedOut?: true
   /** How long an `admit` policy held the task with a worker free (see `TaskOutcome`). */
   admissionHeldMs?: number
   restored?: boolean
@@ -261,16 +263,21 @@ export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string
 }
 
 /** `outcomeWord` with the exit code a failure carries: `failed (exit 9)`. */
-export function outcomeLabel(o: Pick<OutcomeView, 'status' | 'restored' | 'exitCode'>): string {
-  return o.status === 'failed' ? failedLabel(o.exitCode) : outcomeWord(o)
+export function outcomeLabel(
+  o: Pick<OutcomeView, 'status' | 'restored' | 'exitCode' | 'timedOut'>,
+): string {
+  return o.status === 'failed' ? failedLabel(o.exitCode, o.timedOut) : outcomeWord(o)
 }
 
 /**
  * A failure's label, one copy for every surface (the frame's footer, the
  * status line, the run report, the Actions annotation): the exit code, and
- * above 128 the signal it stands for — `failed (exit 137, 128 + SIGKILL)`.
+ * above 128 the signal it stands for — `failed (exit 137, 128 + SIGKILL)` —
+ * or, for vx's own timeout, `failed (timed out, exit 143)`.
  */
-export function failedLabel(exitCode: number): string {
+export function failedLabel(exitCode: number, timedOut?: true): string {
+  // A timeout's 143 is vx's own SIGTERM: the reason, not the signal, reads.
+  if (timedOut === true) return `failed (timed out, exit ${exitCode})`
   const signal = exitSignal(exitCode)
   return `failed (exit ${exitCode}${signal === undefined ? '' : `, 128 + ${signal}`})`
 }
@@ -305,6 +312,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.cpuMs !== undefined) view.cpuMs = outcome.cpuMs
   if (outcome.peakRssBytes !== undefined) view.peakRssBytes = outcome.peakRssBytes
   if (outcome.admissionHeldMs !== undefined) view.admissionHeldMs = outcome.admissionHeldMs
+  if (outcome.timedOut === true) view.timedOut = true
   if (outcome.restored !== undefined) view.restored = outcome.restored
   if (outcome.sandboxViolations !== undefined) view.sandboxViolations = outcome.sandboxViolations
   if (outcome.sandboxViolationLines !== undefined)

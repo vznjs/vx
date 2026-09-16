@@ -94,6 +94,13 @@ describe('renderJobSummary', () => {
     expect(md).toContain('- **lib#build** — exit 3 · blocked app#build, web#build\n')
   })
 
+  it('a timeout reads as the reason, not as the signal its exit is', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'b#build', status: 'failed', exitCode: 143, timedOut: true })]),
+    )
+    expect(md).toContain('- **b#build** — timed out, exit 143\n')
+  })
+
   it('a failure above 128 names the signal its exit stands for', () => {
     const md = renderJobSummary(
       summary([task({ taskId: 'b#build', status: 'failed', exitCode: 137 })]),

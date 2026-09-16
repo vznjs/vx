@@ -175,6 +175,8 @@ export interface TaskTelemetry {
    * fail-fast skip and on every other status. Additive (schema stays 2).
    */
   blockedBy?: string
+  /** On a `failed` task: vx's own `timeout` killed it (exit 143 is the deadline, not a signal). Additive. */
+  timedOut?: true
   /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
   wallclockStartNs?: string
   wallclockEndNs?: string

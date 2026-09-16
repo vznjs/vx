@@ -361,8 +361,12 @@ describe('execute-task — retry loop control flow: abort vs timeout', () => {
       expect((await readFile(path.join(dir, 'tries.txt'), 'utf8')).trim().split('\n')).toHaveLength(
         2,
       )
-      // The timeout says so on stderr — a bare 143 is otherwise unreadable.
+      // The timeout says so on stderr — a bare 143 is otherwise unreadable —
+      // and the outcome carries it, so every label reads "timed out" where
+      // it would otherwise read the signal (item 268).
       expect(fixture.err.join('')).toContain('timed out after 300ms')
+      expect(o.timedOut).toBe(true)
+      expect(fixture.err.join('')).toContain('retrying to#t (attempt 2/2) after a timeout')
     },
     TIMEOUT,
   )

@@ -683,7 +683,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (effectiveExitCode === 0 || attempt >= maxAttempts) break
     log.taskStderr(
       node,
-      `vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after exit ${effectiveExitCode}\n`,
+      `vx: retrying ${node.id} (attempt ${attempt + 1}/${maxAttempts}) after ${result.timedOut === true ? 'a timeout' : `exit ${effectiveExitCode}`}\n`,
     )
   }
 
@@ -772,6 +772,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     durationMs: result.durationMs,
     hash,
     ...(attempt > 1 ? { attempts: attempt } : {}),
+    ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     ...(result.where !== undefined ? { where: result.where } : {}),

@@ -236,6 +236,11 @@ describe('per-row status and cache words', () => {
     // A plain exit has no signal part.
     const plain = report([view({ taskId: 'a#test', status: 'failed', exitCode: 3 })])
     expect(rows(plain)[0]).toContain('| failed (exit 3) |')
+    // vx's own timeout reads as the reason, not as the signal its 143 is.
+    const timed = report([
+      view({ taskId: 'a#test', status: 'failed', exitCode: 143, timedOut: true }),
+    ])
+    expect(rows(timed)[0]).toContain('| failed (timed out, exit 143) |')
   })
 
   it('marks an executed task as a cache miss', () => {

@@ -607,6 +607,14 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     expect(out.text()).toContain('::error title=one#boom::failed (exit 137, 128 + SIGKILL)\n')
   })
 
+  it('the annotation names a timeout as such, not as its signal', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#slow')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 143, timedOut: true }))
+    expect(out.text()).toContain('::error title=one#slow::failed (timed out, exit 143)\n')
+  })
+
   it('quiet hit one-liners stay plain (not a block, nothing to collapse)', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)

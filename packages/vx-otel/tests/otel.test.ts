@@ -454,6 +454,7 @@ const FULL_TASK: Required<TaskTelemetry> = {
   outputs: 'deferred',
   attempts: 2,
   blockedBy: 'lib#build',
+  timedOut: true,
   // Past Number.MAX_SAFE_INTEGER — routing this through a JS number rounds it.
   wallclockStartNs: '9007199254740993',
   wallclockEndNs: '9007199254742000',
@@ -559,6 +560,7 @@ describe('OTLP losslessness', () => {
     expect(a['vx.task.where']).toBe('worker-7')
     expect(a['vx.task.outputs']).toBe('deferred')
     expect(a['vx.task.blocked_by']).toBe('lib#build')
+    expect(a['vx.task.timed_out']).toBe(true)
   })
 
   it('makes a task span readable without its root span', () => {
