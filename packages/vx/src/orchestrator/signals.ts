@@ -12,6 +12,7 @@
 
 import { signalExitCode } from '../exec/index.js'
 import { killGraceMs } from '../util/index.js'
+import { killTree } from '../exec/index.js'
 import type { Logger } from './logger.js'
 
 /**
@@ -23,6 +24,13 @@ import type { Logger } from './logger.js'
 export const SIGNAL_SHUTDOWN_GRACE_MS = 2000
 
 type Child = ReturnType<typeof Bun.spawn>
+
+/**
+ * SIGHUP too: a task runs in its own session (kill-tree.ts), so the
+ * terminal closing no longer reaches it — only vx hears the hang-up,
+ * and vx must pass it on or the tree outlives the window.
+ */
+type StopSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP'
 
 /**
  * SIGTERM every child `live()` returns, wait the grace for them to go,
@@ -37,7 +45,7 @@ export async function terminateChildren(
   graceMs: number = killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS),
 ): Promise<void> {
   const children = live()
-  for (const child of children) child.kill('SIGTERM')
+  for (const child of children) killTree(child, 'SIGTERM')
   const allExited = Promise.allSettled(children.map((c) => c.exited))
   let graceTimer: ReturnType<typeof setTimeout> | undefined
   // Not unref'd: it is what guarantees progress when every other handle
@@ -50,7 +58,7 @@ export async function terminateChildren(
   ])
   if (graceTimer !== undefined) clearTimeout(graceTimer)
   const survivors = live()
-  for (const child of survivors) child.kill('SIGKILL')
+  for (const child of survivors) killTree(child, 'SIGKILL')
   await Promise.allSettled(survivors.map((c) => c.exited))
 }
 
@@ -70,8 +78,8 @@ export function forwardSignals(args: {
   persistentRegistry: ReadonlyMap<string, Child>
 }): SignalForwarding {
   const everyChild = (): Child[] => [...args.liveChildren, ...args.persistentRegistry.values()]
-  const exit = (signal: 'SIGINT' | 'SIGTERM'): never => {
-    for (const child of everyChild()) child.kill('SIGKILL')
+  const exit = (signal: StopSignal): never => {
+    for (const child of everyChild()) killTree(child, 'SIGKILL')
     try {
       args.cache.close()
     } catch {
@@ -79,8 +87,8 @@ export function forwardSignals(args: {
     }
     process.exit(signalExitCode(signal))
   }
-  let stopping: 'SIGINT' | 'SIGTERM' | undefined
-  const onSignal = (signal: 'SIGINT' | 'SIGTERM'): void => {
+  let stopping: StopSignal | undefined
+  const onSignal = (signal: StopSignal): void => {
     // A second signal during the grace is the user saying "now": SIGKILL
     // and go. The exit code stays the first signal's — that is the one
     // that ended the run.
@@ -98,14 +106,17 @@ export function forwardSignals(args: {
   }
   const onSigint = (): void => onSignal('SIGINT')
   const onSigterm = (): void => onSignal('SIGTERM')
+  const onSighup = (): void => onSignal('SIGHUP')
   if (args.enabled) {
     process.on('SIGINT', onSigint)
     process.on('SIGTERM', onSigterm)
+    process.on('SIGHUP', onSighup)
   }
   return {
     remove: () => {
       process.off('SIGINT', onSigint)
       process.off('SIGTERM', onSigterm)
+      process.off('SIGHUP', onSighup)
     },
   }
 }

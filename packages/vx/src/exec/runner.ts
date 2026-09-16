@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import { killGraceMs } from '../util/index.js'
+import { killTree } from './kill-tree.js'
 
 export interface RunResult {
   exitCode: number
@@ -126,15 +127,13 @@ const SHELL_BUILTINS = new Set([
 /**
  * Prepend `exec ` to a command that is a single EXTERNAL program (no
  * shell control characters, not a builtin, no leading env-assignment).
- * `exec` REPLACES the wrapping `sh` with the program, so on a teardown
- * SIGTERM there is no intermediate shell whose death would orphan the
- * real process — the documented grandchild-orphan limitation, resolved
- * for the common single-command case (dev servers: `astro dev`, `vite`,
- * `next dev`; one-shot compilers). It also makes `resourceUsage` measure
- * the program itself rather than the shell. Compound commands, builtins,
- * and `FOO=bar cmd` forms keep the shell (compound-command grandchildren
- * still orphan on a hard programmatic kill — the residual limit every
- * non-cgroup runner shares).
+ * `exec` REPLACES the wrapping `sh` with the program: `resourceUsage`
+ * measures the program itself rather than the shell, a signal lands on
+ * the program directly, and there is one process fewer per task.
+ * (Until kill-tree.ts this was also what kept a single command's real
+ * process from orphaning on a teardown; the process group covers every
+ * shape now.) Compound commands, builtins, and `FOO=bar cmd` forms keep
+ * the shell.
  */
 export function execWrap(command: string): string {
   if (SHELL_CONTROL.test(command)) return command
@@ -177,14 +176,14 @@ export function armTimeout(
   let killTimer: ReturnType<typeof setTimeout> | undefined
   const timer = setTimeout(() => {
     fired = true
-    proc.kill('SIGTERM')
+    killTree(proc, 'SIGTERM')
     // Escalate to SIGKILL after a grace: a child that TRAPS+IGNORES SIGTERM
     // (`trap '' TERM`) would otherwise defeat the timeout entirely and hang
     // `await proc.exited` until its natural exit — there is no run-level
     // timeout, so a wedged child hangs the whole run forever. Mirrors the
     // end-of-run persistent-shutdown escalation. Unref'd so it never keeps
     // the CLI alive.
-    killTimer = setTimeout(() => proc.kill('SIGKILL'), killGraceMs(TIMEOUT_SIGKILL_GRACE_MS))
+    killTimer = setTimeout(() => killTree(proc, 'SIGKILL'), killGraceMs(TIMEOUT_SIGKILL_GRACE_MS))
     killTimer.unref?.()
   }, timeoutMs)
   return {
@@ -291,6 +290,10 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
+      // Its own session and process group, so a kill reaches what it
+      // forked (kill-tree.ts). stdin is ignored, so a background group
+      // never stops on a terminal read.
+      detached: true,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -396,12 +399,12 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
               `readyWhen pattern never matched; child killed`,
           ),
         )
-        child.kill('SIGTERM')
+        killTree(child, 'SIGTERM')
         // Same escalation as `armTimeout`: a server that traps TERM and
         // never became ready is not in the persistent registry, so nothing
         // else would ever kill it — it outlived the run under init.
         const killTimer = setTimeout(
-          () => child.kill('SIGKILL'),
+          () => killTree(child, 'SIGKILL'),
           killGraceMs(TIMEOUT_SIGKILL_GRACE_MS),
         )
         killTimer.unref?.()
@@ -450,6 +453,10 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
+      // Its own session and process group, so a kill reaches what it
+      // forked (kill-tree.ts). stdin is ignored, so a background group
+      // never stops on a terminal read.
+      detached: true,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

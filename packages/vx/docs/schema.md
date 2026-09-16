@@ -148,8 +148,8 @@ build: { exec: { command: 'tsc -b', timeout: 120_000 } }
 ```
 
 - For a **normal task**, `timeout` bounds the total run time. A task
-  that overruns is killed and reported `failed` (timed out) — never
-  cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
+  that overruns is killed — its whole process group, so what it forked
+  goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
   teardown, which is reported `aborted`.)
 - For a **persistent task**, `timeout` bounds the **readiness wait**
   instead: if `readyWhen` hasn't matched within the window the child is
@@ -1012,8 +1012,8 @@ interface WorkspaceConfig {
 - **`timeout`** — the lowest-precedence default per-task timeout (ms),
   applied to any task that declares no `exec.timeout`. Precedence,
   highest first: per-task `exec.timeout` → `--timeout` /
-  `RunOptions.timeout` → `VX_TASK_TIMEOUT` env → this. A runaway task is
-  SIGTERMed and reported `failed`. Purely a safety net — never folded
+  `RunOptions.timeout` → `VX_TASK_TIMEOUT` env → this. A runaway task's
+  process group is SIGTERMed and the task reported `failed`. Purely a safety net — never folded
   into a cache key (a timed-out task fails and is never cached).
 - **`cacheDir`** — relative paths are resolved against the workspace
   root; absolute paths are used as-is. `vx run`, `vx cache prune`,

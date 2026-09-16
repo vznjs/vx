@@ -5,6 +5,7 @@
 
 import type { TaskNode } from '../graph/index.js'
 import { killGraceMs } from '../util/index.js'
+import { killTree } from '../exec/index.js'
 
 type Child = ReturnType<typeof Bun.spawn>
 
@@ -61,7 +62,7 @@ export async function shutdownPersistent(
   const kept = new Set(keepAlive)
   const dying = [...registry.values()].filter((c) => !kept.has(c))
   if (dying.length === 0) return
-  for (const child of dying) child.kill('SIGTERM')
+  for (const child of dying) killTree(child, 'SIGTERM')
   const allExited = Promise.allSettled(dying.map((c) => c.exited))
   let graceTimer: ReturnType<typeof setTimeout> | undefined
   const winner = await Promise.race([
@@ -73,7 +74,7 @@ export async function shutdownPersistent(
   ])
   if (graceTimer !== undefined) clearTimeout(graceTimer)
   if (winner === 'grace') {
-    for (const child of dying) child.kill('SIGKILL')
+    for (const child of dying) killTree(child, 'SIGKILL')
     await allExited
   }
 }

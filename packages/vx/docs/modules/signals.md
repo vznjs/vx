@@ -2,11 +2,15 @@
 
 ## Purpose
 
-A SIGINT or SIGTERM to the vx process mid-run forwards SIGTERM to every
-live child and every ready persistent task, waits the kill grace
-(`VX_KILL_GRACE_MS`, 2 s) for them, SIGKILLs the survivors, closes the
-cache handle, and exits 128 + signo (130 / 143); a second signal during
-the grace SIGKILLs at once. Without the forward, a programmatic signal
+A SIGINT, SIGTERM or SIGHUP to the vx process mid-run forwards SIGTERM
+to every live child's process group and every ready persistent task's,
+waits the kill grace (`VX_KILL_GRACE_MS`, 2 s) for them, SIGKILLs the
+survivors' groups, closes the cache handle, and exits 128 + signo
+(130 / 143 / 129); a second signal during the grace SIGKILLs at once.
+The group, not the pid (`exec/kill-tree.ts`, item 236): a task is
+spawned into its own session, so what it forked dies with it — and so
+the terminal closing reaches vx alone, which is why SIGHUP is handled
+like the other two. Without the forward, a programmatic signal
 to the process alone — CI cancellation, `kill <pid>` — orphaned every
 running child; terminal Ctrl-C only worked through the process group.
 Without the escalation (2026-09-10) a child that trapped TERM outlived
@@ -48,7 +52,9 @@ the process's signals passes `handleSignals: false`.
 
 ## Tests
 
-`tests/signal-handling.test.ts` (SIGINT → 130 and SIGTERM → 143 with
+`tests/task-tree-kill.test.ts` (a timeout, SIGINT, SIGTERM and SIGHUP
+each reap a task's backgrounded grandchild; each fails on a pid-only
+kill); `tests/signal-handling.test.ts` (SIGINT → 130 and SIGTERM → 143 with
 the one-shot child and the ready persistent child dead; a child that
 ignores TERM is SIGKILLed after the grace; a second signal skips the
 grace; the in-process lifecycle: handlers removed after every run,

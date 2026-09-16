@@ -205,8 +205,12 @@ output on a fail-before-ready outcome.
   orchestrator's job: it owns the `liveChildren` set this module
   populates, SIGTERMs everything in it on SIGINT/SIGTERM, and exits
   `signalExitCode(signal)`. The runner only maintains the registry.
-  No process-group setup — only direct children are signalled, so a
-  task that double-forks can still leave grandchildren behind.
+  Every child is spawned `detached` — its own session and process
+  group — and every kill goes through `killTree` (`kill-tree.ts`),
+  which signals the group, so what a task forked dies with it (item
+  236). A daemon that calls `setsid` itself still escapes — the
+  residual every non-cgroup runner shares; a sandbox's pid namespace
+  takes even that.
 - **Doesn't strip ANSI.** Color sequences pass through verbatim,
   enabling color-preserving cache-hit replays.
 - **No Windows support.** `sh -c` only.

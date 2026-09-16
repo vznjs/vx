@@ -362,6 +362,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     stop.abort()
   })
   process.once('SIGTERM', () => stop.abort())
+  // A task runs in its own session (exec/kill-tree.ts): the terminal
+  // closing reaches the loop alone, and the loop passes it on.
+  process.once('SIGHUP', () => stop.abort())
 
   // Enumerate projects-in-scope so we know what dirs to watch.
   // `opts.projects` is the resolved scope; undefined means "every

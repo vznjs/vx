@@ -684,6 +684,31 @@ of a task's output for its cache entry and replay`). The
       owner (it needs the site's address, checklist 3), not a line to
       promise ahead of it.
 
+236.  DONE (2026-09-16, a persona: `exec.timeout` and `retries`): the
+      retry and the timeout each read right (two attempts, the flaky
+      note, `timed out after 1000ms — killed`), but the timed-out task's
+      background child survived the kill, and so did every compound
+      command's on a Ctrl-C — only the direct child was signalled, the
+      residual the runner's own comment called "documented" and no doc
+      under `docs/` stated (`cli.md` claimed a cancellation "never
+      orphans a task"). Every task child is spawned `detached` now —
+      Bun's `detached: true` is a new session and process group — and
+      every kill (the timeout, the readiness deadline, the signal
+      teardown, the persistent shutdown) signals the group through
+      `exec/kill-tree.ts`; a task in its own session no longer hears
+      the terminal close, so vx handles SIGHUP beside SIGINT and
+      SIGTERM (129) and `vx watch` stops on it too. Pinned in
+      `task-tree-kill.test.ts`: a timeout, SIGINT, SIGTERM and SIGHUP
+      each reap a backgrounded grandchild (its pid from the inner
+      shell's own `$$` — the first draft's marker held the OUTER shell's
+      pid, which dies trivially, and proved nothing); all four fail on
+      the old source. Probed and clean on the way: an undeclared env
+      var is invisible to a task (eight essentials only) and never a
+      stale hit; `cache.inputs.env` keys without passing through, as
+      the schema doc says, and both migration mappers write a Turbo
+      `env` to both; alternating a keyed value restores the right bytes
+      each time.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
@@ -1004,6 +1029,33 @@ asserts the old design's cost (retention MUST grow) is the pin the new
 design must reshape, not delete — its differential survives as "must
 not cost the volume"; a chain that greps a verdict swallows its exit,
 still. Never end with "what next?".
+
+14p. **Handoff after item 236 (2026-09-16, evening).** Six items since
+14o, all personas. A reader that leaves the pipe (`| head -1`) no
+longer kills a green run: `bin.ts` listens for `error` on stdout and
+stderr (231, #399). The symlinked-outputs contract held as documented
+and its refusal now names a remedy the schema accepts (232, #400).
+`vx upgrade` verifies the release API's SHA-256 before the rename and
+refuses a binary npm owns (233, 234, #400–#401; proven live with a
+scratch binary against v0.0.21); the README's install row says what
+exists (235, #401). Last, `exec.timeout` and `retries` walked as a
+persona found the runner's oldest residual: a task's grandchildren
+survived every kill — every task is its own process group now, killed
+as a group, and SIGHUP is handled (236, rides the next PR). Refuted or
+clean on the way: every MCP tool and the read verbs during a run; a
+task running `vx run` on its workspace; `--affected` on a depth-1
+checkout; undeclared and declared env through a cached task; the
+migration mappers' env. Open: Next 1, 2 and 16, all gated by their own
+terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN`
+secret, the release cut, the site's address (an install script waits
+on it); `workspaceFiles` stops at a nested repository. The loop holds
+34 items (203–236): the trim's trigger is forty. No open issues. The
+box: as 14o. Methods that paid: a persona's second shape is where the
+finding is (the timeout read right; its grandchild did not); a marker
+pid must be the INNER shell's `$$` — single quotes — or the
+differential passes on the old code for the wrong reason; Bun's
+`detached: true` exists and is a session, so the terminal's SIGHUP
+needs forwarding the moment you use it. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
