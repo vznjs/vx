@@ -199,8 +199,16 @@ export interface RunRecord {
    * decision. Absent on rows written before the column existed.
    */
   cached?: boolean
-  /** A skipped task's root blocker (a failed or aborted task id); not stored in the DB. */
+  /**
+   * Why the task failed or was skipped, as the run's own footer said it
+   * (v27 columns; NULL on older rows and where the reason does not apply):
+   * a skip's root blocker, vx's own timeout, the sandbox's violation count,
+   * and why a persistent task never became ready.
+   */
   blockedBy?: string
+  timedOut?: true
+  sandboxViolations?: number
+  notReady?: 'timeout' | 'exited' | 'spawn'
 }
 
 /**

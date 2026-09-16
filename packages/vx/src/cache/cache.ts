@@ -187,7 +187,7 @@ export function noteSchemaReset(cache: Cache, warn: (message: string) => void): 
 //        tell the history what the task needs. The cache KEY and the
 //        artifact container are unchanged (no CACHE_VERSION bump: an
 //        artifact without the field reads as before).
-export const SCHEMA_VERSION = 'v26'
+export const SCHEMA_VERSION = 'v27'
 
 /**
  * SQL predicate selecting `runs` rows that record an EXECUTION.
@@ -470,7 +470,16 @@ export class Cache implements CacheLayer {
         attempts            INTEGER,
         -- v25: 1 when the task declared a cache block, 0 when it runs every
         -- time by design; NULL on rows older than the column.
-        cached              INTEGER
+        cached              INTEGER,
+        -- v27: why a task failed or was skipped, as the run's own footer
+        -- said it (items 267–270): a skip's root blocker (a task id), vx's
+        -- own timeout (1), the sandbox's violation count, and why a
+        -- persistent task never became ready ('timeout' | 'exited' |
+        -- 'spawn'). NULL where the reason does not apply.
+        blocked_by          TEXT,
+        timed_out           INTEGER,
+        sandbox_violations  INTEGER,
+        not_ready           TEXT
       );
       -- Two whole-table indexes only, and both APPEND: every row of a run carries the
       -- same run_id and a started_at newer than everything before it, so

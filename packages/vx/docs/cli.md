@@ -1461,7 +1461,7 @@ plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache
-cache versions:   keys vx-cache-v27 · index schema v26
+cache versions:   keys vx-cache-v27 · index schema v27
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12.4 MB) the index does not know — `vx cache prune` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -1613,7 +1613,11 @@ reserves from; a hit spent nothing and shows nothing, and a task lighter
 than vx itself shows its CPU only) — failures first, each as the frame
 read it, `failed (exit 137)`, with the signal an exit above 128 stands
 for at the row's end (`128 + SIGKILL`; the shell's convention, so a
-command that exits 137 on its own reads the same).
+command that exits 137 on its own reads the same). Where the run's
+footer gave a reason, the row ends with it instead: `timed out`,
+`never ready: exited`, `2 sandbox violations`, and for a skipped task
+`after lib#build failed` (the v27 columns; rows older than them read
+as before).
 `vx last --list` prints the N most recent runs (default 10) with their
 run ids; `vx last <runId>` replays a specific one. `--format json`
 emits `{ invocation, tasks }` for scripting. An unknown run id fails

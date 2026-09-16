@@ -770,7 +770,7 @@ all-miss run that follows is explained; the artifacts it orphaned are
 `vx cache prune`'s to reap.
 
 ```sql
--- src/cache/cache.ts schema (SCHEMA_VERSION = 'v26')
+-- src/cache/cache.ts schema (SCHEMA_VERSION = 'v27')
 
 CREATE TABLE schema_meta (
   key   TEXT PRIMARY KEY,  -- 'version'
@@ -810,7 +810,13 @@ CREATE TABLE runs (
   wallclock_end_ns    INTEGER,
   cache_hit           INTEGER,          -- 0/1; convenience for flamegraph color
   attempts            INTEGER,          -- v23: attempts a retried task took (>1)
-  cached              INTEGER           -- v25: 1 = declared a cache block; 0 = runs every time
+  cached              INTEGER,          -- v25: 1 = declared a cache block; 0 = runs every time
+  -- v27: why the task failed or was skipped, as the run's footer said it
+  -- (items 267–270); NULL where the reason does not apply
+  blocked_by          TEXT,             -- a skip's root blocker (a task id)
+  timed_out           INTEGER,          -- 1 when vx's own timeout killed it
+  sandbox_violations  INTEGER,          -- the sandbox's violation count
+  not_ready           TEXT              -- 'timeout' | 'exited' | 'spawn' (persistent task)
 );
 
 -- Two indexes, both append-only under a run's inserts: every row of a run

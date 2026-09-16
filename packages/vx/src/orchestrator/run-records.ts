@@ -93,6 +93,9 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
       ...(o.attempts !== undefined ? { attempts: o.attempts } : {}),
       cached: o.node.config.cache !== undefined,
       ...(o.blockedBy !== undefined ? { blockedBy: o.blockedBy } : {}),
+      ...(o.timedOut === true ? { timedOut: true as const } : {}),
+      ...(o.sandboxViolations !== undefined ? { sandboxViolations: o.sandboxViolations } : {}),
+      ...(o.notReady !== undefined ? { notReady: o.notReady } : {}),
     })
     if (o.status === 'failed') failedCount++
     if (o.status === 'cache-hit') hitLocalCount++

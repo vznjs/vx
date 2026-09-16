@@ -275,8 +275,11 @@ async function getRunHistory(
     // Most-recent N rows for the timeline view.
     const recent = db
       .query(
-        `SELECT run_id AS runId, project, task, status, duration_ms AS durationMs,
-                started_at AS startedAt, ended_at AS endedAt, cache_hit AS cacheHit
+        `SELECT run_id AS runId, project, task, status, exit_code AS exitCode,
+                duration_ms AS durationMs,
+                started_at AS startedAt, ended_at AS endedAt, cache_hit AS cacheHit,
+                blocked_by AS blockedBy, timed_out AS timedOut,
+                sandbox_violations AS sandboxViolations, not_ready AS notReady
          FROM runs ${clause} ORDER BY started_at DESC LIMIT ?`,
       )
       .all(...params, limit) as Array<{
@@ -284,12 +287,27 @@ async function getRunHistory(
       project: string
       task: string
       status: string
+      exitCode: number
       durationMs: number
       startedAt: number
       endedAt: number
       cacheHit: number | null
+      blockedBy: string | null
+      timedOut: number | null
+      sandboxViolations: number | null
+      notReady: string | null
     }>
-    return { runs: recent, history }
+    // Why a task failed or was skipped rides each row the way the run's own
+    // footer said it (the v27 columns); absent where the reason does not
+    // apply, so an agent reading a bare exit code is never left to guess.
+    const runs = recent.map(({ blockedBy, timedOut, sandboxViolations, notReady, ...r }) => ({
+      ...r,
+      ...(blockedBy !== null ? { blockedBy } : {}),
+      ...(timedOut === 1 ? { timedOut: true } : {}),
+      ...(sandboxViolations !== null ? { sandboxViolations } : {}),
+      ...(notReady !== null ? { notReady } : {}),
+    }))
+    return { runs, history }
   } finally {
     cache.close()
   }
