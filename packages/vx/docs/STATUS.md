@@ -113,6 +113,19 @@ test is telling the truth.
       diff: every site the day touched is a catch path or a refusal
       that a green run never enters.
 
+246.  DONE (2026-09-16, the minimal-image persona at the sandbox): a
+      host with bubblewrap and socat — the two the docs named — failed
+      every sandboxed task with "sandbox not available: ripgrep (rg) not
+      found", the runtime's own words and nothing else. The runtime
+      needs ripgrep on Linux to expand its mandatory deny globs into
+      paths for bwrap (macOS takes patterns), and CI has installed it
+      since the runner action existed; the schema reference, the
+      sandboxing guide and the site's known limits said two of three.
+      `dependencyReason` names the set and the install around the
+      runtime's line; the four docs name ripgrep. Pinned in the unsafe
+      suite: a PATH with everything but rg, the verdict with the install
+      (fails without the fix as the bare runtime line).
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
@@ -163,8 +176,9 @@ state of each:
    templates are not needed for a first announcement.
 6. DONE 2026-09-16 as item 226: the site's introduction has a
    "Known limits" section — Bun ≥ 1.4 for source installs (the binary
-   needs nothing); Linux sandboxing needs `bubblewrap` + `socat` and
-   cannot run as root inside a container; Windows is WSL; macOS
+   needs nothing); Linux sandboxing needs `bubblewrap`, `socat` and
+   `ripgrep` (the third named 2026-09-16, item 246) and cannot run as
+   root inside a container; Windows is WSL; macOS
    violation reporting is lossy under load (In-flight 5); the remote
    seam moves whole artifacts in memory (Next 2, fine below ~100 MiB);
    a task's replayed output is its first and last 8 MiB (229); a project

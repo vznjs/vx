@@ -1201,6 +1201,62 @@ describe.skipIf(process.platform !== 'darwin')('nested seatbelt', () => {
 })
 
 describe('sandbox probe', () => {
+  // The runtime's dependency check says "ripgrep (rg) not found" and stops;
+  // the docs named bubblewrap and socat only (item 246). Linux: ripgrep
+  // expands the runtime's mandatory deny globs; macOS takes patterns.
+  it.skipIf(process.platform !== 'linux')(
+    'ripgrep off PATH: the verdict names the three binaries and the install',
+    async () => {
+      if (!(await sandboxAvailable('ripgrep absent'))) return
+      const root = await makeWorkspaceRoot({ prefix: 'vx-sandbox-norg-' })
+      const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-no-rg-bin-'))
+      try {
+        await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'echo built', sandbox: {} },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                },
+              },
+            }
+          `,
+          files: { 'src/a.txt': 'a1\n' },
+        })
+        // Everything the run needs but rg: bun, sh, git and the runtime's own
+        // binaries. The dependency check runs before any task's spawn.
+        await symlink(process.execPath, path.join(bin, 'bun'))
+        for (const name of ['sh', 'git', 'bwrap', 'socat', 'strace']) {
+          const found = Bun.which(name)
+          if (found !== null) await symlink(found, path.join(bin, name))
+        }
+        const p = Bun.spawnSync({
+          cmd: [
+            process.execPath,
+            path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+            'run',
+            'build',
+            '--all',
+          ],
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, NO_COLOR: '1', CI: '', PATH: bin },
+        })
+        const text = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
+        expect(p.exitCode).toBe(1)
+        expect(text).toContain(
+          'sandbox not available: the sandbox runtime needs bubblewrap (bwrap), socat and ripgrep (rg) on PATH: ripgrep (rg) not found — install it (Linux: apt install bubblewrap socat ripgrep',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+        await rm(bin, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // A temp directory that is not there fails the runtime's own mkdtemp;
   // the verdict named the path and no knob (item 243).
   it(

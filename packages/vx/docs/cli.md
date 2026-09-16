@@ -1447,7 +1447,7 @@ vx-lock.json:     yes
 exec.sandbox and will fail` says it first: root inside a container
   (the runtime's seccomp helper cannot create its nested user namespace;
   run as a non-root user or set `sandbox.weakerWhenNested: true`), a
-  missing bubblewrap or socat, a nested seatbelt on macOS.
+  missing bubblewrap, socat or ripgrep, a nested seatbelt on macOS.
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
   each fills, in pipeline order (`config`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,

@@ -197,7 +197,9 @@ sandbox. A run whose sandboxed tasks are all cache hits never starts it
 (that probe cost every warm run 300–400 ms on Linux until 2026-09-10). On a platform where it isn't available, a task that needs it
 fails fast with a clear message (it never runs unsandboxed by accident).
 
-- **Linux** — needs `bubblewrap` (`bwrap`) and `socat` installed; some
+- **Linux** — needs `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`)
+  installed (`apt install bubblewrap socat ripgrep`); a sandboxed task on a
+  host missing one fails in 0 ms naming it and the install. Some
   hosts (Ubuntu 24+) restrict unprivileged user namespaces and need an
   AppArmor/sysctl tweak. See `.github/workflows/ci.yml` for the exact CI
   setup. **Not as root inside a container**: the runtime's seccomp
