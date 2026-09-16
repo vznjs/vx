@@ -448,6 +448,18 @@ test is telling the truth.
       task-log-buffer.md lacked `TaskLogEntry` and `TaskLogBundle`.
       Fixed; the shape law gains six shapes and the fingerprint file
       table, in order. Six fail on the old pages.
+330.  DONE (2026-09-16, the five 09-10 util pages: edit-distance, num,
+      paths, settle, tail). Four read true against their modules —
+      the first item of the series with a majority of true pages.
+      util-paths.md's Tests section said the helpers are exercised
+      only transitively; `tests/util-paths.test.ts` and three suites
+      drive them directly. util-tail.md gave `Tail` as a comment.
+      Fixed; the shape law gains `Tail` and one pin over the six
+      constants these pages quote (`MAX_TIMEOUT_MS`,
+      `PERSISTENT_TAIL_CHARS`, the log buffer's three, the settle
+      default), each held to its declaration line — controls today,
+      the tripwire for the day a cap moves. One fails on the old
+      page.
 
 ## In flight
 

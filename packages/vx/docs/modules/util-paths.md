@@ -44,5 +44,9 @@ nothing and keeps things robust.
 
 ## Tests
 
-Exercised transitively through `tests/cache.test.ts` (cache-key
+`tests/util-paths.test.ts` (each helper), `tests/dot-slash-globs.test.ts`
+(the spellings `normalizeGlob` folds, end to end), `tests/output-dirs.test.ts`
+(`wholeSubtreePrefixes` behind the directory proof) and
+`tests/watch-rules.test.ts` (`staticPrefix` behind the output
+container); transitively through `tests/cache.test.ts` (cache-key
 determinism) and `tests/inputs.test.ts` (glob result shapes).

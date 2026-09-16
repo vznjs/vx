@@ -9,10 +9,16 @@ worse than one that says what it lost.
 
 ```ts
 export const PERSISTENT_TAIL_CHARS = 64 * 1024
-createTail(): Tail                         // { chunks, chars, dropped }
-appendTail(t, chunk, limit = PERSISTENT_TAIL_CHARS): void
-tailText(t): string
-resetTail(t): void
+
+export interface Tail {
+  chunks: string[]
+  chars: number
+  dropped: number // characters evicted from the head; non-zero means the tail is partial
+}
+export function createTail(): Tail
+export function appendTail(t: Tail, chunk: string, limit?: number): void // limit defaults to PERSISTENT_TAIL_CHARS
+export function tailText(t: Tail): string
+export function resetTail(t: Tail): void
 ```
 
 Whole chunks are evicted from the head — no concatenation until the
