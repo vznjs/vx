@@ -171,3 +171,57 @@ describe('the add-to-existing-repo page states the concurrency default `vx help`
     expect(m![1]).toBe(help![1])
   })
 })
+
+describe('the trusting-the-cache guide quotes what vx why says', () => {
+  const guide = readFileSync(path.join(GUIDES, 'trusting-the-cache.md'), 'utf8')
+  it('every verdict sentence metrics.ts can print is a row of its table', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'metrics.ts'),
+      'utf8',
+    )
+    // The verdict notes: `unchangedKeyNote` and the ternary beside it. The
+    // detail notes further down (`(same inputs)` onward) are `vx why`'s
+    // second line, not its verdict.
+    const verdicts = src.slice(
+      src.indexOf('function unchangedKeyNote'),
+      src.indexOf('(same inputs)'),
+    )
+    const notes = [
+      ...verdicts.matchAll(/'((?:cache key|this task declares no `cache` block)[^']*)'/g),
+    ].map((m) => m[1]!)
+    expect(notes.length).toBe(5)
+    for (const note of notes) expect(guide).toContain(note)
+  })
+  it('its console sample carries the labels why.ts prints, and a row in its shape', () => {
+    const why = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'why.ts'), 'utf8')
+    const sample = fencedBlock(guide, 'console', 'app#build — run ')
+    for (const label of ['  this run   ', '  previous   ', '  verdict    ', '  what changed (']) {
+      expect(why).toContain(label)
+      expect(sample).toContain(label)
+    }
+    // `${change.padEnd(7)} ${kind.padEnd(4)}  ${name}  ${before} → ${after}`
+    expect(sample).toMatch(/^    changed file  \S+  \S+ → \S+$/m)
+  })
+})
+
+describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
+  it('each figure it states is on docs/benchmarks.md as written', () => {
+    const page = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8')
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    for (const figure of [
+      '3m 38s',
+      '3m 46s',
+      '5m 13s',
+      '34m 44s',
+      '1,712 ms per',
+      '1,090 packages',
+      '100 dependency layers',
+      '74 ms',
+      '172 ms',
+      '16–25 ms',
+    ]) {
+      expect(page).toContain(figure)
+      expect(bench).toContain(figure)
+    }
+  })
+})

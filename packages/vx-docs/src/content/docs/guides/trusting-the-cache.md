@@ -30,27 +30,32 @@ app#build — run 019f5a02-…
   verdict    cache key changed between the previous run and this one (inputs differ)
 
   what changed (1 component, 41 unchanged):
-    changed  file  src/index.ts  a1b2c3… → d4e5f6…
+    changed file  src/index.ts  a1b2c3… → d4e5f6…
 ```
 
 The useful part is the last line: **one** component moved, and it is
 named. Forty-one didn't. That turns "why is CI rebuilding everything"
 from an afternoon into a question with an answer.
 
-It reads only the local database — no config evaluation, no re-hashing,
-no execution — so it is safe to run anywhere, including after the fact
-on a machine that just cloned the cache.
+It reads only the local database — no project config is evaluated,
+nothing is re-hashed, nothing runs (the workspace file is evaluated
+once, to find the cache directory, unless `--cache-dir` names it) — so
+it is safe to run anywhere, including after the fact on a machine that
+just cloned the cache.
 
 An unchanged key has three different endings, and `vx why` distinguishes
-them rather than calling them all a re-run:
+them rather than calling them all a re-run. The verdict line is one of
+these five sentences, quoted from the code:
 
-| Verdict                     | What happened                                              |
-| --------------------------- | ---------------------------------------------------------- |
-| key changed                 | inputs differ — the components are listed                   |
-| unchanged, served           | it was a cache hit; nothing re-ran                          |
-| unchanged, re-executed      | `--no-cache` / `--force`, or something outside the key      |
+| vx says                                                                                                    | What happened                                                    |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| cache key changed between the previous run and this one (inputs differ)                                    | the components are listed                                        |
+| cache key unchanged — this run was served from cache, nothing re-ran                                       | it was a cache hit                                               |
+| cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)                     | you asked for it, or something outside the key                   |
+| cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown                  | the run recorded no outcome for this task; vx says so, not guesses |
+| this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only    | not a cache decision at all                                      |
 
-That last row is the interesting one: if a task re-executes on an
+The third row is the interesting one: if a task re-executes on an
 *unchanged* key and you didn't ask it to, something is influencing the
 build that the key cannot see. Which is the next section.
 

@@ -17,13 +17,13 @@ These are reproducible on your own machine, not marketing figures:
   schedule; vx finishes in 3m 46s (+0:08), Turborepo in 5m 13s (+1:35),
   Nx in 34m 44s (+31:06) — one unit for every runner. A runner that adds
   seconds to a three-minute build is a different tool from one that adds
-  half an hour, and the per-package figure (8 ms, 88 ms, 1.7 s) is how
-  each grows with the codebase.
+  half an hour, and the per-package figure (8 ms, 88 ms and 1,712 ms per
+  package) is how each grows with the codebase.
 
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across
   fresh / warm-no-restore / warm-restore. A 100-project workspace
-  replays fully-cached in **~75 ms** whole-process (1,000 projects in
-  ~170 ms), and a restore costs about the same as an untouched tree;
+  replays fully-cached in **74 ms** whole-process (1,000 projects in
+  172 ms), and a restore costs about the same as an untouched tree;
   the current floors are in [Benchmarks](../../benchmarks/).
 - **Head-to-head vs Turborepo and Nx** — `bun packages/vx-bench/compare.ts` scaffolds
   one repo (1,090 packages, 100 dependency layers, a `build` + `test` task
@@ -39,8 +39,8 @@ and faster:
 
 1. **Sparse `^task` bridging.** `^build` walks *through* dependency
    packages that don't declare the task to the nearest one that does, so
-   sparse task coverage doesn't need no-op filler tasks. Turborepo and Nx
-   stop at direct dependencies.
+   sparse task coverage doesn't need no-op filler tasks, and the graph
+   carries no placeholder nodes for the packages walked through.
 2. **Resolved-config hashing.** vx hashes the evaluated `vx.config.ts`
    object, so imports, presets, and computed values participate in the
    key. Static-JSON config can't see them.
@@ -61,8 +61,8 @@ and faster:
   commit boundary — a class of spurious miss the others accept.
 - **Bitset graph algorithms.** Scheduler priority and the package graph
   use packed-bitset closures with popcount instead of set-union DFS. On a
-  3270-task graph this turned an 8.5 s priority computation into roughly
-  50 ms.
+  3,270-task graph this turned an 8.5 s priority computation into
+  single-digit milliseconds.
 - **A scheduler tick that's O(N+E).** Ready tasks come off an exact
   most-blocked-first queue; no re-scanning the whole graph per completion.
 - **Stat-check restore skips.** A warm-on-warm restore is N stats with
@@ -85,8 +85,9 @@ Speed by subtraction is still speed:
   reads the environment, the clock, or anything non-deterministic is
   refused the cache outright (denied identifiers, including escaped and
   aliased spellings), and one that passes is keyed by the git blob ids
-  of its whole import closure. Worth ~20 ms of the 1,000-project warm
-  run; a refused config simply evaluates live.
+  of its whole import closure. The `load configs` stage is 16–25 ms per
+  1,000 configs served from it, against ~200 ms of evaluations; a
+  refused config simply evaluates live.
 - **No filesystem-tracing auto-inputs.** Not a gap — a position. A
   traced input set describes what the task read *that time*, on that
   machine, which is not the same as what it depends on; and it cannot be

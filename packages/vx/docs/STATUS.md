@@ -78,6 +78,29 @@ test is telling the truth.
       each removed line checked present in its new file before the
       write. The loop holds this entry; 14ae stays as the current
       handoff.
+334.  DONE (2026-09-16, the site's two oldest pages: the
+      trusting-the-cache guide, 09-05, and the why-vx-is-fast concept,
+      09-10). The guide's `vx why` sample had two spaces where the
+      formatter pads one; its "no config evaluation" is no PROJECT
+      config (the workspace file is evaluated for the cache directory
+      unless `--cache-dir` names it); its verdict table paraphrased
+      three endings where `metrics.ts` prints five sentences — the
+      page now quotes all five and the site-samples law holds them to
+      the source, with the sample's labels and row shape held to
+      `why.ts`. The run id in the samples (`019f5a02-…`) is right:
+      `ulid()` is `Bun.randomUUIDv7()` since the hand-rolled ULID
+      went, so the three copies (cli.md, the guide, the blog) stand.
+      The concept page said the bitset priority computation went from
+      8.5 s to "roughly 50 ms" (optimizations.md: single-digit ms),
+      the config-eval cache is "worth ~20 ms" (benchmarks.md: the
+      `load configs` stage is 16–25 ms per 1,000 configs against
+      ~200 ms of evaluations), and "Turborepo and Nx stop at direct
+      dependencies" on sparse `^task` bridging — unproven, and the
+      parity record shows Nx reaching through a target-less project
+      with dummy tasks, so the comparative claim is dropped and the
+      vx property stated. Its eleven figures are now the benchmarks
+      page's, as written, and pinned to it. Three pins fail on the
+      old pages.
 
 ## In flight
 
