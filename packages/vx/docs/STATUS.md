@@ -533,6 +533,14 @@ the error table in `docs/schema.md` has the row.
       tests kill (reclaimed by the next run, by design) and the plugin
       roots of the last shard processes (reclaimed by the next), and
       nothing else of vx's.
+225.  DONE (2026-09-16, 221 and 222 for users): the nested-repository
+      rule lived in `modules/git-inputs.md` only. `docs/caching.md`
+      § Cache key derivation, step 11 (the site imports it) and the
+      site's caching guide (§ What's always excluded) say it now: a
+      project inside a submodule or an embedded repository is
+      enumerated by that repository's own git, one spawn per run, its
+      files hashed by content; `--affected` follows; a `workspaceFiles`
+      glob stops at the nested repository's edge.
 
 ## In flight
 
@@ -847,6 +855,20 @@ by what the scope would have to include. Never end with "what next?".
     per task on the warm path (expected microseconds against a 0.2 ms
     task floor), and what a waiting run prints (the admit-held line's
     shape, item 171). Not started.
+
+20. **A task's captured output has no cap.** Measured 2026-09-16
+    (item 225's probe): a task printing 200 MB costs vx 620 MB of RSS
+    on the miss AND on every hit (the string, its encodings, the row),
+    and its stdout lands in `cache.db` whole — 193 MB of `.vx/cache`
+    beside an 18 KB `tar.zst` that holds the same bytes compressed —
+    since the replay reads the row, not the archive. A realistic chatty
+    suite is 5–20 MB (62 MB of RSS, a 20 MB row), so this is an
+    outlier's cost today. When it is not: bound what a task's capture
+    RETAINS (chunks, a head and a tail, the dropped middle counted and
+    said in the replay — `[vx] … 180 MB of output not kept`), store
+    the same bounded text once, and measure RSS per chatty task before
+    and after. Not started; the number that decides is a real
+    workspace whose logs pass ~50 MB per task.
 
 ## Decisions (this arc)
 

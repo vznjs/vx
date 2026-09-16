@@ -111,6 +111,15 @@ over (in order):
     hashes costs zero file reads, zero per-file stats, zero SQLite
     lookups.
 
+    A project inside a **submodule or an embedded repository** is
+    enumerated by that repository's own git: the workspace repository
+    lists the nested one as a single entry and none of its files, so
+    such a project gets its own `git ls-files` spawn (one per run) and
+    its files hash by content rather than by index OID. `--affected`
+    follows the same shape — git reports the nested repository as one
+    changed path, and every project under it is selected — while a
+    `workspaceFiles` glob still stops at the nested repository's edge.
+
     A task with **no `cache` block** derives a key too — its dependents
     fold it (step 10) — and, declaring nothing, folds **every file in
     its project**: `**/*`, gitignore-aware, untracked files included,

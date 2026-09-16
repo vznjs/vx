@@ -82,7 +82,9 @@ You don't have to list these — they're always part of the key:
 `node_modules/`, `.git/`, `.vx/`, `*.tsbuildinfo`, gitignored files, the
 task's own declared outputs, and files belonging to a nested project.
 Inputs are enumerated through git, so anything git ignores is invisible
-to the cache.
+to the cache. A project inside a submodule or an embedded repository is
+enumerated by that repository's own git (the workspace repository sees
+it as one entry), so its files count like any other project's.
 
 ## Outputs: what the task produces
 
