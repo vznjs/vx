@@ -170,6 +170,20 @@ test is telling the truth.
       the lockfiles guide dropped in 303, and said every project folds
       the catalogs (the pnpm parser folds none; `bun()` does) — both
       corrected. Three pins fail on the old post.
+339.  DONE (2026-09-16, the next three oldest posts: agents-and-mcp,
+      cascade-through-inputs, explicit-over-magical). The last two
+      read true (upstream keys are the tenth of twelve key parts, the
+      −6.6% restore tier, early cutoff shipped in v21 and reverted in
+      v22, Turbo's `**` hashing on solid). agents-and-mcp tabulated
+      five tools of six (`getWorkspaceInfo` missing) and sized the
+      protocol at "about a hundred lines" (`server.ts` is 144); the
+      table is pinned to every `name:` in `tools.ts`. And a correction
+      of item 335: the flaky post's "`getRunHistory` reports the same
+      signal" was right — its rows carry each task's failure mode from
+      `failureModeOf`, the retry-or-mixed-key signal — and 335 replaced
+      it with `getWorkspaceInfo`, which reports the doctor's standing
+      list, a different fact; the sentence now names both tools for
+      what each reports. One pin fails on the old post.
 
 ## In flight
 
