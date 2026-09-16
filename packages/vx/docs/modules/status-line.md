@@ -31,22 +31,23 @@ when disabled (CI). When active:
 
 ## formatStatusRegion
 
-Pinned zones, then one row per worker slot, then a stats line.
+A pinned zone, then one row per worker slot, then a stats line.
 
-Pinned zones (owner: failures "on top of" the workers; persistent
-"always pinned until exit"):
+The pinned zone (owner: "always pinned until exit"):
 
-- **Failures** — `✗ <id> ── failed (exit N)` per failed task (the
-  signal named above 128, a timeout as such, a persistent task's
-  `never ready: …`, a sandboxed task's violation count, `failedLabel`),
-  capped
-  at 5 + dim `… +K more failed`. Accumulate as failures happen; stay
-  until runEnd.
 - **Persistent** — `▸ <id> ── running` for every ready persistent
   task (its outcome lands at ready while the child keeps running; the
   orchestrator SIGTERMs persistent children when the graph finishes,
   so runEnd is the honest end). Pins keep identity-colored ids —
   status colors only on glyph + outcome.
+
+A failure is not pinned: it is logged the moment it happens as a
+permanent row in the stream (`formatFailureLine`: red `◼`, the exec
+time, `failed`, `miss` / `no-cache`, the id — the exit code and the
+output live in the frame, which replays at runEnd above the summary,
+`failedLabel` in its header and footer). The region held a Failures
+zone once; the permanent row replaced it, and this page kept
+describing the zone until 2026-09-16.
 
 Slot rules (the point of the design — the display derives from the
 **stable worker set**, not the churning task set):
