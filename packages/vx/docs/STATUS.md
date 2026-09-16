@@ -1065,6 +1065,24 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       the hit-restore path, so Next 6 on this head: 1,000 projects 244
       ms warm / 700 restore / 2,570 cold (medians of 5; the morning's
       237 / 744 / 2,520) — a `.catch` per removed file is inside jitter.
+207.  DONE (2026-09-16, the class of 206 grepped as the `probe` user):
+      the task path touches the tree three times — clean, restore,
+      save — and each was asked what it says to a tree it may not
+      write. Save was already right: an output the process cannot read
+      warns `cache save failed: EACCES …` and the task succeeds
+      unsaved. Restore was not: a hit into an empty `dist/` this user
+      cannot write into read "internal error" with a
+      `CorruptArtifactError` (not a readable archive), the artifact
+      intact. The extract's catch already names what is on disk for
+      the shape codes (`EISDIR`, `ENOTDIR`, `EEXIST`, `ENOTEMPTY`);
+      `EACCES`, `EPERM` and `EROFS` join it as a `UserError`, "restore
+      of <hash> into <dir> could not write its outputs (EACCES: …)".
+      Pinned in `cache.test.ts` on a 0o500 `dist/` (skipped as root,
+      proven both ways as `probe`); `docs/caching.md` names it beside
+      the clean's line. Refuted on the way: `chmod 500 .vx` alone
+      proves nothing — the cache's files sit in subdirectories already
+      created, so the run saved as before; an unwritable cache
+      directory is a separate probe, not taken.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
