@@ -12,7 +12,7 @@ what a config may SAY, the loader decides HOW a file is evaluated.
 ## Public surface
 
 ```ts
-export function validateProjectConfig(config: ProjectConfig, where: string): void
+export function validateProjectConfig(config: ProjectConfig, configPath: string): void
 export function validateWorkspace(config: WorkspaceConfig, configPath: string): void
 ```
 
