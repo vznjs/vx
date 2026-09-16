@@ -527,6 +527,17 @@ test is telling the truth.
       server, a skip), and on the MCP row. The three quoted copies of
       the version follow their pins; the skill file that still said
       `v24` says `v27` and why a schema bump is rare.
+274.  DONE (2026-09-16, Next 6 — the schema bump on the warm path):
+      273 (#432) touches every task a warm run records — four more
+      bound columns per `runs` row — and resets the index once, so
+      the A/B took one 1,000-project workspace copy per arm, each
+      pre-warmed by its own arm (arms on different `SCHEMA_VERSION`s
+      reset a shared copy): the main of 272 (#431) in an immutable
+      worktree against the head of 273, 9 reps each, run twice with
+      the arms swapped. Before 245 / 253 and 240 / 245 ms (min /
+      median), after 244 / 254 and 238 / 244 — a tie. Expected: the
+      row's insert is one prepared statement either way, and four
+      nulls bind in the noise of a 1,000-row transaction.
 
 ## In flight
 
@@ -634,7 +645,7 @@ state of each:
    recorded under this duty (a synchronous restore for small
    artifacts, discovery's stat memo, the `restore: rows` lead) are in
    `docs/history/2026-09-status-next-log.md`; the latest day's A/B is
-   item 245 (2026-09-16, a tie; 179 was the one before), and the
+   item 274 (2026-09-16, a tie; 272 was the one before), and the
    restore arm's floor is the note under item 193 (history). 2026-09-16, after item 225: 5,000 projects
    687 ms warm / 2,854 restore / 12,152 cold (medians of 3) against
    1,000's 231 / 718 / 2,436 — the warm stage table grows 3.4–3.9× for
