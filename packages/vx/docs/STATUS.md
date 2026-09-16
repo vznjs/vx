@@ -960,7 +960,12 @@ fetch-depth: 0) or name the base`. Pinned three ways in
       `defaultAffectedBase` / `refIsHead` units; `docs/cli.md` and the
       site's CI guide say what vx says. Explicit refs are untouched:
       `--affected=origin/main` in a single-branch clone still says the
-      ref did not resolve, which is true and names the fix.
+      ref did not resolve, which is true and names the fix. The site's
+      own CI recipe had the first shape: its base fell back to
+      `origin/main` on a push to main — HEAD itself — so the push job
+      ran nothing and went green; on a push it diffs against
+      `github.event.before` now, with the force-push caveat written
+      down.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
