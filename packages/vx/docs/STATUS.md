@@ -285,6 +285,18 @@ test is telling the truth.
       column table = `CREATE TABLE runs`; the API count = the façade's
       runtime keys) and one in its unsafe half (one row per
       `packages/*`). All six fail on the old page.
+295.  DONE (2026-09-16, 294's class grepped across every doc surface):
+      `modules/telemetry.md` quoted `TELEMETRY_SCHEMA_VERSION = 1` too
+      (the version pin now reads both pages), and
+      `packages/vx-docs/src/assets/screenshots/` — 2.6 MB of dashboard
+      baselines and a README that tells the reader to run
+      `packages/cloud/tests/visual.test.ts` — had outlived the cloud
+      removal (2026-08-23) by three weeks, referenced by nothing on the
+      site. Removed. The other seven patterns of the class (root
+      package, `[<base>]`, the phantom files, `/v1/ingest`, the
+      workspace's "alongside the local executor", the API size, `mcp`
+      as a verb) hit nothing outside design/ and history/, which are
+      dated records.
 
 ## In flight
 

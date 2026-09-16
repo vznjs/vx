@@ -34,10 +34,13 @@ describe('architecture.md follows the source it describes', () => {
     expect([...named].sort()).toEqual(files.sort())
   })
 
-  it('quotes the current TELEMETRY_SCHEMA_VERSION', () => {
-    const m = /`TELEMETRY_SCHEMA_VERSION = (\d+)`/.exec(doc)
-    expect(m).not.toBeNull()
-    expect(Number(m![1])).toBe(TELEMETRY_SCHEMA_VERSION)
+  it('quotes the current TELEMETRY_SCHEMA_VERSION, as does modules/telemetry.md', () => {
+    for (const file of ['architecture.md', 'modules/telemetry.md']) {
+      const text = readFileSync(path.join(pkg, 'docs', file), 'utf8')
+      const m = /`TELEMETRY_SCHEMA_VERSION = (\d+)`/.exec(text)
+      expect(m).not.toBeNull()
+      expect(Number(m![1])).toBe(TELEMETRY_SCHEMA_VERSION)
+    }
   })
 
   it('the dispatch sentence names every verb cli/index.ts switches on', () => {

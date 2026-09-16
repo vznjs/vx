@@ -3,7 +3,7 @@
 ## Purpose
 
 THE versioned, serializable contract every telemetry consumer speaks
-(`TELEMETRY_SCHEMA_VERSION = 1`). Exporters (otel, a custom sink) receive
+(`TELEMETRY_SCHEMA_VERSION = 2`). Exporters (otel, a custom sink) receive
 these records instead of re-deriving facts from the rendering-oriented
 `WireEvent` stream — `cacheSource` is derived once, git/CI/host context
 is pre-folded, bigint wallclock spans are decimal strings.
