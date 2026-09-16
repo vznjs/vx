@@ -123,6 +123,29 @@ test is telling the truth.
       workspace-config guide's plugin block called `defineWorkspace`
       without importing it. Three pages, each a red squiggle for
       whoever copied it.
+285.  DONE (2026-09-16, Next 6 — the day's closing diff on the warm
+      path): after #434–#444 (275–284: the skipped label on every
+      surface, the folded `vx last`, the Skipped section's group
+      filter, the shards' README grant, the rest docs and pins), the
+      interleaved A/B on one 1,000-project workspace copy per arm, the
+      main of 274 (#433) in an immutable worktree against the head of
+      284, 9 reps each, run twice with the arms swapped: before 257 /
+      267 and 265 / 271 ms (min / median), after 252 / 269 and 262 /
+      267 — a tie, as at 274. Expected: a warm run executes nothing,
+      and the day's run-path diffs are one label and one filter over
+      the outcomes.
+286.  DONE (2026-09-16, the class of 284 on the plugin packages'
+      READMEs, probed and declined as a pin): the sixteen `ts` blocks
+      across seven package READMEs compiled the same way — every block
+      with full imports passes; what fails is by convention (an
+      options fragment that omits its import, a field list that is not
+      code) or an artefact of the probe (`@vzn/vx-migrate` is linked
+      nowhere at the root). A pin in the site package would have to
+      ambient-type five of the seven packages, since the site depends
+      on two, so it would check core's types and call the plugin's
+      option shapes `any` — a claim not worth a grant on the site's
+      test task and five new devDependencies. Revisit when a
+      package's README block is the thing that broke.
 
 ## In flight
 
@@ -230,7 +253,7 @@ state of each:
    recorded under this duty (a synchronous restore for small
    artifacts, discovery's stat memo, the `restore: rows` lead) are in
    `docs/history/2026-09-status-next-log.md`; the latest day's A/B is
-   item 274 (2026-09-16, a tie; 272 was the one before), and the
+   item 285 (2026-09-16, a tie; 274 was the one before), and the
    restore arm's floor is the note under item 193 (history). 2026-09-16, after item 225: 5,000 projects
    687 ms warm / 2,854 restore / 12,152 cold (medians of 3) against
    1,000's 231 / 718 / 2,436 — the warm stage table grows 3.4–3.9× for
