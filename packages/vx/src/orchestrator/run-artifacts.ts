@@ -69,6 +69,8 @@ function taskEntry(o: TaskOutcome, flaky?: FlakyFinding): Record<string, unknown
     ...(o.blockedBy !== undefined ? { blockedBy: o.blockedBy } : {}),
     // A failure vx's own `timeout` killed; absent on every other row.
     ...(o.timedOut === true ? { timedOut: true } : {}),
+    // The sandbox's violation count; present only on a task it recorded any for.
+    ...(o.sandboxViolations !== undefined ? { sandboxViolations: o.sandboxViolations } : {}),
     // hrtime spans are bigints → emit as strings so JSON.parse on
     // the consumer side doesn't truncate the ns precision.
     ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: String(o.wallclockStartNs) } : {}),

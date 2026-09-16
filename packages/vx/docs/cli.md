@@ -531,8 +531,9 @@ task's block is wrapped in `::group::<id> (<outcome> <duration>)` /
 `::endgroup::` so it collapses in the log viewer. Failed tasks stay
 pre-expanded and emit an `::error title=<id>::failed (exit N)`
 annotation instead (above 128 the label names the signal:
-`failed (exit 137, 128 + SIGKILL)`, and a timeout its reason,
-`failed (timed out, exit 143)`, as every surface labels a failure).
+`failed (exit 137, 128 + SIGKILL)`, a timeout its reason,
+`failed (timed out, exit 143)`, and a sandboxed task its violation
+count, as every surface labels a failure).
 
 ### `--output-logs <mode>`
 
@@ -760,6 +761,12 @@ executes every run by design, so a hit rate should leave it out of the
 denominator. The key is present only when true; every other row is
 unchanged. Its `hash` is still set: dependents fold it.
 
+**`sandboxViolations`** is present only on a sandboxed task the sandbox
+recorded violations for — the count the frame's SANDBOX VIOLATIONS
+section lists, and the reason the task failed (its exit is forced to 1
+when it was 0); every label counts it, `failed (exit 1, 2 sandbox
+violations)`.
+
 **`timedOut: true`** is present only on a `failed` row vx's own
 `timeout` killed: its exit is the shell's 143, and every label reads
 `failed (timed out, exit 143)` rather than a signal.
@@ -837,7 +844,8 @@ totals plus a table, one row per task:
 
 `Status` is the task outcome (`success` / `failed (exit N)`, with the
 signal an exit above 128 stands for, `failed (exit 137, 128 + SIGKILL)`,
-or a timeout's reason, `failed (timed out, exit 143)` / `skipped`);
+or a timeout's reason, `failed (timed out, exit 143)`, or a sandboxed
+task's violation count / `skipped`);
 `Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
 block, which never consulted it / `local` / `remote` / `up-to-date` /
 `—`). Aborted tasks (a Ctrl-C teardown) are excluded from the totals but

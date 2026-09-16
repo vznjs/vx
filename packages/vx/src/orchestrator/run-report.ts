@@ -75,7 +75,7 @@ function statusWord(o: OutcomeView): string {
     case 'cache-hit-remote':
       return 'success'
     case 'failed':
-      return failedLabel(o.exitCode, o.timedOut)
+      return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations)
     default:
       return o.status
   }

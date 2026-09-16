@@ -453,6 +453,21 @@ test is telling the truth.
       timeout". `vx last` keeps `128 + SIGTERM`: the `runs` table has
       no column, the same call as `blockedBy`. Pinned at the outcome
       (the timeout test), the report, the annotation and both plugins.
+269.  DONE (2026-09-16, the reader of a sandbox violation, the class of
+      268): a sandboxed task that touched what it never declared failed
+      on that alone — its exit forced to 1 when it was 0 — and every
+      label and record said `failed (exit 1)`; only the frame's own
+      SANDBOX VIOLATIONS section knew. And the OTel guide promised
+      `vx.task.sandbox_violations` on the task span while the plugin
+      had no such attribute and the record no such field: a claim the
+      code lacked. `failedLabel` now counts the violations after the
+      code, `failed (exit 1, 2 sandbox violations)`, on the frame
+      footer, the status line, the report and the annotation; the
+      `--summarize` row and the telemetry record carry
+      `sandboxViolations` (additive); the GitHub callout counts them;
+      the OTel span carries the attribute the guide named. Pinned on
+      the three framed-output violation fixtures, the report, the
+      annotation, the summarize row and both plugins.
 
 ## In flight
 
