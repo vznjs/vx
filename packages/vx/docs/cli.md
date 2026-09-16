@@ -1241,7 +1241,10 @@ npm's: an npm install runs the platform package's compiled binary
 under `node_modules`, and a rename over that file lasts until the next
 `npm install` puts the version npm knows back, so `vx upgrade` there
 says `this vx was installed by npm … Update with: npm install -g
-@vzn/vx@latest`.
+@vzn/vx@latest`. A host it cannot reach (no route, a proxy that is
+down) is one line — `could not reach api.github.com to read the
+release (…) — check the network or the proxy and re-run` — never a
+stack.
 
 ## `vx init`
 

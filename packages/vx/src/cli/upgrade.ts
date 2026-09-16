@@ -116,16 +116,38 @@ export function releaseAsset(release: unknown, name: string): ReleaseAsset {
   return { url, sha256: m[1]!.toLowerCase() }
 }
 
+/**
+ * `fetch` on a box that cannot reach the host rejects with Bun's own
+ * `TypeError` ("Unable to connect. Is the computer able to access the
+ * url?", "Was there a typo in the url or port?"), which the CLI printed
+ * as an internal error with a stack (a network namespace without a
+ * route, 2026-09-16). One line, the host and the reason.
+ */
+async function fetchOrRefuse(url: string, init: RequestInit, what: string): Promise<Response> {
+  try {
+    return await fetch(url, init)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new UserError(
+      `vx upgrade: could not reach ${new URL(url).host} to ${what} (${message}) — check the network or the proxy and re-run`,
+    )
+  }
+}
+
 /** The release document for `latest` or a tag, from the GitHub API. */
 async function fetchRelease(tag: string | undefined): Promise<unknown> {
   const url =
     tag === undefined
       ? `https://api.github.com/repos/${REPO}/releases/latest`
       : `https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(tag)}`
-  const res = await fetch(url, {
-    redirect: 'follow',
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': `vx/${VERSION}` },
-  })
+  const res = await fetchOrRefuse(
+    url,
+    {
+      redirect: 'follow',
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': `vx/${VERSION}` },
+    },
+    'read the release',
+  )
   if (!res.ok) {
     throw new UserError(
       `vx upgrade: could not read the release (${res.status}) — ${url}${res.status === 404 && tag !== undefined ? ` (is ${tag} a release tag?)` : ''}`,
@@ -141,7 +163,7 @@ async function fetchRelease(tag: string | undefined): Promise<unknown> {
  * and process.execPath.
  */
 export async function replaceBinary(dest: string, url: string, sha256: string): Promise<void> {
-  const res = await fetch(url, { redirect: 'follow' })
+  const res = await fetchOrRefuse(url, { redirect: 'follow' }, 'download the release asset')
   if (!res.ok) {
     throw new UserError(`vx upgrade: download failed (${res.status}) — ${url}`)
   }

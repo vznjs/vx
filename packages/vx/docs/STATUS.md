@@ -126,6 +126,22 @@ test is telling the truth.
       suite: a PATH with everything but rg, the verdict with the install
       (fails without the fix as the bare runtime line).
 
+247.  DONE (2026-09-16, the minimal-image persona at `vx upgrade`): with
+      no route out — a network namespace, or a proxy that is down — the
+      compiled binary printed Bun's own TypeError ("Unable to connect.
+      Is the computer able to access the url?"; DNS: "Was there a typo
+      in the url or port?") with a stack, as an internal error. Both
+      fetches (the release document, the asset) go through one wrapper
+      that says "vx upgrade: could not reach <host> to <what> (<reason>)
+      — check the network or the proxy and re-run". Pinned through the
+      stubbed fetch in `upgrade.test.ts` (a rejecting fetch is a
+      `UserError` with the line, and the binary is untouched); fails
+      without the fix as the bare TypeError. Also read on the way: a
+      dead HTTPS_PROXY does not stand in for no network here — Bun's
+      fetch reached the release regardless — so the probe used
+      `unshare -n` and `bwrap --unshare-net`; and an unknown tag was
+      already one line ("download failed (404)").
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
