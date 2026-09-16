@@ -1796,6 +1796,19 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       `getCacheStats` row say task runs now. The tool suite pins the
       default equal to the explicit latest id and the no-runs refusal;
       the façade pin lists the new export.
+192.  DONE (2026-09-16): the RSS floor has slack. PR #359's Linux job
+      failed in item 170's pin — `true` after a 300 MB hold read a
+      376 MB peak against a floor a few pages lower — on a diff that
+      touched nothing near the runner, after twelve green runs of the
+      same pin tonight. A light child's `ru_maxrss` is the parent's
+      footprint at exec, so it sits ON the floor by construction, and
+      the kernel's per-thread RSS counters lag by up to 64 pages
+      between syncs: an exact `>` is a coin flip on jitter. A child
+      now counts as its own only more than `RSS_FLOOR_SLACK_BYTES`
+      (4 MiB, above any accounting jitter, below the 64 MB reservation
+      step) above the floor; the unit pin sits on that edge, the
+      measured pin is unchanged. Not a flake dismissed: a test on a
+      knife edge, moved off it.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

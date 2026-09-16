@@ -572,6 +572,17 @@ export async function streamToString(
  * (e.g., the platform didn't expose rusage), so the orchestrator records
  * NULLs in the runs table for those tasks.
  */
+/**
+ * How far above the parent's own mark a child's `ru_maxrss` must read to
+ * count as the child's. A light child inherits the parent's footprint at
+ * exec, so its reading sits ON the floor by construction, and the kernel's
+ * per-thread RSS counters lag by up to 64 pages between syncs — a `true`
+ * spawned from a 300 MB parent read 376 MB against a floor a few pages
+ * lower on one CI run in twelve (2026-09-16). Four MiB is above any
+ * accounting jitter and below what any reservation resolves (64 MB steps).
+ */
+export const RSS_FLOOR_SLACK_BYTES = 4 * 1024 * 1024
+
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
   /** The parent's own high-water mark (`ownRssHighWater`); a peak at or under it is inherited, not the child's, and is not reported. */
@@ -590,7 +601,10 @@ export function resourceUsageToCpuRss(
   // recorded peak was over any budget and ran alone. Measured, not
   // assumed: `tests/runner.test.ts` allocates a known number of bytes
   // and reads the peak back within a bounded factor of it.
-  // A reading at or under the parent's own mark is the parent's (see
-  // `ownRssHighWater`): the child's peak is unknown, bounded by it.
-  return usage.maxRSS > floorBytes ? { cpuMs, peakRssBytes: usage.maxRSS } : { cpuMs }
+  // A reading at or within the slack of the parent's own mark is the
+  // parent's (see `ownRssHighWater`, `RSS_FLOOR_SLACK_BYTES`): the child's
+  // peak is unknown, bounded by it.
+  return usage.maxRSS > floorBytes + RSS_FLOOR_SLACK_BYTES
+    ? { cpuMs, peakRssBytes: usage.maxRSS }
+    : { cpuMs }
 }
