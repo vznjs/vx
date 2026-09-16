@@ -199,6 +199,8 @@ export interface RunRecord {
    * decision. Absent on rows written before the column existed.
    */
   cached?: boolean
+  /** A skipped task's root blocker (a failed or aborted task id); not stored in the DB. */
+  blockedBy?: string
 }
 
 /**

@@ -60,6 +60,14 @@ export interface TaskOutcome {
    * outcomes only; never folded into any key.
    */
   groupUpstream?: readonly TaskOutcome[]
+  /**
+   * On a `skipped` outcome: the task at the ROOT of what blocked it — the
+   * failed (or aborted) upstream, followed through any chain of skips
+   * between. Absent when the skip was fail-fast's (no upstream failed).
+   * The footer, `--summarize`, the telemetry record and the run row all
+   * read this one field (item 267).
+   */
+  blockedBy?: string
   /** Executor-reported placement label (`ExecuteResult.where`) — set only
    *  when the task ran somewhere other than this host. Telemetry-only. */
   where?: string
@@ -594,11 +602,19 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // because dependents are pushed when `pending` hits 0 regardless
         // of outcome — keeps the propagation logic in one place.
         if (willSkip(id)) {
+          // The root of the block: a failed or aborted upstream names
+          // itself; a skipped one hands down its own root.
+          const blocker = upstream.find(
+            (u) => u !== undefined && (u.status === 'failed' || u.status === 'aborted'),
+          )
+          const viaSkip = upstream.find((u) => u !== undefined && u.status === 'skipped')
+          const blockedBy = blocker?.node.id ?? viaSkip?.blockedBy
           finishOne(id, {
             node,
             status: aborted() ? 'aborted' : 'skipped',
             exitCode: 1,
             durationMs: 0,
+            ...(blockedBy !== undefined ? { blockedBy } : {}),
           })
           continue
         }

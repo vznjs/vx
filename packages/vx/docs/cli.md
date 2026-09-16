@@ -759,6 +759,11 @@ executes every run by design, so a hit rate should leave it out of the
 denominator. The key is present only when true; every other row is
 unchanged. Its `hash` is still set: dependents fold it.
 
+**`blockedBy`** is present only on a `skipped` row: the id of the failed
+(or aborted) task at the root of what blocked it, through any chain of
+skips between — what the footer's Skipped section prints, for a script.
+A fail-fast skip has none.
+
 **`flaky: { passes, failures, attempts }`** is present only on a task
 this run proved flaky (the footer's Flaky section, typed): `passes` and
 `failures` count the outcomes on record for this exact `hash`, this run

@@ -63,8 +63,13 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
       // say it (the shell's convention, so a command exiting 137 on its
       // own reads the same).
       const signal = exitSignal(t.exitCode)
+      // What the failure cost: the tasks that never started because of it
+      // (the record's `blockedBy` names the root of each block).
+      const blocked = summary.tasks
+        .filter((s) => s.status === 'skipped' && s.blockedBy === t.taskId)
+        .map((s) => escapeMarkdownCell(s.taskId))
       lines.push(
-        `- **${escapeMarkdownCell(t.taskId)}** — exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`,
+        `- **${escapeMarkdownCell(t.taskId)}** — exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
       )
     }
     lines.push('')

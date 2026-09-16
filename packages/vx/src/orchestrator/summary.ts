@@ -351,35 +351,20 @@ export function formatAbortedSection(outcomes: readonly TaskOutcome[]): string[]
  * blocked and nothing about which task or by what; the broad flow prints
  * no row for a skipped task on purpose (a wide red run would drown in
  * them), so this is where the reader learns what the failure cost
- * (item 266). A skip's cause is followed through a chain of skips to the
- * failure at its root; a skip with no failed upstream is fail-fast's.
- * Empty when nothing was skipped.
+ * (item 266). The scheduler records the root of each block on the outcome
+ * (`blockedBy`, item 267); a skip without one is fail-fast's. Empty when
+ * nothing was skipped.
  */
 export function formatSkippedSection(outcomes: readonly TaskOutcome[]): string[] {
   const skipped = outcomes.filter((o) => o.status === 'skipped')
   if (skipped.length === 0) return []
   const byId = new Map(outcomes.map((o) => [o.node.id, o]))
-  const memo = new Map<string, string>()
   const causeOf = (o: TaskOutcome): string => {
-    const known = memo.get(o.node.id)
-    if (known !== undefined) return known
-    // Seeded before the walk: a cycle cannot exist in a scheduled graph,
-    // but a memo that answers during its own walk costs nothing.
-    memo.set(o.node.id, 'after the run stopped (fail-fast)')
-    const ups = o.node.deps.map((d) => byId.get(d)).filter((u): u is TaskOutcome => u !== undefined)
-    const failed = ups.find((u) => u.status === 'failed')
-    const aborted = ups.find((u) => u.status === 'aborted')
-    const viaSkip = ups.find((u) => u.status === 'skipped')
-    const cause =
-      failed !== undefined
-        ? `after ${failed.node.id} failed`
-        : aborted !== undefined
-          ? `after ${aborted.node.id} was aborted`
-          : viaSkip !== undefined
-            ? causeOf(viaSkip)
-            : 'after the run stopped (fail-fast)'
-    memo.set(o.node.id, cause)
-    return cause
+    if (o.blockedBy === undefined) return 'after the run stopped (fail-fast)'
+    const root = byId.get(o.blockedBy)
+    return root?.status === 'aborted'
+      ? `after ${o.blockedBy} was aborted`
+      : `after ${o.blockedBy} failed`
   }
   const groups = new Map<string, string[]>()
   for (const o of skipped) {

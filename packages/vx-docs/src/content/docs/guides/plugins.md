@@ -301,6 +301,7 @@ interface RunSummaryRecord {
     durationMs: number
     cpuMs?: number
     peakRssBytes?: number
+    blockedBy?: string // on a skipped task: the failed task at the root of the block
   }>
 }
 ```
