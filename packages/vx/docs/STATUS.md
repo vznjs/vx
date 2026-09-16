@@ -735,7 +735,7 @@ state of each:
 13. DONE 2026-09-10 as item 120 — `vx watch` watches the projects a cycle can run.
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197 and 202 (14–14i) are in `docs/history/2026-09-status-next-log.md`;
-    14j–14n below are the current ones.
+    14j–14o below are the current ones.
 
 14j. **Handoff after item 208 (2026-09-16, morning).** Six items
 since 14i, all from one persona taken one step further each time:
@@ -885,6 +885,33 @@ greps a verdict swallows its exit — read the exit (twice today the
 gate caught what the chain passed); a numbered Next entry goes at the
 END of the list or the formatter renumbers it (third time). Never end
 with "what next?".
+
+14o. **Handoff after item 229 (2026-09-16, late afternoon).** Four
+items since 14n. The site's introduction states vx's known limits
+together (226, #394: launch checklist 6, done). The persistent path
+got 218's placeholder sweep and the `dir/` line on a readiness failure
+(227, #395). The shard deal was re-weighed after the day's suites —
+four files sat at the median, the run-lock e2e among them — and the
+local shards run 11.7–15.0 s again (228, #396). Next 20 closed: a
+task's retained output is bounded to a head and a tail with the
+dropped middle named — the hit 620 → 109 MB of RSS, the cache 193 → 17
+MB on the 200 MB probe; the miss's 652 MB is the logger's frame
+buffer, whole by contract, `--output-logs none` its remedy (229,
+#397). Probed and clean: `vx watch` on a submodule workspace re-runs
+once on an edit inside it; a hidden sandbox runtime; the CI Linux job's
+per-task table (its 39 s shard was contention with the 37 s docs build
+on four workers, not the deal alone). Open: Next 1, 2 and 16, all
+gated by their own terms; In-flight 5 (macOS); the owner residue — the
+`NPM_TOKEN` secret, the release cut, the site's address;
+`workspaceFiles` stops at a nested repository. The loop holds 27 items
+(203–229): the record paragraph's forty is the trim's trigger. No open
+issues. The box: as 14n. Methods that paid: when a bound fixes one
+number and not another, name which retention the other is (229's miss
+is the frame buffer, and saying so kept the item honest); a pin that
+asserts the old design's cost (retention MUST grow) is the pin the new
+design must reshape, not delete — its differential survives as "must
+not cost the volume"; a chain that greps a verdict swallows its exit,
+still. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
