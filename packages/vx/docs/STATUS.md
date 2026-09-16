@@ -466,10 +466,24 @@ the error table in `docs/schema.md` has the row.
       projects without a partition and resolves their files through
       their own git, the workspace project keeps its OIDs; the CLI:
       cold run no "matched no files", an edit to all three is three
-      misses and every `out.txt` follows). Not closed, recorded in
-      `modules/git-inputs.md`: `--affected` sees the gitlink and not
-      the files inside, and `workspaceFiles` globs stop at the nested
-      repository — both the workspace repository's own limits.
+      misses and every `out.txt` follows). `--affected` is 222; `workspaceFiles`
+      globs still stop at the nested repository, the workspace
+      repository's own limit (recorded in `modules/git-inputs.md`).
+222.  DONE (2026-09-16, 221's open half): `vx run --affected` after an
+      edit inside a submodule or an embedded repository selected NONE
+      of the projects there — git reports the nested repository as one
+      changed path (`vendor/sub` for a dirty or moved gitlink,
+      `vendor/nested/` for an untracked embedded one; measured, both
+      forms) and none of the files, and the path-to-project walk goes
+      UP from a changed file, never down into a directory. A changed
+      path that is a directory on disk is such a repository — git
+      reports nothing else as one — and every project under it is
+      selected now; one `stat` per changed path outside any project,
+      and the scan of project dirs only for a directory. Pinned in
+      `affected.test.ts` (a clean tree selects nothing, a change beside
+      the gitlink only its own project, an edit inside selects the
+      nested project, an untracked embedded repository is new work);
+      `docs/cli.md` § --affected and `modules/git-inputs.md` say it.
 
 ## In flight
 
@@ -710,8 +724,8 @@ gitlinks out of the listing (it is pathspec-scoped to the project dirs,
 and a gitlink above a project never appears under its pathspec). Open:
 Next 1, 2 and 16 as before, all gated by their own terms; In-flight 5
 (macOS); the owner residue — the `NPM_TOKEN` secret, the release cut,
-the site's address; `--affected` and `workspaceFiles` still stop at a
-nested repository (recorded in `modules/git-inputs.md`). No open
+the site's address; `workspaceFiles` still stops at a nested repository
+(`--affected` follows it since 222; recorded in `modules/git-inputs.md`). No open
 issues. The box: as 14l; the persona probes live in
 `/tmp/probe-home/probe-*.sh` and run as `probe`. Methods that paid: a
 probe script's OWN mistakes are findings — three of the seven came from
