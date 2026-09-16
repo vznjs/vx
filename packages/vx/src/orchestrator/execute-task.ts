@@ -25,7 +25,6 @@ import {
   type SandboxViolation,
   type TaskExecutor,
   type TaskInputs,
-  execWord,
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { span } from '../util/index.js'
@@ -37,6 +36,7 @@ import {
 } from './sandbox-request.js'
 import { saveMiss, type OutputDirSnapshot } from './miss-save.js'
 import { restoreHit } from './hit-restore.js'
+import { shellVerdict } from './shell-verdict.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
@@ -615,17 +615,17 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // child already reports 143, so this only rewrites the trap-exit-0 case.
       if (code === 0) code = signalExitCode('SIGTERM')
     }
-    // `sh -c 'exec <word> …'` exits 127 when the word is not on the task's
-    // PATH, and the shell's line names the word and nothing about the PATH
-    // vx built — a tool installed in a sibling package's bin is the case
-    // that reads as a mystery (2026-09-16, item 257). Name the rule.
-    if (code === 127 && !res.timedOut) {
-      const word = execWord(step.command)
-      const bins = taskBinDirs(node, args.workspaceRoot).join(' and ')
-      log.taskStderr(
-        node,
-        `\n[vx] exit 127 is the shell's "command not found": ${word === undefined ? 'a command in this task' : word} is not on this task's PATH — vx puts ${bins} first and never a sibling project's bin; install it in this package or at the workspace root\n`,
-      )
+    // The shell's 127 and 126 name the word and nothing about why — the
+    // PATH vx built, or a `#!` line the file itself carries (items 257,
+    // 258). One frame line names the rule.
+    if (!res.timedOut) {
+      const verdict = shellVerdict({
+        code,
+        command: step.command,
+        cwd: node.projectDir,
+        bins: taskBinDirs(node, args.workspaceRoot),
+      })
+      if (verdict !== undefined) log.taskStderr(node, `\n${verdict}\n`)
     }
     return { result: res, exitCode: code }
   }

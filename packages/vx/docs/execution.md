@@ -290,7 +290,14 @@ The child process gets, in priority order (lowest first):
 4. **PATH augmentation** — `<projectDir>/node_modules/.bin` is
    prepended so local tools (`oxlint`, `vite`, etc.) work without
    `npx`. Only the project's own bin; sibling-project bins stay
-   invisible. A task that exits 127 gets one more frame line: exit 127 is the shell's "command not found", the word (when the command is a plain `word args…`), the two bin directories vx puts first, and that a sibling project's bin is never visible.
+   invisible. A task that exits 127 or 126 gets one more frame line
+   (`orchestrator/shell-verdict.ts`): for a bare word, that 127 is the
+   shell's "command not found", the word (when the command is a plain
+   `word args…`), the two bin directories vx puts first, and that a
+   sibling project's bin is never visible; for a word with a slash, the
+   resolved path when the file is missing, or — when it exists — its
+   `#!` interpreter that does not (a CRLF line ending is named as
+   such); 126 names the word and `chmod +x`.
 
 Anything not in these four layers is invisible to the child. This
 prevents incidental env leakage between machines and gives

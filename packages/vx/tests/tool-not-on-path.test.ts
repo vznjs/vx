@@ -86,6 +86,40 @@ describe('a tool that is not on the PATH vx built', () => {
     )
   })
 
+  // A file that EXISTS still gets the shell's "not found" when its #! line
+  // names an interpreter that does not (item 258); the line must not blame
+  // the PATH.
+  it('exit 127 on a script whose #! interpreter is missing names the interpreter', async () => {
+    const script = path.join(root, 'packages', 'app', 'run.sh')
+    await writeFile(script, '#!/nonexistent/interp\necho hi\n')
+    await chmod(script, 0o755)
+    await writeFile(
+      path.join(root, 'packages', 'app', 'vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: './run.sh' } } } }\n`,
+    )
+    const r = vx(root, bin, ['run', 'build', '--all'])
+    expect(r.code).toBe(1)
+    expect(r.text).toContain(
+      `[vx] exit 127 is the shell's "not found", and ./run.sh exists: its #! interpreter /nonexistent/interp does not exist — install it or fix the line`,
+    )
+    expect(r.text).not.toContain('PATH')
+  })
+
+  // A script without the execute bit is the shell's 126.
+  it('exit 126 names the word and the fix', async () => {
+    const script = path.join(root, 'packages', 'app', 'run.sh')
+    await writeFile(script, '#!/bin/sh\necho hi\n')
+    await writeFile(
+      path.join(root, 'packages', 'app', 'vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: './run.sh' } } } }\n`,
+    )
+    const r = vx(root, bin, ['run', 'build', '--all'])
+    expect(r.code).toBe(1)
+    expect(r.text).toContain(
+      `[vx] exit 126 is the shell's "found but cannot execute": ./run.sh is not executable or is a directory — chmod +x it`,
+    )
+  })
+
   // CONTROL: the same tool at the root's bin runs, and no line is printed.
   it('the same tool at the root bin runs green with no line', async () => {
     await fakeTool(path.join(root, 'node_modules', '.bin'))

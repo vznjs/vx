@@ -287,7 +287,22 @@ test is telling the truth.
       part of every task's env by design (the allowlist), and a
       changed PATH is not a key change (env is folded only when
       declared), so a probe of a missing tool needs a stripped PATH and
-      a miss.
+      a miss. The darwin job of #420 taught the pin to compare against
+      the workspace's real path (`/tmp` is `/private/tmp` there; the
+      class of 242's pin).
+258.  DONE (2026-09-16, the class of 257): a word with a slash is a file,
+      not a PATH lookup, and the 257 line blamed the PATH for it — the
+      shell says "not found" for a script that EXISTS when its `#!`
+      interpreter does not (probed: `exec ./x.sh` with `#!/nonexistent`
+      exits 127 with the file's name in the line), so the line would
+      have sent a user to install a tool they have. The verdict moved to
+      `shell-verdict.ts`: a bare word keeps the PATH rule; a path names
+      the resolved file when it is missing, its `#!` interpreter when it
+      exists (a CRLF ending is named — the interpreter the shell looked
+      for ends in `\r`), and no `#!` line at all; exit 126 ("found but
+      cannot execute") names the word and `chmod +x`. Unit-pinned on
+      real files in `shell-verdict.test.ts`; the e2e pin gained the
+      shebang and the 126 cases (both fail without the wiring).
 
 ## In flight
 

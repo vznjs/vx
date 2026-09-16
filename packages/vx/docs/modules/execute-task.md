@@ -130,6 +130,22 @@ bind needs pre-created) is built by
 [`sandbox-request.md`](./sandbox-request.md); `execute-task.ts` only
 asks for it when the task declares `exec.sandbox`.
 
+## Verdict
+
+A step that exits 127 or 126 gets one frame line from
+`shell-verdict.ts` (`shellVerdict`), because the shell's own line names
+the word and nothing about why. A bare word is a PATH lookup and the
+PATH is vx's: the line names the word (`execWord`, the predicate
+`execWrap` uses, so a pipeline says "a command in this task"), the two
+bin directories `taskBinDirs` prepends, and that a sibling project's bin
+is never on it. A word with a slash is a file: the line names the
+resolved path when it is missing, and when it exists the `#!`
+interpreter the shell could not find (a CRLF line ending, the
+interpreter's name ending in `\r`, is named as such; no `#!` line at
+all is named too). Exit 126 names the word and `chmod +x`. A timed-out
+step gets no line. Pinned in `tests/shell-verdict.test.ts` on real
+files and end to end in `tests/tool-not-on-path.test.ts`.
+
 ## Hash derivation (`computeTaskHash`)
 
 The pieces folded into `cache.key(...)`:
