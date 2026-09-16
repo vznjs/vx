@@ -214,8 +214,10 @@ function buildTask(
       }
       if (s.startsWith('^')) {
         todos.push(
-          `deps-input ${JSON.stringify(entry)}: vx folds upstream outputs into the cache ` +
-            'key via dependsOn automatically — usually safe to drop',
+          // Principle 5: the cascade folds each upstream task's KEY (its
+          // inputs), never its outputs — the old text said the reverse.
+          `deps-input ${JSON.stringify(entry)}: vx already folds each dependency's cache key ` +
+            '(its inputs, never its outputs) through dependsOn — usually safe to drop',
         )
         return
       }
@@ -255,8 +257,8 @@ function buildTask(
       }
       if (o.dependentTasksOutputFiles !== undefined) {
         todos.push(
-          'input {dependentTasksOutputFiles: …}: vx folds upstream outputs into the cache ' +
-            'key via dependsOn automatically',
+          "input {dependentTasksOutputFiles: …}: vx already folds each dependency's cache key " +
+            '(its inputs, never its outputs) through dependsOn — a change upstream is a key change here',
         )
         return
       }
