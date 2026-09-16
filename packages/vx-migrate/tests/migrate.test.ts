@@ -541,6 +541,16 @@ describe('vx migrate (nx)', () => {
     expect(text).toContain('{"port":4200}')
   })
 
+  it("the cascade TODO says what vx folds: each dependency's key, never its outputs", async () => {
+    // pkg-a's build carries the `^production` input (the fixture above); the
+    // todo it earns must not claim the reverse of principle 5.
+    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
+    expect(text).toContain(
+      `deps-input "^production": vx already folds each dependency's cache key (its inputs, never its outputs) through dependsOn`,
+    )
+    expect(text).not.toContain('upstream outputs')
+  })
+
   it(
     'pkg-b covers cwd, projectRoot strip, dir heuristic, implied cache',
     async () => {

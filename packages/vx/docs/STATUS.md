@@ -1759,6 +1759,15 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       say their tasks are never frozen; cli.md § vx lock carries the
       rule; the pin holds both arms (no note when every project is
       configured).
+189.  DONE (2026-09-16): the Nx migration's cascade TODOs say what vx
+      folds. An eighth walk, the Nx adopter (a two-node project graph
+      with run-script and run-commands targets: `--dry`, the write,
+      two builds, test, lint, show, info) read right except the TODO
+      written for a `^production` input and for
+      `dependentTasksOutputFiles`, which said vx folds upstream
+      OUTPUTS into the cache key — principle 5's reverse (the cascade
+      folds each dependency's key, its inputs, never its outputs). Both
+      texts now say so; pinned on the Nx fixture's `^production`.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
