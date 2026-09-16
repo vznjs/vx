@@ -1243,7 +1243,10 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       87k-edge graph the shard's process mark was higher, so the child
       recorded no peak RSS (170) and the assertion met undefined. It
       sizes the child from the mark now, as `runner.test.ts` has since
-      192; reproduced in shard 8's exact company, fixed there.
+      192; reproduced in shard 8's exact company, fixed there. CI's
+      Linux job on the new deal: 1:33, against 2:04 on the run before
+      it. The manual gate runs its shards as `probe` now too (2,857
+      pass here), so the local gate sees the suite as CI's runner does.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1595,6 +1598,30 @@ a test to run before it is a sentence to keep (209 came from testing
 208's last line); when a fix retires a pin, the pin's claim usually
 survives in another shape (close still runs) — keep the claim, change
 the shape. Never end with "what next?".
+
+14l. **Handoff after item 214 (2026-09-16, mid-morning).** Three
+items since 14k, each found by the machinery rather than a persona:
+the prune verb was the last writer that opened the cache without
+asking (212, #379); a gate stopped mid-run left the runtime's mux
+sockets in `/tmp` and a recycled pid met `EADDRINUSE` — vx unlinks a
+dead process's sockets under its own pid before the runtime listens
+(213, #380); and the shard deal, weighed as root, had never counted
+the cases that skip as root — re-weighed as the unprivileged user, the
+deal predicts 11.2 s per shard and CI's Linux job fell 2:04 → 1:33
+(214, #381), exposing on the way one more deal-shaped pin, fixed the
+way 192 was. Refuted or left: partial artifacts (the orphan sweep
+reaps them), the runtime's own temp directories, the MCP server's
+and `vx watch`'s handling of a refusal (both right as they are), a
+doctor that prints partial facts. Open: Next 1, 2 and 16 as before,
+all gated by their own terms; In-flight 5 (macOS); the owner residue
+— the `NPM_TOKEN` secret, the release cut, the site's address. No
+open issues. The box: as 14k, plus the manual gate runs its shards
+and its unsafe set as `probe`, mounts a 2 MiB tmpfs for the disk-full
+suite, and clears stale `srt-mux-*.sock` first; `/tmp` swept of 6,537
+leaked fixtures. Methods that paid: a gate's own failure is an item
+(213); weights measured as the wrong user are a deal nobody dealt
+(214); reproduce a deal-shaped pin in the shard's exact company, not
+alone, and fix it there. Never end with "what next?".
 
 14h. **Handoff after item 197 (2026-09-16, small hours).** Five
 items since 14g: the one dependency that had moved (193), this file
