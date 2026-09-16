@@ -631,6 +631,14 @@ describe('Cache storage (v10)', () => {
       await chmod(cacheDir, 0o555)
       const later = new Cache(cacheDir)
       try {
+        // A reader's stores are quiet no-ops on it: the eval cache and the
+        // file-hash memo skip their upserts, nothing reaches SQLite.
+        expect(() => later.putConfigEval('ro-key', '{}')).not.toThrow()
+        expect(later.getConfigEval('ro-key')).toBeNull()
+        const fresh = path.join(projectDir, 'fresh.txt')
+        await mkdir(projectDir, { recursive: true })
+        await writeFile(fresh, 'fresh')
+        expect(await later.hashFile(fresh)).toMatch(/^[0-9a-f]{40}$/)
         expect(() => later.assertWritable()).toThrow(UserError)
         expect(() => later.assertWritable()).toThrow(
           /^cache directory .* is not writable \(EACCES: .*\) — every run records its history there; make it writable by this user, or pass --cache-dir <path>$/,

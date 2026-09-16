@@ -48,8 +48,12 @@ describe.skipIf(process.getuid?.() === 0)('a cache directory this user cannot wr
     await rm(ro, { recursive: true, force: true })
   })
 
-  const vx = async (args: string[]): Promise<{ code: number; out: string; err: string }> => {
-    const proc = Bun.spawn([process.execPath, BIN, ...args, '--cache-dir', ro], {
+  const vx = async (
+    args: string[],
+    cacheDir: string | null = ro,
+  ): Promise<{ code: number; out: string; err: string }> => {
+    const flags = cacheDir === null ? [] : ['--cache-dir', cacheDir]
+    const proc = Bun.spawn([process.execPath, BIN, ...args, ...flags], {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -80,6 +84,33 @@ describe.skipIf(process.getuid?.() === 0)('a cache directory this user cannot wr
       // Not the per-task shape it had: no internal error, no task ran or failed.
       expect(second.out + second.err).not.toContain('internal error')
       expect(second.out + second.err).not.toContain('app#build')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a reader evaluates live on it and stores nothing',
+    async () => {
+      // `vx show` reads the workspace's own cache (it takes no --cache-dir),
+      // so that is the directory that stops being writable here.
+      const own = path.join(root, '.vx', 'cache')
+      const first = await vx(['run', 'build', '--all'], null)
+      expect(`${first.code}\n${first.err}`).toStartWith('0\n')
+      const { chmod, readdir } = await import('node:fs/promises')
+      for (const f of await readdir(own)) await chmod(path.join(own, f), 0o444)
+      await chmod(own, 0o555)
+      try {
+        // A changed config misses the evaluation cache AND the file-hash
+        // memo, the two stores a reader would write; each is a quiet no-op.
+        const config = path.join(root, 'packages', 'app', 'vx.config.mjs')
+        await Bun.write(config, `${await Bun.file(config).text()}\n// changed\n`)
+        const shown = await vx(['show'], null)
+        expect(`${shown.code}\n${shown.err}`).toStartWith('0\n')
+        expect(shown.out).toContain('app')
+      } finally {
+        await chmod(own, 0o755)
+        for (const f of await readdir(own)) await chmod(path.join(own, f), 0o644)
+      }
     },
     TIMEOUT,
   )
