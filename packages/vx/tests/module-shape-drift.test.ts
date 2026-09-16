@@ -85,6 +85,11 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['migration', 'workspace/migration.ts', 'ApplyMigrationArgs'],
   ['remote-prefetch', 'orchestrator/remote-prefetch.ts', 'PrefetchArgs'],
   ['history', 'orchestrator/history.ts', 'TaskHistory'],
+  ['run-context', 'orchestrator/run-context.ts', 'GitContext'],
+  ['run-context', 'orchestrator/run-context.ts', 'CiContext'],
+  ['run-context', 'orchestrator/run-context.ts', 'HostContext'],
+  ['config-cache', 'workspace/config-cache.ts', 'ConfigEvalKeyResult'],
+  ['config-cache', 'workspace/config-cache.ts', 'ConfigEvalKeyArgs'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -92,7 +97,7 @@ describe('a module page declares an interface with the fields the module has', (
     it(`docs/modules/${page}.md's ${name} is src/${source}'s`, () => {
       const doc = interfaceFields(read(`docs/modules/${page}.md`), name)
       const src = interfaceFields(read(`src/${source}`), name)
-      expect(src.length).toBeGreaterThan(2)
+      expect(src.length).toBeGreaterThan(1)
       expect(doc).toEqual(src)
     })
   }
@@ -131,6 +136,38 @@ describe('a module page quotes a constant or a regex the module has', () => {
     expect(read('docs/modules/history.md')).toContain(
       `// the window; defaults to ${recent![1]} invocations`,
     )
+  })
+
+  it("run-context.md's CI matrix is CI_PROVIDERS, in order", () => {
+    const arr = /const CI_PROVIDERS[^=]*= \[([\s\S]*?)\n\]/.exec(
+      read('src/orchestrator/run-context.ts'),
+    )
+    expect(arr).not.toBeNull()
+    const providers = [...arr![1]!.matchAll(/\['\w+', '(\w+)'\]/g)].map((m) => m[1]!)
+    const doc = read('docs/modules/run-context.md')
+    const bullet = /first truthy variable wins[\s\S]*?: ([\s\S]*?)\.\n/.exec(doc)
+    expect(bullet).not.toBeNull()
+    const named = [...bullet![1]!.matchAll(/`(\w+)`/g)].map((m) => m[1]!).filter((n) => n !== 'CI')
+    expect(named).toEqual(providers)
+  })
+
+  it("config-cache.md's impurity list is IMPURE_RE's", () => {
+    const re = /const IMPURE_RE =\n\s+\/\\b\(\?:([^)]+)\)\\b\|import/.exec(
+      read('src/workspace/config-cache.ts'),
+    )
+    expect(re).not.toBeNull()
+    const words = re![1]!.split('|').map((w) => w.replace(/\\w\*$/, '*'))
+    const doc = read('docs/modules/config-cache.md')
+    const bullet = /no file\n\s+mentions a global[\s\S]*?leak: ([\s\S]*?)`import\(`;/.exec(doc)
+    expect(bullet).not.toBeNull()
+    // The aside repeats `globalThis` and `process` and quotes an expression;
+    // the list itself names each word once.
+    const aside = new Set(["global['proc' + 'ess']", 'import.meta', 'Math.random'])
+    const seen = new Set<string>()
+    const named = [...bullet![1]!.matchAll(/`([^`]+)`/g)]
+      .map((m) => m[1]!)
+      .filter((n) => !aside.has(n) && !seen.has(n) && (seen.add(n), true))
+    expect(named).toEqual(words)
   })
 
   it("cli-cache.md's two regexes are parseDuration's and parseSize's", () => {

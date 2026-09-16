@@ -8,8 +8,27 @@ exists wires a `TelemetrySource` onto the run's event bus.
 
 ## Public surface
 
-- `subscribeTelemetry(plugins, bus, ctx, runContext)` →
-  `TelemetryHandle | undefined` (`emitSummary`, `flush`, `dispose`).
+```ts
+export interface TelemetryHandle {
+  emitSummary(summary: RunSummaryRecord): void // to every sink, crash-isolated
+  flush(): Promise<void> // every sink's flush, crash-isolated, time-bounded by the sink
+  dispose(): void // remove the bus subscription; idempotent
+}
+
+export async function subscribeTelemetry(
+  plugins: readonly VxPlugin[],
+  bus: EventBus,
+  ctx: TelemetryContext,
+  run: RunContextRecord,
+  extraSinks?: readonly TelemetrySink[], // an embedder's own sinks, ahead of the plugins'
+): Promise<TelemetryHandle | undefined>
+```
+
+A plugin's `telemetry` may return one sink or an array. Each is checked
+before it is kept: an object, `wants` an array when present, and at
+least one of `onRecord` / `onRunSummary` a function — anything else is
+refused with the shape that arrived named. A plugin that throws during
+consultation is logged and skipped.
 
 ## Invariants
 

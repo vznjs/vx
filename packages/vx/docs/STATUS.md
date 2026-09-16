@@ -271,6 +271,22 @@ test is telling the truth.
       the reverse order let a `/*` inside a line comment open a
       phantom block (`ParsedFilter` read as twelve) — it now takes
       whichever opener comes first. Five fail on the old pages.
+319.  DONE (2026-09-16, the next three module pages by gap:
+      run-context, telemetry-host, config-cache). run-context.md said
+      the git context costs "ONE `git rev-parse` spawn" — it reads
+      `HEAD` from the `.git` files first (a linked worktree's
+      `gitdir:`, a symbolic or detached HEAD, loose and packed refs)
+      and spawns only on an unfamiliar layout; it named three of six
+      exports (no `captureDefaultBranch` ladder, no workspace
+      identity, no `normalizeRemoteUrl`) and two CI providers of five.
+      telemetry-host.md's signature lacked `extraSinks` and the sink
+      check (0130aec: an off-contract sink is refused with its shape
+      named). config-cache.md's impurity list lacked `constructor` and
+      `localeCompare` (b100ed3), the page had no surface block, and
+      the warm fast path never mentioned `hashFiles` (ac8cc32: every
+      indexed closure identified in one call). Fixed; the shape law
+      gains five shapes, the CI matrix and the impurity list (parsed
+      from `IMPURE_RE` itself). Seven fail on the old pages.
 
 ## In flight
 
