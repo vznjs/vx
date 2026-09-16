@@ -1066,3 +1066,205 @@ sends a ten-minute reader to, `comparison.md` § Where vx is ahead and
 `architecture.md`, read the same way — every claim against source,
 the numbers against benchmarks.md, the pins where a count or a list
 lives in prose. Never end with "what next?".
+
+## Handoffs 14z–14ad (moved 2026-09-16 with items 306–332)
+
+14z. **Handoff after item 299 (2026-09-16, evening).** Six items
+since 14y, the read-against-source series: architecture.md's nine
+stale claims and six pins, comparison.md § Where vx is ahead found
+true (294, #449); the telemetry page's version quote and the cloud's
+2.6 MB of screenshots removed (295, #449); execution.md's nine and
+two pins (296, #450); flows.md and patterns.md, the citations turned
+from `file:line` to file + phrase and pinned (297, #451); caching.md's
+schema block, five of ten tables missing, pinned to the source (298,
+#451); schema.md's `plugins` bullet, ten of thirteen hooks and
+backtick soup on the site, and history.ts's header (299, #452, open).
+Open: Next 1, 2 and 16, all gated by their own terms; In-flight 5
+(macOS); the owner residue — the `NPM_TOKEN` secret, the release cut,
+the site's address. No open issues. The loop holds eighteen items
+(282–299); the next trim moves 282–299 to history when 14z's
+successor lands. The box: as 14y; quoting broken markup inside STATUS
+breaks STATUS — an unbalanced backtick un-indents the item under the
+formatter (299, first try; describe the breakage, never paste it); a
+slash-separated list escapes a backtick grep, so a class grep names
+the words too (296 found the dispatch list 294's grep missed); the
+formatter's verdict names the file on the line above "Format issues
+found" — a chain can read it and reformat that file (299); a comment
+block above a `CREATE TABLE` stacks silently when a table is inserted
+between them (cache.ts's `output_dirs` comment sat above
+`config_closures`, 298). Methods that paid: a page is read in the
+order a reader is sent to it (the overview's "Where to start" table),
+whole, every claim against source, the numbers against
+benchmarks.md; every list in prose with a source gets a pin the same
+commit, and every pin its differential; a `file:line` citation is a
+lie in waiting — cite the phrase and pin the phrase. Next: the last
+reader pages the same way — cli.md against the help text and the
+verbs' parsers (1,900 lines; the drift pins cover the samples, not the
+flag tables), comparison.md's flag and schema maps against Turbo and
+Nx's current docs, benchmarks.md's prose against its own tables — and
+then the site's guides (running-tasks, remote-caching, sandboxing,
+plugins) against source the same way. Never end with "what next?".
+
+14aa. **Handoff after item 305 (2026-09-16, evening).** Six items
+since 14z, the read-against-source series finished: cli.md's flag
+table against the parser and `vx help` (four flags the help never
+named, 300); benchmarks.md's two contradictory 46-package tables
+(301); the site's seventeen guides in three passes (302–304: the
+run-flags table's `--force` claim, `--graph` as text in three places,
+the dev-server teardown, the env allowlist, the reapi "in time,
+executor", and one wrong call, the "64 KB retry" that does exist,
+corrected in 311); and the
+introduction, migration and concept pages (305: a botched splice on
+the front page, `admit` missing from the table, `nx affected` still
+mapped to the changed-only filter). 300–301 went in #452, 302 in
+#453, 303 in #454, 304 in #455, 305 in #456 (open). Open: Next 1, 2
+and 16, all gated by their own terms; In-flight 5 (macOS); the owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's
+address. No open issues. The loop holds twenty-four items (282–305);
+the next trim moves 282–305 to history. The box: as 14z, and the
+same lesson three times in one evening — an entry that quotes broken
+markup, or lets a code span wrap onto a continuation line, breaks
+STATUS under the formatter, and a chain that prints the scan's
+verdict instead of gating on it commits the breakage (299, 304, 305:
+describe the breakage in words, gate every chain on `rc`); oxlint
+refuses a path with `..` — lint a sibling package's file from that
+package's directory (305); a `--dry` sample that already matched
+still earned its pin, and rendering it found the formatter's own
+docblock wrong (302) — render the sample even when it looks right.
+Methods that paid: the series' yield held to the last page (fifty-odd
+stale claims over eleven items, a pin behind every list), and the
+cheapest probe of a page is its own build output (`dist/`) or its
+own formatter (`formatPlanText`, `renderJobSummary`), never a
+re-read. Next: the trim (282–305 to history, the record paragraph
+and the pointers); then Next 6's re-measure is due only when warm-
+path code moves (none did this evening); then the design/ pages are
+dated records and stay, but `docs/modules/*.md`'s "Public surface"
+blocks are the one doc class this series never read against source
+— a pin that each block's exported names exist in the module is the
+same law as the inventory pins, forty pages wide. Never end with
+"what next?".
+
+14ab. **Handoff after item 312 (2026-09-16, evening).** Seven items
+since 14aa: the trim (306: 282–305 and 14w–14y to history, STATUS
+from 800-odd lines to 472); the module pages' "Public surface"
+blocks as a law (307: four stale of 247 names, the pin maps each
+page to its files through the index); comparison.md's flag map,
+gap audit and running list (308–309: the retired
+`--excludeDependencies`, `prune` and `migrate` still "in core", five
+of thirteen hooks named); optimizations.md's citations (310: every
+one module-qualified now, a bare basename refused); the one
+correction of a correction (311: 304 struck the remote-execution
+guide's upload retry as a Bun 1.3 leftover and it is live code — a
+grep for `retry` that missed `retries`); and the three site pages the
+series had never read (312: a hit glyph no source prints, `--graph`
+"text or DOT", a divergence #446 had closed). 306–310 went in #456,
+311 in #457, both merged; 312 is #458 (open). Open: Next 1, 2 and 16,
+gated by their own terms; In-flight 5 (macOS); the owner residue —
+the `NPM_TOKEN` secret, the release cut, the site's address. No open
+issues. The loop holds 306–312. The box: a negative grep is a claim
+about every spelling of the word (311; CLAUDE.md has the rule); an
+edit script that fails to parse writes nothing, and the chain after
+it read a clean tree as "differential fails: 0" — the script's exit
+and the stash's "No stash entries found" were both in the output,
+read the whole output before the verdict line (311); the repo root
+is outside `lint.oxfmt`'s scan, so a wrapped code span in CLAUDE.md
+sat unflagged until a root scan (311); a rendered sample is only
+half the method — grep the source for the glyph a page shows, and a
+glyph that appears in no source file is the finding (312). Methods
+that paid: re-reading a correction against the source it corrected;
+merging a green PR by API while the local gate runs on the next item
+(the queue stays one deep at no cost); `git log -1` on a module page
+against its source lists the pages whose module moved after the page
+was last touched — the probe for the next item. Next: those module
+pages, prose against source, starting where the gap is widest
+(plan-format, run-report, events, cli-cache, inputs, scheduler,
+prepare, summary, cli-help); then Next 6's re-measure only when
+warm-path code moves (none did today); the blog posts are dated
+records and stay. Never end with "what next?".
+
+14ac. **Handoff after item 319 (2026-09-16, evening).** Seven items
+since 14ab, one method: `git log -1` on each module page against its
+source lists the pages whose module moved after the page, and 313–319
+read them three at a time, widest gap first — plan-format, run-report,
+events; cli-cache, inputs, scheduler; task-hash, prepare, metrics;
+cli-help, summary, cli-run; filter, env, deferred-outputs; migration,
+remote-prefetch, history; run-context, telemetry-host, config-cache.
+Twenty-one pages, forty-odd stale claims (a fallback file walker and
+an `ignore` library that no longer exist, a hard-coded cache dir the
+verb resolves, a `TaskOutcome` block with half its fields, samples no
+formatter prints, a spawn the code avoids), and the law that came out
+of it: `tests/module-shape-drift.test.ts` holds a page's interface
+blocks to the source's top-level fields (twenty-six shapes), and a
+quoted constant or regex to the source (the always-ignored globs, the
+env allowlist, both size parsers, the CI matrix, the impurity list
+parsed from `IMPURE_RE` itself, the history window). 313 went in
+#459, 314 #460, 315 #461, 316 #462, 317 #463, all merged; 318 is #464
+(open) and 319 stacks on it. Open: Next 1, 2 and 16, gated by their
+own terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN`
+secret, the release cut, the site's address. No open issues. The loop
+holds 306–319. The box: the shape law's own parser was wrong twice in
+one item (318: `//` stripped before `/*` ate a docblock's close, the
+reverse let a `/*` inside a line comment open a phantom block — take
+whichever opener comes first), and a two-field interface tripped its
+"more than two" guard (319) — a law's own helpers earn the same
+differential as the claims; an edit script whose assertion fails
+mid-way has already written every earlier substitution (319: the
+remainder went in a second script — the first script cannot re-run,
+its early asserts now fail on their own work); a read started beside
+`git checkout -B` saw a missing file (318: run reads after the restart
+returns, never in the same turn); the formatter un-indented a code
+span wrapped across a numbered list's continuation line (318,
+remote-prefetch) — the STATUS rule holds for every page. Methods that
+paid: the gap probe as a queue (seven items with no search); render
+the sample even when it matches (316: the footer matched, and is
+pinned); a page with no surface block is the cheapest find of all.
+Next: the gap list's tail — placement, hit-restore, miss-save,
+options, lockfile, plugin-commands, admission, sandbox-request,
+git-inputs, upgrade, cli-watch, util-errors, logger (one to four
+commits each); then the pages the probe cannot see — a page written
+stale under a module that has not moved since stays stale, so the
+remaining forty by oldest page first; then Next 6's re-measure only
+when warm-path code moves (none did today). Never end with "what
+next?".
+
+14ad. **Handoff after item 326 (2026-09-16, night).** Seven items
+since 14ac. The gap probe's queue ran out at 323 (320–323: placement,
+hit-restore, miss-save; options, lockfile, plugin-commands; admission,
+sandbox-request, git-inputs; upgrade, cli-watch, util-errors, logger)
+and the oldest-page queue began (324–326: cli-format, colors,
+dependency-spec; download-policy, local-shortcircuit, nested-dirs;
+plan, tally, upstream). Twenty-two more pages; the finds of the day:
+a persistent task the page said is pinned local and the code does not
+place at all, a `RunOptions` block naming twelve fields of
+twenty-nine, a planner the page said bumps `accessed_at` with a
+`cache.get` it does not call, a status line described as one line
+where the code renders a region, a "single `git rev-parse` spawn" the
+code avoids, a fallback walker that no longer exists, an O(n²) walk
+replaced by a sort. `tests/module-shape-drift.test.ts` holds seventy
+shapes, six constants and regexes, three rendered samples and one
+parser's error set. 320 went in #466, 321 #467, 322 #468, 323 #469,
+324 #470, all merged; 325 is #471 (open) and 326 stacks on it. Open:
+Next 1, 2 and 16, gated by their own terms; In-flight 5 (macOS); the
+owner residue — the `NPM_TOKEN` secret, the release cut, the site's
+address. No open issues. The loop holds 306–326; the next trim moves
+306–326 to history. The box: an item whose pins are all controls
+(324) is still an item — the finds were prose under a module that has
+not moved, and a page written stale stays stale, which is why the
+oldest-page queue exists; the shape law's parser needed a `readonly`
+prefix (322) and a one-field guard (321) — the same lesson as 14ac's,
+a law's helpers earn the differential; the module page repeated a
+false claim the site had already been corrected on (326: `--dry`'s
+`accessed_at` bump, pinned right on the site in 302 and wrong on
+plan.md until now) — a corrected claim is a grep across every page.
+Methods that paid: three pages per item with the shape law absorbing
+each page's interfaces, so a read costs its prose and nothing else;
+`git log -1 --format=%cs` per page as the second queue. Next: the
+oldest-page queue continues — util-hash, util-ulid, version (09-05);
+bin, chained-cache, config, fingerprint, lockfile-claim,
+task-log-buffer, util-edit-distance, util-num, util-paths,
+util-settle, util-tail (09-10); package-graph, projects, timing
+(09-11); config-schema, index, plugin, plugin-host, plugins,
+util-cgroup (09-12) — then the 09-16 pages the day's own items wrote
+are current by construction; then the trim; then Next 6's re-measure
+only when warm-path code moves (none did today). Never end with "what
+next?".
