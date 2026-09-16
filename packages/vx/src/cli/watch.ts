@@ -134,6 +134,35 @@ export function outputContainer(raw: string): string {
  */
 export const WATCH_PROBE = '.vx-watch-probe'
 
+/**
+ * The subset of `paths` git ignores, asked once per judgement (one
+ * `git check-ignore` per debounce window that has candidates, never per
+ * event). A git-ignored path is invisible to every cache key — inputs
+ * are tracked + untracked-not-ignored — so a cycle it starts can change
+ * nothing, and a task that writes one on every run (a pid file, a
+ * timestamped log, `.next/trace`) made the loop re-run itself forever
+ * (2026-09-16: 29 cycles in 8 s from one edit). A TRACKED file that
+ * matches a pattern is not reported, by git's own rule, so it stays an
+ * edit. Outside a repository (exit 128) nothing is ignored, as before.
+ */
+export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> {
+  const ignored = new Set<string>()
+  if (paths.length === 0) return ignored
+  const proc = Bun.spawnSync({
+    cmd: ['git', 'check-ignore', '-z', '--stdin'],
+    cwd: workspaceRoot,
+    stdin: Buffer.from(paths.map((p) => `${p}\0`).join('')),
+    stdout: 'pipe',
+    stderr: 'ignore',
+  })
+  // 0: some ignored; 1: none. Anything else is git refusing (not a
+  // repository, a path inside a nested one): no path is ignored.
+  if (proc.exitCode !== 0) return ignored
+  for (const p of new TextDecoder().decode(proc.stdout).split('\0'))
+    if (p.length > 0) ignored.add(p)
+  return ignored
+}
+
 /** How long a watcher gets to report its own probe before the loop goes on without proof. */
 const WATCH_PROBE_TIMEOUT_MS = 2_000
 /** The file `fsClockNow` writes and removes, under the cache dir the watchers ignore. */
@@ -695,12 +724,53 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // are judged one window after the run ends, all together — an edit made
   // meanwhile still differs from what the loop last saw and re-runs.
   const pendingPaths = new Map<string, string>()
+  // A path that starts cycle after cycle from the run's own writes is a
+  // task rewriting a file with different bytes every run (a pid file, a
+  // timestamped log): the state gate cannot settle it, and nothing here
+  // can tell the third such write from a user's third save mid-run — so
+  // watch names it once, with the remedy, and keeps going. "The run's
+  // own write" is read off the path itself: its mtime falls inside the
+  // previous cycle's window. Not off which judgement started the cycle:
+  // macOS delivers a run's writes late, after the loop's own post-run
+  // judgement found nothing and broke out, so there every such cycle
+  // starts from the idle timer (CI, 2026-09-16: the storm ran, the
+  // notice never came).
+  const streak = { abs: '', n: 0 }
+  const noticed = new Set<string>()
+  let lastCycle: { start: number; end: number } | undefined
+  const writtenDuringLastCycle = (abs: string): boolean => {
+    if (lastCycle === undefined) return false
+    try {
+      const m = fs.statSync(abs).mtimeMs
+      return m >= lastCycle.start && m <= lastCycle.end
+    } catch {
+      return false
+    }
+  }
   const judge = (): string | undefined => {
+    const ignored = gitIgnored(workspaceRoot, [...pendingPaths.keys()])
     let first: string | undefined
+    let firstAbs: string | undefined
     for (const [p, l] of pendingPaths) {
-      if (!sameState(p)) first ??= l
+      if (ignored.has(p)) continue
+      if (!sameState(p) && first === undefined) {
+        first = l
+        firstAbs = p
+      }
     }
     pendingPaths.clear()
+    if (firstAbs === undefined || !writtenDuringLastCycle(firstAbs)) {
+      streak.n = 0
+      return first
+    }
+    streak.n = streak.abs === firstAbs ? streak.n + 1 : 1
+    streak.abs = firstAbs
+    if (streak.n >= 3 && !noticed.has(firstAbs)) {
+      noticed.add(firstAbs)
+      process.stdout.write(
+        `vx watch: ${first} has started 3 cycles in a row, written by the cycle before each — a task rewrites it every run. Declare it in cache.outputs (an output never starts a cycle) or add it to .gitignore (a git-ignored path never does); until then every run re-runs.\n`,
+      )
+    }
     return first
   }
   const trigger = (label: string, abs: string): void => {
@@ -727,7 +797,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       while (label !== undefined && !stop.aborted) {
         process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
         try {
+          const start = Date.now()
           await runOrchestrator(opts)
+          lastCycle = { start, end: Date.now() }
           if (membersChanged && !stop.aborted) {
             membersChanged = false
             await rearm()

@@ -16,7 +16,7 @@ const SLOW = `
   export default {
     tasks: {
       build: {
-        exec: { command: 'sleep 1.5 && mkdir -p dist && echo hi > dist/out.txt' },
+        exec: { command: 'touch started && sleep 1.5 && mkdir -p dist && echo hi > dist/out.txt' },
         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
       },
     },
@@ -68,7 +68,16 @@ describe('two runs on one workspace', () => {
       git('add', '-A')
       git('commit', '-q', '-m', 'init')
       const first = vx(root, ['run', 'build', '--all'])
-      await new Promise((r) => setTimeout(r, 300))
+      // The second starts once the first's task is RUNNING — a marker the
+      // task writes, never a head start: 300 ms was not enough for the
+      // first run to reach the lock on a loaded CI runner, so the second
+      // took it and the two swapped roles (the Linux job on #403).
+      const started = path.join(root, 'packages', 'app', 'started')
+      const deadline = Date.now() + 10_000
+      while (!existsSync(started)) {
+        if (Date.now() > deadline) throw new Error('the first run never started its task')
+        await new Promise((r) => setTimeout(r, 20))
+      }
       const second = vx(root, ['run', 'build', '--all'])
       const [a, b] = await Promise.all([first, second])
       expect(`${a.code}\n${a.err}`).toStartWith('0\n')

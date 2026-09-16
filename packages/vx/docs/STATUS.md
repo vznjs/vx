@@ -709,6 +709,32 @@ of a task's output for its cache entry and replay`). The
       `env` to both; alternating a keyed value restores the right bytes
       each time.
 
+237.  DONE (2026-09-16, a persona: `vx watch` over a dev server that
+      writes a pid file): the server appended its pid to a file in its
+      own project on every start, and the loop re-ran itself 29 times
+      in 8 seconds from one edit — the state gate settles a write that
+      leaves the same bytes, and a file that differs every run is the
+      one shape it cannot. Two changes. A git-ignored path never starts
+      a cycle now (`gitIgnored`: one `git check-ignore --stdin` per
+      judgement, never per event; a tracked file matching a pattern is
+      not ignored, by git's rule; outside a repository nothing is) —
+      no cache key can see such a path, so a cycle it started could
+      change nothing, and the real-world shapes (`.next/trace`, a log,
+      a pid file) are gitignored. A path that is neither ignored nor
+      declared still re-runs — the third mid-run write of one path
+      cannot be told from a user's third save mid-run — and after three
+      such cycles in a row watch names the path and the remedy, once,
+      and keeps going. Pinned in `watch-loop-selfwrite.test.ts` (the
+      ignored file: one execution per edit, then quiet; the free one:
+      the storm, the label, the notice exactly once); the first case
+      climbs past 2 within the settle window on the old source. Noted:
+      under the storm the server's own background worker recorded only
+      its first start — unexplained, and gone with the storm. The same
+      PR's Linux job tripped the run-lock e2e (216): its 300 ms head
+      start was not enough for the first run to reach the lock on a
+      loaded runner, so the second took it and the two swapped roles —
+      a marker the task writes replaces the sleep.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items

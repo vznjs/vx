@@ -969,7 +969,12 @@ run...` precedes it.
    judged together one debounce window after it ends, an edit made
    meanwhile included. A task that writes into its own project,
    `rm -rf dist && tsc` included, costs one extra cycle instead of
-   re-running forever. When any project's config declares
+   re-running forever — when the bytes it leaves are the same. A file
+   it rewrites with DIFFERENT bytes every run (a pid file, a
+   timestamped log) is either git-ignored — a git-ignored path never
+   starts a cycle, since no cache key can see it — or declared an
+   output, or the loop re-runs on it; after three such cycles in a row
+   watch names the path and the remedy, once, and keeps going. When any project's config declares
    `cache.inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so a root-relative glob can name a file anywhere). That watcher
@@ -999,6 +1004,11 @@ run...` precedes it.
 Always ignored (no re-trigger):
 
 - `node_modules/`, `.git/`, `.vx/` anywhere in the path.
+- A path git ignores (`git check-ignore`, asked once per debounce
+  window, never per event): invisible to every cache key — inputs are
+  tracked + untracked-not-ignored — so a cycle it started could change
+  nothing. A tracked file that matches a pattern is not ignored, by
+  git's own rule; outside a repository nothing is.
 - Files ending in `.tsbuildinfo` or `~` (editor swap files).
 - The run's **resolved cache directory**, wherever it is. `.vx/` covers the
   default, but `defineWorkspace({ cacheDir })` and `--cache-dir` can put it

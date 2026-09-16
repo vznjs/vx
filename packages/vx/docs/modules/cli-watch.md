@@ -161,6 +161,17 @@ non-persistent tasks where each cycle should re-run cleanly.
 
 ## What this does NOT do
 
+- Start a cycle on a path git ignores: `gitIgnored` asks
+  `git check-ignore --stdin` once per judgement (never per event), and a
+  path no cache key can see starts nothing — the pid file or log a dev
+  server rewrites on every start made the loop re-run itself forever
+  (item 237). A tracked file matching a pattern is not ignored, by git's
+  rule; outside a repository nothing is.
+- Settle a file the task rewrites with DIFFERENT bytes every run when
+  it is neither ignored nor declared: the loop re-runs on it, and after
+  three cycles in a row started by the same path after a run, watch
+  names it and the remedy once (`watch-loop-selfwrite.test.ts`).
+
 - Doesn't accept the interactive picker — task name is required.
 - Doesn't filter events through declared input globs.
 - Doesn't dedupe events by project — every file change triggers a
