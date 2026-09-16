@@ -480,7 +480,7 @@ describe('the evaluation deadline', () => {
   // user reaches for to disable the deadline are the two that break every
   // repeat config load:
   //   * `0` is "fire on the next tick", not "no deadline" — while elsewhere in
-  //     this project 0 does mean never (`vx-cloud agent --idle-timeout 0`);
+  //     this project a zero disables (the status line's floor);
   //   * `999999999999` overflows setTimeout's 32-bit delay, which Bun clamps to
   //     1ms (printing a TimeoutOverflowWarning), and then reports the failure
   //     as "did not answer within 999999999999ms" — a message that cannot be
@@ -490,7 +490,7 @@ describe('the evaluation deadline', () => {
     // STILL A DEFECT, and deliberately left as one: `0` is a SEPARATE mechanism
     // from the 32-bit ceiling below, and its repair is a real design question
     // rather than a clamp. Treating `0` as "no deadline" would match this
-    // project's other zero (`vx-cloud agent --idle-timeout 0` = never) \u2014 but it
+    // project's other zero (the status line's floor: 0 disables) \u2014 but it
     // would also let a wedged worker hang `vx watch` forever, which is the
     // exact failure this deadline was added to prevent. That tension needs
     // settling before the behaviour moves; pinned meanwhile so it cannot drift.
