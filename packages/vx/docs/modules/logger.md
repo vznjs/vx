@@ -58,7 +58,8 @@ export function defaultLogger(
   stdout. With `gha`, non-failed blocks are wrapped in
   `::group::<id> (<outcome word> <duration>)` … `::endgroup::`;
   failed blocks stay ungrouped and are preceded by
-  `::error title=<id>::failed (exit N)`.
+  `::error title=<id>::failed (exit N)` (`failedLabel`: above 128 the
+  signal is named, `failed (exit 137, 128 + SIGKILL)`).
 - **`focused`** — requested non-group nodes stream stdout/stderr raw
   and live (cache-hit replay included); a quiet hit prints the hit
   one-liner; a skipped requested task is framed. Dependency-pulled

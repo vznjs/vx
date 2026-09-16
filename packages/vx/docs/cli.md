@@ -528,7 +528,8 @@ On GitHub Actions (`GITHUB_ACTIONS` truthy, full output mode), each
 task's block is wrapped in `::group::<id> (<outcome> <duration>)` /
 `::endgroup::` so it collapses in the log viewer. Failed tasks stay
 pre-expanded and emit an `::error title=<id>::failed (exit N)`
-annotation instead.
+annotation instead (above 128 the label names the signal:
+`failed (exit 137, 128 + SIGKILL)`, as every surface labels a failure).
 
 ### `--output-logs <mode>`
 
@@ -822,7 +823,9 @@ totals plus a table, one row per task:
 | api#test  | success | up-to-date | 3ms      |
 ```
 
-`Status` is the task outcome (`success` / `failed (exit N)` / `skipped`);
+`Status` is the task outcome (`success` / `failed (exit N)`, with the
+signal an exit above 128 stands for, `failed (exit 137, 128 + SIGKILL)` /
+`skipped`);
 `Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
 block, which never consulted it / `local` / `remote` / `up-to-date` /
 `—`). Aborted tasks (a Ctrl-C teardown) are excluded from the totals but

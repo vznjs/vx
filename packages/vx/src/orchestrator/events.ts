@@ -6,6 +6,7 @@
 // additional subscribers later, so a slow/wedged renderer can never
 // stall task exec. See docs/design/event-stream-2026-06.md.
 
+import { exitSignal } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { isGroupTask } from '../graph/index.js'
 import type { Logger } from './logger.js'
@@ -261,7 +262,17 @@ export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string
 
 /** `outcomeWord` with the exit code a failure carries: `failed (exit 9)`. */
 export function outcomeLabel(o: Pick<OutcomeView, 'status' | 'restored' | 'exitCode'>): string {
-  return o.status === 'failed' ? `failed (exit ${o.exitCode})` : outcomeWord(o)
+  return o.status === 'failed' ? failedLabel(o.exitCode) : outcomeWord(o)
+}
+
+/**
+ * A failure's label, one copy for every surface (the frame's footer, the
+ * status line, the run report, the Actions annotation): the exit code, and
+ * above 128 the signal it stands for — `failed (exit 137, 128 + SIGKILL)`.
+ */
+export function failedLabel(exitCode: number): string {
+  const signal = exitSignal(exitCode)
+  return `failed (exit ${exitCode}${signal === undefined ? '' : `, 128 + ${signal}`})`
 }
 
 export function projectNode(node: TaskNode): TaskView {

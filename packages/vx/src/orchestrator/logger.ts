@@ -20,7 +20,7 @@ import { formatDuration, formatSummarySection, type RunContext } from './summary
 import { isGroupTask } from '../graph/index.js'
 import { appendTail, createTail, resetTail, tailText, type Tail } from '../util/index.js'
 import { isCacheHit } from './telemetry.js'
-import { outcomeWord } from './events.js'
+import { failedLabel, outcomeWord } from './events.js'
 
 export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
@@ -676,10 +676,10 @@ export function defaultLogger(
             // Failed tasks stay pre-expanded in the Actions viewer:
             // an ::error annotation instead of a collapsed group.
             if (outcome.status === 'failed') {
-              // The message is ours (a literal + an integer); only the title
-              // carries user input.
+              // The message is ours (a literal, an integer and a signal
+              // name); only the title carries user input.
               emitBlock(
-                `::error title=${ghaProperty(node.id)}::failed (exit ${outcome.exitCode})\n${body}`,
+                `::error title=${ghaProperty(node.id)}::${failedLabel(outcome.exitCode)}\n${body}`,
               )
             } else {
               emitBlock(

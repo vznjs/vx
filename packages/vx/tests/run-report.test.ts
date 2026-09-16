@@ -232,7 +232,10 @@ describe('per-row status and cache words', () => {
     // The actionable detail. A row saying only "failed" sends the reader to
     // the full log to learn what a single integer would have told them.
     const md = report([view({ taskId: 'a#test', status: 'failed', exitCode: 137 })])
-    expect(rows(md)[0]).toContain('failed (exit 137)')
+    expect(rows(md)[0]).toContain('failed (exit 137, 128 + SIGKILL)')
+    // A plain exit has no signal part.
+    const plain = report([view({ taskId: 'a#test', status: 'failed', exitCode: 3 })])
+    expect(rows(plain)[0]).toContain('| failed (exit 3) |')
   })
 
   it('marks an executed task as a cache miss', () => {
