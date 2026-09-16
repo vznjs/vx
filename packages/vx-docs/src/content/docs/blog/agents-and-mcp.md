@@ -42,6 +42,7 @@ does.
 | `getRunHistory`   | What have I been running and how fast? Recent runs with per-task p50, p99, success rate, hit rate.       |
 | `explainCacheKey` | What is the cache identity of `pkg#build`? The latest entry's hash, command, exit code, duration, size.   |
 | `whyDidThisRerun` | Why did `pkg#test` re-execute instead of hitting? The run's key against the previous run's.               |
+| `getWorkspaceInfo` | What is this workspace? Versions and state, the plugins declared, the flaky tasks, whether `vx-lock.json` exists — the facts a bug report needs. |
 
 The history tools read the same local `cache.db` tables that `vx why`,
 `vx last` and `vx info` read. `getRunHistory` calls a task flaky only
@@ -57,7 +58,7 @@ attack surface beyond the process the agent already spawned.
 
 MCP over stdio is newline-delimited JSON-RPC 2.0 and three methods:
 `initialize`, `tools/list`, `tools/call`. The plugin speaks it natively
-in about a hundred lines with no dependencies; the reference SDK pulls
+in a hundred and fifty lines with no dependencies; the reference SDK pulls
 in an HTTP stack this transport never uses. A tool's own refusal ("a
 task id must be `project#task`") comes back as an `isError` result the
 agent can read and correct, not as a protocol error that ends the
