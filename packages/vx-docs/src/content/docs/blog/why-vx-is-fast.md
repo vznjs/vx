@@ -15,8 +15,8 @@ the runner adds on top of your tasks. On a synthetic workspace of
 finishes the cold build in 3m 46s, eight seconds over the schedule.
 Turborepo finishes in 5m 13s (a minute and a half over) and Nx in
 34m 44s (half an hour over).
-Warm, a fully cached `vx run build test --all` finishes in about
-510 ms, Turborepo in 760 ms and Nx in 3.59 s; the cold build burns
+Warm, a fully cached `vx run build test --all` finishes in 510ms,
+Turborepo in 760ms and Nx in 3.59s; the cold build burns
 35 s of CPU in vx, 73 s in Turborepo and 114 minutes in Nx. On a real
 Turbo repository (solidjs/solid) the warm restore is 66 ms against
 Turbo's 127 ms.
@@ -45,8 +45,9 @@ index](../keys-from-git/).
 
 Scheduling priority and the package graph are computed over packed
 bitsets with popcount instead of set-union depth-first search. On the
-3,270-task graph that turned an 8.5 s priority computation into roughly
-50 ms. The scheduler tick itself is O(N+E): ready tasks come off an
+3,270-task graph that turned an 8.5 s priority computation into
+single-digit milliseconds. The scheduler tick itself is O(N+E): ready
+tasks come off an
 exact most-blocked-first queue, and nothing re-scans the graph per
 completion.
 
