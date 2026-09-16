@@ -1,4 +1,4 @@
-import { isUserError } from '../util/index.js'
+import { PERMISSION_HINT, isPermissionError, isUserError } from '../util/index.js'
 import type { TaskNode } from './task-graph.js'
 
 export type TaskStatus =
@@ -664,6 +664,8 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             // plainly, never as an "internal error".
             if (isUserError(err)) {
               process.stderr.write(`[vx] ${id}: ${message}\n`)
+            } else if (isPermissionError(err)) {
+              process.stderr.write(`[vx] ${id}: ${message} — ${PERMISSION_HINT}\n`)
             } else {
               const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''
               process.stderr.write(`[vx] internal error in ${id}: ${named}${message}\n`)

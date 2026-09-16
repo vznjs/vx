@@ -340,7 +340,17 @@ export class Cache implements CacheLayer {
     // won't create parent dirs for us. The constructor stays sync
     // because callers use `new Cache(...)` directly; `mkdirSync` keeps
     // that property without a subprocess fork.
-    mkdirSync(cacheDir, { recursive: true })
+    try {
+      mkdirSync(cacheDir, { recursive: true })
+    } catch (err) {
+      // A read-only checkout with no cache yet: every verb opens the cache,
+      // so this is the first thing any of them says there.
+      const message = err instanceof Error ? err.message : String(err)
+      throw new UserError(
+        `cannot create cache directory ${cacheDir} (${message}) — vx keeps its cache there; make ` +
+          `the workspace writable, set \`cacheDir\` in vx.workspace.ts, or pass --cache-dir <path>`,
+      )
+    }
     // A directory this user cannot write into is a read-only cache for
     // every reader (`vx show`, `why`, `last`, the doctor, the watch sweep):
     // the write axis goes off, so the config-evaluation store and the
