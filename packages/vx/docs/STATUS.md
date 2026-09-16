@@ -729,7 +729,11 @@ of a task's output for its cache entry and replay`). The
       the storm, the label, the notice exactly once); the first case
       climbs past 2 within the settle window on the old source. Noted:
       under the storm the server's own background worker recorded only
-      its first start — unexplained, and gone with the storm.
+      its first start — unexplained, and gone with the storm. The same
+      PR's Linux job tripped the run-lock e2e (216): its 300 ms head
+      start was not enough for the first run to reach the lock on a
+      loaded runner, so the second took it and the two swapped roles —
+      a marker the task writes replaces the sleep.
 
 ## In flight
 
