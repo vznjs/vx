@@ -756,6 +756,11 @@ of a task's output for its cache entry and replay`). The
       roots (224) threw `EPERM` on a root-owned root the shards, run as
       the unprivileged user, could not remove — every plugin test fell
       with it; the sweep skips what is not its to remove.
+      And the macOS job: the new fixture's unresolvable import, in a
+      workspace with no `node_modules`, made Bun auto-install — sixteen
+      registry connections before "cannot find", a sandbox violation
+      there — so the fixture has a `node_modules` like any real
+      workspace, and the product gap is Next 21.
 
 ## In flight
 
@@ -1181,6 +1186,19 @@ needs forwarding the moment you use it. Never end with "what next?".
     the same bounded text once, and measure RSS per chatty task before
     and after. Not started; the number that decides is a real
     workspace whose logs pass ~50 MB per task.
+
+21. **A config's bare import that no `node_modules` can serve reaches
+    the npm registry before it fails.** Bun auto-installs a package a
+    module cannot resolve when no `node_modules` exists above it —
+    measured 2026-09-16: sixteen connections to the registry and 150 ms
+    before "cannot find", and a sandbox violation on the macOS job; with
+    a `node_modules` present, 0 connections and 1 ms; `bun --no-install`
+    stops it too. A fresh clone before its install, or a typo in an
+    import, should be refused by vx before evaluation: `config-imports`
+    already lists a config's specifiers, so a bare one with no
+    `node_modules/<name>` above the config is a `UserError` naming the
+    install, never an import. Not started; the pin is a config importing
+    a name no `node_modules` serves, evaluated with no network.
 
 ## Decisions (this arc)
 

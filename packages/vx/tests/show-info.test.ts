@@ -546,6 +546,11 @@ describe('vx info — a config that will not load counts as zero, for every numb
       // opens with `Project config <abs>:` — the row named the file twice.
       const badimport = path.join(root, 'packages', 'badimport')
       await mkdir(badimport, { recursive: true })
+      // A real workspace has a node_modules. Without one anywhere above the
+      // config, Bun auto-installs a bare import it cannot resolve — sixteen
+      // connections to the registry before "cannot find" — which the macOS
+      // sandbox reports as a violation and fails the shard (Next 21).
+      await mkdir(path.join(root, 'node_modules'), { recursive: true })
       await writeFile(path.join(badimport, 'package.json'), JSON.stringify({ name: 'badimport' }))
       await writeFile(
         path.join(badimport, 'vx.config.mjs'),
