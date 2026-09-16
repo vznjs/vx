@@ -604,7 +604,8 @@ The run must be able to write here — it records its history at the
 end of every run, hit or miss — so a directory this user cannot write
 into (another user's `.vx`, a read-only checkout) fails the run before
 any task: `cache directory <path> is not writable (EACCES: …)`, with
-`--cache-dir <path>` as the way out. The readers (`vx show`, `why`,
+`--cache-dir <path>` as the way out. `vx cache prune` is refused the
+same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
 `last`, `info`) open such a directory read-only and go on: a config
 that misses the evaluation cache is evaluated live and not stored.
 Where the directory cannot be created at all (a read-only checkout with

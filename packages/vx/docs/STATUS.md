@@ -1185,6 +1185,17 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       prove `close()` still ran and expected the run to reject; it
       asserts the status line now, the close still. `docs/caching.md`
       and `docs/cli.md` say it.
+212.  DONE (2026-09-16, the grid's last cell, as `probe`): the prune
+      verb against a root-owned cache died in its first DELETE with
+      SQLite's "attempt to write a readonly database" and a stack — the
+      one writer verb left that opened the cache without asking. It
+      asks now (`assertWritable()`, 208's check) unless `--dry-run`,
+      which only reads and reads a read-only cache fine. Pinned in
+      `cache-dir-selection.test.ts` (exit 1, the line, no frame; the
+      dry run exits 0), skipped as root and proven both ways as
+      `probe`. The other openers outside a run — the MCP tools, the
+      schedule-history plugin, `why`, `last` — read, and 209 opens a
+      read-only cache for them. `docs/caching.md` says it.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

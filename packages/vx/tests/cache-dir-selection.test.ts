@@ -116,6 +116,24 @@ describe.skipIf(process.getuid?.() === 0)('a cache directory this user cannot wr
   )
 
   it(
+    'a prune is refused up front with the directory named; a dry run still reads',
+    async () => {
+      const first = await vx(['run', 'build', '--all'])
+      expect(`${first.code}\n${first.err}`).toStartWith('0\n')
+      const { chmod, readdir } = await import('node:fs/promises')
+      for (const f of await readdir(ro)) await chmod(path.join(ro, f), 0o444)
+      await chmod(ro, 0o555)
+      const pruned = await vx(['cache', 'prune', '--max-size', '1K'])
+      expect(pruned.code).toBe(1)
+      expect(pruned.err).toMatch(/^vx: cache directory .* is not writable \(EACCES: /)
+      expect(pruned.err).not.toContain('\n    at ')
+      const dry = await vx(['cache', 'prune', '--max-size', '1K', '--dry-run'])
+      expect(`${dry.code}\n${dry.err}`).toStartWith('0\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a read-only checkout with no cache yet says so in one line, and so does a verb writing the tree',
     async () => {
       // The workspace root alone stops being writable: the cache directory
