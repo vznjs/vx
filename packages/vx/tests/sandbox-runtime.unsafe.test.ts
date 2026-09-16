@@ -134,6 +134,57 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
+  // A dev server's literal write grant meets the trap of a one-shot task's
+  // (2026-09-16): the grant is pre-created as a FILE, its own `mkdir` says
+  // "File exists", and the file used to outlive the run. The persistent
+  // path sweeps the placeholder when the server exits and names the `dir/`
+  // spelling when readiness fails.
+  const cacheDirServer = (grant: string): string => `
+    export default {
+      tasks: {
+        dev: {
+          exec: {
+            command: 'mkdir -p .cache && echo x > .cache/x && echo Listening && sleep 30',
+            persistent: { readyWhen: 'Listening' },
+            timeout: 5000,
+            sandbox: { allow: { read: ['.'], write: ['${grant}'] } },
+          },
+        },
+      },
+    }
+  `
+
+  it(
+    'a persistent task whose literal write grant meant a directory: the failure says `.cache/`, nothing is left behind',
+    async () => {
+      const projDir = await addProject(fixture.root, 'srv', {
+        files: {},
+        config: cacheDirServer('.cache'),
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['dev'], log: collectingLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('failed')
+      const out = fixture.log.join('\n')
+      expect(out).toContain('write grant `.cache` named nothing on disk')
+      expect(out).toContain('spell the grant `.cache/`')
+      expect(existsSync(path.join(projDir, '.cache'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a persistent task with a `.cache/` write grant makes its directory and becomes ready',
+    async () => {
+      const projDir = await addProject(fixture.root, 'srv', {
+        files: {},
+        config: cacheDirServer('.cache/'),
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['dev'], log: collectingLogger(fixture) })
+      expect(r.outcomes[0]?.status).toBe('success')
+      expect(existsSync(path.join(projDir, '.cache'))).toBe(true)
+    },
+    TIMEOUT,
+  )
+
   // ─── Arming is lazy ─────────────────────────────────────────────
 
   // The runtime starts on the first task that executes inside a sandbox,
