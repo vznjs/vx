@@ -12,33 +12,50 @@ concern has no cache-key or save logic in it.
 ## Public surface
 
 ```ts
-// Prepare the runtime for a run when any task opts in; null when none did.
-// Starting it is `arm()`, called by execute-task on the FIRST task that
-// executes inside a sandbox and memoized — a run of cache hits never probes
-// or starts anything. `arm()` refuses (UserError) when a task needs a
-// sandbox the platform lacks. The proxy allowlist is the union of every
-// sandboxed task's domains, and the unix-socket allowance (a `localBinding`
-// port list, or `unixSockets`) is armed for the run the same way — the
-// runtime reads both at `initialize()` only. The union of every
-// task's `allow.network`, computed up front.
+export interface SandboxArmer {
+  arm(): Promise<void>
+  readonly armed: boolean
+}
 export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null
 
-// The sandbox half of the request, plus the empty files created for a
-// literal write grant that named nothing yet (`placeholders`).
-export function sandboxRequestFor(
+export interface SandboxRequest {
+  sandbox: NonNullable<ExecuteRequest['sandbox']> // the request's sandbox half
+  placeholders: Placeholder[] // the empty files created for a literal write grant that named nothing yet
+}
+export interface Placeholder {
+  path: string
+  mtimeMs: number // as created; a later mtime means the task wrote it
+}
+export async function sandboxRequestFor(
   node: TaskNode,
   sandbox: NonNullable<ExecConfig['sandbox']>,
   workspaceRoot: string,
 ): Promise<SandboxRequest>
 
-// Remove the placeholders the task never wrote (still empty, mtime
-// untouched); returns their paths. execute-task calls it after every
-// attempt of a one-shot task, and when a persistent task's child exits
-// (or fails to become ready); a failed task with nothing else reported
-// gets one line per untouched placeholder (`untouchedPlaceholderLine`).
-export function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
+export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
 export function untouchedPlaceholderLine(projectDir: string, placeholder: string): string
 ```
+
+- `prepareSandbox` prepares the runtime for a run when any task opts
+  in; null when none did. Starting it is `arm()`, called by
+  execute-task on the FIRST task that executes inside a sandbox and
+  memoized — a run of cache hits never probes or starts anything.
+  `arm()` refuses (`UserError`) when a task needs a sandbox the
+  platform lacks, and a throw from the runtime itself (its bridge
+  needs `socat`, which the dependency check does not cover; a temp
+  directory it cannot write) is the same one-line verdict, never a
+  stack. The proxy allowlist is the union of every sandboxed task's
+  domains, and the unix-socket allowance (a `localBinding` port list,
+  or `unixSockets`) is armed for the run the same way — the runtime
+  reads both at `initialize()` only.
+- `sandboxRequestFor` builds the sandbox half of one request, plus the
+  placeholders.
+- `sweepPlaceholders` removes the placeholders the task never wrote
+  (still empty, mtime untouched) and returns their paths. execute-task
+  calls it after every attempt of a one-shot task, and when a
+  persistent task's child exits (or fails to become ready); a failed
+  task with nothing else reported gets one line per untouched
+  placeholder (`untouchedPlaceholderLine`).
 
 ## Rules
 

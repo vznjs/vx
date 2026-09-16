@@ -318,6 +318,24 @@ test is telling the truth.
       `vx completions` reads). Fixed; the shape law gains six shapes,
       its field-count guard now admits a one-field interface. Five
       fail on the old pages.
+322.  DONE (2026-09-16, the gap list's tail: admission,
+      sandbox-request, git-inputs). admission.md's shape held; its
+      "the barrier is released in a `finally`" was true and
+      incomplete — since 4c2b254 the `finally` lifts the barrier on
+      the save lane's landing promise, or a joiner would probe a miss
+      and run the task again (the page says so now).
+      sandbox-request.md's surface was commentary in place of
+      shapes (`SandboxArmer`, `SandboxRequest`, `Placeholder`) and
+      did not say that a throw from the runtime itself is the same
+      one-line verdict as a refused probe (2bcfbcd). git-inputs.md's
+      block gave `applyGitEnumeration(cache, enumeration)` where the
+      signature is five arguments in another order, elided every
+      other signature and all of `GitFilesCache`'s methods, and never
+      said what a missing `git` is (6adfb6c: one refusal line, never
+      a stack) or when the spawn is scoped to the run's projects
+      (at most 64, none the root). Fixed; the shape law gains five
+      shapes and reads a `readonly` field as a field. Four fail on
+      the old pages.
 
 ## In flight
 
