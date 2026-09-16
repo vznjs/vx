@@ -19,6 +19,7 @@ import {
   TIMEOUT,
 } from './helpers/orchestrator-fixture.js'
 import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import { ownRssHighWater } from '../src/exec/runner.js'
 import { LocalHistoryProvider, planRun, prepareRun, run } from '../src/orchestrator/index.js'
 import { pluginSource } from './helpers/plugin.js'
 
@@ -160,11 +161,18 @@ const BUILD_CONFIG = `
 // The usage round trip needs a peak on record, and the runner reports one
 // only above its own footprint (a lighter child reads the parent's mark
 // back on Linux), so this build holds 150 MB.
-const HEAVY_BUILD_CONFIG = `
+// A child lighter than this process records no peak RSS on Linux (item
+// 170: `ru_maxrss` folds the parent's high-water mark), and the mark depends
+// on which suites a shard ran first — a fixed 150 MB read as undefined once
+// the deal put this file beside the 87k-edge graph (2026-09-16). Size the
+// child from the mark, as `runner.test.ts` does.
+const MB = 1024 * 1024
+const heavyMb = (): number => Math.ceil(ownRssHighWater() / MB) + 200
+const heavyBuildConfig = (mb: number): string => `
   export default {
     tasks: {
       build: {
-        exec: { command: 'bun -e "const b = Buffer.alloc(150 * 1024 * 1024, 1); require(\\'fs\\').writeFileSync(\\'out.txt\\', \\'built\\'); console.log(b.length)"' },
+        exec: { command: 'bun -e "const b = Buffer.alloc(${mb} * 1024 * 1024, 1); require(\\'fs\\').writeFileSync(\\'out.txt\\', \\'built\\'); console.log(b.length)"' },
         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
       },
     },
@@ -683,9 +691,10 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
       const fixture = await makeFixture('vx-remote-usage-')
       const remote = startArtifactEndpoint()
       try {
+        const mb = heavyMb()
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
-          config: HEAVY_BUILD_CONFIG,
+          config: heavyBuildConfig(mb),
         })
         const first = await run({
           cwd: fixture.root,
@@ -697,7 +706,7 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
         expect(produced.status).toBe('success')
         // The runner reports rusage on linux and darwin; the differential
         // below needs a real number, not an absent one.
-        expect(produced.peakRssBytes).toBeGreaterThan(150 * 1024 * 1024)
+        expect(produced.peakRssBytes).toBeGreaterThanOrEqual(mb * MB)
         expect(produced.storedPeakRssBytes).toBeUndefined()
 
         // The fresh runner: no local cache, no history.
