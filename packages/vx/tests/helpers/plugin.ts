@@ -28,7 +28,14 @@ function processRoot(): string {
   for (const name of readdirSync(tmp)) {
     const m = /^vx-plugin-pkgs-(\d+)-/.exec(name)
     if (m === null || alive(Number(m[1]))) continue
-    rmSync(path.join(tmp, name), { recursive: true, force: true })
+    // Another user's dead root is not ours to remove (EPERM): the gate's
+    // shards run as an unprivileged user beside roots a root-run suite
+    // left, and one such root took every plugin test down (2026-09-16).
+    try {
+      rmSync(path.join(tmp, name), { recursive: true, force: true })
+    } catch {
+      // left for its owner
+    }
   }
   root = mkdtempSync(path.join(tmp, `vx-plugin-pkgs-${process.pid}-`))
   return root

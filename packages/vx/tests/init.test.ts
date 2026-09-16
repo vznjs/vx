@@ -253,6 +253,25 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  it('a run in a workspace whose package globs match nothing says so, not `vx init`', async () => {
+    // `vx init` would find no package to write for: the globs are the fault.
+    const root = await makeRoot('vx-init-no-packages-')
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'ws', private: true, workspaces: ['apps/*'] }),
+    )
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    try {
+      const r = await vx(root, ['run', 'build', '--all'])
+      expect(r.code).not.toBe(0)
+      const text = `${r.out}${r.err}`
+      expect(text).toContain("No package matched the workspace's package globs")
+      expect(text).not.toContain('run `vx init`')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('a deleted dist is rebuilt on the next run', async () => {
     const root = await makeRoot('vx-init-rebuild-')
     await addPackage(root, 'w', { build: 'mkdir -p dist && cp src/a.txt dist/a.txt' })

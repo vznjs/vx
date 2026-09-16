@@ -735,6 +735,33 @@ of a task's output for its cache entry and replay`). The
       loaded runner, so the second took it and the two swapped roles —
       a marker the task writes replaces the sleep.
 
+238.  DONE (2026-09-16, three configuration personas): a package with no
+      `name`, a config importing a package that is not installed, and a
+      workspace whose package globs match nothing are each told the
+      right thing — two warts fixed. `vx info`'s config-error row named
+      the file twice for the import shape (the loader's message opens
+      with `Project config <abs>:`, and the doctor stripped only the
+      bare path); both prefixes are stripped now, pinned in
+      `show-info.test.ts`. And the empty workspace was told to run
+      `vx init`, which would have found no package to write for; it is
+      told its package globs matched nothing (`init.test.ts`). Measured
+      on the way, no change: a task printing 200,000 lines (2.5 MB)
+      costs the renderer 60–80 ms above vx's ~100 ms floor under
+      `--output-logs full`, and a hit's replay 35 ms — the default under
+      `--all` hides a success's output by design (BROAD flow); the
+      detached spawn of 236 on 200 uncached tasks, an interleaved A/B
+      against a worktree at 25d2de9 (min 255 → 264 ms, median 264 →
+      267), a tie within the jitter — at most 40 µs a spawn.
+      And the gate itself: the plugin helper's sweep of dead sibling
+      roots (224) threw `EPERM` on a root-owned root the shards, run as
+      the unprivileged user, could not remove — every plugin test fell
+      with it; the sweep skips what is not its to remove.
+      And the macOS job: the new fixture's unresolvable import, in a
+      workspace with no `node_modules`, made Bun auto-install — sixteen
+      registry connections before "cannot find", a sandbox violation
+      there — so the fixture has a `node_modules` like any real
+      workspace, and the product gap is Next 21.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
@@ -1159,6 +1186,19 @@ needs forwarding the moment you use it. Never end with "what next?".
     the same bounded text once, and measure RSS per chatty task before
     and after. Not started; the number that decides is a real
     workspace whose logs pass ~50 MB per task.
+
+21. **A config's bare import that no `node_modules` can serve reaches
+    the npm registry before it fails.** Bun auto-installs a package a
+    module cannot resolve when no `node_modules` exists above it —
+    measured 2026-09-16: sixteen connections to the registry and 150 ms
+    before "cannot find", and a sandbox violation on the macOS job; with
+    a `node_modules` present, 0 connections and 1 ms; `bun --no-install`
+    stops it too. A fresh clone before its install, or a typo in an
+    import, should be refused by vx before evaluation: `config-imports`
+    already lists a config's specifiers, so a bare one with no
+    `node_modules/<name>` above the config is a `UserError` naming the
+    install, never an import. Not started; the pin is a config importing
+    a name no `node_modules` serves, evaluated with no network.
 
 ## Decisions (this arc)
 

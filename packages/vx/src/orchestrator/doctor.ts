@@ -314,12 +314,21 @@ async function countLoadableTasks(
         for (const t of declared) if (t?.exec?.sandbox !== undefined) sandboxed++
       } catch (err) {
         // Counted as zero, and named: the loader's message opens with the
-        // absolute path, which the row carries workspace-relative instead.
+        // absolute path — bare for a schema refusal, behind `Project config`
+        // for an import that failed — which the row carries
+        // workspace-relative instead, once (the second form named the file
+        // twice, 2026-09-16).
         const raw = err instanceof Error ? err.message : String(err)
-        const prefix = `${meta.configPath}: `
+        let message = raw
+        for (const prefix of [`${meta.configPath}: `, `Project config ${meta.configPath}: `]) {
+          if (raw.startsWith(prefix)) {
+            message = raw.slice(prefix.length)
+            break
+          }
+        }
         errors.push({
           path: path.relative(root, meta.configPath).split(path.sep).join('/'),
-          message: raw.startsWith(prefix) ? raw.slice(prefix.length) : raw,
+          message,
         })
       }
     }),
