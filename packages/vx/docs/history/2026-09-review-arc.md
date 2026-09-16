@@ -3,7 +3,9 @@
 The record `docs/STATUS.md` carried until 2026-09-10, moved here whole
 so the handoff stays readable. Nothing below is current state: STATUS
 holds direction, what is in flight and what is next; this file holds
-what shipped and the numbers behind it. Items 65 onward continue in
+what shipped and the numbers behind it. Items 65–104 are in
+`2026-09-improvement-loop-65-104.md`, items 105–144 in
+`2026-09-improvement-loop-105-144.md`; items 145 onward continue in
 STATUS under the same numbering.
 
 ## Shipped in this arc

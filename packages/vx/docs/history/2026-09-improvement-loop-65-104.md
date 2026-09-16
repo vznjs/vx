@@ -4,8 +4,9 @@ The record `docs/STATUS.md` carried until 2026-09-11, moved here whole
 so the handoff stays readable. Nothing below is current state: STATUS
 holds direction, what is in flight and what is next; this file holds
 what shipped and the numbers behind it. Items 1–64 are in
-`2026-09-review-arc.md`; items 105 onward continue in STATUS under the
-same numbering.
+`2026-09-review-arc.md`; items 105–144 in
+`2026-09-improvement-loop-105-144.md`; items 145 onward continue in
+STATUS under the same numbering.
 
 65. DONE (core ships no plugin — the last built-in externalized, the
     owner's directive after #265 merged): `src/plugins/schedule-history`
