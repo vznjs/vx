@@ -194,12 +194,24 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
 async function sandboxFact(declared: number): Promise<InfoFacts['sandbox']> {
   try {
     const verdict = await probeSandbox()
-    return { available: verdict.available, reason: verdict.reason, declared }
+    return { available: verdict.available, reason: stableSandboxReason(verdict.reason), declared }
   } catch (err) {
-    return { available: false, reason: err instanceof Error ? err.message : String(err), declared }
+    const message = err instanceof Error ? err.message : String(err)
+    return { available: false, reason: stableSandboxReason(message), declared }
   } finally {
     await resetSandbox()
   }
+}
+
+/**
+ * The doctor's output is pasted into bug reports and compared between
+ * invocations (`vx stats` is pinned byte-identical to `vx info`), so a
+ * reason must not carry this process's id. The Linux runtime names its
+ * mux socket after the pid (`srt-mux-<pid>-<n>.sock`), and a listen that
+ * fails — a nested sandbox, a read-only tmpdir — quotes that path.
+ */
+export function stableSandboxReason(reason: string): string {
+  return reason.replace(/srt-mux-\d+-\d+\.sock/g, 'srt-mux-<pid>.sock')
 }
 
 /** The seams a plugin can fill, in pipeline order: the one hook list, less the lifecycle end. */

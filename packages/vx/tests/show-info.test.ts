@@ -9,6 +9,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseShowArgs } from '../src/cli/index.js'
 import { describeMemory, describeWorkers } from '../src/cli/info.js'
+import { stableSandboxReason } from '../src/orchestrator/doctor.js'
 import { VERSION } from '../src/version.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
@@ -507,6 +508,23 @@ describe('parseShowArgs', () => {
   it('rejects unknown flags and extra positionals', () => {
     expect(parseShowArgs(['--bogus']).error).toBe('unknown flag: --bogus (see `vx show --help`)')
     expect(parseShowArgs(['a', 'b']).error).toBe('unexpected argument: b')
+  })
+})
+
+describe('vx info — the sandbox row is stable across invocations', () => {
+  // CI's sandboxed shard: the runtime cannot listen on its mux socket, and
+  // the raw error quotes a path named after the process id — two `vx info`
+  // runs differed by one number and the `vx stats` alias pin failed
+  // (2026-09-16). The doctor's text must not depend on its own pid.
+  it('drops the process id from the runtime socket path', () => {
+    expect(
+      stableSandboxReason(
+        "EPERM: operation not permitted, listen '/tmp/claude/srt-mux-1171-0.sock'",
+      ),
+    ).toBe("EPERM: operation not permitted, listen '/tmp/claude/srt-mux-<pid>.sock'")
+    // CONTROL: a reason without one is untouched.
+    const plain = 'a sandboxed `true` failed (exit 1): apply-seccomp: write /proc/self/uid_map'
+    expect(stableSandboxReason(plain)).toBe(plain)
   })
 })
 
