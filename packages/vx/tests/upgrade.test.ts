@@ -2,12 +2,13 @@
 // against a local server; the CLI path pins the source-mode refusal
 // (the compiled-binary path needs a real release and stays manual).
 
-import { readFile, rm, stat } from 'node:fs/promises'
+import { readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { isBunfsPath, npmOwnedBinary, releaseAsset, replaceBinary } from '../src/cli/upgrade.js'
+import { UserError } from '../src/util/index.js'
 
 const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-upgrade-'))
 const FAKE = '#!/bin/sh\necho fake-vx\n'
@@ -64,6 +65,32 @@ describe('replaceBinary', () => {
         expect(seen).toEqual(['https://example.invalid/asset'])
         expect(await readFile(dest, 'utf8')).toContain('fake-vx')
         expect((await stat(dest)).mode & 0o111).not.toBe(0)
+      },
+    )
+  })
+
+  it('a host it cannot reach is one line naming the host, never a stack', async () => {
+    // Bun's fetch rejects with its own TypeError when there is no route;
+    // the CLI printed it as an internal error (item 247).
+    const dest = path.join(dir, 'vx')
+    await writeFile(dest, 'old')
+    await withFetch(
+      (() =>
+        Promise.reject(
+          new TypeError('Unable to connect. Is the computer able to access the url?'),
+        )) as unknown as typeof fetch,
+      async () => {
+        let caught: unknown
+        try {
+          await replaceBinary(dest, 'https://github.com/vznjs/vx/releases/download/v1/vx', 'ab')
+        } catch (err) {
+          caught = err
+        }
+        expect(caught).toBeInstanceOf(UserError)
+        expect((caught as Error).message).toBe(
+          'vx upgrade: could not reach github.com to download the release asset (Unable to connect. Is the computer able to access the url?) — check the network or the proxy and re-run',
+        )
+        expect(await readFile(dest, 'utf8')).toBe('old')
       },
     )
   })
