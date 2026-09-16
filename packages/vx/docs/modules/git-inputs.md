@@ -14,15 +14,57 @@ and where the project boundary is.
 ## Public surface
 
 ```ts
-export class GitFilesCache extends Map<string, readonly string[]>   // per-project snapshots + OIDs
-export async function startGitEnumeration(root, pathspecs): Promise<GitEnumeration>
-export function applyGitEnumeration(cache: GitFilesCache, enumeration: GitEnumeration): void
-export function gitPathspecs(...): string[]
-export async function populateGitFilesCache(...): Promise<void>
-export function runGitLsFiles(cwd): GitLsResult             // the synchronous fallback
-export function parseCheckAttrOutput(out): Set<string>
+// Per-project file snapshots (the Map), with what the resolver needs beside them.
+export class GitFilesCache extends Map<string, readonly string[]> {
+  setWorkspaceRoot(root: string): void
+  setWorktreeDirty(dirty: boolean | null): void // what `git status` said, for the run context
+  markOutputsChanged(projectDir: string, relPaths: readonly string[]): void // a save or restore wrote these
+  markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
+  invalidateWorkspacePartition(): void
+  oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
+  setOids(projectDir: string, oids: Map<string, string>): void
+  snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
+}
+
+export interface GitEnumeration {
+  all: string[] // every path git listed, root-relative
+  trusted: Map<string, string> // path → index OID, for the tracked-clean ones
+  dirty: boolean | null
+}
+export function gitPathspecs(
+  workspaceRoot: string,
+  projectDirs: readonly string[],
+  workspaceWide: boolean,
+): string[]
+export async function startGitEnumeration(
+  workspaceRoot: string,
+  pathspecs: readonly string[],
+): Promise<GitEnumeration>
+export function applyGitEnumeration(
+  enumeration: GitEnumeration,
+  workspaceRoot: string,
+  projectDirs: readonly string[],
+  cache: GitFilesCache,
+  workspaceWide?: boolean,
+): void
+export async function populateGitFilesCache(
+  workspaceRoot: string,
+  projectDirs: readonly string[],
+  cache: GitFilesCache,
+  workspaceWide?: boolean,
+): Promise<void> // start + apply in one call
+
+export function runGitLsFiles(cwd: string): GitLsResult // the synchronous per-project fallback
+export function parseCheckAttrOutput(out: string): Set<string>
 export function autocrlfConverts(coreConfig: string): boolean
 ```
+
+`gitPathspecs` scopes the spawn to the projects in the run when there
+are at most 64 of them and none is the root itself; otherwise (or
+`workspaceWide`) it is `.`. A `git` that cannot be spawned at all — not
+on `PATH` — is one `UserError` line (`gitSpawnRefusal`: "vx requires
+git"), never a stack; a directory outside a work tree is the same
+refusal with `git init` as the remedy.
 
 `startGitEnumeration` is what `prepareRun` kicks off before the configs
 load (the spawn overlaps evaluation); `applyGitEnumeration` folds the

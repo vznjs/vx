@@ -48,7 +48,8 @@ function interfaceFields(text: string, name: string): string[] {
       break
     }
     if (depth === 0) {
-      const m = /^\s*(\w+)\??:/.exec(line)
+      // A `readonly` field is a field; a method (`arm(): …`) is not one.
+      const m = /^\s*(?:readonly\s+)?(\w+)\??:/.exec(line)
       if (m) out.push(m[1]!)
     }
     for (const ch of line) {
@@ -100,6 +101,11 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['lockfile', 'workspace/lockfile.ts', 'Lockfile'],
   ['plugin-commands', 'cli/plugin-commands.ts', 'ResolvedPluginCommand'],
   ['plugin-commands', 'cli/plugin-commands.ts', 'UnresolvedPluginCommand'],
+  ['admission', 'orchestrator/admission.ts', 'AdmissionArgs'],
+  ['sandbox-request', 'orchestrator/sandbox-request.ts', 'SandboxArmer'],
+  ['sandbox-request', 'orchestrator/sandbox-request.ts', 'SandboxRequest'],
+  ['sandbox-request', 'orchestrator/sandbox-request.ts', 'Placeholder'],
+  ['git-inputs', 'cache/git-inputs.ts', 'GitEnumeration'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {

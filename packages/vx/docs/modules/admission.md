@@ -52,8 +52,13 @@ that joins a sibling drops its up-front probe (`reuseProbe: false`) —
 the probe predates the sibling's save and would report a stable miss.
 
 The executor registers its barrier with no `await` between `get` and
-`set`, so at most one executor exists per hash; the barrier is released
-in a `finally` on every exit.
+`set`, so at most one executor exists per hash. The barrier is lifted in
+a `finally` on every exit — but not before the save has landed: a miss's
+save runs off the execution slot (the save lane, `miss-save.md`), and a
+joiner released before the entry existed would probe a miss and run the
+task again, so the `finally` reads the lane's landing promise
+(`ExecuteArgs.deferredSaves`, keyed by task id) and lifts on it; with
+no lane, at once.
 
 ## What it does NOT do
 
