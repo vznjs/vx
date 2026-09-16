@@ -880,6 +880,41 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       what stays under 6, 7, 8 and 14 is the standing duty or the
       still-open note with a pointer. Numbering is kept, since loop
       items cite "Next 15" and "14d" by name.
+196.  DONE (2026-09-16, the suite's wall time): nine test files had no
+      row in `tests/shard-weights.json` (each dealt at the median), so
+      the twelve shards were re-weighed from JUnit, four at a time as
+      the gate runs them. The nine were 5 ms to 1.1 s — not the
+      problem. The problem was `tests/watch-loop.test.ts`: the table
+      said 6.2 s (2026-09-10, three cases), the run said 24.4 s (nine
+      cases, each a serial chain of settle windows), and one file
+      cannot be dealt — its shard ran 32.7 s against 8–12 s for the
+      other eleven, 52 s for the run. The cases share only a per-case
+      workspace, so the fixture and markers moved to
+      `tests/helpers/watch-loop.ts` and the file went three ways:
+      `watch-loop` (the edit-cycle claims M8 and L5, 6.5 s),
+      `watch-loop-members` (the watched set, 7.4 s) and
+      `watch-loop-uncached` (undeclared outputs, 10.5 s); same 32
+      assertions. Re-weighed after the split: every shard 9.7–13.6 s,
+      the run 35 s. The partition pin failed on the interim table
+      (24,420 against a 13,355 ceiling) and passes on the refreshed
+      one — the 1.25× law fires when the deal is wrong, but only once
+      the table tells the truth: a file that grows past its row is
+      invisible until the next `--weigh`. Re-weigh whenever a suite
+      gains timed cases. CI's first run of the new deal (wall 116.8 →
+      93.8 s, the longest task 45.6 → 26.7 s) failed one pin the deal
+      had been hiding: `runner.test.ts`'s "reads a known allocation
+      back as bytes" allocated a fixed 200 MB and expected a peak, but
+      `bun test` runs a shard's files in ONE process whose RSS mark is
+      whatever the files before it left (monotonic), and the floor
+      withholds a child's peak under the parent's mark (item 170) —
+      shard 5 now ran `scale-graph` and `artifact-roundtrip` first, the
+      mark passed 200 MB, and the child read as no peak at all. The pin
+      sizes its child 200 MB above the parent's own mark now; the
+      differential is a 256 MB `--preload` hold (old pin fails as CI
+      did, new pin passes). A pin that depends on which files ran
+      before it in the same process is a deal-shaped knife edge; the
+      order comment it carried ("the 200 MB pin must come first")
+      named the dependency and still trusted the alphabet.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1210,11 +1245,13 @@ knife edge, fixed with a differential pin rather than re-run; a
 walk's refutation is written down (186, 190) so the next reader
 changes angle. Never end with "what next?".
 
-14h. **Handoff after item 195 (2026-09-16, small hours).** Three
-items since 14g, none in code: the one dependency that had moved
-(193), and this file cut to a handoff again — loop items 105–144 and
-the Next list's record to `docs/history/` (194, 195), 2,657 lines to
-about 1,300. Open: Next 1, 2 and 16 as before, all gated by their own
+14h. **Handoff after item 196 (2026-09-16, small hours).** Four
+items since 14g: the one dependency that had moved (193), this file
+cut to a handoff again — loop items 105–144 and the Next list's
+record to `docs/history/` (194, 195), 2,657 lines to about 1,300 —
+and the core suite's wall time back to the average shard (196: the
+watch-loop suite had grown to a shard of its own; split three ways
+and re-weighed, the run 52 → 35 s here). Open: Next 1, 2 and 16 as before, all gated by their own
 terms; no open issues; every persona this box can host has been
 walked. The box: unchanged. Never end with "what next?".
 
