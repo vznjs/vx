@@ -163,6 +163,10 @@ Run the task only in projects whose files changed since `<base>`.
   test), the `nothing affected since <ref>` note says the ref is HEAD
   itself and names the two bases you probably meant
   (`--affected=origin/main`, `--affected=HEAD~1`).
+- Without git on PATH, every shape is one line — `vx requires git:
+failed to spawn 'git' … Install git and re-run` — the same the input
+  enumeration prints; a minimal image met a stack here before
+  (2026-09-16).
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)

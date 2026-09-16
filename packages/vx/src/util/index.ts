@@ -10,6 +10,8 @@ export {
   isUserError,
   PERMISSION_HINT,
   UserError,
+  gitSpawnRefusal,
+  isExecutableMissing,
 } from './errors.js'
 export { xxh3, xxh3hex } from './hash.js'
 export { mark, printTimings, span } from './timing.js'

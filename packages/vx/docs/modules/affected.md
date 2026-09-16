@@ -104,3 +104,8 @@ spawns) — easy to test against in-memory fixtures.
 - file outside any project → no project selected.
 - bad git ref → UserError with the ref name.
 - `defaultAffectedBase` returns `origin/HEAD` symref then `HEAD~1`.
+
+Every git spawn goes through `spawnGitSync` / `spawnGit`: a git that is
+not on PATH is util's `gitSpawnRefusal` (one line, the install named),
+never the `ENOENT` stack `defaultAffectedBase` showed a minimal image
+(item 241). `tests/no-git-on-path.test.ts`.
