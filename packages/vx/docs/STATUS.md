@@ -1212,7 +1212,21 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       clears. Pinned in `sandbox-runtime.unsafe.test.ts`: a regular
       file at seq 0 under the current pid, and the probe succeeds and
       removes it; without the fix the probe dies on the listen. The
-      manual gate clears the sockets itself too.
+      manual gate clears the sockets itself too. The rest of a killed
+      run's residue, checked while here: a save killed mid-write leaves
+      `<hash>.tar.zst.tmp-*`, which the orphan sweep already reaps
+      (refuted as a gap); the runtime's own `srt-obs-*` socket
+      directories (removed on a normal stop, 186 left here by the two
+      stopped gates, 4 KB each, random names, so not vx's to tell from
+      a live sibling's) and its `claude-empty-*` mask directories are
+      its lifecycle; and two stopped gates had left 6,537 test fixtures
+      in `/tmp` (7,421 entries → 884 after the sweep) — a killed
+      `bun test` leaks its fixtures, which is the test harness's, not
+      the product's. Checked and left as they are, the two other doors
+      the day's refusals could reach: the MCP server hands a tool's
+      `UserError` back as an error result and any other error as a
+      JSON-RPC error, and stays up either way; `vx watch` exits on the
+      refusal with the same one line its initial run prints.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
