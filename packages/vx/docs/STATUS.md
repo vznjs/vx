@@ -214,6 +214,19 @@ test is telling the truth.
       claimed a workspace that declares no plugin "fails before any
       task runs" — the floor has run and cached since 2026-09-10, and
       the same file said so 60 lines later; it says the floor now.
+291.  DONE (2026-09-16, 290's law widened to every relative link):
+      the anchor laws read only `](x#anchor)` links; a probe of every
+      relative link in the core docs and on the site (201 and 194)
+      found one page that does not exist — the technical README linked
+      `@vzn/vx-reapi` as `../packages/vx-reapi`, which from
+      `packages/vx/docs` names nothing and on the site rendered as
+      `/vx/packages/vx-reapi`, a 404 on the overview page since the
+      package moved. It links the repository now. Both laws now hold
+      every relative link: the page must exist (a link with an
+      extension is a file beside the page), and an anchor must name a
+      heading. STATUS is outside the law (it quotes the patterns).
+      14x's other named next, `vx init` after 287, closed by a grep:
+      the scaffold says nothing about `--affected`.
 
 ## In flight
 

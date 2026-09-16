@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { anchoredLinks, headingSlugs } from './helpers/markdown-anchors.js'
+import { headingSlugs, proseLinks } from './helpers/markdown-anchors.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 const repo = path.resolve(pkg, '..', '..')
@@ -43,7 +43,8 @@ describe('every core file path the guides and CLAUDE.md name exists', () => {
  * generated copies of `packages/vx/docs` are skipped — the source is
  * pinned by the safe half). A link is a URL — `../running-tasks/#…`,
  * `/vx/cli/#…` — so it resolves against the page's URL, and a page that
- * the import script generates is read from its source.
+ * the import script generates is read from its source; a link with an
+ * extension (an image, a config file) is a path beside the page.
  */
 function sitePages(): string[] {
   return walk(path.join(repo, 'packages', 'vx-docs', 'src', 'content', 'docs'), '.md').filter(
@@ -67,23 +68,28 @@ function siteSource(urlPath: string): string | undefined {
   return undefined
 }
 
-describe('every heading anchor the site pages link to exists', () => {
-  it('`](../page/#anchor)` names a heading of that page by its rendered id', () => {
+describe('every relative link on the site pages resolves', () => {
+  it('`](../page/)` is a page, an asset link a file, and `#anchor` a heading by its rendered id', () => {
     const missing: string[] = []
     const slugs = new Map<string, Set<string>>()
     for (const file of sitePages()) {
       const rel = path.relative(CONTENT, file).split(path.sep).join('/')
       const urlDir = `/${rel.replace(/(^|\/)index\.md$/, '').replace(/\.md$/, '/')}`
-      for (const { target, anchor } of anchoredLinks(readFileSync(file, 'utf8'))) {
-        if (/^[a-z]+:/.test(target)) continue
+      for (const { target, anchor } of proseLinks(readFileSync(file, 'utf8'))) {
+        const link = `${rel}: ${target}${anchor === undefined ? '' : `#${anchor}`}`
         const source =
-          target === '' ? file : siteSource(path.posix.resolve(urlDir, target.replace(/\/?$/, '/')))
-        if (source === undefined) {
-          missing.push(`${rel}: ${target}#${anchor} (no page)`)
+          target === ''
+            ? file
+            : /\.[a-z0-9]+$/i.test(target)
+              ? path.resolve(path.dirname(file), target)
+              : siteSource(path.posix.resolve(urlDir, `${target}/`))
+        if (source === undefined || !existsSync(source)) {
+          missing.push(link)
           continue
         }
+        if (anchor === undefined || !source.endsWith('.md')) continue
         if (!slugs.has(source)) slugs.set(source, headingSlugs(readFileSync(source, 'utf8')))
-        if (!slugs.get(source)!.has(anchor)) missing.push(`${rel}: ${target}#${anchor}`)
+        if (!slugs.get(source)!.has(anchor)) missing.push(link)
       }
     }
     expect(missing).toEqual([])

@@ -7,7 +7,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { anchoredLinks, headingSlugs } from './helpers/markdown-anchors.js'
+import { headingSlugs, proseLinks } from './helpers/markdown-anchors.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 
@@ -67,26 +67,21 @@ describe('docs/modules/README.md indexes every source module', () => {
   })
 })
 
-describe('every heading anchor the docs link to exists', () => {
-  it('`](x.md#anchor)` names a heading of x.md by its rendered id', () => {
+describe('every relative link in the docs resolves', () => {
+  it('`](x.md)` names a file, and `](x.md#anchor)` a heading of it by its rendered id', () => {
     const missing: string[] = []
     const slugs = new Map<string, Set<string>>()
-    const slugsOf = (file: string): Set<string> | undefined => {
-      if (!slugs.has(file)) {
-        if (!existsSync(file)) return undefined
-        slugs.set(file, headingSlugs(readFileSync(file, 'utf8')))
-      }
-      return slugs.get(file)
-    }
     for (const file of proseFiles()) {
-      for (const { target, anchor } of anchoredLinks(readFileSync(file, 'utf8'))) {
-        if (/^[a-z]+:/.test(target)) continue
+      for (const { target, anchor } of proseLinks(readFileSync(file, 'utf8'))) {
         const page = target === '' ? file : path.resolve(path.dirname(file), target)
-        if (!page.endsWith('.md')) continue
-        const ids = slugsOf(page)
-        if (ids === undefined || !ids.has(anchor)) {
-          missing.push(`${path.relative(pkg, file)}: ${target}#${anchor}`)
+        const link = `${path.relative(pkg, file)}: ${target}${anchor === undefined ? '' : `#${anchor}`}`
+        if (!existsSync(page)) {
+          missing.push(link)
+          continue
         }
+        if (anchor === undefined || !page.endsWith('.md')) continue
+        if (!slugs.has(page)) slugs.set(page, headingSlugs(readFileSync(page, 'utf8')))
+        if (!slugs.get(page)!.has(anchor)) missing.push(link)
       }
     }
     expect(missing).toEqual([])
