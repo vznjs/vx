@@ -157,6 +157,19 @@ test is telling the truth.
       fail without it), inputs.md and caching.md say so, the post's list is
       `.git` and `.vx` again and pinned to the constant. Four site pins fail
       on the old pages.
+338.  DONE (2026-09-16, the next three oldest posts: watch-mode,
+      lockfile-aware-keys, one-command-per-task). one-command-per-task
+      reads true (`sh -c`, the two always-set variables, the retired
+      inference package). watch-mode said a silent watcher is "kept
+      with a warning" (it is replaced by a poller), "editor swap
+      files" (the suffix list is `.tsbuildinfo` and a trailing `~`),
+      and four rejected flags of seven (`--graph`, `--report-file`,
+      `--verbosity` missing); its debounce, probe timeout, ignore
+      lists and rejected-flag set are pinned to `watch.ts`.
+      lockfile-aware-keys carried the "2 of the gate's 61 tasks" count
+      the lockfiles guide dropped in 303, and said every project folds
+      the catalogs (the pnpm parser folds none; `bun()` does) — both
+      corrected. Three pins fail on the old post.
 
 ## In flight
 

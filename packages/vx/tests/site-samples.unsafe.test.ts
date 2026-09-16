@@ -313,3 +313,34 @@ describe('the why pages name every component kind the key records', () => {
     })
   }
 })
+
+describe('the watch-mode post states what watch.ts does', () => {
+  const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'watch.ts'), 'utf8')
+  const page = readFileSync(path.join(DOCS, 'blog', 'watch-mode.md'), 'utf8')
+  it('its debounce and probe timeout are the constants', () => {
+    expect(src).toContain('const DEBOUNCE_MS = 150')
+    expect(page).toContain('about 150 ms')
+    expect(src).toContain('const WATCH_PROBE_TIMEOUT_MS = 2_000')
+    expect(page).toContain('silent for\ntwo seconds')
+  })
+  it('its always-ignored list names every ignored segment and suffix', () => {
+    const list = (name: string): string[] => {
+      const m = new RegExp(`const ${name} = \\[([^\\]]*)\\]`).exec(src)
+      expect(m).not.toBeNull()
+      return [...m![1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!)
+    }
+    for (const seg of list('IGNORED_SEGMENTS')) expect(page).toContain('`' + seg + '`')
+    for (const suffix of list('IGNORED_SUFFIXES')) expect(page).toContain('`' + suffix + '`')
+  })
+  it('its rejected-flags sentence names every flag the loop refuses', () => {
+    const refused = new Set<string>()
+    for (const m of src.matchAll(/vx watch: ([^\n]*?) are not supported in watch mode/g)) {
+      for (const f of m[1]!.matchAll(/--[\w-]+/g)) refused.add(f[0])
+    }
+    expect(refused.size).toBeGreaterThan(5)
+    const sentence = /Flags that describe one run \(([^)]*)\)/.exec(page)
+    expect(sentence).not.toBeNull()
+    const named = new Set([...sentence![1]!.matchAll(/--[\w-]+/g)].map((m) => m[0]))
+    expect([...named].sort()).toEqual([...refused].sort())
+  })
+})
