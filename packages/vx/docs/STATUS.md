@@ -96,6 +96,15 @@ test is telling the truth.
       14aq below. Rule for the entries that follow (plan I4): twelve
       lines — what changed, the number, the test; the why is the PR.
 
+574.  DONE (2026-09-22, the 2026-09-16 PR #487 that the sweep week left
+      open, rebased: the what-vx-is post named ten of the thirteen plugin
+      hooks (`admit`, `setup`, `teardown` missing) — every `PLUGIN_HOOKS`
+      name is in its pipeline paragraph now, pinned to the list; the
+      no-choice post spelled the warm figures its own way — now the
+      benchmarks page's (3.59s, 760ms), pinned; the values post's
+      principle count is pinned to CLAUDE.md. Three rows in
+      `site-samples.unsafe.test.ts`; two fail on the old posts.
+
 ## In flight
 
 **The gate's runtime (settled 2026-09-21, item 572; plan F4).** A gate

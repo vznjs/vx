@@ -1386,3 +1386,37 @@ describe('the documented glyph set is the set the renderer prints', () => {
     ])
   })
 })
+describe('the what-vx-is post names every plugin hook', () => {
+  it('each of PLUGIN_HOOKS is a code span in its pipeline paragraph', () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'what-vx-is.md'), 'utf8')
+    const para = /In plugin terms the stages are named([\s\S]*?)\n\n/.exec(page)
+    expect(para).not.toBeNull()
+    for (const hook of PLUGIN_HOOKS) expect(para![1]!).toContain('`' + hook + '`')
+  })
+})
+
+describe('the no-choice-on-the-market post quotes the benchmarks page', () => {
+  it('its warm figures are on docs/benchmarks.md as written', () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'no-choice-on-the-market.md'), 'utf8')
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    for (const figure of ['3.59s', '760ms']) {
+      expect(page).toContain(figure)
+      expect(bench).toContain(figure)
+    }
+  })
+})
+
+describe('the values post states the principles CLAUDE.md numbers', () => {
+  it('its bold principle paragraphs are as many as CLAUDE.md lists', () => {
+    const memory = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', '..', 'CLAUDE.md'),
+      'utf8',
+    )
+    const numbered = [...memory.matchAll(/^\d\. \*\*/gm)].length
+    expect(numbered).toBe(8)
+    const page = readFileSync(path.join(DOCS, 'blog', 'values.md'), 'utf8')
+    const section = /## The eight principles\n([\s\S]*?)\n## /.exec(page)
+    expect(section).not.toBeNull()
+    expect([...section![1]!.matchAll(/^\*\*[^*]+\*\*/gm)].length).toBe(numbered)
+  })
+})
