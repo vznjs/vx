@@ -63,11 +63,14 @@ asks for that with `exec.sandbox`.
 
 ### 5. Doing all that without becoming the platform
 
-Core is a pipeline with a hook at every stage — `project` (a project's
-tasks), `graph` (the edges), `key` (extra key material), `schedule`
-(which ready task runs first), `executor` (where one task's command
-runs), `cache` (where artifacts live), `telemetry` (where run records
-go), `commands` (which verbs exist) — and applies **none** of them by
+Core is a pipeline with a hook at every stage — `config` (the
+workspace config every verb sees), `project` (a project's tasks),
+`graph` (the edges), `key` (extra key material), `fingerprint` (a
+lockfile claimed and keyed per project), `schedule` (which ready task
+runs first), `admit` (whether it runs now), `executor` (where one
+task's command runs), `cache` (where artifacts live), `telemetry`
+(where run records go), `commands` (which verbs exist), with `setup`
+and `teardown` around the run — and applies **none** of them by
 default. Running here and caching here are its floor: the local
 executor and the local cache sit at the tail of every list, so a
 workspace that declares nothing still runs and caches, and a plugin

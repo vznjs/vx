@@ -20,8 +20,9 @@ workspace with no `vx.workspace.ts` runs and caches, and a plugin that
 declines a task hands it back to this machine.
 
 Pipeline stages a plugin can fill, in order: `config` → `project` →
-`graph` → `key` → `schedule` → `executor` / `cache` → `telemetry` /
-`setup`, plus `commands` (CLI verbs). Design: `docs/design/pipeline-2026-09.md`.
+`graph` → `key` → `fingerprint` → `schedule` → `admit` → `executor` /
+`cache` → `telemetry`, with `setup` / `teardown` around the run, plus
+`commands` (CLI verbs). Design: `docs/design/pipeline-2026-09.md`.
 
 Decision drivers, in order: **performance, modularity, extensibility.**
 Nothing distributed ships in this repo (no agents, cloud, dashboards); the

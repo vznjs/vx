@@ -227,6 +227,15 @@ test is telling the truth.
       heading. STATUS is outside the law (it quotes the patterns).
       14x's other named next, `vx init` after 287, closed by a grep:
       the scaffold says nothing about `--affected`.
+292.  DONE (2026-09-16, the hook list's two prose copies): the
+      technical README's § 5 said "a hook at every stage" and named
+      eight of thirteen (no `config`, `fingerprint`, `admit`, `setup`,
+      `teardown`), and CLAUDE.md's "Pipeline stages a plugin can fill"
+      line named ten. Both name all thirteen in pipeline order now,
+      and the hook-drift pins hold them: the § 5 paragraph in the safe
+      suite beside the tables, CLAUDE.md in a new unsafe half (the
+      repository root is outside the project). Each fails on the old
+      prose.
 
 ## In flight
 
