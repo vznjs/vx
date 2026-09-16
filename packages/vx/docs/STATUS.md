@@ -294,15 +294,20 @@ test is telling the truth.
       not a PATH lookup, and the 257 line blamed the PATH for it — the
       shell says "not found" for a script that EXISTS when its `#!`
       interpreter does not (probed: `exec ./x.sh` with `#!/nonexistent`
-      exits 127 with the file's name in the line), so the line would
-      have sent a user to install a tool they have. The verdict moved to
-      `shell-verdict.ts`: a bare word keeps the PATH rule; a path names
-      the resolved file when it is missing, its `#!` interpreter when it
-      exists (a CRLF ending is named — the interpreter the shell looked
-      for ends in `\r`), and no `#!` line at all; exit 126 ("found but
-      cannot execute") names the word and `chmod +x`. Unit-pinned on
-      real files in `shell-verdict.test.ts`; the e2e pin gained the
-      shebang and the 126 cases (both fail without the wiring).
+      exits 127 with the file's name in the line, under dash and bash
+      5), so the line would have sent a user to install a tool they
+      have. The verdict moved to `shell-verdict.ts`: a bare word keeps
+      the PATH rule (and `chmod +x` on 126); a path is read under
+      either code — missing (the resolved path), a directory, no
+      execute bit, a CRLF `#!` line (the interpreter the shell looked
+      for ends in `\r`), a `#!` interpreter that does not exist, no
+      `#!` line at all (126, the loader's "Exec format error"). Unit-
+      pinned on real files in `shell-verdict.test.ts`; the e2e pin
+      gained the shebang and the no-execute-bit cases (both fail
+      without the wiring). The darwin job taught the third shell:
+      macOS's bash 3.2 names a missing interpreter itself ("bad
+      interpreter") and exits 1, so vx adds nothing there, and the pin
+      says so per platform rather than skipping.
 
 ## In flight
 

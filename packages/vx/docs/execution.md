@@ -294,10 +294,10 @@ The child process gets, in priority order (lowest first):
    (`orchestrator/shell-verdict.ts`): for a bare word, that 127 is the
    shell's "command not found", the word (when the command is a plain
    `word args…`), the two bin directories vx puts first, and that a
-   sibling project's bin is never visible; for a word with a slash, the
-   resolved path when the file is missing, or — when it exists — its
-   `#!` interpreter that does not (a CRLF line ending is named as
-   such); 126 names the word and `chmod +x`.
+   sibling project's bin is never visible, and on 126 `chmod +x`; for
+   a word with a slash, what the file says — missing (the resolved
+   path), a directory, no execute bit, a `#!` interpreter that does
+   not exist (a CRLF line ending is named as such), or no `#!` line.
 
 Anything not in these four layers is invisible to the child. This
 prevents incidental env leakage between machines and gives

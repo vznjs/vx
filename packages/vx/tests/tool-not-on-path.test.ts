@@ -88,8 +88,10 @@ describe('a tool that is not on the PATH vx built', () => {
 
   // A file that EXISTS still gets the shell's "not found" when its #! line
   // names an interpreter that does not (item 258); the line must not blame
-  // the PATH.
-  it('exit 127 on a script whose #! interpreter is missing names the interpreter', async () => {
+  // the PATH. dash and bash 5 exit 127 and blame the file; macOS's bash 3.2
+  // names the interpreter itself ("bad interpreter") and exits 1, so vx
+  // adds nothing there — pinned as such, not skipped.
+  it('a script whose #! interpreter is missing has the interpreter named', async () => {
     const script = path.join(root, 'packages', 'app', 'run.sh')
     await writeFile(script, '#!/nonexistent/interp\necho hi\n')
     await chmod(script, 0o755)
@@ -98,15 +100,22 @@ describe('a tool that is not on the PATH vx built', () => {
       `export default { tasks: { build: { exec: { command: './run.sh' } } } }\n`,
     )
     const r = vx(root, bin, ['run', 'build', '--all'])
-    expect(r.code).toBe(1)
-    expect(r.text).toContain(
-      `[vx] exit 127 is the shell's "not found", and ./run.sh exists: its #! interpreter /nonexistent/interp does not exist — install it or fix the line`,
-    )
     expect(r.text).not.toContain('PATH')
+    expect(r.text).not.toContain('chmod')
+    if (process.platform === 'darwin') {
+      expect(r.code).toBe(1)
+      expect(r.text).toContain('/nonexistent/interp: bad interpreter')
+      expect(r.text).not.toContain('[vx] exit')
+    } else {
+      expect(r.code).toBe(1)
+      expect(r.text).toContain(
+        `[vx] exit 127 is the shell's "not found": ./run.sh exists, and its #! interpreter /nonexistent/interp does not — install it or fix the line`,
+      )
+    }
   })
 
-  // A script without the execute bit is the shell's 126.
-  it('exit 126 names the word and the fix', async () => {
+  // A script without the execute bit is the shell's 126 under every sh.
+  it('exit 126 on a script without the execute bit says chmod', async () => {
     const script = path.join(root, 'packages', 'app', 'run.sh')
     await writeFile(script, '#!/bin/sh\necho hi\n')
     await writeFile(
@@ -116,7 +125,7 @@ describe('a tool that is not on the PATH vx built', () => {
     const r = vx(root, bin, ['run', 'build', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain(
-      `[vx] exit 126 is the shell's "found but cannot execute": ./run.sh is not executable or is a directory — chmod +x it`,
+      `[vx] exit 126 is the shell's "cannot execute": ./run.sh is not executable — chmod +x it`,
     )
   })
 
