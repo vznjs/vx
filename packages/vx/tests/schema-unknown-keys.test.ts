@@ -108,3 +108,42 @@ describe('an unknown key is refused at every object level of a config', () => {
     )
   })
 })
+
+describe('an array where an object is expected names the shape, not `unknown field "0"`', () => {
+  const withCache = (cache: unknown): Config =>
+    ({ tasks: { c: { exec: { command: 'true' }, cache } } }) as unknown as Config
+
+  it('`cache.outputs: [...]` (the Turbo spelling) says what it must be and what was meant', () => {
+    expect(() =>
+      validateProjectConfig(
+        withCache({ inputs: { files: ['src/**'] }, outputs: ['dist/**'] }),
+        'f',
+      ),
+    ).toThrow(
+      'f: tasks.c.cache.outputs must be an object (fields: files, workspaceFiles), not an array — did you mean `{ files: [...] }`?',
+    )
+  })
+
+  it('`cache.inputs: [...]` the same', () => {
+    expect(() =>
+      validateProjectConfig(withCache({ inputs: ['src/**'], outputs: { files: [] } }), 'f'),
+    ).toThrow(
+      /tasks\.c\.cache\.inputs must be an object \(fields: .*\), not an array — did you mean `\{ files: \[\.\.\.\] \}`\?/,
+    )
+  })
+
+  it('a level with no `files` field names its fields and no spelling', () => {
+    expect(() =>
+      validateProjectConfig({ tasks: { t: { exec: ['true'] } } } as unknown as Config, 'f'),
+    ).toThrow(/tasks\.t\.exec must be an object \(fields: command, .*\), not an array$/)
+  })
+
+  it('control: the object spelling validates', () => {
+    expect(() =>
+      validateProjectConfig(
+        withCache({ inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }),
+        'f',
+      ),
+    ).not.toThrow()
+  })
+})

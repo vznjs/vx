@@ -67,6 +67,13 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   ],
   ['tasks must be an object keyed by task name', () => validated({ tasks: [ok] })],
   ['<level> has unknown field "<key>"', () => validated({ tasks: { b: { ...ok, caches: {} } } })],
+  [
+    '<level> must be an object (fields: <fields>), not an array',
+    () =>
+      validated({
+        tasks: { b: { ...ok, cache: { inputs: { files: [] }, outputs: ['dist/**'] } } },
+      }),
+  ],
   ['tasks.<name> must be an object', () => validated({ tasks: { b: 'not-an-object' } })],
   [
     'exec must be an object with a command string',
