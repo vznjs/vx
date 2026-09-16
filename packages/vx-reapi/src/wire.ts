@@ -315,6 +315,10 @@ export interface ReapiOptions {
   chunkBytes?: number
 }
 
+/** The ceiling a derived control-plane deadline never exceeds, however far
+ *  `callTimeoutMs` is raised for a bulk transfer. */
+export const META_TIMEOUT_CAP_MS = 15_000
+
 export class ReapiClient {
   private readonly svc: ServiceClients
   private readonly instance: string
@@ -325,7 +329,10 @@ export class ReapiClient {
    *  Used whenever a caller does not pass a budget, so a call site cannot
    *  silently fall back to a larger default than the server allows. */
   private negotiatedBatchBytes = 0
-  private readonly metaTimeoutMs: number
+  /** The control-plane deadline in force: `metaTimeoutMs` as given, else
+   *  `min(callTimeoutMs, META_TIMEOUT_CAP_MS)`. Readable so the derivation is
+   *  pinned on the instance, not waited out on the wire. */
+  readonly metaTimeoutMs: number
   private readonly onWarn: (message: string) => void
   private digestFunction: DigestFunctionName = 'SHA256'
   private compression = false
@@ -355,7 +362,7 @@ export class ReapiClient {
     this.callTimeoutMs = opts.callTimeoutMs ?? 30_000
     // Derived, not required: raising `callTimeoutMs` for a big upload must
     // not silently lengthen every metadata probe too.
-    this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, 15_000)
+    this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
     this.onWarn = opts.onWarn ?? (() => undefined)
     if (!Number.isInteger(this.chunkBytes) || this.chunkBytes < 1) {
       throw new Error(

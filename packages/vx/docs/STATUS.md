@@ -915,6 +915,20 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       before it in the same process is a deal-shaped knife edge; the
       order comment it carried ("the 200 MB pin must come first")
       named the dependency and still trusted the alphabet.
+197.  DONE (2026-09-16, the next long pole in CI): with the shards
+      dealt, `@vzn/vx-reapi#test` was the longest task (26.7 s), and
+      15 s of it was one case waiting out the control-plane deadline
+      cap on a wedged socket to prove `min(callTimeoutMs, 15 000)`. The
+      derivation is pinned on the instance now — `ReapiClient` exposes
+      `metaTimeoutMs`, the cap is `META_TIMEOUT_CAP_MS` — with no wait:
+      600 s in reads 15 s, 800 ms reads 800 ms, an explicit 700 ms is
+      taken as given; the two short cases around it (explicit 700 ms,
+      derived 800 ms) still prove the wire honours the deadline in
+      force. Mutation checked: with the cap removed from the
+      constructor the pin fails. The suite here: 27 → 11 s, 88 pass, 33
+      skip (the live-service cases), and CI's plugin job loses the same
+      15 s. Left as they are: `wedged`'s other waits (0.7–2.1 s each)
+      are the deadlines under test.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
