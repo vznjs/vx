@@ -146,6 +146,25 @@ test is telling the truth.
       option shapes `any` — a claim not worth a grant on the site's
       test task and five new devDependencies. Revisit when a
       package's README block is the thing that broke.
+287.  DONE (2026-09-16, the CI author's persona — `--affected` on a
+      branch): a fresh three-package repo, `app` depending on `lib`,
+      `lib` edited on a branch, `vx run test --affected=main` selected
+      ONE project and ran lib's tasks alone; `--filter '...[main]'`
+      selected three. The sugar was the changed-only `[<base>]` form,
+      documented as such in the reference with a rationale ("test what
+      I touched") — while the CI guide promised "changed packages (and
+      their dependents) run" over the very recipe, the running-tasks
+      guide drew dependents into its diagram, and the flag's name says
+      it. An adopter's gate had a silent hole: an edit to `lib` never
+      ran `app`'s tests. Decision: the sugar is `...[<base>]`, changed
+      projects and their dependents, the superset a gate needs; the
+      plain `[<base>]` filter stays the "only what I touched" form. One
+      line, the help text, the reference's row, section and example
+      swapped, a Decisions entry, the parity table's `≠` row closed
+      and the two parity suites that pinned the divergence turned to
+      pin the parity; the guides are true as written. Pinned
+      end to end on a manifest edge (lib and app selected, tool not),
+      with the plain form as the control (lib alone).
 
 ## In flight
 
@@ -425,6 +444,11 @@ with "what next?".
 
 ## Decisions (this arc)
 
+- **`--affected` includes dependents (2026-09-16).** The sugar is
+  `--filter '...[<base>]'`: the changed projects and everything that
+  depends on them, the superset a CI gate needs and what the guides
+  promised; `--filter '[<base>]'` is the changed-only form for "test
+  what I touched". Item 287.
 - **Resources are the schedule plugin's (owner, 2026-09-12).** Core
   gates on the worker count and asks the `admit` stage for anything
   finer; it holds no per-task cores or megabytes, no config field for

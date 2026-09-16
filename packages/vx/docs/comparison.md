@@ -404,7 +404,7 @@ Things `@vzn/vx` does that the others don't:
   `pnpm-lock.yaml` and keys each project on its own resolved closure
   (name, version, peers, integrity, patches, `link:` reach), so
   `pnpm update foo` re-keys only the projects that reach `foo` and
-  `--affected` selects the same set. Nx does this inside its daemon's
+  `--affected` selects them (and their dependents). Nx does this inside its daemon's
   project graph; Turbo folds the whole file. vx parses once per lockfile
   content and memoises the digests, so a warm run pays a read and a
   hash, not a parse.

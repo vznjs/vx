@@ -75,18 +75,18 @@ describe('Nx parity — running targets (`nx run`, `nx run-many`, `nx affected`)
   )
 
   it(
-    '`nx affected -t lint` selects changed projects AND their dependents — vx spells that `--filter ...[ref]`; `--affected` alone is the changed set (divergence, documented)',
+    '`nx affected -t lint` selects changed projects AND their dependents — so does `--affected` (the divergence closed 2026-09-16, item 287); `--filter [ref]` is the changed set alone',
     async () => {
       await writeFile(path.join(root, 'packages', 'lib', 'src', 'in.txt'), 'lib-v2\n')
       const git = gitIn(root)
       git('add', '-A')
       git('commit', '-q', '-m', 'touch lib')
-      expect(await planned(root, ['lint', '--filter', '...[HEAD~1]'])).toEqual([
+      expect(await planned(root, ['lint', '--affected=HEAD~1'])).toEqual([
         'app#lint',
         'lib#lint',
         'ui#lint',
       ])
-      expect(await planned(root, ['lint', '--affected=HEAD~1'])).toEqual(['lib#lint'])
+      expect(await planned(root, ['lint', '--filter', '[HEAD~1]'])).toEqual(['lib#lint'])
     },
     TIMEOUT,
   )

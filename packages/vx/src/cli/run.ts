@@ -421,9 +421,12 @@ export async function resolveRunOptions(
     }
   }
 
-  // `--affected[=<base>]` is sugar for `--filter '[<base>]'`. Merging
-  // it into the filter list means the same code path handles plain
-  // filter use, --affected alone, and the combo.
+  // `--affected[=<base>]` is sugar for `--filter '...[<base>]'`: the
+  // changed projects AND their dependents — what a CI gate must run, what
+  // the flag's name says, what the guides promised while the sugar was the
+  // changed-only `[<base>]` (item 287). `--filter '[<base>]'` stays the
+  // "only what I touched" form. Merging it into the filter list means the
+  // same code path handles plain filter use, --affected alone, and the combo.
   const filterStrings = [...parsed.filters]
   if (parsed.affected !== undefined) {
     const root = await findWorkspaceRoot(cwd)
@@ -436,7 +439,7 @@ export async function resolveRunOptions(
         return { error: err.message }
       }
     }
-    filterStrings.push(`[${base}]`)
+    filterStrings.push(`...[${base}]`)
   }
 
   // Project scope applies to bare task names only. Anchored entries

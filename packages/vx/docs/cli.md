@@ -97,13 +97,13 @@ a stack and exit 1 after its task had succeeded.
 
 ### Selection
 
-| Form                          | Effect                                                                |
-| ----------------------------- | --------------------------------------------------------------------- |
-| (default)                     | The project that contains cwd. Errors if cwd is not inside a project. |
-| `pkg#task`                    | Just that project.                                                    |
-| `--all`                       | Every project that declares the task.                                 |
-| `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                    |
-| `--affected[=<base>]`         | Sugar for `--filter '[<base>]'` — git-changed projects only.          |
+| Form                          | Effect                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------- |
+| (default)                     | The project that contains cwd. Errors if cwd is not inside a project.           |
+| `pkg#task`                    | Just that project.                                                              |
+| `--all`                       | Every project that declares the task.                                           |
+| `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                              |
+| `--affected[=<base>]`         | Sugar for `--filter '...[<base>]'` — git-changed projects and their dependents. |
 
 Combining: `--filter` and `--affected` stack (the affected base is
 appended as another filter pattern); `--all` overrides scope to the
@@ -177,24 +177,26 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   forked (Turbo and Nx do the same). Refs with no common ancestor diff
   from the ref.
 
-**It selects the CHANGED projects, not their dependents.** A change in
-`utils` runs `utils`' task; it does not run `app`'s, even when `app`
-depends on `utils`. That is Turbo's `[<base>]` semantics, and it is the
-right default for "test what I touched" — but for "prove I didn't break
-anything downstream" you want the dependents too, which is the `...`
-prefix from the filter table:
+**It selects the CHANGED projects and their dependents.** A change in
+`utils` runs `utils`' task and `app`'s when `app` depends on `utils`:
+the gate a CI author reaches for the flag to build must prove nothing
+downstream broke, which is what the flag's name says and what Nx's
+affected does. Until 2026-09-16 the sugar was the changed-only
+`[<base>]` form, and an edit to `utils` never ran `app`'s tests (item
+287). "Only what I touched" is the plain form from the filter table:
 
 ```bash
-vx run test --affected              # only what changed
-vx run test --filter '...[main]'    # what changed + everything depending on it
+vx run test --affected              # what changed + everything depending on it
+vx run test --filter '[main]'       # only what changed
 ```
 
-The task graph does not close this gap for you: `dependsOn` pulls a
-task's DEPENDENCIES in, never its dependents. The `...` walk does follow
-a cross-project `dependsOn` edge, though, so `...[main]` reaches an
-`e2e` that depends on `app#build` without a manifest dependency.
+The task graph does not close the gap the plain form leaves:
+`dependsOn` pulls a task's DEPENDENCIES in, never its dependents. The
+`...` walk does follow a cross-project `dependsOn` edge, so `--affected`
+reaches an `e2e` that depends on `app#build` without a manifest
+dependency.
 
-It's a pure sugar for `--filter '[<base>]'`; both are resolved by
+It's a pure sugar for `--filter '...[<base>]'`; both are resolved by
 `src/workspace/affected.ts`, which unions `git diff` against `<base>`
 with `git ls-files --others` so a brand-new untracked source file counts
 as a change (input hashing sees it, so `--affected` must too). A
