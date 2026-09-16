@@ -541,6 +541,16 @@ the error table in `docs/schema.md` has the row.
       enumerated by that repository's own git, one spawn per run, its
       files hashed by content; `--affected` follows; a `workspaceFiles`
       glob stops at the nested repository's edge.
+226.  DONE (2026-09-16, launch checklist 6): the site had no page that
+      states vx's limits together — the introduction's Requirements
+      said what it needs, nothing said what it cannot do. A "Known
+      limits" section follows Requirements now: Bun ≥ 1.4 for source
+      installs, the Linux sandbox's `bubblewrap` + `socat` and its
+      root-in-a-container refusal (with the remedy and `vx info`),
+      Windows as WSL, the lossy macOS report, the in-memory remote
+      seam, the uncapped captured output (Next 20), and the nested
+      repository's `workspaceFiles` edge. No new page, so the sidebar
+      law is untouched; the checklist item points at it.
 
 ## In flight
 
@@ -590,12 +600,15 @@ state of each:
 5. OWNER, optional: enable GitHub private vulnerability reporting
    (Settings → Security) so `SECURITY.md`'s instruction is live; issue
    templates are not needed for a first announcement.
-6. Known limits an article should state plainly: Bun ≥ 1.4 for source
-   installs (the binary needs nothing); Linux sandboxing needs
-   `bubblewrap` + `socat` and cannot run as root inside a container;
-   Windows is WSL; macOS violation reporting is lossy under load
-   (In-flight 5); the remote seam moves whole artifacts in memory
-   (Next 2, fine below ~100 MiB).
+6. DONE 2026-09-16 as item 226: the site's introduction has a
+   "Known limits" section — Bun ≥ 1.4 for source installs (the binary
+   needs nothing); Linux sandboxing needs `bubblewrap` + `socat` and
+   cannot run as root inside a container; Windows is WSL; macOS
+   violation reporting is lossy under load (In-flight 5); the remote
+   seam moves whole artifacts in memory (Next 2, fine below ~100 MiB);
+   a task's captured output is kept whole (Next 20); a project inside a
+   submodule is enumerated by its own repository (221). An article
+   links it.
 
 ## Next (ordered)
 
