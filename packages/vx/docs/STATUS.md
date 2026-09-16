@@ -297,6 +297,25 @@ test is telling the truth.
       workspace's "alongside the local executor", the API size, `mcp`
       as a verb) hit nothing outside design/ and history/, which are
       dated records.
+296.  DONE (2026-09-16, `execution.md` read whole against source, the
+      third page of the series): nine stale claims — the dispatch
+      list (`mcp` as a core verb; no `why`, `last`, `completions`;
+      the class grep missed it because the list is slash-separated,
+      not backticked); the workspace fingerprint "over every supported
+      lockfile" (minus a claimed one); "all four steps" of a
+      three-step list; "a service run" supplying the `inflight` map
+      (the service is gone; an embedder may); `--excludeDependencies`
+      (retired; `--exclude-dependencies[=names]`); "full stdout text
+      is stored" (the first and last 8 MiB since 229); the glyph
+      grid without `⦿` running; the essential allowlist naming eleven
+      of seventeen POSIX names; "anything not in these four layers is
+      invisible" (vx sets `VX_RUN_WORKSPACE` and `VX_RUN_TASK`
+      itself). Two pins in `tests/execution-doc-drift.test.ts`: the
+      dispatch list = the `case` list, the allowlist sentence ⊇
+      `ESSENTIAL_ENV`'s POSIX names. Read and found true: the kill
+      grace (2 s), the 30 ms redraw floor, the `--dry` outcome set,
+      the `--dry` + `--summarize` refusal, `::group::`, the workspace
+      config's four fields, the concurrency default.
 
 ## In flight
 
