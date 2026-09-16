@@ -90,6 +90,10 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['run-context', 'orchestrator/run-context.ts', 'HostContext'],
   ['config-cache', 'workspace/config-cache.ts', 'ConfigEvalKeyResult'],
   ['config-cache', 'workspace/config-cache.ts', 'ConfigEvalKeyArgs'],
+  ['placement', 'orchestrator/placement.ts', 'Placements'],
+  ['hit-restore', 'orchestrator/hit-restore.ts', 'RestoreHitArgs'],
+  ['miss-save', 'orchestrator/miss-save.ts', 'OutputDirSnapshot'],
+  ['miss-save', 'orchestrator/miss-save.ts', 'SaveMissArgs'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {

@@ -17,6 +17,12 @@ replays under a green result; treat edits like `execute-task.ts` ones.
 ## Public surface
 
 ```ts
+export interface OutputDirSnapshot {
+  hash: string
+  projectDir: string
+  prefixes: readonly string[] // the whole-subtree output prefixes
+}
+
 export interface SaveMissArgs {
   node: TaskNode
   hash: string
@@ -24,17 +30,19 @@ export interface SaveMissArgs {
   log: Logger
   workspaceRoot: string
   nestedProjectDirs: string[]
-  gitFilesCache?: GitFilesCache
+  gitFilesCache?: GitFilesCache | undefined
   outputs: string[] // declared cache.outputs.files
   wsOutputs: string[] // declared cache.outputs.workspaceFiles
   captured: readonly TaskInputComponent[] // Tier-3 rows from the pre-exec describe
   command: string
   durationMs: number
   stdout: string
-  outputDirSnapshots?: OutputDirSnapshot[] // queued for run end when present
-  deferSave?: (save: () => Promise<void>) => void // the run's save lane when present
+  cpuMs?: number | undefined // what the execution used — stored on the entry and the artifact's sidecar
+  peakRssBytes?: number | undefined
+  outputDirSnapshots?: OutputDirSnapshot[] | undefined // queued for run end when present
+  deferSave?: ((save: () => Promise<void>) => Promise<void>) | undefined // the run's save lane; resolves when the save lands
 }
-export function saveMiss(a: SaveMissArgs): Promise<void>
+export function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void> }>
 ```
 
 ## The save lane (2026-09-10)
