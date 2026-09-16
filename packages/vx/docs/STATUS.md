@@ -1176,11 +1176,14 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       "internal error", no "corrupt artifact") and a finished run whose
       record cannot be written (`--cache=local:r` leaves the record as
       the one write; exit 0, the line, no frame). Root is subject to
-      ENOSPC like anyone, so the suite runs as root; it skips without
-      the variable and CI's Linux job mounts a 2 MiB tmpfs under `/tmp`
-      and sets it (the shards pass it through), as the manual gate
-      does — a gate on an env var CI sets, not a probe. Both cases fail
-      without the fix. The gate's first run caught the pin the change
+      ENOSPC like anyone, so no user switch is needed; the suite skips
+      without the variable and CI's Linux job mounts a 2 MiB tmpfs and
+      sets it, as the manual gate does — a gate on an env var CI sets,
+      not a probe. CI's first run placed it: inside a sandboxed shard
+      the mount was read-only (`EROFS` on the fixture's `mkdtemp`), a
+      mount the sandbox did not make, so the suite is in the unsafe
+      set — the tests a sandbox cannot host — and only that task passes
+      the variable through. Both cases fail without the fix. The gate's first run caught the pin the change
       retired: `orchestrator-remote.test.ts` forced a record throw to
       prove `close()` still ran and expected the run to reject; it
       asserts the status line now, the close still. `docs/caching.md`

@@ -103,8 +103,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   macOS caps a process at 10 240, so the whole suite in one process
   does not clear the cap.
 - `tests/*.unsafe.test.ts` is the suite a sandbox cannot host — the
-  sandbox's own tests (seatbelt cannot nest) and the cross-project law
-  (a project may read only its own directory). The shards exclude them
+  sandbox's own tests (seatbelt cannot nest), the cross-project law
+  (a project may read only its own directory) and the disk-full suite
+  (a sandboxed task sees a mount it did not make as read-only). The shards exclude them
   with `--path-ignore-patterns`; `test.bun.unsafe` runs them. It and
   `@vzn/vx-reapi#test` (which dials service containers on the host's
   loopback, unreachable from a Linux sandbox's network namespace) are

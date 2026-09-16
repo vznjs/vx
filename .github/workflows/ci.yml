@@ -67,10 +67,12 @@ jobs:
       # package's `ci` → `test`) — so the same command is the gate here
       # and on a laptop. A read across a project boundary is declared on
       # the task that needs it, never worked around with a workspace step.
-      # A 2 MiB tmpfs under /tmp for `tests/disk-full.test.ts`: the suite
-      # skips without VX_SMALL_DISK, so a laptop is not asked to mount
-      # anything and the machine whose result gates a merge runs it. Under
-      # /tmp so the sandboxed shard sees it (bwrap binds /tmp recursively).
+      # A 2 MiB tmpfs for `tests/disk-full.unsafe.test.ts`: the suite skips
+      # without VX_SMALL_DISK, so a laptop is not asked to mount anything and
+      # the machine whose result gates a merge runs it. It is in the unsafe
+      # set because a sandboxed shard sees a mount it did not make as
+      # read-only (EROFS, the first run), and a disk that cannot be written
+      # cannot be filled.
       - name: Mount a small disk
         run: |
           sudo mkdir -p /tmp/vx-small

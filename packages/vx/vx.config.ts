@@ -14,7 +14,7 @@ const shardTask = (i: number) => ({
   dependsOn: ['install'],
   exec: {
     command: `bun test $(bun scripts/test-shard.ts ${i} ${SHARD_COUNT})`,
-    env: { passThrough: ['VX_REQUIRE_SANDBOX', 'VX_SMALL_DISK'] },
+    env: { passThrough: ['VX_REQUIRE_SANDBOX'] },
     sandbox: {
       allow: {
         systemInfo: ['vfs.disk-space'],

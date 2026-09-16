@@ -1,8 +1,11 @@
 // The disk-full persona: a small file system named by `VX_SMALL_DISK` (CI
-// mounts a 2 MiB tmpfs under /tmp and sets it; so does the manual gate).
-// Root is subject to ENOSPC like any user, so no user switch is needed. The
-// gate is an env var CI sets, never a probe: absent, the suite skips on a
-// laptop; on the machine whose result gates a merge it runs.
+// mounts a 2 MiB tmpfs and sets it; so does the manual gate). Unsafe, i.e.
+// outside the sandboxed shards: a sandboxed task sees a mount it did not
+// make as read-only (EROFS on the first CI run, 2026-09-16), and a disk
+// that cannot be written cannot be filled. Root is subject to ENOSPC like
+// any user, so no user switch is needed. The gate is an env var CI sets,
+// never a probe: absent, the suite skips on a laptop; on the machine whose
+// result gates a merge it runs.
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
