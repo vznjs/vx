@@ -3,6 +3,7 @@
 // so the layers can be swapped without touching the others.
 
 import type { ProjectEntry } from '../workspace/index.js'
+import { loadWorkspace, unreachedHint, unreachedPackages } from '../workspace/index.js'
 import path from 'node:path'
 import { type CacheLayer, type CachePolicy, FULL_CACHE_POLICY } from '../cache/index.js'
 import { VERSION } from '../version.js'
@@ -199,7 +200,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // case too; the message is identical, so that branch stays below.
   if (prepared.unresolvedTasks.length > 0) {
     log.status(
-      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${didYouMean(prepared.unresolvedTasks, prepared.projects)}${initHint(prepared)}`,
+      `No projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${didYouMean(prepared.unresolvedTasks, prepared.projects)}${await initHint(prepared)}`,
     )
     prepared.cache.close()
     return { ok: false, outcomes: [] }
@@ -211,7 +212,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // buildTaskGraph semantics but logged just in case.
     const msg =
       prepared.empty === 'no-tasks-declared'
-        ? `No projects declare task(s): ${options.tasks.join(', ')}.${initHint(prepared)}`
+        ? `No projects declare task(s): ${options.tasks.join(', ')}.${await initHint(prepared)}`
         : 'No tasks to run.'
     log.status(msg)
     prepared.cache.close()
@@ -966,11 +967,19 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
  * on the error path. A workspace whose package globs match NOTHING is
  * told that instead — `vx init` would find no package to write for.
  */
-function initHint(prepared: { anyProjectConfig: boolean; workspaceProjectCount: number }): string {
+async function initHint(prepared: {
+  anyProjectConfig: boolean
+  workspaceProjectCount: number
+  workspaceRoot: string
+}): Promise<string> {
   if (prepared.anyProjectConfig) return ''
   if (prepared.workspaceProjectCount === 0) {
     return " No package matched the workspace's package globs — check `workspaces` in package.json (or pnpm-workspace.yaml)."
   }
+  // Single-project mode with packages the root's missing `workspaces`
+  // never reaches: `vx init` would find no scripts either (item 248).
+  const unreached = await unreachedPackages(await loadWorkspace(prepared.workspaceRoot))
+  if (unreached.length > 0) return ` ${unreachedHint(unreached)}`
   return ' No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.'
 }
 

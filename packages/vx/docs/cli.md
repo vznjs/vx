@@ -1254,7 +1254,12 @@ declaring the local executor and cache. The same mapping as `@vzn/vx-migrate
 --from scripts`, with the same `--dry` / `--force` flags; the one
 difference is a workspace with no scripts at all, which `init` still
 scaffolds (the workspace file, a printed example config, and the next
-command to run) where `migrate` reports nothing to convert. Every
+command to run) where `migrate` reports nothing to convert. A root
+`package.json` with no `workspaces` field is single-project mode, and
+when `packages/*/package.json` files sit below it unreached, both
+`init` and a run that finds no config say so instead ("package.json
+declares no workspaces … Add "workspaces": ["packages/*"] to
+package.json and re-run") rather than "no scripts" or "run vx init". Every
 generated config is typed for the editor through
 `import type { ProjectConfig } from '@vzn/vx'` and `satisfies
 ProjectConfig` — a type-only import Bun erases, so the file loads in a

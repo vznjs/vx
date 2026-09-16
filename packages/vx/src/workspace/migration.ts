@@ -8,6 +8,7 @@
 import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
+import { loadWorkspace, unreachedHint, unreachedPackages } from './workspace.js'
 
 /**
  * Escape an arbitrary string into a single-quoted TS literal. Escapes
@@ -191,7 +192,19 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     }
   }
   const report: string[] = []
-  if (empty) {
+  // Single-project mode with packages the root's missing `workspaces` never
+  // reaches: the scripts exist, the globs do not (item 248).
+  const unreached = empty ? await unreachedPackages(await loadWorkspace(root)) : []
+  if (empty && unreached.length > 0) {
+    report.push(
+      `${verb}: ${unreachedHint(unreached)}`,
+      hasWorkspaceFile
+        ? `${workspaceName} already exists.`
+        : dry
+          ? `would write ${workspaceName} (dry run, nothing written).`
+          : `wrote ${workspaceName}.`,
+    )
+  } else if (empty) {
     report.push(
       `${verb}: no package.json scripts to turn into tasks.`,
       hasWorkspaceFile
