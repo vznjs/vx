@@ -26,7 +26,7 @@
 // layer speaks is `CacheLayer` in layer.ts; `plugin-host.ts` enforces it.
 
 import { Database, type SQLQueryBindings } from 'bun:sqlite'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { accessSync, constants, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { relPosix, UserError, xxh3, xxh3hex, span } from '../util/index.js'
@@ -936,6 +936,33 @@ export class Cache implements CacheLayer {
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     } finally {
       endExtract()
+    }
+  }
+
+  /**
+   * A run writes here on every path — the run record at its end, an
+   * entry's `accessed_at` on a hit, the artifact on a miss — so a cache
+   * directory this user cannot write into fails the run before the graph
+   * starts, once, with the directory named, rather than every task at
+   * 0 ms (or the run at its very end) with SQLite's "attempt to write a
+   * readonly database" as an internal error (an unprivileged user on a
+   * root-owned `.vx`, 2026-09-16). The check is the file system's, not a
+   * trial write: under WAL a rolled-back write never reaches the disk, so
+   * `BEGIN IMMEDIATE … ROLLBACK` passes on a handle SQLite opened
+   * read-only (proven as that user). The directory must take new files
+   * (the WAL, the artifacts) and the database file must take pages.
+   */
+  assertWritable(): void {
+    try {
+      accessSync(this.cacheDir, constants.W_OK)
+      const db = path.join(this.cacheDir, 'cache.db')
+      if (existsSync(db)) accessSync(db, constants.W_OK)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      throw new UserError(
+        `cache directory ${this.cacheDir} is not writable (${message}) — every run records its ` +
+          `history there; make it writable by this user, or pass --cache-dir <path>`,
+      )
     }
   }
 

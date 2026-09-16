@@ -616,6 +616,33 @@ describe('Cache storage (v10)', () => {
     },
   )
 
+  it('assertWritable() passes on a cache this user owns', () => {
+    expect(() => cache.assertWritable()).not.toThrow()
+  })
+
+  // Root writes anywhere, so the case skips there; CI's runner is not root.
+  it.skipIf(process.getuid?.() === 0)(
+    'assertWritable() names a cache directory this user cannot write into',
+    async () => {
+      const { chmod, readdir } = await import('node:fs/promises')
+      // The handle SQLite opens on an unwritable file is read-only from the
+      // start, so the probe needs a cache opened AFTER the mode changed.
+      for (const f of await readdir(cacheDir)) await chmod(path.join(cacheDir, f), 0o444)
+      await chmod(cacheDir, 0o555)
+      const later = new Cache(cacheDir)
+      try {
+        expect(() => later.assertWritable()).toThrow(UserError)
+        expect(() => later.assertWritable()).toThrow(
+          /^cache directory .* is not writable \(EACCES: .*\) — every run records its history there; make it writable by this user, or pass --cache-dir <path>$/,
+        )
+      } finally {
+        later.close()
+        await chmod(cacheDir, 0o755)
+        for (const f of await readdir(cacheDir)) await chmod(path.join(cacheDir, f), 0o644)
+      }
+    },
+  )
+
   it('get() returns null when the entry has never been written', async () => {
     expect(await cache.get('never-written')).toBeNull()
   })

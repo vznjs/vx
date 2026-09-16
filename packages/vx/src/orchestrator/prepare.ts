@@ -201,6 +201,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
   const localCache = new Cache(cacheDir, { read: policy.localRead, write: policy.localWrite })
+  localCache.assertWritable()
   noteSchemaReset(localCache, (m) => log.status(m))
   // Two digests from one read: the config-evaluation cache keys on every
   // file (a config may import a dependency), the task keys on the files no
