@@ -1,46 +1,45 @@
-# `src/util/ulid.ts` — ULID generator
+# `src/util/ulid.ts` — run-id generator
 
 ## Purpose
 
 Stamp every `vx run` invocation with a sortable, collision-resistant
 id (`run_id`) that's shared across every task in that invocation.
 Lets analytics queries group by run without needing a separate
-"runs" parent table.
+"runs" parent table, and range-scan a time window on the id column
+with no index on the time column.
 
 ## Public surface
 
 ```ts
-export function ulid(now: number = Date.now()): string
+export function ulid(): string
 ```
 
-Returns a 26-character ULID:
-
-- 48-bit ms timestamp prefix → first 10 base32 chars
-- 80 bits of `crypto.getRandomValues` entropy → next 16 base32 chars
-
-Encoding: Crockford base32 (`0123456789ABCDEFGHJKMNPQRSTVWXYZ`).
+A thin wrapper over `Bun.randomUUIDv7()`: a 36-character UUIDv7 in the
+standard hex-with-hyphens form (RFC 9562) — a 48-bit millisecond
+timestamp leads, 74 bits of randomness fill the rest. The function
+keeps its old name; the value has not been a Crockford-base32 ULID
+since the hand-rolled generator gave way to Bun's built-in, which
+covers the same guarantees with zero custom code.
 
 ## Properties
 
-- **Lexicographically sortable** by time (millisecond resolution).
-- **Collision-resistant** under parallelism — 80 bits of randomness
+- **Lexicographically sortable** by time (millisecond resolution):
+  later ids sort after earlier ones.
+- **Collision-resistant** under parallelism — 74 bits of randomness
   is plenty for the "two `vx run` invocations within the same ms"
   case.
-- **No dependencies.** Hand-rolled to keep the dep tree slim — the
-  `ulid` npm package is ~12 KB with a browser/node split for features
-  we don't need.
+- **No dependencies, no custom code.**
 
 ## Why not `crypto.randomUUID()`
 
-UUIDs aren't lexicographically sortable, so grouping `runs` table
+A v4 UUID isn't lexicographically sortable, so grouping `runs` table
 rows by time-window or "the latest run" would require a separate
-timestamp column AND join. ULID does both jobs in one column.
+timestamp column AND join. A v7 UUID does both jobs in one column.
 
 ## Tests
 
 `tests/ulid.test.ts`:
 
-- 26 chars total.
-- First 10 chars sort with time.
-- Two ULIDs taken in the same millisecond differ (entropy verified).
-- Character set is Crockford base32 only.
+- 36 characters, the UUIDv7 shape.
+- Many rapid generations are all unique.
+- Later ids sort after earlier ones.

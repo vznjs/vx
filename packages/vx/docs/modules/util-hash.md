@@ -21,5 +21,8 @@ export function xxh3hex(input: string | Uint8Array, seed?: bigint): string // 16
 
 ## Tests
 
-Pinned indirectly by every cache-key stability test; no dedicated
-unit file (the functions are two lines each).
+`tests/util-hash.test.ts`: the published XXH3_64bits vectors for `""`
+and `"abc"`, the default seed of exactly `0n` (`Cache.key` seeds its
+chain from it), determinism, the barrel re-export being the same
+function, and the fixed 16-char rendering. Pinned again by every
+cache-key stability test.

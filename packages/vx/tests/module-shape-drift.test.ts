@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatBytes } from '../src/cli/format.js'
+import { ulid } from '../src/util/ulid.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 const read = (rel: string) => readFileSync(path.join(pkg, rel), 'utf8')
@@ -199,6 +200,16 @@ describe('a module page quotes a constant or a regex the module has', () => {
       .map((m) => m[1]!)
       .filter((n) => !aside.has(n) && !seen.has(n) && (seen.add(n), true))
     expect(named).toEqual(words)
+  })
+
+  it("util-ulid.md's id is the width and shape ulid() produces", () => {
+    // The page described a 26-char Crockford-base32 ULID two rewrites after
+    // the generator became Bun.randomUUIDv7 (item 327, 2026-09-16).
+    const id = ulid()
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    const doc = read('docs/modules/util-ulid.md')
+    expect(doc).toContain(`a ${id.length}-character UUIDv7`)
+    expect(doc).not.toContain('26-character')
   })
 
   it("download-policy.md's DownloadMode is the source's union", () => {

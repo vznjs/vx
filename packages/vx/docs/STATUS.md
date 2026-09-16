@@ -401,6 +401,20 @@ test is telling the truth.
       (`build.*`, `^check.*`, a package pattern in `pkg#name`) that
       `nameMatcher` accepts. Fixed; the shape law gains six shapes.
       Six fail on the old pages.
+327.  DONE (2026-09-16, the last three 09-05 pages: util-hash,
+      util-ulid, version). util-hash.md said "no dedicated unit file"
+      — `tests/util-hash.test.ts` pins the published XXH3 vectors,
+      the `0n` seed and the 16-char rendering. util-ulid.md
+      described, in full, a hand-rolled 26-character Crockford-base32
+      ULID with a `now` parameter: `ulid()` has been
+      `Bun.randomUUIDv7()` (36 characters, RFC 9562) since the
+      module's own header comment says so, and the page's Tests
+      section listed assertions the suite does not make. version.md's
+      "if versioning ever derives from `package.json`" describes what
+      the file already does (a JSON import, inlined under
+      `bun build --compile`). Fixed; the pin renders `ulid()` and
+      holds the page to its width and shape. One fails on the old
+      page.
 
 ## In flight
 
