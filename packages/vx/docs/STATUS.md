@@ -168,6 +168,19 @@ test is telling the truth.
       unit pins; this is the whole output as a log file receives it),
       with a `FORCE_COLOR` control that paints the same piped run.
 
+250.  DONE (2026-09-16, the dependency sweep, five days after 92): what
+      `bun outdated -r` listed — `oxfmt` 0.67.0 → 0.68.0 and `oxlint`
+      1.82.0 → 1.83.0 (the repo's lint task green on both, no reflow
+      this time), `@anthropic-ai/sandbox-runtime` ^0.0.75 → ^0.0.76
+      (its bwrap gains `--cap-drop ALL` and an address module; the
+      unsafe sandbox suite as `probe` is 57 pass, 1 skip — a first run
+      of it showed two port-bridge failures that were my `su probe`
+      without the probe user's bun on PATH, not the runtime: the gate's
+      PATH passes). Left alone, as majors for the REAPI plugin whose
+      live suite this box cannot run: `protobufjs` 7.6.5 → 8.8.0 and
+      `@grpc/proto-loader` 0.7.15 → 0.8.1. `oxlint-tsgolint` 7.0.2001
+      is current. Bun 1.4.2 is still the newest tag.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
