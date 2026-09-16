@@ -181,3 +181,22 @@ is a plugin `executor` (per task — the whole-run `backend` seam was
 removed in 2026-08; the scheduler never leaves this process). Touch
 `run.ts` itself only for new run-level
 lifecycle steps.
+
+## The run lock (`run-lock.ts`)
+
+One run at a time per workspace, per machine. Two vx processes on one
+workspace raced on every task's OUTPUT TREE (both clean and restore the
+same `dist/`; a clean landing while the other run's restore is staging
+takes its files out from under it, item 215), so `run()` takes the
+workspace's lock just before it schedules — after the early exits,
+which touch no tree — and releases it with its cache handle, before a
+persistent task's wait. The lock is an atomic `mkdir` under the temp
+directory, keyed by the resolved workspace root (`--cache-dir` does not
+make two runs strangers; a read-only checkout can take it), holding the
+holder's pid: a second process polls every 50 ms, after a second says
+`[vx] waiting for another vx run (pid N) on this workspace to finish…`,
+and reclaims a lock whose pid is gone. A directory that cannot be made
+for any reason but "exists" is a one-line warning and an unlocked run.
+Runs inside ONE process share the lock (a count; the last release
+removes the directory): an embedder that runs two at once coordinates
+them itself through `RunOptions.inflight`.

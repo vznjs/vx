@@ -1268,6 +1268,43 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       `CorruptArtifactError`); `docs/caching.md` § Concurrent runs says
       it. Not done, on the Next list: a per-task advisory lock so the
       second run waits instead of failing.
+216.  DONE (2026-09-16, Next 19, as a per-RUN lock): two vx processes
+      on one workspace take turns now. A run takes the workspace's run
+      lock just before it schedules — after the early exits, which touch
+      no tree — and releases it with its cache handle, before a
+      persistent task's wait, so a dev server never holds it; the
+      second run polls every 50 ms and after a second says whom it
+      waits for. The lock is an atomic `mkdir` under the temp directory
+      keyed by the resolved workspace root (so `--cache-dir` does not
+      make two runs strangers, and a read-only checkout can take it)
+      with the holder's pid inside, reclaimed when that pid is gone
+      (`kill 0`: ESRCH is gone, EPERM is another user's live process,
+      not ours to reclaim); a directory that cannot be made for any
+      reason but "exists" is a one-line warning and an unlocked run —
+      a courtesy between cooperating runs, never a refusal. Runs inside
+      one process share it (a count; the last release removes the
+      directory): the gate's first run showed the in-flight dedup
+      control — two runs in one process, no registry, both execute —
+      going quiet, because the lock had serialized what an embedder
+      chooses to overlap and coordinates through `RunOptions.inflight`;
+      the lock is for processes. Per-run, not
+      per-task, because the warm no-op path must stay untouched: a
+      per-task lock is a `mkdir` + `rmdir` per task (tens of µs × a
+      thousand tasks, on a 232 ms run), a per-run lock is one pair per
+      run; per-task granularity stays a refinement for a workspace that
+      wants a watch and a run interleaved by task. Pinned:
+      `run-lock.test.ts` (a second process waits for the holder — a
+      sleeping child plays it — and the notice comes once after a
+      second; runs in one process share it; a dead pid reclaimed and a
+      live one not; an unmakeable lock warns and proceeds; an aborted
+      wait returns without it) and `run-lock-e2e.test.ts` (two CLI runs,
+      the second prints the line and hits the first's outputs; the race
+      of 215 — cold outputs, warm cache, two runs — four rounds, both
+      green, 200 files each time). `docs/caching.md` § Concurrent runs
+      and `docs/cli.md` say it. Next 6 with the lock in place: 1,000
+      projects 225 ms warm / 670 restore / 2,494 cold (medians of 5;
+      210's 232 / 711 / 2,542) — one `mkdir` and one `rm` per run is
+      nothing the bench can see.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
@@ -1716,7 +1753,7 @@ walked. The box: unchanged. Never end with "what next?".
 18. DONE 2026-09-15 as item 176 — measured a 21% loss (132 vs 160 s
     on 92 builds); cores are declared, never learned.
 
-19. **A per-task lock for two runs on one workspace (from item 215).**
+19. DONE 2026-09-16 as item 216, as a per-RUN lock (the per-task grain is a refinement, see 216). Was: **A per-task lock for two runs on one workspace (from item 215).**
     Two vx processes that clean and restore the same output tree race;
     today the loser fails plainly ("was interrupted … another vx run").
     A per-task advisory lock (`flock` on `<cacheDir>/locks/<taskId>`,
