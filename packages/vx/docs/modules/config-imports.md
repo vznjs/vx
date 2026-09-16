@@ -127,3 +127,14 @@ key change is not, since `defineProject` is identity. vx cannot tell
 those apart without evaluating, and selection may over-select safely
 (it is never hashed) but must never under-select. A config importing
 its helpers by BARE specifier opts out of this channel.
+
+## `unprovidedBareImports` (item 239)
+
+The bare specifiers of a config that no `node_modules/<package>` above it
+provides — the ones Bun would auto-install from the npm registry when no
+`node_modules` exists anywhere above (sixteen connections and 150 ms before
+"cannot find", measured 2026-09-16). The loader refuses such a config before
+evaluating it: `cannot find '<name>' — no node_modules above the config
+provides it; install the workspace's dependencies first`. Builtins, `@vzn/vx`
+(the core alias), and relative or absolute specifiers are never listed.
+`tests/config-missing-import.test.ts`.
