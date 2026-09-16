@@ -1781,6 +1781,21 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       pinned (the control in plugin-commands.test.ts: a plugin's own
       bug is debuggable, its first frame is the plugin's file; a
       UserError prints its message only).
+191.  DONE (2026-09-16): `whyDidThisRerun` answers for the latest run
+      when no `runId` is given. The tenth walk, an agent reading the
+      MCP server over the wire (initialize, tools/list, one call): the six
+      descriptions read right except two things. The tool demanded a
+      `runId` an agent has no way to know without a history call
+      first, while `vx why` defaults to the task's latest run — the
+      CLI's lookup moved into the orchestrator as `latestRunId` (one
+      query, exported by the façade, the CLI on it too) and the tool
+      defaults through it, naming the task when it has no runs; the
+      schema says so, `runId` stays a string when given. And
+      `getWorkspaceInfo`'s description still said "runs and hits"
+      where item 181 made the row task runs — it and the MCP guide's
+      `getCacheStats` row say task runs now. The tool suite pins the
+      default equal to the explicit latest id and the no-runs refusal;
+      the façade pin lists the new export.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

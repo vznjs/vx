@@ -380,6 +380,22 @@ function unchangedKeyNote(cacheHit: number | null): string {
     : 'cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated)'
 }
 
+/**
+ * The latest recorded run of a task (run_id may be NULL on very old rows).
+ * One query for `vx why` and `vx mcp`: the CLI defaulted to it while the
+ * tool demanded a run id an agent had to fetch first (2026-09-16).
+ */
+export function latestRunId(db: Database, taskId: string): string | null {
+  const [project, task] = splitTaskId(taskId)
+  const row = db
+    .query(
+      `SELECT run_id AS runId FROM runs WHERE project = ? AND task = ?
+       ORDER BY started_at DESC LIMIT 1`,
+    )
+    .get(project, task) as { runId: string | null } | undefined
+  return row?.runId ?? null
+}
+
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun {
   const [project, task] = splitTaskId(taskId)
   const this_ = db

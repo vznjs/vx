@@ -820,6 +820,16 @@ describe('explainCacheKey', () => {
 // ---------------------------------------------------------------------------
 
 describe('whyDidThisRerun', () => {
+  it("omitting runId answers for the task's latest run, as `vx why` does", async () => {
+    const latest = (await call(MAIN.root, 'whyDidThisRerun', { taskId: '@t/alpha#build' })) as Why
+    const explicit = (await call(MAIN.root, 'whyDidThisRerun', {
+      runId: 'r3',
+      taskId: '@t/alpha#build',
+    })) as Why
+    expect(latest).toEqual(explicit)
+    expect(latest.thisRun!.hash).toBe('a3')
+  })
+
   it('names the previous KEYED run and reports the key change', async () => {
     const got = (await call(MAIN.root, 'whyDidThisRerun', {
       runId: 'r3',
@@ -983,12 +993,20 @@ describe('whyDidThisRerun', () => {
   })
 
   const badArgs: ReadonlyArray<readonly [string, Record<string, unknown>, RegExp]> = [
-    ['a missing taskId', { runId: 'r1' }, /must be strings/],
-    ['a missing runId', { taskId: '@t/alpha#build' }, /must be strings/],
-    ['both missing', {}, /must be strings/],
-    ['a numeric runId', { runId: 1, taskId: '@t/alpha#build' }, /must be strings/],
-    ['a null taskId', { runId: 'r1', taskId: null }, /must be strings/],
-    ['an array taskId', { runId: 'r1', taskId: ['a', 'b'] }, /must be strings/],
+    ['a missing taskId', { runId: 'r1' }, /taskId must be a string/],
+    ['both missing', {}, /taskId must be a string/],
+    [
+      'a numeric runId',
+      { runId: 1, taskId: '@t/alpha#build' },
+      /runId, when given, must be a string/,
+    ],
+    ['a null taskId', { runId: 'r1', taskId: null }, /taskId must be a string/],
+    ['an array taskId', { runId: 'r1', taskId: ['a', 'b'] }, /taskId must be a string/],
+    [
+      'a task with no recorded runs',
+      { taskId: '@t/alpha#nope' },
+      /no recorded runs for @t\/alpha#nope/,
+    ],
     // Reached only after the string check, so it has its own message.
     ['a taskId with no separator', { runId: 'r1', taskId: 'build' }, /"project#task"/],
   ]

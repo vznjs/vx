@@ -11,6 +11,7 @@ import { splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
   explainCacheKeyQuery as explainCacheKey,
+  latestRunId,
   whyDidThisRerunQuery as whyDidThisRerun,
 } from '../orchestrator/index.js'
 import { nearMatches, UserError } from '../util/index.js'
@@ -124,19 +125,6 @@ function resolveTarget(cache: Cache, target: string): string {
   throw new UserError(`vx why: no recorded runs for task "${target}"${suggest(target, ids)}`)
 }
 
-/** The latest recorded run of a task (run_id may be NULL on very old rows). */
-function latestRunId(cache: Cache, taskId: string): string | null {
-  const [project, task] = splitTaskId(taskId)
-  const row = cache
-    .dbHandle()
-    .query(
-      `SELECT run_id AS runId FROM runs WHERE project = ? AND task = ?
-       ORDER BY started_at DESC LIMIT 1`,
-    )
-    .get(project, task) as { runId: string | null } | undefined
-  return row?.runId ?? null
-}
-
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
 
 export async function whyCmd(args: readonly string[]): Promise<number> {
@@ -152,7 +140,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
   try {
     const db = cache.dbHandle()
     const taskId = resolveTarget(cache, parsed.target)
-    const runId = parsed.runId ?? latestRunId(cache, taskId)
+    const runId = parsed.runId ?? latestRunId(cache.dbHandle(), taskId)
 
     if (runId === null) {
       // Runs exist (resolveTarget passed) but predate run ids — fall back to

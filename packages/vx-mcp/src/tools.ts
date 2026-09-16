@@ -14,6 +14,7 @@ import {
   LocalHistoryProvider,
   splitTaskId,
   UserError,
+  latestRunId,
   whyDidThisRerunQuery,
 } from '@vzn/vx'
 
@@ -84,14 +85,17 @@ const TOOLS: readonly ToolDef[] = [
   {
     name: 'whyDidThisRerun',
     description:
-      'Compare a run’s cache key for a task against the previous run and say whether it changed.',
+      'Compare a run’s cache key for a task against the previous run and say whether it changed. `runId` defaults to the task’s latest run, as `vx why` does; getRunHistory lists the others.',
     inputSchema: {
       type: 'object',
       properties: {
-        runId: { type: 'string' },
-        taskId: { type: 'string' },
+        runId: {
+          type: 'string',
+          description: 'A run id from getRunHistory; omitted = the latest run of the task',
+        },
+        taskId: { type: 'string', description: 'project#task' },
       },
-      required: ['runId', 'taskId'],
+      required: ['taskId'],
     },
   },
   {
@@ -99,7 +103,7 @@ const TOOLS: readonly ToolDef[] = [
     description:
       'The workspace doctor (`vx info --format json`): vx, bun and git versions, the git status cache, ' +
       'projects and tasks, the plugins and the seams each fills, the worker count and memory budget a run ' +
-      'will use and where each comes from, the cache dir and versions, entries, orphans, runs and hits in ' +
+      'will use and where each comes from, the cache dir and versions, entries, orphans, task runs and hits in ' +
       'the last 24h, flaky tasks, whether vx-lock.json exists — the facts a bug report needs.',
     inputSchema: { type: 'object', properties: {} },
   },
@@ -335,19 +339,25 @@ async function whyDidThisRerun(
   args: Record<string, unknown>,
   ctx: ToolContext,
 ): Promise<Record<string, unknown>> {
-  const runId = args['runId']
+  const given = args['runId']
   const taskId = args['taskId']
-  if (typeof runId !== 'string' || typeof taskId !== 'string') {
-    throw new UserError('whyDidThisRerun: runId and taskId must be strings')
+  if (typeof taskId !== 'string') throw new UserError('whyDidThisRerun: taskId must be a string')
+  if (given !== undefined && typeof given !== 'string') {
+    throw new UserError('whyDidThisRerun: runId, when given, must be a string')
   }
   if (!taskId.includes('#')) {
     throw new UserError('whyDidThisRerun: taskId must be a "project#task" string')
   }
   const cache = new Cache(ctx.cacheDir)
   try {
+    const db = cache.dbHandle()
+    // `vx why`'s default, through the same query: an agent has no run id
+    // until it asks for history, and the latest run is the usual question.
+    const runId = given ?? latestRunId(db, taskId)
+    if (runId === null) throw new UserError(`whyDidThisRerun: no recorded runs for ${taskId}`)
     // The canonical query, not a copy: two implementations of this once
     // answered differently about rows that recorded no cache key.
-    return { ...whyDidThisRerunQuery(cache.dbHandle(), runId, taskId) }
+    return { ...whyDidThisRerunQuery(db, runId, taskId) }
   } finally {
     cache.close()
   }
