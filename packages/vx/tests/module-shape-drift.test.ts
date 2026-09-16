@@ -307,3 +307,22 @@ describe('a module page lists the errors a parser throws', () => {
     expect(thrown.size).toBe(5)
   })
 })
+
+describe('a module page names every export the module has', () => {
+  it("config.md's surface block names each export of src/config.ts", () => {
+    const src = read('src/config.ts')
+    const exported = [...src.matchAll(/^export (?:interface|type|const|function) (\w+)/gm)].map(
+      (m) => m[1]!,
+    )
+    expect(exported.length).toBeGreaterThan(12)
+    const doc = read('docs/modules/config.md')
+    const block = /## Public surface\n\n```ts\n([\s\S]*?)```/.exec(doc)
+    expect(block).not.toBeNull()
+    const named = new Set(
+      [...block![1]!.matchAll(/^export (?:interface|type|const|function) (\w+)/gm)].map(
+        (m) => m[1]!,
+      ),
+    )
+    expect(exported.filter((n) => !named.has(n))).toEqual([])
+  })
+})

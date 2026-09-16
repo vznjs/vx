@@ -415,6 +415,24 @@ test is telling the truth.
       `bun build --compile`). Fixed; the pin renders `ulid()` and
       holds the page to its width and shape. One fails on the old
       page.
+328.  DONE (2026-09-16, the first three 09-10 pages: bin,
+      chained-cache, config). bin.md's "Behavior" was a twelve-line
+      code sketch claiming "actual file matches this shape": it
+      tested `instanceof UserError` (the file consults `isUserError`),
+      exited without ending stdout (the flush 175 added), printed no
+      file-system refusal, and had no `error` listeners (the EPIPE
+      fix); its Tests section said no test drives the file where the
+      end-to-end suites spawn it. chained-cache.md read true and
+      gains its class shape. config.md's surface named nine exports
+      of eighteen — none of `Plugin`, `PLUGIN_HOOKS`, `PLUGIN_PACKAGE`
+      or the three sandbox types — gave `defineProject` its old
+      signature (it is `const T` with `dependsOn` typed against the
+      project's own task names), said the task-config digest is
+      `sha256` (xxh3), that `tsc -b` checks types at build time (there
+      is no build; the gate's `oxlint --type-check` does), and sent a
+      new field through `orchestrator.ts:executeTask` (a file that
+      does not exist). Fixed; the pin holds config.md's block to every
+      export of `src/config.ts`. One fails on the old page.
 
 ## In flight
 

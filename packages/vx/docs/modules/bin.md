@@ -8,27 +8,24 @@ detail, and exits with the right code.
 
 ## Behavior
 
-```ts
-#!/usr/bin/env bun
-import { run as cliRun } from './cli.js'
-import { UserError } from './util/errors.js'
-
-async function main() {
-  const exitCode = await cliRun(process.argv.slice(2))
-  process.exit(exitCode)
-}
-
-main().catch((err) => {
-  if (err instanceof UserError) {
-    process.stderr.write(`vx: ${err.message}\n`)
-    process.exit(1)
-  }
-  throw err // internal error → full stack
-})
-```
-
-(actual file matches this shape; check `src/bin.ts` for the canonical
-text.)
+`main()` forwards `process.argv.slice(2)` to the dispatcher (`cli/index.ts`'s
+`run`) and, on a code, ends stdout and exits in its callback:
+Bun drops what a pipe has not yet taken when `process.exit` follows a
+large write (300 KB written then exit delivered 64 KiB; `vx history
+--format json` on a 300-project workspace was cut mid-string,
+2026-09-15), and `end`'s callback fires once the pipe holds it all. A
+thrown error is printed and the exit is 1: a `UserError` (`isUserError`,
+so a plugin's own class of that name counts) as its message alone,
+prefixed `vx:` unless the message already names the verb (`vx why: …`);
+a file-system refusal (`isFsRefusal`) as its message plus the hint that
+names the knob; anything else with its stack, since an internal bug
+must stay debuggable. Both streams get an `error` listener before any
+of that: a reader that leaves (`vx run build | head -1`) turns every
+later write into EPIPE, and an unheard `error` event killed a green
+run with a stack and exit 1 (2026-09-16); with the listener the run
+finishes, saves, releases its lock and exits with its own verdict.
+The wrapper is an explicit `async main()` because `bun build --compile`
+refuses top-level await.
 
 Before any verb runs, bin.ts registers the **core alias**
 (`cli/core-alias.ts`): a Bun virtual module for the exact specifier
@@ -59,6 +56,7 @@ compiled binary no second copy of core transpiled from `node_modules`
 
 ## Tests
 
-No dedicated tests for `bin.ts` itself — it's a one-line dispatch.
-End-to-end behaviour is covered by the binary integration via the
-release workflow (`bun src/bin.ts run <task>` is how CI invokes vx).
+No unit file: the end-to-end suites spawn `src/bin.ts` as the real
+CLI (`tests/cli.test.ts` and the dozens that drive a fixture through
+it), the piped-stdout flush and the EPIPE listener each have their pin
+there, and `bun src/bin.ts run <task>` is how CI invokes vx.
