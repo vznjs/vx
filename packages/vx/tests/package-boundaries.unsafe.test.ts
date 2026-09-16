@@ -117,6 +117,7 @@ describe('package boundaries', () => {
       'isCacheHit',
       'isPassStatus',
       'isUserError',
+      'latestRunId',
       'listProjectMetas',
       'loadProjectConfig',
       'loadResolvedProjects',

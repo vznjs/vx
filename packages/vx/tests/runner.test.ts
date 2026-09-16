@@ -10,6 +10,7 @@ import {
   runPersistent,
   shellQuote,
   signalExitCode,
+  RSS_FLOOR_SLACK_BYTES,
 } from '../src/exec/runner.js'
 
 describe('runCommand', () => {
@@ -431,21 +432,30 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
     // Only the fields the converter reads; cast through unknown for the rest.
     const usage = {
       cpuTime: { total: 1_500_000n },
-      maxRSS: 480_000,
+      // Above the floor's slack (a bare floor of 0 still has it), so it passes through.
+      maxRSS: 480 * 1024 * 1024,
     } as unknown as Parameters<typeof resourceUsageToCpuRss>[0]
     const r = resourceUsageToCpuRss(usage)
-    expect(r.peakRssBytes).toBe(480_000)
+    expect(r.peakRssBytes).toBe(480 * 1024 * 1024)
     expect(r.cpuMs).toBe(1500)
   })
 
-  it('a peak at or under the parent’s own mark is not the child’s and is not reported', () => {
-    const usage = {
-      cpuTime: { total: 1_500_000n },
-      maxRSS: 480_000,
-    } as unknown as Parameters<typeof resourceUsageToCpuRss>[0]
-    expect(resourceUsageToCpuRss(usage, 480_000)).toEqual({ cpuMs: 1500 })
-    expect(resourceUsageToCpuRss(usage, 500_000)).toEqual({ cpuMs: 1500 })
-    expect(resourceUsageToCpuRss(usage, 479_999)).toEqual({ cpuMs: 1500, peakRssBytes: 480_000 })
+  it('a peak within the slack above the parent’s own mark is not the child’s and is not reported', () => {
+    // A light child reads ON the floor by construction, and the kernel's
+    // RSS counters jitter by pages either way; an exact `>` flipped on CI.
+    const MB = 1024 * 1024
+    const at = (maxRSS: number) =>
+      ({ cpuTime: { total: 1_500_000n }, maxRSS }) as unknown as Parameters<
+        typeof resourceUsageToCpuRss
+      >[0]
+    const floor = 480 * MB
+    expect(resourceUsageToCpuRss(at(floor), floor)).toEqual({ cpuMs: 1500 })
+    expect(resourceUsageToCpuRss(at(floor - 1), floor)).toEqual({ cpuMs: 1500 })
+    expect(resourceUsageToCpuRss(at(floor + RSS_FLOOR_SLACK_BYTES), floor)).toEqual({ cpuMs: 1500 })
+    expect(resourceUsageToCpuRss(at(floor + RSS_FLOOR_SLACK_BYTES + 1), floor)).toEqual({
+      cpuMs: 1500,
+      peakRssBytes: floor + RSS_FLOOR_SLACK_BYTES + 1,
+    })
   })
 
   it('reads a known allocation back as bytes, on THIS platform', async () => {

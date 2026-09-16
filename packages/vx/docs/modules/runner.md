@@ -132,8 +132,12 @@ Bun's shape into our schema:
   328 MB (2026-09-12). `ownRssHighWater()` reads `VmHWM` from
   `/proc/self/status` after the child exits (the mark is monotonic, so
   it covers the task's span; elsewhere the current RSS is the bound in
-  hand), and `peakRssBytes` is set only above it — unknown, bounded by
-  vx's own footprint, otherwise. `cpuMs` is the child's own either way.
+  hand), and `peakRssBytes` is set only more than `RSS_FLOOR_SLACK_BYTES`
+  (4 MiB) above it — unknown, bounded by vx's own footprint, otherwise. The
+  slack is there because a light child reads ON the floor by construction
+  and the kernel's per-thread RSS counters lag by pages between syncs: an
+  exact comparison reported 376 MB for `true` on one CI run in twelve
+  (2026-09-16). `cpuMs` is the child's own either way.
 
 Returns `{}` (no fields) when `resourceUsage()` is unavailable; the
 orchestrator persists NULLs in the `runs` table for that task.

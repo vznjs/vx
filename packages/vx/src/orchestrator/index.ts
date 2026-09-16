@@ -138,6 +138,7 @@ export {
   explainCacheKey as explainCacheKeyQuery,
   getInvocation,
   getRun,
+  latestRunId,
   listInvocations,
   listRuns,
   whyDidThisRerun as whyDidThisRerunQuery,

@@ -212,4 +212,4 @@ export type { RunResult, TaskView, OutcomeView } from './orchestrator/index.js'
 // answer, which `@vzn/vx-mcp` serves. The event bus / wire form and the
 // other history readers (`listRuns`, `getRun`, …) left the façade 2026-09-10
 // with no consumer; the telemetry seam above is the canonical export path.
-export { whyDidThisRerunQuery } from './orchestrator/index.js'
+export { latestRunId, whyDidThisRerunQuery } from './orchestrator/index.js'
