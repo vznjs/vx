@@ -58,6 +58,9 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['inputs', 'cache/inputs.ts', 'ResolvedInputs'],
   ['inputs', 'cache/inputs.ts', 'ResolveInputsArgs'],
   ['cli-cache', 'cli/cache.ts', 'PruneArgs'],
+  ['task-hash', 'orchestrator/task-hash.ts', 'HashCache'],
+  ['task-hash', 'orchestrator/task-hash.ts', 'ComputeHashArgs'],
+  ['prepare', 'orchestrator/prepare.ts', 'PreparedRun'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -94,5 +97,31 @@ describe('a module page quotes a constant or a regex the module has', () => {
       read('src/util/size.ts'),
     )
     expect(quoted).toEqual([duration![1]!, size![1]!])
+  })
+})
+
+describe('a module page lists the functions the module exports', () => {
+  it("metrics.md's signature block names every exported function, and counts them", () => {
+    const src = read('src/orchestrator/metrics.ts')
+    const exported = [...src.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]!)
+    const doc = read('docs/modules/metrics.md')
+    const block = /```ts\n([\s\S]*?)```/.exec(doc)
+    expect(block).not.toBeNull()
+    const named = [...block![1]!.matchAll(/^(\w+)\(db/gm)].map((m) => m[1]!)
+    expect([...named].sort()).toEqual([...exported].sort())
+    const WORDS = [
+      'zero',
+      'one',
+      'two',
+      'three',
+      'four',
+      'five',
+      'six',
+      'seven',
+      'eight',
+      'nine',
+      'ten',
+    ]
+    expect(doc).toContain(`the same ${WORDS[exported.length]} signatures`)
   })
 })

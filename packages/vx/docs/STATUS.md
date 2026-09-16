@@ -197,6 +197,26 @@ test is telling the truth.
       source's (`ALWAYS_IGNORE`, both parsers). Seven fail on the old
       pages. The surface law holds names; this holds the fields
       beneath them — the same law one level down.
+315.  DONE (2026-09-16, the next three module pages by gap:
+      task-hash, prepare, metrics). task-hash.md's surface block had
+      two interfaces as one-line comments and no `describeTaskInputs`,
+      `TaskInputComponent` or `captureInto` — the components `vx why`
+      diffs — and its Tests section sent the reader to the
+      plan-format tests instead of `tests/task-hash.test.ts` and
+      `tests/task-hash-derive.test.ts`; the key's parts now name the
+      `key` stage's plugin parts, the forwarded args and the group
+      expansion. prepare.md's `PreparedRun` had ten of nineteen fields,
+      step 1 named a `loadWorkspaceConfig` the step no longer calls
+      (the config arrives evaluated from `cli/workspace-config.ts`),
+      and step 4 said "no layer at all is a named error" where the
+      local store is the floor (`resolveCache`), and named neither the
+      writable check nor the two-digest fingerprint. metrics.md listed
+      seven signatures of eight (`latestRunId`, ffbea3b) and claimed
+      the flakiness verdict is imported (it is not; only
+      `KEYED_RUNS_SQL` is). Fixed; the shape law gains three shapes
+      and one export-list pin (metrics' block names every exported
+      function and the count word matches). Four fail on the old
+      pages.
 
 ## In flight
 
