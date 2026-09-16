@@ -88,6 +88,13 @@ Exit codes:
 | `1`           | At least one task ended `failed` or `skipped`; or parse/setup error.                                                                                  |
 | `130` / `143` | Interrupted (SIGINT / SIGTERM): every live child is SIGTERMed, given `VX_KILL_GRACE_MS` (2 s) to go, then SIGKILLed; a second signal skips the grace. |
 
+A reader that leaves does not change the code. `vx run build | head -1`
+closes the pipe after one line; the run still finishes, saves what it
+built and releases its lock, and exits with its own verdict — the
+output after that point goes nowhere (`EPIPE`, on stdout or stderr, is
+not an error vx reports). Before 2026-09-16 the same pipeline died with
+a stack and exit 1 after its task had succeeded.
+
 ### Selection
 
 | Form                          | Effect                                                                |
