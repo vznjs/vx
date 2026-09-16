@@ -23,35 +23,58 @@ export interface TaskOutcome {
   node: TaskNode
   status: TaskStatus
   exitCode: number
-  durationMs: number
+  durationMs: number // what THIS run spent (a hit's restore cost)
   hash?: string // cache key (pure-input transitive; folded into dependents)
+  storedDurationMs?: number // hits: the exec time the entry was stored with — the work skipped
+  storedCpuMs?: number // hits: what the producing execution used (rides the artifact)
+  storedPeakRssBytes?: number
+  admissionHeldMs?: number // how long an `admit` policy held a ready task with a free worker
   cpuMs?: number
   peakRssBytes?: number
+  groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
+  blockedBy?: string // skipped: the failed or aborted task at the root of the block
+  timedOut?: true // failed: vx's own `timeout` killed the final attempt
+  notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
+  where?: string // executor-reported placement, when not this host (telemetry-only)
+  outputs?: 'deferred' // outputs left in the remote store (`--download=none`)
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   restored?: boolean // cache hits: false = tree already current (up-to-date)
+  attempts?: number // set only when `retries` / `--retry` ran it more than once
   sandboxViolations?: number
   sandboxViolationLines?: string[]
 }
+
+export type ContinueMode = 'never' | 'deps-ok' | 'always'
 
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
   /** Aborted → nothing further dispatches; every task not yet started completes `aborted`. */
   signal?: AbortSignal
+  /** Failure propagation; default 'deps-ok'. */
+  continueMode?: ContinueMode
   execute: (node: TaskNode, upstream: TaskOutcome[]) => Promise<TaskOutcome>
   onStart?: (node: TaskNode) => void
   onFinish?: (outcome: TaskOutcome) => void
+  /** What an outcome still owes before its dependents may start (the off-slot cache save). */
+  settledOf?: (outcome: TaskOutcome) => Promise<void> | undefined
   /** Optional per-node weight override (a scheduling policy's seam). */
   priorities?: ReadonlyMap<string, number>
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */
   restoreTier?: ReadonlySet<string>
   /** Pool for tasks placed on an executor with its own capacity; undefined = the local pool. */
   poolOf?: (id: string) => { name: string; capacity: number } | undefined
+  /** Admission over the worker count for local exec-tier tasks; `false` parks the task. */
+  admit?: (id: string, running: ReadonlySet<string>) => boolean
 }
 
 export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number>
 export async function runGraph(options: ScheduleOptions): Promise<Map<string, TaskOutcome>>
+export function mergePriorities(
+  baseline: ReadonlyMap<string, number>,
+  overrides: ReadonlyMap<string, number>,
+): ReadonlyMap<string, number>
 ```
 
 ## Algorithm
@@ -106,18 +129,27 @@ Priority within a queue: highest transitive-reverse-dependent count
 first (`computeReverseDepCount` — an exact bitset closure swept in
 reverse-topo order, O(E·N/32); Set-based closures cost 8.5 s at 3,270
 tasks). Ties break in graph-insertion order via binary-search insert.
-When `priorities` is passed, those weights override the baseline for
-covered nodes, scaled to always sort above it. Nothing in core computes
-one today; it is the seam a scheduling-policy plugin will feed.
+When `priorities` is passed, `mergePriorities` scales those weights
+(by 2^20) to sort above the baseline for every covered node, with the
+baseline as the tie-break inside the override set. Nothing in core
+computes one; it is the seam a scheduling-policy plugin
+(`@vzn/vx-schedule-history`) feeds.
 
 ## Failure isolation
 
 A failed task does not stop the scheduler: its transitive exec-tier
 dependents get `skipped`; unrelated tasks continue; the promise
 resolves only after every task has _some_ outcome. This is Turbo's
-middle `--continue` setting as the default. A rejected `execute`
-promise becomes a `failed` outcome; a `UserError` reports plainly,
-anything else as `[vx] internal error in <id>`.
+middle `--continue` setting, `deps-ok`, as the default; `never` stops
+dispatch at the first failure (in-flight tasks finish, everything not
+yet started — restores included — completes `skipped`); `always` runs
+dependents on a failed upstream, and the orchestrator withholds their
+save (`ExecuteArgs.taintedUpstream`), since a healthy key over bytes
+built on a partial tree would be the next clean run's stale hit. A
+skipped outcome names the failed or aborted task at the root of its
+block (`blockedBy`); fail-fast's skips name nothing. A rejected
+`execute` promise becomes a `failed` outcome; a `UserError` reports
+plainly, anything else as `[vx] internal error in <id>`.
 
 ## What this does NOT do
 
