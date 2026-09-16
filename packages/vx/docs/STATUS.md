@@ -230,6 +230,24 @@ test is telling the truth.
       lands heavy: the median is what an unknown file costs, and a
       6 s e2e is not the median.
 
+254.  DONE (2026-09-16, a measurement — the second-day user, then the
+      restore arm): `vx why` after each kind of change names its cause
+      (a source file, an env var, the project's package.json, the
+      lockfile with the upstream it moved, the config, an upstream
+      source, and a hit); clean, and each verdict row but three has a
+      pin (env, package and upstream rows are read in the e2e suites
+      through the run, not by the row — left as is). Then the stage
+      tables at 1,000 and 5,000 projects: the cold arm is spawn-bound
+      and the restore arm is the extract (`restore: extract` 13.4 s
+      accumulated over 5,000 artifacts under 4 workers, 1.8 s of run
+      graph); `save: pack` read 2 ms per one-file artifact there, which
+      is neither zstd (26 µs a call, measured) nor a fixed cost —
+      isolated, a one-file save is 0.82 ms and a restore 0.62 ms, and
+      with four in flight 0.35 and 0.26 ms of wall each — so the
+      accumulated span table over-counts wall under concurrency and its
+      per-task figures are not costs. No change to the warm path; the
+      arms' floors are the spawn and the extract, both known (193).
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
