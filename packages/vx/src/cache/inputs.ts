@@ -658,7 +658,11 @@ async function resolveFiles(args: ResolveFilesArgs): Promise<string[]> {
   const positiveGlobs = asTrees(positive).map(globFor)
   let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
   if (gitFiles === undefined) {
-    // Mid-run re-enumeration. The OIDs this spawn could yield are NOT
+    // Mid-run re-enumeration — or a project the workspace-wide populate
+    // left without a partition because the workspace's git did not see its
+    // directory (a submodule, an embedded repository); spawned in the
+    // project dir, git answers from the nested repository.
+    // The OIDs this spawn could yield are NOT
     // trusted (no fresh `git status` to vouch for them — the project's
     // tree just changed); set() drops the project's OID slot and these
     // files fall back to Cache.hashFile, which computes the identical

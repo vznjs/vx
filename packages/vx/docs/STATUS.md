@@ -441,6 +441,35 @@ the error table in `docs/schema.md` has the row.
       the field. Pinned in `show-info.test.ts` (the JSON entry, both
       rows, the empty control); `docs/cli.md` § vx info,
       `modules/doctor.md` and the MCP README say it.
+221.  DONE (2026-09-16, a project inside a git submodule — the
+      persona after 218's, and a stale hit): the workspace repository's
+      `git ls-files` holds a submodule, or an embedded repository, as
+      ONE entry (a gitlink; `dir/` when untracked) and none of its
+      files — under the pathspec naming the project, nothing at all —
+      so a project under one got an EMPTY partition of the
+      workspace-wide enumeration: `cache.inputs matched no files`, a key
+      that never moved, and after an edit to its source a green run
+      replayed the old `dist` (reproduced as `probe`: `out.txt` said
+      `one` with `x.txt` saying `two`, for a gitlink and an untracked
+      embedded repository alike). The partition step stores no
+      partition for an empty slice now — no real project's slice is
+      empty, a project has at least its `package.json` — so
+      `resolveFiles` takes its existing fallback, `git ls-files` spawned
+      in the project's own directory, which the nested repository
+      answers, and the files hash by content (no index OID trusted from
+      there): one spawn per such project per run, nothing for a
+      workspace without one. Refuted on the way: reading the gitlinks
+      (`160000`) and `dir/` entries out of the listing — the
+      enumeration is pathspec-scoped to the project dirs, and a gitlink
+      ABOVE a project never appears under its pathspec. Pinned in
+      `nested-repo-inputs.test.ts` (populate leaves the two nested
+      projects without a partition and resolves their files through
+      their own git, the workspace project keeps its OIDs; the CLI:
+      cold run no "matched no files", an edit to all three is three
+      misses and every `out.txt` follows). Not closed, recorded in
+      `modules/git-inputs.md`: `--affected` sees the gitlink and not
+      the files inside, and `workspaceFiles` globs stop at the nested
+      repository — both the workspace repository's own limits.
 
 ## In flight
 
