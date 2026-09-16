@@ -1038,5 +1038,17 @@ describe('runGraph reports a foreign-copy UserError plainly', () => {
   it('CONTROL: a plain Error is still an internal error', async () => {
     const out = await stderrOf(new Error('kaboom'))
     expect(out).toContain('[vx] internal error in a#build: kaboom')
+    expect(out).not.toContain('(cause:')
+  })
+  it('a wrapped error prints its cause: the code and message the reader needs', async () => {
+    // A CorruptArtifactError over an ENOENT is a race, not a bad archive;
+    // the stack is not printed here, so the cause is.
+    const cause = Object.assign(new Error('ENOENT: no such file or directory, stat x.vx-tmp-1'), {
+      code: 'ENOENT',
+    })
+    const out = await stderrOf(new Error('cache: corrupt artifact for h', { cause }))
+    expect(out).toContain(
+      '[vx] internal error in a#build: cache: corrupt artifact for h (cause: ENOENT: ENOENT: no such file or directory, stat x.vx-tmp-1)',
+    )
   })
 })

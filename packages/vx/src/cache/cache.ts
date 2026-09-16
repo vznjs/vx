@@ -974,6 +974,17 @@ export class Cache implements CacheLayer {
           `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${err.message}). ${remedy}`,
         )
       }
+      // A staged file the restore itself just wrote is gone before its
+      // commit: another process cleaned the same outputs under us (two runs
+      // on one workspace, a `vx watch` beside a `vx run` — a clean landing
+      // 4–32 ms into a 2,000-file restore reproduces it, 2026-09-16). The
+      // artifact is intact; the tree was not ours alone.
+      if (code === 'ENOENT' && (err as Error).message.includes('.vx-tmp-')) {
+        throw new UserError(
+          `restore of ${hash} into ${projectDir} was interrupted: a file it had just written vanished (${(err as Error).message}). ` +
+            `Another vx run is using this workspace — re-run once it is done.`,
+        )
+      }
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     } finally {
       endExtract()

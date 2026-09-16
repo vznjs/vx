@@ -598,6 +598,20 @@ part of that object (only the strings are), so a changed probe output
 is correct, expected, live behavior rather than lock drift. This is the
 same reason `lock --check` ignores `inputs.env` value changes.
 
+## Concurrent runs
+
+Two vx processes on one workspace (a `vx watch` beside a `vx run`, two
+CI jobs on one checkout) are not serialized. The cache itself is safe —
+SQLite waits on the lock, artifacts land by rename — but a task's
+OUTPUT TREE is one directory both runs clean and restore, and a clean
+landing while the other run's restore is staging its files takes those
+files out from under it. That restore fails with `restore of <hash> into
+<dir> was interrupted: a file it had just written vanished (ENOENT: …).
+Another vx run is using this workspace — re-run once it is done.` The
+artifact is intact; nothing is corrupted or half-restored (a restore
+renames into place only once the whole archive has staged). A per-task
+lock that makes the second run wait is on the Next list.
+
 ## Storage layout
 
 The run must be able to write here — it records its history at the
