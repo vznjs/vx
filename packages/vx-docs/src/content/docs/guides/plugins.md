@@ -344,7 +344,7 @@ in one place — no per-task event wiring.
 ```ts
 // plugins/sentry.ts
 import * as Sentry from '@sentry/node'
-import { definePlugin, type VxPlugin } from '@vzn/vx'
+import { definePlugin, exitSignal, type VxPlugin } from '@vzn/vx'
 
 export function sentryPlugin(opts: { dsn: string }): VxPlugin {
   Sentry.init({ dsn: opts.dsn })
@@ -362,7 +362,13 @@ export function sentryPlugin(opts: { dsn: string }): VxPlugin {
                 branch: summary.run.branch ?? 'unknown',
                 ci: summary.run.ciProvider ?? 'local',
               },
-              extra: { exitCode: t.exitCode, durationMs: t.durationMs, commit: summary.run.commitSha },
+              extra: {
+                exitCode: t.exitCode,
+                // 137 is a number; the signal it stands for is the story.
+                signal: exitSignal(t.exitCode) ?? null,
+                durationMs: t.durationMs,
+                commit: summary.run.commitSha,
+              },
             })
           }
         },
@@ -379,6 +385,54 @@ import { defineWorkspace } from '@vzn/vx'
 export default defineWorkspace({
   plugins: [sentryPlugin({ dsn: process.env['SENTRY_DSN']! })],
 })
+```
+
+## What the façade gives a sink
+
+Every sink faces the same four questions, and each has one answer on
+`@vzn/vx` so sinks do not drift from core's own rendering:
+
+- **Did it pass, and was it a hit?** `isPassStatus(status)` and
+  `isCacheHit(status)` — the `TaskStatus` union grows, and a hand-rolled
+  `Set` of literals silently answers "no" for the new member.
+  `TASK_STATUSES` is the union at runtime.
+- **What does exit 137 mean?** `exitSignal(exitCode)` decodes an exit
+  above 128 to the signal it stands for (`'SIGKILL'`), the way the
+  frame, `vx last` and the GitHub job summary say it — the shell's
+  convention, so a command that exits 137 on its own reads the same.
+- **Is this task name safe in a markdown table?** `escapeMarkdownCell`.
+  Task names are the same unvalidated strings core renders.
+- **How much output do I keep?** `TaskLogBuffer` bounds captured logs
+  per task and per run with the retention rules core uses (failures
+  never evicted by successes).
+
+```ts
+// plugins/failure-lines.ts — one line per failure, as core would say it
+import {
+  definePlugin,
+  escapeMarkdownCell,
+  exitSignal,
+  isPassStatus,
+  type VxPlugin,
+} from '@vzn/vx'
+
+export function failureLines(): VxPlugin {
+  return definePlugin(import.meta, {
+    telemetry() {
+      return {
+        name: 'org/failure-lines',
+        onRunSummary(summary) {
+          for (const t of summary.tasks) {
+            if (isPassStatus(t.status) || t.status !== 'failed') continue
+            const signal = exitSignal(t.exitCode)
+            const why = signal === undefined ? '' : ` (128 + ${signal})`
+            console.log(`| ${escapeMarkdownCell(t.taskId)} | exit ${t.exitCode}${why} |`)
+          }
+        },
+      }
+    },
+  })
+}
 ```
 
 ## A Slack-summary plugin
@@ -692,6 +746,9 @@ declaration order, a save reaches all. `telemetry` sinks are
 
 ## Reference
 
+- `src/index.ts` — the façade: everything a plugin may import from
+  `@vzn/vx`, each runtime export with the demonstrated need that put it
+  there; the export set is snapshot-pinned.
 - `src/orchestrator/plugin.ts` — the `VxPlugin` interface + capability contexts.
 - `src/orchestrator/telemetry.ts` — `TelemetrySink`, `TelemetryRecord`,
   `RunSummaryRecord`, and the versioned schema (`TELEMETRY_SCHEMA_VERSION`).
