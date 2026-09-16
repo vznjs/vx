@@ -369,14 +369,19 @@ export class Cache implements CacheLayer {
     const ignore = path.join(cacheDir, '.gitignore')
     if (this.writeBlocked === null && !existsSync(ignore)) writeFileSync(ignore, '*\n')
     this.db = new Database(path.join(cacheDir, 'cache.db'), { create: true })
-    this.db.exec('PRAGMA journal_mode = WAL')
-    this.db.exec('PRAGMA synchronous = NORMAL')
-    this.db.exec('PRAGMA foreign_keys = ON')
     // busy_timeout makes concurrent writers wait for the lock instead of
     // failing immediately with SQLITE_BUSY. Two parallel `vx run`
     // invocations in CI is a normal pattern; without this the second one
-    // crashes in recordRun().
+    // crashes in recordRun(). FIRST, before the journal-mode switch: that
+    // pragma takes a lock of its own, and set after it the timeout did not
+    // cover it — two CLI runs opening one cache at the same instant met
+    // `database is locked` right here, on macOS's slower disk first
+    // (2026-09-16, the run lock's own e2e; the lock is taken after the
+    // cache opens, so the open is the one moment two runs still overlap).
     this.db.exec('PRAGMA busy_timeout = 5000')
+    this.db.exec('PRAGMA journal_mode = WAL')
+    this.db.exec('PRAGMA synchronous = NORMAL')
+    this.db.exec('PRAGMA foreign_keys = ON')
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS schema_meta (

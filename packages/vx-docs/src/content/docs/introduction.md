@@ -177,9 +177,9 @@ Stated plainly, so nothing here surprises you later:
 - **A remote cache moves whole artifacts in memory.** Fine below
   ~100 MiB per artifact; a workspace whose artifacts are larger should
   wait for the streaming seam.
-- **A task's captured output is kept whole.** It is held in memory,
-  stored with the cache entry and replayed on a hit; a task printing
-  hundreds of megabytes costs that much RSS on every run.
+- **A task's replayed output is the first and last 8 MiB.** The live
+  run streams everything; what the cache entry keeps and a hit replays
+  is bounded, with the dropped middle named where it was.
 - **A project inside a submodule is enumerated by its own repository.**
   `cache.inputs.files` and `--affected` follow it; a `workspaceFiles`
   glob stops at the nested repository's edge.

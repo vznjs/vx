@@ -572,6 +572,39 @@ the error table in `docs/schema.md` has the row.
       as `probe` from a fresh JUnit run of all twelve shards: 168 files,
       151 s of recorded weight against 135; the local shards deal to
       10–15 s. The next CI run is the number.
+229.  DONE (2026-09-16, Next 20): a task's retained output is bounded.
+      The live stream is untouched — every byte reaches the terminal as
+      the task writes it — but the copy vx keeps for the cache entry
+      and its replay is the first 8 MiB and the last 8 MiB, with the
+      dropped middle counted and named where it was (`[vx] 22.1 MiB of
+output not kept — vx keeps the first 8.0 MiB and the last 8.0 MiB
+of a task's output for its cache entry and replay`). The
+      accumulator fills a head once and keeps a ring of tail chunks
+      trimmed from the front, so memory is the two bounds plus one
+      chunk whatever the task prints. Measured on the 200 MB probe:
+      the hit 620 → 109 MB of RSS and `.vx/cache` 193 → 17 MB; the MISS
+      stays at 652 MB, which is not the capture but the logger's frame
+      buffer — a task's live chunks are held until its frame prints,
+      the persistent path alone routes them into a bounded tail, and
+      `--output-logs none` avoids it (measured 294 → 81 MiB when that
+      mode shipped). Left as it is: a frame is the whole output by
+      contract, and a chatty task's operator has the mode. Pinned in `capture-cap.test.ts` (40 MB: the head, the tail,
+      the exact length, the line's number, the live stream still whole;
+      1 MB: whole, no line; through `run()`: the hit replays the bounded
+      text with the line). `modules/runner.md`, `caching.md` § Cache
+      write and the site's Known limits say it.
+230.  DONE (2026-09-16, from #397's macOS job): two CLI runs on one
+      workspace open the cache BEFORE the run lock is taken — the open
+      is the one moment they still overlap — and the second met
+      `SQLiteError: database is locked` at `PRAGMA journal_mode = WAL`,
+      because `busy_timeout` was set after that pragma and the
+      journal-mode switch takes a lock of its own; macOS's slower disk
+      found the window first, on the run lock's own e2e (round 3 of
+      four). The timeout is the first pragma now, so the open waits for
+      the holder. Pinned in `cache-open-busy.test.ts`: another process
+      holds an EXCLUSIVE lock for 1.5 s and `new Cache` waits it out
+      (fails at once on the old order — reproduced on Linux, where the
+      e2e itself never tripped).
 
 ## In flight
 
@@ -714,7 +747,7 @@ state of each:
 13. DONE 2026-09-10 as item 120 — `vx watch` watches the projects a cycle can run.
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197 and 202 (14–14i) are in `docs/history/2026-09-status-next-log.md`;
-    14j–14n below are the current ones.
+    14j–14o below are the current ones.
 
 14j. **Handoff after item 208 (2026-09-16, morning).** Six items
 since 14i, all from one persona taken one step further each time:
@@ -865,6 +898,35 @@ gate caught what the chain passed); a numbered Next entry goes at the
 END of the list or the formatter renumbers it (third time). Never end
 with "what next?".
 
+14o. **Handoff after item 230 (2026-09-16, late afternoon).** Five
+items since 14n. The site's introduction states vx's known limits
+together (226, #394: launch checklist 6, done). The persistent path
+got 218's placeholder sweep and the `dir/` line on a readiness failure
+(227, #395). The shard deal was re-weighed after the day's suites —
+four files sat at the median, the run-lock e2e among them — and the
+local shards run 11.7–15.0 s again (228, #396). Next 20 closed: a
+task's retained output is bounded to a head and a tail with the
+dropped middle named — the hit 620 → 109 MB of RSS, the cache 193 → 17
+MB on the 200 MB probe; the miss's 652 MB is the logger's frame
+buffer, whole by contract, `--output-logs none` its remedy (229,
+#397). That PR's macOS job found the run lock's last window: two runs
+open the cache before either holds the lock, and the busy timeout was
+set after the journal-mode pragma (230, rides #397). Probed and clean: `vx watch` on a submodule workspace re-runs
+once on an edit inside it; a hidden sandbox runtime; the CI Linux job's
+per-task table (its 39 s shard was contention with the 37 s docs build
+on four workers, not the deal alone). Open: Next 1, 2 and 16, all
+gated by their own terms; In-flight 5 (macOS); the owner residue — the
+`NPM_TOKEN` secret, the release cut, the site's address;
+`workspaceFiles` stops at a nested repository. The loop holds 27 items
+(203–229): the record paragraph's forty is the trim's trigger. No open
+issues. The box: as 14n. Methods that paid: when a bound fixes one
+number and not another, name which retention the other is (229's miss
+is the frame buffer, and saying so kept the item honest); a pin that
+asserts the old design's cost (retention MUST grow) is the pin the new
+design must reshape, not delete — its differential survives as "must
+not cost the volume"; a chain that greps a verdict swallows its exit,
+still. Never end with "what next?".
+
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
     (item 141) and four Nx repos (items 142–144, 150) are in.
@@ -928,7 +990,7 @@ with "what next?".
     task floor), and what a waiting run prints (the admit-held line's
     shape, item 171). Not started.
 
-20. **A task's captured output has no cap.** Measured 2026-09-16
+20. DONE 2026-09-16 as item 229 — the retained copy is bounded (8 MiB head + 8 MiB tail, the middle named). Was: **A task's captured output has no cap.** Measured 2026-09-16
     (item 225's probe): a task printing 200 MB costs vx 620 MB of RSS
     on the miss AND on every hit (the string, its encodings, the row),
     and its stdout lands in `cache.db` whole — 193 MB of `.vx/cache`
