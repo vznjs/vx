@@ -643,6 +643,25 @@ of a task's output for its cache entry and replay`). The
       `caching.md`), and a directory link's target is not the task's
       output anyway.
 
+233.  DONE (2026-09-16, a persona: the binary user who self-updates
+      with `vx upgrade`): the download was 87 MB over HTTPS, then
+      renamed over the running executable on trust — a cut transfer
+      (this box's proxy drops connections; item 175's class) or a
+      swapped asset became a `vx` that does not start. The release API
+      publishes a `sha256:` digest per asset (every release built by
+      `release.yml` carries one); `vx upgrade` reads the release
+      document now, picks the platform's asset and its digest, verifies
+      the download, and only then renames — a mismatch replaces nothing
+      and says so, and a release with no asset or no digest is refused
+      before the download. `releaseAsset` and the digest argument of
+      `replaceBinary` are pinned in `upgrade.test.ts` (a truncated body
+      leaves the old binary and no temp file); the compiled path was
+      proven live with a scratch binary against v0.0.21. Noted, not a
+      finding: the releases' only signing is macOS's ad-hoc codesign,
+      so the digest is integrity against the CDN and the wire, not
+      provenance — provenance is the npm route (`npm.yml` publishes
+      with it).
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
