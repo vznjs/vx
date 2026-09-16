@@ -16,7 +16,12 @@ export const VERSION: string
 
 `index.ts` re-exports it, so the public package name is unchanged.
 
+The single source of truth is `package.json`: the file imports it
+(`pkg.version`), Bun resolves the JSON import natively and inlines it
+under `bun build --compile`, so a release bump can never drift from
+what `--version` and the footer print.
+
 ## Replacing this module
 
-If versioning ever derives from `package.json` at build/publish time,
-this file is the single place to generate.
+A version from anywhere else (a build stamp, a git describe) is this
+one import to change; every reader takes `VERSION`.
