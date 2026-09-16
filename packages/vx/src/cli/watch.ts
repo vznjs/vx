@@ -728,11 +728,26 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // task rewriting a file with different bytes every run (a pid file, a
   // timestamped log): the state gate cannot settle it, and nothing here
   // can tell the third such write from a user's third save mid-run — so
-  // watch names it once, with the remedy, and keeps going. Counted only
-  // on the judgement AFTER a run; an idle judgement is the user's.
+  // watch names it once, with the remedy, and keeps going. "The run's
+  // own write" is read off the path itself: its mtime falls inside the
+  // previous cycle's window. Not off which judgement started the cycle:
+  // macOS delivers a run's writes late, after the loop's own post-run
+  // judgement found nothing and broke out, so there every such cycle
+  // starts from the idle timer (CI, 2026-09-16: the storm ran, the
+  // notice never came).
   const streak = { abs: '', n: 0 }
   const noticed = new Set<string>()
-  const judge = (afterRun: boolean): string | undefined => {
+  let lastCycle: { start: number; end: number } | undefined
+  const writtenDuringLastCycle = (abs: string): boolean => {
+    if (lastCycle === undefined) return false
+    try {
+      const m = fs.statSync(abs).mtimeMs
+      return m >= lastCycle.start && m <= lastCycle.end
+    } catch {
+      return false
+    }
+  }
+  const judge = (): string | undefined => {
     const ignored = gitIgnored(workspaceRoot, [...pendingPaths.keys()])
     let first: string | undefined
     let firstAbs: string | undefined
@@ -744,7 +759,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       }
     }
     pendingPaths.clear()
-    if (firstAbs === undefined || !afterRun) {
+    if (firstAbs === undefined || !writtenDuringLastCycle(firstAbs)) {
       streak.n = 0
       return first
     }
@@ -765,7 +780,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     debounceTimer = setTimeout(() => {
       debounceTimer = null
       if (running) return
-      const first = judge(false)
+      const first = judge()
       if (first !== undefined) void cycle(first)
     }, DEBOUNCE_MS)
   }
@@ -782,7 +797,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       while (label !== undefined && !stop.aborted) {
         process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
         try {
+          const start = Date.now()
           await runOrchestrator(opts)
+          lastCycle = { start, end: Date.now() }
           if (membersChanged && !stop.aborted) {
             membersChanged = false
             await rearm()
@@ -802,7 +819,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         // after the run, under the label of what actually arrived.
         if (pendingPaths.size === 0 || stop.aborted) break
         await Bun.sleep(DEBOUNCE_MS)
-        label = judge(true)
+        label = judge()
       }
     } finally {
       running = false
