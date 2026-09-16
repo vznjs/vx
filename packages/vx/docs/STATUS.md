@@ -484,6 +484,33 @@ the error table in `docs/schema.md` has the row.
       the gitlink only its own project, an edit inside selects the
       nested project, an untracked embedded repository is new work);
       `docs/cli.md` § --affected and `modules/git-inputs.md` say it.
+223.  DONE (2026-09-16, the box's own litter): a census of `/tmp` after
+      the day's gates found 1,333 `vx-*` entries, 658 of them the run
+      lock directories of 216 — every one with a dead holder. The
+      release was fired and forgotten at close (`void releaseRunLock()`
+      inside a synchronous `closeCache`), and `bin.ts` ends the process
+      as soon as `run()` resolves, so a CLI run's release lost the race
+      with its own exit every time; an in-process run (a test, a watch
+      cycle) lived long enough for the removal to land, which is why
+      216's pins passed. The next run reclaimed the dead holder's
+      directory, so nothing ever waited — the litter was the finding.
+      `closeCache` is async and awaited on both exit paths now (the
+      normal close before a persistent task's wait, and the teardown on
+      a throw, which still swallows its own error). Pinned in
+      `run-lock-e2e.test.ts`: a finished CLI run leaves no lock
+      directory (fails on the old code). The rest of the census: test
+      fixtures without an `afterEach` — `vx-drift-*` (378, the
+      schema-doc-drift provokers), `vx-plugin-pkgs-*` (164, the plugin
+      helper), `vx-plugin-boundary-*`, `vx-history-*`,
+      `vx-unnamed-pkg-*`, `vx-no-pkg-*`, `vx-cache-host2-*` — swept by
+      hand this time and left for the next housekeeping pass (a shared
+      fixture that registers its own removal). Refuted alongside, under
+      Next 6: a `node_modules` that git does not ignore — 11,125
+      untracked files walked by `status -uall` every run — costs the
+      warm run 5 ms of 87 (git walks it in 11 ms), so no doctor row for
+      it. Next 6 after 222: 1,000 projects 231 ms warm / 718 restore /
+      2,436 cold (medians of 5; 216's 225 / 670 / 2,494), a tie within
+      the reps' spread.
 
 ## In flight
 

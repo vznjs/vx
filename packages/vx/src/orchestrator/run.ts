@@ -369,13 +369,18 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // holding the handle open for a dev server's whole lifetime would be
   // worse — and because close() re-runs its retention DELETEs.
   let cacheClosed = false
-  const closeCache = (): void => {
+  const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
     cacheClosed = true
     cache.close()
     // Released with the handle: before a persistent task's wait, on every
-    // exit path (see run-lock.ts for why a run holds one at all).
-    void releaseRunLock()
+    // exit path (see run-lock.ts for why a run holds one at all). AWAITED:
+    // fired and forgotten, the release lost the race with the CLI's exit —
+    // `bin.ts` ends the process as soon as run() resolves — and every CLI
+    // run left its lock directory in the temp dir (658 of them after one
+    // day's gates, 2026-09-16); the next run reclaimed it, so nothing
+    // waited, but a directory per run is litter the box never sheds.
+    await releaseRunLock()
   }
   // Taken after the early exits above (nothing they do touches a tree) and
   // before the schedule: from here on tasks clean, restore and write.
@@ -830,7 +835,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     }
     mark('output dir snapshots')
     await teardownPlugins(prepared.plugins, (m) => log.status(m))
-    closeCache()
+    await closeCache()
     mark('close')
     printTimings()
 
@@ -893,7 +898,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // NOT drained here: they hold no database state, and awaiting a
     // wedged remote would turn a failing run into a hanging one.
     try {
-      closeCache()
+      await closeCache()
     } catch {
       // teardown must not throw on the way out
     }
