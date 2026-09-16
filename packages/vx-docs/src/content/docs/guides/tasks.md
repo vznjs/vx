@@ -45,7 +45,8 @@ exec: { command: 'codegen && tsc -b && cp -r assets dist/' }
 There's deliberately no `commands: string[]`. If you'd benefit from
 caching each step independently, split them into separate tasks linked by
 `dependsOn`. If you wouldn't, `&&` is the right tool. This "shell is the
-API" rule is why vx needs no plugins or executor protocol.
+API" rule is why a plugin decides where a command runs and never what it
+is — there is no executor protocol to implement.
 
 Each task runs with the package's `node_modules/.bin` prepended to
 `PATH`, so local tools resolve from a bare command — no `npx`.

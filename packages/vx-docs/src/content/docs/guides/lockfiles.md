@@ -30,8 +30,8 @@ Nothing else changes. `vx why <task>` names the material as
 `plugin @vzn/vx-lockfile/pnpm` (or `@vzn/vx-lockfile/bun`), and the
 `workspace fingerprint` line no longer moves on a lockfile edit. vx's
 own repository declares `bun()`: bumping one package's resolved
-version in its `bun.lock` re-keys 2 of the gate's 61 tasks instead of
-59.
+version in its `bun.lock` re-keys that package's own tasks and its
+dependants' instead of every task in the gate.
 
 ## What counts as a project's dependencies
 

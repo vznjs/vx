@@ -32,10 +32,11 @@ flowchart LR
   class restore good
 ```
 
-The payoff is real: on this repo's benchmark, a fully-cached warm run of a
-3-package build drops from ~620 ms of actual work to ~20 ms of restores —
-and because the key covers **every** input, a hit is only ever served when
-the result is genuinely identical.
+The payoff is real: on the 3,270-task benchmark a fully cached run
+answers in 510 ms where Turborepo takes 760 ms and Nx 3.59 s
+([benchmarks](../../benchmarks/), 2026-09) — and because the key covers
+**every** input, a hit is only ever served when the result is genuinely
+identical.
 
 This is the guide that matters most. The one failure mode worth fearing
 is a **stale hit** (shipping a result built from inputs that actually
@@ -186,7 +187,7 @@ When a task hit or missed and you didn't expect it:
 
 ```bash
 vx run build --dry        # predicted hit/miss + resolved plan, no execution
-vx run build --graph      # the dependency graph (text or DOT)
+vx run build --graph      # the dependency graph as Graphviz DOT
 vx show build             # the live resolved config for the task
 ```
 

@@ -79,10 +79,13 @@ and CI never share entries. Pass it through, don't track it.
 ## What's always available
 
 The child always gets a small essential allowlist so normal CLI tools
-work: `PATH`, `HOME`, `SHELL`, `TMPDIR`, `LANG`, `TERM`, `COLORTERM`,
-`FORCE_COLOR`, `NO_COLOR`, `CI`, `NODE_OPTIONS`, plus the Windows
-essentials. Each package's own `node_modules/.bin` is prepended to
-`PATH`. Everything else is invisible unless passed through.
+work: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
+`TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`, `FORCE_COLOR`,
+`NO_COLOR`, `CI`, `NODE_OPTIONS`, plus the Windows essentials. Each
+package's own `node_modules/.bin` is prepended to `PATH`, and vx sets
+`VX_RUN_WORKSPACE` and `VX_RUN_TASK` so a task that shells out to
+`vx run` in its own workspace is refused before it forks without bound.
+Everything else is invisible unless passed through.
 
 ## Remote execution: only two of the three lists travel
 

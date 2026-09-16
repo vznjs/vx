@@ -8,6 +8,8 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
+import { CACHE_LAYER_METHODS } from '../src/orchestrator/plugin-host.js'
+import { ESSENTIAL_ENV } from '../src/exec/env.js'
 import type { RunPlan } from '../src/orchestrator/plan.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -53,5 +55,49 @@ describe('the running-tasks guide shows what --dry prints', () => {
       ],
     }
     expect(fencedBlock(page, 'text', 'would run:')).toBe(formatPlanText(plan))
+  })
+})
+
+describe('the plugins guide states the CacheLayer method count', () => {
+  const WORDS = [
+    'zero',
+    'one',
+    'two',
+    'three',
+    'four',
+    'five',
+    'six',
+    'seven',
+    'eight',
+    'nine',
+    'ten',
+    'eleven',
+    'twelve',
+    'thirteen',
+    'fourteen',
+    'fifteen',
+    'sixteen',
+    'seventeen',
+    'eighteen',
+    'nineteen',
+    'twenty',
+  ]
+  it('"the N `CacheLayer` methods" is CACHE_LAYER_METHODS.length', () => {
+    const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
+    const m = /the ([a-z]+) `CacheLayer` methods/.exec(page)
+    expect(m).not.toBeNull()
+    expect(m![1]).toBe(WORDS[CACHE_LAYER_METHODS.length])
+  })
+})
+
+describe('the environment-variables guide names the essential allowlist', () => {
+  it('its "always gets a small essential allowlist" sentence names every POSIX name in ESSENTIAL_ENV', () => {
+    const page = readFileSync(path.join(GUIDES, 'environment-variables.md'), 'utf8')
+    const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)plus the Windows/.exec(page)
+    expect(m).not.toBeNull()
+    const named = new Set([...m![1]!.matchAll(/`([A-Z_]+)`/g)].map((x) => x[1]!))
+    const posix = ESSENTIAL_ENV.slice(0, ESSENTIAL_ENV.indexOf('SYSTEMROOT'))
+    expect(posix.length).toBeGreaterThan(10)
+    for (const name of posix) expect(named).toContain(name)
   })
 })

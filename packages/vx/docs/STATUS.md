@@ -406,6 +406,26 @@ test is telling the truth.
       and remote-caching read true against `sandbox-runtime.ts` and
       `@vzn/vx-reapi` (the env names, the 128 KB chunk, the
       `vx-reapi-v1` action prefix, the optional strace).
+303.  DONE (2026-09-16, nine more site guides read against source:
+      plugins, caching, dev-tasks, task-dependencies, tasks,
+      environment-variables, workspace-config, lockfiles,
+      trusting-the-cache). Stale: "the three stage hooks" (seven);
+      the cache-layer refusal's method list read as the whole
+      contract (fifteen methods, pinned to `CACHE_LAYER_METHODS`);
+      `--graph` as "text or DOT" in three places (DOT only); "vx needs
+      no plugins or executor protocol" (it has the executor seam; what
+      it has no protocol for is the command); dev-tasks' teardown
+      bullet, which torn down every persistent task when the graph
+      finished — a requested one keeps the run alive, the point of
+      `vx run dev` since the keep-alive change; the env guide's
+      allowlist naming eleven of seventeen POSIX names (pinned to
+      `ESSENTIAL_ENV` like execution.md's) and silent on
+      `VX_RUN_WORKSPACE` / `VX_RUN_TASK`; the lockfiles guide's
+      "2 of the gate's 61 tasks" (a count the gate outgrew the week
+      it was written; no count now); and the caching guide's "~620 ms
+      to ~20 ms on this repo's benchmark" (no such benchmark; the
+      3,270-task numbers, dated). workspace-config, lockfiles' claim
+      model and trusting-the-cache's `vx why` sample read true.
 
 ## In flight
 
