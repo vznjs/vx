@@ -3,8 +3,9 @@
 ## Purpose
 
 What every lockfile plugin needs around its parser. A plugin that keys
-each project on its own dependency closure (`@vzn/vx-lockfile`,
-`@vzn/vx-lockfile`) claims the file (`VxPlugin.fingerprint`), folds one digest
+each project on its own dependency closure (`@vzn/vx-lockfile`'s
+`pnpm()`, `bun()`, `npm()`, `yarn()`) claims the file
+(`VxPlugin.fingerprint`), folds one digest
 per project through `key`, and answers `--affected` by digesting both
 sides of a change. Only the parser differs per package manager; the
 memo, the per-run gate, the fallback for a project the file does not
@@ -14,14 +15,24 @@ lockfile is a parser and nothing else.
 ## Public surface
 
 ```ts
-export function lockfileClaim(options: {
-  file: string // one of WORKSPACE_FINGERPRINT_FILES
-  digest: (text: string) => ReadonlyMap<string, string> // importer dir → digest
-  version: number // the memo's identity; bump when `digest` folds differently
-  scope?: 'project' | 'workspace'
-}): { fingerprint: FingerprintClaim; key: VxPlugin['key'] }
+export interface LockfileClaimOptions {
+  readonly file: string // one of WORKSPACE_FINGERPRINT_FILES
+  readonly digest: (text: string) => ReadonlyMap<string, string> // importer dir → digest
+  readonly version: number // the memo's identity; bump when `digest` folds differently
+  readonly scope?: 'project' | 'workspace'
+  readonly part?: string // the key part's name as `vx why` shows it under the plugin; default 'deps'
+}
+export interface LockfileClaimHooks {
+  readonly fingerprint: FingerprintClaim
+  key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
+}
+export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 
-export function reachDigests(g: { material: string[]; edges: number[][] }): string[]
+export interface ReachGraph {
+  readonly material: readonly string[] // one per node
+  readonly edges: ReadonlyArray<readonly number[]> // node → the nodes it reaches directly
+}
+export function reachDigests(g: ReachGraph): string[]
 ```
 
 A plugin spreads the hooks into `definePlugin(import.meta, lockfileClaim({…}))`.

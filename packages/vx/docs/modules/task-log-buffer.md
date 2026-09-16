@@ -17,7 +17,22 @@ export const LOG_WIRE_VERSION = 1
 export const TASK_LOG_TAIL_CHARS = 128 * 1024 // per task, merged stdout+stderr
 export const RUN_LOG_BUDGET_CHARS = 4 * 1024 * 1024 // per run, retained tails
 
-class TaskLogBuffer {
+export interface TaskLogEntry {
+  taskId: string
+  hash?: string
+  status: 'success' | 'failed'
+  content: string // the retained tail
+  charsFull: number // what the task printed in all
+  truncatedHeadChars: number // what the tail dropped from the front
+}
+export interface TaskLogBundle {
+  v: typeof LOG_WIRE_VERSION
+  runId: string
+  workspaceId: string
+  tasks: TaskLogEntry[] // failures first
+}
+
+export class TaskLogBuffer {
   append(taskId, chunk): void
   finish(taskId, status, cacheSource, hash?): void
   takeEntry(taskId): TaskLogEntry | undefined // one task, removed from the buffer

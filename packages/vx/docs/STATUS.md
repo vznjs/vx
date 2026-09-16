@@ -433,6 +433,21 @@ test is telling the truth.
       new field through `orchestrator.ts:executeTask` (a file that
       does not exist). Fixed; the pin holds config.md's block to every
       export of `src/config.ts`. One fails on the old page.
+329.  DONE (2026-09-16, the next three 09-10 pages: fingerprint,
+      lockfile-claim, task-log-buffer). fingerprint.md's surface had
+      neither `WORKSPACE_FINGERPRINT_FILES` nor `WorkspaceFingerprints`,
+      sent the project `package.json` digest to `execute-task.md` (it
+      is `task-hash.md`'s since item 16), and never said why
+      `vx.workspace.*` is deliberately not folded (the module's own
+      comment does: it is placement, storage and observability, and
+      folding it would split the cache between a laptop and a CI
+      runner declaring different plugins). lockfile-claim.md named the
+      same package twice as two claimants, gave the options as an
+      inline object without `part` (the key part's name `vx why`
+      shows; default `deps`) and the hooks without their types.
+      task-log-buffer.md lacked `TaskLogEntry` and `TaskLogBundle`.
+      Fixed; the shape law gains six shapes and the fingerprint file
+      table, in order. Six fail on the old pages.
 
 ## In flight
 

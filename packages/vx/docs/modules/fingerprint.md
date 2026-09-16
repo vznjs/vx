@@ -9,11 +9,18 @@ invalidate every cached entry at once.
 ## Public surface
 
 ```ts
+export const WORKSPACE_FINGERPRINT_FILES: readonly string[] // the table below, in order
+
+export interface WorkspaceFingerprints {
+  readonly all: string // over every file present
+  readonly unclaimed: string // over the files no plugin claims
+}
+
 export function computeWorkspaceFingerprint(workspaceRoot: string): Promise<string>
 export function computeWorkspaceFingerprints(
   workspaceRoot: string,
   claimed: ReadonlySet<string>,
-): Promise<{ all: string; unclaimed: string }>
+): Promise<WorkspaceFingerprints>
 ```
 
 Both return 16 hex characters of seed-chained xxh3. The second reads each
@@ -57,10 +64,16 @@ Missing files are skipped (not all workspaces use every manager). The
 fixed declaration order gives a deterministic fingerprint regardless of
 filesystem traversal order.
 
-Per-project `package.json` is **NOT** folded in here — that's
-[`execute-task.md`](./execute-task.md)'s
-`hashProjectPackageJson` (a separate `projectPackageJsonHash` field
-of `CacheKeyInput`).
+Per-project `package.json` is **NOT** folded in here — that is the
+project's own digest in [`task-hash.md`](./task-hash.md) (a separate
+`projectPackageJsonHash` field of `CacheKeyInput`). Deliberately absent
+too: `vx.workspace.{ts,mts,js,mjs}`. Everything it can declare —
+`concurrency`, `cacheDir`, `timeout`, the plugin list — is placement,
+storage or observability, never what a command produces; folding it
+would split the cache between a laptop declaring the local plugins and
+a CI runner declaring `reapi()`, the `NODE_OPTIONS` non-goal from the
+other side. A per-task input that genuinely varies belongs in
+`cache.inputs`.
 
 ## Algorithm
 
