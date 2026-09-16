@@ -2444,6 +2444,29 @@ as clean — `oxfmt` prints its verdict BEFORE its `Finished` line,
 so a tail of one line is always clean (the rule in CLAUDE.md now
 says so). Never end with "what next?".
 
+14f. **Handoff after item 189 (2026-09-16, small hours).** Six items
+since 14e, PRs #351–#356, all from first-run walks that changed
+persona each time: a typo'd verb is one line (184); the classes
+behind the day's fixes grepped, a stale exit-form comment named
+(185); the CI persona refuted nothing (186); the Turbo adopter's
+preset header names the real tool (187); `vx lock` names the
+projects it cannot freeze, from the unchanged-Turbo persona (188);
+the Nx migration's cascade TODOs say what vx folds, never outputs
+(189). Eight walks in all since 14d: seven fixes, one refutation.
+`vx completions` read right for the three shells with the plugin
+verbs in. Open: Next 1, 2 and 16 as before, all gated; the launch
+checklist's owner steps. The box: unchanged (four cores, 13.3 GiB
+leaf cgroup, no sandbox; the gate is `scratchpad/gate-manual.sh`
+with `S` defaulting to its own directory). Methods that paid: a new
+persona finds what a repeated one does not — the three adoption
+surfaces (migrate from Turbo, run Turbo unchanged, migrate from Nx)
+each gave one item after the core walks had gone quiet, so the next
+probe should be a persona not yet walked (a plugin author on the
+`commands` or `key` seam, a REAPI operator with the live services)
+rather than a ninth core walk; every fix carried a differential pin
+and a class grep, and the gate caught the one push made without
+reading its exit. Never end with "what next?".
+
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
     (item 141) and four Nx repos (items 142–144, 150) are in.
