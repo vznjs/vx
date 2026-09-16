@@ -45,10 +45,14 @@ interface VxResult {
   err: string
 }
 
-async function vx(root: string, args: string[]): Promise<VxResult> {
+async function vx(
+  root: string,
+  args: string[],
+  env: Record<string, string> = {},
+): Promise<VxResult> {
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
     cwd: root,
-    env: { ...process.env },
+    env: { ...process.env, ...env },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -153,6 +157,107 @@ describe('vx why (e2e)', () => {
       expect(r.out).toMatch(/^  this run   \S+ · cache-hit · key [0-9a-f]+$/m)
       expect(r.out).not.toContain('cache hit ·')
       expect(r.out).toContain('served from cache')
+    },
+    TIMEOUT,
+  )
+})
+
+// Every component kind a key folds has a verdict row (item 256): the file
+// row was pinned above; the env, package, workspace-fingerprint, config and
+// upstream rows were read by eye until this walk pinned each one.
+describe('vx why (e2e) — every component kind names its row', () => {
+  let root: string
+  const APP = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && echo hi > dist/out.txt' },
+          dependsOn: ['^build'],
+          cache: { inputs: { files: ['src/**'], env: ['APP_MODE'] }, outputs: { files: ['dist/**'] } },
+        },
+      },
+    }
+  `
+  const LIB = `
+    export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && echo lib > dist/out.txt' },
+          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        },
+      },
+    }
+  `
+  beforeAll(async () => {
+    root = await makeWorkspaceRoot({ prefix: 'vx-why-kinds-', git: false })
+    for (const [name, config, deps] of [
+      ['app', APP, { lib: '*' }],
+      ['lib', LIB, {}],
+    ] as const) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name, version: '0.0.0', dependencies: deps }),
+      )
+      await writeFile(path.join(dir, 'vx.config.mjs'), config)
+      await writeFile(path.join(dir, 'src', 'index.js'), 'export {}\n')
+    }
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n')
+    const git = gitIn(root)
+    git('init', '-q')
+    git('add', '-A')
+    await vx(root, ['run', 'build', '--all'])
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const why = async (env: Record<string, string> = {}): Promise<string> => {
+    const r = await vx(root, ['why', 'app#build'], env)
+    expect(r.code).toBe(0)
+    return r.out
+  }
+
+  it(
+    'env, package, workspace fingerprint, config and upstream, each as its own row',
+    async () => {
+      await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
+      expect(await why({ APP_MODE: 'prod' })).toMatch(/changed\s+env\s+APP_MODE\s+\w+ → \w+/)
+
+      await writeFile(
+        path.join(root, 'packages', 'app', 'package.json'),
+        JSON.stringify({ name: 'app', version: '0.0.1', dependencies: { lib: '*' } }),
+      )
+      await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
+      expect(await why({ APP_MODE: 'prod' })).toMatch(
+        /changed\s+package\s+package\.json\s+\w+ → \w+/,
+      )
+
+      await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n# moved\n')
+      await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
+      const lock = await why({ APP_MODE: 'prod' })
+      expect(lock).toMatch(/changed\s+workspace\s+fingerprint\s+\w+ → \w+/)
+      // The lockfile moved lib's key too, and app folds it: the upstream row
+      // rides with the fingerprint's.
+      expect(lock).toMatch(/changed\s+upstream\s+lib#build\s+\w+ → \w+/)
+
+      const appConfig = path.join(root, 'packages', 'app', 'vx.config.mjs')
+      await writeFile(appConfig, APP.replace('echo hi', 'echo hey'))
+      await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
+      expect(await why({ APP_MODE: 'prod' })).toMatch(/changed\s+config\s+config\s+\w+ → \w+/)
+
+      await writeFile(path.join(root, 'packages', 'lib', 'src', 'index.js'), 'export {}\n// v2\n')
+      await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
+      const up = await why({ APP_MODE: 'prod' })
+      expect(up).toMatch(/what changed \(1 component, \d+ unchanged\)/)
+      expect(up).toMatch(/changed\s+upstream\s+lib#build\s+\w+ → \w+/)
+
+      // CONTROL: a hit carries no row.
+      await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
+      const hit = await why({ APP_MODE: 'prod' })
+      expect(hit).toContain('cache key unchanged')
+      expect(hit).not.toContain('what changed')
     },
     TIMEOUT,
   )
