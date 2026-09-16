@@ -1004,7 +1004,29 @@ fetch-depth: 0) or name the base`. Pinned three ways in
       probe's reason and the count that will fail; `--format json` and
       the MCP's `getWorkspaceInfo` carry it as data. Pinned in
       `show-info.test.ts` (either verdict, the fixture's zero count) and
-      documented in `docs/cli.md` § vx info.
+      documented in `docs/cli.md` § vx info. CI's first run added a
+      rule: inside the sandboxed test shard the runtime cannot listen on
+      its mux socket, and the raw error quoted a path named after the
+      process id, so two `vx info` runs differed by one number and the
+      `vx stats` byte-identical alias pin failed — the doctor's text is
+      pasted into bug reports and compared between invocations, so its
+      reason drops the pid (`stableSandboxReason`, pinned with a
+      control). No other pin compares two invocations byte for byte.
+204.  DONE (2026-09-16, the same persona, one step further): the docs'
+      advice under that verdict — run as a non-root user — was taken
+      on this box (a `probe` user, bun copied where it can read it):
+      a sandboxed task runs and `vx info` reads `sandbox: available`,
+      so the reason line's first remedy holds where it is given. The
+      probe's scratch workspace also had a config error, and the row
+      read "0 tasks declare exec.sandbox" beside a project declaring
+      one: when the shared load throws, the doctor falls back to a
+      per-config count that tallied tasks but not sandboxes. The
+      fallback counts both now, by the rule the docs already state (a
+      config that will not load counts as zero, the rest count).
+      Pinned in `show-info.test.ts`: a broken config next to a
+      sandboxed project reads 5 tasks and 1 declared, with the
+      whole-workspace control at the same numbers; fails without the
+      fix (declared 0).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

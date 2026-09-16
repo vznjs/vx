@@ -135,7 +135,10 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
         for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
       }
     } catch {
-      taskCount = await countLoadableTasks(metas)
+      // A config that will not load counts as zero, for both numbers: the
+      // sandbox row's "N tasks declare" must not read 0 because one other
+      // project's config is broken while this one's declares a sandbox.
+      ;({ tasks: taskCount, sandboxed } = await countLoadableTasks(metas))
     }
   } finally {
     cache.close()
@@ -281,18 +284,23 @@ function gitVersion(): string | null {
   }
 }
 
-async function countLoadableTasks(metas: readonly ProjectMeta[]): Promise<number> {
-  let count = 0
+async function countLoadableTasks(
+  metas: readonly ProjectMeta[],
+): Promise<{ tasks: number; sandboxed: number }> {
+  let tasks = 0
+  let sandboxed = 0
   await Promise.all(
     metas.map(async (meta) => {
       if (meta.configPath === null) return
       try {
         const config = await loadProjectConfig(meta.configPath)
-        count += Object.keys(config.tasks ?? {}).length
+        const declared = Object.values(config.tasks ?? {})
+        tasks += declared.length
+        for (const t of declared) if (t?.exec?.sandbox !== undefined) sandboxed++
       } catch {
         // counted as zero
       }
     }),
   )
-  return count
+  return { tasks, sandboxed }
 }
