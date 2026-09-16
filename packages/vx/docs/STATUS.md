@@ -433,7 +433,11 @@ test is telling the truth.
       `skipped` beside its failed neighbour, so the day it is worth a
       bump is the day another column needs one. Pinned in the
       scheduler (a skip behind a skip names the root), the summary, the
-      plugin's suite and end to end (the summarize row).
+      plugin's suite and end to end (the summarize row). The gate's
+      first run found `@vzn/vx-otel`'s losslessness tripwire (a
+      `Required<TaskTelemetry>` fixture) refusing the new field until
+      it was mapped — the tripwire doing its job — so the task span
+      carries `vx.task.blocked_by`, a task id as the record has it.
 
 ## In flight
 

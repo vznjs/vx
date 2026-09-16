@@ -49,7 +49,8 @@ otel({
   `vx.tag.<k>`;
 - a child `vx.task` span per task — `cicd.pipeline.task.name`,
   `cicd.pipeline.task.run.result`, `vx.cache.source` (miss/local/remote),
-  `vx.task.hash`, duration, CPU ms, peak RSS. A failed task sets span status
+  `vx.task.hash`, duration, CPU ms, peak RSS, and on a skipped task its root
+  blocker (`vx.task.blocked_by`). A failed task sets span status
   `ERROR`.
 
 **Metrics per run**: `vx.tasks.total`, `vx.tasks.failed`,
