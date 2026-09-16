@@ -364,6 +364,18 @@ test is telling the truth.
       The lesson, again: quoting broken markup inside STATUS breaks
       STATUS — an unbalanced backtick un-indents the list item under
       the formatter (this entry, first try).
+300.  DONE (2026-09-16, 14z's named next: `cli.md` § Flags against
+      the parser and the help text). The table already matched the
+      parser (its pin); the help did not: `vx help` never mentioned
+      `--continue`, `--report`, `--report-file` or `--tag`, four flags
+      the parser accepts and the reference documents, and the
+      `--output-logs` flow note ("focused without --all…, broad with,
+      full in CI") sat indented under `--download`, describing the
+      wrong flag. All four are in the help, the note under its flag,
+      and a pin holds the help to the parser's flag set beside the
+      table's. The table's `--affected` row still read "changed
+      since" (287 swapped the section, not this row); it says
+      dependents and the sugar now.
 
 ## In flight
 
