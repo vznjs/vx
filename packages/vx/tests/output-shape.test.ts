@@ -130,6 +130,11 @@ describe('restore across an output-shape change (e2e)', () => {
       const r = await summarized(root, ['app#build'])
       expect(r.code).toBe(0)
       expect(r.text).toMatch(/output dist\/out is not a regular file/)
+      // The remedy must be one the schema accepts: output globs take no `!`,
+      // so "exclude it" (the old wording) named a spelling that fails to load.
+      expect(r.text).toContain(
+        "narrow cache.outputs.files to the files the task produces (output globs take no '!')",
+      )
       const again = await summarized(root, ['app#build'])
       expect(again.tasks.get('app#build')?.['status']).toBe('success')
 
@@ -140,6 +145,11 @@ describe('restore across an output-shape change (e2e)', () => {
       const dangling = await summarized(root, ['app#build'])
       expect(dangling.code).toBe(0)
       expect(dangling.text).toMatch(/output dist\/out is a dangling symlink/)
+      // The remedy must be one the schema accepts: output globs take no `!`,
+      // so "exclude it" (the old wording) named a spelling that fails to load.
+      expect(dangling.text).toContain(
+        "narrow cache.outputs.files to the files the task produces (output globs take no '!')",
+      )
     },
     TIMEOUT,
   )

@@ -1213,9 +1213,14 @@ version in a comment; bump the SHA and the comment together.
 
 ## `vx upgrade`
 
-Self-update the compiled binary in place: downloads the release asset
-for this platform and atomically replaces the running executable
-(`vx upgrade <tag>` pins a specific release; default latest). Named
+Self-update the compiled binary in place: asks the GitHub release API
+for this platform's asset and the SHA-256 digest it publishes,
+downloads the asset, verifies the digest, and atomically replaces the
+running executable (`vx upgrade <tag>` pins a specific release; default
+latest). A download that does not match the digest replaces nothing —
+`the download did not match the release's SHA-256 … nothing replaced` —
+and a release that publishes no digest for the asset is refused before
+the download. Named
 `upgrade` per CLI convention (`bun upgrade`, `deno upgrade`). Refuses
 when running from source — use `git pull`. (An npm-installed vx
 updates with `npm update -g @vzn/vx` instead.)
