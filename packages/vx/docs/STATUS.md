@@ -752,6 +752,10 @@ of a task's output for its cache entry and replay`). The
       detached spawn of 236 on 200 uncached tasks, an interleaved A/B
       against a worktree at 25d2de9 (min 255 → 264 ms, median 264 →
       267), a tie within the jitter — at most 40 µs a spawn.
+      And the gate itself: the plugin helper's sweep of dead sibling
+      roots (224) threw `EPERM` on a root-owned root the shards, run as
+      the unprivileged user, could not remove — every plugin test fell
+      with it; the sweep skips what is not its to remove.
 
 ## In flight
 
