@@ -263,3 +263,31 @@ describe('the local-floor post names the placement labels --dry prints', () => {
     expect(page).toContain('`@noop`')
   })
 })
+
+describe('the no-daemon post quotes the benchmarks page', () => {
+  it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    for (const figure of ['510ms', '760ms', '3.59s', '51 ms', '95 ms']) {
+      expect(page).toContain(figure)
+      expect(bench).toContain(figure)
+    }
+  })
+})
+
+describe('the strict-output-ownership post names what the wipe never touches', () => {
+  it('every ALWAYS_IGNORE directory is in its list', () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'strict-output-ownership.md'), 'utf8')
+    const section = /## What the wipe never touches\n([\s\S]*?)\n## /.exec(page)
+    expect(section).not.toBeNull()
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'inputs.ts'),
+      'utf8',
+    )
+    const arr = /const ALWAYS_IGNORE = \[([\s\S]*?)\n\]/.exec(src)
+    expect(arr).not.toBeNull()
+    const names = [...arr![1]!.matchAll(/'\*\*\/([^/']+)\/\*\*'/g)].map((m) => m[1]!)
+    expect(names.length).toBeGreaterThan(2)
+    for (const name of names) expect(section![1]!).toContain('`' + name + '`')
+  })
+})

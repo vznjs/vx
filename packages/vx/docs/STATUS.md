@@ -121,6 +121,20 @@ test is telling the truth.
       The post's `--dry` label sentence now says the label appears
       once more than one executor is declared; `@local` and `@noop`
       pinned to their names. The post pins are controls.
+336.  DONE (2026-09-16, the next three oldest posts: no-daemon,
+      one-binary, strict-output-ownership). one-binary reads true
+      (four platform packages, Bun ≥ 1.4 from source only, the 51 ms
+      solid run). no-daemon said the bitset priorities take "tens of
+      milliseconds" (optimizations.md: single-digit) and spelled its
+      warm figures its own way; they are now the benchmarks page's
+      (510ms, 760ms, 3.59s; 51 ms to 95 ms on solid), pinned to it.
+      strict-output-ownership's "never touched" list named `.vx` and
+      `.git` and not `node_modules`, the third of `ALWAYS_IGNORE`; the
+      list is pinned to that constant. Its overlap rule (equal
+      literals, a literal a glob matches, identical globs; anything
+      else let through) and the `(size, mode, mtime-ms)` fingerprint
+      read true against `task-graph.ts` and `cache.ts`. Two pins fail
+      on the old posts.
 
 ## In flight
 

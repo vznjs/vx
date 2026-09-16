@@ -48,17 +48,16 @@ stopped mattering:
   the git blob ids of the import closure, and evaluated live where it
   is not.
 - **The graph algorithms are bitsets**, so building priorities over
-  3,270 tasks is tens of milliseconds, not seconds.
+  3,270 tasks is milliseconds, not seconds.
 - **A warm hit on a current tree is N stats and zero writes**, because
   [strict output ownership](../strict-output-ownership/) means vx knows
   what the tree should contain.
 
-The result is a fully cached run of 3,270 tasks in about 510 ms with
-no process left behind, against Turborepo's 760 ms and Nx's 3.59 s.
-On solidjs/solid, Turbo measured with
-`--no-daemon` so both tools pay discovery, vx's no-op run is 51 ms to
-Turbo's 95. Turbo's daemon would close part of that gap. vx has nothing
-to turn on.
+The result is a fully cached run of 3,270 tasks in 510ms with no
+process left behind, against Turborepo's 760ms and Nx's 3.59s. On
+solidjs/solid, Turbo measured with `--no-daemon` so both tools pay
+discovery, vx's no-op run is 51 ms to Turbo's 95 ms. Turbo's daemon
+would close part of that gap. vx has nothing to turn on.
 
 ## The invariant, stated plainly
 
