@@ -115,6 +115,12 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['local-shortcircuit', 'orchestrator/local-shortcircuit.ts', 'ShortCircuitArgs'],
   ['local-shortcircuit', 'orchestrator/local-shortcircuit.ts', 'ProbedEntry'],
   ['local-shortcircuit', 'orchestrator/local-shortcircuit.ts', 'ShortCircuit'],
+  ['plan', 'orchestrator/plan.ts', 'PlannedTask'],
+  ['plan', 'orchestrator/plan.ts', 'PlanPrediction'],
+  ['plan', 'orchestrator/plan.ts', 'RunPlan'],
+  ['plan', 'orchestrator/plan.ts', 'PlanArgs'],
+  ['tally', 'orchestrator/tally.ts', 'Tally'],
+  ['tally', 'orchestrator/tally.ts', 'TallyItem'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
