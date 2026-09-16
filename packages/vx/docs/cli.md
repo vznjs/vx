@@ -1370,7 +1370,9 @@ says the same.
 Workspace doctor — one screen of facts for bug reports and sanity
 checks. The task count and the sandbox row's declared count come from
 the same load a run uses, plugin stages included; a config that fails
-to load counts as zero in both rather than failing the doctor:
+to load counts as zero in both rather than failing the doctor, and is
+named (`12 (34 tasks · 1 config did not load)`, then a `config errors`
+row with the loader's message per config):
 
 ```
 $ vx info
@@ -1395,7 +1397,8 @@ vx-lock.json:     yes
 
 - `git` shows `(not found)` when the binary is missing; a broken
   project config contributes zero tasks instead of failing the
-  printout.
+  printout, and the `config errors` row (present only then) names it
+  with the loader's message — the same line `vx run` would stop on.
 - `git status cache`: vx runs ONE `git status` per run to find dirty
   and untracked files, and on a large tree that walk is the warm run's
   critical path. git's `core.fsmonitor` (a daemon that watches the
@@ -1444,7 +1447,8 @@ exec.sandbox and will fail` says it first: root inside a container
   script or a bug-report template: `vx`, `bun`, `git` (null when not
   found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
   git could not answer), `workspaceRoot`, `projects`, `tasks`,
-  `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
+  `configErrors` (`[{ path, message }]`, the configs that did not load,
+  empty when all did), `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
 cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
   `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheVersion`,

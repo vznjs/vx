@@ -46,6 +46,13 @@ export interface InfoFacts {
   workspaceRoot: string
   projects: number
   tasks: number
+  /**
+   * The project configs that did not load, each with the loader's own
+   * message (the path stripped). A broken config counts as zero tasks
+   * rather than failing the doctor — and the doctor says which, since a
+   * `0 tasks` that hides a typo is the one fact a bug report needs.
+   */
+  configErrors: Array<{ path: string; message: string }>
   plugins: Array<{ name: string; seams: string[] }>
   /**
    * The worker count a run defaults to and where it comes from: the
@@ -108,6 +115,7 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
   let flaky: FlakyTask[]
   let taskCount = 0
   let sandboxed = 0
+  let configErrors: InfoFacts['configErrors'] = []
   try {
     stats = cache.stats()
     orphans = await cache.orphanStats()
@@ -138,7 +146,11 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
       // A config that will not load counts as zero, for both numbers: the
       // sandbox row's "N tasks declare" must not read 0 because one other
       // project's config is broken while this one's declares a sandbox.
-      ;({ tasks: taskCount, sandboxed } = await countLoadableTasks(metas))
+      ;({
+        tasks: taskCount,
+        sandboxed,
+        errors: configErrors,
+      } = await countLoadableTasks(metas, root))
     }
   } finally {
     cache.close()
@@ -158,6 +170,7 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
     workspaceRoot: root,
     projects: metas.length,
     tasks: taskCount,
+    configErrors,
     // Which plugins loaded and which seams each fills, in pipeline order —
     // the answer to "why did this task run there / cache there / not at
     // all" before reading any config. A declined seam still costs nothing;
@@ -286,9 +299,11 @@ function gitVersion(): string | null {
 
 async function countLoadableTasks(
   metas: readonly ProjectMeta[],
-): Promise<{ tasks: number; sandboxed: number }> {
+  root: string,
+): Promise<{ tasks: number; sandboxed: number; errors: InfoFacts['configErrors'] }> {
   let tasks = 0
   let sandboxed = 0
+  const errors: InfoFacts['configErrors'] = []
   await Promise.all(
     metas.map(async (meta) => {
       if (meta.configPath === null) return
@@ -297,10 +312,18 @@ async function countLoadableTasks(
         const declared = Object.values(config.tasks ?? {})
         tasks += declared.length
         for (const t of declared) if (t?.exec?.sandbox !== undefined) sandboxed++
-      } catch {
-        // counted as zero
+      } catch (err) {
+        // Counted as zero, and named: the loader's message opens with the
+        // absolute path, which the row carries workspace-relative instead.
+        const raw = err instanceof Error ? err.message : String(err)
+        const prefix = `${meta.configPath}: `
+        errors.push({
+          path: path.relative(root, meta.configPath).split(path.sep).join('/'),
+          message: raw.startsWith(prefix) ? raw.slice(prefix.length) : raw,
+        })
       }
     }),
   )
-  return { tasks, sandboxed }
+  errors.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  return { tasks, sandboxed, errors }
 }

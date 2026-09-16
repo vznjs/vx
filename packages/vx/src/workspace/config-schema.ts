@@ -519,6 +519,15 @@ const CACHE_INPUT_FIELDS = new Set([
 const CACHE_OUTPUT_FIELDS = new Set(['files', 'workspaceFiles'])
 
 function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: string): void {
+  // `typeof [] === 'object'`, so an array reaches here and its indices read
+  // as fields: `outputs: ['dist/**']` (Turbo's spelling) was refused as
+  // `unknown field "0"`. Name the shape instead, and the one meant.
+  if (Array.isArray(value)) {
+    throw new UserError(
+      `${where} must be an object (fields: ${[...allowed].sort().join(', ')}), not an array` +
+        (allowed.has('files') ? ' — did you mean `{ files: [...] }`?' : ''),
+    )
+  }
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) {
       // The nearest accepted spelling first: the list says what the level

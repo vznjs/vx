@@ -512,6 +512,7 @@ describe('vx info — a config that will not load counts as zero, for every numb
       const whole = JSON.parse((await vx(root, ['info', '--format', 'json'])).out)
       expect(whole.tasks).toBe(5)
       expect(whole.sandbox.declared).toBe(1)
+      expect(whole.configErrors).toEqual([])
 
       const broken = path.join(root, 'packages', 'broken')
       await mkdir(broken, { recursive: true })
@@ -526,6 +527,20 @@ describe('vx info — a config that will not load counts as zero, for every numb
       expect(facts.projects).toBe(4)
       expect(facts.tasks).toBe(5)
       expect(facts.sandbox.declared).toBe(1)
+      // Zero is not silent: the broken config is named, with the loader's
+      // message and no absolute path in front of it.
+      expect(facts.configErrors).toEqual([
+        {
+          path: 'packages/broken/vx.config.mjs',
+          message: expect.stringMatching(/^tasks\.build has unknown field "command"/),
+        },
+      ])
+      const pretty = await vx(root, ['info'])
+      expect(pretty.code).toBe(0)
+      expect(pretty.out).toMatch(/^projects: +4 \(5 tasks · 1 config did not load\)$/m)
+      expect(pretty.out).toMatch(
+        /^config errors: +packages\/broken\/vx\.config\.mjs: tasks\.build has unknown field "command"/m,
+      )
     },
     TIMEOUT,
   )
