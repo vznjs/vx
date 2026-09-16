@@ -563,6 +563,15 @@ the error table in `docs/schema.md` has the row.
       task's stream. Pinned in the unsafe suite (the failure names
       `.cache/` and leaves no file; `.cache/` makes its directory and
       becomes ready).
+228.  DONE (2026-09-16, the deal re-weighed after the day): CI's Linux
+      job ran 2:20 on #395 against 1:33 after 214, its shards spread
+      13–39 s (contending with the 37 s docs build on a four-worker
+      runner), and four of the day's test files sat at the median
+      weight — the run-lock e2e (2.8 s, two CLI runs and a 1.5 s
+      server) and the run-lock unit suite (1.8 s) among them. Re-weighed
+      as `probe` from a fresh JUnit run of all twelve shards: 168 files,
+      151 s of recorded weight against 135; the local shards deal to
+      10–15 s. The next CI run is the number.
 
 ## In flight
 
