@@ -578,6 +578,20 @@ test is telling the truth.
       true; and "No projects declare task(s): buidl" carries no
       `vx run:` prefix because it is `run()`'s line, which `watch` and
       an embedder call too — the verb is not its to name.
+277.  DONE (2026-09-16, the reference's one picture of a run, read
+      against the renderer after 276): `docs/cli.md`'s broad-run sample
+      had drifted three ways — the rule's label sat at the right end
+      where the renderer leads with it (`─ vx 0.0.0 ───…`), the time
+      line read `5.34s (max … · avg … · min …)` where the renderer
+      joins with `·`, and its spread averaged the hit's 4 ms restore
+      in, the very pollution the spread excludes by design (one
+      executed task is its own max, avg and min). The block is now the
+      renderer's output for that run, bars included (the annotated
+      bars moved to a sentence under it), and a pin in
+      `cli-doc-drift.test.ts` renders the same two outcomes and footer
+      and compares byte for byte, as 265 did for the CI guide.
+      `modules/summary.md` and the output audit already carried the
+      current shape; the site's copy is generated from this file.
 
 ## In flight
 
