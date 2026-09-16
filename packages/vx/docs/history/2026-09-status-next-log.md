@@ -961,3 +961,108 @@ loses it (`OutcomeView`, 275). Next: a second first-run walkthrough
 current binary), twelve days and 260 items after the first (item 9),
 with the reason surfaces read as a newcomer would. Never end with
 "what next?".
+
+## Handoffs 14w–14y (moved 2026-09-16 with items 282–305)
+
+14w. **Handoff after item 281 (2026-09-16, afternoon).** Six items
+since 14v, merged as #436–#440: the second first-run walkthrough
+found nothing to fix (276) and then read each page against the
+renderer it describes — the broad-run sample (277), the frame
+anatomy (278) and the status-line doc's phantom Failures zone (279)
+had each drifted, and two byte-for-byte pins now hold the first two;
+the reader at scale (a thousand projects, one leaf broken) found
+`vx last` a thousand rows deep with the failure at the top (280,
+hits fold past sixteen) and the Skipped section naming groups no
+other counter counts (281). Open: Next 1, 2 and 16, all gated by
+their own terms; In-flight 5 (macOS); the owner residue — the
+`NPM_TOKEN` secret, the release cut, the site's address. No open
+issues. The loop holds 39 items (243–281): the trim's trigger is
+forty, so the item after next moves 243 onward to history. The box:
+as 14v; #440's first head went red in `test.bun.shard-4`, a shard
+holding none of its files — the Actions API serves at most the last
+five thousand log lines, which stop short of an early shard's
+section, the blob host the full log lives on is denied by the
+egress proxy, and the run uploads no artifacts, so a CI failure in
+an early shard cannot be named from here; three local runs passed,
+and with no re-run tool the one legitimate re-run was the push of
+the next real change (281), after one comment on the PR saying so
+— it came back green. A chain that ends in a subshell whose last
+command is a grep passes whatever the scan said (the STATUS span
+that wrapped in 280 was committed that way and amended); capture
+`rc=$?` before the grep. Methods that paid: a page that describes
+output is read against the renderer, not against memory (277–279);
+a probe at scale asks what two packages cannot (280); the counter
+every other surface excludes is the one to check in a new surface
+(281). Next: the trim after the next item, then a persona not yet
+walked — the inner loop, `vx watch` through a failing edit and the
+fixing one, with the reason surfaces read as they cycle. Never end
+with "what next?".
+
+14x. **Handoff after item 287 (2026-09-16, mid-afternoon).** Six
+items since 14w, merged as #442–#446 with #446 open: the watch
+persona read right (282) and the loop was trimmed to history; the
+READMEs' counts corrected and the hook count pinned across the project
+boundary (283); every config block on the site compiled, three pages
+fixed (284); the day's warm-path A/B a tie (285); the package READMEs
+probed and their pin declined with the reason (286); and `--affected`
+changed to include dependents (287) — the reference documented the
+changed-only form with a rationale while two guides and the flag's
+name promised dependents, so an adopter's gate never ran a dependent's
+tests; a Decisions entry records the call and the parity table's `≠`
+row is closed. Open: Next 1, 2 and 16, all gated by their own terms;
+In-flight 5 (macOS); the owner residue — the `NPM_TOKEN` secret, the
+release cut, the site's address. No open issues. The loop holds six
+items (282–287) after the trim. The box: as 14w; a Python edit script
+that writes files before its last assertion leaves a half-done tree
+when that assertion fails, and a chain gated on the scan and the tests
+committed it (the trim, twice in one turn) — gate the chain on the
+script's own exit and make every write idempotent; an item inserted at
+the blank line after the last item lands BEFORE any item that follows
+it, so a cut "to the next item" misses the one you just wrote — count
+what the cut holds before writing the file; a type-checker pointed at
+a directory holding a symlinked `node_modules` walks it until the
+kernel kills it — name the files; the shard-4 flake of #440 has a name
+now, `task-tree-kill`'s "a timeout reaps the grandchild", a 300 ms
+window a loaded macOS runner outran (#445), two seconds since; a probe
+whose negative case contains the positive's needle ("broken" holds
+"ok") proves nothing — check the negative case before reading the
+result. Methods that paid: the pages a newcomer copies from are
+compiled, not read (284); a divergence a parity suite pins as
+documented is still a divergence the guides may contradict — read the
+guides against the suite, not the reference alone (287); a CI failure
+you cannot name gets its name from the next occurrence — keep the
+shard's file list. Next: the lockfile persona — a dependency bump under
+`bun()`, `vx why` naming the claim and `--affected` following it — and
+`vx init` on the walkthrough repo after 287, to read what the TODO says
+about `--affected` now. Never end with "what next?".
+
+14y. **Handoff after item 293 (2026-09-16, late afternoon).** Six
+items since 14x: the lockfile persona read right (288, #447); the CI
+guide's two sentences and CLAUDE.md's four rules (289); the
+`--affected` "changed only" wording swept from six more surfaces and
+the anchor sweep it started (290); every relative link a law, the
+README's `../packages/vx-reapi` 404 (291); all thirteen hooks named
+in the README's § 5 and CLAUDE.md, pinned (292); the overview page
+read whole against source — four stale claims, two pins (293).
+289–293 are #448, open. Open: Next 1, 2 and 16, all gated by their
+own terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN`
+secret, the release cut, the site's address. No open issues. The loop
+holds twelve items (282–293). The box: as 14x; a separator you
+printed (`echo ----`) reads as file content in the same scroll — a
+pin built on it found no `---` in the file (293's first run); a
+Markdown line that wraps onto "+ …" is a bullet to the formatter and
+a one-item list on the site (the README's plugin sentence, live for
+weeks); github-slugger keeps a flag's dashes, so a `--flag` heading's
+id has three hyphens and a link with one misses silently; the site's
+content directory is outside oxfmt's targets (`rc=2`, "no target
+file") — its pages are never format-scanned, so a wrapped code span
+there is on you. Methods that paid: when two claims in one page go
+stale, read the page whole against source before moving on (290 and
+292 → 293 found four more); a law found for one shape is widened to
+its class the same day (anchors → every relative link, 291); the
+build output on disk (`dist/`) is the oracle for what a link
+resolves to, cheaper than a rebuild. Next: the two pages the overview
+sends a ten-minute reader to, `comparison.md` § Where vx is ahead and
+`architecture.md`, read the same way — every claim against source,
+the numbers against benchmarks.md, the pins where a count or a list
+lives in prose. Never end with "what next?".

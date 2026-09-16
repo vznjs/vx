@@ -112,3 +112,31 @@ describe('docs/README.md § Repository layout follows src/', () => {
     expect(readme).toContain(`Core \`src/\` is **${WORDS[dirs.length]} modules**`)
   })
 })
+
+describe('docs/optimizations.md cites files that exist and symbols they hold', () => {
+  // The catalog's Where column cited execute-task.ts for hashing that moved
+  // to task-hash.ts, a cache/remote-cache.ts that does not exist, and
+  // layered-cache.ts for globbing it no longer does (2026-09-16, item 310).
+  it('every `module/file.ts[:symbol]` resolves under src/', () => {
+    const doc = readFileSync(path.join(pkg, 'docs', 'optimizations.md'), 'utf8')
+    const missing: string[] = []
+    let cited = 0
+    for (const m of doc.matchAll(/`([a-z-]+\/[a-z-]+\.ts)(?::([A-Za-z]+))?`/g)) {
+      cited++
+      const file = path.join(pkg, 'src', m[1]!)
+      if (!existsSync(file)) {
+        missing.push(m[1]!)
+        continue
+      }
+      if (m[2] !== undefined && !new RegExp(`\\b${m[2]}\\b`).test(readFileSync(file, 'utf8'))) {
+        missing.push(`${m[1]}:${m[2]}`)
+      }
+    }
+    expect(cited).toBeGreaterThan(30)
+    expect(missing).toEqual([])
+    // A bare `file.ts` is ambiguous across modules; the catalog qualifies every citation.
+    expect([...doc.matchAll(/(?<![/`\w])`[a-z-]+\.ts(?::[A-Za-z]+)?`/g)].map((m) => m[0])).toEqual(
+      [],
+    )
+  })
+})

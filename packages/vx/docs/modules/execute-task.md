@@ -26,24 +26,12 @@ export interface ExecuteArgs {
   liveChildren?: Set<ReturnType<typeof Bun.spawn>> // run-scoped; signal handler SIGTERMs these
 }
 
-export interface ComputeHashArgs {
-  node: TaskNode
-  upstream: TaskOutcome[]
-  workspaceRoot: string
-  workspaceFingerprint: string
-  cache: CacheLayer
-  forwardArgs?: readonly string[]
-  nestedProjectDirs: string[]
-}
-
 export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
-
-/** Cache-key derivation. Used by executeTask AND plan() for --dry. */
-export function computeTaskHash(args: ComputeHashArgs): Promise<string>
-
-/** Hash a group task's upstream so downstream still invalidates on changes. */
-export function computeGroupHash(upstream: TaskOutcome[]): string
 ```
+
+Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,
+`computeGroupHash`) moved to `src/orchestrator/task-hash.ts` —
+[`task-hash.md`](./task-hash.md).
 
 ## Three execution paths
 

@@ -142,12 +142,12 @@ explains why.
 | `turbo run build --affected`      | `vx run build --affected`       |
 | `turbo run build --dry`           | `vx run build --dry`            |
 | `turbo run build -- --flag`       | `vx run build -- --flag`        |
-| `TURBO_TOKEN` / remote cache      | a remote-cache plugin connection                         |
+| `TURBO_TOKEN` / remote cache      | `turboCache()` from `@vzn/vx-migrate` reads the same variables |
 
-The remote cache is plugin-driven: `@vzn/vx-reapi` connects any Bazel
-REAPI server (NativeLink, BuildBuddy, Buildbarn, bazel-remote), or bring a
-Turbo-wire server through a small cache plugin (see
-[Core is provider-neutral](../../guides/extensibility/)). See
+The remote cache is plugin-driven: `turboCache()` from `@vzn/vx-migrate`
+keeps the Turbo-wire server you have (Vercel's Remote Cache included),
+and `@vzn/vx-reapi` connects any Bazel REAPI server (NativeLink,
+BuildBuddy, Buildbarn, bazel-remote). See
 [Remote caching](../../guides/remote-caching/).
 
 ## A couple of differences to expect
@@ -163,7 +163,7 @@ Turbo-wire server through a small cache plugin (see
   script directly); use `--all` for Turborepo's run-everything default, or
   `--filter` / `--affected` to select.
 - **No Bun needed to run vx** — `npm install -g @vzn/vx` ships a standalone
-  binary. Bun (≥ 1.3) is only required when running vx from source.
+  binary. Bun (≥ 1.4) is only required when running vx from source.
 
 Every row a Turbo user relies on, spelled in vx and pinned by a test, is
 the [parity map](../../parity/).

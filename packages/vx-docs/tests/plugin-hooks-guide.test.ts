@@ -17,13 +17,16 @@ describe('the site guides follow PLUGIN_HOOKS', () => {
     for (const hook of PLUGIN_HOOKS) expect(declared).toContain(hook)
   })
 
-  it('extensibility.md tabulates every stage (the lifecycle pair is prose)', async () => {
-    const text = await Bun.file(path.join(GUIDES, 'extensibility.md')).text()
-    const found = new Set<string>()
-    for (const line of text.split('\n')) {
-      if (!line.startsWith('|')) continue
-      for (const m of (line.split('|')[2] ?? '').matchAll(/`([a-z]+)(?:\(|`)/g)) found.add(m[1]!)
-    }
-    for (const hook of PLUGIN_HOOKS) if (!LIFECYCLE.has(hook)) expect(found).toContain(hook)
-  })
+  // The introduction's table lacked `admit` until 2026-09-16 (item 305).
+  for (const file of ['guides/extensibility.md', 'introduction.md']) {
+    it(`${file} tabulates every stage (the lifecycle pair is prose)`, async () => {
+      const text = await Bun.file(path.join(GUIDES, '..', file)).text()
+      const found = new Set<string>()
+      for (const line of text.split('\n')) {
+        if (!line.startsWith('|')) continue
+        for (const m of (line.split('|')[2] ?? '').matchAll(/`([a-z]+)(?:\(|`)/g)) found.add(m[1]!)
+      }
+      for (const hook of PLUGIN_HOOKS) if (!LIFECYCLE.has(hook)) expect(found).toContain(hook)
+    })
+  }
 })

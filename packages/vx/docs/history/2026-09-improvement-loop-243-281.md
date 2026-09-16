@@ -8,7 +8,8 @@ what shipped and the numbers behind it. Items 1–64 are in
 `2026-09-improvement-loop-65-104.md`, items 105–144 in
 `2026-09-improvement-loop-105-144.md`, items 145–202 in
 `2026-09-improvement-loop-145-202.md`, items 203–242 in
-`2026-09-improvement-loop-203-242.md`; items 282 onward continue in
+`2026-09-improvement-loop-203-242.md`, items 282–305 in
+`2026-09-improvement-loop-282-305.md`; items 306 onward continue in
 STATUS under the same numbering.
 
 243.  DONE (2026-09-16, the minimal-image persona, a step further): a

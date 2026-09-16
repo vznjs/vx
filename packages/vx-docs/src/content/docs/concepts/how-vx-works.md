@@ -25,8 +25,9 @@ When you type `vx run build`, vx:
 5. **Schedules** the graph — for each task, a cache lookup decides
    *restore* vs. *execute*, running as many tasks in parallel as your
    concurrency allows. (`schedule` hook: which ready task first;
-   `executor` and `cache` decide where it runs and where its artifact
-   lives; `telemetry` receives every record.)
+   `admit`: whether it starts now beside what runs here; `executor` and
+   `cache` decide where it runs and where its artifact lives;
+   `telemetry` receives every record.)
 
 Every parenthesis is a plugin hook, and every one is optional — see
 [Writing a vx plugin](/vx/guides/plugins/).

@@ -21,7 +21,8 @@ can never drift on the stability gate.
   outputs — `outputs.files` in any project OR `outputs.workspaceFiles`.
   Transitive because a producer reached through a no-output intermediate
   still poisons the key.
-- `synthUpstream`, `topoOrder` — helpers.
+
+The helpers (`synthUpstream`, `topoOrder`) are internal and not exported.
 
 ## Invariants
 

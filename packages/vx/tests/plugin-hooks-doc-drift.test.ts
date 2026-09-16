@@ -79,6 +79,16 @@ describe('the plugin hook tables follow PLUGIN_HOOKS', () => {
     for (const hook of PLUGIN_HOOKS) expect(named).toContain(hook)
   })
 
+  // comparison.md's "plugin pipeline" bullet named five of thirteen hooks
+  // until 2026-09-16 (item 309).
+  it("comparison.md's plugin-pipeline bullet names every hook", async () => {
+    const text = await Bun.file(path.join(DOCS, 'comparison.md')).text()
+    const m = /\*\*The plugin pipeline \(2026-09-02\)\.\*\*([\s\S]*?)Core applies/.exec(text)
+    expect(m).not.toBeNull()
+    const named = new Set([...m![1]!.matchAll(/`([a-z]+)`/g)].map((x) => x[1]!))
+    for (const hook of PLUGIN_HOOKS) expect(named).toContain(hook)
+  })
+
   it('CONTROL: a table that lacks a hook is caught', async () => {
     // The extractor sees exactly what the rows say: a table without `admit`
     // fails the check above, so a passing run is evidence, not vacuity.

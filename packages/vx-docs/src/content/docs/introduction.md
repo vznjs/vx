@@ -30,6 +30,7 @@ order you declare them in `vx.workspace.ts`:
 | key         | `key(task, ctx)`       | extra material in the cache key (named in `vx why`)      |
 | fingerprint | `fingerprint`          | which root files (a lockfile) the plugin keys per project |
 | schedule    | `schedule(nodes, ctx)` | which ready task runs first                              |
+| admit       | `admit(task, ctx)`     | whether a ready task starts now beside what runs here    |
 | execute     | `executor(ctx)`        | where one task's command runs                            |
 | store       | `cache(ctx)`           | where artifacts live                                     |
 | observe     | `telemetry(ctx)`       | where run records go                                     |
@@ -67,7 +68,7 @@ What ships on those seams today, each its own package:
 - **[`@vzn/vx-reapi`](../guides/remote-caching/)** — Bazel's Remote
   Execution API: NativeLink, BuildBuddy, Buildbarn and bazel-remote as a
   shared cache _and_ as remote executors.
-- **[`@vzn/vx-migrate`](../guides/remote-caching/)** — adoption in one
+- **[`@vzn/vx-migrate`](../migrate/from-turborepo/)** — adoption in one
   package: `turbo()` runs a `turbo.json` workspace under vx with nothing
   written, the CLI writes configs from `turbo.json` or an Nx graph, and
   `turboCache()` / `nxCache()` keep any server speaking Turbo's or Nx's
@@ -79,8 +80,7 @@ What ships on those seams today, each its own package:
 - **[`@vzn/vx-mcp`](../guides/mcp/)** — `vx mcp`, a read-only Model
   Context Protocol server for Claude Code, Cursor and Continue.dev.
 - **`@vzn/vx-schedule-history`** — order by the critical path learned
-  from your own runs.json` or an Nx graph →
-  `vx.config.ts`.
+  from your own runs, and pack tasks by what their past executions used.
 
 Plugins for a given framework or tool — Vite's tasks, Next's outputs,
 a test runner's conventions — are the community's to write on the
@@ -122,7 +122,8 @@ Almost every design decision is a response to that:
   don't litter no-op tasks across the monorepo. Turborepo and Nx stop at
   direct dependencies.
 - **Daemonless.** No background process, no staleness window, no socket
-  state to corrupt — and still faster cold than Nx is daemon-warm.
+  state to corrupt — and the fastest warm runs in the head-to-head
+  benchmark all the same.
 - **Shell is the API.** A task is a command string. There are no
   JS-function tasks; a plugin can change _where_ a command runs, never
   what it is.
