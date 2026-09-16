@@ -26,10 +26,10 @@ export function formatTaskBlock(
   colors?: ColorSupport,
 ): string
 
-// `◌ <id> ── restored-local • <hash8>` — quiet cache hit
+// ` ⇢ <time> success local <id>` — quiet cache hit
 export function formatTaskHitLine(node, outcome, colors?): string
 
-// `● <id> ── executed • <duration>` — broad-mode executed task
+// ` ⏺ <time> success miss <id>` — broad-mode executed task
 export function formatTaskExecutedLine(node, outcome, colors?): string
 ```
 

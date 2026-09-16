@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import {
   formatFrameClose,
   formatFrameOpen,
   formatPersistentList,
   formatTaskBlock,
+  formatTaskExecutedLine,
+  formatTaskHitLine,
 } from '../src/orchestrator/framed-output.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
@@ -41,6 +45,42 @@ function outcome(
     ...extra,
   }
 }
+
+describe('the compact one-liners', () => {
+  // docs/modules/framed-output.md showed `◌ <id> ── restored-local • <hash8>`,
+  // a shape and a glyph nothing prints (item 312, 2026-09-16): the row is
+  // glyph · time · status · cache · name, and the page's sample says so.
+  const doc = readFileSync(
+    path.resolve(import.meta.dir, '..', 'docs', 'modules', 'framed-output.md'),
+    'utf8',
+  )
+  const cached = {
+    ...node('@vzn/vx#lint', 'oxlint .'),
+    config: { exec: { command: 'oxlint .' }, cache: {} },
+  } as unknown as TaskNode
+
+  it('a restored local hit is ⇢ · time · success · local · id', () => {
+    const row = formatTaskHitLine(cached, {
+      ...outcome('@vzn/vx#lint', 'cache-hit', {
+        durationMs: 12,
+        hash: 'abcdef0123456789',
+        restored: true,
+      }),
+      node: cached,
+    })
+    expect(row).toMatch(/^ ⇢ +12ms success +local +@vzn\/vx#lint$/)
+    expect(doc).toContain('// ` ⇢ <time> success local <id>` — quiet cache hit')
+  })
+
+  it('an executed cached task is ⏺ · time · success · miss · id', () => {
+    const row = formatTaskExecutedLine(cached, {
+      ...outcome('@vzn/vx#lint', 'success', { durationMs: 327, hash: 'abcdef0123456789' }),
+      node: cached,
+    })
+    expect(row).toMatch(/^ ⏺\uFE0E +327ms success +miss +@vzn\/vx#lint$/)
+    expect(doc).toContain('// ` ⏺ <time> success miss <id>` — broad-mode executed task')
+  })
+})
 
 describe('formatTaskBlock', () => {
   it('renders an executed task with command + stdout sections, content raw (no border)', () => {

@@ -133,6 +133,26 @@ test is telling the truth.
       continuation line (the root is outside `lint.oxfmt`'s scan, which
       runs in `packages/vx`, so nothing caught it). Fails on the page
       304 left.
+312.  DONE (2026-09-16, the three site pages the series had not read:
+      quickstart, add-to-existing-repo, parity). The quickstart's hit
+      comment showed a glyph no source file prints (the row is glyph,
+      time, status, cache, name: a local hit opens with the local
+      arrow and reads "success local") and called `--graph` "text or
+      Graphviz DOT" (DOT only, as `vx help` says); the adoption page
+      gave the concurrency default as the raw core count (the help
+      says the cores this process may use — a cgroup quota caps it);
+      parity's "Reading the map" still counted changed-not-dependents
+      among the divergences (#446 closed it) and pointed
+      cleaned-not-additive at the section that does not record it.
+      `docs/modules/framed-output.md`'s two one-liner samples showed
+      the same invented shape. Fixed; pinned: the quickstart glyph and
+      words are `formatTaskHitLine`'s and the flag comments are the
+      help's (`tests/site-samples.unsafe.test.ts`); every `tests/` and
+      `packages/` deep pin parity cites exists and its Turbo/Nx
+      versions are the suites' (`tests/doc-references.unsafe.test.ts`);
+      the one-liners' shape and the module page's samples
+      (`tests/framed-output.test.ts`, which had never called either).
+      Five fail on the old pages.
 
 ## In flight
 
