@@ -444,7 +444,9 @@ What the shapes mean in each column:
   `$ cmd` line so a requested task looks the same whether it ran or not.
 - **skipped** is the exception: it never started, so no frame was opened,
   and it produced nothing a frame could hold. The one-liner says
-  everything.
+  everything, and where the flow prints none (broad, a dependency) the
+  footer's Skipped section names the task under the failure that
+  blocked it.
 - **`frame, or one-liner if quiet`** — a cache hit with stored stdout is
   worth a frame (the output is the point); a hit with nothing to replay
   compresses to one line, which is what keeps a 2000-task warm run
@@ -1702,6 +1704,21 @@ footer. A broad run looks like:
 
 Group tasks emit no framed block by design (they aren't real tasks);
 running a group focused surfaces its real member tasks instead.
+
+**Skipped section.** After the footer, a red run names every task
+that never started, under the failure that blocked it — the footer's
+`1 skipped` names no task, and the broad flow prints no row for one:
+
+```
+  Skipped:  2 tasks never started — blocked upstream
+    ⊘ after lib#build failed: app#build, web#build
+```
+
+A skip's cause is followed through a chain of skips to the failure at
+its root; a skip with no failed upstream is fail-fast's ("after the run
+stopped (fail-fast)"), and one behind a task killed by a signal names
+it as aborted. Eight names per cause, then `… +N more`. Absent when
+nothing was skipped (`--continue=always` skips nothing).
 
 **Flaky section.** After the footer, a run names the tasks it just
 proved nondeterministic — from the local run history alone, no

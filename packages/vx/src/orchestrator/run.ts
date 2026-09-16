@@ -65,7 +65,12 @@ import { assembleRunRecords } from './run-records.js'
 import { selectKeepAlive, shutdownPersistent } from './persistent.js'
 import { writeRunProfile, writeRunSummary } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
-import { formatAbortedSection, formatFlakySection, formatRunSummary } from './summary.js'
+import {
+  formatAbortedSection,
+  formatFlakySection,
+  formatRunSummary,
+  formatSkippedSection,
+} from './summary.js'
 import { detectFlaky, type FlakyCandidate } from './failure-mode.js'
 import type { RunOptions, RunSummary } from './options.js'
 
@@ -693,6 +698,9 @@ export async function run(options: RunOptions): Promise<RunSummary> {
     // A task killed by a shutdown signal is in no bucket above, yet it makes
     // `ok` false — name it, or the red exit is undiagnosable.
     for (const line of formatAbortedSection(list)) log.status(line)
+    // The footer's "N skipped" names no task; this names each under the
+    // failure that blocked it.
+    for (const line of formatSkippedSection(list)) log.status(line)
     // Judged against the history BEFORE this run's rows land, so the query
     // is one scan over the executed tasks' keys and nothing at all on a run
     // that executed none (every hit, every skip).

@@ -3,6 +3,7 @@ import {
   formatDuration,
   formatFlakySection,
   formatRunSummary,
+  formatSkippedSection,
 } from '../src/orchestrator/summary.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
@@ -224,6 +225,59 @@ describe('formatFlakySection', () => {
     ])
     expect(formatFlakySection([finding('app#test', 'failed', 1, 1)])[1]).toBe(
       '  Flaky:    1 task with the same inputs both passing and failing on record',
+    )
+  })
+})
+
+describe('formatSkippedSection', () => {
+  const dep = (id: string, status: TaskOutcome['status'], deps: string[]): TaskOutcome => ({
+    ...outcome(id, status, status === 'failed' ? 3 : 0),
+    node: { id, deps, config: { exec: { command: 'noop' } } } as unknown as TaskNode,
+  })
+
+  it('is empty when nothing was skipped', () => {
+    expect(
+      formatSkippedSection([dep('lib#build', 'failed', []), dep('a#b', 'success', [])]),
+    ).toEqual([])
+  })
+
+  it('names each skipped task under the failure at the root of its chain', () => {
+    expect(
+      formatSkippedSection([
+        dep('lib#build', 'failed', []),
+        dep('app#build', 'skipped', ['lib#build']),
+        dep('web#build', 'skipped', ['app#build']),
+        dep('api#build', 'success', []),
+      ]),
+    ).toEqual([
+      '',
+      '  Skipped:  2 tasks never started — blocked upstream',
+      '    ⊘ after lib#build failed: app#build, web#build',
+    ])
+  })
+
+  it('names fail-fast when no upstream failed, and an aborted upstream as such', () => {
+    expect(
+      formatSkippedSection([
+        dep('x#build', 'failed', []),
+        dep('y#build', 'skipped', []),
+        dep('z#build', 'aborted', []),
+        dep('w#build', 'skipped', ['z#build']),
+      ]),
+    ).toEqual([
+      '',
+      '  Skipped:  2 tasks never started — blocked upstream',
+      '    ⊘ after the run stopped (fail-fast): y#build',
+      '    ⊘ after z#build was aborted: w#build',
+    ])
+  })
+
+  it('caps the names on one line and counts the rest', () => {
+    const many = Array.from({ length: 11 }, (_, i) => dep(`p${i}#build`, 'skipped', ['lib#build']))
+    const lines = formatSkippedSection([dep('lib#build', 'failed', []), ...many])
+    expect(lines[1]).toBe('  Skipped:  11 tasks never started — blocked upstream')
+    expect(lines[2]).toBe(
+      '    ⊘ after lib#build failed: p0#build, p1#build, p10#build, p2#build, p3#build, p4#build, p5#build, p6#build … +3 more',
     )
   })
 })
