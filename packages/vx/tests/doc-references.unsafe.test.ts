@@ -113,3 +113,31 @@ describe('docs/README.md names every published plugin package', () => {
     expect([...named].sort()).toEqual(published)
   })
 })
+
+describe('docs/parity.md names suites that exist and the versions its suites cite', () => {
+  it('every `tests/…` and `packages/…` deep pin resolves', () => {
+    const doc = readFileSync(path.join(pkg, 'docs', 'parity.md'), 'utf8')
+    const cited = [
+      ...new Set([...doc.matchAll(/`((?:tests|packages)\/[\w./-]+)`/g)].map((m) => m[1]!)),
+    ]
+    expect(cited.length).toBeGreaterThan(40)
+    const missing = cited.filter(
+      (p) => !existsSync(p.startsWith('packages/') ? path.join(repo, p) : path.join(pkg, p)),
+    )
+    expect(missing).toEqual([])
+  })
+
+  it('the Turbo and Nx versions are the ones the two parity suites name', () => {
+    const doc = readFileSync(path.join(pkg, 'docs', 'parity.md'), 'utf8')
+    const turbo = /\(turborepo\.dev, ([\d.]+)\)/.exec(doc)
+    const nx = /\(nx\.dev, (\d+)\)/.exec(doc)
+    expect(turbo).not.toBeNull()
+    expect(nx).not.toBeNull()
+    expect(readFileSync(path.join(pkg, 'tests', 'parity-turbo.test.ts'), 'utf8')).toContain(
+      `(turborepo.dev/docs, ${turbo![1]})`,
+    )
+    expect(readFileSync(path.join(pkg, 'tests', 'parity-nx.test.ts'), 'utf8')).toContain(
+      `(nx.dev, ${nx![1]})`,
+    )
+  })
+})

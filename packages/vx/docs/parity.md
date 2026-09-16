@@ -94,10 +94,10 @@ deliberate divergence is marked **≠** and explained.
 - Every row's vx spelling is documented in `docs/cli.md` or
   `docs/schema.md`; the parity suite asserts the row against the real
   CLI, the deep pin asserts the edge cases.
-- The three **≠** rows that change what a command selects or leaves on
-  disk — union not intersection, changed-not-dependents, cleaned-not-
-  additive outputs — are decisions, recorded in `docs/comparison.md`
-  § Deliberate divergences with the reasoning.
+- The two **≠** rows that change what a command selects or leaves on
+  disk are decisions recorded in `docs/comparison.md` with the
+  reasoning: union not intersection under § Deliberate divergences,
+  cleaned-not-additive outputs under § Where vx is ahead.
 - What neither runner does and vx does — sandboxed tasks, the
   resolved-config hash, `vx lock --frozen`, `vx why`, restore-ahead
   scheduling — is `docs/comparison.md` § Where vx is ahead; the parity

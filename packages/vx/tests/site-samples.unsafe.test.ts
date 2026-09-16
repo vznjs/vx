@@ -8,10 +8,12 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
+import { formatTaskHitLine } from '../src/orchestrator/framed-output.js'
 import { CACHE_LAYER_METHODS } from '../src/orchestrator/plugin-host.js'
 import { ESSENTIAL_ENV } from '../src/exec/env.js'
 import type { RunPlan } from '../src/orchestrator/plan.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
+import type { TaskOutcome } from '../src/graph/scheduler.js'
 
 const GUIDES = path.resolve(
   import.meta.dir,
@@ -23,6 +25,9 @@ const GUIDES = path.resolve(
   'docs',
   'guides',
 )
+
+const DOCS = path.dirname(GUIDES)
+const HELP = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'help.ts'), 'utf8')
 
 function fencedBlock(page: string, lang: string, firstLine: string): string {
   const open = `\`\`\`${lang}\n${firstLine}`
@@ -120,5 +125,49 @@ describe('the remote-execution guide states the wire chunk sizes', () => {
     expect(m).not.toBeNull()
     expect(m![1]).toBe(chunk![1])
     expect(m![2]).toBe(safe![1])
+  })
+})
+
+describe('the quickstart shows what a run prints and what its flags do', () => {
+  it('the `vx run build` hit comment opens with the glyph and words formatTaskHitLine prints for a local hit', () => {
+    // The page showed ◌, a glyph no source file prints (item 312, 2026-09-16).
+    const page = readFileSync(path.join(DOCS, 'quickstart.md'), 'utf8')
+    const m = /^vx run build\s+# (\S+) (\S+ \S+) —/m.exec(page)
+    expect(m).not.toBeNull()
+    const node = {
+      id: 'app#build',
+      projectName: 'app',
+      taskName: 'build',
+      config: { exec: { command: 'tsc -b' }, cache: {} },
+    } as unknown as TaskNode
+    const outcome = {
+      node,
+      status: 'cache-hit',
+      exitCode: 0,
+      durationMs: 12,
+      hash: 'abcdef0123456789',
+      restored: true,
+    } as unknown as TaskOutcome
+    const row = formatTaskHitLine(node, outcome)
+    expect(m![1]).toBe(row.trimStart().split(' ')[0]!)
+    expect(row.replace(/\s+/g, ' ')).toContain(` ${m![2]} `)
+  })
+
+  it('the --graph comment says what `vx help` says: DOT', () => {
+    const page = readFileSync(path.join(DOCS, 'quickstart.md'), 'utf8')
+    expect(HELP).toContain('--graph[=<path>]     Emit Graphviz DOT')
+    const m = /^vx run build --graph\s+# (.*)$/m.exec(page)
+    expect(m![1]).toBe('the task graph as Graphviz DOT')
+  })
+})
+
+describe('the add-to-existing-repo page states the concurrency default `vx help` states', () => {
+  it("its `concurrency` comment is the help line's default clause", () => {
+    const help = /--concurrency <n>\s+Max parallel tasks \(default: ([^)]+)\)/.exec(HELP)
+    expect(help).not.toBeNull()
+    const page = readFileSync(path.join(DOCS, 'add-to-existing-repo.md'), 'utf8')
+    const m = /^\s+concurrency: 8,\s+\/\/ default: (.*)$/m.exec(page)
+    expect(m).not.toBeNull()
+    expect(m![1]).toBe(help![1])
   })
 })

@@ -133,6 +133,26 @@ test is telling the truth.
       continuation line (the root is outside `lint.oxfmt`'s scan, which
       runs in `packages/vx`, so nothing caught it). Fails on the page
       304 left.
+312.  DONE (2026-09-16, the three site pages the series had not read:
+      quickstart, add-to-existing-repo, parity). The quickstart's hit
+      comment showed a glyph no source file prints (the row is glyph,
+      time, status, cache, name: a local hit opens with the local
+      arrow and reads "success local") and called `--graph` "text or
+      Graphviz DOT" (DOT only, as `vx help` says); the adoption page
+      gave the concurrency default as the raw core count (the help
+      says the cores this process may use — a cgroup quota caps it);
+      parity's "Reading the map" still counted changed-not-dependents
+      among the divergences (#446 closed it) and pointed
+      cleaned-not-additive at the section that does not record it.
+      `docs/modules/framed-output.md`'s two one-liner samples showed
+      the same invented shape. Fixed; pinned: the quickstart glyph and
+      words are `formatTaskHitLine`'s and the flag comments are the
+      help's (`tests/site-samples.unsafe.test.ts`); every `tests/` and
+      `packages/` deep pin parity cites exists and its Turbo/Nx
+      versions are the suites' (`tests/doc-references.unsafe.test.ts`);
+      the one-liners' shape and the module page's samples
+      (`tests/framed-output.test.ts`, which had never called either).
+      Five fail on the old pages.
 
 ## In flight
 
@@ -283,7 +303,7 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270, 275, 281, 287 and 293 (14–14y) are in
-    `docs/history/2026-09-status-next-log.md`; 14z and 14aa below are
+    `docs/history/2026-09-status-next-log.md`; 14z–14ab below are
     the current ones.
 
 14z. **Handoff after item 299 (2026-09-16, evening).** Six items
@@ -360,6 +380,44 @@ blocks are the one doc class this series never read against source
 — a pin that each block's exported names exist in the module is the
 same law as the inventory pins, forty pages wide. Never end with
 "what next?".
+
+14ab. **Handoff after item 312 (2026-09-16, evening).** Seven items
+since 14aa: the trim (306: 282–305 and 14w–14y to history, STATUS
+from 800-odd lines to 472); the module pages' "Public surface"
+blocks as a law (307: four stale of 247 names, the pin maps each
+page to its files through the index); comparison.md's flag map,
+gap audit and running list (308–309: the retired
+`--excludeDependencies`, `prune` and `migrate` still "in core", five
+of thirteen hooks named); optimizations.md's citations (310: every
+one module-qualified now, a bare basename refused); the one
+correction of a correction (311: 304 struck the remote-execution
+guide's upload retry as a Bun 1.3 leftover and it is live code — a
+grep for `retry` that missed `retries`); and the three site pages the
+series had never read (312: a hit glyph no source prints, `--graph`
+"text or DOT", a divergence #446 had closed). 306–310 went in #456,
+311 in #457, both merged; 312 is #458 (open). Open: Next 1, 2 and 16,
+gated by their own terms; In-flight 5 (macOS); the owner residue —
+the `NPM_TOKEN` secret, the release cut, the site's address. No open
+issues. The loop holds 306–312. The box: a negative grep is a claim
+about every spelling of the word (311; CLAUDE.md has the rule); an
+edit script that fails to parse writes nothing, and the chain after
+it read a clean tree as "differential fails: 0" — the script's exit
+and the stash's "No stash entries found" were both in the output,
+read the whole output before the verdict line (311); the repo root
+is outside `lint.oxfmt`'s scan, so a wrapped code span in CLAUDE.md
+sat unflagged until a root scan (311); a rendered sample is only
+half the method — grep the source for the glyph a page shows, and a
+glyph that appears in no source file is the finding (312). Methods
+that paid: re-reading a correction against the source it corrected;
+merging a green PR by API while the local gate runs on the next item
+(the queue stays one deep at no cost); `git log -1` on a module page
+against its source lists the pages whose module moved after the page
+was last touched — the probe for the next item. Next: those module
+pages, prose against source, starting where the gap is widest
+(plan-format, run-report, events, cli-cache, inputs, scheduler,
+prepare, summary, cli-help); then Next 6's re-measure only when
+warm-path code moves (none did today); the blog posts are dated
+records and stay. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

@@ -101,7 +101,7 @@ vx run build
 The first run executes `tsc` and stores the result. Run it again:
 
 ```bash
-vx run build          # ◌ cache hit — restored in milliseconds
+vx run build          # ⇢ success local — the cache hit, restored in milliseconds
 ```
 
 vx restored `dist/**` and the captured logs from cache without running
@@ -159,7 +159,7 @@ vx run test --affected          # changed vs the base branch, and what depends o
 
 ```bash
 vx run build --all --dry        # predicted cache hits/misses, no execution
-vx run build --graph            # the task graph (text or Graphviz DOT)
+vx run build --graph            # the task graph as Graphviz DOT
 ```
 
 ## Where to go next

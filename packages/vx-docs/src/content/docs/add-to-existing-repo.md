@@ -107,7 +107,7 @@ defaults:
 import { defineWorkspace } from '@vzn/vx'
 
 export default defineWorkspace({
-  concurrency: 8,            // default: navigator.hardwareConcurrency
+  concurrency: 8,            // default: the cores this process may use
   cacheDir: '.vx/cache',     // default: .vx/cache (relative to root)
 })
 ```
