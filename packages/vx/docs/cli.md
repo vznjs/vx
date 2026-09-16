@@ -1355,9 +1355,9 @@ Exit codes: `0` success; `1` parse error or unknown target.
 ## `vx info`
 
 Workspace doctor — one screen of facts for bug reports and sanity
-checks. The task count comes from the same load a run uses, plugin
-stages included; a config that fails to load counts as zero rather
-than failing the doctor:
+checks. The task count and the sandbox row's declared count come from
+the same load a run uses, plugin stages included; a config that fails
+to load counts as zero in both rather than failing the doctor:
 
 ```
 $ vx info

@@ -486,6 +486,51 @@ describe('vx info (e2e)', () => {
   )
 })
 
+describe('vx info — a config that will not load counts as zero, for every number', () => {
+  // The doctor falls back to a per-config count when the shared load throws.
+  // That fallback counted tasks but not sandboxes, so one broken config next
+  // to a project declaring `exec.sandbox` read "0 tasks declare".
+  let root: string
+  beforeAll(async () => {
+    root = await makeWorkspace()
+    const sandboxed = path.join(root, 'packages', 'sandboxed')
+    await mkdir(sandboxed, { recursive: true })
+    await writeFile(path.join(sandboxed, 'package.json'), JSON.stringify({ name: 'sandboxed' }))
+    await writeFile(
+      path.join(sandboxed, 'vx.config.mjs'),
+      `export default { tasks: { build: { exec: { command: 'echo build', sandbox: {} } } } }`,
+    )
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    "counts the loadable configs' tasks and sandboxes alike",
+    async () => {
+      // Control: every config loads, so the shared load counts.
+      const whole = JSON.parse((await vx(root, ['info', '--format', 'json'])).out)
+      expect(whole.tasks).toBe(5)
+      expect(whole.sandbox.declared).toBe(1)
+
+      const broken = path.join(root, 'packages', 'broken')
+      await mkdir(broken, { recursive: true })
+      await writeFile(path.join(broken, 'package.json'), JSON.stringify({ name: 'broken' }))
+      await writeFile(
+        path.join(broken, 'vx.config.mjs'),
+        `export default { tasks: { build: { command: 'echo build' } } }`,
+      )
+      const r = await vx(root, ['info', '--format', 'json'])
+      expect(r.code).toBe(0)
+      const facts = JSON.parse(r.out)
+      expect(facts.projects).toBe(4)
+      expect(facts.tasks).toBe(5)
+      expect(facts.sandbox.declared).toBe(1)
+    },
+    TIMEOUT,
+  )
+})
+
 describe('parseShowArgs', () => {
   it('defaults to pretty with no target', () => {
     expect(parseShowArgs([])).toEqual({ format: 'pretty' })
