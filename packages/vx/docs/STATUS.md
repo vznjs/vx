@@ -592,6 +592,18 @@ test is telling the truth.
       and compares byte for byte, as 265 did for the CI guide.
       `modules/summary.md` and the output audit already carried the
       current shape; the site's copy is generated from this file.
+278.  DONE (2026-09-16, the class of 277 — the second picture): the
+      frame anatomy in `docs/cli.md` and `modules/framed-output.md` was
+      a sketch of a frame the renderer stopped printing — a
+      `├─ command` label where the command is a bare dim `$ cmd` line,
+      lowercase `├─ stdout` where the sections read `├─ STDOUT ──…`
+      with a blank line above and below their content. The reference
+      now shows one real failed block with every section (command,
+      stdout, stderr, a sandbox violation) and says what makes each
+      appear; the module doc's sample and bullets follow the renderer;
+      a second pin beside 277's renders that block and compares byte
+      for byte. Found by reading the walkthrough's real frame (276)
+      against the page that describes it.
 
 ## In flight
 

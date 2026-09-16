@@ -1695,17 +1695,33 @@ concurrent tasks never interleave their lines.
 Frame anatomy:
 
 ```
-┌─ <id> > <outcome header>      restored-local • abc12345 / failed (exit N) / …
-├─ command                      only for executed tasks (success or failed)
-<the command, raw>
-├─ stdout                       only when non-empty
-<stdout lines, raw>
-├─ stderr                       only when non-empty
-<stderr lines, raw>
-├─ sandbox violations (N)       when the sandbox recorded violations
-<violation lines, raw>
-└─ <id> ── (<duration>) <outcome word>
+┌─ app#test > failed (exit 1, 1 sandbox violation)
+
+$ bun test
+
+├─ STDOUT ──────────────────────────────────────────────────
+
+2 pass
+1 fail
+
+├─ STDERR ──────────────────────────────────────────────────
+
+error: expected 3, got 2
+
+├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+
+write ../shared/notes.txt
+
+└─ app#test ── (2.10s) failed (exit 1, 1 sandbox violation)
 ```
+
+Every section is conditional: the `$ <command>` line only for an
+executed task (success or failed — a hit replays its stored output and
+shows none), `STDOUT` / `STDERR` only when the stream is non-empty,
+`SANDBOX VIOLATIONS (N)` only when the sandbox recorded some. The
+header carries the outcome (`restored-local • abc12345`, `failed (exit
+N)`, …) and the footer repeats it after the duration. A test renders
+this block and checks it against this page, byte for byte.
 
 Section headers (`├─ …`) and frame corners render dim; the id keeps
 its identity coloring. Content lines are **raw** — no left border, no

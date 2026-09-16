@@ -13,7 +13,11 @@
 import { describe, expect, it } from 'bun:test'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
-import { formatTaskExecutedLine, formatTaskHitLine } from '../src/orchestrator/framed-output.js'
+import {
+  formatTaskBlock,
+  formatTaskExecutedLine,
+  formatTaskHitLine,
+} from '../src/orchestrator/framed-output.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 
@@ -125,5 +129,45 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
     expect(start).toBeGreaterThan(-1)
     const body = doc.slice(start + marker.length)
     expect(body.slice(0, body.indexOf('\n```\n'))).toBe(rendered)
+  })
+})
+
+// The frame anatomy was a hand-drawn sketch of a frame the renderer stopped
+// printing: a `├─ command` label (the command is a bare dim `$ cmd` line),
+// lowercase `├─ stdout` (the sections are `├─ STDOUT ──…`), no blank lines.
+// The page now shows one real failed block with every section; render it.
+describe('docs/cli.md — the frame sample is what the renderer prints', () => {
+  it('a failed block with command, stdout, stderr and a violation, byte for byte', async () => {
+    const node = {
+      id: 'app#test',
+      projectName: 'app',
+      taskName: 'test',
+      config: {
+        exec: { command: 'bun test', sandbox: { allow: { read: ['**/*'] } } },
+        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      },
+    } as unknown as TaskNode
+    const outcome: TaskOutcome = {
+      node,
+      status: 'failed',
+      exitCode: 1,
+      durationMs: 2100,
+      hash: 'abc1234567',
+      sandboxViolations: 1,
+      sandboxViolationLines: ['write ../shared/notes.txt'],
+    }
+    const rendered = formatTaskBlock(
+      node,
+      outcome,
+      { stdout: '2 pass\n1 fail\n', stderr: 'error: expected 3, got 2\n' },
+      { enabled: false },
+    ).replace(/\n$/, '')
+    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url).pathname).text()
+    const marker = 'copy/paste yields the verbatim output.'
+    // The block sits just above that sentence: take the fenced block that precedes it.
+    const end = doc.lastIndexOf('\n```\n', doc.indexOf(marker))
+    const start = doc.lastIndexOf('```\n', end - 1) + 4
+    expect(start).toBeGreaterThan(4)
+    expect(doc.slice(start, end)).toBe(rendered)
   })
 })
