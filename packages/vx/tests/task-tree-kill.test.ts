@@ -4,6 +4,13 @@
 // backgrounded, a runner's workers. Before, only the direct child was
 // signalled, and `sh -c "server & wait"` left the server alive under
 // init after every timeout and every Ctrl-C.
+//
+// The `timed` task's timeout is a claim about time: the test reads the
+// grandchild's pid and checks it is alive BEFORE the timeout reaps it, so
+// the window must outlast a shell's fork on a loaded runner. At 300 ms a
+// macOS runner reaped the grandchild before the check ran (2026-09-16,
+// one run in about twenty); two seconds is the shortest round window no
+// runner has outrun, and the reap itself is still proved by `waitForDead`.
 import { existsSync, readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -23,7 +30,7 @@ const CONFIG = `
   export default {
     tasks: {
       timed: {
-        exec: { command: "sh -c 'echo $$ > gc.pid; exec sleep 60' & sleep 60", timeout: 300 },
+        exec: { command: "sh -c 'echo $$ > gc.pid; exec sleep 60' & sleep 60", timeout: 2000 },
       },
       forever: {
         exec: { command: "sh -c 'echo $$ > gc.pid; exec sleep 60' & sleep 60" },
@@ -90,7 +97,7 @@ describe('a task dies with everything it forked', () => {
         proc.exited,
       ])
       expect(code).toBe(1)
-      expect(out + err).toContain('timed out after 300ms')
+      expect(out + err).toContain('timed out after 2000ms')
       expect(await waitForDead(gc, 3000)).toBe(true)
     },
     TIMEOUT,
