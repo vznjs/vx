@@ -159,6 +159,15 @@ test is telling the truth.
       alternatives hold a slash (`{*,*/*}/package.json` matches
       nothing) — two scans.
 
+249.  DONE (2026-09-16, the CI-container persona): every verb (`run` on a
+      miss, a hit and a failure, `info`, `show`, `why`, `last`, a dry
+      `init`, `--summarize`) piped with `CI=1`, and piped with neither
+      CI nor a TTY, and under `TERM=dumb`: no escape sequence, no
+      carriage return, in any output. Clean, and pinned end to end in
+      `ci-output.test.ts` (the status line and the colour decision had
+      unit pins; this is the whole output as a log file receives it),
+      with a `FORCE_COLOR` control that paints the same piped run.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
