@@ -176,6 +176,8 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       stderrSpy.mockRestore()
       expect(r.ok).toBe(false)
       expect(r.outcomes[0]!.status).toBe('failed')
+      // The reason rides the outcome, so every label reads it (item 270).
+      expect(r.outcomes[0]!.notReady).toBe('timeout')
       // Fast failure, not a 30s hang on the sleep.
       expect(Date.now() - started).toBeLessThan(5000)
       // The reason reaches the TASK's stderr stream — the frame, and an

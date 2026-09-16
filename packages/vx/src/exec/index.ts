@@ -5,6 +5,7 @@ export { buildIsolatedEnv, VX_RUN_TASK_ENV, VX_RUN_WORKSPACE_ENV } from './env.j
 export {
   runCommand,
   runPersistent,
+  PersistentReadyError,
   shellQuote,
   signalExitCode,
   exitSignal,

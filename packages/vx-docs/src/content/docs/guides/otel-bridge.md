@@ -96,8 +96,9 @@ it maps cleanly onto Grafana / Tempo / Honeycomb / Datadog / Jaeger:
   retry count (`vx.task.attempts`), the sandbox violation count
   (`vx.task.sandbox_violations`) and, on a skipped task, the id of the
   failed task at the root of what blocked it (`vx.task.blocked_by`), and
-  on a task vx's own timeout killed, `vx.task.timed_out`. A failed task
-  sets the span status to `ERROR`.
+  on a task vx's own timeout killed, `vx.task.timed_out`, and on a
+  persistent task that never became ready, why (`vx.task.not_ready`). A
+  failed task sets the span status to `ERROR`.
 
 **Metrics per run** (when `metrics` is on): `vx.tasks.total`,
 `vx.tasks.failed`, `vx.tasks.cache_hits{source=local|remote}`, and the

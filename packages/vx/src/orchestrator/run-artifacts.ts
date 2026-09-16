@@ -71,6 +71,8 @@ function taskEntry(o: TaskOutcome, flaky?: FlakyFinding): Record<string, unknown
     ...(o.timedOut === true ? { timedOut: true } : {}),
     // The sandbox's violation count; present only on a task it recorded any for.
     ...(o.sandboxViolations !== undefined ? { sandboxViolations: o.sandboxViolations } : {}),
+    // A persistent task that never became ready, and why.
+    ...(o.notReady !== undefined ? { notReady: o.notReady } : {}),
     // hrtime spans are bigints → emit as strings so JSON.parse on
     // the consumer side doesn't truncate the ns precision.
     ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: String(o.wallclockStartNs) } : {}),

@@ -679,7 +679,7 @@ export function defaultLogger(
               // The message is ours (a literal, an integer and a signal
               // name); only the title carries user input.
               emitBlock(
-                `::error title=${ghaProperty(node.id)}::${failedLabel(outcome.exitCode, outcome.timedOut, outcome.sandboxViolations)}\n${body}`,
+                `::error title=${ghaProperty(node.id)}::${failedLabel(outcome.exitCode, outcome.timedOut, outcome.sandboxViolations, outcome.notReady)}\n${body}`,
               )
             } else {
               emitBlock(

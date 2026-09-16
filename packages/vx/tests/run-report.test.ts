@@ -246,6 +246,11 @@ describe('per-row status and cache words', () => {
       view({ taskId: 'a#test', status: 'failed', exitCode: 1, sandboxViolations: 2 }),
     ])
     expect(rows(sandboxed)[0]).toContain('| failed (exit 1, 2 sandbox violations) |')
+    // A persistent task that never became ready reads its reason first.
+    const never = report([
+      view({ taskId: 'a#dev', status: 'failed', exitCode: 2, notReady: 'exited' }),
+    ])
+    expect(rows(never)[0]).toContain('| failed (never ready: exited, exit 2) |')
   })
 
   it('marks an executed task as a cache miss', () => {

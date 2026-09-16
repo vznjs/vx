@@ -468,6 +468,46 @@ test is telling the truth.
       the OTel span carries the attribute the guide named. Pinned on
       the three framed-output violation fixtures, the report, the
       annotation, the summarize row and both plugins.
+270.  DONE (2026-09-16, the reader of a server that never came up, the
+      last of the class): a persistent task that never became ready
+      failed with a made-up `exitCode: 1` and every label and record
+      said `failed (exit 1)` — only the frame's own line said "not
+      ready within 300ms" or "exited before becoming ready (exit 2)".
+      The runner's `ready` now rejects with a typed
+      `PersistentReadyError` (reason `timeout` / `exited` / `spawn`, and
+      the child's own exit code when it exited), the outcome carries
+      `notReady` and the child's real exit, and `failedLabel` reads the
+      reason first, "never ready: exited, exit 2", everywhere; the
+      `--summarize` row, the telemetry record (additive), the GitHub
+      callout and the OTel span (`vx.task.not_ready`) carry it. Pinned
+      on the ready-timeout and exit-before-ready e2e cases (the second
+      now exits 2 to prove the real code rides), the report, the
+      annotation and both plugins; the `spawn` reason has no e2e pin —
+      it needs a box without `sh`, the class `no-shell-on-path` covers
+      for one-shot tasks — and is read by the same one label.
+271.  DONE (2026-09-16, a CI finding on #431's first head): the Linux
+      job's `@vzn/vx#lint.oxfmt` failed with "Failed to read file:
+      packages/vx/.mcp.json" — the sandbox runtime's `/dev/null` mask
+      on a name from its DANGEROUS_FILES, met by the walker whether or
+      not the file exists (history: the review arc's item 33, fixed in
+      the ROOT `.oxfmtrc.json` when core was the root). The nine
+      per-package configs written when core moved under `packages/`
+      never carried the ignore, and the mask is met only sometimes
+      (every head since passed the same task), so it lay dormant. All
+      nine now ignore `.mcp.json`, `.vscode`, `.idea` and `.claude`,
+      and the package-boundaries suite's rule 5 pins that every oxfmt
+      config in the repo ignores every masked name — the class, not
+      the file.
+272.  DONE (2026-09-16, Next 6 — the day's closing diff on the warm
+      path): after #425–#431 (264–271: the outcome fields and the one
+      `failedLabel` on every executed task's exit path, the Skipped
+      footer on every run), the interleaved A/B on one 1,000-project
+      workspace, the main of 263 (#424) in an immutable worktree
+      against the head of 271, 9 reps each, run twice with the arms
+      swapped: after 253 / 266 and 254 / 266 ms (min / median), before
+      257 / 266 and 252 / 264 — a tie. Expected, as at 263: a warm run
+      executes nothing, and the footer's Skipped section is one filter
+      over the outcomes (0.022 ms on 5,000, item 266).
 
 ## In flight
 
@@ -724,6 +764,40 @@ cause must read the evidence (the file, the runner's signal) or say
 is one function or it drifts; a differential's name filter must match
 every pin it counts (a `-t` that matched one of two read as a broken
 fix, 260). Never end with "what next?".
+
+14u. **Handoff after item 270 (2026-09-16, afternoon).** Seven items
+since 14t, merged as #425–#431, one class walked to its end: the
+reason a task failed rides the outcome and every surface reads it.
+First the docs that show what a reader sees: the plugins guide names
+the façade's sink helpers in a type-checked block (264) and the CI
+guide's job summary is the renderer's real output with a pin that
+renders the same run (265; the guides' other two samples matched). Then
+the reader of a skipped task: a Skipped footer section (266) and the
+root blocker recorded on the outcome for the summarize row, the
+telemetry record, the GitHub callout and the OTel span (267 — the OTel
+losslessness tripwire refused the field until it was mapped, as it
+should). Then every other reason the one `failedLabel` read as a bare
+number: vx's own timeout (268), sandbox violations (269, where the
+OTel guide had promised an attribute the plugin lacked), and a
+persistent task that never became ready (270, a typed
+`PersistentReadyError` and the child's real exit code). Each rides the
+outcome as an additive telemetry field; the `runs` table carries none
+of them, since a column is a `SCHEMA_VERSION` bump that resets every
+local cache — the day one is worth it, they all go in together. Open:
+Next 1, 2 and 16, all gated by their own terms; In-flight 5 (macOS);
+the owner residue — the `NPM_TOKEN` secret, the release cut, the
+site's address. No open issues. The loop holds 28 items (243–270): the
+trim's trigger is forty. The box: as 14t; a Python edit script asserts
+on anchors the formatter has since reflowed — every write after the
+failing assertion is skipped while the earlier ones land, so check
+`git status` and re-run from the failure (twice today). Methods that
+paid: a claim in a guide ("the span carries X") is grepped in the
+plugin before it is trusted; a made-up exit code (a skip's 1, a
+never-ready 1) is a lie the label repeats on every surface — carry the
+reason and the real code; the same one function on every surface is
+what makes a class of fixes a class; a differential's guard reads
+bun's summary line, not its per-test lines. Never end with "what
+next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

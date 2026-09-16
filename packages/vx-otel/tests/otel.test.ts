@@ -456,6 +456,7 @@ const FULL_TASK: Required<TaskTelemetry> = {
   blockedBy: 'lib#build',
   timedOut: true,
   sandboxViolations: 2,
+  notReady: 'timeout',
   // Past Number.MAX_SAFE_INTEGER — routing this through a JS number rounds it.
   wallclockStartNs: '9007199254740993',
   wallclockEndNs: '9007199254742000',
@@ -563,6 +564,7 @@ describe('OTLP losslessness', () => {
     expect(a['vx.task.blocked_by']).toBe('lib#build')
     expect(a['vx.task.timed_out']).toBe(true)
     expect(a['vx.task.sandbox_violations']).toBe('2')
+    expect(a['vx.task.not_ready']).toBe('timeout')
   })
 
   it('makes a task span readable without its root span', () => {

@@ -262,6 +262,22 @@ export async function drainOrAbort(streams: Promise<unknown>, ac: AbortControlle
  */
 const READY_MATCH_WINDOW_CHARS = 64 * 1024
 
+/**
+ * Why a persistent task never became ready — the reason every label and
+ * record reads instead of a fabricated exit (item 270). `exitCode` is the
+ * child's own when it exited before the pattern matched.
+ */
+export class PersistentReadyError extends Error {
+  readonly reason: 'timeout' | 'exited' | 'spawn'
+  readonly exitCode: number | undefined
+  constructor(message: string, reason: 'timeout' | 'exited' | 'spawn', exitCode?: number) {
+    super(message)
+    this.name = 'PersistentReadyError'
+    this.reason = reason
+    this.exitCode = exitCode
+  }
+}
+
 export interface PersistentSpawn {
   /** Underlying Bun subprocess so the orchestrator can SIGTERM it later. */
   child: ReturnType<typeof Bun.spawn>
@@ -327,7 +343,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     const message = err instanceof Error ? err.message : String(err)
     return {
       child: undefined as unknown as ReturnType<typeof Bun.spawn>,
-      ready: Promise.reject(new Error(`failed to spawn persistent task: ${message}`)),
+      ready: Promise.reject(
+        new PersistentReadyError(`failed to spawn persistent task: ${message}`, 'spawn'),
+      ),
       readyMs: () => Date.now() - start,
     }
   }
@@ -422,9 +440,10 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     readyTimer = setTimeout(() => {
       if (readyAt === undefined) {
         rejectReady(
-          new Error(
+          new PersistentReadyError(
             `persistent task not ready within ${opts.timeoutMs}ms — ` +
               `readyWhen pattern never matched; child killed`,
+            'timeout',
           ),
         )
         killTree(child, 'SIGTERM')
@@ -447,9 +466,11 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     if (readyTimer !== undefined) clearTimeout(readyTimer)
     if (readyAt === undefined) {
       rejectReady(
-        new Error(
+        new PersistentReadyError(
           `persistent task exited before becoming ready (exit ${code ?? '?'})` +
             (readyRe ? ` — readyWhen pattern never matched` : ''),
+          'exited',
+          code ?? undefined,
         ),
       )
     }

@@ -179,6 +179,8 @@ export interface TaskTelemetry {
   timedOut?: true
   /** On a sandboxed task: how many declared-boundary violations the sandbox recorded (a failure on its own). Additive. */
   sandboxViolations?: number
+  /** On a failed persistent task: why it never became ready. `exitCode` is the child's own when it exited. Additive. */
+  notReady?: 'timeout' | 'exited' | 'spawn'
   /** bigint hrtime ns relative to run t=0, encoded as a decimal string. */
   wallclockStartNs?: string
   wallclockEndNs?: string

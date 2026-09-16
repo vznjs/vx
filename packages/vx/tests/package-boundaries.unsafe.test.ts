@@ -14,6 +14,14 @@
 // Rule 4: core ships no plugin — src/plugins does not exist. The last one
 //         (schedule-history) is @vzn/vx-schedule-history since 2026-09-10;
 //         a new plugin starts life as a package.
+// Rule 5: every package's `oxfmt --check .` runs inside the sandbox, and
+//         the sandbox runtime masks `<cwd>/.mcp.json`, `.vscode`, `.idea`
+//         and `.claude` with a `/dev/null` bind whether or not they exist
+//         (its DANGEROUS_FILES), so a walker that meets the mask fails
+//         with "Failed to read file". The root config ignored them since
+//         aba1c99; the per-package configs written when core moved under
+//         packages/ did not, and `@vzn/vx#lint.oxfmt` went red on #431
+//         (2026-09-16). Every config ignores every masked name.
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -136,5 +144,25 @@ describe('package boundaries', () => {
       'whyDidThisRerunQuery',
     ]
     expect(actual).toEqual(expected)
+  })
+
+  it('every package oxfmt config ignores the names the sandbox masks', async () => {
+    const masked = ['.mcp.json', '.vscode', '.idea', '.claude']
+    const configs = [path.join(PACKAGES_DIR, '..', '.oxfmtrc.json')]
+    const glob = new Bun.Glob('*/.oxfmtrc.json')
+    for await (const rel of glob.scan({ cwd: PACKAGES_DIR, dot: true })) {
+      configs.push(path.join(PACKAGES_DIR, rel))
+    }
+    expect(configs.length).toBeGreaterThan(5)
+    const lacking: string[] = []
+    for (const file of configs) {
+      const cfg = JSON.parse(await Bun.file(file).text()) as { ignorePatterns?: string[] }
+      const ignored = cfg.ignorePatterns ?? []
+      for (const name of masked) {
+        if (!ignored.includes(name))
+          lacking.push(`${path.relative(PACKAGES_DIR, file)} lacks ${name}`)
+      }
+    }
+    expect(lacking).toEqual([])
   })
 })

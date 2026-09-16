@@ -25,6 +25,7 @@ import {
   type SandboxViolation,
   type TaskExecutor,
   type TaskInputs,
+  PersistentReadyError,
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { span } from '../util/index.js'
@@ -299,11 +300,15 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     for (const p of await sweepPlaceholders(placeholders)) {
       log.taskStderr(node, `${untouchedPlaceholderLine(node.projectDir, p)}\n`)
     }
+    // The reason rides the outcome (every label reads it), and a child that
+    // exited before ready keeps its own exit code rather than a made-up 1.
+    const ready = err instanceof PersistentReadyError ? err : undefined
     return {
       node,
       status: 'failed',
-      exitCode: 1,
+      exitCode: ready?.exitCode ?? 1,
       durationMs: spawn.readyMs(),
+      ...(ready !== undefined ? { notReady: ready.reason } : {}),
       wallclockStartNs,
       wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
     }
