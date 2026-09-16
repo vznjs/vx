@@ -603,7 +603,7 @@ state of each:
 13. DONE 2026-09-10 as item 120 — `vx watch` watches the projects a cycle can run.
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197 and 202 (14–14i) are in `docs/history/2026-09-status-next-log.md`;
-    14j–14l below are the current ones.
+    14j–14m below are the current ones.
 
 14j. **Handoff after item 208 (2026-09-16, morning).** Six items
 since 14i, all from one persona taken one step further each time:
@@ -684,6 +684,43 @@ leaked fixtures. Methods that paid: a gate's own failure is an item
 (213); weights measured as the wrong user are a deal nobody dealt
 (214); reproduce a deal-shaped pin in the shard's exact company, not
 alone, and fix it there. Never end with "what next?".
+
+14m. **Handoff after item 221 (2026-09-16, midday).** Seven items
+since 14l. Two closed the concurrent-runs persona: the restore that
+another run's clean interrupts is named, not a corrupt artifact (215,
+#383), and two runs on one workspace take turns through a per-run
+`mkdir` lock keyed on the resolved root (216, #384; Next 19 closed as
+per-run, the per-task grain a refinement). One trim (217, #385:
+145–202 and the 2026-09-10 records to history). Then a new persona — a
+workspace under a path with a space, as `probe` — whose own probe
+config found three traps the path did not: a literal sandbox write
+grant on a not-yet-existing path is bound as a FILE, so `mkdir -p dist`
+died with "File exists" and the file poisoned every later run — a
+directory is spelled `dist/` now, vx sweeps the placeholders it made,
+and the failure names the spelling (218, #386); `outputs: ['dist/**']`
+was `unknown field "0"` — an array at any object level names the shape
+and the spelling meant (219, #387); `vx info` counted a config that
+does not load as zero tasks in silence — `configErrors` names it (220,
+#387). Last, the persona after that one: a project inside a submodule
+or embedded repository had an EMPTY slice of the workspace-wide
+enumeration and a key that never moved — a stale hit under a green run;
+an empty slice stores no partition now and the project's own git
+enumerates it (221, rides the next PR). Refuted on the way: reading
+gitlinks out of the listing (it is pathspec-scoped to the project dirs,
+and a gitlink above a project never appears under its pathspec). Open:
+Next 1, 2 and 16 as before, all gated by their own terms; In-flight 5
+(macOS); the owner residue — the `NPM_TOKEN` secret, the release cut,
+the site's address; `--affected` and `workspaceFiles` still stop at a
+nested repository (recorded in `modules/git-inputs.md`). No open
+issues. The box: as 14l; the persona probes live in
+`/tmp/probe-home/probe-*.sh` and run as `probe`. Methods that paid: a
+probe script's OWN mistakes are findings — three of the seven came from
+the config I wrote wrong before the persona even ran (218–220); a stale
+hit is found by editing every input and reading every output back,
+never by the status line — "the key will not change" prints under a
+green run, and a persona reading the exit code alone misses it (221);
+when a listing is scoped, detect by what is absent from a slice, not
+by what the scope would have to include. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
