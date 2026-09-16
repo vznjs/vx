@@ -55,7 +55,13 @@ non-404 status, integrity mismatch, oversize body). `LayeredCache`
 catches **everything** and degrades to a cache miss via
 `onRemoteError` — no remote failure of any kind may fail a run. A
 corrupt remote body is additionally refused by `Cache.ingest`'s
-validation (zstd checks), which this layer also degrades to a miss.
+validation (zstd checks), which this layer also degrades to a miss. A
+result of the wrong SHAPE — a `get` whose `body` is not an
+`ArrayBuffer` or `Uint8Array`, a `hasMany` that is not a `Set` or
+`null` — is the plugin's bug, named as such through `onRemoteError`
+("remote cache layer returned an invalid result: get(<hash>) resolved
+body is string (expected …) — a plugin bug, degraded to a miss") and
+degraded the same way, never reported as a corrupt artifact.
 
 ## Read path
 
