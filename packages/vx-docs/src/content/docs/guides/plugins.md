@@ -79,7 +79,7 @@ export function mcp(): VxPlugin {
 
 ## Shaping the pipeline
 
-The three stage hooks are how a plugin **adds** something to every
+The stage hooks are how a plugin **adds** something to every
 project without every `vx.config.ts` repeating it. Core re-validates
 whatever a stage produced, so a plugin can only create what the loader
 would accept from you — and the cache key hashes the task config
@@ -714,9 +714,9 @@ A plugin that could never do what it says is refused at load, by
 name, rather than left quietly "on":
 
 - A `cache` or `executor` hook returning something without the
-  contract's methods (`key`, `get`, `has`, `save`, `close`; `execute`
-  and a `name`) — `plugin 'x' returned from cache something that is
-  not a cache layer: missing …`.
+  contract's methods (the fifteen `CacheLayer` methods, `key` and `get`
+  through `close`; `execute` and a `name` for an executor) — `plugin 'x'
+  returned from cache something that is not a cache layer: missing …`.
 - A `key` hook returning anything but a record of strings, or a
   `schedule` hook returning anything but a `Map` — a string used to
   fold its characters into the key, or match no task at all.

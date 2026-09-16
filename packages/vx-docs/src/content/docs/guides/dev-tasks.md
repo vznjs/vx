@@ -95,10 +95,16 @@ dependency is for *ordering*, not output identity. See
 - **Exit before ready ⇒ failure.** If a persistent task crashes or exits
   before `readyWhen` matches, vx reports it as failed (and frees anything
   waiting on it).
-- **Automatic teardown.** Once the rest of the graph finishes — success
-  or failure — vx sends `SIGTERM` to every persistent process and waits
-  for them to exit before returning. No orphaned dev servers left running
-  in CI, and `Ctrl-C` reaps them too.
+- **Automatic teardown.** A persistent task that is only a dependency
+  (`dev` under `vx run e2e`) is sent `SIGTERM` once the rest of the graph
+  finishes — success or failure — and vx waits for it to exit before
+  returning. No orphaned dev servers left running in CI, and `Ctrl-C`
+  reaps them too.
+- **A requested one keeps the run alive.** `vx run dev` prints the
+  summary once the server is ready and then blocks until it exits or
+  you press `Ctrl-C`; the dev server *is* the point of that run. A
+  non-zero exit fails the run, so a script's `vx run dev` fails when the
+  server it started fell over.
 - **No caching.** Persistent tasks can't have a `cache` block — there's
   no exit code to cache and no well-defined moment to capture outputs.
   The config loader rejects `persistent` + `cache`.

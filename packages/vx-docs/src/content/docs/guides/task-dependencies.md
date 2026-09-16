@@ -15,7 +15,7 @@ either, it's identical.
 an app that depends on two libraries. The two leaf libraries build in
 parallel; the app's build waits for both; its test waits for its build.
 vx derives this graph automatically — you never list the edges by hand.
-`vx run build --graph` prints the same graph as text or Graphviz DOT.
+`vx run build --graph` prints the same graph as Graphviz DOT.
 
 ```mermaid
 graph LR
@@ -145,8 +145,8 @@ filter syntax.
 ## Visualizing the graph
 
 ```bash
-vx run build --graph              # text view of the resolved graph
-vx run build --graph=graph.dot    # Graphviz DOT for rendering
+vx run build --graph              # the resolved graph as Graphviz DOT, to stdout
+vx run build --graph=graph.dot    # the same, to a file for rendering
 ```
 
 ## Next steps
