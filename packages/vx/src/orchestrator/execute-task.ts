@@ -25,6 +25,7 @@ import {
   type SandboxViolation,
   type TaskExecutor,
   type TaskInputs,
+  execWord,
 } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { span } from '../util/index.js'
@@ -614,6 +615,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // child already reports 143, so this only rewrites the trap-exit-0 case.
       if (code === 0) code = signalExitCode('SIGTERM')
     }
+    // `sh -c 'exec <word> …'` exits 127 when the word is not on the task's
+    // PATH, and the shell's line names the word and nothing about the PATH
+    // vx built — a tool installed in a sibling package's bin is the case
+    // that reads as a mystery (2026-09-16, item 257). Name the rule.
+    if (code === 127 && !res.timedOut) {
+      const word = execWord(step.command)
+      const bins = taskBinDirs(node, args.workspaceRoot).join(' and ')
+      log.taskStderr(
+        node,
+        `\n[vx] exit 127 is the shell's "command not found": ${word === undefined ? 'a command in this task' : word} is not on this task's PATH — vx puts ${bins} first and never a sibling project's bin; install it in this package or at the workspace root\n`,
+      )
+    }
     return { result: res, exitCode: code }
   }
 
@@ -790,12 +803,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
  * so a task that resolved on a worker failed on the machine that submitted
  * it. npm/pnpm/yarn all put the ancestor chain on PATH for the same reason.
  */
-function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJS.ProcessEnv {
+/** The two bin directories a task's PATH starts with: its own, then the root's (once when they coincide). */
+function taskBinDirs(node: TaskNode, workspaceRoot: string): string[] {
   const bins = [path.join(node.projectDir, 'node_modules', '.bin')]
   const rootBin = path.join(workspaceRoot, 'node_modules', '.bin')
   // Identical when the root is itself a project — dedupe rather than list it
   // twice, so PATH reads the same either way.
   if (rootBin !== bins[0]) bins.push(rootBin)
+  return bins
+}
+
+function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJS.ProcessEnv {
+  const bins = taskBinDirs(node, workspaceRoot)
   const env = buildIsolatedEnv({
     passThrough: step.env?.passThrough ?? [],
     define: step.env?.define ?? {},

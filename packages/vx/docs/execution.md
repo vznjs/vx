@@ -290,7 +290,7 @@ The child process gets, in priority order (lowest first):
 4. **PATH augmentation** — `<projectDir>/node_modules/.bin` is
    prepended so local tools (`oxlint`, `vite`, etc.) work without
    `npx`. Only the project's own bin; sibling-project bins stay
-   invisible.
+   invisible. A task that exits 127 gets one more frame line: exit 127 is the shell's "command not found", the word (when the command is a plain `word args…`), the two bin directories vx puts first, and that a sibling project's bin is never visible.
 
 Anything not in these four layers is invisible to the child. This
 prevents incidental env leakage between machines and gives

@@ -270,6 +270,25 @@ test is telling the truth.
       the control with no row. `docs/cli.md` § `vx why` lists the six
       kinds and what each folds.
 
+257.  DONE (2026-09-16, a persona: the tool that moved): a task whose
+      command is `tsc --version` with `tsc` installed only in a sibling
+      package's `node_modules/.bin` failed with the shell's line ("sh:
+      1: exec: tsc: not found", exit 127) — true, and silent on the one
+      thing that is vx's: the PATH it built (the project's bin, then
+      the root's, never a sibling's). On exit 127 the frame gets one
+      line naming the word (`execWord`, the same predicate `execWrap`
+      uses, so a pipeline says "a command in this task"), the two bin
+      directories and the rule; `taskBinDirs` is the one place both
+      the env and the line read them from. Pinned in
+      `tool-not-on-path.test.ts` with a PATH of bun, sh and git alone
+      and a control (the same tool at the root's bin runs green, no
+      line); fails without the fix. Read on the way: a first probe
+      "passed" because the box's PATH had a `tsc` — an ambient PATH is
+      part of every task's env by design (the allowlist), and a
+      changed PATH is not a key change (env is folded only when
+      declared), so a probe of a missing tool needs a stripped PATH and
+      a miss.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
