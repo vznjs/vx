@@ -7,7 +7,13 @@
 import { Cache, noteSchemaReset } from '../cache/index.js'
 import { formatBytes } from './format.js'
 import { seeHelp } from './help.js'
-import { exitSignal, getInvocation, getRun, listInvocations } from '../orchestrator/index.js'
+import {
+  exitSignal,
+  getInvocation,
+  getRun,
+  listInvocations,
+  type RunSummaryRow,
+} from '../orchestrator/index.js'
 import { UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
@@ -81,6 +87,34 @@ function fmtUsage(t: {
   if (t.cpuMs !== null && t.durationMs > 0)
     parts.push(`${(t.cpuMs / t.durationMs).toFixed(1)}× cpu`)
   return parts.length > 0 ? `  ${parts.join(' · ')}` : ''
+}
+
+/**
+ * Why a row failed or was skipped, as the run's own footer said it (the
+ * v27 columns): a timeout or a never-ready server instead of the signal
+ * their exit stands for, the sandbox's violation count, a skip's blocker.
+ * Older rows carry none and read as before.
+ */
+function reasonParts(t: RunSummaryRow): string {
+  const parts: string[] = []
+  if (t.status === 'failed') {
+    if (t.notReady !== null) {
+      parts.push(
+        `never ready: ${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}`,
+      )
+    } else if (t.timedOut === true) {
+      parts.push('timed out')
+    } else {
+      const signal = exitSignal(t.exitCode)
+      if (signal !== undefined) parts.push(`128 + ${signal}`)
+    }
+    if (t.sandboxViolations !== null && t.sandboxViolations > 0) {
+      parts.push(`${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}`)
+    }
+  } else if (t.status === 'skipped' && t.blockedBy !== null) {
+    parts.push(`after ${t.blockedBy} failed`)
+  }
+  return parts.map((p) => `  ${p}`).join('')
 }
 
 export async function lastCmd(args: readonly string[]): Promise<number> {
@@ -161,11 +195,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         // A failure's row reads as the frame did — `failed (exit 137)` —
         // and above 128 names the signal the number stands for (260).
         const status = t.status === 'failed' ? `failed (exit ${t.exitCode})` : t.status
-        const signal = t.status === 'failed' ? exitSignal(t.exitCode) : undefined
         lines.push(
           `  ${status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
             `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-            `${signal === undefined ? '' : `  128 + ${signal}`}`,
+            reasonParts(t),
         )
       }
     }

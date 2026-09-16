@@ -16,9 +16,10 @@ export class RunHistory {
         hash, project, task, status, exit_code, duration_ms, forward_args,
         started_at, ended_at,
         run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
-        cache_hit, attempts, cached
+        cache_hit, attempts, cached,
+        blocked_by, timed_out, sandbox_violations, not_ready
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?)
     `)
     this.insertInvocation = this.db.prepare(`
       INSERT INTO invocations(
@@ -108,6 +109,10 @@ function bindRun(run: RunRecord): SQLQueryBindings[] {
     run.cacheHit === undefined ? null : run.cacheHit ? 1 : 0,
     run.attempts ?? null,
     run.cached === undefined ? null : run.cached ? 1 : 0,
+    run.blockedBy ?? null,
+    run.timedOut === true ? 1 : null,
+    run.sandboxViolations ?? null,
+    run.notReady ?? null,
   ]
 }
 

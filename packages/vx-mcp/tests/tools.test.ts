@@ -63,6 +63,7 @@ function mkRun(args: Partial<RunRecord> & { project: string; task: string }): Ru
     wallclockStartNs: 12_345_678_901_234_567n,
     wallclockEndNs: 98_765_432_109_876_543n,
     cacheHit: args.cacheHit ?? false,
+    ...(args.notReady !== undefined ? { notReady: args.notReady } : {}),
   }
 }
 
@@ -524,6 +525,36 @@ describe('getRunHistory — filters narrow the data', () => {
     const build = (await call(MAIN.root, 'getRunHistory', { task: 'build', limit: 100 })) as History
     expect(new Set(build.runs.map((r) => r.task))).toEqual(new Set(['build']))
     expect(build.history.map((h) => h.id).sort()).toEqual(['@t/alpha#build', '@t/beta#build'])
+  })
+
+  it('a row carries why it failed or was skipped, and nothing where no reason applies', async () => {
+    // A persistent task that never became ready: the reason rides the row (v27).
+    const root = makeWorkspace('reasons')
+    seed(root, (cache) =>
+      cache.recordRuns([
+        mkRun({ hash: 'p1', project: '@t/alpha', task: 'build', runId: 'r1' }),
+        mkRun({
+          hash: '',
+          project: '@t/beta',
+          task: 'dev',
+          runId: 'r2',
+          status: 'failed',
+          exitCode: 2,
+          notReady: 'exited',
+        }),
+      ]),
+    )
+    const all = (await call(root, 'getRunHistory', { limit: 100 })) as {
+      runs: Array<Record<string, unknown>>
+    }
+    const dev = all.runs.find((r) => r['task'] === 'dev')
+    expect(dev?.['notReady']).toBe('exited')
+    expect(dev?.['exitCode']).toBe(2)
+    const plain = all.runs.find((r) => r['task'] === 'build' && r['project'] === '@t/alpha')
+    expect(plain).toBeDefined()
+    for (const k of ['blockedBy', 'timedOut', 'sandboxViolations', 'notReady']) {
+      expect(k in plain!).toBe(false)
+    }
   })
 
   it('project + task compose into a single pair', async () => {

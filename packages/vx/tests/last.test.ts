@@ -31,6 +31,16 @@ const APP_CONFIG = `
       killed: {
         exec: { command: 'kill -9 $$' },
       },
+      slow: {
+        exec: { command: 'sleep 5', timeout: 300 },
+      },
+      dev: {
+        exec: { command: 'echo nope; exit 2', persistent: { readyWhen: 'Listening' } },
+      },
+      after: {
+        dependsOn: ['boom'],
+        exec: { command: 'echo never' },
+      },
     },
   }
 `
@@ -195,6 +205,24 @@ describe('vx last (e2e)', () => {
       expect(r.out).toMatch(
         /failed \(exit 137\)\s+app#killed\s+\S+ms\s+\S+\s+no-cache.*128 \+ SIGKILL$/m,
       )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'the reasons the footer gave ride the rows: a timeout, a never-ready server, a skip',
+    async () => {
+      const r1 = await vx(root, ['run', 'slow', 'dev', 'after', '--all'])
+      expect(r1.code).not.toBe(0)
+      const r = await vx(root, ['last'])
+      expect(r.code).toBe(0)
+      // A timeout reads as the reason, not as the SIGTERM its 143 is.
+      expect(r.out).toMatch(/failed \(exit 143\)\s+app#slow.*  timed out$/m)
+      expect(r.out).not.toContain('128 + SIGTERM')
+      // A never-ready server keeps the child's own exit and names why.
+      expect(r.out).toMatch(/failed \(exit 2\)\s+app#dev.*  never ready: exited$/m)
+      // A skip names the failure that blocked it.
+      expect(r.out).toMatch(/skipped\s+app#after.*  after app#boom failed$/m)
     },
     TIMEOUT,
   )

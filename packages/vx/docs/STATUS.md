@@ -508,6 +508,25 @@ test is telling the truth.
       257 / 266 and 252 / 264 — a tie. Expected, as at 263: a warm run
       executes nothing, and the footer's Skipped section is one filter
       over the outcomes (0.022 ms on 5,000, item 266).
+273.  DONE (2026-09-16, the day the columns were worth the bump): four
+      items (267–270) each left the `runs` table without its reason —
+      "a column is a `SCHEMA_VERSION` bump that resets every local
+      cache; the day one is worth it, they all go in together" — and
+      the readers that lacked them were the second-day ones, `vx last`
+      and an agent on `vx mcp`'s `getRunHistory`, which read a bare
+      exit code for a never-ready server and `skipped` for a task a
+      failure blocked. One bump, `v26` → `v27`, four nullable columns
+      (`blocked_by`, `timed_out`, `sandbox_violations`, `not_ready`),
+      bound from the run row, read by `listRuns` and the MCP query; a
+      `vx last` row ends with the reason in place of the signal part
+      (`timed out`, `never ready: exited`, `2 sandbox violations`,
+      `after lib#build failed`), and a `getRunHistory` row carries the
+      same fields with its exit code, absent where no reason applies.
+      Pinned by a round trip of every column against a null row
+      (metrics), end to end in `last.test.ts` (a timeout, a never-ready
+      server, a skip), and on the MCP row. The three quoted copies of
+      the version follow their pins; the skill file that still said
+      `v24` says `v27` and why a schema bump is rare.
 
 ## In flight
 

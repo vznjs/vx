@@ -33,6 +33,10 @@ function mkRun(
     wallclockEndNs: 0n,
     cacheHit: args.cacheHit ?? false,
     ...(args.attempts !== undefined ? { attempts: args.attempts } : {}),
+    ...(args.blockedBy !== undefined ? { blockedBy: args.blockedBy } : {}),
+    ...(args.timedOut !== undefined ? { timedOut: args.timedOut } : {}),
+    ...(args.sandboxViolations !== undefined ? { sandboxViolations: args.sandboxViolations } : {}),
+    ...(args.notReady !== undefined ? { notReady: args.notReady } : {}),
   }
 }
 
@@ -122,6 +126,53 @@ describe('listRuns', () => {
       expect(listRuns(cache.dbHandle(), { task: 'build' }).length).toBe(2)
       expect(listRuns(cache.dbHandle(), { runId: 'r-1' }).length).toBe(2)
       expect(listRuns(cache.dbHandle(), { project: 'pkg', task: 'test' }).length).toBe(1)
+    })
+  })
+
+  describe('the reason columns (v27)', () => {
+    it('round-trip each reason, and read null where none applies', () => {
+      withCache((cache) => {
+        cache.recordRuns([
+          mkRun({ hash: '', project: 'p', task: 'skip', status: 'skipped', blockedBy: 'p#lib' }),
+          mkRun({
+            hash: 'h1',
+            project: 'p',
+            task: 'slow',
+            status: 'failed',
+            exitCode: 143,
+            timedOut: true,
+          }),
+          mkRun({
+            hash: 'h2',
+            project: 'p',
+            task: 'box',
+            status: 'failed',
+            exitCode: 1,
+            sandboxViolations: 2,
+          }),
+          mkRun({
+            hash: '',
+            project: 'p',
+            task: 'dev',
+            status: 'failed',
+            exitCode: 2,
+            notReady: 'exited',
+          }),
+          mkRun({ hash: 'h3', project: 'p', task: 'plain', status: 'failed', exitCode: 3 }),
+        ])
+        const byTask = new Map(listRuns(cache.dbHandle(), { project: 'p' }).map((r) => [r.task, r]))
+        expect(byTask.get('skip')?.blockedBy).toBe('p#lib')
+        expect(byTask.get('slow')?.timedOut).toBe(true)
+        expect(byTask.get('box')?.sandboxViolations).toBe(2)
+        expect(byTask.get('dev')?.notReady).toBe('exited')
+        const plain = byTask.get('plain')!
+        expect([plain.blockedBy, plain.timedOut, plain.sandboxViolations, plain.notReady]).toEqual([
+          null,
+          null,
+          null,
+          null,
+        ])
+      })
     })
   })
 })

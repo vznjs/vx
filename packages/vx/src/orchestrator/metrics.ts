@@ -39,6 +39,11 @@ export interface RunSummaryRow {
   // (bigints aren't JSON-safe); use BigInt or Number on the client.
   wallclockStartNs: string | null
   wallclockEndNs: string | null
+  /** Why the task failed or was skipped (v27); null where the reason does not apply. */
+  blockedBy: string | null
+  timedOut: boolean | null
+  sandboxViolations: number | null
+  notReady: 'timeout' | 'exited' | 'spawn' | null
 }
 
 export interface ListRunsArgs {
@@ -69,12 +74,13 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
   const clause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
   type RawRow = Omit<
     RunSummaryRow,
-    'cacheHit' | 'cached' | 'wallclockStartNs' | 'wallclockEndNs'
+    'cacheHit' | 'cached' | 'wallclockStartNs' | 'wallclockEndNs' | 'timedOut'
   > & {
     cacheHit: number | null
     cached: number | null
     wallclockStartNs: bigint | null
     wallclockEndNs: bigint | null
+    timedOut: number | null
   }
   const rows = db
     .query(
@@ -82,7 +88,9 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
               duration_ms AS durationMs, started_at AS startedAt, ended_at AS endedAt,
               cache_hit AS cacheHit, cached, hash,
               cpu_ms AS cpuMs, peak_rss_bytes AS peakRssBytes,
-              wallclock_start_ns AS wallclockStartNs, wallclock_end_ns AS wallclockEndNs
+              wallclock_start_ns AS wallclockStartNs, wallclock_end_ns AS wallclockEndNs,
+              blocked_by AS blockedBy, timed_out AS timedOut,
+              sandbox_violations AS sandboxViolations, not_ready AS notReady
        FROM runs ${clause} ORDER BY started_at DESC LIMIT ?`,
     )
     .all(...params, limit) as RawRow[]
@@ -90,6 +98,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
     ...r,
     cacheHit: r.cacheHit === null ? null : Boolean(r.cacheHit),
     cached: r.cached === null ? null : Boolean(r.cached),
+    timedOut: r.timedOut === null ? null : Boolean(r.timedOut),
     wallclockStartNs: r.wallclockStartNs === null ? null : r.wallclockStartNs.toString(),
     wallclockEndNs: r.wallclockEndNs === null ? null : r.wallclockEndNs.toString(),
   }))
