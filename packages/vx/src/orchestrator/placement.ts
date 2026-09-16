@@ -1,9 +1,9 @@
 // Where each task runs: the placement of a graph over the resolved
 // executors, and the plan-mode view of it. Split from run.ts on 2026-09-10
 // (pure motion). A task is pinned to this machine when it is persistent,
-// depends on a persistent task, or says `exec.remote: false`; everything
-// else asks the executors in declaration order, and the local floor takes
-// what nothing claimed.
+// depends on a persistent task, is sandboxed, or says `exec.remote: false`;
+// everything else asks the executors in declaration order, and the local
+// floor takes what nothing claimed.
 
 import { machineParallelism } from '../util/index.js'
 import { selectExecutor, type TaskExecutor } from '../exec/index.js'
@@ -16,7 +16,10 @@ import type { prepareRun } from './prepare.js'
 /**
  * A task is pinned to this machine when it is persistent, transitively
  * depends on a persistent task (a worker cannot reach a port on the
- * submitter), or declares `exec.remote: false`.
+ * submitter), declares `exec.sandbox` (the sandbox is this machine's
+ * machinery — a worker has none of it, and a boundary "verified" where it
+ * is not enforced passes vacuously), or declares `exec.remote: false`. A
+ * dependant of a pinned task is pinned with it.
  */
 export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
   const pinned = new Set<string>()
@@ -29,6 +32,7 @@ export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
     memo.set(id, false) // cycle guard; the graph builder already rejects cycles
     const result =
       node.config.exec?.persistent !== undefined ||
+      node.config.exec?.sandbox !== undefined ||
       node.config.exec?.remote === false ||
       node.deps.some((d) => visit(d))
     memo.set(id, result)

@@ -62,8 +62,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
 - Persistent tasks (`exec.persistent`) never reach an executor — they
   are local by construction and stay on `runPersistent`.
 - A task is `pinnedLocal` when it is persistent, transitively depends on a
-  persistent task (a worker cannot reach a port on the submitter), or
-  declares `exec.remote: false`. `run.ts` computes the set once per run.
+  persistent task (a worker cannot reach a port on the submitter), is
+  sandboxed (the sandbox is this machine's machinery), depends on a
+  sandboxed task, or declares `exec.remote: false`. `placement.ts`
+  computes the set once per run (`tests/placement.test.ts`).
 - The executor list is resolved ONCE per run (`plugin-host.resolveExecutors`)
   and each task is PLACED once, before scheduling — every attempt of a task,
   including retries, runs on the executor it was placed on. Placement must

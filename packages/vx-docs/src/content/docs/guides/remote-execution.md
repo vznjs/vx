@@ -51,6 +51,8 @@ shows it per line (`@vx/reapi`, `@local`, or `@noop`):
   daemon, Docker, a device).
 - **Persistent tasks and everything depending on them** are pinned
   automatically — a worker cannot reach a port served on your machine.
+- **Sandboxed tasks and everything depending on them** are pinned too —
+  the sandbox is your machine's machinery (see below).
 - **`exec.remote: 'only'`** is the inverse pin, covered below.
 
 A task's inputs on the worker are exactly what its cache key declares:

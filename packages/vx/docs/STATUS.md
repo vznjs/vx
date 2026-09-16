@@ -101,6 +101,26 @@ test is telling the truth.
       vx property stated. Its eleven figures are now the benchmarks
       page's, as written, and pinned to it. Three pins fail on the
       old pages.
+335.  DONE (2026-09-16, the three oldest blog posts: hello-vx,
+      flaky-tasks, the-local-floor). hello-vx reads true. flaky-tasks
+      named `getRunHistory` as the MCP tool that reports flaky tasks;
+      it is `getWorkspaceInfo` (the standing list the doctor keeps);
+      its footer sample is now `formatFlakySection` on the two
+      findings it describes, pinned. the-local-floor said a sandboxed
+      task declines remote placement — so did the remote-execution
+      guide — and `pinnedLocalSet` had no such rule: a sandboxed
+      cacheable task was offered to a remote executor, which enforces
+      no sandbox and reports no violations, so the boundary the task
+      declared held only when the local floor happened to take it.
+      Implemented: `exec.sandbox` pins a task and its dependants
+      local, beside persistent and `exec.remote: false`;
+      `tests/placement.test.ts` (new) holds the five pin cases, the
+      two sandbox ones failing without the rule; every written copy
+      of the rule (placement.ts, executor.ts, placement.md,
+      executor.md, schema.md, the remote-execution guide) says so.
+      The post's `--dry` label sentence now says the label appears
+      once more than one executor is declared; `@local` and `@noop`
+      pinned to their names. The post pins are controls.
 
 ## In flight
 

@@ -39,12 +39,13 @@ turns a lot of would-be failure modes into placement decisions:
 
 - A remote executor declines a task that has no `cache` block (a
   worker would run it against an empty tree). It runs here.
-- A remote executor declines a persistent task and everything that
-  depends on it, because a worker cannot reach a port on your laptop.
-  They run here.
-- A sandboxed task declines remote placement: the sandbox is local
+- A persistent task and everything that depends on it is never offered
+  to a remote executor, because a worker cannot reach a port on your
+  laptop. They run here.
+- A sandboxed task is never offered either: the sandbox is local
   machinery a worker does not have, and a boundary verified remotely
-  would pass vacuously. It runs here, inside the sandbox.
+  would pass vacuously. It runs here, inside the sandbox, and so does
+  everything that depends on it.
 - A remote cache that errors, times out or is simply unreachable
   degrades to a miss on that layer, and the lookup continues down the
   chain to the local cache. A remote outage is a slower run, not a
@@ -52,8 +53,9 @@ turns a lot of would-be failure modes into placement decisions:
 - `@vzn/vx-reapi` against a server that only advertises caching
   declines the executor with a warning; the cache layer still works.
 
-`vx run --dry` shows the decision per line: `@vx/reapi`, `@local`, or
-`@noop` for a task with nothing to execute.
+`vx run --dry` shows the decision per line once the workspace declares
+more than one executor: `@vx/reapi`, `@local`, or `@noop` for a task
+with nothing to execute.
 
 ## Why it is the floor and not a default plugin
 
