@@ -142,7 +142,7 @@ describe('exec.persistent (e2e)', () => {
             tasks: {
               dev: {
                 exec: {
-                  command: 'echo nope; exit 1',
+                  command: 'echo nope; exit 2',
                   persistent: { readyWhen: 'Listening on' },
                 },
               },
@@ -158,6 +158,9 @@ describe('exec.persistent (e2e)', () => {
       })
       expect(r.ok).toBe(false)
       expect(r.outcomes[0]?.status).toBe('failed')
+      // The child's OWN exit code, not a made-up 1, and the reason (item 270).
+      expect(r.outcomes[0]?.exitCode).toBe(2)
+      expect(r.outcomes[0]?.notReady).toBe('exited')
     },
     TIMEOUT,
   )

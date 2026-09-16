@@ -113,6 +113,7 @@ export const VX_ATTR = {
   taskBlockedBy: 'vx.task.blocked_by',
   taskTimedOut: 'vx.task.timed_out',
   taskSandboxViolations: 'vx.task.sandbox_violations',
+  taskNotReady: 'vx.task.not_ready',
   taskOutputs: 'vx.task.outputs',
   peakRssBytes: 'vx.peak_rss_bytes',
   taskAttempts: 'vx.task.attempts',
@@ -268,6 +269,8 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
   if (t.timedOut === true) attrs.push(boolAttr(VX_ATTR.taskTimedOut, true))
   if (t.sandboxViolations !== undefined)
     attrs.push(intAttr(VX_ATTR.taskSandboxViolations, t.sandboxViolations))
+  // Why a persistent task never became ready ('timeout' | 'exited' | 'spawn').
+  if (t.notReady !== undefined) attrs.push(strAttr(VX_ATTR.taskNotReady, t.notReady))
   if (t.outputs !== undefined) attrs.push(strAttr(VX_ATTR.taskOutputs, t.outputs))
   if (t.peakRssBytes !== undefined) attrs.push(intAttr(VX_ATTR.peakRssBytes, t.peakRssBytes))
   if (t.attempts !== undefined) attrs.push(intAttr(VX_ATTR.taskAttempts, t.attempts))

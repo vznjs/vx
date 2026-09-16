@@ -468,6 +468,23 @@ test is telling the truth.
       the OTel span carries the attribute the guide named. Pinned on
       the three framed-output violation fixtures, the report, the
       annotation, the summarize row and both plugins.
+270.  DONE (2026-09-16, the reader of a server that never came up, the
+      last of the class): a persistent task that never became ready
+      failed with a made-up `exitCode: 1` and every label and record
+      said `failed (exit 1)` — only the frame's own line said "not
+      ready within 300ms" or "exited before becoming ready (exit 2)".
+      The runner's `ready` now rejects with a typed
+      `PersistentReadyError` (reason `timeout` / `exited` / `spawn`, and
+      the child's own exit code when it exited), the outcome carries
+      `notReady` and the child's real exit, and `failedLabel` reads the
+      reason first, "never ready: exited, exit 2", everywhere; the
+      `--summarize` row, the telemetry record (additive), the GitHub
+      callout and the OTel span (`vx.task.not_ready`) carry it. Pinned
+      on the ready-timeout and exit-before-ready e2e cases (the second
+      now exits 2 to prove the real code rides), the report, the
+      annotation and both plugins; the `spawn` reason has no e2e pin —
+      it needs a box without `sh`, the class `no-shell-on-path` covers
+      for one-shot tasks — and is read by the same one label.
 
 ## In flight
 

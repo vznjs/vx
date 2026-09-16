@@ -57,6 +57,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn
 
 export function shellQuote(arg: string): string
 export function signalExitCode(signal: string): number // 128 + signo; 130 fallback
+export class PersistentReadyError extends Error // reason: 'timeout' | 'exited' | 'spawn'; exitCode?: the child's own
 export function streamToString(
   stream: ReadableStream<Uint8Array> | number | undefined,
   onChunk?: (s: string) => void,

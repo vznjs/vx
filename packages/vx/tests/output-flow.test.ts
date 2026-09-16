@@ -623,6 +623,14 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
     expect(out.text()).toContain('::error title=one#box::failed (exit 1, 1 sandbox violation)\n')
   })
 
+  it('the annotation names why a persistent task never became ready', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)
+    const n = mkNode('one#dev')
+    log.taskComplete(n, mkOutcome(n, 'failed', { exitCode: 1, notReady: 'timeout' }))
+    expect(out.text()).toContain('::error title=one#dev::failed (never ready: timed out, exit 1)\n')
+  })
+
   it('quiet hit one-liners stay plain (not a block, nothing to collapse)', () => {
     const out = sink()
     const log = defaultLogger(NO_COLORS, { mode: 'full', gha: true }, out)

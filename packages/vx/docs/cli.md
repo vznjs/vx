@@ -532,8 +532,9 @@ task's block is wrapped in `::group::<id> (<outcome> <duration>)` /
 pre-expanded and emit an `::error title=<id>::failed (exit N)`
 annotation instead (above 128 the label names the signal:
 `failed (exit 137, 128 + SIGKILL)`, a timeout its reason,
-`failed (timed out, exit 143)`, and a sandboxed task its violation
-count, as every surface labels a failure).
+`failed (timed out, exit 143)`, a persistent task that never became
+ready its reason, and a sandboxed task its violation count, as every
+surface labels a failure).
 
 ### `--output-logs <mode>`
 
@@ -761,6 +762,12 @@ executes every run by design, so a hit rate should leave it out of the
 denominator. The key is present only when true; every other row is
 unchanged. Its `hash` is still set: dependents fold it.
 
+**`notReady`** is present only on a failed persistent task: why it never
+became ready — `timeout` (the readiness deadline fired), `exited` (the
+child exited first; `exitCode` is then its own) or `spawn` (the spawn
+itself failed). Every label reads it, `failed (never ready: timed out,
+exit 1)`.
+
 **`sandboxViolations`** is present only on a sandboxed task the sandbox
 recorded violations for — the count the frame's SANDBOX VIOLATIONS
 section lists, and the reason the task failed (its exit is forced to 1
@@ -844,8 +851,9 @@ totals plus a table, one row per task:
 
 `Status` is the task outcome (`success` / `failed (exit N)`, with the
 signal an exit above 128 stands for, `failed (exit 137, 128 + SIGKILL)`,
-or a timeout's reason, `failed (timed out, exit 143)`, or a sandboxed
-task's violation count / `skipped`);
+or a timeout's reason, `failed (timed out, exit 143)`, a persistent
+task's `never ready: …`, or a sandboxed task's violation count /
+`skipped`);
 `Cache` is its provenance (`miss` / `no-cache` for a task with no `cache`
 block, which never consulted it / `local` / `remote` / `up-to-date` /
 `—`). Aborted tasks (a Ctrl-C teardown) are excluded from the totals but

@@ -51,7 +51,8 @@ otel({
   `cicd.pipeline.task.run.result`, `vx.cache.source` (miss/local/remote),
   `vx.task.hash`, duration, CPU ms, peak RSS, and on a skipped task its root
   blocker (`vx.task.blocked_by`), on a timed-out one `vx.task.timed_out`, on
-  a sandboxed one its violation count (`vx.task.sandbox_violations`). A
+  a sandboxed one its violation count (`vx.task.sandbox_violations`), on a
+  persistent one that never became ready why (`vx.task.not_ready`). A
   failed task sets span status
   `ERROR`.
 

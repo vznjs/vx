@@ -74,6 +74,12 @@ export interface TaskOutcome {
    * of reading it as a signal (item 268).
    */
   timedOut?: true
+  /**
+   * On a failed persistent task: why it never became ready — the readiness
+   * deadline fired, the child exited first (`exitCode` is then its own), or
+   * the spawn itself failed. Every label reads this instead of the exit.
+   */
+  notReady?: 'timeout' | 'exited' | 'spawn'
   /** Executor-reported placement label (`ExecuteResult.where`) — set only
    *  when the task ran somewhere other than this host. Telemetry-only. */
   where?: string

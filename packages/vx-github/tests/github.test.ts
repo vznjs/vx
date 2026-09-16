@@ -94,6 +94,13 @@ describe('renderJobSummary', () => {
     expect(md).toContain('- **lib#build** — exit 3 · blocked app#build, web#build\n')
   })
 
+  it('a persistent task that never became ready reads its reason', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'b#dev', status: 'failed', exitCode: 1, notReady: 'timeout' })]),
+    )
+    expect(md).toContain('- **b#dev** — never ready (timed out), exit 1\n')
+  })
+
   it('a sandboxed failure counts its violations', () => {
     const md = renderJobSummary(
       summary([task({ taskId: 'b#build', status: 'failed', exitCode: 1, sandboxViolations: 2 })]),

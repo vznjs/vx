@@ -234,6 +234,8 @@ export interface OutcomeView {
   peakRssBytes?: number
   /** A failure vx's own `timeout` killed (see `TaskOutcome`). */
   timedOut?: true
+  /** A persistent task that never became ready, and why (see `TaskOutcome`). */
+  notReady?: 'timeout' | 'exited' | 'spawn'
   /** How long an `admit` policy held the task with a worker free (see `TaskOutcome`). */
   admissionHeldMs?: number
   restored?: boolean
@@ -264,10 +266,13 @@ export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string
 
 /** `outcomeWord` with the exit code a failure carries: `failed (exit 9)`. */
 export function outcomeLabel(
-  o: Pick<OutcomeView, 'status' | 'restored' | 'exitCode' | 'timedOut' | 'sandboxViolations'>,
+  o: Pick<
+    OutcomeView,
+    'status' | 'restored' | 'exitCode' | 'timedOut' | 'sandboxViolations' | 'notReady'
+  >,
 ): string {
   return o.status === 'failed'
-    ? failedLabel(o.exitCode, o.timedOut, o.sandboxViolations)
+    ? failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady)
     : outcomeWord(o)
 }
 
@@ -275,16 +280,30 @@ export function outcomeLabel(
  * A failure's label, one copy for every surface (the frame's footer, the
  * status line, the run report, the Actions annotation): the exit code, and
  * above 128 the signal it stands for — `failed (exit 137, 128 + SIGKILL)` —
- * or, for vx's own timeout, `failed (timed out, exit 143)`; a sandboxed
- * task's violations are counted after: `failed (exit 1, 2 sandbox violations)`.
+ * or, for vx's own timeout, `failed (timed out, exit 143)`, or a persistent
+ * task that never became ready, `failed (never ready: timed out, exit 1)`; a
+ * sandboxed task's violations are counted after: `failed (exit 1, 2 sandbox
+ * violations)`.
  */
-export function failedLabel(exitCode: number, timedOut?: true, sandboxViolations?: number): string {
+export function failedLabel(
+  exitCode: number,
+  timedOut?: true,
+  sandboxViolations?: number,
+  notReady?: 'timeout' | 'exited' | 'spawn',
+): string {
   // A sandboxed task that touched what it never declared fails on that
   // alone (its exit is forced to 1 when it was 0): the count is the reason.
   const violations =
     sandboxViolations === undefined || sandboxViolations === 0
       ? ''
       : `, ${sandboxViolations} sandbox violation${sandboxViolations === 1 ? '' : 's'}`
+  // A persistent task that never became ready: the reason reads first; its
+  // exit is the child's own when it exited, else vx's 1.
+  if (notReady !== undefined) {
+    const why =
+      notReady === 'timeout' ? 'timed out' : notReady === 'exited' ? 'exited' : 'spawn failed'
+    return `failed (never ready: ${why}, exit ${exitCode}${violations})`
+  }
   // A timeout's 143 is vx's own SIGTERM: the reason, not the signal, reads.
   if (timedOut === true) return `failed (timed out, exit ${exitCode}${violations})`
   const signal = exitSignal(exitCode)
@@ -322,6 +341,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.peakRssBytes !== undefined) view.peakRssBytes = outcome.peakRssBytes
   if (outcome.admissionHeldMs !== undefined) view.admissionHeldMs = outcome.admissionHeldMs
   if (outcome.timedOut === true) view.timedOut = true
+  if (outcome.notReady !== undefined) view.notReady = outcome.notReady
   if (outcome.restored !== undefined) view.restored = outcome.restored
   if (outcome.sandboxViolations !== undefined) view.sandboxViolations = outcome.sandboxViolations
   if (outcome.sandboxViolationLines !== undefined)
