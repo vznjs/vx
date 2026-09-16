@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import path from 'node:path'
-import { execWord } from '../exec/index.js'
+import { execWord, exitSignal } from '../exec/index.js'
 
 /**
  * The frame line for a shell verdict the task's own output leaves a mystery.
@@ -74,9 +74,9 @@ function signalVerdict(code: number, signal: string | undefined): string | undef
   if (signal !== undefined) {
     name = signal
     num = signals[signal]
-  } else if (code > 128 && code < 128 + 65) {
+  } else {
+    name = exitSignal(code)
     num = code - 128
-    name = Object.keys(signals).find((k) => signals[k] === num && !ALIASES.has(k))
   }
   if (name === undefined || num === undefined) return undefined
   // A SIGINT/SIGTERM the runner saw is a shutdown or an outside stop, and
@@ -89,8 +89,6 @@ function signalVerdict(code: number, signal: string | undefined): string | undef
       : `is 128 + ${num}, the shell's report of a death by ${name} in the last command (or that command exited ${code} itself)`
   return `[vx] exit ${code} ${how}: ${why}`
 }
-
-const ALIASES = new Set(['SIGIOT', 'SIGPOLL', 'SIGCLD'])
 
 const SIGNAL_WHY: Record<string, string> = {
   SIGKILL:

@@ -165,6 +165,23 @@ export function signalExitCode(signal: string): number {
 }
 
 /**
+ * The reverse: the signal an exit above 128 stands for (137 → SIGKILL),
+ * by the platform's numbering; undefined for a plain exit. The shell
+ * reports 128 + n for a death by signal n, so the read is the shell's
+ * convention, not proof — a command may exit 137 on its own.
+ */
+export function exitSignal(code: number): string | undefined {
+  if (code <= 128 || code >= 128 + 65) return undefined
+  const signals = osConstants.signals as Partial<Record<string, number>>
+  const num = code - 128
+  return Object.keys(signals).find((k) => signals[k] === num && !SIGNAL_ALIASES.has(k))
+}
+
+// Second names for one number (SIGIOT = SIGABRT, SIGPOLL = SIGIO); the
+// canonical one reads.
+const SIGNAL_ALIASES = new Set(['SIGIOT', 'SIGPOLL', 'SIGCLD'])
+
+/**
  * Grace after a timeout SIGTERM before escalating to SIGKILL — a child that
  * ignores SIGTERM must still be bounded. Matches the persistent-shutdown grace.
  */
