@@ -462,21 +462,27 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
     // The unit is Bun's to normalize and ours to trust only once measured:
     // a pure-function pin enshrined "kilobytes on Linux" for a year of
     // Linux peaks recorded 1024× too big. A child that allocates and
-    // touches 200 MB must report a peak between that and a few times it
+    // touches N MB must report a peak between that and a few times it
     // (the runtime's own footprint on top) — a kilobyte value read as
-    // bytes would land at ~200 KB, a byte value multiplied by 1024 at
-    // ~200 GB, and either fails.
+    // bytes would land at ~N KB, a byte value multiplied by 1024 at
+    // ~N GB, and either fails. N sits 200 MB ABOVE this process's own
+    // mark, not at a fixed 200 MB: the floor withholds a peak under the
+    // parent's, and `bun test` runs a shard's files in one process whose
+    // mark is whatever the files before this one left — a re-dealt shard
+    // put a heavier file first and the fixed 200 MB read as no peak at
+    // all (CI, 2026-09-16).
     const MB = 1024 * 1024
+    const mb = Math.ceil(ownRssHighWater() / MB) + 200
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-rss-'))
     try {
       const result = await runCommand({
-        command: `bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); console.log(b.length)"`,
+        command: `bun -e "const b = Buffer.alloc(${mb} * 1024 * 1024, 1); console.log(b.length)"`,
         cwd,
         env: { PATH: process.env.PATH ?? '' },
       })
       expect(result.exitCode).toBe(0)
-      expect(result.peakRssBytes!).toBeGreaterThanOrEqual(200 * MB)
-      expect(result.peakRssBytes!).toBeLessThan(800 * MB)
+      expect(result.peakRssBytes!).toBeGreaterThanOrEqual(mb * MB)
+      expect(result.peakRssBytes!).toBeLessThan(mb * MB * 4)
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }
@@ -487,9 +493,9 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
     // ru_maxrss at exec, so a `true` spawned from a 300 MB parent read
     // 328 MB (2026-09-12). Hold 300 MB here, then: a trivial task reports
     // no peak (it would read ≥ 300 MB without the floor), and a task that
-    // outweighs this process reports its own. Runs last in this file on
-    // purpose — the mark is monotonic, so the 200 MB pin above must come
-    // first.
+    // outweighs this process reports its own. The mark is monotonic, so
+    // this hold stays after the allocation pin above (which sizes itself
+    // from the mark either way).
     const MB = 1024 * 1024
     const hold = Buffer.alloc(300 * MB, 1)
     expect(ownRssHighWater()).toBeGreaterThanOrEqual(300 * MB)

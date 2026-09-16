@@ -900,7 +900,21 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       one — the 1.25× law fires when the deal is wrong, but only once
       the table tells the truth: a file that grows past its row is
       invisible until the next `--weigh`. Re-weigh whenever a suite
-      gains timed cases.
+      gains timed cases. CI's first run of the new deal (wall 116.8 →
+      93.8 s, the longest task 45.6 → 26.7 s) failed one pin the deal
+      had been hiding: `runner.test.ts`'s "reads a known allocation
+      back as bytes" allocated a fixed 200 MB and expected a peak, but
+      `bun test` runs a shard's files in ONE process whose RSS mark is
+      whatever the files before it left (monotonic), and the floor
+      withholds a child's peak under the parent's mark (item 170) —
+      shard 5 now ran `scale-graph` and `artifact-roundtrip` first, the
+      mark passed 200 MB, and the child read as no peak at all. The pin
+      sizes its child 200 MB above the parent's own mark now; the
+      differential is a 256 MB `--preload` hold (old pin fails as CI
+      did, new pin passes). A pin that depends on which files ran
+      before it in the same process is a deal-shaped knife edge; the
+      order comment it carried ("the 200 MB pin must come first")
+      named the dependency and still trusted the alphabet.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
