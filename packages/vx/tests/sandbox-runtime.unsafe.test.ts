@@ -1239,8 +1239,9 @@ describe('sandbox probe', () => {
         const text = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
         expect(p.exitCode).toBe(1)
         expect(text).toContain(
-          `sandbox not available: the sandbox runtime needs a writable temp directory and ${missing} is not one (ENOENT:`,
+          'sandbox not available: the sandbox runtime needs a writable temp directory and ',
         )
+        expect(text).toContain('no-such-tmp is not one (ENOENT:')
         expect(text).toContain('point TMPDIR at a writable directory')
       } finally {
         await rm(root, { recursive: true, force: true })

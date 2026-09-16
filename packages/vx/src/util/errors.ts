@@ -3,6 +3,7 @@
 //
 // `bin.ts` and the scheduler consult `isUserError` to decide what to print.
 
+import { realpathSync } from 'node:fs'
 import os from 'node:os'
 
 export class UserError extends Error {
@@ -97,5 +98,14 @@ export function isTmpdirRefusal(err: unknown): err is NodeJS.ErrnoException {
   const code = (err as NodeJS.ErrnoException).code
   if (code !== 'ENOENT' && code !== 'ENOTDIR' && !isPermissionError(err)) return false
   const p = (err as NodeJS.ErrnoException).path
-  return (typeof p === 'string' ? p : err.message).includes(os.tmpdir())
+  const named = typeof p === 'string' ? p : err.message
+  const tmp = os.tmpdir()
+  // The error may name the resolved directory (macOS: /tmp is /private/tmp);
+  // a temp directory that does not exist has no real path, so the name as
+  // given is the only one it can carry.
+  let real = tmp
+  try {
+    real = realpathSync(tmp)
+  } catch {}
+  return named.includes(tmp) || named.includes(real)
 }

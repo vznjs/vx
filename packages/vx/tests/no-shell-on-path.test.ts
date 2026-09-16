@@ -2,6 +2,7 @@
 // returned the reason on the result alone, and the orchestrator retains
 // no stderr, so a box without `sh` showed "failed (exit 127)" under a
 // bare `$ <command>` and nothing else (2026-09-16).
+import { realpathSync } from 'node:fs'
 import { mkdtemp, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -66,8 +67,11 @@ describe('sh absent from PATH', () => {
     const r = vx(root, bin, ['run', 'build', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain('app#build > failed (exit 127)')
+    // The resolved path: vx works from the workspace's real path, and on
+    // macOS a workspace under /tmp is /private/tmp (the darwin job, #408).
+    const dir = realpathSync(path.join(root, 'packages', 'app'))
     expect(r.text).toContain(
-      `[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${path.join(root, 'packages', 'app')}). Install a POSIX sh and re-run.`,
+      `[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${dir}). Install a POSIX sh and re-run.`,
     )
     expect(r.text).not.toContain('Executable not found')
     expect(r.text).not.toContain('internal error')
