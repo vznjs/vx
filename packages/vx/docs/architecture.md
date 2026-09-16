@@ -5,25 +5,28 @@ This is the design map of `@vzn/vx`. Read it after
 
 ## Repository shape
 
-The repo is a Bun workspace. The root package is `@vzn/vx` — the core
-task runner, and the only thing a plain `vx run` ever needs. Sibling
-packages integrate with core exclusively through its public API
-(`src/index.ts`, imported as the bare `@vzn/vx` specifier — enforced
-by `tests/package-boundaries.unsafe.test.ts`):
+The repo is a Bun workspace of `packages/*`. Core is `@vzn/vx` in
+`packages/vx` — the task runner, and the only thing a plain `vx run`
+ever needs. Its sibling packages integrate with core exclusively
+through its public API (`src/index.ts`, imported as the bare `@vzn/vx`
+specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 
-| Package                | What                                                                                                                                                                             |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.` (root)             | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                       |
-| `packages/vx-otel`     | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps                                                                                       |
-| `packages/vx-reapi`    | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                 |
-| `packages/vx-github`   | `@vzn/vx-github` — `github()` telemetry plugin: the GitHub Actions job summary                                                                                                   |
-| `packages/vx-migrate`  | `@vzn/vx-migrate` — adoption: `turbo()` project-stage plugin, `turboCache()` / `nxCache()` cache plugins (Turbo's `/v8/artifacts`, Nx's self-hosted spec), the migrate CLI       |
-| `packages/vx-lockfile` | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
-| `packages/vx-docs`     | Astro Starlight docs site; imports `packages/vx/docs/**` at build time                                                                                                           |
+| Package                        | What                                                                                                                                                                             |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/vx`                  | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                       |
+| `packages/vx-otel`             | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces + metrics, zero SDK deps                                                                                       |
+| `packages/vx-reapi`            | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                 |
+| `packages/vx-github`           | `@vzn/vx-github` — `github()` telemetry plugin: the GitHub Actions job summary and a Checks API run                                                                              |
+| `packages/vx-mcp`              | `@vzn/vx-mcp` — `mcp()`: the `vx mcp` verb (`commands` seam), a read-only MCP server for AI agents, no SDK                                                                       |
+| `packages/vx-schedule-history` | `@vzn/vx-schedule-history` — `schedule` + `admit` plugin: order by the critical path learned from run history, pack by what past executions used                                 |
+| `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` project-stage plugin, `turboCache()` / `nxCache()` cache plugins (Turbo's `/v8/artifacts`, Nx's self-hosted spec), the migrate CLI       |
+| `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
+| `packages/vx-docs`             | Astro Starlight docs site; imports `packages/vx/docs/**` at build time (private)                                                                                                 |
+| `packages/vx-bench`            | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the ~80-symbol public API and the plugin
-capabilities (below).
+through two seams: the public API (42 runtime symbols, a deliberate
+snapshot) and the plugin capabilities (below).
 
 ## Module map
 
@@ -55,13 +58,14 @@ cycle through it).
 The orchestrator is the composition module; its files fall into five
 layers:
 
-| Layer                  | Files                                                                                                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Run composition        | `run.ts`, `prepare.ts`, `options.ts`, `plan.ts`, `admission.ts`, `execute-task.ts`, `task-hash.ts`, `upstream.ts`, `run-context.ts`, `run-artifacts.ts`, `run-report.ts` |
-| Cache acceleration     | `remote-cache-setup.ts`, `remote-prefetch.ts`, `stable-keys.ts`, `local-shortcircuit.ts`                                                                                 |
-| Plugin + telemetry     | `plugin.ts`, `plugin-host.ts`, `telemetry.ts`, `telemetry-host.ts`                                                                                                       |
-| Events                 | `events.ts` — the run event bus and the serializable `WireEvent` any surface reads                                                                                       |
-| Presentation + queries | `logger.ts`, `framed-output.ts`, `status-line.ts`, `summary.ts`, `tally.ts`, `colors.ts`, `metrics.ts`, `history.ts`, `predict.ts`                                       |
+| Layer                  | Files                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Run composition        | `run.ts`, `prepare.ts`, `projects.ts` (the staged config load every reader shares), `options.ts`, `plan.ts`, `placement.ts` (where each task runs), `admission.ts` (dedup + continue-taint), `run-lock.ts` (one run per workspace), `signals.ts`, `persistent.ts` (end-of-run disposition of dev servers), `run-context.ts`, `run-artifacts.ts`, `run-report.ts`, `run-records.ts` (the `runs` and `invocations` rows) |
+| One task               | `execute-task.ts`, `task-hash.ts`, `upstream.ts`, `hit-restore.ts` (what a hit leaves behind), `miss-save.ts` (what a miss saves), `save-lane.ts` (the save off the execution slot), `sandbox-request.ts`, `shell-verdict.ts` (exit 126/127 and a signal death named), `lockfile-claim.ts` (the claimant's shell around a lockfile plugin's parser)                                                                    |
+| Cache acceleration     | `remote-prefetch.ts`, `stable-keys.ts`, `local-shortcircuit.ts`, `download-policy.ts` + `deferred-outputs.ts` (`--download`: outputs left remote, fetched when a local task needs them)                                                                                                                                                                                                                                |
+| Plugin + telemetry     | `plugin.ts`, `plugin-host.ts`, `telemetry.ts`, `telemetry-host.ts`, `task-log-buffer.ts` (the one bounded-tail capture every sink reads)                                                                                                                                                                                                                                                                               |
+| Events                 | `events.ts` — the run event bus and the serializable `WireEvent` any surface reads                                                                                                                                                                                                                                                                                                                                     |
+| Presentation + queries | `logger.ts`, `framed-output.ts`, `status-line.ts`, `summary.ts`, `tally.ts`, `colors.ts`, `metrics.ts`, `history.ts`, `failure-mode.ts` (the flakiness verdict), `doctor.ts` (the facts `vx info` and `vx mcp` report)                                                                                                                                                                                                 |
 
 ```mermaid
 graph TD
@@ -160,15 +164,16 @@ all decline is byte-identical to one with none declared.** `subscribeTelemetry` 
 sinks are contributed, so no bus subscriber is added and no summary
 records are built.
 
-The repo's own `vx.workspace.ts` declares `otel()` alongside the local
-executor and cache; `otel()` declines without its env, so a plain run stays
+The repo's own `vx.workspace.ts` declares `otel()`, `github()`, `mcp()`,
+`bun()` and `scheduleHistoryPlugin()`; the floor needs no declaring, and
+`otel()` and `github()` decline without their env, so a plain run stays
 zero-overhead.
 
 ## The telemetry contract
 
 `orchestrator/telemetry.ts` is THE canonical, versioned export shape
-(`TELEMETRY_SCHEMA_VERSION = 1`) every exporter reads — OTel, a
-self-hosted analytics service, or a third-party sink:
+(`TELEMETRY_SCHEMA_VERSION = 2`) every exporter reads — OTel, the
+GitHub plugin, or a third-party sink:
 
 - **`TelemetryRecord`** — streaming, one per lifecycle event
   (`run.start` / `task.start` / `task.log` / `task.end` / `run.end`).
@@ -178,8 +183,8 @@ self-hosted analytics service, or a third-party sink:
   CPU, RSS, wallclock spans).
 - **`RunSummaryRecord`** — one per run at run:end: the invocation
   header (`RunContextRecord`: command, cache policy, git/CI/host
-  context, tags) plus the full `tasks[]` list. What `POST /v1/ingest`
-  and the HTTP exporters primarily speak.
+  context, tags) plus the full `tasks[]` list. What the HTTP exporters
+  primarily speak.
 
 `createTelemetrySource` projects the run event bus into these records
 ONCE and fans them to sinks under crash isolation — a throwing sink is
@@ -289,7 +294,9 @@ never branches on layering.
    after the binary name to the cli module's `run`.
 2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`,
    `cache`, `lock`, `init`, `upgrade`, `show`, `info` (+ `stats`
-   alias), `mcp`, `help`, `version`.
+   alias), `why`, `last`, `completions`, `help`, `version`; any other
+   verb is asked of the workspace's plugins (`commands` seam — `vx mcp`
+   is one).
 3. **`cli/run.ts:parseRunArgs`** parses the argv into a `RunArgs`
    object (including the 4-axis cache policy from `--cache` /
    `--no-cache` / `--force`). Surfaces parse errors as `RunArgs.error`
@@ -299,8 +306,8 @@ never branches on layering.
      `--affected` / default-to-cwd.
    - Anchored positionals (`pkg#build`) bypass the scope and target
      directly.
-   - `--affected[=<base>]` is sugar for an extra filter `[<base>]`
-     resolved via git.
+   - `--affected[=<base>]` is sugar for an extra filter `...[<base>]`
+     resolved via git: the changed projects and their dependents.
    - No positionals + TTY → interactive picker → emits a single
      `pkg#task`.
 
@@ -538,20 +545,26 @@ transaction (`recordRunBundle`), one row per executed task to the
 `runs` table plus one header row to the `invocations` table in
 `cache.db`. Per-task `runs` columns:
 
-| Column                                    | What                                                                |
-| ----------------------------------------- | ------------------------------------------------------------------- |
-| `hash`                                    | The task's cache key (also the join key into `entry_inputs`)        |
-| `project, task`                           | `${project}#${task}` split                                          |
-| `status`                                  | `success` / `failed` / `cache-hit` / `cache-hit-remote` / `skipped` |
-| `exit_code`                               | from the child or 0 for cache-hits                                  |
-| `duration_ms`                             | wallclock the user perceived (cache-hit = restore op time)          |
-| `forward_args`                            | JSON-encoded `--` args (null when none)                             |
-| `started_at, ended_at`                    | ms-epoch wallclock                                                  |
-| `run_id`                                  | ULID shared across every task in the same invocation                |
-| `cpu_ms`                                  | `Bun.spawn` resource-usage CPU (sum of user + system)               |
-| `peak_rss_bytes`                          | resource-usage max RSS                                              |
-| `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                       |
-| `cache_hit`                               | convenience boolean (derivable from status)                         |
+| Column                                    | What                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------- |
+| `hash`                                    | The task's cache key (also the join key into `entry_inputs`)              |
+| `project, task`                           | `${project}#${task}` split                                                |
+| `status`                                  | `success` / `failed` / `cache-hit` / `cache-hit-remote` / `skipped`       |
+| `exit_code`                               | from the child or 0 for cache-hits                                        |
+| `duration_ms`                             | wallclock the user perceived (cache-hit = restore op time)                |
+| `forward_args`                            | JSON-encoded `--` args (null when none)                                   |
+| `started_at, ended_at`                    | ms-epoch wallclock                                                        |
+| `run_id`                                  | ULID shared across every task in the same invocation                      |
+| `cpu_ms`                                  | `Bun.spawn` resource-usage CPU (sum of user + system)                     |
+| `peak_rss_bytes`                          | resource-usage max RSS                                                    |
+| `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                             |
+| `cache_hit`                               | convenience boolean (derivable from status)                               |
+| `attempts`                                | retries a task took (> 1); NULL for a once-run task                       |
+| `cached`                                  | 1 when the task declared a cache block, 0 when it runs every time         |
+| `blocked_by`                              | a skip's blocker (`project#task`)                                         |
+| `timed_out`                               | 1 when the failure was `exec.timeout`                                     |
+| `sandbox_violations`                      | the sandbox's violation count on a failure                                |
+| `not_ready`                               | a persistent task that never became ready: `timeout` / `exited` / `spawn` |
 
 The `invocations` header row carries the command line, requested
 tasks, compact cache policy, concurrency, flow, duration, task /

@@ -5,10 +5,10 @@ import { mcp } from '@vzn/vx-mcp'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 import { bun } from '@vzn/vx-lockfile'
 
-// Nothing runs that is not declared here — including core's own executor
-// and cache. Order is precedence: a plugin listed earlier is consulted
-// first, so a remote cache layer or executor placed before the local one
-// wins.
+// Core applies no plugin by default; running here and caching here are
+// its floor and need no declaring. Order is precedence: a plugin listed
+// earlier is consulted first, so a remote cache layer or executor sits
+// ahead of the local floor at the tail.
 //
 //   otel()   — export each run as OpenTelemetry traces + metrics. Activates
 //              when OTEL_EXPORTER_OTLP_ENDPOINT is set, declines otherwise.
