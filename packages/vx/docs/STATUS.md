@@ -551,7 +551,7 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270, 275, 281, 287 and 293 (14–14y) are in
-    `docs/history/2026-09-status-next-log.md`; 14z–14ac below are
+    `docs/history/2026-09-status-next-log.md`; 14z–14ad below are
     the current ones.
 
 14z. **Handoff after item 299 (2026-09-16, evening).** Six items
@@ -710,6 +710,48 @@ commits each); then the pages the probe cannot see — a page written
 stale under a module that has not moved since stays stale, so the
 remaining forty by oldest page first; then Next 6's re-measure only
 when warm-path code moves (none did today). Never end with "what
+next?".
+
+14ad. **Handoff after item 326 (2026-09-16, night).** Seven items
+since 14ac. The gap probe's queue ran out at 323 (320–323: placement,
+hit-restore, miss-save; options, lockfile, plugin-commands; admission,
+sandbox-request, git-inputs; upgrade, cli-watch, util-errors, logger)
+and the oldest-page queue began (324–326: cli-format, colors,
+dependency-spec; download-policy, local-shortcircuit, nested-dirs;
+plan, tally, upstream). Twenty-two more pages; the finds of the day:
+a persistent task the page said is pinned local and the code does not
+place at all, a `RunOptions` block naming twelve fields of
+twenty-nine, a planner the page said bumps `accessed_at` with a
+`cache.get` it does not call, a status line described as one line
+where the code renders a region, a "single `git rev-parse` spawn" the
+code avoids, a fallback walker that no longer exists, an O(n²) walk
+replaced by a sort. `tests/module-shape-drift.test.ts` holds seventy
+shapes, six constants and regexes, three rendered samples and one
+parser's error set. 320 went in #466, 321 #467, 322 #468, 323 #469,
+324 #470, all merged; 325 is #471 (open) and 326 stacks on it. Open:
+Next 1, 2 and 16, gated by their own terms; In-flight 5 (macOS); the
+owner residue — the `NPM_TOKEN` secret, the release cut, the site's
+address. No open issues. The loop holds 306–326; the next trim moves
+306–326 to history. The box: an item whose pins are all controls
+(324) is still an item — the finds were prose under a module that has
+not moved, and a page written stale stays stale, which is why the
+oldest-page queue exists; the shape law's parser needed a `readonly`
+prefix (322) and a one-field guard (321) — the same lesson as 14ac's,
+a law's helpers earn the differential; the module page repeated a
+false claim the site had already been corrected on (326: `--dry`'s
+`accessed_at` bump, pinned right on the site in 302 and wrong on
+plan.md until now) — a corrected claim is a grep across every page.
+Methods that paid: three pages per item with the shape law absorbing
+each page's interfaces, so a read costs its prose and nothing else;
+`git log -1 --format=%cs` per page as the second queue. Next: the
+oldest-page queue continues — util-hash, util-ulid, version (09-05);
+bin, chained-cache, config, fingerprint, lockfile-claim,
+task-log-buffer, util-edit-distance, util-num, util-paths,
+util-settle, util-tail (09-10); package-graph, projects, timing
+(09-11); config-schema, index, plugin, plugin-host, plugins,
+util-cgroup (09-12) — then the 09-16 pages the day's own items wrote
+are current by construction; then the trim; then Next 6's re-measure
+only when warm-path code moves (none did today). Never end with "what
 next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
