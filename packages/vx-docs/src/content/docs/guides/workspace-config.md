@@ -50,6 +50,7 @@ local store, and a remote executor that declines a task hands it back to
 this machine. There is nothing to put after your plugins:
 
 ```ts
+import { defineWorkspace } from '@vzn/vx'
 import { reapi } from '@vzn/vx-reapi'
 
 export default defineWorkspace({

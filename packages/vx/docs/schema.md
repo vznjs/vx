@@ -1162,8 +1162,23 @@ export default defineProject({
       dependsOn: ['dev'],
     },
 
+    // Two cached checks with no outputs: the verdict is the exit code.
+    // A name with a hyphen is quoted, as any object key is.
+    lint: {
+      description: 'oxlint',
+      exec: { command: 'oxlint .' },
+      cache: { inputs: { files: ['src/**', '.oxlintrc.json'] }, outputs: { files: [] } },
+    },
+    'format-check': {
+      description: 'oxfmt --check',
+      exec: { command: 'oxfmt --check .' },
+      cache: { inputs: { files: ['src/**', '.oxfmtrc.json'] }, outputs: { files: [] } },
+    },
+
     // Pure group task — `vx run ci` fans out, the group itself is
-    // silent in the run output.
+    // silent in the run output. `dependsOn` is typed against the task
+    // names above: a name declared nowhere is a type error, not a
+    // silent no-op.
     ci: {
       description: 'format-check + lint + test',
       dependsOn: ['format-check', 'lint', 'test'],
