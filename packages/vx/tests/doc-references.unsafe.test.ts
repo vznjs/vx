@@ -95,3 +95,21 @@ describe('every relative link on the site pages resolves', () => {
     expect(missing).toEqual([])
   })
 })
+
+describe('docs/README.md names every published plugin package', () => {
+  it('the "published plugin packages" sentence names each non-private @vzn/vx-* sibling', () => {
+    const readme = readFileSync(path.join(pkg, 'docs', 'README.md'), 'utf8')
+    const sentence = /The published plugin packages are[\s\S]*?specifier/.exec(readme)
+    expect(sentence).not.toBeNull()
+    const named = new Set([...sentence![0].matchAll(/`(@vzn\/vx-[a-z-]+)`/g)].map((m) => m[1]!))
+    const packagesDir = path.join(repo, 'packages')
+    const published = readdirSync(packagesDir)
+      .map((dir) => path.join(packagesDir, dir, 'package.json'))
+      .filter((file) => existsSync(file))
+      .map((file) => JSON.parse(readFileSync(file, 'utf8')) as { name: string; private?: boolean })
+      .filter((manifest) => manifest.private !== true && manifest.name !== '@vzn/vx')
+      .map((manifest) => manifest.name)
+      .sort()
+    expect([...named].sort()).toEqual(published)
+  })
+})

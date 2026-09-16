@@ -236,6 +236,28 @@ test is telling the truth.
       suite beside the tables, CLAUDE.md in a new unsafe half (the
       repository root is outside the project). Each fails on the old
       prose.
+293.  DONE (2026-09-16, the evaluator persona: the technical README,
+      the site's overview page, read whole against source after 290
+      and 292 found two stale claims in one section of it): four more.
+      The benchmark numbers came "from `bench/`" (the harness has been
+      `packages/vx-bench/` since the move); the layout said "the root
+      member is core" (core is `packages/vx`, a sibling of the
+      plugins), "eight modules" with a `plugins/` row (seven
+      directories; the floor lives in `exec/` and `cache/`, and the
+      rows say so now); and the plugin-package sentence named three of
+      seven published packages, with a "+" that a wrap had turned into
+      a bullet, so the overview page rendered "(Bazel remote cache"
+      and a one-item list. All seven are named. `modules/affected.md`
+      rule 4 still said a changed root lockfile selects every project
+      — true only for a lockfile no plugin claims, and the page never
+      mentioned the claim; it does. Two pins: the layout table's rows
+      are exactly the `src/` directories and the count sentence agrees
+      (safe half); the published-packages sentence names each
+      non-private `@vzn/vx-*` sibling (unsafe half, `packages/` is
+      outside the project). Both fail on the old README. Also read and
+      found true: the outputs-wiped-before-restore claim, the three
+      channels, `vx cache prune`, `readyWhen`, every number in "What
+      that buys" against benchmarks.md.
 
 ## In flight
 

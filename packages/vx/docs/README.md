@@ -84,7 +84,7 @@ the hooks are how it gets built.
 
 ## What that buys, measured
 
-Numbers come from `bench/` and are reproducible; the invariant behind
+Numbers come from `packages/vx-bench/` and are reproducible; the invariant behind
 each is recorded in [optimizations.md](./optimizations.md).
 
 - A fully-cached run on a 100-project workspace completes in **79 ms**
@@ -189,28 +189,31 @@ If you have ten minutes: read `comparison.md` § Where vx is ahead, then
 
 ## Repository layout
 
-A Bun-workspaces monorepo. The root member is core `@vzn/vx`; the
-plugins that ship alongside it live under `packages/`.
+A Bun-workspaces monorepo: core `@vzn/vx` is `packages/vx`, and the
+plugins that ship alongside it are its siblings under `packages/`.
 
-Core `src/` is **eight modules** — each directory's `index.ts` is its
+Core `src/` is **seven modules** — each directory's `index.ts` is its
 contract, and cross-module imports go through it only, enforced by
 `tests/module-boundaries.test.ts`:
 
-| Module          | Owns                                                                           |
-| --------------- | ------------------------------------------------------------------------------ |
-| `cli/`          | subcommand parsers, help, plan formatting                                      |
-| `orchestrator/` | run composition: discover → graph → schedule → execute → record                |
-| `workspace/`    | project discovery, filters, `--affected`, the lockfile                         |
-| `graph/`        | the task graph and the two-tier scheduler                                      |
-| `cache/`        | the local store, the layering, the `RemoteCacheLayer` seam                     |
-| `exec/`         | per-task execution primitives (spawn, env, sandbox)                            |
-| `plugins/`      | core's own local executor + local cache, each importing core as a plugin would |
-| `util/`         | small shared helpers                                                           |
+| Module          | Owns                                                                                |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `cli/`          | subcommand parsers, help, plan formatting                                           |
+| `orchestrator/` | run composition: discover → graph → schedule → execute → record                     |
+| `workspace/`    | project discovery, filters, `--affected`, the lockfile                              |
+| `graph/`        | the task graph and the two-tier scheduler                                           |
+| `cache/`        | the local store (the floor), the layering, the `RemoteCacheLayer` seam              |
+| `exec/`         | per-task execution primitives (spawn, env, sandbox), the local executor (the floor) |
+| `util/`         | small shared helpers                                                                |
 
 Every source file has a page under [`modules/`](./modules/). Tests live
-in `tests/`. The plugin packages are `@vzn/vx-reapi` (Bazel remote cache
-
-- remote execution), `@vzn/vx-otel` (OpenTelemetry traces and metrics)
-  and `@vzn/vx-github` (job summary + Checks API), each importing core
-  only through the public `@vzn/vx` specifier — a boundary the test suite
-  enforces.
+in `tests/`. The published plugin packages are `@vzn/vx-reapi` (Bazel
+remote cache and remote execution), `@vzn/vx-otel` (OpenTelemetry
+traces and metrics), `@vzn/vx-github` (job summary and Checks API),
+`@vzn/vx-lockfile` (per-project keys from the package manager's
+lockfile), `@vzn/vx-schedule-history` (order by the critical path
+learned from run history), `@vzn/vx-mcp` (`vx mcp`, a server for AI
+agents) and `@vzn/vx-migrate` (a Turbo repo run unchanged, a Turbo or
+Nx remote cache kept, `vx.config.ts` written from either), each
+importing core only through the public `@vzn/vx` specifier — a
+boundary the test suite enforces.

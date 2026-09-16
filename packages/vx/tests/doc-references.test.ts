@@ -87,3 +87,28 @@ describe('every relative link in the docs resolves', () => {
     expect(missing).toEqual([])
   })
 })
+
+describe('docs/README.md § Repository layout follows src/', () => {
+  it('tabulates exactly the module directories, and states their count', () => {
+    const readme = readFileSync(path.join(pkg, 'docs', 'README.md'), 'utf8')
+    const rows = [...readme.matchAll(/^\| `([a-z]+)\/`\s+\|/gm)].map((m) => m[1]!).sort()
+    const dirs = readdirSync(path.join(pkg, 'src'))
+      .filter((name) => statSync(path.join(pkg, 'src', name)).isDirectory())
+      .sort()
+    expect(rows).toEqual(dirs)
+    const WORDS = [
+      'zero',
+      'one',
+      'two',
+      'three',
+      'four',
+      'five',
+      'six',
+      'seven',
+      'eight',
+      'nine',
+      'ten',
+    ]
+    expect(readme).toContain(`Core \`src/\` is **${WORDS[dirs.length]} modules**`)
+  })
+})
