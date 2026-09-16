@@ -50,7 +50,8 @@ The closure is exactly what the project's `node_modules` can resolve:
   package's whole reach, since what A can import through B is B's
   closure;
 - install-wide material every project folds: `lockfileVersion`,
-  `overrides`, `settings`, `patchedDependencies`, catalogs.
+  `overrides`, `settings`, `patchedDependencies` (and, under `bun()`,
+  the catalogs).
 
 `bun()` does the same through Bun's hoisted layout (a nested version
 counts for the package it is nested under and no other); `npm()`
@@ -72,9 +73,9 @@ task and the rule that selects it are one rule, so they cannot drift.
 ## Measured in the repository that ships it
 
 vx's own repository declares `bun()`. Bumping one package's resolved
-version in `bun.lock` re-keys 2 of the gate's 61 tasks instead of 59.
-That is the whole pitch, in one number: a dependency change costs what
-the dependency change touches.
+version in `bun.lock` re-keys that package's own tasks and its
+dependants' instead of every task in the gate. That is the whole
+pitch: a dependency change costs what the dependency change touches.
 
 The plugin is separate from core on purpose. Core owns the `fingerprint`
 seam, the memo and the per-run gate; the lockfile *parsers* are

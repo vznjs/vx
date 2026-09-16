@@ -47,7 +47,7 @@ cycle, which the cache serves, and then settles.
 
 Always ignored regardless: `node_modules`, `.git`, `.vx`, the run's
 resolved cache directory wherever `--cache-dir` put it, `.tsbuildinfo`
-files and editor swap files.
+files and editor backup files (a trailing `~`).
 
 ## Watchers that are actually watching
 
@@ -55,8 +55,8 @@ On macOS a directory watcher can return before its event stream is
 live, and an edit in that gap is silently lost. vx writes a probe file
 under every watcher and does not print `vx watch: watching …` until
 each probe's event has arrived, re-writing on a short backoff. The line
-is a promise, not a hope. A watcher that stays silent for two seconds
-is kept with a warning that early edits there may be missed.
+is a promise, not a hope. A directory whose watcher stays silent for
+two seconds is polled instead, with a warning naming the interval.
 
 The workspace root is watched non-recursively so a lockfile or
 `pnpm-workspace.yaml` edit is heard; those move the workspace
@@ -71,8 +71,9 @@ reach.
   does not exit the loop. That matches `turbo watch` and `nx watch`.
 - Ctrl-C prints `vx watch: stopped`, tears down the in-flight cycle's
   children and exits 0 only once they are gone.
-- Flags that describe one run (`--dry`, `--summarize`, `--report`,
-  `--profile`) are rejected up front, because a loop has no single run.
+- Flags that describe one run (`--dry`, `--graph`, `--summarize`,
+  `--profile`, `--report`, `--report-file`, `--verbosity`) are rejected
+  up front, because a loop has no single run.
 - Persistent tasks re-spawn each cycle. For a server that should stay
   up across edits, the tool's own watch (`vite`, `tsc -b -w`) is the
   right layer.
