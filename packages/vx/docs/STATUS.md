@@ -816,6 +816,22 @@ spawn 'git' … Install git and re-run`, the enumeration's), but
       the CLI child gets a PATH of bun and sh alone, and `--affected`,
       `--affected=HEAD` and `--all` each print the line and no stack.
 
+242.  DONE (2026-09-16, the minimal-image persona, one step on): a box
+      without `sh` failed every task as "failed (exit 127)" under a bare
+      `$ <command>` and nothing else. The runner put the reason on the
+      result's stderr, which the orchestrator never retains (its capture
+      drops stderr; the live callback is the frame), so the one line
+      that explained the run reached nobody — and `runner.md` claimed it
+      did. Both runners (plain and sandboxed) send the reason through
+      `onStderr` now and name a missing shell: "vx runs each task with
+      sh -c: failed to spawn 'sh' (working dir: <dir>). Install a POSIX
+      sh and re-run."; another spawn error keeps Bun's text, and an
+      ENOENT with the working directory gone stays the generic line.
+      The persistent path already wrote its ready rejection to the
+      frame. Pinned in `no-shell-on-path.test.ts`: a PATH of bun and
+      git alone gives exit 1, the line inside the task's frame and no
+      Bun stack; the control with sh runs green. Fails without the fix.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items

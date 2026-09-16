@@ -32,6 +32,7 @@ import {
   drainOrAbort,
   shellQuote,
   signalExitCode,
+  spawnFailureText,
   streamToString,
   resourceUsageToCpuRss,
   type CaptureConfig,
@@ -662,14 +663,9 @@ export async function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRun
       detached: true,
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return {
-      exitCode: 127,
-      durationMs: Date.now() - start,
-      stdout: '',
-      stderr: `\n[vx] failed to spawn sandboxed task: ${message}\n`,
-      violations: [],
-    }
+    const stderr = spawnFailureText(err, args.cwd, 'sandboxed task')
+    args.onStderr?.(stderr)
+    return { exitCode: 127, durationMs: Date.now() - start, stdout: '', stderr, violations: [] }
   }
 
   args.liveChildren?.add(proc)

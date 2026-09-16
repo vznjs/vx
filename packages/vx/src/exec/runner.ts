@@ -4,9 +4,9 @@
 // process exits. cpuMs / peakRssBytes are then surfaced on RunResult and
 // folded into the v11 `runs` table by the orchestrator.
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
-import { killGraceMs } from '../util/index.js'
+import { isExecutableMissing, killGraceMs } from '../util/index.js'
 import { killTree } from './kill-tree.js'
 
 export interface RunResult {
@@ -438,6 +438,22 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   }
 }
 
+/**
+ * What a task's frame says when `Bun.spawn` itself threw. The text goes
+ * through `onStderr` AND onto the result: the orchestrator retains no
+ * stderr (execute-task's capture), so a reason that only sat on the result
+ * reached nobody — a box without `sh` showed "failed (exit 127)" under a
+ * bare `$ <command>` and nothing else (2026-09-16). An ENOENT with the
+ * working directory in place is the shell; Bun's own text names the rest.
+ */
+export function spawnFailureText(err: unknown, cwd: string, what = 'task'): string {
+  if (isExecutableMissing(err) && existsSync(cwd)) {
+    return `\n[vx] vx runs each task with sh -c: failed to spawn 'sh' (working dir: ${cwd}). Install a POSIX sh and re-run.\n`
+  }
+  const message = err instanceof Error ? err.message : String(err)
+  return `\n[vx] failed to spawn ${what}: ${message}\n`
+}
+
 export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const start = Date.now()
   const fullCommand =
@@ -459,13 +475,9 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       detached: true,
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return {
-      exitCode: 127,
-      durationMs: Date.now() - start,
-      stdout: '',
-      stderr: `\n[vx] failed to spawn: ${message}\n`,
-    }
+    const stderr = spawnFailureText(err, opts.cwd)
+    opts.onStderr?.(stderr)
+    return { exitCode: 127, durationMs: Date.now() - start, stdout: '', stderr }
   }
 
   opts.liveChildren?.add(proc)

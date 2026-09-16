@@ -85,8 +85,14 @@ The promise from `runCommand` always resolves (never rejects) with a
   128 + signo convention (SIGTERM → 143, SIGKILL → 137), falling back
   to 130 for signal names missing from `os.constants.signals`. The
   sandboxed runner (`sandbox-runtime.ts`) uses the same helper.
-- `Bun.spawn` itself throwing → `exitCode = 127`, stderr augmented
-  with `[vx] failed to spawn: <message>`.
+- `Bun.spawn` itself throwing → `exitCode = 127`, and the reason goes
+  through `onStderr` (the task's frame) as well as onto `stderr`: a
+  missing `sh` says `vx runs each task with sh -c: failed to spawn 'sh'
+(working dir: <cwd>). Install a POSIX sh and re-run.`, anything else
+  `[vx] failed to spawn task: <message>`. The orchestrator retains no
+  stderr, so a reason that only sat on the result reached nobody: a box
+  without `sh` showed "failed (exit 127)" under a bare `$ <command>`
+  (2026-09-16).
 
 ### Stream capture
 
