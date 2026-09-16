@@ -186,7 +186,13 @@ a cross-project `dependsOn` edge, though, so `...[main]` reaches an
 It's a pure sugar for `--filter '[<base>]'`; both are resolved by
 `src/workspace/affected.ts`, which unions `git diff` against `<base>`
 with `git ls-files --others` so a brand-new untracked source file counts
-as a change (input hashing sees it, so `--affected` must too).
+as a change (input hashing sees it, so `--affected` must too). A
+project inside a submodule or an embedded repository is selected when
+git reports that repository changed — a dirty or moved submodule
+(`vendor/sub`), an untracked embedded repository (`vendor/nested/`):
+the workspace repository sees the nested one as a single path, so a
+change inside is a change to it, and every project under it is
+selected.
 `vx-lock.json` is filtered out of the changed set — a `vx lock`
 re-write never marks every project affected.
 

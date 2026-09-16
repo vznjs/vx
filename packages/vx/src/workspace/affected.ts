@@ -6,6 +6,7 @@
 // index + unstaged — so it captures everything you touched and nothing
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
+import { statSync } from 'node:fs'
 import path from 'node:path'
 import { UserError } from '../util/index.js'
 import { LOCKFILE_NAME } from './lockfile.js'
@@ -337,6 +338,14 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   throw new UserError(`git ref "${ref}" did not resolve. Pass a branch or commit you have locally.`)
 }
 
+function isDirectory(abs: string): boolean {
+  try {
+    return statSync(abs).isDirectory()
+  } catch {
+    return false
+  }
+}
+
 function projectsContaining(
   workspaceRoot: string,
   changedRelPaths: readonly string[],
@@ -369,7 +378,27 @@ function projectsContaining(
       if (parent === dir) break // reached the filesystem root
       dir = parent
     }
-    if (!hit) orphans.push(rel)
+    if (hit) continue
+    // A changed path that is a DIRECTORY on disk is a nested repository —
+    // a submodule whose checkout moved or is dirty (`vendor/sub`), an
+    // embedded repository left untracked (`vendor/nested/`) — because git
+    // reports nothing else as a directory. The workspace repository sees
+    // the nested one as that single path, so a change inside is a change
+    // to it, and every project under it is affected. Its own enumeration
+    // already keys those projects on their files (git-inputs.ts); without
+    // this, `--affected` after an edit inside selected none of them.
+    const abs = path.resolve(workspaceRoot, rel)
+    let under = false
+    if (isDirectory(abs)) {
+      const prefix = abs + path.sep
+      for (const [dir, name] of dirToName) {
+        if (dir.startsWith(prefix)) {
+          owned.add(name)
+          under = true
+        }
+      }
+    }
+    if (!under) orphans.push(rel)
   }
   return { owned, orphans }
 }

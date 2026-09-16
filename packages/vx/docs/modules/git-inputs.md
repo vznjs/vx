@@ -47,10 +47,11 @@ index OID is trusted from here. One spawn per such project per run; a
 workspace without one pays nothing. (A directory ignored outright takes
 the same path and still enumerates nothing, as before.) Before
 2026-09-16 the empty slice was stored, `cache.inputs matched no files`,
-and the key never moved: a stale hit under a green run. What the
-workspace repository still cannot see: `--affected` (its diff shows the
-gitlink, not the files) and `workspaceFiles` globs reaching into the
-nested repository.
+and the key never moved: a stale hit under a green run. `--affected` follows the same
+shape: git reports the nested repository as one changed path (the
+gitlink, or the untracked `dir/`), and every project under it is
+selected (`affected.ts`). What the workspace repository still cannot
+see: `workspaceFiles` globs reaching into the nested repository.
 
 ## What it does NOT do
 

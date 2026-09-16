@@ -183,6 +183,56 @@ describe('affectedProjects', () => {
     }
   })
 
+  it('a project inside a nested repository is selected when git reports its repository changed', async () => {
+    // The workspace repository sees a submodule or an embedded repository as
+    // ONE path — the gitlink `vendor/sub` when its checkout is dirty or moved,
+    // `vendor/nested/` while untracked — and none of the files inside, so an
+    // edit there selected nothing (2026-09-16). A changed path that is a
+    // directory on disk is such a repository, and every project under it
+    // changed with it.
+    const subC = path.join(root, 'vendor/sub/c')
+    await mkdir(subC, { recursive: true })
+    await writeFile(path.join(subC, 'file.txt'), 'c-initial')
+    await git(path.join(root, 'vendor/sub'), 'init', '-q')
+    await git(path.join(root, 'vendor/sub'), 'config', 'user.email', 'test@vx.local')
+    await git(path.join(root, 'vendor/sub'), 'config', 'user.name', 'vx test')
+    await git(path.join(root, 'vendor/sub'), 'add', '.')
+    await git(path.join(root, 'vendor/sub'), 'commit', '-q', '-m', 'c')
+    // `git add` of an embedded repository records a gitlink — what a submodule is.
+    await git(root, 'add', 'vendor/sub')
+    await git(root, 'commit', '-q', '-m', 'gitlink')
+    const nested = [
+      ...projects,
+      { name: 'c', dir: subC, configPath: null, packageJson: { name: 'c' } },
+    ]
+    // Control: a clean tree selects nothing, and a change beside it only its own project.
+    expect([
+      ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: nested })),
+    ]).toEqual([])
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a-changed')
+    expect([
+      ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: nested })),
+    ]).toEqual(['a'])
+    await writeFile(path.join(root, 'packages/a/file.txt'), 'a-initial')
+    // An edit inside the nested repository: git reports `vendor/sub`.
+    await writeFile(path.join(subC, 'file.txt'), 'c-changed')
+    expect([
+      ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: nested })),
+    ]).toEqual(['c'])
+    // An untracked embedded repository is new work: git reports `vendor/nested/`.
+    const nestedD = path.join(root, 'vendor/nested/d')
+    await mkdir(nestedD, { recursive: true })
+    await writeFile(path.join(nestedD, 'file.txt'), 'd')
+    await git(path.join(root, 'vendor/nested'), 'init', '-q')
+    const withD = [
+      ...nested,
+      { name: 'd', dir: nestedD, configPath: null, packageJson: { name: 'd' } },
+    ]
+    expect(
+      [...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withD }))].sort(),
+    ).toEqual(['c', 'd'])
+  })
+
   it('ignores changes outside any project directory', async () => {
     await writeFile(path.join(root, 'README.md'), 'top-level edit')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects })
