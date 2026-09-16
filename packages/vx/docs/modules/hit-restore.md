@@ -36,6 +36,18 @@ export function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome>
 `execute-task.ts` re-exports both, so the entry stays importable from
 where it was.
 
+## Since the split
+
+- A hit on a task with no declared outputs touches no artifact: nothing
+  to clean, nothing to restore, the outcome says `restored: false`.
+- The directory snapshot behind the next hit's skip-restore is queued
+  (`outputDirSnapshots`) and taken at run end, not inside the restore —
+  a directory written microseconds ago sits in the snapshot's racy
+  window — and artifact writes overlap across concurrent restores.
+- The outcome carries what the producing execution used (`storedCpuMs`,
+  `storedPeakRssBytes`), read from the entry the artifact's sidecar
+  filled, so a fresh machine behind a remote cache has the number too.
+
 ## What it does NOT do
 
 - Decide whether the entry is a hit: the probe (`cache.get`, or the

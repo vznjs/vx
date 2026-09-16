@@ -11,21 +11,44 @@ running anything.
 ## Public surface
 
 ```ts
-export function pinnedLocalSet(nodes): Set<string>
-export interface Placements { executors; remoteOnly; remoteOnlyNoop }
-export function placeTasks(nodes, executors, ...): Placements
-export async function planExecutorOf(prepared, log, policy): { executorOf?, downloadOf?, downloadDowngrades? }
-export function hasPooledExecutor(executors): boolean
-export function poolOfPlacement(placements): (id) => { name; capacity } | undefined
+export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string>
+
+export interface Placements {
+  executors: Map<string, TaskExecutor> // every placed task → the executor that took it
+  remoteOnlyNoop: Set<string> // `remote: 'only'` tasks no remote executor took
+  remoteOnly: Set<string> // `remote: 'only'` tasks a remote executor took
+}
+export function placeTasks(
+  nodes: Map<string, TaskNode>,
+  executors: readonly TaskExecutor[],
+  pinAllLocal?: boolean, // a run that must stay on this machine (default false)
+): Placements
+
+export async function planExecutorOf(
+  prepared: PreparedRun,
+  log: Logger,
+  policy: 'all' | 'toplevel' | 'none', // the run's --download policy
+): Promise<{
+  executorOf?: (id: string) => string | undefined
+  downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
+  downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
+}>
+
+export function hasPooledExecutor(executors: readonly TaskExecutor[]): boolean
+export function poolOfPlacement(
+  placements: Placements,
+): (id: string) => { name: string; capacity: number } | undefined
 export const UNPLACED_EXECUTOR: TaskExecutor
 ```
 
 ## Rules
 
-- **Pinned to this machine**: a persistent task, a task that
-  transitively depends on one (a worker cannot reach a port on the
-  submitter), or `exec.remote: false`. Pinned tasks never reach a
-  remote executor.
+- **Pinned to this machine**: a task that transitively depends on a
+  persistent one (a worker cannot reach a port on the submitter), or
+  `exec.remote: false`. Pinned tasks never reach a remote executor;
+  `selectExecutor` is told so and a remote executor declines. A
+  persistent task itself, like a group, is not placed at all — it runs
+  on this machine outside the executor list.
 - Everything else asks the executors in declaration order
   (`selectExecutor`); the local floor takes what nothing claimed.
 - `exec.remote: 'only'` with a remote executor that accepts it runs

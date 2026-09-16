@@ -287,6 +287,21 @@ test is telling the truth.
       indexed closure identified in one call). Fixed; the shape law
       gains five shapes, the CI matrix and the impurity list (parsed
       from `IMPURE_RE` itself). Seven fail on the old pages.
+320.  DONE (2026-09-16, the gap list's tail begins: placement,
+      hit-restore, miss-save). placement.md's surface was a sketch
+      with no types and said a persistent task is pinned local — it
+      is not placed at all (`placeTasks` skips it with the groups; the
+      pin is its dependants'). hit-restore.md's shape held; the three
+      commits since (a hit with no outputs touches no artifact, the
+      directory snapshot taken at run end, the producing execution's
+      usage on the outcome) are on the page now. miss-save.md's
+      `SaveMissArgs` lacked `cpuMs` and `peakRssBytes` (db5e61c) and
+      gave `deferSave` and `saveMiss` return types the code does not
+      have (the lane's callback returns the landing promise; the save
+      returns `{ landed }`, which the prose two paragraphs down
+      already described). Fixed; the shape law gains four shapes,
+      `RestoreHitArgs` among them as a control that passes both
+      ways. Three fail on the old pages.
 
 ## In flight
 
