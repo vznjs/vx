@@ -158,6 +158,32 @@ better fit, and that's fine.
 - **Linux or macOS**, x64 or arm64. On Windows, run vx under WSL —
   POSIX shell is the API.
 
+## Known limits
+
+Stated plainly, so nothing here surprises you later:
+
+- **Running from source needs Bun ≥ 1.4.** The published binary needs
+  nothing; `bun packages/vx/src/bin.ts` from a checkout does.
+- **The Linux sandbox needs `bubblewrap` and `socat`**, and cannot run
+  as root inside a container (the runtime's seccomp helper cannot
+  create its nested user namespace there) — run as a non-root user or
+  set `sandbox.weakerWhenNested: true`. `vx info` reports the verdict
+  for your host. See [Sandboxing tasks](../guides/sandboxing/).
+- **Windows is WSL.** There is no native Windows build.
+- **macOS sandbox reports are lossy under load.** Enforcement is not —
+  the OS denies the operation either way — but the violation report
+  that fails a task can miss records when the unified log is busy, so
+  the same task can pass or fail run to run there.
+- **A remote cache moves whole artifacts in memory.** Fine below
+  ~100 MiB per artifact; a workspace whose artifacts are larger should
+  wait for the streaming seam.
+- **A task's captured output is kept whole.** It is held in memory,
+  stored with the cache entry and replayed on a hit; a task printing
+  hundreds of megabytes costs that much RSS on every run.
+- **A project inside a submodule is enumerated by its own repository.**
+  `cache.inputs.files` and `--affected` follow it; a `workspaceFiles`
+  glob stops at the nested repository's edge.
+
 ## Next steps
 
 - **[Quickstart](../quickstart/)** — go from zero to a cached run.
