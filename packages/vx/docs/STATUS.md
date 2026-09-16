@@ -414,7 +414,10 @@ test is telling the truth.
       Read on the way: a skipped outcome carries `exitCode: 1` from the
       scheduler, so `--summarize` reports 1 for a task that never ran;
       the run's own exit is 1 and the row's status says skipped, so it
-      is a convention, not a lie — left as is.
+      is a convention, not a lie — left as is. Cost on the footer's
+      path, measured in isolation: 0.022 ms on a 5,000-task green run
+      (one filter), 1.45 ms on a 4,999-skip chain behind one failure
+      (the memoised walk).
 
 ## In flight
 
