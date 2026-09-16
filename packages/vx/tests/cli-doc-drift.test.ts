@@ -51,6 +51,19 @@ async function documentedFlags(): Promise<Set<string>> {
   return names
 }
 
+describe('vx help names every flag the run parser accepts', () => {
+  // Four flags (--continue, --report, --report-file, --tag) were parsed and
+  // documented in cli.md but absent from `vx help` until 2026-09-16 (item
+  // 300): the reference was pinned to the parser, the help was not.
+  it('every parser flag appears in help.ts', async () => {
+    const help = await Bun.file(new URL('../src/cli/help.ts', import.meta.url).pathname).text()
+    const missing = [...(await parserFlags())]
+      .filter((f) => !new RegExp(`${f}(?![a-zA-Z-])`).test(help))
+      .sort()
+    expect(missing).toEqual([])
+  })
+})
+
 describe('docs/cli.md Flags table matches the run parser', () => {
   it('documents every flag the parser accepts, and no others', async () => {
     const parsed = await parserFlags()

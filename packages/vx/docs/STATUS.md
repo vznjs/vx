@@ -347,6 +347,48 @@ test is telling the truth.
       table; moved to its own. The rest of the page's storage
       section (the artifact layout, the sidecar, the streaming save
       and restore, the index-is-authoritative rule) read true.
+299.  DONE (2026-09-16, `schema.md` § Workspace config and the module
+      index read against source): the `plugins` bullet named ten of
+      thirteen hooks (no `fingerprint`, `admit`, `teardown`) and its
+      code spans had wrapped across continuation lines, so the site
+      rendered the executor and telemetry clauses and the first-party
+      list as run-together backtick soup (item 280's formatter rule,
+      on a page a config author reads). Rewritten in pipeline order
+      naming all thirteen and the seven first-party packages, no span
+      across a line, and pinned to `PLUGIN_HOOKS` beside the table
+      pins. The header of `history.ts` said the scheduler and a
+      `vx info --history` flag read it (the `schedule` plugin and the
+      `--dry` prediction do; no such flag) and promised a remote
+      provider "when such an RPC exists" (the service is gone; the
+      interface is the seam). The module index read true row by row.
+      The lesson, again: quoting broken markup inside STATUS breaks
+      STATUS — an unbalanced backtick un-indents the list item under
+      the formatter (this entry, first try).
+300.  DONE (2026-09-16, 14z's named next: `cli.md` § Flags against
+      the parser and the help text). The table already matched the
+      parser (its pin); the help did not: `vx help` never mentioned
+      `--continue`, `--report`, `--report-file` or `--tag`, four flags
+      the parser accepts and the reference documents, and the
+      `--output-logs` flow note ("focused without --all…, broad with,
+      full in CI") sat indented under `--download`, describing the
+      wrong flag. All four are in the help, the note under its flag,
+      and a pin holds the help to the parser's flag set beside the
+      table's. The table's `--affected` row still read "changed
+      since" (287 swapped the section, not this row); it says
+      dependents and the sugar now.
+301.  DONE (2026-09-16, `benchmarks.md` prose read against its own
+      tables): the page carried two 46-package head-to-head tables
+      with opposite verdicts on the warm row — the 2026-09-03 one
+      (Turbo 71 ms, vx 76 ms, "read it honestly: within a few
+      milliseconds") and an older one below it (vx 127 ms, Turbo
+      245 ms, "vx is 1.9× faster than Turbo") that a "predates both"
+      aside kept but a reader would quote; the older table and its
+      reading are gone, the paragraph says why. The Wave 2 breakdown
+      read "where the remaining 242 ms goes" under a table whose last
+      column says 172 ms; it is dated to its wave and says what the
+      later waves took off. The stress section is generated
+      (`update-site.ts --check`) and untouched; the real-repo
+      sections are dated records and read as such.
 
 ## In flight
 
@@ -497,7 +539,7 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270 and 275 (14–14v) are in
-    `docs/history/2026-09-status-next-log.md`; 14w–14y below are the
+    `docs/history/2026-09-status-next-log.md`; 14w–14z below are the
     current ones.
 
 14w. **Handoff after item 281 (2026-09-16, afternoon).** Six items
@@ -602,6 +644,42 @@ sends a ten-minute reader to, `comparison.md` § Where vx is ahead and
 `architecture.md`, read the same way — every claim against source,
 the numbers against benchmarks.md, the pins where a count or a list
 lives in prose. Never end with "what next?".
+
+14z. **Handoff after item 299 (2026-09-16, evening).** Six items
+since 14y, the read-against-source series: architecture.md's nine
+stale claims and six pins, comparison.md § Where vx is ahead found
+true (294, #449); the telemetry page's version quote and the cloud's
+2.6 MB of screenshots removed (295, #449); execution.md's nine and
+two pins (296, #450); flows.md and patterns.md, the citations turned
+from `file:line` to file + phrase and pinned (297, #451); caching.md's
+schema block, five of ten tables missing, pinned to the source (298,
+#451); schema.md's `plugins` bullet, ten of thirteen hooks and
+backtick soup on the site, and history.ts's header (299, #452, open).
+Open: Next 1, 2 and 16, all gated by their own terms; In-flight 5
+(macOS); the owner residue — the `NPM_TOKEN` secret, the release cut,
+the site's address. No open issues. The loop holds eighteen items
+(282–299); the next trim moves 282–299 to history when 14z's
+successor lands. The box: as 14y; quoting broken markup inside STATUS
+breaks STATUS — an unbalanced backtick un-indents the item under the
+formatter (299, first try; describe the breakage, never paste it); a
+slash-separated list escapes a backtick grep, so a class grep names
+the words too (296 found the dispatch list 294's grep missed); the
+formatter's verdict names the file on the line above "Format issues
+found" — a chain can read it and reformat that file (299); a comment
+block above a `CREATE TABLE` stacks silently when a table is inserted
+between them (cache.ts's `output_dirs` comment sat above
+`config_closures`, 298). Methods that paid: a page is read in the
+order a reader is sent to it (the overview's "Where to start" table),
+whole, every claim against source, the numbers against
+benchmarks.md; every list in prose with a source gets a pin the same
+commit, and every pin its differential; a `file:line` citation is a
+lie in waiting — cite the phrase and pin the phrase. Next: the last
+reader pages the same way — cli.md against the help text and the
+verbs' parsers (1,900 lines; the drift pins cover the samples, not the
+flag tables), comparison.md's flag and schema maps against Turbo and
+Nx's current docs, benchmarks.md's prose against its own tables — and
+then the site's guides (running-tasks, remote-caching, sandboxing,
+plugins) against source the same way. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

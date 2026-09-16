@@ -68,6 +68,17 @@ describe('the plugin hook tables follow PLUGIN_HOOKS', () => {
     for (const hook of PLUGIN_HOOKS) expect(named).toContain(hook)
   })
 
+  // schema.md's `plugins` bullet walked the hooks in prose and named 10 of
+  // 13 — with its code spans wrapped into garbage on the site — until
+  // 2026-09-16 (item 299).
+  it('schema.md § Workspace config names every hook in the plugins bullet', async () => {
+    const text = await Bun.file(path.join(DOCS, 'schema.md')).text()
+    const m = /- \*\*`plugins`\*\*([\s\S]*?)\n\n/.exec(text)
+    expect(m).not.toBeNull()
+    const named = new Set([...m![1]!.matchAll(/`([a-z]+)`/g)].map((x) => x[1]!))
+    for (const hook of PLUGIN_HOOKS) expect(named).toContain(hook)
+  })
+
   it('CONTROL: a table that lacks a hook is caught', async () => {
     // The extractor sees exactly what the rows say: a table without `admit`
     // fails the check above, so a passing run is evidence, not vacuity.

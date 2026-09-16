@@ -32,8 +32,9 @@ memoised `Bun.Glob`s) measured on the graph WITH dependencies —
 `vx run test --all`, 2000 tasks, interleaved arms against an immutable
 worktree of the previous commit: 327–329 ms → 308–314 ms.
 
-Where the remaining 242 ms at 1000 projects goes (`VX_TIMING=1`, see
-below): discovery 22 ms, config load 31 ms (all cache hits) overlapped
+Where Wave 2's 242 ms at 1000 projects went (`VX_TIMING=1`, see
+below; Waves 6 and 7 took 70 ms off it, mostly the run-graph phase and
+the git overlap): discovery 22 ms, config load 31 ms (all cache hits) overlapped
 with git's one worktree walk (`status -uall`, ~57 ms, the critical
 path), the run-graph phase 78 ms (1000 hits: probe, output glob, stat
 check), history recording 12 ms, cache open 9 ms, and ~50 ms of process
@@ -65,7 +66,7 @@ Three measurement lessons from this wave, recorded so they are not
 re-learned. A compiled Bun 1.4.0 binary resolves on-disk packages by
 `<pkg>/index.ts` only and ignores `exports`, so `packages/vx-bench/compare.ts`
 measured nothing ("vx skipped") until the packages gained root shims —
-if the vx row ever reads `n/a` again, read the skip line first. a micro-benchmark of a sync call in isolation (`statSync`
+if the vx row ever reads `n/a` again, read the skip line first. A micro-benchmark of a sync call in isolation (`statSync`
 2 µs vs `stat` 13 µs) does not predict the run — the async forms run in
 parallel on the thread pool under the scheduler's concurrency, and
 switching the warm-hit path to sync calls made the 1000-project run
@@ -183,29 +184,16 @@ BUILD_SLEEP=0 bun packages/vx-bench/compare.ts 20 11 2   # deep graph, pure fram
 ```
 
 It writes [`packages/vx-bench/RESULTS.md`](https://github.com/vznjs/vx/blob/main/packages/vx-bench/RESULTS.md)
-(committed, so the numbers can be referenced from a commit). A quick run —
-46 packages, 10 layers, 1 s tasks, concurrency 10 for all:
+(committed, so the numbers can be referenced from a commit).
 
 Since 2026-09-03 the table also carries **CPU** columns and a **baseline**
 row — the theoretical best case (an ideal schedule of the tasks, one git
 walk, a raw copy of the outputs, the commands under `xargs`), so each
 runner's row reads as overhead above it. The definitions live in the
-generated `packages/vx-bench/RESULTS.md`. The quick 46-package run below predates both.
-
-| Runner      | Fresh (cold)      | Warm (no restore) | Warm (restore)   |
-| ----------- | ----------------- | ----------------- | ---------------- |
-| **vx**      | **10.47 s**       | **127 ms**        | **151 ms**       |
-| vx (frozen) | 10.50 s (1.0× vx) | **117 ms (0.9×)** | 148 ms (1.0× vx) |
-| turbo       | 10.66 s (1.0× vx) | 245 ms (1.9× vx)  | 283 ms (1.9× vx) |
-| nx          | 29.28 s (2.8× vx) | 879 ms (6.9× vx)  | 872 ms (5.8× vx) |
-
-**Reading it honestly.** At this small scale the cold run is dominated by
-the `sleep` work every runner pays equally, so vx **ties Turbo on cold**
-and is already 2.8× faster than Nx. **Warm** is where the design shows: vx
-is **1.9× faster than Turbo and ~7× faster than Nx**, because a cache hit
-restores in milliseconds instead of re-running. The deep 3,270-task graph
-at the top is the same comparison at scale, where vx's far lower per-task
-overhead pulls it ~2× ahead on cold, too.
+generated `packages/vx-bench/RESULTS.md`. The 46-package quick run is
+the head-to-head table above (2026-09-03); an earlier run of that shape
+used to sit here with a different verdict on the warm row, and one page
+carrying both was a contradiction, so it is gone.
 
 **`vx lock` + `--frozen`** is measured as its own row: it executes the
 frozen `vx-lock.json` graph with **zero per-run config evaluation**. Read
