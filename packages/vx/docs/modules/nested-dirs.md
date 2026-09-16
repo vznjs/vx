@@ -10,7 +10,9 @@ project's tree.
 ## Public surface
 
 ```ts
-export function computeNestedProjectDirs(entries: ProjectEntry[]): Map<string, string[]>
+export function computeNestedProjectDirs(
+  entries: Array<Pick<ProjectEntry, 'name' | 'dir'>>,
+): Map<string, string[]>
 ```
 
 Returns `Map<projectName, absoluteDirs[]>`. Empty array for a project
@@ -18,13 +20,16 @@ with no nested children.
 
 ## Algorithm
 
-For each project `p`, walk every other project `o`:
-
-- Skip if `o.dir === p.dir`.
-- Include if `o.dir` starts with `p.dir + path.sep`.
-
-O(n²) in the project count. Realistic monorepo sizes (≤ hundreds of
-projects) make this trivial.
+Sort the entries by `dir` once, then for each project `p` scan
+forward: every dir sharing `p.dir` as a string prefix is contiguous in
+sorted order, and `p`'s descendants (`p.dir + sep + …`) are a run
+inside that block. A sibling whose name extends `p.dir` by a character
+that sorts below the separator (`foo-utils` beside `foo`; `-`, `.`, `+`
+and a space all sort before `/`) lands between `p.dir` and
+`p.dir + sep`, so the scan skips such interlopers and stops only on
+leaving the block — a plain break on the first non-descendant missed
+`foo/nested` behind `foo-utils` and silently broke the boundary. Near
+O(P log P) on real trees.
 
 ## Why precompute
 
@@ -34,15 +39,17 @@ in a hot loop without re-walking the project list.
 
 ## Tests
 
-Indirect via `tests/orchestrator.test.ts` — the "project boundary"
-test cases create a parent + nested layout and verify that the
-parent's `inputs.files: ['**/*']` doesn't pick up files from the
-nested project.
+`tests/nested-dirs.test.ts` (the function, the interloper class
+included) and `tests/inputs-resolution.test.ts` (the same class through
+the resolver); end to end, the "project boundary" cases in
+`tests/orchestrator.test.ts` create a parent + nested layout and verify
+that the parent's `inputs.files: ['**/*']` doesn't pick up files from
+the nested project.
 
 ## What this does NOT do
 
 - Doesn't enforce the boundary itself — `cache/inputs.ts` does, using
   the result of this function.
-- Doesn't normalize for symlinks. Bun globs the real tree; symlinks
-  to outside the project resolve to their target paths (not the
-  symlink path).
+- Doesn't resolve symlinks: the dirs are the discovered project
+  directories as strings, and inputs come from git's listing, which
+  reports a link as a link.

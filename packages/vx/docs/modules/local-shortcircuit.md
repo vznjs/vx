@@ -10,15 +10,38 @@ stable misses skip execute's lazy probe; unstable tasks stay dep-gated.
 
 ## Public surface
 
+```ts
+export interface ShortCircuitArgs {
+  nodes: Map<string, TaskNode>
+  cache: CacheLayer
+  workspaceRoot: string
+  workspaceFingerprint: string
+  forwardArgs?: readonly string[] | undefined
+  nestedDirsByProject: Map<string, string[]>
+  gitFilesCache: GitFilesCache
+  hashCache: HashCache // the run's memo — no double hashing
+  concurrency: number // the probe pump's width
+}
+export interface ProbedEntry {
+  hash: string
+  hit: CacheEntry | null
+}
+export interface ShortCircuit {
+  preProbed: Map<string, ProbedEntry> // every stable task's probe, hit or miss
+  restoreTier: Set<string> // the confirmed local hits
+}
+export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<ShortCircuit>
+```
+
 - `startLocalShortCircuit(args)` → `{ preProbed, restoreTier }`.
 - `ProbedEntry { hash, hit }` — consumed by execute-task (probe reuse:
   the up-front probes ARE execute's probes, hoisted — no double work).
 
 ## Invariants
 
-- Gated by `shouldShortCircuit` (run.ts): local-only cache (NEVER
-  LayeredCache — remote runs belong to remote-prefetch), `localRead`
-  on, ≥1 dep edge.
+- Gated by `shouldShortCircuit` (run.ts): a cache with no remote
+  layer (`hasRemote` unset — a remote run belongs to remote-prefetch),
+  `localRead` on, and at least one node.
 - An `outputs.workspaceFiles` producer upstream takes its dependents out
   of BOTH tiers — not just the restore tier. A root-anchored output is
   boundary-ignoring, so it can land in a dependent's own project dir; and
