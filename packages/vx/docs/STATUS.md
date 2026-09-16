@@ -1027,6 +1027,41 @@ fetch-depth: 0) or name the base`. Pinned three ways in
       sandboxed project reads 5 tasks and 1 declared, with the
       whole-workspace control at the same numbers; fails without the
       fix (declared 0).
+205.  DONE (2026-09-16, the gate as CI runs it, on this box): until now
+      the sandbox suites ran on CI alone — the container is root, the
+      runtime refuses a nested user namespace, and the local gate runs
+      the tasks directly. As an unprivileged user the box hosts the
+      whole thing: `vx run ci --all` with `VX_REQUIRE_SANDBOX=1` on a
+      cold, user-owned copy of the repo, every shard sandboxed, 44 of
+      44 in 99 s; the unsafe set 78 pass, 0 fail, 1 darwin-only skip
+      (the nested-seatbelt group), `sandbox-runtime` 49 of 49. Recipe:
+      a user (`probe`), a COPY of bun under a world-readable path that
+      is on PATH under the name `bun` (fixtures run `bun serve.ts`; a
+      differently named copy exits 127 inside the sandbox), `HOME` set,
+      `cp -a` the repo and drop its `.vx`, `chown` the copy. Two traps,
+      each a real failure before it was understood: (1) `bun --bun`
+      links `node` to itself under `/tmp/bun-node-<build>/`, mode 0700,
+      owned by whoever ran first — a second user gets no shim and no
+      word of it, so `bun --bun astro build` ran the PATH's Node 20 and
+      astro refused it; remove root's directory before the run. (2) A
+      root-owned `dist/` left in the copy by a root control run made the
+      output clean an "internal error" — item 206. The session's manual
+      gate runs the unsafe step this way now; the user and the bun copy
+      are box-only and die with the container, the recipe is here.
+206.  DONE (2026-09-16, from 205's second trap): a declared output the
+      process cannot remove (a `dist/` another user wrote, a read-only
+      checkout) surfaced as `[vx] internal error in @vzn/vx-docs#build:
+EACCES: permission denied, rm '…/dist/_astro/array.js'` — the
+      scheduler's label for any error that is not a `UserError`, which
+      sends the reader to file a bug against a permission bit. Both
+      clean paths (`cleanOutputs`, `cleanWorkspaceOutputs`) raise a
+      `UserError` now: `cannot remove declared output dist/a.js: EACCES
+— vx clears a task's declared outputs before it runs and before a
+restore; make the path removable by this user, or stop declaring
+it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
+      skipped as root (root removes anything; CI's runner is not root)
+      and proven both ways here as the `probe` user; `docs/caching.md`
+      names the failure beside the clean contract.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

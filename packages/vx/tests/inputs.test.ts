@@ -5,7 +5,7 @@
 // (it deletes files). These tests pin every boundary rule so a
 // regression here can't quietly start eating user files.
 
-import { existsSync } from 'node:fs'
+import { chmodSync, existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -21,6 +21,7 @@ import {
   resolveInputs,
   resolveOutputs,
 } from '../src/cache/inputs.js'
+import { UserError } from '../src/util/index.js'
 
 async function write(p: string, content = 'x'): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
@@ -54,6 +55,25 @@ describe('cleanOutputs — strict output-ownership contract', () => {
     expect(existsSync(path.join(projectDir, 'dist', 'a.js'))).toBe(false)
     expect(existsSync(path.join(projectDir, 'dist', 'b.js'))).toBe(false)
   })
+
+  // Root removes anything, so the case skips there; CI's runner is not root.
+  it.skipIf(process.getuid?.() === 0)(
+    "an output it cannot remove is the environment's failure, named as such",
+    async () => {
+      await write(path.join(projectDir, 'dist', 'a.js'))
+      const dist = path.join(projectDir, 'dist')
+      chmodSync(dist, 0o500)
+      try {
+        const clean = cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] })
+        await expect(clean).rejects.toBeInstanceOf(UserError)
+        await expect(
+          cleanOutputs({ projectDir, outputs: ['dist/**'], nestedProjectDirs: [] }),
+        ).rejects.toThrow(/^cannot remove declared output dist\/a\.js: EACCES — /)
+      } finally {
+        chmodSync(dist, 0o700)
+      }
+    },
+  )
 
   it('does NOT touch files outside declared output globs (the contract)', async () => {
     // Sources are not declared as output; cleanOutputs must leave them.

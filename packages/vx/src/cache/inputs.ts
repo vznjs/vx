@@ -440,11 +440,32 @@ export async function cleanOutputs(args: {
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
-  await Promise.all(files.map((f) => rm(f, { force: true })))
+  await removeAll(files, args.projectDir)
   await pruneEmptiedDirs(args.projectDir, files)
   // Project-relative posix paths of what was removed — the caller
   // feeds these to GitFilesCache.markOutputsChanged after a restore.
   return files.map((f) => path.relative(args.projectDir, f).split(path.sep).join('/'))
+}
+
+/**
+ * A declared output the process cannot remove (a `dist/` another user
+ * wrote, a read-only checkout) is the environment's failure, not vx's:
+ * the scheduler prints any other error as an "internal error", which
+ * sends the reader to file a bug against a permission bit.
+ */
+async function removeAll(files: readonly string[], root: string): Promise<void> {
+  await Promise.all(
+    files.map((f) =>
+      rm(f, { force: true }).catch((err: NodeJS.ErrnoException) => {
+        const rel = path.relative(root, f).split(path.sep).join('/')
+        throw new UserError(
+          `cannot remove declared output ${rel}: ${err.code ?? err.message} — vx clears a task's ` +
+            `declared outputs before it runs and before a restore; make the path removable ` +
+            `by this user, or stop declaring it as an output`,
+        )
+      }),
+    ),
+  )
 }
 
 /**
@@ -509,7 +530,7 @@ export async function cleanWorkspaceOutputs(args: {
   outputs: string[]
 }): Promise<string[]> {
   const files = await resolveWorkspaceOutputs(args)
-  await Promise.all(files.map((f) => rm(f, { force: true })))
+  await removeAll(files, args.workspaceRoot)
   await pruneEmptiedDirs(args.workspaceRoot, files)
   return files.map((f) => path.relative(args.workspaceRoot, f).split(path.sep).join('/'))
 }
