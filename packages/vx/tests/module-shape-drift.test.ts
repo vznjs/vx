@@ -28,14 +28,24 @@ function interfaceFields(text: string, name: string): string[] {
       inComment = false
       line = line.slice(end + 2)
     }
-    line = line.replace(/\/\/.*$/, '')
-    const block = line.indexOf('/*')
-    if (block !== -1) {
-      const end = line.indexOf('*/', block)
-      if (end === -1) {
-        inComment = true
-        line = line.slice(0, block)
-      } else line = line.slice(0, block) + line.slice(end + 2)
+    // Comments left to right: a `//` inside a block (`/** as \`// TODO\` */`)
+    // is not a line comment, and a `/*` inside a line comment (`// (\`./x/*\`)`)
+    // does not open a block — whichever opener comes first wins.
+    for (;;) {
+      const lc = line.indexOf('//')
+      const bc = line.indexOf('/*')
+      if (bc !== -1 && (lc === -1 || bc < lc)) {
+        const end = line.indexOf('*/', bc + 2)
+        if (end === -1) {
+          inComment = true
+          line = line.slice(0, bc)
+          break
+        }
+        line = line.slice(0, bc) + line.slice(end + 2)
+        continue
+      }
+      if (lc !== -1) line = line.slice(0, lc)
+      break
     }
     if (depth === 0) {
       const m = /^\s*(\w+)\??:/.exec(line)
@@ -69,6 +79,12 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['env', 'exec/env.ts', 'BuildEnvOptions'],
   ['deferred-outputs', 'orchestrator/deferred-outputs.ts', 'DeferredEntry'],
   ['deferred-outputs', 'orchestrator/deferred-outputs.ts', 'DeferredOutputsArgs'],
+  ['migration', 'workspace/migration.ts', 'MigrationPlan'],
+  ['migration', 'workspace/migration.ts', 'GeneratedProject'],
+  ['migration', 'workspace/migration.ts', 'GeneratedTask'],
+  ['migration', 'workspace/migration.ts', 'ApplyMigrationArgs'],
+  ['remote-prefetch', 'orchestrator/remote-prefetch.ts', 'PrefetchArgs'],
+  ['history', 'orchestrator/history.ts', 'TaskHistory'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -107,6 +123,14 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const names = (s: string) => [...s.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)
     expect([...names(posix![1]!), ...names(windows![1]!)]).toEqual(constant)
     expect(names(windows![1]!)[0]).toBe('SYSTEMROOT')
+  })
+
+  it("history.md's default window is DEFAULT_RECENT", () => {
+    const recent = /const DEFAULT_RECENT = (\d+)/.exec(read('src/orchestrator/history.ts'))
+    expect(recent).not.toBeNull()
+    expect(read('docs/modules/history.md')).toContain(
+      `// the window; defaults to ${recent![1]} invocations`,
+    )
   })
 
   it("cli-cache.md's two regexes are parseDuration's and parseSize's", () => {

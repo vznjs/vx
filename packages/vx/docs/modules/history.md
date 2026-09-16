@@ -7,6 +7,30 @@ pair's rows over the last N **invocations**, folded into one row each
 (p50 / p99 duration, success rate, hit rate, failure mode) by one
 aggregate over a rowid slice of `cache.db.runs`.
 
+## Public surface
+
+```ts
+export interface TaskHistory {
+  runs: number
+  p50DurationMs: number | undefined
+  p99DurationMs: number | undefined
+  successRate: number
+  hitRate: number
+  failureMode: FailureMode
+  maxPeakRssBytes?: number
+  maxCpuParallelism?: number
+}
+export type HistoryTable = ReadonlyMap<string, TaskHistory>
+
+export interface HistoryProvider {
+  loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+}
+export class EmptyHistoryProvider implements HistoryProvider {}
+export class LocalHistoryProvider implements HistoryProvider {
+  constructor(db: Database, recent?: number) // the window; defaults to 50 invocations
+}
+```
+
 ## Who reads it
 
 - `plan.ts` (`--dry` / `--graph`): attaches each would-run task's p50 and
