@@ -48,8 +48,12 @@ text, which keeps test assertions clean.
 - Otherwise wraps `text` in:
   - `\x1b[1m` (bold) when `opts.bold`
   - `\x1b[2m` (dim) when `opts.dim`
-  - `Bun.color(color, 'ansi-16m')` truecolor sequence
+  - `Bun.color(color, 'ansi-16m')` truecolor sequence, memoized per
+    color string; a color Bun cannot parse paints nothing
   - `\x1b[0m` reset
+- An empty `color` with no option is `text` unchanged too — `paint('',
+text, colors, { dim: true })` is how a dim run of plain text is
+  written.
 
 `color` accepts the same strings as `Bun.color` (`'red'`, `'sky-blue'`,
 hex codes, etc.). We use `'ansi-16m'` (24-bit truecolor) deliberately:

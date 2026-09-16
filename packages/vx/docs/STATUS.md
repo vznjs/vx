@@ -354,6 +354,24 @@ test is telling the truth.
       persistent rows, one row per worker slot, an overflow line and
       the live summary section. Fixed; the shape law gains three
       shapes (`OutputView` a control). Two fail on the old pages.
+324.  DONE (2026-09-16, the pages the gap probe cannot see, oldest
+      first: cli-format, colors, dependency-spec — all last touched
+      2026-09-05). cli-format.md's byte table rendered true; its use
+      sites lacked `vx last` (peak RSS) and the re-export a plugin
+      verb reads. colors.md read true; the empty-color dim path and
+      the per-color memo are on the page now. dependency-spec.md
+      said the task graph "rejects wildcards and negation" — it
+      rejects the BARE wildcards, negation and a pattern in the
+      `pkg#task` form, and accepts a partial pattern (`build.*`,
+      `^build.*`) as a namespace of tasks to add (Nx 19.5 parity; the
+      page predated `isTaskPattern` / `compileTaskPattern` and
+      `tests/wildcard-depends.test.ts`). Pinned: the byte table is
+      `formatBytes` row for row, the parser's five errors are the
+      page's, and two colour shapes — every one a control that
+      passes both ways, since the finds were prose: the first item
+      in this series with no differential, and the first from the
+      oldest end of the list. Sixty-odd shapes and samples now hold
+      the module pages.
 
 ## In flight
 
