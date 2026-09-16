@@ -1238,6 +1238,12 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       11.2 s for every shard (max/avg 1.00); the measured walls were
       9.2–13.7 s. This box hosts the suite as CI's runner sees it now,
       not only the unsafe set, so the next re-weigh has the same recipe.
+      The re-deal exposed one more deal-shaped pin, as 196's did: the
+      remote-usage case allocated a fixed 150 MB, and beside the
+      87k-edge graph the shard's process mark was higher, so the child
+      recorded no peak RSS (170) and the assertion met undefined. It
+      sizes the child from the mark now, as `runner.test.ts` has since
+      192; reproduced in shard 8's exact company, fixed there.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
