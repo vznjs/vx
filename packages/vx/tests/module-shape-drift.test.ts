@@ -128,6 +128,7 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['lockfile-claim', 'orchestrator/lockfile-claim.ts', 'ReachGraph'],
   ['task-log-buffer', 'orchestrator/task-log-buffer.ts', 'TaskLogEntry'],
   ['task-log-buffer', 'orchestrator/task-log-buffer.ts', 'TaskLogBundle'],
+  ['util-tail', 'util/tail.ts', 'Tail'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -227,6 +228,36 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const doc = read('docs/modules/fingerprint.md')
     const rows = [...doc.matchAll(/^\| `([^`]+)`\s+\| [^|]+\|$/gm)].map((m) => m[1]!)
     expect(rows).toEqual(files)
+  })
+
+  it('the util pages quote the constants their modules declare', () => {
+    // [page, source, the declaration line the page must carry verbatim]
+    const quoted: ReadonlyArray<[page: string, source: string, decl: RegExp]> = [
+      ['util-num', 'util/num.ts', /^export const MAX_TIMEOUT_MS = .*$/m],
+      ['util-tail', 'util/tail.ts', /^export const PERSISTENT_TAIL_CHARS = .*$/m],
+      [
+        'task-log-buffer',
+        'orchestrator/task-log-buffer.ts',
+        /^export const TASK_LOG_TAIL_CHARS = .*$/m,
+      ],
+      [
+        'task-log-buffer',
+        'orchestrator/task-log-buffer.ts',
+        /^export const RUN_LOG_BUDGET_CHARS = .*$/m,
+      ],
+      [
+        'task-log-buffer',
+        'orchestrator/task-log-buffer.ts',
+        /^export const LOG_WIRE_VERSION = .*$/m,
+      ],
+    ]
+    for (const [page, source, decl] of quoted) {
+      const line = decl.exec(read(`src/${source}`))
+      expect(line).not.toBeNull()
+      expect(read(`docs/modules/${page}.md`)).toContain(line![0])
+    }
+    const settle = /const DEFAULT_TIMEOUT_MS = (\d+)/.exec(read('src/util/settle.ts'))
+    expect(read('docs/modules/util-settle.md')).toContain(`// default ${settle![1]}`)
   })
 
   it("download-policy.md's DownloadMode is the source's union", () => {
