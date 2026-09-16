@@ -582,3 +582,210 @@ lane since). No warm-path code moved today beyond item 192's compare.
 Open: Next 1, 2 and 16 as before, all gated by their own
 terms; no open issues; every persona this box can host has been
 walked. The box: unchanged. Never end with "what next?".
+
+## Handoffs 14j–14p (moved 2026-09-16 with items 203–242)
+
+14j. **Handoff after item 208 (2026-09-16, morning).** Six items
+since 14i, all from one persona taken one step further each time:
+the root-in-a-container box, where the sandbox refuses to nest, got a
+`sandbox` row in the doctor (203) and then an unprivileged user
+(`probe`), which turned the docs' first remedy into a fact (204) and
+the box into a host for the whole sandboxed gate — `vx run ci --all`
+with the sandbox required, 44 of 44, the unsafe set 78 pass (205; the
+session's manual gate runs the unsafe step that way now). Walking as
+that user found the class the walk was for: three touches of a tree
+the process may not write — the clean (206), the restore (207), and
+the cache directory itself (208) — each an "internal error" before,
+each a `UserError` naming the path and the remedy now, each pinned on
+a 0o500 directory, skipped as root and proven both ways as `probe`.
+Merged as #372–#375; 208 rides the next. Refuted on the way: a trial
+write under WAL proves nothing about a read-only cache (208), and
+`chmod 500 .vx` alone proves nothing either (207). Open: Next 1, 2
+and 16 as before, all gated by their own terms; In-flight 5 (macOS);
+the owner residue — the `NPM_TOKEN` secret, the release cut, the
+site's address. No open issues. The box: a `probe` user, a copy of
+bun at `/opt/probe-bin/bun`, `HOME=/tmp/probe-home`; the traps are
+in 205 (bun's per-build `node` shim under `/tmp`, owned by whoever ran
+first — remove root's before a non-root run). Methods that paid: a
+persona is worth a second and third step, not one; grep the class of
+a fix by walking it, not by reading (207 and 208 were not in the code
+206 touched); a probe that passes for the wrong reason is caught by
+running it without the fix (208's first two probes passed on the old
+code too). Never end with "what next?".
+
+14k. **Handoff after item 211 (2026-09-16, morning).** Three items
+since 14j, the same walk carried to the tree's other refusals: the
+readers open an unwritable cache read-only and go on (209, the
+file-hash memo took the write axis it had ignored); a read-only
+checkout with no cache yet, and the verbs that write the tree, print
+one line naming the path instead of a stack — the file system's
+refusal is a `UserError` at the CLI's top level and in the scheduler,
+one rule for every write nobody wrapped (210); and a full disk, which
+a 2 MiB tmpfs makes hostable here and on CI, is reported the same way
+at the restore, and a run whose history cannot be written keeps its
+verdict (211; `disk-full.test.ts` behind `VX_SMALL_DISK`, mounted by
+CI's Linux job and the manual gate). Merged as #377–#378; 211 is
+#379. Refuted or retired on the way: a doctor that prints partial
+facts on an uncreatable cache directory (declined under 210 — its one
+line is the diagnosis); the pin that made a record throw reject the
+run (it asserts the line now). Next 6 closed the day at a tie (under
+210). Open: Next 1, 2 and 16 as before, all gated by their own terms;
+In-flight 5 (macOS); the owner residue — the `NPM_TOKEN` secret, the
+release cut, the site's address. No open issues. The box: as 14j,
+plus `mount -t tmpfs` works here as root (the small disk). Methods
+that paid: a persona's refusals come in kinds (permission, space) and
+each kind has three sites (clean, restore, record) — walk the grid,
+not the first cell; a claim in STATUS ("the readers keep working") is
+a test to run before it is a sentence to keep (209 came from testing
+208's last line); when a fix retires a pin, the pin's claim usually
+survives in another shape (close still runs) — keep the claim, change
+the shape. Never end with "what next?".
+
+14l. **Handoff after item 214 (2026-09-16, mid-morning).** Three
+items since 14k, each found by the machinery rather than a persona:
+the prune verb was the last writer that opened the cache without
+asking (212, #379); a gate stopped mid-run left the runtime's mux
+sockets in `/tmp` and a recycled pid met `EADDRINUSE` — vx unlinks a
+dead process's sockets under its own pid before the runtime listens
+(213, #380); and the shard deal, weighed as root, had never counted
+the cases that skip as root — re-weighed as the unprivileged user, the
+deal predicts 11.2 s per shard and CI's Linux job fell 2:04 → 1:33
+(214, #381), exposing on the way one more deal-shaped pin, fixed the
+way 192 was. Refuted or left: partial artifacts (the orphan sweep
+reaps them), the runtime's own temp directories, the MCP server's
+and `vx watch`'s handling of a refusal (both right as they are), a
+doctor that prints partial facts. Open: Next 1, 2 and 16 as before,
+all gated by their own terms; In-flight 5 (macOS); the owner residue
+— the `NPM_TOKEN` secret, the release cut, the site's address. No
+open issues. The box: as 14k, plus the manual gate runs its shards
+and its unsafe set as `probe`, mounts a 2 MiB tmpfs for the disk-full
+suite, and clears stale `srt-mux-*.sock` first; `/tmp` swept of 6,537
+leaked fixtures. Methods that paid: a gate's own failure is an item
+(213); weights measured as the wrong user are a deal nobody dealt
+(214); reproduce a deal-shaped pin in the shard's exact company, not
+alone, and fix it there. Never end with "what next?".
+
+14m. **Handoff after item 221 (2026-09-16, midday).** Seven items
+since 14l. Two closed the concurrent-runs persona: the restore that
+another run's clean interrupts is named, not a corrupt artifact (215,
+#383), and two runs on one workspace take turns through a per-run
+`mkdir` lock keyed on the resolved root (216, #384; Next 19 closed as
+per-run, the per-task grain a refinement). One trim (217, #385:
+145–202 and the 2026-09-10 records to history). Then a new persona — a
+workspace under a path with a space, as `probe` — whose own probe
+config found three traps the path did not: a literal sandbox write
+grant on a not-yet-existing path is bound as a FILE, so `mkdir -p dist`
+died with "File exists" and the file poisoned every later run — a
+directory is spelled `dist/` now, vx sweeps the placeholders it made,
+and the failure names the spelling (218, #386); `outputs: ['dist/**']`
+was `unknown field "0"` — an array at any object level names the shape
+and the spelling meant (219, #387); `vx info` counted a config that
+does not load as zero tasks in silence — `configErrors` names it (220,
+#387). Last, the persona after that one: a project inside a submodule
+or embedded repository had an EMPTY slice of the workspace-wide
+enumeration and a key that never moved — a stale hit under a green run;
+an empty slice stores no partition now and the project's own git
+enumerates it (221, rides the next PR). Refuted on the way: reading
+gitlinks out of the listing (it is pathspec-scoped to the project dirs,
+and a gitlink above a project never appears under its pathspec). Open:
+Next 1, 2 and 16 as before, all gated by their own terms; In-flight 5
+(macOS); the owner residue — the `NPM_TOKEN` secret, the release cut,
+the site's address; `workspaceFiles` still stops at a nested repository
+(`--affected` follows it since 222; recorded in `modules/git-inputs.md`). No open
+issues. The box: as 14l; the persona probes live in
+`/tmp/probe-home/probe-*.sh` and run as `probe`. Methods that paid: a
+probe script's OWN mistakes are findings — three of the seven came from
+the config I wrote wrong before the persona even ran (218–220); a stale
+hit is found by editing every input and reading every output back,
+never by the status line — "the key will not change" prints under a
+green run, and a persona reading the exit code alone misses it (221);
+when a listing is scoped, detect by what is absent from a slice, not
+by what the scope would have to include. Never end with "what next?".
+
+14n. **Handoff after item 225 (2026-09-16, afternoon).** Four items
+since 14m, plus a measurement. The nested-repository persona closed:
+`--affected` selects every project under a repository git reports
+changed — the gitlink, or the untracked `dir/` (222, #389) — and the
+rule reached the user docs (225, #392). Then the box's own litter:
+a census of `/tmp` found 1,333 `vx-*` entries after the day's gates —
+658 of them the run lock's directories, whose release was fired and
+forgotten at close and lost the race with the CLI's exit every time
+(223, #390: awaited now), the rest test fixtures without a cleanup
+(224, #391: the plugin helper's per-process root carries its pid and
+the next process sweeps the dead ones, the way the lock reclaims;
+`bun test` fires neither `exit` nor `beforeExit`, measured). Recorded
+without building: a task's captured output has no cap — 200 MB of
+stdout is 620 MB of RSS on the miss and every hit and a 193 MB row —
+an outlier's cost, Next 20 with the design. Refuted: an unignored
+`node_modules` of 11k files (5 ms of a warm run); a git worktree, a
+duplicate project name and a task-name typo all handled. Next 6: 5,000
+projects at 687 ms warm, every stage 3.4–3.9× for 5× the projects,
+nothing super-linear. Open: Next 1, 2, 16 and 20, all gated by their
+own terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN`
+secret, the release cut, the site's address; `workspaceFiles` stops at
+a nested repository. No open issues. The box: as 14m; the census after
+a full gate is the lock directories of runs the kill tests kill and the
+plugin roots of the last shard processes, both reclaimed by the next.
+Methods that paid: count what a day leaves behind — the census found a
+bug in the day's own feature (223) that its pins could not, because a
+pin lives in the process that the bug needs to exit; a chain that
+greps a verdict swallows its exit — read the exit (twice today the
+gate caught what the chain passed); a numbered Next entry goes at the
+END of the list or the formatter renumbers it (third time). Never end
+with "what next?".
+
+14o. **Handoff after item 230 (2026-09-16, late afternoon).** Five
+items since 14n. The site's introduction states vx's known limits
+together (226, #394: launch checklist 6, done). The persistent path
+got 218's placeholder sweep and the `dir/` line on a readiness failure
+(227, #395). The shard deal was re-weighed after the day's suites —
+four files sat at the median, the run-lock e2e among them — and the
+local shards run 11.7–15.0 s again (228, #396). Next 20 closed: a
+task's retained output is bounded to a head and a tail with the
+dropped middle named — the hit 620 → 109 MB of RSS, the cache 193 → 17
+MB on the 200 MB probe; the miss's 652 MB is the logger's frame
+buffer, whole by contract, `--output-logs none` its remedy (229,
+#397). That PR's macOS job found the run lock's last window: two runs
+open the cache before either holds the lock, and the busy timeout was
+set after the journal-mode pragma (230, rides #397). Probed and clean: `vx watch` on a submodule workspace re-runs
+once on an edit inside it; a hidden sandbox runtime; the CI Linux job's
+per-task table (its 39 s shard was contention with the 37 s docs build
+on four workers, not the deal alone). Open: Next 1, 2 and 16, all
+gated by their own terms; In-flight 5 (macOS); the owner residue — the
+`NPM_TOKEN` secret, the release cut, the site's address;
+`workspaceFiles` stops at a nested repository. The loop holds 27 items
+(203–229): the record paragraph's forty is the trim's trigger. No open
+issues. The box: as 14n. Methods that paid: when a bound fixes one
+number and not another, name which retention the other is (229's miss
+is the frame buffer, and saying so kept the item honest); a pin that
+asserts the old design's cost (retention MUST grow) is the pin the new
+design must reshape, not delete — its differential survives as "must
+not cost the volume"; a chain that greps a verdict swallows its exit,
+still. Never end with "what next?".
+
+14p. **Handoff after item 236 (2026-09-16, evening).** Six items since
+14o, all personas. A reader that leaves the pipe (`| head -1`) no
+longer kills a green run: `bin.ts` listens for `error` on stdout and
+stderr (231, #399). The symlinked-outputs contract held as documented
+and its refusal now names a remedy the schema accepts (232, #400).
+`vx upgrade` verifies the release API's SHA-256 before the rename and
+refuses a binary npm owns (233, 234, #400–#401; proven live with a
+scratch binary against v0.0.21); the README's install row says what
+exists (235, #401). Last, `exec.timeout` and `retries` walked as a
+persona found the runner's oldest residual: a task's grandchildren
+survived every kill — every task is its own process group now, killed
+as a group, and SIGHUP is handled (236, rides the next PR). Refuted or
+clean on the way: every MCP tool and the read verbs during a run; a
+task running `vx run` on its workspace; `--affected` on a depth-1
+checkout; undeclared and declared env through a cached task; the
+migration mappers' env. Open: Next 1, 2 and 16, all gated by their own
+terms; In-flight 5 (macOS); the owner residue — the `NPM_TOKEN`
+secret, the release cut, the site's address (an install script waits
+on it); `workspaceFiles` stops at a nested repository. The loop holds
+34 items (203–236): the trim's trigger is forty. No open issues. The
+box: as 14o. Methods that paid: a persona's second shape is where the
+finding is (the timeout read right; its grandchild did not); a marker
+pid must be the INNER shell's `$$` — single quotes — or the
+differential passes on the old code for the wrong reason; Bun's
+`detached: true` exists and is a session, so the terminal's SIGHUP
+needs forwarding the moment you use it. Never end with "what next?".
