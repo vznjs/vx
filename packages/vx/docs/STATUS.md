@@ -966,6 +966,11 @@ fetch-depth: 0) or name the base`. Pinned three ways in
       ran nothing and went green; on a push it diffs against
       `github.event.before` now, with the force-push caveat written
       down.
+200.  DONE (2026-09-16, the CI persona, second gap): the site's CI guide
+      never named `@vzn/vx-github`, the plugin that writes the job
+      summary and the PR check run. A section shows the one-line
+      declaration, the `checks: write` permission and the no-token
+      behaviour, and points at the README for the rest.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

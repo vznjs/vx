@@ -90,6 +90,32 @@ Notes:
   [Remote caching](../remote-caching/) and
   [Core is provider-neutral](../extensibility/).
 
+## A job summary and a PR check
+
+`@vzn/vx-github` is a telemetry plugin that writes every `vx run` as a
+**job summary** on the workflow run page — verdict, stats, failures called
+out above the per-task table — and, with `GITHUB_TOKEN` in the environment,
+one completed **check run** on the built commit so the verdict shows in the
+PR's checks list. Declare it once; anywhere but a GitHub runner it declines
+and costs nothing.
+
+```ts
+// vx.workspace.ts
+import { defineWorkspace } from '@vzn/vx'
+import { github } from '@vzn/vx-github'
+
+export default defineWorkspace({ plugins: [github()] })
+```
+
+```yaml
+permissions:
+  checks: write # the check run; the job summary needs nothing
+```
+
+Without the token the check is skipped and the summary still writes;
+`github({ checks: true })` warns instead, `checks: false` opts out. The
+plugin's README has the options and the rest.
+
 ## Without `--affected`
 
 Prefer to always run the whole workspace and lean entirely on the cache
