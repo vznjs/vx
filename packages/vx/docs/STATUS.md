@@ -217,6 +217,25 @@ test is telling the truth.
       and one export-list pin (metrics' block names every exported
       function and the count word matches). Four fail on the old
       pages.
+316.  DONE (2026-09-16, the next three module pages by gap: cli-help,
+      summary, cli-run). cli-help.md listed seven of the help text's
+      thirteen sections and said "tests don't validate this against
+      the parser" (`tests/cli-doc-drift.test.ts` has since item 300).
+      summary.md's surface lacked `SummaryStats`, the section
+      formatter and the Aborted and Skipped sections, and its Tests
+      claimed a failed-id list capped at five that the test beside it
+      says is never printed; the footer sample itself rendered true
+      (four cached successes with the page's context) and is pinned
+      now. cli-run.md's `RunArgs` had fifteen of twenty-five fields,
+      its `--affected` sugar was the changed-only `[<base>]` (#446
+      made it `...[<base>]`), its verbose-summary sample showed
+      `cache` and `ok` where the column is `outcomeLabel`
+      (`restored-local`, `success`), and "`--verbosity 2+` is
+      reserved" described nothing (any value above 0 prints the
+      table). Fixed; the shape law gains `RunArgs`, `SummaryStats`,
+      `RunContext` and a sections pin (cli-help.md's list is the help
+      text's headers, in order); the footer sample is
+      `tests/summary.test.ts`'s. Three fail on the old pages.
 
 ## In flight
 

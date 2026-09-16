@@ -18,13 +18,20 @@ the `project` stage runs once per project per run.
 
 ```ts
 export interface RunArgs {
+  continueMode?: ContinueMode // --continue[=never|deps-ok|always]
   tasks: string[] // bare + `pkg#task` positionals
   filters: string[] // raw --filter values
   all: boolean
   excludeDependencies: 'all' | string[]
-  concurrency: number | undefined
+  concurrency: number | undefined // `<n>` or `<n>%` of the cores this process may use
   cache: CachePolicy // resolved from --cache / --no-cache / --force (default all-on)
+  remoteRequested?: boolean // a --cache spec named a remote axis
+  cacheDir: string | undefined // --cache-dir
+  frozen: boolean // --frozen: run the lock's graph
   retries: number | undefined // --retry <n> run-level default
+  timeout: number | undefined // --timeout <ms> run-level default
+  outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only' // --output-logs
+  download?: 'all' | 'toplevel' | 'none' // --download
   forwardArgs: string[] // everything after `--`
   verbosity: number
   dry: 'text' | 'json' | undefined
@@ -32,10 +39,17 @@ export interface RunArgs {
   summarize: string | undefined // '' = default path; else path
   profile: string | undefined // 'profile.json' default
   affected: string | undefined // '' = default base; else ref
+  tags: Record<string, string> // --tag k=v, onto the run record
+  report: 'markdown' | undefined // --report[=markdown]
+  reportFile: string | undefined // --report-file <path>
   error?: string // parser-error message
 }
 
 export function parseRunArgs(args: readonly string[]): RunArgs
+export function parseConcurrency(v: string, cpus?: number): number | null
+export function detectFlow(
+  parsed: Pick<RunArgs, 'all' | 'filters' | 'affected'>,
+): 'focused' | 'broad'
 export async function runCmd(args: readonly string[]): Promise<number>
 
 /**
@@ -66,7 +80,9 @@ export async function resolveRunOptions(
    (`documentedFlags('run')` reads the help text's `(for run)` sections,
    so there is no second list to drift).
 4. Mutually-exclusive combinations checked at the end:
-   `--dry` + `--graph`; either + `--summarize` / `--profile`.
+   `--dry` + `--graph`; either + `--summarize` / `--profile` (they
+   skip execution; the artifacts need a real run). `--no-cache` beats
+   `--force`, both layered over a `--cache` spec.
 
 ## Scope resolution
 
@@ -79,10 +95,12 @@ After parsing, `runCmd` builds the orchestrator's `projects` field:
 | Any bare positional + `--all`              | `undefined` (every project)      |
 | Any bare positional + default              | `[findCwdProject(cwd)]` or error |
 
-`--affected[=<base>]` is sugar for an extra `[<base>]` filter
-appended to `filterStrings` before `resolveFilters` runs.
-`defaultAffectedBase(root)` resolves the no-value form
-(`origin/HEAD` → fall back `HEAD~1`).
+`--affected[=<base>]` is sugar for an extra `...[<base>]` filter —
+the changed projects and their dependents (#446) — appended to
+`filterStrings` before `resolveFilters` runs. `defaultAffectedBase(root)`
+resolves the no-value form (`origin/HEAD` → fall back `HEAD~1`); a
+base that is HEAD itself (a single-branch clone) is named, with the
+two bases that would compare something.
 
 ## Interactive picker
 
@@ -112,16 +130,19 @@ If `--dry` or `--graph` is set:
 
 ## Verbose summary
 
-`--verbosity 1` prints a per-task table after the framed blocks:
+`--verbosity 1` (any value above 0) prints a per-task table after the
+framed blocks, the status column being `outcomeLabel` — the one
+vocabulary every surface uses:
 
 ```
-TASK              STATUS        DURATION
------------------------------------------------
-@vzn/vx#lint      cache         4ms
-@vzn/vx#test      ok            5200ms
+TASK          STATUS          DURATION
+--------------------------------------
+@vzn/vx#lint  restored-local       4ms
+@vzn/vx#test  success           5200ms
 ```
 
-Columns auto-width to the widest row. `--verbosity 2+` is reserved.
+Columns auto-width to the widest row (the header sets the minimum),
+the duration right-aligned.
 
 ## Tests
 
