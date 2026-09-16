@@ -1768,6 +1768,19 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       OUTPUTS into the cache key — principle 5's reverse (the cascade
       folds each dependency's key, its inputs, never its outputs). Both
       texts now say so; pinned on the Nx fixture's `^production`.
+190.  DONE (2026-09-16, refutation): the plugin author's walk found
+      nothing off. A local package declaring a `key` part and two
+      `commands` verbs, wired by path into `vx.workspace.ts`: `info`
+      names the package and both seams; `help` lists the verbs with
+      their owner; a verb gets its argv (`--help` included — the verb
+      owns it); `why` names the plugin part when its value moves
+      (`changed plugin @dx/hello/node-major`, digests, per 8g); a key
+      value that is not a string is refused naming plugin, hook, key
+      and task; completions carry the verbs. A verb that throws a
+      plain Error prints `vx: Error: …` and its stack — deliberate and
+      pinned (the control in plugin-commands.test.ts: a plugin's own
+      bug is debuggable, its first frame is the plugin's file; a
+      UserError prints its message only).
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
