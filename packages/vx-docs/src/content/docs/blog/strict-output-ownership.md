@@ -62,7 +62,8 @@ means for a directory it only ever adds to.
   not declare is a bug the [sandbox](../the-sandbox/) can catch, but
   the wipe itself is bounded by the declaration.
 - Another project's directory. Boundaries are hard.
-- The `.vx` cache directory and `.git`.
+- `node_modules`, `.git` and the `.vx` cache directory, wherever a glob
+  would otherwise reach them.
 
 A task with no `cache` block declares no outputs and owns nothing. It
 runs every time and vx does not touch its tree.
