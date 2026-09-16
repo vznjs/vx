@@ -13,6 +13,7 @@ import { formatFlakySection } from '../src/orchestrator/summary.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { CACHE_LAYER_METHODS } from '../src/orchestrator/plugin-host.js'
 import { ESSENTIAL_ENV } from '../src/exec/env.js'
+import { PLUGIN_HOOKS } from '../src/config.js'
 import type { RunPlan } from '../src/orchestrator/plan.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
@@ -401,5 +402,40 @@ describe('the telemetry post shows the sink contract the source declares', () =>
     expect(union).not.toBeNull()
     const named = [...union![1]!.matchAll(/'([a-z.]+)'/g)].map((m) => m[1]!).sort()
     expect(named).toEqual(kinds)
+  })
+})
+
+describe('the what-vx-is post names every plugin hook', () => {
+  it('each of PLUGIN_HOOKS is a code span in its pipeline paragraph', () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'what-vx-is.md'), 'utf8')
+    const para = /In plugin terms the stages are named([\s\S]*?)\n\n/.exec(page)
+    expect(para).not.toBeNull()
+    for (const hook of PLUGIN_HOOKS) expect(para![1]!).toContain('`' + hook + '`')
+  })
+})
+
+describe('the no-choice-on-the-market post quotes the benchmarks page', () => {
+  it('its warm figures are on docs/benchmarks.md as written', () => {
+    const page = readFileSync(path.join(DOCS, 'blog', 'no-choice-on-the-market.md'), 'utf8')
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    for (const figure of ['3.59s', '760ms']) {
+      expect(page).toContain(figure)
+      expect(bench).toContain(figure)
+    }
+  })
+})
+
+describe('the values post states the principles CLAUDE.md numbers', () => {
+  it('its bold principle paragraphs are as many as CLAUDE.md lists', () => {
+    const memory = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', '..', 'CLAUDE.md'),
+      'utf8',
+    )
+    const numbered = [...memory.matchAll(/^\d\. \*\*/gm)].length
+    expect(numbered).toBe(8)
+    const page = readFileSync(path.join(DOCS, 'blog', 'values.md'), 'utf8')
+    const section = /## The eight principles\n([\s\S]*?)\n## /.exec(page)
+    expect(section).not.toBeNull()
+    expect([...section![1]!.matchAll(/^\*\*[^*]+\*\*/gm)].length).toBe(numbered)
   })
 })

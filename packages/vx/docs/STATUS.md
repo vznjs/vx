@@ -197,6 +197,16 @@ test is telling the truth.
       (single-digit ms) and its own spelling of the warm figures; nine
       figures are now the benchmarks page's, pinned. One pin fails on
       the old post.
+341.  DONE (2026-09-16, the next three oldest posts: values,
+      no-choice-on-the-market, what-vx-is). values reads true (the
+      eight principles, the rejected list and the rules are CLAUDE.md's;
+      the principle count is pinned to it). no-choice spelled the warm
+      figures its own way; now the benchmarks page's, pinned; Turbo
+      2.10's four deprecations and the parity divergences read true.
+      what-vx-is named ten hooks of thirteen (`admit`, `setup`,
+      `teardown` missing) in its pipeline paragraph; every
+      `PLUGIN_HOOKS` name is there now, pinned. Two pins fail on the
+      old posts.
 
 ## In flight
 
