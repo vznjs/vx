@@ -593,6 +593,18 @@ of a task's output for its cache entry and replay`). The
       1 MB: whole, no line; through `run()`: the hit replays the bounded
       text with the line). `modules/runner.md`, `caching.md` § Cache
       write and the site's Known limits say it.
+230.  DONE (2026-09-16, from #397's macOS job): two CLI runs on one
+      workspace open the cache BEFORE the run lock is taken — the open
+      is the one moment they still overlap — and the second met
+      `SQLiteError: database is locked` at `PRAGMA journal_mode = WAL`,
+      because `busy_timeout` was set after that pragma and the
+      journal-mode switch takes a lock of its own; macOS's slower disk
+      found the window first, on the run lock's own e2e (round 3 of
+      four). The timeout is the first pragma now, so the open waits for
+      the holder. Pinned in `cache-open-busy.test.ts`: another process
+      holds an EXCLUSIVE lock for 1.5 s and `new Cache` waits it out
+      (fails at once on the old order — reproduced on Linux, where the
+      e2e itself never tripped).
 
 ## In flight
 
@@ -886,7 +898,7 @@ gate caught what the chain passed); a numbered Next entry goes at the
 END of the list or the formatter renumbers it (third time). Never end
 with "what next?".
 
-14o. **Handoff after item 229 (2026-09-16, late afternoon).** Four
+14o. **Handoff after item 230 (2026-09-16, late afternoon).** Five
 items since 14n. The site's introduction states vx's known limits
 together (226, #394: launch checklist 6, done). The persistent path
 got 218's placeholder sweep and the `dir/` line on a readiness failure
@@ -897,7 +909,9 @@ task's retained output is bounded to a head and a tail with the
 dropped middle named — the hit 620 → 109 MB of RSS, the cache 193 → 17
 MB on the 200 MB probe; the miss's 652 MB is the logger's frame
 buffer, whole by contract, `--output-logs none` its remedy (229,
-#397). Probed and clean: `vx watch` on a submodule workspace re-runs
+#397). That PR's macOS job found the run lock's last window: two runs
+open the cache before either holds the lock, and the busy timeout was
+set after the journal-mode pragma (230, rides #397). Probed and clean: `vx watch` on a submodule workspace re-runs
 once on an edit inside it; a hidden sandbox runtime; the CI Linux job's
 per-task table (its 39 s shard was contention with the 37 s docs build
 on four workers, not the deal alone). Open: Next 1, 2 and 16, all
