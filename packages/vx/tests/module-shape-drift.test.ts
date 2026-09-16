@@ -129,6 +129,9 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['task-log-buffer', 'orchestrator/task-log-buffer.ts', 'TaskLogEntry'],
   ['task-log-buffer', 'orchestrator/task-log-buffer.ts', 'TaskLogBundle'],
   ['util-tail', 'util/tail.ts', 'Tail'],
+  ['package-graph', 'workspace/package-graph.ts', 'PackageGraph'],
+  ['projects', 'orchestrator/projects.ts', 'LoadProjectsArgs'],
+  ['projects', 'orchestrator/projects.ts', 'LoadedProjects'],
 ]
 
 describe('a module page declares an interface with the fields the module has', () => {
@@ -357,20 +360,54 @@ describe('a module page lists the errors a parser throws', () => {
 })
 
 describe('a module page names every export the module has', () => {
-  it("config.md's surface block names each export of src/config.ts", () => {
-    const src = read('src/config.ts')
-    const exported = [...src.matchAll(/^export (?:interface|type|const|function) (\w+)/gm)].map(
-      (m) => m[1]!,
-    )
-    expect(exported.length).toBeGreaterThan(12)
-    const doc = read('docs/modules/config.md')
-    const block = /## Public surface\n\n```ts\n([\s\S]*?)```/.exec(doc)
-    expect(block).not.toBeNull()
-    const named = new Set(
-      [...block![1]!.matchAll(/^export (?:interface|type|const|function) (\w+)/gm)].map(
-        (m) => m[1]!,
-      ),
-    )
-    expect(exported.filter((n) => !named.has(n))).toEqual([])
+  const EXPORT_RE = /^export (?:async )?(?:interface|type|const|function) (\w+)/gm
+  for (const [page, source, atLeast] of [
+    ['docs/modules/config.md', 'src/config.ts', 12],
+    ['docs/modules/projects.md', 'src/orchestrator/projects.ts', 4],
+  ] as const) {
+    it(`${page}'s surface block names each export of ${source}`, () => {
+      const exported = [...read(source).matchAll(EXPORT_RE)].map((m) => m[1]!)
+      expect(exported.length).toBeGreaterThan(atLeast)
+      const block = /## Public surface\n\n```ts\n([\s\S]*?)```/.exec(read(page))
+      expect(block).not.toBeNull()
+      const named = new Set([...block![1]!.matchAll(EXPORT_RE)].map((m) => m[1]!))
+      expect(exported.filter((n) => !named.has(n))).toEqual([])
+    })
+  }
+})
+
+describe('a module page lists the tests its suite has', () => {
+  it("package-graph.md's Tests bullets are the suite's it names, in order", () => {
+    const src = read('tests/package-graph.test.ts')
+    const names = [...src.matchAll(/^  it\('(.+)', \(\) => \{$/gm)].map((m) => m[1]!)
+    expect(names.length).toBeGreaterThan(10)
+    const doc = read('docs/modules/package-graph.md')
+    const section = /## Tests\n\n`tests\/package-graph\.test\.ts`:\n\n([\s\S]*?)\n\n/.exec(doc)
+    expect(section).not.toBeNull()
+    expect([...section![1]!.matchAll(/^- (.+)$/gm)].map((m) => m[1]!)).toEqual(names)
+  })
+})
+
+describe('timing.md lists every mark and span the run path records', () => {
+  const section = (): string => {
+    const m = /## Marks and spans \(current\)\n([\s\S]*?)\n## /.exec(read('docs/modules/timing.md'))
+    expect(m).not.toBeNull()
+    return m![1]!
+  }
+  const items = (text: string): string[] => [...text.matchAll(/^- `([^`]+)`$/gm)].map((m) => m[1]!)
+  it('the marks, in the order prepare.ts then run.ts end them', () => {
+    const src = read('src/orchestrator/prepare.ts') + read('src/orchestrator/run.ts')
+    const marks = [...new Set([...src.matchAll(/\bmark\('([^']+)'\)/g)].map((m) => m[1]!))]
+    expect(marks.length).toBeGreaterThan(10)
+    expect(items(section().split('\nSpans,')[0]!)).toEqual(marks)
+  })
+  it('the spans, one per label anywhere under src/', () => {
+    const labels = new Set<string>()
+    for (const rel of new Bun.Glob('src/**/*.ts').scanSync({ cwd: pkg })) {
+      if (rel.endsWith('util/timing.ts')) continue
+      for (const m of read(rel).matchAll(/\bspan\('([^']+)'\)/g)) labels.add(m[1]!)
+    }
+    expect(labels.size).toBeGreaterThan(15)
+    expect([...items(section().split('\nSpans,')[1]!)].sort()).toEqual([...labels].sort())
   })
 })

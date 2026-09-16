@@ -34,6 +34,12 @@ export interface LoadedProjects {
   configured: readonly ProjectMeta[] // every project that can carry tasks
 }
 export function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjects>
+
+/** A reader's view: every stage applied, cached evaluations served, no closure, no lock. */
+export function loadResolvedProjects(
+  workspaceRoot: string,
+  opts?: { scope?: 'all' | readonly string[]; warn?: (message: string) => void },
+): Promise<Map<string, ProjectEntry>>
 ```
 
 ## Algorithm
@@ -58,9 +64,15 @@ export function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjects>
    producer: before it, a graph-walking filter put every config through
    the `project` stage twice per run (`tests/staged-once.test.ts`).
 
-`prepareRun` passes `closure: true` and the run's lock and eval cache;
-`vx show` passes `closure: false`, no lock, and a local cache opened
-for the evaluations alone.
+`prepareRun` passes `closure: true` and the run's lock and eval cache.
+`vx show`, `vx watch`'s config sweep and the CLI's selection pass load
+through `cli/workspace-config.ts`, which passes `closure: false`, the
+lock only under `--frozen`, and a local cache opened for the
+evaluations alone. `loadResolvedProjects` is the same read for an
+embedder — `vx mcp`'s tools and `@vzn/vx-schedule-history` call it, and
+`@vzn/vx` exports it — with discovery and the plugin load folded in:
+`scope` is every project or a list of names, no closure, no lock, and a
+cache opened and closed around the load.
 
 ## Tests
 

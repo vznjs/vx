@@ -4,8 +4,10 @@
 
 Build the workspace-internal dependency graph from each project's
 `package.json`. Used by `buildTaskGraph` to resolve `'^name'` edges
-and by `workspace/filter.ts` for the `pkg...` / `...pkg` filter
-traversals.
+(`directDeps`), by `workspace/filter.ts` for the `pkg...` / `...pkg`
+traversals and `--affected`'s dependents (`transitiveDeps` /
+`transitiveDependents`), and by `vx watch` to widen its scope to each
+watched project's transitive deps.
 
 ## Public surface
 
@@ -56,14 +58,24 @@ the consumer above provides that peer. Peers are tried in
 the same on every run. A change in a peer always reaches the package
 that peers on it, ordered or not.
 
-The graph is precomputed once per `vx run` invocation:
-
-- The direct-deps adjacency is materialized eagerly; `directDeps`
-  reads straight from it.
-- `transitiveDeps` / `transitiveDependents` are memoized lazy
-  functions backed by a DFS with cycle protection (a hypothetical
-  cyclic workspace doesn't loop forever; it just returns the
-  reachable subset).
+`directDeps` reads an adjacency built with the graph. The two
+transitive closures are built on the FIRST query, not with the graph:
+an unscoped run seeds every project and never asks for one, and
+neither does a `^task` walk, and building both eagerly was 12 ms of a
+240 ms warm run at 1000 projects × 30 deps (profiled 2026-09-09) for
+answers nobody read. A closure is a bitset per project, swept once in
+Kahn topological order (O(E·P/32), where a set-union DFS was O(P²)
+entries on a dense layered graph — 68 ms at 1090 projects), with
+projects indexed in sorted-name order so materialising one answer is a
+single ascending bit-scan, already sorted; each answer is memoised by
+name. Package graphs may legally contain cycles and the sweep needs a
+DAG: when the Kahn pass does not drain, every query in that direction
+falls back to a self-contained per-query reachability search (a node
+inside a cycle includes itself). Per query on purpose: in a cycle the
+back edge contributes nothing, so a memoised recursion over
+sub-results computes truncated closures for the nodes below it, and
+caching those made every later answer depend on which node was asked
+for first.
 
 Output lists are sorted alphabetically for deterministic cache keys
 and graph traversal.
@@ -77,26 +89,32 @@ and graph traversal.
   task graph `dependencies`, `devDependencies` and
   `optionalDependencies` are equivalent — each says "this package
   needs that one built first."
-- **Doesn't detect package-level cycles.** Cycles within the
+- **Doesn't report package-level cycles.** Cycles within the
   workspace package graph itself are pathological but legal in
-  package managers. The cycle protection above means traversal
-  terminates; whether the task graph cycles is detected at task-
-  graph build time.
+  package managers. The Kahn pass notices one only to choose the
+  per-query fallback, so traversal terminates; whether the task graph
+  cycles is detected at task-graph build time.
 
 ## Tests
 
 `tests/package-graph.test.ts`:
 
-- empty workspace.
-- two projects, one depends on the other (directs + transitive).
-- `directDeps` returns immediate workspace deps only, sorted; `[]`
-  for unknown names.
-- diamond (a → b, a → c, both → d). transitiveDeps(a) = [b, c, d].
-- transitiveDependents inverts correctly.
-- external (non-workspace) deps are ignored.
-- self-reference in a dep is skipped.
-- all four dep buckets are scanned; a peer reaches but does not order.
-- a peer that closes a cycle is no cycle for the build order.
+- builds an empty graph from no projects
+- records direct workspace deps only when the dep is in the workspace
+- directDeps returns only immediate workspace deps, sorted
+- walks transitive deps and dedupes them
+- does not loop forever on a workspace dep cycle
+- a cycle does not poison the closure memo (results are query-order independent)
+- a node outside the cycle still gets its full closure after a cycle query
+- transitiveDependents walks the reverse direction
+- transitiveDependents terminates on a 2-node cycle and includes the other node
+- reads all four dependency fields: a workspace peer orders a build too
+- a peer stays reach only when the peer already depends on the package
+- two packages peering on each other keep one order edge, in name order
+- a peer that closes a cycle is no cycle for the build order (medusa, 2026-09-11)
+
+The list is the suite's `it` names, pinned in order by
+`tests/module-shape-drift.test.ts`.
 
 ## Replacing this module
 
