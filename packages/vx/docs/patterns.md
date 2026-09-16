@@ -30,16 +30,16 @@ restore. Everything else lines up with Turbo or Nx by design.
 The set of bytes fed into the hash mirrors Turbo's key recipe with one
 Nx-borrowed extension.
 
-| Component                              | Turbo        | Nx                     | vx         | vx source                                        |
-| -------------------------------------- | ------------ | ---------------------- | ---------- | ------------------------------------------------ |
-| Task identity (`project#task`)         | yes          | yes                    | yes        | `src/cache/cache.ts:25` (`CacheKeyInput.taskId`) |
-| Resolved command + env declarations    | yes          | yes                    | yes        | `src/cache/cache.ts:33` (`taskConfigHash`)       |
-| Declared input file contents           | yes          | yes                    | yes        | `src/cache/cache.ts:40` (`inputFiles`)           |
-| Declared env-var **values** at runtime | yes          | yes                    | yes        | `src/cache/cache.ts:38` (`envValues`)            |
-| Upstream task hashes (cascade)         | yes          | yes                    | yes        | `src/cache/cache.ts:43` (`upstreamHashes`)       |
-| Workspace lockfile fingerprint         | yes          | yes                    | yes        | `src/cache/cache.ts:49` (`workspaceFingerprint`) |
-| Forwarded CLI args (after `--`)        | yes          | yes                    | yes        | `src/cache/cache.ts:55` (`forwardArgs`)          |
-| Project `package.json` bytes (direct)  | via lockfile | `externalDependencies` | **direct** | `src/cache/cache.ts:58` ("Turbo / Nx parity")    |
+| Component                              | Turbo        | Nx                     | vx         | vx source                                     |
+| -------------------------------------- | ------------ | ---------------------- | ---------- | --------------------------------------------- |
+| Task identity (`project#task`)         | yes          | yes                    | yes        | `src/cache/layer.ts` (`CacheKeyInput.taskId`) |
+| Resolved command + env declarations    | yes          | yes                    | yes        | `src/cache/layer.ts` (`taskConfigHash`)       |
+| Declared input file contents           | yes          | yes                    | yes        | `src/cache/layer.ts` (`inputFiles`)           |
+| Declared env-var **values** at runtime | yes          | yes                    | yes        | `src/cache/layer.ts` (`envValues`)            |
+| Upstream task hashes (cascade)         | yes          | yes                    | yes        | `src/cache/layer.ts` (`upstreamHashes`)       |
+| Workspace lockfile fingerprint         | yes          | yes                    | yes        | `src/cache/layer.ts` (`workspaceFingerprint`) |
+| Forwarded CLI args (after `--`)        | yes          | yes                    | yes        | `src/cache/layer.ts` (`forwardArgs`)          |
+| Project `package.json` bytes (direct)  | via lockfile | `externalDependencies` | **direct** | `src/cache/layer.ts` ("Turbo / Nx parity")    |
 
 The `package.json` fold is the Nx-borrowed move (Turbo gets it
 transitively through the lockfile; Nx's `externalDependencies` does it
@@ -53,11 +53,11 @@ config hash and per-task forwarded-args fold — are documented in
 
 ### Input enumeration
 
-| Pattern                                                         | Source     | vx source                                    |
-| --------------------------------------------------------------- | ---------- | -------------------------------------------- |
-| Defer to `git ls-files` for tracked + untracked-but-not-ignored | Turbo + Nx | `src/cache/inputs.ts` ("Turbo / Nx model")   |
-| Git blob OIDs as per-file content hashes (index-harvested)      | Turbo      | `src/cache/inputs.ts` + `src/cache/cache.ts` |
-| Project-boundary enforcement (no cross-project globs)           | Turbo + Nx | `src/workspace/nested-dirs.ts`               |
+| Pattern                                                         | Source     | vx source                                      |
+| --------------------------------------------------------------- | ---------- | ---------------------------------------------- |
+| Defer to `git ls-files` for tracked + untracked-but-not-ignored | Turbo + Nx | `src/cache/inputs.ts` ("same as Turbo and Nx") |
+| Git blob OIDs as per-file content hashes (index-harvested)      | Turbo      | `src/cache/inputs.ts` + `src/cache/cache.ts`   |
+| Project-boundary enforcement (no cross-project globs)           | Turbo + Nx | `src/workspace/nested-dirs.ts`                 |
 
 (vx hard-requires git — there is no fallback walker; a non-repo
 workspace gets a clean `UserError` telling the user to `git init`.)
@@ -67,27 +67,27 @@ workspace gets a clean `UserError` telling the user to `git init`.)
 The string DSL is verbatim Turbo (Nx supports the same forms plus a
 richer object form).
 
-| Form         | Meaning                             | Source                             | vx source                                           |
-| ------------ | ----------------------------------- | ---------------------------------- | --------------------------------------------------- |
-| `'lint'`     | Same project, other task            | Turbo + Nx                         | `src/graph/dependency-spec.ts:1` ("Turbo/Nx-style") |
-| `'^lint'`    | Same task in workspace dependencies | Turbo + Nx                         | `src/graph/dependency-spec.ts`                      |
-| `'pkg#lint'` | Arbitrary other package's task      | Turbo + Nx                         | `src/graph/dependency-spec.ts`                      |
-| `'*' / '^*'` | Wildcard upstream (filter-only)     | Turbo's `$TURBO_DEFAULT$`-adjacent | `src/orchestrator/upstream.ts:13`                   |
-| `'!<form>'`  | Negation (filter-only)              | Turbo `inputs` exclusion           | `src/orchestrator/upstream.ts:13`                   |
+| Form         | Meaning                             | Source                             | vx source                                                                                        |
+| ------------ | ----------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `'lint'`     | Same project, other task            | Turbo + Nx                         | `src/graph/dependency-spec.ts` ("Turbo/Nx-style")                                                |
+| `'^lint'`    | Same task in workspace dependencies | Turbo + Nx                         | `src/graph/dependency-spec.ts`                                                                   |
+| `'pkg#lint'` | Arbitrary other package's task      | Turbo + Nx                         | `src/graph/dependency-spec.ts`                                                                   |
+| `'*' / '^*'` | Wildcard upstream (filter-only)     | Turbo's `$TURBO_DEFAULT$`-adjacent | `src/graph/dependency-spec.ts` ("filter-only"), `src/orchestrator/upstream.ts` ("like Turbo/Nx") |
+| `'!<form>'`  | Negation (filter-only)              | Turbo `inputs` exclusion           | `src/graph/dependency-spec.ts` ("filter-only")                                                   |
 
 Loader-side validation rejects wildcards / negation in `dependsOn`
-itself — they're filter-only — and the error message echoes the
-Turbo/Nx vocabulary: `src/workspace/project-loader.ts:142`.
+itself — they're filter-only, as the parser's docblock marks them
+(`src/graph/dependency-spec.ts`).
 
 ### Filter DSL + selection
 
-| Capability                                                    | Source       | vx source                                                      |
-| ------------------------------------------------------------- | ------------ | -------------------------------------------------------------- |
-| pnpm-style `--filter` (`pkg`, `pkg...`, `...pkg`, path globs) | Turbo + pnpm | `src/workspace/filter.ts`                                      |
-| Transitive-dep expansion (`pkg...`)                           | Turbo + pnpm | `src/workspace/filter.ts:11` ("Turbo-style")                   |
-| `[<since>]` git-relative selection                            | Turbo        | `src/workspace/affected.ts:10` ("Matches Turbo's `[<since>]`") |
-| `--affected[=<base>]` subcommand                              | Turbo + Nx   | `src/workspace/affected.ts`                                    |
-| `pkg#task` direct addressing                                  | Turbo + Nx   | `src/cli/run.ts`                                               |
+| Capability                                                    | Source       | vx source                                                                                  |
+| ------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------ |
+| pnpm-style `--filter` (`pkg`, `pkg...`, `...pkg`, path globs) | Turbo + pnpm | `src/workspace/filter.ts`                                                                  |
+| Transitive-dep expansion (`pkg...`)                           | Turbo + pnpm | `src/workspace/filter.ts` (the DSL comment)                                                |
+| `[<since>]` git-relative selection                            | Turbo        | `src/workspace/filter.ts` ("Turbo-style"), `src/workspace/affected.ts` ("Matches Turbo's") |
+| `--affected[=<base>]` subcommand                              | Turbo + Nx   | `src/workspace/affected.ts`                                                                |
+| `pkg#task` direct addressing                                  | Turbo + Nx   | `src/cli/run.ts`                                                                           |
 
 ### Workspace discovery
 
@@ -133,14 +133,14 @@ Turbo-aware cache server can transit our blobs unchanged.
 
 ### Scheduler + execution
 
-| Pattern                                                  | Source                                             | vx source                                                                               |
-| -------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Topological order, bounded parallelism                   | Turbo + Nx                                         | `src/graph/scheduler.ts`                                                                |
-| Cascade abort: failed task's transitive dependents abort | Turbo (mid-mode) + Nx                              | `src/graph/scheduler.ts`                                                                |
-| Independent siblings continue past failure               | Turbo `--continue=continue-tasks-with-no-deps`     | `src/graph/scheduler.ts`                                                                |
-| Persistent / long-running tasks (dev servers)            | Turbo `persistent`, Nx `continuous`                | `src/exec/runner.ts` (`runPersistent`) + `src/orchestrator/execute-task.ts`             |
-| Project-local `node_modules/.bin` on PATH                | Turbo + pnpm                                       | `src/orchestrator/execute-task.ts`                                                      |
-| Implicit project-`package.json` invalidation             | Turbo (via lockfile) + Nx (`externalDependencies`) | `src/orchestrator/execute-task.ts:428` ("Matches Turbo and Nx's implicit dependencies") |
+| Pattern                                                  | Source                                             | vx source                                                                   |
+| -------------------------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------- |
+| Topological order, bounded parallelism                   | Turbo + Nx                                         | `src/graph/scheduler.ts`                                                    |
+| Cascade abort: failed task's transitive dependents abort | Turbo (mid-mode) + Nx                              | `src/graph/scheduler.ts`                                                    |
+| Independent siblings continue past failure               | Turbo `--continue=continue-tasks-with-no-deps`     | `src/graph/scheduler.ts`                                                    |
+| Persistent / long-running tasks (dev servers)            | Turbo `persistent`, Nx `continuous`                | `src/exec/runner.ts` (`runPersistent`) + `src/orchestrator/execute-task.ts` |
+| Project-local `node_modules/.bin` on PATH                | Turbo + pnpm                                       | `src/exec/env.ts` (`binPaths`)                                              |
+| Implicit project-`package.json` invalidation             | Turbo (via lockfile) + Nx (`externalDependencies`) | `src/orchestrator/task-hash.ts` ("Matches Turbo and Nx")                    |
 
 ### Output handling
 
@@ -148,7 +148,7 @@ Turbo-aware cache server can transit our blobs unchanged.
 | ------------------------------------------------------------------ | ---------- | ------------------------------------------------ |
 | Glob-based `outputs` declaration                                   | Turbo + Nx | `src/config.ts`, `src/cache/inputs.ts`           |
 | Restore by file (archive extract, not symlink/hardlink)            | Turbo + Nx | `src/cache/archive.ts` (`extractArtifactStream`) |
-| Log replay on cache hit                                            | Turbo + Nx | `src/orchestrator/execute-task.ts`               |
+| Log replay on cache hit                                            | Turbo + Nx | `src/orchestrator/hit-restore.ts`                |
 | **Wipe outputs before exec AND before restore** (strict ownership) | (vx-only)  | `src/cache/inputs.ts` (`cleanOutputs`)           |
 
 ### CLI conventions
@@ -168,25 +168,25 @@ Turbo-aware cache server can transit our blobs unchanged.
 
 ### Output presentation
 
-| Pattern                                              | Source                                           | vx source                                      |
-| ---------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------- |
-| Framed per-task blocks (`┌─ … └─`)                   | Turbo                                            | `src/orchestrator/framed-output.ts`            |
-| End-of-run summary footer (task/cache meters + time) | Turbo-adjacent (vx renders meters, not a banner) | `src/orchestrator/summary.ts`                  |
-| Per-task output buffered until task finishes         | Turbo                                            | `src/orchestrator/logger.ts` ("same as Turbo") |
+| Pattern                                              | Source                                           | vx source                                           |
+| ---------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------- |
+| Framed per-task blocks (`┌─ … └─`)                   | Turbo                                            | `src/orchestrator/framed-output.ts`                 |
+| End-of-run summary footer (task/cache meters + time) | Turbo-adjacent (vx renders meters, not a banner) | `src/orchestrator/summary.ts`                       |
+| Per-task output buffered until task finishes         | Turbo                                            | `src/orchestrator/framed-output.ts` ("Turbo-style") |
 
 (There is no `>>> FULL TURBO`-style all-cached banner — a fully-green
 cache meter carries the message.)
 
 ## Performance
 
-Sharing the patterns doesn't mean sharing the overhead. On a 100-project
-× 3-task workspace (2026-05 numbers):
+Sharing the patterns doesn't mean sharing the overhead. On the
+3,270-task synthetic workspace (2026-09, `packages/vx-bench/RESULTS.md`):
 
-| Runner | Overhead vs. raw shell, no cache | Cache (full restore) |
-| ------ | -------------------------------- | -------------------- |
-| **vx** | **+2.95 s**                      | **159 ms**           |
-| Turbo  | +11.38 s                         | 589 ms               |
-| Nx     | +20.62 s                         | 858 ms               |
+| Runner | Fresh (cold) | Warm (no restore) | Warm (restore) |
+| ------ | ------------ | ----------------- | -------------- |
+| **vx** | 1m 40s       | **297 ms**        | **416 ms**     |
+| Turbo  | 1m 40s       | 342 ms (1.2×)     | 612 ms (1.5×)  |
+| Nx     | 3m 23s       | 1.38 s (4.7×)     | 1.33 s (3.2×)  |
 
 Full breakdown + methodology in [`benchmarks.md`](./benchmarks.md).
 
@@ -210,7 +210,8 @@ the vx source. To audit:
 grep -rn "Turbo\|Nx parity\|turborepo" src/
 ```
 
-That returns ~20 lines, each one a deliberate decision to mirror an
-upstream pattern. Adding to that list is preferable to inventing
+Each line is a deliberate decision to mirror an upstream pattern, and
+every phrase this page quotes beside a source path is held to that
+file by `tests/patterns-doc-drift.test.ts`. Adding to that list is preferable to inventing
 new vocabulary — vx's value is in the swaps, not in renaming the
 parts we kept.

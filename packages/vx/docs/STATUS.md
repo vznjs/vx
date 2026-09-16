@@ -316,6 +316,24 @@ test is telling the truth.
       grace (2 s), the 30 ms redraw floor, the `--dry` outcome set,
       the `--dry` + `--summarize` refusal, `::group::`, the workspace
       config's four fields, the concurrency default.
+297.  DONE (2026-09-16, `flows.md` and `patterns.md` read whole against
+      source). flows: the up-to-date check's owner (`hit-restore.ts`,
+      not cache.ts); the sandbox flow's Linux branch ("child sees
+      ENOENT, usually fails itself" — an strace pass reports the
+      denied calls, and both platforms share the gate; the sandbox
+      module page said the same, corrected); `--dry` "bumps
+      `accessed_at`" twice (it probes with `has`, which does not — the
+      plan path is read-only by design, cache.ts says so). patterns:
+      fourteen `file:line` citations, eight past the splits that
+      moved them (`CacheKeyInput` to `layer.ts`, the package.json fold
+      to `task-hash.ts`, the bin PATH to `exec/env.ts`, the replay to
+      `hit-restore.ts`), two quoted phrases that appear nowhere
+      ("Turbo / Nx model", the `$TURBO_DEFAULT$` line), "~20 lines"
+      for a grep that returns 49, and a 2026-05 performance table
+      (`+2.95 s`, `159 ms`) beside the 2026-09 numbers every other
+      page carries. Citations are file + phrase now, and
+      `tests/patterns-doc-drift.test.ts` holds each phrase to its file
+      and refuses a line number. Both pins fail on the old page.
 
 ## In flight
 
