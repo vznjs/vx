@@ -2508,6 +2508,25 @@ rather than a ninth core walk; every fix carried a differential pin
 and a class grep, and the gate caught the one push made without
 reading its exit. Never end with "what next?".
 
+14g. **Handoff after item 192 (2026-09-16, small hours).** Three
+items since 14f: the plugin author's walk refuted nothing (190); the
+agent's walk over the MCP wire gave `whyDidThisRerun` its default
+run through a query the CLI now shares (191); and that PR's first CI
+run exposed item 170's pin on a knife edge — a light child's
+`ru_maxrss` equals the parent's mark by construction, the kernel's
+RSS counters lag by pages, and an exact comparison flipped once in
+twelve runs — so the floor has 4 MiB of slack now (192; the rule is
+in CLAUDE.md). Ten walks since 14d: eight fixes, two refutations;
+every persona this box can host has been walked once (the REAPI
+operator with live services has not — no docker here). Open: Next
+1, 2 and 16 as before, all gated; the launch checklist's owner
+steps; no open issues. The box: unchanged. Methods that paid: read
+a red CI job's own log before calling anything a flake — the failing
+pin was in code the diff never touched, and it was still a real
+knife edge, fixed with a differential pin rather than re-run; a
+walk's refutation is written down (186, 190) so the next reader
+changes angle. Never end with "what next?".
+
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
     (item 141) and four Nx repos (items 142–144, 150) are in.

@@ -196,6 +196,12 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   within a bounded factor. A pure-function test of the conversion only
   restates the assumption (Linux peak RSS ran 1024× too big under one,
   2026-09-12).
+- Two measured quantities that are equal by construction sit on jitter:
+  a light child's `ru_maxrss` IS the parent's mark, and the kernel's RSS
+  counters lag by pages, so an exact `>` between them flipped on one CI
+  run in twelve (2026-09-16). Compare with a slack above any accounting
+  jitter and below what the number decides (4 MiB against 64 MB steps),
+  or measure a difference that exists.
 
 ## Live invariants (verify in source before quoting)
 
