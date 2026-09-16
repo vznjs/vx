@@ -11,10 +11,10 @@ import { formatDuration } from '../orchestrator/index.js'
  *   would run:
  *     ◉  @vzn/vx#lint       cache hit (local)        abc12345
  *     ↓  @vzn/vx#test       cache hit (remote)       def67890
- *     ▶  @vzn/vx#build      cache miss — would exec  fedcba98  ~1.2s
+ *     ▶  @vzn/vx#build      cache miss — would exec  fedcba98  ~1.20s
  *
- *   3 task(s) planned: 2 cache hits (1 local, 1 remote), 1 would run.
- *   predicted: ~1.2s wall · ~1.2s total execution
+ *   3 task(s) planned, 2 cache hits (1 local, 1 remote), 1 would run.
+ *   predicted: ~1.20s wall · ~1.20s total execution
  */
 export function formatPlanText(plan: RunPlan): string {
   const real = plan.tasks.filter((t) => t.cacheStatus !== 'group')

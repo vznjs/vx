@@ -153,6 +153,28 @@ test is telling the truth.
       the one-liners' shape and the module page's samples
       (`tests/framed-output.test.ts`, which had never called either).
       Five fail on the old pages.
+313.  DONE (2026-09-16, 14ab's named next: the module pages whose
+      source moved after the page, widest gap first — plan-format,
+      run-report, events). plan-format.md's text sample had a
+      "no-cache — opts out" row the formatter words "(would exec)",
+      a group row the text form hides, and a four-task plan summed
+      as three; its placement sample padded a column the formatter
+      does not; its JSON sample put `description` before `hash`; its
+      DOT sample was a document the formatter never wrote (another
+      graph name, a Helvetica node default, status words for labels,
+      a different green); and none of the `predicted:` footer, the
+      `download:` block or the wire's optional fields was on the page.
+      The module's own docblock joined the summary with a colon and
+      printed one decimal (a comma, two). events.md still sent
+      `WireEvent` to "serve delegation, dev sockets" (569dd17 removed
+      both; nothing in core consumes it) and had "Web/TUI/MCP
+      surfaces" on the bus (`@vzn/vx-mcp` reads history), and named
+      none of the outcome vocabulary or the wire views it exports.
+      run-report.md read true (its five commits since were label
+      changes the page never quoted). Fixed; pinned: every sample on
+      plan-format.md is the formatter on one fixture
+      (`tests/plan-format.test.ts`, four fail on the old page); the
+      names events.md now declares are held by the surface law.
 
 ## In flight
 
