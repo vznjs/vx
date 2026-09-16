@@ -536,15 +536,17 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
   )
 
   it(
-    'closes the cache handle when the run throws mid-way',
+    'a run record that cannot be written is a status line; the cache handle still closes',
     async () => {
       const fixture = await makeFixture('vx-remote-e2e-')
       const remote = startArtifactEndpoint()
-      // `recordRunBundle` is the one unguarded call between the last task
-      // finishing and the normal close. A throw there (SQLITE_BUSY past the
-      // busy_timeout, disk-full) used to skip close() entirely — leaking the
-      // SQLite handle and, with it, the run's deferred accessed_at flush, so
-      // an LRU `vx cache prune` could evict entries this run just hit.
+      // `recordRunBundle` is the last write between the final task and the
+      // normal close. A throw there (SQLITE_BUSY past the busy_timeout, a
+      // full disk) once skipped close() entirely — leaking the SQLite handle
+      // and, with it, the run's deferred accessed_at flush, so an LRU
+      // `vx cache prune` could evict entries this run just hit — and then
+      // failed the finished run with a stack. History is observability: the
+      // verdict stands, the line says what was lost, and close() still runs.
       const closeSpy = spyOn(Cache.prototype, 'close')
       const recordSpy = spyOn(Cache.prototype, 'recordRunBundle').mockImplementation(() => {
         throw new Error('SQLITE_BUSY: database is locked')
@@ -554,14 +556,16 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           files: { 'src/in.txt': 'v1' },
           config: BUILD_CONFIG,
         })
-        await expect(
-          run({
-            cwd: fixture.root,
-            tasks: ['build'],
-            log: silentLogger(fixture),
-            remoteCache: remote.layer,
-          }),
-        ).rejects.toThrow(/SQLITE_BUSY/)
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(r.ok).toBe(true)
+        expect(fixture.log).toContain(
+          '[vx] run history not recorded: SQLITE_BUSY: database is locked — the verdict above stands',
+        )
         expect(closeSpy).toHaveBeenCalled()
       } finally {
         recordSpy.mockRestore()

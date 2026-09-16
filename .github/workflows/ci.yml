@@ -67,9 +67,19 @@ jobs:
       # package's `ci` → `test`) — so the same command is the gate here
       # and on a laptop. A read across a project boundary is declared on
       # the task that needs it, never worked around with a workspace step.
+      # A 2 MiB tmpfs under /tmp for `tests/disk-full.test.ts`: the suite
+      # skips without VX_SMALL_DISK, so a laptop is not asked to mount
+      # anything and the machine whose result gates a merge runs it. Under
+      # /tmp so the sandboxed shard sees it (bwrap binds /tmp recursively).
+      - name: Mount a small disk
+        run: |
+          sudo mkdir -p /tmp/vx-small
+          sudo mount -t tmpfs -o size=2m tmpfs /tmp/vx-small
+          sudo chown "$USER" /tmp/vx-small
       - name: vx run ci
         env:
           VX_REQUIRE_SANDBOX: '1'
+          VX_SMALL_DISK: /tmp/vx-small
         run: |
           # The summary is written by a PLUGIN now, and a plugin that declines
           # writes nothing — a silent regression, since job summaries are not

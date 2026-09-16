@@ -29,7 +29,7 @@ import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { accessSync, constants, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { relPosix, UserError, xxh3, xxh3hex, span } from '../util/index.js'
+import { UserError, isDiskFull, isFsRefusal, relPosix, span, xxh3, xxh3hex } from '../util/index.js'
 import {
   ArchiveSecurityError,
   type ExecUsage,
@@ -963,13 +963,15 @@ export class Cache implements CacheLayer {
             `Declared outputs are wiped before a restore, so this is a path the output globs do not cover — remove it and re-run.`,
         )
       }
-      // Same distinction for a directory this user may not write into (a
-      // `dist/` another user owns, a read-only checkout): the artifact is
-      // intact, the tree is not the process's to change.
-      if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') {
+      // Same distinction for a tree the process cannot write into — a
+      // `dist/` another user owns, a read-only checkout, a full disk: the
+      // artifact is intact, the tree is not the process's to change.
+      if (isFsRefusal(err)) {
+        const remedy = isDiskFull(err)
+          ? 'Free space on that disk and re-run.'
+          : 'Make the declared output paths writable by this user, or stop declaring them as outputs.'
         throw new UserError(
-          `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${(err as Error).message}). ` +
-            `Make the declared output paths writable by this user, or stop declaring them as outputs.`,
+          `restore of ${hash} into ${projectDir} could not write its outputs (${code}: ${err.message}). ${remedy}`,
         )
       }
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)

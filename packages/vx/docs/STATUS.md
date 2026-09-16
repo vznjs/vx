@@ -1154,6 +1154,37 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       diagnosis, and the alternative is a nullable facts shape that
       every `getWorkspaceInfo` consumer would have to learn for a
       persona whose fix is a `chmod`.
+211.  DONE (2026-09-16, the full disk — a 2 MiB tmpfs mounts here, so
+      the persona is hostable; walked as `probe`): a save that runs out
+      of room already said `cache save failed: ENOSPC …` and let the
+      task's work stand, but a hit's restore onto a full workspace disk
+      fell through to "internal error … CorruptArtifactError: artifact
+      is not a readable archive" — 207's mislabel with a different code
+      — and a green run on a full cache disk printed its summary and
+      then died in the history write, SQLite's "database or disk is
+      full" with a stack, exit 1 over "1 success". Three changes:
+      `ENOSPC`/`EDQUOT` join the refusal class (`isDiskFull`,
+      `isFsRefusal`, a hint per kind) at the CLI's top level and the
+      scheduler; the restore names a full disk with its own remedy
+      ("Free space on that disk and re-run"); and the run record is a
+      status line when it fails ("run history not recorded: … — the
+      verdict above stands") — history is observability, and a run's
+      exit is its tasks'. Pinned as units with controls
+      (`user-error-classify.test.ts`) and end to end in
+      `disk-full.test.ts` on a small file system named by
+      `VX_SMALL_DISK`: a hit whose restore cannot write (the line, no
+      "internal error", no "corrupt artifact") and a finished run whose
+      record cannot be written (`--cache=local:r` leaves the record as
+      the one write; exit 0, the line, no frame). Root is subject to
+      ENOSPC like anyone, so the suite runs as root; it skips without
+      the variable and CI's Linux job mounts a 2 MiB tmpfs under `/tmp`
+      and sets it (the shards pass it through), as the manual gate
+      does — a gate on an env var CI sets, not a probe. Both cases fail
+      without the fix. The gate's first run caught the pin the change
+      retired: `orchestrator-remote.test.ts` forced a record throw to
+      prove `close()` still ran and expected the run to reject; it
+      asserts the status line now, the close still. `docs/caching.md`
+      and `docs/cli.md` say it.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

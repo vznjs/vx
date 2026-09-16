@@ -610,6 +610,14 @@ that misses the evaluation cache is evaluated live and not stored.
 Where the directory cannot be created at all (a read-only checkout with
 no cache yet) every verb says `cannot create cache directory <path>
 (EACCES: …)`, naming the workspace `cacheDir` field and `--cache-dir`.
+A full disk is the same kind of failure and is reported the same way,
+never as a corrupt artifact and never as a stack: a save that runs out
+of room is `[vx] cache save failed: ENOSPC …` (the task's work ran, the
+next run misses), a restore that does is the task's failure line
+`could not write its outputs (ENOSPC: …). Free space on that disk and
+re-run.`, and a run record that does is `[vx] run history not recorded:
+… — the verdict above stands` (the run exits by its tasks; `vx last`
+will not know that one).
 
 ```
 <workspaceRoot>/.vx/cache/                  (configurable via vx.workspace.ts cacheDir)

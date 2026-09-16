@@ -1353,10 +1353,12 @@ neither reads `unknown project or task: "buidl" — did you mean build?`.
 Exit codes: `0` success; `1` parse error or unknown target.
 
 Every verb: a path vx must write that this user cannot (`EACCES`,
-`EPERM`, `EROFS` — a read-only checkout, another user's files) exits 1
-with one line naming the path, `vx: EACCES: permission denied, open
-'…/vx-lock.json' — a path vx must write is not writable by this user`,
-never a stack. Inside a run the task's line says the same.
+`EPERM`, `EROFS` — a read-only checkout, another user's files) or that
+the disk has no room for (`ENOSPC`, `EDQUOT`) exits 1 with one line
+naming the path, `vx: EACCES: permission denied, open '…/vx-lock.json'
+— a path vx must write is not writable by this user` (or `— the disk
+that path is on is full`), never a stack. Inside a run the task's line
+says the same.
 
 ## `vx info`
 

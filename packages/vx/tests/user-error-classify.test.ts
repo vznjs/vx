@@ -7,7 +7,14 @@
 // The name is the contract that survives.
 
 import { describe, expect, it } from 'bun:test'
-import { isPermissionError, isUserError, UserError } from '../src/util/index.js'
+import {
+  fsRefusalHint,
+  isDiskFull,
+  isFsRefusal,
+  isPermissionError,
+  isUserError,
+  UserError,
+} from '../src/util/index.js'
 
 /** What a UserError from ANOTHER copy of core looks like: same shape, foreign class. */
 class ForeignUserError extends Error {
@@ -46,5 +53,26 @@ describe('isPermissionError', () => {
     expect(isPermissionError(new Error('EACCES: in the text only'))).toBe(false)
     expect(isPermissionError(new UserError('x'))).toBe(false)
     expect(isPermissionError({ code: 'EACCES' })).toBe(false)
+  })
+})
+
+describe('isDiskFull and the refusal hint', () => {
+  const errno = (code: string): NodeJS.ErrnoException =>
+    Object.assign(new Error(`${code}: nope`), { code })
+
+  it('is the file system out of room: ENOSPC, EDQUOT — and a refusal either way', () => {
+    for (const code of ['ENOSPC', 'EDQUOT']) {
+      expect(isDiskFull(errno(code))).toBe(true)
+      expect(isFsRefusal(errno(code))).toBe(true)
+      expect(fsRefusalHint(errno(code))).toBe('the disk that path is on is full')
+    }
+    expect(fsRefusalHint(errno('EACCES'))).toBe('a path vx must write is not writable by this user')
+  })
+
+  it('CONTROL: a permission code is not a full disk; EIO is neither', () => {
+    expect(isDiskFull(errno('EACCES'))).toBe(false)
+    expect(isPermissionError(errno('ENOSPC'))).toBe(false)
+    expect(isFsRefusal(errno('EIO'))).toBe(false)
+    expect(isDiskFull(new Error('ENOSPC in the text only'))).toBe(false)
   })
 })
