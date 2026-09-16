@@ -2,6 +2,7 @@
 // `exec: tsc: not found`, and vx names its PATH rule — the project's bin,
 // then the root's, never a sibling's — so a tool that moved reads as what
 // it is.
+import { realpathSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -76,8 +77,10 @@ describe('a tool that is not on the PATH vx built', () => {
     const r = vx(root, bin, ['run', 'build', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain('exec: tsc: not found')
-    const app = path.join(root, 'packages', 'app', 'node_modules', '.bin')
-    const rootBin = path.join(root, 'node_modules', '.bin')
+    // vx names the directories it built from the real path (macOS: /tmp → /private/tmp).
+    const real = realpathSync(root)
+    const app = path.join(real, 'packages', 'app', 'node_modules', '.bin')
+    const rootBin = path.join(real, 'node_modules', '.bin')
     expect(r.text).toContain(
       `[vx] exit 127 is the shell's "command not found": tsc is not on this task's PATH — vx puts ${app} and ${rootBin} first and never a sibling project's bin; install it in this package or at the workspace root`,
     )
