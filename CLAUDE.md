@@ -238,6 +238,19 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - A `TMPDIR` under a workspace under the runner's temp directory puts
   the sandbox runtime's socket past `sun_path` on macOS (104 bytes):
   a temp-directory pin uses a short path directly under `os.tmpdir()`.
+- An edit script that writes files before its last assertion leaves a
+  half-done tree when that assertion fails, and a chain gated on the
+  scan and the tests committed it (the STATUS trim, 2026-09-16). Gate
+  the chain on the script's own exit; make every write idempotent.
+- A list item inserted at the blank line after item N lands BEFORE
+  any item that follows N, so a cut "from N to the next item" misses
+  the one just written. Count what a cut holds before writing it out.
+- A type-checker pointed at a directory that holds a symlinked
+  `node_modules` walks it until the kernel kills it (`oxlint
+  --type-check .`, 2026-09-16). Name the files.
+- A probe's negative case is checked before its result is read: a
+  flag set to "broken" still matched a `grep -q ok` ("broken" holds
+  "ok"), and the cycle that was to fail passed (2026-09-16).
 
 ## Live invariants (verify in source before quoting)
 
