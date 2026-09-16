@@ -387,6 +387,18 @@ test is telling the truth.
       Sentry example reports the signal beside the code; the reference
       names `src/index.ts` as the façade. Every block type-checks
       against the façade (`plugins-guide-snippets.test.ts`).
+265.  DONE (2026-09-16, the CI reader's page): the CI guide's sample job
+      summary was not what `@vzn/vx-github` writes — four columns to
+      the renderer's three, `❌ failed (exit 2)` in a status cell the
+      renderer never fills (the exit lives in a Failures callout the
+      sample lacked), `success` / `cache hit` for `ran` / `cache` /
+      `remote cache`, no footer. The sample is now the renderer's
+      output for the run the page describes, and a site pin
+      (`ci-guide-summary.test.ts`, `@vzn/vx-github` a site dev
+      dependency like the schedule plugin) renders that run and checks
+      every line is on the page; the prose says where the exit code
+      and its signal go, and that core's `--report-file` writes the
+      plainer four-column report.
 
 ## In flight
 

@@ -54,6 +54,7 @@
       },
       "devDependencies": {
         "@vzn/vx": "workspace:*",
+        "@vzn/vx-github": "workspace:*",
         "@vzn/vx-schedule-history": "workspace:*",
       },
     },
