@@ -6,6 +6,8 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { parseLastArgs } from '../src/cli/index.js'
+import { formatTaskRows } from '../src/cli/last.js'
+import type { RunSummaryRow } from '../src/orchestrator/index.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
@@ -271,5 +273,67 @@ describe('parseLastArgs', () => {
     expect(parseLastArgs(['--cache-dir', '--list']).error).toMatch(/got flag/)
     expect(parseLastArgs(['--nope']).error).toMatch(/unknown flag/)
     expect(parseLastArgs(['a', 'b']).error).toMatch(/unexpected argument/)
+  })
+})
+
+// A thousand-task warm run replayed as a thousand rows put the one failure
+// a screen's height above the prompt (item 280): hits fold past sixteen.
+describe('formatTaskRows', () => {
+  const row = (task: string, over: Partial<RunSummaryRow> = {}): RunSummaryRow =>
+    ({
+      id: 0,
+      runId: 'r',
+      project: 'p',
+      task,
+      status: 'success',
+      exitCode: 0,
+      durationMs: 5,
+      startedAt: 0,
+      endedAt: 5,
+      cacheHit: false,
+      cached: true,
+      hash: 'h',
+      cpuMs: null,
+      peakRssBytes: null,
+      wallclockStartNs: null,
+      wallclockEndNs: null,
+      blockedBy: null,
+      timedOut: null,
+      sandboxViolations: null,
+      notReady: null,
+      ...over,
+    }) as RunSummaryRow
+  const hit = (n: number, ms: number) =>
+    row(`hit${n}`, { status: 'cache-hit', cacheHit: true, durationMs: ms })
+
+  it('orders failed, then executed and skipped, then hits, and folds the hits past sixteen', () => {
+    const hits = Array.from({ length: 30 }, (_, i) => hit(i, 100 - i))
+    const lines = formatTaskRows([
+      ...hits.slice(0, 10),
+      row('ran'),
+      row('boom', { status: 'failed', exitCode: 3 }),
+      ...hits.slice(10),
+      row('after', { status: 'skipped', blockedBy: 'p#boom' }),
+    ])
+    const words = lines.slice(1).map((l) => l.trim().split(/\s+/)[0])
+    expect(words.slice(0, 3)).toEqual(['failed', 'success', 'skipped'])
+    expect(words.slice(3, 19).every((w) => w === 'cache-hit')).toBe(true)
+    expect(lines.length).toBe(1 + 3 + 16 + 1)
+    // The sixteen shown are the slowest restores, in that order.
+    const shown = lines.slice(4, 20).map((l) => /hit(\d+)/.exec(l)![1])
+    expect(shown).toEqual(Array.from({ length: 16 }, (_, i) => String(i)))
+    expect(lines.at(-1)).toBe(
+      '  … +14 more cache hits (the 16 slowest restores shown) — vx last --format json lists every row',
+    )
+  })
+
+  it('sixteen hits list in full, no fold (control)', () => {
+    const lines = formatTaskRows(Array.from({ length: 16 }, (_, i) => hit(i, i)))
+    expect(lines.length).toBe(17)
+    expect(lines.some((l) => l.includes('more cache hits'))).toBe(false)
+  })
+
+  it('a run with nothing recorded renders no rows', () => {
+    expect(formatTaskRows([])).toEqual([])
   })
 })
