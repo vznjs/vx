@@ -361,7 +361,7 @@ state of each:
 13. DONE 2026-09-10 as item 120 — `vx watch` watches the projects a cycle can run.
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230 and 236 (14–14p) are in
-    `docs/history/2026-09-status-next-log.md`; 14q–14r below are the
+    `docs/history/2026-09-status-next-log.md`; 14q–14s below are the
     current ones.
 
 14q. **Handoff after item 240 (2026-09-16, night).** Four items since
@@ -412,6 +412,34 @@ consumer before trusting the doc; a race test's other process must
 strike inside the window by construction, never by polling; a
 persona's next missing binary is the next item. Never end with "what
 next?".
+
+14s. **Handoff after item 252 (2026-09-16, late morning).** Ten items
+since 14r, merged as #409–#415, from two lenses walked to their ends.
+The minimal image: a temp directory that is missing or not writable
+names TMPDIR in the sandbox verdict and the run-lock line, and a
+socket path past `sun_path` is refused up front with the limit (243,
+the darwin job taught the second shape); the `cache.inputs.runtime`
+probe names the shell (244); the sandbox's three Linux dependencies
+and the install (246 — the docs had named two); `vx upgrade` with no
+route names the host (247); a root without `workspaces` beside
+packages full of scripts names them and the glob to add (248). The
+CI container was clean and is pinned end to end (249). The plugin
+author: a malformed executor result (251) and a remote layer's wrong
+shape (252) are named as the plugin's bug, never a TypeError or a
+corrupt artifact. Housekeeping: the day's warm-path A/B, a tie (245);
+oxfmt, oxlint and the sandbox runtime current, two REAPI majors left
+(250). Open: Next 1, 2 and 16, all gated by their own terms; In-flight
+5 (macOS); the owner residue — the `NPM_TOKEN` secret, the release
+cut, the site's address. No open issues. The box: as 14p; a manual
+`su probe` needs `PATH=/opt/probe-bin:$PATH` or the sandboxed server
+task's `bun` is not found and the port-bridge tests fail for the
+invocation, not the code (250). Methods that paid: a runtime's own
+error text is a path and no knob — name the knob; a walk of one
+persona's missing pieces (git, sh, tmp, deps, network, globs) finds
+one item per piece, and each item's class is grepped in the same
+commit; a probe that confirms a thesis becomes a pin with a control
+that proves the pin can fail; a seam's resolved value is a boundary
+like its factory's. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
