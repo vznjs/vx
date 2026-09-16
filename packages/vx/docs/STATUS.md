@@ -429,6 +429,18 @@ field "0"`, and `vx info` counts a config that fails to load as
 object (fields: files, workspaceFiles), not an array — did you
 mean \`{ files: [...] }\`?`. Pinned in `schema-unknown-keys.test.ts`(outputs, inputs, a level without`files`, the object control);
 the error table in `docs/schema.md` has the row.
+220.  DONE (2026-09-16, seen under 218): `vx info` on a workspace whose
+      configs do not load printed `projects: 2 (0 tasks)` and exited 0 —
+      the doctor deliberately survives a broken config (204's fallback
+      counts the ones that load), but a zero that hides a typo is the
+      one fact a bug report needs. The fallback names them now:
+      `configErrors` (`[{ path, message }]`, the path workspace-relative,
+      the loader's message with its absolute-path prefix stripped,
+      sorted), rendered as `4 (5 tasks · 1 config did not load)` and a
+      `config errors` row present only then; `getWorkspaceInfo` carries
+      the field. Pinned in `show-info.test.ts` (the JSON entry, both
+      rows, the empty control); `docs/cli.md` § vx info,
+      `modules/doctor.md` and the MCP README say it.
 
 ## In flight
 

@@ -12,6 +12,7 @@ collectInfo(cwd, { cacheDir?, warn? }): Promise<InfoFacts>
 
 `InfoFacts` is the typed object `vx info --format json` prints: `vx`,
 `bun`, `git`, `gitStatusCache`, `workspaceRoot`, `projects`, `tasks`,
+`configErrors` (`[{ path, message }]`, the configs that did not load),
 `plugins` (`[{ name, seams }]`, the seams in `PLUGIN_HOOKS` order),
 `workers` (`{ count, source, cores, cpuQuota }`), `memory`
 (`{ usableBytes, totalBytes, cgroupLimitBytes }`), `cacheDir`,
@@ -23,7 +24,9 @@ collectInfo(cwd, { cacheDir?, warn? }): Promise<InfoFacts>
 
 - **The task count is the run's.** It comes from the same staged load a
   run uses (`loadProjects`, plugin `project` stage applied); a config
-  that fails to load counts as zero and never fails the doctor.
+  that fails to load counts as zero and never fails the doctor — and is
+  named in `configErrors`, with the loader's message, because a `0
+tasks` that hides a typo is the fact a bug report needs.
 - **The machine as the process may use it.** `workers` and `memory` read
   `util/cgroup.ts`, so inside a container they say what the cgroup
   allows and name it as the source.
