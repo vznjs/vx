@@ -45,7 +45,7 @@ sequenceDiagram
 
 ## 2. Warm run — local cache hit
 
-Owners: `cache/cache.ts:get` + `isOutputsCurrent`, `cache/archive.ts:extractArtifactStream`.
+Owners: `cache/cache.ts:get`, `orchestrator/hit-restore.ts` (`isOutputsCurrent`, the up-to-date check), `cache/archive.ts:extractArtifactStream`.
 
 ```mermaid
 sequenceDiagram
@@ -223,13 +223,13 @@ flowchart TD
     A[task has sandbox config] --> B[lazy SRT init<br/>once per run]
     B --> C[exec inside sandbox]
     C --> D{platform}
-    D -->|macOS| E[seatbelt logs violations<br/>to SandboxViolationStore]
-    D -->|Linux| F[bwrap structural deny —<br/>child sees ENOENT, usually fails itself]
-    E --> G{violations after exit?}
-    G -->|yes| H[force exit code 1 +<br/>violation lines on stderr]
+    D -->|macOS| E[seatbelt denies; the unified log<br/>records each violation]
+    D -->|Linux| F[bwrap structural deny;<br/>an strace pass records each denied call]
+    E --> G{violations inside the<br/>project after exit?}
+    F --> G
+    G -->|yes| H[force exit code 1 +<br/>violation lines in the frame]
     G -->|no| I[normal outcome]
     H --> J[not cached - the gate is<br/>effectiveExitCode == 0]
-    F --> I
 ```
 
 ## 8. `vx cache prune` — TTL + LRU
@@ -250,20 +250,21 @@ flowchart TD
     F --> G
 ```
 
-`accessed_at` is bumped on every `get`, so LRU reflects real use —
-including hits from `--dry` plans.
+`accessed_at` is bumped on every `get`, so LRU reflects real use. A
+`--dry` plan probes with `has`, which does not bump it — planning is
+read-only.
 
 ## 9. `--dry` / `--graph` — the plan path
 
 Owner: `orchestrator/plan.ts` + `plan-format.ts`. Shares
 `prepareRun` with the real path, probes the cache for predicted
-hits, executes nothing, and writes nothing except the `accessed_at`
-bump inherent to probing.
+hits with the byte-free `has`, executes nothing, and writes nothing —
+not even the `accessed_at` bump a real `get` makes.
 
 ```mermaid
 flowchart LR
     A[prepareRun<br/>discover → load → graph] --> B[per node:<br/>same key derivation<br/>as a real run]
-    B --> C[local probe: cache.get<br/>remote probe: HEAD existence check<br/>no download, no ingest]
+    B --> C[local probe: cache.has<br/>remote probe: HEAD existence check<br/>no download, no ingest, no accessed_at bump]
     C --> D{format}
     D -->|--dry| E[human table:<br/>task, hash, predicted hit/miss]
     D -->|--dry=json| F[machine JSON]

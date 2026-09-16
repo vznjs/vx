@@ -539,11 +539,6 @@ export class Cache implements CacheLayer {
         PRIMARY KEY (entry_hash, path),
         FOREIGN KEY (entry_hash) REFERENCES entries(hash) ON DELETE CASCADE
       );
-      -- Every directory under a whole-subtree output glob, with its mtime
-      -- as of the last save/restore on THIS machine (2026-09-03). On a warm
-      -- hit, unchanged mtimes prove the output SET is unchanged, replacing
-      -- the glob walk that cost 0.36 ms per hit. Machine-local: a remote
-      -- ingest writes none, and the first hit after it walks and records.
       -- Each config's ORDERED import closure (the config first), so a warm
       -- load keys it by stat-hashing the list (the file_hashes memo) instead
       -- of reading and scanning every file. Machine-local; pruned with
@@ -553,6 +548,11 @@ export class Cache implements CacheLayer {
         files_json  TEXT NOT NULL,
         created_at  INTEGER NOT NULL
       );
+      -- Every directory under a whole-subtree output glob, with its mtime
+      -- as of the last save/restore on THIS machine (2026-09-03). On a warm
+      -- hit, unchanged mtimes prove the output SET is unchanged, replacing
+      -- the glob walk that cost 0.36 ms per hit. Machine-local: a remote
+      -- ingest writes none, and the first hit after it walks and records.
       CREATE TABLE IF NOT EXISTS output_dirs (
         entry_hash  TEXT NOT NULL,
         path        TEXT NOT NULL,

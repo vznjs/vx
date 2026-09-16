@@ -70,3 +70,33 @@ describe('the docs quote the current CACHE_VERSION and SCHEMA_VERSION', () => {
     )
   })
 })
+
+/** `CREATE TABLE [IF NOT EXISTS] <name> (` blocks → name → column names. */
+function tables(sql: string): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  for (const m of sql.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?([a-z_]+) \(([\s\S]*?)\n\s*\);/g)) {
+    const columns = m[2]!
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => /^[a-z_]+\s+(TEXT|INTEGER)/.test(line))
+      .map((line) => line.split(/\s+/)[0]!)
+    out.set(m[1]!, columns)
+  }
+  return out
+}
+
+describe('caching.md § SQLite tables follows the schema cache.ts creates', () => {
+  // The block documented five of ten tables until 2026-09-16 (item 298):
+  // nothing read it against the source.
+  it('documents every table with exactly its columns', () => {
+    const source = tables(
+      readFileSync(path.join(import.meta.dir, '..', 'src', 'cache', 'cache.ts'), 'utf8'),
+    )
+    const block = /```sql\n([\s\S]*?)```/.exec(doc)
+    expect(block).not.toBeNull()
+    const documented = tables(block![1]!)
+    expect(source.size).toBeGreaterThan(5)
+    expect([...documented.keys()].sort()).toEqual([...source.keys()].sort())
+    for (const [name, columns] of source) expect(documented.get(name)).toEqual(columns)
+  })
+})

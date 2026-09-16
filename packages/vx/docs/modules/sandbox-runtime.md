@@ -8,11 +8,12 @@ Used by `executeCachedTask` when the task's config declares
 `exec.sandbox`.
 
 Policy: **fail on violation, no cache for failed tasks.** The sandbox
-enforces the declared grants at the kernel level; any task that reads
-outside them either fails naturally (Linux structural deny)
-or is detected via the macOS violation store and forced to exit
-non-zero. `cache.save` only fires when the task succeeded AND the
-violation store is empty.
+enforces the declared grants at the kernel level; a task that reads
+outside them is denied (bwrap on Linux, seatbelt on macOS), the denial
+is reported (an strace pass on Linux, the unified log on macOS), and a
+reported violation inside the project forces a non-zero exit.
+`cache.save` only fires when the task succeeded AND no violation was
+reported.
 
 ## Files
 
