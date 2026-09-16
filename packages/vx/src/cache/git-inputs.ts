@@ -623,6 +623,20 @@ export function applyGitEnumeration(
       const oid = trusted.get(rel)
       if (oid !== undefined) projOids.set(path.join(workspaceRoot, rel), oid)
     }
+    // An empty slice is a directory git did not see, not an empty project:
+    // a project has at least its package.json, tracked or untracked. What
+    // hides a directory from this listing is a nested repository — a
+    // submodule, an embedded repository — which the workspace's git holds as
+    // ONE entry (a gitlink, `dir/` when untracked) and, under a pathspec
+    // naming the project, as nothing at all; or a directory ignored
+    // outright. Storing the empty slice made the key never move: `cache.inputs
+    // matched no files`, then a stale hit under a green run once the source
+    // changed (2026-09-16). No partition instead: `resolveFiles` spawns
+    // `git ls-files` in the project's own directory, which a nested
+    // repository answers, and the files hash by content (no index OID
+    // trusted from here) — one spawn per such project per run, nothing for
+    // a workspace without one.
+    if (matches.length === 0) continue
     // setOids AFTER set — set() drops the project's OID slot.
     cache.set(projectDir, matches)
     cache.setOids(projectDir, projOids)

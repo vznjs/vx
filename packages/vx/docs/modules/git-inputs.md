@@ -33,6 +33,25 @@ content hash. The OID trust is pruned for merge-conflict stages,
 gitlinks, paths a filter converts, and paths flagged skip-worktree /
 assume-unchanged (`docs/caching.md` § Clean filters).
 
+## A project inside a nested repository
+
+A submodule, or an embedded repository, is ONE entry of the workspace
+repository's listing (a gitlink; `dir/` when untracked) and none of its
+files — and under the pathspec naming the project, nothing at all. Its
+slice of the workspace-wide enumeration is therefore EMPTY, which no
+real project's is (a project has at least its `package.json`, tracked
+or untracked), so the partition step stores no partition for it:
+`resolveFiles` spawns `git ls-files` in the project's own directory,
+which the nested repository answers, and the files hash by content — no
+index OID is trusted from here. One spawn per such project per run; a
+workspace without one pays nothing. (A directory ignored outright takes
+the same path and still enumerates nothing, as before.) Before
+2026-09-16 the empty slice was stored, `cache.inputs matched no files`,
+and the key never moved: a stale hit under a green run. What the
+workspace repository still cannot see: `--affected` (its diff shows the
+gitlink, not the files) and `workspaceFiles` globs reaching into the
+nested repository.
+
 ## What it does NOT do
 
 - Read a config, apply a project boundary, or expand a glob — the
@@ -43,7 +62,9 @@ assume-unchanged (`docs/caching.md` § Clean filters).
 ## Tests
 
 `tests/git-oid.test.ts` (ls-files parsing, OID trust, symlinks,
-renames), `tests/inputs.test.ts` and `tests/inputs-resolution.test.ts`
+renames), `tests/nested-repo-inputs.test.ts` (a project inside a
+gitlink or an untracked embedded repository: its own git enumerates it,
+and a source change is a miss), `tests/inputs.test.ts` and `tests/inputs-resolution.test.ts`
 (through the resolver), `tests/restore-git-spawns.test.ts` (spawn
 count), `tests/cache-hash-files.test.ts`, `tests/affected*.test.ts`
 (the same enumeration behind `--affected`).
