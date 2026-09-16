@@ -1199,6 +1199,20 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       `probe`. The other openers outside a run — the MCP tools, the
       schedule-history plugin, `why`, `last` — read, and 209 opens a
       read-only cache for them. `docs/caching.md` says it.
+213.  DONE (2026-09-16, from the gate's own failure): a gate stopped
+      mid-run left 255 of the sandbox runtime's mux sockets in `/tmp`
+      (`srt-mux-<pid>-<seq>.sock`), and the next unsafe step, handed a
+      recycled pid, met `EADDRINUSE` in the sandbox probe — every
+      sandboxed task would have failed the same way after any killed
+      run on a box that recycles pids. A socket file carrying THIS
+      process's pid before the runtime is up can only be a dead
+      process's, so `initSandbox` unlinks the contiguous run from seq 0
+      (a stat per file, no scan of a `/tmp` that read 7,381 entries in
+      9 ms here), guarded by a runtime-is-up flag that `resetSandbox`
+      clears. Pinned in `sandbox-runtime.unsafe.test.ts`: a regular
+      file at seq 0 under the current pid, and the probe succeeds and
+      removes it; without the fix the probe dies on the listen. The
+      manual gate clears the sockets itself too.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`

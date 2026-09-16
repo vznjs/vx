@@ -234,6 +234,30 @@ function sandboxTmpdir(): string {
  * place a domain list can take effect. Per-task precision survives where
  * it matters: a task that declared none is never handed the proxy port.
  */
+/** Whether SRT is up in this process — set by `initSandbox`, cleared by `resetSandbox`. */
+let srtUp = false
+
+/**
+ * SRT listens on `<tmpdir>/srt-mux-<pid>-<seq>.sock`, seq from 0, and a
+ * killed run leaves those files behind; when the kernel hands the pid to a
+ * later vx, its first listen meets EADDRINUSE and every sandboxed task
+ * fails (255 of them after a stopped gate, 2026-09-16). A file carrying
+ * OUR pid before SRT is up can only be a dead process's, so unlink the
+ * contiguous run from seq 0 — a stat per file, no directory scan (a 7,000
+ * entry /tmp reads in 9 ms; this is microseconds).
+ */
+async function unlinkStaleMuxSockets(): Promise<void> {
+  for (let seq = 0; seq < 64; seq++) {
+    const stale = path.join(os.tmpdir(), `srt-mux-${process.pid}-${seq.toString(36)}.sock`)
+    try {
+      await unlink(stale)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return
+      throw err
+    }
+  }
+}
+
 export async function initSandbox(opts?: {
   allowedDomains?: readonly string[]
   /**
@@ -257,12 +281,14 @@ export async function initSandbox(opts?: {
     filesystem: { denyRead: [], allowWrite: [], denyWrite: [] },
     ignoreViolations: DEFAULT_IGNORE_VIOLATIONS,
   }
+  if (!srtUp) await unlinkStaleMuxSockets()
   await SandboxManager.initialize(
     config,
     undefined,
     // enableLogMonitor — macOS-only; populates the SandboxViolationStore.
     true,
   )
+  srtUp = true
   // `initialize()` returns early once SRT is up, and on Linux the
   // availability probe brought it up with an EMPTY config before the run's
   // own call — so the run's allowlist and unix-socket allowance never
@@ -277,6 +303,7 @@ export async function resetSandbox(): Promise<void> {
   for (const tag of [...hostBridges.keys()]) releaseBridges(tag)
   const { SandboxManager } = await loadSrt()
   await SandboxManager.reset()
+  srtUp = false
   availabilityCache.clear()
   straceAvailableCache = undefined
 }
