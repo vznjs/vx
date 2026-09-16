@@ -1809,6 +1809,11 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       step) above the floor; the unit pin sits on that edge, the
       measured pin is unchanged. Not a flake dismissed: a test on a
       knife edge, moved off it.
+193.  DONE (2026-09-16): `@astrojs/starlight` 0.42.0 → 0.42.1, the one
+      dependency that moved since item 92 (`bun outdated`, six days
+      on); the site built and its link check passed in the gate. The
+      built site was also read once for tonight's doc changes: the
+      `vx info` sample and the caching paragraph render.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
