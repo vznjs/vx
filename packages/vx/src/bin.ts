@@ -43,4 +43,17 @@ async function main(): Promise<void> {
   }
 }
 
+// A reader that leaves is not the run's failure. `vx run build | head -1`
+// closes the pipe after one line; every later write gets EPIPE, which Bun
+// raises as an `error` event on the stream, and an `error` nobody listens
+// for is an uncaught exception: the run died with a stack after its task
+// had succeeded, exit 1, its lock directory left behind (2026-09-16). With
+// a listener the write returns false, the run finishes, saves, releases,
+// and exits with its own verdict; what was going to the reader goes
+// nowhere. Same for stderr (`2>&1 | head`). Here and not in the logger:
+// an embedder's streams are the embedder's.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', () => {})
+}
+
 void main()

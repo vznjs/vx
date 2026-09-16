@@ -606,6 +606,28 @@ of a task's output for its cache entry and replay`). The
       (fails at once on the old order — reproduced on Linux, where the
       e2e itself never tripped).
 
+231.  DONE (2026-09-16, a persona: the agent's pipeline): a reader that
+      leaves after the first line — `vx run build | head -1` — killed
+      the run with an EPIPE stack and exit 1 AFTER its task had
+      succeeded, and left its lock directory behind. Bun raises the
+      closed pipe as an `error` event on `process.stdout`, and an
+      `error` nobody listens for is an uncaught exception. `bin.ts`
+      listens on stdout and stderr now (the CLI's streams, not the
+      logger's — an embedder's are its own): the write returns false,
+      the run finishes, saves, releases and exits with its verdict.
+      Pinned in `bin-reader-gone.test.ts` through
+      `set -o pipefail; vx run first second | head -1` — an instant task
+      lets `head` leave, a slow one meets the closed pipe; the next run
+      is up-to-date, which needs the fingerprint the save recorded.
+      Fails on the old `bin.ts` at the first assertion (the stack).
+      Probed and clean on the way: every MCP tool and `vx info`, `why`,
+      `last` and `cache prune --dry-run` answer during a run (340 ms at
+      most, item 230's open order); a task that runs `vx run` on its
+      own workspace is refused before it starts; a `fetch-depth: 1`
+      checkout with `--affected` in its three shapes (no base, a base
+      not fetched, a PR head against a depth-1 base) says the right
+      thing each time.
+
 ## In flight
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
@@ -660,9 +682,9 @@ state of each:
    cannot run as root inside a container; Windows is WSL; macOS
    violation reporting is lossy under load (In-flight 5); the remote
    seam moves whole artifacts in memory (Next 2, fine below ~100 MiB);
-   a task's captured output is kept whole (Next 20); a project inside a
-   submodule is enumerated by its own repository (221). An article
-   links it.
+   a task's replayed output is its first and last 8 MiB (229); a project
+   inside a submodule is enumerated by its own repository (221). An
+   article links it.
 
 ## Next (ordered)
 

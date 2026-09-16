@@ -201,6 +201,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   large stdout write (2 MiB written, 1.1 MiB read, 2026-09-15). `bin.ts`
   ends stdout and exits in its callback; a verb never calls
   `process.exit` itself, and a pin's reader starts late on purpose.
+  And `bin.ts` alone listens for `error` on stdout and stderr: a reader
+  that leaves (`| head -1`, EPIPE) is an `error` event, and an unheard
+  one killed a green run with a stack and exit 1 (2026-09-16).
 - A platform unit (bytes vs kilobytes, ms vs µs) is measured, never
   asserted: pin it by producing a known quantity and reading it back
   within a bounded factor. A pure-function test of the conversion only
