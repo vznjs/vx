@@ -604,6 +604,17 @@ test is telling the truth.
       a second pin beside 277's renders that block and compares byte
       for byte. Found by reading the walkthrough's real frame (276)
       against the page that describes it.
+279.  DONE (2026-09-16, the class of 277–278, the last sweep of the
+      output docs): `modules/status-line.md` described a Failures zone
+      pinned above the worker rows — `✗ <id> ── failed (exit N)`, five
+      then `… +K more failed` — that the region no longer has: its
+      state pins persistent tasks only, and a failure is the permanent
+      `◼` row logged the moment it happens (`formatFailureLine`), its
+      frame deferred to runEnd. The page now says so; four logger
+      comments that called the row a "✗ marker" say `◼` row (the
+      owner's quoted design line keeps its ✗). Found by grepping the
+      docs for the shapes 277 and 278 retired: no README, guide or
+      blog post carries them, and this was the one claim left.
 
 ## In flight
 

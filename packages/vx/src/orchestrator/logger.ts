@@ -257,11 +257,12 @@ export function defaultLogger(
   let spreadMin = Infinity
   let spreadSum = 0
   let spreadCount = 0
-  // Pinned zones above the worker rows: failures accumulate as they
-  // happen; persistent tasks pin at ready (their outcome lands while
-  // the child keeps running). Both live until runEnd kills the region.
-  // Full failure frames, deferred to runEnd (owner: '✗ line, continue,
-  // all full frames at the end'). 'full'/CI keeps frames inline.
+  // The pinned zone above the worker rows: persistent tasks pin at
+  // ready (their outcome lands while the child keeps running) and live
+  // until runEnd kills the region. A failure is not pinned: it is a
+  // permanent ◼ row the moment it happens, and its full frame is
+  // deferred to runEnd (owner: '✗ line, continue, all full frames at
+  // the end'). 'full'/CI keeps frames inline.
   const deferredFailures: string[] = []
   const pinnedPersistent: string[] = []
   let flushedFailures = false
@@ -452,8 +453,8 @@ export function defaultLogger(
         }
       }
       // Failures end the log: every deferred frame replays here, right
-      // above the summary — the ✗ one-liners marked them in the
-      // stream, the full diagnostics read last where eyes land.
+      // above the summary — the ◼ rows marked them in the stream,
+      // the full diagnostics read last where eyes land.
       // Guarded for repeat runEnd calls.
       if (!flushedFailures && deferredFailures.length > 0) {
         flushedFailures = true
@@ -595,7 +596,7 @@ export function defaultLogger(
           // their replay buffers are deliberately dropped; the counts
           // surface in the end-of-run summary.
           if (outcome.status === 'failed') {
-            // ✗ marker now; the full frame replays at runEnd.
+            // ◼ row now; the full frame replays at runEnd.
             emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
             deferredFailures.push(
               formatTaskBlock(node, outcome, { stdout, stderr, ...dropped }, colors),
@@ -643,7 +644,7 @@ export function defaultLogger(
             return
           }
           // Dependency-pulled nodes: silent on success; failures get
-          // the ✗ marker now and their frame replayed at runEnd.
+          // the ◼ row now and their frame replayed at runEnd.
           if (outcome.status === 'failed') {
             emitLine(formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(node)))
             deferredFailures.push(
