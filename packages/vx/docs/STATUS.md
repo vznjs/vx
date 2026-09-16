@@ -1144,7 +1144,16 @@ it as an output`. Pinned in `inputs.test.ts` on a 0o500 `dist/`,
       show verb names the cache directory and `--cache-dir`, the lock
       verb names the lockfile, neither prints a frame) — the last two skipped
       as root and proven both ways as `probe`; `docs/cli.md` (§ vx run)
-      and `docs/caching.md` say it.
+      and `docs/caching.md` say it. Next 6 on this head, after 206–210
+      put two `access` calls, a guarded `mkdir` and one axis check on
+      every run's cache open: 1,000 projects 232 ms warm / 711 restore /
+      2,542 cold (medians of 5; the morning's 237 / 744 / 2,520, midday's
+      244 / 700 / 2,570) — inside jitter, as the microseconds said.
+      Considered and declined: a doctor that prints the facts it can
+      when the cache directory cannot be created. Its one line is the
+      diagnosis, and the alternative is a nullable facts shape that
+      every `getWorkspaceInfo` consumer would have to learn for a
+      persona whose fix is a `chmod`.
 
 **The restore arm is at its floor (2026-09-10, late night).** The
 1,000-project warm-restore run spends its wall in `restore: extract`
