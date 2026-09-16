@@ -1204,6 +1204,65 @@ describe('sandbox probe', () => {
   // A temp directory that is not there fails the runtime's own mkdtemp;
   // the verdict named the path and no knob (item 243).
   it(
+    "a temp directory too long for the runtime's socket: the verdict names TMPDIR",
+    async () => {
+      if (!(await sandboxAvailable('tmpdir too long'))) return
+      const root = await makeWorkspaceRoot({ prefix: 'vx-sandbox-tmplong-' })
+      try {
+        await addProject(root, 'app', {
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  exec: { command: 'echo built', sandbox: {} },
+                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                },
+              },
+            }
+          `,
+          files: { 'src/a.txt': 'a1\n' },
+        })
+        // An EXISTING directory whose socket path is just past the limit.
+        const limit = process.platform === 'darwin' ? 103 : 107
+        const base = path.join(os.tmpdir(), 'vx-long-')
+        const long =
+          base + 'x'.repeat(Math.max(1, limit - base.length - 'srt-mux-1-zzz.sock'.length + 8))
+        await mkdir(long, { recursive: true })
+        try {
+          const p = Bun.spawnSync({
+            cmd: [
+              process.execPath,
+              path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+              'run',
+              'build',
+              '--all',
+            ],
+            cwd: root,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: { ...process.env, NO_COLOR: '1', CI: '', TMPDIR: long },
+          })
+          const text = new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
+          expect(p.exitCode).toBe(1)
+          expect(text).toContain(
+            'sandbox not available: the sandbox runtime listens on a unix socket under the temp directory, and ',
+          )
+          expect(text).toContain(
+            `bytes where the OS allows ${limit} — point TMPDIR at a shorter path`,
+          )
+          expect(text).not.toContain('Failed to create bridge sockets')
+          expect(text).not.toContain('ENAMETOOLONG')
+        } finally {
+          await rm(long, { recursive: true, force: true })
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a temp directory that is not there: the verdict names TMPDIR',
     async () => {
       if (!(await sandboxAvailable('tmpdir refusal'))) return
@@ -1222,7 +1281,11 @@ describe('sandbox probe', () => {
           `,
           files: { 'src/a.txt': 'a1\n' },
         })
-        const missing = path.join(root, 'no-such-tmp')
+        // Directly under the temp directory, not under the workspace: the
+        // runtime's first temp use on macOS is a unix socket, and a path
+        // under a workspace under the runner's temp directory was past the
+        // socket limit (ENAMETOOLONG on the darwin job, not ENOENT).
+        const missing = path.join(os.tmpdir(), `no-such-tmp-${process.pid}`)
         const p = Bun.spawnSync({
           cmd: [
             process.execPath,
@@ -1241,7 +1304,7 @@ describe('sandbox probe', () => {
         expect(text).toContain(
           'sandbox not available: the sandbox runtime needs a writable temp directory and ',
         )
-        expect(text).toContain('no-such-tmp is not one (ENOENT:')
+        expect(text).toContain(`${missing} is not one (ENOENT:`)
         expect(text).toContain('point TMPDIR at a writable directory')
       } finally {
         await rm(root, { recursive: true, force: true })

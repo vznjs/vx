@@ -82,7 +82,18 @@ test is telling the truth.
       has the lock and no line) and in the unsafe sandbox suite (the
       verdict, under a real sandbox as `probe`). Both fail without the
       fix; a sandboxed probe passing for the wrong reason was ruled out
-      by running it on the old source as `probe`.
+      by running it on the old source as `probe`. The darwin job then
+      taught the second shape: the runtime's first temp use on macOS is
+      its unix socket, and a TMPDIR under the workspace put the socket
+      path past `sun_path` (104 bytes on macOS, 108 on Linux) —
+      ENAMETOOLONG there, "Failed to create bridge sockets after 5
+      attempts" on Linux (the runtime's retry loop swallows the code),
+      neither naming the directory. `socketPathRefusal` checks the
+      length up front in the probe and says the path, its length, the
+      limit and "point TMPDIR at a shorter path"; pinned in the unsafe
+      suite with an existing directory just past the limit (fails
+      without it as the bridge-sockets line), and the missing-TMPDIR pin
+      uses a short path directly under the temp directory.
 
 244.  DONE (2026-09-16, the class of 242 grepped): the one other
       `sh -c` in core, the `cache.inputs.runtime` probe, said "failed

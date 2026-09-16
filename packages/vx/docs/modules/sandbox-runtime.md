@@ -153,7 +153,12 @@ export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult
    directory, the bridge sockets, the strace log all live under
    `os.tmpdir()`) names the knob: the sandbox runtime needs a writable
    temp directory and the one it has is not one, point TMPDIR at a
-   writable directory.
+   writable directory. The probe also refuses up front a temp directory
+   whose socket path is past the OS limit (`sun_path`, 108 bytes on
+   Linux and 104 on macOS): past it the runtime said ENAMETOOLONG on
+   macOS and "Failed to create bridge sockets after 5 attempts" on
+   Linux, neither naming the directory; the verdict now gives the path,
+   its length, the limit and "point TMPDIR at a shorter path".
 2. **`initSandbox`** is called once per `vx run` IF at least one task
    in the graph declares `sandbox`. It calls `SandboxManager.initialize`
    with a deny-all baseline (network blocked, no filesystem allows);

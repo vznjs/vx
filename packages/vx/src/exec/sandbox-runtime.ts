@@ -103,6 +103,8 @@ async function probeUncached(weakerNested: boolean): Promise<SandboxAvailability
   }
   const deps = SandboxManager.checkDependencies()
   if (deps.errors.length > 0) return { available: false, reason: deps.errors.join('; ') }
+  const long = socketPathRefusal()
+  if (long !== undefined) return { available: false, reason: long }
   if (process.platform === 'linux') {
     await initSandbox()
     return trySandboxedTrue(SandboxManager, weakerNested)
@@ -179,6 +181,22 @@ async function trySandboxedTrue(
   } catch (err) {
     return { available: false, reason: thrownReason(err, 'sandbox probe threw') }
   }
+}
+
+/**
+ * The runtime listens on `<tmpdir>/srt-mux-<pid>-<seq>.sock`, and a unix
+ * socket path has a hard length (`sun_path`: 108 bytes on Linux, 104 on
+ * macOS, one of them the NUL). Past it the runtime says "ENAMETOOLONG …
+ * listen" on macOS and "Failed to create bridge sockets after 5 attempts"
+ * on Linux (its retry loop swallows the code), neither naming the
+ * directory (2026-09-16). Checked up front, with room for the sequence.
+ */
+export function socketPathRefusal(tmpdir = os.tmpdir()): string | undefined {
+  const sample = path.join(tmpdir, `srt-mux-${process.pid}-zzz.sock`)
+  const limit = process.platform === 'darwin' ? 103 : 107
+  const length = Buffer.byteLength(sample)
+  if (length <= limit) return undefined
+  return `the sandbox runtime listens on a unix socket under the temp directory, and ${sample} is ${length} bytes where the OS allows ${limit} — point TMPDIR at a shorter path`
 }
 
 /**
