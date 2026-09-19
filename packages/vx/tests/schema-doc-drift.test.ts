@@ -13,6 +13,7 @@
 // cannot land unpinned, and a removed row fails until its case goes too.
 
 import { afterAll, describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { ESSENTIAL_ENV } from '../src/exec/env.js'
@@ -507,5 +508,43 @@ describe('docs/schema.md reprints the config interfaces as they are', () => {
       if (missing.length > 0 || invented.length > 0) drift[name!] = { missing, invented }
     }
     expect(drift).toEqual({})
+  })
+})
+
+// The other half of the same contract: the table above pins what the loader
+// REFUSES; this pins that everything it ACCEPTS is written down. Every
+// `assertKnownFields` set is a list the schema owns, and a field added to one
+// without a line in schema.md is a config key users cannot discover.
+//
+// Honest about its own reach: the check is "the name appears on the page",
+// which a short generic name (`env`, `files`) satisfies trivially. That is
+// fine for what it is for — a NEW field's name is distinctive
+// (`weakerNetworkIsolation`, `workspaceRuntime`), and a new field is the
+// drift this catches. The first draft searched for the name in BACKTICKS
+// alone and reported four false gaps, because the page writes them qualified
+// (`exec.env`, `cache.inputs.env`) — the naive-selector failure of items 377,
+// 380 and 384 a fourth time (item 386, 2026-09-19).
+describe('schema.md documents every field the loader accepts', () => {
+  it('each assertKnownFields set is named on the page', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'workspace', 'config-schema.ts'),
+      'utf8',
+    )
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'schema.md'), 'utf8')
+    const sets = [...src.matchAll(/const (\w*FIELDS) = new Set(?:<string>)?\(\[([^\]]*)\]/g)].map(
+      (m) => ({ name: m[1]!, fields: [...m[2]!.matchAll(/'([^']+)'/g)].map((f) => f[1]!) }),
+    )
+    // The sets that spread others (GRANT_FIELDS) list no literals of their
+    // own; the ones with literals are what a config may spell.
+    const named = sets.filter((s) => s.fields.length > 0)
+    expect(named.map((s) => s.name)).toContain('TASK_FIELDS')
+    expect(named.length).toBeGreaterThan(8)
+    const missing: string[] = []
+    for (const set of named) {
+      for (const field of set.fields) {
+        if (!new RegExp(`\\b${field}\\b`).test(doc)) missing.push(`${set.name}: ${field}`)
+      }
+    }
+    expect(missing).toEqual([])
   })
 })

@@ -1065,6 +1065,30 @@ build` and this file records a Bun-specific hazard for exactly
       `description` is folded — the fact the tasks GUIDE omitted until
       item 379. The fingerprint list, the invalidation table, both
       version constants and the SQLite schema were already pinned.
+386.  DONE (2026-09-19, the other half of the schema contract, and my
+      naive selector for the fourth time). `schema.md`, the config
+      contract. Its § TaskConfig documents every field the loader
+      accepts — checked set by set against `config-schema.ts`'s
+      `assertKnownFields` lists, all eleven of them, and nothing is
+      missing.
+      What was missing is the PIN. The page's validation-error table
+      is driven by the table itself (a row without a case that
+      provokes it fails), and the plugins bullet is held to
+      `PLUGIN_HOOKS` — both cover what the loader REFUSES. Nothing
+      covered what it ACCEPTS, so a field added to any set could ship
+      as a config key users cannot discover. Pinned now, and the pin
+      states its own reach: "the name appears on the page" is
+      trivially true for a short generic name (`env`, `files`) and
+      decisive for a new one (`weakerNetworkIsolation`,
+      `workspaceRuntime`), which is the drift it is for. Proven by
+      adding an `undocumentedKnob` to `CACHE_OUTPUT_FIELDS`.
+      The first draft searched for each name in BACKTICKS alone and
+      reported four false gaps — `env` twice, `workspaceRuntime`,
+      `weakerNetworkIsolation` — because the page writes them
+      qualified (`exec.env`, `cache.inputs.env`). That is the
+      naive-selector failure of 377, 380 and 384 a FOURTH time, and
+      the tell is always the same: the differential that matters (does
+      a real new field fail?) was never the one the first draft ran.
 
 ## In flight
 
