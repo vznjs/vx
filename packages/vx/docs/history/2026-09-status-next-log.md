@@ -1268,3 +1268,77 @@ util-cgroup (09-12) — then the 09-16 pages the day's own items wrote
 are current by construction; then the trim; then Next 6's re-measure
 only when warm-path code moves (none did today). Never end with "what
 next?".
+
+14ae. **Handoff after item 332 (2026-09-16, late night).** Six items
+since 14ad, and the oldest-page queue is exhausted: 327 (util-hash,
+util-ulid, version), 328 (bin, chained-cache, config), 329
+(fingerprint, lockfile-claim, task-log-buffer), 330 (the five util
+pages), 331 (package-graph, projects, timing), 332 (config-schema,
+index, plugin, plugin-host, plugins, util-cgroup). Every module page
+under `docs/modules/` has now been read against its source once in
+this series (306–332), and the 09-16 pages the day's own items wrote
+are current by construction. The finds of this stretch: a façade page
+that described the surface of a month ago (thirty names gone, twenty
+missing), a transitive closure described as the DFS a 2026-09-09
+profile replaced, a timing page naming a third of its labels, a host
+page with a `vx init` hint the host no longer raises, an every-export
+pin that reads the file (`config.ts`, `projects.ts`, `plugin-host.ts`,
+`index.ts` by column) and a tests list pinned to a suite's `it` names.
+`tests/module-shape-drift.test.ts` holds seventy-three shapes, its
+constants, samples, error sets, export lists, the timing labels and
+the façade. 326 went in #472, 327 #473, 328 #474, 329 #475, 330 #476,
+all merged; 331 is #477 (open) and 332 stacks on it. Open: Next 1, 2
+and 16, gated by their own terms; In-flight 5 (macOS); the owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues. The loop holds 306–332; the next trim moves them to
+history. The box: the pages that drifted furthest were the ones that
+describe a LIST the code owns (exports, labels, tests, hooks) — a list
+in prose is a snapshot, and the pin is what makes it a mirror; a page
+that reads true (plugin, plugins, four of five util pages) is still
+read, since the series' worth is the coverage, not the find count.
+Methods that paid: the same three-pages-per-item cadence; deriving a
+list pin from the source's own regularity (`mark('…')`, `it('…')`,
+`export {…} from`) rather than from the page. Next: the trim (306–332
+to `docs/history/`, this handoff's summary in their place); then the
+site pages under `packages/vx-docs/src/content/docs/` by the same
+oldest-page queue, guides first (each already has sample pins from
+297–305, so the read is prose); then Next 6's re-measure only when
+warm-path code moves (none did today). Never end with "what next?".
+
+14af. **Handoff after item 383 (2026-09-19, evening).** Eleven items
+since 14ae, and the arc has a single shape: a claim is pinned on ONE
+copy and the second copy drifts. 373 paid the trim 14ae called for;
+374 was a test racing the clock it asserted about, found by that
+trim's own CI. Then the site pages, three per item, by last-touch
+order: 375 otel-bridge / running-tasks / environment-variables, 376
+trusting-the-cache / remote-execution / why-vx-is-fast, 377 mcp /
+sandboxing / caching, 378 ci / remote-caching / workspace-config, 379
+tasks / dev-tasks / extensibility, 380 lockfiles / plugins /
+how-vx-works, 381 task-dependencies + the three top-level pages, 382
+the two migrate pages. 383 started the CONTRACT pages under
+`packages/vx/docs`: README, patterns, comparison.
+The finds, in one line each: a dead `timeoutMs` option (375); a
+promise `vx why` made in three places and proved in none (376); a
+header calling six tools four and a 144-line file ~100 (377); a
+four-rung precedence ladder printed with three (378); a stage table
+two hooks short and a `description` sold as inert (379); a
+paragraph two keys short (380); the SAME stage table wrong on a third
+page my own 379 pin had not greped for (381); a migration table
+missing `extends` (382); a benchmark table attributed to the wrong
+workspace and a headline quoting a superseded wave (383).
+The method that paid, and it sharpened twice: pin a list the CODE
+owns, and DISCOVER the pages rather than listing them (381), because
+a listed pin holds only the copies someone remembered. Twice a pin's
+own selector was the bug — `about N lines` missed `~100` (377), and a
+whole-page key search let one paragraph cover for another's omission
+(380) — so run the differential that MATTERS, not the one that is
+easy. And a pin should hold the claim the page makes, not the shape
+another page made it in (382).
+Next: the nine remaining contract pages by the same queue
+(`comparison.md` is only spot-read — 595 lines, and its gap lists are
+the most drift-prone prose in the repo), then the blog's 31 posts.
+The loop holds 353–383, thirty-one entries; the trim convention
+(item 373) moves a prefix to history at forty. Open: Next 1, 2 and
+16, gated by their own terms; Next 6 parked until a run-path change;
+the owner residue — the `NPM_TOKEN` secret, the release cut, the
+site's address. Never end with "what next?".
