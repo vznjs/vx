@@ -19,8 +19,9 @@ it needs.
 ## The stages
 
 ```
-config → project → graph → key → fingerprint → schedule
-        → executor / cache → telemetry / setup → commands
+config → project → graph → key → fingerprint → schedule → admit
+        → executor / cache → telemetry
+setup and teardown wrap the run; commands adds a verb
 ```
 
 | Stage         | What a plugin can do there                                                                 |
@@ -31,11 +32,13 @@ config → project → graph → key → fingerprint → schedule
 | `key`         | Contribute extra cache-key material per task.                                              |
 | `fingerprint` | Claim a lockfile out of the workspace fingerprint and key it per project.                  |
 | `schedule`    | Return a priority per ready task.                                                          |
+| `admit`       | Vet each local dispatch against what is running right now; `false` holds the task.         |
 | `executor`    | Decide where one task's command runs.                                                      |
 | `cache`       | Provide a layer where artifacts live.                                                      |
 | `telemetry`   | Receive immutable run records. Cannot change behaviour, by construction.                   |
+| `setup`       | Validate once before any capability is used.                                               |
 | `commands`    | Add a CLI verb. Core's verbs match first; nothing can shadow `vx run`.                     |
-| `setup`       | Validate once before any capability is used; `teardown` flushes at the end.                |
+| `teardown`    | Flush and close at the end of the run.                                                     |
 
 A plugin is `definePlugin(import.meta, hooks)`. Its name is its package
 name, read from `import.meta`, never a field you set. Declaration order
@@ -56,7 +59,8 @@ them without a special case in core:
   its own project's dependency closure. `--affected` follows the same
   claim.
 - **`@vzn/vx-schedule-history`** fills `schedule` with the critical path
-  learned from run history.
+  learned from run history, and `admit` with a memory reservation packed
+  from what each task used before.
 - **`@vzn/vx-reapi`** provides both `executor` and `cache` against any
   Bazel Remote Execution API server: remote cache and remote execution
   from one plugin.

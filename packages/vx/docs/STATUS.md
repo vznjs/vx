@@ -265,6 +265,26 @@ test is telling the truth.
       a control. Every remaining post is now read except
       pipeline-with-seams, remote-execution, the-sandbox and
       config-in-typescript (and the three PR #487 holds).
+343.  DONE (2026-09-16, the three internals posts: pipeline-with-seams,
+      the-sandbox, remote-execution). pipeline-with-seams tabulated
+      eleven of the thirteen `PLUGIN_HOOKS`: `admit` was in neither the
+      diagram nor the table, and `teardown` rode inside `setup`'s row —
+      the shape PR #487 found in what-vx-is on the same list. Its table
+      is now the list in the list's own order, pinned to it, and
+      `@vzn/vx-schedule-history` is named on both the stages it fills.
+      the-sandbox named two of the three binaries the Linux runtime
+      requires (`rg` expands its mandatory deny globs; the runtime's own
+      error has named all three since item 246, and its docblock records
+      the minimal image that failed on the third), eight of the nine
+      `SandboxGrants` keys (`gitConfig`), and called `allow` plus
+      `ignore` "the whole permission surface" with no word of `deny`,
+      which is evaluated first. remote-execution reads true: its four
+      placement rules are `pinnedLocalSet`'s fields, `@vx/reapi` is the
+      executor's own name (the plugin's name is its package name; the
+      executor's is not), and the cache-only decline is `caps.execEnabled`
+      with a warning. Five pins, four failing on the old pages; the
+      remote-execution pair are controls. Left in the blog:
+      config-in-typescript, plus the three PR #487 holds.
 
 ## In flight
 
