@@ -421,8 +421,10 @@ status word) the task axis.
 | `⇣`   | restored from remote       | success        |
 | `◼`   | failed                     | failed         |
 | `⊘`   | skipped (blocked upstream) | skipped        |
-| `⦿`   | running (worker row)       | running        |
 | `▸`   | persistent (dev server)    | running        |
+
+A live WORKER row carries no glyph: the ticking elapsed time leads it,
+which is the motion the run has instead of a spinner.
 
 Per-task visibility by outcome. Each cell is the SHAPE of what prints —
 `silent`, `one-liner`, `frame`, or a conditional; the table is pinned to
