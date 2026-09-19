@@ -1036,6 +1036,35 @@ build` and this file records a Bun-specific hazard for exactly
       and the tell is mechanical — a path under a package directory
       that exists is a citation, one under a package that does not is
       an illustration. The pin tells them apart and says so.
+385.  DONE (2026-09-19, two steps of the key derivation in the wrong
+      order). `caching.md` — the stale-hit-critical contract, and the
+      page CLAUDE.md's worst-failure-class rule points at.
+      Its § Cache key derivation is a numbered list that SAYS it
+      describes the parts "in order", and the composition is a SEED
+      CHAIN (`xxh3(part, prevDigest)`): swap two parts and the digest
+      changes. Steps 11 and 12 were inverted against the fold. The
+      code folds `plugin:` between `upstream:` and `inputs:`; the page
+      put the input files at 11 and the plugin material at 12 — while
+      that step's own TEXT said "folded after the upstream keys",
+      which is right, so the prose and its own numbering disagreed.
+      Anyone re-deriving a key from this page — a plugin author
+      checking their material lands, a future refactor — would have
+      produced a different one.
+      Swapped, with "and BEFORE the input files" added to the
+      sentence that was already half right, and pinned: the labelled
+      folds are read from `key()` in source order
+      (`task`, `workspace`, `pkg`, `config`, `forward-args`,
+      `env-values`, `runtime-values`, `ws-runtime-values`, `upstream`,
+      `plugin`, `inputs`) and each numbered step must be the next one,
+      with step 1 the unlabelled `CACHE_VERSION`. A twelfth part
+      cannot be folded without a documented step. Proven by putting
+      the inversion back — it fails on `plugin`.
+      The rest of the page holds. Its "What's NOT in the key" list is
+      exactly right, including the `exec.timeout` / `exec.retries`
+      asymmetry it flags as easy to misread, and its step 5 says
+      `description` is folded — the fact the tasks GUIDE omitted until
+      item 379. The fingerprint list, the invalidation table, both
+      version constants and the SQLite schema were already pinned.
 
 ## In flight
 
