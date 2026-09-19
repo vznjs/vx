@@ -100,3 +100,29 @@ describe('the plugin hook tables follow PLUGIN_HOOKS', () => {
     expect(out).toContain('schedule')
   })
 })
+
+// CLAUDE.md sends a reader to `design/pipeline-2026-09.md` for the seam
+// contract, and that page is marked "shipped" — so its rules read as current.
+// Rule 5 said a workspace with no `executor` or `cache` "fails before any task
+// runs", which is the shape that was REJECTED: `plugin-host.ts` pushes
+// `localExecutor()` as the tail of every list, so a workspace with no
+// `vx.workspace.ts` runs and caches (CLAUDE.md principle #7, the local FLOOR).
+// The rule is marked superseded now, and this holds the two together: while
+// the floor is in the source, the design page may not state the rule it
+// replaced as live (item 371, 2026-09-19).
+describe('the pipeline design does not contradict the local floor', () => {
+  it('the floor is in plugin-host.ts, and Rule 5 is marked superseded', async () => {
+    const host = await Bun.file(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'plugin-host.ts'),
+    ).text()
+    // The tail push IS the floor; if it ever goes, Rule 5 becomes true again
+    // and this test should be revisited rather than silenced.
+    expect(host).toContain('executors.push(localExecutor())')
+    const design = await Bun.file(path.join(DOCS, 'design', 'pipeline-2026-09.md')).text()
+    const rule = design.slice(design.indexOf('5. **No hook is applied by default.**'))
+    const body = rule.slice(0, rule.indexOf('\n6. '))
+    expect(body).toContain('SUPERSEDED')
+    // The live claim must be struck, not merely footnoted.
+    expect(body).toContain('~~A workspace with no `executor` or')
+  })
+})

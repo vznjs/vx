@@ -919,6 +919,37 @@ build` and this file records a Bun-specific hazard for exactly
       and the differential proves it catches what the balance test
       cannot: set the heaviest file to 1.2× ideal and the old test
       still passes while the new one fails.
+371.  DONE (2026-09-19, `design/pipeline-2026-09.md` — the seam
+      contract CLAUDE.md cites and the one major document this arc
+      never read). It is marked "shipped", so its rules read as
+      current, and Rule 5 says a workspace with no `executor` or
+      `cache` "fails before any task runs, naming the fix". That is
+      the shape the project REJECTED. `plugin-host.ts` pushes
+      `localExecutor()` as the TAIL of every list and the local store
+      ends every cache chain, so a workspace with no `vx.workspace.ts`
+      runs and caches — principle #7's local floor, stated in CLAUDE.md
+      and contradicted by the page CLAUDE.md sends you to. Rule 5 is
+      struck and marked superseded now, with the half that still holds
+      kept (core NAMES no plugin; a capability a plugin must supply is
+      declared or it does not exist). Its status line was wrong the
+      other way: it said the verb move-out "remains", when the move-out
+      happened and differed from the plan — `vx migrate` went to
+      `@vzn/vx-migrate`, `vx prune` was REMOVED rather than moved,
+      `vx upgrade` stayed in core, `@vzn/vx-cli-extras` never existed,
+      and core's verb list is thirteen where the design predicted
+      eight. The line says that now and points at `src/util/verbs.ts`.
+      The grep found one sibling, `plugin-executor-reapi-2026-08.md`,
+      which describes the same rejected shape down to
+      `localExecutorPlugin()` under `src/plugins/` — a directory a test
+      asserts does not exist. Left alone deliberately: it is a
+      superseded 2026-08 design that nothing cites as live, and
+      rewriting the record of a rejected shape would destroy the
+      evidence that it was considered. The difference is that
+      CLAUDE.md points at the 2026-09 page and calls it the design.
+      Pinned both ways: while `executors.push(localExecutor())` is in
+      the source, Rule 5 must carry its strike — and if the floor ever
+      leaves, the pin fails too, so the note gets revisited instead of
+      quietly outliving what superseded it.
 
 ## In flight
 
