@@ -1,5 +1,21 @@
 # Per-task executor seam + `@vzn/vx-reapi` (2026-08)
 
+> **Status: shipped in part, superseded in part (read with 2026-09 in
+> hand).** The executor seam itself landed and `@vzn/vx-reapi` ships as
+> the proof of it — that half is current, and `modules/executor.md` cites
+> § 4 for the `outputs` discriminator a later design still owes. Three
+> things here did NOT survive the 2026-09 direction. The **local plugins**
+> (`localExecutorPlugin()` / `localCachePlugin()` under `src/plugins/`,
+> and with them "a workspace that declares none fails before any task
+> runs") were replaced by core's local FLOOR: `plugin-host.ts` pushes
+> `localExecutor()` as the tail of every list, so a workspace with no
+> `vx.workspace.ts` runs and caches, and `src/plugins/` is a directory a
+> test asserts does not exist. The **`backend` capability** was removed —
+> no `backend` appears in `config.ts` or `plugin-host.ts`. And
+> **vx-cloud**, which this design says "is NOT deleted … it coexists", is
+> gone entirely; a first-party cloud is on CLAUDE.md's rejected list.
+> `design/pipeline-2026-09.md` is the current seam contract.
+
 Owner decision, 2026-08-22: vx-cloud is too complex to set up and work with.
 Core becomes the thing anyone can build a "vx cloud" on top of, through
 plugins alone; the Bazel Remote Execution API (REAPI) is the first such

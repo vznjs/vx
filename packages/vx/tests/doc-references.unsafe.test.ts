@@ -298,3 +298,48 @@ describe("CLAUDE.md's invariants cite suites that prove them", () => {
     expect(missing).toEqual([])
   })
 })
+
+// A design doc is a record of intent at a date, and a stale record is fine —
+// until live documentation promotes one to a contract. Item 371 found
+// `pipeline-2026-09.md`, marked "shipped", carrying a rule the local floor had
+// replaced, and CLAUDE.md sends readers there for the seam contract. The
+// general shape: a design doc CITED by a live page (or by CLAUDE.md) must say
+// what became of it, so a reader knows whether they are holding a contract or
+// a snapshot. Uncited design docs are left alone on purpose — rewriting the
+// record of a rejected shape destroys the evidence it was considered
+// (item 372, 2026-09-19).
+describe('every design doc live documentation cites says what became of it', () => {
+  it('each cited design page carries a status line', async () => {
+    const pkg = path.resolve(import.meta.dir, '..')
+    const repoRoot = path.resolve(pkg, '..', '..')
+    const citers = [
+      path.join(repoRoot, 'CLAUDE.md'),
+      // `scanSync` yields an iterator, not an array — spread before mapping.
+      ...[...new Bun.Glob('docs/*.md').scanSync({ cwd: pkg })].map((r) => path.join(pkg, r)),
+      ...[...new Bun.Glob('docs/modules/*.md').scanSync({ cwd: pkg })].map((r) =>
+        path.join(pkg, r),
+      ),
+    ]
+    const cited = new Set<string>()
+    for (const file of citers) {
+      // STATUS.md logs history, including designs that were superseded.
+      if (path.basename(file) === 'STATUS.md') continue
+      for (const m of (await Bun.file(file).text()).matchAll(/design\/([a-z0-9-]+)\.md/g)) {
+        cited.add(m[1] as string)
+      }
+    }
+    expect(cited.size).toBeGreaterThan(4)
+    const missing: string[] = []
+    for (const name of [...cited].sort()) {
+      const head = (await Bun.file(path.join(pkg, 'docs', 'design', `${name}.md`)).text())
+        .split('\n')
+        .slice(0, 12)
+        .join('\n')
+      // A dated survey states its own vintage instead ("Generated: <date>").
+      if (!/\*\*Status[:*]|Status: \*\*|Generated: \d{4}-\d{2}-\d{2}/.test(head)) {
+        missing.push(name)
+      }
+    }
+    expect(missing).toEqual([])
+  })
+})
