@@ -134,8 +134,13 @@ filter syntax.
 
 ## Failures and cycles
 
-- **A failed task aborts its transitive dependents** but lets independent
-  siblings continue (Turborepo's middle behavior).
+- **A failed task skips its transitive dependents** but lets independent
+  siblings continue — that is the default, `--continue=deps-ok`.
+  `skipped` is a status of its own in the summary, counted and named,
+  never folded into "executed"; `--continue=never` stops the run at the
+  first failure instead, and `--continue=always` runs the dependents
+  anyway and withholds their cache writes. (`aborted` is a different
+  status: a task the run tore down, on `Ctrl-C` or a signal.)
 - **Cycles are detected** when the graph is built and reported with the
   offending path — no infinite loops, no silent deadlock.
 - **Wildcards and negation** (`*`, `^*`, `!task`) are **not** allowed in

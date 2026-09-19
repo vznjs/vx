@@ -943,3 +943,38 @@ describe('cli.md lists the fields `vx show` prints', () => {
     expect(para).not.toContain('`resources`')
   })
 })
+
+describe('the dev-tasks guide bounds the teardown the way signals.ts does', () => {
+  it('its grace is SIGNAL_SHUTDOWN_GRACE_MS', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'signals.ts'),
+      'utf8',
+    )
+    const m = /export const SIGNAL_SHUTDOWN_GRACE_MS = (\d+)/.exec(src)
+    expect(m).not.toBeNull()
+    expect(src).toContain("killTree(child, 'SIGKILL')")
+    const page = readFileSync(path.join(GUIDES, 'dev-tasks.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(page).toContain(`${Number(m![1]) / 1000}-second grace`)
+    expect(page).toContain('`SIGKILL`ed')
+  })
+})
+
+describe('the task-dependencies guide uses the status words the scheduler sets', () => {
+  it('a failed upstream skips its dependents; aborted is the teardown status', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'graph', 'scheduler.ts'),
+      'utf8',
+    )
+    // Both words are statuses of TaskOutcome, and they are not the same one.
+    for (const status of ["'skipped'", "'aborted'"]) expect(src).toContain(status)
+    const page = readFileSync(path.join(GUIDES, 'task-dependencies.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(page).toContain('skips its transitive dependents')
+    expect(page).not.toContain('aborts its transitive dependents')
+    for (const mode of ['deps-ok', 'never', 'always']) {
+      expect(page).toContain('`--continue=' + mode + '`')
+    }
+  })
+})
