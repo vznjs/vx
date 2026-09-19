@@ -38,8 +38,8 @@ rules (a plugin may not shadow a core verb; a verb has one owner).
 - Globs may not carry a `..` path segment, a negation alone, or a
   double negation; workspace-anchored globs have their own checks.
 - Timeouts are bounded by `MAX_TIMEOUT_MS` (a larger delay would fire
-  at 1 ms); `resources` are cores and megabytes; `sandbox` grants are
-  typed per field (paths, names, booleans, `network`, `unixSockets`).
+  at 1 ms); `sandbox` grants are typed per field (paths, names,
+  booleans, `network`, `unixSockets`).
 
 ## What it does NOT do
 
