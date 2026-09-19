@@ -7,6 +7,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { headingSlugs, proseLinks } from './helpers/markdown-anchors.js'
+import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
+import { TELEMETRY_SCHEMA_VERSION } from '../src/orchestrator/telemetry.js'
 
 const pkg = path.resolve(import.meta.dir, '..')
 const repo = path.resolve(pkg, '..', '..')
@@ -170,5 +172,88 @@ describe("architecture.md's orchestrator inventory is the directory", () => {
     // The sentence wraps, which is why a grep for "five layers" found nothing.
     const flat = doc.replace(/\s+/g, ' ')
     expect(flat).toContain(`its files fall into ${words[rows.length]} layers`)
+  })
+})
+
+// The cache constants are quoted in five places. `caching-doc-drift.test.ts`
+// holds the two inside `packages/vx/docs`; the other three live at the repo
+// root, which a sandboxed shard cannot read, and nothing held them — CLAUDE.md
+// § Live invariants, which tells a reader to "verify in source before
+// quoting" (an admission that it rots), and the bump skill, whose whole job is
+// to keep this set consistent (item 358, 2026-09-19).
+describe('the repo-root files quote the cache constants as they are', () => {
+  const repoRoot = path.resolve(import.meta.dir, '..', '..', '..')
+
+  it('CLAUDE.md § Live invariants carries all three', async () => {
+    const text = await Bun.file(path.join(repoRoot, 'CLAUDE.md')).text()
+    expect(text).toContain(
+      `- \`CACHE_VERSION\` \`${CACHE_VERSION}\`, core \`SCHEMA_VERSION\` \`${SCHEMA_VERSION}\`,\n` +
+        `  \`TELEMETRY_SCHEMA_VERSION\` ${TELEMETRY_SCHEMA_VERSION}.`,
+    )
+  })
+
+  it('the bump skill quotes the version it exists to increment', async () => {
+    const skill = await Bun.file(
+      path.join(repoRoot, '.claude', 'skills', 'bump-cache-version', 'SKILL.md'),
+    ).text()
+    expect(skill).toContain(`Current: \`${CACHE_VERSION}\``)
+    expect(skill).toContain(`\`SCHEMA_VERSION\`\n\`${SCHEMA_VERSION}\``)
+  })
+
+  // The doc listed `CLAUDE.md` (decision log) — a section retired 2026-09-02 —
+  // and left out STATUS.md, so a bump followed to the letter would update four
+  // of the six files and miss the entry that says why (item 358).
+  it("caching.md's bump procedure names the files the skill does", async () => {
+    const skill = await Bun.file(
+      path.join(repoRoot, '.claude', 'skills', 'bump-cache-version', 'SKILL.md'),
+    ).text()
+    const list = skill.slice(
+      skill.indexOf('## Files to update'),
+      skill.indexOf('## After the bump'),
+    )
+    const files = [...list.matchAll(/^\d+\. \*\*`([^`]+)`\*\*/gm)].map((m) =>
+      (m[1] as string).replace('packages/vx/', ''),
+    )
+    expect(files.length).toBeGreaterThan(3)
+    const doc = await Bun.file(path.join(import.meta.dir, '..', 'docs', 'caching.md')).text()
+    const section = doc.slice(doc.indexOf('The bump procedure has a dedicated skill'))
+    const para = section.slice(0, section.indexOf('\n\n###'))
+    for (const file of files) {
+      // caching.md is the page itself, and refers to itself as "this doc".
+      expect(para).toContain(file === 'docs/caching.md' ? 'this doc' : `\`${file}\``)
+    }
+    expect(para).not.toContain('(decision log)')
+  })
+})
+
+// Step 3's parenthetical explains the `fingerprint` seam by naming the two
+// plugins that use it. A rename to the one-package shape left it saying
+// "`@vzn/vx-lockfile` … `@vzn/vx-lockfile` is the same for `bun.lock`" — the
+// package compared to itself, and neither helper named (item 358,
+// 2026-09-19). Tie the sentence to the exports it is about.
+describe('caching.md names the lockfile plugin by the helpers it exports', () => {
+  it('step 3 names `pnpm()` and `bun()`, and the one this repo declares', async () => {
+    const exported = new Set(
+      [
+        ...(
+          await Bun.file(
+            path.resolve(import.meta.dir, '..', '..', 'vx-lockfile', 'src', 'index.ts'),
+          ).text()
+        ).matchAll(/^export function (\w+)\(/gm),
+      ].map((m) => m[1] as string),
+    )
+    expect([...exported].sort()).toEqual(['bun', 'npm', 'pnpm', 'yarn'])
+    const doc = await Bun.file(path.join(import.meta.dir, '..', 'docs', 'caching.md')).text()
+    const start = doc.indexOf('3. **Workspace fingerprint**')
+    const step = doc.slice(start, doc.indexOf('\n4. **', start))
+    expect(step).toContain('`pnpm()`')
+    expect(step).toContain('`bun()`')
+    // The workspace file decides which one "this repo declares".
+    const ws = await Bun.file(
+      path.resolve(import.meta.dir, '..', '..', '..', 'vx.workspace.ts'),
+    ).text()
+    const declared = [...exported].filter((f) => new RegExp(`\\b${f}\\(\\)`).test(ws))
+    expect(declared).toEqual(['bun'])
+    expect(step).toContain('its `bun()` is the same')
   })
 })
