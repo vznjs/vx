@@ -490,6 +490,22 @@ test is telling the truth.
       three refusal messages, the expansion branch, and
       comparison.md's own wording so the two pages cannot disagree
       again. One pin, failing on the old page.
+355.  DONE (2026-09-16, architecture.md — 660 lines, the page item 349
+      edited without reading). Its two big list claims hold: the module
+      table's shapes are right (`config` the one single file, the other
+      seven `dir + index.ts`), and the orchestrator's file inventory
+      names 44 of the 45 files in `src/orchestrator`, the only absence
+      being `index.ts`, which the page calls the contract elsewhere.
+      Both were held by nothing, and a table of forty filenames is a
+      snapshot the moment a file lands beside it, so the inventory is
+      pinned now: every file on disk but the index must be named, and
+      every name must exist. The one fault is a count — "its files fall
+      into five layers" above a SIX-row table. Worth recording how it
+      hid: a grep for "five layers" returns nothing, because the phrase
+      wraps ("five\nlayers"), which is this repo's own
+      negative-grep rule (item 304) catching me from the other side. The
+      layer count is pinned to the table's own rows now, in words, so it
+      tracks the table. Two pins, one failing on the old page.
 
 ## In flight
 
