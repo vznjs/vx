@@ -469,6 +469,27 @@ test is telling the truth.
       trailing `~`. Item 338's pin now takes both pages. Three pins,
       one failing on the old page; the citation pair are controls
       whose worth is what they catch next.
+354.  DONE (2026-09-16, comparison.md and parity.md — the pages I had
+      been CITING as ground truth all session without reading).
+      parity.md holds: its 45 deep-pin test paths all resolve, and the
+      Turbo and Nx versions it names are the ones its two suites cite,
+      both already pinned in `doc-references.unsafe.test.ts`.
+      comparison.md's config table is what found the fault, and the
+      fault is a MISS OF MINE from item 348: the task-dependencies
+      guide says wildcards and negation "are **not** allowed in
+      `dependsOn`", and comparison.md says `'build.*'` and `'^build.*'`
+      are task-name patterns that ARE. `task-graph.ts` sides with
+      comparison: a partial pattern expands over the project's task
+      names (Nx 19.5 parity, zero matches legal, never itself); only a
+      BARE `*`/`^*`, a negation, and a pattern in the `pkg#task` form
+      are refused, each with its own `UserError`. Item 348 read that
+      sentence and verified only its second half — that
+      `cache.inputs.tasks` accepts the filter forms — and let the first
+      half stand, which is the "assert the exact expected set" rule
+      going unapplied. The guide now states both halves, pinned to the
+      three refusal messages, the expansion branch, and
+      comparison.md's own wording so the two pages cannot disagree
+      again. One pin, failing on the old page.
 
 ## In flight
 
