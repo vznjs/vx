@@ -476,3 +476,36 @@ describe('docs/schema.md env allowlist matches src/exec/env.ts', () => {
     expect(missing).toEqual([])
   })
 })
+
+// The page reprints ten of `src/config.ts`'s interfaces as fenced `ts` blocks
+// — the declaration a reader scans before reading a word of prose. Nothing
+// held them to the real thing, and `ExecConfig`'s block had lost `remote`
+// (item 357, 2026-09-19): documented in full two screens down, invisible in
+// the block that claims to be the interface. Same shape as cli.md's verb
+// synopsis one item earlier.
+describe('docs/schema.md reprints the config interfaces as they are', () => {
+  /** Field names of an interface body, one per `name?: type` line. */
+  const fieldsOf = (body: string): string[] =>
+    [...body.matchAll(/^ {2}(\w+)\??[:(]/gm)].map((m) => m[1] as string)
+
+  it('every interface block matches src/config.ts, in both directions', async () => {
+    const doc = await Bun.file(new URL('../docs/schema.md', import.meta.url).pathname).text()
+    const src = await Bun.file(new URL('../src/config.ts', import.meta.url).pathname).text()
+    const blocks = [...doc.matchAll(/^interface (\w+) \{\n([\s\S]*?)^\}/gm)]
+    expect(blocks.length).toBeGreaterThan(8)
+    const drift: Record<string, { missing: string[]; invented: string[] }> = {}
+    for (const [, name, body] of blocks) {
+      const decl = new RegExp(`^export interface ${name} \\{\\n([\\s\\S]*?)^\\}`, 'm').exec(src)
+      expect({ interface: name, inConfigTs: decl !== null }).toEqual({
+        interface: name,
+        inConfigTs: true,
+      })
+      const documented = fieldsOf(body as string)
+      const declared = fieldsOf(decl![1] as string)
+      const missing = declared.filter((f) => !documented.includes(f))
+      const invented = documented.filter((f) => !declared.includes(f))
+      if (missing.length > 0 || invented.length > 0) drift[name!] = { missing, invented }
+    }
+    expect(drift).toEqual({})
+  })
+})

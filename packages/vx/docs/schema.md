@@ -104,6 +104,7 @@ test: {
 ```ts
 interface ExecConfig {
   command: string // shell command, run from the project's dir
+  remote?: boolean | 'only' // placement: pin here, or remote-only (see below)
   env?: ExecEnv // optional per-task env layering
   timeout?: number // ms before vx SIGTERMs the child (see below)
   retries?: number // max additional attempts after a failure (see below)
@@ -196,8 +197,9 @@ test: { exec: { command: 'bun test', retries: 1 } }
   first attempt — a failed attempt's partial outputs can't leak into
   the next.
 - Every attempt streams its output live. Between attempts vx emits one
-  stderr line into the task's stream:
-  `vx: retrying <id> (attempt <k>/<total>) after exit <code>`.
+  stderr line into the task's stream, ending in the reason:
+  `vx: retrying <id> (attempt <k>/<total>) after exit <code>`, or
+  `after a timeout` when the attempt was killed by `timeout`.
 - The final outcome is the LAST attempt's: the first success wins (and
   is what gets cached — its stdout only, not a concatenation of failed
   attempts); if every attempt fails, the task is `failed` with the last
@@ -619,9 +621,9 @@ sees. Tracking-only declarations (an env var that influences inputs
 some other way) are legal but rare; if in doubt, declare both.
 
 Unset names contribute the empty string to the key — and that's
-distinguishable from a name that was never listed (the count of names
-
-- the names themselves are also in the key).
+distinguishable from a name that was never listed, because the key
+holds the count of names and the names themselves as well as their
+values.
 
 ##### `inputs.runtime` (optional, default `[]`)
 

@@ -529,6 +529,35 @@ test is telling the truth.
       fixed in place. A date I did not verify is the same defect class
       as a cause I did not prove (the rule above item 297), and it is
       cheaper to check than any of them.
+357.  DONE (2026-09-19, schema.md — 1375 lines, the config reference
+      and the last of the three big core pages). Three faults, each a
+      class the loop has already met once. (a) The page reprints ten of
+      `src/config.ts`'s interfaces as fenced blocks; nine match field
+      for field and `ExecConfig` had lost `remote`, documented in full
+      two screens below the block that claims to be the interface —
+      item 356's verb synopsis again, one page over. All ten are pinned
+      both ways now. (b) The retry notice ends `after a timeout` when
+      the kill was the timeout's and `after exit <code>` otherwise;
+      schema.md and modules/execute-task.md both quoted only the
+      second, the module page inside the same bullet that says
+      "timeouts included". (c) A reflow had broken a sentence OPEN: the
+      parenthetical "the count of names + the names themselves" wrapped
+      so the plus landed at line start, and oxfmt made it a BULLET
+      mid-sentence, which is how it shipped to the site. Item 299 fixed
+      one span this formatter mangled and never grepped the class; the
+      grep is a pin now — every paragraph and list item in every
+      hand-authored page must close the parentheses it opens, which
+      found this one and nothing else. The same sweep found a design
+      page whose `### Tests (…` heading had wrapped out of its own
+      heading; fixed, though design/ stays outside the class pins.
+      Three pins, all three failing on the pre-fix pages. And a
+      correction to how this loop reads its own gate: the first gate
+      here went red on `lint.oxlint` (a `string | undefined` in the new
+      pin) and my baseline comparison passed it, because that
+      comparison diffs the failing TEST names and a lint failure is not
+      a test. This container's baseline is 23 failing tests in ten
+      failing TASKS; compare both sets, as the second gate did — its
+      task set is byte-identical to the clean tree's.
 
 ## In flight
 
