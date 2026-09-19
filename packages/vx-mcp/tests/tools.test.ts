@@ -19,14 +19,18 @@
 //      silent fallback is worse: it answers a question nobody asked.
 //
 // Handler results also cross a serialization boundary that has no type: the
-// server does `JSON.stringify(result)` (src/cli/mcp.ts:83). A bigint there
-// THROWS and takes the tool call with it, so what survives the hop is pinned
-// rather than assumed.
+// server does `JSON.stringify(result, null, 2)` (src/server.ts). A bigint
+// there THROWS and takes the tool call with it, so what survives the hop is
+// pinned rather than assumed.
 //
-// The transport is not ours — `mcp.ts` hands framing to the SDK's
-// `StdioServerTransport` — so the framing cases (two messages in one chunk, a
-// message split across chunks) are driven end-to-end against a real
-// `bun src/bin.ts mcp` subprocess rather than against a re-implementation.
+// The transport IS ours: there is no SDK, and `server.ts` owns the framing
+// down to one streaming `TextDecoder` for the session. This header said the
+// opposite — that `src/cli/mcp.ts` handed framing to the SDK's
+// `StdioServerTransport` — long after the verb moved out of core into this
+// package and the SDK was dropped (item 377, 2026-09-19), which told a reader
+// the framing cases below were testing somebody else's code. They are not,
+// which is why they are driven end-to-end against a real `vx mcp` subprocess
+// as well as against `handleMessage`.
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -310,7 +314,8 @@ describe('the tool listing and the dispatcher describe the same set', () => {
     }
   })
 
-  // FINDING — src/cli/mcp.ts:13 advertises a tool that does not exist.
+  // FINDING — the file header advertised a tool that does not exist (then
+  // `src/cli/mcp.ts:13`, now this package's `src/index.ts`).
   //
   // The file header lists `runTasks(tasks: string[], cwd?: string)` under
   // "Tools exposed:", but no such entry exists in TOOLS and no such `case`
@@ -341,6 +346,26 @@ describe('the tool listing and the dispatcher describe the same set', () => {
     expect(MCP_SRC).toContain('listTools')
     // And no tool named runTasks exists, which is the claim that misled.
     expect(listTools().map((t) => t.name)).not.toContain('runTasks')
+  })
+
+  it('the header states no tool COUNT either — the copy that drifted next', () => {
+    // The repair above took the NAMES out and left the number, and the
+    // number drifted the same way: "four READ-ONLY tools" of six, read by
+    // the same agent that reads the source (item 377, 2026-09-19). A count
+    // is a one-word copy of `listTools()`, so it is out for the same reason
+    // the list is.
+    expect(MCP_SRC).not.toMatch(/\b(?:one|two|three|four|five|six|seven|eight|\d+)\s+READ-ONLY/i)
+    expect(MCP_SRC).not.toMatch(/\b(?:one|two|three|four|five|six|seven|eight|\d+)\s+tools\b/i)
+  })
+
+  it('the header names every JSON-RPC method server.ts answers', () => {
+    // The other list in that paragraph: it said "three methods" and named
+    // three, while the dispatch has always answered `ping` too. A client
+    // reading the source for the protocol surface reads it here.
+    const server = readFileSync(path.join(SRC_DIR, 'server.ts'), 'utf8')
+    const methods = [...server.matchAll(/^      case '([a-z/]+)':/gm)].map((m) => m[1]!)
+    expect(methods.length).toBeGreaterThan(3)
+    for (const method of methods) expect(MCP_SRC).toContain(`\`${method}\``)
   })
 })
 
@@ -1107,8 +1132,8 @@ describe('an empty cache answers a shaped empty', () => {
 // Serialization
 // ---------------------------------------------------------------------------
 
-describe('every result survives the JSON boundary mcp.ts serializes through', () => {
-  // `src/cli/mcp.ts:83` does `JSON.stringify(result, null, 2)`. A bigint there
+describe('every result survives the JSON boundary the server serializes through', () => {
+  // `src/server.ts` does `JSON.stringify(result, null, 2)`. A bigint there
   // throws a TypeError that surfaces as an internal error and loses the whole
   // tool call — and `runs` really does store bigint columns (wallclock ns), so
   // the only thing standing between the two is which columns the SELECT names.

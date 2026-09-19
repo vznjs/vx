@@ -5,15 +5,17 @@
 //   export default defineWorkspace({ plugins: [mcp(), …] })
 //
 // Declaring it adds `vx mcp` (the `commands` seam): a JSON-RPC 2.0 server
-// over stdio that AI coding agents speak natively, exposing four READ-ONLY
-// tools over the workspace's local cache.db — the same queries `vx why`,
-// `vx last` and `vx info` read. Nothing here can run a task or write the
-// cache; a plugin that could would be an executor, and this is not one.
+// over stdio that AI coding agents speak natively, exposing READ-ONLY tools
+// over the workspace's local cache.db — the same queries `vx why`,
+// `vx last` and `vx info` read. `listTools` is how many and which; a count
+// here is the same second copy the tool list was, and it had drifted to
+// "four" of six. Nothing here can run a task or write the cache; a plugin
+// that could would be an executor, and this is not one.
 //
-// No SDK: MCP over stdio is newline-delimited JSON-RPC and three methods
-// (`initialize`, `tools/list`, `tools/call`). server.ts is ~100 lines and
-// pulls in nothing, where the reference SDK pulls in an HTTP stack this
-// transport never uses.
+// No SDK: MCP over stdio is newline-delimited JSON-RPC and the methods
+// `initialize`, `tools/list`, `tools/call` and `ping`. It pulls in nothing
+// where the reference SDK pulls in an HTTP stack this transport never uses,
+// and server.ts is about 150 lines — a number a test holds to the file.
 
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 import { serveStdio } from './server.js'

@@ -664,9 +664,16 @@ describe('the pipeline-with-seams post tabulates every stage a plugin can fill',
   })
 })
 
-describe('the sandbox post names the whole permission surface', () => {
+// BOTH copies. The post was pinned and the GUIDE, which lists the same nine
+// grants, the same three verbs and the same three Linux binaries, was not —
+// the same one-copy-of-two the MCP line count had been in for three passes
+// (item 377, 2026-09-19).
+describe.each([
+  ['the sandbox post', path.join(DOCS, 'blog', 'the-sandbox.md')],
+  ['the sandboxing guide', path.join(GUIDES, 'sandboxing.md')],
+])('%s names the whole permission surface', (_label, file) => {
   const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'config.ts'), 'utf8')
-  const page = readFileSync(path.join(DOCS, 'blog', 'the-sandbox.md'), 'utf8')
+  const page = readFileSync(file, 'utf8')
   it('every SandboxGrants key is in its list', () => {
     const decl = /export interface SandboxGrants \{([\s\S]*?)\n\}/.exec(src)
     expect(decl).not.toBeNull()
@@ -690,8 +697,13 @@ describe('the sandbox post names the whole permission surface', () => {
     const bins = [...m![1]!.matchAll(/\((\w+)\)|\b(socat)\b/g)].map((x) => x[1] ?? x[2]!)
     expect(bins.sort()).toEqual(['bwrap', 'rg', 'socat'])
     const flat = page.replace(/\s+/g, ' ')
-    expect(flat).toContain('three binaries')
     for (const bin of bins) expect(flat).toContain('`' + bin + '`')
+    // And a page that COUNTS them counts right: the post says "three
+    // binaries", which is a one-word copy of the list beside it.
+    const counted = /\b(one|two|three|four|five) binaries\b/.exec(flat)
+    if (counted !== null) {
+      expect(['one', 'two', 'three', 'four', 'five'].indexOf(counted[1]!) + 1).toBe(bins.length)
+    }
   })
 })
 
@@ -760,13 +772,18 @@ describe('the MCP guide and post state the server size the source has', () => {
     // Item 345 fixed the two site pages; the package README said it too
     // (item 351, 2026-09-19).
     ['the package README', path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'README.md')],
+    // The fourth copy, and the one three passes missed: it spelled the claim
+    // `~100 lines`, and this pin's regex asked for `about N lines` (item 377,
+    // 2026-09-19). The regex takes both spellings now — a negative grep is a
+    // claim about every spelling, and this one had been made three times.
+    ['the package header', path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'src', 'index.ts')],
   ] as const) {
     it(`${label}'s "about N lines" is within a rounding of server.ts`, () => {
       // Both said "about a hundred lines" of a 144-line file; item 339 fixed
       // the post's body and left its heading (item 345, 2026-09-19). A round
       // number is fine, a 30% one is not.
       const page = readFileSync(file, 'utf8')
-      const m = /about (\d+) lines/.exec(page)
+      const m = /(?:about|~) ?(\d+) lines/.exec(page)
       expect(m).not.toBeNull()
       expect(Math.abs(Number(m![1]) - lines) / lines).toBeLessThan(0.15)
     })
