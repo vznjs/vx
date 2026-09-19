@@ -1217,6 +1217,36 @@ build` and this file records a Bun-specific hazard for exactly
       and skipping a row's only token stops the check reading that
       row instead of passing it — the count fell from 14 to 12 and
       said so.
+391.  DONE (2026-09-19, `benchmarks.md` — right everywhere, pinned
+      nowhere). Checked the 3,270-task table figure by figure against
+      the committed `packages/vx-bench/results.json`: five rows × three
+      runners, all ten `(N×)` ratios, the baseline row, the three
+      measured floors and the per-package overhead sentence. Every one
+      agreed, to the digit — vx cold 226 449.85 ms as "3m 46s", Nx CPU
+      6 846 039 ms as "114m 06s (197.8×)", vx's 8.45 s over the ideal
+      schedule at 8 ms per package. The head-to-head heading's "46
+      packages" is right too: `PACKAGES = (LAYERS - 1) * PER_LAYER + 1`,
+      so `10 5 1` is 46 and not the 51 the prose suggests.
+      So the item is the PIN, and it is worth more than a fix would
+      have been: this is the only table in the docs backed by a
+      committed data file, README and `patterns.md` quote onward from
+      it, and every ratio on it is re-derived by hand. It compares
+      NUMBERS, not spellings — each figure is parsed back to
+      milliseconds and held to the granularity the page chose to print
+      (`3m 46s` to the second, `510ms` to the millisecond). Formatting
+      the file's numbers and diffing strings would only restate the
+      formatter's assumptions, which is the pure-function trap the
+      Rules already name. Four mutations prove it: a figure, a ratio, a
+      floor and a per-package number each fail it.
+      Two small things were wrong. The real-Nx section says "the same
+      cleanup and arm logs as `turbo-repo.sh`" and never names
+      `nx-repo.sh`, which is the harness that ran those reps — the
+      Turbo section names its own script, so a reader reproducing the
+      Nx numbers is sent to the wrong one. And `compare.ts`'s docblock
+      describes the shape as "`layers` dependency layers, `perLayer`
+      packages each, plus one `@bench/top`", which reads as 1101 at the
+      defaults, two lines above its own correct 1090: the top layer
+      REPLACES a layer rather than adding to one.
 
 ## In flight
 

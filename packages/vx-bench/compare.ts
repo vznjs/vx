@@ -9,10 +9,12 @@
  *   DEPS_PER_PKG=30 BUILD_SLEEP=1 CONCURRENCY=10 bun packages/vx-bench/compare.ts
  *
  * Workspace shape (matches the project owner's benchmark generator):
- * `layers` dependency layers, `perLayer` packages each, plus one `@bench/top`
- * package depending on the whole last layer. Each non-bottom package depends
- * on DEPS_PER_PKG packages from the layer below (deterministic, seeded). At
- * the defaults that's 1090 packages × 3 tasks = 3270 graph nodes.
+ * `layers` dependency layers. The last one IS `@bench/top`, a single package
+ * depending on the whole layer below it, so the count is
+ * `(layers - 1) * perLayer + 1` — not `layers * perLayer + 1`. Each non-bottom
+ * package depends on DEPS_PER_PKG packages from the layer below
+ * (deterministic, seeded). At the defaults that's 1090 packages × 3 tasks =
+ * 3270 graph nodes, and `10 5 1` is 46.
  *
  * Three tasks per package, IDENTICAL commands across every runner:
  *   build       — `sleep N && mkdir -p dist && touch dist/index.js`  (caches dist/**)

@@ -471,3 +471,133 @@ describe('CLAUDE.md names Bun APIs core actually calls', () => {
     expect(code).not.toContain('Bun.Archive')
   })
 })
+
+/**
+ * The 3,270-task table is the only table in the docs backed by a committed
+ * data file (`packages/vx-bench/results.json`), and the page re-derives
+ * every ratio and overhead from it BY HAND: five rows × three runners,
+ * ten `(N×)` ratios, a baseline row and three measured floors. Nothing
+ * held any of it, and README and patterns.md quote onward from here.
+ *
+ * Numbers, not spellings: each displayed figure is parsed back to
+ * milliseconds and compared against the file within the granularity the
+ * page chose to print. Re-implementing the formatter here would only
+ * restate its assumptions (CLAUDE.md § Rules: a platform unit is measured,
+ * never asserted) — this asks what the page CLAIMS, not how it writes it.
+ * Read 2026-09-19 (item 391): every figure already agreed.
+ */
+describe('benchmarks.md quotes the run results.json recorded', () => {
+  /** `3m 46s`, `34.61s`, `1.17s`, `510ms` → ms, with the step it was printed to. */
+  const parse = (raw: string): { ms: number; step: number } | null => {
+    let m = /^(\d+)m (\d+)s$/.exec(raw)
+    if (m !== null) return { ms: (Number(m[1]) * 60 + Number(m[2])) * 1000, step: 1000 }
+    m = /^(\d+(?:\.\d+)?)s$/.exec(raw)
+    if (m !== null) {
+      const decimals = (m[1]!.split('.')[1] ?? '').length
+      return { ms: Number(m[1]) * 1000, step: 1000 / 10 ** decimals }
+    }
+    m = /^(\d+)ms$/.exec(raw)
+    return m === null ? null : { ms: Number(m[1]), step: 1 }
+  }
+
+  const FIELD: Record<string, string> = {
+    Cold: 'fresh',
+    'Warm**, nothing to rebuild': 'warmNoRestore',
+    'Warm**, restore outputs': 'warmRestore',
+    'CPU burned**, cold': 'freshCpu',
+    'CPU burned**, warm': 'warmNoRestoreCpu',
+  }
+
+  it('every figure and every ratio in the 3,270-task table is the recorded one', () => {
+    const doc = readFileSync(path.join(pkg, 'docs', 'benchmarks.md'), 'utf8')
+    const results = JSON.parse(
+      readFileSync(path.join(repo, 'packages', 'vx-bench', 'results.json'), 'utf8'),
+    ) as {
+      packages: number
+      baseline: Record<string, number>
+      rows: Array<Record<string, number | string>>
+    }
+    const by = (name: string): Record<string, number | string> =>
+      results.rows.find((r) => r['runner'] === name) as Record<string, number | string>
+    // The table's three columns, left to right.
+    const runners = ['vx', 'turbo', 'nx'] as const
+
+    const start = doc.indexOf('## A real monorepo: 3,270 tasks')
+    expect(start).toBeGreaterThan(0)
+    const table = doc.slice(start, doc.indexOf('**Baseline** is the theoretical best', start))
+    const wrong: string[] = []
+    let rowsChecked = 0
+
+    for (const line of table.split('\n')) {
+      if (!line.startsWith('| **')) continue
+      const cells = line
+        .trim()
+        .replace(/^\||\|$/g, '')
+        .split('|')
+        .map((c) => c.trim())
+      const label = Object.keys(FIELD).find((k) => cells[0]!.includes(k))
+      if (label === undefined) continue
+      const field = FIELD[label]!
+      rowsChecked += 1
+      const vxMs = by('vx')[field] as number
+      cells.slice(1, 4).forEach((cell, i) => {
+        const runner = runners[i]!
+        const shown = parse(
+          cell
+            .replace(/\*\*/g, '')
+            .replace(/\s*\(.*$/, '')
+            .trim(),
+        )
+        const actual = by(runner)[field] as number
+        if (shown === null) {
+          wrong.push(`${field}/${runner}: unreadable ${cell}`)
+          return
+        }
+        if (Math.abs(shown.ms - actual) >= shown.step) {
+          wrong.push(`${field}/${runner}: page ${shown.ms}ms, file ${actual.toFixed(1)}ms`)
+        }
+        const ratio = /\(([\d.]+)×\)/.exec(cell)
+        if (ratio === null) return
+        const want = actual / vxMs
+        if (Math.abs(Number(ratio[1]) - want) > 0.05) {
+          wrong.push(`${field}/${runner}: page ${ratio[1]}×, file ${want.toFixed(2)}×`)
+        }
+      })
+    }
+    expect(rowsChecked).toBe(5)
+    expect(wrong).toEqual([])
+  })
+
+  it('the baseline row and the measured floors are the recorded ones', () => {
+    const doc = readFileSync(path.join(pkg, 'docs', 'benchmarks.md'), 'utf8')
+    const { baseline, rows, packages } = JSON.parse(
+      readFileSync(path.join(repo, 'packages', 'vx-bench', 'results.json'), 'utf8'),
+    ) as {
+      packages: number
+      baseline: Record<string, number>
+      rows: Array<Record<string, number | string>>
+    }
+    const secs = (ms: number): string => {
+      const s = Math.round(ms / 1000)
+      return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+    }
+    // `3m 38s cold` is workBoundMs; the floors are the baseline's own warm,
+    // restore and task-shell CPU numbers.
+    expect(doc).toContain(`${secs(baseline['workBoundMs']!).replace('m 0', 'm ')} cold`)
+    expect(doc).toContain(`critical path ${secs(baseline['criticalPathMs']!).replace('m 0', 'm ')}`)
+    expect(doc).toContain(`git walk ${Math.round(baseline['warmNoRestore']!)}ms`)
+    expect(doc).toContain(`raw copy ${Math.round(baseline['warmRestore']!)}ms`)
+    expect(doc).toContain(`task shells ${(baseline['freshCpu']! / 1000).toFixed(2)}s`)
+
+    // The per-package overhead sentence: each runner's cold time over the
+    // ideal schedule, and that difference divided by the package count.
+    const overhead = (runner: string): number =>
+      (rows.find((r) => r['runner'] === runner)!['fresh'] as number) - baseline['workBoundMs']!
+    expect(doc).toContain(`is\n${(overhead('vx') / 1000).toFixed(2)}s on 3,270 tasks`)
+    expect(doc).toContain(`(${Math.round(overhead('vx') / packages)} ms per package)`)
+    expect(doc).toContain(`(${Math.round(overhead('turbo') / packages)} ms per package)`)
+    expect(doc).toContain(
+      `(${Math.round(overhead('nx') / packages).toLocaleString('en-US')} ms per package)`,
+    )
+  })
+})
