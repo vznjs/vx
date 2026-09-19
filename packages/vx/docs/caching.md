@@ -101,7 +101,15 @@ over (in order):
     them). Sorted by hash before folding so the ordering of `dependsOn`
     doesn't change the key. This is the cascade mechanism: if anything
     beneath you changes, your hash changes too.
-11. **Input files' content hashes** — `cache.inputs.files` resolved to
+11. **Plugin key material** — the `{ name: value }` pairs a plugin's
+    `key(task, ctx)` stage returned for this task, stored on the node as
+    sorted `plugin/name` pairs and folded after the upstream keys and BEFORE the input files,
+    ONLY when non-empty — so a workspace with no `key` plugin derives
+    byte-identical keys to one before the stage existed (no
+    `CACHE_VERSION` bump when it shipped). `vx why` names a changed pair
+    as `plugin <plugin>/<name>`.
+
+12. **Input files' content hashes** — `cache.inputs.files` resolved to
     a concrete list of project-relative paths (gitignore-aware,
     declared-outputs-excluded, nested-projects-excluded), each file
     contributing its **git blob OID** (v20). On a clean tree the OID
@@ -175,14 +183,6 @@ over (in order):
     an input of its own. (Before 2026-09-09 a file link folded the
     bytes behind it and a directory or dangling link fell out of the
     input set entirely, so retargeting one was a stale hit.)
-
-12. **Plugin key material** — the `{ name: value }` pairs a plugin's
-    `key(task, ctx)` stage returned for this task, stored on the node as
-    sorted `plugin/name` pairs and folded after the upstream keys,
-    ONLY when non-empty — so a workspace with no `key` plugin derives
-    byte-identical keys to one before the stage existed (no
-    `CACHE_VERSION` bump when it shipped). `vx why` names a changed pair
-    as `plugin <plugin>/<name>`.
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.
