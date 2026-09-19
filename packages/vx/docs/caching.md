@@ -52,10 +52,10 @@ over (in order):
    the single global "the world changed" lever — and a plugin can take
    one file off it: `VxPlugin.fingerprint` claims a lockfile, core
    leaves it out of this digest, and the plugin's `key` hook folds what
-   the file means for each project instead (`@vzn/vx-lockfile` folds the
-   project's own resolved dependency closure, so `pnpm update foo`
-   re-keys only the projects that depend on `foo`; `@vzn/vx-lockfile` is the
-   same for `bun.lock`, and this repo declares it). The
+   the file means for each project instead (`@vzn/vx-lockfile`'s `pnpm()`
+   folds the project's own resolved dependency closure, so `pnpm update foo`
+   re-keys only the projects that depend on `foo`; its `bun()` is the same
+   for `bun.lock`, and this repo declares that one). The
    config-evaluation cache still keys on every file: a config may import
    a dependency the lockfile resolved.
 4. **Project `package.json` hash** — xxh3 of the project's
@@ -1081,9 +1081,12 @@ Not required when:
 
 The bump procedure has a dedicated skill at
 `.claude/skills/bump-cache-version/` (used as `/bump-cache-version`).
-Files touched: `src/cache/cache.ts` (the constant), this doc (history),
-`docs/modules/cache.md` (key/entry shape if it changed),
-`CLAUDE.md` (decision log), and the cache test file.
+Files touched, in the skill's order: `src/cache/cache.ts` (the constant),
+this doc (history), `docs/modules/cache.md` (the quoted version, and the
+key/entry shape if it changed), `CLAUDE.md` § Live invariants (the quoted
+version — the decision log it once named was retired 2026-09-02),
+`docs/STATUS.md` (the entry that says why the bump was needed, or why it
+was not), and the cache tests.
 
 ### History
 

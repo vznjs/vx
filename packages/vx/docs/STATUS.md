@@ -558,6 +558,37 @@ test is telling the truth.
       a test. This container's baseline is 23 failing tests in ten
       failing TASKS; compare both sets, as the second gate did — its
       task set is byte-identical to the clean tree's.
+358.  DONE (2026-09-19, caching.md — 1355 lines, the last of the big
+      three). Its own suite is the best-covered on the shelf (the
+      fingerprint file list, the invalidation table, both constants,
+      and all ten SQLite tables with every column), and the checks that
+      found faults elsewhere came back clean here: the SQL block still
+      matches `cache.ts` exactly, the six file citations resolve, every
+      quoted error message exists in source. Two faults, both in prose
+      no test reached. (a) Step 3 explains the `fingerprint` seam by
+      naming two plugins, and a rename to the one-package shape left it
+      comparing `@vzn/vx-lockfile` to ITSELF — "`@vzn/vx-lockfile` folds
+      the closure … `@vzn/vx-lockfile` is the same for `bun.lock`" —
+      with neither helper named. It says `pnpm()` and `bun()` now,
+      pinned to the package's exports and to the one `vx.workspace.ts`
+      declares. (b) The `CACHE_VERSION` bump procedure listed
+      "`CLAUDE.md` (decision log)", a section retired 2026-09-02, and
+      left out STATUS.md: a bump done to the letter would have updated
+      four of the six files and skipped the entry that says WHY. The
+      list is the skill's list now, pinned to it. And the class the
+      constants belong to had two unpinned members, both outside
+      `packages/vx` where only the unsafe suite can read them: CLAUDE.md
+      § Live invariants (which tells its reader to "verify in source
+      before quoting" — an admission that it rots) and the bump skill
+      itself, whose whole job is keeping this set consistent. Four
+      pins; the two page pins fail on the pre-fix page, the two
+      constant pins fail on a version one behind. One of them was
+      written into the WRONG suite and the gate caught it: a pin that
+      reads `vx-lockfile/src` and `vx.workspace.ts` cannot run in a
+      shard, because a sandboxed task may read only its own project.
+      Running the file directly passes it — unsandboxed — so a
+      cross-package pin belongs in `tests/*.unsafe.test.ts` by
+      construction, not by discovery.
 
 ## In flight
 
