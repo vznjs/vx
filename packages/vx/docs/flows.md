@@ -170,9 +170,9 @@ fix).
 
 Owner: `cli/watch.ts`. One recursive `fs.watch` per project dir plus a
 non-recursive watch of the workspace root (lockfile edits). Path
-filter drops `node_modules`, `.git`, `.vx`, `*.tsbuildinfo`, editor
-swap files, and the run's resolved cache dir (which `.vx` covers only
-until `cacheDir` relocates it).
+filter drops the segments `node_modules`, `.git` and `.vx`, the
+suffixes `.tsbuildinfo` and a trailing `~`, and the run's resolved
+cache dir (which `.vx` covers only until `cacheDir` relocates it).
 
 ```mermaid
 stateDiagram-v2

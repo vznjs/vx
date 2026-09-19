@@ -453,6 +453,22 @@ test is telling the truth.
       a field (design/ and history/, which record its removal, are
       exempt, as are the generated site copies). That makes five class
       pins in four items. One pin, failing on the old page.
+353.  DONE (2026-09-16, flows.md and patterns.md — the two pages #451
+      read, and the pins it left them). patterns.md's citations hold:
+      its pin takes every `src/x.ts` ("phrase") pair and refuses a line
+      number, and all of them resolve. flows.md had NO pin at all, and
+      names an owner per flow in the same shape that rotted on
+      patterns.md — `module/file.ts`, sometimes with the symbol
+      (`cache/cache.ts:prune`). All fourteen resolve today; they are
+      pinned now, files and symbols, line numbers refused, so the next
+      split fails the suite instead of orphaning a citation quietly.
+      The read itself found a SIXTH instance of a class this session
+      fixed one page at a time: flows.md said the watch filter drops
+      "editor swap files", the wording item 338 struck from the
+      watch-mode post, where `IGNORED_SUFFIXES` is `.tsbuildinfo` and a
+      trailing `~`. Item 338's pin now takes both pages. Three pins,
+      one failing on the old page; the citation pair are controls
+      whose worth is what they catch next.
 
 ## In flight
 
