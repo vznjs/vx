@@ -143,9 +143,16 @@ filter syntax.
   status: a task the run tore down, on `Ctrl-C` or a signal.)
 - **Cycles are detected** when the graph is built and reported with the
   offending path — no infinite loops, no silent deadlock.
-- **Wildcards and negation** (`*`, `^*`, `!task`) are **not** allowed in
-  `dependsOn` — they belong in `cache.inputs.tasks`, which filters cache
-  keys rather than declaring edges.
+- **A task-name pattern is allowed**: `dependsOn: ['build.*']` adds every
+  other task in this project whose name matches, and `'^build.*'` does the
+  same in each workspace dependency (Nx 19.5 parity). Zero matches is
+  legal — a pattern spread from a preset need not match in every project —
+  and a task never matches itself, which would be an instant cycle.
+- **Bare wildcards and negation** (`*`, `^*`, `!task`) are **not** allowed
+  in `dependsOn`: "everything upstream" and "everything but this" are
+  filter operations, so they belong in `cache.inputs.tasks`, which narrows
+  which upstream keys the cache folds rather than declaring edges. A
+  pattern in the `pkg#task` form is refused too.
 
 ## Visualizing the graph
 

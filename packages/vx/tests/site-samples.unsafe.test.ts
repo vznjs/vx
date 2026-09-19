@@ -1199,3 +1199,40 @@ describe('no doc describes exec.resources as a field a config can declare', () =
     }
   })
 })
+
+describe('the task-dependencies guide states which wildcards dependsOn takes', () => {
+  it('a task-name pattern is legal and a bare wildcard is not, as task-graph.ts rules', () => {
+    // The guide said wildcards are "not allowed in dependsOn", full stop,
+    // where `build.*` and `^build.*` ARE (Nx 19.5 parity) and only bare
+    // wildcards, negation and patterns in `pkg#task` are refused.
+    // comparison.md had it right; item 348 read the guide and checked only
+    // that `cache.inputs.tasks` accepts the filter forms (item 354).
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'graph', 'task-graph.ts'),
+      'utf8',
+    )
+    for (const refusal of [
+      'dependsOn does not accept bare wildcards',
+      'dependsOn does not accept negation',
+      'dependsOn patterns are not supported in the "pkg#task" form',
+    ]) {
+      expect(src).toContain(refusal)
+    }
+    // The legal case: a self pattern expands over the project's task names.
+    expect(src).toContain('if (isTaskPattern(spec.task))')
+    const page = readFileSync(path.join(GUIDES, 'task-dependencies.md'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
+    expect(page).toContain('A task-name pattern is allowed')
+    expect(page).toContain("`dependsOn: ['build.*']`")
+    expect(page).toContain('Bare wildcards and negation')
+    expect(page).not.toContain('**not** allowed in `dependsOn` — they belong')
+    // comparison.md states the same rule; the two must not disagree again.
+    const comparison = readFileSync(
+      path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'),
+      'utf8',
+    )
+    expect(comparison).toContain('bare `*` stays filter-only')
+  })
+})
