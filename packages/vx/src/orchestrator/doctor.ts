@@ -12,8 +12,10 @@ import { PLUGIN_HOOKS } from '../config.js'
 import {
   cgroupCpuQuota,
   cgroupMemoryLimitBytes,
+  isUnsupportedBun,
   machineMemoryBytes,
   machineParallelism,
+  MIN_BUN,
 } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { probeSandbox, resetSandbox } from '../exec/index.js'
@@ -40,6 +42,14 @@ const warnToStderr = (message: string): void => {
 export interface InfoFacts {
   vx: string
   bun: string
+  /**
+   * False when `bun` is below `MIN_BUN`. A separate field on purpose: `bun`
+   * is a machine surface (`vx info --format json`, and a test holds it to
+   * `Bun.version` exactly), so the verdict is a boolean here and prose only
+   * in the rendered row. What an unsupported runtime breaks is measured in
+   * `util/bun-version.ts`.
+   */
+  bunSupported: boolean
   git: string | null
   /** null when git could not answer. */
   gitStatusCache: { fsmonitor: boolean; untrackedCache: boolean } | null
@@ -160,7 +170,13 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
   const sandbox = await sandboxFact(sandboxed)
   return {
     vx: VERSION,
+    // An unsupported Bun does not stop a run, it makes the run's ANSWERS
+    // wrong (util/bun-version.ts measures which). The row a reader already
+    // consults for "is my setup sane" is where that belongs: a warning on
+    // every invocation would put a line on stderr that a clean run must not
+    // have, which is a property 19 tests hold on purpose.
     bun: Bun.version,
+    bunSupported: !isUnsupportedBun(Bun.version),
     git: gitVersion(),
     // The one `git status` walk per run is the warm path's critical path on
     // a large tree (~55 ms at 1000 projects, measured 2026-09-02). git's

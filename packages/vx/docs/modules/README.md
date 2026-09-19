@@ -166,6 +166,7 @@ group.
 | [`util-errors.md`](./util-errors.md)               | `src/util/errors.ts` — `UserError` class for stack-less error reporting.                     |
 | [`timing.md`](./timing.md)                         | `src/util/timing.ts` — the `VX_TIMING=1` stage table + per-task spans.                       |
 | [`util-edit-distance.md`](./util-edit-distance.md) | `src/util/edit-distance.ts` — the one "did you mean" rule.                                   |
+| [`util-bun-version.md`](./util-bun-version.md)     | `src/util/bun-version.ts` — the Bun floor, read at run time, and what breaks below it.       |
 | [`util-num.md`](./util-num.md)                     | `src/util/num.ts` — `MAX_TIMEOUT_MS`, `clampInt`, `parseDecimalInt`.                         |
 | [`util-settle.md`](./util-settle.md)               | `src/util/settle.ts` — the end-of-run settle bound for plugin teardown.                      |
 | [`util-tail.md`](./util-tail.md)                   | `src/util/tail.ts` — head-evicting tail for a persistent task's output.                      |

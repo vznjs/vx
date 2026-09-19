@@ -11,7 +11,10 @@ collectInfo(cwd, { cacheDir?, warn? }): Promise<InfoFacts>
 ```
 
 `InfoFacts` is the typed object `vx info --format json` prints: `vx`,
-`bun`, `git`, `gitStatusCache`, `workspaceRoot`, `projects`, `tasks`,
+`bun`, `bunSupported` (false below `MIN_BUN` — `bun` itself stays the
+bare version because this is a machine surface, and the prose goes in
+the rendered row only), `git`, `gitStatusCache`, `workspaceRoot`,
+`projects`, `tasks`,
 `configErrors` (`[{ path, message }]`, the configs that did not load),
 `plugins` (`[{ name, seams }]`, the seams in `PLUGIN_HOOKS` order),
 `workers` (`{ count, source, cores, cpuQuota }`), `memory`
