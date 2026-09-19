@@ -62,6 +62,7 @@ output, fill in the TODOs, and run.
 | `cache: false`                  | omit the `cache` block (the task always runs)    |
 | `persistent: true`              | `exec.persistent: { … }`                         |
 | `outputLogs: "new-only"`        | vx's default flow (nothing to write); other values are the run's `--output-logs <mode>` |
+| `extends`                       | nothing to write — `extends: false` alone opts the package out of the task, and any other key replaces the root's definition rather than inheriting it |
 | `$TURBO_ROOT$/file`             | `cache.inputs.workspaceFiles` / `outputs.workspaceFiles` |
 | `globalDependencies` / `globalEnv` / `globalPassThroughEnv` | a generated root `vx-preset.ts` you import and spread |
 

@@ -627,21 +627,39 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
   })
 })
 
-describe('the from-turborepo post maps every turbo.json key the mapper knows', () => {
+describe('the from-turborepo pages map every turbo.json key the mapper knows', () => {
   const src = readFileSync(
     path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'turbo', 'turbo-map.ts'),
     'utf8',
   )
   const page = readFileSync(path.join(DOCS, 'blog', 'from-turborepo.md'), 'utf8')
-  it('every KNOWN_TASK_KEYS entry is named in its table', () => {
+  // BOTH tables. The post was pinned; the MIGRATE GUIDE tabulates the same
+  // keys and had no row for `extends` — nine keys, eight rows, and the one
+  // missing is the key a per-package turbo.json uses (item 382, 2026-09-19).
+  // The table's end differs per page, so each names its own next heading.
+  it.each([
+    ['the post', page, 'Three things you get'],
+    [
+      'the migrate guide',
+      readFileSync(path.join(DOCS, 'migrate', 'from-turborepo.md'), 'utf8'),
+      'The command itself comes from',
+    ],
+  ])('%s: every KNOWN_TASK_KEYS entry is named in its table', (_label, text, endsBefore) => {
     const m = /const KNOWN_TASK_KEYS = new Set\(\[([^\]]*)\]/.exec(src)
     expect(m).not.toBeNull()
     const keys = [...m![1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!)
     expect(keys.length).toBeGreaterThan(8)
-    const table = page.slice(page.indexOf('| `turbo.json`'), page.indexOf('Three things you get'))
+    const start = text.indexOf('| Turborepo (`turbo.json`)')
+    const table = text.slice(
+      start >= 0 ? start : text.indexOf('| `turbo.json`'),
+      text.indexOf(endsBefore),
+    )
+    expect(table.length).toBeGreaterThan(200)
     // A row names the key alone (`extends`) or with the value it maps on
     // (`cache: false`), so the pin accepts either closing.
-    for (const key of keys) expect(table).toMatch(new RegExp('`' + key + '(`|:)'))
+    expect({
+      missing: keys.filter((key) => !new RegExp('`' + key + '(`|:)').test(table)),
+    }).toEqual({ missing: [] })
   })
   it('the global fields it names are the ones the mapper reads', () => {
     const globals = [...src.matchAll(/rootCfg\.(global\w+)/g)].map((x) => x[1]!)
@@ -679,6 +697,26 @@ describe('the from-nx post names every executor the migration infers', () => {
     const persistent = [...m![1]!.matchAll(/'(@nx\/[^']+)': \{[^}]*persistent: true/g)].length
     expect(persistent).toBe(2)
     expect(page.replace(/\s+/g, ' ')).toContain('The two dev servers come through as persistent')
+  })
+  it('the MIGRATE GUIDE covers each of them too, by id or by command', () => {
+    // The post names all eight ids and counts them; the guide collapses the
+    // vite family to `@nx/vite:*` and names the four COMMANDS instead, which
+    // is accurate and reads better — so it is held to "id or command", not to
+    // the post's shape. A ninth executor still has to appear in one of the
+    // two (item 382, 2026-09-19).
+    const m = /const KNOWN_EXECUTORS: Record<[^>]*> = \{([\s\S]*?)\n\}/.exec(src)
+    expect(m).not.toBeNull()
+    const entries = [...m![1]!.matchAll(/'(@nx\/[^']+)': \{ command: '([^']+)'/g)].map((x) => ({
+      id: x[1]!,
+      command: x[2]!,
+    }))
+    expect(entries.length).toBe(8)
+    const guide = readFileSync(path.join(DOCS, 'migrate', 'from-nx.md'), 'utf8')
+    expect({
+      missing: entries
+        .filter((e) => !guide.includes('`' + e.id + '`') && !guide.includes('`' + e.command + '`'))
+        .map((e) => e.id),
+    }).toEqual({ missing: [] })
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
