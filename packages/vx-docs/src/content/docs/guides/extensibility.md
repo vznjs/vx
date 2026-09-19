@@ -51,7 +51,7 @@ flowchart LR
 | execute  | `executor(ctx)`        | *where* ONE task's command runs — local or a worker     | `reapi({ execute: true })`, or your own; the local executor is the floor |
 | store    | `cache(ctx)`           | *which* cache is used — your server, S3, a CAS          | `reapi()`, `turboCache()`, `nxCache()`, or your own; the local store is the floor |
 | observe  | `telemetry(ctx)`       | *where* run data goes — OTel, Slack, your DB            | nothing unless declared              |
-| cli      | `commands`             | which verbs `vx` has                                    | nothing unless declared              |
+| cli      | `commands`             | which verbs `vx` has                                    | `mcp()` (`vx mcp`), `scheduleHistoryPlugin()` (`vx history`), or your own |
 
 None of these can change *what* a task's command is once it is declared
 — shell is the API. `project` may add or rewrite a task, and that edit
@@ -76,9 +76,10 @@ Neither is privileged: they use the same seams your own package would.
 
 Because the seams are the only contract, a third-party package is a
 **first-class equal** to any first-party one. To back the cache
-with your own infrastructure, implement core's three-call
-`RemoteCacheLayer` seam (`has`/`get`/`put` — throw on failure, and
-`LayeredCache` degrades every throw to a cache miss):
+with your own infrastructure, implement core's `RemoteCacheLayer`
+seam — `has`, `get` and `put`, plus an optional `hasMany` that answers
+N key probes in one round trip. Throw on failure, and `LayeredCache`
+degrades every throw to a cache miss:
 
 ```ts
 // vx.workspace.ts

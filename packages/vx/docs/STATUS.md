@@ -375,6 +375,27 @@ test is telling the truth.
       `SIGNAL_SHUTDOWN_GRACE_MS` gives it two seconds and then
       SIGKILLs, which is the guarantee that matters to anyone whose
       server traps the signal. Two pins, both failing on the old pages.
+349.  DONE (2026-09-16, the last three guides: plugins, extensibility,
+      lockfiles — the guide queue is read out). A CORRECTION of item
+      346 first: it fixed remote-caching's "three-call `RemoteCacheLayer`
+      seam" and never grepped the class, so the same sentence sat on
+      extensibility, plugins and `architecture.md` (whose site copy is
+      generated). All three now name `hasMany` beside `has`/`get`/`put`,
+      and the pin is the grep item 346 owed: every hand-authored page
+      that mentions `RemoteCacheLayer` is refused the words "three-call"
+      (STATUS, which quotes the old wording, and the generated copies
+      are skipped by name and by their generated mark). The plugins
+      guide's own roster named `@vzn/vx-schedule-history` on `schedule`
+      alone where it fills three — `schedule`, `admit` and `commands`
+      (`vx history`) — the same omission item 343 fixed on
+      pipeline-with-seams, and extensibility's `commands` row said
+      "nothing unless declared" with two shipped verbs in the repo. Its
+      hook block, though, names all thirteen `PLUGIN_HOOKS` and is
+      pinned as a control (by set, not order: the block groups by kind
+      on purpose). lockfiles named five of the six keys the pnpm
+      parser folds into every project's digest
+      (`ignoredOptionalDependencies` missing). Four pins, three failing
+      on the old pages.
 
 ## In flight
 

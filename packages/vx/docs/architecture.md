@@ -218,7 +218,7 @@ The cache is not a single file. It is composed:
   (`{ read, write }`) and gates only the task-artifact `get`/`save`.
 - **`layered-cache.ts`** — composes local + a remote layer behind the
   same `CacheLayer` interface, and declares **`RemoteCacheLayer`** —
-  the three-call seam (`has`/`get`/`put`) a remote wire client must
+  the seam (`has`/`get`/`put`, plus an optional `hasMany`) a remote wire client must
   implement. Core ships NO wire client: a plugin provides one via the
   `cache` capability — `@vzn/vx-reapi` (Bazel AC/CAS), a Turbo wire, an
   S3-direct wire all plug in the same way. Read-through (local,
