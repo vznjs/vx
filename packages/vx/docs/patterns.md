@@ -180,7 +180,8 @@ cache meter carries the message.)
 ## Performance
 
 Sharing the patterns doesn't mean sharing the overhead. On the
-3,270-task synthetic workspace (2026-09, `packages/vx-bench/RESULTS.md`):
+476-package / 1,428-node synthetic workspace
+(`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02):
 
 | Runner | Fresh (cold) | Warm (no restore) | Warm (restore) |
 | ------ | ------------ | ----------------- | -------------- |

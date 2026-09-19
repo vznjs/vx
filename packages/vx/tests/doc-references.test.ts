@@ -140,3 +140,44 @@ describe('docs/optimizations.md cites files that exist and symbols they hold', (
     )
   })
 })
+
+// README.md's headline warm figure was `79 ms` — the WAVE 2 column of
+// benchmarks.md's 100-project row, two waves behind the 74 ms floor that
+// why-vx-is-fast.md quotes (item 383, 2026-09-19). A pin asking "is this
+// number on benchmarks.md?" would have passed it, because it is: in the
+// wrong column. The floor is the LAST column of the row, so that is what
+// this reads.
+describe('README.md quotes the current warm floor, not a wave on the way', () => {
+  it('its 100-project figure is the last column of the warm-run row', () => {
+    const bench = readFileSync(path.join(pkg, 'docs', 'benchmarks.md'), 'utf8')
+    const row = /^\| 100 +\|(.+)\|[^|]*\|$/m.exec(bench)
+    expect(row).not.toBeNull()
+    const cells = row![1]!.split('|').map((c) => c.trim())
+    expect(cells.length).toBeGreaterThan(4)
+    const floor = cells[cells.length - 1]!
+    expect(floor).toMatch(/^\d+ ms$/)
+    const readme = readFileSync(path.join(pkg, 'docs', 'README.md'), 'utf8')
+    const quoted = /100-project workspace completes in \*\*(\d+ ms)\*\*/.exec(readme)
+    expect(quoted).not.toBeNull()
+    expect({ quoted: quoted![1]!, floor }).toEqual({ quoted: floor, floor })
+  })
+})
+
+// comparison.md contradicted itself: its "Likely-worth-adding" item 7 records
+// `--output-logs hash-only` as SHIPPED (2026-08-25) and its flag map lists
+// all four modes, while the "Shipped since this list was first drawn" bullet
+// listed three — written before hash-only landed and never revisited
+// (item 383, 2026-09-19). The modes are a list run.ts owns.
+describe("comparison.md's shipped list names every --output-logs mode", () => {
+  it('its bullet is the set run.ts accepts', () => {
+    const run = readFileSync(path.join(pkg, 'src', 'cli', 'run.ts'), 'utf8')
+    const guard = /if \(([^)]*v !== '[^']+'[^)]*)\) \{/.exec(run)
+    expect(guard).not.toBeNull()
+    const modes = [...guard![1]!.matchAll(/'([a-z-]+)'/g)].map((m) => m[1]!)
+    expect(modes.sort()).toEqual(['errors-only', 'full', 'hash-only', 'none'])
+    const doc = readFileSync(path.join(pkg, 'docs', 'comparison.md'), 'utf8')
+    const bullet = /^- `--output-logs ([a-z|-]+)`\.$/m.exec(doc)
+    expect(bullet).not.toBeNull()
+    expect(bullet![1]!.split('|').sort()).toEqual(modes)
+  })
+})

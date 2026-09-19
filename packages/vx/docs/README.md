@@ -87,7 +87,7 @@ the hooks are how it gets built.
 Numbers come from `packages/vx-bench/` and are reproducible; the invariant behind
 each is recorded in [optimizations.md](./optimizations.md).
 
-- A fully-cached run on a 100-project workspace completes in **79 ms**
+- A fully-cached run on a 100-project workspace completes in **74 ms**
   wall-clock; on 476 packages / 1,428 tasks in **297 ms**, where
   Turborepo 2.10 takes 342 ms and Nx 23 takes 1.38 s on the identical
   workspace — and restoring every output is 1.5× faster than Turbo
