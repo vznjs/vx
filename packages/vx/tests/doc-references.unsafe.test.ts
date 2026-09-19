@@ -129,6 +129,69 @@ describe('docs/parity.md names suites that exist and the versions its suites cit
     expect(missing).toEqual([])
   })
 
+  // The paths resolving is not the claim the column makes: it says the
+  // suite PINS the row. Two did not. `"cache": false` cited
+  // no-cache-word.test.ts, which holds the WORD `no-cache` in the row,
+  // legend and report and never reads `--summarize` — run-artifacts.test.ts
+  // is where `noCache: true` is asserted. And `nx reset` cited
+  // cache-hygiene.test.ts, which is about an interrupted run publishing
+  // nothing and says `prune` nowhere (item 390, 2026-09-19).
+  //
+  // Where a row's vx cell names a flag or a config path, the check derives
+  // the token from the row itself. Where it does not, the token is named
+  // here — those are exactly the two that were wrong.
+  const REQUIRED: Record<string, string> = { '"cache": false': 'noCache', 'nx reset': 'prune' }
+  // Two dotted paths the suites prove but never spell: both are written as
+  // config literals in the fixtures (`inputs: { files: [...] }`,
+  // `passThrough: ['AWS_REGION']`). They are RE-SPELLED, not exempted —
+  // dropping them would have left their rows with no token at all, which
+  // is a row the check stops reading, not a row it passes.
+  const ALIAS: Record<string, string> = {
+    'cache.inputs.files': 'resolveInputs',
+    'exec.env.passThrough': 'passThrough',
+  }
+
+  it('every deep-pin suite mentions what its row claims', () => {
+    const doc = readFileSync(path.join(pkg, 'docs', 'parity.md'), 'utf8')
+    const read = (f: string): string => {
+      const abs = f.startsWith('packages/') ? path.join(repo, f) : path.join(pkg, f)
+      if (!statSync(abs).isDirectory()) return readFileSync(abs, 'utf8')
+      return walk(abs, '.ts')
+        .map((g) => readFileSync(g, 'utf8'))
+        .join('')
+    }
+    const gaps: string[] = []
+    let checked = 0
+    for (const line of doc.split('\n')) {
+      if (!line.startsWith('| ') || line.startsWith('| ---')) continue
+      const cells = line
+        .trim()
+        .replace(/^\||\|$/g, '')
+        .split('|')
+        .map((c) => c.trim())
+      if (cells.length < 3) continue
+      const [turbo, vx, pin] = cells as [string, string, string]
+      const files = [...pin.matchAll(/`((?:tests|packages)\/[\w./-]+)`/g)].map((m) => m[1]!)
+      if (files.length === 0) continue
+      const tokens = new Set(
+        [...vx.matchAll(/`(--[a-z-]+|[a-z]+\.[a-z][a-zA-Z.]+)`/g)]
+          .map((m) => m[1]!)
+          .filter((t) => t.length > 4)
+          .map((t) => ALIAS[t] ?? t),
+      )
+      const named = REQUIRED[turbo.replace(/`/g, '')]
+      if (named !== undefined) tokens.add(named)
+      if (tokens.size === 0) continue
+      checked += 1
+      const blob = files.map(read).join('')
+      for (const t of tokens) if (!blob.includes(t)) gaps.push(`${vx.slice(0, 40)} → ${t}`)
+    }
+    expect(checked).toBeGreaterThan(13)
+    // Both REQUIRED rows must have been reached, or the map is dead weight.
+    expect(Object.keys(REQUIRED).every((k) => doc.includes(k))).toBe(true)
+    expect(gaps).toEqual([])
+  })
+
   it('the Turbo and Nx versions are the ones the two parity suites name', () => {
     const doc = readFileSync(path.join(pkg, 'docs', 'parity.md'), 'utf8')
     const turbo = /\(turborepo\.dev, ([\d.]+)\)/.exec(doc)
