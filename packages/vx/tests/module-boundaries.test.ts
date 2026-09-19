@@ -119,3 +119,74 @@ describe('module boundaries', () => {
     ).toEqual([])
   })
 })
+
+// The staged load (`orchestrator/projects.ts:loadProjects`, and
+// `loadCliProjects` over it) is the config load every reader shares: it runs
+// the plugin `project` stage, serves cached evaluations, and is what a run
+// itself sees. A raw `loadProjectConfig` sees none of that, so a reader that
+// reaches for it answers from a DIFFERENT workspace than the one that runs —
+// `vx info` would miss a plugin's injected tasks, `--affected` would miss the
+// owners of one.
+//
+// Two uses are legitimate and STATUS § Next 8(c) names them: `vx lock`, which
+// must read each config raw and fresh because the lock IS the frozen
+// evaluation, and the fallback each staged reader takes when the staged load
+// THROWS — a broken config must not take the whole verb down. The rule was
+// prose, and the instruction it carried ("grep for `loadProjectConfig(`
+// before adding a consumer that is not a fallback") relied on someone doing
+// the grep. This is the grep (item 362, 2026-09-19).
+describe('the raw config load has only its two sanctioned uses', () => {
+  const STAGED = /\b(loadProjects|loadCliProjects|stagedLoad)\(/
+
+  it('only these files call loadProjectConfig, and each one earns it', async () => {
+    const callers = new Map<string, number[]>()
+    for (const rel of new Bun.Glob('**/*.ts').scanSync({ cwd: SRC })) {
+      if (rel === 'workspace/project-loader.ts') continue // its own definition
+      const lines = (await Bun.file(path.join(SRC, rel)).text()).split('\n')
+      const at = lines
+        .map((l, i) => (/\bloadProjectConfig\(/.test(l) ? i : -1))
+        .filter((i) => i >= 0)
+      if (at.length > 0) callers.set(rel, at)
+    }
+    // A new name here is not automatically wrong — it is a consumer that has
+    // to justify itself in this test, which is the point.
+    expect([...callers.keys()].sort()).toEqual([
+      'cli/lock.ts',
+      'cli/select.ts',
+      'cli/watch.ts',
+      'orchestrator/doctor.ts',
+    ])
+
+    for (const [rel, at] of callers) {
+      const text = await Bun.file(path.join(SRC, rel)).text()
+      const lines = text.split('\n')
+      if (rel === 'cli/lock.ts') {
+        // The lock is the frozen evaluation; a cached one would freeze a
+        // stale object into the file people commit.
+        for (const i of at) {
+          const call = lines.slice(i, i + 3).join(' ')
+          expect({ rel, line: i + 1, fresh: call.includes('fresh: true') }).toEqual({
+            rel,
+            line: i + 1,
+            fresh: true,
+          })
+        }
+        continue
+      }
+      // Every other caller tries the staged load first and reaches for the
+      // raw one only after a `catch`.
+      const staged = lines.findIndex((l) => STAGED.test(l))
+      expect({ rel, staged: staged >= 0 }).toEqual({ rel, staged: true })
+      for (const i of at) {
+        // The staged attempt, then a `catch`, then this call: the order is
+        // what makes it a fallback rather than a second source of truth.
+        const between = lines.slice(staged, i).join('\n')
+        expect({
+          rel,
+          line: i + 1,
+          afterStagedCatch: staged < i && /\bcatch\b/.test(between),
+        }).toEqual({ rel, line: i + 1, afterStagedCatch: true })
+      }
+    }
+  })
+})
