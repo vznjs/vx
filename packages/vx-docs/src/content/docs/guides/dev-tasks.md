@@ -98,8 +98,10 @@ dependency is for *ordering*, not output identity. See
 - **Automatic teardown.** A persistent task that is only a dependency
   (`dev` under `vx run e2e`) is sent `SIGTERM` once the rest of the graph
   finishes — success or failure — and vx waits for it to exit before
-  returning. No orphaned dev servers left running in CI, and `Ctrl-C`
-  reaps them too.
+  returning. The wait is bounded: a server that ignores `SIGTERM` gets a
+  2-second grace and is then `SIGKILL`ed, so the run cannot hang on a
+  process that refuses to go. No orphaned dev servers left running in
+  CI, and `Ctrl-C` reaps them the same way.
 - **A requested one keeps the run alive.** `vx run dev` prints the
   summary once the server is ready and then blocks until it exits or
   you press `Ctrl-C`; the dev server *is* the point of that run. A

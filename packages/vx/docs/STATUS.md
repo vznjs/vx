@@ -361,6 +361,20 @@ test is telling the truth.
       which cannot print it. All four corrected; the `vx show` list is
       now pinned to the `add(…)` names in `show.ts`, which would have
       caught it. Four pins, all four failing on the old pages.
+348.  DONE (2026-09-16, the next three guides: task-dependencies,
+      dev-tasks, environment-variables). environment-variables reads
+      true — both `ExecEnv` fields, the essential allowlist its own pin
+      already holds to `ESSENTIAL_ENV`, and the remote rule that
+      `define` and `inputs.env` cross while `passThrough` does not.
+      task-dependencies said a failed task "aborts its transitive
+      dependents"; in vx's own vocabulary it SKIPS them (`skipped` is a
+      counted status of its own, `aborted` is what a run's teardown
+      sets on `Ctrl-C`), and the sentence never named the three
+      `--continue` modes that decide it. dev-tasks said vx SIGTERMs a
+      dependency server and "waits for it to exit" — unbounded, where
+      `SIGNAL_SHUTDOWN_GRACE_MS` gives it two seconds and then
+      SIGKILLs, which is the guarantee that matters to anyone whose
+      server traps the signal. Two pins, both failing on the old pages.
 
 ## In flight
 
