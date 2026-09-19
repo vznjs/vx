@@ -330,8 +330,15 @@ describe('the watch-mode post states what watch.ts does', () => {
       expect(m).not.toBeNull()
       return [...m![1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!)
     }
-    for (const seg of list('IGNORED_SEGMENTS')) expect(page).toContain('`' + seg + '`')
-    for (const suffix of list('IGNORED_SUFFIXES')) expect(page).toContain('`' + suffix + '`')
+    // flows.md describes the same filter and said "editor swap files" where
+    // the suffix list is `.tsbuildinfo` and a trailing `~` — the wording
+    // item 338 struck from this post, still standing there (item 353).
+    const flows = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'flows.md'), 'utf8')
+    for (const text of [page, flows]) {
+      for (const seg of list('IGNORED_SEGMENTS')) expect(text).toContain('`' + seg + '`')
+      for (const suffix of list('IGNORED_SUFFIXES')) expect(text).toContain('`' + suffix + '`')
+      expect(text).not.toContain('editor\nswap files')
+    }
   })
   it('its rejected-flags sentence names every flag the loop refuses', () => {
     const refused = new Set<string>()
