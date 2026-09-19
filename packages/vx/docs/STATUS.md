@@ -941,15 +941,51 @@ build` and this file records a Bun-specific hazard for exactly
       The grep found one sibling, `plugin-executor-reapi-2026-08.md`,
       which describes the same rejected shape down to
       `localExecutorPlugin()` under `src/plugins/` — a directory a test
-      asserts does not exist. Left alone deliberately: it is a
-      superseded 2026-08 design that nothing cites as live, and
-      rewriting the record of a rejected shape would destroy the
-      evidence that it was considered. The difference is that
+      asserts does not exist. Left alone deliberately: rewriting the
+      record of a rejected shape would destroy the evidence that it was
+      considered. CORRECTED by item 372: I justified that with "nothing
+      cites it as live", and `docs/modules/executor.md` does cite it
+      (§ 4, for an `outputs` discriminator a later design still owes).
+      The decision stands — the citation is to the half that shipped —
+      but the reason I gave was a fact I had not checked. The difference is that
       CLAUDE.md points at the 2026-09 page and calls it the design.
       Pinned both ways: while `executors.push(localExecutor())` is in
       the source, Rule 5 must carry its strike — and if the floor ever
       leaves, the pin fails too, so the note gets revisited instead of
       quietly outliving what superseded it.
+372.  DONE (2026-09-19, the `docs/design/` shelf — 31 documents, and
+      the question item 371 raised). A stale design doc is a fine
+      RECORD and a dangerous CONTRACT, and the difference is whether
+      live documentation promotes it. Seven do: CLAUDE.md and six live
+      pages cite `pipeline-2026-09`, `module-isolation-2026-06`,
+      `config-lock-2026-06`, `turbo-nx-test-gaps`,
+      `download-policy-cas-cache-2026-08`,
+      `plugin-executor-reapi-2026-08` and `resource-estimates-2026-09`.
+      Five already say what became of them (shipped, complete,
+      proposal, or a dated survey). Two did not, and one of those is
+      the doc I dismissed in 371 as uncited — `modules/executor.md`
+      cites it for the `outputs` discriminator, so my stated reason was
+      a fact I had not checked, corrected in 371's entry in place. It
+      has a status line now, because three of its claims are false
+      today: the local plugins under `src/plugins/` (a directory a test
+      says cannot exist) were replaced by the FLOOR, the `backend`
+      capability was removed, and vx-cloud, which the design says "is
+      NOT deleted … it coexists", is gone and on the rejected list. The
+      seam itself shipped, and the citation points at that half.
+      `turbo-nx-test-gaps` needs nothing: it opens "Generated:
+      2026-05-17" and reads as the survey it is. The remaining 24 are
+      untouched on purpose — an uncited design is a record, and
+      rewriting the record of a rejected shape destroys the evidence it
+      was considered. Pinned: a design doc a live page or CLAUDE.md
+      cites must state its status. Both arms verified, and the second
+      is the one that matters — pointing a live page at a previously
+      uncited design fails the pin, so the next promotion to "current"
+      is caught at the moment it happens. The gate earned its keep
+      again: the pin passed under `bun test` and failed
+      `lint.oxlint`, because `Bun.Glob.scanSync` yields an ITERATOR and
+      `.map` on it is a type error a transpile-only run cannot see —
+      the rule at the top of this file, met for the second time in this
+      arc.
 
 ## In flight
 
