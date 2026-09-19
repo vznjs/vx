@@ -125,7 +125,14 @@ cross-module import of a contracted module targets anything but its
 `tests/package-boundaries.unsafe.test.ts`, pins the cross-PACKAGE law: core
 never imports `@vzn/vx-*`; sibling packages import core only via the
 bare `@vzn/vx` specifier, and the public-API symbol set is a
-deliberate snapshot.
+deliberate snapshot. It also holds the RUNTIME floor: every package
+declares `engines.bun`, and a package that enforces a floor in code
+(core's `util/bun-version.ts`, `@vzn/vx-reapi`'s `wire.ts`) may require
+a newer Bun than it declares but never an older one. The two constants
+are equal today for different reasons — core's floor is `Bun.Archive`
+and the answers that go wrong without it, the plugin's is an http2
+client that hangs on its chunked uploads — so the guard holds the
+relation, not the value.
 
 ## The plugin capability seam
 

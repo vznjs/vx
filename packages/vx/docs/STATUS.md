@@ -840,6 +840,32 @@ test is telling the truth.
       `docs/modules/util-bun-version.md`, and the sandbox showed the
       doctor case reaching into a read-only checkout — it runs against
       a fixture workspace with its own cache dir now.
+368.  DONE (2026-09-19, the loop item 367 opened). `MIN_BUN` now exists
+      twice in code — core's `util/bun-version.ts` and
+      `@vzn/vx-reapi`'s `wire.ts` — beside an `engines.bun` in every
+      package manifest. Two lists, one source, in code and a build file
+      rather than prose: the shape this arc has spent ten items
+      pinning. The first question was whether they must AGREE, and they
+      must not: a plugin may need a newer Bun than core, and these two
+      are equal today for different reasons (core's floor is
+      `Bun.Archive` and the answers that go wrong without it, the
+      plugin's is an http2 client that hangs on its chunked uploads).
+      What does hold is a relation: a code floor may sit above its
+      package's declared `engines.bun`, never below, because a constant
+      under its own manifest is a promise the package does not keep.
+      That is Rule 6 in `package-boundaries.unsafe.test.ts` now, with
+      the every-package-declares-it half beside it. One fix fell out
+      rather than being excepted: `@vzn/vx-docs` declared no
+      `engines.bun` at all, though it builds under `bun --bun astro
+build` and this file records a Bun-specific hazard for exactly
+      that command — it declares the floor now, so the rule has no
+      exception to encode. Three arms: a manifest without the field
+      fails, a floor below its manifest fails, and a NEWER floor
+      passes, which is the arm that matters since the guard holds the
+      relation and not the value. My own first comparison would have
+      failed that third arm — a component-wise `some(n < e)` calls
+      2.0.0 older than 1.9.0 on the minor — so the lexicographic helper
+      proves itself on four pairs before the rule uses it.
 
 ## In flight
 

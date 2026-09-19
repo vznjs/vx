@@ -165,4 +165,66 @@ describe('package boundaries', () => {
     }
     expect(lacking).toEqual([])
   })
+
+  // Rule 6: the runtime floor. Every package declares `engines.bun`, and a
+  // package that ALSO enforces a floor in code (core's
+  // `util/bun-version.ts`, `@vzn/vx-reapi`'s `wire.ts`) may require a newer
+  // Bun than it declares but never an older one — a constant below its own
+  // manifest is a promise the package does not keep. They are equal today,
+  // and equal for different reasons: core's floor is `Bun.Archive` and the
+  // answers that go wrong without it (item 366), the plugin's is an http2
+  // client that hangs on its chunked uploads. Nothing requires them to move
+  // together, so this holds the relation, not the value (item 368).
+  it('every package declares engines.bun, and no code floor sits below it', async () => {
+    // Lexicographic, not component-wise: a floor of 2.0.0 against an engines
+    // of 1.9.0 is NEWER, and a `some(n < e)` over the parts calls it older on
+    // the minor. Proven below before it is used.
+    const lessThan = (a: readonly number[], b: readonly number[]): boolean => {
+      for (let i = 0; i < 3; i += 1) {
+        if (a[i] !== b[i]) return (a[i] as number) < (b[i] as number)
+      }
+      return false
+    }
+    expect([
+      lessThan([1, 3, 11], [1, 4, 0]),
+      lessThan([2, 0, 0], [1, 9, 0]),
+      lessThan([1, 4, 0], [1, 4, 0]),
+      lessThan([1, 4, 1], [1, 4, 0]),
+    ]).toEqual([true, false, false, false])
+    const parse = (range: string): number[] => {
+      const m = /^>=\s*(\d+)\.(\d+)(?:\.(\d+))?$/.exec(range)
+      expect({ range, understood: m !== null }).toEqual({ range, understood: true })
+      return [Number(m![1]), Number(m![2]), Number(m![3] ?? 0)]
+    }
+    const declared = new Map<string, number[]>()
+    const glob = new Bun.Glob('*/package.json')
+    for await (const rel of glob.scan({ cwd: PACKAGES_DIR })) {
+      const pkg = JSON.parse(await Bun.file(path.join(PACKAGES_DIR, rel)).text()) as {
+        name: string
+        engines?: { bun?: string }
+      }
+      const range = pkg.engines?.bun
+      expect({ pkg: pkg.name, declaresBun: range !== undefined }).toEqual({
+        pkg: pkg.name,
+        declaresBun: true,
+      })
+      declared.set(rel.split('/')[0] as string, parse(range as string))
+    }
+    expect(declared.size).toBeGreaterThan(8)
+
+    const below: string[] = []
+    const src = new Bun.Glob('*/src/**/*.ts')
+    for await (const rel of src.scan({ cwd: PACKAGES_DIR })) {
+      const text = await Bun.file(path.join(PACKAGES_DIR, rel)).text()
+      const m = /MIN_BUN = \[(\d+), (\d+), (\d+)\]/.exec(text)
+      if (m === null) continue
+      const dir = rel.split('/')[0] as string
+      const floor = [Number(m[1]), Number(m[2]), Number(m[3])]
+      const engines = declared.get(dir) as number[]
+      if (lessThan(floor, engines)) {
+        below.push(`${rel}: MIN_BUN ${floor.join('.')} < engines ${engines.join('.')}`)
+      }
+    }
+    expect(below).toEqual([])
+  })
 })
