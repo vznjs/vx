@@ -1123,6 +1123,40 @@ build` and this file records a Bun-specific hazard for exactly
       `export type {…}` clauses and reported `collectInfo → InfoFacts`
       missing when the line above exports it inline, and the second
       flagged `loadResolvedProjects → Map` as an unexported type.
+388.  DONE (2026-09-19, `execution.md` + `flows.md`, three findings,
+      one of them a unit). The rest of both pages holds: the 16-hex
+      key, the `CacheKeyInput` field names, `CacheStatus`'s five
+      words, the 8 MiB capture bounds, `VX_RUN_WORKSPACE` /
+      `VX_RUN_TASK`, watch's 150 ms debounce and its ignore sets,
+      every `<module>/<file>.ts` either page cites.
+      First, the prepare timeline said the bulk git populate is ONE
+      `git ls-files -s --others` plus one `git status`. It is four
+      concurrent spawns (`ls-files -s -v -z`, `status --porcelain -z
+-uall`, `rev-parse --show-prefix --git-dir`, a `core.*` config
+      read), and `--others` is the flag it deliberately does NOT
+      pass — `status -uall` answers untracked, and asking git again
+      walked the same tree twice. The page could look right because
+      `runGitLsFiles` still passes `--others`: it is the FALLBACK
+      re-spawn for an invalidated partition, not the bulk path.
+      Second, the `cache.key({…})` list read as the whole call and
+      omitted `pluginParts` — the one argument a plugin author comes
+      to that page for. Pinned against `CacheKeyInput` minus a named
+      plumbing list, so a new field is a decision in the test.
+      Third, and the one that matters most: `flows.md` dated the
+      up-to-date check's fingerprint to "floor-to-second mtime".
+      `output-index.ts` compares within one MILLISECOND and its own
+      comment says legacy second-precision rows converge on their
+      first restore — so the page described what the check stopped
+      doing and overstated its tolerance a thousandfold.
+      `caching.md` says **millisecond** twice: one copy pinned, the
+      other drifted, the shape every finding in this arc has had.
+      The class pin holds only a STATED precision (unqualified
+      `(size, mode, mtime)` prose is left alone) and only rejects
+      SECOND — and its first draft rejected the correct pages too,
+      because `millisecond` CONTAINS `second`. Naive selector, fifth
+      time, caught by running the check. Its sibling assertion then
+      picked the site's caching GUIDE by basename; the contract page
+      is selected by path now.
 
 ## In flight
 
@@ -1164,6 +1198,14 @@ once and then passed 271/271 twice in isolation and again on the next
 gate. Treat a bare SIGILL like that as this runtime under twelve-way
 load, not as a find: re-run the shard alone, and the gate once, before
 reading anything into it.
+By item 388 that shard had stopped being intermittent: shard 9 now
+dies the same way EVERY run, alone and under the gate, after the
+config-evaluation worker suite's last passing test — and it does it on
+a clean `origin/main` tree, which is the control that settles it. So
+the baseline on this container is eleven failing tasks, ten of them
+naming tests and shard 9 naming none. The procedure is unchanged, and
+the clean-tree run is the part of it that matters: a SIGILL is only
+the runtime's until you have watched it happen without your diff.
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
 closed by 2026-09-10 — the docs build under bwrap, strace's seccomp

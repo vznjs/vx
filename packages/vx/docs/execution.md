@@ -66,9 +66,16 @@ terminal and a task succeeding or failing. Read it alongside
  │       policy's local slice. An injected RunOptions.remoteCache is
  │       composed into a LayeredCache (it wins); else a plugin's
  │       `cache` capability may wrap or replace it; else bare local.
- │   11. Bulk git populate — ONE `git ls-files -s --others` (plus one
- │       `git status --porcelain`) at the root fills the per-project
- │       GitFilesCache with file lists + index OIDs.
+ │   11. Bulk git populate — FOUR concurrent spawns at the root
+ │       (`ls-files -s -v -z` for the index: every tracked path's OID
+ │       and its cache-state flag; `status --porcelain -z -uall` for
+ │       the dirty AND untracked sets, the one worktree walk;
+ │       `rev-parse --show-prefix --git-dir`; a `core.*` config read)
+ │       fill the per-project GitFilesCache with file lists + index
+ │       OIDs. `ls-files --others` is NOT among them — status's
+ │       `-uall` already answers untracked, and asking git twice
+ │       walked the same tree again. A fifth, `check-attr`, runs only
+ │       when a `.gitattributes` could rewrite bytes.
  ├─ Task selection (graph/task-graph.ts:expandRequested)
  │    Bare task names fan out across the resolved candidate projects
  │    (every project that declares the task). Anchored entries
@@ -191,7 +198,10 @@ terminal and a task succeeding or failing. Read it alongside
  │                      projectPackageJsonHash, taskConfigHash,
  │                      forwardArgs, envValues, runtimeValues,
  │                      workspaceRuntimeValues, upstreamHashes,
- │                      inputFiles }) → 16-hex xxh3
+ │                      pluginParts, inputFiles }) → 16-hex xxh3
+ │          (pluginParts is whatever the `key` stage contributed,
+ │          folded between the upstream keys and the input files —
+ │          see caching.md § Cache key derivation for the order.)
  │          (Skipped when the local short-circuit pre-derived it.)
  │       5. If willRead (cache block + a read axis on):
  │            consume the up-front probe when present, else

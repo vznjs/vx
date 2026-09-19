@@ -43,6 +43,13 @@ const CLASS_PAGES = {
     'remote-caching.md',
   ],
   retryLine: ['execute-task.md', 'schema.md'],
+  outputFingerprint: [
+    'caching.md',
+    'flows.md',
+    'optimizations.md',
+    'strict-output-ownership.md',
+    'why-vx-is-fast.md',
+  ],
 }
 
 /**
@@ -474,6 +481,43 @@ describe('every source path a site page names exists', () => {
 // neither — and the contract docs carry seven of them (the bench scripts and
 // their RESULTS.md, a vx-migrate test). Nothing is stale today; this is the
 // tripwire, one directory up from item 380's (item 384, 2026-09-19).
+// `output-index.ts` compares `Math.abs(s.mtimeMs - e.mtimeMs) < 1` and its
+// own comment says legacy SECOND-precision rows converge on their first
+// restore — so a page describing the skip check as second-precision
+// describes what it stopped doing, and overstates the tolerance a
+// thousandfold. caching.md said **millisecond** twice; flows.md said
+// "floor-to-second mtime" (item 388, 2026-09-19): one copy pinned, the
+// other drifted, the shape every finding in this arc has had. Unqualified
+// prose (`(size, mode, mtime)`) is left alone — only a stated precision is
+// held, and only SECOND is wrong.
+describe('no page dates the output fingerprint to the second', () => {
+  it('every page stating the (size, mode, mtime) triple states ms or no unit', () => {
+    const wrong: string[] = []
+    const seen = new Set<string>()
+    for (const page of handAuthoredDocs()) {
+      const flat = readFileSync(page, 'utf8').split(/\s+/).join(' ')
+      for (const m of flat.matchAll(/size[^.]{0,80}?mode[^.]{0,80}?mtime/gi)) {
+        seen.add(path.basename(page))
+        const window = flat.slice(m.index, m.index + 120)
+        // `millisecond` CONTAINS `second`: the first draft flagged both
+        // correct pages and nothing else — the naive selector, again, caught
+        // by running the check rather than reading it.
+        if (/(?<!milli)second/i.test(window))
+          wrong.push(`${path.basename(page)}: ${window.slice(0, 70)}`)
+      }
+    }
+    expect([...seen].sort()).toEqual([...CLASS_PAGES.outputFingerprint].sort())
+    expect(wrong).toEqual([])
+    // The contract page is the one that must name the unit outright — by
+    // PATH, not basename: the site's hand-authored caching guide carries
+    // the same file name and does not state the triple at all.
+    const contract = path.join('vx', 'docs', 'caching.md')
+    const caching = handAuthoredDocs().find((p) => p.endsWith(contract)) as string
+    expect(caching).toBeString()
+    expect(readFileSync(caching, 'utf8')).toContain('**millisecond**-mtime check')
+  })
+})
+
 describe('every packages/ path the docs cite exists', () => {
   it('`packages/x/y.ts` in prose resolves from the repo root', () => {
     const root = path.resolve(import.meta.dir, '..', '..', '..')
