@@ -629,6 +629,40 @@ build` and this file records a Bun-specific hazard for exactly
       Recorded as the close of this arc rather than a find: the last
       six items were one motion, and the yield had turned from the
       repo's errors to my own.
+374.  DONE (2026-09-19, a test that raced the clock it was asserting
+      about, found by CI on the docs-only PR above). The macOS
+      core-test job went red on `output-dirs.test.ts`: "a directory
+      modified within the racy window is not snapshotted at all" got
+      four rows where it expected none. Not the diff — a docs-only
+      change cannot reach `recordOutputDirs` — and not a flake to
+      re-run: the test wrote `dist/fresh/x.js` and called
+      `recordOutputDirs`, and the guard it was asserting
+      (`output-index.ts`: drop the whole snapshot if any directory's
+      mtime is newer than `Date.now() - OUTPUT_DIRS_RACY_MS`) reads
+      its clock INSIDE that call, so "the directory was modified
+      within the window" held only while the test beat 50 ms to it.
+      The loaded runner did not: its own fixture writes were 67 ms
+      apart in the failure output. Reproduced here by inserting that
+      delay — same four rows, same mtimes — which is the repro this
+      kind of failure needs before it is called a race. The fix states
+      the premise instead of racing for it: stamp `dist` and
+      `dist/fresh` with `utimesSync` to the FAR edge of the window
+      (`now + OUTPUT_DIRS_RACY_MS`, so the assertion survives a
+      scheduling delay between the stamp and that clock read), and
+      stamp the tree old again for the second half instead of sleeping
+      past the window. Differential both ways: without the guard the
+      test fails, and the other fourteen pass under both arms.
+      The same window had quietly emptied its neighbours. A `symlinkSync`
+      into `dist/` bumps `dist`, so the snapshot in the symlink test
+      was REFUSED and `not.toContain('dist/link')` had been passing on
+      an empty set — proven by deleting the new `age()` call and
+      watching the added `toContain('dist/sub')` control fail. Same
+      for the 8,193-directory cap case, where the window and the cap
+      both yield `[]`. So the fixture no longer sleeps `RACY_MS + 10`
+      to age itself; an `age()` helper stamps every directory old
+      (symlinks left alone, as the walk leaves them), which is
+      deterministic, faster, and one fewer claim about time in a file
+      that had three.
 
 ## In flight
 
