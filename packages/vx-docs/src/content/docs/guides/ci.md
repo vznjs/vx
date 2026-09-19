@@ -181,11 +181,16 @@ Three commands, three jobs:
 
 - **In CI: yes, when you want determinism.** `--frozen` guarantees the run
   executes the exact graph you committed — no eval-time surprises from a
-  different Node/Bun, env, or a transitively-imported preset. It's also
-  **faster**: skipping the per-run config re-parse trims roughly **10–21%**
-  off warm runs (the bigger your workspace, the more it saves). Pair it
-  with a `vx lock --check` step so CI fails loudly if someone forgot to
-  re-lock.
+  different Node/Bun, env, or a transitively-imported preset. Take it for
+  that guarantee, not for speed: measured on the 1,000-project bench
+  (2026-09-12, 12 interleaved reps) plain runs at a median of 177 ms
+  against frozen's 165 — about 5%, and that 5% is the per-config identity
+  stat, not evaluation, because the config-evaluation cache already
+  serves a pure config without evaluating it. `--frozen` still parses
+  and re-validates the whole lock. Where it does save is a config the
+  purity gate cannot prove pure, which evaluates live on every plain run.
+  Pair it with a `vx lock --check` step so CI fails loudly if someone
+  forgot to re-lock.
 - **Locally: no — keep evaluating live.** Day-to-day `vx run` always reads
   your configs fresh, so edits take effect immediately. `--frozen` is for
   the reproducible/CI path, not the inner loop.

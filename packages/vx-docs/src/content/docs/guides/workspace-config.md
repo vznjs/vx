@@ -102,6 +102,21 @@ Relocate it when you want all derived files under one tree (e.g.
 `build/`), or onto a faster/larger volume. Remember to add it to your
 `.gitignore` (the default `.vx/` usually already is).
 
+## `timeout`
+
+A default per-task timeout in milliseconds — the lowest-precedence
+fallback for a task that declares no `exec.timeout`.
+
+```ts
+timeout: 600_000
+```
+
+- **Default:** none. Omitted means no default timeout at all.
+- **Precedence, highest first:** a task's own `exec.timeout`, then the
+  `VX_TASK_TIMEOUT` env var, then this.
+- It is a runaway-process guard and nothing more: it is never folded
+  into a cache key, and a task it kills fails and is never cached.
+
 ## What is *not* here (by design)
 
 Workspace-level `globalInputs` / `globalEnv` / `globalPassThrough` and

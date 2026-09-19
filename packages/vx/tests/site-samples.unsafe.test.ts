@@ -826,3 +826,53 @@ describe('the sandboxing guide counts the tasks that decline the sandbox', () =>
     expect(page).toContain('`@vzn/vx-reapi#test`')
   })
 })
+
+describe('the workspace-config guide documents every WorkspaceConfig field', () => {
+  it('each field of the interface has a section', () => {
+    const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'config.ts'), 'utf8')
+    const decl = /export interface WorkspaceConfig \{([\s\S]*?)\n\}/.exec(src)
+    expect(decl).not.toBeNull()
+    const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
+    expect(fields.length).toBe(4)
+    const page = readFileSync(path.join(GUIDES, 'workspace-config.md'), 'utf8')
+    // `plugins` is the page's subject — it shows it in every config block
+    // rather than giving it a `## field` section of its own.
+    expect(page).toContain('plugins: [')
+    for (const field of fields.filter((f) => f !== 'plugins')) {
+      expect(page).toContain('## `' + field + '`')
+    }
+  })
+})
+
+describe('the remote-caching guide names the seam core defines', () => {
+  it('every RemoteCacheLayer method is named, the optional one as optional', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'layered-cache.ts'),
+      'utf8',
+    )
+    const decl = /export interface RemoteCacheLayer \{([\s\S]*?)\n\}/.exec(src)
+    expect(decl).not.toBeNull()
+    const methods = [...decl![1]!.matchAll(/^  (\w+)(\??)\(/gm)].map((m) => ({
+      name: m[1]!,
+      optional: m[2] === '?',
+    }))
+    expect(methods.map((m) => m.name).sort()).toEqual(['get', 'has', 'hasMany', 'put'])
+    const page = readFileSync(path.join(GUIDES, 'remote-caching.md'), 'utf8')
+    for (const m of methods) expect(page).toContain('`' + m.name + '`')
+    expect(methods.find((m) => m.name === 'hasMany')!.optional).toBe(true)
+    expect(page.replace(/\s+/g, ' ')).toContain('an optional `hasMany`')
+  })
+})
+
+describe('the CI guide states what --frozen measured, not what it once claimed', () => {
+  it('its frozen figures are the benchmarks page’s head-to-head', () => {
+    // It sold `--frozen` as "roughly 10–21%" off a warm run; the 2026-09-12
+    // measurement reads the row as a tie (item 346, 2026-09-16).
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    expect(bench).toContain('plain min 154 / median 177 ms, frozen 148 / 165')
+    const page = readFileSync(path.join(GUIDES, 'ci.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(page).toContain('median of 177 ms')
+    expect(page).toContain('165')
+    expect(page).not.toMatch(/10–21%/)
+  })
+})

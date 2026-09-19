@@ -46,8 +46,10 @@ nothing here — the [local cache](../caching/) is automatic.
 ## Sharing is a plugin
 
 Core ships **no HTTP cache client**. Sharing a cache is a **plugin
-concern**: core defines a three-call `RemoteCacheLayer` seam
-(`has`/`get`/`put`) and a `cache` plugin capability, and everything else —
+concern**: core defines a small `RemoteCacheLayer` seam — `has`, `get`
+and `put`, plus an optional `hasMany` that answers N key probes in one
+round trip (a remote that cannot batch omits it and the layer probes
+per hash) — and a `cache` plugin capability, and everything else —
 read-through with local hydration, at-most-once in-flight deduplication,
 background write-through uploads, and the never-fail contract — is core's
 `LayeredCache`. A plugin provides the wire; `LayeredCache` provides the
