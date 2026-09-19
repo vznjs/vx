@@ -58,7 +58,7 @@ sequenceDiagram
     C-->>X: CacheEntry {outputFiles, source: 'local'}
     X->>X: cleanOutputs? No — restore path decides
     X->>C: restoreOutputs(projectDir, entry)
-    C->>C: isOutputsCurrent? stat each output_files row<br/>(size + mode + floor-to-second mtime)
+    C->>C: isOutputsCurrent? stat each output_files row<br/>(size + mode + millisecond mtime)
     alt every output already current
         Note over C: skip extraction entirely —<br/>the warm-warm path costs N stats, zero writes
     else any output stale/missing
@@ -251,8 +251,8 @@ flowchart TD
 ```
 
 `accessed_at` is bumped on every `get`, so LRU reflects real use. A
-`--dry` plan probes with `has`, which does not bump it — planning is
-read-only.
+`vx run --dry` plan probes with `has`, which does not bump it — planning
+is read-only. (Prune's own rehearsal flag is `--dry-run`.)
 
 ## 9. `--dry` / `--graph` — the plan path
 
