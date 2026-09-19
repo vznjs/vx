@@ -15,6 +15,14 @@ npm install -g @vzn/vx
 bun src/bin.ts --version
 ```
 
+Below that floor vx still runs, and `vx info`'s `bun` row says so, because
+what an older Bun breaks is the ANSWER, not the start: a large `--format json`
+write is truncated mid-stream, no task reports what it used, and a config
+syntax error surfaces as an internal error rather than the usual message.
+[`modules/util-bun-version.md`](./modules/util-bun-version.md) has the
+measurements and why the verdict lives on that row rather than on stderr. The
+released binary carries its own Bun and the row never says it.
+
 ## Top-level shape
 
 ```

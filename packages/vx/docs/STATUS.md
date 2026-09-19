@@ -796,6 +796,50 @@ test is telling the truth.
       reported was green against an out-of-contract runtime, which
       makes the comparison sound (same runtime both sides) and the
       absolute result meaningless.
+367.  DONE (2026-09-19, the one finding from 366 that is not about a
+      container). Core declares `"bun": ">=1.4"` in `engines` and reads
+      it NOWHERE at run time: `engines` is advice an install may print,
+      and `bun src/bin.ts` below the floor starts fine and then answers
+      wrongly — a 2 MiB JSON write truncated to 219 KB, no
+      `peakRssBytes` on any task, a config syntax error arriving as an
+      internal error. `@vzn/vx-reapi` has guarded its own floor since
+      2026-08; core, which is what a user runs without choosing a
+      plugin, had nothing. `bin.ts` warns now, before the verb.
+      I wrote it as a REFUSAL first, mirroring vx-reapi, and changed it
+      on the evidence rather than on convenience. vx-reapi refuses
+      because its failure mode is a hang, which leaves the user nothing
+      to read; core's is a wrong answer, and 23 of ~2,000 tests failed
+      below the floor, so most of core works there. Turning that into
+      "the tool does not start" is heavier than the measurement
+      supports. What the measurement supports is that a green exit can
+      hide a truncated answer, so that is what the line says and the
+      exit code is untouched. Worth recording that the refusal would
+      also have blocked the gate that has to prove it — a design whose
+      author cannot test it is a design to look at twice, but the
+      reason to change it is the first one, not the second. Then the
+      gate refuted the warning too, twice, and that is the part worth
+      keeping. A line on stderr before every verb broke 19 tests
+      holding one real property: a successful vx command writes NOTHING
+      to stderr — and on CI, where the line never prints, those 19
+      would have stayed green, so relaxing them would have been dead
+      weight bought with a real assertion. Moving the verdict onto
+      `vx info`'s bun ROW then broke a 20th, because `--format json` is
+      a machine surface and a test holds that field to `Bun.version`
+      exactly, which decorated prose violates. Final shape: `bun` stays
+      the bare version, `bunSupported` is a typed boolean beside it,
+      and the sentence appears only in the rendered row. Three designs,
+      each discarded on evidence the repo's own tests supplied, none on
+      taste. The survivor's cost is stated rather than hidden: a user
+      who never runs `vx info` is not warned, proportionate to what was
+      measured — wrong answers on an unsupported runtime, not a broken
+      tool. Five tests; the doctor case asserts the verdict EXACTLY
+      tracks `isUnsupportedBun(Bun.version)`, the same claim on 1.3.11
+      and on CI's 1.4.2, and one case now holds the stderr property the
+      first draft broke. Two repo guards caught my own gaps before the
+      gate did: the page-per-module rule wanted
+      `docs/modules/util-bun-version.md`, and the sandbox showed the
+      doctor case reaching into a read-only checkout — it runs against
+      a fixture workspace with its own cache dir now.
 
 ## In flight
 

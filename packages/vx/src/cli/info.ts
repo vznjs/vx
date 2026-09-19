@@ -8,6 +8,7 @@ import { collectInfo, type FlakyTask, type InfoFacts } from '../orchestrator/ind
 import { seeHelp } from './help.js'
 import { parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
+import { MIN_BUN } from '../util/index.js'
 
 export interface InfoArgs {
   format: 'pretty' | 'json'
@@ -59,7 +60,14 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
 export function renderInfo(f: InfoFacts): string {
   const rows: [string, string][] = [
     ['vx', f.vx],
-    ['bun', f.bun],
+    // The prose stays in the rendered row; `f.bun` itself is the bare
+    // version a script reads (doctor.ts says why).
+    [
+      'bun',
+      f.bunSupported
+        ? f.bun
+        : `${f.bun} — unsupported, vx needs >= ${MIN_BUN.join('.')}; answers may be wrong`,
+    ],
     ['git', f.git ?? '(not found)'],
     ['git status cache', renderGitStatusCache(f.gitStatusCache)],
     ['workspace root', f.workspaceRoot],
