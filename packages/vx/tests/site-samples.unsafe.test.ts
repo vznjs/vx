@@ -1058,3 +1058,56 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
     expect([...named].sort()).toEqual([...PLUGIN_HOOKS].sort())
   })
 })
+
+describe('no page says a failed task aborts its dependents', () => {
+  it('every hand-authored page uses the status the scheduler sets', () => {
+    // Item 348 fixed task-dependencies.md and did not grep the class; the
+    // same sentence sat on the how-vx-works concept (item 350, 2026-09-16).
+    // `aborted` is what teardown sets, `skipped` is what a failed upstream
+    // leaves behind, and the pages must not swap them.
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'graph', 'scheduler.ts'),
+      'utf8',
+    )
+    expect(src).toContain("| 'skipped'")
+    expect(src).toContain("| 'aborted'")
+    const roots = [DOCS, path.resolve(import.meta.dir, '..', 'docs')]
+    const pages: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          if (entry.name !== 'history' && entry.name !== 'design') walk(p)
+        } else if (entry.name.endsWith('.md') && entry.name !== 'STATUS.md') pages.push(p)
+      }
+    }
+    for (const root of roots) walk(root)
+    for (const page of pages) {
+      const text = readFileSync(page, 'utf8')
+      expect({
+        page: path.basename(page),
+        aborts: /aborts? (its|the) (transitive )?dependents/.test(text),
+      }).toEqual({
+        page: path.basename(page),
+        aborts: false,
+      })
+    }
+  })
+})
+
+describe('the migrate-from-nx guide expands the vite executors it abbreviates', () => {
+  it('the commands it lists are the @nx/vite ones KNOWN_EXECUTORS maps', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'migrate-nx.ts'),
+      'utf8',
+    )
+    const map = /const KNOWN_EXECUTORS: Record<[^>]*> = \{([\s\S]*?)\n\}/.exec(src)
+    expect(map).not.toBeNull()
+    const vite = [...map![1]!.matchAll(/'@nx\/vite:[^']+': \{ command: '([^']+)'/g)].map(
+      (m) => m[1]!,
+    )
+    expect(vite.length).toBe(4)
+    const page = readFileSync(path.join(DOCS, 'migrate', 'from-nx.md'), 'utf8')
+    for (const command of vite) expect(page).toContain('`' + command + '`')
+  })
+})
