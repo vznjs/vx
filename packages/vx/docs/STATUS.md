@@ -1157,6 +1157,35 @@ build` and this file records a Bun-specific hazard for exactly
       time, caught by running the check. Its sibling assertion then
       picked the site's caching GUIDE by basename; the contract page
       is selected by path now.
+389.  DONE (2026-09-19, the drift was in the file every session reads
+      first). `CLAUDE.md` § Stack named `Bun.Archive` a hard
+      dependency. No `src/` file in any package calls it — the four
+      mentions are comments, and `archive.ts`'s own header says it
+      "used to do all three" before vx's streaming tar replaced it on
+      2026-09-03, for the memory peaks (150 MiB restored at +644 MiB
+      through `Bun.Archive`, +49 MiB streamed). The only live use is
+      `archive-security.test.ts`, which runs it as an INDEPENDENT
+      oracle against vx's own writer — a good use, and the opposite
+      of a dependency.
+      The same stale sentence rode two more copies: `architecture.md`
+      and this suite's own Rule 6 comment both said core's floor is
+      `Bun.Archive` and the answers that go wrong without it.
+      `util/bun-version.ts` — the floor's own docblock, citing the
+      same item 366 — names three wrong ANSWERS and not the archive:
+      a 2 MiB `--format json` write truncated to 219 KB at the pipe,
+      no `peakRssBytes` from the runner, a config syntax error
+      arriving as a `BuildMessage` the classifier does not know.
+      `caching.md` was right all along (§ Artifact container names
+      the streaming code; the History records the move to
+      `Bun.Archive` in v27 AND the move off it), which is the shape
+      again: the contract page holds, the summaries drift.
+      Pinned twice. Every Bun API the Stack sentence calls a hard
+      dependency must appear OUTSIDE a comment somewhere under
+      `packages/*/src`, and `Bun.Archive` must appear in none —
+      discovered from the sentence, so a name added to it is held
+      without an edit. And architecture.md's floor paragraph must
+      name what `bun-version.ts` names, all three, and not the
+      archive. Proven both ways.
 
 ## In flight
 
@@ -1166,7 +1195,9 @@ come back red with roughly two dozen failing tests and ten failing
 tasks, and diffing against that set is only honest once the set has a
 cause. On the 2026-09-19 container the cause is mostly ONE thing: the
 box ships **Bun 1.3.11** while both `package.json` files declare
-`"bun": ">=1.4"` and this repo names `Bun.Archive` a hard dependency.
+`"bun": ">=1.4"`, and one suite cross-checks vx's tar against
+`Bun.Archive` (item 389 corrected the claim that core DEPENDS on it —
+it does not; the oracle is where the failure lands).
 Ten of the 23 are that, verified — `@vzn/vx-reapi` refuses to load
 with its own version error (3), `tar-stream` fails inside
 `Bun.Archive` (1), `project-loader` gets a `BuildMessage` where 1.4
@@ -1198,14 +1229,16 @@ once and then passed 271/271 twice in isolation and again on the next
 gate. Treat a bare SIGILL like that as this runtime under twelve-way
 load, not as a find: re-run the shard alone, and the gate once, before
 reading anything into it.
-By item 388 that shard had stopped being intermittent: shard 9 now
-dies the same way EVERY run, alone and under the gate, after the
-config-evaluation worker suite's last passing test — and it does it on
-a clean `origin/main` tree, which is the control that settles it. So
-the baseline on this container is eleven failing tasks, ten of them
-naming tests and shard 9 naming none. The procedure is unchanged, and
-the clean-tree run is the part of it that matters: a SIGILL is only
-the runtime's until you have watched it happen without your diff.
+Item 388 saw it twice in a row — under the gate and again alone, both
+times after the config-evaluation worker suite's last passing test —
+and then on a clean `origin/main` tree, which is the control that
+settles whose it is. Item 388's entry called it deterministic on that
+evidence; item 389's gate had shard 9 green, so it is NOT. Two
+recurrences are not a pattern: the count moves between ten and eleven
+failing tasks, and the eleventh names no test. What actually settles a
+SIGILL is the clean-tree run, not how many times in a row you saw it —
+a shard that dies without your diff is the runtime's however often it
+does it.
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
 closed by 2026-09-10 — the docs build under bwrap, strace's seccomp

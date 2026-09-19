@@ -164,6 +164,29 @@ describe("architecture.md's orchestrator inventory is the directory", () => {
     )
   })
 
+  // Its runtime-floor paragraph said core's floor is `Bun.Archive` and the
+  // answers that go wrong without it, the same sentence this repo carried
+  // in CLAUDE.md and in package-boundaries' Rule 6 comment. The floor's
+  // OWN docblock names three wrong answers and not the archive, and the
+  // archive left `src/` entirely (item 389, 2026-09-19).
+  it('states the floor the way bun-version.ts does', () => {
+    const floor = readFileSync(path.join(pkg, 'src', 'util', 'bun-version.ts'), 'utf8')
+    const para = doc.slice(
+      doc.indexOf('RUNTIME floor'),
+      doc.indexOf('## The plugin capability seam'),
+    )
+    expect(para.length).toBeGreaterThan(200)
+    expect(para).not.toContain('Bun.Archive')
+    expect(para).toContain('util/bun-version.ts')
+    // The three the docblock measured, each named on the page in its own
+    // words — a paragraph that keeps only one of them has stopped saying
+    // what the floor is for.
+    for (const claim of ['json', 'peakRssBytes', 'BuildMessage']) {
+      expect(floor).toContain(claim)
+      expect(para).toContain(claim)
+    }
+  })
+
   it('counts its own layers — it said five of a six-row table', () => {
     const rows = table
       .split('\n')
@@ -341,5 +364,47 @@ describe('every design doc live documentation cites says what became of it', () 
       }
     }
     expect(missing).toEqual([])
+  })
+})
+
+/**
+ * CLAUDE.md § Stack named `Bun.Archive` a hard dependency for months after
+ * the artifact container stopped using it: `archive.ts` says in its own
+ * header that it "used to do all three" and that vx's streaming tar code
+ * replaced it (2026-09-03, for the memory peaks). Zero `src/` files call
+ * it — only `archive-security.test.ts`, as an independent oracle against
+ * vx's own writer. The same stale sentence rode two more copies,
+ * architecture.md's runtime-floor paragraph and this suite's own Rule 6
+ * comment, each claiming the floor is `Bun.Archive` where
+ * `util/bun-version.ts` names three wrong ANSWERS instead (item 389,
+ * 2026-09-19). Discovered from the sentence, so a name added to it is
+ * held without an edit here.
+ */
+describe('CLAUDE.md names Bun APIs core actually calls', () => {
+  it('every hard dependency it lists is used outside a comment, and Archive is not', async () => {
+    const claude = await Bun.file(path.join(repo, 'CLAUDE.md')).text()
+    const sentence = /Bun ≥ [\d.]+ only \(([\s\S]*?)are\s*\n?hard dependencies/.exec(claude)
+    expect(sentence).not.toBeNull()
+    const named = [...sentence![1]!.matchAll(/`(Bun\.[A-Za-z]+\*?|bun:[a-z]+)`/g)].map((m) => m[1]!)
+    expect(named.length).toBeGreaterThan(3)
+
+    // Comments are where a retired API lingers, so they are exactly what
+    // must not count as a use.
+    let code = ''
+    const srcs = new Bun.Glob('*/src/**/*.ts')
+    for await (const rel of srcs.scan({ cwd: path.join(repo, 'packages') })) {
+      const text = await Bun.file(path.join(repo, 'packages', rel)).text()
+      for (const line of text.split('\n')) {
+        const t = line.trim()
+        if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) continue
+        code += `${line.replace(/\/\/.*$/, '')}\n`
+      }
+    }
+    expect(code.length).toBeGreaterThan(100_000)
+
+    const unused = named.filter((n) => !code.includes(n.endsWith('*') ? n.slice(0, -1) : n))
+    expect(unused).toEqual([])
+    // The claim the corrected sentence makes in the other direction.
+    expect(code).not.toContain('Bun.Archive')
   })
 })
