@@ -707,3 +707,41 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     expect(checked).toBe(3)
   })
 })
+
+// The task-config hash is stated in four places and only ONE was right.
+// `task-hash.ts` computes `xxh3hex(JSON.stringify(hashableConfig(cfg)))`,
+// and `hashableConfig` drops `exec.remote` — placement is not key
+// material, which is the whole point of the executor seam.
+// modules/config.md had it. caching.md (the stale-hit-critical contract
+// page) and the blog post both omitted the projection, so read literally
+// they put `exec.remote` IN the key; modules/execute-task.md omitted it
+// AND named `sha256`, a function core replaced with xxh3 long ago and
+// which appears in no `src/` file (item 396, 2026-09-19).
+describe('every page stating the task-config hash states the projection', () => {
+  it('names hashableConfig and xxh3, never sha256, wherever the formula appears', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'task-hash.ts'),
+      'utf8',
+    )
+    // The two facts the pages must not drift from, read from the module.
+    expect(src).toContain('xxh3hex(JSON.stringify(hashableConfig(cfg)))')
+    expect(/function hashableConfig[\s\S]*?remote: _remote/.test(src)).toBe(true)
+
+    const pages = handAuthoredDocs()
+    const stating: string[] = []
+    const wrong: string[] = []
+    for (const page of pages) {
+      const text = readFileSync(page, 'utf8')
+      // A page STATES the formula when it shows the stringify of a config.
+      for (const m of text.matchAll(/`?\w+\(JSON\.stringify\(([^)]*[Cc]onfig)[^`\n]*/g)) {
+        const claim = m[0]
+        stating.push(`${path.basename(page)}: ${claim.slice(0, 60)}`)
+        if (!claim.includes('hashableConfig')) wrong.push(`${path.basename(page)}: ${claim}`)
+        if (/sha256/i.test(claim)) wrong.push(`${path.basename(page)}: ${claim}`)
+      }
+    }
+    // Four copies today; a fifth must be a deliberate edit here.
+    expect(stating.length).toBeGreaterThan(3)
+    expect(wrong).toEqual([])
+  })
+})

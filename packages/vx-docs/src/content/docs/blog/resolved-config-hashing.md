@@ -39,8 +39,10 @@ does.
 
 vx evaluates the config and hashes the **resolved task object**, the
 thing the scheduler is about to act on. Part five of the
-[key derivation](../keys-from-git/) is `xxh3(JSON.stringify(node.config))`
-after the plugin `project` stage has run. Whatever a preset returned,
+[key derivation](../keys-from-git/) is
+`xxh3(JSON.stringify(hashableConfig(node.config)))` after the plugin
+`project` stage has run — one field wide, dropping `exec.remote`,
+which says where a task runs rather than what it does. Whatever a preset returned,
 whatever a template literal expanded to, whatever a plugin added or
 removed: all of it is in the key, because all of it is in the object.
 

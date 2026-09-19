@@ -26,7 +26,7 @@ the priority computation done that way took **8.5 seconds**.
 
 vx represents each closure as a packed bitset over a topological
 numbering: one bit per node, one row of 32-bit words per node, every
-row in a single `Uint32Array` (N² / 8 bits of memory — 1.3 MB at
+row in a single `Uint32Array` (N² bits, so N² / 8 bytes — 1.3 MB at
 3,270 tasks). A union is a loop of bitwise ORs over those words; a
 size is a popcount. The same computation is **single-digit
 milliseconds**. The package graph uses the same representation, so a
