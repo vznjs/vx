@@ -34,7 +34,9 @@ order you declare them in `vx.workspace.ts`:
 | execute     | `executor(ctx)`        | where one task's command runs                            |
 | store       | `cache(ctx)`           | where artifacts live                                     |
 | observe     | `telemetry(ctx)`       | where run records go                                     |
+| setup       | `setup(ctx)`           | validate once, before any capability is used             |
 | cli         | `commands`             | which verbs `vx` has                                     |
+| teardown    | `teardown()`           | flush and close at the end of the run                    |
 
 Core applies **none** of them by default and names none. What it has is
 a floor: running a command on this machine and storing its artifact in
