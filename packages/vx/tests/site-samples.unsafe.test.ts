@@ -12,6 +12,7 @@ import { formatTaskHitLine } from '../src/orchestrator/framed-output.js'
 import { formatFlakySection } from '../src/orchestrator/summary.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { CACHE_LAYER_METHODS } from '../src/orchestrator/plugin-host.js'
+import { PLUGIN_HOOKS } from '../src/config.js'
 import { ESSENTIAL_ENV } from '../src/exec/env.js'
 import type { RunPlan } from '../src/orchestrator/plan.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
@@ -640,5 +641,79 @@ describe('the from-nx post names every executor the migration infers', () => {
     )
     expect(cache).toContain('/v1/cache/${hash}')
     expect(page).toContain('`/v1/cache`')
+  })
+})
+
+describe('the pipeline-with-seams post tabulates every stage a plugin can fill', () => {
+  it('its table is PLUGIN_HOOKS, in order, and names no other stage', () => {
+    // It listed eleven of the thirteen: `admit` was nowhere and `teardown`
+    // rode in `setup`'s row (item 343, 2026-09-16) — the same shape PR #487
+    // found in the what-vx-is post.
+    const page = readFileSync(path.join(DOCS, 'blog', 'pipeline-with-seams.md'), 'utf8')
+    const table = page.slice(page.indexOf('| Stage '), page.indexOf('A plugin is `definePlugin'))
+    const rows = [...table.matchAll(/^\| `(\w+)` +\|/gm)].map((m) => m[1]!)
+    expect(rows).toEqual([...PLUGIN_HOOKS])
+  })
+})
+
+describe('the sandbox post names the whole permission surface', () => {
+  const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'config.ts'), 'utf8')
+  const page = readFileSync(path.join(DOCS, 'blog', 'the-sandbox.md'), 'utf8')
+  it('every SandboxGrants key is in its list', () => {
+    const decl = /export interface SandboxGrants \{([\s\S]*?)\n\}/.exec(src)
+    expect(decl).not.toBeNull()
+    const keys = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
+    expect(keys.length).toBe(9)
+    for (const key of keys) expect(page).toContain('`' + key + '`')
+  })
+  it('it names `deny` and `ignore` beside `allow`', () => {
+    expect(src).toContain('deny?: SandboxDenials')
+    expect(src).toContain('ignore?: SandboxGrants')
+    for (const field of ['`allow`', '`deny`', '`ignore`']) expect(page).toContain(field)
+  })
+  it('the Linux binaries it names are the three the runtime checks for', () => {
+    const runtime = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'exec', 'sandbox-runtime.ts'),
+      'utf8',
+    )
+    const m = /'the sandbox runtime needs ([^']*) on PATH'/.exec(runtime)
+    expect(m).not.toBeNull()
+    // "bubblewrap (bwrap), socat and ripgrep (rg)" → the three binaries.
+    const bins = [...m![1]!.matchAll(/\((\w+)\)|\b(socat)\b/g)].map((x) => x[1] ?? x[2]!)
+    expect(bins.sort()).toEqual(['bwrap', 'rg', 'socat'])
+    const flat = page.replace(/\s+/g, ' ')
+    expect(flat).toContain('three binaries')
+    for (const bin of bins) expect(flat).toContain('`' + bin + '`')
+  })
+})
+
+describe('the remote-execution post states the placement rules core applies', () => {
+  const placement = readFileSync(
+    path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'placement.ts'),
+    'utf8',
+  )
+  const page = readFileSync(path.join(DOCS, 'blog', 'remote-execution.md'), 'utf8')
+  it('each field that pins a task local is one it lists', () => {
+    const fn = placement.slice(
+      placement.indexOf('export function pinnedLocalSet'),
+      placement.indexOf('export interface Placements'),
+    )
+    for (const field of ['exec?.persistent', 'exec?.sandbox', 'exec?.remote === false']) {
+      expect(fn).toContain(field)
+    }
+    expect(fn).toContain('node.deps.some((d) => visit(d))')
+    const flat = page.replace(/\s+/g, ' ')
+    expect(flat).toContain('Not persistent tasks, or anything depending on one')
+    expect(flat).toContain('Not sandboxed tasks')
+    expect(flat).toContain('Not `exec.remote: false`')
+  })
+  it('the `--dry` label it prints is the executor’s own name', () => {
+    const exec = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-reapi', 'src', 'executor.ts'),
+      'utf8',
+    )
+    const m = /^    name: '([^']+)',$/m.exec(exec)
+    expect(m).not.toBeNull()
+    expect(page).toContain('`@' + m![1]! + '`')
   })
 })

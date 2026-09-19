@@ -43,10 +43,15 @@ you grant exactly what the tool needs:
   are enforced by one filtering proxy per run; a task that declares no
   network is never given the proxy's port and reaches nothing.
 - `localBinding` for a test that boots its own server, `unixSockets`,
-  `systemInfo`, and the macOS-specific `machLookup` and `pty`.
+  `systemInfo`, `gitConfig` for the rare tool that must write
+  `.git/config`, and the macOS-specific `machLookup` and `pty`.
+
+Two lists sit beside `allow`. `deny` takes a capability back — it is
+evaluated first, so a domain in both is denied — and `ignore` keeps a
+denial out of the report without granting it.
 
 There is no workspace-wide default and no inheritance between tasks.
-Every sandbox block is the whole permission surface of that one task.
+Those three lists are the whole permission surface of that one task.
 
 ## Why it derives nothing from `cache`
 
@@ -73,9 +78,11 @@ exist), `ignore` silences the specific pattern without granting it.
 
 ## How it is built
 
-- **Linux** uses bubblewrap (`bwrap`) and `socat`. The child lives in
-  its own mount and network namespaces; an undeclared path structurally
-  does not exist, so the tool sees `ENOENT`. With `strace` present, that
+- **Linux** needs three binaries on `PATH`: `bwrap` for the
+  namespaces, `socat` for the network bridge, and ripgrep (`rg`) to
+  expand the runtime's mandatory deny globs. The child lives in its own
+  mount and network namespaces; an undeclared path structurally does
+  not exist, so the tool sees `ENOENT`. With `strace` present, that
   becomes the same structured report macOS produces. Each `localBinding`
   port is bridged to the host's loopback over a unix socket so a
   downstream task or your browser can reach the server.
