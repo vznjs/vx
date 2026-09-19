@@ -9,7 +9,7 @@
 //
 // Only src/ is scanned. Tests are exempt: they may exercise internals.
 
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
@@ -101,6 +101,29 @@ describe('module boundaries', () => {
     expect(
       violations.map((v) => `${v.from} → ${v.specifier} (${v.fromModule} → ${v.toModule})`),
     ).toEqual([])
+  })
+
+  // Rule 1 forces a matrix decision for a new module that IMPORTS across a
+  // boundary — an unknown `fromModule` is a violation. A new module that is
+  // only IMPORTED escapes both rules: nothing puts it in CONTRACTED, so
+  // cross-module imports may reach into its internals, while the comment
+  // above CONTRACTED says the ratchet covers "every directory module". That
+  // is a comment claiming what the code does not enforce, so enforce it
+  // (item 363, 2026-09-19).
+  it('both lists cover every module on disk', () => {
+    const entries = readdirSync(SRC, { withFileTypes: true })
+    const dirs = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort()
+    const rootFiles = entries
+      .filter((e) => e.isFile() && e.name.endsWith('.ts'))
+      .map((e) => e.name.replace(/\.ts$/, ''))
+      .sort()
+    // A new directory is contracted from the day it lands, or this fails and
+    // the author decides in the open.
+    expect([...CONTRACTED].sort()).toEqual(dirs)
+    expect(Object.keys(ALLOWED).sort()).toEqual([...dirs, ...rootFiles].sort())
   })
 
   it('core ships no plugin: src/plugins does not exist', () => {

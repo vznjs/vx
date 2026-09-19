@@ -81,3 +81,36 @@ describe('architecture.md follows the source it describes', () => {
     expect(Number(m![1])).toBe(Object.keys(api).length)
   })
 })
+
+// "Core is organised as eight modules plus three root files" — two counts in
+// words above a table of eight rows, and the same split `module-boundaries`
+// enforces: a module is a directory with an index.ts contract, or a root file
+// with no internals to hide. Nothing held either number, and a count in words
+// is the first thing to rot when a module lands (item 355's "five layers"
+// above a six-row table, one page over). Item 363, 2026-09-19.
+describe('architecture.md counts the modules that are on disk', () => {
+  it('eight modules and three root files, and the table has a row each', async () => {
+    const src = path.join(import.meta.dir, '..', 'src')
+    const entries = readdirSync(src, { withFileTypes: true })
+    const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name)
+    const roots = entries
+      .filter((e) => e.isFile() && e.name.endsWith('.ts'))
+      .map((e) => e.name.replace(/\.ts$/, ''))
+    // `config` is the root file the page counts as a module: it is the user
+    // schema every other module consumes, not plumbing like bin/index/version.
+    const modules = [...dirs, 'config'].sort()
+    expect(modules.length).toBe(8)
+    const doc = await Bun.file(path.join(import.meta.dir, '..', 'docs', 'architecture.md')).text()
+    const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
+    expect(doc).toContain(
+      `Core is organised as **${WORDS[modules.length]} modules** plus ` +
+        `${WORDS[roots.length - 1]} root files.`,
+    )
+    // The table under it names each one, and nothing else.
+    const start = doc.indexOf('| Module         | Form')
+    expect(start).toBeGreaterThan(-1)
+    const table = doc.slice(start, doc.indexOf('\n\n', start))
+    const named = [...table.matchAll(/^\| `(\w+)`/gm)].map((m) => m[1] as string)
+    expect(named.sort()).toEqual(modules)
+  })
+})

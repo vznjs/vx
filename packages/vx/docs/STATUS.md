@@ -687,6 +687,28 @@ test is telling the truth.
       regex does not match, so it passed and I nearly read that as the
       pin working. A probe's negative case is checked before its result
       is read — twice in one session now.
+363.  DONE (2026-09-19, the module-boundary law — the second run-path
+      pin, and one with a hole in it). Rule 1 forces a matrix decision
+      for a new module that IMPORTS across a boundary: an unknown
+      `fromModule` is a violation by construction. A new module that is
+      only IMPORTED escapes BOTH rules — nothing adds it to
+      `CONTRACTED`, so cross-module imports may reach straight into its
+      internals — while the comment over that list says the ratchet
+      covers "every directory module". A comment claiming what the code
+      does not enforce is a defect by this repo's own rule, and this one
+      sat in the file that enforces the rules. Both lists are held to
+      disk now: `CONTRACTED` must equal the directories under `src/`,
+      and `ALLOWED`'s keys the directories plus the root files. A new
+      module of either shape fails until its author decides in the open;
+      both arms verified with a probe directory and a probe file.
+      architecture.md agrees with the matrix exactly — "eight modules
+      plus three root files" is 7 directories + `config`, and the other
+      three roots are bin/index/version — so the counts are pinned to
+      the listing too, in words, with the table's rows held to the same
+      set (the shape item 355 fixed one page over, caught here before it
+      could rot). No fault on the page: the two describe different sets
+      on purpose, eight contract surfaces against eleven matrix keys,
+      and both now track the disk.
 
 ## In flight
 
