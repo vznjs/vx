@@ -553,7 +553,11 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
           wrong.push(`${field}/${runner}: unreadable ${cell}`)
           return
         }
-        if (Math.abs(shown.ms - actual) >= shown.step) {
+        // The page must show what ROUNDING the measurement to that precision
+        // gives, not merely land within one step of it: a one-step tolerance
+        // let 510ms become 511ms and still pass (item 395 caught that on this
+        // pin's sibling over the blog's copy of the same table).
+        if (shown.ms !== Math.round(actual / shown.step) * shown.step) {
           wrong.push(`${field}/${runner}: page ${shown.ms}ms, file ${actual.toFixed(1)}ms`)
         }
         const ratio = /\(([\d.]+)×\)/.exec(cell)

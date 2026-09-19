@@ -538,3 +538,172 @@ describe('every packages/ path the docs cite exists', () => {
     expect(missing).toEqual([])
   })
 })
+
+// A blog post's benchmark TABLE is a quotation, and item 391 pinned
+// benchmarks.md to `packages/vx-bench/results.json` — which left a second
+// full copy of those rows sitting unanchored in `honest-benchmarks.md`,
+// the exact configuration every finding in this arc came from. Read
+// 2026-09-19 (item 395): all seventeen cells and all three derived
+// overheads already agreed.
+//
+// TABLES only. Blog PROSE rounds and converts on purpose — `0.76 s` for
+// 760ms, `73 s` for 1m 13s, `35 s` for 34.61s — so an exact pin there
+// would fail on correct text. A cell is a quotation; a sentence is a
+// paraphrase.
+describe('every benchmark figure a blog table quotes is a measured one', () => {
+  const BLOG = path.join(DOCS, 'blog')
+  const bench = (): string =>
+    readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+  // The space before the unit is optional on BOTH: the solid tables write
+  // `40.6 s` while the head-to-head writes `3.59s`, and a pattern allowing
+  // it only on `ms` silently skipped every solid row — the floor below is
+  // what surfaced that (four rows checked where twelve were expected).
+  const FIGURE = /^\d+m \d+s$|^\d+(?:\.\d+)? ?s$|^\d+ ?ms$/
+
+  // ROW-wise, not figure-wise, which item 383 had to learn once already:
+  // a row's figures must appear TOGETHER on one benchmarks.md row, or a
+  // number can drift onto the wrong runner and still be "on the page".
+  // Proven: mutating solid's restore row from 66 ms to 67 ms passed a
+  // figure-wise draft of this pin, because 67ms is the git-walk floor
+  // elsewhere on the page.
+  it("each table row's figures sit together on a benchmarks.md row", () => {
+    const rows = bench()
+      .split('\n')
+      .filter((l) => l.startsWith('|') && !/^\|\s*-/.test(l))
+      .map((l) =>
+        l
+          .trim()
+          .replace(/^\||\|$/g, '')
+          .split('|')
+          .map((c) => c.trim()),
+      )
+    const wrong: string[] = []
+    let checked = 0
+    for (const file of readdirSync(BLOG).filter((f) => f.endsWith('.md'))) {
+      for (const line of readFileSync(path.join(BLOG, file), 'utf8').split('\n')) {
+        if (!line.startsWith('|') || /^\|\s*-/.test(line)) continue
+        // Strip the emphasis and a trailing `(+0:08)` / `(1.9×)` aside;
+        // what is left is the figure the cell claims.
+        const figures = line
+          .trim()
+          .replace(/^\||\|$/g, '')
+          .split('|')
+          .map((c) =>
+            c
+              .trim()
+              .replace(/\*\*/g, '')
+              .replace(/\s*\((?:\+[\d:]+|[\d.]+×)\)\s*$/, '')
+              .trim(),
+          )
+          .filter((c) => FIGURE.test(c))
+        if (figures.length === 0) continue
+        // The 3,270-task table is TRANSPOSED in the post — runner rows where
+        // benchmarks.md has runner columns — so its figures cannot sit on one
+        // row there by construction. The arm below pins those to results.json
+        // instead, which is where they come from.
+        if (/^\| (vx|Turborepo|Nx) /.test(line)) continue
+        checked += 1
+        const together = rows.some((r) => {
+          const cells = r.map((c) =>
+            c
+              .replace(/\*\*/g, '')
+              .replace(/\s*\(.*$/, '')
+              .trim(),
+          )
+          return figures.every((f) => cells.includes(f))
+        })
+        if (!together) wrong.push(`${file}: ${figures.join(' | ')}`)
+      }
+    }
+    expect(checked).toBe(6)
+    expect(wrong).toEqual([])
+  })
+
+  it('the transposed 3,270-task rows are the recorded run, figure by figure', () => {
+    const results = JSON.parse(
+      readFileSync(
+        path.resolve(import.meta.dir, '..', '..', '..', 'packages', 'vx-bench', 'results.json'),
+        'utf8',
+      ),
+    ) as { rows: Array<Record<string, number | string>> }
+    const post = readFileSync(path.join(BLOG, 'honest-benchmarks.md'), 'utf8')
+    // Same parse-to-granularity as item 391: hold the CLAIM, not the spelling.
+    const parse = (raw: string): { ms: number; step: number } | null => {
+      let m = /^(\d+)m (\d+)s$/.exec(raw)
+      if (m !== null) return { ms: (Number(m[1]) * 60 + Number(m[2])) * 1000, step: 1000 }
+      m = /^(\d+(?:\.\d+)?)s$/.exec(raw)
+      if (m !== null) {
+        const decimals = (m[1]!.split('.')[1] ?? '').length
+        return { ms: Number(m[1]) * 1000, step: 1000 / 10 ** decimals }
+      }
+      m = /^(\d+) ?ms$/.exec(raw)
+      return m === null ? null : { ms: Number(m[1]), step: 1 }
+    }
+    const FIELDS = ['fresh', 'warmNoRestore', 'freshCpu'] as const
+    let checked = 0
+    for (const [runner, label] of [
+      ['vx', 'vx'],
+      ['turbo', 'Turborepo'],
+      ['nx', 'Nx'],
+    ] as const) {
+      const row = new RegExp(`^\\| ${label} +\\|(.*)$`, 'm').exec(post)
+      expect(row).not.toBeNull()
+      const cells = row![1]!
+        .replace(/\|\s*$/, '')
+        .split('|')
+        .map((c) =>
+          c
+            .trim()
+            .replace(/\*\*/g, '')
+            .replace(/\s*\(.*$/, '')
+            .trim(),
+        )
+      expect(cells.length).toBe(3)
+      cells.forEach((cell, i) => {
+        const shown = parse(cell)
+        expect({ runner, cell, readable: shown !== null }).toEqual({ runner, cell, readable: true })
+        const actual = results.rows.find((r) => r['runner'] === runner)![FIELDS[i]!] as number
+        // The page must show what ROUNDING the measurement to that precision
+        // gives — not merely land within one step of it. A tolerance of one
+        // step let `510ms` become `511ms` and still pass (510.34 is inside
+        // either), which is a figure the page would be getting wrong.
+        const rounded = Math.round(actual / shown!.step) * shown!.step
+        expect({ runner, field: FIELDS[i], shown: shown!.ms }).toEqual({
+          runner,
+          field: FIELDS[i],
+          shown: rounded,
+        })
+        checked += 1
+      })
+    }
+    expect(checked).toBe(9)
+  })
+
+  it("the cold column's overheads are the run's, over the ideal schedule", () => {
+    const results = JSON.parse(
+      readFileSync(
+        path.resolve(import.meta.dir, '..', '..', '..', 'packages', 'vx-bench', 'results.json'),
+        'utf8',
+      ),
+    ) as { baseline: Record<string, number>; rows: Array<Record<string, number | string>> }
+    const post = readFileSync(path.join(BLOG, 'honest-benchmarks.md'), 'utf8')
+    const mmss = (ms: number): string => {
+      const s = Math.round(ms / 1000)
+      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+    }
+    let checked = 0
+    for (const [runner, label] of [
+      ['vx', 'vx'],
+      ['turbo', 'Turborepo'],
+      ['nx', 'Nx'],
+    ] as const) {
+      const fresh = results.rows.find((r) => r['runner'] === runner)!['fresh'] as number
+      const over = mmss(fresh - results.baseline['workBoundMs']!)
+      const row = new RegExp(`\\| ${label} +\\|[^|]*\\(\\+(${'[0-9:]+'})\\)`).exec(post)
+      expect(row).not.toBeNull()
+      expect({ runner, over: row![1] }).toEqual({ runner, over })
+      checked += 1
+    }
+    expect(checked).toBe(3)
+  })
+})
