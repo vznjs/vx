@@ -205,7 +205,7 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
 
 // ── Reported-line grid: glyph · time · status · cache · name ────────
 // glyph SHAPE encodes the cache axis (⏺ miss · ► fresh · ⇢ local · ⇣
-// remote; ◼ failed · ⊘ skipped · ⦿ running), glyph COLOR encodes the
+// remote; ◼ failed · ⊘ skipped), glyph COLOR encodes the
 // task axis (green/red/yellow/cyan). The status and cache WORDS spell
 // the two axes out, each in its own color. Time is right-aligned in a
 // fixed cell so durations line up and a ticking elapsed never shifts

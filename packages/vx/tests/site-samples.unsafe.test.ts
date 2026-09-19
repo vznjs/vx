@@ -1334,3 +1334,102 @@ describe('no prose block was broken open by a reflow', () => {
     expect(broken).toEqual([])
   })
 })
+
+// The glyph set is `glyphShape` in framed-output.ts plus the `▸` a pinned
+// persistent row carries. Two pages and the module's own docblock listed a
+// seventh, `⦿ running`, which the renderer has never printed: a live worker
+// row leads with its ticking elapsed time and carries NO glyph, as
+// status-line.ts says in the same breath (item 359, 2026-09-19). Item 302
+// struck one glyph a docblock invented and never grepped the class; this is
+// the grep, over the three places that enumerate the set.
+describe('the documented glyph set is the set the renderer prints', () => {
+  const ORCH = path.resolve(import.meta.dir, '..', 'src', 'orchestrator')
+  /** Characters in the grid's glyph ranges, from any text. */
+  const glyphsIn = (text: string): Set<string> =>
+    new Set(text.match(/[\u23fa\u25ba\u25fc\u21e2\u21e3\u2298\u29bf\u25b8]/g) ?? [])
+
+  it('framed-output.ts emits six, and the docblock beside it names those six', () => {
+    const framed = readFileSync(path.join(ORCH, 'framed-output.ts'), 'utf8')
+    const decl = /function glyphShape\(o: TaskOutcome\): string \{([\s\S]*?)\n\}/.exec(framed)
+    expect(decl).not.toBeNull()
+    const emitted = new Set(
+      [...decl![1]!.matchAll(/\\u([0-9a-fA-F]{4})|(\u23fa)/g)].map((m) =>
+        m[1] !== undefined ? String.fromCodePoint(Number.parseInt(m[1], 16)) : (m[2] as string),
+      ),
+    )
+    emitted.delete('\ufe0e') // the text-presentation selector, not a glyph
+    expect([...emitted].sort()).toEqual([
+      '\u21e2',
+      '\u21e3',
+      '\u2298',
+      '\u23fa',
+      '\u25ba',
+      '\u25fc',
+    ])
+    const grid = framed.slice(framed.indexOf('// ── Reported-line grid'))
+    expect([...glyphsIn(grid.slice(0, grid.indexOf('export const TIME_COL')))].sort()).toEqual(
+      [...emitted].sort(),
+    )
+  })
+
+  it('cli.md tabulates those six plus the persistent mark, and no other', () => {
+    const cli = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
+    const start = cli.indexOf('| Glyph | Cache axis')
+    expect(start).toBeGreaterThan(-1)
+    const table = cli.slice(start, cli.indexOf('\n\n', start))
+    expect([...glyphsIn(table)].sort()).toEqual([
+      '\u21e2',
+      '\u21e3',
+      '\u2298',
+      '\u23fa',
+      '\u25b8',
+      '\u25ba',
+      '\u25fc',
+    ])
+  })
+
+  it('execution.md lists the same set in prose', () => {
+    const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'execution.md'), 'utf8')
+    const start = doc.indexOf('**The glyph grid.**')
+    expect(start).toBeGreaterThan(-1)
+    expect([...glyphsIn(doc.slice(start, doc.indexOf('\n- **', start)))].sort()).toEqual([
+      '\u21e2',
+      '\u21e3',
+      '\u2298',
+      '\u23fa',
+      '\u25b8',
+      '\u25ba',
+      '\u25fc',
+    ])
+  })
+})
+
+// "What does my build script actually see?" is answered by four pages, and
+// only schema.md's copy was pinned — the copy that had already drifted once
+// (USER, LOGNAME, TEMP and TMP were passed to every task and named nowhere,
+// the note on that pin). The other three name every POSIX essential today
+// and each defers the Windows set in words; hold them there (item 359,
+// 2026-09-19).
+describe('every page listing the env allowlist lists all of it', () => {
+  it('each names every POSIX essential, and the contract page all 25', () => {
+    const posix = ESSENTIAL_ENV.slice(0, ESSENTIAL_ENV.indexOf('SYSTEMROOT'))
+    expect(posix.length).toBe(17)
+    const pages = handAuthoredDocs().filter((p) => readFileSync(p, 'utf8').includes('`LOGNAME`'))
+    // schema.md (pinned separately), execution.md, modules/env.md, and the
+    // environment-variables guide. A fifth copy lands here unpinned no more.
+    expect(pages.map((p) => path.basename(p)).sort()).toEqual([
+      'env.md',
+      'environment-variables.md',
+      'execution.md',
+      'schema.md',
+    ])
+    for (const page of pages) {
+      const text = readFileSync(page, 'utf8')
+      const names = page.endsWith('modules/env.md') ? ESSENTIAL_ENV : posix
+      expect({
+        page: path.basename(page),
+        missing: names.filter((n) => !text.includes(`\`${n}\``)),
+      }).toEqual({ page: path.basename(page), missing: [] })
+    }
+  })
+})

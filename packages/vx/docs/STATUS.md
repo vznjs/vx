@@ -589,6 +589,29 @@ test is telling the truth.
       Running the file directly passes it — unsandboxed — so a
       cross-package pin belongs in `tests/*.unsafe.test.ts` by
       construction, not by discovery.
+359.  DONE (2026-09-19, execution.md — 551 lines, the runtime page
+      beside caching.md). Its timeline holds against source: the
+      dispatcher's fourteen verbs are all named, `--exclude-dependencies`
+      is a real flag (my first grep said otherwise and I misread my own
+      echo — the source settled it), the 2 s kill grace, the 8 MiB
+      stdout head and tail, the twelve file citations. The fault is a
+      GLYPH the renderer has never printed: `⦿ running`, listed in
+      execution.md's grid sentence, in cli.md's glyph table as
+      "running (worker row)", and in framed-output.ts's own docblock.
+      A live worker row carries NO glyph — status-line.ts says so in
+      the same breath, "the ticking time IS the motion" — so the one
+      row the table attributes it to is the one row that has none.
+      Item 302 struck a glyph a docblock invented and never grepped
+      the class; this is the grep, and it found the class three deep,
+      source comment included (a comment claiming what the code lacks
+      is a defect, per the rule). Pinned: the six `glyphShape` emits
+      plus `▸`, held at all three enumerations. And one more class
+      caught short: the env allowlist is copied onto four pages and
+      only schema.md's copy was pinned — the copy that had ALREADY
+      drifted once. The other three are correct today and pinned now,
+      with the fifth copy that lands unpinned no longer possible.
+      Four pins; three fail on the pre-fix text, the fourth on a
+      dropped name.
 
 ## In flight
 

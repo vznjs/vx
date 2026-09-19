@@ -364,7 +364,9 @@ wire forwarders attach beside it). What renders:
 - **The glyph grid.** Reported task lines share one column grid —
   `<glyph> <time> <status> <cache> <name>`. Glyph SHAPE = cache axis
   (`⏺` miss / `►` fresh / `⇢` local / `⇣` remote / `◼` failed / `⊘`
-  skipped / `⦿` running / `▸` persistent); glyph COLOR + the status word = task axis
+  skipped, plus `▸` for a pinned persistent row; a live worker row has
+  no glyph — its ticking elapsed time leads instead); glyph COLOR + the
+  status word = task axis
   (success / failed / skipped / running); the cache word (miss /
   fresh / local / remote) spells it out.
 - **Buffered, framed (non-focused paths).** `runCommand` listens to
