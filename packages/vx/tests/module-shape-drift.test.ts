@@ -441,6 +441,23 @@ describe('timing.md lists every mark and span the run path records', () => {
     expect(marks.length).toBeGreaterThan(10)
     expect(items(section().split('\nSpans,')[0]!)).toEqual(marks)
   })
+  // benchmarks.md § Profiling a run names the same table in prose, and named
+  // nine of the fourteen — as an appositive that reads as the sequence, with
+  // `startup`, `workspace config`, `plugin stages`, `save lane` and
+  // `output dir snapshots` missing (item 360, 2026-09-19). One list was
+  // pinned, its sibling was not: the class this loop keeps meeting.
+  it('benchmarks.md names the same marks, in the same order', () => {
+    const src = read('src/orchestrator/prepare.ts') + read('src/orchestrator/run.ts')
+    const marks = [...new Set([...src.matchAll(/\bmark\('([^']+)'\)/g)].map((m) => m[1]!))]
+    const doc = read('docs/benchmarks.md')
+    const start = doc.indexOf('**`VX_TIMING=1 vx run …`**')
+    expect(start).toBeGreaterThan(-1)
+    const sentence = doc.slice(start, doc.indexOf('This is the first thing to', start))
+    expect(
+      [...sentence.matchAll(/`([^`]+)`/g)].map((m) => m[1]!).filter((n) => marks.includes(n)),
+    ).toEqual(marks)
+  })
+
   it('the spans, one per label anywhere under src/', () => {
     const labels = new Set<string>()
     for (const rel of new Bun.Glob('src/**/*.ts').scanSync({ cwd: pkg })) {

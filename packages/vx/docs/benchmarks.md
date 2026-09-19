@@ -48,10 +48,13 @@ Reproduce: `bun packages/vx-bench/run.ts 1000 5`.
 Two tools, and they answer different questions:
 
 - **`VX_TIMING=1 vx run …`** prints a stage table to stderr at the end of
-  the run — discovery, cache open, config load, git enumeration, graph,
-  classify/probe, run graph, history, close — with each stage's own and
+  the run — `startup`, `workspace config`, `discover projects`,
+  `open cache`, `load configs`, `git enumeration`, `build graph`,
+  `plugin stages`, `classify + probe`, `run graph`, `record history`,
+  `save lane`, `output dir snapshots`, `close` — with each stage's own and
   cumulative time, plus accumulated per-task spans (`cache.get`,
-  `output glob`, `output stat`, `task hash`). This is the first thing to
+  `output glob`, `output stat` and `task hash` among them;
+  [`modules/timing.md`](./modules/timing.md) lists every one). This is the first thing to
   read: it says WHICH stage moved. The per-task spans run under the
   scheduler's concurrency, so they over-count (a span's wall includes
   time yielded to other tasks); compare them to each other, not to the
