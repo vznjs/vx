@@ -801,6 +801,44 @@ test is telling the truth.
       here on the trim's own tooling. The corrected pattern allows
       `\s+` and found exactly one clause in each of the nine.
 
+395.  DONE (2026-09-19, the blog's benchmark copies — right
+      everywhere, and the pin took four tries to deserve trust). Read
+      the three posts that quote the most figures, chosen by claim
+      density rather than the bulk-commit mtime every post shares:
+      `honest-benchmarks.md` (36), `why-vx-is-fast.md` (12),
+      `no-daemon.md` (5). Every figure agrees — the 3,270-task table to
+      the digit against `results.json`, the `(+0:08)` / `(+1:35)` /
+      `(+31:06)` overheads to the second against the ideal schedule,
+      and both solidjs/solid tables verbatim against `benchmarks.md`,
+      ratios included. `no-daemon.md`'s `ls-files -s` + concurrent
+      `git status` is a fair two-spawn summary of the four (item 388),
+      and notably does NOT repeat the `--others` error the contract
+      page had.
+      So the item is the pin, and item 391 is why it matters now: that
+      pin anchored `benchmarks.md` to `results.json` and left a SECOND
+      full copy of the same rows unanchored in the blog — the exact
+      configuration every finding in this arc came from.
+      The pin took four corrections, each caught by running it. It was
+      figure-wise first, and `66 ms` → `67 ms` passed because 67ms is
+      the git-walk floor elsewhere on the page — item 383's row-wise
+      lesson, re-learned. Row-wise then failed on the post's
+      TRANSPOSED head-to-head (runner rows where benchmarks.md has
+      runner columns), which cannot sit on one row by construction, so
+      those three rows go to `results.json` directly. The figure
+      pattern then allowed a space before `ms` but not before `s`, so
+      it silently skipped every solid row — the floor assertion is what
+      surfaced it, four rows checked where twelve were due, which is
+      precisely what 14ag says a floor is for. And the granularity
+      rule was a TOLERANCE, so `510ms` → `511ms` passed within one
+      step; it now requires the page to show what rounding the
+      measurement gives. Item 391's own arm had that looseness too and
+      is tightened with it.
+      PROSE is deliberately left alone, and that is a finding about the
+      pin rather than the text: the posts round and convert on purpose
+      — `0.76 s` for 760ms, `73 s` for 1m 13s, `35 s` for 34.61s — so
+      an exact pin there would fail on correct writing. A table cell is
+      a quotation; a sentence is a paraphrase.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
