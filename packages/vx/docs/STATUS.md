@@ -1008,6 +1008,34 @@ build` and this file records a Bun-specific hazard for exactly
       exist, and which pages ENUMERATE `--output-logs` versus mention
       it — a selector for that would be contrived, and a contrived
       selector is the `about N lines` regex again.
+384.  DONE (2026-09-19, three contract pages that read true, and a
+      path class nothing checked). `comparison.md` in full (595 lines,
+      spot-read in 383), `parity.md`, `optimizations.md`.
+      All three hold. `comparison.md`'s CLI flag map is what
+      `run.ts` and `index.ts` accept, `-h` and `--report-file`
+      included; its gap list's shipped claims check out
+      (`RunOptions.remoteCache`, the `--continue` modes, the
+      `pkg#pattern` refusal, `--cache-dir`, `vx last` over
+      `metrics.ts`); and its Bun-native list is real down to
+      `Bun.YAML` in `workspace.ts` and the content-hash import bust in
+      `project-loader.ts`. `parity.md`'s ≠ on `--filter` + `--affected`
+      being a UNION is pinned by `filter.test.ts`'s "combined includes
+      union". `optimizations.md` is held by its own file-and-symbol
+      pin.
+      The find is a REACH gap, one directory up from 380's. The path
+      checks resolve `src/…`, `tests/…` and `docs/…` against
+      `packages/vx`, so a citation written with a `packages/…` prefix
+      is seen by neither — and the contract docs carry seven (the
+      bench scripts, `RESULTS.md`, `results.json`, `REPOS.md`, a
+      vx-migrate test). All seven resolve today; the pin is the
+      tripwire.
+      Its first draft flagged two more, and they were not citations:
+      `config-imports.md` walks a reader through
+      `packages/lib/preset.mjs`, a workspace that does not exist. That
+      is the contrived-selector failure of 377 and 380 a THIRD time,
+      and the tell is mechanical — a path under a package directory
+      that exists is a citation, one under a package that does not is
+      an illustration. The pin tells them apart and says so.
 
 ## In flight
 
