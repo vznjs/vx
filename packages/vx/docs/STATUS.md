@@ -236,6 +236,35 @@ test is telling the truth.
       `optimizations.md` row 9 (whose invariant still named the
       binary-search insert the heap replaced) and
       `modules/scheduler.md` ("two sorted ready queues").
+342.  DONE (2026-09-16, the three adoption pages: honest-benchmarks,
+      from-turborepo, from-nx). honest-benchmarks spelled the cached
+      and CPU figures its own way and rounded the CPU trio (35 s for
+      34.61s, 73 s for 1m 13s, 114 min for 114m 06s) — items 336 and
+      340's fault on two other posts — and said "the cold column is
+      CPU time" of a table whose first two columns are wall clock; it
+      now quotes the benchmarks page as written, names the versions
+      the synthetic run used (Turbo 2.10.12, Nx 23.2.0, macOS arm64,
+      concurrency 10) beside the solid run's Turbo 2.10.10, and says
+      what compare.ts does — Turbo and Nx run with their daemons on,
+      as a user would, each one stopped before the next runner is
+      timed. from-turborepo's mapping table named seven of the nine
+      keys `KNOWN_TASK_KEYS` holds (`extends` only in prose,
+      `outputLogs` nowhere) and two of the three globals the mapper
+      reads; and "`--continue` defaults to `deps-ok`" confused the run
+      with the flag — the run with no flag is `deps-ok`, bare
+      `--continue` is `always`, the Turbo convention, and
+      `--continue=never` is what Turbo does by default. from-nx said
+      the migration infers "`@nx/vite:*`" and four more where
+      `KNOWN_EXECUTORS` holds eight named ones (two of them
+      persistent), and its table promised a preset file for
+      `targetDefaults` that no Nx migration writes — the resolved
+      graph has already applied `targetDefaults` and `namedInputs`, so
+      there is nothing left to map — and mapped `parallelism: false`
+      to a reservation without comparison.md's `--concurrency 1`.
+      Eight pins, seven failing on the old pages; the nx-cache wire is
+      a control. Every remaining post is now read except
+      pipeline-with-seams, remote-execution, the-sandbox and
+      config-in-typescript (and the three PR #487 holds).
 
 ## In flight
 

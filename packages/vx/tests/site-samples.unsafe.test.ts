@@ -528,3 +528,117 @@ describe('the resolved-config-hashing post names every global the gate denies', 
     expect(bench).toContain('~199 ms')
   })
 })
+
+describe('the honest-benchmarks post quotes the benchmarks page', () => {
+  const page = readFileSync(path.join(DOCS, 'blog', 'honest-benchmarks.md'), 'utf8')
+  const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+  it('each figure it states is on docs/benchmarks.md as written', () => {
+    // It spelled the cached and CPU figures its own way and rounded the
+    // CPU trio (35 s for 34.61s, 73 s for 1m 13s), the fault items 336
+    // and 340 fixed on two other posts (item 342, 2026-09-16).
+    for (const figure of [
+      '3m 38s',
+      '3m 46s',
+      '5m 13s',
+      '34m 44s',
+      '510ms',
+      '760ms',
+      '3.59s',
+      '34.61s',
+      '1m 13s',
+      '114m 06s',
+      '67ms',
+      '40.6 s',
+      '45.5 s',
+      '66 ms',
+      '127 ms',
+      '51 ms',
+      '95 ms',
+      '53.6 s',
+      '58.2 s',
+      '80 ms',
+      '166 ms',
+      '59 ms',
+      '93 ms',
+    ]) {
+      expect(page).toContain(figure)
+      expect(bench).toContain(figure)
+    }
+  })
+  it('the runners it names are the versions the benchmarks page ran', () => {
+    for (const version of ['Turbo 2.10.12', 'Nx 23.2.0', 'Turbo 2.10.10']) {
+      expect(page).toContain(version)
+      expect(bench).toContain(version)
+    }
+  })
+})
+
+describe('the from-turborepo post maps every turbo.json key the mapper knows', () => {
+  const src = readFileSync(
+    path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'turbo', 'turbo-map.ts'),
+    'utf8',
+  )
+  const page = readFileSync(path.join(DOCS, 'blog', 'from-turborepo.md'), 'utf8')
+  it('every KNOWN_TASK_KEYS entry is named in its table', () => {
+    const m = /const KNOWN_TASK_KEYS = new Set\(\[([^\]]*)\]/.exec(src)
+    expect(m).not.toBeNull()
+    const keys = [...m![1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!)
+    expect(keys.length).toBeGreaterThan(8)
+    const table = page.slice(page.indexOf('| `turbo.json`'), page.indexOf('Three things you get'))
+    // A row names the key alone (`extends`) or with the value it maps on
+    // (`cache: false`), so the pin accepts either closing.
+    for (const key of keys) expect(table).toMatch(new RegExp('`' + key + '(`|:)'))
+  })
+  it('the global fields it names are the ones the mapper reads', () => {
+    const globals = [...src.matchAll(/rootCfg\.(global\w+)/g)].map((x) => x[1]!)
+    expect(globals.length).toBe(3)
+    for (const g of globals) expect(page).toContain('`' + g + '`')
+  })
+  it('what it says a bare `--continue` does is what run.ts does', () => {
+    const run = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'run.ts'), 'utf8')
+    expect(run).toContain("// Bare --continue = 'always' (the Turbo convention)")
+    const scheduler = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'graph', 'scheduler.ts'),
+      'utf8',
+    )
+    expect(scheduler).toContain("options.continueMode ?? 'deps-ok'")
+    const flat = page.replace(/\s+/g, ' ')
+    expect(flat).toContain('a vx run with no flag is `deps-ok`')
+    expect(flat).toContain('bare `--continue` is `always`')
+  })
+})
+
+describe('the from-nx post names every executor the migration infers', () => {
+  const src = readFileSync(
+    path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'migrate-nx.ts'),
+    'utf8',
+  )
+  const page = readFileSync(path.join(DOCS, 'blog', 'from-nx.md'), 'utf8')
+  it('each KNOWN_EXECUTORS key is in its list, counted as the list counts them', () => {
+    const m = /const KNOWN_EXECUTORS: Record<[^>]*> = \{([\s\S]*?)\n\}/.exec(src)
+    expect(m).not.toBeNull()
+    const names = [...m![1]!.matchAll(/'(@nx\/[^']+)'/g)].map((x) => x[1]!)
+    expect(names.length).toBe(8)
+    for (const name of names) expect(page).toContain('`' + name + '`')
+    expect(page).toContain('the eight executors')
+    // The two persistent ones are a claim of its own.
+    const persistent = [...m![1]!.matchAll(/'(@nx\/[^']+)': \{[^}]*persistent: true/g)].length
+    expect(persistent).toBe(2)
+    expect(page.replace(/\s+/g, ' ')).toContain('The two dev servers come through as persistent')
+  })
+  it('the benchmark figures it states are the benchmarks page’s', () => {
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    for (const figure of ['510ms', '3.59s', '34.61s', '114m 06s']) {
+      expect(page).toContain(figure)
+      expect(bench).toContain(figure)
+    }
+  })
+  it('the cache wire it names is the one nx-cache speaks', () => {
+    const cache = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'nx-cache', 'index.ts'),
+      'utf8',
+    )
+    expect(cache).toContain('/v1/cache/${hash}')
+    expect(page).toContain('`/v1/cache`')
+  })
+})

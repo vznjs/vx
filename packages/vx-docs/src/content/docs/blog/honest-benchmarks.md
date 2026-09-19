@@ -29,28 +29,30 @@ you feel on every uncached build.
 1,090 packages in 100 dependency layers, about 30 dependencies per
 package and three tasks each, 3,270 task nodes, and runs vx, Turborepo
 and Nx across the same three cache states: cold, warm with outputs
-wiped (restore), and warm with nothing touched (no-op). Fairness is
-deliberate: vx runs as the compiled binary users install, every runner
-is pinned to the same concurrency, and the runners are measured one at
-a time with daemons stopped between them so they never fight for CPU.
-`build` and `test` are `sleep 1`, so the numbers isolate the runner's
-own overhead from compilation.
+wiped (restore), and warm with nothing touched (no-op). The run below
+is Turbo 2.10.12 and Nx 23.2.0 on macOS arm64 with 10 cores, every
+runner pinned to concurrency 10. Fairness is deliberate: vx runs as
+the compiled binary users install, Turbo and Nx run as a user would
+with their daemons on, and the runners are measured strictly one at a
+time, each daemon stopped before the next runner is timed so it cannot
+idle-contend for CPU. `build` and `test` are `sleep 1`, so the numbers
+isolate the runner's own overhead from compilation.
 
 `build test --all`, the tasks' own ideal schedule being 3m 38s:
 
-| Runner    | Cold build          | Fully cached | Cold build CPU |
-| --------- | ------------------- | ------------ | -------------- |
-| vx        | **3m 46s** (+0:08)  | **510 ms**   | **35 s**       |
-| Turborepo | 5m 13s (+1:35)      | 760 ms       | 73 s           |
-| Nx        | 34m 44s (+31:06)    | 3.59 s       | 114 min        |
+| Runner    | Cold build         | Fully cached | Cold build CPU |
+| --------- | ------------------ | ------------ | -------------- |
+| vx        | **3m 46s** (+0:08) | **510ms**    | **34.61s**     |
+| Turborepo | 5m 13s (+1:35)     | 760ms        | 1m 13s         |
+| Nx        | 34m 44s (+31:06)   | 3.59s        | 114m 06s       |
 
-The cold column is CPU time (user plus system, of the invocation and
-every child it waited for), not wall time, because on a synthetic
-workspace the tasks sleep and the column measures the runner's own work
-per task. A daemon that outlives the invocation is not counted, so
-Turbo's and Nx's are floors. It is the fairest number for "what does
+The first two columns are wall clock; the third is CPU time (user plus
+system, of the invocation and every child it waited for), because on a
+synthetic workspace the tasks sleep and that column measures the
+runner's own work per task. A daemon that outlives the invocation is
+not counted, so Turbo's and Nx's are floors. It is the fairest number for "what does
 the tool cost me," and Nx's is not a typo. The wall-clock rows, the
-theoretical baseline and the measured floors (one git walk is 67 ms on
+theoretical baseline and the measured floors (one git walk is 67ms on
 that machine) are in [Benchmarks](../../benchmarks/).
 
 ## Real: solidjs/solid under its own `turbo.json`

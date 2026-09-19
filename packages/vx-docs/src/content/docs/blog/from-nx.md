@@ -38,11 +38,14 @@ build: {
 
 More explicit, more portable, and one less layer between you and the
 tool's own documentation. The cost is that every executor-backed target
-needs a real command. The migration infers it for the common ones
-(`@nx/vite:*`, `@nx/vitest:test`, `@nx/jest:jest`, `@nx/eslint:lint`,
-`@nx/js:tsc`) under a TODO asking you to check it against the
-executor's options, and leaves a `TODO(vx-migrate)` placeholder where
-it cannot. Nothing is silently wrong.
+needs a real command. The migration infers it for the eight executors
+whose CLI is unambiguous — `@nx/vite:build`, `@nx/vite:dev-server`,
+`@nx/vite:preview-server`, `@nx/vite:test`, `@nx/vitest:test`,
+`@nx/jest:jest`, `@nx/eslint:lint` and `@nx/js:tsc` — under a TODO
+asking you to check it against the executor's options, which are not
+carried over. The two dev servers come through as persistent tasks,
+whatever the target is called. Every other executor gets a
+`TODO(vx-migrate)` placeholder. Nothing is silently wrong.
 
 ## Read the graph Nx actually uses
 
@@ -73,19 +76,21 @@ placeholders, fill the TODOs.
 | `outputs`                             | `cache.outputs.files`                         |
 | `nx affected`                         | `vx run … --affected[=<base>]`                |
 | `nx run-many --projects`              | `vx run … --filter`                           |
-| `parallelism: false`                  | a schedule-plugin reservation over the budget |
+| `parallelism: false`                  | `--concurrency 1`, or a schedule-plugin reservation at or above the worker count |
 | `nx watch`                            | `vx watch`                                    |
-| `targetDefaults`                      | a preset file you import and spread           |
+| `targetDefaults`                      | already applied in the graph; share them as a preset you import |
 
-`namedInputs` are resolved into each task's `cache.inputs.files` by the
-migration. They do not exist in vx and will not: a TypeScript config
-composes, so a shared input list is an import.
+`namedInputs` and `targetDefaults` never reach the migration as
+themselves: the resolved graph has already applied them, so what gets
+written is each task's own `cache.inputs.files` and its own values.
+Neither exists in vx and neither will — a TypeScript config composes,
+so a shared input list is an import.
 
 ## What you drop, and what replaces it
 
 - **The daemon.** vx has [none](../no-daemon/). On the 3,270-task
-  benchmark a fully cached run is 510 ms to Nx's 3.59 s, and the cold
-  run burns 35 s of CPU to Nx's 114 minutes.
+  benchmark a fully cached run is 510ms to Nx's 3.59s, and the cold
+  run burns 34.61s of CPU to Nx's 114m 06s.
 - **Nx Cloud's distributed execution.** The seam is public:
   `@vzn/vx-reapi` runs tasks on any Bazel Remote Execution API pool.
   There is no first-party service and there will not be one.

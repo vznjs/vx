@@ -73,8 +73,13 @@ already doing.
 | `passThroughEnv`                               | `exec.env.passThrough`                                  |
 | `cache: false`                                 | omit the `cache` block                                  |
 | `persistent: true`                             | `exec.persistent: { readyWhen }`                        |
+| `extends`                                      | `false` alone opts the package out; any other key replaces the root's |
+| `outputLogs`                                   | no per-task knob: the per-run `--output-logs` flag      |
 | `$TURBO_ROOT$/file`                            | `cache.inputs.workspaceFiles`                           |
-| `globalDependencies`, `globalEnv`              | a generated `vx-preset.ts` you import and spread        |
+| `globalDependencies`, `globalEnv`, `globalPassThroughEnv` | a generated `vx-preset.ts` you import and spread |
+
+Those are every key the mapper knows. Any other key in a task becomes
+a TODO naming it, so nothing is dropped silently.
 
 Three things you get that the JSON could not give you:
 
@@ -97,9 +102,14 @@ Three things you get that the JSON could not give you:
 - No `--parallel`. It exists in Turbo as an escape hatch for
   over-declared edges. `dependsOn` in vx is explicit, so the hatch is
   `--concurrency 1` to serialise and nothing to drop edges.
-- `--continue` defaults to `deps-ok` (a task runs if its own
-  dependencies succeeded) rather than `never`.
+- Failure propagation starts one notch further along. Turbo stops the
+  run at the first failure; a vx run with no flag is `deps-ok` — a
+  task runs when its own dependencies succeeded, and only its
+  dependents are skipped. `--continue=never` is Turbo's default
+  behaviour, and bare `--continue` is `always`, which is what bare
+  `--continue` means in Turbo too.
 
 Every other Turbo behaviour a user would reach for is pinned by a
-parity test that runs the real CLI. The full guide, with before/after
+parity case that runs vx's real CLI against the Turbo contract it
+stands in for. The full guide, with before/after
 configs, is [Migrate from Turborepo](../../migrate/from-turborepo/).
