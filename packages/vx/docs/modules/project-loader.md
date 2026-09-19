@@ -19,6 +19,26 @@ Two paths, chosen by whether this process has loaded that path before:
 ```ts
 export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
 export async function loadWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig | null>
+
+// The batch form every reading verb goes through: one staged evaluation
+// for many configs, served from the evaluation cache unless `fresh`.
+export interface LoadProjectConfigOptions {
+  // Observe the CURRENT environment: no module-cache reuse, no eval cache.
+  fresh?: boolean
+  evalCache?: { store: ConfigEvalStore; workspaceFingerprint: string }
+}
+export async function loadProjectConfigs(
+  configPaths: readonly string[],
+  opts?: LoadProjectConfigOptions,
+): Promise<ProjectConfig[]>
+
+// The names a workspace config may take, in resolution order.
+export const WORKSPACE_CONFIG_FILENAMES = [
+  'vx.workspace.ts',
+  'vx.workspace.mts',
+  'vx.workspace.js',
+  'vx.workspace.mjs',
+]
 ```
 
 What the evaluated object may contain is `config-schema.ts`'s

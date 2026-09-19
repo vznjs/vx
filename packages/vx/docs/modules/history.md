@@ -26,6 +26,19 @@ export interface HistoryProvider {
   loadFor(taskIds: readonly string[]): Promise<HistoryTable>
 }
 export class EmptyHistoryProvider implements HistoryProvider {}
+
+/** A task whose SAME cache key both passed and failed — the definition
+ *  of flaky, answered from local history with no service. Named in a
+ *  run's footer, typed by `--summarize`, listed by `vx info`. */
+export interface FlakyTask {
+  taskId: string
+  project: string
+  task: string
+  keys: number // distinct keys with both outcomes
+  passes: number
+  failures: number
+}
+export function flakyTasks(db: Database): FlakyTask[]
 export class LocalHistoryProvider implements HistoryProvider {
   constructor(db: Database, recent?: number) // the window; defaults to 50 invocations
 }

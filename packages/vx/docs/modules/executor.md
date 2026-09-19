@@ -19,6 +19,13 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 - `TaskPlacement { taskId; projectName; projectDir; command; pinnedLocal;
 cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   before scheduling, so it cannot depend on anything resolved per attempt.
+- `InputFile { path; digest }` — one entry of `TaskInputs.files`: the
+  workspace-relative POSIX path and the git blob OID of the WORKTREE
+  bytes (for a symlink, of its target string) — the same digest the key
+  folds, so an executor elsewhere reproduces what a hit would match.
+- `localExecutor()` — the floor at the tail of every executor list.
+  Runs the command on this machine; what a plugin declining a task
+  hands it back to.
 - `ExecuteRequest` — `taskId`, `workspaceRoot`, `command`, `forwardArgs`,
   `cwd`, `env`, `capture`, `outputs`, `timeoutMs?`, `onStdout`, `onStderr`,
   `liveChildren?`, `sandbox?: ExecuteSandbox`, `inputs?: TaskInputs`.

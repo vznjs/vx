@@ -22,6 +22,25 @@ export function affectedProjects(args: AffectedArgs): Promise<Set<string>>
 
 /** Default base when `--affected` has no value. */
 export function defaultAffectedBase(workspaceRoot: string): Promise<string>
+
+/** Lockfiles a `fingerprint` plugin claims, so `--affected` can follow
+ *  a per-project dependency closure instead of the whole fingerprint. */
+export interface FingerprintClaims {
+  readonly files: ReadonlySet<string>
+  /** Project names a change to a claimed file affects; `undefined` = all. */
+  affected(change: {
+    file: string
+    before: Uint8Array | null
+    after: Uint8Array | null
+  }): Promise<ReadonlySet<string> | undefined>
+}
+
+/** Does any `workspaceFiles` glob match this root-relative path? */
+export function workspaceGlobsMatch(globs: readonly string[], rel: string): boolean
+
+/** Is `ref` the current HEAD? A base that is already HEAD selects nothing,
+ *  which is a clean exit rather than an empty run. */
+export function refIsHead(workspaceRoot: string, ref: string): boolean
 ```
 
 ## Algorithm

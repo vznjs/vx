@@ -30,6 +30,26 @@ export interface BuildGraphOptions {
 
 export function taskId(project: string, task: string): string
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode>
+export function splitTaskId(id: string): [project: string, task: string]
+export function isGroupTask(node: TaskNode): boolean
+export function detectCycle(nodes: Map<string, TaskNode>): void
+
+// Which `{project, task}` pairs a run's requested names resolve to, and
+// which resolve to nothing (`vx run`'s "every requested name must resolve").
+export function expandRequested(
+  tasks: readonly string[],
+  candidates: readonly string[],
+  projects: Map<string, ProjectEntry>,
+): Array<{ project: string; task: string }>
+export function unresolvedRequests(
+  tasks: readonly string[],
+  candidates: readonly string[],
+  projects: Map<string, ProjectEntry>,
+): string[]
+
+// Flags the display-only `surfaced` tasks a requested GROUP stands for;
+// returns how many it flagged. See "transparent folders" in cli.md.
+export function markSurfacedDeps(nodes: Map<string, TaskNode>): number
 ```
 
 ## Construction rules

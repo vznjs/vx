@@ -1247,6 +1247,36 @@ build` and this file records a Bun-specific hazard for exactly
       packages each, plus one `@bench/top`", which reads as 1101 at the
       defaults, two lines above its own correct 1090: the top layer
       REPLACES a layer rather than adding to one.
+392.  DONE (2026-09-19, the module surface law, in the direction
+      nothing held). `modules/README.md` says a Public surface block is
+      "exported types + functions consumed by other modules", and
+      "internal helpers are not part of the contract". Item 307's law
+      checks one half — every name a block DECLARES is exported — so an
+      export could ship and never reach its page, the same asymmetry
+      item 386 found in `schema.md` (what the loader refuses was
+      pinned, what it accepts was not).
+      38 names across 11 pages were missing. The worst are the ones a
+      reader goes to those pages FOR: `telemetry.md` listed four names
+      and omitted `TelemetrySink` and `TelemetryContext`, the two types
+      a telemetry plugin implements; `cache.md` omitted `CACHE_VERSION`
+      and `SCHEMA_VERSION`, which CLAUDE.md's Live invariants quote,
+      and the whole `CachePolicy` / `FULL_CACHE_POLICY` /
+      `parseCachePolicy` trio behind `--cache`; `task-graph.md` omitted
+      `expandRequested` and `unresolvedRequests`, which are what "every
+      requested name must resolve" is made of. All documented now, each
+      checked against its source.
+      The pin is the reverse law, and "consumed by another module" is
+      the convention's own wording so it is the test: an import or
+      re-export of the name in a file whose module directory the page
+      does not own. It carries a floor of 150 crossing names, so an
+      empty result cannot come from a selector that found nothing to
+      check — which is how the first two drafts of the probe failed.
+      The first keyed "documented" on backticked names alone and so
+      missed every page whose block is a fenced ts block, reporting
+      that `orchestrator.md` omits `run`; the second counted any
+      textual mention in another module as a consumer, comments
+      included. Neither was reported as a finding, and the corrected
+      run is where the 38 came from.
 
 ## In flight
 

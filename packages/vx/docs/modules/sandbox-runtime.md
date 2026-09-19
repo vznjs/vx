@@ -134,6 +134,22 @@ export interface SandboxedRunResult extends RunResult {
   violations: SandboxViolation[]
 }
 export function runSandboxed(args: SandboxedRunArgs): Promise<SandboxedRunResult>
+
+// The wrap without the run: the sandboxed command line, the tag its
+// violations are reported under, and the canonical baselines it was
+// built from. What an executor running the command ITSELF needs.
+export function wrapSandboxedCommand(
+  args: Pick<SandboxedRunArgs, 'command' | 'cwd' | 'forwardArgs' | 'config'> &
+    Pick<SandboxedRunArgs, 'baseAllowRead' | 'baseAllowWrite' | 'baseDenyRead'>,
+): Promise<{ wrapped: string; tag: string; taggedCommand: string; baselines: CanonicalBaselines }>
+
+// Release the port bridges a tagged run held. Paired with the wrap above:
+// runSandboxed does it itself, a caller that wrapped must do it.
+export function releaseBridges(tag: string): void
+
+// A thrown value as a line a user can read — an FS refusal keeps its
+// errno, anything else its message. The sandbox never reports a stack.
+export function thrownReason(err: unknown, what?: string): string
 ```
 
 ## How it works

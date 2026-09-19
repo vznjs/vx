@@ -18,6 +18,22 @@ is pre-folded, bigint wallclock spans are decimal strings.
 - `deriveCacheSource(status)` — `'local' | 'remote' | 'miss' | null`.
 - `createTelemetrySource(bus, sinks, ctx)` — projects the bus once and
   fans out to sinks.
+- `TelemetrySink` — what a `telemetry` plugin returns: an optional
+  `name`, a `wants` list of record kinds (the source checks it BEFORE
+  projecting, so a sink pays nothing for kinds it declines), and
+  `onRecord` / `onRunSummary` / `flush`. Every one is crash-isolated and
+  `flush` is deadline-bounded.
+- `TelemetryContext` — what the hook is handed: `workspaceRoot`,
+  `cacheDir` (a STRING, not a Cache handle — a sink cannot reach the
+  cache) and `warn`.
+- `TelemetrySource` — the live projection: a bus `subscriber`,
+  `emitSummary` and `flush`.
+- `CacheSource` — `'miss' | 'local' | 'remote' | 'none'`, the cache axis
+  every record carries.
+- `TASK_STATUSES`, `isPassStatus(status)`, `isCacheHit(status)` — the
+  task axis and the two predicates every surface shares.
+- `TELEMETRY_SCHEMA_VERSION` — bumped when a record's shape changes, so a
+  receiver can refuse what it cannot read.
 
 ## Invariants
 
