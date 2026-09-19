@@ -305,9 +305,9 @@ export interface ExecConfig {
    * Confine this task's process: what it may read, write and reach.
    * Nothing is confined unless this is present.
    *
-   * It sits in `exec` because it constrains the same spawn `env` and
-   * `resources` do — the environment the child gets, the CPU and memory it
-   * gets, the filesystem and network it gets. A group task has no process,
+   * It sits in `exec` because it constrains the same spawn `env` does —
+   * the environment the child gets, the filesystem and network it gets.
+   * A group task has no process,
    * so the field cannot be reached from one.
    *
    * **Policy: fail on violation.** An undeclared touch of the project's own

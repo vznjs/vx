@@ -265,8 +265,8 @@ daemon, a Docker socket, a device, a VPN-only host.
   build: { dependsOn: ['install'], /* … */ },
   ```
 
-- **Never busts a cache:** `remote` is stripped from the cache key, the
-  same as `resources` — `'only'` included. The contract of a remote executor
+- **Never busts a cache:** `remote` is stripped from the cache key —
+  `'only'` included, and it is the only `exec` field that is. The contract of a remote executor
   is that the same command over the same inputs produces the same outputs,
   so a key that moved with placement would split a laptop from a worker pool
   over nothing.

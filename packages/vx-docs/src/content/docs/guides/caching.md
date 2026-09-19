@@ -33,7 +33,7 @@ flowchart LR
 ```
 
 The payoff is real: on the 3,270-task benchmark a fully cached run
-answers in 510 ms where Turborepo takes 760 ms and Nx 3.59 s
+answers in 510ms where Turborepo takes 760ms and Nx 3.59s
 ([benchmarks](../../benchmarks/), 2026-09) — and because the key covers
 **every** input, a hit is only ever served when the result is genuinely
 identical.
@@ -80,8 +80,10 @@ You don't have to list these — they're always part of the key:
 
 ### What's always excluded
 
-`node_modules/`, `.git/`, `.vx/`, `*.tsbuildinfo`, gitignored files, the
-task's own declared outputs, and files belonging to a nested project.
+`node_modules/`, `.git/`, `.vx/`, `*.tsbuildinfo`, `vx-lock.json`,
+`*.bun-build` (the transient `bun build --compile` writes into the cwd),
+gitignored files, the task's own declared outputs, and files belonging
+to a nested project.
 Inputs are enumerated through git, so anything git ignores is invisible
 to the cache. A project inside a submodule or an embedded repository is
 enumerated by that repository's own git (the workspace repository sees
@@ -199,10 +201,13 @@ vx run build --no-cache   # ignore the cache for this run
 
 A quick checklist when a hit looks stale:
 
-1. Did the changed file match `inputs.files`? If not, your globs are too
+1. Ask the tool first: `vx why <pkg>#<task>` names the component that
+   moved, or says the key did not move at all
+   ([Trusting the cache](../trusting-the-cache/)).
+2. Did the changed file match `inputs.files`? If not, your globs are too
    narrow — add it.
-2. Is the value an env var? It must be in `inputs.env`.
-3. Is it a root-level file? Use `inputs.workspaceFiles`.
+3. Is the value an env var? It must be in `inputs.env`.
+4. Is it a root-level file? Use `inputs.workspaceFiles`.
 
 ## Next steps
 

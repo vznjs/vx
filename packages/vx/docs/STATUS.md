@@ -338,6 +338,29 @@ test is telling the truth.
       `hasMany` that answers N probes in one round trip, which is the
       one a plugin author most wants to know about. Three pins, all
       three failing on the old pages.
+347.  DONE (2026-09-16, the next three guides: caching, tasks,
+      running-tasks). running-tasks reads true (its `--dry` block is
+      already rendered by the site-samples law, and its flag table
+      says "useful", not "every"). caching spelled the three warm
+      figures with spaces where the benchmarks page writes 510ms /
+      760ms / 3.59s — the class items 336, 340 and 342 struck from
+      four posts — named four of the six `ALWAYS_IGNORE` entries
+      (`vx-lock.json` and `*.bun-build` missing), and its stale-hit
+      checklist never mentioned `vx why`, the verb built for that
+      question. tasks listed three of the six `exec` fields beyond
+      `command`: `timeout`, `retries` and `remote` were absent, and
+      its workspace line named `concurrency` and `cacheDir` without
+      the `timeout` item 346 had just documented. The find beyond the
+      three: `exec.resources` LEFT the config on 2026-09-12 with the
+      reservations (a config that declares it is refused as an unknown
+      field, `resource-estimates-2026-09.md`), and four places still
+      name it as live — CLAUDE.md's own live-invariants line,
+      `config.ts`'s sandbox docblock ("the same spawn `env` and
+      `resources` do"), schema.md's "stripped … the same as
+      `resources`", and cli.md's list of the fields `vx show` prints,
+      which cannot print it. All four corrected; the `vx show` list is
+      now pinned to the `add(…)` names in `show.ts`, which would have
+      caught it. Four pins, all four failing on the old pages.
 
 ## In flight
 

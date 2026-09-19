@@ -876,3 +876,70 @@ describe('the CI guide states what --frozen measured, not what it once claimed',
     expect(page).not.toMatch(/10–21%/)
   })
 })
+
+describe('the caching guide lists what the cache never reads', () => {
+  const page = readFileSync(path.join(GUIDES, 'caching.md'), 'utf8')
+  it('its always-excluded list is ALWAYS_IGNORE', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'inputs.ts'),
+      'utf8',
+    )
+    const arr = /const ALWAYS_IGNORE = \[([\s\S]*?)\n\]/.exec(src)
+    expect(arr).not.toBeNull()
+    // Comment lines inside the array quote globs of their own, so drop them
+    // before reading the entries. `**/node_modules/**` → node_modules.
+    const entries = arr![1]!
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//'))
+      .join('\n')
+    const names = [...entries.matchAll(/'\*\*\/([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
+    expect(names.length).toBe(6)
+    const section = /## Outputs/.exec(page)
+    expect(section).not.toBeNull()
+    const excluded = page.slice(page.indexOf("What's always excluded"), section!.index)
+    for (const name of names) expect(excluded).toContain(name)
+  })
+  it('its benchmark figures are the benchmarks page’s, as written', () => {
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    for (const figure of ['510ms', '760ms', '3.59s']) {
+      expect(page).toContain(figure)
+      expect(bench).toContain(figure)
+    }
+  })
+})
+
+describe('the tasks guide names every exec field a task can declare', () => {
+  it('each ExecConfig field beyond `command` is in its list', () => {
+    const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'config.ts'), 'utf8')
+    const decl = /export interface ExecConfig \{([\s\S]*?)\n\}/.exec(src)
+    expect(decl).not.toBeNull()
+    const fields = [...decl![1]!.matchAll(/^  (\w+)\??:/gm)].map((m) => m[1]!)
+    expect(fields).toContain('command')
+    const page = readFileSync(path.join(GUIDES, 'tasks.md'), 'utf8')
+    for (const field of fields.filter((f) => f !== 'command')) {
+      expect(page).toContain('`exec.' + field + '`')
+    }
+  })
+})
+
+describe('cli.md lists the fields `vx show` prints', () => {
+  it('every field name show.ts adds is named, and none it cannot print', () => {
+    // It listed `resources`, which left the config on 2026-09-12 — a field
+    // `vx show` has no way to print (item 347, 2026-09-16).
+    const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'show.ts'), 'utf8')
+    const added = new Set([...src.matchAll(/add\(\s*'([\w.]+)'/g)].map((m) => m[1]!))
+    expect(added.size).toBeGreaterThan(5)
+    const cli = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
+    const para = cli.slice(
+      cli.indexOf('`vx show <project>` prints a block per task'),
+      cli.indexOf('Fields the\ntask does not set are not printed.'),
+    )
+    expect(para.length).toBeGreaterThan(100)
+    for (const name of ['remote', 'sandbox', 'persistent', 'retries', 'timeout']) {
+      expect(added).toContain(name)
+      expect(para).toContain('`' + name + '`')
+    }
+    expect(added.has('resources')).toBe(false)
+    expect(para).not.toContain('`resources`')
+  })
+})

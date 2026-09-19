@@ -164,11 +164,22 @@ A task can also declare:
   ([Environment variables](../environment-variables/)).
 - **`exec.persistent`** — long-running dev servers and watchers
   ([Dev & long-running tasks](../dev-tasks/)).
-- **`sandbox`** — run under an OS-level allow-list of files and network
-  ([Sandboxing tasks](../sandboxing/)).
+- **`exec.sandbox`** — run under an OS-level allow-list of files and
+  network ([Sandboxing tasks](../sandboxing/)).
+- **`exec.timeout`** — kill a runaway task after N ms. It is folded into
+  the key: a task allowed to run longer may finish where a shorter one
+  was killed.
+- **`exec.retries`** — re-run a failing task N times before giving up,
+  folded into the key for the same reason.
+- **`exec.remote`** — placement: `false` pins the task to this machine,
+  `'only'` says it exists to run on a remote pool
+  ([Remote execution](../remote-execution/)). It is the one `exec` field
+  stripped from the key, because where a task ran says nothing about
+  what it produced.
 
-Workspace-wide settings (`concurrency`, `cacheDir`) live in a root
-`vx.workspace.ts` — see [Workspace configuration](../workspace-config/).
+Workspace-wide settings (`concurrency`, `cacheDir`, `timeout`) live in a
+root `vx.workspace.ts` — see
+[Workspace configuration](../workspace-config/).
 
 ## Next steps
 
