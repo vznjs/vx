@@ -460,7 +460,10 @@ The Turbo footing for Nx: the repo's own Nx (`NX_DAEMON=false`,
 `bunx @vzn/vx-migrate --from nx` wrote from the repo's exported graph,
 both tools at the worker count the repo's `nx.json` sets, medians of
 three interleaved reps, the same cleanup and arm logs as
-`turbo-repo.sh`. Parity is the task graph: `nx run-many … --graph`
+`turbo-repo.sh`. The script is `packages/vx-bench/real/nx-repo.sh` —
+the Turbo harness runs the Turbo repos and this one runs these, and
+each names the other only for the footing they share. Parity is the
+task graph: `nx run-many … --graph`
 against `vx --dry=json` plan the same `project#target` set. Every
 revision, toolchain and bench-side rule (the configs rewritten to
 `.mjs`, the pinned package manager on PATH) is in
