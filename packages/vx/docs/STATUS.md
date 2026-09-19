@@ -436,6 +436,23 @@ test is telling the truth.
       either class. Two pins, both failing on the old files. A
       correction of the handoff below: the loop holds 333–351, not past
       the forty-item trim line, so no trim is due yet.
+352.  DONE (2026-09-16, the module pages whose source has moved since
+      they were read). Only two of the fifty-odd pages are older than
+      their source, and one is a false positive worth recording: the
+      2026-09-16 change under `cache.md` is a comment REFLOW —
+      identical text, rewrapped — so the page is current. The other is
+      `config.md`, whose source moved by item 347's own edit. But the
+      grep that finds the class found a FIFTH instance of it:
+      `modules/config-schema.md` said the validator types
+      "`resources` are cores and megabytes", and
+      `workspace/config-schema.ts` contains the word zero times. Item
+      347 fixed four pages and did not read the module docs; 351 found
+      two more classes in the READMEs. So this item's pin is the class
+      itself — the schema must not declare `resources`, the validator
+      must not mention it, and no hand-authored page may describe it as
+      a field (design/ and history/, which record its removal, are
+      exempt, as are the generated site copies). That makes five class
+      pins in four items. One pin, failing on the old page.
 
 ## In flight
 
