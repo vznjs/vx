@@ -171,10 +171,11 @@ describe('package boundaries', () => {
   // `util/bun-version.ts`, `@vzn/vx-reapi`'s `wire.ts`) may require a newer
   // Bun than it declares but never an older one — a constant below its own
   // manifest is a promise the package does not keep. They are equal today,
-  // and equal for different reasons: core's floor is `Bun.Archive` and the
-  // answers that go wrong without it (item 366), the plugin's is an http2
-  // client that hangs on its chunked uploads. Nothing requires them to move
-  // together, so this holds the relation, not the value (item 368).
+  // and equal for different reasons: core's floor is the answers an older
+  // Bun gets WRONG — item 366 measured three, and `bun-version.ts` names
+  // them — while the plugin's is an http2 client that hangs on its chunked
+  // uploads. Nothing requires them to move together, so this holds the
+  // relation, not the value (item 368).
   it('every package declares engines.bun, and no code floor sits below it', async () => {
     // Lexicographic, not component-wise: a floor of 2.0.0 against an engines
     // of 1.9.0 is NEWER, and a `some(n < e)` over the parts calls it older on

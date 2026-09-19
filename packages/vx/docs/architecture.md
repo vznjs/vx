@@ -129,10 +129,12 @@ deliberate snapshot. It also holds the RUNTIME floor: every package
 declares `engines.bun`, and a package that enforces a floor in code
 (core's `util/bun-version.ts`, `@vzn/vx-reapi`'s `wire.ts`) may require
 a newer Bun than it declares but never an older one. The two constants
-are equal today for different reasons — core's floor is `Bun.Archive`
-and the answers that go wrong without it, the plugin's is an http2
-client that hangs on its chunked uploads — so the guard holds the
-relation, not the value.
+are equal today for different reasons — core's floor is the answers an
+older Bun gets WRONG (a large `--format json` write truncated at the
+pipe, no `peakRssBytes` from the runner, a config syntax error arriving
+as a `BuildMessage`: `util/bun-version.ts` names all three), the
+plugin's is an http2 client that hangs on its chunked uploads — so the
+guard holds the relation, not the value.
 
 ## The plugin capability seam
 
