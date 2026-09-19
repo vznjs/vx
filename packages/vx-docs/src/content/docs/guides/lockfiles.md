@@ -55,8 +55,9 @@ package at `node_modules` path `p` is `p/d` when the lockfile has that
 key, else the nearest ancestor's, else the root's — so a nested version
 counts for the package it is nested under and no other; each package by
 its resolved id and integrity; a `workspace:` dependency folds the
-linked package's reach; and `overrides`, `patchedDependencies` and
-catalogs fold into every project.
+linked package's reach; and the install-wide material every project
+folds is `lockfileVersion`, `configVersion`, `overrides`,
+`patchedDependencies` and both catalog forms, `catalog` and `catalogs`.
 
 With `npm()`, `package-lock.json` (lockfileVersion 2 and 3) the same
 way through its `packages` map and `link: true` workspace entries. With

@@ -679,6 +679,18 @@ describe('the from-nx post names every executor the migration infers', () => {
 // extensibility guide's own stage table was the same eleven, missing `setup`
 // and `teardown` entirely, and nothing held it (item 379, 2026-09-19). A
 // plugin author reading that table would not know the two hooks exist.
+describe('the plugins guide declares every hook in its VxPlugin block', () => {
+  it('names each PLUGIN_HOOKS entry and no other hook', () => {
+    // The THIRD copy of the hook list, after the post's table and the
+    // extensibility guide's. It groups by category rather than by
+    // PLUGIN_HOOKS order, so the SET is what is held, not the sequence.
+    const page = readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8')
+    const block = page.slice(page.indexOf('interface VxPlugin {'), page.indexOf('## Adding a verb'))
+    expect(block.length).toBeGreaterThan(400)
+    const declared = [...block.matchAll(/^  (\w+)\?[?:(]/gm)].map((m) => m[1]!)
+    expect(declared.sort()).toEqual([...PLUGIN_HOOKS].sort())
+  })
+})
 describe.each([
   [
     'the pipeline-with-seams post',
@@ -1101,20 +1113,36 @@ describe('the task-dependencies guide uses the status words the scheduler sets',
   })
 })
 
-describe('the lockfiles guide lists what a pnpm install folds into every digest', () => {
-  it('its install-wide list is the parser’s global object', () => {
-    const src = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-lockfile', 'src', 'pnpm.ts'),
-      'utf8',
-    )
-    const global = /const global = stable\(\{([\s\S]*?)\n  \}\)/.exec(src)
-    expect(global).not.toBeNull()
-    const keys = [...global![1]!.matchAll(/^\s+(\w+):/gm)].map((m) => m[1]!)
-    expect(keys.length).toBe(6)
-    const page = readFileSync(path.join(GUIDES, 'lockfiles.md'), 'utf8')
-    for (const key of keys) expect(page).toContain('`' + key + '`')
-  })
-})
+// BOTH parsers the guide enumerates. The pnpm paragraph was pinned and the
+// BUN one, which describes the same install-wide material, was not — it named
+// three of six and left out `lockfileVersion` and `configVersion`, so the two
+// paragraphs read as if bun folded less than pnpm (item 380, 2026-09-19). The
+// npm and yarn paragraphs enumerate nothing, by design, and are not here.
+describe.each(['pnpm', 'bun'])(
+  'the lockfiles guide lists what a %s install folds into every digest',
+  (manager) => {
+    it('its install-wide list is the parser’s global object', () => {
+      const src = readFileSync(
+        path.resolve(import.meta.dir, '..', '..', 'vx-lockfile', 'src', `${manager}.ts`),
+        'utf8',
+      )
+      const global = /const global = (?:stable|JSON\.stringify)\(\{([\s\S]*?)\n  \}\)/.exec(src)
+      expect(global).not.toBeNull()
+      const keys = [...global![1]!.matchAll(/^\s+(\w+):/gm)].map((m) => m[1]!)
+      expect(keys.length).toBe(6)
+      const page = readFileSync(path.join(GUIDES, 'lockfiles.md'), 'utf8')
+      // That manager's OWN paragraph, not the page: both list
+      // `lockfileVersion`, so a whole-page search lets one paragraph cover
+      // for the other's omission — which is how the bun list lost two keys
+      // while the pnpm list carried them.
+      const starts = page.indexOf(`With \`${manager}()\``)
+      expect(starts).toBeGreaterThan(0)
+      const next = page.indexOf('With `', starts + 10)
+      const section = page.slice(starts, next > 0 ? next : page.length)
+      for (const key of keys) expect(section).toContain('`' + key + '`')
+    })
+  },
+)
 
 describe('the plugins guide rosters every hook a shipped plugin fills', () => {
   it('@vzn/vx-schedule-history is named on all three of its hooks', () => {

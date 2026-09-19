@@ -873,6 +873,40 @@ build` and this file records a Bun-specific hazard for exactly
       field, so the page's "the one `exec` field stripped from the key"
       cannot go quietly wrong in the direction that produces stale
       hits.
+380.  DONE (2026-09-19, a paragraph two keys short, and two pins whose
+      REACH was the defect). `lockfiles.md`, `plugins.md`,
+      `how-vx-works.md`. The last reads true — the workspace-root
+      markers against `workspace.ts`, the two-second kill grace, the
+      most-blocked-first heap.
+      `lockfiles.md` describes the install-wide material twice, once
+      per parser. The pnpm paragraph lists all six keys and is pinned;
+      the BUN paragraph listed three of six, leaving out
+      `lockfileVersion` and `configVersion`, so the two read as if bun
+      folded less than pnpm. Both are pinned now, one `describe.each`
+      over a regex that takes `stable({…})` or `JSON.stringify({…})`.
+      The pin's first draft searched the WHOLE PAGE for each key,
+      which let the pnpm paragraph's `lockfileVersion` cover for the
+      bun paragraph's missing one — the loose-selector failure of item
+      377's `about N lines` regex, caught this time by trying the
+      differential that mattered rather than the one that was easy.
+      Each arm reads its own manager's paragraph now, and dropping
+      `lockfileVersion` from the bun one is red.
+      Two pins were narrower than the class they name. The
+      `VxPlugin` interface block in `plugins.md` is the THIRD copy of
+      the hook list after the post's table and the extensibility
+      guide's; it is held to `PLUGIN_HOOKS` as a SET, since it groups
+      by category rather than by pipeline order. And the path check
+      (`doc-references.test.ts`) walks `packages/vx/docs` only, so a
+      `src/…` or `tests/…` path named on a SITE page was checked by
+      nothing — the tree where item 377 found a header still citing
+      `src/cli/mcp.ts` a release after the verb left core. Nothing is
+      stale there today; the tripwire is the point.
+      Read so far: 375's three, 376's, 377's, 378's, 379's, and
+      lockfiles, plugins, how-vx-works (380). That is fifteen of the
+      nineteen guide and concept pages. Left: `task-dependencies.md`,
+      plus the three top-level hand-authored pages
+      (`introduction.md`, `quickstart.md`, `add-to-existing-repo.md`)
+      and the two under `migrate/`.
 
 ## In flight
 
@@ -906,6 +940,14 @@ is not available in the container: `bun upgrade` is refused by this
 build and bun.sh answers 403 through the proxy. So the yardstick stands, with its meaning stated: a gate here
 is honest against the failing-TASK set and the failing-TEST set
 together, and anything outside both is the diff's.
+One more shape to expect, first seen 2026-09-19 under item 380: a
+shard can die with **exit 132 (128 + SIGILL)** and report no failing
+test at all — the Bun process crashed, so the failing-task count goes
+to eleven with nothing new in the failing-test set. Shard 9 did it
+once and then passed 271/271 twice in isolation and again on the next
+gate. Treat a bare SIGILL like that as this runtime under twelve-way
+load, not as a find: re-run the shard alone, and the gate once, before
+reading anything into it.
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
 closed by 2026-09-10 — the docs build under bwrap, strace's seccomp
