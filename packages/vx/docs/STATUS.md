@@ -285,6 +285,23 @@ test is telling the truth.
       with a warning. Five pins, four failing on the old pages; the
       remote-execution pair are controls. Left in the blog:
       config-in-typescript, plus the three PR #487 holds.
+344.  DONE (2026-09-16, config-in-typescript — the last post outside
+      the three PR #487 holds). It reads true on the shape it teaches:
+      `defineProject` returns its argument, `vx init` and
+      `@vzn/vx-migrate` write `satisfies ProjectConfig` over a
+      type-only import, and the runtime-import cost is schema.md's
+      ~17 ms on a two-package workspace (the post said "a small
+      workspace" and now says which). Two faults: the preset snippet
+      a reader copies used `ProjectConfig` with no import line — the
+      one config block on the site the type-check pin skips, because
+      its relative preset import puts it outside that pin's reach —
+      and its impure-config list named five globals as if they were
+      the list, where the gate holds twenty-two (item 342 named them
+      all on the hashing post; this one now points there instead of
+      repeating five). Two pins, both failing on the old page. The
+      blog is read out: every post has been read against source once,
+      except the three PR #487 holds. Next in the queue are the site
+      guides, oldest first — `mcp`, `otel-bridge`, `sandboxing`.
 
 ## In flight
 

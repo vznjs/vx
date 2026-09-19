@@ -40,11 +40,13 @@ export default defineProject({
 })
 ```
 
-`defineProject` is an identity function that exists for autocomplete
-and validation. The generated files from `vx init` skip even that and
-write `satisfies ProjectConfig` with a type-only import, which is the
-same checking without a runtime import of core, worth about 17 ms per
-run on a small workspace.
+`defineProject` is an identity function — it returns its argument —
+that exists for autocomplete and validation. The files `vx init` and
+`@vzn/vx-migrate` generate skip even that and write
+`satisfies ProjectConfig` with a type-only import: the same checking
+without a runtime import of core in every config file, which is a
+second copy of core loaded per run, ~17 ms on a two-package
+workspace.
 
 ## Composition is an import
 
@@ -62,6 +64,7 @@ export const lib = (entry: string) => ({
 
 ```ts
 // packages/ui/vx.config.ts
+import type { ProjectConfig } from '@vzn/vx'
 import { lib } from '../../vx-preset.ts'
 export default { tasks: { ...lib('src/index.ts') } } satisfies ProjectConfig
 ```
@@ -85,11 +88,13 @@ allowed:
 - **Reading another project.** Globs are resolved inside the project
   directory. `../shared/**` is an error, and `cache.inputs.workspaceFiles`
   is the one named exception for files at the workspace root.
-- **Being impure without saying so.** A config that reads `process`,
-  `Date`, `fetch`, `import.meta` or a dynamic `import()` is evaluated
-  live every run and never served from the evaluation cache. That is
-  the correct behaviour, not a penalty; it just means a config that
-  reads `process.env` should be one that has to.
+- **Being impure without saying so.** A config that names `process`,
+  `Date`, `fetch`, `import.meta`, a dynamic `import()` or any of the
+  other globals on the
+  [purity gate's list](../resolved-config-hashing/) is evaluated live
+  every run and never served from the evaluation cache. That is the
+  correct behaviour, not a penalty; it just means a config that reads
+  `process.env` should be one that has to.
 
 ## Freezing it
 
