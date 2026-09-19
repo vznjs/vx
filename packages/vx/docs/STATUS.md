@@ -763,6 +763,48 @@ build` and this file records a Bun-specific hazard for exactly
       trusting-the-cache, remote-execution, why-vx-is-fast (376).
       Next three by that queue: `mcp.md`, `sandboxing.md`,
       `caching.md`.
+377.  DONE (2026-09-19, three guides true, and the drift a page's own
+      SOURCE was carrying). `mcp.md`, `sandboxing.md`, `caching.md`.
+      All three read true — the six MCP tools and their table, the
+      nine sandbox grants and the three Linux binaries, the
+      always-excluded list, `inputs.tasks` (`[]` none, omitted all),
+      the 510 ms / 760 ms / 3.59 s warm row. The finds are all one
+      step behind the page.
+      `@vzn/vx-mcp`'s own header said "four READ-ONLY tools" of SIX,
+      "three methods" while the dispatch has always answered `ping`
+      too, and "server.ts is ~100 lines" of 144. That last one is the
+      lesson: a pin already holds that sentence in the guide, the blog
+      post and the package README — three separate passes (items 339,
+      345, 351) each found one more copy — and this FOURTH copy
+      survived all three because it spells it `~100` where the pin's
+      regex asks for `about N lines`. That is the negative-grep rule
+      of item 304, this time inside the pin. The regex takes both
+      spellings now, and the header is the fifth arm of that loop.
+      The count and the method list are pinned in the package, beside
+      the pin that took the tool NAMES out of that header after they
+      drifted into advertising a `runTasks` tool that never existed.
+      That repair left the number, and the number drifted the same
+      way; the header states neither now, and `listTools()` is where
+      both live. Every case the dispatch answers must be named there.
+      `tools.test.ts`'s own header still described the architecture
+      that was replaced: it said the transport is NOT ours, that
+      `src/cli/mcp.ts` hands framing to the SDK's
+      `StdioServerTransport`. There is no SDK (the package's only
+      dependencies are `@types/bun` and `@vzn/vx`), no
+      `src/cli/mcp.ts`, and `server.ts` owns the framing down to one
+      streaming `TextDecoder` — which is what the framing tests
+      directly below that paragraph exist to prove. Corrected, and the
+      class greped: two more `src/cli/mcp.ts` references in the same
+      file now read as the history they are. The 2026-06 architecture
+      review keeps its mention: no live page cites it, so it is a
+      record (item 372's rule).
+      The sandboxing guide is the same one-copy-of-two: the pin over
+      the nine `SandboxGrants` keys, the `allow`/`deny`/`ignore` trio
+      and the three Linux binaries covered only the BLOG POST, while
+      the guide lists all of it. Both pages now, as one `describe.each`
+      — proven by dropping `machLookup` from the guide — and a page
+      that COUNTS the binaries has its count checked, since the post
+      says "three binaries" beside the list.
 
 ## In flight
 
