@@ -88,8 +88,9 @@ the blob OIDs are already there.
 
 ### 5. Scheduling, cache lookup, execution
 
-The scheduler walks the graph in topological order, running independent
-tasks in parallel up to your concurrency. For each task:
+The scheduler runs independent tasks in parallel up to your
+concurrency, taking the ready task that blocks the most work first
+(most transitive dependents, off an exact heap). For each task:
 
 - **Cache hit** → restore the stored outputs and replay the logs. (With a
   remote cache plugin configured, vx checks local first, then remote,
@@ -100,9 +101,11 @@ tasks in parallel up to your concurrency. For each task:
 - **Cache miss** → wipe the declared outputs, run the command, then store
   the new outputs and logs under the key.
 
-A failed task aborts its dependents but lets independent siblings finish.
-Persistent tasks (dev servers) are started, gated on readiness, and
-`SIGTERM`-ed when the run ends.
+A failed task **skips** its dependents — a counted status of its own,
+not an execution — but lets independent siblings finish; `--continue`
+decides how far that goes. Persistent tasks (dev servers) are started,
+gated on readiness, and `SIGTERM`-ed when the run ends, with a two-second
+grace before `SIGKILL`.
 
 ## Why the cache is trustworthy
 

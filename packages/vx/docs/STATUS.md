@@ -396,6 +396,25 @@ test is telling the truth.
       parser folds into every project's digest
       (`ignoredOptionalDependencies` missing). Four pins, three failing
       on the old pages.
+350.  DONE (2026-09-16, the site's last unread corner: the two
+      `concepts/` pages and the two `migrate/` guides — every
+      hand-authored page on the site has now been read against source
+      once). A SECOND correction of the same kind as 349's: item 348
+      fixed "a failed task aborts its transitive dependents" on
+      task-dependencies and did not grep the class, so the
+      how-vx-works concept still said it. Both pins are now the greps
+      the two items owed — no hand-authored page may say a failed task
+      aborts its dependents (the class), and none may call the remote
+      seam three-call (349's). how-vx-works also said the scheduler
+      "walks the graph in topological order" where it takes the ready
+      task with the most transitive dependents off a heap, and
+      SIGTERMed persistent tasks with no word of the two-second grace.
+      The two migrate guides read true and are the better halves of
+      the posts item 342 corrected: from-turborepo's table carries
+      `outputLogs` and all three globals (which the post lacked), and
+      from-nx expands `@nx/vite:*` into the four commands
+      `KNOWN_EXECUTORS` maps — now pinned to them. Two pins, one
+      failing on the old page, one a control.
 
 ## In flight
 
