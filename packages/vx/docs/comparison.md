@@ -221,8 +221,8 @@ upstream repos.
    controls failure propagation: `never` fail-fast (stop dispatch on the
    first failure), `deps-ok` (default) skip only a failure's dependents
    while independent siblings continue, `always` run everything. Bare
-   `--continue` = `always`. Enforced in the scheduler, threaded over the
-   wire; see [`cli.md`](./cli.md) § Failure propagation.
+   `--continue` = `always`. Enforced in the scheduler; see
+   [`cli.md`](./cli.md) § Failure propagation.
 
 3. **Wildcards in `dependsOn` — shipped.** `'build.*'` expands to every
    other same-project task matching the pattern (zero matches legal);
@@ -244,8 +244,8 @@ upstream repos.
 
 5. **`--cache-dir <path>` CLI flag — shipped.** Overrides the
    `defineWorkspace({ cacheDir })` field + the `.vx/cache` default,
-   resolved relative to cwd. Threaded over the wire; never folded into a
-   cache key.
+   resolved relative to cwd. A per-run knob; never folded into a cache
+   key.
 
 6. **Auto-input inference via filesystem tracing — owner-REJECTED
    (reconfirmed 2026-07-05, "no auto input").** Re-classified
@@ -326,8 +326,10 @@ upstream repos.
   of them.
 - **A config evaluation cache** for provably pure configs
   (`src/workspace/config-cache.ts`): a lexer-backed purity GATE, not a
-  heuristic — any `/` outside a comment, any non-`@vzn/vx` bare import,
-  or a closure past 32 files opts a config out. Warm 1000-project run
+  heuristic — with string literals and comments stripped, any BACKSLASH
+  in code position (an identifier escape: `\u0070rocess` IS `process`,
+  the one spelling a deny-list cannot see), any non-`@vzn/vx` bare
+  import, or a closure past 32 files opts a config out. Warm 1000-project run
   ~400 → 237 ms with the rest of the perf waves.
 - `vx init` (scripts → configs), `vx why`, `vx last`,
   `--download`, remote execution through `@vzn/vx-reapi`,
