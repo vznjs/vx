@@ -146,7 +146,10 @@ Turborepo and Nx can't do.
 ## Describe tasks for humans
 
 `description` is optional metadata shown in the interactive picker and
-`--dry` output:
+`--dry` output. It has no effect on scheduling or execution, but it
+**does** reach the cache key: the key hashes the whole resolved task
+config, and carving exceptions out of that object is what invites stale
+hits — so editing a description costs one re-run.
 
 ```ts
 build: {

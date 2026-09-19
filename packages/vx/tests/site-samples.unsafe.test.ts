@@ -674,14 +674,32 @@ describe('the from-nx post names every executor the migration infers', () => {
   })
 })
 
-describe('the pipeline-with-seams post tabulates every stage a plugin can fill', () => {
+// BOTH copies again. Item 343 found the POST listing eleven of the thirteen
+// (`admit` nowhere, `teardown` riding in `setup`'s row) and pinned it; the
+// extensibility guide's own stage table was the same eleven, missing `setup`
+// and `teardown` entirely, and nothing held it (item 379, 2026-09-19). A
+// plugin author reading that table would not know the two hooks exist.
+describe.each([
+  [
+    'the pipeline-with-seams post',
+    path.join(DOCS, 'blog', 'pipeline-with-seams.md'),
+    'A plugin is `definePlugin',
+  ],
+  ['the extensibility guide', path.join(GUIDES, 'extensibility.md'), 'None of these can change'],
+])('%s tabulates every stage a plugin can fill', (_label, file, endsBefore) => {
   it('its table is PLUGIN_HOOKS, in order, and names no other stage', () => {
-    // It listed eleven of the thirteen: `admit` was nowhere and `teardown`
-    // rode in `setup`'s row (item 343, 2026-09-19) — the same shape PR #487
-    // found in the what-vx-is post.
-    const page = readFileSync(path.join(DOCS, 'blog', 'pipeline-with-seams.md'), 'utf8')
-    const table = page.slice(page.indexOf('| Stage '), page.indexOf('A plugin is `definePlugin'))
-    const rows = [...table.matchAll(/^\| `(\w+)` +\|/gm)].map((m) => m[1]!)
+    const page = readFileSync(file, 'utf8')
+    const table = page.slice(page.indexOf('| Stage '), page.indexOf(endsBefore))
+    expect(table.length).toBeGreaterThan(200)
+    // The first backticked identifier of each row is its hook: the post
+    // leads with it, the guide leads with a stage word and spells the hook
+    // with its parameters (`config(ws, ctx)`). Later columns name plugins,
+    // so only the first per row counts.
+    const rows = table
+      .split('\n')
+      .filter((line) => line.startsWith('| ') && !line.startsWith('| ---'))
+      .map((line) => /`(\w+)/.exec(line)?.[1])
+      .filter((hook): hook is string => hook !== undefined && hook !== 'Hook')
     expect(rows).toEqual([...PLUGIN_HOOKS])
   })
 })
@@ -994,6 +1012,35 @@ describe('the tasks guide names every exec field a task can declare', () => {
     for (const field of fields.filter((f) => f !== 'command')) {
       expect(page).toContain('`exec.' + field + '`')
     }
+  })
+
+  it('`exec.remote` is the ONE field it calls stripped, and the projection strips one', () => {
+    // The page's folded/stripped accounting is only true while the
+    // projection has exactly one exception. A second one added quietly makes
+    // this bullet wrong in the direction that produces stale hits.
+    const hash = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'task-hash.ts'),
+      'utf8',
+    )
+    expect(hash).toContain('const { remote: _remote, ...execRest } = cfg.exec')
+    const page = readFileSync(path.join(GUIDES, 'tasks.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(page).toContain('the one `exec` field stripped from the key')
+  })
+
+  it('it says a `description` reaches the key, as the contract page does', () => {
+    // The guide sold `description` as metadata "shown in the picker and
+    // --dry" two sections above a careful folded/stripped accounting, so a
+    // reader of the guide alone would take it for inert. It is not: the key
+    // hashes the whole resolved config and strips only `exec.remote`, so a
+    // cosmetic edit costs a re-run. schema.md said so; the guide did not
+    // (item 379, 2026-09-19).
+    const contract = readFileSync(
+      path.resolve(import.meta.dir, '..', 'docs', 'schema.md'),
+      'utf8',
+    ).replace(/\s+/g, ' ')
+    expect(contract).toContain('Editing a description therefore costs one re-run')
+    const page = readFileSync(path.join(GUIDES, 'tasks.md'), 'utf8').replace(/\s+/g, ' ')
+    expect(page).toContain('editing a description costs one re-run')
   })
 })
 
