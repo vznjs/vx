@@ -212,3 +212,66 @@ describe('docs/cli.md — the frame sample is what the renderer prints', () => {
     expect(doc.slice(start, end)).toBe(rendered)
   })
 })
+
+describe('docs/cli.md documents every verb the dispatcher answers', () => {
+  // The Flags table has been pinned since item 308; the VERB list never was,
+  // and it is the same shape — a list in prose beside a list in code. Read
+  // whole at item 356 (2026-09-19): the `Top-level shape` synopsis, the one
+  // place the reference enumerates the verbs, had lost `vx why` and `vx last`
+  // — both with full sections further down, neither reachable by scanning the
+  // index. Hold the synopsis to the dispatcher so the next verb lands in both.
+  const read = (rel: string): Promise<string> =>
+    Bun.file(new URL(rel, import.meta.url).pathname).text()
+
+  /** The fenced block under `## Top-level shape`, Core and Meta together. */
+  async function synopsis(): Promise<string> {
+    const cli = await read('../docs/cli.md')
+    const marker = '## Top-level shape\n\n```\n'
+    const start = cli.indexOf(marker)
+    expect(start).toBeGreaterThan(-1)
+    const body = cli.slice(start + marker.length)
+    return body.slice(0, body.indexOf('\n```\n'))
+  }
+
+  it('every `case` in the dispatcher has a synopsis line', async () => {
+    const dispatcher = await read('../src/cli/index.ts')
+    // Four-space indent in the dispatcher's switch. `--help`/`-h`/`--version`
+    // are flag spellings, not verbs, so the class is [a-z]+; the synopsis
+    // names them in its Meta block anyway.
+    const verbs = [...dispatcher.matchAll(/^    case '([a-z]+)':/gm)].map((m) => m[1]!)
+    expect(verbs.length).toBeGreaterThan(10)
+    const lines = new Set((await synopsis()).split('\n').map((l) => l.trim()))
+    const missing = verbs.filter(
+      (v) => ![...lines].some((l) => l === `vx ${v}` || l.startsWith(`vx ${v} `)),
+    )
+    expect(missing.sort()).toEqual([])
+  })
+
+  it('the synopsis invents no verb the dispatcher does not answer', async () => {
+    const dispatcher = await read('../src/cli/index.ts')
+    const verbs = new Set(
+      [...dispatcher.matchAll(/^    case '(--)?([a-z-]+)':/gm)].map((m) => m[2]!),
+    )
+    const named = new Set<string>()
+    for (const line of (await synopsis()).split('\n')) {
+      const m = /^vx (--)?([a-z-]+)/.exec(line.trim())
+      if (m !== null) named.add(m[2]!)
+    }
+    expect(named.size).toBeGreaterThan(10)
+    expect([...named].filter((v) => !verbs.has(v)).sort()).toEqual([])
+  })
+
+  it('every verb core moved out keeps its section and its pointer', async () => {
+    const cli = await read('../docs/cli.md')
+    const moved = await read('../src/util/verbs.ts')
+    const block = /MOVED_VERBS: Readonly<Record<string, string>> = \{([\s\S]*?)\n\}/.exec(moved)
+    expect(block).not.toBeNull()
+    const names = [...block![1]!.matchAll(/^  (\w+):/gm)].map((m) => m[1]!)
+    expect(names.sort()).toEqual(['migrate', 'prune'])
+    for (const name of names) {
+      // The doc keeps the section (people search for the verb) and says it
+      // is gone, rather than dropping it and leaving a dead end.
+      expect(cli).toContain(`## \`vx ${name}\``)
+    }
+  })
+})

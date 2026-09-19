@@ -421,7 +421,7 @@ describe('the bitsets post states what the scheduler source measured', () => {
   const flat = page.replace(/\s+/g, ' ')
   it('its closure figures are the ones computeReverseDepCount records', () => {
     // The post carried "roughly 50 ms" where the source (and
-    // optimizations.md 9b) say single-digit (item 341, 2026-09-16) —
+    // optimizations.md 9b) say single-digit (item 341, 2026-09-19) —
     // the same fault items 334, 336 and 340 fixed on four other pages.
     const note = src.slice(
       src.indexOf('export function computeReverseDepCount'),
@@ -543,7 +543,7 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
   it('each figure it states is on docs/benchmarks.md as written', () => {
     // It spelled the cached and CPU figures its own way and rounded the
     // CPU trio (35 s for 34.61s, 73 s for 1m 13s), the fault items 336
-    // and 340 fixed on two other posts (item 342, 2026-09-16).
+    // and 340 fixed on two other posts (item 342, 2026-09-19).
     for (const figure of [
       '3m 38s',
       '3m 46s',
@@ -654,7 +654,7 @@ describe('the from-nx post names every executor the migration infers', () => {
 describe('the pipeline-with-seams post tabulates every stage a plugin can fill', () => {
   it('its table is PLUGIN_HOOKS, in order, and names no other stage', () => {
     // It listed eleven of the thirteen: `admit` was nowhere and `teardown`
-    // rode in `setup`'s row (item 343, 2026-09-16) — the same shape PR #487
+    // rode in `setup`'s row (item 343, 2026-09-19) — the same shape PR #487
     // found in the what-vx-is post.
     const page = readFileSync(path.join(DOCS, 'blog', 'pipeline-with-seams.md'), 'utf8')
     const table = page.slice(page.indexOf('| Stage '), page.indexOf('A plugin is `definePlugin'))
@@ -757,12 +757,12 @@ describe('the MCP guide and post state the server size the source has', () => {
     ['the guide', path.join(DOCS, 'guides', 'mcp.md')],
     ['the agents-and-mcp post', path.join(DOCS, 'blog', 'agents-and-mcp.md')],
     // Item 345 fixed the two site pages; the package README said it too
-    // (item 351, 2026-09-16).
+    // (item 351, 2026-09-19).
     ['the package README', path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'README.md')],
   ] as const) {
     it(`${label}'s "about N lines" is within a rounding of server.ts`, () => {
       // Both said "about a hundred lines" of a 144-line file; item 339 fixed
-      // the post's body and left its heading (item 345, 2026-09-16). A round
+      // the post's body and left its heading (item 345, 2026-09-19). A round
       // number is fine, a 30% one is not.
       const page = readFileSync(file, 'utf8')
       const m = /about (\d+) lines/.exec(page)
@@ -877,7 +877,7 @@ describe('the remote-caching guide names the seam core defines', () => {
 describe('the CI guide states what --frozen measured, not what it once claimed', () => {
   it('its frozen figures are the benchmarks page’s head-to-head', () => {
     // It sold `--frozen` as "roughly 10–21%" off a warm run; the 2026-09-12
-    // measurement reads the row as a tie (item 346, 2026-09-16).
+    // measurement reads the row as a tie (item 346, 2026-09-19).
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     expect(bench).toContain('plain min 154 / median 177 ms, frozen 148 / 165')
     const page = readFileSync(path.join(GUIDES, 'ci.md'), 'utf8').replace(/\s+/g, ' ')
@@ -935,7 +935,7 @@ describe('the tasks guide names every exec field a task can declare', () => {
 describe('cli.md lists the fields `vx show` prints', () => {
   it('every field name show.ts adds is named, and none it cannot print', () => {
     // It listed `resources`, which left the config on 2026-09-12 — a field
-    // `vx show` has no way to print (item 347, 2026-09-16).
+    // `vx show` has no way to print (item 347, 2026-09-19).
     const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'show.ts'), 'utf8')
     const added = new Set([...src.matchAll(/add\(\s*'([\w.]+)'/g)].map((m) => m[1]!))
     expect(added.size).toBeGreaterThan(5)
@@ -993,7 +993,7 @@ describe('no page still calls the remote seam a three-call one', () => {
   it('every hand-authored page that names the seam names its four methods', () => {
     // Item 346 fixed remote-caching.md and never grepped the class: the same
     // sentence sat on extensibility.md, plugins.md and architecture.md
-    // (item 349, 2026-09-16). This pin is the grep.
+    // (item 349, 2026-09-19). This pin is the grep.
     const src = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'cache', 'layered-cache.ts'),
       'utf8',
@@ -1072,7 +1072,7 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
 describe('no page says a failed task aborts its dependents', () => {
   it('every hand-authored page uses the status the scheduler sets', () => {
     // Item 348 fixed task-dependencies.md and did not grep the class; the
-    // same sentence sat on the how-vx-works concept (item 350, 2026-09-16).
+    // same sentence sat on the how-vx-works concept (item 350, 2026-09-19).
     // `aborted` is what teardown sets, `skipped` is what a failed upstream
     // leaves behind, and the pages must not swap them.
     const src = readFileSync(
@@ -1126,7 +1126,7 @@ describe('every --frozen figure on a page is one benchmarks.md measured', () => 
   it('no page quotes a frozen speed number the benchmarks page does not have', () => {
     // Item 346 struck the CI guide's "roughly 10–21%" and did not grep the
     // class: the root README still sold "~120 ms back per 1,000 packages"
-    // (item 351, 2026-09-16). The 2026-09-12 head-to-head reads as a tie.
+    // (item 351, 2026-09-19). The 2026-09-12 head-to-head reads as a tie.
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     const roots = [
       DOCS,
@@ -1167,7 +1167,7 @@ describe('no doc describes exec.resources as a field a config can declare', () =
   it('the field is gone from the schema, and no page says otherwise', () => {
     // It left the config on 2026-09-12 with the reservations. Item 347 fixed
     // four pages and did not grep the module docs, where config-schema.md
-    // still had the validator checking it (item 352, 2026-09-16).
+    // still had the validator checking it (item 352, 2026-09-19).
     const config = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'config.ts'), 'utf8')
     const schema = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'workspace', 'config-schema.ts'),

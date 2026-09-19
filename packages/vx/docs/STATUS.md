@@ -197,7 +197,7 @@ test is telling the truth.
       (single-digit ms) and its own spelling of the warm figures; nine
       figures are now the benchmarks page's, pinned. One pin fails on
       the old post.
-341.  DONE (2026-09-16, the next three oldest posts: the bitsets /
+341.  DONE (2026-09-19, the next three oldest posts: the bitsets /
       scheduler post, resolved-config-hashing, keys-from-git — the
       key-and-scheduler trio). The bitsets post was the last carrier
       of the "about 50 ms" bitset figure items 334, 336 and 340 struck
@@ -236,7 +236,7 @@ test is telling the truth.
       `optimizations.md` row 9 (whose invariant still named the
       binary-search insert the heap replaced) and
       `modules/scheduler.md` ("two sorted ready queues").
-342.  DONE (2026-09-16, the three adoption pages: honest-benchmarks,
+342.  DONE (2026-09-19, the three adoption pages: honest-benchmarks,
       from-turborepo, from-nx). honest-benchmarks spelled the cached
       and CPU figures its own way and rounded the CPU trio (35 s for
       34.61s, 73 s for 1m 13s, 114 min for 114m 06s) — items 336 and
@@ -265,7 +265,7 @@ test is telling the truth.
       a control. Every remaining post is now read except
       pipeline-with-seams, remote-execution, the-sandbox and
       config-in-typescript (and the three PR #487 holds).
-343.  DONE (2026-09-16, the three internals posts: pipeline-with-seams,
+343.  DONE (2026-09-19, the three internals posts: pipeline-with-seams,
       the-sandbox, remote-execution). pipeline-with-seams tabulated
       eleven of the thirteen `PLUGIN_HOOKS`: `admit` was in neither the
       diagram nor the table, and `teardown` rode inside `setup`'s row —
@@ -285,7 +285,7 @@ test is telling the truth.
       with a warning. Five pins, four failing on the old pages; the
       remote-execution pair are controls. Left in the blog:
       config-in-typescript, plus the three PR #487 holds.
-344.  DONE (2026-09-16, config-in-typescript — the last post outside
+344.  DONE (2026-09-19, config-in-typescript — the last post outside
       the three PR #487 holds). It reads true on the shape it teaches:
       `defineProject` returns its argument, `vx init` and
       `@vzn/vx-migrate` write `satisfies ProjectConfig` over a
@@ -302,7 +302,7 @@ test is telling the truth.
       blog is read out: every post has been read against source once,
       except the three PR #487 holds. Next in the queue are the site
       guides, oldest first — `mcp`, `otel-bridge`, `sandboxing`.
-345.  DONE (2026-09-16, the three oldest site guides: mcp, otel-bridge,
+345.  DONE (2026-09-19, the three oldest site guides: mcp, otel-bridge,
       sandboxing — the queue's turn from the blog to the guides). The
       MCP guide carried item 339's fault in its own words: "about a
       hundred lines" of a 144-line `server.ts`, and "three methods"
@@ -320,7 +320,7 @@ test is telling the truth.
       option table matches `plugin.ts` down to the 15000 ms timeout.
       Five pins, three failing on the old pages; the MCP tool table
       and the otel attribute list are controls.
-346.  DONE (2026-09-16, the next three guides: ci, workspace-config,
+346.  DONE (2026-09-19, the next three guides: ci, workspace-config,
       remote-caching). The CI guide sold `--frozen` as "roughly 10–21%"
       off a warm run, a figure the 2026-09-12 head-to-head replaced:
       read the row as a tie — plain 177 ms median against frozen's 165
@@ -338,7 +338,7 @@ test is telling the truth.
       `hasMany` that answers N probes in one round trip, which is the
       one a plugin author most wants to know about. Three pins, all
       three failing on the old pages.
-347.  DONE (2026-09-16, the next three guides: caching, tasks,
+347.  DONE (2026-09-19, the next three guides: caching, tasks,
       running-tasks). running-tasks reads true (its `--dry` block is
       already rendered by the site-samples law, and its flag table
       says "useful", not "every"). caching spelled the three warm
@@ -361,7 +361,7 @@ test is telling the truth.
       which cannot print it. All four corrected; the `vx show` list is
       now pinned to the `add(…)` names in `show.ts`, which would have
       caught it. Four pins, all four failing on the old pages.
-348.  DONE (2026-09-16, the next three guides: task-dependencies,
+348.  DONE (2026-09-19, the next three guides: task-dependencies,
       dev-tasks, environment-variables). environment-variables reads
       true — both `ExecEnv` fields, the essential allowlist its own pin
       already holds to `ESSENTIAL_ENV`, and the remote rule that
@@ -375,7 +375,7 @@ test is telling the truth.
       `SIGNAL_SHUTDOWN_GRACE_MS` gives it two seconds and then
       SIGKILLs, which is the guarantee that matters to anyone whose
       server traps the signal. Two pins, both failing on the old pages.
-349.  DONE (2026-09-16, the last three guides: plugins, extensibility,
+349.  DONE (2026-09-19, the last three guides: plugins, extensibility,
       lockfiles — the guide queue is read out). A CORRECTION of item
       346 first: it fixed remote-caching's "three-call `RemoteCacheLayer`
       seam" and never grepped the class, so the same sentence sat on
@@ -396,7 +396,7 @@ test is telling the truth.
       parser folds into every project's digest
       (`ignoredOptionalDependencies` missing). Four pins, three failing
       on the old pages.
-350.  DONE (2026-09-16, the site's last unread corner: the two
+350.  DONE (2026-09-19, the site's last unread corner: the two
       `concepts/` pages and the two `migrate/` guides — every
       hand-authored page on the site has now been read against source
       once). A SECOND correction of the same kind as 349's: item 348
@@ -415,7 +415,7 @@ test is telling the truth.
       from-nx expands `@nx/vite:*` into the four commands
       `KNOWN_EXECUTORS` maps — now pinned to them. Two pins, one
       failing on the old page, one a control.
-351.  DONE (2026-09-16, the READMEs — the root one and the nine
+351.  DONE (2026-09-19, the READMEs — the root one and the nine
       package ones, the prose this series had never read). A THIRD
       round of the same lesson, on two classes at once. Item 346
       struck the CI guide's "roughly 10–21%" for `--frozen` and did
@@ -436,7 +436,7 @@ test is telling the truth.
       either class. Two pins, both failing on the old files. A
       correction of the handoff below: the loop holds 333–351, not past
       the forty-item trim line, so no trim is due yet.
-352.  DONE (2026-09-16, the module pages whose source has moved since
+352.  DONE (2026-09-19, the module pages whose source has moved since
       they were read). Only two of the fifty-odd pages are older than
       their source, and one is a false positive worth recording: the
       2026-09-16 change under `cache.md` is a comment REFLOW —
@@ -453,7 +453,7 @@ test is telling the truth.
       a field (design/ and history/, which record its removal, are
       exempt, as are the generated site copies). That makes five class
       pins in four items. One pin, failing on the old page.
-353.  DONE (2026-09-16, flows.md and patterns.md — the two pages #451
+353.  DONE (2026-09-19, flows.md and patterns.md — the two pages #451
       read, and the pins it left them). patterns.md's citations hold:
       its pin takes every `src/x.ts` ("phrase") pair and refuses a line
       number, and all of them resolve. flows.md had NO pin at all, and
@@ -469,7 +469,7 @@ test is telling the truth.
       trailing `~`. Item 338's pin now takes both pages. Three pins,
       one failing on the old page; the citation pair are controls
       whose worth is what they catch next.
-354.  DONE (2026-09-16, comparison.md and parity.md — the pages I had
+354.  DONE (2026-09-19, comparison.md and parity.md — the pages I had
       been CITING as ground truth all session without reading).
       parity.md holds: its 45 deep-pin test paths all resolve, and the
       Turbo and Nx versions it names are the ones its two suites cite,
@@ -490,7 +490,7 @@ test is telling the truth.
       three refusal messages, the expansion branch, and
       comparison.md's own wording so the two pages cannot disagree
       again. One pin, failing on the old page.
-355.  DONE (2026-09-16, architecture.md — 660 lines, the page item 349
+355.  DONE (2026-09-19, architecture.md — 660 lines, the page item 349
       edited without reading). Its two big list claims hold: the module
       table's shapes are right (`config` the one single file, the other
       seven `dir + index.ts`), and the orchestrator's file inventory
@@ -506,6 +506,29 @@ test is telling the truth.
       negative-grep rule (item 304) catching me from the other side. The
       layer count is pinned to the table's own rows now, in words, so it
       tracks the table. Two pins, one failing on the old page.
+356.  DONE (2026-09-19, cli.md — 1918 lines, the last large unread
+      doc and the one with the most machine-checkable surface). Its
+      Flags table has been pinned to the parser since item 308; the
+      VERB list never was, and that is where the fault sat: the
+      `Top-level shape` synopsis, the ONE place the reference
+      enumerates the verbs, had lost `vx why` and `vx last`. Both have
+      full sections 1500 lines down, so nothing was undocumented —
+      they were unreachable by scanning the index, which is how a
+      reader finds a verb they do not already know. Everything else
+      held: `migrate` and `prune` keep sections saying where they
+      went, matching MOVED_VERBS exactly, and `stats` is named as the
+      deprecated alias the dispatcher makes it. Two pins now, both
+      differentially verified: every dispatcher case must have a
+      synopsis line, and the synopsis may name no verb the dispatcher
+      does not answer. The second direction is the one a doc rot
+      produces — a verb removed from code, left in the index.
+      Correction in the same commit: items 341–355 all read "DONE
+      (2026-09-16" and were done on 2026-09-19; the 09-16 session
+      ended at item 340, and I carried its date forward instead of
+      reading the clock. Fifteen entries and thirteen test comments
+      fixed in place. A date I did not verify is the same defect class
+      as a cause I did not prove (the rule above item 297), and it is
+      cheaper to check than any of them.
 
 ## In flight
 
