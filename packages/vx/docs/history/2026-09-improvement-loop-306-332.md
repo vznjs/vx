@@ -10,7 +10,8 @@ what shipped and the numbers behind it. Items 1–64 are in
 `2026-09-improvement-loop-145-202.md`, items 203–242 in
 `2026-09-improvement-loop-203-242.md`, items 243–281 in
 `2026-09-improvement-loop-243-281.md`, items 282–305 in
-`2026-09-improvement-loop-282-305.md`; items 333 onward continue in
+`2026-09-improvement-loop-282-305.md`; items 333–352 in
+`2026-09-improvement-loop-333-352.md`; items 353 onward continue in
 `docs/STATUS.md`. The handoffs written alongside these items (14z–14ad)
 are in `2026-09-status-next-log.md`.
 
