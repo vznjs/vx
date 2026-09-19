@@ -417,3 +417,29 @@ describe('every source path a site page names exists', () => {
     expect(missing).toEqual([])
   })
 })
+
+// The path checks resolve `src/…`, `tests/…` and `docs/…` against
+// packages/vx, so a citation written with a `packages/…` prefix is seen by
+// neither — and the contract docs carry seven of them (the bench scripts and
+// their RESULTS.md, a vx-migrate test). Nothing is stale today; this is the
+// tripwire, one directory up from item 380's (item 384, 2026-09-19).
+describe('every packages/ path the docs cite exists', () => {
+  it('`packages/x/y.ts` in prose resolves from the repo root', () => {
+    const root = path.resolve(import.meta.dir, '..', '..', '..')
+    // A path under a package that does not exist is an ILLUSTRATION, not a
+    // citation — `config-imports.md` walks a reader through
+    // `packages/lib/preset.mjs`. The first draft of this pin flagged both,
+    // which is the contrived-selector failure of items 377 and 380 a third
+    // time; the package directory is what tells the two apart.
+    const missing: string[] = []
+    for (const page of handAuthoredDocs()) {
+      for (const m of readFileSync(page, 'utf8').matchAll(
+        /`(packages\/([A-Za-z0-9_.-]+)\/[A-Za-z0-9_./-]+\.(?:ts|md|mjs|json))`/g,
+      )) {
+        if (!existsSync(path.join(root, 'packages', m[2]!))) continue
+        if (!existsSync(path.join(root, m[1]!))) missing.push(`${path.basename(page)}: ${m[1]!}`)
+      }
+    }
+    expect(missing).toEqual([])
+  })
+})
