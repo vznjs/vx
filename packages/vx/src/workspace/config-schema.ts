@@ -301,9 +301,13 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         }
       }
     } else {
-      // Group task: no exec, just dependencies. Must declare something to
-      // depend on, otherwise the task is a literal no-op with nothing to
-      // chain (almost certainly a config mistake).
+      // Group task: no exec, just dependencies. Only an ABSENT `dependsOn`
+      // is refused — a task with neither is a typo, not a declaration. An
+      // EMPTY one is deliberate and documented: `build: { dependsOn: [] }`
+      // is how a package consumed as source says it has nothing to build,
+      // so a dependant's `^build` finds it and waits on nothing
+      // (add-to-existing-repo.md). The comment here used to call that case
+      // "almost certainly a config mistake" while the docs taught it.
       if (dependsOn === undefined) {
         throw new UserError(
           `${where}: a task with no \`exec\` must declare \`dependsOn\` ` +

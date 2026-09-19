@@ -907,6 +907,40 @@ build` and this file records a Bun-specific hazard for exactly
       plus the three top-level hand-authored pages
       (`introduction.md`, `quickstart.md`, `add-to-existing-repo.md`)
       and the two under `migrate/`.
+381.  DONE (2026-09-19, the fix from 379 had a third copy, and my own
+      widening was the thing that missed it). `task-dependencies.md`,
+      `introduction.md`, `quickstart.md`, `add-to-existing-repo.md` —
+      the guides and concepts are read through.
+      Item 379 found `extensibility.md`'s stage table missing `setup`
+      and `teardown`, fixed it, and widened the post's pin to cover
+      both pages. It did NOT grep the class, which is the rule that
+      exists for exactly this: `introduction.md` carries a THIRD copy
+      of that table, with the same two hooks missing. Fixed, and the
+      pin no longer LISTS its pages — it finds every hand-authored
+      site page whose text holds a `| Stage` table, asserts the set,
+      and holds each to `PLUGIN_HOOKS` in order. A fourth copy fails
+      it until someone decides what it says.
+      Same treatment for the sandbox binaries, pinned on two pages by
+      377: `introduction.md` names them too, in the LONG spelling
+      only, so a pin asking for `bwrap` would have read it as absent.
+      Discovered now, with either spelling accepted per binary, and
+      the discovery takes a page that names TWO or more — one
+      in passing ("wraps the command in `bwrap` or seatbelt", the
+      one-command-per-task post) is not making the claim and is not
+      held to it. Both widenings proven by putting the old text back.
+      A comment de-claimed: the group-task check says a task with no
+      `exec` "must declare something to depend on, otherwise the task
+      is a literal no-op ... almost certainly a config mistake", while
+      only an ABSENT `dependsOn` is refused and the EMPTY one is
+      documented — `build: { dependsOn: [] }` is how a package
+      consumed as source says it has nothing to build. The behaviour
+      was already pinned (`project-loader.test.ts`); only the comment
+      was out of step.
+      Everything else read true: the three `dependsOn` forms and all
+      three refusals (bare wildcard, negation, a pattern in the
+      `pkg#task` form), the `^` bridge, the status words, the
+      quickstart's `satisfies` scaffold and its ~17 ms, the
+      introduction's 8 MiB replay bound.
 
 ## In flight
 
