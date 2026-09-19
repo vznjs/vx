@@ -257,3 +257,44 @@ describe('caching.md names the lockfile plugin by the helpers it exports', () =>
     expect(step).toContain('its `bun()` is the same')
   })
 })
+
+// § Live invariants states four properties of the run path and, since item
+// 364, names the suite that proves each. The audit that added them re-derived
+// every one by grep — the proof existed for all four, nothing connected them
+// to the claim, and that search is what the citations save. They are the same
+// shape as flows.md's owners (item 353), so they rot the same way: hold each
+// file to disk and each quoted describe to its file.
+describe("CLAUDE.md's invariants cite suites that prove them", () => {
+  it('every named test file exists and holds every describe quoted with it', async () => {
+    const repoRoot = path.resolve(import.meta.dir, '..', '..', '..')
+    const text = await Bun.file(path.join(repoRoot, 'CLAUDE.md')).text()
+    const start = text.indexOf('## Live invariants')
+    expect(start).toBeGreaterThan(-1)
+    const section = text.slice(start, text.indexOf('\n## ', start + 1))
+    // A citation is `tests/x.test.ts` plus the describes quoted before the
+    // next citation or the end of its bullet.
+    const cites = [...section.matchAll(/`(tests\/[\w.-]+\.ts)`((?:[^`]|`(?!tests\/))*)/g)]
+    expect(cites.length).toBeGreaterThan(2)
+    const missing: string[] = []
+    for (const [, file, tail] of cites) {
+      // That the file EXISTS is already held by the path pin above; this
+      // adds the half nothing covered — that the suite still has the
+      // describe the invariant points at. A missing file throws here, which
+      // is loud enough.
+      const abs = path.join(import.meta.dir, '..', file as string)
+      // A quoted name wraps at CLAUDE.md's margin, so compare both sides
+      // with their whitespace collapsed — the hazard item 355 hit from the
+      // other side, where a grep for "five layers" missed "five\nlayers".
+      const flat = (await Bun.file(abs).text()).replace(/\s+/g, ' ')
+      // Only the quotes before the next bullet belong to this citation.
+      const own = (tail as string).split('\n- ')[0] as string
+      for (const q of own.matchAll(/"([^"]+)"/g)) {
+        const name = (q[1] as string).replace(/\s+/g, ' ')
+        if (!flat.includes(`describe('${name}'`)) {
+          missing.push(`${file} has no describe "${name}"`)
+        }
+      }
+    }
+    expect(missing).toEqual([])
+  })
+})
