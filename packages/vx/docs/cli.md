@@ -27,6 +27,8 @@ vx init [--dry] [--force] [--mjs]
 vx show [PROJECT[#TASK] | TASK] [--format pretty|json]
 vx info
 vx stats              # deprecated alias of vx info
+vx why [TASK | PKG#TASK] [--run <runId>] [--format pretty|json]
+vx last [runId] [--list[=N]] [--format pretty|json]
 vx upgrade [tag]      # self-update a compiled binary
 vx completions bash|zsh|fish
 

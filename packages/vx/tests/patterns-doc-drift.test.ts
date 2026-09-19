@@ -31,7 +31,7 @@ describe('patterns.md cites phrases its source files contain', () => {
 
 // flows.md names an OWNER per flow as `module/file.ts`, sometimes with the
 // symbol that does the work (`cache/cache.ts:prune`). Nothing held them
-// until item 353 (2026-09-16): patterns.md's citations had already rotted
+// until item 353 (2026-09-19): patterns.md's citations had already rotted
 // on a split once, and these are the same shape, one file-move away from
 // pointing at nothing.
 describe('flows.md names owners that exist', () => {

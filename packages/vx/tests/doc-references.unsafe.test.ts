@@ -149,7 +149,7 @@ describe("architecture.md's orchestrator inventory is the directory", () => {
 
   it('names every file in src/orchestrator but its index', () => {
     // A table of forty-odd filenames is a snapshot the moment a file lands
-    // beside it; nothing held it until item 355 (2026-09-16).
+    // beside it; nothing held it until item 355 (2026-09-19).
     expect(start).toBeGreaterThan(-1)
     const named = new Set([...table.matchAll(/`([a-z-]+\.ts)`/g)].map((m) => m[1]!))
     const onDisk = readdirSync(path.join(pkg, 'src', 'orchestrator'))
