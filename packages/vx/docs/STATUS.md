@@ -970,6 +970,44 @@ build` and this file records a Bun-specific hazard for exactly
       pages. The blog is thirty-one posts and every one of them was
       pinned in the 297–305 arc; a read of that shelf is the next
       oldest-page queue if someone wants one.
+383.  DONE (2026-09-19, the CONTRACT pages, and three numbers that
+      were not what they claimed). `docs/README.md`,
+      `docs/patterns.md`, `docs/comparison.md` — the three least
+      recently touched of the twelve top-level pages the site imports
+      verbatim. The module series (306–332) read `docs/modules/`; the
+      pages beside it had not been read as a series.
+      (1) `patterns.md`'s performance table is the 476-package /
+      1,428-node run, and the sentence above it called it the
+      3,270-task one and cited `packages/vx-bench/RESULTS.md`, which
+      `benchmarks.md` says IS the 3,270-task run — two wrong
+      attributions in one sentence, made easy to believe because that
+      run's baseline critical path (1m 40s) is also this table's cold
+      figure. The 3,270-task numbers are 3m 46s / 510 ms / 777 ms,
+      nothing like the ones printed.
+      (2) `README.md`'s headline said a 100-project warm run is
+      79 ms. That is the WAVE 2 column of `benchmarks.md`'s row; the
+      floor is 74 ms, which `why-vx-is-fast.md` quotes. A pin asking
+      "is this number on benchmarks.md?" passes it, because it is —
+      in the wrong column. The pin reads the LAST column of the row.
+      (3) `comparison.md` contradicted itself: item 7 of its
+      Likely-worth-adding list records `--output-logs hash-only` as
+      SHIPPED (2026-08-25) and its flag map lists all four modes,
+      while the "Shipped since this list was first drawn" bullet
+      listed three. Pinned to the set `run.ts` accepts.
+      The table pin is ROW-wise, not figure-wise: the three cells
+      after a runner's name must appear together on one
+      `benchmarks.md` row, so a figure cannot drift onto the wrong
+      runner. It passed the mis-attributed table, correctly — the
+      figures were right and only the lead-in was wrong — so the
+      lead-in is pinned too, against the package count `benchmarks.md`
+      states above the matching row. All three proven both ways.
+      The rest of `patterns.md` holds: every cited symbol resolves
+      (`CacheKeyInput`, `taskConfigHash`, `runPersistent`, `binPaths`,
+      `cleanOutputs`, `extractArtifactStream`), and its phrase-to-file
+      pin is real. Not pinned, deliberately: how many REAPI servers
+      exist, and which pages ENUMERATE `--output-logs` versus mention
+      it — a selector for that would be contrived, and a contrived
+      selector is the `about N lines` regex again.
 
 ## In flight
 
@@ -1203,6 +1241,44 @@ site pages under `packages/vx-docs/src/content/docs/` by the same
 oldest-page queue, guides first (each already has sample pins from
 297–305, so the read is prose); then Next 6's re-measure only when
 warm-path code moves (none did today). Never end with "what next?".
+
+14af. **Handoff after item 383 (2026-09-19, evening).** Eleven items
+since 14ae, and the arc has a single shape: a claim is pinned on ONE
+copy and the second copy drifts. 373 paid the trim 14ae called for;
+374 was a test racing the clock it asserted about, found by that
+trim's own CI. Then the site pages, three per item, by last-touch
+order: 375 otel-bridge / running-tasks / environment-variables, 376
+trusting-the-cache / remote-execution / why-vx-is-fast, 377 mcp /
+sandboxing / caching, 378 ci / remote-caching / workspace-config, 379
+tasks / dev-tasks / extensibility, 380 lockfiles / plugins /
+how-vx-works, 381 task-dependencies + the three top-level pages, 382
+the two migrate pages. 383 started the CONTRACT pages under
+`packages/vx/docs`: README, patterns, comparison.
+The finds, in one line each: a dead `timeoutMs` option (375); a
+promise `vx why` made in three places and proved in none (376); a
+header calling six tools four and a 144-line file ~100 (377); a
+four-rung precedence ladder printed with three (378); a stage table
+two hooks short and a `description` sold as inert (379); a
+paragraph two keys short (380); the SAME stage table wrong on a third
+page my own 379 pin had not greped for (381); a migration table
+missing `extends` (382); a benchmark table attributed to the wrong
+workspace and a headline quoting a superseded wave (383).
+The method that paid, and it sharpened twice: pin a list the CODE
+owns, and DISCOVER the pages rather than listing them (381), because
+a listed pin holds only the copies someone remembered. Twice a pin's
+own selector was the bug — `about N lines` missed `~100` (377), and a
+whole-page key search let one paragraph cover for another's omission
+(380) — so run the differential that MATTERS, not the one that is
+easy. And a pin should hold the claim the page makes, not the shape
+another page made it in (382).
+Next: the nine remaining contract pages by the same queue
+(`comparison.md` is only spot-read — 595 lines, and its gap lists are
+the most drift-prone prose in the repo), then the blog's 31 posts.
+The loop holds 353–383, thirty-one entries; the trim convention
+(item 373) moves a prefix to history at forty. Open: Next 1, 2 and
+16, gated by their own terms; Next 6 parked until a run-path change;
+the owner residue — the `NPM_TOKEN` secret, the release cut, the
+site's address. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

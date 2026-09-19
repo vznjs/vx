@@ -306,7 +306,7 @@ upstream repos.
 ### Shipped since this list was first drawn
 
 - `vx watch <task>` — debounced re-run loop.
-- `--output-logs full|errors-only|none`.
+- `--output-logs full|errors-only|hash-only|none`.
 - `vx info` (absorbed `vx stats`; the alias remains).
 - Artifact integrity by content addressing — every blob re-hashed on
   read against the digest it was requested under (replacing both the
