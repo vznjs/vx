@@ -283,10 +283,11 @@ identically to one that found nothing. Realpath the workspace root **once**
 at entry and resolve everything against that. This repo has already shipped
 one macOS-only symlinked-base containment defect; that is the precedent.
 
-### Tests (`tests/affected.test.ts` — it imports
+### Tests
 
-`../src/workspace/affected.js` directly, so no façade export is needed and
-the `src/index.ts` snapshot does not move)
+In `tests/affected.test.ts`, which imports `../src/workspace/affected.js`
+directly, so no façade export is needed and the `src/index.ts` snapshot
+does not move.
 
 Pins:
 

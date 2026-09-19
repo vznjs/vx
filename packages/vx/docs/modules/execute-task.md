@@ -86,8 +86,10 @@ caches.
      attempt (timeouts included, `aborted` NOT — a teardown breaks out
      immediately) re-cleans declared outputs and re-executes, with one
      `vx: retrying <id> (attempt <k>/<total>) after exit <code>` stderr
-     line between attempts. The final outcome (and the cached stdout)
-     is the last attempt's; `TaskOutcome.attempts` is set when > 1.
+     line between attempts, which ends `after a timeout` instead when
+     the attempt was killed by `timeout`. The final outcome (and the
+     cached stdout) is the last attempt's; `TaskOutcome.attempts` is
+     set when > 1.
    - `wallclockEndNs = process.hrtime.bigint() - runStartHrTimeNs`.
 5. **If exit 0 + caching enabled**: `resolveOutputs(...)` →
    `cache.save({ hash, projectDir, outputFiles, entry })`.
