@@ -941,6 +941,35 @@ build` and this file records a Bun-specific hazard for exactly
       `pkg#task` form), the `^` bridge, the status words, the
       quickstart's `satisfies` scaffold and its ~17 ms, the
       introduction's 8 MiB replay bound.
+382.  DONE (2026-09-19, the migrate pages — and the site's
+      hand-authored set is read through). `migrate/from-turborepo.md`
+      and `migrate/from-nx.md`. Both tabulate what the MAPPER knows,
+      and in both cases only the matching BLOG POST was pinned: the
+      fourth and fifth instances of the one-copy-of-two in six items.
+      The turbo guide's mapping table listed eight of the nine
+      `KNOWN_TASK_KEYS`, and the one missing was `extends` — the key a
+      PER-PACKAGE `turbo.json` uses, so the row a reader migrating a
+      package-level override goes looking for. The prose mentions it in
+      passing ("the root pipeline and any per-package `extends`"); the
+      table, which is what anyone scans, did not. Added with what the
+      mapper does (`extends: false` alone opts the package out; any
+      other key replaces the root's definition rather than inheriting
+      it) and both tables are one `it.each` now, each naming its own
+      end-of-table heading.
+      The Nx guide's executor list needed a different shape, and that
+      is the point worth keeping: the POST names all eight
+      `KNOWN_EXECUTORS` ids and counts them; the GUIDE collapses the
+      vite family to `@nx/vite:*` and names the four COMMANDS instead,
+      which is accurate and reads better. Pinning it to the post's
+      shape would have forced a rewrite that makes the page worse, so
+      it is held to "id OR command" — a ninth executor still has to
+      appear in one of the two. A pin should hold the claim the page
+      makes, not the shape another page made it in.
+      That closes the hand-authored site pages outside the blog:
+      nineteen guides and concepts, three top-level pages, two migrate
+      pages. The blog is thirty-one posts and every one of them was
+      pinned in the 297–305 arc; a read of that shelf is the next
+      oldest-page queue if someone wants one.
 
 ## In flight
 
