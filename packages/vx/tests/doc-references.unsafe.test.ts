@@ -141,3 +141,34 @@ describe('docs/parity.md names suites that exist and the versions its suites cit
     )
   })
 })
+
+describe("architecture.md's orchestrator inventory is the directory", () => {
+  const doc = readFileSync(path.join(pkg, 'docs', 'architecture.md'), 'utf8')
+  const start = doc.indexOf('| Layer                  | Files')
+  const table = doc.slice(start, doc.indexOf('```mermaid', start))
+
+  it('names every file in src/orchestrator but its index', () => {
+    // A table of forty-odd filenames is a snapshot the moment a file lands
+    // beside it; nothing held it until item 355 (2026-09-16).
+    expect(start).toBeGreaterThan(-1)
+    const named = new Set([...table.matchAll(/`([a-z-]+\.ts)`/g)].map((m) => m[1]!))
+    const onDisk = readdirSync(path.join(pkg, 'src', 'orchestrator'))
+      .filter((f) => f.endsWith('.ts') && f !== 'index.ts')
+      .sort()
+    expect(onDisk.length).toBeGreaterThan(30)
+    expect(onDisk.filter((f) => !named.has(f))).toEqual([])
+    expect([...named].filter((f) => !existsSync(path.join(pkg, 'src', 'orchestrator', f)))).toEqual(
+      [],
+    )
+  })
+
+  it('counts its own layers — it said five of a six-row table', () => {
+    const rows = table
+      .split('\n')
+      .filter((l) => l.startsWith('| ') && !l.startsWith('| ---') && !l.startsWith('| Layer'))
+    const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
+    // The sentence wraps, which is why a grep for "five layers" found nothing.
+    const flat = doc.replace(/\s+/g, ' ')
+    expect(flat).toContain(`its files fall into ${words[rows.length]} layers`)
+  })
+})

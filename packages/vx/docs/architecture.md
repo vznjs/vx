@@ -55,7 +55,7 @@ cycle through it).
 
 ### The orchestrator's file inventory
 
-The orchestrator is the composition module; its files fall into five
+The orchestrator is the composition module; its files fall into six
 layers:
 
 | Layer                  | Files                                                                                                                                                                                                                                                                                                                                                                                                                  |
