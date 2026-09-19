@@ -635,6 +635,30 @@ test is telling the truth.
       the same source, and its span parenthetical says "among them" and
       points at the page that lists every one. One pin, failing on the
       old page.
+361.  DONE (2026-09-19, the pins themselves). With the last core page
+      read, the guards are the thing nobody had audited: 15 suites, 411
+      assertions, 162 cases, and more than half of them in
+      `site-samples.unsafe.test.ts` alone. Scanned for the shapes that
+      make a test a silent pass. The derived-set pins are clean — four
+      loops over a set built from source looked unguarded and all four
+      assert the EXACT set first (`bins`, `methods`, `MOVED_VERBS`'s
+      names), which is the rule working; recorded because a probe that
+      refutes is worth the same as one that confirms. The CLASS pins
+      are not. A class pin narrows the page list to "the pages that
+      mention X" and then asserts something about them, so the day X is
+      reworded the filter empties and the pin passes having checked
+      NOTHING — which is precisely the drift it exists to catch. Four
+      of them: the remote-seam grep (item 349), the `--frozen` figures
+      grep (351), `exec.resources` (352) and my own retry-line grep
+      (357) — the page-list floor was there, the filter's was not. Each
+      one now names what it reached: the seam's twelve pages and the
+      retry line's two by basename, the frozen paragraphs and the
+      resources page list by count. Writing the membership down found
+      that my estimate of the seam's class was three pages and the
+      truth is twelve. All four verified by rewording the token they
+      filter on: each passed before, each fails now. "A skip is a
+      silent pass" was written here about tests of the code; it holds
+      for the tests OF the tests.
 
 ## In flight
 
