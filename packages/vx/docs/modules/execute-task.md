@@ -153,16 +153,16 @@ end to end in `tests/tool-not-on-path.test.ts` and
 
 The pieces folded into `cache.key(...)`:
 
-| Field                    | Source                                                                  |
-| ------------------------ | ----------------------------------------------------------------------- |
-| `taskId`                 | `node.id`                                                               |
-| `taskConfigHash`         | `sha256(JSON.stringify(node.config))` (internal `hashTaskConfig`)       |
-| `projectPackageJsonHash` | `sha256(<projectDir>/package.json)` (internal `hashProjectPackageJson`) |
-| `envValues`              | `resolveInputs` reads host env for declared `inputs.env` names          |
-| `inputFiles`             | `resolveInputs` glob result (gitignore + boundary-filtered, sorted)     |
-| `upstreamHashes`         | `filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks, ...)`          |
-| `workspaceFingerprint`   | passed in                                                               |
-| `forwardArgs`            | `node.requested ? (args.forwardArgs ?? []) : []`                        |
+| Field                    | Source                                                                                                                                                      |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `taskId`                 | `node.id`                                                                                                                                                   |
+| `taskConfigHash`         | `xxh3(JSON.stringify(hashableConfig(node.config)))` (internal `hashTaskConfig`; the projection drops `exec.remote`, which is placement, not key material)   |
+| `projectPackageJsonHash` | the git blob OID of `<projectDir>/package.json` — its index OID when the file is clean, else computed (internal `hashProjectPackageJson`); `''` when absent |
+| `envValues`              | `resolveInputs` reads host env for declared `inputs.env` names                                                                                              |
+| `inputFiles`             | `resolveInputs` glob result (gitignore + boundary-filtered, sorted)                                                                                         |
+| `upstreamHashes`         | `filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks, ...)`                                                                                              |
+| `workspaceFingerprint`   | passed in                                                                                                                                                   |
+| `forwardArgs`            | `node.requested ? (args.forwardArgs ?? []) : []`                                                                                                            |
 
 `forwardArgs` are scoped to user-requested tasks. The reason it's
 folded into the key for those tasks: `vx run test -- --watch` should

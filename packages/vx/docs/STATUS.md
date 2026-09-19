@@ -839,6 +839,43 @@ test is telling the truth.
       an exact pin there would fail on correct writing. A table cell is
       a quotation; a sentence is a paraphrase.
 
+396.  DONE (2026-09-19, the task-config hash: four copies, one
+      right). `task-hash.ts` computes
+      `xxh3hex(JSON.stringify(hashableConfig(cfg)))`, and
+      `hashableConfig` drops `exec.remote` — placement is not key
+      material, which is the whole point of the executor seam and what
+      `task-hash-derive.test.ts` proves.
+      `modules/config.md` had it, projection and rationale both.
+      `caching.md` — the stale-hit-critical contract page — and
+      `blog/resolved-config-hashing.md` both wrote
+      `xxh3(JSON.stringify(node.config))`, which read literally puts
+      `exec.remote` IN the key, the opposite of the design, and the
+      blog post's own thesis is that everything in the object is in
+      the key. `modules/execute-task.md` omitted the projection AND
+      named `sha256` — a function core replaced with xxh3 for ~5× on
+      the warm path (optimizations row 1) and which appears in no
+      `src/` file; the only mention is `util/hash.ts`'s comment saying
+      xxh3 BEATS it. Its next row claimed `sha256(<projectDir>/
+package.json)` too, where the value is the file's git blob OID —
+      its index OID when clean, computed when not, `''` when absent.
+      Two wrong algorithm names on the page describing the module
+      CLAUDE.md marks stale-hit-critical.
+      Pinned as a class over every hand-authored page that states the
+      formula: it must name `hashableConfig`, must not say `sha256`,
+      and the two facts it is held to are read from `task-hash.ts`
+      rather than restated. A floor of four copies, per 14ag, so a
+      fifth is a deliberate edit and an empty result cannot pass.
+      Also `blog/bitsets-and-the-scheduler.md`: the closure's memory
+      read `N² / 8 bits`, where N² BITS is the size and N²/8 is the
+      size in BYTES — the 1.3 MB beside it settles which was meant,
+      and `Uint32Array(n * ceil(n/32))` at 3,270 is 1,347,240 bytes.
+      The bits/bytes class the Rules say to measure, not assert, and
+      item 388's seconds/milliseconds twin.
+      The rest of the three posts holds, `from-nx.md` entirely, and
+      the scheduler post's heap (max-heap on priority DESC, ties in
+      graph-insertion order) and 8.5 s figure check out against
+      `scheduler.ts` and optimizations row 26.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session

@@ -63,8 +63,10 @@ over (in order):
    Covers the case where `cache.inputs.files: ['src/**']` is narrow
    and a `package.json` dep change would otherwise leak undetected.
    (Added at v12; rationale in [§ History](#history).)
-5. **Task config hash** — `xxh3(JSON.stringify(node.config))` of the
-   _evaluated_ task config. Captures:
+5. **Task config hash** — `xxh3(JSON.stringify(hashableConfig(node.config)))`
+   of the _evaluated_ task config. The projection is one field wide:
+   `exec.remote` is dropped, because it says WHERE a task runs and not
+   what it does (§ What's NOT in the key). Captures:
    - `exec` block (command, env declarations, timeout, persistent).
    - `dependsOn` and `cache.inputs.tasks` declarations.
    - `cache.outputs.files`, `cache.inputs.files`, `cache.inputs.env`,
