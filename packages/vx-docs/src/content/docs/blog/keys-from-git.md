@@ -16,9 +16,12 @@ few are about the second.
 
 ## Twelve parts, one chain
 
-A vx cache key is an xxh3 hash, seed-chained across twelve parts with
-`\0` delimiters between them so that no two sequences of parts can
-collide by concatenation. In order:
+A vx cache key is an xxh3 hash, seed-chained across twelve parts:
+each part folds into the running digest under its own label
+(`task:`, `workspace:`, `config:`, `upstream:`, `inputs:`, …), and
+every list of pairs folds its length first and delimits name from
+value with a `\0`, so no two layouts of the same bytes can collide by
+concatenation. The parts, as [Caching](../../caching/) numbers them:
 
 1. The key-derivation sentinel (`CACHE_VERSION`), so a change to how
    keys are derived can never be served by an entry from before it.
@@ -37,7 +40,10 @@ collide by concatenation. In order:
 10. Every upstream task's cache key, filtered to the ones the graph says
     this task depends on ([cascade post](../cascade-through-inputs/)).
 11. The content hashes of every file `cache.inputs.files` resolves to.
-12. Any material a plugin's `key` stage contributes.
+12. Any material a plugin's `key` stage contributes — folded right
+    after the upstream keys, and only when a plugin returned any, so a
+    workspace with no `key` plugin derives the keys it derived before
+    the stage existed.
 
 Part 11 is where the money is. A build task in a real package resolves
 to hundreds of files, and a workspace has hundreds of packages.
@@ -45,12 +51,21 @@ to hundreds of files, and a workspace has hundreds of packages.
 ## Ask git, once
 
 Git already stores a content hash for every tracked file: the blob
-object id in the index. vx runs one `git ls-files -s` for the whole
-workspace and gets the file list and every clean file's blob id in a
-single stream. A concurrent `git status --porcelain` names the files
-whose working-tree bytes differ from the index; only those are hashed
-in-process, and they are hashed with the exact blob-id algorithm git
-uses (`blob <size>\0<bytes>`, SHA-1).
+object id in the index. vx runs one `git ls-files -s -v` for the whole
+workspace — the index only, no walk — and gets every tracked path, its
+blob id and its cache-state flag in a single stream. A concurrent
+`git status --porcelain -uall` is the one command that walks the
+worktree, and it answers two questions at once: which tracked files
+differ from the index, and what is untracked.
+
+An index id is trusted only where git stores the worktree bytes
+verbatim, so three prunes run against it: a dirty path (status), a
+`skip-worktree` or `assume-unchanged` path (the `-v` flag, whose id
+says nothing about what is on disk), and a path a clean filter could
+rewrite. Every pruned path, and every untracked one, is hashed
+in-process with the exact blob-id algorithm git uses
+(`blob <size>\0<bytes>`, SHA-1 — or SHA-256 in an
+`--object-format=sha256` repository).
 
 The consequences:
 
@@ -67,10 +82,10 @@ The consequences:
   blob while your build sees different bytes, and `git status` calls
   the file clean. vx drops the index id for exactly those paths and
   hashes the working-tree bytes instead. A repository with no
-  attributes file pays nothing for the check.
+  attributes file and no `core.autocrlf` pays nothing for the check:
+  the gate is one `git config --get-regexp` that usually exits 1.
 
-Untracked files are enumerated by the same walk and hashed
-in-process. Ignored files are not inputs; if your task reads a
+Ignored files are not inputs; if your task reads a
 generated file, declare the task that generates it as a dependency and
 let the cascade carry it.
 

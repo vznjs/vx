@@ -63,8 +63,11 @@ and faster:
   use packed-bitset closures with popcount instead of set-union DFS. On a
   3,270-task graph this turned an 8.5 s priority computation into
   single-digit milliseconds.
-- **A scheduler tick that's O(N+E).** Ready tasks come off an exact
-  most-blocked-first queue; no re-scanning the whole graph per completion.
+- **A scheduler tick that re-scans nothing.** Ready tasks come off an
+  exact most-blocked-first binary heap; a completion decrements its
+  direct dependents' counters and pushes the ones that reach zero, so
+  the run costs one pass over the edges plus an `O(log N)` heap
+  operation per task, never a re-scan of the graph per completion.
 - **Stat-check restore skips.** A warm-on-warm restore is N stats with
   zero writes and zero decompression — fingerprints in SQLite tell vx the
   tree is already current.

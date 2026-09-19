@@ -1,12 +1,12 @@
 ---
-title: 'Bitsets, popcount, and a scheduler tick that is O(N+E)'
+title: 'Bitsets, popcount, and a scheduler tick that re-scans nothing'
 date: 2026-09-10T23:50:00Z
 authors:
   - vzn
 tags:
   - internals
   - performance
-excerpt: "On a 3,270-task graph, computing scheduling priority with set unions took 8.5 seconds. Packed bitsets with popcount take about 50 ms. This post is the scheduler: what it computes, how it picks the next task, and the two-tier trick that keeps restores off the critical path."
+excerpt: "On a 3,270-task graph, computing scheduling priority with set unions took 8.5 seconds. Packed bitsets with popcount take single-digit milliseconds. This post is the scheduler: what it computes, how it picks the next task, and the two-tier trick that keeps restores off the critical path."
 ---
 
 A monorepo task graph is small by graph-algorithm standards: a few
@@ -25,21 +25,24 @@ per node, unioning children's sets into the parent's. On 3,270 tasks,
 the priority computation done that way took **8.5 seconds**.
 
 vx represents each closure as a packed bitset over a topological
-numbering: one bit per node, a `Uint32Array` per row. A union is a
-loop of bitwise ORs over machine words; a size is a popcount. The same
-computation is roughly **50 ms**. The package graph uses the same
-representation, so a filter over a thousand packages is a handful of
-row ORs.
+numbering: one bit per node, one row of 32-bit words per node, every
+row in a single `Uint32Array` (N² / 8 bits of memory — 1.3 MB at
+3,270 tasks). A union is a loop of bitwise ORs over those words; a
+size is a popcount. The same computation is **single-digit
+milliseconds**. The package graph uses the same representation, so a
+filter over a thousand packages is a handful of row ORs.
 
 ## The tick
 
 Priority in vx is "most blocked first": the task with the most
 transitive dependents goes to the worker pool first, because finishing
-it releases the most work. The scheduler keeps an exact priority queue
-of ready tasks and, on every completion, decrements the in-degree of
-the completed task's direct dependents and enqueues the ones that
-reached zero. No re-scan of the graph. A tick is O(1) amortised per
-edge, O(N+E) for the whole run.
+it releases the most work. The scheduler keeps ready tasks in an exact
+binary max-heap, ordered by that count and breaking ties in
+graph-insertion order, and on every completion decrements the pending
+dependency count of the completed task's direct dependents and pushes
+the ones that reached zero. No re-scan of the graph: each edge is
+touched once, for O(E) over the run, plus one O(log N) heap operation
+per task that becomes ready and one per dispatch.
 
 That is also why lookahead and idle-insertion scheduling are on the
 repository's rejected list: they were measured, and the critical-path
@@ -56,9 +59,11 @@ before scheduling, vx classifies every stable, cacheable task by
 probing the local cache once, up front:
 
 - Confirmed **hits** form the restore tier. They are made ready
-  immediately, with no dependency gate (their key does not depend on
-  any upstream's success) but at low priority, so they fill idle
-  capacity and never displace a miss.
+  immediately, with no dependency gate — their key does not depend on
+  any upstream's success — but in a lane of their own: a second heap
+  the tick drains only after the exec tier, under its own cap of twice
+  the worker count (a restore is disk I/O, not CPU; `--concurrency 1`
+  stays serial). So a restore can never take a slot from a miss.
 - **Misses** own the worker pool from the first tick.
 
 The up-front probe is not extra work: the execution path consumes the

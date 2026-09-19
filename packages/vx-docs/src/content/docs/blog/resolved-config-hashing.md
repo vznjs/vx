@@ -63,17 +63,35 @@ where the shorter one was killed.
 
 Evaluating a hundred TypeScript files per run is not free, and the
 obvious fix, caching the evaluation, is unsound for a program that
-reads the environment or the clock. vx caches evaluation results
-only where it can prove soundness: a config whose source contains any
-denied global (`process`, `Bun`, `Date`, `fetch`, `import.meta`,
-`require`, a dynamic `import()`, `await`, and the escaped or aliased
-spellings of each) is refused
-the cache and evaluated live every run. A config that passes is keyed
-by the git blob ids of its **whole import closure**, so an edit to the
-preset invalidates the cached evaluation of every importer.
+reads the environment or the clock. vx caches evaluation results only
+where it can prove soundness. Every file in the import closure is
+read, with its string literals and comments stripped first (a command
+string is not code: `node -e "process.exit(0)"` is an ordinary task).
+If what is left names a global through which an evaluation can observe
+something the file bytes do not capture, the config is refused the
+cache and evaluated live every run. The list is
+`process`, `Bun`, `globalThis`, `global`, `self`, `fetch`, `Date`,
+`Temporal`, `Intl`, `crypto`, `performance`, `navigator`, `require`,
+`eval`, `Function`, `constructor`, `localeCompare`, `await`, any
+`toLocale*` method, `import.meta`, `Math.random` and a dynamic
+`import()` — the aliases and the property-name routes to each
+(`global['proc' + 'ess']`, `({}).constructor.constructor`) included.
+Five of those names were listed only after a config using them had
+been cached as pure. An identifier
+escape is the one spelling a name list cannot see, so a backslash in
+code position is refused on sight, and a bare import of anything but
+`@vzn/vx` is refused too: a pure closure is relative files.
 
-The gate is worth about 20 ms of a 1,000-project warm run. The refusal
-is what makes it possible to have at all.
+A config that passes is keyed by the git blob ids of its **whole
+import closure** — so an edit to the preset invalidates the cached
+evaluation of every importer — together with the workspace
+fingerprint and the Bun and vx versions that evaluated it. A closure
+of more than 32 files evaluates live: a preset tree that big is not
+the case this serves.
+
+What the gate buys: `load configs` is 16–25 ms per 1,000 configs
+served from the cache, against ~200 ms of evaluations. The refusal is
+what makes having it at all sound.
 
 ## Freezing the evaluation: `vx lock`
 
