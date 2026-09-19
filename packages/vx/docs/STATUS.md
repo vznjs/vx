@@ -612,6 +612,29 @@ test is telling the truth.
       with the fifth copy that lands unpinned no longer possible.
       Four pins; three fail on the pre-fix text, the fourth on a
       dropped name.
+360.  DONE (2026-09-19, benchmarks.md and optimizations.md — the last
+      two unread core pages, and the pair whose every claim is a
+      measured number or a citation). Both hold up. optimizations.md's
+      citations are already pinned (doc-references.test.ts); every bench
+      script, env var and artifact benchmarks.md names exists
+      (`BASELINE_ONLY`, `BUILD_SLEEP`, `DEPS_PER_PKG`, `CONCURRENCY`,
+      `VX_BIN`, `--check`, RESULTS.md) and its internal arithmetic
+      checks out (6.7× cold and 3.2× warm are the table's own rows).
+      Two of my own greps nearly produced false faults and are worth
+      recording as the same rule twice: `BUILD_SLEEP` is read as
+      `process.env.BUILD_SLEEP`, which a `process.env['…']` scan cannot
+      see, and item 359's `--exclude-dependencies` was declared missing
+      by a scan whose output I misread. Both times the fix was to look
+      at the source, not the scan. The one fault: § Profiling a run
+      lists the `VX_TIMING` stage table in prose as an appositive that
+      reads as the sequence, and named nine of the fourteen marks —
+      `startup`, `workspace config`, `plugin stages`, `save lane` and
+      `output dir snapshots` absent. modules/timing.md carries the same
+      list and has been pinned to `prepare.ts` + `run.ts` all along; the
+      sibling was not. It names all fourteen now, in order, pinned to
+      the same source, and its span parenthetical says "among them" and
+      points at the page that lists every one. One pin, failing on the
+      old page.
 
 ## In flight
 
