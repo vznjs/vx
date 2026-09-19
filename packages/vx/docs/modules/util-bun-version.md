@@ -27,7 +27,15 @@ that is green on CI's pinned 1.4.2:
   classifier does not know, so it surfaces as an internal error instead of the
   `UserError` naming file, line and column.
 
-Ten of that container's 23 failures were these three.
+- `fs.watch` never reports a DOT-prefixed filename. A plain file is
+  delivered, `.vx-watch-probe` is dropped, in both recursive modes — and
+  that probe is precisely how `watch.ts:armWatcher` proves a watcher is
+  live, so every `vx watch` below the floor falls back to polling. Not
+  silently: the loop already swaps in `pollWatcher` and says so on stderr
+  (`no OS watch events within … ms; polling every … ms instead`), which is
+  why this one degrades rather than breaks.
+
+Twenty-one of that container's 23 failures were these four.
 
 ## Where the verdict is reported, and why there
 
