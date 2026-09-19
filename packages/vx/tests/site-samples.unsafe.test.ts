@@ -717,3 +717,25 @@ describe('the remote-execution post states the placement rules core applies', ()
     expect(page).toContain('`@' + m![1]! + '`')
   })
 })
+
+describe('the config-in-typescript post shows what vx init writes', () => {
+  const page = readFileSync(path.join(DOCS, 'blog', 'config-in-typescript.md'), 'utf8')
+  it('its generated shape is the one migration.ts emits', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'workspace', 'migration.ts'),
+      'utf8',
+    )
+    expect(src).toContain("import type { ProjectConfig } from '@vzn/vx'")
+    expect(src).toContain('} satisfies ProjectConfig')
+    // The page's own snippet must carry the import it tells people to write.
+    const block = fencedBlock(page, 'ts', '// packages/ui/vx.config.ts')
+    expect(block).toContain("import type { ProjectConfig } from '@vzn/vx'")
+    expect(block).toContain('satisfies ProjectConfig')
+  })
+  it('its runtime-import cost is the figure schema.md measured', () => {
+    const schema = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'schema.md'), 'utf8')
+    const m = /\(~(\d+) ms on a two-package workspace,\n?measured/.exec(schema)
+    expect(m).not.toBeNull()
+    expect(page.replace(/\s+/g, ' ')).toContain(`~${m![1]} ms on a two-package workspace`)
+  })
+})
