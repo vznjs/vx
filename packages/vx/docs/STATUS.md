@@ -659,6 +659,34 @@ test is telling the truth.
       filter on: each passed before, each fails now. "A skip is a
       silent pass" was written here about tests of the code; it holds
       for the tests OF the tests.
+362.  DONE (2026-09-19, § Next 8(c) — the last improvement-loop
+      candidate still standing, and the first pin of this arc in the RUN
+      path rather than the docs). The staged load
+      (`orchestrator/projects.ts:loadProjects`, and `loadCliProjects`
+      over it) is the config load every reader shares: plugin `project`
+      stage run, cached evaluations served, the workspace a run itself
+      sees. A raw `loadProjectConfig` sees none of it, so a reader that
+      reaches for it answers from a DIFFERENT workspace than the one
+      that runs — `vx info` missing a plugin's injected tasks is the
+      case that made the note. Two uses are legitimate: `vx lock`, which
+      must read raw and fresh because the lock IS the frozen evaluation,
+      and the fallback each staged reader takes when the staged load
+      THROWS, so one broken config cannot take a verb down. All five
+      sites check out — doctor, select and watch each try the staged
+      load and reach for the raw one only inside the `catch`; lock's two
+      both pass the fresh flag. The rule was prose, and the instruction
+      it carried (grep for the raw call before adding a consumer that is
+      not a fallback) relied on someone doing the grep. The test is the
+      grep now: the caller set is named, lock's calls must be fresh, and
+      every other call must follow a staged attempt AND a catch. Three
+      arms, all three verified — a new caller, a lock call without the
+      fresh flag, a raw call above the staged one. The first pass of two
+      of those arms was a FALSE negative: the new caller tripped the
+      module-boundary rule instead of this one, and the "raw call" probe
+      wrote the identifier with no parenthesis, which the pin's own
+      regex does not match, so it passed and I nearly read that as the
+      pin working. A probe's negative case is checked before its result
+      is read — twice in one session now.
 
 ## In flight
 
@@ -773,7 +801,13 @@ state of each:
    5× the projects (discover 23 → 89 ms, load configs 24 → 87, classify
    56 → 190, run graph 42 → 144), git's own enumeration 6× (9 → 55),
    nothing super-linear; the fixed ~30 ms of startup and workspace
-   config is what makes 5,000 cheaper per project than 1,000.
+   config is what makes 5,000 cheaper per project than 1,000. PARKED for
+   the 2026-09-19 arc (items 341–362): it changed docs, comments and
+   tests only, so there is no run-path delta to A/B, and the arc ran on
+   a shared 4-core container whose own baseline fails 23 tests for
+   environmental reasons — an absolute figure from it is not comparable
+   to the table above, and an A/B has no arms. Re-measure on the first
+   run-path change.
 
 7. CLOSED — the 2026-09-04 walkthrough's four follow-ups landed
    ((a) `noCache` in `--summarize` rows, (b) `init` no longer makes
