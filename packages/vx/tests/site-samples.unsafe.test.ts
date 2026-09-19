@@ -4,7 +4,7 @@
 // real formatter and compared byte for byte. The site
 // lives outside packages/vx, which a sandboxed shard cannot read — hence
 // the unsafe suite (the site's own tests reach only the public API).
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
@@ -737,5 +737,92 @@ describe('the config-in-typescript post shows what vx init writes', () => {
     const m = /\(~(\d+) ms on a two-package workspace,\n?measured/.exec(schema)
     expect(m).not.toBeNull()
     expect(page.replace(/\s+/g, ' ')).toContain(`~${m![1]} ms on a two-package workspace`)
+  })
+})
+
+describe('the MCP guide and post state the server size the source has', () => {
+  const server = readFileSync(
+    path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'src', 'server.ts'),
+    'utf8',
+  )
+  const lines = server.split('\n').length
+  for (const [label, file] of [
+    ['the guide', path.join(DOCS, 'guides', 'mcp.md')],
+    ['the agents-and-mcp post', path.join(DOCS, 'blog', 'agents-and-mcp.md')],
+  ] as const) {
+    it(`${label}'s "about N lines" is within a rounding of server.ts`, () => {
+      // Both said "about a hundred lines" of a 144-line file; item 339 fixed
+      // the post's body and left its heading (item 345, 2026-09-16). A round
+      // number is fine, a 30% one is not.
+      const page = readFileSync(file, 'utf8')
+      const m = /about (\d+) lines/.exec(page)
+      expect(m).not.toBeNull()
+      expect(Math.abs(Number(m![1]) - lines) / lines).toBeLessThan(0.15)
+    })
+  }
+  it('the guide tabulates every tool the server offers', () => {
+    const tools = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'src', 'tools.ts'),
+      'utf8',
+    )
+    const names = [...tools.matchAll(/^    name: '(\w+)',$/gm)].map((m) => m[1]!)
+    const page = readFileSync(path.join(DOCS, 'guides', 'mcp.md'), 'utf8')
+    const rows = [...page.matchAll(/^\| `(\w+)` *\|/gm)].map((m) => m[1]!)
+    expect(rows.sort()).toEqual([...names].sort())
+  })
+})
+
+describe('the otel guide names attributes the exporter actually emits', () => {
+  it('every `vx.<name>` it prints is one otlp.ts writes', () => {
+    // Span names live beside the attribute map, so read the exporter's
+    // sources, not one file of them.
+    const otelSrc = path.resolve(import.meta.dir, '..', '..', 'vx-otel', 'src')
+    const emitted = new Set(
+      readdirSync(otelSrc)
+        .filter((f) => f.endsWith('.ts'))
+        .flatMap((f) => [
+          ...readFileSync(path.join(otelSrc, f), 'utf8').matchAll(/'(vx\.[a-z_.]+)'/g),
+        ])
+        .map((m) => m[1]!),
+    )
+    expect(emitted.size).toBeGreaterThan(30)
+    const page = readFileSync(path.join(DOCS, 'guides', 'otel-bridge.md'), 'utf8')
+    // Backticked attribute names only, and not the prefixes it shows as
+    // shapes (`vx.tag.<k>`, `vx.log.*`) or the workspace file's name.
+    const named = [...page.matchAll(/`(vx\.[a-z_.]+)`/g)]
+      .map((m) => m[1]!)
+      .filter((n) => n !== 'vx.workspace.ts' && !n.endsWith('.'))
+    expect(named.length).toBeGreaterThan(15)
+    for (const attr of named) expect(emitted).toContain(attr)
+  })
+})
+
+describe('the sandboxing guide counts the tasks that decline the sandbox', () => {
+  it('its count is what this repo’s configs declare', () => {
+    const stripStrings = (s: string) => s.replace(/'[^'\n]*'|"[^"\n]*"|`[^`]*`/g, "''")
+    const found: string[] = []
+    const dir = path.resolve(import.meta.dir, '..', '..')
+    for (const pkg of readdirSync(dir)) {
+      const cfg = path.join(dir, pkg, 'vx.config.ts')
+      if (!existsSync(cfg)) continue
+      const src = stripStrings(readFileSync(cfg, 'utf8'))
+      for (const m of src.matchAll(/^ {4}(?:''|[\w.$-]+): \{/gm)) {
+        let depth = 1
+        let i = m.index! + m[0].length
+        while (depth > 0 && i < src.length) {
+          if (src[i] === '{') depth++
+          else if (src[i] === '}') depth--
+          i++
+        }
+        const body = src.slice(m.index! + m[0].length, i)
+        if (/\bexec: \{/.test(body) && !body.includes('sandbox')) found.push(pkg)
+      }
+    }
+    // The parser must find the two CLAUDE.md names — if it finds none it is
+    // broken, not the docs.
+    expect(found.sort()).toEqual(['vx', 'vx-reapi'])
+    const page = readFileSync(path.join(DOCS, 'guides', 'sandboxing.md'), 'utf8')
+    expect(page.replace(/\s+/g, ' ')).toContain('exactly two tasks in this repository that do not')
+    expect(page).toContain('`@vzn/vx-reapi#test`')
   })
 })

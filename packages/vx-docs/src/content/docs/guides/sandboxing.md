@@ -227,8 +227,11 @@ fails fast with a clear message (it never runs unsandboxed by accident).
 - **A task that itself sandboxes, on macOS.** `sandbox_apply` is refused
   inside a sandboxed process, so seatbelt cannot nest at any permission
   level. `weakerWhenNested` covers the Linux case; there is no macOS
-  equivalent. vx's own test suite is the one task in this repo with no
-  sandbox block for exactly this reason.
+  equivalent. It is why the part of vx's own suite that tests the
+  sandbox (`test.bun.unsafe`) declares no sandbox block — one of the
+  exactly two tasks in this repository that do not, the other being
+  `@vzn/vx-reapi#test`, which dials service containers on the host's
+  loopback that a network namespace cannot reach.
 
 ## Next steps
 

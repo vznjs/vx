@@ -302,6 +302,24 @@ test is telling the truth.
       blog is read out: every post has been read against source once,
       except the three PR #487 holds. Next in the queue are the site
       guides, oldest first — `mcp`, `otel-bridge`, `sandboxing`.
+345.  DONE (2026-09-16, the three oldest site guides: mcp, otel-bridge,
+      sandboxing — the queue's turn from the blog to the guides). The
+      MCP guide carried item 339's fault in its own words: "about a
+      hundred lines" of a 144-line `server.ts`, and "three methods"
+      where the source answers four (`ping` besides). 339 had fixed
+      the post's body and left its heading saying a hundred, so both
+      pages now say "about 150 lines" and both are held to the file's
+      line count within a rounding — a round number passes, a 30% one
+      does not. The sandboxing guide said vx's own test suite is "the
+      one task in this repo with no sandbox block"; there are exactly
+      two (CLAUDE.md's pair: `test.bun.unsafe` and
+      `@vzn/vx-reapi#test`), and the pin now counts them out of the
+      workspace's configs, failing loudly if its parser finds none.
+      otel-bridge reads true: every `vx.*` attribute and span name it
+      prints is one the exporter writes (52 in the source), and its
+      option table matches `plugin.ts` down to the 15000 ms timeout.
+      Five pins, three failing on the old pages; the MCP tool table
+      and the otel attribute list are controls.
 
 ## In flight
 

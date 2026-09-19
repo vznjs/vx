@@ -66,10 +66,11 @@ and `vx info` read. Ask things like:
 
 ## How it works
 
-MCP over stdio is newline-delimited JSON-RPC 2.0 and three methods —
-`initialize`, `tools/list`, `tools/call`. The plugin speaks it natively
-in about a hundred lines with no dependencies (the reference SDK pulls
-in an HTTP stack this transport never uses). A tool's own refusal
+MCP over stdio is newline-delimited JSON-RPC 2.0 and the three methods
+an agent needs — `initialize`, `tools/list`, `tools/call` — plus
+`ping`; a notification is acknowledged by silence. The plugin speaks it
+natively in about 150 lines with no dependencies (the reference SDK
+pulls in an HTTP stack this transport never uses). A tool's own refusal
 ("taskId must be `project#task`") comes back as an `isError` result the
 agent can read and correct, not as a protocol error.
 
