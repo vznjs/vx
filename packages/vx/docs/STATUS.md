@@ -415,6 +415,27 @@ test is telling the truth.
       from-nx expands `@nx/vite:*` into the four commands
       `KNOWN_EXECUTORS` maps — now pinned to them. Two pins, one
       failing on the old page, one a control.
+351.  DONE (2026-09-16, the READMEs — the root one and the nine
+      package ones, the prose this series had never read). A THIRD
+      round of the same lesson, on two classes at once. Item 346
+      struck the CI guide's "roughly 10–21%" for `--frozen` and did
+      not grep: the root README still sold "~120 ms back per 1,000
+      packages", where the 2026-09-12 head-to-head is a tie (177 ms
+      plain against 165). Item 345 struck "about a hundred lines" from
+      the MCP guide and post: `packages/vx-mcp/README.md` said it too,
+      of a 144-line `server.ts`. Both are fixed, the MCP pin now takes
+      all three pages, and the frozen claim has a class pin of its own:
+      no page may attach a millisecond or percentage figure to a
+      `--frozen` or `vx lock` paragraph unless benchmarks.md carries
+      that figure. The root README's headline numbers are NOT drift and
+      were left alone: the block between its `bench:start` / `bench:end`
+      markers is rendered from `results.json` by
+      `packages/vx-bench/update-site.ts` (its own rounding, the same
+      committed run), which is why it reads 35 s where benchmarks.md
+      reads 34.61s. The other eight package READMEs carry no claim of
+      either class. Two pins, both failing on the old files. A
+      correction of the handoff below: the loop holds 333–351, not past
+      the forty-item trim line, so no trim is due yet.
 
 ## In flight
 

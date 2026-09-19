@@ -45,7 +45,7 @@ layer, so it cannot.
 
 MCP over stdio is newline-delimited JSON-RPC 2.0 and three methods
 (`initialize`, `tools/list`, `tools/call`). `src/server.ts` speaks it in
-about a hundred lines with no dependencies, where the reference SDK pulls
+about 150 lines with no dependencies, where the reference SDK pulls
 in an HTTP stack this transport never touches. `@vzn/vx` is the only peer.
 
 ## Troubleshooting

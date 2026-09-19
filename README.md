@@ -136,9 +136,11 @@ vx lock --check && vx run ci --frozen     # CI: audit, then run EXACTLY that gra
 | `vx lock --check` | full graph        | compares — catches env and import drift that byte hashes cannot |
 
 Env values read at lock time are frozen by design — cache keys become
-reproducible across machines. Bonus: `--frozen` runs skip config
-evaluation entirely (~120 ms back per 1,000 packages). No other
-runner has an equivalent.
+reproducible across machines. Take it for that, not for speed: measured
+on the 1,000-project bench, a plain warm run and a frozen one are a tie
+(177 ms against 165, 2026-09-12), because the config-evaluation cache
+already serves a pure config without evaluating it. No other runner has
+an equivalent.
 
 ## Everything you need, nothing to configure twice
 
