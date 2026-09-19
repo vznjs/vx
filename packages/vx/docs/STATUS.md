@@ -709,6 +709,31 @@ test is telling the truth.
       could rot). No fault on the page: the two describe different sets
       on purpose, eight contract surfaces against eleven matrix keys,
       and both now track the disk.
+364.  DONE (2026-09-19, CLAUDE.md § Live invariants). I opened this
+      expecting the four non-constant bullets to be unenforced claims,
+      the way 362's staged-load rule and 363's ratchet comment were.
+      WRONG, and worth saying plainly: all four are proven. The key
+      derivation's strip and folds have `task-hash-derive.test.ts`,
+      including a control that fails if the strip grows; the
+      deadline-bounded flush, the crash-isolated sink and the warn that
+      must accompany a never-fail path have `telemetry-lifecycle.test.ts`
+      (four describes) and `layered-cache.test.ts`; the zero-cost gate
+      has its own describe, which measures the git spawn by a named
+      proxy (`.vx/workspace-id`, written only when the run context is
+      built) and says so. The fifth bullet, "treat execute-task.ts as
+      stale-hit-critical", is a posture, not a testable claim, and is
+      left uncited on purpose. So the item is not the work I predicted:
+      what was missing is the LINK. Every audit re-derives which suite
+      proves which line by grep — I just spent the first half of this
+      item doing exactly that — so each bullet now names its suite and
+      the describes inside it, held by a pin. The pin's own first
+      version failed on a name that wraps at CLAUDE.md's margin, which
+      is item 355's "five\nlayers" hazard from the other side; both
+      sides are compared with whitespace collapsed now. Its
+      file-exists half duplicated the path pin two describes up, so it
+      was cut — the new half is the describe. Two arms verified: a
+      citation to a file that does not exist, and a describe renamed
+      out from under one.
 
 ## In flight
 

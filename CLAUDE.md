@@ -268,14 +268,18 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   `package.json` bytes and the workspace fingerprint. `exec.remote` is
   stripped (placement only; `exec.resources` went with the reservations
   on 2026-09-12 and a config cannot declare it); `timeout`/`retries` and
-  `description` are folded.
+  `description` are folded. Proven by `tests/task-hash-derive.test.ts`.
 - Cache correctness is the worst failure class: a stale hit replays wrong
   bytes under a green run. Treat `execute-task.ts` changes as stale-hit-critical.
 - Observability never breaks a run: sinks are crash-isolated and
   deadline-bounded; a remote cache error degrades to a miss; a never-fail
-  plugin still warns.
+  plugin still warns. Proven by `tests/telemetry-lifecycle.test.ts`
+  ("telemetry flush is time-bounded", "a malformed telemetry() return is
+  rejected at the boundary") and `tests/layered-cache.test.ts`.
 - Zero-cost gates: no telemetry plugin ⇒ no bus subscriber, no summary, no
-  git spawn. A declined plugin costs nothing.
+  git spawn. A declined plugin costs nothing. Proven by
+  `tests/telemetry-lifecycle.test.ts` ("the zero-cost gate keys on the
+  telemetry capability").
 
 ## Rejected — do not re-propose
 
