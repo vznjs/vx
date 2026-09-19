@@ -749,6 +749,9 @@ describe('the MCP guide and post state the server size the source has', () => {
   for (const [label, file] of [
     ['the guide', path.join(DOCS, 'guides', 'mcp.md')],
     ['the agents-and-mcp post', path.join(DOCS, 'blog', 'agents-and-mcp.md')],
+    // Item 345 fixed the two site pages; the package README said it too
+    // (item 351, 2026-09-16).
+    ['the package README', path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'README.md')],
   ] as const) {
     it(`${label}'s "about N lines" is within a rounding of server.ts`, () => {
       // Both said "about a hundred lines" of a 144-line file; item 339 fixed
@@ -1109,5 +1112,46 @@ describe('the migrate-from-nx guide expands the vite executors it abbreviates', 
     expect(vite.length).toBe(4)
     const page = readFileSync(path.join(DOCS, 'migrate', 'from-nx.md'), 'utf8')
     for (const command of vite) expect(page).toContain('`' + command + '`')
+  })
+})
+
+describe('every --frozen figure on a page is one benchmarks.md measured', () => {
+  it('no page quotes a frozen speed number the benchmarks page does not have', () => {
+    // Item 346 struck the CI guide's "roughly 10–21%" and did not grep the
+    // class: the root README still sold "~120 ms back per 1,000 packages"
+    // (item 351, 2026-09-16). The 2026-09-12 head-to-head reads as a tie.
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    const roots = [
+      DOCS,
+      path.resolve(import.meta.dir, '..', 'docs'),
+      path.resolve(import.meta.dir, '..', '..', '..'),
+    ]
+    const pages = new Set<string>()
+    const walk = (dir: string, depth: number): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+        const p = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          if (depth > 0 && entry.name !== 'history' && entry.name !== 'design') walk(p, depth - 1)
+        } else if (entry.name.endsWith('.md') && entry.name !== 'STATUS.md') pages.add(p)
+      }
+    }
+    walk(roots[0]!, 3)
+    walk(roots[1]!, 1)
+    walk(roots[2]!, 0)
+    expect(pages.size).toBeGreaterThan(20)
+    for (const page of pages) {
+      const text = readFileSync(page, 'utf8')
+      for (const para of text.split(/\n\s*\n/)) {
+        if (!para.includes('--frozen') && !para.includes('`vx lock`')) continue
+        // A figure attached to a frozen claim must be the benchmarks page's.
+        for (const m of para.matchAll(/(\d+(?:[–-]\d+)?)\s?(%|ms)\b/g)) {
+          expect({ page: path.basename(page), figure: m[0] }).toEqual({
+            page: path.basename(page),
+            figure: bench.includes(m[1]!) ? m[0] : `${m[0]} — not on benchmarks.md`,
+          })
+        }
+      }
+    }
   })
 })
