@@ -352,3 +352,62 @@ describe('parseWhyArgs', () => {
     expect(parseWhyArgs(['--formatting']).error).toContain('unknown flag: --formatting')
   })
 })
+
+// The promise that makes `vx why` safe anywhere — its own header ("Read-only
+// over cache.db — no config evaluation, no re-hash") and the trusting-the-cache
+// guide's "safe to run anywhere, including after the fact on a machine that
+// just cloned the cache" — was stated in three places and proven in none. A
+// config load added here for a nicer message would break it silently, and the
+// user who feels it is the one whose configs no longer evaluate.
+describe('vx why (e2e) — answers from the database alone', () => {
+  let root: string
+  beforeAll(async () => {
+    root = await makeWorkspace()
+    await vx(root, ['run', 'build', '--all'])
+    await writeFile(path.join(root, 'packages', 'app', 'src', 'input.txt'), 'v2\n')
+    await vx(root, ['run', 'build', '--all'])
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'a project config that throws changes nothing it prints',
+    async () => {
+      const cfg = path.join(root, 'packages', 'app', 'vx.config.mjs')
+      await writeFile(cfg, "throw new Error('PROJECT CONFIG EVALUATED')\n")
+      const r = await vx(root, ['why', 'app#build'])
+      expect(r.err).not.toContain('PROJECT CONFIG EVALUATED')
+      expect(r.code).toBe(0)
+      expect(r.out).toContain('cache key changed')
+      expect(r.out).toMatch(/changed\s+file\s+.*input\.txt/)
+      // The control: the sabotage is real, and a verb that DOES evaluate
+      // configs trips on it. Without this the test above passes on a config
+      // that was never broken.
+      const run = await vx(root, ['run', 'build', '--all'])
+      expect(run.code).not.toBe(0)
+      expect(`${run.err}${run.out}`).toContain('PROJECT CONFIG EVALUATED')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'with --cache-dir, not even the workspace file is read',
+    async () => {
+      // The guide states the one exception: the workspace file is evaluated
+      // once, to find the cache directory — UNLESS --cache-dir names it.
+      const ws = path.join(root, 'vx.workspace.mjs')
+      await writeFile(ws, "throw new Error('WORKSPACE FILE EVALUATED')\n")
+      const cacheDir = path.join(root, '.vx', 'cache')
+      const r = await vx(root, ['why', 'app#build', '--cache-dir', cacheDir])
+      expect(r.err).not.toContain('WORKSPACE FILE EVALUATED')
+      expect(r.code).toBe(0)
+      expect(r.out).toContain('cache key changed')
+      // Same control, and it also proves the exception is real: without the
+      // flag the workspace file IS evaluated, so this same command fails.
+      const noFlag = await vx(root, ['why', 'app#build'])
+      expect(`${noFlag.err}${noFlag.out}`).toContain('WORKSPACE FILE EVALUATED')
+    },
+    TIMEOUT,
+  )
+})
