@@ -1,6 +1,13 @@
 # The pipeline — plugin API v2 (2026-09)
 
-**Status: shipped — phases 1–3 landed 2026-09-03 (`config`, `project`, `graph`, `commands`, `key`, `schedule`); phase 4 (docs/site rewrite around the stage table) and the verb move-out remain.**
+**Status: shipped — phases 1–3 landed 2026-09-03 (`config`, `project`,
+`graph`, `commands`, `key`, `schedule`); phase 4's docs/site rewrite
+followed. The verb move-out happened DIFFERENTLY from the plan below and
+is finished: `vx migrate` went to `@vzn/vx-migrate` (2026-09-11), `vx
+prune` was removed outright rather than moved, `vx upgrade` stayed in
+core, and `@vzn/vx-cli-extras` was never created. `src/util/verbs.ts` is
+the list that ships. Read § What moves out of core as the plan it was;
+`MOVED_VERBS` is what became of it.**
 
 ## Why
 
@@ -56,8 +63,20 @@ Rules that keep it a pipeline and not a soup:
    edits change `dependsOn` closure, which changes upstream folding.
 4. **Observe hooks cannot change behaviour.** `telemetry` keeps its
    handle-free contract. `setup` gets the bus, read-only.
-5. **No hook is applied by default.** A workspace with no `executor` or
-   `cache` still fails before any task runs, naming the fix.
+5. **No hook is applied by default.** ~~A workspace with no `executor` or
+   `cache` still fails before any task runs, naming the fix.~~
+   **SUPERSEDED.** Running here and caching here became core's FLOOR
+   rather than plugins: `plugin-host.ts` pushes `localExecutor()` as the
+   TAIL of every executor list and the local store sits at the end of
+   every cache chain, so a workspace with no `vx.workspace.ts` runs and
+   caches, and a plugin that declines a task hands it back to this
+   machine. The half of the rule that still holds is the half that
+   matters: core NAMES no plugin, and a capability a plugin must supply
+   (a remote, a wire) is declared or it does not exist. This is
+   principle #7 in `CLAUDE.md`, and the sentence above is the shape that
+   was rejected — the same one `plugin-executor-reapi-2026-08.md`
+   describes with `localExecutorPlugin()` under `src/plugins/`, a
+   directory a test now asserts does not exist.
 6. **Zero cost when absent.** No plugin declares `project` ⇒ no loop, no
    re-validation. Same for every stage. The warm path is measured.
 7. **Crash isolation is per stage.** Load-bearing stages (`config`,
