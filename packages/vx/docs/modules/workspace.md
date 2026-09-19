@@ -44,6 +44,22 @@ export function findWorkspaceRoot(start: string): Promise<string>
 export function loadWorkspace(root: string): Promise<Workspace>
 export function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string
+
+// A loaded project: its canonical name, directory and evaluated config.
+// `ProjectMeta` is what discovery finds; this is what a run reads.
+export interface ProjectEntry {
+  name: string
+  dir: string
+  config: ProjectConfig
+}
+
+// Workspace members whose package globs match no directory — `vx run`
+// warns with `unreachedHint`, which names them and what to check.
+export function unreachedPackages(workspace: Workspace): Promise<string[]>
+export function unreachedHint(unreached: readonly string[]): string
+
+// The directories a recursive watch must cover to see every member.
+export function memberBaseDirs(workspace: Workspace): string[]
 ```
 
 ## Discovery rules

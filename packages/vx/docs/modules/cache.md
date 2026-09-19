@@ -194,6 +194,33 @@ export interface CacheStats {
    *  be estimated from. Always <= hitCountLast24h. */
   attributedHitsLast24h: number
 }
+
+// The container and the index, versioned apart. CACHE_VERSION gates
+// which stored BYTES are readable (bump when they would be wrong under
+// an unchanged key, or when the container changes); SCHEMA_VERSION
+// gates the SQLite schema, and a bump drops every table — which is why
+// the first run after one says so and names `vx cache prune`.
+export const CACHE_VERSION = 'vx-cache-v27'
+export const SCHEMA_VERSION = 'v27'
+export function noteSchemaReset(cache: Cache, warn: (message: string) => void): void
+
+// The two WHERE fragments every history query shares, so "a run that
+// executed" and "a run with a key" mean one thing across metrics.ts,
+// history.ts and failure-mode.ts.
+export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
+export const KEYED_RUNS_SQL = "hash <> ''"
+
+// The four independent cache axes, and the `--cache=<spec>` parser over
+// them. `FULL_CACHE_POLICY` is every axis on — the default a run starts
+// from before `--cache`, `--no-cache` and `--force` resolve.
+export interface CachePolicy {
+  localRead: boolean
+  localWrite: boolean
+  remoteRead: boolean
+  remoteWrite: boolean
+}
+export const FULL_CACHE_POLICY: CachePolicy
+export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
 ```
 
 ## Key derivation (`Cache.key`)

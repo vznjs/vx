@@ -15,6 +15,11 @@ export function verbHelpText(verb: string): string
 export function documentedFlags(verb: string): string[]
 export function seeHelp(verb: string): string
 export { CORE_VERBS } from '../util/index.js'
+
+// `core-alias.ts`: registers the `@vzn/vx` virtual module so a
+// `vx.config.ts` can import the façade inside the compiled binary,
+// where no node_modules copy exists. `bin.ts` calls it before dispatch.
+export function registerCoreAlias(load: () => Promise<Record<string, unknown>>): void
 ```
 
 `helpText` is the whole reference, hard-coded. `verbHelpText` is the

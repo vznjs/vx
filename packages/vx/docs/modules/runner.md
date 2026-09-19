@@ -65,6 +65,15 @@ export function streamToString(
 export function resourceUsageToCpuRss(
   usage: ReturnType<ReturnType<typeof Bun.spawn>['resourceUsage']>,
 ): { cpuMs?: number; peakRssBytes?: number }
+
+// The inverse of signalExitCode: 137 → 'SIGKILL', and undefined below
+// 129 or above the signal range. What `failedLabel` reads to write
+// `failed (exit 137, 128 + SIGKILL)`.
+export function exitSignal(code: number): string | undefined
+
+// The bare word a shell would have run, when the command is a plain
+// `word args…` — what shell-verdict.ts names in a 127 frame line.
+export function execWord(command: string): string | undefined
 ```
 
 ## Spawning rules
