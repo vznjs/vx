@@ -255,6 +255,28 @@ describe('the flaky-tasks post shows the section the footer prints', () => {
       ]).slice(1),
     )
   })
+
+  it("the CI guide's copy of that footer is the same formatter's output", () => {
+    // The post was pinned and the guide, which prints the same block for one
+    // finding, was not — the same one-copy-of-two as the sandbox grants
+    // (item 378, 2026-09-19).
+    const page = readFileSync(path.join(GUIDES, 'ci.md'), 'utf8')
+    const sample = fencedBlock(page, '', '  Flaky:').replace(/\n$/, '')
+    expect(sample.split('\n')).toEqual(
+      formatFlakySection([
+        {
+          taskId: 'web#test',
+          project: 'web',
+          task: 'test',
+          hash: 'k',
+          status: 'failed',
+          passes: 3,
+          failures: 1,
+          attempts: 1,
+        },
+      ]).slice(1),
+    )
+  })
 })
 
 describe('the local-floor post names the placement labels --dry prints', () => {
