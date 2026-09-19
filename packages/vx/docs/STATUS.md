@@ -1186,6 +1186,37 @@ build` and this file records a Bun-specific hazard for exactly
       without an edit. And architecture.md's floor paragraph must
       name what `bun-version.ts` names, all three, and not the
       archive. Proven both ways.
+390.  DONE (2026-09-19, `parity.md` — and the column that was pinned
+      for the wrong property). Most of the page holds, and two probes
+      refuted what I went looking for: every `tests/…` and
+      `packages/…` path it cites resolves (already pinned), and all
+      27 `` `page.md` § Section `` citations across `docs/` resolve
+      too — the first run said fifteen were broken, which was my own
+      selector reading markdown link syntax and keying a heading map
+      by BASENAME, where `docs/cli.md` and `docs/modules/cli.md`
+      collide. No finding there; recorded so the next reader does not
+      re-run it.
+      The finding is that the Deep-pin column's claim is not "this
+      path exists" — it is "this suite pins the row", and two did
+      not. `"cache": false` → `noCache: true` in `--summarize` cited
+      `no-cache-word.test.ts`, which holds the WORD `no-cache` in the
+      row, legend and report and never reads a summary file;
+      `run-artifacts.test.ts` is where `noCache: true` is asserted
+      (present only when true, the cached row byte-identical). And
+      `nx reset` → `vx cache prune` cited `cache-hygiene.test.ts`,
+      which is about an interrupted run publishing nothing and says
+      `prune` nowhere; the prune pins are `cache.test.ts` (TTL, LRU,
+      orphans) and `cli.test.ts` (`vx cache prune command`,
+      `parsePruneArgs`).
+      Pinned by deriving each row's token from the row itself where
+      the vx cell names a flag or a config path, plus a named token
+      for the two rows that name neither — which are exactly the two
+      that were wrong. Two dotted paths the suites prove but never
+      spell (`cache.inputs.files`, `exec.env.passThrough`) are
+      RE-SPELLED rather than exempted: my first draft skipped them,
+      and skipping a row's only token stops the check reading that
+      row instead of passing it — the count fell from 14 to 12 and
+      said so.
 
 ## In flight
 
