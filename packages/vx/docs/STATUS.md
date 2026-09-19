@@ -734,6 +734,41 @@ test is telling the truth.
       was cut — the new half is the describe. Two arms verified: a
       citation to a file that does not exist, and a describe renamed
       out from under one.
+365.  DONE (2026-09-19, the split item 358 asked for and 361 measured).
+      `site-samples.unsafe.test.ts` was named for byte-for-byte renderer
+      samples and had become the home of every CLASS pin, because it was
+      the only file already reading both doc trees: 1,475 lines, 226 of
+      the suite's 411 assertions. That is why 358's pin landed in a
+      sandboxed shard that cannot read `vx-lockfile/src`, and why 357's
+      shared helper had to be added to a file about samples. The seven
+      class greps now live in `tests/doc-class-pins.unsafe.test.ts` over
+      one contract — `handAuthoredDocs()` for the page list,
+      `CLASS_PAGES` for what each narrowing filter reaches — and
+      site-samples keeps the 43 page-against-source samples it was named
+      for (1,475 → 1,155 lines, plus 356 new). A move, not a rewrite,
+      and held to that: 80 tests and 976 `expect()` calls before, 80 and
+      976 after, across the two files. The shard machinery needed no
+      edit — the shards filter `*.unsafe.test.ts` by suffix and the
+      unsafe task globs the same suffix, so the new file is picked up
+      and excluded by construction. Recorded because the carry went
+      wrong twice before it went right: deleting the block ranges in
+      ASCENDING order shifted every later one (the STATUS-cut rule, in
+      a test file), and the second pass matched blocks by their text,
+      which silently dropped one block's leading comment into its
+      neighbour's match. The count check is what caught both — a move
+      that loses an assertion looks exactly like a move that does not.
+      One gate note, not swept: the first run failed
+      `output-memory.test.ts`'s `none`-vs-`full` RSS case in shard-9,
+      outside this container's baseline. It is an RSS HIGH-WATER
+      measurement run beside eleven other shards on a four-core box —
+      the class the rules above warn about — it passes 3/3 in
+      isolation, shard-9 has gone red here before (the item-356 gate),
+      and this diff touches only `*.unsafe.test.ts` files and STATUS,
+      which no shard reads; a `.unsafe` addition does not change the
+      shard deal either. Re-ran the whole gate once on an idle box: the
+      failing-task set is byte-identical to the clean tree's. Recorded
+      rather than re-run silently, because "it passed the second time"
+      is not a root cause.
 
 ## In flight
 
