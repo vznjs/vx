@@ -769,8 +769,62 @@ test is telling the truth.
       failing-task set is byte-identical to the clean tree's. Recorded
       rather than re-run silently, because "it passed the second time"
       is not a root cause.
+366.  DONE (2026-09-19, the baseline this arc gated against). Item
+      365's stray RSS failure showed the set is not fixed, which means
+      a real regression could hide inside its churn — so I stopped
+      diffing against a number and characterised it. It is not two
+      dozen unrelated flakes. TEN of the 23 are one cause, and the
+      repo already says what it is: the container ships Bun 1.3.11
+      against a declared floor of 1.4. `@vzn/vx-reapi` refuses to load
+      and SAYS SO in its own error, `tar-stream` dies inside
+      `Bun.Archive`, `project-loader` sees a `BuildMessage` its
+      classifier does not know, the runner reads no `peakRssBytes`,
+      and `bin.ts` truncates a 2 MiB pipe write to 219 KB — the exact
+      defect the Rules section records as FIXED, which on this runtime
+      it is not. Four more follow from that missing usage number,
+      seven are the watch loop and `armWatcher` (they fail in
+      isolation too, so the container's file notifications, not load),
+      and two pass 3/3 alone and fail only under twelve shards. The
+      upgrade is not available: `bun upgrade` is refused by this build
+      and bun.sh answers 403 through the proxy, both tried. The
+      controlled comparison is free and closes the attribution: CI
+      pins Bun 1.4.2 and every PR of this arc went green there, same
+      tree and same tests. Written
+      into § In flight so the next session inherits a yardstick with a
+      stated meaning instead of a number — and with the correction
+      that matters for reading any gate in this arc: every green I
+      reported was green against an out-of-contract runtime, which
+      makes the comparison sound (same runtime both sides) and the
+      absolute result meaningless.
 
 ## In flight
+
+**The gate's baseline in a cloud container (2026-09-19).** A session
+that gates somewhere other than a dev box will see `vx run ci --all`
+come back red with roughly two dozen failing tests and ten failing
+tasks, and diffing against that set is only honest once the set has a
+cause. On the 2026-09-19 container the cause is mostly ONE thing: the
+box ships **Bun 1.3.11** while both `package.json` files declare
+`"bun": ">=1.4"` and this repo names `Bun.Archive` a hard dependency.
+Ten of the 23 are that, verified — `@vzn/vx-reapi` refuses to load
+with its own version error (3), `tar-stream` fails inside
+`Bun.Archive` (1), `project-loader` gets a `BuildMessage` where 1.4
+gives the error its classifier turns into a `UserError` (3), the
+runner reads no `peakRssBytes` at all (2), and `bin.ts` truncates a
+2 MiB pipe write to 219 KB, the very defect the Rules section records
+as fixed (1). Four more are downstream of that missing usage number
+(`vx last`, the remote-usage e2e, both schedule-history reservation
+cases). Seven are the watch loop and `armWatcher`, which fail in
+ISOLATION too, so they belong to the container's filesystem
+notifications, not to load. Two — the `--continue=always` pair — pass
+3/3 in isolation and fail only beside eleven other shards, as
+`output-memory`'s RSS case does. The controlled comparison closes it: CI pins
+`bun-version: 1.4.2` in `ci.yml` and every PR of this arc went green
+there — same tree, same tests, 23 red here and none there. Upgrading
+is not available in the container: `bun upgrade` is refused by this
+build and bun.sh answers 403 through the proxy. So the yardstick stands, with its meaning stated: a gate here
+is honest against the failing-TASK set and the failing-TEST set
+together, and anything outside both is the diff's.
 
 **Open after the sandbox arc (2026-09-05).** Its four Linux items
 closed by 2026-09-10 — the docs build under bwrap, strace's seccomp
