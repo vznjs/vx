@@ -320,6 +320,24 @@ test is telling the truth.
       option table matches `plugin.ts` down to the 15000 ms timeout.
       Five pins, three failing on the old pages; the MCP tool table
       and the otel attribute list are controls.
+346.  DONE (2026-09-16, the next three guides: ci, workspace-config,
+      remote-caching). The CI guide sold `--frozen` as "roughly 10–21%"
+      off a warm run, a figure the 2026-09-12 head-to-head replaced:
+      read the row as a tie — plain 177 ms median against frozen's 165
+      on the 1,000-project bench, and that 5% is the per-config
+      identity stat, not evaluation, since the config-eval cache
+      already serves a pure config without evaluating it while
+      `--frozen` parses and re-validates the whole lock. The guide now
+      states the measurement and sells the guarantee, pinned to
+      benchmarks.md. workspace-config documented three of the four
+      `WorkspaceConfig` fields — `timeout`, the lowest-precedence
+      per-task fallback under `exec.timeout` and `VX_TASK_TIMEOUT`,
+      had no section; it has one, and the pin holds a section per
+      field. remote-caching called `RemoteCacheLayer` "a three-call
+      seam (`has`/`get`/`put`)": there is a fourth, the optional
+      `hasMany` that answers N probes in one round trip, which is the
+      one a plugin author most wants to know about. Three pins, all
+      three failing on the old pages.
 
 ## In flight
 
