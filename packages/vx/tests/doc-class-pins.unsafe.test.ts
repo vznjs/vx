@@ -12,7 +12,7 @@
 //
 // The site lives outside packages/vx, which a sandboxed shard cannot read;
 // hence the unsafe suite.
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { ESSENTIAL_ENV } from '../src/exec/env.js'
@@ -392,5 +392,28 @@ describe('every page stating the timeout ladder states all four rungs', () => {
         ),
       }).toEqual({ page: path.basename(page), missing: [] })
     }
+  })
+})
+
+// The safe half of this check (`doc-references.test.ts`) walks
+// `packages/vx/docs` only, so a `src/…` or `tests/…` path named on a SITE
+// page — the guides, the concepts, the blog — was checked by nothing. The
+// site is exactly where such a path goes stale: item 377 found a test header
+// still citing `src/cli/mcp.ts` a release after the verb left core. Nothing
+// is stale today; this is the tripwire (item 380, 2026-09-19).
+describe('every source path a site page names exists', () => {
+  it('`src/…`, `tests/…` and `docs/…` in site prose resolve under packages/vx', () => {
+    const pkg = path.resolve(import.meta.dir, '..')
+    const pages = handAuthoredDocs().filter((p) => p.startsWith(DOCS))
+    expect(pages.length).toBeGreaterThan(30)
+    const missing: string[] = []
+    for (const page of pages) {
+      for (const m of readFileSync(page, 'utf8').matchAll(
+        /`((?:src|tests|docs)\/[A-Za-z0-9_./-]+\.(?:ts|md|mjs))`/g,
+      )) {
+        if (!existsSync(path.join(pkg, m[1]!))) missing.push(`${path.basename(page)}: ${m[1]!}`)
+      }
+    }
+    expect(missing).toEqual([])
   })
 })
