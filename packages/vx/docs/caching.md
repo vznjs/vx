@@ -132,14 +132,6 @@ over (in order):
     declare the block (`tests/uncached-upstream-key.test.ts` pins both
     arms).
 
-12. **Plugin key material** — the `{ name: value }` pairs a plugin's
-    `key(task, ctx)` stage returned for this task, stored on the node as
-    sorted `plugin/name` pairs and folded after the upstream keys,
-    ONLY when non-empty — so a workspace with no `key` plugin derives
-    byte-identical keys to one before the stage existed (no
-    `CACHE_VERSION` bump when it shipped). `vx why` names a changed pair
-    as `plugin <plugin>/<name>`.
-
     Your globs are a **filter over the set git reports**, so a filter
     can only ever remove — a gitignored file can never be filtered back
     in, however explicitly you name it. Naming one by hand is therefore
@@ -183,6 +175,14 @@ over (in order):
     an input of its own. (Before 2026-09-09 a file link folded the
     bytes behind it and a directory or dangling link fell out of the
     input set entirely, so retargeting one was a stale hit.)
+
+12. **Plugin key material** — the `{ name: value }` pairs a plugin's
+    `key(task, ctx)` stage returned for this task, stored on the node as
+    sorted `plugin/name` pairs and folded after the upstream keys,
+    ONLY when non-empty — so a workspace with no `key` plugin derives
+    byte-identical keys to one before the stage existed (no
+    `CACHE_VERSION` bump when it shipped). `vx why` names a changed pair
+    as `plugin <plugin>/<name>`.
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.

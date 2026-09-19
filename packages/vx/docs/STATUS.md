@@ -197,6 +197,45 @@ test is telling the truth.
       (single-digit ms) and its own spelling of the warm figures; nine
       figures are now the benchmarks page's, pinned. One pin fails on
       the old post.
+341.  DONE (2026-09-16, the next three oldest posts: the bitsets /
+      scheduler post, resolved-config-hashing, keys-from-git — the
+      key-and-scheduler trio). The bitsets post was the last carrier
+      of the "about 50 ms" bitset figure items 334, 336 and 340 struck
+      from four other pages (`computeReverseDepCount`: single-digit ms
+      at 3,270 tasks, 1.3 MB of closure); it also described one
+      `Uint32Array` per row (there is one for the whole closure) and
+      put the restore tier "at low priority" when it is a second heap
+      with its own cap (`2 * concurrency`, serial under
+      `--concurrency 1`) that the tick drains after the exec tier.
+      resolved-config-hashing named eight of the twenty-two denied
+      globals `IMPURE_RE` holds, said nothing of the escape and
+      bare-import refusals or the 32-file closure bound, keyed the
+      eval cache on the import closure alone (the fingerprint and the
+      Bun and vx versions are in it too), and carried item 334's
+      "worth about 20 ms" (16–25 ms per 1,000 configs against ~200 ms
+      of evaluations). keys-from-git said `\0` delimits the twelve
+      parts (a label per part does; `\0` separates name from value
+      inside a pair), named one prune of three and one git command of
+      four: `ls-files -s -v` reads the index, the one worktree walk is
+      `status -uall` (which is also the untracked enumeration), and
+      `skip-worktree` / `assume-unchanged` is the second prune. It
+      gave SHA-1 as the blob algorithm with no mention of
+      a `--object-format=sha256` repository. Its part list is
+      caching.md's numbering, so the post now says what the doc says:
+      the plugin part folds right after the upstream keys, before the
+      files. Ten pins in `site-samples.unsafe.test.ts`, nine of them
+      failing on the old pages (the twelve-parts count is a control).
+      Two finds beyond the three pages: caching.md's numbered list had
+      item 11's file paragraphs (globs as a filter, the index-OID
+      prunes, symlinks) stranded UNDER item 12, so the plugin item now
+      ends the list; and the "O(N+E) scheduler tick" the house repeats
+      omits the ready heap — `ReadyHeap` is a binary max-heap, so a
+      run is O(E) decrements plus an O(log N) heap operation per
+      enqueue and per dispatch. Corrected in the class: this post's
+      title, the why-vx-is-fast post and concept bullet,
+      `optimizations.md` row 9 (whose invariant still named the
+      binary-search insert the heap replaced) and
+      `modules/scheduler.md` ("two sorted ready queues").
 
 ## In flight
 

@@ -79,8 +79,9 @@ export function mergePriorities(
 
 ## Algorithm
 
-Per-node **dep counters + two sorted ready queues** — O(N + E) over a
-whole run (the old scan-everything-per-completion tick was O(N²)):
+Per-node **dep counters + two ready heaps** — O(E) counter decrements
+over a whole run plus one O(log N) heap operation per enqueue and per
+dispatch (the old scan-everything-per-completion tick was O(N²)):
 
 1. Build reverse adjacency + `pending` counts once. A node enqueues
    when `pending` hits 0 — onto **execReady** (normal priority).
@@ -128,7 +129,8 @@ concurrency` check for exec-tier nodes — including its O(1) early-out
 Priority within a queue: highest transitive-reverse-dependent count
 first (`computeReverseDepCount` — an exact bitset closure swept in
 reverse-topo order, O(E·N/32); Set-based closures cost 8.5 s at 3,270
-tasks). Ties break in graph-insertion order via binary-search insert.
+tasks). Ties break in graph-insertion order: `ReadyHeap` is a binary
+max-heap ordered by (priority DESC, enqueue-seq ASC).
 When `priorities` is passed, `mergePriorities` scales those weights
 (by 2^20) to sort above the baseline for every covered node, with the
 baseline as the tie-break inside the override set. Nothing in core

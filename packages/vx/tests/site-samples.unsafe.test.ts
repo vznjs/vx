@@ -403,3 +403,128 @@ describe('the telemetry post shows the sink contract the source declares', () =>
     expect(named).toEqual(kinds)
   })
 })
+
+describe('the bitsets post states what the scheduler source measured', () => {
+  const src = readFileSync(
+    path.resolve(import.meta.dir, '..', 'src', 'graph', 'scheduler.ts'),
+    'utf8',
+  )
+  const page = readFileSync(path.join(DOCS, 'blog', 'bitsets-and-the-scheduler.md'), 'utf8')
+  const flat = page.replace(/\s+/g, ' ')
+  it('its closure figures are the ones computeReverseDepCount records', () => {
+    // The post carried "roughly 50 ms" where the source (and
+    // optimizations.md 9b) say single-digit (item 341, 2026-09-16) —
+    // the same fault items 334, 336 and 340 fixed on four other pages.
+    const note = src.slice(
+      src.indexOf('export function computeReverseDepCount'),
+      src.indexOf('const ids = '),
+    )
+    for (const [inSource, inPage] of [
+      ['8.5s', '8.5 seconds'],
+      ['single-digit ms', 'single-digit milliseconds'],
+      ['1.3 MB', '1.3 MB'],
+    ] as const) {
+      expect(note).toContain(inSource)
+      expect(flat).toContain(inPage)
+    }
+    expect(flat).not.toContain('50 ms')
+  })
+  it('the ready structure it names is the one the scheduler builds', () => {
+    expect(src).toContain('A binary max-heap of ready task ids')
+    expect(flat).toContain('binary max-heap')
+  })
+  it('its restore lane is capped where the scheduler caps it', () => {
+    expect(src).toContain('const restoreConcurrency = concurrency === 1 ? 1 : 2 * concurrency')
+    expect(flat).toContain('twice the worker count')
+    expect(flat).toContain('`--concurrency 1` stays serial')
+  })
+})
+
+describe('the keys-from-git post counts the parts the key folds', () => {
+  const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cache', 'cache.ts'), 'utf8')
+  const key = src.slice(
+    src.indexOf('async key(input: CacheKeyInput)'),
+    src.indexOf('async get(hash: string'),
+  )
+  const labels = [...new Set([...key.matchAll(/h = xxh3\(`([a-z-]+):/g)].map((m) => m[1]!))]
+  const page = readFileSync(path.join(DOCS, 'blog', 'keys-from-git.md'), 'utf8')
+  it('"twelve parts" is CACHE_VERSION plus every labelled fold, and the list has twelve items', () => {
+    expect(labels.length + 1).toBe(12)
+    expect(page).toContain('seed-chained across twelve parts')
+    const list = /\n1\. The key-derivation sentinel([\s\S]*?)\n\nPart 11/.exec(page)
+    expect(list).not.toBeNull()
+    const items = [...list![1]!.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]))
+    expect([1, ...items]).toEqual([...Array(12)].map((_, i) => i + 1))
+  })
+  it('every label it quotes is one the key folds under', () => {
+    const quoted = [...page.matchAll(/`([a-z-]+):`/g)].map((m) => m[1]!)
+    expect(quoted.length).toBeGreaterThan(3)
+    for (const label of quoted) expect(labels).toContain(label)
+  })
+  it('it says the plugin part folds where the source folds it — before the input files', () => {
+    expect(labels.indexOf('plugin')).toBeLessThan(labels.indexOf('inputs'))
+    expect(page.replace(/\s+/g, ' ')).toContain('folded right after the upstream keys')
+  })
+  it('each git command it names is spelled as git-inputs.ts spawns it', () => {
+    const git = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'git-inputs.ts'),
+      'utf8',
+    )
+    const spawned = [...git.matchAll(/spawnGit\(\[([^\]]*)\]/g)].map((m) =>
+      [
+        'git',
+        ...[...m[1]!.matchAll(/'([^']*)'/g)]
+          .map((t) => t[1]!)
+          .filter((t) => t !== '-z' && t !== '--'),
+      ].join(' '),
+    )
+    expect(spawned.length).toBeGreaterThan(3)
+    for (const named of [
+      'git ls-files -s -v',
+      'git status --porcelain -uall',
+      'git config --get-regexp',
+    ]) {
+      expect(spawned.some((s) => s.startsWith(named))).toBe(true)
+      expect(page).toContain('`' + named)
+    }
+  })
+})
+
+describe('the resolved-config-hashing post names every global the gate denies', () => {
+  const src = readFileSync(
+    path.resolve(import.meta.dir, '..', 'src', 'workspace', 'config-cache.ts'),
+    'utf8',
+  )
+  const page = readFileSync(path.join(DOCS, 'blog', 'resolved-config-hashing.md'), 'utf8')
+  it('each identifier in IMPURE_RE is a name in its list', () => {
+    const re = /const IMPURE_RE =\n\s+\/\\b\(\?:([^)]*)\)\\b/.exec(src)
+    expect(re).not.toBeNull()
+    const names = re![1]!.split('|')
+    expect(names.length).toBeGreaterThan(15)
+    for (const name of names) {
+      // `toLocale\w*` is a family, written `toLocale*` in prose.
+      expect(page).toContain('`' + name.replace('\\w*', '*') + '`')
+    }
+    for (const form of ['`import.meta`', '`Math.random`', '`import()`'])
+      expect(page).toContain(form)
+  })
+  it('its closure-size bound is MAX_CLOSURE_FILES', () => {
+    const m = /const MAX_CLOSURE_FILES = (\d+)/.exec(src)
+    expect(m).not.toBeNull()
+    expect(page.replace(/\s+/g, ' ')).toContain(`more than ${m![1]} files evaluates live`)
+  })
+  it('its config-eval figures are the ones benchmarks.md measured, as the concept page states them', () => {
+    // The post said the gate is "worth about 20 ms", the fault item 334
+    // fixed on the concept page: 16-25 ms is what the cached stage COSTS,
+    // against the ~200 ms of evaluations it replaces.
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    const concept = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8')
+    const flat = (s: string) => s.replace(/\s+/g, ' ')
+    for (const claim of ['16–25 ms per 1,000 configs', 'against ~200 ms of evaluations']) {
+      expect(flat(page)).toContain(claim)
+      expect(flat(concept)).toContain(claim)
+    }
+    expect(bench).toContain('16–25 ms per')
+    expect(bench).toContain('~199 ms')
+  })
+})

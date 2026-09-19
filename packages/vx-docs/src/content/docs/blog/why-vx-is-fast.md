@@ -46,10 +46,11 @@ index](../keys-from-git/).
 Scheduling priority and the package graph are computed over packed
 bitsets with popcount instead of set-union depth-first search. On the
 3,270-task graph that turned an 8.5 s priority computation into
-single-digit milliseconds. The scheduler tick itself is O(N+E): ready
-tasks come off an
-exact most-blocked-first queue, and nothing re-scans the graph per
-completion.
+single-digit milliseconds. The scheduler tick re-scans nothing: ready
+tasks come off an exact most-blocked-first binary heap, a completion
+decrements its direct dependents' counters and pushes the ones that
+reach zero, and the run costs one pass over the edges plus an
+`O(log N)` heap operation per task.
 
 ## 3. Strict output ownership makes restore cheap
 
