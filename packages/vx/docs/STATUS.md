@@ -1278,6 +1278,36 @@ build` and this file records a Bun-specific hazard for exactly
       included. Neither was reported as a finding, and the corrected
       run is where the 38 came from.
 
+393.  DONE (2026-09-19, `comparison.md` — the page handoff 14af
+      flagged as the most drift-prone prose in the repo, and the one I
+      had walked past). Two findings in its gap lists.
+      First, a seam that no longer exists: items 2 and 5 said
+      `--continue` and `--cache-dir` are "threaded over the wire".
+      There is no wire — the whole-run `backend` seam went in 2026-08,
+      and `run-report.ts` records its removal in its own docblock. The
+      class holds: three other pages say "over the wire" and all three
+      mean a real one (the remote-cache wire, MCP's JSON-RPC).
+      Second, and worse, the config-evaluation purity GATE was
+      described as opting a config out on "any `/` outside a comment".
+      It refuses a BACKSLASH: `stripLiterals` removes literals and
+      comments, and what survives must hold no identifier escape,
+      because `\u0070rocess` IS `process` and no deny-list can see it.
+      A forward slash is in every path literal and every division, so
+      as written the gate excluded almost every config and the
+      evaluation cache read as a feature that never applies.
+      `modules/config-cache.md` has it right — backslash, identifier
+      escape and all — and has been pinned since item 314. One copy
+      pinned, the other drifts, for the twelfth time in this arc; the
+      grep over the other nine pages that describe the gate found no
+      third copy of the error.
+      Pinned: the sentence's three conditions are read from
+      `config-cache.ts` — the `\\` check, `PURE_PACKAGE` and
+      `MAX_CLOSURE_FILES` — and a forward-slash escape claim fails it
+      outright. Three mutations, one per condition.
+      The flag map and § Where vx is ahead were read too and hold,
+      including the group-task claim (no row, no tally, no `runs` row
+      — `tally.ts` and `recordRunBundle` both skip them).
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
