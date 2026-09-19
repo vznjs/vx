@@ -48,7 +48,7 @@ A project's digest covers every package it can reach. With `pnpm()`:
   what project A can import through workspace package B is B's closure;
 - install-wide material every project folds: `lockfileVersion`,
   `settings`, `overrides`, `packageExtensionsChecksum`,
-  `pnpmfileChecksum`.
+  `pnpmfileChecksum` and `ignoredOptionalDependencies`.
 
 With `bun()`, the same through Bun's hoisted layout: a dependency `d` of the
 package at `node_modules` path `p` is `p/d` when the lockfile has that

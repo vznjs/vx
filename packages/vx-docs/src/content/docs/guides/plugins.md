@@ -241,9 +241,10 @@ seams: `@vzn/vx-reapi` fills `executor` and `cache` against any Bazel
 REAPI server, `turboCache()` and `nxCache()` from `@vzn/vx-migrate` fill `cache`
 against any server speaking Turbo's or Nx's self-hosted cache API,
 `turbo()` from the same package fills `project` so a `turbo.json` workspace runs with no
-`vx.config` written, `@vzn/vx-schedule-history` fills `schedule` with
-critical-path priorities learned from past runs, `@vzn/vx-otel` and
-`@vzn/vx-github` fill `telemetry`, and `@vzn/vx-mcp` adds a verb through
+`vx.config` written, `@vzn/vx-schedule-history` fills three at once — `schedule` with
+critical-path priorities learned from past runs, `admit` with the memory
+each task reserves, and `commands` with `vx history` — `@vzn/vx-otel` and
+`@vzn/vx-github` fill `telemetry`, and `@vzn/vx-mcp` adds `vx mcp` through
 `commands` (`@vzn/vx-migrate` is both: a bin that runs before a workspace
 file exists, and the plugins above). None of them is privileged — core depends on
 none, and yours plugs in the same way. What a plugin declines lands on core's floor: the local
@@ -528,8 +529,9 @@ Prefer `onRunSummary` when you want the whole run in one payload;
 
 The remote cache is a plugin capability, so you can back it with **anything** —
 your own server, a Turbo-compatible cache, S3/R2, Redis — with no cloud
-platform involved. The easiest path implements core's three-call `RemoteCacheLayer`
-seam (`has`/`get`/`put`) and wraps the local cache in `LayeredCache`, which
+platform involved. The easiest path implements core's `RemoteCacheLayer`
+seam — `has`, `get`, `put` and the optional batch probe `hasMany` — and
+wraps the local cache in `LayeredCache`, which
 then owns policy gating, deduplication, provenance, and the never-fail
 degradation for you:
 
