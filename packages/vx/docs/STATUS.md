@@ -893,6 +893,32 @@ build` and this file records a Bun-specific hazard for exactly
       No test: "Bun drops dotfiles" is a claim about a runtime below
       the floor, and asserting it would fail on CI's 1.4.2, where the
       events arrive.
+370.  DONE (2026-09-19, the shard deal — the first thing this arc has
+      touched about the gate's SPEED rather than its truthfulness, and
+      two more of my hypotheses refuted). 37 gate logs had accumulated
+      this session, so the measurement was free: per-shard medians
+      spread 3.06×, from shard 11's 21.2 s to shard 1's 64.7 s, against
+      an average shard of about 29 s. The stage waits for the slowest,
+      so the suite pays 64.7 s for an average of 29 s. My stated
+      hypothesis was that the recorded deal had drifted. It has NOT:
+      shard 1 carries 13,622 of a 159,139 total against an ideal 13,262
+      — within 3% — and the existing balance test (heaviest shard
+      within 1.25× of the lightest) passes. Second hypothesis, that the
+      inflation is `armWatcher` burning its 2 s readiness timeout per
+      watcher below the Bun floor: also refuted, by measuring
+      `VX_WATCH_POLL=1` against the native path on the heaviest file,
+      54.9 s vs 48.9 s. What is left, and fits: the file's tests FAIL
+      here, and a watch test that fails does so by timeout, burning its
+      whole window — the floor again, through the failures rather than
+      through the arm. Nothing to fix in the dealer, and CI corroborates
+      it. What the measurement did surface is a bound nobody guards: a
+      file is INDIVISIBLE, so once its own weight passes the ideal
+      per-shard load no deal can place it anywhere cheaper and the fix
+      is splitting the file, not re-dealing.
+      `watch-loop-uncached.test.ts` is at 79% of that today. Pinned,
+      and the differential proves it catches what the balance test
+      cannot: set the heaviest file to 1.2× ideal and the old test
+      still passes while the new one fails.
 
 ## In flight
 
