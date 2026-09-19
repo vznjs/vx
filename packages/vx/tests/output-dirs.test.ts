@@ -14,6 +14,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -62,6 +63,22 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     mkdirSync(path.dirname(abs), { recursive: true })
     writeFileSync(abs, body)
   }
+  // Every directory the fixture (or a test) just touched carries an mtime of
+  // NOW, and the racy-window guard refuses a snapshot that holds one — so a
+  // record taken right after a write is dropped whatever else the test is
+  // about. Sleeping past the window made that a claim about how fast the
+  // test runs; stamping the tree old is the same claim proven. Symlinked
+  // directories are left alone: the walk does not descend them.
+  const age = (): void => {
+    const old = new Date(Date.now() - 10 * OUTPUT_DIRS_RACY_MS)
+    const walk = (dir: string): void => {
+      utimesSync(dir, old, old)
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory() && !e.isSymbolicLink()) walk(path.join(dir, e.name))
+      }
+    }
+    walk(proj)
+  }
   beforeEach(async () => {
     root = mkdtempSync(path.join(os.tmpdir(), 'vx-outdirs-'))
     cache = new Cache(path.join(root, 'cache'))
@@ -77,9 +94,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
       outputFiles: [path.join(proj, 'dist/a.js')],
       entry: { taskId: 'p#build', command: 'x', durationMs: 1, stdout: '' },
     })
-    // The fixture's directories are brand new; let them age past the racy
-    // window so a record below is not dropped as racy (pinned separately).
-    await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
+    age()
   })
   afterEach(() => {
     cache.close()
@@ -126,7 +141,13 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
   it('does not descend a symlinked directory, records a missing prefix as absent, and nothing over the cap', async () => {
     mkdirSync(path.join(root, 'elsewhere/x'), { recursive: true })
     symlinkSync(path.join(root, 'elsewhere'), path.join(proj, 'dist/link'))
+    // The symlink bumped dist/ into the racy window: without this the
+    // snapshot is refused and every assertion below reads an EMPTY set —
+    // `not.toContain` passed on nothing until 2026-09-19. `toContain` next
+    // is the control that says the walk ran at all.
+    age()
     await cache.recordOutputDirs('h1', proj, ['dist'])
+    expect(rows().map((r) => r.path)).toContain('dist/sub')
     expect(rows().map((r) => r.path)).not.toContain('dist/link')
     expect(rows().map((r) => r.path)).not.toContain('dist/link/x')
     // A declared prefix the task never produced is recorded ABSENT (mtime
@@ -139,6 +160,7 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     expect(await cache.outputDirsCurrent(proj, rows())).toBe(false)
     rmSync(path.join(proj, 'nope'), { recursive: true })
     for (let i = 0; i < OUTPUT_DIRS_CAP + 1; i++) mkdirSync(path.join(proj, 'dist', `d${i}`))
+    age() // the cap is the reason these rows are dropped, not the window
     await cache.recordOutputDirs('h1', proj, ['dist'])
     expect(rows()).toEqual([])
     expect(await cache.outputDirsCurrent(proj, [])).toBe(false) // no rows ⇒ never a skip
@@ -148,10 +170,19 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
   }, 30_000)
 
   it('a directory modified within the racy window is not snapshotted at all (coarse timestamps)', async () => {
-    w('dist/fresh/x.js') // dist/ and dist/fresh just changed
+    w('dist/fresh/x.js')
+    // The guard compares the recorded mtimes against the clock INSIDE
+    // recordOutputDirs, so `write, then record` only lands inside the window
+    // while the test beats it there: a loaded macOS runner took longer than
+    // the 50 ms and the fixture was snapshotted after all (CI, 2026-09-19).
+    // Stamping the mtimes says what the write was standing in for. The far
+    // edge of the window, not the near one, so the assertion survives a
+    // scheduling delay between this line and that clock read.
+    const fresh = new Date(Date.now() + OUTPUT_DIRS_RACY_MS)
+    for (const rel of ['dist', 'dist/fresh']) utimesSync(path.join(proj, rel), fresh, fresh)
     await cache.recordOutputDirs('h1', proj, ['dist'])
-    expect(rows()).toEqual([]) // all or nothing
-    await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
+    expect(rows()).toEqual([]) // all or nothing: dist/sub is dropped with them
+    age()
     await cache.recordOutputDirs('h1', proj, ['dist'])
     expect(rows().map((r) => r.path)).toContain('dist/fresh')
   })
