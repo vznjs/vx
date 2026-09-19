@@ -844,6 +844,35 @@ build` and this file records a Bun-specific hazard for exactly
       (376); mcp, sandboxing, caching (377); ci, remote-caching,
       workspace-config (378). Next three: `tasks.md`, `dev-tasks.md`,
       `extensibility.md`.
+379.  DONE (2026-09-19, a table two hooks short, and a field the guide
+      called inert). `tasks.md`, `dev-tasks.md`, `extensibility.md`.
+      `dev-tasks.md` reads true throughout: the 2 s SIGTERM grace
+      (pinned), the loader's refusal of `cache` on a persistent task,
+      the trailing-partial-line match in `runner.ts`, the
+      `localBinding` port bridge.
+      `extensibility.md`'s stage table listed ELEVEN of the thirteen
+      `PLUGIN_HOOKS` — `setup` and `teardown` were absent, and the
+      guide names them nowhere else, so a plugin author reading the
+      table of what a plugin can hook would not know they exist. This
+      is precisely the defect item 343 found in the
+      pipeline-with-seams POST (`admit` nowhere, `teardown` riding in
+      `setup`'s row) and pinned there, and only there. Both tables now,
+      one `describe.each` over a row reader that takes the FIRST
+      backticked identifier per row — the post leads with the hook, the
+      guide leads with a stage word and spells the hook with its
+      parameters, and both pages name plugins in later columns.
+      The third one-copy-of-two in three items.
+      `tasks.md` presented `description` as "optional metadata shown in
+      the interactive picker and `--dry` output" — two sections above a
+      careful accounting of which `exec` fields the key folds and which
+      it strips. A reader of the guide alone takes it for inert. It is
+      not: the key hashes the WHOLE resolved task config and strips
+      only `exec.remote`, so a cosmetic edit costs a re-run. `schema.md`
+      says exactly that and is now the pin's other arm; the guide says
+      it too. Pinned beside it: the projection really does strip one
+      field, so the page's "the one `exec` field stripped from the key"
+      cannot go quietly wrong in the direction that produces stale
+      hits.
 
 ## In flight
 
