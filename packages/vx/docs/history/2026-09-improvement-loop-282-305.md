@@ -11,7 +11,8 @@ what shipped and the numbers behind it. Items 1–64 are in
 `2026-09-improvement-loop-203-242.md`, items 243–281 in
 `2026-09-improvement-loop-243-281.md`, items 306–332 in
 `2026-09-improvement-loop-306-332.md`; items 333–352 in
-`2026-09-improvement-loop-333-352.md`; items 353 onward continue in
+`2026-09-improvement-loop-333-352.md`; items 353–372 in
+`2026-09-improvement-loop-353-372.md`; items 373 onward continue in
 STATUS under the same numbering.
 
 ## Improvement loop (2026-09-09, after the review pass merged)

@@ -11,7 +11,8 @@ what shipped and the numbers behind it. Items 1–64 are in
 `2026-09-improvement-loop-243-281.md`, items 282–305 in
 `2026-09-improvement-loop-282-305.md`, items 306–332 in
 `2026-09-improvement-loop-306-332.md`; items 333–352 in
-`2026-09-improvement-loop-333-352.md`; items 353 onward continue in
+`2026-09-improvement-loop-333-352.md`; items 353–372 in
+`2026-09-improvement-loop-353-372.md`; items 373 onward continue in
 STATUS under the same numbering.
 
 145.  DONE (2026-09-11 — Next 15's first gap): `--mjs` on `vx init` and

@@ -11,7 +11,8 @@ what shipped and the numbers behind it. Items 1–64 are in
 `2026-09-improvement-loop-203-242.md`, items 243–281 in
 `2026-09-improvement-loop-243-281.md`, items 282–305 in
 `2026-09-improvement-loop-282-305.md`, items 306–332 in
-`2026-09-improvement-loop-306-332.md`; items 353 onward continue in
+`2026-09-improvement-loop-306-332.md`; items 353–372 in
+`2026-09-improvement-loop-353-372.md`; items 373 onward continue in
 `docs/STATUS.md`.
 
 333.  DONE (2026-09-16, the trim 14ae named): items 306–332 moved
