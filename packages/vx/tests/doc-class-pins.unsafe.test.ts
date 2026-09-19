@@ -317,6 +317,57 @@ describe('no prose block was broken open by a reflow', () => {
   })
 })
 
+// The same reflow damage in its other shape: a paragraph written into the
+// blank line after item N leaves item N+1 with nowhere to start, and the
+// formatter joins it onto the paragraph's last line. The four-step cache
+// precedence in cli.md rendered as three steps plus a run-on sentence that
+// read `--force` as part of a remark about remote layers (item 387,
+// 2026-09-19); two design docs carried the same break. A swallowed item is
+// invisible in the source line and unreadable on the page, so grep the
+// class rather than the one page.
+describe('no numbered list item was swallowed by a paragraph', () => {
+  it('every step of an ordered list starts its own line', () => {
+    const swallowed: string[] = []
+    const pages = handAuthoredDocs()
+    expect(pages.length).toBeGreaterThan(40)
+    for (const page of pages) {
+      let fenced = false
+      let last: number | undefined
+      readFileSync(page, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          const trimmed = line.trim()
+          if (trimmed.startsWith('```')) {
+            fenced = !fenced
+            return
+          }
+          if (fenced) return
+          // A heading ends the list it followed; `### 4. …` is an outline's
+          // own numbering, not a continuation of the prose list above it.
+          if (trimmed.startsWith('#')) {
+            last = undefined
+            return
+          }
+          const item = /^(\d+)\. /.exec(trimmed)
+          if (item !== null) {
+            last = Number(item[1])
+            return
+          }
+          if (last === undefined) return
+          // Only a number that FOLLOWS sentence punctuation is a marker the
+          // formatter pulled up; `— item 206. The session` is a citation.
+          for (const m of line.matchAll(/[.:)]\*{0,2} (\d+)\. /g)) {
+            if (Number(m[1]) === last + 1) {
+              swallowed.push(`${path.basename(page)}:${i + 1}`)
+              last = Number(m[1])
+            }
+          }
+        })
+    }
+    expect(swallowed).toEqual([])
+  })
+})
+
 // The glyph set is `glyphShape` in framed-output.ts plus the `▸` a pinned
 // persistent row carries. Two pages and the module's own docblock listed a
 // seventh, `⦿ running`, which the renderer has never printed: a live worker

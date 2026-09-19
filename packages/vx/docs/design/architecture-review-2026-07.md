@@ -398,13 +398,21 @@ still lists `--continue=<mode>` as pending, but it shipped
    with nothing set (byte-identical to pre-plugin, per the plugin
    invariant).
 
-**Phase 2 — DX surface (make it legible).** 4. D1a: `vx-cloud status` over the resolver (effective + reachability +
-override reasons). 5. D2: `connect --print-ci` + a CI-recipe docs page. 6. D3: `vx why <run?> <task>` surfacing `metrics.ts` `cacheKeyDiff`.
+**Phase 2 — DX surface (make it legible).**
 
-**Phase 3 — cleanup + reach.** 7. S5/S6: cut `vx dev`/`localDevBackend`/`startUiServer`/`protocol-dist`;
-bench-or-delete `predictive`. 8. D1b: `status` plugin capability → core `vx status` (owner sign-off on §7
-point 2 first). 9. Develop-further #4/#5 (watch↔serve, predicted-cache overlay) as
-independent increments.
+4. D1a: `vx-cloud status` over the resolver (effective + reachability +
+   override reasons).
+5. D2: `connect --print-ci` + a CI-recipe docs page.
+6. D3: `vx why <run?> <task>` surfacing `metrics.ts` `cacheKeyDiff`.
+
+**Phase 3 — cleanup + reach.**
+
+7. S5/S6: cut `vx dev`/`localDevBackend`/`startUiServer`/`protocol-dist`;
+   bench-or-delete `predictive`.
+8. D1b: `status` plugin capability → core `vx status` (owner sign-off on §7
+   point 2 first).
+9. Develop-further #4/#5 (watch↔serve, predicted-cache overlay) as
+   independent increments.
 
 Each phase is independently shippable and reversible; Phase 1 is the one
 that pays for itself immediately (CI drops from three URL/token pairs to
