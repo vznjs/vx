@@ -729,6 +729,40 @@ build` and this file records a Bun-specific hazard for exactly
       catching the very regression it is for. What the arm needs is a
       wider duration gap or a measured noise floor, not a bigger
       number; a Next item when someone takes it.
+376.  DONE (2026-09-19, three site guides, all true, and one promise
+      nobody had proven). `trusting-the-cache.md`,
+      `remote-execution.md` and `why-vx-is-fast.md` — the next three
+      oldest after 375's.
+      All three read true against source, and each is already pinned
+      where it enumerates or quotes: the `vx why` verdict sentences
+      and console labels, the wire chunk sizes
+      (`CHUNK_BYTES` 128 KB, `SAFE_CHUNK_BYTES` 65535, a 30 s call
+      deadline, `/bin/sh -c`, the UNAVAILABLE / RESOURCE_EXHAUSTED
+      retry set — all read and confirmed), and the benchmark figures
+      the fast page quotes (3m 46s / 5m 13s / 34m 44s and 8 / 88 /
+      1,712 ms per package, which reconcile with the 8.45 s overhead
+      line; 74 ms and 172 ms; 8.5 s → ms; 16–25 ms per 1,000 configs).
+      The find is a BEHAVIOURAL promise, not a list. `vx why` says of
+      itself, in its own header and in the guide, that it is read-only
+      over `cache.db` — no config evaluation, no re-hash — and the
+      guide sells the consequence: safe to run anywhere, including on
+      a machine that just cloned the cache. Stated in three places,
+      proven in none. It is now an e2e with both arms and both
+      controls: a project config rewritten to `throw` changes nothing
+      `vx why` prints, while `vx run` in the same workspace trips on
+      it (the control that says the sabotage is real); and with
+      `--cache-dir` a throwing `vx.workspace.mjs` changes nothing
+      either, while the same command WITHOUT the flag fails — which
+      pins the guide's one stated exception, that the workspace file
+      is evaluated once to find the cache directory. Differential: a
+      `loadCliProjects` call added to `why.ts` turns the first arm red.
+      A note for whoever continues this series: git last-touch does
+      NOT advance for a page that reads true, so the queue re-offers
+      it forever. The pages read so far, in order: otel-bridge,
+      running-tasks, environment-variables (375), then
+      trusting-the-cache, remote-execution, why-vx-is-fast (376).
+      Next three by that queue: `mcp.md`, `sandboxing.md`,
+      `caching.md`.
 
 ## In flight
 
