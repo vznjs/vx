@@ -808,6 +808,31 @@ describe('the otel guide names attributes the exporter actually emits', () => {
   })
 })
 
+describe('the otel guide tabulates every option the plugin takes', () => {
+  it('each `OtelPluginOptions` field but the test seam has a row', () => {
+    // A list the CODE owns, printed as prose: the table is a snapshot until
+    // something holds it to the interface. `timeoutMs` sat in this table, in
+    // the interface and in the resolved config while the POST aborted on a
+    // literal 15 s instead (item 375, 2026-09-19) — the table was right and
+    // the wiring was not, which no pin can see, but a new option going
+    // undocumented is exactly what this one catches.
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-otel', 'src', 'plugin.ts'),
+      'utf8',
+    )
+    const decl = /export interface OtelPluginOptions \{([\s\S]*?)\n\}/.exec(src)
+    expect(decl).not.toBeNull()
+    // `post` is the injected transport the tests use; it is not a user knob.
+    const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)]
+      .map((m) => m[1]!)
+      .filter((f) => f !== 'post')
+    expect(fields.length).toBe(9)
+    const page = readFileSync(path.join(DOCS, 'guides', 'otel-bridge.md'), 'utf8')
+    const rows = [...page.matchAll(/^\| `(\w+)` *\|/gm)].map((m) => m[1]!)
+    expect(rows.sort()).toEqual([...fields].sort())
+  })
+})
+
 describe('the sandboxing guide counts the tasks that decline the sandbox', () => {
   it('its count is what this repo’s configs declare', () => {
     const stripStrings = (s: string) => s.replace(/'[^'\n]*'|"[^"\n]*"|`[^`]*`/g, "''")

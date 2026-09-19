@@ -42,18 +42,23 @@ export interface OtelSinkConfig {
   warn?: (message: string) => void
 }
 
-const defaultPost: PostFn = async (url, body, headers) => {
-  // Clearable timer, not AbortSignal.timeout: the latter's internal timer is
-  // not unref'd and would keep a CLI process alive until it fires, well after
-  // the POST resolved.
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 15_000)
-  try {
-    await fetch(url, { method: 'POST', body, headers, signal: controller.signal })
-  } finally {
-    clearTimeout(timer)
+// Takes the CONFIGURED timeout. It used to abort on a literal 15 s while
+// `timeoutMs` was resolved, defaulted and stored and then read by nobody, so
+// `otel({ timeoutMs: 1000 })` waited fifteen seconds on a hanging collector
+// (2026-09-19). Clearable timer, not AbortSignal.timeout: the latter's
+// internal timer is not unref'd and would keep a CLI process alive until it
+// fires, well after the POST resolved.
+const defaultPost =
+  (timeoutMs: number): PostFn =>
+  async (url, body, headers) => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      await fetch(url, { method: 'POST', body, headers, signal: controller.signal })
+    } finally {
+      clearTimeout(timer)
+    }
   }
-}
 
 function genId(bytes: number): string {
   return randomBytes(bytes).toString('hex')
@@ -100,7 +105,7 @@ export class OtelSink implements TelemetrySink {
       metricsEnabled: config.metricsEnabled,
       logsEnabled: config.logsEnabled,
       timeoutMs: config.timeoutMs,
-      post: config.post ?? defaultPost,
+      post: config.post ?? defaultPost(config.timeoutMs),
       ...(config.warn ? { warn: config.warn } : {}),
     }
     this.wants = config.logsEnabled

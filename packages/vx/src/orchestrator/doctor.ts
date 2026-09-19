@@ -15,7 +15,6 @@ import {
   isUnsupportedBun,
   machineMemoryBytes,
   machineParallelism,
-  MIN_BUN,
 } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { probeSandbox, resetSandbox } from '../exec/index.js'

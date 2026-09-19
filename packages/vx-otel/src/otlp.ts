@@ -233,11 +233,10 @@ export interface TaskSpanRunContext {
  * `started_at` from them is computing a dedup key that must match the value
  * the native ingest path derives, to the millisecond.
  *
- * The fingerprint's per-file map is the one attribute here that may legally
- * not survive the trip — it is the largest by far (up to 500 path/hash pairs)
- * and a collector with an attribute-value limit will truncate it. That is
- * tolerable BY DESIGN: divergence DETECTION keys on `tree`, which is a fixed
- * 16 chars, so a dropped file map costs a diff its detail, never its verdict.
+ * Nothing here is unbounded: every value is an id, an enum or a number, so a
+ * collector's attribute-value limit cannot cut one. The largest thing this
+ * exporter ships is a task's captured tail, which travels as a LOG record
+ * (`vx.log.*`) carrying its own full length, so a cut there is visible.
  */
 export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): KeyValue[] {
   const attrs: KeyValue[] = [
