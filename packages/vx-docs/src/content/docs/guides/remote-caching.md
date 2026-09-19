@@ -65,7 +65,7 @@ task drained at end of run — failures are logged but never fail the build.
 `@vzn/vx-reapi` fills the seam with Bazel's Remote Execution API: an
 `ActionCache` entry per task key, artifacts in the `ContentAddressableStorage`.
 That means NativeLink, BuildBuddy, Buildbarn and bazel-remote all work as a
-vx remote cache with one endpoint of configuration — six mature server
+vx remote cache with one endpoint of configuration — four mature server
 implementations, none of them written by us, because the REAPI server is
 deliberately dumb. The same plugin can also RUN your tasks on that pool —
 see [Remote execution](../remote-execution/).

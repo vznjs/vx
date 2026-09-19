@@ -112,8 +112,9 @@ timeout: 600_000
 ```
 
 - **Default:** none. Omitted means no default timeout at all.
-- **Precedence, highest first:** a task's own `exec.timeout`, then the
-  `VX_TASK_TIMEOUT` env var, then this.
+- **Precedence, highest first:** a task's own `exec.timeout`, then
+  `--timeout <ms>` (the run flag), then the `VX_TASK_TIMEOUT` env var,
+  then this.
 - It is a runaway-process guard and nothing more: it is never folded
   into a cache key, and a task it kills fails and is never cached.
 

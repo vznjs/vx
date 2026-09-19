@@ -805,6 +805,45 @@ build` and this file records a Bun-specific hazard for exactly
       — proven by dropping `machLookup` from the guide — and a page
       that COUNTS the binaries has its count checked, since the post
       says "three binaries" beside the list.
+378.  DONE (2026-09-19, a ladder missing a rung, and the same
+      one-copy-of-two twice more). `ci.md`, `remote-caching.md`,
+      `workspace-config.md`.
+      The find: the workspace-config guide's `timeout` precedence read
+      "a task's own `exec.timeout`, then the `VX_TASK_TIMEOUT` env
+      var, then this" — THREE rungs of four, and the one it dropped is
+      `--timeout`, the rung a user actually types. It sits ABOVE the
+      env var, so the page did not merely omit it: a reader would have
+      concluded the env var wins over the flag. Every other copy has
+      it right (`schema.md` twice, `cli.md`, `options.ts`, `run.ts`,
+      `execute-task.ts` and `options-resolve.test.ts`'s header, which
+      pins the BEHAVIOUR of all four rungs). The pages were held by
+      nothing; a class pin now reads the ladder off the one expression
+      that resolves it and requires every hand-authored page naming
+      `VX_TASK_TIMEOUT` to name all four. Proven by putting the old
+      sentence back.
+      Two lists were the unpinned half of a pinned pair, the same
+      shape as 377's sandbox grants. The flaky-task footer is rendered
+      in `ci.md` exactly as in the blog post, and only the post was
+      held to `formatFlakySection`; both are now, proven by changing
+      `3×` to `4×`. And `remote-caching.md` said "four mature server
+      implementations" — it had said six, while naming four
+      (NativeLink, BuildBuddy, Buildbarn, bazel-remote). Corrected and
+      deliberately NOT pinned: how many REAPI servers exist in the
+      world is not a fact this repo owns, and a test over it would
+      pin marketing copy.
+      Everything else checked out: the `vx-reapi-v1\0` action-digest
+      prefix, the 128 KB chunk and the Bun floor, `RunOptions.remoteCache`,
+      the four `RemoteCacheLayer` methods (pinned), the `--affected`
+      messages (`has no base here`, `HEAD itself` and the
+      nothing-affected note), the `--frozen` figures (pinned), the
+      job-summary block
+      (pinned), and `vx.workspace.{ts,mts,js,mjs}` against
+      `project-loader.ts`'s list.
+      Read so far: otel-bridge, running-tasks, environment-variables
+      (375); trusting-the-cache, remote-execution, why-vx-is-fast
+      (376); mcp, sandboxing, caching (377); ci, remote-caching,
+      workspace-config (378). Next three: `tasks.md`, `dev-tasks.md`,
+      `extensibility.md`.
 
 ## In flight
 
