@@ -488,6 +488,36 @@ describe('OTLP losslessness', () => {
     ])
   })
 
+  it('pins the TaskTelemetry field set the task span must carry', () => {
+    // The other half of the tripwire above, and the half the additive fields
+    // keep landing in. `Required<TaskTelemetry>` already makes a new field a
+    // type error in FULL_TASK — but until this pin existed the fix for that
+    // error was to add the field to the fixture and stop, and a field added
+    // that way rode NOTHING while every test here passed (probed with a
+    // `probeField?: string`, 2026-09-19).
+    expect(Object.keys(FULL_TASK).sort()).toEqual([
+      'attempts',
+      'blockedBy',
+      'cacheSource',
+      'cpuMs',
+      'durationMs',
+      'exitCode',
+      'hash',
+      'notReady',
+      'outputs',
+      'peakRssBytes',
+      'project',
+      'sandboxViolations',
+      'status',
+      'task',
+      'taskId',
+      'timedOut',
+      'wallclockEndNs',
+      'wallclockStartNs',
+      'where',
+    ])
+  })
+
   it('carries every run-context field on the root span', () => {
     const a = attrMap(runSpanAttributes(RUN) as never)
     expect(a['cicd.pipeline.run.id']).toBe('run-1')
@@ -800,4 +830,52 @@ describe('resolveOtelConfig — logs', () => {
     )!
     expect(cfg.logsUrl).toBe('http://other/logs')
   })
+})
+
+// --- the configured timeout --------------------------------------------
+
+describe('OtelSink request timeout', () => {
+  it('aborts a hanging collector at timeoutMs, not at a hardcoded 15 s', async () => {
+    // A collector that accepts the connection and never answers. `timeoutMs`
+    // was resolved, defaulted and stored and then read by nobody, so this
+    // POST used to abort on a literal 15 s whatever the option said.
+    // The handler is released in `finally`, never left pending: an
+    // unresolved one makes `server.stop(true)` itself hang forever, which
+    // turned this test into a 30 s timeout the moment the floating-promise
+    // lint made that stop awaited (2026-09-19).
+    let release = (): void => undefined
+    const hanging = new Promise<Response>((resolve) => {
+      release = () => resolve(new Response('late'))
+    })
+    const server = Bun.serve({ port: 0, fetch: () => hanging })
+    try {
+      const warned: string[] = []
+      const sink = new OtelSink({
+        tracesUrl: `http://localhost:${server.port}/v1/traces`,
+        metricsUrl: `http://localhost:${server.port}/v1/metrics`,
+        logsUrl: `http://localhost:${server.port}/v1/logs`,
+        serviceName: 'vx',
+        headers: {},
+        metricsEnabled: false,
+        logsEnabled: false,
+        timeoutMs: 100,
+        warn: (m) => warned.push(m),
+      })
+      sink.onRecord({ v: 2, kind: 'run.start', run: RUN, total: 1, ts: 0, startedAt: 0 })
+      sink.onRecord({ v: 2, kind: 'run.end', runId: RUN.runId, ts: 10 })
+      const started = Date.now()
+      await sink.flush()
+      const elapsed = Date.now() - started
+      // The window is the claim: the honest path is ~100 ms and the broken one
+      // is 15 s, so anything between proves which ran. Two seconds leaves a
+      // loaded box twenty times its budget and still fails 7.5x short of the
+      // literal.
+      expect(elapsed).toBeLessThan(2_000)
+      // Never-fail: the abort is swallowed and named, not thrown.
+      expect(warned.join('\n')).toContain('/v1/traces')
+    } finally {
+      release()
+      await server.stop(true)
+    }
+  }, 30_000)
 })

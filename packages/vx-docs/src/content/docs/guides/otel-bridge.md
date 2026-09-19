@@ -66,6 +66,16 @@ Every knob has a standard-OTel env-var fallback; explicit options win.
 | `logs`           | `OTEL_LOGS_EXPORTER=none` disables    | `true`                     |
 | `timeoutMs`      | —                                     | `15000`                    |
 
+`timeoutMs` bounds each signal's POST: a collector that accepts the
+connection and never answers costs the run that long and no more, and the
+abort is swallowed like any other export error.
+
+"Declines if unset" is about the **traces** URL, not `endpoint` itself:
+setting `tracesEndpoint` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) alone
+is enough, and the other two signals then fall back to it. An empty value
+counts as unset everywhere — a workflow that writes an unset secret into
+one of these env vars gets a declining plugin, not a POST to `''`.
+
 ```ts
 otel({
   endpoint: 'https://collector.example.com',

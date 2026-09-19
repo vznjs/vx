@@ -663,6 +663,72 @@ build` and this file records a Bun-specific hazard for exactly
       (symlinks left alone, as the walk leaves them), which is
       deterministic, faster, and one fewer claim about time in a file
       that had three.
+375.  DONE (2026-09-19, the site guides begin — three pages, and a
+      documented knob wired to nothing). The module-page series
+      (306–332) exhausted `docs/modules/`; handoff 14ae names the site
+      pages under `packages/vx-docs/src/content/docs/` as what follows,
+      guides first, by the same oldest-page queue and the same three
+      per item. The three oldest by last touch: `otel-bridge.md`,
+      `running-tasks.md`, `environment-variables.md`.
+      Two read true, and both were already held where they enumerate
+      something: the allowlist in `environment-variables.md` is one of
+      the four copies item 359 pinned, and every flag, mode and example
+      in `running-tasks.md` is what `help.ts` and the parsers say,
+      `--max-size 5gb` included (`parseSize`'s regex takes the `B` and
+      the case). Their remote-execution and recursion-guard claims
+      check out in `vx-reapi`'s `commandEnvironment` and in
+      `run.ts`'s nested-run refusal.
+      The otel guide cost three finds. (1) `timeoutMs` was a DEAD
+      OPTION: resolved from the option, defaulted to 15000, carried on
+      `OtelSinkConfig`, stored on the sink — and read by nobody, while
+      the POST aborted on a literal `15_000`. `otel({ timeoutMs: 1000 })`
+      waited fifteen seconds on a hanging collector, which the new test
+      measures at 15003 ms without the fix and ~100 ms with it. The
+      default POST takes the configured value now.
+      (2) `taskSpanAttributes`' docblock described a per-file
+      fingerprint map "up to 500 path/hash pairs" and a `tree` field a
+      collector may truncate. No such attribute exists, in that package
+      or in core's `TaskTelemetry` — a vx-cloud-era claim the code
+      lacks, struck for what is true (nothing on that span is
+      unbounded; the tail travels as a log record that carries its own
+      length).
+      (3) The losslessness tripwire had only one of its two halves.
+      `Required<TaskTelemetry>` makes a new field a type error in the
+      fixture, but the key pin next to it covers `RunContextRecord`
+      only — so the fix for that type error was to add the field to the
+      fixture and stop. Probed: a `probeField` added to the interface
+      and the fixture rode nothing and all 41 tests passed. The task
+      half is pinned now, and this is the half the additive fields keep
+      landing in (`where`, `outputs`, `attempts`, `blockedBy`,
+      `timedOut`, `sandboxViolations`, `notReady` all arrived that way).
+      Also pinned: every `OtelPluginOptions` field but the test seam
+      has a row in the guide's table — proven both ways, a dropped row
+      and an added option. The table was already complete; a pin on a
+      list the code owns is the method this series settled on, not a
+      find.
+      The gate earned its keep twice more. `bun test` passed a
+      `server.stop(true)` that `lint.oxlint` refused as a floating
+      promise — and awaiting it hung the test forever, because a
+      `Bun.serve` handler that never settles makes `stop(true)` never
+      resolve either. The handler is released in `finally` now; probed
+      both ways under `bwrap --unshare-net`, which is where the task
+      runs (152 ms released, a 30 s timeout pending). That same lint
+      run named a dead `MIN_BUN` import in `doctor.ts`, left by item
+      367's design churn: only the comment beside it still uses the
+      name. Core's own lint names its files and had not seen it; the
+      plugin's, which reads the symlinked core, did.
+      Recorded, not fixed: `output-memory.test.ts`'s
+      `long - short < 64` MiB failed the gate at 76 under twelve
+      parallel shards and passes 4/4 three times in isolation — the
+      second time this file has done that (item 365 was the first),
+      and out of reach of this diff. Loosening it is the wrong move
+      and the comment above it says why: the measured UNBOUNDED
+      figures are 651/488 MiB at 6 s against 280/370 at 2 s, so the
+      `\r` arm grows ~30 MiB/s and this test's 1 s → 3 s gap would
+      show only ~59 MiB unbounded. A 128 MiB slack would stop
+      catching the very regression it is for. What the arm needs is a
+      wider duration gap or a measured noise floor, not a bigger
+      number; a Next item when someone takes it.
 
 ## In flight
 
