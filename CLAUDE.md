@@ -265,8 +265,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   fix whose old key was already wrong is self-healing and does not bump.
 - Key derivation: xxh3 seed-chained parts, `\0` delimiters, git blob OIDs
   for tracked-clean files, pure-input transitive hashing, the project's
-  `package.json` bytes and the workspace fingerprint. `exec.resources` and
-  `exec.remote` are stripped (placement only); `timeout`/`retries` and
+  `package.json` bytes and the workspace fingerprint. `exec.remote` is
+  stripped (placement only; `exec.resources` went with the reservations
+  on 2026-09-12 and a config cannot declare it); `timeout`/`retries` and
   `description` are folded.
 - Cache correctness is the worst failure class: a stale hit replays wrong
   bytes under a green run. Treat `execute-task.ts` changes as stale-hit-critical.

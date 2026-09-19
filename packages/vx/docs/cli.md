@@ -1403,7 +1403,7 @@ bare  packages/bare  (no vx config)
 `vx show <project>` prints a block per task with every field the run
 reads: description, command (`(group)` for group tasks), `dependsOn`,
 `timeout`, `retries`, `env.passThrough` / `env.define`, `remote`,
-`resources`, `sandbox`, `persistent`, and the cache block
+`sandbox`, `persistent`, and the cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
 `.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
 task does not set are not printed. `--format json` emits `{ name, dir,
