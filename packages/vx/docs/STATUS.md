@@ -782,9 +782,10 @@ test is telling the truth.
       and `bin.ts` truncates a 2 MiB pipe write to 219 KB — the exact
       defect the Rules section records as FIXED, which on this runtime
       it is not. Four more follow from that missing usage number,
-      seven are the watch loop and `armWatcher` (they fail in
-      isolation too, so the container's file notifications, not load),
-      and two pass 3/3 alone and fail only under twelve shards. The
+      seven are the watch loop and `armWatcher` — which I attributed
+      here to "the container's file notifications" and item 369 proved
+      wrong: they are the floor too, so 21 of the 23 — and two pass
+      3/3 alone and fail only under twelve shards. The
       upgrade is not available: `bun upgrade` is refused by this build
       and bun.sh answers 403 through the proxy, both tried. The
       controlled comparison is free and closes the attribution: CI
@@ -866,6 +867,32 @@ build` and this file records a Bun-specific hazard for exactly
       failed that third arm — a component-wise `some(n < e)` calls
       2.0.0 older than 1.9.0 on the minor — so the lexicographic helper
       proves itself on four pairs before the rule uses it.
+369.  DONE (2026-09-19, the last group of the baseline resting on
+      inference). Item 366 put seven failures — the watch loop and
+      `armWatcher` — down to "the container's filesystem
+      notifications". That was a plausible cause I had not proven,
+      which this file's own rule forbids, and it was WRONG. The
+      container is ext4 on a real block device with 130k inotify
+      watches available, and a direct probe delivers `fs.watch` events
+      in both recursive modes. What the probe then found is the actual
+      rule: Bun 1.3.11 never reports a DOT-prefixed filename.
+      `plain.txt` is delivered; `.dotfile`, `.vx-watch-probe` and
+      `sub/.dotfile` are dropped, recursive and not. `armWatcher`
+      proves a watcher is live by writing `.vx-watch-probe` and waiting
+      for its event, so below the floor that proof can never arrive.
+      The baseline is 21 of 23 the runtime now, and the two
+      `--continue=always` cases are the whole of what load explains.
+      Both wrong entries are corrected in place, 366's and the § In
+      flight note's. Nothing to fix in the code, and that is a finding
+      too: the loop already swaps `pollWatcher` in when readiness is
+      not proved and writes a line saying it is polling, so on such a
+      runtime `vx watch` degrades loudly instead of watching nothing —
+      the design anticipated a filesystem that reports nothing and this
+      is one. Recorded as a fourth measured breakage in
+      `modules/util-bun-version.md`, beside the three item 366 found.
+      No test: "Bun drops dotfiles" is a claim about a runtime below
+      the floor, and asserting it would fail on CI's 1.4.2, where the
+      events arrive.
 
 ## In flight
 
@@ -884,11 +911,15 @@ runner reads no `peakRssBytes` at all (2), and `bin.ts` truncates a
 2 MiB pipe write to 219 KB, the very defect the Rules section records
 as fixed (1). Four more are downstream of that missing usage number
 (`vx last`, the remote-usage e2e, both schedule-history reservation
-cases). Seven are the watch loop and `armWatcher`, which fail in
-ISOLATION too, so they belong to the container's filesystem
-notifications, not to load. Two — the `--continue=always` pair — pass
-3/3 in isolation and fail only beside eleven other shards, as
-`output-memory`'s RSS case does. The controlled comparison closes it: CI pins
+cases). Seven are the watch loop and `armWatcher`, and item
+369 MEASURED what this sentence first guessed: they are the floor too.
+Bun 1.3.11's `fs.watch` never reports a DOT-prefixed filename — a
+plain file is delivered, `.vx-watch-probe` is dropped, in both
+recursive modes — and that probe is exactly how `armWatcher` proves a
+watcher is live. So 21 of the 23 are the runtime, not 10. That leaves TWO — the
+`--continue=always` pair — which pass 3/3 in isolation and fail only
+beside eleven other shards, as `output-memory`'s RSS case does. Those
+two are the whole of what load explains. The controlled comparison closes it: CI pins
 `bun-version: 1.4.2` in `ci.yml` and every PR of this arc went green
 there — same tree, same tests, 23 red here and none there. Upgrading
 is not available in the container: `bun upgrade` is refused by this
