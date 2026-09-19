@@ -228,3 +228,67 @@ describe('package boundaries', () => {
     expect(below).toEqual([])
   })
 })
+
+// Rule 3 pins the RUNTIME export set, which types are not — so the façade
+// could name a function and withhold the type it returns, and did: `run` and
+// `prepareRun` both had theirs, `planRun` did not, while docs/cli.md
+// § Programmatic API listed all three as the surface an embedder builds on
+// (item 387, 2026-09-19). Discovered from the façade rather than listed: the
+// next engine function re-exported here is held to the same rule without an
+// edit.
+describe('the programmatic surface names every type it returns', () => {
+  it('each engine function re-exported from src/index.ts exports its result type', async () => {
+    const facade = await Bun.file(path.join(CORE_SRC, 'index.ts')).text()
+    const fns = [...facade.matchAll(/^export \{([^}]+)\} from '\.\/orchestrator\/index\.js'$/gm)]
+      .flatMap((m) => m[1]!.split(',').map((s) => s.trim()))
+      .filter((s) => s !== '' && !s.startsWith('type '))
+    expect(fns).toContain('planRun')
+
+    let orchestrator = ''
+    const files = new Bun.Glob('*.ts')
+    for await (const rel of files.scan({ cwd: path.join(CORE_SRC, 'orchestrator') })) {
+      orchestrator += await Bun.file(path.join(CORE_SRC, 'orchestrator', rel)).text()
+    }
+    // Both spellings the façade uses: a whole `export type { … }` clause and
+    // a `type X` member inside a value `export { … }`. Reading only the first
+    // reported `collectInfo → InfoFacts` missing when the line right above
+    // exports it — a naive selector passes by claiming a gap as readily as by
+    // missing one.
+    const exportedTypes = new Set(
+      [...facade.matchAll(/^export (type )?\{([^}]+)\} from/gms)].flatMap((m) =>
+        m[2]!
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => m[1] !== undefined || s.startsWith('type '))
+          .map((s) => s.replace(/^type\s+/, '').split(/\s+as\s+/)[0]!),
+      ),
+    )
+    // A built-in needs no export; only a type core declares can be withheld.
+    const BUILTIN = new Set([
+      'Map',
+      'Set',
+      'Array',
+      'Promise',
+      'void',
+      'string',
+      'number',
+      'boolean',
+    ])
+    const missing: string[] = []
+    const checked: string[] = []
+    for (const fn of fns) {
+      const decl = new RegExp(
+        String.raw`export async function ${fn}\b[\s\S]*?\): Promise<([A-Za-z]+)`,
+      ).exec(orchestrator)
+      if (decl === null) continue
+      checked.push(fn)
+      const type = decl[1]!
+      if (!BUILTIN.has(type) && !exportedTypes.has(type)) missing.push(`${fn} → ${type}`)
+    }
+    // The rule reaches every async engine function on the façade, not a list
+    // of three: these are the ones docs/cli.md names, and the check must have
+    // found them for `missing` to mean anything.
+    for (const fn of ['run', 'planRun', 'prepareRun']) expect(checked).toContain(fn)
+    expect(missing).toEqual([])
+  })
+})

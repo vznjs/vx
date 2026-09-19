@@ -1089,6 +1089,40 @@ build` and this file records a Bun-specific hazard for exactly
       naive-selector failure of 377, 380 and 384 a FOURTH time, and
       the tell is always the same: the differential that matters (does
       a real new field fail?) was never the one the first draft ran.
+387.  DONE (2026-09-19, `cli.md` — the last large contract page —
+      and two findings of different kinds). Read against source: the
+      exit ladder, `VX_KILL_GRACE_MS` and its two-second default, the
+      moved verbs' pointers, the report's status and cache
+      vocabularies, the glyph grid, the worker-row cap, the 30 ms
+      redraw floor, the GHA group and error commands, prune's units
+      and its one-hour orphan grace — all of them hold.
+      Two do not. First, a SWALLOWED LIST ITEM: the four-step cache
+      precedence under § Cache control rendered as three steps plus a
+      run-on sentence, because a paragraph written into the blank line
+      after step 3 left step 4 nowhere to start and the formatter
+      joined it on. The page then read `--force` as part of a remark
+      about remote layers. This is the reflow damage the parenthesis
+      pin catches in its other shape, so the pin is a sibling of that
+      one and it is a CLASS: two design docs carried the same break
+      (`architecture-review-2026-06` and `-07`, where a whole phase
+      plan ran inline). The selector only counts a number that follows
+      sentence punctuation, which is what tells a pulled-up marker
+      from a citation (`— item 206. The session`).
+      Second, the façade named `planRun` and withheld `RunPlan` and
+      `PlannedTask`, while § Programmatic API listed all three engine
+      functions as the surface an embedder builds on — and `run` and
+      `prepareRun` both had their return types exported from the
+      start. An embedder that cannot NAME a return type cannot hold
+      it. Exported, and pinned by discovery: every async engine
+      function the façade re-exports must export what it returns, so
+      the next one added is held without an edit. Rule 3 could never
+      have caught this — it pins the RUNTIME export set, and a type is
+      not one.
+      The selector went naive twice more here and both were caught by
+      running the check, not by reading it: the first read only whole
+      `export type {…}` clauses and reported `collectInfo → InfoFacts`
+      missing when the line above exports it inline, and the second
+      flagged `loadResolvedProjects → Map` as an unexported type.
 
 ## In flight
 

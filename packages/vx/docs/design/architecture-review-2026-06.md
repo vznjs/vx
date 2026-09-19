@@ -387,7 +387,12 @@ The current state has THREE event shapes in flight:
 2. `WireEvent` (post-projection, JSON-safe)
 3. `ServerMessage|ClientMessage` (`protocol.ts` envelope for `vx serve`)
 
-Plus future surfaces want: 4. MCP tool result framing (JSON-RPC 2.0) 5. A2A inter-agent envelopes (JSON-RPC 2.0) 6. OTel exporter output (OTLP) 7. devframe channels (currently in vx)
+Plus future surfaces want:
+
+4. MCP tool result framing (JSON-RPC 2.0)
+5. A2A inter-agent envelopes (JSON-RPC 2.0)
+6. OTel exporter output (OTLP)
+7. devframe channels (currently in vx)
 
 That's 7 framings. Consolidate to **two** (in-process `RunEvent` for
 type fidelity, wire JSON-RPC 2.0 with `WireEvent` as the param

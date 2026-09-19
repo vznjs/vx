@@ -361,12 +361,13 @@ them in this precedence order:
 1. Start with every axis **on** (the default).
 2. Apply each `--cache=<spec>` segment (the base).
 3. If `--no-cache` was passed, force **all four off**.
+4. If `--force` was passed, force **both reads off** (writes stay
+   whatever the base / `--cache` left them).
 
 A spec that names a remote axis (`remote:r`, `remote:w`, `remote:rw`)
 in a workspace whose plugins supply no remote layer gets one status
 line saying so — the axes are inert without a layer to serve them, and
-a CI job that believes it is filling a shared cache should be told. 4. If `--force` was passed, force **both reads off** (writes stay
-whatever the base / `--cache` left them).
+a CI job that believes it is filling a shared cache should be told.
 
 So `--no-cache` always wins over `--force`. The common cases:
 
@@ -1916,10 +1917,11 @@ Surface:
   graph → cache). What an embedder builds on.
 - `defineProject` / `defineWorkspace` — identity helpers for type
   inference in user configs.
-- `RunOptions` / `RunSummary` / `TaskOutcome` types are re-exported
-  from `@vzn/vx`, alongside the plugin (`VxPlugin`, `TaskExecutor`,
-  `CacheLayer`) and telemetry (`TelemetrySink`, `RunSummaryRecord`)
-  surfaces — see `src/index.ts`.
+- Every one of the three returns a type the façade exports, so an
+  embedder can hold it: `RunOptions` / `RunSummary` / `TaskOutcome`,
+  `RunPlan` / `PlannedTask`, `PreparedRun` — alongside the plugin
+  (`VxPlugin`, `TaskExecutor`, `CacheLayer`) and telemetry
+  (`TelemetrySink`, `RunSummaryRecord`) surfaces. See `src/index.ts`.
 
 A `log: Logger` option lets embedders swap the default framed-block
 logger for a custom one (e.g. JSON-line emission). Custom loggers
