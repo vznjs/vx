@@ -74,7 +74,11 @@ the upstream's output rows, which the save writes.
    NOW, after the command.
 2. The empty-set warning (`cache.outputs matched no files`) — a status
    line, once, on this miss; `outputs: []` is a deliberate cached no-op
-   and says nothing.
+   and says nothing. When the task declares `exec.sandbox` and no
+   `allow.write`, the line names that as the cause: its writes went to
+   the sandbox's scratch, and in a single-package workspace they do so
+   without the shell noticing, so this line is the only signal (item
+   444).
 3. `cache.save` — entry, output rows and `entry_inputs` rows in one
    transaction; no exit code, because the contract accepts none and the
    caller's `exitCode === 0` gate is the invariant.

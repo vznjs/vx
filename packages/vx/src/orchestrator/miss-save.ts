@@ -79,9 +79,22 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<void>
     a.outputs.length + a.wsOutputs.length > 0 &&
     outputFiles.length + wsOutputFiles.length === 0
   ) {
+    // One cause is common enough to name, because the task shows no other
+    // symptom: a sandboxed task with no write grant. Its writes land in the
+    // sandbox's own scratch and never reach disk, and whether the shell
+    // even notices depends on the layout — in a single-package workspace
+    // (project dir === workspace root) the write SUCCEEDS into that
+    // scratch and the task exits 0, so this warning is the only thing that
+    // says the build produced nothing (item 444). A declared
+    // `cache.outputs` is not a write grant; `exec.sandbox.allow.write` is.
+    const sandboxed = node.config.exec?.sandbox !== undefined
+    const grantsWrite = (node.config.exec?.sandbox?.allow?.write?.length ?? 0) > 0
     log.status(
       `[vx] ${node.id}: cache.outputs matched no files (${[...a.outputs, ...a.wsOutputs].join(', ')}) — ` +
-        `an empty artifact is saved; a later hit restores nothing`,
+        `an empty artifact is saved; a later hit restores nothing` +
+        (sandboxed && !grantsWrite
+          ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
+          : ''),
     )
   }
   const save = async (): Promise<void> => {
