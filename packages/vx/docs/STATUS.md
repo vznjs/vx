@@ -2061,6 +2061,48 @@ non-empty string` is caught by exactly ONE row, and it is the
       with a recent timestamp, `config_closures` appeared — the whole
       finding was hiding behind a placeholder value.
 
+505.  DONE (2026-09-20, the KEY FOLD in `cache.ts` and the config
+      projection in `task-hash.ts` — a wrong key is this project's
+      worst failure class, and the fold is a LIST, so it was swept as
+      one).
+      The value parts are pinned: dropping the taskId, the workspace
+      fingerprint, the project package.json hash or the config hash
+      fails 1, 1, 3 and 7 rows. `exec.remote`'s stripping fails 2.
+      THE SURVIVORS are the list COUNT prefixes — `env-values:N`,
+      `upstream:N`, `forward-args:N` — and the classification took two
+      experiments rather than one.
+      Individually they are redundant for DISCRIMINATION. Remove any
+      single one and re-key 4,000 randomized inputs: the same 1,210
+      distinct keys, zero collisions. The neighbouring labels still
+      frame the sections and the fold is seed-chained, so order
+      already carries the information.
+      Jointly they are not redundant at all. Remove TWO ADJACENT
+      prefixes and the same 4,000 inputs collide 31 times, with
+      witnesses of exactly the predicted shape: one pair moved from
+      `envValues` to `runtimeValues`, or an extra pair shifted across
+      the boundary. Two different input sets, one key — the stale hit
+      the key exists to prevent.
+      So the pin is the GUARANTEE, not a member: three rows asserting
+      that moving a pair across a section boundary moves the key, each
+      with a control that the same input twice gives the same key. A
+      SINGLE removed prefix leaves them green, which is right — that
+      removal really is harmless; the double removal reddens two of
+      the three, each at its own boundary.
+      Also classified: `hashableConfig`'s early return. Measured, the
+      spread path produces byte-identical JSON for every config that
+      HAS an `exec`, so the fast path is a shortcut, not the reason
+      the field needed no CACHE_VERSION bump. Its one behavioural case
+      is a config with no `exec` — and a reachability probe (throw on
+      a no-exec config, whole suite) never fired, because group tasks
+      take `computeGroupHash` instead. De-claimed accordingly.
+      Method note: this is rule 4 — several guards, one guarantee — in
+      its purest form yet, and the lesson is about what to ASSERT. A
+      row per member would have been wrong twice over: it would pass
+      on the removal that matters (the other member still frames the
+      section) and fail on the removal that does not. The guarantee is
+      the only thing with a single truth value, so the guarantee is
+      what the row says.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

@@ -626,3 +626,64 @@ describe('computeTaskHash — the trusted-OID fast path for package.json', () =>
     expect(a).not.toBe(b)
   })
 })
+
+describe('the key FRAMES its list sections — moving a pair across a boundary moves the key', () => {
+  // Item 505. `Cache.key` folds each list section behind a labelled count
+  // (`env-values:N`, `runtime-values:N`, `upstream:N`, `forward-args:N`)
+  // and then folds the elements. Each prefix on its own is redundant for
+  // DISCRIMINATION — removing any single one and re-keying 4,000 random
+  // inputs gives the same 1,210 distinct keys and zero collisions, because
+  // the neighbouring labels still frame the sections and the fold is
+  // seed-chained, so order already matters.
+  //
+  // Together they are not redundant at all. Remove TWO adjacent prefixes
+  // and the same 4,000 inputs collide 31 times, with witnesses exactly
+  // this shape: one pair moved from `envValues` to `runtimeValues`, or an
+  // extra pair shifted across the boundary. Two different input sets, one
+  // key — the stale hit this whole file exists to prevent.
+  //
+  // So the assertion is the GUARANTEE, not a member: no two distinct
+  // key-inputs may fold the same key. A single removed prefix leaves this
+  // green, which is correct — that removal really is harmless.
+  const base = {
+    taskId: 'p#t',
+    taskConfigHash: 'cfg',
+    inputFiles: [] as string[],
+    workspaceRoot: '/w',
+    upstreamHashes: [] as string[],
+    workspaceFingerprint: 'fp',
+    projectPackageJsonHash: 'pkg',
+    forwardArgs: [] as string[],
+    envValues: [] as Array<[string, string]>,
+    runtimeValues: [] as Array<[string, string]>,
+    workspaceRuntimeValues: [] as Array<[string, string]>,
+  }
+  const crossings: Array<[string, Record<string, unknown>, Record<string, unknown>]> = [
+    ['env → runtime', { envValues: [['ab', 'a']] }, { runtimeValues: [['ab', 'a']] }],
+    [
+      'runtime → workspaceRuntime',
+      { runtimeValues: [['c', 'o']] },
+      { workspaceRuntimeValues: [['c', 'o']] },
+    ],
+    [
+      'a second pair shifted across env|runtime',
+      { envValues: [['a\u0000b', 'ab']], runtimeValues: [['a', 'a']] },
+      {
+        envValues: [
+          ['a\u0000b', 'ab'],
+          ['a', 'a'],
+        ],
+      },
+    ],
+  ]
+  for (const [what, left, right] of crossings) {
+    it(`distinguishes ${what}`, async () => {
+      const a = await cache.key({ ...base, ...left } as never)
+      const b = await cache.key({ ...base, ...right } as never)
+      expect(a).not.toBe(b)
+      // CONTROL: the same input twice is the same key, so the row cannot
+      // pass on a derivation that simply never repeats itself.
+      expect(await cache.key({ ...base, ...left } as never)).toBe(a)
+    })
+  }
+})
