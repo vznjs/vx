@@ -112,6 +112,41 @@ describe('two tasks cannot claim the same output', () => {
       graph({ app: { all: task(['dist/vx-*']), one: task(['dist/vx-linux-x64']) } }),
     ).toThrow(/both declare the output/)
   })
+
+  // `*` is not the only wildcard a glob can carry, and this refusal turns
+  // on CLASSIFYING a spelling as literal or glob: a pattern mistaken for a
+  // literal is compared by string equality, so it never matches the file it
+  // really claims and the collision goes through. Narrowing the classifier
+  // to `*` alone passed the entire suite, because every fixture above
+  // spells its wildcard `*` — measured on the predicate, `dist/a?.txt` vs
+  // `dist/ab.txt` and `dist/[ab].txt` vs `dist/a.txt` both go true → false
+  // (item 494).
+  const otherWildcards: Array<[string, string, string]> = [
+    ['?', 'dist/a?.txt', 'dist/ab.txt'],
+    ['a character class', 'dist/[ab].txt', 'dist/a.txt'],
+  ]
+  for (const [what, glob, literal] of otherWildcards) {
+    it(`refuses a glob spelled with ${what} over a matching literal`, () => {
+      expect(() => graph({ app: { all: task([glob]), one: task([literal]) } })).toThrow(
+        /both declare the output/,
+      )
+      // Either order, like every other pair here.
+      expect(() => graph({ app: { one: task([literal]), all: task([glob]) } })).toThrow(
+        /both declare the output/,
+      )
+    })
+  }
+
+  it('CONTROL: those wildcards do not refuse a literal they do not match', () => {
+    // Without this, the two rows above would also pass on a rule that
+    // refused any pair merely containing a `?` or a bracket.
+    expect(() =>
+      graph({ app: { a: task(['dist/a?.txt']), b: task(['dist/zz.txt']) } }),
+    ).not.toThrow()
+    expect(() =>
+      graph({ app: { a: task(['dist/[ab].txt']), b: task(['dist/c.txt']) } }),
+    ).not.toThrow()
+  })
 })
 
 describe('a literal entry is the file OR its whole tree', () => {

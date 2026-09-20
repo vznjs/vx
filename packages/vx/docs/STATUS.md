@@ -1628,6 +1628,48 @@ non-empty string` is caught by exactly ONE row, and it is the
       the shape where the wrong rule orders differently — a fixture
       where both rules agree is a test of neither.
 
+494.  DONE (2026-09-20, `graph/task-graph.ts`, 625 lines — the other
+      half of the graph module, and stale-hit/data-loss class: a wrong
+      edge folds a wrong upstream key, and two tasks claiming one
+      output delete each other's work under a green summary). Nine
+      mutations, EIGHT caught, and the file earns the held report —
+      it is the best-pinned surface swept so far, which is what 441,
+      442 and 445 bought.
+      Caught, each by rows naming the claim: dropping either direction
+      of the literal-vs-glob comparison (8 rows), the identical-globs
+      case (7), the deps dedup, the deps sort, the origin seeding the
+      package-cycle `visited` set (5), walking past the nearest holder
+      (3), and both of `markSurfacedDeps`'s stated hard limits — one
+      row each, exactly named.
+      THE SURVIVOR is `isLiteralGlob`, and it is a hole with the worst
+      consequence in the file. The refusal turns on CLASSIFYING a
+      spelling as literal or glob: classified literal, a pattern is
+      compared by string equality, never matches the file it actually
+      claims, and the collision is allowed through — so the two tasks
+      clean each other's outputs on every run and the run reports
+      success. Narrow the classifier from `[*?[\]]` to `[*]` and the
+      WHOLE SUITE passes, because every fixture in the file spells its
+      wildcard `*`. Measured on the predicate: `dist/a?.txt` vs
+      `dist/ab.txt` and `dist/[ab].txt` vs `dist/a.txt` both go
+      true → false, while `Bun.Glob` matches both pairs — so the
+      globs really do claim those files.
+      Pinned one character at a time, with a control: `?` over a
+      matching literal, a character class over a matching literal,
+      both in either declaration order, plus a CONTROL that neither
+      refuses a literal it does not match (without it the rows would
+      also pass on a rule that refused any pair containing a `?` or a
+      bracket). Differential per character: narrowing to `[*]` reddens
+      both rows, narrowing to `[*?]` reddens only the character-class
+      one.
+      Method note: this is 493's shape a third time, and the sharpest
+      instance yet — not a graph whose shape makes two rules agree,
+      but an ALPHABET. Every fixture wrote its wildcard the same way,
+      so the classifier was only ever asked about one of the three
+      characters it classifies. When a predicate switches on a SET of
+      spellings, the fixtures have to spell it every way the set
+      allows, and one row per member is what makes the mutation of
+      each member visible.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
