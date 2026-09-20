@@ -841,6 +841,41 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       a fact rather than an assumption, and it is cheap enough to keep
       even when it is expected to pass.
 
+453.  DONE (2026-09-20, the lead 450 left: the ONE-SHOT path's own
+      placeholder sweeps, which 450 did not touch).
+      REFUTED first, by reading before mutating: the two sites there do
+      NOT carry 450's two-asker shape. They are mutually exclusive — the
+      catch rethrows, so the success-path sweep below it is unreachable
+      once the catch has run — and sequential callers cannot race.
+      FOUND instead, on the exit that nothing drove: removing the sweep
+      from the executor's catch breaks nothing in the repo. It matters
+      because `sandboxRequestFor` creates the placeholder BEFORE the
+      executor runs, and the request builder is shared, so a PLUGIN
+      executor gets one too. When that executor rejects — a wire down,
+      or a malformed result caught by `assertExecuteResult` — the sweep
+      in the catch is the only thing that takes the file back. Left
+      behind, it is precisely the trap the placeholder machinery exists
+      to prevent: the task's own `mkdir` says "File exists" on every
+      later run, and an output glob's clean matches nothing under a
+      file, so it never clears by itself.
+      Unpinned because the combination is narrow — a plugin executor
+      AND a sandboxed task with a literal write grant — which is the
+      arc's recurring shape stated once more: the gap is not in the
+      hard code, it is where two ordinary features meet.
+      Pinned with a workspace plugin whose `executor` throws, over a
+      task granting `write: ['out.txt']`, asserting the run fails with
+      the plugin's message and the project holds no `out.txt`. Red 3 of
+      3 under the mutation, green with the fix.
+      MAIN's red of 05d428a, recorded as CLOSED-UNEXPLAINED. That push
+      run failed one task of 44 in the Linux job while the identical
+      tree was green on its own PR run. The failing task's NAME was
+      never obtained: the log tail did not reach its block and the
+      signed blob URL is refused by this container's egress proxy. It
+      has not recurred — main's push run for 9db1f99 is green — and the
+      cause is UNKNOWN. 450's placeholder race fits the shape and is
+      not offered as the answer; a guess written down becomes a fact
+      nobody re-checks.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family

@@ -13,6 +13,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 import {
   initSandbox,
   probeSandbox,
@@ -167,6 +169,56 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       expect(out).toContain('write grant `.cache` named nothing on disk')
       expect(out).toContain('spell the grant `.cache/`')
       expect(existsSync(path.join(projDir, '.cache'))).toBe(false)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an executor that THROWS still takes back the placeholder it never wrote',
+    async () => {
+      // The one-shot path's other exit. `sandboxRequestFor` creates the
+      // empty file for a literal write grant BEFORE the executor runs, and
+      // it does so whichever executor that is — the request builder is
+      // shared, so a plugin executor gets one too. If that executor
+      // rejects (a wire down, a malformed result caught by
+      // `assertExecuteResult`), the sweep in the catch is the only thing
+      // that takes the file back, and nothing in the repo drove it: the
+      // combination needs a plugin executor AND a sandboxed task with a
+      // literal grant. Left behind, the file is exactly the trap the whole
+      // placeholder machinery exists to prevent — the task's own `mkdir`
+      // says "File exists" on every later run, and a `dist/**` clean
+      // matches nothing under a file, so it never goes away by itself.
+      const projDir = await addProject(fixture.root, 'app', {
+        files: {},
+        config: `export default { tasks: { build: { exec: {
+          command: 'mkdir -p out.txt',
+          sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
+        } } } }\n`,
+      })
+      await writeFile(
+        path.join(fixture.root, 'vx.workspace.mjs'),
+        localWorkspaceSource([
+          pluginSource(
+            'org/thrower',
+            `{ executor() {
+               return {
+                 name: 'thrower',
+                 async execute() { throw new Error('WIRE-DOWN') },
+               }
+             } }`,
+          ),
+        ]),
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: collectingLogger(fixture),
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(false)
+      expect(fixture.log.join('\n')).toContain('WIRE-DOWN')
+      // The claim: nothing of vx's own is left in the project.
+      expect(existsSync(path.join(projDir, 'out.txt'))).toBe(false)
     },
     TIMEOUT,
   )
