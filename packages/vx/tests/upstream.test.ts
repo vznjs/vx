@@ -31,6 +31,38 @@ describe('filterUpstreamHashes', () => {
     ])
   })
 
+  it('an upstream with NO hash contributes nothing, filtered or not', () => {
+    // `TaskOutcome.hash` is optional, and core does build outcomes without
+    // one: the scheduler's skipped / aborted branch omits it. Both folds
+    // skip those — an absent key is not a key, and folding `undefined`
+    // would put a constant where an upstream's identity belongs.
+    //
+    // Measured, not assumed: instrumenting the filtered fold across the
+    // continue-taint, abort, restore-tier and e2e orchestrator suites
+    // logged 134 upstream entries and NOT ONE without a hash, because a
+    // dependent of a skipped task is itself skipped rather than keyed. So
+    // the guard is defensive today — which is exactly why it is pinned at
+    // the function's own boundary, where the contract is statable, rather
+    // than by asserting that nothing upstream can reach it. That second
+    // claim would pin the reachability, i.e. the implementation.
+    const hashless = { ...outcome('dep#b', 'x'), status: 'skipped' as const }
+    delete (hashless as { hash?: string }).hash
+    const up = [outcome('self#a', 'h-a'), hashless]
+
+    expect(filterUpstreamHashes(up, undefined, 'self', 'self#build')).toEqual([['self#a', 'h-a']])
+    expect(filterUpstreamHashes(up, ['*', '^*'], 'self', 'self#build')).toEqual([['self#a', 'h-a']])
+
+    // CONTROL: the same outcome WITH a hash does contribute, so the row
+    // above is the missing hash and not a mis-built fixture.
+    const withHash = { ...hashless, hash: 'h-b' }
+    expect(
+      filterUpstreamHashes([outcome('self#a', 'h-a'), withHash], ['*', '^*'], 'self', 'self#build'),
+    ).toEqual([
+      ['self#a', 'h-a'],
+      ['dep#b', 'h-b'],
+    ])
+  })
+
   it('empty filter → nothing contributes (fully decoupled)', () => {
     const up = [outcome('self#a', 'h-a'), outcome('dep#b', 'h-b')]
     expect(filterUpstreamHashes(up, [], 'self', 'self#build')).toEqual([])
