@@ -415,6 +415,61 @@ describe('pollWatcher', () => {
     while (!seen.includes(want) && Date.now() - start < 3000) await Bun.sleep(10)
   }
 
+  // Item 482. `POLL_SKIP` carried `dist` on the reasoning that
+  // `makeWatchIgnore` "already drops their EVENTS, so the walk buys
+  // nothing". True of `node_modules`, `.git` and `.vx` — they are
+  // `IGNORED_SEGMENTS`. NOT true of `dist`, which is dropped only when a
+  // project DECLARES it as an output. A project that does not had its
+  // `dist/` sources silently invisible on exactly the hosts the poller
+  // exists for (a macOS sandbox, a network mount, a container bind) while
+  // the native watcher delivered them — two watchers disagreeing about
+  // what an edit is.
+  it('descends into an UNDECLARED dist, and skips one a task declares', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-dist-'))
+    try {
+      await mkdir(path.join(dir, 'dist'), { recursive: true })
+      await writeFile(path.join(dir, 'dist', 'vendored.js'), '1')
+      await writeFile(path.join(dir, 'src.ts'), '1')
+
+      // No project declares `dist` here, so an edit under it is source.
+      const open: string[] = []
+      const w = pollWatcher(dir, true, (f) => open.push(f), 20)
+      try {
+        await Bun.sleep(30)
+        await writeFile(path.join(dir, 'dist', 'vendored.js'), '2')
+        await settle(open, 'dist/vendored.js')
+        expect(open).toContain('dist/vendored.js')
+      } finally {
+        w.close()
+      }
+
+      // CONTROL: declared as an output, the same edit is the task's own
+      // write and must NOT kick the loop — the caller's filter says so,
+      // and the skip is per project rather than a name the poller knows.
+      const ignore = makeWatchIgnore(path.join(dir, '.vx'), new Map([[dir, ['dist/**']]]))
+      const declared: string[] = []
+      const p = pollWatcher(
+        dir,
+        true,
+        (f) => declared.push(f),
+        20,
+        (rel) => ignore(dir, rel),
+      )
+      try {
+        await Bun.sleep(30)
+        await writeFile(path.join(dir, 'dist', 'vendored.js'), '3')
+        await writeFile(path.join(dir, 'src.ts'), '2')
+        await settle(declared, 'src.ts')
+        expect(declared).toContain('src.ts')
+        expect(declared).not.toContain('dist/vendored.js')
+      } finally {
+        p.close()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('reports a modification, a creation and a deletion, and never the probe', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-poll-'))
     await writeFile(path.join(dir, 'a.txt'), '1')

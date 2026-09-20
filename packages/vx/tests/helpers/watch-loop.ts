@@ -52,27 +52,15 @@ export async function initialOnly(w: Watch, log: string): Promise<void> {
   }
 }
 
-/**
- * How this watch is delivering events, read off vx's OWN announcement
- * rather than guessed from the platform.
- *
- * `armWatcher` falls back to polling when no OS event arrives within its
- * probe window, and a container without a working inotify (this repo's
- * cloud gate, 2026-09-20) takes that path for every case. It matters to
- * the counts: under events a task's undeclared write arrives as its own
- * event one window after the run, costing a redundant cycle; under a
- * 250 ms poll the edit and the write land in the same sample, so the
- * follower never happens and the same scenario settles one execution
- * earlier. Both settle — which is what these suites exist to prove — so
- * the rows assert the count for the mode they actually ran in.
- *
- * Read it AFTER the watching marker: the fallback announces itself
- * first, so by then the line is there or it never will be. The notice is
- * on STDERR, which is why the fixture drains that too.
- */
-export function deliveryMode(w: Watch): 'events' | 'polling' {
-  return w.err().includes('no OS watch events within') ? 'polling' : 'events'
-}
+// `deliveryMode` lived here (item 418) so a row could assert the execution
+// count for the delivery mode it actually ran in: three under events, two
+// under the polling fallback. Its explanation for the two — the edit and
+// the task's own write landing in the same 250 ms sample — was a plausible
+// cause nobody had measured, and item 482 refutes it. The poller never
+// sampled the write at all: `POLL_SKIP` refused to descend into `dist`
+// whether or not a task declared it as an output. With the poller reading
+// the run's own ignore filter the two modes report the same tree, the rows
+// assert one number, and nothing needs to ask which watcher is running.
 
 export function startWatch(root: string, select: readonly string[] = ['--all']): Watch {
   const proc = Bun.spawn([process.execPath, BIN, 'watch', 'build', ...select], {

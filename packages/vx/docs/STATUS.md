@@ -1092,6 +1092,62 @@ args.taintedUpstream !== true`) fails "--continue=always never
       appear in some task's `passThrough`, or the gate it arms is a
       no-op reporting green. Eight declared, eight forwarded today;
       differential by renaming one side.
+482.  DONE (2026-09-20, `cli/watch.ts` — 1152 lines). The ignore class
+      itself is exemplary and nothing is owed there: every member of
+      `IGNORED_SEGMENTS` and `IGNORED_SUFFIXES` has its own row, on
+      BOTH sides, with the controls that separate a segment rule from a
+      substring one (`node_modules-shim.ts` is source) and an anchored
+      suffix from a mid-name one (`a~b.ts` is source). That is what 479
+      wished for.
+      THE FIND is one directory down, in `POLL_SKIP` — the set the
+      polling fallback never descends into. Its comment justifies the
+      set: `makeWatchIgnore` "already drops their EVENTS, so the walk
+      buys nothing". That is true of `node_modules`, `.git` and `.vx`,
+      which ARE `IGNORED_SEGMENTS`. It is NOT true of the fourth name,
+      `dist`, which is dropped only when a project DECLARES it as an
+      output. A project that does not declare it had every edit under
+      its `dist/` silently invisible to `vx watch` — on exactly the
+      hosts the poller exists for (a macOS sandbox with no
+      `machLookup` for FSEvents, a network mount, a container bind),
+      while the native watcher delivered the same edit. Two watchers
+      disagreeing about what an edit IS, and the disagreement is
+      silence: no error, no cycle, the loop just sits there. A
+      committed `dist/` consumed as an input is an ordinary JS
+      monorepo shape.
+      Read off a probe, not reasoned: the poller reported only
+      `src/index.ts` while `isIgnoredWatchPath('dist/vendored.js')` is
+      false, so the native watcher would have delivered it.
+      Fixed at the seam rather than by deleting the name.
+      `POLL_SKIP` is now `IGNORED_SEGMENTS` — the set its own comment
+      describes — and `pollWatcher` takes a `skipDir` predicate the
+      watch loop fills with its OWN `isIgnoredPath`. The poller then
+      skips exactly what the event filter would drop anyway, per
+      project: every declared output container, including the
+      `build/out` and `gen` shapes the hard-coded name never covered,
+      and `dist` when and only when a task declares it.
+      Cost, measured (2000-file `dist`, min-of-7, interleaved A/B):
+      2.84 ms per scan walking it against 0.25 ms skipping it — 2.6 ms
+      once every 250 ms, ~1% of one core, and paid ONLY by a project
+      that does not declare the directory. A declared `dist/**` costs
+      exactly what it did.
+      Pinned both halves in one row: an undeclared `dist` edit is
+      reported, a declared one is not, with `src.ts` as the control
+      that the second watcher was live at all. Differential both ways —
+      `dist` back in the default set reddens it, and so does the whole
+      pre-fix source.
+      The gate then went red on FOUR watch e2e rows, which is the part
+      worth keeping. Each asserted three executions under events and
+      TWO under polling, explained by the edit and the task's own write
+      landing in the same 250 ms sample — `deliveryMode` (item 418)
+      existed to pick the arm. That explanation was a plausible cause
+      nobody had measured, and it is wrong: the poller never sampled
+      the write at all, because `dist` was skipped. With the skip gone
+      all four settle at THREE with the labels the events arm asserts,
+      so the mode branch is deleted, each row states one number, and
+      `deliveryMode` is retired with the record of what it was for. The
+      rows are stronger for it: they now assert that the two watchers
+      agree, which is the guarantee, instead of encoding the way they
+      differed.
 
 ## In flight
 

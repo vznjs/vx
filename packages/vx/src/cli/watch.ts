@@ -190,12 +190,22 @@ export interface ArmedWatcher {
 const POLL_INTERVAL_MS = 250
 
 /**
- * Directory names the fallback never descends into. `makeWatchIgnore`
- * already drops their EVENTS, but a poller pays for the walk itself, and
+ * Directory names the fallback never descends into WHEN no better filter is
+ * supplied. The justification is that `makeWatchIgnore` already drops their
+ * EVENTS, so the walk buys nothing — a poller pays for it either way, and
  * `node_modules` is the difference between a cheap fallback and one that
  * re-stats 40 000 files four times a second.
+ *
+ * That justification is exactly `IGNORED_SEGMENTS`, so this IS that set.
+ * It used to carry a fourth name, `dist`, which the justification does NOT
+ * cover: `dist` is dropped only when a project DECLARES it as an output, and
+ * a project that does not declare it had its `dist/` sources silently
+ * invisible to `vx watch` on every host the poller exists for — a macOS
+ * sandbox, a network mount, a container bind — while the native watcher
+ * delivered them. Two watchers disagreeing about what an edit is (item 482).
+ * The real per-project answer is the caller's `skipDir`, below.
  */
-const POLL_SKIP = new Set(['node_modules', '.git', '.vx', 'dist'])
+const POLL_SKIP = new Set(IGNORED_SEGMENTS)
 
 /**
  * A watcher built from `stat`, for when the OS one cannot deliver.
@@ -214,6 +224,13 @@ export function pollWatcher(
   recursive: boolean,
   onEvent: (filename: string) => void,
   intervalMs = POLL_INTERVAL_MS,
+  /**
+   * Directories not worth descending into, by their path relative to `dir`.
+   * The watch loop passes its own event filter, so the poller skips exactly
+   * what the filter would drop anyway — every declared output container, not
+   * a hard-coded name. The default covers the unconditional segments alone.
+   */
+  skipDir: (rel: string) => boolean = (rel) => POLL_SKIP.has(path.basename(rel)),
 ): WatchHandle {
   let previous = new Map<string, number>()
   let first = true
@@ -230,7 +247,7 @@ export function pollWatcher(
         if (e.name === WATCH_PROBE) continue
         const childRel = rel === '' ? e.name : `${rel}/${e.name}`
         if (e.isDirectory()) {
-          if (recursive && !POLL_SKIP.has(e.name)) walk(path.join(abs, e.name), childRel)
+          if (recursive && !skipDir(childRel)) walk(path.join(abs, e.name), childRel)
           continue
         }
         if (!e.isFile()) continue
@@ -860,9 +877,17 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
   // network mount, a container bind — the attempt costs a denied syscall
   // and a two-second wait before the fallback takes over anyway.
   const forcePoll = (process.env['VX_WATCH_POLL'] ?? '') !== ''
+  // The poller skips exactly what the event filter would drop: the
+  // unconditional segments AND this run's declared output containers. Read
+  // through `isIgnoredPath` rather than captured, because `rearm` replaces
+  // the filter when the selection changes.
+  const skipUnder =
+    (dir: string) =>
+    (rel: string): boolean =>
+      isIgnoredPath(dir, rel)
   const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): void => {
     if (forcePoll) {
-      watchers.push(pollWatcher(dir, recursive, onEvent))
+      watchers.push(pollWatcher(dir, recursive, onEvent, POLL_INTERVAL_MS, skipUnder(dir)))
       return
     }
     const armed = armWatcher(dir, recursive, onEvent)
@@ -874,7 +899,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
         // stream the OS refused, a filesystem that reports nothing. Swap in
         // the poller rather than run a loop that silently never fires.
         armed.watcher.close()
-        watchers[watchers.indexOf(armed.watcher)] = pollWatcher(dir, recursive, onEvent)
+        watchers[watchers.indexOf(armed.watcher)] = pollWatcher(
+          dir,
+          recursive,
+          onEvent,
+          POLL_INTERVAL_MS,
+          skipUnder(dir),
+        )
         process.stderr.write(
           `vx watch: ${dir}: no OS watch events within ${WATCH_PROBE_TIMEOUT_MS} ms; polling every ${POLL_INTERVAL_MS} ms instead\n`,
         )
