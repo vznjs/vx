@@ -43,6 +43,28 @@ start + module load + exit outside the table. The 1.7 s cold run is the
 
 Reproduce: `bun packages/vx-bench/run.ts 1000 5`.
 
+### A second machine, same shape (2026-09-20)
+
+The table above is one machine's. A four-core Linux container — sharing
+nothing with it — reads, medians with the full spread:
+
+| Projects | Warm             | Restore             | Cold                      |
+| -------- | ---------------- | ------------------- | ------------------------- |
+| 1000     | 271 ms (243–315) | 1031 ms (1023–1051) | 3147 ms (2905–3388)       |
+| 5000     | 807 ms (760–809) | 3931 ms (3462–4172) | 14 181 ms (13 798–14 986) |
+
+Slower in absolute terms, as a shared container should be, and those
+numbers are **not** comparable to the ones above — different hardware.
+What does compare is the SCALING: 5× the projects costs **2.98×** the
+warm run here against **2.97×** on the other machine (restore 3.81×
+against 3.97×, cold 4.51× against 4.99×). The sub-linear warm curve is
+the code's, not one box's.
+
+One number to take from this before optimising against the harness: the
+warm arm spreads ±13 % about its median on identical code, because every
+rep is a whole CLI invocation. An A/B here needs an effect bigger than
+that, and a control arm beside it.
+
 ### Profiling a run
 
 Two tools, and they answer different questions:
