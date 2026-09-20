@@ -1131,3 +1131,77 @@ describe('execute-task — dispatch: group and persistent paths', () => {
     TIMEOUT,
   )
 })
+
+describe('execute-task — `--force` reaches a remote executor through `refresh`', () => {
+  // `--force` is "re-execute everything (skip reads) but still refresh the
+  // cache". vx's own cache honours that through the policy gates above — but
+  // an executor keeps its OWN record of what it has already run, and no
+  // policy of vx's can reach inside it. `ExecuteRequest.refresh` is the whole
+  // channel: without it a `--force` run is handed the executor's cached
+  // answer, and the user's explicit re-execute is silently ignored on exactly
+  // the tasks that went remote.
+  //
+  // @vzn/vx-reapi pins the CONSUMER half — "refresh (--force) bypasses the
+  // execution record and re-executes" — but that row BUILDS its own request,
+  // so nothing in it says core ever sets the flag. This is the producer half,
+  // and it is asserted here because the only shipped consumer needs live
+  // service containers the gate does not have.
+  const capturing = (): { seen: () => ExecuteRequest | undefined; executor: TaskExecutor } => {
+    let req: ExecuteRequest | undefined
+    return {
+      seen: () => req,
+      executor: {
+        name: 'capture',
+        execute: (r) => {
+          req = r
+          return localExecutor().execute(r)
+        },
+      },
+    }
+  }
+
+  const cacheable: TaskNode['config'] = {
+    exec: { command: 'true' },
+    cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+  }
+
+  it(
+    'reads off sets it; reads on does not; and an UNCACHEABLE task never does',
+    async () => {
+      const b = await bench()
+      try {
+        const log = capturingLogger({ root: '', out: [], err: [] })
+
+        const forced = capturing()
+        await executeTask({
+          ...baseArgs(b, node(b, cacheable), log),
+          executor: forced.executor,
+          cachePolicy: FORCE,
+        })
+        expect(forced.seen()?.refresh).toBe(true)
+
+        // CONTROL: the default policy must leave the executor's own record
+        // usable, or every ordinary run pays a remote re-execution.
+        const normal = capturing()
+        await executeTask({
+          ...baseArgs(b, node(b, cacheable, 'proj#build2'), log),
+          executor: normal.executor,
+        })
+        expect(normal.seen()?.refresh).toBeUndefined()
+
+        // A task with no `cache` block has no key for an executor to have
+        // recorded anything under, so there is nothing to refresh.
+        const bare = capturing()
+        await executeTask({
+          ...baseArgs(b, node(b, { exec: { command: 'true' } }, 'proj#bare'), log),
+          executor: bare.executor,
+          cachePolicy: FORCE,
+        })
+        expect(bare.seen()?.refresh).toBeUndefined()
+      } finally {
+        await closeBench(b)
+      }
+    },
+    TIMEOUT,
+  )
+})
