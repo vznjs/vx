@@ -16,7 +16,8 @@ Items 65–104 are in `2026-09-improvement-loop-65-104.md`, items 105–144 in
 `2026-09-improvement-loop-306-332.md`, items 333–352 in
 `2026-09-improvement-loop-333-352.md`, items 353–372 in
 `2026-09-improvement-loop-353-372.md`, items 373–392 in
-`2026-09-improvement-loop-373-392.md`; items 413 onward continue in
+`2026-09-improvement-loop-373-392.md`; items 413–432 in
+`2026-09-improvement-loop-413-432.md`; items 433 onward continue in
 `docs/STATUS.md`.
 
 393.  DONE (2026-09-19, `comparison.md` — the page handoff 14af
