@@ -217,6 +217,112 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'editing an assume-unchanged input moves the key',
+    async () => {
+      // The sibling of the skip-worktree row above, and the half nothing
+      // held. `--assume-unchanged` is the OTHER way to tell git to stop
+      // looking at a worktree file — people use it on a tracked config
+      // they edit locally and never commit — and `git ls-files -v` marks
+      // it with a LOWERCASE letter (`h`) where skip-worktree is `S`.
+      // Both are silent in `git status --porcelain`, so both keep a
+      // trusted index OID that no longer describes the disk. Dropping
+      // only the lowercase half of that guard passes the entire repo.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
+               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'src/a.txt'), 'A')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      git(root, 'update-index', '--assume-unchanged', 'src/a.txt')
+      vx(root, 'run', 'build')
+      expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('A')
+
+      // git still reports nothing — that is the whole point of the flag —
+      // so the only thing that can move the key is vx distrusting the OID.
+      await write(path.join(root, 'src/a.txt'), 'B')
+      const status = Bun.spawnSync({ cmd: ['git', 'status', '--porcelain'], cwd: root })
+      expect(status.stdout.toString().trim()).toBe('')
+      vx(root, 'run', 'build')
+      expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('B')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a text filter declared at the workspace root reaches a SCOPED run too',
+    async () => {
+      // The gate that decides whether to ask `git check-attr` used to read
+      // only the files the enumeration listed — and a scoped run lists the
+      // project dirs alone, so the workspace root's own `.gitattributes`
+      // (where a monorepo puts it) was invisible and every filtered OID
+      // stayed trusted. Measured on this fixture before the fix: `--all`
+      // was a miss and `--filter app` reported up-to-date and replayed the
+      // CRLF byte count. Both arms run here, because the pair IS the
+      // evidence — the unscoped one was correct all along and is the
+      // control that keeps this row from passing for the wrong reason.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+      await writeLocalWorkspace(root)
+      const proj = path.join(root, 'packages', 'app')
+      await write(path.join(proj, 'package.json'), '{"name":"app","version":"1.0.0"}')
+      await write(
+        path.join(proj, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
+               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, '.gitattributes'), '* text=auto\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      await write(path.join(proj, 'src/a.txt'), 'one\r\ntwo\r\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+      // `git add` normalized the index to LF; checkout does not convert back
+      // on Linux. Worktree CRLF, index LF, status clean — the defect's state.
+      await write(path.join(proj, 'src/a.txt'), 'one\r\ntwo\r\n')
+
+      const out = path.join(proj, 'dist/out.txt')
+      vx(root, 'run', 'build', '--filter', 'app')
+      expect((await readFile(out, 'utf8')).trim()).toBe('10')
+      await write(path.join(proj, 'src/a.txt'), 'one\ntwo\n')
+      vx(root, 'run', 'build', '--filter', 'app')
+      expect((await readFile(out, 'utf8')).trim()).toBe('8')
+
+      // CONTROL: the unscoped arm, whose pathspec is `.` so the root file
+      // was always listed. It passed before the fix and must still pass.
+      await write(path.join(proj, 'src/a.txt'), 'one\r\ntwo\r\n')
+      vx(root, 'run', 'build', '--all')
+      expect((await readFile(out, 'utf8')).trim()).toBe('10')
+      await write(path.join(proj, 'src/a.txt'), 'one\ntwo\n')
+      vx(root, 'run', 'build', '--all')
+      expect((await readFile(out, 'utf8')).trim()).toBe('8')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a CRLF-to-LF change under a text filter is not served from cache',
     async () => {
       // A trusted index OID is the FILTERED blob, not the worktree bytes the

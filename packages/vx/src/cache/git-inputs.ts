@@ -293,6 +293,7 @@ async function dropFilteredOids(
   args: {
     workspaceRoot: string
     gitDir: string
+    pathspecs: readonly string[]
     coreConfig: string
     spawnGit: (a: string[], stdin?: string) => Promise<GitRun | null>
   },
@@ -318,6 +319,18 @@ async function dropFilteredOids(
       }
     }
   }
+  // The scan above can only see what the enumeration LISTED, and a scoped
+  // run lists the project dirs alone (`gitPathspecs`). A `.gitattributes`
+  // ABOVE them — the workspace root's own, which is where a monorepo puts
+  // it — is therefore invisible, and the gate read "no attributes
+  // anywhere" and kept every filtered OID. Measured on the real CLI: the
+  // same workspace and the same CRLF→LF edit is a miss under `--all`
+  // (pathspec `.`, so the root file is listed) and a STALE HIT under
+  // `--filter app`. Git resolves attributes from every directory between
+  // the repo root and the file, so walk those directories — bounded by
+  // depth and project count, never by file count, which is what the
+  // gate's cost rule cares about.
+  if (!attributesPossible) attributesPossible = attributesAbove(args)
   if (!attributesPossible) return
 
   const res = await args.spawnGit(
@@ -326,6 +339,38 @@ async function dropFilteredOids(
   )
   if (res === null || res.exitCode !== 0) return
   for (const rel of parseCheckAttrOutput(res.stdout)) trusted.delete(rel)
+}
+
+/**
+ * Is there a `.gitattributes` at or above the scanned dirs, up to the repo
+ * root? Only the directories are stat'd — one per level per pathspec — so
+ * this stays a handful of syscalls on any repo size.
+ */
+function attributesAbove(args: {
+  workspaceRoot: string
+  gitDir: string
+  pathspecs: readonly string[]
+}): boolean {
+  const top =
+    args.gitDir === ''
+      ? args.workspaceRoot
+      : path.dirname(path.resolve(args.workspaceRoot, args.gitDir))
+  const seen = new Set<string>()
+  for (const spec of args.pathspecs) {
+    let dir = path.resolve(args.workspaceRoot, spec)
+    for (;;) {
+      if (!seen.has(dir)) {
+        seen.add(dir)
+        if (existsSync(path.join(dir, '.gitattributes'))) return true
+      }
+      const parent = path.dirname(dir)
+      // Stop at the repo root, and never walk past the filesystem root on a
+      // workspace whose git dir could not be read.
+      if (dir === top || parent === dir) break
+      dir = parent
+    }
+  }
+  return false
 }
 
 /** `true` when git may rewrite bytes for EVERY auto-detected text file. */
@@ -566,6 +611,7 @@ export async function startGitEnumeration(
   await dropFilteredOids(trusted, {
     workspaceRoot,
     gitDir,
+    pathspecs,
     coreConfig: coreCfg !== null && coreCfg.exitCode === 0 ? coreCfg.stdout : '',
     spawnGit,
   })
