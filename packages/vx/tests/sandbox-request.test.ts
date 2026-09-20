@@ -82,6 +82,38 @@ describe('a write grant is pre-created for the bind', () => {
   })
 })
 
+describe('the request derives nothing from cache', () => {
+  // `SandboxConfig`'s doc comment claimed the baseline could "write the
+  // prefixes of its `cache.outputs.files`" — three times over — while the
+  // code granted none of it (item 443). The behavioural rows live in
+  // `sandbox-runtime.unsafe.test.ts` and are Linux-gated on the bwrap
+  // denial message; this pins the same claim where it actually lives, on
+  // every platform, with no sandbox required to run it.
+  it('a task declaring cache.outputs and no grant gets an EMPTY write baseline', async () => {
+    const n: TaskNode = {
+      ...node(),
+      config: {
+        exec: { command: 'true' },
+        cache: {
+          inputs: { files: ['src/**'] },
+          outputs: { files: ['dist/**', 'out.txt'] },
+        },
+      },
+    }
+    const { sandbox } = await sandboxRequestFor(n, {}, root)
+    expect(sandbox.baseAllowWrite).toEqual([])
+    // …and the read baseline is dependencies, never the declared inputs.
+    expect(sandbox.baseAllowRead.some((p) => p.includes('src'))).toBe(false)
+    expect(sandbox.baseAllowRead.every((p) => p.includes('node_modules'))).toBe(true)
+  })
+
+  it('CONTROL: an explicit grant is what fills the write baseline', async () => {
+    const { sandbox } = await requestFor(['dist/'])
+    expect(sandbox.baseAllowWrite).toEqual([])
+    expect(sandbox.config.allowWrite.some((p) => p.endsWith('dist'))).toBe(true)
+  })
+})
+
 describe('sweepPlaceholders takes back what the task never wrote', () => {
   it('an untouched placeholder is removed and named', async () => {
     const r = await requestFor(['dist/vx'])
