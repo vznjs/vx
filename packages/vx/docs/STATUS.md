@@ -1088,6 +1088,46 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       pins the mock rather than the guarantee. Left as 456(c) was left,
       named rather than forced.
 
+460.  DONE (2026-09-20, `graph/scheduler.ts` PROPER — 459 only touched
+      its observer hooks, and this is the file that decides what runs
+      when, the largest unswept claim cluster left). Four claims. Three
+      CAUGHT, one survivor established as DEFENSIVE, not a defect.
+      (a) `aborted` propagates like a failure. Dropping it from the
+      propagation test fails two rows, one named "does not let its
+      dependents cache what they built from its partial outputs" —
+      which is the whole reason the status exists: the upstream died
+      mid-write, so a dependent that ran anyway would cache partial
+      bytes under the key a healthy run derives.
+      (b) The reverse-dependency priority. Flattening every task to the
+      same priority fails "prefers the task that blocks the most
+      downstream work".
+      (c) The O(1) per-lane admission gate, whose comment carries a
+      measured number: the 6,000-task scale pin went 0.5 s to 28 s when
+      a first cut let the scan run past a full exec lane. Removing the
+      gate fails exactly that pin, by name. Worth saying because the
+      arc has twice found a PERF gate quietly deciding correctness
+      (451(c), and the shape again in 456(a)) — here the perf guard
+      genuinely guards.
+      (d) SURVIVED: `willSkip`'s restore-tier bypass, the line that
+      stops a confirmed stable-key hit from skipping when an upstream
+      fails. Removing it breaks nothing, and the fixture says why
+      rather than leaving it a guess. Built it on the real CLI — an
+      uncacheable upstream flipped to failing by a git-ignored file
+      that moves no key, a downstream that is a stable local hit — and
+      the outcome is "1 failed · 1 success" WITH the bypass and
+      WITHOUT it, at default concurrency and again at `--concurrency 1`
+      with a slow-failing upstream. The reason is structural: the
+      restore lane is separate, so a restore-tier task is dispatched on
+      the FIRST tick, before any dependency can fail, and `willSkip`
+      sees no upstream outcome at all. The line is defensive and
+      currently unreachable.
+      Left unpinned deliberately, as 456(c) and 459's cleanup notice
+      were: pinning it would mean pinning the lane ordering that makes
+      it unreachable, which is the implementation rather than the
+      guarantee. Recorded here with the reason so it is neither
+      rediscovered as a find nor deleted as dead code — if the lanes
+      ever merge, this line starts deciding something.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
