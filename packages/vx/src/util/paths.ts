@@ -92,11 +92,26 @@ export function normalizeGlob(glob: string): string {
   let g = neg ? glob.slice(1) : glob
   g = g.replace(/\/{2,}/g, '/').replace(/(^|\/)(\.\/)+/g, '$1')
   if (g === '.') g = ''
-  if (/[*?[\]{}]/.test(g) && g.endsWith('/')) g = `${g.replace(/\/+$/, '')}/**`
+  if (!isLiteralPattern(g) && g.endsWith('/')) g = `${g.replace(/\/+$/, '')}/**`
   return neg ? `!${g}` : g
 }
 
-function isLiteralPath(glob: string): boolean {
+/**
+ * True when a pattern carries no wildcard — it names exactly one path.
+ *
+ * The character SET is the whole content: `*`, `?`, a character class and
+ * a brace alternation are all wildcards to `Bun.Glob`, so a pattern
+ * holding any of them must be MATCHED, never compared as a string. It
+ * lives here, exported, because four places asked the same question and
+ * one of them asked it with a smaller set: `graph/task-graph.ts` omitted
+ * `{}`, so `dist/{a,b}.txt` counted as a literal and the overlapping-output
+ * refusal compared it to `dist/a.txt` as two unequal strings — the two
+ * tasks were accepted and then deleted each other's outputs, green, every
+ * run (item 495). That is the same divergence `asTrees` was moved here to
+ * end in item 442, and the same one that removed `@vzn/vx-migrate`'s copy
+ * of `outputsOverlap` in item 445.
+ */
+export function isLiteralPattern(glob: string): boolean {
   return !/[*?[\]{}]/.test(glob)
 }
 
@@ -127,7 +142,7 @@ export function asTrees(patterns: readonly string[]): string[] {
   const out: string[] = []
   for (const raw of patterns) {
     const p = normalizeGlob(raw)
-    if (!isLiteralPath(p)) {
+    if (!isLiteralPattern(p)) {
       out.push(p)
       continue
     }

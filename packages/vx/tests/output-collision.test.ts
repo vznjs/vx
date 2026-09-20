@@ -124,6 +124,12 @@ describe('two tasks cannot claim the same output', () => {
   const otherWildcards: Array<[string, string, string]> = [
     ['?', 'dist/a?.txt', 'dist/ab.txt'],
     ['a character class', 'dist/[ab].txt', 'dist/a.txt'],
+    // This one was a LIVE defect, not just an unpinned claim: the
+    // classifier this refusal read omitted braces, so `Bun.Glob` matched
+    // `dist/a.txt` while the refusal compared two unequal strings and let
+    // the pair through (item 495). One classifier now, in `util/paths.ts`,
+    // where `asTrees` already went for the same reason.
+    ['a brace alternation', 'dist/{a,b}.txt', 'dist/a.txt'],
   ]
   for (const [what, glob, literal] of otherWildcards) {
     it(`refuses a glob spelled with ${what} over a matching literal`, () => {
@@ -145,6 +151,9 @@ describe('two tasks cannot claim the same output', () => {
     ).not.toThrow()
     expect(() =>
       graph({ app: { a: task(['dist/[ab].txt']), b: task(['dist/c.txt']) } }),
+    ).not.toThrow()
+    expect(() =>
+      graph({ app: { a: task(['dist/{a,b}.txt']), b: task(['dist/c.txt']) } }),
     ).not.toThrow()
   })
 })

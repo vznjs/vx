@@ -15,6 +15,7 @@ export function normalizeGlob(glob: string): string
 export function staticPrefix(glob: string): string
 export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null
 export function asTrees(patterns: readonly string[]): string[]
+export function isLiteralPattern(glob: string): boolean
 ```
 
 - `toPosix(p)` — replaces every `path.sep` with `/`.
@@ -43,6 +44,15 @@ export function asTrees(patterns: readonly string[]): string[]
   has to read the same one, and `graph` may not import `cache` (item
   442). Re-exported by `cache/index.ts`, which is still its contract for
   the resolver.
+- `isLiteralPattern(g)` — true when a pattern carries no wildcard, so it
+  names exactly one path and may be compared as a STRING; anything
+  holding `*`, `?`, a character class or a brace alternation must be
+  MATCHED instead. The character set is the whole content, and it lives
+  here for the reason `asTrees` does: four places asked this question and
+  `graph/task-graph.ts` asked it without `{}`, so `dist/{a,b}.txt`
+  counted as a literal and the overlapping-output refusal compared it to
+  `dist/a.txt` as two unequal strings — the two tasks were accepted and
+  then deleted each other's outputs, green, every run (item 495).
 
 ## Why
 

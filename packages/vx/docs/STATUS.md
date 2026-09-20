@@ -1670,6 +1670,58 @@ non-empty string` is caught by exactly ONE row, and it is the
       allows, and one row per member is what makes the mutation of
       each member visible.
 
+495.  DONE (2026-09-20, `util/paths.ts` + `cache/inputs.ts` +
+      `graph/task-graph.ts` — 494's method found a LIVE defect, not a
+      testing gap, one file over). Applying 494's lens to
+      `cache/inputs.ts` started with its own literal-vs-glob
+      classifier, `isLiteralPath`, and the first thing it showed was
+      that its character set is `[*?[\]{}]` while the one 494 had just
+      pinned in `graph/task-graph.ts` was `[*?[\]]`. Same question,
+      two answers, and the SMALLER set is the one deciding a refusal.
+      Measured on shipped code before any change:
+      `Bun.Glob('dist/{a,b}.txt').match('dist/a.txt')` is true, and
+      `outputsOverlap('dist/{a,b}.txt', 'dist/a.txt')` was FALSE. So
+      two tasks, one declaring the brace pattern and one declaring the
+      file it matches, were accepted by the graph builder and then
+      cleaned each other's outputs on every run, green. That is the
+      exact hazard `detectOutputCollisions` exists to prevent, live,
+      and 494's new rows did not reach it because braces were a
+      fourth spelling nobody had tried.
+      There were FOUR copies of the predicate: `util/paths.ts`
+      (private, behind `asTrees`), `cache/inputs.ts` (private,
+      identical), `normalizeGlob`'s own inline `/[*?[\]{}]/`, and
+      task-graph's smaller one. One rule, one place now:
+      `isLiteralPattern` is exported from `util/paths.ts` and all four
+      sites read it — the same remedy `asTrees` got in 442 and
+      `outputsOverlap` got in 445, for the same reason.
+      Pinned member by member. `isLiteralPattern` gets a row per
+      wildcard character (star, globstar, `?`, both brackets, both
+      braces) plus a control that an ordinary path is still a literal
+      — without the control the rows also pass on `() => false`, which
+      would strip every literal of its subtree and reopen 442 from the
+      other side. The collision table gains the brace pair and its
+      non-matching control. Differential per character: narrowing the
+      class to `[*]` reddens 8 rows, `[*?]` reddens 6, `[*?[\]]` — the
+      exact classifier that shipped — reddens the 3 brace rows, and
+      `[*{}]` reddens the 5 `?`/bracket rows. Every member is load-
+      bearing and every member is visible.
+      NOT fixed here, recorded as the next target: the same predicate
+      is written out four more times in `exec/sandbox-runtime.ts`,
+      `exec/sandbox-binds.ts` and `orchestrator/sandbox-request.ts`,
+      each with `[*?[\]]` and no braces, while
+      `orchestrator/stable-keys.ts` carries the full set. Those answer
+      a DIFFERENT question — whether a bind spec needs a directory
+      walk — so a wrong answer there is a task that cannot read its
+      file rather than a silent deletion, and it deserves its own
+      measurement rather than a speculative edit riding this one.
+      Method note: 494 said "when a predicate switches on a set of
+      spellings, spell it every way the set allows". 495 is the
+      correction that rule needed: FIRST check whether the codebase
+      agrees on what the set IS. The gap was not that a test forgot a
+      character — it was that two functions answering one question had
+      drifted, and the test could only ever be as complete as the
+      narrower one.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

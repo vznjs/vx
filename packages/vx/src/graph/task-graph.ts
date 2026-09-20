@@ -1,5 +1,5 @@
 import type { TaskConfig } from '../config.js'
-import { asTrees, UserError } from '../util/index.js'
+import { asTrees, isLiteralPattern, UserError } from '../util/index.js'
 import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import {
   DependencySpecError,
@@ -394,11 +394,6 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
   return nodes
 }
 
-/** A glob with no wildcard — it names exactly one path. */
-function isLiteralGlob(g: string): boolean {
-  return g.search(/[*?[\]]/) === -1
-}
-
 /**
  * True only when two output globs PROVABLY select an overlapping set.
  *
@@ -447,11 +442,11 @@ function isLiteralGlob(g: string): boolean {
 export function outputsOverlap(rawA: string, rawB: string): boolean {
   for (const a of asTrees([rawA])) {
     for (const b of asTrees([rawB])) {
-      if (isLiteralGlob(a) && isLiteralGlob(b)) {
+      if (isLiteralPattern(a) && isLiteralPattern(b)) {
         if (a === b) return true
-      } else if (isLiteralGlob(a)) {
+      } else if (isLiteralPattern(a)) {
         if (new Bun.Glob(b).match(a)) return true
-      } else if (isLiteralGlob(b)) {
+      } else if (isLiteralPattern(b)) {
         if (new Bun.Glob(a).match(b)) return true
       } else if (a === b) return true
     }
