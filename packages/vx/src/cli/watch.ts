@@ -832,10 +832,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
       running = false
       // Anything that landed after the last judgement waits for a timer
       // like any other event.
-      if (pendingPaths.size > 0 && !stop.aborted) {
-        const [abs, label] = [...pendingPaths][0]!
-        trigger(label, abs)
-      }
+      const next = pendingAfterCycle(pendingPaths, stop.aborted)
+      if (next !== undefined) trigger(next[1], next[0])
     }
   }
 
@@ -1027,6 +1025,32 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     }
     stop.addEventListener('abort', () => void cleanup(), { once: true })
   })
+}
+
+/**
+ * The event a finished cycle hands back to the timer, if any.
+ *
+ * The inner loop re-runs while anything is pending, so this covers only the
+ * narrow gap between its LAST judgement and the loop going idle: an event
+ * landing there would otherwise sit in `pendingPaths` with no timer armed
+ * and no cycle to notice it — watch quietly idle over an edit the user
+ * made. Insertion order, because the map is "first label wins" and the
+ * label is what the cycle announces.
+ *
+ * A branch, not a race: extracted so it can be pinned at all. Deleting the
+ * arming left every green test in the repo green (2026-09-20) — the e2e
+ * watch fixture spawns a real `vx watch`, so it cannot deliver an event at
+ * that instant, and the suites that could are the ones this repo's cloud
+ * container already fails for timing reasons. What this pins is the
+ * decision; the delivery window is the process's own.
+ */
+export function pendingAfterCycle(
+  pending: ReadonlyMap<string, string>,
+  aborted: boolean,
+): [abs: string, label: string] | undefined {
+  if (aborted || pending.size === 0) return undefined
+  const [abs, label] = [...pending][0]!
+  return [abs, label]
 }
 
 /** True when `abs` was last modified before `t` (epoch ms); false when it cannot be read. */

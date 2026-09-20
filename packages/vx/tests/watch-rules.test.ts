@@ -19,12 +19,14 @@ import {
   makeWatchIgnore,
   memberEntries,
   fsClockNow,
+  pendingAfterCycle,
   modifiedBefore,
   sweepConfigs,
   WATCH_PROBE,
   watchCmd,
 } from '../src/cli/watch.js'
 import { listProjects, loadWorkspace, WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
+import { watchProbeDelivered } from './helpers/watch-events.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 describe('the ignore filter', () => {
@@ -337,31 +339,64 @@ describe('flags that format ONE run are refused, not silently ignored', () => {
   })
 })
 
+// The gap between a cycle's LAST judgement and the loop going idle. Events
+// landing there are the ones the inner re-run loop has already stopped
+// looking at, so nothing but this branch arms a timer for them — and
+// deleting the arming left every green test in the repo green (2026-09-20),
+// which is how it got a seam and these rows.
+describe('what a finished cycle hands back to the timer', () => {
+  it('arms the FIRST pending path, under the label it arrived with', () => {
+    const pending = new Map([
+      ['/w/a.ts', 'change'],
+      ['/w/b.ts', 'add'],
+    ])
+    expect(pendingAfterCycle(pending, false)).toEqual(['/w/a.ts', 'change'])
+  })
+
+  it('nothing pending: the loop goes idle', () => {
+    expect(pendingAfterCycle(new Map(), false)).toBeUndefined()
+  })
+
+  it('stopping wins over a pending path — a SIGINT does not start a cycle', () => {
+    // The order matters: `aborted` is checked before the map, so a watch
+    // told to stop with work queued exits instead of arming one more timer.
+    expect(pendingAfterCycle(new Map([['/w/a.ts', 'change']]), true)).toBeUndefined()
+  })
+})
+
 // `vx watch` prints "watching" only after each watcher has reported a probe
 // file written under it — on macOS a recursive watcher can return before its
 // FSEvents stream is live, and an edit in that gap is lost (5/30 under load,
 // measured 2026-09-03). This pins the helper's contract: readiness is proved
 // by the probe, the probe never reaches the caller, and it is gone afterwards.
+const probeDelivered = await watchProbeDelivered('armWatcher (recursive)')
+
 describe('armWatcher', () => {
   for (const recursive of [true, false]) {
-    it(`proves delivery with a probe it then removes (recursive: ${recursive})`, async () => {
-      const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-'))
-      const seen: string[] = []
-      const armed = armWatcher(dir, recursive, (f) => seen.push(f))
-      try {
-        expect(await armed.ready).toBe(true)
-        expect(existsSync(path.join(dir, WATCH_PROBE))).toBe(false)
-        // A real edit after readiness is delivered; the probe never was.
-        await writeFile(path.join(dir, 'edit.txt'), 'x')
-        const start = Date.now()
-        while (!seen.includes('edit.txt') && Date.now() - start < 3000) await Bun.sleep(5)
-        expect(seen).toContain('edit.txt')
-        expect(seen).not.toContain(WATCH_PROBE)
-      } finally {
-        armed.watcher.close()
-        await rm(dir, { recursive: true, force: true })
-      }
-    })
+    // The recursive form is the one an OS can refuse to deliver, and where
+    // it does the loop swaps in `pollWatcher` — so this row is gated on the
+    // capability while the non-recursive one runs everywhere.
+    it.skipIf(recursive && !probeDelivered)(
+      `proves delivery with a probe it then removes (recursive: ${recursive})`,
+      async () => {
+        const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-'))
+        const seen: string[] = []
+        const armed = armWatcher(dir, recursive, (f) => seen.push(f))
+        try {
+          expect(await armed.ready).toBe(true)
+          expect(existsSync(path.join(dir, WATCH_PROBE))).toBe(false)
+          // A real edit after readiness is delivered; the probe never was.
+          await writeFile(path.join(dir, 'edit.txt'), 'x')
+          const start = Date.now()
+          while (!seen.includes('edit.txt') && Date.now() - start < 3000) await Bun.sleep(5)
+          expect(seen).toContain('edit.txt')
+          expect(seen).not.toContain(WATCH_PROBE)
+        } finally {
+          armed.watcher.close()
+          await rm(dir, { recursive: true, force: true })
+        }
+      },
+    )
   }
 })
 
