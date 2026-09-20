@@ -772,6 +772,39 @@ test is telling the truth.
       is about to move (exactly twenty items, 433 first and 452 last;
       both handoffs present and no unwritten third) rather than
       trusting a line range.
+473.  DONE (2026-09-20, the two threads 471 left OPEN in
+      `orchestrator/hit-restore.ts`). Both close, and ONE OF THEM
+      CORRECTS 471's own report.
+      (b) FIRST, THE CORRECTION. 471 recorded the post-restore
+      `markOutputsChanged` as an unmeasured survivor. It is not a
+      survivor: removing it fails
+      `restore-path git spawns > overlapping globs keep the re-spawn
+fallback (and stay cache-hits)`. 471's fast filter simply did
+      not include `restore-git-spawns.test.ts`, and the whole-suite
+      run says so. That is 466's lesson — a fast-filter survival is
+      PROVISIONAL — landing for the third time in this arc, and this
+      time it reached a shipped STATUS entry before the whole-suite
+      run caught it. Read 471's "open" line as closed and wrong.
+      (a) `covers` in the directory short-circuit is genuinely
+      unpinned, and it guards a state that cannot arise. Three
+      fixtures failed to build one before the right question turned
+      up, which was not about the reader at all: `recordOutputDirs`
+      is ALL OR NOTHING in one transaction — it deletes every row for
+      the hash, then inserts the full set only if every prefix walked
+      and none is racy-young — so the only states are COMPLETE and
+      EMPTY. The empty case is already refused by
+      `outputDirsCurrent`'s own `rows.length === 0`, which its row
+      pins; the complete case is what `covers` tests for and always
+      finds. The instrumented probe is what settled it: after deleting
+      one row by hand the next hit read `rows=[]`, not a partial set.
+      So `covers` restates, on the read side, an invariant the WRITER
+      holds — and the writer is well pinned: inserting partial rows on
+      a failed walk fails two rows, never clearing stale rows fails
+      two, dropping the racy-young check fails one.
+      Recorded, not pinned, for 471(c)'s reason: the guarantee is
+      already held at its source, and a second pin on the reader would
+      duplicate it. Unlike 463, where the layer WAS the guarantee and
+      nothing else carried it.
 
 ## In flight
 
