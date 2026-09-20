@@ -15,7 +15,7 @@
 //   conflict (stage 1/2/3)       → path repeated once per stage, same as
 //                                  the old `--cached` listing
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
@@ -203,6 +203,53 @@ describe('populateGitFilesCache — index OID harvesting', () => {
     const oids = memo.oidsFor(pkgDir)
     expect(oids!.has(path.join(pkgDir, 'src', 'renamed.ts'))).toBe(false)
     expect(oids!.has(path.join(pkgDir, 'src', 'old.ts'))).toBe(false)
+  })
+
+  it('trusts every FILE mode git can stage, and nothing else', async () => {
+    // The fast path trusts an index OID for three modes — regular,
+    // EXECUTABLE and symlink — and the executable one had no witness:
+    // dropping `100755` from the set passed the entire suite (item 499),
+    // while dropping either of its neighbours fails rows here. An
+    // executable is not exotic (every `scripts/*.sh`), and losing its OID
+    // sends it back through `hashFile`, so its key part flips
+    // representation for no reason and the read the fast path exists to
+    // avoid happens anyway.
+    //
+    // Asserted mode by mode: dropping any ONE of the three reddens this
+    // row and nothing else in the suite reddens for the executable.
+    //
+    // The gitlink line below (`160000`, a submodule pointer, whose OID is a
+    // COMMIT in another repository rather than this path's content) is NOT
+    // a control, and saying so is the point. Measured: adding `160000` to
+    // the trusted set leaves `sub` without an OID anyway, with or without
+    // the directory on disk, because a second mechanism downstream keeps a
+    // non-file out of the map. So the assertion cannot fail and is here as
+    // a recorded fact, not as a guard — labelling it a control would be
+    // the inert-control trap item 496 already paid for once.
+    await writeFile(path.join(pkgDir, 'plain.ts'), 'plain\n')
+    await writeFile(path.join(pkgDir, 'run.sh'), '#!/bin/sh\necho hi\n')
+    await chmod(path.join(pkgDir, 'run.sh'), 0o755)
+    await symlink('plain.ts', path.join(pkgDir, 'link.ts'))
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'init')
+    const head = git(root, 'rev-parse', 'HEAD')
+    git(root, 'update-index', '--add', '--cacheinfo', `160000,${head},pkg/sub`)
+
+    const memo = new GitFilesCache()
+    await populateGitFilesCache(root, [pkgDir], memo)
+    const oids = memo.oidsFor(pkgDir)
+    const trusted = (rel: string): string | undefined => oids!.get(path.join(pkgDir, rel))
+    expect({
+      plain: trusted('plain.ts'),
+      exec: trusted('run.sh'),
+      link: trusted('link.ts'),
+      gitlink: trusted('sub'),
+    }).toEqual({
+      plain: indexOid(root, 'pkg/plain.ts'),
+      exec: indexOid(root, 'pkg/run.sh'),
+      link: indexOid(root, 'pkg/link.ts'),
+      gitlink: undefined,
+    })
   })
 
   it('a rename CONSUMES its source token, so a bystander keeps its OID', async () => {

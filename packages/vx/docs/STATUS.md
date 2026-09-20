@@ -1854,6 +1854,44 @@ non-empty string` is caught by exactly ONE row, and it is the
       rules (3 rows on the outputs side, 7 on the inputs side,
       principle 6 well held) and the own-outputs exclusion (10+ rows).
 
+499.  DONE (2026-09-20, `git-inputs.ts`'s `parseLsFilesOutput` — the
+      mode set the OID fast path trusts, swept member by member).
+      `100644` and `120000` each fail rows in `git-oid.test.ts`.
+      `100755` — EXECUTABLE — fails nothing, whole suite. Every
+      `scripts/*.sh` in a repo loses its trusted index OID and goes
+      back through `hashFile`, so its key part flips representation
+      and the read the fast path exists to avoid happens anyway. COST,
+      not correctness (dropping an OID is the safe direction), and
+      pinned because executables are not exotic.
+      Pinned as one exact object over the three modes plus the gitlink,
+      so a dropped member names itself. Three differentials red, one
+      per mode.
+      THE HONEST PART: my first version called the gitlink line a
+      CONTROL, and it is inert. Measured: adding `160000` to the
+      trusted set leaves `sub` without an OID anyway, with or without
+      a directory on disk — a second mechanism downstream keeps a
+      non-file out of the map. It is now labelled a recorded fact
+      rather than a guard. That is 496's inert-control trap, caught
+      in my own new row this time, one item after writing the rule
+      down.
+      AND A HARNESS DEFECT, which is the more useful find: two of the
+      three mode mutations were reported as SURVIVING by the sweep and
+      both were lies. The loop packed "replacement|tag" into one shell
+      variable and split it with `%%|*` — but the replacement contains
+      `||`, so the payload was truncated mid-expression and the file
+      no longer parsed. The whole-suite verdict then showed no new
+      failing NAMES (a file that cannot be imported emits no `(fail)`
+      rows at all) and I read that as "nothing caught it".
+      Caught by running the one file directly, which is the check that
+      should have come first: `100644` dropped fails three rows there
+      in under a second. New rule, earned: a mutation that SURVIVES is
+      confirmed against the single most-relevant test file before the
+      whole-suite verdict is believed, because an empty NEW list means
+      either "nothing caught it" or "nothing ran", and those look
+      identical. And never pack a payload containing `|` into a
+      `|`-delimited loop variable — the repo already has this lesson
+      for `pkill -f` patterns matching their own shell.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
