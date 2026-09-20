@@ -30,7 +30,21 @@ async function write(p: string, content: string): Promise<void> {
 
 function git(cwd: string, ...args: string[]): void {
   const p = Bun.spawnSync({
-    cmd: ['git', '-c', 'commit.gpgsign=false', ...args],
+    // Identity and signing on the HELPER, not on each row: every case here
+    // commits, and a runner with no global git identity refuses to
+    // (`empty ident name`). Eighteen call sites set it by hand and two new
+    // ones forgot, which only showed up on CI — this box has a global
+    // identity and the runner does not.
+    cmd: [
+      'git',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'user.email=test@vx.local',
+      '-c',
+      'user.name=vx test',
+      ...args,
+    ],
     cwd,
     stdout: 'pipe',
     stderr: 'pipe',
