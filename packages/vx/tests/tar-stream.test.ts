@@ -25,7 +25,16 @@ async function collect(bytes: Uint8Array, chunk?: number) {
   return out
 }
 
-function header(fields: { name: string; size: number; type: string; prefix?: string }): Uint8Array {
+function header(fields: {
+  name: string
+  size: number
+  type: string
+  prefix?: string
+  /** Applied to the fields BEFORE the checksum is computed over them. */
+  pre?: (h: Uint8Array) => void
+  /** The two bytes after the six checksum digits; POSIX allows either order. */
+  cksumTail?: string
+}): Uint8Array {
   const h = new Uint8Array(512)
   h.set(enc.encode(fields.name).subarray(0, 100), 0)
   h.set(enc.encode('0000644\0'), 100)
@@ -37,10 +46,11 @@ function header(fields: { name: string; size: number; type: string; prefix?: str
   h.set(enc.encode('ustar\0'), 257)
   h.set(enc.encode('00'), 263)
   if (fields.prefix) h.set(enc.encode(fields.prefix).subarray(0, 155), 345)
+  fields.pre?.(h)
   h.set(enc.encode('        '), 148)
   let sum = 0
   for (const b of h) sum += b
-  h.set(enc.encode(sum.toString(8).padStart(6, '0') + '\0 '), 148)
+  h.set(enc.encode(sum.toString(8).padStart(6, '0') + (fields.cksumTail ?? '\0 ')), 148)
   return h
 }
 const padTo512 = (b: Uint8Array): Uint8Array => {
@@ -185,7 +195,10 @@ describe('tarEntries', () => {
   })
 
   it('refuses a pax record whose length field lies, either way', async () => {
-    for (const rec of ['40 path=outputs/p\n', '5 path=outputs/p\n']) {
+    // `0 ` is the one that makes the reader LOOP rather than err: the
+    // advance is the length it just read, so a zero-length record never
+    // moves `i`. The other two overshoot and undershoot the body.
+    for (const rec of ['40 path=outputs/p\n', '5 path=outputs/p\n', '0 path=outputs/p\n']) {
       const pax = enc.encode(rec)
       const tar = concat(
         header({ name: 'PaxHeaders/x', size: pax.byteLength, type: 'x' }),
@@ -195,6 +208,44 @@ describe('tarEntries', () => {
         EOF_BLOCKS,
       )
       await expect(collect(tar)).rejects.toThrow(/malformed pax/)
+    }
+  })
+
+  it('reads an all-NUL numeric field as zero rather than refusing it', async () => {
+    // Producers older than ustar leave an unset numeric field NUL-filled,
+    // not zero-padded. `octal` answers 0 for an empty field BEFORE the
+    // all-digits check; without that the header is refused outright.
+    const tar = concat(
+      header({
+        name: 'outputs/f.txt',
+        size: 3,
+        type: '0',
+        pre: (h) => h.fill(0, 136, 148), // mtime: NUL-filled, not '00000000000\0'
+      }),
+      padTo512(enc.encode('abc')),
+      EOF_BLOCKS,
+    )
+    const seen: Array<{ name: string; mtimeMs: number }> = []
+    for await (const e of tarEntries(streamOf(tar))) {
+      for await (const _ of e.body) {
+        /* drain */
+      }
+      seen.push({ name: e.name, mtimeMs: e.mtimeMs })
+    }
+    expect(seen).toEqual([{ name: 'outputs/f.txt', mtimeMs: 0 }])
+  })
+
+  it('verifies a checksum field written <space><NUL> as well as <NUL><space>', async () => {
+    // The stored sum is computed as if all EIGHT bytes of the field were
+    // spaces, so either order of its two terminators verifies. Treating
+    // the last byte as itself rejects the `<space><NUL>` producers.
+    for (const cksumTail of ['\0 ', ' \0']) {
+      const tar = concat(
+        header({ name: 'outputs/f.txt', size: 3, type: '0', cksumTail }),
+        padTo512(enc.encode('abc')),
+        EOF_BLOCKS,
+      )
+      expect((await collect(tar)).map((e) => e.text)).toEqual(['abc'])
     }
   })
 
@@ -300,6 +351,26 @@ describe('tarPack', () => {
     expect((await collect(tar)).map((e) => e.name)).toEqual(names)
     const files = await new Bun.Archive(tar).files()
     expect([...files.keys()].sort()).toEqual([...names].sort())
+  })
+
+  it('goes pax for a slashless name one byte past the ustar name field', async () => {
+    // A name with no `/` cannot use the prefix split at all, so the pax
+    // decision is the 100-byte name field alone. The block count is the
+    // witness: 100 bytes is header + body, 101 is a pax header and its
+    // record ahead of them. Narrowing the cut to `> 101` does not silently
+    // truncate here — it throws `name too long for ustar` at pack time.
+    for (const [len, blocks] of [
+      [100, 2],
+      [101, 4],
+    ] as const) {
+      const name = 'n'.repeat(len)
+      const parts: Uint8Array[] = []
+      for await (const c of tarPack([{ name, size: 1, body: 'x' }])) parts.push(c)
+      const tar = concat(...parts)
+      expect(tar.byteLength).toBe(512 * (blocks + 2)) // + the two end-of-archive blocks
+      expect((await collect(tar)).map((e) => e.name)).toEqual([name])
+      expect([...(await new Bun.Archive(tar).files()).keys()]).toEqual([name])
+    }
   })
 
   it('a long multibyte name goes through pax and reads back through vx and libarchive', async () => {
