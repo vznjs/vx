@@ -1435,24 +1435,48 @@ have more than two callers. Item 442 took `asTrees` the same turn and
 found the third consumer reading it differently, so the remaining one
 of that shape is `normalizeGlob`'s own callers.
 
-OPEN LEAD, measured but NOT explained (2026-09-20, while probing 442 —
-recorded rather than guessed at). A one-package workspace whose project
-dir IS the workspace root, one task with `exec.sandbox: {}` and
-`cache.outputs.files: ['dist/**']`, command
-`mkdir -p dist && printf OUT > dist/app.js`: inside the sandbox the
-write succeeds and the task `cat`s the file back, and after the run the
-HOST has no `dist` at all — while vx reports success, exit 0, no
-violation and no warning. The same shape without the sandbox keeps the
-file. `sandbox-runtime.unsafe.test.ts` passes here (61 rows), and its
-row "a declared OUTPUT is not a write grant: the task fails" expects
-`r.ok` FALSE for an ungranted write, which is the case this probe is —
-so the suite and the probe disagree and I have not established why.
-Three candidates, none eliminated: the single-package root moving the
-baseline grants, an ungranted write being discarded instead of denied
-under this container's bwrap, or the fixture itself. What IS
-established: a task reported success having produced nothing, and
-nothing in the run said so. Start from the disagreement with that row,
-not from the probe. Never end with "what next?".
+LEAD RESOLVED the same turn, and it corrects ME twice before it
+corrects anything else (2026-09-20, while probing 442). The lead was
+"a sandboxed task reported success having produced nothing, with no
+violation and no warning, contradicting a row that passes here".
+Both halves of that sentence were wrong, and the way each was wrong is
+the part worth keeping.
+There was no contradiction. The suite's row declares an explicit
+`sandbox: { allow: { read: [...] } }` with no write; my probe declared
+the bare baseline `sandbox: {}`. Two different configurations, so the
+two results never disagreed — I compared a row's CONCLUSION with a
+probe's, without comparing their fixtures.
+And vx did warn, in the exact words miss-save has for it:
+`[vx] app#build: cache.outputs matched no files (dist/**) — an empty
+artifact is saved; a later hit restores nothing`. My probe's logger
+implemented `taskStdout`/`taskStderr` and dropped `log.status`, which
+is the channel that line uses. A probe that silences a channel cannot
+report what that channel said — the same shape as 439's `&& echo ok`,
+one level up: I read an absence that my own instrument created.
+What the probing DID establish, both proven and both item 443's:
+(a) `SandboxConfig` in `src/config.ts` — the type a user reads in
+their editor — says the baseline "may read its resolved
+`cache.inputs.files`, write the prefixes of its `cache.outputs.files`",
+and says it again on `read` ("beyond the resolved `cache.inputs.files`")
+and on `write` ("beyond the `cache.outputs.files` prefixes"). The code
+deliberately derives NOTHING from `cache` (owner, 2026-09-05; stated in
+`sandbox-request.ts`, pinned by 433, and `sandbox-request.ts:140` binds
+`sandbox.allow?.write ?? []`, never the cache). `schema.md` already
+says it correctly. So the prose doc is right, the code is right, and
+the TYPE's own comment promises a grant the sandbox does not make — on
+a security boundary. CLAUDE.md names this exactly: a comment claiming a
+guarantee the code lacks is a defect, de-claim or implement.
+(b) A write grant spelled as a bare literal directory,
+`sandbox: { allow: { write: ['dist'] } }`, becomes a placeholder FILE
+at `dist` (`prepareOutputsForBind` treats a no-wildcard, no-slash grant
+as a file), so the task dies on `mkdir: cannot create directory 'dist':
+File exists` — run failed, one violation, from the grant the user
+correctly declared. `write: ['dist/']` works. That is 442's
+literal-is-a-file-or-a-tree ambiguity again, now in the sandbox, and it
+needs a decision rather than a reflex: the placeholder exists because
+bwrap cannot bind a path that does not exist, and vx cannot know
+whether an absent grant names a file or a directory. Never end with
+"what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
