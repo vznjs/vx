@@ -25,8 +25,14 @@ export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null
   watch loop's output containers, the subtree short-circuit and the
   schema's "names the directory itself" refusal (2026-09-10).
 - `staticPrefix(g)` — the wildcard-free head of a glob, whole components
-  only; a brace set counts as a wildcard. Shared by the sandbox baseline,
-  the deferral gate and the watch loop's output container.
+  only; a brace set counts as a wildcard, and a literal's trailing slash
+  is dropped (the prefix is a directory either way). Normalizes the
+  spelling FIRST — sharing the function was not enough to make its
+  callers agree, because the sandbox joins the prefix onto a directory
+  and `path.join` folds `./`, `//` and `/./` on the way while the
+  deferral gate compares the strings raw (item 441). Shared by the
+  sandbox baseline, the deferral gate and the watch loop's output
+  container.
 - `wholeSubtreePrefixes(globs)` — the `<dir>/**` directories a task's
   outputs cover whole, or `null`; normalizes first.
 
@@ -44,7 +50,8 @@ nothing and keeps things robust.
 
 ## Tests
 
-`tests/util-paths.test.ts` (each helper), `tests/dot-slash-globs.test.ts`
+`tests/util-paths.test.ts` (each helper, incl. the spellings
+`staticPrefix` folds), `tests/dot-slash-globs.test.ts`
 (the spellings `normalizeGlob` folds, end to end), `tests/output-dirs.test.ts`
 (`wholeSubtreePrefixes` behind the directory proof) and
 `tests/watch-rules.test.ts` (`staticPrefix` behind the output

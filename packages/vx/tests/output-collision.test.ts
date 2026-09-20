@@ -114,6 +114,42 @@ describe('two tasks cannot claim the same output', () => {
   })
 })
 
+describe('the same path, spelled differently, is the same path', () => {
+  // The refusal compares SPELLINGS — two literals for equality, a literal
+  // against a glob through `Bun.Glob`, two globs for equality. Every one of
+  // those said "no overlap" for `./dist/**` against `dist/**`, while
+  // `cleanOutputs` — which does the actual deleting — resolves both to one
+  // tree. So the pairs below kept exactly the data loss this check exists
+  // to refuse, silently (item 441).
+  const same: [string, string][] = [
+    ['./dist/app.js', 'dist/app.js'],
+    ['./dist/**', 'dist/**'],
+    ['dist//**', 'dist/**'],
+    ['dist/./app.js', 'dist/app.js'],
+    ['dist/**', './dist/app.js'],
+    ['./dist/vx-*', 'dist/vx-linux-x64'],
+  ]
+  for (const [a, b] of same) {
+    it(`refuses ${a} against ${b}`, () => {
+      expect(() => graph({ app: { one: task([a]), two: task([b]) } })).toThrow(
+        /both declare the output/,
+      )
+    })
+  }
+
+  it('quotes what the user actually wrote, not the normalized form', () => {
+    // The message has to be findable in their config file.
+    let msg = ''
+    try {
+      graph({ app: { one: task(['./dist/**']), two: task(['dist/**']) } })
+    } catch (e) {
+      msg = (e as Error).message
+    }
+    expect(msg).toContain('"./dist/**"')
+    expect(msg).toContain('"dist/**"')
+  })
+})
+
 describe('what must NOT be refused — a false positive breaks a working build', () => {
   it('allows distinct literal outputs in one project', () => {
     // THIS REPO'S OWN SHAPE. `build.bun.linux-x64` … `build.bun.darwin-arm64`
@@ -143,6 +179,21 @@ describe('what must NOT be refused — a false positive breaks a working build',
 
   it('allows disjoint subdirectory globs', () => {
     expect(() => graph({ app: { a: task(['dist/a/**']), b: task(['dist/b/**']) } })).not.toThrow()
+  })
+
+  it('normalizing the spelling does not widen what is refused', () => {
+    // The control for the spelling rows above: folding `./` and `//` makes
+    // equal paths compare equal, and nothing else. These pairs are still
+    // undecidable or disjoint after it, so they still go through.
+    expect(() =>
+      graph({ app: { a: task(['./dist/vx-*']), b: task(['dist/other.txt']) } }),
+    ).not.toThrow()
+    expect(() =>
+      graph({ app: { a: task(['./dist/a/**']), b: task(['dist//b/**']) } }),
+    ).not.toThrow()
+    expect(() =>
+      graph({ app: { a: task(['./dist/*.js']), b: task(['dist/**/*.js']) } }),
+    ).not.toThrow()
   })
 
   it('allows two DIFFERENT projects to use the same project-relative path', () => {

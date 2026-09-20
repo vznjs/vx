@@ -24,13 +24,30 @@ export function relPosix(from: string, to: string): string {
  * baseline joins it onto a dir to get a write prefix, and the deferral
  * eligibility gate compares two of them for overlap. A second copy is
  * how the two would disagree about what a prefix is.
+ *
+ * The spelling is normalized FIRST, here rather than at each call site,
+ * because sharing the function was not enough to make the two callers
+ * agree: the sandbox joins the prefix onto a directory and `path.join`
+ * folds `./`, `//` and `/./` on the way, while the deferral gate compares
+ * the raw strings and does not. So `./out/**` and `out/**` named the same
+ * tree to the resolver, the sandbox and the watcher, and two DIFFERENT
+ * prefixes to the gate — which then deferred a producer a same-project
+ * reader's key could see, moving that key with a transfer flag (item 441,
+ * measured through a real run: `./out/**` keyed the consumer two ways).
+ * Every glob reaching here is user-written, so every one takes the rule.
  */
-export function staticPrefix(glob: string): string {
+export function staticPrefix(rawGlob: string): string {
+  const glob = normalizeGlob(rawGlob)
   // A brace set is a wildcard too: `{dist,build}/**` reaches either dir,
   // and reading it as the literal directory `{dist,build}` gave the
   // sandbox baseline a prefix that exists nowhere (2026-09-10).
   const wildcardIdx = glob.search(/[*?[\]{}]/)
-  if (wildcardIdx === -1) return glob
+  // A LITERAL keeps its trailing slash through `normalizeGlob` on purpose
+  // (`asTrees` is what turns `out/` into the tree `out` + `out/**`), but a
+  // prefix with a slash on the end compares as a different string: `out/`
+  // against `out/sub` found no overlap where `out` does. The prefix is a
+  // directory either way. `/` is the root, not a trailing slash.
+  if (wildcardIdx === -1) return glob === '/' ? '/' : glob.replace(/\/+$/, '')
   const head = glob.slice(0, wildcardIdx)
   const lastSep = head.lastIndexOf('/')
   if (lastSep === -1) return '.'

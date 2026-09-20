@@ -1,5 +1,5 @@
 import type { TaskConfig } from '../config.js'
-import { UserError } from '../util/index.js'
+import { normalizeGlob, UserError } from '../util/index.js'
 import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import {
   DependencySpecError,
@@ -417,8 +417,19 @@ function isLiteralGlob(g: string): boolean {
  * `dist/vx-*` and `dist/other.txt` share the prefix `dist` while matching
  * disjoint sets, so a prefix check refuses a legitimate config. (vx's own
  * `build.bun.*` tasks escape only because they declare distinct literals.)
+ *
+ * All three cases compare SPELLINGS, so both sides are normalized first.
+ * `./dist/**` and `dist/**` name one tree to every matcher in vx and to
+ * `cleanOutputs`, which is what actually does the deleting — but as raw
+ * strings they are unequal, and `Bun.Glob('dist/**')` does not match the
+ * literal `./dist/app.js` either. So every pair below escaped the refusal
+ * and kept the data loss this function exists to prevent (item 441,
+ * probed one spelling at a time). Normalizing is not a widening: it folds
+ * exactly the spellings that denote the same path.
  */
-function outputsOverlap(a: string, b: string): boolean {
+function outputsOverlap(rawA: string, rawB: string): boolean {
+  const a = normalizeGlob(rawA)
+  const b = normalizeGlob(rawB)
   if (isLiteralGlob(a) && isLiteralGlob(b)) return a === b
   if (isLiteralGlob(a)) return new Bun.Glob(b).match(a)
   if (isLiteralGlob(b)) return new Bun.Glob(a).match(b)
