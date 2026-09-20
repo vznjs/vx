@@ -293,6 +293,7 @@ async function dropFilteredOids(
   args: {
     workspaceRoot: string
     gitDir: string
+    gitPrefix: string
     pathspecs: readonly string[]
     coreConfig: string
     spawnGit: (a: string[], stdin?: string) => Promise<GitRun | null>
@@ -342,19 +343,29 @@ async function dropFilteredOids(
 }
 
 /**
+ * The repository root, derived from the workspace root and git's own
+ * `--show-prefix` (the repo→workspace path). Exact and free: the prefix
+ * came from the same spawn. Deriving it from the git DIRECTORY instead
+ * is wrong in a linked worktree, where `--git-dir` names
+ * `<main>/.git/worktrees/<name>` — not an ancestor of the worktree's
+ * files at all, so a walk stopping there never stops and runs to `/`.
+ */
+export function repoRootOf(workspaceRoot: string, gitPrefix: string): string {
+  const depth = gitPrefix.split('/').filter((p) => p !== '' && p !== '.').length
+  return depth === 0 ? workspaceRoot : path.resolve(workspaceRoot, ...Array(depth).fill('..'))
+}
+
+/**
  * Is there a `.gitattributes` at or above the scanned dirs, up to the repo
  * root? Only the directories are stat'd — one per level per pathspec — so
  * this stays a handful of syscalls on any repo size.
  */
 function attributesAbove(args: {
   workspaceRoot: string
-  gitDir: string
+  gitPrefix: string
   pathspecs: readonly string[]
 }): boolean {
-  const top =
-    args.gitDir === ''
-      ? args.workspaceRoot
-      : path.dirname(path.resolve(args.workspaceRoot, args.gitDir))
+  const top = repoRootOf(args.workspaceRoot, args.gitPrefix)
   const seen = new Set<string>()
   for (const spec of args.pathspecs) {
     let dir = path.resolve(args.workspaceRoot, spec)
@@ -540,10 +551,16 @@ export async function startGitEnumeration(
     // (empty when the workspace root IS the git root): `ls-files` prints
     // cwd(workspace)-relative paths but `status` prints repo-root-relative
     // ones, so when the workspace root is a SUBDIR of the git repo the two
-    // disagree; this lets us key both the same way below. `--git-dir` locates
-    // `info/attributes` for the filter gate (it is not always `.git/` — a
-    // linked worktree's `.git` is a FILE pointing elsewhere).
-    spawnGit(['rev-parse', '--show-prefix', '--git-dir']),
+    // disagree; this lets us key both the same way below. `--git-common-dir`
+    // locates `info/attributes` for the filter gate: it is not always `.git/`
+    // (a linked worktree's `.git` is a FILE pointing elsewhere), and it is
+    // the COMMON dir rather than the per-worktree one because that is where
+    // git reads the file from — probed, 2026-09-20: from inside a worktree
+    // `git check-attr text` goes `unspecified` → `auto` when the rule is
+    // written to the common dir's `info/attributes`, while the per-worktree
+    // gitdir has no such file at all. `--git-dir` named the per-worktree
+    // directory, so the gate looked where the rule can never be.
+    spawnGit(['rev-parse', '--show-prefix', '--git-common-dir']),
     // Reads three config keys, no tree scan — the gate for whether a clean
     // filter can rewrite bytes between the index and the worktree. Exits 1
     // when none are set, which is the common case and means "no gate".
@@ -567,7 +584,7 @@ export async function startGitEnumeration(
   // a STALE cache hit serving old outputs. Empty prefix (workspace == git root,
   // the common case) is a zero-cost no-op. Paths above the workspace can't be
   // inputs, so they drop out of the set.
-  // One spawn, two lines: `--show-prefix` then `--git-dir`.
+  // One spawn, two lines: `--show-prefix` then `--git-common-dir`.
   const revLines =
     prefixRes !== null && prefixRes.exitCode === 0 ? prefixRes.stdout.split('\n') : []
   const gitPrefix = (revLines[0] ?? '').trim()
@@ -611,6 +628,7 @@ export async function startGitEnumeration(
   await dropFilteredOids(trusted, {
     workspaceRoot,
     gitDir,
+    gitPrefix,
     pathspecs,
     coreConfig: coreCfg !== null && coreCfg.exitCode === 0 ? coreCfg.stdout : '',
     spawnGit,

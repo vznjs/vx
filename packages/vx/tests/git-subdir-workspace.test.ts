@@ -1,9 +1,10 @@
+import { realpathSync } from 'node:fs'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { affectedProjects } from '../src/workspace/index.js'
-import { GitFilesCache } from '../src/cache/index.js'
+import { GitFilesCache, repoRootOf } from '../src/cache/index.js'
 import { populateGitFilesCache } from '../src/cache/inputs.js'
 
 // Regression: when the vx workspace root is a SUBDIR of the git repo (a polyglot
@@ -13,8 +14,18 @@ import { populateGitFilesCache } from '../src/cache/inputs.js'
 // never pruned from the trusted-OID set (→ STALE cache hit) and `--affected`
 // under-selects. Both git commands must be normalized to workspace-relative.
 
+// Signing off for every call, not per commit: this repo's own environment
+// configures an ssh signing helper that talks to a local MCP server, which a
+// SANDBOXED task cannot reach — so a fixture that commits passes when the
+// file is run alone and fails inside the gate's shard. One row remembered
+// the flag and the next did not (2026-09-20); the helper now owns it.
 async function git(cwd: string, args: string[]): Promise<void> {
-  const p = Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
+  const p = Bun.spawnSync({
+    cmd: ['git', '-c', 'commit.gpgsign=false', '-c', 'tag.gpgSign=false', ...args],
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
   if (p.exitCode !== 0)
     throw new Error(`git ${args.join(' ')}: ${new TextDecoder().decode(p.stderr)}`)
 }
@@ -35,7 +46,7 @@ describe('workspace root is a subdirectory of the git repo', () => {
     await writeFile(path.join(ws, 'pkg-b', 'in.txt'), 'b')
     await writeFile(path.join(repo, 'toplevel.txt'), 'root') // outside the workspace
     await git(repo, ['add', '-A'])
-    await git(repo, ['-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'init'])
+    await git(repo, ['commit', '-q', '-m', 'init'])
   })
 
   afterEach(async () => {
@@ -75,4 +86,48 @@ describe('workspace root is a subdirectory of the git repo', () => {
     const bOids = gfc.oidsFor(path.join(ws, 'pkg-b'))
     expect(bOids?.has(path.join(ws, 'pkg-b', 'in.txt'))).toBe(true)
   })
+})
+
+// The clean-filter gate walks UP from each pathspec looking for a
+// `.gitattributes`, and it has to know where to stop. Deriving that from
+// `--git-dir` is wrong in a linked worktree — there it names
+// `<main>/.git/worktrees/<name>`, which is not an ancestor of the
+// worktree's files at all, so the walk never stops and runs to `/`.
+// `--show-prefix` is exact, free (same spawn) and right in all three
+// layouts, so the root is derived from it instead.
+describe('the repo root the attributes gate stops at', () => {
+  it("matches git's own toplevel in a plain repo, a subdir workspace and a WORKTREE", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-reporoot-'))
+    try {
+      const main = path.join(root, 'main')
+      await mkdir(path.join(main, 'code', 'pkg'), { recursive: true })
+      await writeFile(path.join(main, 'code', 'pkg', 'a.txt'), 'a\n')
+      await git(main, ['init', '-q'])
+      await git(main, ['config', 'user.email', 'test@vx.local'])
+      await git(main, ['config', 'user.name', 'vx test'])
+      await git(main, ['add', '-A'])
+      await git(main, ['commit', '-q', '-m', 'init'])
+      const wt = path.join(root, 'wt')
+      await git(main, ['worktree', 'add', '-q', wt])
+
+      const ask = (cwd: string, args: string[]): string => {
+        const p = Bun.spawnSync({ cmd: ['git', ...args], cwd, stdout: 'pipe', stderr: 'pipe' })
+        return new TextDecoder().decode(p.stdout).trim()
+      }
+      // Each case asks GIT for the truth and compares — the prefix is what
+      // vx already has in hand, the toplevel is the answer it must reach.
+      for (const ws of [main, path.join(main, 'code'), wt, path.join(wt, 'code')]) {
+        const prefix = ask(ws, ['rev-parse', '--show-prefix'])
+        const toplevel = realpathSync(ask(ws, ['rev-parse', '--show-toplevel']))
+        expect({ ws, root: realpathSync(repoRootOf(ws, prefix)) }).toEqual({ ws, root: toplevel })
+      }
+
+      // And the reason it is not derived from the git DIRECTORY: in the
+      // worktree that path is not even an ancestor of the files.
+      const gitDir = ask(wt, ['rev-parse', '--git-dir'])
+      expect(path.dirname(path.resolve(wt, gitDir))).not.toBe(realpathSync(wt))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
 })

@@ -41,6 +41,7 @@ export {
   GitFilesCache,
   applyGitEnumeration,
   gitPathspecs,
+  repoRootOf,
   startGitEnumeration,
   type GitEnumeration,
 } from './git-inputs.js'
