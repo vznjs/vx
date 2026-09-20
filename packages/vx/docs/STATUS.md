@@ -1225,6 +1225,45 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       that makes it unreachable — the implementation. Here the layer IS
       the guarantee ("every call ends its options"), so a law states it
       without pinning anything incidental.
+464.  DONE (2026-09-20, `orchestrator/admission.ts` — the seam between
+      the scheduler and executeTask, never swept; 434 took its
+      `taintTracker` and stopped there).
+      Eight mutations, one control. Three claims are well held, each
+      turning both dedup rows red: the joiner that drops its stale
+      up-front probe (the control), the barrier that lifts only once
+      the deferred SAVE has landed, and the deliberate `return await`
+      that keeps the `finally` behind the task rather than behind its
+      promise.
+      THE FIND: the restore-tier bypass. A confirmed local hit runs
+      BEFORE its dependencies, so the `upstream` array it is handed
+      holds a HOLE where a dep's outcome will go, and the dedup path
+      would recompute the task's hash from that array. Remove the
+      bypass and the upstream fold reads that `undefined`: the run
+      dies with an internal error instead of restoring bytes it
+      already has. The whole repo stayed green without it. Both dedup
+      rows run COLD, so nothing is ever in the restore tier, and every
+      restore-tier row runs with no registry — the intersection of the
+      two halves had no test anywhere.
+      Pinned with the fixture that reaches it: two projects, so an
+      edit to `lib` evicts `lib#build` alone while `app#build` stays
+      stable and warm (it folds no upstream key), leaving it
+      restore-tier with its dependency still running; then two
+      concurrent runs share a registry. Both restore. Red without the
+      bypass, green with it, and the three older rows pass both ways.
+      Left unpinned, measured and classified:
+      (a) the `canWrite` half of the dedup gate is a COST claim. Drop
+      it and the joiner waits for a sibling that will never save, then
+      executes anyway — correct, just slower.
+      (b) the persistent and group conjuncts are redundant with the
+      SCHEMA, which refuses `cache` on a persistent task and on a task
+      with no `exec` (pinned in `project-loader.test.ts`) and is
+      re-run after EVERY `project`-stage plugin (pinned in
+      `plugin-pipeline.test.ts`). No path reaches admission with such
+      a node, so there is no behaviour to pin.
+      (c) the join's `.catch` on the barrier swallows a rejection core
+      never produces: the barrier promise is built here and only ever
+      resolved. What it actually guards is the embedder-supplied Map,
+      which is a real boundary.
 
 ## In flight
 
