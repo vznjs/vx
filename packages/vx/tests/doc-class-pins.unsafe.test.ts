@@ -745,3 +745,55 @@ describe('every page stating the task-config hash states the projection', () => 
     expect(wrong).toEqual([])
   })
 })
+
+// Item 385 fixed caching.md's numbered key-parts list — steps 11 and 12
+// were inverted against the seed chain — and never greped for another
+// copy. `blog/keys-from-git.md` numbers the same twelve parts, says so
+// ("as Caching numbers them"), and still carried the inversion four items
+// later, with its own prose contradicting its own number ("folded right
+// after the upstream keys"). Item 381 recorded that exact failure once
+// already; this is the grep that should have run then (item 397).
+//
+// The rule is DERIVED, not asserted: `key()`'s own fold order decides
+// which of the two comes first, so a future reordering moves the pages
+// with it rather than failing them.
+describe('every page numbering the key parts folds plugin before inputs', () => {
+  it('the order is the one key() uses, on each page that numbers them', () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'cache', 'cache.ts'),
+      'utf8',
+    )
+    const body = src.slice(
+      src.indexOf('let h = xxh3(CACHE_VERSION)'),
+      src.indexOf('return h.toString(16)'),
+    )
+    const labels = [...body.matchAll(/h = xxh3\(`([a-z-]+):/g)].map((m) => m[1]!)
+    expect(labels).toContain('plugin')
+    expect(labels).toContain('inputs')
+    expect(labels.indexOf('plugin')).toBeLessThan(labels.indexOf('inputs'))
+
+    const pages: string[] = []
+    const wrong: string[] = []
+    for (const page of handAuthoredDocs()) {
+      const text = readFileSync(page, 'utf8')
+      // A page NUMBERS the parts when a numbered item names the sentinel
+      // and another names the input-file glob.
+      const items = [...text.matchAll(/^(\d+)\.[ ]([\s\S]*?)(?=^\d+\. |^\n*##? |\n\n(?!\s))/gm)]
+      const sentinel = items.find((m) => m[2]!.includes('CACHE_VERSION'))
+      // "content hashes", not the glob NAME: caching.md's config step
+      // mentions `cache.inputs.files` among the declarations it captures,
+      // so a search for the glob found step 5 and called the order wrong.
+      const inputs = items.find((m) => /content hashes/i.test(m[2]!))
+      const plugin = items.find((m) => /plugin'?s? `key` stage|Plugin key material/.test(m[2]!))
+      if (sentinel === undefined || inputs === undefined || plugin === undefined) continue
+      pages.push(path.basename(page))
+      if (Number(plugin[1]) >= Number(inputs[1])) {
+        wrong.push(`${path.basename(page)}: plugin is ${plugin[1]}, inputs ${inputs[1]}`)
+      }
+    }
+    // Two copies today — caching.md and the blog post. A third is a
+    // deliberate edit here, and an empty result cannot pass for agreement.
+    expect(pages.length).toBeGreaterThan(1)
+    expect(wrong).toEqual([])
+  })
+})

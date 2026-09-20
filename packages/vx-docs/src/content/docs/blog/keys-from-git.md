@@ -39,13 +39,13 @@ concatenation. The parts, as [Caching](../../caching/) numbers them:
 9. The same for `workspaceRuntime`, resolved once per run.
 10. Every upstream task's cache key, filtered to the ones the graph says
     this task depends on ([cascade post](../cascade-through-inputs/)).
-11. The content hashes of every file `cache.inputs.files` resolves to.
-12. Any material a plugin's `key` stage contributes — folded right
-    after the upstream keys, and only when a plugin returned any, so a
-    workspace with no `key` plugin derives the keys it derived before
-    the stage existed.
+11. Any material a plugin's `key` stage contributes — folded right
+    after the upstream keys and BEFORE the input files, and only when a
+    plugin returned any, so a workspace with no `key` plugin derives
+    the keys it derived before the stage existed.
+12. The content hashes of every file `cache.inputs.files` resolves to.
 
-Part 11 is where the money is. A build task in a real package resolves
+Part 12 is where the money is. A build task in a real package resolves
 to hundreds of files, and a workspace has hundreds of packages.
 
 ## Ask git, once
