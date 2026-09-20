@@ -80,7 +80,17 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         try {
           return manager.digest(text)
         } catch (err) {
-          throw new Error(`${manager.file}: ${err instanceof Error ? err.message : String(err)}`)
+          // The parsers name their own file, so prefixing unconditionally
+          // said it twice — "bun.lock: bun.lock: Failed to parse JSONC"
+          // (2026-09-20). Prefix only what does not already name it, and
+          // say what fixes it: a lockfile vx cannot read is an install
+          // away from readable, and the alternative to reading it is a
+          // WRONG key, so the run refuses rather than guessing.
+          const message = err instanceof Error ? err.message : String(err)
+          const named = message.startsWith(`${manager.file}:`)
+            ? message
+            : `${manager.file}: ${message}`
+          throw new Error(`${named} — regenerate it with \`${manager.name} install\``)
         }
       },
     }),

@@ -149,6 +149,30 @@ describe('affected', () => {
     expect([...(await ask(claim(), base, base))!]).toEqual([])
   })
 
+  it('a side that cannot be parsed is refused, and the refusal names WHICH side', async () => {
+    // "your lockfile is broken" and "the base commit's is" are different
+    // problems with different fixes — a lockfile-migration commit hits the
+    // second — and the parser's own message names neither (2026-09-20).
+    const strict = lockfileClaim({
+      file: 'bun.lock',
+      version: 1,
+      digest: (text) => {
+        if (text.includes('broken')) throw new Error('bun.lock: not a lockfile')
+        return new Map([['.', text.trim()]])
+      },
+    })
+    // The hook is synchronous for a claim whose digest is, so the refusal
+    // arrives as a throw rather than a rejection.
+    expect(() => ask(strict, 'broken', '.=r1\n')).toThrow(
+      'bun.lock: not a lockfile (as of the base ref)',
+    )
+    expect(() => ask(strict, '.=r1\n', 'broken')).toThrow(
+      'bun.lock: not a lockfile (in the working tree)',
+    )
+    // CONTROL: two sides that parse still answer with the moved projects.
+    expect([...(await ask(strict, '.=r1\n', '.=r2\n'))!]).toEqual(['a', 'b', 'tools'])
+  })
+
   it('cannot tell when the file appeared or went, or under scope: workspace', async () => {
     expect(await ask(claim(), null, '.=r1\n')).toBeUndefined()
     expect(await ask(claim(), '.=r1\n', null)).toBeUndefined()
