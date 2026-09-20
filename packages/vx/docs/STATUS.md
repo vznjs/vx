@@ -1995,6 +1995,36 @@ non-empty string` is caught by exactly ONE row, and it is the
       the case where "redundant" is the right answer. The rule cuts
       both ways, and the check is what tells them apart.
 
+503.  DONE (2026-09-20, `cli/watch.ts`'s timing helpers — the part of
+      the file 502 did not reach, where a wrong answer is a DROPPED
+      edit and the watch just sits there looking alive).
+      Four of five pinned: `modifiedBefore`'s unreadable-path arm (an
+      ENOENT is never "before"), `fsClockNow`'s stamp read (taking
+      `Date.now()` instead of the stamp's own mtime), and both of
+      `pendingAfterCycle`'s clauses (first label wins; an abort
+      returns nothing) each fail a row.
+      THE SURVIVOR is `modifiedBefore`'s comparison itself: `<` → `<=`
+      passes the whole suite. The row that covers this function
+      asserts an mtime BEFORE `t`, an mtime after it (`t - 1`), and an
+      unreadable path — never `t` EQUAL to the mtime, which is the
+      boundary the operator names.
+      It is not an exotic case, and that is the point: `fsClockNow`
+      exists because an mtime is the kernel's COARSE clock, and it
+      reads the arm instant off a stamp file's own mtime. A write
+      landing in the same tick therefore carries exactly that value.
+      So equality is a case this clock CHOICE creates, and `<=` calls
+      such an edit "made before the arm" and drops it — precisely the
+      silent missed edit the stamp machinery was built to prevent
+      (the 2026-09-11 watch e2e flake).
+      Pinned in place: one line asserting the exact-equality case,
+      beside the two strict ones already there. Differential red.
+      Method note: this is 491's shape — a boundary asserted on one
+      side only — and it keeps recurring because a fixture naturally
+      reaches for `t - 1` and `t + 1`. Both of those pass under either
+      operator. The value that separates them is the one nobody
+      reaches for, and for a comparison the rule is now simply: assert
+      AT the boundary, not around it.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
