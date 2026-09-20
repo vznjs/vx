@@ -1331,6 +1331,35 @@ built behind a failure`). Two claims were not.
       Differential against the narrowing it exists to catch: scoping the
       exclusion to the declaring node fails the new row and leaves the
       neighbour green, which is the whole argument for adding it.
+426.  DONE (2026-09-20, the third surface in the sweep: the stability
+      gate, where a wrong "stable" verdict is a stale-hit vector —
+      execute-task reuses a `preProbed` hash WITHOUT recomputing it).
+      `dependsOnSiblingOutputs` and `workspaceInputsReach` are pinned
+      case by case in `stable-keys.test.ts`, and the one-hop graph
+      cases are in `local-shortcircuit.test.ts`. The FOLD that feeds
+      the gate was not: `deriveStableKeys` accumulates transitive
+      producers across the topo walk in two accumulators, and deleting
+      EITHER line failed nothing — not the stable-key suite, not the
+      short-circuit suite, not `stale-hit.test.ts`, not the whole
+      repo's tests across every package (run twice, once per mutation,
+      diffed against the container baseline: zero new failures).
+      The test file's own header claimed the opposite — that its cases
+      "exercise directly" the transitive fold. They hand the gate a
+      literal producer set, so they pin the gate and never the fold.
+      De-claimed in place and pointed at the rows that do, per the rule
+      that a comment claiming a guarantee the code lacks is a defect.
+      Each accumulator needs its OWN arrangement, which is why this is
+      two rows and not one. For the project set the intermediate must
+      be stable, so it sits in another project: `a#codegen` →
+      `b#mid` → `a#consume`, and only the fold carries `a` across
+      `b#mid`. For the workspace-output flag that shape proves nothing
+      — a root-anchored producer makes its direct dependents unstable
+      outright, so the intermediate would be unstable and the reader
+      would inherit it. A GROUP task is the one intermediate that stays
+      stable over such a producer (no cache, never gated, unstable only
+      when a member is), so the second row is `wa#gen` → `wa#all`
+      (group) → `wa#consume`. Each row fails under its own mutation and
+      only its own.
 
 ## In flight
 
@@ -1562,57 +1591,52 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270, 275, 281, 287, 293, 299, 305, 312, 319, 326, 332, 383 and
-    394, 400, 403, 409 and 412 (14–14ak) are in
-    `docs/history/2026-09-status-next-log.md`; 14al below is the
+    394, 400, 403, 409, 412 and 419 (14–14al) are in
+    `docs/history/2026-09-status-next-log.md`; 14am below is the
     current one.
 
-14al. **Handoff after item 419 (2026-09-20).** Seven items since 14ak,
-and they are one arc: every shipped plugin walked as the person who
-declares it, against a real counterpart rather than a stub seam. 413 the
-two remote caches, 414 `vx mcp`, 415 `@vzn/vx-otel`, 416
-`@vzn/vx-github`, 417 `@vzn/vx-lockfile`, 418
-`@vzn/vx-schedule-history`, 419 the rule the arc taught, written where a
-plugin author reads it. With 408–412 before them the adoption surface is
-now walked end to end: first run, Turbo, Nx, remote caches, and every
-first-party plugin.
-One defect shape accounted for four of the finds, and it is worth
-naming because it will recur: **a failure the code handled and did not
-report**. A refused remote-cache token warned five times instead of once
-(413); an OTLP collector that answered 401, 404 or 500 exported nothing
-and said nothing, because `await fetch(…)` resolves on a refusal and the
-status was never read (415); a lockfile refusal named its file twice and
-its remedy not at all, and never said which side of the `--affected`
-diff failed (417). The through-line: an integration whose whole promise
-is silence when it works needs a LOUD, single, specific line when it
-does not, and only a hostile counterpart finds that — a stub that
-throws proves the catch, never the silence.
-What the walks did NOT find is recorded too, so nobody re-walks it:
-`@vzn/vx-github` already read its status and hinted at
-`permissions: checks: write` (416, its find was a size cap instead); the
-MCP surface answered every malformed ask correctly and kept answering
-while a run held the database (414); and schedule-history handles empty,
-thin and stale history without a mis-order (418).
-Method, in one line each. Measure the unit before believing it: 418's
-three baseline failures are one cause — this container's Bun reports
-`ru_maxrss` in kilobytes where core reads bytes. Read fields, not
-`JSON.stringify`: non-enumerable getters print `{}` and cost me a wrong
-diagnosis (418). `Bun.spawnSync` in a parent blocks the loop serving the
-stub its child dials (413, 416). And a test that turns on which of two
-equal candidates is scanned first pins nothing (414).
+14am. **Handoff after item 426 (2026-09-20).** Seven items since 14al,
+in two halves. 420 re-measured the warm path on THIS machine and said
+what the numbers license (an A/A control beside every future claim
+here); 421 wrote Next 16's design note and 422 refuted the note's own
+first draft by measurement. Then 423–426 are one method applied four
+times: take a file the repo calls correctness-critical, read every
+claim it makes, and pin the ones nothing proves.
+The method's yield is uneven, and that is the point. `execute-task.ts`
+gave two (423: the `--force` half of the write-gated wipe, and
+`exec.remote: 'only'` promising three things with none pinned).
+`cache/inputs.ts` + `git-inputs.ts` gave ZERO at the unit level (424) —
+recorded as zero rather than dressed up — and the gap turned out to be
+one level up: every exclusion proven alone on the resolver, none of
+them together on a real run. The composite is now one row. 425 pinned
+the constraint 421's note ends with. 426 found the largest gap of the
+four: `deriveStableKeys` folds transitive output producers in two
+accumulators, and deleting EITHER line failed nothing in the entire
+repo's tests, while the stable-key suite's own header claimed those
+cases covered the fold.
+Three rules earned this arc. A test that hands a function its input
+pins the function, never the code that BUILDS that input — the fold
+and the gate are different surfaces, and only one had rows. A
+surviving mutation is the measurement: two of them ran against every
+package's suite before either gap was called a gap. And an exclusion
+with two causes proves nothing about either — 425's dependent was
+already unstable, 426's ordinary intermediate would have inherited
+instability, so each row needed an arrangement where exactly one
+mechanism can be doing the work (a cross-project intermediate for one
+accumulator, a GROUP task for the other).
 Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
-noise floor and no arms to A/B until the run path changes again. The
-owner residue — the `NPM_TOKEN` secret, the release cut, the site's
-address. No open issues. The container's baseline is 12–23 failing tests
-(the spread is the watch family under load) and ten failing tasks,
-eleven when shard 9 takes its SIGILL; the clean-tree control settles
-which set you have, and the RSS family now has a written cause.
-Next: the loop holds 393–419, twenty-seven entries, so the trim is due
-at 432. For work, the walks are finished — what is left is either gated
-(Next 1, 2, 16) or a judgement call about what a pre-alpha needs next:
-the release cut and the site's address are the owner's, and the honest
-in-repo candidates are a second look at the run path once something
-changes it, or the two-tasks-one-output-path design Next 16 sketches if
-a third repo shows the addition shape. Never end with "what next?".
+noise floor and no arms to A/B until the run path changes. The owner
+residue — the `NPM_TOKEN` secret, the release cut, the site's address.
+No open issues. The container's baseline is 12–23 failing tests (the
+spread is the watch family under load) and ten failing tasks, eleven
+when shard 9 takes its SIGILL; the clean-tree control settles which
+set you have, and the RSS family's cause is written down (418).
+Next: the loop holds 393–426, thirty-four entries, so the trim is due
+at 432 — close. For work, the sweep has three surfaces behind it and
+the obvious fourth is `cache/cache.ts` (1,583 lines, the local store
+itself, where wrong bytes under an unchanged key are a `CACHE_VERSION`
+bump). Do it by the same standard, and if it yields nothing, say so
+with the evidence. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
