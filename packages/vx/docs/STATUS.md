@@ -1406,6 +1406,38 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       unstable task is unstable by the GATE rather than by inheritance,
       and the producer keeps its own short-circuit, so the fixture is
       not just classing everything unstable.
+469.  DONE (2026-09-20, `orchestrator/download-policy.ts` — which
+      tasks may leave their outputs in the remote store). A WELL-HELD
+      report with one classified survivor: no new test, and the
+      measurement is the artifact.
+      Eight mutations, seven caught, each by a row named for the claim
+      it breaks: a runtime-command reader no longer forcing eager
+      (two rows), a `workspaceFiles` reader, workspace-anchored
+      OUTPUTS, a leading wildcard reaching everything, the overlap
+      test losing its ancestor relation ("the OVERLAP is a path
+      question, not a spelling one"), a surfaced task under `toplevel`,
+      and a locally-placed task deferring. 28 rows over 171 lines, and
+      they bite.
+      THE SURVIVOR is one of three conservative fallbacks the module's
+      own comment lists — "a cacheable task with no declared `files`
+      is treated as reading its whole project". The other two are
+      pinned; this one is not. Same shape as 465's partition, so the
+      first question was whether it is reachable at all.
+      It is, and it protects nothing. `cache.inputs.files` is REQUIRED
+      by the schema, so the `undefined` half cannot arise from a
+      config; the empty-array half can, and `files: []` means exactly
+      what it says. Measured on the real CLI: a task with
+      `cache.inputs.files: []` keyed `8e44f167` before AND after a
+      project file changed — its key does not move with any file in
+      its project, so whether a producer's bytes arrived cannot move
+      it either.
+      So this is a COST claim, not a correctness one (the 464
+      `canWrite` genre): the `['.']` fallback makes such a reader
+      block deferral of every producer in its project while guarding
+      no key. Left unpinned deliberately — pinning it would pin the
+      conservatism itself, and a later change that let those producers
+      defer would be an improvement this repo should not have to argue
+      with a test about.
 
 ## In flight
 
