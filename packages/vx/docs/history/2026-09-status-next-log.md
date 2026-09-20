@@ -1516,3 +1516,39 @@ For work: the walks are done, so the untried surfaces are the Nx
 migrate path (needs an Nx graph, so a fixture rather than a live
 install) and `turboCache()` / `nxCache()` (need a server to talk to).
 Never end with "what next?".
+
+14ak. **Handoff after item 412 (2026-09-20).** Three items since 14aj,
+two of them the Nx migrate surface and the third this file. 410 and 411
+walked `@vzn/vx-migrate`'s Nx path end to end, which needs no `nx`
+install at all — the migrator reads the RESOLVED
+`.nx/workspace-data/project-graph.json`, so a hand-written graph is a
+faithful fixture — and each found a real defect in code that had never
+been run against the shape it claimed to map: a `dependsOn` string of
+the form `ui:build` was written through verbatim, so the migrated
+workspace refused to run out of the config `vx-migrate` had just called
+migrated; and `{ runtime: "<cmd>" }` was reported "not representable in
+vx" while `docs/schema.md` names `cache.inputs.runtime` as that input's
+equivalent. Both now have pins that fail without the fix. 412 is the
+trim: the loop had reached forty with this entry, so 373–392 moved
+whole to `docs/history/2026-09-improvement-loop-373-392.md`.
+What the two walks taught, beyond the fixes. A mapper is only as good
+as the shapes someone has RUN through it: printing a report that says
+"migrated" is not the same claim as the workspace running, and both
+defects survived because the reading stopped at the report. And check
+the fixture before the code — my first `targetDefaults` fixture put
+defaults in `nx.json` and expected them merged, which no real `nx graph`
+output would ever hold, so the "gap" it showed was mine.
+Open: Next 1, 2 and 16, gated by their own terms; Next 6 carries item
+404's noise floor, so the next run-path change has a yardstick and an
+A/A control to sit inside. The owner residue — the `NPM_TOKEN` secret,
+the release cut, the site's address. No open issues. The container's
+baseline is 21–23 failing tests and ten failing tasks, eleven when
+shard 9 takes its SIGILL, and the clean-tree control is what settles
+which set you have.
+Next: the loop holds 393–412, twenty entries, so the trim is paid and
+the next one is due at 432. For work: the adoption walks are done (first
+run 408, Turbo 409, Nx 410–411); what stays untried is `turboCache()` /
+`nxCache()`, which need a server to talk to, and the Nx path against a
+graph dumped from one of the five real Nx repos rather than a
+hand-written one — REPOS.md says which, and the graph file is all it
+needs. Never end with "what next?".

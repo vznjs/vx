@@ -705,6 +705,17 @@ Plugins are **isolated from execution by design**:
   and it's **time-bounded** (3s per plugin) so a wedged sink can't hold the
   run's exit hostage.
 
+A sink that catches its OWN failure owes a warning. Core cannot see an
+error you handled, so an export that quietly returns turns the whole
+integration into a pipeline that reports nothing and says nothing —
+the one failure an adopter cannot notice, because a working sink is
+silent too. Both shipped exporters got this wrong in the same way and on
+the same day: a collector that REFUSES an export answers rather than
+throwing (`401` from a wrong token, `404` from a wrong path), so
+`await fetch(…)` resolved and nothing was ever said. Read the status,
+and warn through `ctx.warn` with what the far side replied — once per
+destination, not once per task.
+
 The telemetry guarantee is **structural, not a policy**: a `TelemetrySink`
 is handed immutable records and a read-only context (`workspaceRoot`,
 `cacheDir`, `warn`) — no bus, no cache handle, no run request. There is no
