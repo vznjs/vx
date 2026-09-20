@@ -1445,6 +1445,39 @@ describe.skipIf(!available)('the sandbox temp directory', () => {
 })
 
 describe('resolveSandboxConfig', () => {
+  it('collapses a whole-subtree pattern to its directory, and a single-level one NEVER', async () => {
+    // The collapse is documented as "not a widening": `<d>/**` already
+    // covered every file under `<d>`, so folding it to `<d>` only adds the
+    // directory entry. That reasoning is exactly what fails for `<d>/*`,
+    // which covers the immediate children and nothing deeper — folding THAT
+    // to `<d>` would hand the task the directory itself and everything
+    // created in it later.
+    //
+    // The `**` half is pinned e2e above ("a whole-directory pattern grants
+    // the directory"). The single-star half was not pinned at all: widening
+    // the collapse regex to accept one star left the whole repo green, and
+    // this is a GRANT, so the two halves are one boundary.
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-collapse-'))
+    try {
+      const sub = path.join(root, 'sub')
+      await mkdir(sub)
+      await Bun.write(path.join(sub, 'a.txt'), 'a')
+      const real = realpathSync(root)
+      const realSub = path.join(real, 'sub')
+
+      const deep = resolveSandboxConfig({ allow: { read: ['sub/**'] } }, root)
+      expect(deep.allowRead).toContain(realSub)
+
+      const shallow = resolveSandboxConfig({ allow: { read: ['sub/*'] } }, root)
+      expect(shallow.allowRead).not.toContain(realSub)
+      // CONTROL: it still granted what the pattern actually names, so the
+      // row above is the collapse and not an empty resolution.
+      expect(shallow.allowRead).toContain(path.join(realSub, 'a.txt'))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('canonicalizes symlinked paths, including non-existent suffixes', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-sbx-realpath-'))
     try {
