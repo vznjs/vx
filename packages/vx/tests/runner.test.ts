@@ -595,6 +595,34 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     expect(execWrap('vite --port $PORT')).toBe('vite --port $PORT')
   })
 
+  it('a NEWLINE-separated command keeps the shell, and every line runs', async () => {
+    // The separator `&&` and `|` do not stand in for. `exec` REPLACES sh,
+    // so an exec-wrapped `a\nb` runs `a` and drops `b` — silently, exit 0:
+    // a task reporting success having run half its command. Asserted as the
+    // guarantee (both lines ran) and not only as a property of the regex.
+    //
+    // `/bin/echo`, not `echo`: a builtin would keep the shell for a SECOND
+    // reason, and then the newline guard could rot without this row noticing.
+    const two = '/bin/echo one\n/bin/echo two'
+
+    // The guarantee first, so it is what a regression reddens.
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-nl-'))
+    try {
+      const result = await runCommand({
+        command: two,
+        cwd: dir,
+        env: { PATH: process.env.PATH ?? '' },
+      })
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout.split('\n').filter(Boolean)).toEqual(['one', 'two'])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+
+    // …and the mechanism that carries it.
+    expect(execWrap(two)).toBe(two)
+  })
+
   it('an exec-wrapped process is the direct child — no orphaned shell', async () => {
     // `exec sleep` replaces sh, so the tracked child IS sleep. Killing
     // it reaps the real process; there is no surviving grandchild.
