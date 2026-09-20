@@ -1441,6 +1441,35 @@ built behind a failure`). Two claims were not.
       rest of the project stays provable. Two rows pin it both ways,
       Linux-only by construction (macOS seatbelt matches paths rather
       than mounting, so a file grant stays exact there).
+429.  DONE (2026-09-20, and mostly a REFUTATION — recorded because a
+      probe's negative result is worth as much as its positive one).
+      428's thesis pointed at the next pair with halves in different
+      files: `exec.env.passThrough` decides what the CHILD gets,
+      `cache.inputs.env` decides what the KEY folds, and a mismatch is
+      stale-hit shaped. I expected the same gap as 428. There is none.
+      Proven the way 426 proved its own: fold every `passThrough` name's
+      VALUE into the key and run every package's tests. Two rows catch
+      it — `orchestrator.test.ts` § "cache.inputs.env affects the cache
+      key; exec.env.passThrough alone does not" (which also asserts the
+      stale bytes the hit replays) and `parity-turbo.test.ts` § "`env`
+      is in the hash; `passThroughEnv` is not". The orthogonality is
+      documented from both sides in `schema.md` and pinned from both
+      sides in the suite.
+      One direction was missing, and it is the one `schema.md` itself
+      calls "legal but rare": a name in `cache.inputs.env` and NOT in
+      `exec.env.passThrough`. Both existing rows pass every name through
+      as well, so neither shows the isolated child — the key moves on a
+      value the command cannot read, and the re-run reproduces identical
+      bytes. Now a row, differential on both halves: ignoring
+      `cache.inputs.env` in the key turns the miss into a hit, and
+      leaking the parent environment past `buildIsolatedEnv` puts the
+      value in the output.
+      The lesson is about the sweep, not the code: I searched
+      `orchestrator-run.test.ts` and `env.test.ts`, found nothing, and
+      was ready to call it a gap. The suite's two halves live in
+      `orchestrator.test.ts` and a parity file. Grep proves absence only
+      where you grep; the repo-wide mutation is what actually answers
+      "is this pinned", and it takes one run.
 
 ## In flight
 
