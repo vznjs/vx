@@ -1473,6 +1473,48 @@ prune` for eviction), a typo of `prune` still gets the
       nearest-neighbour hint every other surface gives, and the help
       screen and `cli.md` say where the statistics live.
 
+409.  DONE (2026-09-20). The other adoption path walked the way 408
+      walked the first-run one: `vx-migrate` on a Turbo workspace,
+      then the same repo run UNCHANGED through the `turbo()` plugin.
+      What holds, so it is not re-walked. The CLI on a plain
+      `turbo.json` writes a config per package plus `vx-preset.ts`,
+      reports "5 tasks migrated clean, 1 TODO" and the TODO is the
+      persistent task's `readyWhen`. On a turbo.json using the hard
+      fields it maps `globalEnv` to BOTH `cache.inputs.env` and
+      `exec.env.passThrough` while `globalPassThroughEnv` goes only to
+      the latter; `$TURBO_DEFAULT$` to `**/*`; a negated INPUT
+      through as-is; a negated OUTPUT to a TODO (vx has no output
+      negation); `//#format` to a note that vx has no workspace-root
+      tasks; `interactive` to a TODO; and a cross-project
+      `dependsOn: ["ui#codegen"]` straight through — and the result
+      RUNS, `deploy` uncached, `codegen` before `build`.
+      Package-level `turbo.json` with `extends: ["//"]` merges over
+      the root task field by field: `.next/**` and the package's
+      `env` win, the root's `inputs` and `passThroughEnv` stay.
+      The plugin path: a workspace whose only vx file is a
+      `vx.workspace.ts` naming `turbo()` runs the Turbo repo with no
+      config written, warns once about the persistent task, caches,
+      and re-runs every task when `turbo.json`'s
+      `globalDependencies` file changes — the mapping that matters
+      most, since a missed global is a stale hit.
+      One doc fix, from a near-miss worth recording. The `extends`
+      row read "any other key replaces the root's definition rather
+      than inheriting it", which I first took as contradicting the
+      mapper's `{ ...root, ...overlay }` merge that the walk had just
+      shown. The tests settle it — `turbo.test.ts:329` pins
+      `extends: false` alone as the opt-out and with keys as "runs on
+      those keys alone", `migrate.test.ts:191` pins the merge — so
+      the row was about the `extends: false` FORM and over-generalized
+      in a way that reads as the opposite of the behaviour. Both
+      copies (the migrate guide and the blog table) now say the
+      package task merges field by field, and what `extends: false`
+      does, separately.
+      Also confirmed on the way: a missing plugin package is refused
+      with "cannot find '@vzn/vx-migrate' — no node_modules above the
+      config provides it; install the workspace's dependencies
+      first", which is the right sentence for the most likely
+      first-time failure.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
@@ -1690,45 +1732,47 @@ state of each:
 14. The handoffs after items 153, 130, 166, 170, 176, 183, 189, 192,
     197, 202, 208, 211, 214, 221, 225, 230, 236, 240, 242, 252, 263,
     270, 275, 281, 287, 293, 299, 305, 312, 319, 326, 332, 383 and
-    394 and 400 (14–14ah) are in
-    `docs/history/2026-09-status-next-log.md`; 14ai below is the
+    394, 400 and 403 (14–14ai) are in
+    `docs/history/2026-09-status-next-log.md`; 14aj below is the
     current one.
 
-14ai. **Handoff after item 403 (2026-09-20).** Four items since 14ah,
-all the same idea pushed one layer further each time: a claim is
-checked where it is CHEAPEST to state, not where it is TRUE. 400 found
-a test whose name made three claims and whose body made none; 401 two
-that quantified over a source list by restating it; 402 a fixture list
-standing in for `ALWAYS_IGNORE` and the env gates nothing required CI
-to set; 403 the layer under all of them — a file no task launches, and
-a helper whose own guarantee nothing tested.
-What the four taught, beyond the shape. A probe over SOURCE needs a
-parser: three rewrites of one sweep (an apostrophe in a comment, a
-backtick inside a regex, then the regex literal itself) and every
-draft's output was a candidate list to READ, never a verdict. A
-derived law must drive every path its subject has: 401's first draft
-passed under a real defect because `hashableConfig` fast-paths when no
-`remote` is declared, so every variant it built skipped the projection
-it was testing. And a floor is what makes "found nothing" a result —
-two sweeps in 402 returned empty against floors of 2 852 blocks and
-six candidates, which is why they are worth recording at all.
-Open: Next 1, 2 and 16, gated by their own terms; Next 6 PARKED since
-item 374 and now the oldest debt — items 374 through 403 changed docs,
-tests and comments only, so there has been no run-path delta to A/B,
-and the first change that touches the warm path owes one. The owner
-residue — the `NPM_TOKEN` secret, the release cut, the site's address.
-No open issues. The container's baseline is 20-23 failing tests and
-ten failing tasks, with shard 9 intermittently making it eleven on a
-SIGILL that names no test; the clean-tree control settles that, not
-the streak.
-Next: the test-name arc is done — four items, seven derived laws, and
-the last two sweeps found nothing. Go back to the product. Next 6's
-re-measure is owed on the first run-path change, so make one worth
-measuring: `cache/cache.ts` is 1,583 lines and Next 8(d) names its
-split as item 8's, `cli/watch.ts` is 1,121, and the warm path's stage
-table (discover / load configs / classify / run graph) is where a
-5,000-project run spends its 687 ms. Read the table first, pick the
-stage, and bring a number. Never end with "what next?".
+14aj. **Handoff after item 409 (2026-09-20).** Six items since 14ai,
+and the arc changed subject twice. 404–407 are the run path: a mark
+that had been charging the package graph to the cache open, the
+container's own noise floor (12.6 ms between identical code at
+min-of-7, so nothing under ~6 % is resolvable here), then two real
+wins — inputs resolved once per project+declaration rather than per
+task, and the input-file fold no longer re-sorting, re-promising or
+re-relativizing what it was handed — for `task hash` 49–61 ms down to
+26–35 on this repo's own dry run, keys proven identical across 1,000
+bench tasks. 407 closed the leads: the warm path is flat, nothing in
+any stage above 4 ms, and the three fat-looking numbers were refuted
+(a batched probe, an already-batched config read, and the accumulated
+table's overlap — which the table now warns about itself). 408 and
+409 are the two adoption paths walked end to end: first-run and
+migrate. Thirty-odd probes, two gaps, both fixed (`vx cache stats`
+naming the verb that answers it; the `extends` row saying what the
+mapper does).
+What the stretch taught, beyond the wins. Measure the metric the
+change touches, not the clock: every wall-clock A/B here sat inside
+its own A/A control, while `task hash` separated cleanly. Put a floor
+on every extraction — the key-identity check printed "IDENTICAL" over
+an empty diff before it had one. And when a doc and the code seem to
+disagree, read the TESTS before believing either: the `extends` row
+was ambiguous, not wrong, and the near-miss cost one grep.
+Open: Next 1, 2 and 16, gated by their own terms; Next 6 now has its
+figures and its noise floor recorded, so the next run-path change has
+a yardstick. The owner residue — the `NPM_TOKEN` secret, the release
+cut, the site's address. No open issues. The container's baseline is
+23 failing tests and ten failing tasks, eleven when shard 9 takes its
+SIGILL, and the clean-tree control is what settles that.
+Next: the loop holds 373–409, thirty-seven entries, and item 373's
+convention trims a prefix to history at forty — do it deliberately
+within the next two or three items rather than letting the file grow.
+For work: the walks are done, so the untried surfaces are the Nx
+migrate path (needs an Nx graph, so a fixture rather than a live
+install) and `turboCache()` / `nxCache()` (need a server to talk to).
+Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets
