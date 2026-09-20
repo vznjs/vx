@@ -987,6 +987,36 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       count git spawns, pinning the implementation rather than a
       guarantee. Recorded here so it is not rediscovered as a find.
 
+457.  DONE (2026-09-20, the sandbox bind pair — `exec/sandbox-binds.ts`
+      against `orchestrator/sandbox-request.ts`. 428 took the read side
+      and 433 the derive side; `punchWritePaths` itself had never been
+      mutated one claim at a time, and it is a security boundary, so a
+      survivor there is worth more than elsewhere). Two claims.
+      (a) CAUGHT: "recursing only along the branches that actually
+      contain one". Flattening the recursion to a single level fails a
+      row named, exactly, "recurses only along the branch that contains
+      a write path". The punch's SHAPE is well held.
+      (b) SURVIVED, and it is the find: the symlink warning. Silencing
+      it breaks nothing. It is the one diagnostic for a failure with no
+      other symptom — bwrap resolves a bind SOURCE, so punching a
+      directory mounts each symlinked child as the directory it points
+      AT, the link is gone inside the sandbox, and a package resolved
+      through it loses the siblings its dependencies need. That cost
+      FOUR DAYS of red CI (astro and `yargs-parser`, 2026-09-09), and
+      SRT's config carries no `--symlink`, so the warning is not
+      commentary on the fix — it IS the fix, because it says which
+      grant to move.
+      The shape is the arc's third diagnostic gap after 444 and 450: a
+      message that exists precisely because the failure is otherwise
+      inexplicable, held by nothing. Worth stating as a rule — when a
+      comment says a message is the only signal for a class of failure,
+      that message needs a row more than the code around it does.
+      Pinned in the describe that already owns the function: a symlinked
+      child plus a write grant, stderr captured, asserting the notice
+      names BOTH halves (what was flattened and which grant to move)
+      and appears exactly ONCE across two punches of the same grant, so
+      a thousand-task run says it once. Red 3 of 3 under the mutation.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
