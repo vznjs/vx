@@ -1184,6 +1184,38 @@ prune` for eviction), a typo of `prune` still gets the
       invocation. A bench-level claim on this container needs a bigger
       effect than an in-process one does, and both need a control arm.
 
+421.  DONE (2026-09-20, Next 16's design note — the half of it that is
+      NOT gated). Next 16's own terms are "do it if a third repo shows
+      the addition shape, with the design note first", so the note is
+      unblocked work and the implementation is not.
+      `docs/design/overlapping-outputs-2026-09.md` writes it down, and
+      the reason it was worth writing rather than deferring is that
+      reading the sketch against the code found a conflict the sketch
+      does not mention. Its point 4, "the restore order follows the
+      edge", contradicts the restore tier: a confirmed stable-key local
+      hit becomes ready IMMEDIATELY because "a stable hit's restore
+      needs none of its deps' output", and an overlap-narrowed artifact
+      is exactly one that does. So the design needs a second stability
+      axis — today's gate (`dependsOnSiblingOutputs`) asks where a task
+      READS, and the overlap case is about where it WRITES.
+      Checked rather than assumed, and the answer splits: for the shape
+      the design targets (strapi, refine — B depends on A in the SAME
+      project) B is already unstable, because
+      `upstreamOutputProjects.has(node.projectName)` makes any
+      same-project dependent of an output-declaring task unstable. It is
+      safe today for the reason that gate exists, not for this one. The
+      cross-project case is not covered: a `workspaceFiles` WRITER's key
+      is unaffected by its own outputs, so it can be stable, restore-
+      tier, and restored before its producer has run — the one case an
+      implementation must exclude explicitly, with a pin that fails
+      without the exclusion.
+      The note also records what admitting refine's REWRITE shape would
+      cost (a hash per overlapped file, bounded by the overlap rather
+      than the tree — measurable, not obviously unaffordable, and
+      unmeasured), and the four-case stale-hit test any implementation
+      owes: A hit + B miss, A miss + B hit, both hit, both miss, each
+      leaving a tree byte-identical to a cold run of both.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
@@ -1510,8 +1542,13 @@ a third repo shows the addition shape. Never end with "what next?".
     rewrite-in-place stays refused and only additions are admitted.
     strapi's `build:types` (tsc into the `dist` rollup filled) is the
     addition case; refine's is the rewrite. Not started; do it if a
-    third repo shows the addition shape, with the design note first
-    (`docs/design/`), and leave the rewrite refused.
+    third repo shows the addition shape, and leave the rewrite refused.
+    THE DESIGN NOTE IS WRITTEN (item 421,
+    `docs/design/overlapping-outputs-2026-09.md`): read it first, because
+    it found a conflict this sketch does not mention — point 4's "restore
+    order follows the edge" contradicts the restore tier, and an
+    implementation must add a second stability axis (where a task WRITES,
+    not only where it reads) before a narrowed artifact is safe.
 
 17. DONE 2026-09-12 as item 158 — the producing execution's usage rides
     the artifact's sidecar; a hit's entry is the history's record.
