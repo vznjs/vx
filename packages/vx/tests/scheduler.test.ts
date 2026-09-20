@@ -1065,3 +1065,70 @@ describe('runGraph reports a foreign-copy UserError plainly', () => {
     )
   })
 })
+
+// An observer is someone else's code — a reporter, an embedder's
+// progress bar, the MCP server. The scheduler holds the worker slot
+// across the hook, so a throw that escaped would strand the tick with
+// the slot held and the run would never finish. The catch keeps the run
+// alive; the notice is the only thing that says the observer is broken,
+// because a swallowed throw looks exactly like an observer that chose
+// not to report. Item 458 established that nothing asserted the notice.
+describe('a throwing observer never breaks the run, and never does it silently', () => {
+  const capture = async (fn: () => Promise<unknown>): Promise<string[]> => {
+    const written: string[] = []
+    const real = process.stderr.write.bind(process.stderr)
+    process.stderr.write = ((chunk: unknown): boolean => {
+      written.push(String(chunk))
+      return true
+    }) as typeof process.stderr.write
+    try {
+      await fn()
+    } finally {
+      process.stderr.write = real
+    }
+    return written
+  }
+
+  it('onStart: the graph still completes, and the notice names the task', async () => {
+    const a = node('p#a')
+    const b = node('p#b', ['p#a'])
+    let out: Awaited<ReturnType<typeof runGraph>> | undefined
+    const said = await capture(async () => {
+      out = await runGraph({
+        nodes: nodes(a, b),
+        concurrency: 1,
+        onStart: (n) => {
+          throw new Error(`OBSERVER-BOOM ${n.id}`)
+        },
+        execute: async (n) => success(n),
+      })
+    })
+    // Both tasks ran: the slot was released despite the throw.
+    expect(out!.get('p#a')!.status).toBe('success')
+    expect(out!.get('p#b')!.status).toBe('success')
+    const notices = said.filter((w) => w.includes('onStart observer threw'))
+    expect(notices).toHaveLength(2)
+    // Naming the task is what makes it actionable in a 1,000-task run.
+    expect(notices.join('')).toContain('p#a')
+    expect(notices.join('')).toContain('OBSERVER-BOOM')
+  })
+
+  it('onFinish: same contract on the completion side', async () => {
+    const a = node('p#a')
+    let out: Awaited<ReturnType<typeof runGraph>> | undefined
+    const said = await capture(async () => {
+      out = await runGraph({
+        nodes: nodes(a),
+        concurrency: 1,
+        onFinish: () => {
+          throw new Error('FINISH-BOOM')
+        },
+        execute: async (n) => success(n),
+      })
+    })
+    expect(out!.get('p#a')!.status).toBe('success')
+    const notices = said.filter((w) => w.includes('onFinish observer threw'))
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toContain('p#a')
+  })
+})
