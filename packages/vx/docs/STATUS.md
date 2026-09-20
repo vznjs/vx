@@ -1559,6 +1559,75 @@ non-empty string` is caught by exactly ONE row, and it is the
       named the sentinel, the sentinel named the race, and the race
       was in the test's own first line.
 
+493.  DONE (2026-09-20, `graph/scheduler.ts`, 745 lines — picked by
+      COST: a scheduling bug is a wrong-ORDER run, which finishes
+      green and only costs wall time, and perf is driver #1 here).
+      Seven mutations. Four caught, three survived, and two of the
+      three were real holes.
+      CAUGHT: `aborted` dropped from the skip propagation fails two
+      rows, one naming the consequence exactly ("does not let its
+      dependents cache what they built from its partial outputs") —
+      that one is stale-hit class and it is pinned. The skip chain's
+      root (`blocker ?? viaSkip.blockedBy`) fails its own row. The
+      heap's tie-break (`seq[i] < seq[j]`) fails SEVEN. The restore
+      lane's 2× cap fails two, one of them a docs-drift row.
+      HOLE 1 — the priority closure. `computeReverseDepCount` counts
+      TRANSITIVE dependents with a bitset closure over a reverse-topo
+      sweep, deduplicated so a diamond is not double-counted. Delete
+      the fold — making it a DIRECT dependent count — and the whole
+      suite passes. Its only direct row TIMES it (the perf floor); its
+      only other mention is a docs-drift row reading its source text.
+      Its behavioural witnesses are the two ordering rows above it,
+      and both use CHAINS, where direct and transitive counts rank
+      identically. So the transitivity the function exists for had
+      nothing on it.
+      Fixed with the two shapes that separate them. A diamond +
+      chain (root → {a,b} → c → d → e) where three answers are
+      distinguishable and only one is right: 2 is root's direct
+      count, 8 is what naive summing reports (measured, not
+      assumed — a and b each re-report c, d and e), 5 is the closure.
+      And the consequence end to end, on the one shape where the two
+      counts disagree about ORDER: a wide shallow fan-out (direct 3,
+      transitive 3) against a five-deep chain (direct 1, transitive
+      5), with the wide one inserted first. A direct count runs the
+      fan-out first and leaves the chain to unwind at the end of the
+      run, which is the idle tail the heuristic exists to avoid.
+      Both rows redden on the dropped fold, and — unplanned — they
+      also redden when the reverse-topo sweep runs FORWARD, which
+      nothing had held either.
+      HOLE 2 — `mergePriorities`'s scale. An override is multiplied by
+      1<<20 before the baseline is added as a tie-break, so a scored
+      node outranks every unscored one whatever their reverse-dep
+      counts; that is what makes the `schedule` seam's weights
+      DECIDE. Drop the scale and the suite passes, because the one
+      row that scores nodes scores four independent roots whose
+      baseline is 0, where `w * SCALE + b` and `w + b` rank the same.
+      Pinned with the smallest override a caller can express (1)
+      against an unscored node that blocks five others: unscaled, 1
+      loses to 5.
+      SURVIVOR, classified REDUNDANT — the parked-repush's original
+      seq. A parked task is repushed with the seq it was popped
+      under; dropping that (a fresh seq) is caught by nothing, and
+      nothing CAN catch it, because it changes no order: `parked` is
+      a subsequence of the tick's pop order and so is already in
+      ranking order, and every later push takes a later seq, so fresh
+      seqs handed out in parked order reproduce the same ranking.
+      Measured over 800 randomized scenarios — random DAGs, costs,
+      budgets, concurrency, failures, all three continue modes — zero
+      order differences. Kept (it makes FIFO-among-equals a property
+      of the heap instead of of the tick loop's shape), but the
+      comment claiming a fresh seq "would demote it behind later
+      arrivals" is now de-claimed, and the row titled "(original seq
+      preserved)" is retitled to what it actually pins: the order.
+      Method note: holes 1 and 2 are ONE shape, and it is 491's —
+      a witness whose FIXTURE cannot separate the implementation
+      from a wrong one. 491 was a fixture missing an entry, these
+      two are fixtures whose graphs make two different answers rank
+      identically. Chains hide transitivity; zero baselines hide a
+      scale. When a claim is about an ORDERING, the fixture has to be
+      the shape where the wrong rule orders differently — a fixture
+      where both rules agree is a test of neither.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured

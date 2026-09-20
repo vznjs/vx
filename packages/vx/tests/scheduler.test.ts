@@ -294,6 +294,76 @@ describe('runGraph', () => {
       // r1 (inserted first) wins the tie over r2.
       expect(started.indexOf('p#r1')).toBeLessThan(started.indexOf('p#r2'))
     })
+
+    it('counts TRANSITIVE dependents, deduplicated across a diamond', () => {
+      // Item 493. The counts themselves had no behavioural assertion: the
+      // only direct row on `computeReverseDepCount` TIMES it, and the
+      // ordering rows above use chains, where the direct and transitive
+      // counts rank identically. Dropping the closure fold — turning the
+      // function into a direct-dependent count — passed the whole suite.
+      //
+      //   root → {a, b} → c → d → e
+      //
+      // Three answers are distinguishable here and only one is right:
+      // 2 is root's DIRECT count, 8 is what naive summing gives (a and b
+      // each report c, d and e), and 5 is the closure.
+      const m = nodes(
+        node('p#root'),
+        node('p#a', ['p#root']),
+        node('p#b', ['p#root']),
+        node('p#c', ['p#a', 'p#b']),
+        node('p#d', ['p#c']),
+        node('p#e', ['p#d']),
+      )
+      expect(Object.fromEntries(computeReverseDepCount(m))).toEqual({
+        'p#root': 5,
+        'p#a': 3,
+        'p#b': 3,
+        'p#c': 2,
+        'p#d': 1,
+        'p#e': 0,
+      })
+    })
+
+    it('prefers a DEEP chain over a wider shallow fan-out', async () => {
+      // The consequence of the row above, end to end, on the one graph
+      // shape where direct and transitive counts disagree about the
+      // ORDER — which is the whole reason the closure is computed:
+      //
+      //   wide → {w1, w2, w3}   direct 3, transitive 3
+      //   deep → d1 → … → d5    direct 1, transitive 5
+      //
+      // A direct count runs `wide` first and leaves the five-deep chain
+      // to unwind at the end of the run; that is exactly the idle tail
+      // the heuristic exists to avoid, and it costs wall time without
+      // failing anything.
+      const m = new Map<string, TaskNode>(
+        [
+          node('p#wide'),
+          node('p#w1', ['p#wide']),
+          node('p#w2', ['p#wide']),
+          node('p#w3', ['p#wide']),
+          node('p#deep'),
+          node('p#d1', ['p#deep']),
+          node('p#d2', ['p#d1']),
+          node('p#d3', ['p#d2']),
+          node('p#d4', ['p#d3']),
+          node('p#d5', ['p#d4']),
+        ].map((n) => [n.id, n]),
+      )
+      const started: string[] = []
+      await runGraph({
+        nodes: m,
+        concurrency: 1,
+        execute: async (n) => {
+          started.push(n.id)
+          return success(n)
+        },
+      })
+      // `wide` is inserted first and has the larger DIRECT count, so this
+      // ordering can only come from the transitive one.
+      expect(started.indexOf('p#deep')).toBeLessThan(started.indexOf('p#wide'))
+    })
   })
 
   // A caller-supplied priority map (the seam a scheduling plugin feeds) must
@@ -593,6 +663,42 @@ describe('runGraph — priorities override', () => {
     // Scored highest-first: c (5) then a (1); then the two unscored nodes
     // by baseline + insertion order: b then d. Inverts the default a,b,c,d.
     expect(started).toEqual(['p#c', 'p#a', 'p#b', 'p#d'])
+  })
+
+  it('the SMALLEST override still outranks the largest baseline', async () => {
+    // Item 493. `mergePriorities` multiplies an override by 1<<20 before
+    // adding the baseline as a tie-break, so a scored node sorts above
+    // every unscored one whatever their reverse-dep counts. Nothing
+    // asserted that: the row above scores nodes whose baseline is 0, where
+    // `w * SCALE + b` and a plain `w + b` rank identically — so dropping
+    // the scale passed the whole suite, and a plugin's weights would
+    // quietly stop deciding on any graph with real fan-out.
+    //
+    // Here the unscored node blocks five others (baseline 5) and the
+    // scored one blocks nothing and carries the smallest weight a caller
+    // can express (1). Unscaled, 1 loses to 5.
+    const m = new Map<string, TaskNode>(
+      [
+        node('p#hub'),
+        node('p#h1', ['p#hub']),
+        node('p#h2', ['p#h1']),
+        node('p#h3', ['p#h2']),
+        node('p#h4', ['p#h3']),
+        node('p#h5', ['p#h4']),
+        node('p#scored'),
+      ].map((n) => [n.id, n]),
+    )
+    const started: string[] = []
+    await runGraph({
+      nodes: m,
+      concurrency: 1,
+      priorities: new Map([['p#scored', 1]]),
+      execute: async (n) => {
+        started.push(n.id)
+        return success(n)
+      },
+    })
+    expect(started[0]).toBe('p#scored')
   })
 })
 
@@ -905,12 +1011,18 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
     expect(asked).toEqual(['a#run'])
   })
 
-  it('FIFO-among-equals survives park + repush (original seq preserved)', async () => {
+  it('FIFO-among-equals survives park + repush', async () => {
     const { held, release } = gates(['p#a', 'p#b', 'p#c', 'p#d'])
     const started: string[] = []
     // All equal priority (independent roots, default baseline 0), so the
     // contract is enqueue order: a, b, c, d. b/c/d park behind a's 6;
     // after a completes, b and c admit IN ORDER and d parks again.
+    //
+    // This pins the ORDER, which is the contract. It does not pin the
+    // explicit-seq repush that the title used to name: dropping it (so a
+    // parked task takes a fresh seq) passes this row and the whole suite,
+    // because it changes no order anywhere — see `ReadyHeap.push`, item
+    // 493.
     const done = runGraph({
       nodes: nodes(node('p#a'), node('p#b'), node('p#c'), node('p#d')),
       concurrency: 8,
