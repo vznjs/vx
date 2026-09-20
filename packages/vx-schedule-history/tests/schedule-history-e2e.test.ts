@@ -122,7 +122,7 @@ describe('schedule-history plugin end to end', () => {
       // task's peak RSS: ~250 MB × 1.25 → 320 MB each, 640 > 512, so the
       // second waits for the first (no overlap). The differential is the
       // overlap itself; a run that reserved nothing would overlap both times.
-          const hog =
+      const hog =
         'export default { tasks: { build: { exec: { command: \'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(400); console.log(b.length)"\' } } } }\n'
       await pkg('a', hog)
       await pkg('b', hog)
@@ -164,7 +164,7 @@ describe('schedule-history plugin end to end', () => {
   it(
     '`vx history` shows what the plugin learned per task and the reservation it packs',
     async () => {
-          // One ~200 MB task and two trivial tasks, run once; then the verb,
+      // One ~200 MB task and two trivial tasks, run once; then the verb,
       // through the real dispatcher. The hog's row carries its peak RSS
       // and a learned reservation (its peak × 1.25, up to 64 MB); a
       // declared reservation shows as declared.

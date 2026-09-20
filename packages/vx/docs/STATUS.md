@@ -928,6 +928,32 @@ built behind a failure`). Two claims were not.
       `Bun.Archive` tar oracle, `armWatcher` non-recursive, and the
       watch watched-set row.
 
+440.  DONE (2026-09-20, the verdict method's THIRD correction, and
+      this one is embarrassing in the useful way). CI stayed red on
+      439's fix, and the failing check was not a test at all:
+      `@vzn/vx-schedule-history#lint.oxfmt`. My edit in 437 left two
+      over-indented lines in that package's test file, and the
+      formatter said so — in the LOCAL gate, twice, in the runs I
+      declared clean.
+      The hole is in what I diffed. `comm` against `base.names`
+      compares failing TEST names, and a lint failure produces no
+      `(fail)` row, so a formatting break is invisible to it. I read
+      the failing-TASK COUNT (five, six, five) and never the task
+      NAMES — and `CLAUDE.md` already says the gate is honest "against
+      the failing-TASK set and the failing-TEST set together". I was
+      using one of the two.
+      So the yardstick is two files now, `base.names` and
+      `base.tasks`, and the gate diff prints both. The task set on this
+      container is four: shards 2, 7 and 8 (the reapi CAS trio, the tar
+      oracle, `armWatcher`, the watch row) plus `@vzn/vx-reapi#test`.
+      Anything else appearing there is mine.
+      Three corrections to this method in one day — 430 (a red
+      baseline cannot witness a mutation), 436 (refresh from one run
+      and a flapper reads as new), 440 (a signal the diff never
+      looked at) — and every one of them was found by something
+      outside the diff. A verdict procedure needs its own controls as
+      much as a test does.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
