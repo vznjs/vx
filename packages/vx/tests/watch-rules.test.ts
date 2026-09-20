@@ -510,6 +510,38 @@ describe('armWatcher against a fake fs.watch', () => {
     }
   })
 
+  it('an event naming the watched directory itself never reaches the caller', async () => {
+    // macOS reports the directory a write landed in as its own item, and
+    // that event carries nothing a key can see — the write's own event
+    // names the file. `null` is the no-filename case `fs.watch` also
+    // reports. Both guards are unreachable through a real watcher on a
+    // host whose probe is never delivered, which is why they are asked
+    // here: the fake is the only seam that can deliver them.
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-self-'))
+    const seen: string[] = []
+    vi.spyOn(fs, 'watch').mockImplementation(((
+      _dir: string,
+      _opts: unknown,
+      cb: (event: string, filename: string | null) => void,
+    ) => {
+      queueMicrotask(() => {
+        cb('rename', WATCH_PROBE)
+        cb('change', '')
+        cb('change', '.')
+        cb('change', null)
+        cb('change', path.join('src', 'a.ts'))
+      })
+      return { close: () => {} } as unknown as fs.FSWatcher
+    }) as unknown as typeof fs.watch)
+    try {
+      const armed = armWatcher(dir, true, (f) => seen.push(f), 100)
+      expect(await armed.ready).toBe(true)
+      expect(seen).toEqual([path.join('src', 'a.ts')])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('a watcher that reports the probe is ready, and the caller never sees the probe', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-arm-fake-'))
     fakeWatch(true)

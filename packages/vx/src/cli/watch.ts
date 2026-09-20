@@ -758,6 +758,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<number> {
     const ignored = gitIgnored(workspaceRoot, [...pendingPaths.keys()])
     let first: string | undefined
     let firstAbs: string | undefined
+    // `sameState` before the `first` test, never after it: it is what
+    // RECORDS a path's settled state, and every path this judgement saw
+    // must be recorded even though only the first change names the cycle.
+    // Short-circuiting after the winner leaves the rest unjudged, and
+    // their next event is a first sighting stamped after the arm — so a
+    // batch edit (a `git checkout`) makes the same bytes written to any
+    // of the others a change.
     for (const [p, l] of pendingPaths) {
       if (ignored.has(p)) continue
       if (!sameState(p) && first === undefined) {
