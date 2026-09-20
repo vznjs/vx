@@ -876,6 +876,37 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       not offered as the answer; a guess written down becomes a fact
       nobody re-checks.
 
+454.  DONE (2026-09-20, and it is a ZERO-YIELD report, the second of the
+      arc after 427 — the staged config load EVERY reader shares,
+      `config-eval.ts` beside `projects.ts`, which
+      Next 8(c) flags and which I picked as the highest claim density
+      left). Four claims mutated one at a time. All four CAUGHT, and
+      the map of what pins what is the deliverable, so nobody re-sweeps
+      here.
+      (a) "Load in rounds to a fixpoint" for a `pkg#task` edge the
+      package graph cannot reach. Capping it at one round fails three
+      rows, one of them named "follows a cross dep discovered in a
+      LATER round".
+      (b) The `staged` reuse — a project the CLI's selection pass
+      already loaded is taken as is, so the `project` stage's cost AND
+      its warnings land once per run. Ignoring `staged` entirely fails
+      two rows under a describe named "the project stage runs once per
+      project per run".
+      (c) `clearTimeout` in `evaluateConfigFresh`'s `finally` rather
+      than after the await — the orphan timer that used to fire later
+      and kill an unrelated healthy round. Moving it fails SIX rows,
+      one named "a REJECTED evaluation does not poison a later one".
+      (d) The `project`-stage gate on which packages are visible at all
+      ("with no `project` plugin a plain run never visits a config-less
+      package"). Making them always visible fails the two `vx init`
+      rows that pin what an empty workspace is told.
+      Worth saying plainly, because it is the opposite of the last four
+      items: a file whose comments tell a detailed story is NOT
+      evidence either way — 447 and 450 both had one and were unpinned.
+      What separates this pair is that each story has a row whose NAME
+      is the claim. That is the shape to copy, and it is why this sweep
+      cost four runs and produced no test: there was nothing missing.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
