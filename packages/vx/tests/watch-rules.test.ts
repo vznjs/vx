@@ -19,6 +19,7 @@ import {
   makeWatchIgnore,
   memberEntries,
   fsClockNow,
+  pendingAfterCycle,
   modifiedBefore,
   sweepConfigs,
   WATCH_PROBE,
@@ -334,6 +335,31 @@ describe('flags that format ONE run are refused, not silently ignored', () => {
     expect(await watchCmd(argv)).toBe(1)
     expect({ flag, named: stderr.includes(flag) }).toEqual({ flag, named: true })
     expect(stderr).toContain('single run')
+  })
+})
+
+// The gap between a cycle's LAST judgement and the loop going idle. Events
+// landing there are the ones the inner re-run loop has already stopped
+// looking at, so nothing but this branch arms a timer for them — and
+// deleting the arming left every green test in the repo green (2026-09-20),
+// which is how it got a seam and these rows.
+describe('what a finished cycle hands back to the timer', () => {
+  it('arms the FIRST pending path, under the label it arrived with', () => {
+    const pending = new Map([
+      ['/w/a.ts', 'change'],
+      ['/w/b.ts', 'add'],
+    ])
+    expect(pendingAfterCycle(pending, false)).toEqual(['/w/a.ts', 'change'])
+  })
+
+  it('nothing pending: the loop goes idle', () => {
+    expect(pendingAfterCycle(new Map(), false)).toBeUndefined()
+  })
+
+  it('stopping wins over a pending path — a SIGINT does not start a cycle', () => {
+    // The order matters: `aborted` is checked before the map, so a watch
+    // told to stop with work queued exits instead of arming one more timer.
+    expect(pendingAfterCycle(new Map([['/w/a.ts', 'change']]), true)).toBeUndefined()
   })
 })
 

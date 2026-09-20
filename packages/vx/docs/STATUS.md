@@ -1470,6 +1470,44 @@ built behind a failure`). Two claims were not.
       `orchestrator.test.ts` and a parity file. Grep proves absence only
       where you grep; the repo-wide mutation is what actually answers
       "is this pinned", and it takes one run.
+430.  DONE (2026-09-20). Two results, and the second one corrects the
+      METHOD the last three items have been using.
+      First, `--affected` against the key — the pairing `cli.md` states
+      as a principle ("input hashing sees it, so `--affected` must
+      too"). Four mutations in `workspace/affected.ts`, one per
+      documented channel: drop the untracked union, stop widening on a
+      root fingerprint file, stop widening when a claiming plugin
+      cannot tell, and blind the config-import channel. Every one is
+      caught, most of them several times over, including by a row
+      named "the fingerprint moving and the selection widening are the
+      SAME condition" — which is the two-halves invariant, already
+      written as a test. Refuted, like 429.
+      Second, and this is the correction: my verdict all along has been
+      "the whole suite, diffed against the container baseline, saw no
+      new failure". That diff is BLIND wherever the baseline is already
+      red — a test that fails before the mutation cannot witness it —
+      and the baseline's largest family is `vx watch`. So a mutation
+      that deletes the watch loop's post-cycle re-trigger read as
+      "nothing catches it" when five of the seven baseline failures are
+      watch rows. Resolved by running the watch files ALONE:
+      `watch-loop` and `watch-loop-members` pass here (their baseline
+      failures are load), `watch-loop-selfwrite` and
+      `watch-loop-uncached` fail even alone (18 s timeouts, this
+      container). The mutation survives the two that pass, so the gap
+      is real — but the earlier verdicts stand only because their
+      mutations WERE caught, by green rows; a "nothing caught it" on
+      this container is worth checking against the red list first.
+      The gap itself: the inner loop re-runs while anything is pending,
+      so that branch covers only the gap between its last judgement and
+      the loop going idle — an event landing there sits in
+      `pendingPaths` with no timer armed, and watch goes quiet over an
+      edit the user made. The e2e fixture spawns a real `vx watch` and
+      cannot deliver an event at that instant, so the decision is now a
+      pure seam, `pendingAfterCycle`, with three rows: the first
+      pending path under its own label, nothing pending, and aborted
+      winning over a pending path (a SIGINT does not start one more
+      cycle). What that pins is the decision, not the delivery window,
+      and it says so.
 
 ## In flight
 
