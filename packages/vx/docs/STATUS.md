@@ -2160,6 +2160,36 @@ result)` after) keeps working without it. Its failure mode is
       mutants, so `no-memo`'s `5 pass 0 fail` means the rows ran and
       passed rather than that nothing ran.
 
+508.  DONE (2026-09-20, `orchestrator/miss-save.ts`'s empty-artifact
+      warning — the one symptom a sandboxed task with no write grant
+      shows, per item 444: its writes land in the sandbox's scratch,
+      the shell sees success, and the run is green over a build that
+      produced nothing).
+      HELD, and completely: both halves of the condition (outputs
+      DECLARED, and nothing RESOLVED) fail rows in
+      `cache-declaration-warnings.test.ts`, and both halves of the
+      sandbox HINT — "is it sandboxed" and "does it grant a write" —
+      fail a row named exactly for the job: "a sandboxed task that
+      produced nothing says why > names the missing write grant,
+      because nothing else would".
+      Worth recording HOW that was found, because the per-file
+      pre-check said the hint clauses survived. They live in the
+      `.unsafe` suite, which the pre-check did not run. That is item
+      500's rule doing its job on the first try after being written
+      down: the pre-check can only ever say "not here", and the
+      whole-suite verdict is what says "nowhere".
+      THE SATURATION SIGNAL, which is the real result of 506-508:
+      three held reports in a row, on `admission.ts`, `placement.ts`
+      and `miss-save.ts`. Each was already pinned member by member —
+      the practice this sweep spent fifteen items retrofitting is
+      standard in code touched recently. What 493-505 kept finding
+      was OLDER code: a priority closure from the first scheduler, a
+      classifier duplicated four ways, an alphabet nobody re-read, a
+      boundary asserted on one side. So the next sweep should select
+      by AGE and by last-touched date, not by cost alone — cost says
+      where a defect would hurt, age says where one is still likely
+      to be.
+
 ## In flight
 
 **`shard-9` segfaults about 1 run in 8, on any tree (measured
