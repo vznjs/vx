@@ -14,12 +14,9 @@ import path from 'node:path'
 import { type ProjectMeta, UserError } from '@vzn/vx'
 import { scriptCommand } from '../script-command.js'
 import { resolveSharedOutputs } from '../shared-outputs.js'
+import { packageScripts, relPosix } from '../paths.js'
 
 /** `path.relative` with forward slashes — the shape an ESM specifier or a report line needs. */
-function relPosix(from: string, to: string): string {
-  return path.relative(from, to).split(path.sep).join('/')
-}
-
 export interface TurboTask {
   dependsOn?: string[]
   inputs?: string[]
@@ -113,12 +110,6 @@ function tasksOf(cfg: TurboJson): Record<string, TurboTask> {
   return cfg.tasks ?? cfg.pipeline ?? {}
 }
 
-function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
-  // package.json is a system boundary — a script value is whatever the
-  // file holds, not necessarily a string.
-  return (meta.packageJson as unknown as { scripts?: Record<string, unknown> }).scripts ?? {}
-}
-
 /** A script value that can become `exec.command` verbatim. */
 function usableScript(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
@@ -196,7 +187,7 @@ export async function mapTurboWorkspace(
   // edges can be validated/dropped against the real emitted set.
   const emitted = new Map<string, Set<string>>()
   for (const meta of metas) {
-    const scripts = scriptsOf(meta)
+    const scripts = packageScripts(meta)
     const set = new Set<string>()
     for (const name of taskNamesFor(meta.name, rootTasks, pkgTasksByName.get(meta.name))) {
       if (usableScript(scripts[name])) set.add(name)
@@ -206,7 +197,7 @@ export async function mapTurboWorkspace(
 
   const projects: TurboMappedProject[] = []
   for (const meta of metas) {
-    const scripts = scriptsOf(meta)
+    const scripts = packageScripts(meta)
     const pkgTasks = pkgTasksByName.get(meta.name)
     const own = emitted.get(meta.name)!
     const tasks: TurboMappedTask[] = []

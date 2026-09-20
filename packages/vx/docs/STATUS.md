@@ -1222,6 +1222,50 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       (a loosely-spelled negation) inside it. A control that moves with
       the change is not a control; it was split into its own row so the
       differential means what it says.
+446.  DONE (2026-09-20, the same query as 445 pointed at the rest of the
+      sibling packages — and it is MOSTLY A REFUTATION, which is the
+      honest headline).
+      Two candidates from handoff 14ao closed first, both refuted for
+      nothing: `vx watch`'s cycle against the run's admission DEDUP is
+      not an interaction at all — watch holds an explicit reentrancy
+      guard ("never two orchestrator runs in flight") so cycles never
+      overlap, and it passes no `inflight` registry, so `admitTasks`
+      takes the untouched path every cycle; the dedup is for an
+      embedder running concurrent delegated runs, which watch is not.
+      The adjacent worry, that watch calls `run()` with the SAME
+      options object every cycle, is clean too: `run()` does not mutate
+      its options. And 434 had already taken the watch-vs-admission
+      pair proper — it became the taintTracker find — so 14ao's "still
+      untried" line was stale and is corrected here.
+      Then the 445 query across every sibling package: logic that
+      claims to mirror core, or re-implements what core does not
+      export. The announced kind came back CLEAN — `@vzn/vx-otel`
+      imports core's `TaskLogBuffer`, `@vzn/vx-github` imports core's
+      escaping and status predicates and diverges only on layout,
+      deliberately and in writing. The one announced copy that had
+      drifted was 445's, already fixed. That is a real result: the
+      façade discipline holds across the packages.
+      The unannounced kind found duplication without a realistic
+      defect, and it is recorded as such rather than dressed up.
+      `relPosix` existed FIVE times — once in core (not on the façade)
+      and four times in `@vzn/vx-migrate` — three identical and one
+      mapping the same-directory case to `.`, a divergence its only
+      caller makes unreachable by returning early on equality. The
+      `scripts` read existed twice unguarded where core guards it; the
+      guard's difference is reachable only for a task named by a DIGIT
+      against a malformed `scripts`, which is not a workspace anyone
+      has.
+      Consolidated anyway, into `vx-migrate/src/paths.ts`, for one
+      reason worth stating: item 445 is what a copy in this same
+      package costs once it drifts, and the cheapest moment to collapse
+      a duplicate is before that. No façade widening — the helper is
+      local to the package that needed it.
+      The type-checker then found the part that was more than tidying.
+      Making the `scripts` read honest (`Record<string, unknown>`)
+      broke `mapCommand`, which declared `Record<string, string>` — so
+      `body.length` type-checked on a value the boundary need not have
+      made a string. That is now read and validated like its Turbo
+      sibling. The instrument found it; I did not.
 
 ## In flight
 
@@ -1556,12 +1600,13 @@ Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
 noise floor and no arms to A/B until the run path changes. The owner
 residue — the `NPM_TOKEN` secret, the release cut, the site's address.
 No open issues.
-Next: the loop holds 413–445, so the trim is due at 452. For work, the
+Next: the loop holds 413–446, so the trim is due at 452. For work, the
 shape that has paid every time in this arc is a claim whose halves live
 apart. Still untried: `vx watch`'s cycle against the run's admission
-dedup (430 opened it and only took the branch), and the sandbox's
-grants against what `cache.outputs` declares, which 428 touched from
-the read side only and 433 pinned from the derive side. And the shape
+dedup — REFUTED in 446, and 434 had already taken the pair proper —
+and the sandbox's grants against what `cache.outputs` declares, which
+428 touched from the read side only and 433 pinned from the derive
+side. And the shape
 441 adds to that list: a rule shared by three consumers where only some
 of them apply it — `asTrees`, `normalizeGlob` and `staticPrefix` each
 have more than two callers. Item 442 took `asTrees` the same turn and
