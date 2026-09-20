@@ -193,6 +193,17 @@ the env var alone no longer auto-exports — you declare `otel()` in
 or fail a run (every export is buffered, time-bounded, and swallows
 errors).
 
+Swallowed, but not silent. An export that does not land warns once per
+signal URL and says what happened: a collector that cannot be reached,
+one that refuses the request (`HTTP 401`, `404`, `500`, carrying the
+collector's own message), or one that accepts it and reports part of the
+data dropped (OTLP's `partialSuccess`). A collector that answers too
+slowly is cut off by core's end-of-run deadline
+(`VX_TEARDOWN_TIMEOUT_MS`, 3 s by default), which says the buffered
+records were lost. The run exits green through all of it — that is the
+point of the capability — but a pipeline that is exporting nothing tells
+you so.
+
 For the mechanics of the telemetry capability behind this plugin — and
 how to write your own exporter — see [Writing a vx
 plugin](/vx/guides/plugins/).
