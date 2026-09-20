@@ -18,7 +18,7 @@ export {
 export { xxh3, xxh3hex } from './hash.js'
 export { mark, printTimings, span } from './timing.js'
 export { clampInt, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
-export { normalizeGlob, relPosix, staticPrefix, wholeSubtreePrefixes } from './paths.js'
+export { asTrees, normalizeGlob, relPosix, staticPrefix, wholeSubtreePrefixes } from './paths.js'
 export { killGraceMs, settleWithin, teardownTimeoutMs } from './settle.js'
 export { parseSize } from './size.js'
 export {

@@ -112,7 +112,9 @@ other walker: a project outside a git work tree is a `UserError`
    slashes and a trailing slash) and checked against the candidate
    set via `Bun.Glob.match`. A literal entry — no glob character —
    means the file or its whole tree: `src/`, `src` and `dist` all
-   compile to the path plus `<path>/**` (`asTrees`), as in Turbo and
+   compile to the path plus `<path>/**` (`asTrees`, defined in
+   `util/paths.ts` and re-exported here — the graph's
+   overlapping-output refusal reads the same rule), as in Turbo and
    every `.gitignore`. A literal that exists on disk but git does not
    list (gitignored) is refused as a `UserError`: it would contribute
    nothing to the key, and the task would report up-to-date after

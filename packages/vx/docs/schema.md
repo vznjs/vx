@@ -837,7 +837,9 @@ literals, or a literal a glob matches) are refused at graph build, like
 overlapping `files`: vx cleans declared outputs before a run and before
 a restore, so the second would delete the first's. The comparison is by
 PATH, not by spelling — `./dist/**` and `dist/**` are one declaration,
-and so are `dist//**` and `dist/./app.js` (item 441). Globs that only
+and so are `dist//**` and `dist/./app.js` (item 441) — and a literal
+entry is read as the file OR its whole tree, the same rule the resolver
+uses, so `dist` collides with `dist/app.js` (item 442). Globs that only
 _might_ overlap are let through; there, last restore wins.
 
 ### `exec.sandbox` (optional)

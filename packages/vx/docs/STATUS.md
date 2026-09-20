@@ -1052,6 +1052,43 @@ built behind a failure`). Two claims were not.
       it was asking which OTHER consumer of a shared rule applies it
       differently, and the second defect came from grepping the class
       the first one belonged to, exactly as CLAUDE.md says to.
+442.  DONE (2026-09-20, the shape 441 named, taken the same turn — a
+      rule with three consumers where one reads it differently, and
+      this one is the same function 441 fixed). `asTrees` is the rule
+      that a literal entry is the file OR its whole tree: `dist` and
+      `dist/` mean everything under `dist`, as in Turbo and every
+      `.gitignore`, and `"outputs": ["dist"]` is the most common
+      turbo.json shape there is. The input resolver reads it. So does
+      `cleanOutputs`, which is what actually DELETES. The graph's
+      overlapping-output refusal did not: it compared `dist` against
+      `dist/app.js` as two unequal literals and let the pair through.
+      Measured before the fix, through a real `run()`: `emit` writes
+      `dist/app.js`, `wide` declares `dist`, the run reports **success**
+      with both tasks green, and `dist/app.js` is gone. That is the
+      exact sentence the file's own header carries — "data loss with a
+      green summary" — produced by the check written to refuse it.
+      The fix could not import the rule where it stood: `graph` may not
+      import `cache` (the boundary matrix), and a second copy is what
+      441 just measured the cost of. So `asTrees` moved to
+      `util/paths.ts`, beside `normalizeGlob` and `staticPrefix`, and
+      `cache/inputs.ts` re-exports it so the cache contract and its doc
+      page stay true. `outputsOverlap` now expands both sides through
+      it and applies its three existing rules pairwise.
+      A row of the new test found the LIMIT, which is worth as much as
+      the fix: `dist` against `dist/sub/**` is still allowed, because
+      `asTrees` turns the literal into the glob `dist/**` and
+      glob-vs-glob is the case this file deliberately leaves undecided
+      rather than refuse a working build. It really does overlap and vx
+      really will delete it; proving it needs the general intersection
+      algorithm the file parks. Pinned as a limit, so the hole is a
+      decision and not an accident.
+      Five refusal rows, all five red without the fix. The controls that
+      matter are the ones that pass both ways: the clean deletes the
+      TREE for a literal directory and only the FILE for a literal file
+      (the premise, or the refusal would be a false positive), a
+      literal directory does not swallow a sibling or a same-prefix
+      name (`dist` vs `distant/app.js`), and a literal file's `/**`
+      twin matches nothing (`dist/app.js` vs `dist/app.js.map`).
 
 ## In flight
 
@@ -1386,7 +1423,7 @@ Open: Next 1, 2 and 16, each gated by its own terms; Next 6 has 404's
 noise floor and no arms to A/B until the run path changes. The owner
 residue — the `NPM_TOKEN` secret, the release cut, the site's address.
 No open issues.
-Next: the loop holds 413–441, so the trim is due at 452. For work, the
+Next: the loop holds 413–442, so the trim is due at 452. For work, the
 shape that has paid every time in this arc is a claim whose halves live
 apart. Still untried: `vx watch`'s cycle against the run's admission
 dedup (430 opened it and only took the branch), and the sandbox's
@@ -1394,7 +1431,58 @@ grants against what `cache.outputs` declares, which 428 touched from
 the read side only and 433 pinned from the derive side. And the shape
 441 adds to that list: a rule shared by three consumers where only some
 of them apply it — `asTrees`, `normalizeGlob` and `staticPrefix` each
-have more than two callers. Never end with "what next?".
+have more than two callers. Item 442 took `asTrees` the same turn and
+found the third consumer reading it differently, so the remaining one
+of that shape is `normalizeGlob`'s own callers.
+
+LEAD RESOLVED the same turn, and it corrects ME twice before it
+corrects anything else (2026-09-20, while probing 442). The lead was
+"a sandboxed task reported success having produced nothing, with no
+violation and no warning, contradicting a row that passes here".
+Both halves of that sentence were wrong, and the way each was wrong is
+the part worth keeping.
+There was no contradiction. The suite's row declares an explicit
+`sandbox: { allow: { read: [...] } }` with no write; my probe declared
+the bare baseline `sandbox: {}`. Two different configurations, so the
+two results never disagreed — I compared a row's CONCLUSION with a
+probe's, without comparing their fixtures.
+And vx did warn, in the exact words miss-save has for it:
+`[vx] app#build: cache.outputs matched no files (dist/**) — an empty
+artifact is saved; a later hit restores nothing`. My probe's logger
+implemented `taskStdout`/`taskStderr` and dropped `log.status`, which
+is the channel that line uses. A probe that silences a channel cannot
+report what that channel said — the same shape as 439's `&& echo ok`,
+one level up: I read an absence that my own instrument created.
+What the probing DID establish, item 443's and the only one of the two
+that is real:
+(a) `SandboxConfig` in `src/config.ts` — the type a user reads in
+their editor — says the baseline "may read its resolved
+`cache.inputs.files`, write the prefixes of its `cache.outputs.files`",
+and says it again on `read` ("beyond the resolved `cache.inputs.files`")
+and on `write` ("beyond the `cache.outputs.files` prefixes"). The code
+deliberately derives NOTHING from `cache` (owner, 2026-09-05; stated in
+`sandbox-request.ts`, pinned by 433, and `sandbox-request.ts:140` binds
+`sandbox.allow?.write ?? []`, never the cache). `schema.md` already
+says it correctly. So the prose doc is right, the code is right, and
+the TYPE's own comment promises a grant the sandbox does not make — on
+a security boundary. CLAUDE.md names this exactly: a comment claiming a
+guarantee the code lacks is a defect, de-claim or implement.
+(b) NOT A FINDING, and the third correction in this thread — recorded
+so that nobody "fixes" it. A write grant spelled as a bare literal
+directory, `sandbox: { allow: { write: ['dist'] } }`, becomes a
+placeholder FILE at `dist`, and the task dies on `mkdir: cannot create
+directory 'dist': File exists`. I measured that and was about to write
+it up as 442's ambiguity reaching the sandbox. It is a DECIDED
+behaviour, and both halves of the decision were already written down
+before I got there: `prepareOutputsForBind`'s own comment describes
+this exact scenario, dated 2026-09-16, down to the tool the user meets
+it from — "a literal that names nothing yet is a FILE — `dist/vx` for
+`bun build --outfile dist/vx`" — and concludes "so a directory is
+spelled `dist/`"; and `schema.md` says the same to users under "A write
+grant's shape". bwrap cannot bind a path that does not exist and vx
+cannot know which an absent grant means, so the spelling is the answer.
+This is 429's lesson with the grep actually done: I looked before
+claiming, and the claim did not survive. Never end with "what next?".
 
 15. DONE 2026-09-11 as items 142–144, 150 and 152 — five Nx repos
     (query, strapi, novu, router, refine), the owner's 3–5. Was: **More Nx repos.** The five Turbo build sets, the two wide sets

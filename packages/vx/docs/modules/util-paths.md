@@ -14,6 +14,7 @@ export function relPosix(from: string, to: string): string
 export function normalizeGlob(glob: string): string
 export function staticPrefix(glob: string): string
 export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null
+export function asTrees(patterns: readonly string[]): string[]
 ```
 
 - `toPosix(p)` — replaces every `path.sep` with `/`.
@@ -35,6 +36,13 @@ export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null
   container.
 - `wholeSubtreePrefixes(globs)` — the `<dir>/**` directories a task's
   outputs cover whole, or `null`; normalizes first.
+- `asTrees(patterns)` — a literal entry is the file OR its whole tree, so
+  every literal compiles to itself plus `<path>/**`. It lives here, not
+  beside the resolver, because it is not only the resolver's rule: it
+  decides what a clean DELETES, so `graph`'s overlapping-output refusal
+  has to read the same one, and `graph` may not import `cache` (item
+  442). Re-exported by `cache/index.ts`, which is still its contract for
+  the resolver.
 
 ## Why
 

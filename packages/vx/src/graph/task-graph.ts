@@ -1,5 +1,5 @@
 import type { TaskConfig } from '../config.js'
-import { normalizeGlob, UserError } from '../util/index.js'
+import { asTrees, UserError } from '../util/index.js'
 import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
 import {
   DependencySpecError,
@@ -418,22 +418,37 @@ function isLiteralGlob(g: string): boolean {
  * disjoint sets, so a prefix check refuses a legitimate config. (vx's own
  * `build.bun.*` tasks escape only because they declare distinct literals.)
  *
- * All three cases compare SPELLINGS, so both sides are normalized first.
- * `./dist/**` and `dist/**` name one tree to every matcher in vx and to
- * `cleanOutputs`, which is what actually does the deleting — but as raw
- * strings they are unequal, and `Bun.Glob('dist/**')` does not match the
- * literal `./dist/app.js` either. So every pair below escaped the refusal
- * and kept the data loss this function exists to prevent (item 441,
- * probed one spelling at a time). Normalizing is not a widening: it folds
- * exactly the spellings that denote the same path.
+ * All three cases compare SPELLINGS, so each side is run through
+ * `asTrees` first — the same rule the resolver and `cleanOutputs` read,
+ * and `cleanOutputs` is what actually does the deleting. That folds two
+ * things this check used to miss, both of them the data loss it exists to
+ * prevent:
+ *
+ *   - the SPELLING: `./dist/**` and `dist/**` are one tree to every
+ *     matcher in vx, and `Bun.Glob('dist/**')` does not match the literal
+ *     `./dist/app.js` either (item 441, probed one spelling at a time);
+ *   - the literal DIRECTORY: `outputs: ['dist']` means everything under
+ *     `dist` — `asTrees` compiles it to `dist` + `dist/**` — while this
+ *     compared it to `dist/app.js` as two unequal literals. Measured end
+ *     to end: the task declaring `dist` wiped the other's `dist/app.js`
+ *     and the run reported success (item 442).
+ *
+ * Neither is a widening. Both read the declaration the way the code that
+ * deletes reads it, which is the only reading that decides the hazard.
  */
 function outputsOverlap(rawA: string, rawB: string): boolean {
-  const a = normalizeGlob(rawA)
-  const b = normalizeGlob(rawB)
-  if (isLiteralGlob(a) && isLiteralGlob(b)) return a === b
-  if (isLiteralGlob(a)) return new Bun.Glob(b).match(a)
-  if (isLiteralGlob(b)) return new Bun.Glob(a).match(b)
-  return a === b
+  for (const a of asTrees([rawA])) {
+    for (const b of asTrees([rawB])) {
+      if (isLiteralGlob(a) && isLiteralGlob(b)) {
+        if (a === b) return true
+      } else if (isLiteralGlob(a)) {
+        if (new Bun.Glob(b).match(a)) return true
+      } else if (isLiteralGlob(b)) {
+        if (new Bun.Glob(a).match(b)) return true
+      } else if (a === b) return true
+    }
+  }
+  return false
 }
 
 /**
