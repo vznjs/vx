@@ -907,6 +907,54 @@ workspaceRoot` — is REFUTED, twice over, and neither refutation
       is the claim. That is the shape to copy, and it is why this sweep
       cost four runs and produced no test: there was nothing missing.
 
+455.  DONE (2026-09-20, the gap 451 left in MY OWN code: `attributesAbove`
+      had no worktree fixture). Probed git rather than reasoned about
+      it, which is 451(a)'s lesson, and the probe changed the answer
+      twice.
+      TWO real defects, both in where the clean-filter gate LOOKS.
+      (a) `--git-dir` in a linked worktree names the per-worktree
+      directory under the main repo's `.git`, which is not an ancestor
+      of the worktree's files at all — so the walk that was meant to
+      stop at the repo root never stopped and ran to the filesystem
+      root, stat-ing for a `.gitattributes` in every directory above
+      the repo and taking a stray one outside it as a reason to spawn
+      `check-attr`.
+      (b) The older half: `info/attributes` was looked up under that
+      same per-worktree directory. Probed, with the negative case read
+      FIRST: from inside a worktree `git check-attr text` answers
+      `unspecified` with nothing set and `auto` once the rule is
+      written to the COMMON dir's `info/attributes`, and the
+      per-worktree gitdir has no such file at all. The gate was looking
+      where the rule can never be.
+      HONEST LIMIT, and the reason this ships without an end-to-end
+      row. The stale hit (b) should cause does NOT reproduce: in a
+      worktree `git status` reports the CRLF file modified, so vx drops
+      the OID for a dirty path and is correct — by a route that is not
+      the gate. The same repo's MAIN checkout, with identical
+      `ls-files --eol` output, reports the same file clean. I did not
+      establish why git differs there and have written no cause down.
+      Masked is not fixed: the lookup is demonstrably in the wrong
+      place, and the masking is one git version's behaviour.
+      Fixed both: `--git-common-dir` replaces `--git-dir` in the
+      existing rev-parse (same spawn, no new cost), and the walk's stop
+      point comes from `--show-prefix`, which vx already has. Pinned
+      the half that IS differential — `repoRootOf` against git's own
+      `--show-toplevel` across four layouts (plain repo, subdir
+      workspace, worktree, subdir-in-worktree), plus the assertion that
+      the git DIRECTORY is not an ancestor there, which is the whole
+      reason the derivation changed. Red under a mutation that returns
+      the workspace root.
+      The gate caught what running the file alone could not, and the
+      lesson generalises. The new row COMMITS, and this file's local
+      `git` helper did not disable signing — one older row remembered
+      the flag inline and the next did not. This repo's environment
+      configures an ssh signing helper that talks to a local MCP
+      server, and a SANDBOXED shard cannot reach it: the file passed
+      alone (unsandboxed, helper reachable) and failed in the shard.
+      The helper owns the flag now, so the next row cannot forget it.
+      A fixture that commits is a fixture that needs the sandbox's
+      permission, and running it alone does not test that.
+
 ## In flight
 
 **The gate's baseline in a cloud container (2026-09-19; the RSS family
