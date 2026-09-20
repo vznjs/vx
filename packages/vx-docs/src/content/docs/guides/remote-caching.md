@@ -140,6 +140,12 @@ runtime**. Any failure — a 500, a timeout, an auth error, a corrupt
 artifact — degrades to a local cache miss and the run continues. A remote
 outage slows you down; it never fails you.
 
+That is a tested promise, not a hope: `@vzn/vx-migrate` points both
+shipped wires at a server that is hostile in each of those four ways and
+pins that every task still runs and the run still exits 0. A refused
+token costs exactly one warning for the whole run, however many projects
+are in flight when it lands.
+
 ## Artifact integrity
 
 Every blob `@vzn/vx-reapi` reads — ByteStream and batch alike, compressed

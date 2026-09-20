@@ -144,12 +144,12 @@ The Nx spec has no existence probe, so `has` (the `--dry` prediction and the pre
 ## Remote-cache behaviour (both)
 
 - A remote error degrades to a **miss** and one warning; the run never fails because of the cache.
-- A refused token (`401`/`403`) warns **once** and turns the layer off for the rest of the process.
+- A refused token (`401`/`403`) warns **once** and turns the layer off for the rest of the process — including the requests already in flight when the refusal lands, which degrade in silence rather than repeating it (a six-project run printed five identical lines before 2026-09-20).
 - Policy (`--cache=remote:r`, …) is enforced by core's `LayeredCache`, which the plugins wrap — a read-only token pairs naturally with `remote:r`.
 
 ## Testing
 
-`bun test` runs the Turbo plugin over fixture workspaces, the migrate CLI over both sources, and each remote-cache wire against a strict in-memory implementation of its spec plus a full `vx run` round trip (miss → upload → local wipe → restore from the server).
+`bun test` runs the Turbo plugin over fixture workspaces, the migrate CLI over both sources, and each remote-cache wire against a strict in-memory implementation of its spec plus a full `vx run` round trip (miss → upload → local wipe → restore from the server). A separate suite points both plugins at a HOSTILE server — 500 on every request, 401, a server that never answers, and a body that is not an artifact — and pins that each one degrades to a miss with the run still green.
 
 ## History
 

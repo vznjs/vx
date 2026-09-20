@@ -197,6 +197,44 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await cache().get('dd44')).not.toBeNull()
   })
 
+  it('a refused token throws ONCE even when the calls are concurrent', async () => {
+    // The claim in the class comment is "one line, not one per task", and a
+    // run's calls overlap: the probe pass asks for every task at once. Six
+    // projects under a bad token printed FIVE identical warnings before the
+    // in-flight refusals learned to degrade in silence (2026-09-20).
+    //
+    // Which call loses the race is the scheduler's business, so the pin is
+    // "exactly one rejection, and every other call returned its own miss
+    // value" — never an index.
+    const c = cache({ token: 'also-wrong' })
+    const miss: Record<string, unknown> = {
+      'has-a': false,
+      'has-b': false,
+      get: null,
+      hasMany: new Set(),
+      put: undefined,
+    }
+    const names = ['has-a', 'has-b', 'get', 'hasMany', 'put']
+    const settled = await Promise.allSettled([
+      c.has('aa11'),
+      c.has('bb22'),
+      c.get('aa11'),
+      c.hasMany(['aa11', 'bb22']),
+      c.put('ff66', new Uint8Array(1), { durationMs: 1 }),
+    ])
+    const rejected = settled.flatMap((r, i) =>
+      r.status === 'rejected' ? [{ name: names[i]!, message: String(r.reason.message) }] : [],
+    )
+    expect({ count: rejected.length }).toEqual({ count: 1 })
+    expect(rejected[0]!.message).toMatch(/401.*token was refused/)
+    for (const [i, r] of settled.entries()) {
+      if (r.status !== 'fulfilled') continue
+      const got: { name: string; value: unknown } = { name: names[i]!, value: r.value }
+      const want: { name: string; value: unknown } = { name: names[i]!, value: miss[names[i]!] }
+      expect(got).toEqual(want)
+    }
+  })
+
   it('a refused token throws once and turns the layer off', async () => {
     const c = cache({ token: 'wrong' })
     await expect(c.has('aa11')).rejects.toThrow(/401.*token was refused/)
